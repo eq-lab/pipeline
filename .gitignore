@@ -1,3 +1,6 @@
+# Local agent settings
+.claude/settings.local.json
+
 # Local agent artifacts (gitignored)
 claude-progress.md
 features.json
