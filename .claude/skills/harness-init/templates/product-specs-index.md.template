@@ -1,0 +1,25 @@
+# Product Specs Index
+
+Use this directory for feature and product requirement documents.
+
+## How to write a product spec
+
+A product spec describes **what a feature does and how it behaves**. It is not a bug report, issue fix, or implementation plan.
+
+**Frame everything as behavior.** Lead with what the feature does for users or agents, not what's broken or what code needs to change. "Registration" not "Problem." "Access Control" not "Guard chain changes."
+
+**Include implementation details when they define behavior.** API contracts (method, path, request/response), data models (table, columns, types), security rules, and rate limits belong in the spec — but frame them as "how the feature works," not "what files to edit."
+
+**Describe current behavior only.** A spec is a snapshot of how the feature works now. No change history, migration notes, "removed" sections, or "previously" references — including in acceptance criteria. What changed and why belongs in the exec plan or git history.
+
+**One spec per feature, not per property.** If the behavior is a property of an existing feature, add it to that feature's spec — don't create a separate file. A spec file should only exist for a distinct feature with its own user-facing behavior.
+
+**Keep code-level details in the exec plan.** File paths, function signatures, guard ordering, repo methods — these go in `docs/exec-plans/`, not here.
+
+**Use existing specs as reference.** Read any existing spec file for examples of the expected format and tone.
+
+**Typical sections:** Overview → feature behavior (flows, rules, parameters) → API contract → data model → security.
+
+## Current entries
+
+{{SPEC_ENTRIES}}

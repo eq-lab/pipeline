@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # {{SETUP_STEP}} — replace with the project's runtime setup
+      # Examples:
+      #   Node.js: uses: actions/setup-node@v4 / with: node-version: 22
+      #   Python:  uses: actions/setup-python@v5 / with: python-version: "3.12"
+      #   Rust:    uses: dtolnay/rust-toolchain@stable
+
+      # {{INSTALL_STEP}} — replace with the project's dependency install
+      # Examples:
+      #   Node.js: run: yarn install --frozen-lockfile
+      #   Python:  run: pip install -r requirements.txt
+      #   Rust:    (no install step needed)
+
+      - name: Code lint
+        run: {{LINT_COMMAND}}
+
+      - name: Doc lint
+        run: {{DOC_LINT_COMMAND}}

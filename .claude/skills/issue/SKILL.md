@@ -1,0 +1,62 @@
+---
+name: issue
+description: Create or manage GitHub Issues for task tracking — use before starting any work
+allowed-tools: Bash(gh *), Bash(git *)
+---
+
+# lint:docs skip-spec-ref
+
+GitHub Issues is the backlog complementing exec plans. Use it for ideas, upcoming work, and small items that don't need a full exec plan yet. Every piece of work must have a GitHub Issue.
+
+## Creating a new issue
+
+1. Check [GitHub Issues](https://github.com/eq-lab/pipeline/issues) for duplicates first.
+2. Write a clear description: what needs to happen, why, and what areas are affected. For bugs, include observed vs expected behavior and location. Use a HEREDOC for the body to preserve formatting.
+3. Create the issue with labels: `gh issue create --title "<title>" --label "<type>,backlog" --body "<body>"`.
+4. If starting work immediately, set status to `in-progress`, create a feature branch, push it with an empty commit, and open a draft PR (same as steps 3-5 in "Starting work on an existing issue").
+
+## Starting work on an existing issue
+
+1. Check the issue's current labels and comments with `gh issue view <number> -c`.
+   - If it already has the `in-progress` label, **stop and tell the user** — someone may already be working on it. Do not take over without explicit confirmation.
+   - Read any comments — they may contain decisions, context, or scope changes since the issue was created.
+2. Move the issue's status label to `in-progress`: `gh issue edit <number> --remove-label backlog --add-label in-progress`
+3. Create a feature branch (`feat/`, `fix/`, `docs/`, `chore/` prefix).
+4. Create an empty commit and push: `git commit --allow-empty -m "chore: start work on #<number>"` then `git push -u origin <branch>`.
+5. Check if a PR already exists: `gh pr list --head <branch> --state open`. If none, open a draft PR: `gh pr create --draft --title "<issue title>" --body "Closes #<number>"`.
+
+## Reading and commenting on issues
+
+- **View an issue with comments:** `gh issue view <number> -c`
+- **View comments via API** (for structured data): `gh api repos/eq-lab/pipeline/issues/<number>/comments`
+- **Add a comment:** `gh issue comment <number> --body "<comment>"`
+
+Use comments to log decisions, scope changes, or blockers discovered during work. Keep the issue body as the source of truth for "what" — use comments for "updates since creation."
+
+## Issue conventions
+
+- **Issue title format:** Short, descriptive noun phrase or imperative.
+- Every issue must have at least one **type label** and one **status label**.
+- Anyone (human or agent) can create issues. Check for duplicates before adding.
+- Use `gh issue create`, `gh issue edit`, and `gh issue close` to manage issues from the CLI.
+
+## Labels
+
+**Status labels** (mutually exclusive — pick one):
+
+| Label | When to use |
+|-------|-------------|
+| `backlog` | New task, not yet started |
+| `in-progress` | Task currently being worked on |
+
+Closed issues = done. No label needed.
+
+**Type / modifier labels** (combine with a status label):
+
+| Label | When to use |
+|-------|-------------|
+| `priority` | High priority — address before other backlog items |
+| `bug` | Something is broken or behaving incorrectly |
+| `enhancement` | New feature or improvement to existing functionality |
+| `documentation` | Docs-only change (specs, guides, generated docs) |
+| `question` | Needs discussion or clarification before work begins |

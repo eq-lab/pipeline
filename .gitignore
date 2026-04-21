@@ -1,0 +1,30 @@
+# Local agent artifacts (gitignored)
+claude-progress.md
+features.json
+
+# Rust
+/target/
+packages/api/target/
+packages/worker/target/
+Cargo.lock
+
+# Node
+node_modules/
+packages/frontend/node_modules/
+packages/frontend/dist/
+packages/frontend/.vite/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "packages/api",
+    "packages/worker",
+]
+resolver = "2"

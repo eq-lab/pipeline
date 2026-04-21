@@ -1,0 +1,19 @@
+{
+  "name": "pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/frontend"
+  ],
+  "scripts": {
+    "lint:docs": "npx tsx scripts/lint-docs.ts",
+    "codegen": "echo 'TODO: codegen'",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "yarn@4.13.0"
+}

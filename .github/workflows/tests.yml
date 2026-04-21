@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-tests:
+    name: Rust unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all
+
+  # TODO: Add Solidity tests when contracts/ is populated
+  # solidity-tests:
+  #   name: Solidity tests (Foundry)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: foundry-rs/foundry-toolchain@v1
+  #     - run: cd contracts && forge test --gas-report
+
+  # TODO: Add integration tests when test infrastructure is ready
+  # integration-tests:
+  #   name: Integration tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - run: cargo test --all -- --include-ignored

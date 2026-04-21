@@ -1,0 +1,36 @@
+---
+name: test-fast
+description: Run lint, unit, and integration tests in parallel
+user_invocable: true
+---
+
+# lint:docs skip-spec-ref
+
+# Test Fast
+
+Run all fast-feedback quality gates in parallel. Use before committing.
+
+## Parallel execution
+
+Run these three checks simultaneously:
+
+### 1. Lint
+```bash
+{{LINT_COMMAND}}
+```
+
+### 2. Doc lint
+```bash
+{{DOC_LINT_COMMAND}}
+```
+
+### 3. Unit tests
+```bash
+{{TEST_COMMAND}}
+```
+
+## Reporting
+
+- If all three pass: report "All gates green" and stop.
+- If any fail: report failures with the relevant output. Do not attempt to fix — just report.
+- If lint passes but tests fail (or vice versa), report both results — don't short-circuit on first failure.

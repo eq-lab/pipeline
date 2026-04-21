@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/.claude/settings.schema.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git commit:*)",
+      "Bash(git add:*)",
+      "Bash(git apply:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh api:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo build:*)",
+      "Bash(npx tsx scripts/lint-docs.ts:*)",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": []
+  }
+}

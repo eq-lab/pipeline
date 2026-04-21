@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# Husky v9 invokes hooks with `sh -e`; this hook needs bash (for `&>` redirects
+# and to opt out of errexit so all checks run and failures are summarized).
+if [ -z "${BASH_VERSION:-}" ]; then
+    exec bash "$0" "$@"
+fi
+set -uo pipefail
+
+# ── Colors ──────────────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+step() { printf "\n${BOLD}▸ %s${RESET}\n" "$1"; }
+pass() { printf "  ${GREEN}✓ %s${RESET}\n" "$1"; }
+fail() { printf "  ${RED}✗ %s${RESET}\n" "$1"; }
+warn() { printf "  ${YELLOW}⚠ %s${RESET}\n" "$1"; }
+
+FAILED=0
+mark() { FAILED=1; fail "$1"; }
+
+run() {
+    # Run command, show output only on failure.
+    local label="$1"; shift
+    local output
+    output=$("$@" 2>&1)
+    local rc=$?
+    if [ $rc -eq 0 ]; then
+        pass "$label"
+    else
+        echo "$output" | tail -20
+        mark "$label"
+    fi
+    return $rc
+}
+
+# ── Load .env if present ────────────────────────────────────────────
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+fi
+
+# ── Skip if no code files are staged ───────────────────────────────
+if ! git diff --cached --name-only | grep -qE '\.(rs|ts|tsx|js|jsx|json|sql|toml)$'; then
+    printf "\n${GREEN}${BOLD}No code files staged — skipping pre-commit checks.${RESET}\n\n"
+    exit 0
+fi
+
+printf "\n${BOLD}═══ pre-commit checks ═══${RESET}\n"
+
+# ── 0. Prerequisites ───────────────────────────────────────────────
+step "prerequisites"
+if ! command -v cargo-nextest &>/dev/null; then
+    fail "cargo-nextest not found"
+    printf "\n  Install it with:\n"
+    printf "    cargo install cargo-nextest --locked\n"
+    printf "  Or via Homebrew:\n"
+    printf "    brew install cargo-nextest\n\n"
+    exit 1
+fi
+pass "cargo-nextest installed"
+
+# ── 0b. Migration versions vs origin/main ──────────────────────────
+# New sqlx migrations must have a numeric prefix strictly greater than the
+# latest migration on origin/main. Otherwise sqlx will refuse to apply them
+# in environments that have already advanced past that version.
+step "migration versions"
+new_migrations=$(git diff --cached --name-only --diff-filter=A \
+    | grep -E '^crates/shared/migrations/[0-9]+_.*\.sql$' || true)
+
+if [ -z "$new_migrations" ]; then
+    pass "no new migrations staged"
+elif ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    warn "origin/main not found locally — skipping (run: git fetch origin main)"
+else
+    main_max=$(git ls-tree -r --name-only origin/main -- crates/shared/migrations/ \
+        | grep -E '^crates/shared/migrations/[0-9]+_.*\.sql$' \
+        | sed -E 's|^crates/shared/migrations/([0-9]+)_.*|\1|' \
+        | sort -n | tail -1)
+    if [ -z "$main_max" ]; then
+        pass "origin/main has no migrations yet"
+    else
+        bad=""
+        while IFS= read -r f; do
+            ver=$(echo "$f" | sed -E 's|^crates/shared/migrations/([0-9]+)_.*|\1|')
+            if [ "$ver" -le "$main_max" ]; then
+                bad="${bad}    $f (version $ver <= origin/main max $main_max)\n"
+            fi
+        done <<< "$new_migrations"
+        if [ -n "$bad" ]; then
+            printf "  new migrations must be newer than origin/main (max=%s):\n" "$main_max"
+            printf "%b" "$bad"
+            printf "  fix: rename the file(s) with a current timestamp prefix (YYYYMMDDHHMMSS)\n"
+            fail "migration versions"
+            printf "\n${RED}${BOLD}Pre-commit aborted: stale migration version.${RESET}\n"
+            printf "Bypass with: git commit --no-verify\n\n"
+            exit 1
+        else
+            pass "all new migrations > $main_max"
+        fi
+    fi
+fi
+
+# ── 1. Rust formatting ──────────────────────────────────────────────
+step "cargo fmt"
+run "formatting ok" cargo fmt --all --check
+
+# ── 2. Clippy ───────────────────────────────────────────────────────
+step "cargo clippy"
+run "clippy ok" cargo clippy --workspace --all-targets -- -D warnings
+
+# ── 3a. Install JS dependencies ────────────────────────────────────
+step "yarn install"
+run "yarn install ok" yarn --frozen-lockfile --silent
+
+# ── 3b. Codegen (placeholder — TODO: wire up when API types are generated) ──
+step "yarn codegen"
+run "codegen ok" yarn codegen
+
+# ── 3c. Frontend lint (ESLint + Prettier) ──────────────────────────
+# TODO: configure ESLint in packages/frontend and replace this warn
+step "frontend lint"
+if [ -f packages/frontend/package.json ] && \
+   node -e "require('./packages/frontend/package.json').scripts?.lint" 2>/dev/null; then
+    run "frontend lint ok" yarn --cwd packages/frontend lint
+else
+    warn "frontend lint skipped (ESLint not yet configured in packages/frontend)"
+fi
+
+# ── 3d. Frontend build (TypeScript check) ──────────────────────────
+# TODO: configure Vite in packages/frontend and replace with build command
+step "frontend build"
+if [ -f packages/frontend/tsconfig.json ]; then
+    run "frontend build ok" yarn --cwd packages/frontend build
+else
+    warn "frontend build skipped (tsconfig.json not yet present in packages/frontend)"
+fi
+
+# ── 4. Doc lint ─────────────────────────────────────────────────────
+step "doc lint"
+run "doc lint ok" npx tsx scripts/lint-docs.ts
+
+# ── 6. Rust unit tests (nextest) ────────────────────────────────────
+step "unit tests"
+run "unit tests ok" cargo nextest run --workspace --no-tests=pass
+
+# ── 7. Rust integration tests (nextest, requires DB) ────────────────
+step "integration tests"
+if [ -z "${DATABASE_URL:-}" ]; then
+    warn "skipped (DATABASE_URL not set)"
+else
+    run "integration tests ok" cargo nextest run --workspace --test '*'
+fi
+
+# ── Result ──────────────────────────────────────────────────────────
+echo ""
+if [ "$FAILED" -ne 0 ]; then
+    printf "${RED}${BOLD}Pre-commit checks failed.${RESET}\n"
+    printf "Bypass with: git commit --no-verify\n\n"
+    exit 1
+else
+    printf "${GREEN}${BOLD}All checks passed.${RESET}\n\n"
+fi

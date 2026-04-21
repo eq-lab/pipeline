@@ -1,0 +1,78 @@
+---
+name: {{PROJECT_PREFIX}}-audit
+description: Run a harness audit — check docs freshness, architecture compliance, feature accuracy, and code hygiene
+user_invocable: true
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, Skill
+---
+
+# lint:docs skip-spec-ref
+
+# Harness Audit
+
+Garbage-collect stale artifacts and catch drift. Run this every 5-10 sessions or before milestones.
+
+## Checklist
+
+### 1. Feature List Accuracy
+
+Generate `features.json` locally by scanning the codebase and GitHub Issues (`gh issue list`). For each feature, verify whether it still works. Compare against the previous `features.json` if it exists. Report corrections.
+
+`features.json` is gitignored — it's a local agent artifact, not committed.
+
+### 2. GitHub Issues Hygiene
+
+Run `gh issue list --state open` and `gh issue list --state closed --limit 20`. Check:
+- Open issues with `in-progress` label — do they have active branches and open PRs (draft or ready)?
+- Closed issues — were their exec plans moved to `completed/`?
+- Stale open issues — should any be closed or re-labeled?
+
+### 3. Documentation Freshness
+
+Check all docs referenced in `AGENTS.md`:
+- Do file paths match the actual project structure?
+- Are exec plans in the right directory (active vs completed)?
+- Do product spec index links all resolve?
+- Are setup instructions current?
+- Does `ARCHITECTURE.md` match reality?
+
+### 4. Architecture Compliance
+
+Read `ARCHITECTURE.md`, then verify:
+- Layer dependency rules followed
+- No backward imports
+- New code in correct locations
+- Path aliases resolve correctly
+
+### 5. Code Hygiene
+
+Scan for:
+- TODO/FIXME/HACK comments that should be tracked
+- Unused imports
+- Console.log in production code
+- Dead code
+
+### 6. Git Health
+
+Check commit conventions, uncommitted changes, stash list, branch cleanliness.
+
+### 7. Bugs & Tech Debt Reconciliation
+
+Reconcile `docs/exec-plans/known-bugs.md` and `docs/exec-plans/tech-debt-tracker.md` against GitHub Issues. For each file:
+
+1. **Parse open items.** Read the file and extract each distinct bug or tech debt entry from the "Open" / "Known Gaps" sections.
+2. **Search for existing issues.** For each item, run `gh issue list --search "<keywords>" --state all`.
+3. **If an open issue exists:** remove the entry from the file. **If only a closed issue exists:** keep the entry for re-evaluation.
+4. **Present a summary table** of all items and proposed actions and **wait for user confirmation** before creating any issues or editing the files.
+5. **After confirmation:** create issues using the `/issue` skill conventions, then remove processed entries from the file.
+6. **Keep the file clean.** Restore placeholders if sections are empty.
+
+## Reporting
+
+Present findings as a structured report with score (X/7 clean). Then ask the user which issues to fix. Fix docs first, then feature list, then architecture violations.
+
+## After Fixing
+
+1. Update `claude-progress.md` (local, gitignored) with audit session entry
+2. Update `features.json` (local, gitignored) with current feature state
+3. Commit only tracked files: `chore: harness audit — <summary of fixes>`
+4. For every issue found, ask: "How do I prevent this from happening again?" and update AGENTS.md or add linter rules if applicable.

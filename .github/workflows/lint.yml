@@ -1,0 +1,41 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-docs:
+    name: Documentation lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npx tsx scripts/lint-docs.ts
+
+  lint-rust:
+    name: Rust clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all -- -D warnings
+
+  lint-frontend:
+    name: TypeScript typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: cd packages/frontend && npx tsc --noEmit
