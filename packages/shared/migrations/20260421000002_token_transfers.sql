@@ -8,7 +8,7 @@ CREATE TABLE token_transfers (
     block_number     BIGINT NOT NULL,
     tx_hash          TEXT   NOT NULL,
     log_index        INT    NOT NULL,
-    block_timestamp  TIMESTAMPTZ NOT NULL,
+    block_timestamp  BIGINT NOT NULL,
     indexed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (chain_id, contract_address, block_number, log_index)
 );

@@ -2,7 +2,7 @@
 members = [
     "packages/api",
     "packages/worker",
-    "crates/shared",
+    "packages/shared",
 ]
 resolver = "2"
 
@@ -17,3 +17,4 @@ sqlx              = { version = "0.8", features = ["postgres", "runtime-tokio-ru
 tokio             = { version = "1", features = ["full"] }
 tracing           = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy            = "0.15"

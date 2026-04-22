@@ -10,4 +10,11 @@ pub trait LogMapper: Send + Sync {
 
     /// Inserts this event into the DB. Called only when is_duplicate returns false.
     async fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<()>;
+
+    /// Returns the block number of the underlying event.
+    fn block_number(&self) -> u64;
+
+    /// Sets the block timestamp (Unix seconds) on the underlying event.
+    /// Called right before insert, once the timestamp has been fetched from the RPC.
+    fn set_block_timestamp(&mut self, ts: u64);
 }

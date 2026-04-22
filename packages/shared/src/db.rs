@@ -84,7 +84,7 @@ impl EventRepo {
             "INSERT INTO token_transfers
                (chain_id, contract_address, sender, receiver, amount,
                 block_number, tx_hash, log_index, block_timestamp)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9))",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(chain_id)
         .bind(event.contract_address.to_checksum(None))
@@ -97,7 +97,7 @@ impl EventRepo {
         .bind(event.block_number as i64)
         .bind(format!("{:?}", event.tx_hash))
         .bind(event.log_index as i32)
-        .bind(event.block_timestamp as f64)
+        .bind(event.block_timestamp as i64)
         .execute(conn)
         .await?;
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use alloy::{
@@ -46,6 +47,7 @@ impl EvmEventPollerBuilder {
 
     /// Register a handler for a specific event type.
     /// `decode_fn` receives a raw log and returns `Some(Box<dyn LogMapper>)` on match, `None` otherwise.
+    /// The block timestamp is injected after matching via `LogMapper::set_block_timestamp`.
     pub fn add_event_handler(
         mut self,
         addresses: Vec<Address>,
@@ -79,6 +81,7 @@ impl EvmEventPoller {
     /// Fetches all matching logs for `[from_block, to_block]` in `block_range`-sized chunks.
     /// Each log is offered to every registered handler in order; the first match wins.
     /// Logs with `removed = true` (reorg) are skipped.
+    /// Block timestamps are fetched via `eth_getBlockByNumber` and cached per block number.
     pub async fn poll(&self, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn LogMapper>>> {
         let all_addresses: Vec<Address> = self
             .handlers
@@ -103,6 +106,7 @@ impl EvmEventPoller {
                 if log.removed {
                     continue;
                 }
+
                 for handler in &self.handlers {
                     if let Some(mapper) = (handler.decode)(log) {
                         result.push(mapper);
@@ -116,5 +120,25 @@ impl EvmEventPoller {
         }
 
         Ok(result)
+    }
+
+    pub async fn get_block_timestamp(
+        &self,
+        block_number: u64,
+        cache: &mut HashMap<u64, u64>,
+    ) -> Result<u64> {
+        if let Some(&ts) = cache.get(&block_number) {
+            return Ok(ts);
+        }
+
+        let block = self
+            .provider
+            .get_block_by_number(block_number.into(), false.into())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("block {} not found", block_number))?;
+
+        let ts = block.header.timestamp;
+        cache.insert(block_number, ts);
+        Ok(ts)
     }
 }

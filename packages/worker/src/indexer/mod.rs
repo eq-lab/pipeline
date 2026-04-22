@@ -2,6 +2,7 @@ pub mod mappers;
 pub mod parsers;
 pub mod poller;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -22,8 +23,14 @@ pub async fn run_job(settings: JobSettings, pool: PgPool) {
     let repo_for_handler = repo.clone();
     let settings_for_handler = settings.clone();
 
+    let approved: Vec<alloy::primitives::Address> = settings
+        .polling_targets
+        .iter()
+        .filter_map(|a| a.parse().ok())
+        .collect();
+
     let contracts: Vec<alloy::primitives::Address> = settings
-        .contracts
+        .polling_contracts
         .iter()
         .filter_map(|a| a.parse().ok())
         .collect();
@@ -34,7 +41,7 @@ pub async fn run_job(settings: JobSettings, pool: PgPool) {
         settings.polling_interval_ms,
     )
     .add_event_handler(contracts, move |log| {
-        parse_token_transfer(log).map(|ev| {
+        parse_token_transfer(log, &approved).map(|ev| {
             Box::new(TokenTransferLogMapper::new(
                 ev,
                 settings_for_handler.chain_id,
@@ -47,12 +54,14 @@ pub async fn run_job(settings: JobSettings, pool: PgPool) {
     loop {
         let span = tracing::info_span!("index_once", job = %settings.name);
         match index_once(&settings, &repo, &poller).instrument(span).await {
-            Ok(()) => {}
+            Ok(()) => {
+                tracing::info!(job = %settings.name, "indexing completed successfully");
+            }
             Err(e) => {
                 tracing::error!(job = %settings.name, error = %e, "indexer error — retrying in 5s");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }
 
@@ -71,12 +80,17 @@ async fn index_once(
     let end =
         (cursor + settings.polling_block_range - 1).min(latest - settings.log_confirmations_delay);
 
-    let mappers = poller.poll(cursor, end).await?;
+    let mut mappers = poller.poll(cursor, end).await?;
 
     let mut tx = repo.pool.begin().await?;
+    let mut timestamp_cache: HashMap<u64, u64> = HashMap::new();
 
-    for mapper in &mappers {
+    for mapper in &mut mappers {
         if !mapper.is_duplicate(&mut tx).await? {
+            let ts = poller
+                .get_block_timestamp(mapper.block_number(), &mut timestamp_cache)
+                .await?;
+            mapper.set_block_timestamp(ts);
             mapper.insert(&mut tx).await?;
         }
     }

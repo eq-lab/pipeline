@@ -14,7 +14,7 @@ mod tests {
     async fn setup_pool() -> Option<PgPool> {
         let url = std::env::var("DATABASE_URL").ok()?;
         let pool = PgPool::connect(&url).await.expect("connect to test DB");
-        sqlx::migrate!("../../crates/shared/migrations")
+        sqlx::migrate!("../shared/migrations")
             .run(&pool)
             .await
             .expect("migrations");

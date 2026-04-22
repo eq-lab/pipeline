@@ -201,7 +201,7 @@ pub struct JobSettings {
 }
 ```
 
-Config is loaded from environment variables. Each job's settings are namespaced by job name: `JOB_<NAME>_ENABLED`, `JOB_<NAME>_POSTGRES_URL`, `JOB_<NAME>_ETH_RPC_URL`, `JOB_<NAME>_CHAIN_ID`, `JOB_<NAME>_CONTRACTS` (comma-separated), etc.
+Config is loaded from environment variables. Each job's settings are namespaced by job name: `JOB_<NAME>_ENABLED`, `JOB_<NAME>_POSTGRES_URL`, `JOB_<NAME>_ETH_RPC_URL`, `JOB_<NAME>_CHAIN_ID`, `JOB_<NAME>_POLLING_CONTRACTS` (comma-separated), `JOB_<NAME>_POLLING_TARGETS`, etc.
 
 A list of job names to discover is read from `JOB_NAMES` (comma-separated, e.g. `ethereum,polygon`).
 
