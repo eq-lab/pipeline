@@ -32,7 +32,7 @@ LP onboarding is entirely off-chain except for a single on-chain write to the Wh
 - A wallet's Chainalysis screening result is valid for **90 days** from the last clean screen. This parameter is configurable by the foundation multisig via `WhitelistRegistry.freshnessWindow`.
 - When an LP initiates a deposit, the frontend checks the on-chain `approvedAt` timestamp. If the 90-day window has expired, the deposit UI is blocked and the LP is prompted to re-verify.
 - Re-verification triggers a fresh Chainalysis screen via the bridge service. On a clean result, `approvedAt` is refreshed. On a failed or suspicious result, the LP's whitelist entry is flagged for manual compliance review.
-- The frontend freshness gate is a UX convenience; the authoritative check is performed by the bridge service before any PLUSD mint is executed (see deposits spec).
+- The frontend freshness gate is a UX convenience; the authoritative check is enforced on-chain by the DepositManager contract (`isAllowedForMint`) at deposit time (see deposits spec).
 
 ### Passive Re-Screening and Revocation
 
