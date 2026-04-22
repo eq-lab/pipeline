@@ -3,10 +3,10 @@
 ## Overview
 
 Protocol yield reaches LP stakers through two distinct paths: loan repayment yield
-(discrete events triggered by borrower wires) and T-bill yield (weekly USYC NAV accrual).
-Both paths deliver fresh PLUSD minted into the sPLUSD vault, accreting NAV for all stakers.
-Fees flow simultaneously to the Treasury Wallet. Senior principal returned on repayment is
-automatically swept into USYC to earn T-bill yield immediately.
+(discrete events triggered by borrower wires) and T-bill yield (USYC NAV accrual distributed
+lazily on each sPLUSD stake/unstake). Both paths deliver fresh PLUSD minted into the sPLUSD
+vault via two-party attestation, accreting NAV for all stakers. Fees flow simultaneously to
+the Treasury Wallet.
 
 ---
 
@@ -56,70 +56,41 @@ OET allocation → originator residual (junior yield). The originator residual i
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.
 
-### RepaymentSettled event and on-chain delivery
+### Repayment on-chain delivery
 
-Once the trustee confirms the waterfall breakdown, they sign a `RepaymentSettled` event
-(an EIP-712 off-chain attestation, not an on-chain transaction). This event is the
-trigger for on-chain yield delivery:
+Once the trustee confirms the waterfall breakdown, they submit final split amounts via the
+Bridge API (`POST /v1/trustee/repayments/{id}/approve`). This triggers on-chain yield delivery:
 
 1. The trustee instructs the on-ramp provider to convert the senior portion
    (`senior_principal_returned + senior_coupon_net + protocol fees`) from USD to USDC,
    settling into the Capital Wallet.
-2. The bridge service verifies that the USDC inflow matches the signed event amounts.
-3. The bridge mints PLUSD via the yield-mint path:
-   - `PLUSD.mint(sPLUSDvault, senior_coupon_net)` — increases vault `totalAssets`,
-     accreting NAV for all stakers.
-   - `PLUSD.mint(TreasuryWallet, management_fee + performance_fee + oet_allocation)` —
-     protocol revenue.
-4. The bridge automatically converts `senior_principal_returned` USDC into USYC,
-   sweeping the returned principal back into T-bill yield immediately.
+2. Bridge verifies the USDC inflow matches the Trustee-approved amounts.
+3. Bridge constructs two `YieldAttestation` structs, signs each with `bridgeYieldAttestor`,
+   requests custodian EIP-1271 co-signatures, and calls `PLUSD.yieldMint` for each leg:
+   - Vault leg: mints `senior_coupon_net` PLUSD to the sPLUSD vault — accretes NAV for all
+     stakers.
+   - Treasury leg: mints `management_fee + performance_fee + oet_allocation` PLUSD to the
+     Treasury Wallet.
+   Both signatures (Bridge ECDSA + custodian EIP-1271) are verified on-chain. Neither party
+   alone can mint.
 
-### Weekly USYC NAV yield distribution
+### USYC NAV yield distribution (lazy, stake/unstake-triggered)
 
-USYC in the Capital Wallet accrues NAV continuously. Yield is recognised and distributed
-weekly, on Thursday at the end of day (working reference: 17:00 America/New_York or the
-USYC issuer's published NAV reference time, whichever is later).
+USYC NAV accrues continuously. To keep sPLUSD share price current without a time-based cron,
+yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 
-Between weekly events, the bridge service tracks the running `accrued_yield` figure in
-real time from the USYC issuer's NAV feed. This figure is displayed on the protocol
-dashboard for informational purposes only; it does not affect sPLUSD NAV until the weekly
-distribution fires.
+1. Bridge reads the current USYC NAV from the Hashnote API.
+2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
+   holdings). If `delta <= 0`, no mint occurs.
+3. If `delta > 0`: Bridge constructs two `YieldAttestation` structs (vault 70%, treasury 30%
+   of `yield_delta`), gets Bridge sig + custodian co-sig, submits both `yieldMint` calls.
+4. After both `yieldMint` transactions confirm on-chain, Bridge advances the
+   `last_minted_NAV` baseline. Until both confirm, the baseline is unchanged — idempotent
+   retry is safe.
 
-At the weekly reference time:
-
-1. The bridge computes `total_accrued_yield = USYC NAV appreciation since prior
-   distribution × USYC holding amount`.
-2. The bridge pre-builds a `TreasuryYieldDistributed` transaction and presents it to the
-   trustee tooling, showing: total accrued yield, vault share (70%), treasury share (30%),
-   reference USYC NAV, holding amount, and `week_ending` date.
-3. The trustee reviews and signs (EIP-712 attestation).
-4. On receipt of the trustee signature, the bridge mints:
-   - `PLUSD.mint(sPLUSDvault, 0.70 × total_accrued_yield)` — 70% to stakers.
-   - `PLUSD.mint(TreasuryWallet, 0.30 × total_accrued_yield)` — 30% to Treasury.
-5. USYC is not redeemed during the yield event; it remains in the Capital Wallet and the
-   new NAV becomes the baseline for the following week.
-
-### Automated USDC/USYC rebalancing
-
-After every repayment sweep or withdrawal that shifts the USDC/USYC composition, the bridge
-enforces a target ratio:
-
-| Parameter | Working value | Configurable by |
-|---|---|---|
-| Target USDC ratio | 15% of total reserves | Foundation multisig |
-| Upper band | 20% — triggers USDC → USYC swap | Foundation multisig |
-| Lower band | 10% — triggers USYC → USDC redemption | Foundation multisig |
-| Per-swap cap | $5M | Foundation multisig |
-| Daily aggregate cap | $20M | Foundation multisig |
-
-Swaps above either cap require Trustee + team co-signature via the trustee tooling escape
-path. The trustee retains a manual override UI as a backup path regardless of band state.
-
-### Real-time accrued yield display
-
-The protocol dashboard exposes the running accrued T-bill yield figure as a rolling counter
-that resets to zero after each weekly mint. LPs see T-bill yield accumulating in real time
-even though distribution is weekly.
+USYC is not redeemed during yield distribution; it remains in the Capital Wallet. Between
+mints, Bridge polls USYC NAV continuously and exposes accrued-but-undistributed yield via
+`GET /v1/vault/stats` for dashboard display.
 
 ---
 
@@ -154,16 +125,15 @@ dashboard with a three-state indicator:
 
 ## Security Considerations
 
-- The yield-mint path uses the same `PLUSD.mint()` function as deposit mints but is tracked
-  separately in the bridge audit log. Both paths are subject to the on-chain rolling 24h
-  rate limit ($10M) and per-transaction cap ($5M).
-- The `RepaymentSettled` event is an EIP-712 attestation signed by the trustee; the bridge
-  cannot trigger a yield mint without it. A compromised bridge alone cannot fabricate a
-  yield event.
-- The `TreasuryYieldDistributed` event follows the same pattern: pre-built by the bridge,
-  signed by the trustee, then executed. No yield flows without a trustee signature.
-- USYC is held exclusively in the Capital Wallet; the USYC issuer whitelists only that
-  address as an authorised holder. Automated sweeps to USYC are bounded by the per-swap and
-  daily aggregate caps enforced at the MPC policy engine level.
+- **Two-party yield attestation.** Both repayment and USYC yield mints require Bridge ECDSA
+  signature + custodian EIP-1271 signature + YIELD_MINTER caller role. A compromised Bridge
+  alone cannot mint yield PLUSD.
+- **Reserve invariant enforced on-chain.** Every `yieldMint` call checks the cumulative
+  counter invariant at the PLUSD contract level, bounding yield issuance against the
+  contract's own ledger.
+- **Replay protection.** Each `YieldAttestation` is consumed exactly once via the
+  `usedRepaymentRefs` mapping on PLUSD. Vault and treasury legs use distinct refs per event.
+- USYC is held exclusively in the Capital Wallet. The USDC↔USYC ratio is managed by the
+  custodian MPC policy engine and Trustee — not by Bridge.
 - The reconciliation invariant is continuously re-evaluated; amber and red states produce
-  immediate alerts, enabling prompt detection of any backing discrepancy.
+  immediate alerts enabling prompt detection of any backing discrepancy.
