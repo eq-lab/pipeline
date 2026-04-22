@@ -4,4 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+alloy              = { workspace = true }
+anyhow             = { workspace = true }
+async-trait        = { workspace = true }
+reqwest            = { workspace = true }
+sqlx               = { workspace = true }
+tokio              = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+dotenvy            = { workspace = true }
+shared             = { path = "../shared" }

@@ -77,10 +77,13 @@ if [ -z "$new_migrations" ]; then
 elif ! git rev-parse --verify origin/main >/dev/null 2>&1; then
     warn "origin/main not found locally — skipping (run: git fetch origin main)"
 else
+    # The grep below may exit 1 when origin/main has no migrations yet; || true
+    # prevents sh -e (used by Husky) from propagating SHELLOPTS=errexit into bash
+    # and killing the script on a non-matching pipeline.
     main_max=$(git ls-tree -r --name-only origin/main -- crates/shared/migrations/ \
         | grep -E '^crates/shared/migrations/[0-9]+_.*\.sql$' \
         | sed -E 's|^crates/shared/migrations/([0-9]+)_.*|\1|' \
-        | sort -n | tail -1)
+        | sort -n | tail -1) || true
     if [ -z "$main_max" ]; then
         pass "origin/main has no migrations yet"
     else
