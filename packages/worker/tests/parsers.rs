@@ -38,7 +38,7 @@ fn correct_log_decodes() {
     let value = U256::from(1000u64);
 
     let log = make_transfer_log(from, to, value);
-    let ev = parse_token_transfer(&log, &[]).expect("should decode");
+    let ev = parse_token_transfer(&log, &[to]).expect("should decode");
 
     assert_eq!(ev.from, from);
     assert_eq!(ev.to, to);

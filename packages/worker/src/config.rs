@@ -47,13 +47,12 @@ impl JobSettings {
         if polling_contracts.is_empty() {
             anyhow::bail!("{prefix}POLLING_CONTRACTS must not be empty");
         }
-        let polling_targets: Vec<String> =
-            env_require(&format!("{prefix}POLLING_TARGETS"))?
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect();
+        let polling_targets: Vec<String> = env_require(&format!("{prefix}POLLING_TARGETS"))?
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
         if polling_targets.is_empty() {
             anyhow::bail!("{prefix}POLLING_TARGETS must not be empty");
         }
