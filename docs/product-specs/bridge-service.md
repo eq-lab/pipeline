@@ -2,145 +2,177 @@
 
 ## Overview
 
-The Pipeline Bridge Service is a backend service operated by the Pipeline team. It is the protocol's sole automated actor on the cash rail and the sole holder of the MINTER role on PLUSD. The bridge connects on-chain token-rail events to off-chain cash-rail execution, maintains the on-chain WhitelistRegistry, and runs the price feed and notification subsystem that monitors active loans.
+The Pipeline Bridge Service is a backend operated by the Pipeline team. It watches on-chain
+events, reconciles protocol state, co-signs yield attestations, and submits operational
+transactions. **Bridge is not in the critical path for deposits** — deposits are atomic
+user-driven calls to DepositManager. Bridge also has no role in loan disbursements or
+USDC↔USYC rebalancing; those are managed by the Trustee and custodian MPC policy engine.
 
-The bridge is designed so that its compromise does not enable a drain of investor capital. Its MPC permissions are narrowly scoped, counterparty addresses are pinned, and all automated envelopes are bounded.
+A Bridge compromise cannot produce unbacked PLUSD. Yield minting requires a second independent
+EIP-1271 signature from the custodian; compromising Bridge alone mints zero PLUSD.
 
 ---
 
 ## Behavior
 
-### 1. On-Chain Event Listening
+### 1. Deposit Observation (Bridge not in critical path)
 
-The bridge monitors the following on-chain events continuously:
+Deposits are fully atomic and user-driven via DepositManager. Bridge observes
+`DepositManager.Deposited` events for reconciliation, exposes deposit history via the LP API,
+and cross-checks `sum(Deposited.amount) == PLUSD.cumulativeLPDeposits()`. Bridge is not a
+signer or gate on the deposit flow.
 
-- **USDC Transfer** into the Capital Wallet — triggers deposit eligibility checks and PLUSD mint (or deposit queue entry).
-- **WithdrawalRequested** on the WithdrawalQueue — triggers automated LP payout evaluation.
-- **LoanMinted** on the LoanRegistry — triggers loan disbursement transaction preparation.
-- **RepaymentSettled** (trustee-signed, consumed by the bridge) — triggers yield minting and senior principal USYC sweep.
-- **TreasuryYieldDistributed** (trustee-signed, consumed by the bridge) — triggers weekly yield minting.
+Bridge also exposes live rate-limit state (`maxPerWindow`, `maxPerLPPerWindow`, window
+utilisation, per-LP utilisation) via `GET /v1/protocol/limits` so the deposit UI can display
+cap status before the LP submits.
 
-On restart, the bridge rebuilds all in-memory state by replaying the relevant event logs from chain. No persistent queue state is required to survive a restart; the queue is a derivative of the log delta.
+### 2. Withdrawal Queue Funding
 
-### 2. MPC Auto-Signing (Four Categories)
+When a `WithdrawalRequested` event is observed, Bridge processes the queue head:
 
-The bridge is an MPC participant on the Capital Wallet with auto-signing authority for exactly four transaction categories. All other Capital Wallet transactions require human co-signature from trustee and/or team.
+1. **Whitelist check.** If `WhitelistRegistry.isAllowed(requester)` is false, calls
+   `WQ.skipSanctionedHead()` to unblock the queue.
+2. **Freshness check (Bridge-side).** If stale but not revoked, Bridge calls Chainalysis API.
+   On clean result: `WhitelistRegistry.refreshScreening(lp, newTs)`, then proceeds. On flag:
+   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Bridge halts and
+   alerts ops — head is stuck pending manual `adminRelease`.
+3. **Balance check.** If Capital Wallet USDC is insufficient, Bridge requests a USYC → USDC
+   redemption via the custodian MPC API and retries after settlement.
+4. **Fund.** Calls `WQ.fundRequest(queueId)`. WQ pulls USDC from Capital Wallet via
+   pre-approved allowance. LP's entry moves to `Funded`; LP then calls `WQ.claim()` to burn
+   PLUSD and receive USDC.
 
-| Category | Auto-signing condition | Bounds |
-|---|---|---|
-| USDC → USYC swap | USDC ratio exceeds upper band (20%) | $5M per tx, $20M daily aggregate |
-| USYC → USDC redemption | USDC ratio falls below lower band (10%) | $5M per tx, $20M daily aggregate |
-| LP withdrawal payout | Destination matches pinned original deposit address; LP is whitelisted with fresh screen | $5M per tx, $10M rolling 24h across all LP payouts |
-| Loan disbursement preparation | LoanMinted event observed; transaction prepared for human co-signature (bridge does not auto-sign loan disbursements — it prepares them) | N/A (human signing required) |
+### 3. Yield Minting — Repayment
 
-Swaps above the automated bounds, LP payouts above the automated bounds, and all loan disbursements are routed to the team signing queue for trustee + team co-signature.
+When a loan repayment USDC inflow is detected at the Capital Wallet:
 
-### 3. PLUSD Minting Authority
+1. Bridge presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
+2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve`.
+3. Bridge builds two `YieldAttestation` structs (vault leg and treasury leg) and signs each
+   with the `bridgeYieldAttestor` key:
+   ```
+   YieldAttestation {
+     bytes32 repaymentRef;  // keccak256(chainId, repaymentTxHash, destinationTag)
+     address destination;   // sPLUSD vault OR Treasury Wallet
+     uint256 amount;
+     uint64  deadline;
+     uint256 salt;
+   }
+   ```
+4. Bridge posts structs + Bridge sigs to the custodian's co-signing API (Fireblocks / BitGo).
+   Custodian independently verifies the USDC inflow and returns EIP-1271 signatures.
+5. Bridge calls `PLUSD.yieldMint(att, bridgeSig, custodianSig)` for each leg via the
+   transaction outbox. PLUSD verifies both signatures on-chain, checks the reserve invariant,
+   and mints to destination.
 
-The bridge holds the sole MINTER role on PLUSD. It distinguishes two minting categories, tracked separately in the audit log:
+Neither Bridge alone nor the custodian alone can mint yield — both sigs plus YIELD_MINTER
+caller role are required.
 
-**Deposit mints** — triggered by a USDC Transfer event into the Capital Wallet from a whitelisted LP address. The bridge runs four checks before minting: (a) lpAddress is whitelisted, (b) Chainalysis screen is within the 90-day freshness window, (c) deposit amount is at or above the $1,000 USDC minimum, (d) the rolling 24h rate limit ($10M) and per-tx cap ($5M) are not breached. On all checks passing, the bridge calls `PLUSD.mint(lpAddress, amount)`.
+### 4. Yield Minting — USYC (Lazy, Stake/Unstake-Triggered)
 
-**Yield mints** — triggered by trustee-signed events:
-- On RepaymentSettled: `PLUSD.mint(sPLUSDvault, senior_coupon_net)` and `PLUSD.mint(TreasuryWallet, management_fee + performance_fee + oet_allocation)`.
-- On TreasuryYieldDistributed: `PLUSD.mint(sPLUSDvault, vault_share)` (70% of accrued T-bill yield) and `PLUSD.mint(TreasuryWallet, treasury_share)` (30%).
+USYC NAV accrues continuously. To keep sPLUSD share price current without a time-based cron,
+yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 
-Both categories are subject to the same on-chain rate limit enforced at the PLUSD contract level.
+1. Bridge reads current USYC NAV from the Hashnote API.
+2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
+   holdings). If `delta <= 0`, skip.
+3. If `delta > 0`: builds two `YieldAttestation` structs (vault + treasury), gets Bridge sig
+   + custodian co-sig (same flow as repayment), submits both `yieldMint` calls.
+4. Advances `last_minted_NAV` baseline only after both legs confirm on-chain.
 
-### 4. Deposit Mint Queue
+Between mints, Bridge polls USYC NAV (e.g., every minute) and exposes
+accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
-When a deposit mint would breach the rolling 24h rate limit or per-tx cap, the bridge does not reject the deposit. The USDC has already arrived in the Capital Wallet and the LP is entitled to PLUSD. The bridge instead enqueues the mint:
+### 5. WhitelistRegistry Maintenance
 
-- Queue entries carry: (lpAddress, amount, deposit_tx_hash, queued_at).
-- Queued mints are processed in FIFO order as headroom opens in the rolling 24h window.
-- A single deposit exceeding the $5M per-tx cap is split into multiple mint transactions across successive windows.
-- The queue has no on-chain state. On bridge restart, the queue is rebuilt by computing the delta between USDC Transfer events into the Capital Wallet and PLUSD mint events for each LP address.
-- LP dashboard shows queued deposits with a "PLUSD mint pending rate limit" status and the expected processing window.
+- **On Sumsub APPROVED + Chainalysis clean result:** `WhitelistRegistry.setAccess(lp, ts)`.
+- **On failed passive re-screen:** `revokeAccess(lp)`, route to compliance review queue.
+- **On manual compliance approval:** `setAccess(lp, approvedAt)`.
+- **Periodic batch re-screen:** `refreshScreening(lp, newTs)` for each LP on a configurable
+  cadence to maintain freshness.
 
-Below-minimum deposits (under $1,000 USDC) are accumulated per LP address as a pending top-up counter. When subsequent deposits from the same address bring the cumulative pending amount to or above $1,000 USDC, the bridge mints PLUSD for the combined total in a single transaction and resets the counter.
+### 6. Price Feed and CCR Monitoring
 
-### 5. USDC → USYC Sweep on Repayment
-
-After a RepaymentSettled event settles and the corresponding USDC inflow to the Capital Wallet is verified, the bridge automatically initiates a USDC → USYC conversion of the `senior_principal_returned` portion. This sweep is executed under the bridge's USDC ↔ USYC auto-signing permission. The senior principal begins earning T-bill yield immediately rather than sitting idle as USDC.
-
-### 6. Weekly Yield Event Pre-Building
-
-The bridge continuously reads the current USYC NAV from the issuer's published feed and maintains a running `accrued_yield` figure between weekly distribution events. This figure is informational and does not affect sPLUSD NAV until the weekly event fires.
-
-At the weekly reference time (Thursday end of day, working assumption: 17:00 America/New_York or issuer NAV publication time, whichever is later), the bridge:
-
-1. Computes `total_accrued_yield = USYC NAV appreciation since previous distribution × USYC holding amount`.
-2. Pre-builds a TreasuryYieldDistributed transaction carrying: total_accrued_yield, vault_share (70%), treasury_share (30%), reference USYC NAV, holding amount, week_ending date.
-3. Presents the pre-built transaction to the trustee tooling for review and signature.
-4. On receipt of the trustee's EIP-712 attestation, executes the two yield mints.
-
-The USYC holding itself is not redeemed during the weekly yield event.
-
-### 7. WhitelistRegistry Maintenance
-
-The bridge writes and revokes entries on the WhitelistRegistry in response to KYC and screening outcomes:
-
-- On Sumsub APPROVED + Chainalysis clean result: calls `WhitelistRegistry.setAccess(lpAddress, currentBlockTimestamp)` immediately, without human review.
-- On failed passive re-screen (Chainalysis freshness window expired and re-screen returns suspicious result): calls `WhitelistRegistry.revokeAccess(lpAddress)` and routes the LP to the compliance review queue.
-- On a compliance officer's manual approval decision: calls `WhitelistRegistry.setAccess(lpAddress, approvedAt)` to write the LP to the whitelist.
-
-### 8. Price Feed and Notification System
-
-The bridge runs a subsystem that monitors every active loan in the LoanRegistry in real time:
-
-- Polls Platts and Argus commodity reference prices on a configurable cadence (working assumption: every 15 minutes during market hours).
-- For each active loan, computes CCR = collateral_value / outstanding_senior_principal in basis points, using current price, quantity from the trustee feed, commodity-specific haircut schedule, and current outstanding senior principal.
-- On threshold crossings, triggers notifications to configured recipients and batches a `loan_manager` update to the LoanRegistry's `lastReportedCCR` field.
+Bridge monitors every active loan in the LoanRegistry, polling Platts/Argus commodity prices
+on a configurable cadence (working assumption: every 15 minutes during market hours). Computes
+CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
+notifies recipients and queues a `LoanRegistry.updateMutable` call to update `lastReportedCCR`.
 
 | Event | Trigger | Recipients |
 |---|---|---|
-| Watchlist | CCR falls below 130% | Team, Originator, Trustee |
-| Maintenance margin call | CCR falls below 120% | Team, Originator, Borrower (via Originator), Trustee |
-| Margin call | CCR falls below 110% | Team, Originator, Borrower, Trustee |
-| Payment delay (amber) | Scheduled repayment > 7 days late | Team, Originator, Trustee |
-| Payment delay (red) | Scheduled repayment > 21 days late | Team, Originator, Trustee |
-| AIS blackout | Vessel tracking loss > 12 hours | Team, Originator, Trustee |
-| CMA discrepancy | Reported collateral quantity differs from CMA by > 3% | Team, Originator, Trustee |
-| Status transition | Any change to LoanRegistry mutable status field | Team, Originator, Trustee |
+| Watchlist | CCR < 130% | Team, Originator, Trustee |
+| Maintenance margin call | CCR < 120% | Team, Originator, Borrower, Trustee |
+| Margin call | CCR < 110% | Team, Originator, Borrower, Trustee |
+| Payment delay (amber) | Repayment > 7 days late | Team, Originator, Trustee |
+| Payment delay (red) | Repayment > 21 days late | Team, Originator, Trustee |
+| AIS blackout | Vessel tracking loss > 12h | Team, Originator, Trustee |
+| CMA discrepancy | Reported collateral > 3% from CMA | Team, Originator, Trustee |
+| Status transition | Any LoanRegistry mutable status change | Team, Originator, Trustee |
 
-Delivery channels: in-app dashboard alerts, email, and optional Telegram/Slack webhooks configured per recipient. All events are also logged to the protocol dashboard's Panel B event feed.
+### 7. Reserve Reconciliation
 
-### 9. Reconciliation Invariant Publishing
+After every state-changing event, Bridge evaluates and publishes the full backing invariant:
 
-After every state-changing event (deposit, yield distribution, loan disbursement, repayment, LP withdrawal), the bridge evaluates and publishes the protocol's reconciliation invariant:
+```
+PLUSD totalSupply  ==  USDC in Capital Wallet
+                     +  USYC NAV in Capital Wallet
+                     +  USDC out on active loans
+                     +  USDC in transit
+```
 
-`PLUSD totalSupply == USDC in Capital Wallet + USYC NAV in Capital Wallet + USDC out on loans + USDC in transit`
+| Drift | Status | Action |
+|---|---|---|
+| < 0.01% | Green | Normal |
+| 0.01%–1% | Amber | Alert on-call + Trustee |
+| > 1% | Red | Page on-call + Trustee; consider pausing DepositManager |
 
-The result is published to the protocol dashboard with a status indicator: green (drift < 0.01%), amber (0.01%–1%), red (> 1%). Amber and red states trigger an alert to the on-call channel and to the trustee.
+---
+
+## On-Chain Events Monitored
+
+| Contract | Event | Purpose |
+|---|---|---|
+| DepositManager | `Deposited(lp, amount)` | Reconciliation; deposit history for LP API |
+| USDC | `Transfer(*, capitalWallet, amount)` | Repayment inflow classification |
+| PLUSD | `Transfer(0x0, lp, amount)` | Mint cross-check vs DepositManager.Deposited |
+| WithdrawalQueue | `WithdrawalRequested` | Flow 2 trigger |
+| WithdrawalQueue | `WithdrawalFunded / WithdrawalClaimed / WithdrawalSanctionedSkip / WithdrawalAdminReleased` | Status tracking |
+| sPLUSD | `Deposit / Withdraw` | Trigger lazy USYC yield |
+| LoanRegistry | `LoanMinted / LoanUpdated / LoanClosed` | Loan book mirror |
+| PLUSD | `RateLimitsChanged / MaxTotalSupplyChanged` | Update local cache |
+| WhitelistRegistry | `LPApproved / ScreeningRefreshed / LPRevoked` | Whitelist sync |
+| ShutdownController | `ShutdownEntered` | Halt all normal flows |
+| All pausable | `Paused() / Unpaused()` | Halt/resume flows |
 
 ---
 
 ## Role Assignments on Contracts
 
-| Contract | Role | Held by |
-|---|---|---|
-| PLUSD | MINTER | Bridge service |
-| PLUSD | PAUSER | Foundation multisig |
-| sPLUSD | PAUSER | Foundation multisig |
-| WhitelistRegistry | WHITELIST_ADMIN | Bridge service |
-| WhitelistRegistry | DEFAULT_ADMIN | Foundation multisig |
-| WithdrawalQueue | FILLER | Bridge service |
-| WithdrawalQueue | PAUSER | Foundation multisig |
-| LoanRegistry | loan_manager | Bridge service |
-| LoanRegistry | risk_council | Risk Council 3-of-5 multisig |
+Bridge holds: **YIELD_MINTER** (PLUSD), **FUNDER** (WithdrawalQueue), **WHITELIST_ADMIN**
+(WhitelistRegistry).
+
+Bridge has **no role on LoanRegistry** — loan NFT writes are done by the Trustee key directly.
+Bridge **does not sign loan disbursements** — Trustee + Team co-sign on Capital Wallet.
+Bridge **does not manage the USDC↔USYC ratio** — custodian MPC policy engine and Trustee
+manage the band; Bridge only requests a USYC redemption when Capital Wallet USDC is
+insufficient at withdrawal funding time.
 
 ---
 
 ## Security Considerations
 
-**Narrow MPC permissions.** The MPC policy engine, not the bridge's software, enforces the four auto-signing categories. A compromised bridge cannot sign outside the pre-authorised patterns; exceptional transactions require human signatures.
+**Two-party yield attestation.** Yield minting requires Bridge ECDSA sig + custodian EIP-1271
+sig + YIELD_MINTER caller role. Bridge alone cannot mint yield PLUSD.
 
-**Pinned counterparty addresses.** For each auto-signed transaction type, the valid destination is either fixed (USYC issuer for swaps, on-ramp provider for disbursements) or derived from on-chain state (LP payout destination must equal the original deposit address from the bridge's pinned mapping). A compromised bridge cannot redirect funds to an attacker-controlled destination.
+**Narrow on-chain roles.** FUNDER can only trigger WQ pulls for existing queue entries;
+WHITELIST_ADMIN cannot mint; YIELD_MINTER still requires custodian co-sig.
 
-**Bounded automated envelopes.** Every auto-signed transaction type is bounded by per-transaction and rolling-aggregate caps enforced at the MPC policy level. The $10M/$5M caps on LP payouts and the $20M/$5M caps on USDC ↔ USYC swaps bound worst-case exposure within any single detection window.
+**Deposit path is Bridge-free.** A complete Bridge compromise does not stop deposits or allow
+unbacked deposit-leg mints.
 
-**Token-rail bounds.** The MINTER role is bounded by on-chain rate limits at the PLUSD contract level. The FILLER role can only burn PLUSD that is already in queue escrow. The loan_manager role on LoanRegistry mints and mutations both require prior validation of a trustee-verified off-chain signed request.
+**Key storage.** Bridge hot keys (on-chain caller) are in HSM-backed KMS. The
+`bridgeYieldAttestor` key (yield EIP-712 signing) is stored separately in an HSM with no
+internet egress. MPC key shares are managed through the custodian vendor's key ceremony.
 
-**Key storage.** Bridge hot keys for on-chain transactions are stored in an HSM-backed KMS (AWS KMS / GCP KMS) with two-person operational access required for key rotation. The MPC key share is managed through the MPC vendor's key ceremony and is not stored on the bridge's hot infrastructure.
-
-**Audit log.** Every bridge action is recorded in an append-only audit log mirrored in near-real-time to an independent third-party log sink. The bridge service cannot delete or modify historical entries.
+**Audit log.** Every bridge action is recorded in an append-only log mirrored to an
+independent third-party sink. Bridge cannot delete or modify historical entries.
