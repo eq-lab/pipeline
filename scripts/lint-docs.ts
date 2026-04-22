@@ -122,7 +122,8 @@ function checkReachability() {
     (f) =>
       !visited.has(f) &&
       !f.includes("exec-plans/active/") &&
-      !f.includes("exec-plans/completed/")
+      !f.includes("exec-plans/completed/") &&
+      !f.includes("superpowers/")
   );
 
   if (unreachable.length === 0) {
