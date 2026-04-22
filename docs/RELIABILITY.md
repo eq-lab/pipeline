@@ -9,7 +9,7 @@ See [`QUALITY_SCORE.md`](./QUALITY_SCORE.md) for latency and availability target
 **MVP (pilot):**
 - Single originator (Open Mineral AG), estimated ≤ 10 active loans
 - LP pool size: accredited investors, regulated by on-chain rate limits
-- Bridge service: single-instance, stateless restart (rebuilds deposit queue from Transfer log delta)
+- Bridge service: single-instance, stateless restart (rebuilds state from finalized on-chain event logs)
 
 **Phase 2 (production):**
 - Multiple originators
@@ -24,7 +24,7 @@ See [`QUALITY_SCORE.md`](./QUALITY_SCORE.md) for latency and availability target
 | USDC ratio out of band | worker | Below 10% or above 20% → on-call Slack |
 | Mint rate limit hit | worker | Any hit → info log; sustained → amber alert |
 | LP payout above $1M | worker | Every occurrence → on-call Slack |
-| Weekly yield distribution missed | worker | If not signed by Thursday 20:00 ET → red alert |
+| Yield attestation custodian co-sign timeout | worker | If custodian does not respond within 30 min → red alert |
 | Price feed polling gap > 2h | worker | On-call Slack |
 | AIS blackout > 12h | worker | Originator + Trustee + Team |
 | Bridge auto-sign failure | worker | Immediate on-call page |
@@ -37,13 +37,13 @@ The append-only audit log is mirrored in near-real-time to a third-party log sin
 
 | Scenario | Recovery path |
 |----------|--------------|
-| Bridge service crash | Restart; rebuilds deposit mint queue from on-chain Transfer log delta |
+| Bridge service crash | Restart; rebuilds state from finalized on-chain event logs (idempotent handlers) |
 | Bridge signing key compromise | Rotate HSM-backed KMS key (2-person operational access); MPC vendor re-keys the Capital Wallet participant |
-| Smart contract pause | Foundation multisig 2-of-5 fast-pause via Risk Council; resume requires same threshold |
+| Smart contract pause | GUARDIAN 2/5 Safe instant pause on all pausable contracts; resume requires same threshold |
 | MPC vendor outage | Trustee + team can co-sign manually via vendor's offline key ceremony path |
 
 ## Known scaling limits
 
-- Deposit mint queue is backend-only (no on-chain state) — single bridge instance is the bottleneck at high deposit volume. Phase 2: distributed queue.
+- Over-rate-limit deposits revert at contract; LPs retry when window headroom opens. No bridge-side queue — single bridge instance is not a deposit bottleneck.
 - LoanRegistry on-chain queries are unbounded in the MVP — a pagination layer is needed at >100 active loans.
 - Price feed polling is single-threaded per commodity — parallel polling required at >20 active loan commodities.

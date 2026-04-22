@@ -31,19 +31,13 @@ At vault deployment, a small amount of PLUSD ("dead shares") is minted into the 
 
 ### Yield Accretion
 
-Yield is delivered to the vault by the bridge service minting fresh PLUSD directly into the vault contract address:
-
-```
-PLUSD.mint(address(sPLUSDvault), yieldAmount)
-```
-
-This call increases `PLUSD.balanceOf(address(sPLUSDvault))`, which is exactly what `totalAssets()` returns. Because `totalSupply` of sPLUSD shares does not change, the share price (`totalAssets / totalSupply`) increases. All current stakers benefit proportionally without any action on their part.
+Yield is delivered to the vault via `PLUSD.yieldMint(att, bridgeSig, custodianSig)`, which mints fresh PLUSD to the vault address. This increases `PLUSD.balanceOf(address(sPLUSDvault))`, which is exactly what `totalAssets()` returns. Because `totalSupply` of sPLUSD shares does not change, the share price (`totalAssets / totalSupply`) increases. All current stakers benefit proportionally without any action on their part.
 
 Two yield sources feed into the vault this way:
-- **Loan repayment yield**: the `senior_coupon_net` component of each settled repayment, minted in response to a trustee-signed RepaymentSettled event.
-- **T-bill (USYC) yield**: 70% of weekly accrued USYC NAV appreciation, minted in response to a trustee-signed TreasuryYieldDistributed event.
+- **Loan repayment yield**: the `senior_coupon_net` component of each settled repayment, minted after Trustee approves the split amounts via the Bridge API.
+- **USYC NAV yield**: 70% of accrued USYC NAV appreciation, minted lazily on each sPLUSD stake/unstake event when NAV delta > 0.
 
-The bridge service holds the MINTER role on PLUSD and is the only party that can execute these mints. Both categories are subject to the same on-chain rolling rate limit and per-transaction cap as deposit mints.
+Both mints require two independent EIP-712 signatures verified on-chain (Bridge ECDSA + custodian EIP-1271), plus the YIELD_MINTER caller role held by Bridge. Neither Bridge alone nor the custodian alone can mint yield PLUSD.
 
 ### Unstaking (Redemption)
 
@@ -97,7 +91,7 @@ function totalAssets() external view returns (uint256);
 // Increases when the bridge mints fresh PLUSD into the vault address.
 // Decreases when PLUSD is transferred out on redemption.
 
-function pause() external;   // PAUSER role (foundation multisig via 2-of-5 Risk Council)
+function pause() external;   // PAUSER role (GUARDIAN 2/5 Safe)
 function unpause() external;  // PAUSER role
 // Pause freezes all deposits and redemptions.
 ```
@@ -129,7 +123,7 @@ The sPLUSD vault holds no custom on-chain state beyond the standard ERC-4626 / E
 
 - **No custom vault logic.** sPLUSD is the OpenZeppelin ERC-4626 implementation without modification. Yield accretion requires no custom code; it is a natural consequence of minting PLUSD into the vault address. The audit surface is minimal.
 - **Compliance re-entry on redemption.** The whitelist check on PLUSD transfer ensures that sPLUSD holders cannot deliver PLUSD to a non-whitelisted receiver. An attacker who obtains sPLUSD shares through an unrelated exploit cannot extract PLUSD to an unapproved address.
-- **Rate limits on yield mints.** Fresh PLUSD minted into the vault is subject to the same on-chain rolling rate limit ($10M/24h) and per-transaction cap ($5M) as deposit mints, bounding the blast radius of a compromised MINTER.
-- **Pause capability.** The foundation multisig's 2-of-5 Risk Council fast-pause can freeze all sPLUSD deposits and redemptions immediately, independent of the bridge service state.
+- **Two-party yield attestation.** Fresh PLUSD minted into the vault requires Bridge ECDSA + custodian EIP-1271 signatures verified on-chain. A compromised YIELD_MINTER key alone cannot mint yield — the custodian co-sig is an independent control.
+- **Pause capability.** GUARDIAN 2/5 Safe can freeze all sPLUSD deposits and redemptions immediately, independent of the bridge service state.
 - **Dead-shares seed.** Prevents the ERC-4626 inflation attack on the first depositor by ensuring `totalAssets` and `totalSupply` are non-zero at deployment.
 - **Open transfer of sPLUSD.** Because sPLUSD has no whitelist check, it can be transferred freely between any addresses. This is intentional for DeFi composability. The risk is accepted because the compliance boundary is enforced at the PLUSD level on any conversion back to the underlying asset.

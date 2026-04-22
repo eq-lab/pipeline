@@ -24,14 +24,14 @@ Single SPA serving two logical views gated by authenticated role:
 - Staking flow (PLUSD → sPLUSD)
 - Withdrawal flow (sPLUSD → PLUSD → queue)
 - Transaction history
-- Pending deposits (below-minimum accumulation, mint queue status)
+- Live rate-limit status (current window utilisation, per-LP cap remaining)
 - Chainalysis freshness indicator with days remaining
 
 ### Operations Console views (role-gated)
 
 | Role | Views visible |
 |------|--------------|
-| Trustee | Origination queue, repayment reconciliation, weekly yield signing, loan lifecycle, USYC manual override |
+| Trustee | Origination queue, repayment reconciliation, yield attestation approval, loan lifecycle, USYC NAV tracking |
 | Team | Signing queue, compliance review queue, bridge alerts, operator management, operational monitoring |
 | Originator | New origination request, My Requests, My Loans, statistics, notifications |
 
@@ -50,7 +50,7 @@ Desktop-first — LPs and operators are expected to use desktop browsers. Mobile
 
 - **Wallet connection:** WalletConnect v2 + RainbowKit
 - **Contract reads:** ethers.js direct calls for balances, exchange rate, whitelist status
-- **Transactions:** LP signs USDC transfer, sPLUSD.deposit(), sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal() directly from connected wallet
+- **Transactions:** LP signs USDC.approve() + DepositManager.deposit(), sPLUSD.deposit(), sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal(), WithdrawalQueue.claim() directly from connected wallet
 - **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer
 
 ## Data fetching

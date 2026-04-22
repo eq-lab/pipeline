@@ -17,23 +17,25 @@
 
 | Role | Holder | Scope |
 |------|--------|-------|
-| MINTER | Bridge service | Mint PLUSD (bounded by rate limit) |
-| PAUSER | Foundation multisig | Pause/unpause PLUSD, sPLUSD, WithdrawalQueue |
-| WHITELIST_ADMIN | Bridge service | Set/revoke LP whitelist entries |
-| DEFAULT_ADMIN | Foundation multisig | WhitelistRegistry admin, DeFi venue additions |
-| FILLER | Bridge service | Fill WithdrawalQueue requests |
-| loan_manager | Bridge service | Mint and update LoanRegistry entries |
-| risk_council | Risk Council (3-of-5 Safe) | Loan default/close, protocol pause |
+| DEPOSITOR | DepositManager contract | Call `mintForDeposit` on PLUSD (deposit leg only) |
+| YIELD_MINTER | Bridge service | Call `yieldMint` on PLUSD (requires custodian co-sig) |
+| BURNER | WithdrawalQueue | Burn escrowed PLUSD on LP `claim` |
+| WHITELIST_ADMIN | Bridge service | Set/revoke LP whitelist entries, refresh screening |
+| FUNDER | Bridge service | Fund WithdrawalQueue head; skip sanctioned heads |
+| TRUSTEE | Trustee key (Pipeline Trust Company) | Mint and update LoanRegistry NFTs |
+| PAUSER | GUARDIAN 2/5 Safe | Pause/unpause all pausable contracts |
+| RISK_COUNCIL | RISK_COUNCIL 3/5 Safe | Propose loan default; propose shutdown |
+| ADMIN | ADMIN 3/5 Safe | Role management, upgrades, parameter changes (48h timelock) |
 
 ### MPC wallet policies
 
 **Capital Wallet** — three participants: Trustee, Pipeline team, Bridge service.
 
-Bridge service auto-signs only 4 categories:
-1. USDC → USYC swaps within $5M per-tx / $20M daily bounds
-2. LP payouts where destination == original deposit address AND amount within $5M per-tx / $10M 24h bounds
-3. Loan disbursement transaction *preparation* (not signing — requires Trustee + Team co-signature)
-4. Treasury redemption transaction *preparation* (not signing)
+Bridge service auto-signs only 1 category on the Capital Wallet:
+- LP payouts where destination == original deposit address AND amount within $5M per-tx / $10M 24h bounds
+
+Loan disbursements require Trustee + Team co-signature directly; Bridge is not in the disbursement path.
+USDC↔USYC rebalancing is managed by the custodian MPC policy engine and Trustee; Bridge only requests a USYC redemption when Capital Wallet USDC is insufficient at withdrawal funding time.
 
 **Treasury Wallet** — two participants: Trustee, Pipeline team. No bridge auto-signing.
 
@@ -54,7 +56,7 @@ Smart contracts hold no USDC or USYC. A bug or exploit in on-chain code cannot d
 
 ## PLUSD transfer restrictions (MVP)
 
-PLUSD uses a whitelist-only transfer model: every `_update` call reverts if the recipient is not in the WhitelistRegistry (KYCed LPs or foundation-multisig-approved DeFi venues). This prevents a compromised LP wallet from moving funds to an attacker-controlled address that hasn't passed KYC.
+PLUSD uses a non-transferable model: the `_update` hook requires exactly one of (from, to) to be a system address or whitelisted LP. LP↔LP and system↔system transfers both revert. DeFi venues may be added to the allowlist by the ADMIN 3/5 Safe. This prevents a compromised LP wallet from moving funds to an attacker-controlled address that hasn't passed KYC.
 
 sPLUSD has no transfer restriction — the vault is intentionally open for DeFi composability. The KYC chain re-enters on redemption (PLUSD transfer to receiver must pass whitelist check).
 
@@ -75,4 +77,4 @@ sPLUSD has no transfer restriction — the vault is intentionally open for DeFi 
 
 - API endpoints for fund-transfer actions (co-signing, treasury redemption) require active operator session + 2FA confirmation per action
 - Compliance review queue accessible only to team members with the `compliance` sub-role
-- Foundation multisig emergency pause button in team interface sends notification to all Risk Council members — it does not execute the pause itself (they must sign on Safe independently)
+- GUARDIAN 2/5 Safe emergency pause covers all pausable contracts (PLUSD, DepositManager, sPLUSD, WithdrawalQueue, WhitelistRegistry, LoanRegistry) and can be executed immediately without a timelock
