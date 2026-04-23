@@ -110,21 +110,35 @@ main {
 }
 
 article h1 {
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 12px;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
 }
 article h2 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 32px 0 10px;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 44px 0 14px;
   border-top: 1px solid var(--border);
-  padding-top: 24px;
+  padding-top: 28px;
+  letter-spacing: -0.2px;
+  scroll-margin-top: 72px;
 }
 article h3 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
-  margin: 20px 0 8px;
+  margin: 28px 0 8px;
+  color: var(--slate);
+  scroll-margin-top: 72px;
+}
+article h4 {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 20px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
 }
 article p, article li { margin-bottom: 12px; }
 article a { color: var(--slate); }
@@ -273,6 +287,62 @@ td { color: var(--text-muted); }
 }
 
 .muted { color: var(--text-muted); }
+
+/* =========== Right-hand "On this page" ToC =========== */
+.toc {
+  position: fixed;
+  top: calc(var(--nav-height) + 32px);
+  right: 24px;
+  width: 220px;
+  max-height: calc(100vh - var(--nav-height) - 48px);
+  overflow-y: auto;
+  padding: 4px 0 20px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.toc-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+  padding: 0 12px 8px;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.toc li { margin: 0; padding: 0; }
+.toc a {
+  display: block;
+  padding: 4px 12px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color 0.1s, border-color 0.1s;
+}
+.toc a:hover { color: var(--text); }
+.toc a.toc-h3 {
+  padding-left: 24px;
+  font-size: 11px;
+}
+.toc a.active {
+  color: var(--slate);
+  border-left-color: var(--slate);
+  font-weight: 600;
+}
+.toc a.toc-h3.active { font-weight: 500; }
+
+@media (min-width: 1280px) {
+  main { margin-right: 252px; }
+}
+@media (max-width: 1279px) {
+  .toc { display: none; }
+}
 
 @media (max-width: 768px) {
   .sidebar {
