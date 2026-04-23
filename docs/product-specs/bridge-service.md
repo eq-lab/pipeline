@@ -170,9 +170,12 @@ WHITELIST_ADMIN cannot mint; YIELD_MINTER still requires custodian co-sig.
 **Deposit path is Bridge-free.** A complete Bridge compromise does not stop deposits or allow
 unbacked deposit-leg mints.
 
-**Key storage.** Bridge hot keys (on-chain caller) are in HSM-backed KMS. The
-`bridgeYieldAttestor` key (yield EIP-712 signing) is stored separately in an HSM with no
-internet egress. MPC key shares are managed through the custodian vendor's key ceremony.
+**Key storage.** Bridge hot keys (on-chain caller) are held in a hardware-isolated KMS
+with per-call authorisation and full audit logging. The `bridgeYieldAttestor` key (yield
+EIP-712 signing) is held in a separate air-gapped signer with no internet egress and is
+exercised only via the co-signing flow defined in the yield-attestation sections above.
+MPC key shares for cash-rail actions are managed through the custodian vendor's key
+ceremony.
 
 **Audit log.** Every bridge action is recorded in an append-only log mirrored to an
 independent third-party sink. Bridge cannot delete or modify historical entries.
