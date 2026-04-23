@@ -14,18 +14,18 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
   <p>Yield on Pipeline comes from real commodity trade loans. Make sure you understand <a href="/risks/">risks</a> thoroughly before your first deposit.</p>
 </div>
 
-<div class="callout safety">
-  <h4>Split-rail safety property</h4>
-  <p><em>"A bug or exploit in on-chain code cannot drain investor capital unilaterally."</em></p>
-</div>
-
 ## Two rails: Cash and Token
 
 The cash rail is custodied: All lender USDC is held on the MPC Wallet (Capital Wallet) provided by the Custodian and co-signed by the Trustee, the Team, and the Custodian himself. The token rail is on-chain: There is an AccessManager role-manager contract and eight protocol contracts — DepositManager, PLUSD, sPLUSD, WhitelistRegistry, WithdrawalQueue, LoanRegistry, ShutdownController, RecoveryPool — that mint, stake, and account for every lender share. Governance is split across three Safes with distinct signer sets: 
 
-**ADMIN** (3/5, 48h timelock) for role grants and upgrades; 
-**RISK_COUNCIL** (3/5, 24h timelock) for default and shutdown decisions; 
-**GUARDIAN** (2/5, instant) for pause and granular role revocation.
+- **ADMIN** (3/5, 48h timelock) for role grants and upgrades; 
+- **RISK_COUNCIL** (3/5, 24h timelock) for default and shutdown decisions; 
+- **GUARDIAN** (2/5, instant) for pause and granular role revocation.
+
+<div class="callout safety">
+  <h4>Split-rail safety</h4>
+  <p><em>"A bug or exploit in on-chain code cannot drain investor capital unilaterally."</em></p>
+</div>
 
 <div class="card-grid">
   <a class="card" href="/how-it-works/">
