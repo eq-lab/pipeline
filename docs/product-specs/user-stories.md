@@ -67,13 +67,13 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ### US-DEPOSIT-1: Standard Deposit
 
-**As a** whitelisted LP with a current Chainalysis screen, **I want to** transfer USDC directly from my wallet to the Capital Wallet and receive PLUSD 1:1, **so that** my deposit is immediately earning yield potential.
+**As a** whitelisted LP with a current Chainalysis screen, **I want to** call `DepositManager.deposit(amount)` and receive PLUSD 1:1 in the same transaction, **so that** my deposit is atomic and does not depend on any off-chain signer.
 
 **Acceptance criteria:**
-- [ ] The LP transfers USDC from their whitelisted address directly to the Capital Wallet (standard ERC-20 transfer, no bridge intermediary required from the LP).
-- [ ] The bridge service detects the Transfer event and verifies: address is whitelisted, screen is fresh, amount >= 1,000 USDC, and the mint would not breach the rate limit.
-- [ ] If all checks pass, the bridge calls `PLUSD.mint(lpAddress, amount)`.
+- [ ] The LP calls `DepositManager.deposit(usdcAmount)` after approving DepositManager as spender on USDC (standard ERC-20 permit or prior `approve`).
+- [ ] DepositManager atomically: checks `WhitelistRegistry.isAllowedForMint(lp)` (whitelist + Chainalysis freshness), enforces the per-LP, rolling-window, and total-supply caps, pulls USDC via `transferFrom(lp, capitalWallet, amount)`, and calls `PLUSD.mintForDeposit(lp, amount)`.
 - [ ] The LP receives PLUSD at a 1:1 ratio to USDC deposited in the same transaction.
+- [ ] Bridge is not in the deposit critical path: it observes `DepositManager.Deposited` events for reconciliation and indexing only, with no gating role on the deposit leg.
 - [ ] The deposit appears in the LP's transaction history.
 
 ---
