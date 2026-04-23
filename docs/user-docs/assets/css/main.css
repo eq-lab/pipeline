@@ -77,13 +77,16 @@ html, body {
   z-index: 5;
 }
 .sidebar h4 {
-  color: var(--text-muted);
+  color: var(--text);
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  padding: 12px 20px 6px;
+  letter-spacing: 1.2px;
+  padding: 18px 20px 8px;
+  margin-top: 4px;
   font-weight: 700;
+  border-top: 1px solid var(--border);
 }
+.sidebar h4:first-child { border-top: none; margin-top: 0; }
 .sidebar a {
   display: block;
   padding: 6px 20px;
@@ -119,11 +122,14 @@ article h1 {
 article h2 {
   font-size: 24px;
   font-weight: 700;
-  margin: 44px 0 14px;
-  border-top: 1px solid var(--border);
-  padding-top: 28px;
+  margin: 36px 0 14px;
   letter-spacing: -0.2px;
   scroll-margin-top: 72px;
+}
+article hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 40px 0 8px;
 }
 article h3 {
   font-size: 18px;
@@ -326,6 +332,10 @@ td { color: var(--text-muted); }
   transition: color 0.1s, border-color 0.1s;
 }
 .toc a:hover { color: var(--text); }
+.toc a.toc-h1 {
+  font-weight: 600;
+  color: var(--text);
+}
 .toc a.toc-h3 {
   padding-left: 24px;
   font-size: 11px;

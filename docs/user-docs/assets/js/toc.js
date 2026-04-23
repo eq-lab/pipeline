@@ -4,7 +4,13 @@
   var article = document.querySelector('main article');
   if (!article) return;
 
-  var headings = article.querySelectorAll('h2[id], h3[id]');
+  var nodes = article.querySelectorAll('h1, h2[id], h3[id]');
+  // Ensure the page H1 has an id so it can be linked; if missing, synthesize one.
+  var headings = [];
+  nodes.forEach(function (h) {
+    if (h.tagName === 'H1' && !h.id) h.id = 'top';
+    if (h.id) headings.push(h);
+  });
   if (headings.length < 2) {
     toc.style.display = 'none';
     return;

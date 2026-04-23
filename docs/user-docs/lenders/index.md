@@ -4,7 +4,7 @@ order: 5
 section: For Lenders
 ---
 
-# For lenders — overview
+# For lenders
 
 Pipeline is a credit facility that finances vetted commodity trade deals and pays the senior coupon, plus T-bill accrual on idle reserves, to on-chain lenders. Entry is permissioned — every lender wallet passes KYC and Chainalysis screening before it can deposit.
 

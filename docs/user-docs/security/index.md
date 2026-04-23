@@ -4,7 +4,7 @@ order: 13
 section: Security & Transparency
 ---
 
-# Security & Transparency — overview
+# Security & Transparency
 
 Pipeline is built on a split-rail architecture where on-chain contracts track receipts and off-chain custodied USDC is moved by MPC cosigners. No single operator — Bridge, custodian, Trustee, or a single governance Safe — can drain investor capital or mint unbacked PLUSD.
 
