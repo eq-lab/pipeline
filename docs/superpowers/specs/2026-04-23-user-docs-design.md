@@ -101,7 +101,14 @@ real loans — read [Risks](./risks.md) before depositing"); four links into the
 Nine architecture diagrams. Hand-authored inline SVG in `docs/user-docs/assets/diagrams/`,
 matching the `overview.html` visual language (dark `#0f1419` background; palette:
 slate `#7aa2f7`, sage `#9ece6a`, amber `#e0af68`, rose `#f7768e`, lavender `#bb9af7`).
-Each diagram is accompanied by a numbered step list — **one sentence per step, maximum**.
+
+**Hard requirement:** every flow diagram (D2, D3, D4, D5, D6, D7, D9 — anything with
+arrows through time) is accompanied by a numbered step-by-step walkthrough in the
+page body, **one sentence per step, maximum**. The step list uses the same labels
+that appear as nodes in the SVG — a reader can track "step 3" on the diagram and
+"step 3" in the prose side by side. Context diagrams without a time dimension
+(D1 System Context, D8 Governance) get a short paragraph instead of a numbered list.
+The Reviewer agent rejects any flow diagram that ships without its walkthrough.
 
 | # | Diagram | Where embedded | Source of truth |
 |---|---|---|---|
@@ -135,6 +142,21 @@ Output to `docs/user-docs/assets/charts/` as SVG. Palette matches the diagram pa
 Charts are static at this stage (representative values, labelled clearly as
 illustrative — not live data). A follow-up adds live data pulled from the Protocol
 Dashboard once it exists.
+
+**Chart accuracy rules** (the Reviewer agent enforces each one):
+
+- Every numeric value printed on a chart — percentages, basis points, dollar amounts,
+  thresholds — must match the "Numbers to quote" table below, or be derivable from
+  it by a stated formula shown in the chart caption.
+- Every chart displays a caption of the form `Illustrative — <what the values mean>,
+  <what they are not>` (e.g. `Illustrative breakdown of a representative repayment;
+  not live protocol data`).
+- Axis labels, units (%, bps, USDC), and series legends are spelled out in full —
+  no bare numbers without a unit.
+- Colours match the palette used by the diagrams; no matplotlib defaults.
+- Every chart is produced by a deterministic, committed script
+  (`scripts/build_charts.py`) so any number can be traced back to a line of code
+  that sourced it.
 
 ## Tech setup
 
