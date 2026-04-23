@@ -7,11 +7,11 @@ order: 1
 
 > Yield for on-chain capital, backed by real commodity trade finance.
 
-Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and T-bill accrual on idle reserves to KYC'd on-chain lenders. Every loan has full on-chain trail and registry and may beaudited at any time, every USDC dollar sits with a regulated custodian.
+Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon, and T-bill accrual on idle reserves, to KYC'd on-chain lenders. Every loan has full on-chain trail and registry and may beaudited at any time. Every USDC dollar supplied by Lenders sits safe with a regulated custodian.
 
 <div class="callout risk">
   <h4>Before you deposit</h4>
-  <p>Yield on Pipeline comes from real commodity trade loans. Make sure you understand <a href="/pipeline/risks/">risks</a> thoroughly before your first deposit.</p>
+  <p>Yield on Pipeline comes from real commodity trade loans. Make sure you understand <a href="/risks/">risks</a> thoroughly before your first deposit.</p>
 </div>
 
 <div class="callout safety">
@@ -21,7 +21,7 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
 
 ## Two rails: Cash and Token
 
-The cash rail is custodied: USDC is held on the MPC Wallet provided by the Custodian and co-signed by the Trustee, Team, and Custodian himself. The token rail is on-chain: an AccessManager plus eight protocol contracts — DepositManager, PLUSD, sPLUSD, WhitelistRegistry, WithdrawalQueue, LoanRegistry, ShutdownController, RecoveryPool — that mint, stake, and account for every lender share. Governance is split across three Safes with distinct signer sets: 
+The cash rail is custodied: All lender USDC is held on the MPC Wallet (Capital Wallet) provided by the Custodian and co-signed by the Trustee, the Team, and the Custodian himself. The token rail is on-chain: There is an AccessManager role-manager contract and eight protocol contracts — DepositManager, PLUSD, sPLUSD, WhitelistRegistry, WithdrawalQueue, LoanRegistry, ShutdownController, RecoveryPool — that mint, stake, and account for every lender share. Governance is split across three Safes with distinct signer sets: 
 
 **ADMIN** (3/5, 48h timelock) for role grants and upgrades; 
 **RISK_COUNCIL** (3/5, 24h timelock) for default and shutdown decisions; 
@@ -44,9 +44,9 @@ The cash rail is custodied: USDC is held on the MPC Wallet provided by the Custo
 
 ## Where yield comes from
 
-**Engine A — Senior coupons on commodity trade loans.** Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When a borrower repays, the Senior coupon (net of fees) is delivered to the sPLUSD vault through a two-party yield mint: the Bridge signs, the custodian co-signs via EIP-1271, and both signatures are verified on-chain before any shares move. See [yield engines](/how-it-works/yield-engines/).
+**Engine A — Senior coupons on commodity trade loans.** Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When a borrower repays, the Senior coupon (net of fees) is delivered to the sPLUSD vault through a two-party yield mint: the Capital Wallet signs, the Bridge co-signs, and both signatures are verified on-chain before any tokens move. See [yield engines](/how-it-works/yield-engines/).
 
-**Engine B — T-bill accrual on USYC reserves.** Idle Capital Wallet USDC sits in USYC, Hashnote's tokenized Treasury-bill holding. T-bill yield accrues continuously and is split 70% to the sPLUSD vault, 30% to the Treasury Wallet. The target USDC buffer is 15% of reserves, rebalanced when the balance drifts outside a 10–20% band.
+**Engine B — T-bill accrual on USYC reserves.** Idle Capital Wallet USDC is converted into USYC, Hashnote's tokenized Treasury-bill holding. T-bill yield accrues continuously and is split 70% to the sPLUSD vault, 30% to the Pipeline's Treasury Wallet. The target USDC buffer is 15% of reserves, rebalanced when the balance drifts outside a 10–20% band.
 
 ## What can go wrong
 
@@ -54,7 +54,7 @@ Lenders face loan defaults, liquidity delays on large withdrawals, custodian ope
 
 ## Starting out
 
-Complete KYC and Chainalysis screening, connect a whitelisted wallet, and deposit at least $1,000 USDC through DepositManager. Minting caps are $5M per transaction and $10M per rolling 24 hours. Full steps are on [Onboarding](/lenders/onboarding/).
+Proceed with the onboarding through the website, complete KYC and Chainalysis screening, and deposit at least $1,000 USDC. Minting caps are $5M per transaction and $10M per rolling 24 hours. Full steps are on [Onboarding](/lenders/onboarding/).
 
 ## Not financial advice
 
