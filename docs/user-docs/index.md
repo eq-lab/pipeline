@@ -14,11 +14,6 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
   <p>Yield on Pipeline comes from real commodity trade loans. Make sure you understand <a href="/risks/">risks</a> thoroughly before your first deposit.</p>
 </div>
 
-<div class="callout safety">
-  <h4>Split-rail safety</h4>
-  <p><em>"A bug or exploit in on-chain code cannot drain investor capital unilaterally."</em></p>
-</div>
-
 <div class="card-grid">
   <a class="card" href="/how-it-works/">
     <h4>How Pipeline works</h4>
