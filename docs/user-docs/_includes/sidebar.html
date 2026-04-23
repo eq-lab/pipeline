@@ -1,33 +1,34 @@
+{% assign cur = page.url %}
 <aside class="sidebar">
   <h4>Start here</h4>
-  <a href="{{ '/' | relative_url }}">Home</a>
+  <a href="{{ '/' | relative_url }}"{% if cur == '/' %} class="active"{% endif %}>Home</a>
 
   <h4>How Pipeline works</h4>
-  <a href="{{ '/how-it-works/' | relative_url }}">Overview</a>
-  <a href="{{ '/how-it-works/yield-engines/' | relative_url }}">Yield engines</a>
+  <a href="{{ '/how-it-works/' | relative_url }}"{% if cur == '/how-it-works/' %} class="active"{% endif %}>Overview</a>
+  <a href="{{ '/how-it-works/yield-engines/' | relative_url }}"{% if cur == '/how-it-works/yield-engines/' %} class="active"{% endif %}>Yield engines</a>
 
   <h4>For Lenders</h4>
-  <a href="{{ '/lenders/' | relative_url }}">Overview</a>
-  <a href="{{ '/lenders/onboarding/' | relative_url }}">Onboarding</a>
-  <a href="{{ '/lenders/deposit-and-stake/' | relative_url }}">Deposit &amp; stake</a>
-  <a href="{{ '/lenders/withdraw/' | relative_url }}">Withdraw</a>
-  <a href="{{ '/lenders/dashboard/' | relative_url }}">Dashboard</a>
+  <a href="{{ '/lenders/' | relative_url }}"{% if cur == '/lenders/' %} class="active"{% endif %}>Overview</a>
+  <a href="{{ '/lenders/onboarding/' | relative_url }}"{% if cur == '/lenders/onboarding/' %} class="active"{% endif %}>Onboarding</a>
+  <a href="{{ '/lenders/deposit-and-stake/' | relative_url }}"{% if cur == '/lenders/deposit-and-stake/' %} class="active"{% endif %}>Deposit &amp; stake</a>
+  <a href="{{ '/lenders/withdraw/' | relative_url }}"{% if cur == '/lenders/withdraw/' %} class="active"{% endif %}>Withdraw</a>
+  <a href="{{ '/lenders/dashboard/' | relative_url }}"{% if cur == '/lenders/dashboard/' %} class="active"{% endif %}>Dashboard</a>
 
   <h4>For Borrowers</h4>
-  <a href="{{ '/borrowers/' | relative_url }}">Overview</a>
+  <a href="{{ '/borrowers/' | relative_url }}"{% if cur == '/borrowers/' %} class="active"{% endif %}>Overview</a>
 
   <h4>Risk &amp; losses</h4>
-  <a href="{{ '/risks/' | relative_url }}">Risks</a>
-  <a href="{{ '/defaults-and-losses/' | relative_url }}">Defaults &amp; losses</a>
+  <a href="{{ '/risks/' | relative_url }}"{% if cur == '/risks/' %} class="active"{% endif %}>Risks</a>
+  <a href="{{ '/defaults-and-losses/' | relative_url }}"{% if cur == '/defaults-and-losses/' %} class="active"{% endif %}>Defaults &amp; losses</a>
 
   <h4>Security &amp; transparency</h4>
-  <a href="{{ '/security/' | relative_url }}">Overview</a>
-  <a href="{{ '/security/custody/' | relative_url }}">Custody</a>
-  <a href="{{ '/security/supply-safeguards/' | relative_url }}">Supply safeguards</a>
-  <a href="{{ '/security/emergency-response/' | relative_url }}">Emergency response</a>
-  <a href="{{ '/security/audits-and-addresses/' | relative_url }}">Audits &amp; addresses</a>
+  <a href="{{ '/security/' | relative_url }}"{% if cur == '/security/' %} class="active"{% endif %}>Overview</a>
+  <a href="{{ '/security/custody/' | relative_url }}"{% if cur == '/security/custody/' %} class="active"{% endif %}>Custody</a>
+  <a href="{{ '/security/supply-safeguards/' | relative_url }}"{% if cur == '/security/supply-safeguards/' %} class="active"{% endif %}>Supply safeguards</a>
+  <a href="{{ '/security/emergency-response/' | relative_url }}"{% if cur == '/security/emergency-response/' %} class="active"{% endif %}>Emergency response</a>
+  <a href="{{ '/security/audits-and-addresses/' | relative_url }}"{% if cur == '/security/audits-and-addresses/' %} class="active"{% endif %}>Audits &amp; addresses</a>
 
   <h4>Reference</h4>
-  <a href="{{ '/glossary/' | relative_url }}">Glossary</a>
-  <a href="{{ '/legal/' | relative_url }}">Legal</a>
+  <a href="{{ '/glossary/' | relative_url }}"{% if cur == '/glossary/' %} class="active"{% endif %}>Glossary</a>
+  <a href="{{ '/legal/' | relative_url }}"{% if cur == '/legal/' %} class="active"{% endif %}>Legal</a>
 </aside>
