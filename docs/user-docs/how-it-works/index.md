@@ -4,7 +4,7 @@ order: 2
 section: How Pipeline works
 ---
 
-# How Pipeline works — overview
+# How Pipeline works
 
 Pipeline is a credit facility that finances vetted commodity trade deals and
 pays the senior coupon, plus T-bill accrual on idle reserves, to on-chain
@@ -13,23 +13,21 @@ regulated custodian, not inside a smart contract.
 
 {% include diagram.html src="d1-system-context.svg" caption="Split-rail architecture — off-chain cash rail on the left, on-chain token rail on the right, governance by three Safes." %}
 
-The picture splits cleanly in two. USDC lives at the custodian on the cash
-rail, and moves only when MPC cosigners agree. PLUSD and sPLUSD live on the
-token rail — PLUSD as the 1:1 deposit receipt, sPLUSD as the ERC-4626 vault
-share that accrues yield. Three Gnosis Safes (ADMIN, RISK_COUNCIL, GUARDIAN)
-govern the token rail. The two rails are linked by rules, not shared control.
+The above picture cleanly shows two distinct system components: USDC lives at the 
+custodian on the cash rail, and moves only when MPC cosigners agree. PLUSD 
+and sPLUSD live on the token rail — PLUSD is the 1:1 to USDC stablecoin, and sPLUSD 
+is the ERC-4626 vault share that accrues yield. Three Gnosis Safes 
+(ADMIN, RISK_COUNCIL, GUARDIAN) govern the token rail. The two rails are linked 
+by rules, not shared control.
 
 ## How your money flows
 
-You deposit USDC through **DepositManager**; PLUSD mints 1:1 into your wallet
+You deposit USDC through **DepositManager** smart contract, PLUSD mints 1:1 into your wallet
 in the same transaction. You stake PLUSD into **sPLUSD** to earn yield. You
-redeem through the FIFO **WithdrawalQueue** when you want out. Each step is
-on-chain, atomic at the critical moments, and the deposit leg is free of any
-off-chain signer gating — your USDC lands at the Capital Wallet and your PLUSD
-lands in your wallet in one transaction, or the whole thing reverts. Minimum
+redeem through the FIFO **WithdrawalQueue** when you want out. Minimum
 deposit is $1,000 USDC. For the lender walkthrough, see
-[/pipeline/lenders/](/pipeline/lenders/); for the rail architecture, see
-[/pipeline/how-it-works/split-rail/](/pipeline/how-it-works/split-rail/).
+[lenders](/lenders/); for the rail architecture, see
+[split rail architecture](/how-it-works/split-rail/).
 
 ## Where the yield comes from
 
@@ -41,7 +39,7 @@ T-bill accrual on the USDC reserve — roughly 15% stays liquid (the band runs
 vehicle. USYC's NAV drift is split **70% to the sPLUSD vault, 30% to the
 Treasury Wallet**. Both engines deliver yield through the same two-party
 attested `yieldMint`. See
-[/pipeline/how-it-works/yield-engines/](/pipeline/how-it-works/yield-engines/)
+[yield engines](/how-it-works/yield-engines/)
 for the full mechanics.
 
 ## What gets financed
