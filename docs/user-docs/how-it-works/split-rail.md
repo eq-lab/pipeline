@@ -89,14 +89,14 @@ The split-rail design bounds the worst case. A smart-contract bug can stop
 deposits, stop withdrawals, or misreport state on the token rail. It cannot
 send your USDC to an attacker's address, because the contract never controlled
 that USDC in the first place. The inverse holds too. A custodian signer compromise cannot mint PLUSD out of
-thin air. Mint paths enforce on-chain checks the custodian does not bypass. The [security pages](/security/)
+thin air. Mint paths enforce on-chain checks the custodian does not bypass. The [security pages](/pipeline/security/)
 walk through each failure mode in detail.
 
 ## Related
 
-- [Custody model](/security/custody/) — how the Capital Wallet cosigner rules
+- [Custody model](/pipeline/security/custody/) — how the Capital Wallet cosigner rules
   and custodian policy engine actually work.
-- [Supply safeguards](/security/supply-safeguards/) — the on-chain checks that
+- [Supply safeguards](/pipeline/security/supply-safeguards/) — the on-chain checks that
   bound minting, including the reserve invariant and rate limits.
-- [Yield engines](/how-it-works/yield-engines/) — where the 70/30 T-bill /
+- [Yield engines](/pipeline/how-it-works/yield-engines/) — where the 70/30 T-bill /
   commodity split comes from and how yield reaches sPLUSD holders.

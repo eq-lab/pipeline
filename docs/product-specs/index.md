@@ -1,5 +1,7 @@
 # Product Specs Index
 
+> Looking for user-facing documentation? See the [Pipeline user docs](https://eq-lab.github.io/pipeline/) — plain-English intro for lenders, borrowers, and reviewers. This directory is the technical source of truth those docs are built from.
+
 Use this directory for feature and product requirement documents.
 
 ## How to write a product spec

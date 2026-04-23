@@ -37,10 +37,10 @@ Bridge funds up to $5M per `fundRequest` call and up to $10M per rolling 24 hour
 
 ## Shutdown-mode exit
 
-If the protocol enters shutdown, the auto flow halts and withdrawals switch to the `claimAtShutdown` path at a fixed recovery rate. See [Defaults and Losses](/defaults-and-losses/) for the full mechanics, including how the recovery rate is set and ratcheted.
+If the protocol enters shutdown, the auto flow halts and withdrawals switch to the `claimAtShutdown` path at a fixed recovery rate. See [Defaults and Losses](/pipeline/defaults-and-losses/) for the full mechanics, including how the recovery rate is set and ratcheted.
 
 ## Related pages
 
-- [Lender Dashboard](/lenders/dashboard/)
-- [Risks](/risks/)
-- [Defaults and Losses](/defaults-and-losses/)
+- [Lender Dashboard](/pipeline/lenders/dashboard/)
+- [Risks](/pipeline/risks/)
+- [Defaults and Losses](/pipeline/defaults-and-losses/)
