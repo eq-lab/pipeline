@@ -108,7 +108,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **Original offtaker price** — The total USDC the end buyer is contracted to pay for the cargo, recorded as `originalOfftakerPrice` on the LoanRegistry NFT at mint time. Outstanding offtaker balance on a live loan is derived as `originalOfftakerPrice − offtakerReceivedTotal`.
 
-**Originator** — The commodity-trading firm that sources the deal, posts the *Equity tranche* off-chain as first-loss, and submits the EIP-712-signed origination request through the Originator UI. Open Mineral is Pipeline's launch originator; additional originators are onboarded over time.
+**Originator** — The commodity-trading firm that sources the deal and posts the *Equity tranche* off-chain as first-loss. The originator brings the borrower, term sheet, and diligence to the *Trustee* off-chain; the first on-chain event in the life of a facility is the Trustee minting the loan NFT on *LoanRegistry*. Open Mineral is Pipeline's launch originator; additional originators are onboarded over time.
 
 ---
 

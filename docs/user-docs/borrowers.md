@@ -21,9 +21,8 @@ Borrowers are not self-service on Pipeline. Facilities are KYB'd and sourced bes
 ## How a deal moves from request to close
 
 <ol class="steps">
-  <li>The Originator submits an EIP-712-signed origination payload through the Originator UI, covering the full set of immutable loan parameters for your facility.</li>
-  <li>Pipeline Trust Company (the Trustee) reviews the request and either approves it, returns it with requested changes, or rejects it with a stated reason.</li>
-  <li>On approval, the Trustee mints the loan directly on LoanRegistry from the Trustee key — Bridge has no role on LoanRegistry and does not relay these writes.</li>
+  <li>Deal sourcing is fully off-chain: an approved originator (Open Mineral at MVP) brings the borrower, the term sheet, and the diligence package to Pipeline Trust Company (the Trustee).</li>
+  <li>On approval, the Trustee mints the loan NFT directly on LoanRegistry from the Trustee key — this is the first on-chain event in the life of the facility; Bridge has no role on LoanRegistry.</li>
   <li>Bridge prepares the Capital Wallet disbursement; the Trustee and Pipeline team co-sign the MPC outflow to the on-ramp provider; USDC reaches the borrower.</li>
   <li>As the offtaker pays, USDC lands in the Capital Wallet.</li>
   <li>The Trustee records the repayment split across Senior principal, Senior interest, and Equity residual — pure accounting on LoanRegistry, no capital move yet.</li>

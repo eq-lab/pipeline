@@ -71,6 +71,6 @@ The full threat model, layered defence stack, pause cascade, and cross-rail sequ
 
 ## Related
 
-- [Split-rail architecture](/how-it-works/split-rail/)
+- [Split-rail architecture](/how-it-works/)
 - [Risks](/risks/)
 - [Defaults and losses](/defaults-and-losses/)

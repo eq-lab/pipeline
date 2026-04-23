@@ -81,5 +81,5 @@ Your USDC is not inside a smart contract you need to trust. It is in a custodied
 
 - [Supply safeguards](/security/supply-safeguards/)
 - [Emergency response](/security/emergency-response/)
-- [Split rail](/how-it-works/split-rail/)
+- [Split rail](/how-it-works/)
 - [Risks](/risks/)
