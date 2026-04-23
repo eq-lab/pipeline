@@ -56,4 +56,4 @@ Borrower origination at MVP is bespoke and runs through approved originators rat
 
 ---
 
-See also: [How it works](/pipeline/how-it-works/) · [Risks](/pipeline/risks/) · [Glossary](/pipeline/glossary/)
+See also: [How it works](/how-it-works/) · [Risks](/risks/) · [Glossary](/glossary/)

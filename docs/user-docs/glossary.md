@@ -186,6 +186,6 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## Related
 
-- [How Pipeline works](/pipeline/how-it-works/)
-- [Security](/pipeline/security/)
-- [Risks](/pipeline/risks/)
+- [How Pipeline works](/how-it-works/)
+- [Security](/security/)
+- [Risks](/risks/)

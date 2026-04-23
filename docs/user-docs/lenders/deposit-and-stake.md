@@ -18,7 +18,7 @@ Holding PLUSD is the compliance-bounded representation of your deposit. Staking 
 
 ## Before you deposit
 
-- Your wallet must be whitelisted and your Chainalysis screen fresh (90-day window). See [onboarding](/pipeline/lenders/onboarding/) if either is missing.
+- Your wallet must be whitelisted and your Chainalysis screen fresh (90-day window). See [onboarding](/lenders/onboarding/) if either is missing.
 - The minimum deposit is $1,000 USDC. There is no maximum beyond the rate limits below.
 - You need enough ETH in your wallet to cover two transactions: the USDC approval and the deposit call. Gas is paid by you, not the protocol.
 - Pipeline never takes custody of your keys. Every step is initiated from your own wallet.
@@ -96,7 +96,7 @@ Any PLUSD holder — including approved DeFi venues that acquired PLUSD through 
 
 Redeeming sPLUSD returns PLUSD, not USDC. Call `sPLUSD.redeem(shares, receiver, owner)` and the vault burns your shares and transfers PLUSD to the receiver. The receiver must be whitelisted on PLUSD, or the PLUSD transfer reverts and the whole redemption fails. The PLUSD amount paid out is `shares * totalAssets / totalSupply`, rounded down — so the exact quantity depends on the share price at the moment your transaction lands.
 
-Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue. Unlike the stake/unstake vault, the redemption path can route through the 15% USDC buffer or escalate to a large-withdrawal track that liquidates T-bills on your behalf. See [withdraw](/pipeline/lenders/withdraw/) for the flow, the buffer rules, and the large-withdrawal path.
+Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue. Unlike the stake/unstake vault, the redemption path can route through the 15% USDC buffer or escalate to a large-withdrawal track that liquidates T-bills on your behalf. See [withdraw](/lenders/withdraw/) for the flow, the buffer rules, and the large-withdrawal path.
 
 ---
 
@@ -106,7 +106,7 @@ Two engines feed the vault. Senior loan coupons are minted into the vault as tra
 
 Loan-coupon mints settle per repayment event. T-bill NAV mints settle lazily, on each stake or unstake that touches the vault, so the share price refreshes at your interaction rather than on a fixed cadence. If there are no stake or unstake events for a period, unrealised NAV still accrues inside the Capital Wallet and materialises at the next vault interaction.
 
-See [yield engines](/pipeline/how-it-works/yield-engines/) for the full split mechanics, the signing parties, and how the buffer is rebalanced.
+See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, the signing parties, and how the buffer is rebalanced.
 
 ---
 
@@ -123,12 +123,12 @@ See [yield engines](/pipeline/how-it-works/yield-engines/) for the full split me
 
 ## Contract addresses
 
-All four contract addresses — `DepositManager`, `PLUSD`, `sPLUSD`, and `WhitelistRegistry` — are published on the [Audits &amp; addresses page](/pipeline/security/audits-and-addresses/) and are verified on Etherscan. Treat the Audits &amp; addresses page as the source of truth. Do not trust addresses copied from third-party sites.
+All four contract addresses — `DepositManager`, `PLUSD`, `sPLUSD`, and `WhitelistRegistry` — are published on the [Audits &amp; addresses page](/security/audits-and-addresses/) and are verified on Etherscan. Treat the Audits &amp; addresses page as the source of truth. Do not trust addresses copied from third-party sites.
 
 ---
 
 ## Related pages
 
-- [Withdraw](/pipeline/lenders/withdraw/) — convert sPLUSD or PLUSD back to USDC.
-- [Yield engines](/pipeline/how-it-works/yield-engines/) — how senior coupons and T-bill NAV flow into the vault.
-- [Supply safeguards](/pipeline/security/supply-safeguards/) — the reserve invariant, rate limits, and the hard supply cap.
+- [Withdraw](/lenders/withdraw/) — convert sPLUSD or PLUSD back to USDC.
+- [Yield engines](/how-it-works/yield-engines/) — how senior coupons and T-bill NAV flow into the vault.
+- [Supply safeguards](/security/supply-safeguards/) — the reserve invariant, rate limits, and the hard supply cap.

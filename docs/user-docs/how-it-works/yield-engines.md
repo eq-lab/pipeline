@@ -85,7 +85,7 @@ still lands the next time anyone does.
 Idle USDC and USYC sit at the custodian — both are on-chain ERC-20 holdings
 at the Capital Wallet address, controlled by MPC cosigners. USYC earns the
 T-bill yield every day, whether or not a loan repaid that week. See
-[custody](/pipeline/security/custody/) and [split-rail architecture](/pipeline/how-it-works/split-rail/)
+[custody](/security/custody/) and [split-rail architecture](/how-it-works/split-rail/)
 for how the cash rail is structured.
 
 ## Share price mechanics

@@ -8,7 +8,7 @@ This page gathers the compliance and legal framing for Pipeline. Nothing on this
 
 ## KYC / wallet whitelisting
 
-Every lender wallet passes identity verification through Sumsub and address screening through Chainalysis before it can deposit. The screening record is valid for 90 days; past that, the deposit UI blocks new deposits until re-screening. See [lender onboarding](/pipeline/lenders/onboarding/) for the full flow.
+Every lender wallet passes identity verification through Sumsub and address screening through Chainalysis before it can deposit. The screening record is valid for 90 days; past that, the deposit UI blocks new deposits until re-screening. See [lender onboarding](/lenders/onboarding/) for the full flow.
 
 ## Jurisdictional restrictions
 
@@ -47,4 +47,4 @@ The governing-law designation for the Pipeline offering is under legal review. I
 
 ---
 
-**See also:** [Lender onboarding](/pipeline/lenders/onboarding/) · [Risks](/pipeline/risks/)
+**See also:** [Lender onboarding](/lenders/onboarding/) · [Risks](/risks/)

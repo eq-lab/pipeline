@@ -62,6 +62,6 @@ The custodian revokes its own key internally. The compromised key alone cannot m
 
 ## Related
 
-- [Custody model](/pipeline/security/custody/)
-- [Supply safeguards](/pipeline/security/supply-safeguards/)
-- [Defaults and losses](/pipeline/defaults-and-losses/)
+- [Custody model](/security/custody/)
+- [Supply safeguards](/security/supply-safeguards/)
+- [Defaults and losses](/defaults-and-losses/)

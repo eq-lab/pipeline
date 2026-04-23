@@ -17,19 +17,19 @@ The off-chain zone holds the Custodian, Capital Wallet, Treasury Wallet, Bridge,
 ## Explore the cluster
 
 <div class="card-grid">
-  <a class="card" href="/pipeline/security/custody/">
+  <a class="card" href="/security/custody/">
     <h4>Custody</h4>
     <p>How USDC is held at the custodian and moved by MPC cosigners.</p>
   </a>
-  <a class="card" href="/pipeline/security/supply-safeguards/">
+  <a class="card" href="/security/supply-safeguards/">
     <h4>Supply safeguards</h4>
     <p>Four structural safeguards that prevent unbacked PLUSD minting.</p>
   </a>
-  <a class="card" href="/pipeline/security/emergency-response/">
+  <a class="card" href="/security/emergency-response/">
     <h4>Emergency response</h4>
     <p>Ethena-style split: GUARDIAN pauses and revokes; ADMIN restores under timelock.</p>
   </a>
-  <a class="card" href="/pipeline/security/audits-and-addresses/">
+  <a class="card" href="/security/audits-and-addresses/">
     <h4>Audits &amp; addresses</h4>
     <p>Deployed contracts, third-party audits, formal verification, live data.</p>
   </a>
@@ -55,11 +55,11 @@ The split is deliberate. Fast defensive action is separated from slow constructi
 
 Pipeline reduces trust assumptions but does not eliminate them. The accepted assumptions — custodian integrity, cosigner integrity, governance signer-set distinctness, Watchdog correctness — are enumerated and justified on the child pages:
 
-- Custodian and cosigner integrity are covered in [Custody](/pipeline/security/custody/).
-- Supply-side assumptions (atomic deposits, EIP-712 yield co-signing, Watchdog correctness) are covered in [Supply safeguards](/pipeline/security/supply-safeguards/).
-- Governance signer-set distinctness and the pause-and-revoke model are covered in [Emergency response](/pipeline/security/emergency-response/).
+- Custodian and cosigner integrity are covered in [Custody](/security/custody/).
+- Supply-side assumptions (atomic deposits, EIP-712 yield co-signing, Watchdog correctness) are covered in [Supply safeguards](/security/supply-safeguards/).
+- Governance signer-set distinctness and the pause-and-revoke model are covered in [Emergency response](/security/emergency-response/).
 
-For the full risk categorisation — custody, market, operational, protocol, governance — see [Risks](/pipeline/risks/).
+For the full risk categorisation — custody, market, operational, protocol, governance — see [Risks](/risks/).
 
 ---
 
@@ -71,6 +71,6 @@ The full threat model, layered defence stack, pause cascade, and cross-rail sequ
 
 ## Related
 
-- [Split-rail architecture](/pipeline/how-it-works/split-rail/)
-- [Risks](/pipeline/risks/)
-- [Defaults and losses](/pipeline/defaults-and-losses/)
+- [Split-rail architecture](/how-it-works/split-rail/)
+- [Risks](/risks/)
+- [Defaults and losses](/defaults-and-losses/)

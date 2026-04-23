@@ -46,6 +46,6 @@ A public bug bounty will be established before mainnet. Scope, payout tiers, and
 
 See also:
 
-- [Custody](/pipeline/security/custody/)
-- [Supply safeguards](/pipeline/security/supply-safeguards/)
-- [Emergency response](/pipeline/security/emergency-response/)
+- [Custody](/security/custody/)
+- [Supply safeguards](/security/supply-safeguards/)
+- [Emergency response](/security/emergency-response/)

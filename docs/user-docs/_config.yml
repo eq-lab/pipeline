@@ -5,7 +5,7 @@ description: >-
   pays the senior coupon, plus T-bill accrual on idle reserves, to on-chain
   lenders. This site explains how it works and what can go wrong.
 url: https://eq-lab.github.io
-baseurl: /pipeline
+baseurl: ""
 permalink: /:path/
 
 markdown: kramdown

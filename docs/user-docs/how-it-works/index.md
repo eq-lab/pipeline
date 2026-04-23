@@ -66,15 +66,15 @@ thresholds at **130 / 120 / 110**: above 130 is performing headroom, crossing
 ## Dig in
 
 <div class="card-grid">
-  <a class="card" href="/pipeline/how-it-works/split-rail/">
+  <a class="card" href="/how-it-works/split-rail/">
     <h4>Split-rail architecture</h4>
     <p>Why USDC never sits inside a smart contract.</p>
   </a>
-  <a class="card" href="/pipeline/how-it-works/yield-engines/">
+  <a class="card" href="/how-it-works/yield-engines/">
     <h4>Where yield comes from</h4>
     <p>Senior coupons + T-bill accrual, both landing in the sPLUSD vault.</p>
   </a>
-  <a class="card" href="/pipeline/borrowers/">
+  <a class="card" href="/borrowers/">
     <h4>For borrowers</h4>
     <p>What Pipeline finances and who qualifies.</p>
   </a>
@@ -82,6 +82,6 @@ thresholds at **130 / 120 / 110**: above 130 is performing headroom, crossing
 
 ## Related
 
-- [For lenders](/pipeline/lenders/) — deposit, stake, withdraw, dashboard.
-- [Security](/pipeline/security/) — custody model, supply safeguards, audits.
-- [Risks](/pipeline/risks/) — what can go wrong and how the system bounds it.
+- [For lenders](/lenders/) — deposit, stake, withdraw, dashboard.
+- [Security](/security/) — custody model, supply safeguards, audits.
+- [Risks](/risks/) — what can go wrong and how the system bounds it.

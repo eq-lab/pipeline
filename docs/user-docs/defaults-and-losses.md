@@ -181,6 +181,6 @@ choice goes the other way.
 
 ## Related reading
 
-- [Risks](/pipeline/risks/)
-- [Emergency response](/pipeline/security/emergency-response/)
-- [Supply safeguards](/pipeline/security/supply-safeguards/)
+- [Risks](/risks/)
+- [Emergency response](/security/emergency-response/)
+- [Supply safeguards](/security/supply-safeguards/)

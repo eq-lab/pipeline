@@ -73,6 +73,6 @@ This separation is deliberate. Loan bookkeeping and share-price computation are 
 
 ## Related pages
 
-- [Custody](/pipeline/security/custody/) — Capital Wallet cosigning model and custodian setup
-- [Emergency response](/pipeline/security/emergency-response/) — GUARDIAN powers, pause, role revocation
-- [Risks](/pipeline/risks/) — full risk register including the phase 2 PoR gap
+- [Custody](/security/custody/) — Capital Wallet cosigning model and custodian setup
+- [Emergency response](/security/emergency-response/) — GUARDIAN powers, pause, role revocation
+- [Risks](/risks/) — full risk register including the phase 2 PoR gap

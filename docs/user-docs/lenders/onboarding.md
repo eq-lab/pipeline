@@ -12,7 +12,7 @@ Pipeline is permissioned — every lender wallet passes KYC and Chainalysis scre
 
 - A self-custodied Ethereum wallet that you control. Pipeline never holds your keys.
 - Enough USDC in that wallet for your intended deposit. The minimum deposit is $1,000 USDC.
-- An accredited-investor status declaration, depending on your jurisdiction. See [`/legal/`](/pipeline/legal/) for the current rules.
+- An accredited-investor status declaration, depending on your jurisdiction. See [`/legal/`](/legal/) for the current rules.
 
 ## The KYC flow
 
@@ -39,13 +39,13 @@ This is Pipeline's second factor on the mint path. A compromised WhitelistRegist
 <div class="callout risk">
 
 - Wallets on OFAC or equivalent sanctions lists.
-- Jurisdictions Pipeline cannot legally serve. See [`/legal/`](/pipeline/legal/) — the list is maintained there.
+- Jurisdictions Pipeline cannot legally serve. See [`/legal/`](/legal/) — the list is maintained there.
 - Non-accredited retail investors where the offering requires accreditation.
 
 </div>
 
 ## Next steps
 
-- [Deposit and stake](/pipeline/lenders/deposit-and-stake/) — approve USDC, mint PLUSD, optionally stake to sPLUSD.
-- [Risks](/pipeline/risks/) — read before committing capital.
-- [Legal](/pipeline/legal/) — jurisdictional rules and accreditation requirements.
+- [Deposit and stake](/lenders/deposit-and-stake/) — approve USDC, mint PLUSD, optionally stake to sPLUSD.
+- [Risks](/risks/) — read before committing capital.
+- [Legal](/legal/) — jurisdictional rules and accreditation requirements.
