@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .nest("/v1/kyc", routes::kyc::router())
         .merge(
-            SwaggerUi::new("/swagger-ui")
+            SwaggerUi::new("/swagger")
                 .url("/api-docs/openapi.json", routes::kyc::ApiDoc::openapi()),
         )
         .with_state(state);

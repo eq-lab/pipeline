@@ -8,17 +8,21 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // initialize logging and load .env
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
+    // initialize DB pool
     let postgres_url = std::env::var("POSTGRES_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
         .map_err(|_| anyhow::anyhow!("POSTGRES_URL is not set"))?;
-
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
+
+    // run DB migrations
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    let job_names: Vec<String> = std::env::var("INDEXER_JOB_NAMES")
+    // indexer jobs
+    let indexer_job_names: Vec<String> = std::env::var("INDEXER_JOB_NAMES")
         .unwrap_or_default()
         .split(',')
         .map(str::trim)
@@ -26,9 +30,7 @@ async fn main() -> anyhow::Result<()> {
         .map(str::to_owned)
         .collect();
 
-    let mut has_jobs = false;
-
-    for name in &job_names {
+    for name in &indexer_job_names {
         let settings = JobSettings::from_env(name)?;
         if !settings.enabled {
             tracing::info!(job = %name, "job disabled — skipping");
@@ -37,7 +39,6 @@ async fn main() -> anyhow::Result<()> {
 
         tracing::info!(job = %name, chain_id = settings.chain_id, "indexer started");
         tokio::spawn(run_job(settings, pool.clone()));
-        has_jobs = true;
     }
 
     // KYC outbox job
@@ -57,11 +58,6 @@ async fn main() -> anyhow::Result<()> {
                 tracing::error!("KYC outbox job exited with error: {e:?}");
             }
         });
-        has_jobs = true;
-    }
-
-    if !has_jobs {
-        tracing::warn!("no jobs enabled — set INDEXER_JOB_NAMES or JOB_KYC_OUTBOX_ENABLED");
     }
 
     tokio::signal::ctrl_c().await?;
