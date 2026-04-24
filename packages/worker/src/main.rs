@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         .map(str::to_owned)
         .collect();
 
-    let mut handles = vec![];
+    let mut has_jobs = false;
 
     for name in &job_names {
         let settings = JobSettings::from_env(name)?;
@@ -36,14 +36,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         tracing::info!(job = %name, chain_id = settings.chain_id, "indexer started");
-        let handle = tokio::spawn(run_job(settings, pool.clone()));
-        handles.push(handle);
-    }
-
-    if handles.is_empty() {
-        tracing::warn!(
-            "no indexer jobs enabled — set INDEXER_JOB_NAMES and JOB_<NAME>_ENABLED=true"
-        );
+        tokio::spawn(run_job(settings, pool.clone()));
+        has_jobs = true;
     }
 
     // KYC outbox job
@@ -58,12 +52,16 @@ async fn main() -> anyhow::Result<()> {
         let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
 
         tracing::info!("KYC outbox job started");
-        let handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             if let Err(e) = run_kyc_outbox_job(outbox_settings, kyc_repo, sumsub_client).await {
                 tracing::error!("KYC outbox job exited with error: {e:?}");
             }
         });
-        handles.push(handle);
+        has_jobs = true;
+    }
+
+    if !has_jobs {
+        tracing::warn!("no jobs enabled — set INDEXER_JOB_NAMES or JOB_KYC_OUTBOX_ENABLED");
     }
 
     tokio::signal::ctrl_c().await?;
