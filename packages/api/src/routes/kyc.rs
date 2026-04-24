@@ -6,6 +6,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use utoipa::{OpenApi, ToSchema};
 
 use crate::middleware::webhook_auth::validate_webhook;
 use crate::AppState;
@@ -18,33 +19,59 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/callback", post(webhook_callback))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateApplicantRequest {
     pub wallet_address: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CreateApplicantResponse {
     pub applicant_id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateTokenRequest {
     pub wallet_address: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CreateTokenResponse {
     pub token: String,
     pub expires_at: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct KycStatusResponse {
     pub kyc_status: i16,
     pub kyc_review_status: i16,
 }
 
+#[derive(OpenApi)]
+#[openapi(
+    paths(create_applicant, create_token, get_status, webhook_callback),
+    components(schemas(
+        CreateApplicantRequest,
+        CreateApplicantResponse,
+        CreateTokenRequest,
+        CreateTokenResponse,
+        KycStatusResponse,
+    )),
+    tags(
+        (name = "KYC", description = "Sumsub KYC/KYB verification endpoints")
+    )
+)]
+pub struct ApiDoc;
+
+#[utoipa::path(
+    post,
+    path = "/v1/kyc/applicants",
+    request_body = CreateApplicantRequest,
+    responses(
+        (status = 200, description = "Applicant created or already exists", body = CreateApplicantResponse),
+        (status = 502, description = "Sumsub unavailable"),
+    ),
+    tag = "KYC"
+)]
 async fn create_applicant(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateApplicantRequest>,
@@ -109,6 +136,16 @@ async fn create_applicant(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/kyc/token",
+    request_body = CreateTokenRequest,
+    responses(
+        (status = 200, description = "Access token generated", body = CreateTokenResponse),
+        (status = 502, description = "Sumsub unavailable"),
+    ),
+    tag = "KYC"
+)]
 async fn create_token(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateTokenRequest>,
@@ -146,6 +183,18 @@ async fn create_token(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/kyc/status/{wallet_address}",
+    params(
+        ("wallet_address" = String, Path, description = "Wallet address of the LP")
+    ),
+    responses(
+        (status = 200, description = "KYC status retrieved", body = KycStatusResponse),
+        (status = 404, description = "Profile not found"),
+    ),
+    tag = "KYC"
+)]
 async fn get_status(
     State(state): State<Arc<AppState>>,
     Path(wallet_address): Path<String>,
@@ -172,6 +221,16 @@ async fn get_status(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v1/kyc/callback",
+    responses(
+        (status = 200, description = "Webhook processed successfully"),
+        (status = 400, description = "Invalid payload or signature"),
+        (status = 500, description = "Internal error"),
+    ),
+    tag = "KYC"
+)]
 async fn webhook_callback(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,

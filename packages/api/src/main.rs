@@ -4,6 +4,8 @@ use axum::Router;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 mod middleware;
 mod routes;
@@ -38,6 +40,10 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .nest("/v1/kyc", routes::kyc::router())
+        .merge(
+            SwaggerUi::new("/swagger-ui")
+                .url("/api-docs/openapi.json", routes::kyc::ApiDoc::openapi()),
+        )
         .with_state(state);
 
     let port = std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_owned());
