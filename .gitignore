@@ -26,6 +26,9 @@ packages/frontend/.vite/
 .DS_Store
 Thumbs.db
 
+# Yarn
+.yarn/install-state.gz
+
 # IDE
 .idea/
 .vscode/
