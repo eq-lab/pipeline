@@ -1,5 +1,7 @@
 # Product Specs Index
 
+> Looking for user-facing documentation? See the [Pipeline user docs](https://eq-lab.github.io/pipeline/) — plain-English intro for lenders, borrowers, and reviewers. This directory is the technical source of truth those docs are built from.
+
 Use this directory for feature and product requirement documents.
 
 ## How to write a product spec
@@ -25,8 +27,9 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [loans.md](./loans.md) | Loan Management | LoanRegistry, origination, lifecycle, location tracking |
 | [yield.md](./yield.md) | Yield Distribution | Repayment waterfall, USYC NAV accrual, weekly distribution |
 | [withdrawals.md](./withdrawals.md) | Withdrawals | FIFO queue, partial fills, automated payout, Treasury redemption |
-| [smart-contracts.md](./smart-contracts.md) | Smart Contracts | 6 contracts, interfaces, role assignments |
-| [bridge-service.md](./bridge-service.md) | Bridge Service | Event listening, MPC auto-signing, minting, USYC rebalancing |
+| [smart-contracts.md](./smart-contracts.md) | Smart Contracts | 8 contracts + AccessManager, interfaces, role assignments, shutdown, upgradeability, emergency response |
+| [security.md](./security.md) | Security & Threat Model | Threat model, peer-protocol comparison, MVP defence stack, timelock table, accepted trust assumptions |
+| [bridge-service.md](./bridge-service.md) | Bridge Service | Event listening, MPC auto-signing, minting, USYC rebalancing, service decomposition |
 | [operations-console.md](./operations-console.md) | Operations Console | Trustee tooling, Team interface, Originator UI |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
