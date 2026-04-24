@@ -1,6 +1,6 @@
 use pipeline_worker::config::JobSettings;
 use pipeline_worker::indexer::run_job;
-use pipeline_worker::jobs::kyc_outbox::{run_kyc_outbox_job, KycOutboxJobSettings};
+use pipeline_worker::kyc::kyc_outbox::{run_kyc_outbox_job, KycOutboxJobSettings};
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    let job_names: Vec<String> = std::env::var("JOB_NAMES")
+    let job_names: Vec<String> = std::env::var("INDEXER_JOB_NAMES")
         .unwrap_or_default()
         .split(',')
         .map(str::trim)
@@ -41,7 +41,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if handles.is_empty() {
-        tracing::warn!("no jobs enabled — set JOB_NAMES and JOB_<NAME>_ENABLED=true");
+        tracing::warn!(
+            "no indexer jobs enabled — set INDEXER_JOB_NAMES and JOB_<NAME>_ENABLED=true"
+        );
     }
 
     // KYC outbox job
