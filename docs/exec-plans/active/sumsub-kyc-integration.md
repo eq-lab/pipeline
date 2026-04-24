@@ -27,7 +27,7 @@
 
 LP onboarding requires identity verification before whitelisting (see spec § LP Wallet Onboarding, step 2). This plan implements the Sumsub integration layer only — applicant creation, WebSDK token generation, webhook callback handling, and async outbox processing. Chainalysis screening, accreditation, WhitelistRegistry writes, and the compliance review queue are separate issues.
 
-The pattern mirrors the Sumsub integration in the Brikly backend (C#/.NET), adapted to Pipeline's Rust stack.
+The integration follows Sumsub's standard server-side flow: create applicant, issue SDK token, receive webhook, process asynchronously.
 
 ---
 
@@ -37,7 +37,7 @@ The pattern mirrors the Sumsub integration in the Brikly backend (C#/.NET), adap
 
 **Webhooks (push), not polling.** Sumsub sends verification results via HTTP callback. The API validates the HMAC-SHA256 digest and persists the result. Lower latency, fewer API calls than polling.
 
-**Outbox pattern for async processing.** The webhook handler writes to `kyc_outbox`. The Worker polls unprocessed rows and executes downstream actions (fetch applicant details on Green status). Proven at-least-once delivery with error tracking — same pattern as Brikly's `ProcessKYCOutboxJob`.
+**Outbox pattern for async processing.** The webhook handler writes to `kyc_outbox`. The Worker polls unprocessed rows and executes downstream actions (fetch applicant details on Green status). This gives at-least-once delivery with error tracking and clean separation between event receipt and processing.
 
 **API crate hosts endpoints.** The webhook endpoint and LP-facing KYC endpoints live in `packages/api/` (axum). The Worker processes the outbox asynchronously. Sumsub client and DB repos live in `packages/shared/` for use by both.
 

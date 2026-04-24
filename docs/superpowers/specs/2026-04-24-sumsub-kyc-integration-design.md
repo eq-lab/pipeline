@@ -10,14 +10,14 @@ Pipeline requires identity verification for LPs before they can deposit. The LP 
 
 This design covers the **Sumsub integration only** — applicant creation, WebSDK token generation, webhook handling, and KYC status persistence. Chainalysis, accreditation, whitelist writes, and the compliance review queue are separate issues that plug into the outbox job as downstream actions.
 
-The design mirrors the proven Sumsub integration from the Brikly backend (C#/.NET), adapted to Pipeline's Rust + TypeScript stack.
+The design follows Sumsub's standard server-side integration flow, adapted to Pipeline's Rust + TypeScript stack.
 
 ## Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | LP identity mapping | Wallet address as `externalUserId` | LPs authenticate via wallet; no email collection at onboarding |
-| Integration mode | Webhooks (push from Sumsub) | Lower latency than polling, same pattern as Brikly |
+| Integration mode | Webhooks (push from Sumsub) | Lower latency than polling, fewer API calls |
 | Webhook endpoint location | API crate | Natural home for HTTP endpoints; Worker handles async outbox processing |
 | Async processing | Outbox pattern with Worker polling job | Proven reliable at-least-once processing with error tracking |
 
