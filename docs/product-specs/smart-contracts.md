@@ -80,7 +80,7 @@ in a compromise.
 | PLUSD | OZ ERC20Pausable + ERC20Permit + AccessManaged + UUPS | Receipt token; mint exposed only as restricted `mintForDeposit` / `mintForYield`; `_update` hook enforces whitelist. All signature verification and rate-limit enforcement happens in caller contracts, not in the token. | ~80 |
 | DepositManager | AccessManaged + Pausable + ReentrancyGuard + UUPS | Atomic 1:1 USDC→PLUSD deposit. Enforces per-LP / per-window / supply caps. Holds `DEPOSITOR` role on PLUSD. | ~120 |
 | YieldMinter | AccessManaged + Pausable + UUPS | Verifies the two-party yield attestation (Bridge ECDSA + custodian EIP-1271), enforces replay protection, calls `PLUSD.mintForYield`. Holds `YIELD_MINTER` role on PLUSD. | ~110 |
-| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any PLUSD holder. Plain ERC-4626 semantics — share price moves only when Bridge lands a `yieldMint` in the vault. | ~35 |
+| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any whitelisted PLUSD holder. Plain ERC-4626 semantics — share price moves only when Bridge lands a `yieldMint` in the vault. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. | ~55 |
 | WhitelistRegistry | AccessManaged + TimelockPending + UUPS | On-chain allowlist: KYCed LP wallets and approved DeFi venues. Tracks Chainalysis `approvedAt` timestamp. Exposes `isAllowed` (no freshness check) and `isAllowedForMint` (requires fresh screen). | ~95 |
 | WithdrawalQueue | AccessManaged + Pausable + ReentrancyGuard + UUPS | FIFO withdrawal queue; Pending→Funded→Claimed/AdminReleased lifecycle. `fundRequest(uint256 usdcAmount)` consumes as many queue heads as the amount covers in full. | ~140 |
 | LoanRegistry | OZ ERC-721 (soulbound) + AccessManaged + Pausable + UUPS | On-chain registry of loan facilities. Origination data stored off-chain in IPFS JSON, referenced via standard ERC-721 `tokenURI`; mutable lifecycle state (status, CCR, location, cumulative repayments) lives on-chain. | ~140 |
@@ -98,7 +98,7 @@ in a compromise.
 | `mintForDeposit(address lp, uint256 amount)` | DEPOSITOR (DepositManager) | Mints PLUSD 1:1 to a USDC deposit. Increments `cumulativeLPDeposits`. Reverts if `_update` hook rejects recipient. |
 | `mintForYield(address recipient, uint256 amount)` | YIELD_MINTER (YieldMinter) | Mints yield PLUSD into a system address (sPLUSD vault or Treasury Wallet). Increments `cumulativeYieldMinted`. No signature verification here — signature checks live in `YieldMinter`. |
 | `burn(address from, uint256 amount)` | BURNER (WithdrawalQueue) | Burns escrowed PLUSD when LP calls `claim` or `redeemInShutdown`. Increments `cumulativeLPBurns`. |
-| `transfer / transferFrom` | public | Standard ERC-20. `_update` hook enforces: exactly one of (from, to) must be a system address or a whitelisted LP. LP↔LP and system↔system both revert. |
+| `transfer / transferFrom` | public | Standard ERC-20. `_update` hook enforces: both non-zero endpoints must be either a whitelisted LP or a system address. Transfers within the whitelist set (LP↔LP) and between system addresses are permitted; any leg touching an unscreened wallet reverts. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of all mint, burn, and transfer operations. |
 | `unpause()` | ADMIN | Restores operations; subject to 48h AccessManager delay, cancellable by GUARDIAN. |
 | `assertLedgerInvariant()` | public view | Returns `cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns − totalSupply`. This is always 0 when the ledger is consistent; any non-zero value indicates a contract bug in one of the three mint/burn paths. Diagnostic only — not a health gradient. |
@@ -184,8 +184,9 @@ radius tight.
 
 | Function | Access | Description |
 |---|---|---|
-| `deposit(uint256 assets, address receiver)` | public | Standard ERC-4626 deposit. Open to any PLUSD holder. |
+| `deposit(uint256 assets, address receiver)` | public | Standard ERC-4626 deposit. `receiver` must pass the shared whitelist check (whitelisted LP or system address); same rule applies as on a plain sPLUSD transfer. |
 | `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation; does **not** trigger any on-chain yield mint. Bridge runs the USYC NAV freshness check off-chain against pending `Deposit` / `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
+| `transfer / transferFrom` | public | Standard ERC-20. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. Whitelisted LPs can transfer sPLUSD freely amongst themselves. |
 | `totalAssets()` | public view | Returns `PLUSD.balanceOf(address(this))`. Increases when yield mints land in the vault. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of deposits and redemptions. |
 | `unpause()` | ADMIN | 48h-delayed, GUARDIAN-cancelable. |
@@ -385,10 +386,9 @@ The MVP deliberately keeps pause per-contract rather than consolidating into a s
 global switch. GUARDIAN's runbook for a full-protocol pause is a Safe multi-call to
 `pause()` on PLUSD, DepositManager, YieldMinter, WithdrawalQueue, sPLUSD, and
 LoanRegistry. A global `Pausable` aggregator was considered and rejected for MVP: it
-would couple every contract to a cross-contract read on the `_update` path (raising the
-blast-radius footprint of any bug in the aggregator) while sPLUSD transfers do not flow
-through PLUSD and would need their own gate regardless. Consolidation is a post-MVP
-refactor candidate.
+would couple every mutating path to a cross-contract read, raising the blast-radius
+footprint of any bug in the aggregator itself, for a convenience win that multi-call
+from the GUARDIAN Safe already delivers. Consolidation is a post-MVP refactor candidate.
 
 ---
 
@@ -574,13 +574,6 @@ multi-tranche, but there is no on-chain primitive for "expected schedule of part
 repayments." If multi-tranche repayment becomes operationally needed, the extension
 will be additive (a `LoanPartialRepaid` event and additional mutable fields).
 
-### sPLUSD transferability beyond the PLUSD redeem whitelist
-
-sPLUSD shares are freely transferable ERC-20. The PLUSD redeem-whitelist gate on the
-underlying asset neutralises secondary-market value for non-KYC buyers (they can hold
-sPLUSD but cannot redeem for USDC). A future version could add sPLUSD-level transfer
-restrictions.
-
 ### Global pause aggregator
 
 The MVP uses per-contract pause with a documented multi-call cascade. A single
@@ -662,8 +655,11 @@ Enums: `LoanStatus { Performing, Watchlist, Default, Closed }` ·
   delay, which GUARDIAN may cancel if the restoration is premature.
 - **Smart contracts hold no USDC.** Capital Wallet and Treasury Wallet are MPC-controlled.
   A contract exploit cannot drain investor capital unilaterally.
-- **Non-transferable PLUSD.** The `_update` hook requires exactly one of (from, to) to be a
-  system address or whitelisted LP, closing LP↔LP and system↔system laundering attack classes.
+- **Whitelist-gated PLUSD and sPLUSD.** Both tokens share the same `_update` rule: every
+  non-zero endpoint of every transfer must be a whitelisted LP or a system address. This
+  keeps the permissioned trading universe closed — unscreened wallets cannot be a source
+  or destination on either rail — while allowing whitelisted LPs to move PLUSD and sPLUSD
+  freely among themselves.
 - **On-chain repayment accounting is informational.** `LoanRegistry.recordRepayment`
   increments counters and emits an event but moves no USDC and mints no PLUSD. sPLUSD share
   price moves only on actual yield mints via the two-party `yieldMint` path. A compromised
