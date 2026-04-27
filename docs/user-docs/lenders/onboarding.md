@@ -13,7 +13,7 @@ Pipeline is permissioned — every lender wallet passes KYC/KYB and Chainalysis 
 - A self-custodied Ethereum wallet that you control. Pipeline never holds your keys.
 - Enough USDC in that wallet for your intended deposit. The minimum deposit is $1,000 USDC.
 
-## The KYC flow
+## The flow
 
 <ol class="steps">
   <li>Connect your wallet directly or via WalletConnect or RainbowKit. The connected address becomes your Pipeline account identifier.</li>
