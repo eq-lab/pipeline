@@ -8,13 +8,15 @@ section: For Borrowers
 
 Pipeline finances physical commodity trade deals — typically one facility per offtake contract. Lenders (KYC'd, on-chain) fund the Senior tranche; the Originator funds the Equity tranche as first-loss, with the offtaker (the end buyer of the commodity) paying into a Capital Wallet that the protocol reconciles against the loan on-chain.
 
-Borrowers are not self-service on Pipeline. Facilities are KYB'd and sourced bespoke through approved originators — Open Mineral at launch. This page exists to help you decide whether Pipeline is the right route for your next deal and, if so, how to reach us.
+Pipeline is not a self-service platform for borrowers. You can't sign up online, fill in a form, and take a loan. Every borrow facility comes to us through an originator — a commodity trading firm we already know and trust, that brings the deal, runs first-pass diligence on the borrower, and puts its own money in alongside ours as first-loss capital. At launch our only originator is Open Mineral. More will be onboarded over time.                                                   
+
+So the question is not "how do I apply." It is "is Pipeline the right route for this deal, and which originator should I go through?" The rest of this page is there to help you answer that.    
 
 ## What we finance
 
-- Physical commodity trade-finance facilities — for example jet fuel, base and precious metals, and refined products moving through a defined corridor with a named offtaker.
+- Physical commodity trade-finance — for example jet fuel, base and precious metals, and refined products moving through a defined corridor with a named offtaker.
 - One loan NFT per facility on the LoanRegistry. The NFT carries immutable origination data (commodity, corridor, facility size, tranche split, offtaker price, senior coupon rate) and mutable lifecycle state (status, CCR, current location) that the Trustee updates as the deal runs.
-- Senior-tranche capital sized by Pipeline lenders; Equity-tranche capital posted by the Originator as first-loss and held off-chain. You see one facility, one coupon, one maturity — the tranche split sits behind us.
+- Senior-tranche capital provided by Pipeline lenders; Equity-tranche capital posted by the Originator as first-loss and held off-chain. You see one facility, one coupon, one maturity — the tranche split sits behind us.
 
 {% include diagram.html src="d6-loan-lifecycle.svg" caption="Loan lifecycle — origination through repayment and closure." %}
 
@@ -34,7 +36,7 @@ Borrowers are not self-service on Pipeline. Facilities are KYB'd and sourced bes
 
 - KYB'd firms with a verifiable operating history in the named corridor and commodity.
 - An approved originator relationship — Open Mineral at launch, with additional originators onboarded over time.
-- Willingness to post cargo-tracking evidence — vessel IMO plus AIS feed, CMA inspection reports, warehouse or tank-farm identifiers — and to report on payment timing as the deal runs.
+- Must demonstrate ability / wilingness to post cargo-tracking evidence — vessel IMO plus AIS feed, CMA inspection reports, warehouse or tank-farm identifiers — and to report on payment timing as the deal runs.
 
 Our visible risk framework is the cargo-coverage ratio (CCR), with thresholds at **130 / 120 / 110**. A facility opens with headroom above 130; crossing 120 moves the loan to Watchlist; 110 triggers Risk Council escalation. Payment-delay flags run on the same lights: **amber over 7 days**, **red over 21 days**. Borrowers who communicate early through the Originator keep facilities on green regardless of amber prints.
 
