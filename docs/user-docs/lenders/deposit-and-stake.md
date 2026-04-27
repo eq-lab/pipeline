@@ -83,7 +83,7 @@ Any PLUSD holder. This is the design point that enables DeFi composability on sP
 
 ---
 
-## Unstake preview
+## Unstake flow
 
 Redeeming sPLUSD returns PLUSD, not USDC. Call `sPLUSD.redeem(shares, receiver, owner)` and the vault burns your shares and transfers PLUSD to the receiver. The receiver must be whitelisted on PLUSD, or the PLUSD transfer reverts and the whole redemption fails. The PLUSD amount paid out is `shares * totalAssets / totalSupply`, rounded down — so the exact quantity depends on the share price at the moment your transaction lands.
 
