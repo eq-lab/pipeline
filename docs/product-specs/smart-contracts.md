@@ -57,8 +57,8 @@ timelocked actions targeting that role). Launch configuration:
 | DEPOSITOR | PLUSD | DepositManager proxy | ADMIN 3/5 | GUARDIAN 2/5 |
 | YIELD_MINTER | PLUSD | YieldMinter proxy | ADMIN 3/5 | GUARDIAN 2/5 |
 | BURNER | PLUSD | WithdrawalQueue proxy | ADMIN 3/5 | GUARDIAN 2/5 |
-| FUNDER | WithdrawalQueue | Bridge EOA | ADMIN 3/5 | GUARDIAN 2/5 |
-| WHITELIST_ADMIN | WhitelistRegistry | Bridge EOA | ADMIN 3/5 | GUARDIAN 2/5 |
+| FUNDER | WithdrawalQueue | Relayer EOA | ADMIN 3/5 | GUARDIAN 2/5 |
+| WHITELIST_ADMIN | WhitelistRegistry | Relayer EOA | ADMIN 3/5 | GUARDIAN 2/5 |
 | TRUSTEE | LoanRegistry | Trustee key | ADMIN 3/5 | GUARDIAN 2/5 |
 | RISK_COUNCIL selectors | LoanRegistry, ShutdownController | RISK_COUNCIL 3/5 Safe | ADMIN 3/5 | GUARDIAN 2/5 |
 | PAUSER | every pausable contract | GUARDIAN 2/5 Safe | ADMIN 3/5 | — |
@@ -67,7 +67,7 @@ Contract-held roles (`DEPOSITOR`, `BURNER`, `YIELD_MINTER`) are bound to proxy a
 GUARDIAN revocation is technically possible but not part of the ordinary incident playbook
 (revoking them would freeze deposits/withdrawals/yield wholesale rather than targeting the
 compromised actor). Operational roles held by EOAs (`FUNDER`, `WHITELIST_ADMIN`, `TRUSTEE`,
-and the Bridge-side attestor key referenced by `YieldMinter`) are the ones GUARDIAN revokes
+and the Relayer-side attestor key referenced by `YieldMinter`) are the ones GUARDIAN revokes
 in a compromise.
 
 ---
@@ -79,8 +79,8 @@ in a compromise.
 | AccessManager (OZ) | — | Single role-management hub; timelocked scheduled actions | 0 |
 | PLUSD | OZ ERC20Pausable + ERC20Permit + AccessManaged + UUPS | Receipt token; mint exposed only as restricted `mintForDeposit` / `mintForYield`; `_update` hook enforces whitelist. All signature verification and rate-limit enforcement happens in caller contracts, not in the token. | ~80 |
 | DepositManager | AccessManaged + Pausable + ReentrancyGuard + UUPS | Atomic 1:1 USDC→PLUSD deposit. Enforces per-LP / per-window / supply caps. Holds `DEPOSITOR` role on PLUSD. | ~120 |
-| YieldMinter | AccessManaged + Pausable + UUPS | Verifies the two-party yield attestation (Bridge ECDSA + custodian EIP-1271), enforces replay protection, calls `PLUSD.mintForYield`. Holds `YIELD_MINTER` role on PLUSD. | ~110 |
-| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any whitelisted PLUSD holder. Plain ERC-4626 semantics — share price moves only when Bridge lands a `yieldMint` in the vault. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. | ~55 |
+| YieldMinter | AccessManaged + Pausable + UUPS | Verifies the two-party yield attestation (Relayer ECDSA + custodian EIP-1271), enforces replay protection, calls `PLUSD.mintForYield`. Holds `YIELD_MINTER` role on PLUSD. | ~110 |
+| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any whitelisted PLUSD holder. Plain ERC-4626 semantics — share price moves only when Relayer lands a `yieldMint` in the vault. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. | ~55 |
 | WhitelistRegistry | AccessManaged + TimelockPending + UUPS | On-chain allowlist: KYCed LP wallets and approved DeFi venues. Tracks Chainalysis `approvedAt` timestamp. Exposes `isAllowed` (no freshness check) and `isAllowedForMint` (requires fresh screen). | ~95 |
 | WithdrawalQueue | AccessManaged + Pausable + ReentrancyGuard + UUPS | FIFO withdrawal queue; Pending→Funded→Claimed/AdminReleased lifecycle. `fundRequest(uint256 usdcAmount)` consumes as many queue heads as the amount covers in full. | ~140 |
 | LoanRegistry | OZ ERC-721 (soulbound) + AccessManaged + Pausable + UUPS | On-chain registry of loan facilities. Origination data stored off-chain in IPFS JSON, referenced via standard ERC-721 `tokenURI`; mutable lifecycle state (status, CCR, location, cumulative repayments) lives on-chain. | ~140 |
@@ -154,7 +154,7 @@ The window is a **fixed 24h window**, not a rolling one: the counters `windowMin
 `lpWindowMinted[lp]` reset whenever `block.timestamp` crosses a `windowStart + 24h`
 boundary. Worst case is `2 × maxPerWindow` over a boundary (last second of window N plus
 first second of window N+1). This is acceptable because `maxTotalSupply` and the custodian
-MPC policy engine's independent cap on Bridge-originated USDC releases both bound the
+MPC policy engine's independent cap on Relayer-originated USDC releases both bound the
 worst-case blast radius, and the fixed-window algorithm is materially simpler than a
 sliding-window counter. The per-tx cap (`maxPerTx`) was dropped in v2.3 — per-LP per
 window already bounds any one actor, and per-tx caps create UX friction for legitimate
@@ -169,8 +169,8 @@ once custodian MPC policy + rolling PoR provide equivalent bounds.
 
 | Function | Access | Description |
 |---|---|---|
-| `yieldMint(YieldAttestation att, bytes bridgeSig, bytes custodianSig)` | public (any caller — sigs are the gate) | Verifies Bridge ECDSA (ecrecover on `bridgeYieldAttestor`) + custodian EIP-1271 (on `custodianYieldAttestor`). Enforces `att.ref` unused, destination ∈ {sPLUSD vault, Treasury Wallet}, amount > 0. On success, calls `PLUSD.mintForYield(att.recipient, att.amount)`. Marks `att.ref` consumed. |
-| `proposeYieldAttestors(address bridge, address custodian)` | ADMIN | Rotates signer addresses; 48h AccessManager delay, GUARDIAN-cancelable. |
+| `yieldMint(YieldAttestation att, bytes relayerSig, bytes custodianSig)` | public (any caller — sigs are the gate) | Verifies Relayer ECDSA (ecrecover on `relayerYieldAttestor`) + custodian EIP-1271 (on `custodianYieldAttestor`). Enforces `att.ref` unused, destination ∈ {sPLUSD vault, Treasury Wallet}, amount > 0. On success, calls `PLUSD.mintForYield(att.recipient, att.amount)`. Marks `att.ref` consumed. |
+| `proposeYieldAttestors(address relayer, address custodian)` | ADMIN | Rotates signer addresses; 48h AccessManager delay, GUARDIAN-cancelable. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of all yield mints. |
 | `unpause()` | ADMIN | 48h-delayed, GUARDIAN-cancelable. |
 
@@ -185,7 +185,7 @@ radius tight.
 | Function | Access | Description |
 |---|---|---|
 | `deposit(uint256 assets, address receiver)` | public | Standard ERC-4626 deposit. `receiver` must pass the shared whitelist check (whitelisted LP or system address); same rule applies as on a plain sPLUSD transfer. |
-| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation; does **not** trigger any on-chain yield mint. Bridge runs the USYC NAV freshness check off-chain against pending `Deposit` / `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
+| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation; does **not** trigger any on-chain yield mint. Relayer runs the USYC NAV freshness check off-chain against pending `Deposit` / `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
 | `transfer / transferFrom` | public | Standard ERC-20. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. Whitelisted LPs can transfer sPLUSD freely amongst themselves. |
 | `totalAssets()` | public view | Returns `PLUSD.balanceOf(address(this))`. Increases when yield mints land in the vault. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of deposits and redemptions. |
@@ -195,9 +195,9 @@ radius tight.
 
 | Function | Access | Description |
 |---|---|---|
-| `setAccess(address lp, uint256 approvedAt)` | WHITELIST_ADMIN (Bridge) | Adds or updates a whitelisted LP with the Chainalysis screening timestamp. |
-| `refreshScreening(address lp, uint256 newApprovedAt)` | WHITELIST_ADMIN (Bridge) | Updates `approvedAt` for an existing whitelisted LP after re-screening. |
-| `revokeAccess(address lp)` | WHITELIST_ADMIN (Bridge) or ADMIN | Removes LP from the whitelist immediately. |
+| `setAccess(address lp, uint256 approvedAt)` | WHITELIST_ADMIN (Relayer) | Adds or updates a whitelisted LP with the Chainalysis screening timestamp. |
+| `refreshScreening(address lp, uint256 newApprovedAt)` | WHITELIST_ADMIN (Relayer) | Updates `approvedAt` for an existing whitelisted LP after re-screening. |
+| `revokeAccess(address lp)` | WHITELIST_ADMIN (Relayer) or ADMIN | Removes LP from the whitelist immediately. |
 | `isAllowed(address lp)` | public view | Returns true if LP is whitelisted. Does not check freshness. Used by WithdrawalQueue and PLUSD `_update`. |
 | `isAllowedForMint(address lp)` | public view | Returns true if LP is whitelisted AND `(block.timestamp − approvedAt) < freshnessWindow`. Used by DepositManager at deposit time. |
 | `setFreshnessWindow(uint256 seconds)` | ADMIN, bounded `[7d, 365d]` | Adjusts the Chainalysis re-screening cutoff. 48h-delayed, GUARDIAN-cancelable. |
@@ -209,8 +209,8 @@ radius tight.
 willing to mint against. Default is 90 days. It is **not** an oracle-freshness concept
 and has no relationship to rate limits; it only gates `isAllowedForMint`. At the deposit
 path, if an LP's last screening is older than `freshnessWindow`, `DepositManager.deposit`
-reverts and the Bridge re-screens via Chainalysis before calling `refreshScreening` to
-update `approvedAt`. At the withdrawal path, staleness is handled by Bridge before
+reverts and the Relayer re-screens via Chainalysis before calling `refreshScreening` to
+update `approvedAt`. At the withdrawal path, staleness is handled by Relayer before
 calling `fundRequest` (see withdrawals spec).
 
 ### WithdrawalQueue
@@ -220,8 +220,8 @@ Lifecycle: `Pending → Funded → Claimed | AdminReleased`
 | Function | Access | Description |
 |---|---|---|
 | `requestWithdrawal(uint256 amount)` | public | Pulls PLUSD from caller into escrow; assigns `queue_id`; emits `WithdrawalRequested`. Reverts if caller not whitelisted with a fresh screen. |
-| `fundRequest(uint256 usdcAmount)` | FUNDER (Bridge) | Pulls `usdcAmount` USDC from Capital Wallet via pre-approved allowance, funds as many consecutive queue heads in full as the amount covers, emits `WithdrawalFunded(queueId)` per filled entry. Reverts if `usdcAmount` is not exactly the sum of one or more contiguous head entries (no change / partial fills). |
-| `skipSanctionedHead()` | FUNDER (Bridge) | Moves a currently-not-`isAllowed` queue head to `AdminReleased`, unblocking the queue. Escrowed PLUSD remains in the contract pending ADMIN disposition. See Sanctioned Head Handling below. |
+| `fundRequest(uint256 usdcAmount)` | FUNDER (Relayer) | Pulls `usdcAmount` USDC from Capital Wallet via pre-approved allowance, funds as many consecutive queue heads in full as the amount covers, emits `WithdrawalFunded(queueId)` per filled entry. Reverts if `usdcAmount` is not exactly the sum of one or more contiguous head entries (no change / partial fills). |
+| `skipSanctionedHead()` | FUNDER (Relayer) | Moves a currently-not-`isAllowed` queue head to `AdminReleased`, unblocking the queue. Escrowed PLUSD remains in the contract pending ADMIN disposition. See Sanctioned Head Handling below. |
 | `claim(uint256 queueId)` | public (original requester only) | Atomically burns escrowed PLUSD and pays out USDC to LP. Only callable after `Funded`. Emits `WithdrawalClaimed`. |
 | `adminRelease(uint256 queueId)` | ADMIN | Manual release of a stuck entry to `AdminReleased`; disposition of escrowed PLUSD handled by a separate ADMIN action. |
 | `getQueueDepth()` | public view | Returns `(totalEscrowed, pendingCount, fundedCount)`. |
@@ -232,9 +232,9 @@ Partial fills, `cancelWithdrawal`, and LP-initiated cancellation are not in the 
 
 #### Sanctioned head handling
 
-If at the moment Bridge evaluates the head `isAllowed(requester) == false` — i.e. the LP
+If at the moment Relayer evaluates the head `isAllowed(requester) == false` — i.e. the LP
 has been removed from the whitelist since `requestWithdrawal` (Chainalysis flag, OFAC
-listing, or manual revoke) — Bridge calls `skipSanctionedHead()`. The entry moves to
+listing, or manual revoke) — Relayer calls `skipSanctionedHead()`. The entry moves to
 `AdminReleased`, unblocking the queue for subsequent LPs. **No USDC is transferred for
 this entry**; the Capital Wallet is untouched. The escrowed PLUSD stays inside WQ
 pending ADMIN disposition (e.g. legal/regulatory direction on a confirmed OFAC match).
@@ -243,7 +243,7 @@ address would expose the protocol to sanctions liability, and USDC itself enforc
 equivalent at the stablecoin level.
 
 This path is reserved for actual sanctions / whitelist revocation. Merely-stale
-Chainalysis screens do not go through `skipSanctionedHead`; Bridge re-screens and calls
+Chainalysis screens do not go through `skipSanctionedHead`; Relayer re-screens and calls
 `WhitelistRegistry.refreshScreening` to restore freshness before funding.
 
 ### LoanRegistry
@@ -258,7 +258,7 @@ Chainalysis screens do not go through `skipSanctionedHead`; Bridge re-screens an
 | `tokenURI(uint256 tokenId)` | public view (ERC-721) | Returns the IPFS URI of the immutable origination JSON. |
 | `getMutable(uint256 tokenId)` | public view | Returns current mutable lifecycle data. |
 
-Bridge has **no role on LoanRegistry**. All loan NFT writes — including `recordRepayment` —
+Relayer has **no role on LoanRegistry**. All loan NFT writes — including `recordRepayment` —
 are done by the Trustee key directly.
 
 Immutable origination data is stored off-chain as an IPFS JSON document referenced by
@@ -396,9 +396,9 @@ from the GUARDIAN Safe already delivers. Consolidation is a post-MVP refactor ca
 
 **Operational roles** (GUARDIAN can revoke a named holder directly; ADMIN grants and re-grants under 48h timelock):
 
-- Bridge EOA holds: `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry).
-- Bridge yield-attestor key: referenced by `YieldMinter` as `bridgeYieldAttestor` (rotatable under 48h ADMIN timelock via `proposeYieldAttestors`). This is a signing key, not a role — revocation is a rotation, not a `revokeRole` call.
-- Trustee key holds: `TRUSTEE` on LoanRegistry (all loan NFT writes — Bridge has no LoanRegistry role).
+- Relayer EOA holds: `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry).
+- Relayer yield-attestor key: referenced by `YieldMinter` as `relayerYieldAttestor` (rotatable under 48h ADMIN timelock via `proposeYieldAttestors`). This is a signing key, not a role — revocation is a rotation, not a `revokeRole` call.
+- Trustee key holds: `TRUSTEE` on LoanRegistry (all loan NFT writes — Relayer has no LoanRegistry role).
 
 **Contract-held roles** (bound to a proxy address, not an EOA; not subject to GUARDIAN revocation in the ordinary flow):
 
@@ -419,7 +419,7 @@ held by EOAs: `FUNDER`, `WHITELIST_ADMIN`, `TRUSTEE`. Revocation is instant and 
 no timelock. Re-granting a revoked role requires an ADMIN proposal with the 48h
 AccessManager delay (which GUARDIAN may cancel). GUARDIAN cannot revoke `UPGRADER`,
 `DEFAULT_ADMIN`, `DEPOSITOR`, `YIELD_MINTER`, `BURNER`, or any governance role — attempts
-revert. A Bridge-side yield-attestor compromise is handled by rotation via
+revert. A Relayer-side yield-attestor compromise is handled by rotation via
 `YieldMinter.proposeYieldAttestors`, not by `revokeRole`.
 
 ---
@@ -493,11 +493,11 @@ GUARDIAN **cannot** grant roles, unpause any contract, upgrade, revoke governanc
 
 Every restoration runs through ADMIN with the 48h AccessManager delay and is itself
 GUARDIAN-cancelable: `unpause()` on any contract; re-grant of any revoked operational
-role; rotation of `bridgeYieldAttestor` / `custodianYieldAttestor` via
+role; rotation of `relayerYieldAttestor` / `custodianYieldAttestor` via
 `YieldMinter.proposeYieldAttestors`; rotation of `capitalWallet` on DepositManager;
 upgrade of any implementation via the `UPGRADER` role.
 
-### Playbook: Bridge operational-key compromise
+### Playbook: Relayer operational-key compromise
 
 1. **Detection.** Watchdog alerts on anomalous `WhitelistAccess` grants,
    `WithdrawalFunded` without matching Capital Wallet allowance movement, divergence
@@ -506,13 +506,13 @@ upgrade of any implementation via the `UPGRADER` role.
 2. **Immediate (GUARDIAN, < 1 min).** Pause PLUSD, DepositManager, YieldMinter, and
    WithdrawalQueue (defence in depth).
 3. **Containment (GUARDIAN, < 10 min).** Submit separate `revokeRole` transactions for
-   `FUNDER` and `WHITELIST_ADMIN` on the compromised Bridge address. Even a fully
-   compromised Bridge cannot mint yield afterwards (custodian EIP-1271 still required,
+   `FUNDER` and `WHITELIST_ADMIN` on the compromised Relayer address. Even a fully
+   compromised Relayer cannot mint yield afterwards (custodian EIP-1271 still required,
    and YieldMinter is paused), cannot fund withdrawals (`FUNDER` revoked), and cannot
    modify the whitelist.
 4. **Investigation & recovery.** Audit event logs; if the yield-signing key is
-   compromised, ADMIN proposes `YieldMinter.proposeYieldAttestors(newBridgeAttestor,
-   sameCustodian)` under 48h timelock. Provision a new Bridge address; ADMIN proposes
+   compromised, ADMIN proposes `YieldMinter.proposeYieldAttestors(newRelayerAttestor,
+   sameCustodian)` under 48h timelock. Provision a new Relayer address; ADMIN proposes
    re-granting `FUNDER`, `WHITELIST_ADMIN` under 48h timelock each. Unpause via ADMIN.
 
 ### Playbook: Trustee key compromise
@@ -522,7 +522,7 @@ upgrade of any implementation via the `UPGRADER` role.
    are unaffected — LoanRegistry has no capital touchpoints.
 2. **Containment.** Trustee can (out-of-band, via Capital Wallet MPC policy) revoke the
    Capital Wallet → WQ USDC allowance. Single-key Trustee compromise alone cannot move
-   USDC (Bridge cosign required).
+   USDC (Relayer cosign required).
 3. **Data-integrity review.** False LoanRegistry entries do not move funds or share
    price; reconcile against Capital Wallet inflows to identify them.
 4. **Recovery.** Provision a new Trustee key; ADMIN re-grants `TRUSTEE` under 48h
@@ -531,9 +531,9 @@ upgrade of any implementation via the `UPGRADER` role.
 ### Playbook: Custodian yield-attestor compromise
 
 1. **Immediate.** Custodian's own key-management revokes the compromised key; no
-   on-chain action strictly required — the compromised key alone cannot mint (Bridge
+   on-chain action strictly required — the compromised key alone cannot mint (Relayer
    sig and `YIELD_MINTER` caller chain still needed).
-2. **Rotation.** ADMIN calls `YieldMinter.proposeYieldAttestors(sameBridge,
+2. **Rotation.** ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer,
    newCustodian)` under 48h timelock. Yield mints continue during the window (old
    attestor still valid — acceptable because it cannot mint alone).
 3. **Defence in depth.** If coordinated compromise is suspected, GUARDIAN also pauses
@@ -634,7 +634,7 @@ Enums: `LoanStatus { Performing, Watchlist, Default, Closed }` ·
 ## Security Considerations
 
 - **No single point of mint compromise.** Deposit-leg mints require an atomic contract call
-  through DepositManager (no off-chain signer). Yield-leg mints require Bridge ECDSA signature
+  through DepositManager (no off-chain signer). Yield-leg mints require Relayer ECDSA signature
   + custodian EIP-1271 signature verified inside YieldMinter, plus YieldMinter holding
   `YIELD_MINTER` on PLUSD — three independent controls. Compromising any one party alone
   mints zero PLUSD.
@@ -679,13 +679,13 @@ sequence integrity, known properties, and accepted trust assumptions), see
 | ADMIN Safe | 3/5 Gnosis Safe | `DEFAULT_ADMIN` on AccessManager, `UPGRADER` on every proxy | All actions 48h-timelocked. Grants and re-grants operational roles (re-grant under 48h after a GUARDIAN revocation). |
 | RISK_COUNCIL Safe | 3/5 Gnosis Safe | Caller of `setDefault` on LoanRegistry, `proposeShutdown` and `adjustRecoveryRateUp` on ShutdownController | 24h AccessManager delay on these selectors. Distinct signer set from ADMIN. |
 | GUARDIAN Safe | 2/5 Gnosis Safe | `PAUSER` on every pausable contract; `GUARDIAN_ROLE` on AccessManager | Instant pause, cancellation, and operational-role revocation. No ability to grant, unpause, upgrade, or initiate risk-increasing actions. |
-| Bridge | Protocol backend | `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry) | On-chain EOA or contract wallet. Never custodies USDC. Co-signs yield-mint attestations alongside custodian (as `bridgeYieldAttestor` referenced by YieldMinter — a signing-key relationship, not a role). Not in the critical path for deposits (those are atomic LP-driven via DepositManager). Has no role on LoanRegistry. |
-| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All LoanRegistry writes: `mintLoan`, `updateMutable`, `recordRepayment`, Trustee-branch `closeLoan`. Also one cosigner on the Capital Wallet MPC. Distinct key set from Bridge and Team. |
+| Relayer | Protocol backend | `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry) | On-chain EOA or contract wallet. Never custodies USDC. Co-signs yield-mint attestations alongside custodian (as `relayerYieldAttestor` referenced by YieldMinter — a signing-key relationship, not a role). Not in the critical path for deposits (those are atomic LP-driven via DepositManager). Has no role on LoanRegistry. |
+| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All LoanRegistry writes: `mintLoan`, `updateMutable`, `recordRepayment`, Trustee-branch `closeLoan`. Also one cosigner on the Capital Wallet MPC. Distinct key set from Relayer and Team. |
 | Pipeline Team | Team key | — (none on-chain) | One cosigner on Capital Wallet and Treasury Wallet MPC. Co-signs loan disbursement and treasury operations per custodian policy. |
-| Capital Wallet | MPC-controlled on-chain address | — | Holds USDC reserves. Cosigners: Trustee + Team + Bridge. All Capital Wallet transfers are on-chain ERC-20, never off-chain wires. |
+| Capital Wallet | MPC-controlled on-chain address | — | Holds USDC reserves. Cosigners: Trustee + Team + Relayer. All Capital Wallet transfers are on-chain ERC-20, never off-chain wires. |
 | Treasury Wallet | MPC-controlled on-chain address | — | Protocol fees and yield share. |
-| Custodian yield-attestor | EIP-1271 contract | — (smart-contract signer) | Independent second signer on every yield mint (verified inside YieldMinter). Compromising Bridge alone mints zero; compromising the custodian alone mints zero. |
-| Bridge yield-attestor | EOA | — (ECDSA signer) | First signer on every yield mint. Rotatable via `YieldMinter.proposeYieldAttestors` under 48h ADMIN timelock. |
+| Custodian yield-attestor | EIP-1271 contract | — (smart-contract signer) | Independent second signer on every yield mint (verified inside YieldMinter). Compromising Relayer alone mints zero; compromising the custodian alone mints zero. |
+| Relayer yield-attestor | EOA | — (ECDSA signer) | First signer on every yield mint. Rotatable via `YieldMinter.proposeYieldAttestors` under 48h ADMIN timelock. |
 | DepositManager | Contract | Holds `DEPOSITOR` on PLUSD | Only account authorised to call `PLUSD.mintForDeposit`. |
 | YieldMinter | Contract | Holds `YIELD_MINTER` on PLUSD | Only account authorised to call `PLUSD.mintForYield`. Contains all attestation-verification logic. |
 | WithdrawalQueue | Contract | Holds `BURNER` on PLUSD | Only account authorised to call `PLUSD.burn` on the claim path. |

@@ -35,7 +35,7 @@ There is no signature, no queue, and no back-office step between your wallet and
 
 </div>
 
-{% include diagram.html src="d2-deposit-mint.svg" caption="Deposit to mint — one atomic transaction, no Bridge signer in the critical path." %}
+{% include diagram.html src="d2-deposit-mint.svg" caption="Deposit to mint — one atomic transaction, no Relayer signer in the critical path." %}
 
 ### Walkthrough
 
@@ -102,7 +102,7 @@ Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue.
 
 ## What affects your yield
 
-Two engines feed the vault. Senior loan coupons are minted into the vault as trade-finance borrowers repay their drawings. T-bill NAV yield is minted at 70% of accrued USYC appreciation; the remaining 30% accrues to the Treasury tranche. A 15% USDC buffer (target band 10–20%) sits inside the Capital Wallet so that routine redemptions can be serviced without forcing a T-bill sale. Both yield mints require two independent signatures verified on-chain — neither Bridge alone nor the custodian alone can mint yield PLUSD.
+Two engines feed the vault. Senior loan coupons are minted into the vault as trade-finance borrowers repay their drawings. T-bill NAV yield is minted at 70% of accrued USYC appreciation; the remaining 30% accrues to the Treasury tranche. A 15% USDC buffer (target band 10–20%) sits inside the Capital Wallet so that routine redemptions can be serviced without forcing a T-bill sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the custodian alone can move PLUSD into the vault.
 
 Loan-coupon mints settle per repayment event. T-bill NAV mints settle lazily, on each stake or unstake that touches the vault, so the share price refreshes at your interaction rather than on a fixed cadence. If there are no stake or unstake events for a period, unrealised NAV still accrues inside the Capital Wallet and materialises at the next vault interaction.
 

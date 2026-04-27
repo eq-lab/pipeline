@@ -37,7 +37,7 @@ A separate custodied address that collects protocol fees (management, performanc
 
 ### Relayer
 
-The off-chain backend that indexes on-chain events, co-signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds three on-chain roles: `YIELD_MINTER` on PLUSD token contract, `FUNDER` on WithdrawalQueue contract, and `WHITELIST_ADMIN` on WhitelistRegistry contract. Relayer also acts as one of the three Capital Wallet cosigners, but **Relayer never custodies USDC itself**. A fully compromised Relayer cannot mint deposit-leg PLUSD (deposits are atomic and handled by smart contract) and cannot mint PLUSD out of thin air (the custodian signature is an independent gate).
+The off-chain backend that indexes on-chain events, signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds two on-chain roles: `FUNDER` on WithdrawalQueue and `WHITELIST_ADMIN` on WhitelistRegistry. The Relayer also signs yield attestations with its `relayerYieldAttestor` key, but it does not hold the `YIELD_MINTER` role itself — that role is held by the YieldMinter contract, which verifies the Relayer signature alongside the custodian's EIP-1271 co-signature before any yield PLUSD mints. Relayer also acts as one of the three Capital Wallet cosigners, but **Relayer never custodies USDC itself**. A fully compromised Relayer cannot mint deposit-leg PLUSD (deposits are atomic), cannot mint yield PLUSD alone (custodian co-signature required), and cannot move USDC alone (Trustee or Team cosign required for any out-of-envelope payout).
 
 ### Trustee
 
@@ -47,7 +47,7 @@ An independent Swiss-based trusted entity. On the cash rail it is one of the thr
 
 ## The token rail
 
-The token rail is a set of on-chain contracts. Nine in total: an **AccessManager** role hub and eight protocol contracts that issue IOUs and track behaviour. Rules link the rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
+The token rail is a set of on-chain contracts. Ten in total: an **AccessManager** role hub and nine protocol contracts that issue IOUs and track behaviour. Rules link the rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
 
 The **AccessManager** is the central authority contract. Every privileged call — a role grant, an unpause, an upgrade, an emergency revocation — routes through this smart contract, either instantly for GUARDIAN or through a timelock for ADMIN and RISK_COUNCIL.
 
@@ -61,7 +61,11 @@ The atomic entry point for deposits. A whitelisted lender calls `deposit(amount)
 
 ### PLUSD
 
-An ERC-20 receipt token minted 1:1 against deposited USDC. Currently every transfer is gated by the WhitelistRegistry. Minimum logic, standard token contract interfaces. This contract tracks three cumulative counters (deposits, yield mints, burns) and asserts a reserve invariant on every mint path.
+An ERC-20 receipt token minted 1:1 against deposited USDC. Currently every transfer is gated by the WhitelistRegistry. Minimum logic, standard token contract interfaces. This contract tracks three cumulative counters (deposits, yield mints, burns) and asserts a reserve invariant on every mint path. Two mint functions exist: `mintForDeposit` (DEPOSITOR role, held by DepositManager) and `mintForYield` (YIELD_MINTER role, held by YieldMinter). PLUSD itself does no signature verification — that lives one layer up.
+
+### YieldMinter
+
+A dedicated contract for yield-leg mints. `YieldMinter.yieldMint(attestation, relayerSig, custodianSig)` is the public entry point — anyone can call it, but the call only succeeds if both signatures verify on-chain. Verifies the Relayer ECDSA signature against the configured `relayerYieldAttestor`, the custodian's EIP-1271 signature against `custodianYieldAttestor`, the attestation `ref` is unused (replay protection), the destination is the sPLUSD vault or Treasury Wallet, and the amount is non-zero. On success, calls `PLUSD.mintForYield`. Holds the `YIELD_MINTER` role on PLUSD; pause is GUARDIAN-instant, attestor rotation is 48h ADMIN-timelocked.
 
 ### sPLUSD
 

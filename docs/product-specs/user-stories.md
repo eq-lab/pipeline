@@ -13,7 +13,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **Acceptance criteria:**
 - [ ] Connecting a wallet via WalletConnect v2 / RainbowKit creates a Pipeline account with that address as the identifier — no separate email/password registration.
 - [ ] Sumsub returns APPROVED and Chainalysis returns a clean result.
-- [ ] The bridge service writes the LP address to the WhitelistRegistry with `approvedAt` set to the current block timestamp within one block of both vendor results arriving.
+- [ ] The relayer service writes the LP address to the WhitelistRegistry with `approvedAt` set to the current block timestamp within one block of both vendor results arriving.
 - [ ] The LP receives an in-app notification of approval.
 - [ ] The deposit UI is unblocked immediately after whitelisting.
 - [ ] No human review step is required.
@@ -29,7 +29,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 - [ ] If Chainalysis returns any status other than clean or REJECTED, the LP enters the compliance review queue.
 - [ ] The compliance officer sees the LP's full Sumsub output, Chainalysis report, accreditation declaration, and the specific flag that triggered manual review.
 - [ ] A single compliance officer (team member with compliance sub-role) can approve or reject the LP.
-- [ ] On approval, the bridge service writes the LP to the WhitelistRegistry identically to the happy path.
+- [ ] On approval, the relayer service writes the LP to the WhitelistRegistry identically to the happy path.
 - [ ] On rejection, the LP is notified with the reason.
 - [ ] The compliance decision is recorded in the audit log with the deciding officer and outcome.
 
@@ -41,7 +41,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 **Acceptance criteria:**
 - [ ] When an LP initiates a deposit and `(block.timestamp - approvedAt) >= freshnessWindow`, the deposit UI is blocked and a re-verify prompt is shown.
-- [ ] Triggering re-verification via the app initiates a fresh Chainalysis screen through the bridge service.
+- [ ] Triggering re-verification via the app initiates a fresh Chainalysis screen through the relayer service.
 - [ ] On a clean result, `approvedAt` is refreshed on the WhitelistRegistry and the deposit UI is unblocked.
 - [ ] On a failed or suspicious result, the LP's whitelist entry is flagged for manual compliance review and the deposit UI remains blocked.
 - [ ] The `freshnessWindow` parameter (default 90 days) is configurable by the foundation multisig.
@@ -73,7 +73,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 - [ ] The LP calls `DepositManager.deposit(usdcAmount)` after approving DepositManager as spender on USDC (standard ERC-20 permit or prior `approve`).
 - [ ] DepositManager atomically: checks `WhitelistRegistry.isAllowedForMint(lp)` (whitelist + Chainalysis freshness), enforces the per-LP, rolling-window, and total-supply caps, pulls USDC via `transferFrom(lp, capitalWallet, amount)`, and calls `PLUSD.mintForDeposit(lp, amount)`.
 - [ ] The LP receives PLUSD at a 1:1 ratio to USDC deposited in the same transaction.
-- [ ] Bridge is not in the deposit critical path: it observes `DepositManager.Deposited` events for reconciliation and indexing only, with no gating role on the deposit leg.
+- [ ] Relayer is not in the deposit critical path: it observes `DepositManager.Deposited` events for reconciliation and indexing only, with no gating role on the deposit leg.
 - [ ] The deposit appears in the LP's transaction history.
 
 ---
@@ -83,9 +83,9 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As an** LP who deposits below the 1,000 USDC minimum, **I want to** have my partial deposits accumulated as a pending balance, **so that** I can unlock minting with a subsequent top-up rather than receiving a refund.
 
 **Acceptance criteria:**
-- [ ] A deposit below 1,000 USDC is not rejected; the bridge records an unminted balance for the LP address.
+- [ ] A deposit below 1,000 USDC is not rejected; the relayer records an unminted balance for the LP address.
 - [ ] The LP dashboard displays the accumulated pending balance labelled "pending deposits — not yet earning yield" and shows the additional amount required to reach the threshold.
-- [ ] When cumulative pending deposits from the same address reach or exceed 1,000 USDC, the bridge mints PLUSD for the combined total in a single transaction.
+- [ ] When cumulative pending deposits from the same address reach or exceed 1,000 USDC, the relayer mints PLUSD for the combined total in a single transaction.
 - [ ] The pending balance counter resets to zero after the combined mint.
 - [ ] The 1,000 USDC minimum is configurable by the foundation multisig.
 
@@ -96,11 +96,11 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As an** LP whose deposit would breach the rolling 24h rate limit, **I want to** be queued automatically and receive PLUSD as headroom opens, **so that** I do not lose my deposit or have to resubmit.
 
 **Acceptance criteria:**
-- [ ] A deposit that would push total mints past the $10M / 24h window or $5M / tx cap is not rejected; the bridge records it in the deposit mint queue with `(lpAddress, amount, deposit_tx_hash, queued_at)`.
+- [ ] A deposit that would push total mints past the $10M / 24h window or $5M / tx cap is not rejected; the relayer records it in the deposit mint queue with `(lpAddress, amount, deposit_tx_hash, queued_at)`.
 - [ ] The LP dashboard shows "PLUSD mint pending rate limit" status for the queued entry.
-- [ ] As the rolling 24h window advances and headroom becomes available, the bridge processes queued entries in FIFO order, calling `PLUSD.mint()` for each.
+- [ ] As the rolling 24h window advances and headroom becomes available, the relayer processes queued entries in FIFO order, calling `PLUSD.mint()` for each.
 - [ ] A single deposit exceeding the $5M per-transaction cap is split into multiple mint transactions over successive windows; the LP sees incremental PLUSD arrive.
-- [ ] The bridge service reconstructs the queue from USDC Transfer logs and PLUSD mint logs after a restart.
+- [ ] The relayer service reconstructs the queue from USDC Transfer logs and PLUSD mint logs after a restart.
 
 ---
 
@@ -110,7 +110,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 **Acceptance criteria:**
 - [ ] A single USDC transfer above the $5M per-transaction cap is placed into the deposit mint queue.
-- [ ] The bridge splits the deposit into multiple mint calls, each at or below $5M, processed across successive rolling windows.
+- [ ] The relayer splits the deposit into multiple mint calls, each at or below $5M, processed across successive rolling windows.
 - [ ] The LP dashboard shows incremental PLUSD arrivals with status indicators for the remaining queued amount.
 - [ ] The total PLUSD minted equals the total USDC deposited after all windows are processed.
 - [ ] All partial mints are recorded individually in the LP's transaction history.
@@ -167,7 +167,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **Acceptance criteria:**
 - [ ] The originator enters immutable loan parameters (borrower identifier, commodity, corridor, facility size, senior/equity tranche split, tenor, governing law, optional metadata URI, initial location data) via the New origination form.
 - [ ] On submit, the Originator UI builds an EIP-712 payload and signs it using the originator's authenticated session with 2FA confirmation — no wallet popup or on-chain transaction is required.
-- [ ] The signed request is POSTed to the bridge service, validated, and given status `SubmittedAwaitingTrustee`.
+- [ ] The signed request is POSTed to the relayer service, validated, and given status `SubmittedAwaitingTrustee`.
 - [ ] The request appears in the trustee's origination queue.
 - [ ] If the signature is invalid, the request is rejected immediately and not surfaced to the trustee.
 - [ ] The originator sees the request in "My Requests" with the current status.
@@ -179,9 +179,9 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee, **I want to** verify and approve an origination request and co-sign the resulting disbursement transaction, **so that** the borrower receives USDC only after proper dual-authority review.
 
 **Acceptance criteria:**
-- [ ] The trustee reviews the origination parameters in the trustee tooling (signature already validated by the bridge service).
+- [ ] The trustee reviews the origination parameters in the trustee tooling (signature already validated by the relayer service).
 - [ ] On approval, the trustee tooling broadcasts `LoanRegistry.mintLoan()` with the verified parameters; a LoanMinted event is emitted.
-- [ ] The bridge service prepares the Capital Wallet outflow transaction in response to LoanMinted and surfaces it in the team signing queue.
+- [ ] The relayer service prepares the Capital Wallet outflow transaction in response to LoanMinted and surfaces it in the team signing queue.
 - [ ] A team member provides their MPC signature; the trustee provides their MPC co-signature.
 - [ ] On both signatures, USDC is wired to the borrower via the on-ramp provider.
 - [ ] The originator's request status updates to `Approved` then `Disbursed`.
@@ -194,7 +194,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee, **I want to** update mutable loan fields (status, maturity date, CCR, goods location) in response to operational events, **so that** the on-chain LoanRegistry reflects current loan state accurately.
 
 **Acceptance criteria:**
-- [ ] The trustee can call `updateMutable` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry; Bridge has no write access to LoanRegistry) to update: `status` (Performing ↔ Watchlist), `currentMaturityDate`, `lastReportedCCR` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL).
+- [ ] The trustee can call `updateMutable` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry; Relayer has no write access to LoanRegistry) to update: `status` (Performing ↔ Watchlist), `currentMaturityDate`, `lastReportedCCR` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL).
 - [ ] `updateMutable` reverts if `newStatus == Default`; default transitions require the Risk Council 3-of-5 multisig calling `setDefault`.
 - [ ] CCR updates triggered by the price feed subsystem are also written via this path, batched on threshold crossings only.
 - [ ] The updated fields are visible on Protocol Dashboard Panel B and the Originator's loan detail view immediately.
@@ -225,7 +225,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 - [ ] The application computes all waterfall components: senior principal returned, senior gross interest, management fee, securitisation agent fee (zero in MVP), performance fee, senior coupon net, OET allocation, and originator residual.
 - [ ] The trustee can adjust individual components if the actual transaction deviates (negotiated fee waiver, partial repayment, early repayment fee); deviations from the baseline are highlighted.
 - [ ] On confirmation, the trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction).
-- [ ] The bridge service mints `PLUSD(sPLUSD vault, senior_coupon_net)` and `PLUSD(TreasuryWallet, management_fee + performance_fee + oet_allocation)`.
+- [ ] The relayer service mints `PLUSD(sPLUSD vault, senior_coupon_net)` and `PLUSD(TreasuryWallet, management_fee + performance_fee + oet_allocation)`.
 
 ---
 
@@ -234,9 +234,9 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee, **I want to** review and sign the pre-built weekly TreasuryYieldDistributed transaction, **so that** T-bill yield is distributed to stakers and the Treasury Wallet each Thursday without manual computation.
 
 **Acceptance criteria:**
-- [ ] At the weekly reference time (Thursday end of day NY), the bridge pre-builds the TreasuryYieldDistributed transaction with: total accrued yield, vault share (70%), treasury share (30%), reference USYC NAV, USYC holding amount, and week-ending date.
+- [ ] At the weekly reference time (Thursday end of day NY), the relayer pre-builds the TreasuryYieldDistributed transaction with: total accrued yield, vault share (70%), treasury share (30%), reference USYC NAV, USYC holding amount, and week-ending date.
 - [ ] The pre-built transaction appears in the trustee tooling for review before any minting occurs.
-- [ ] The trustee signs the transaction (a signed attestation); the bridge mints `PLUSD(sPLUSD vault, vault_share)` and `PLUSD(TreasuryWallet, treasury_share)`.
+- [ ] The trustee signs the transaction (a signed attestation); the relayer mints `PLUSD(sPLUSD vault, vault_share)` and `PLUSD(TreasuryWallet, treasury_share)`.
 - [ ] The weekly distribution event appears in Protocol Dashboard Panel D as a discrete point in the T-bill yield time series.
 - [ ] The real-time accrued T-bill yield counter resets to zero after the mint.
 
@@ -247,7 +247,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** protocol operator, **I want** the backing invariant to be evaluated automatically after every state-changing event and published to the protocol dashboard, **so that** any PLUSD under-backing is detected immediately.
 
 **Acceptance criteria:**
-- [ ] The bridge evaluates `PLUSD totalSupply == USDC in Capital Wallet + USYC NAV + USDC out on loans + USDC in transit` after each: yield distribution, deposit, loan disbursement, loan repayment, and LP withdrawal.
+- [ ] The relayer evaluates `PLUSD totalSupply == USDC in Capital Wallet + USYC NAV + USDC out on loans + USDC in transit` after each: yield distribution, deposit, loan disbursement, loan repayment, and LP withdrawal.
 - [ ] The result is published to Protocol Dashboard Panel A with a green / amber / red indicator (green < 0.01%, amber 0.01%–1%, red > 1%).
 - [ ] An amber or red state triggers an alert to the on-call channel and to the trustee.
 - [ ] The invariant status and before/after values are recorded in the audit log for each evaluation.
@@ -259,8 +259,8 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** protocol, **I want** idle capital to be automatically swept into USYC and redeemed back to USDC when the buffer falls below the lower band, **so that** the Capital Wallet earns T-bill yield on idle reserves without manual intervention.
 
 **Acceptance criteria:**
-- [ ] When USDC ratio exceeds 20%, the bridge automatically initiates a USDC → USYC swap to bring the ratio back to 15%.
-- [ ] When USDC ratio falls below 10%, the bridge automatically initiates a USYC → USDC redemption to restore the ratio.
+- [ ] When USDC ratio exceeds 20%, the relayer automatically initiates a USDC → USYC swap to bring the ratio back to 15%.
+- [ ] When USDC ratio falls below 10%, the relayer automatically initiates a USYC → USDC redemption to restore the ratio.
 - [ ] Each automated swap is capped at $5M per transaction and $20M per day; amounts above either bound route to the team + trustee signing queue.
 - [ ] Senior principal returned on loan repayment is automatically swept into USYC immediately after the RepaymentSettled mint.
 - [ ] The trustee retains a manual override UI requiring trustee + team co-signature for swaps outside the automated rules.
@@ -275,8 +275,8 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 **Acceptance criteria:**
 - [ ] The LP calls `WithdrawalQueue.requestWithdrawal(amount)`; the contract checks the caller is on the WhitelistRegistry with a fresh screen, pulls PLUSD into escrow, assigns a `queue_id`, and emits `WithdrawalRequested`.
-- [ ] The bridge evaluates fillability against the Capital Wallet's current USDC balance.
-- [ ] If sufficient USDC is available, the bridge auto-signs the payout to the LP's original deposit address and calls `WithdrawalQueue.fillRequest(queue_id)`.
+- [ ] The relayer evaluates fillability against the Capital Wallet's current USDC balance.
+- [ ] If sufficient USDC is available, the relayer auto-signs the payout to the LP's original deposit address and calls `WithdrawalQueue.fillRequest(queue_id)`.
 - [ ] `WithdrawalSettled` is emitted; PLUSD escrow is burned.
 - [ ] The payout destination must exactly equal the address from which the LP originally deposited USDC; the MPC policy engine enforces this check.
 - [ ] The fill is subject to the $5M per-transaction cap and $10M rolling-24h aggregate cap.
@@ -288,7 +288,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As an** LP with a large withdrawal request, **I want to** receive USDC incrementally as liquidity arrives, **so that** I am not blocked waiting for a single large payout.
 
 **Acceptance criteria:**
-- [ ] If available USDC is insufficient for the full request, the bridge fills as much as the current USDC balance allows and reduces `amount_remaining` in the queue entry.
+- [ ] If available USDC is insufficient for the full request, the relayer fills as much as the current USDC balance allows and reduces `amount_remaining` in the queue entry.
 - [ ] A `WithdrawalPartiallyFilled(queue_id, amount_filled, amount_remaining)` event is emitted.
 - [ ] The LP dashboard shows progressive fill status: `amount_filled`, `amount_remaining`, and status.
 - [ ] The entry remains at the head of the queue; subsequent USDC inflows (from deposits, repayments, or USYC redemptions) continue to fill it.
@@ -333,7 +333,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 - [ ] The trustee selects the loan, enters the repayment amount, and reviews the client-side-computed waterfall breakdown.
 - [ ] The trustee adjusts any component and signs the RepaymentSettled event (EIP-712 attestation).
 - [ ] The trustee instructs the on-ramp provider to convert the senior portion to USDC into the Capital Wallet.
-- [ ] After the USDC inflow is confirmed, the bridge mints yield PLUSD and sweeps the senior principal return into USYC automatically.
+- [ ] After the USDC inflow is confirmed, the relayer mints yield PLUSD and sweeps the senior principal return into USYC automatically.
 - [ ] The full waterfall and the signed event are recorded in the audit log.
 
 ---
@@ -364,9 +364,9 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ---
 
-### US-OPS-4: Bridge Alert Response
+### US-OPS-4: Relayer Alert Response
 
-**As an** on-call team member, **I want to** see real-time bridge alerts with severity, acknowledge them, and coordinate a foundation multisig pause if needed, **so that** incidents are tracked and responded to within the on-call SLA.
+**As an** on-call team member, **I want to** see real-time relayer alerts with severity, acknowledge them, and coordinate a foundation multisig pause if needed, **so that** incidents are tracked and responded to within the on-call SLA.
 
 **Acceptance criteria:**
 - [ ] The live alert stream displays events with severity (info / amber / red), timestamp, category, and originating event or transaction; the stream is filterable by severity and category.

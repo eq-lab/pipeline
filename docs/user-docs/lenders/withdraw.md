@@ -6,17 +6,17 @@ section: For Lenders
 
 # Withdraw
 
-Withdraw by unstaking sPLUSD to PLUSD, submitting the PLUSD to the withdrawal queue, waiting for Bridge to fund the entry from the Capital Wallet, and claiming USDC in an atomic burn-and-pay transaction.
+Withdraw by unstaking sPLUSD to PLUSD, submitting the PLUSD to the withdrawal queue, waiting for Relayer to fund the entry from the Capital Wallet, and claiming USDC in an atomic burn-and-pay transaction.
 
-{% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw → settle — FIFO queue, auto-funded by Bridge from the Capital Wallet's pre-approved allowance; claim burns PLUSD and pays USDC atomically." %}
+{% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw → settle — FIFO queue, auto-funded by Relayer from the Capital Wallet's pre-approved allowance; claim burns PLUSD and pays USDC atomically." %}
 
 ## How the flow works
 
 <ol class="steps">
   <li>Unstake sPLUSD by calling <code>sPLUSD.redeem(shares)</code> — PLUSD returns to the lender (skip this step if you already hold PLUSD).</li>
   <li>Call <code>WithdrawalQueue.requestWithdrawal(amount)</code> — PLUSD moves into escrow, a <code>queue_id</code> is assigned, and the caller must still be whitelisted with a fresh screen.</li>
-  <li>Bridge observes the request and calls <code>fundRequest(queueId)</code> under the FUNDER role in strict FIFO order.</li>
-  <li>USDC is pulled from the Capital Wallet to the queue via a pre-approved allowance cosigned at deployment — Bridge never custodies USDC itself.</li>
+  <li>Relayer observes the request and calls <code>fundRequest(queueId)</code> under the FUNDER role in strict FIFO order.</li>
+  <li>USDC is pulled from the Capital Wallet to the queue via a pre-approved allowance cosigned at deployment — Relayer never custodies USDC itself.</li>
   <li>The queue entry moves from Pending to Funded.</li>
   <li>The lender calls <code>claim(queueId)</code> — PLUSD burns and USDC transfers to the lender in the same transaction.</li>
 </ol>
@@ -27,7 +27,7 @@ Withdraw by unstaking sPLUSD to PLUSD, submitting the PLUSD to the withdrawal qu
 
 ## Caps and queueing
 
-Bridge funds up to $5M per `fundRequest` call and up to $10M per rolling 24 hours. Above-envelope requests route to the team and trustee signing queue for manual co-signature. MVP has no partial fills and no lender-initiated cancellation once PLUSD enters escrow.
+Relayer funds up to $5M per `fundRequest` call and up to $10M per rolling 24 hours. Above-envelope requests route to the team and trustee signing queue for manual co-signature. MVP has no partial fills and no lender-initiated cancellation once PLUSD enters escrow.
 
 ## What can delay your withdrawal
 

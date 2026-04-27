@@ -20,8 +20,8 @@ LP onboarding is entirely off-chain except for a single on-chain write to the Wh
 
 4. Chainalysis Address Screening checks the LP's connected wallet address against sanctions lists, mixers, and prohibited categories.
 
-5. The bridge service evaluates the results automatically:
-   - Sumsub APPROVED + Chainalysis clean result: the bridge immediately writes the LP address to the WhitelistRegistry with `approvedAt` set to the current block timestamp. No human review is required.
+5. The relayer service evaluates the results automatically:
+   - Sumsub APPROVED + Chainalysis clean result: the relayer immediately writes the LP address to the WhitelistRegistry with `approvedAt` set to the current block timestamp. No human review is required.
    - Either vendor returns REJECTED: the LP is notified with the rejection reason and cannot proceed.
    - Either vendor returns FLAGGED, MANUAL_REVIEW, or any other non-binary status: the LP enters the compliance review queue for manual resolution by a compliance officer (see Manual Compliance Review Queue below).
 
@@ -31,19 +31,19 @@ LP onboarding is entirely off-chain except for a single on-chain write to the Wh
 
 - A wallet's Chainalysis screening result is valid for **90 days** from the last clean screen. This parameter is configurable by the foundation multisig via `WhitelistRegistry.freshnessWindow`.
 - When an LP initiates a deposit, the frontend checks the on-chain `approvedAt` timestamp. If the 90-day window has expired, the deposit UI is blocked and the LP is prompted to re-verify.
-- Re-verification triggers a fresh Chainalysis screen via the bridge service. On a clean result, `approvedAt` is refreshed. On a failed or suspicious result, the LP's whitelist entry is flagged for manual compliance review.
+- Re-verification triggers a fresh Chainalysis screen via the relayer service. On a clean result, `approvedAt` is refreshed. On a failed or suspicious result, the LP's whitelist entry is flagged for manual compliance review.
 - The frontend freshness gate is a UX convenience; the authoritative check is enforced on-chain by the DepositManager contract (`isAllowedForMint`) at deposit time (see deposits spec).
 
 ### Passive Re-Screening and Revocation
 
-The bridge service may initiate a Chainalysis screen against a whitelisted address outside of the deposit flow, for example as part of a scheduled batch re-screen of all active LPs. If a passive re-screen returns a failed or sanctioned result, the bridge service calls `WhitelistRegistry.revokeAccess(lpAddress)` immediately, removing the LP from the whitelist without waiting for their next deposit attempt. The LP's existing PLUSD holdings are unaffected by revocation, but further PLUSD mints and transfers to their address will revert.
+The relayer service may initiate a Chainalysis screen against a whitelisted address outside of the deposit flow, for example as part of a scheduled batch re-screen of all active LPs. If a passive re-screen returns a failed or sanctioned result, the relayer service calls `WhitelistRegistry.revokeAccess(lpAddress)` immediately, removing the LP from the whitelist without waiting for their next deposit attempt. The LP's existing PLUSD holdings are unaffected by revocation, but further PLUSD mints and transfers to their address will revert.
 
 ### Manual Compliance Review Queue
 
 The compliance review queue is reached only when automated screening returns a non-binary result.
 
 - A single compliance officer (a team member with the compliance sub-role) reviews the LP's Sumsub output, Chainalysis report, accreditation declaration, connected wallet address, and the specific flag that triggered manual review.
-- The compliance officer approves or rejects. Approval causes the bridge service to write the LP to the WhitelistRegistry as in the automated path. Rejection notifies the LP with the reason.
+- The compliance officer approves or rejects. Approval causes the relayer service to write the LP to the WhitelistRegistry as in the automated path. Rejection notifies the LP with the reason.
 - For complex cases (PEPs, large entities with complex UBO chains), the reviewer may escalate to a two-person review requiring a second compliance officer.
 - Every compliance decision is written to the audit log with the deciding officer, evidence reviewed, and outcome.
 
@@ -68,7 +68,7 @@ Team members themselves follow the same rules: any existing team member can invi
 ### WhitelistRegistry
 
 ```solidity
-function setAccess(address lp, uint256 approvedAt) external; // WHITELIST_ADMIN (bridge)
+function setAccess(address lp, uint256 approvedAt) external; // WHITELIST_ADMIN (relayer)
 function revokeAccess(address lp) external;                  // WHITELIST_ADMIN or DEFAULT_ADMIN
 function isAllowed(address lp) external view returns (bool); // returns true if whitelisted AND (block.timestamp - approvedAt) < freshnessWindow
 function freshnessWindow() external view returns (uint256);  // default 90 days; set by DEFAULT_ADMIN
@@ -91,8 +91,8 @@ function addDeFiVenue(address venue) external;               // DEFAULT_ADMIN (f
 
 ## Security Considerations
 
-- The bridge service holds the `WHITELIST_ADMIN` role and is the only party that can write to the WhitelistRegistry in the normal path. The foundation multisig holds `DEFAULT_ADMIN` as the fallback admin.
-- LP authentication relies entirely on wallet ownership. A compromised LP wallet grants an attacker the ability to initiate deposits and withdrawals to/from that address but not to any other address (the withdrawal destination-match check in the bridge enforces this).
+- The relayer service holds the `WHITELIST_ADMIN` role and is the only party that can write to the WhitelistRegistry in the normal path. The foundation multisig holds `DEFAULT_ADMIN` as the fallback admin.
+- LP authentication relies entirely on wallet ownership. A compromised LP wallet grants an attacker the ability to initiate deposits and withdrawals to/from that address but not to any other address (the withdrawal destination-match check in the relayer enforces this).
 - Operator accounts require 2FA, protecting against password-only credential compromise.
 - The two-person consensus activation requirement means a single compromised team account cannot unilaterally introduce a rogue operator.
 - Passive re-screening ensures that an LP whose wallet is subsequently sanctioned is removed from the whitelist without depending on the LP initiating another deposit.

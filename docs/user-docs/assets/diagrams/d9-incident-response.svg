@@ -1,130 +1,130 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="760" viewBox="0 0 960 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <rect width="960" height="760" fill="#0f1419"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="760" viewBox="0 0 960 760" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="960" height="760" fill="#ffffff"/>
 
   <defs>
     <marker id="a-rose-9" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f7768e"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b1334b"/>
     </marker>
     <marker id="a-sage-9" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/>
     </marker>
     <marker id="a-amb-9" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e0af68"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9870a"/>
     </marker>
   </defs>
 
   <!-- Title -->
-  <text text-anchor="middle" x="480" y="30" fill="#e6edf3" font-size="14" font-weight="700">Incident response — pause + granular revoke (no "nuke everything" switch)</text>
+  <text text-anchor="middle" x="480" y="30" fill="#262524" font-size="14" font-weight="700">Incident response — pause + granular revoke (no "nuke everything" switch)</text>
 
   <!-- ========== CONTAIN PHASE (GUARDIAN, instant) ========== -->
-  <rect x="20" y="54" width="920" height="300" rx="10" fill="rgba(247,118,142,0.04)" stroke="#f7768e" stroke-width="1.5"/>
-  <text x="40" y="80" fill="#f7768e" font-size="12" font-weight="700" letter-spacing="1">CONTAIN · GUARDIAN (2/5) · instant · no timelock</text>
+  <rect x="20" y="54" width="920" height="300" rx="10" fill="rgba(247,118,142,0.04)" stroke="#b1334b" stroke-width="1.5"/>
+  <text x="40" y="80" fill="#b1334b" font-size="12" font-weight="700" letter-spacing="1">CONTAIN · GUARDIAN (2/5) · instant · no timelock</text>
 
   <!-- Step 1: Watchdog alert -->
-  <rect x="40" y="100" width="240" height="90" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="60" cy="122" r="11" fill="#e0af68"/>
-  <text text-anchor="middle" x="60" y="126" fill="#0f1419" font-size="11" font-weight="700">1</text>
-  <text x="80" y="124" fill="#e6edf3" font-size="11" font-weight="600">Watchdog alert</text>
-  <text x="48" y="150" fill="#8b949e" font-size="10">anomaly detected · e.g. whitelist</text>
-  <text x="48" y="166" fill="#8b949e" font-size="10">grants, counter drift,</text>
-  <text x="48" y="182" fill="#8b949e" font-size="10">rate-limit breach</text>
+  <rect x="40" y="100" width="240" height="90" rx="8" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <circle cx="60" cy="122" r="11" fill="#b9870a"/>
+  <text text-anchor="middle" x="60" y="126" fill="#ffffff" font-size="11" font-weight="700">1</text>
+  <text x="80" y="124" fill="#262524" font-size="11" font-weight="600">Watchdog alert</text>
+  <text x="48" y="150" fill="#736f6c" font-size="10">anomaly detected · e.g. whitelist</text>
+  <text x="48" y="166" fill="#736f6c" font-size="10">grants, counter drift,</text>
+  <text x="48" y="182" fill="#736f6c" font-size="10">rate-limit breach</text>
 
-  <line x1="284" y1="145" x2="316" y2="145" stroke="#e0af68" stroke-width="2" marker-end="url(#a-amb-9)"/>
+  <line x1="284" y1="145" x2="316" y2="145" stroke="#b9870a" stroke-width="2" marker-end="url(#a-amb-9)"/>
 
   <!-- Step 2: Pause contracts -->
-  <rect x="320" y="100" width="260" height="90" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="340" cy="122" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="340" y="126" fill="#0f1419" font-size="11" font-weight="700">2</text>
-  <text x="360" y="124" fill="#e6edf3" font-size="11" font-weight="600">Pause individual contracts</text>
-  <text x="328" y="150" fill="#8b949e" font-size="10">pause(PLUSD) · pause(DepositManager)</text>
-  <text x="328" y="166" fill="#8b949e" font-size="10">pause(WithdrawalQueue)</text>
-  <text x="328" y="184" fill="#f7768e" font-size="10" font-style="italic">defence in depth · instant</text>
+  <rect x="320" y="100" width="260" height="90" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="340" cy="122" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="340" y="126" fill="#ffffff" font-size="11" font-weight="700">2</text>
+  <text x="360" y="124" fill="#262524" font-size="11" font-weight="600">Pause individual contracts</text>
+  <text x="328" y="150" fill="#736f6c" font-size="10">pause(PLUSD) · pause(DepositManager)</text>
+  <text x="328" y="166" fill="#736f6c" font-size="10">pause(WithdrawalQueue)</text>
+  <text x="328" y="184" fill="#b1334b" font-size="10" font-style="italic">defence in depth · instant</text>
 
-  <line x1="584" y1="145" x2="616" y2="145" stroke="#f7768e" stroke-width="2" marker-end="url(#a-rose-9)"/>
+  <line x1="584" y1="145" x2="616" y2="145" stroke="#b1334b" stroke-width="2" marker-end="url(#a-rose-9)"/>
 
   <!-- Step 3: Cancel pending ADMIN ops -->
-  <rect x="620" y="100" width="280" height="90" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="640" cy="122" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="640" y="126" fill="#0f1419" font-size="11" font-weight="700">3</text>
-  <text x="660" y="124" fill="#e6edf3" font-size="11" font-weight="600">Cancel pending scheduled actions</text>
-  <text x="628" y="150" fill="#8b949e" font-size="10">AccessManager.cancel(actionId)</text>
-  <text x="628" y="166" fill="#8b949e" font-size="10">halts any upgrade / role grant /</text>
-  <text x="628" y="182" fill="#8b949e" font-size="10">parameter loosening in flight</text>
+  <rect x="620" y="100" width="280" height="90" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="640" cy="122" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="640" y="126" fill="#ffffff" font-size="11" font-weight="700">3</text>
+  <text x="660" y="124" fill="#262524" font-size="11" font-weight="600">Cancel pending scheduled actions</text>
+  <text x="628" y="150" fill="#736f6c" font-size="10">AccessManager.cancel(actionId)</text>
+  <text x="628" y="166" fill="#736f6c" font-size="10">halts any upgrade / role grant /</text>
+  <text x="628" y="182" fill="#736f6c" font-size="10">parameter loosening in flight</text>
 
   <!-- Row 2: three granular revokes -->
-  <rect x="40" y="210" width="260" height="130" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="60" cy="232" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="60" y="236" fill="#0f1419" font-size="11" font-weight="700">4</text>
-  <text x="80" y="234" fill="#e6edf3" font-size="11" font-weight="600">Revoke YIELD_MINTER</text>
-  <text x="48" y="260" fill="#8b949e" font-size="10">AccessManager.revokeRole(</text>
-  <text x="48" y="276" fill="#8b949e" font-size="10">  YIELD_MINTER, bridgeAddr)</text>
-  <text x="48" y="298" fill="#8b949e" font-size="10">Bridge can no longer submit</text>
-  <text x="48" y="314" fill="#8b949e" font-size="10">yieldMint — even with both sigs</text>
-  <text x="48" y="332" fill="#f7768e" font-size="10" font-style="italic">named role · named holder</text>
+  <rect x="40" y="210" width="260" height="130" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="60" cy="232" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="60" y="236" fill="#ffffff" font-size="11" font-weight="700">4</text>
+  <text x="80" y="234" fill="#262524" font-size="11" font-weight="600">Revoke YIELD_MINTER</text>
+  <text x="48" y="260" fill="#736f6c" font-size="10">AccessManager.revokeRole(</text>
+  <text x="48" y="276" fill="#736f6c" font-size="10">  YIELD_MINTER, relayerAddr)</text>
+  <text x="48" y="298" fill="#736f6c" font-size="10">Relayer can no longer submit</text>
+  <text x="48" y="314" fill="#736f6c" font-size="10">yieldMint — even with both sigs</text>
+  <text x="48" y="332" fill="#b1334b" font-size="10" font-style="italic">named role · named holder</text>
 
-  <rect x="320" y="210" width="260" height="130" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="340" cy="232" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="340" y="236" fill="#0f1419" font-size="11" font-weight="700">5</text>
-  <text x="360" y="234" fill="#e6edf3" font-size="11" font-weight="600">Revoke FUNDER</text>
-  <text x="328" y="260" fill="#8b949e" font-size="10">revokeRole(FUNDER, bridgeAddr)</text>
-  <text x="328" y="282" fill="#8b949e" font-size="10">Bridge can no longer fund</text>
-  <text x="328" y="298" fill="#8b949e" font-size="10">withdrawal queue entries</text>
-  <text x="328" y="316" fill="#8b949e" font-size="10">(in-flight Funded entries still</text>
-  <text x="328" y="332" fill="#8b949e" font-size="10">claimable by requesters)</text>
+  <rect x="320" y="210" width="260" height="130" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="340" cy="232" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="340" y="236" fill="#ffffff" font-size="11" font-weight="700">5</text>
+  <text x="360" y="234" fill="#262524" font-size="11" font-weight="600">Revoke FUNDER</text>
+  <text x="328" y="260" fill="#736f6c" font-size="10">revokeRole(FUNDER, relayerAddr)</text>
+  <text x="328" y="282" fill="#736f6c" font-size="10">Relayer can no longer fund</text>
+  <text x="328" y="298" fill="#736f6c" font-size="10">withdrawal queue entries</text>
+  <text x="328" y="316" fill="#736f6c" font-size="10">(in-flight Funded entries still</text>
+  <text x="328" y="332" fill="#736f6c" font-size="10">claimable by requesters)</text>
 
-  <rect x="600" y="210" width="300" height="130" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="620" cy="232" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="620" y="236" fill="#0f1419" font-size="11" font-weight="700">6</text>
-  <text x="640" y="234" fill="#e6edf3" font-size="11" font-weight="600">Revoke WHITELIST_ADMIN</text>
-  <text x="608" y="260" fill="#8b949e" font-size="10">revokeRole(WHITELIST_ADMIN, bridgeAddr)</text>
-  <text x="608" y="282" fill="#8b949e" font-size="10">Bridge can no longer modify</text>
-  <text x="608" y="298" fill="#8b949e" font-size="10">the whitelist</text>
-  <text x="608" y="316" fill="#f7768e" font-size="10" font-style="italic">each revoke is a separate tx —</text>
-  <text x="608" y="332" fill="#f7768e" font-size="10" font-style="italic">reviewable, not atomic</text>
+  <rect x="600" y="210" width="300" height="130" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="620" cy="232" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="620" y="236" fill="#ffffff" font-size="11" font-weight="700">6</text>
+  <text x="640" y="234" fill="#262524" font-size="11" font-weight="600">Revoke WHITELIST_ADMIN</text>
+  <text x="608" y="260" fill="#736f6c" font-size="10">revokeRole(WHITELIST_ADMIN, relayerAddr)</text>
+  <text x="608" y="282" fill="#736f6c" font-size="10">Relayer can no longer modify</text>
+  <text x="608" y="298" fill="#736f6c" font-size="10">the whitelist</text>
+  <text x="608" y="316" fill="#b1334b" font-size="10" font-style="italic">each revoke is a separate tx —</text>
+  <text x="608" y="332" fill="#b1334b" font-size="10" font-style="italic">reviewable, not atomic</text>
 
   <!-- ========== RECOVER PHASE (ADMIN, 48h) ========== -->
-  <rect x="20" y="374" width="920" height="300" rx="10" fill="rgba(224,175,104,0.04)" stroke="#e0af68" stroke-width="1.5"/>
-  <text x="40" y="400" fill="#e0af68" font-size="12" font-weight="700" letter-spacing="1">RECOVER · ADMIN (3/5) · 48h AccessManager delay · GUARDIAN-cancelable</text>
+  <rect x="20" y="374" width="920" height="300" rx="10" fill="rgba(224,175,104,0.04)" stroke="#b9870a" stroke-width="1.5"/>
+  <text x="40" y="400" fill="#b9870a" font-size="12" font-weight="700" letter-spacing="1">RECOVER · ADMIN (3/5) · 48h AccessManager delay · GUARDIAN-cancelable</text>
 
-  <rect x="40" y="420" width="280" height="120" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="60" cy="442" r="11" fill="#e0af68"/>
-  <text text-anchor="middle" x="60" y="446" fill="#0f1419" font-size="11" font-weight="700">7</text>
-  <text x="80" y="444" fill="#e6edf3" font-size="11" font-weight="600">Investigate + provision new key</text>
-  <text x="48" y="470" fill="#8b949e" font-size="10">audit event logs · determine blast</text>
-  <text x="48" y="486" fill="#8b949e" font-size="10">radius · rotate attestor keys if the</text>
-  <text x="48" y="502" fill="#8b949e" font-size="10">yield-signing key was compromised</text>
-  <text x="48" y="522" fill="#e0af68" font-size="10" font-style="italic">proposeYieldAttestors 48h + cancel</text>
+  <rect x="40" y="420" width="280" height="120" rx="8" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <circle cx="60" cy="442" r="11" fill="#b9870a"/>
+  <text text-anchor="middle" x="60" y="446" fill="#ffffff" font-size="11" font-weight="700">7</text>
+  <text x="80" y="444" fill="#262524" font-size="11" font-weight="600">Investigate + provision new key</text>
+  <text x="48" y="470" fill="#736f6c" font-size="10">audit event logs · determine blast</text>
+  <text x="48" y="486" fill="#736f6c" font-size="10">radius · rotate attestor keys if the</text>
+  <text x="48" y="502" fill="#736f6c" font-size="10">yield-signing key was compromised</text>
+  <text x="48" y="522" fill="#b9870a" font-size="10" font-style="italic">proposeYieldAttestors 48h + cancel</text>
 
-  <line x1="324" y1="480" x2="356" y2="480" stroke="#e0af68" stroke-width="2" marker-end="url(#a-amb-9)"/>
+  <line x1="324" y1="480" x2="356" y2="480" stroke="#b9870a" stroke-width="2" marker-end="url(#a-amb-9)"/>
 
-  <rect x="360" y="420" width="280" height="120" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="380" cy="442" r="11" fill="#e0af68"/>
-  <text text-anchor="middle" x="380" y="446" fill="#0f1419" font-size="11" font-weight="700">8</text>
-  <text x="400" y="444" fill="#e6edf3" font-size="11" font-weight="600">Re-grant operational roles</text>
-  <text x="368" y="470" fill="#8b949e" font-size="10">ADMIN proposes grantRole for each</text>
-  <text x="368" y="486" fill="#8b949e" font-size="10">of YIELD_MINTER, FUNDER,</text>
-  <text x="368" y="502" fill="#8b949e" font-size="10">WHITELIST_ADMIN</text>
-  <text x="368" y="522" fill="#8b949e" font-size="10">48h delay each · GUARDIAN cancels</text>
+  <rect x="360" y="420" width="280" height="120" rx="8" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <circle cx="380" cy="442" r="11" fill="#b9870a"/>
+  <text text-anchor="middle" x="380" y="446" fill="#ffffff" font-size="11" font-weight="700">8</text>
+  <text x="400" y="444" fill="#262524" font-size="11" font-weight="600">Re-grant operational roles</text>
+  <text x="368" y="470" fill="#736f6c" font-size="10">ADMIN proposes grantRole for each</text>
+  <text x="368" y="486" fill="#736f6c" font-size="10">of YIELD_MINTER, FUNDER,</text>
+  <text x="368" y="502" fill="#736f6c" font-size="10">WHITELIST_ADMIN</text>
+  <text x="368" y="522" fill="#736f6c" font-size="10">48h delay each · GUARDIAN cancels</text>
 
-  <line x1="644" y1="480" x2="676" y2="480" stroke="#9ece6a" stroke-width="2" marker-end="url(#a-sage-9)"/>
+  <line x1="644" y1="480" x2="676" y2="480" stroke="#2f6b3a" stroke-width="2" marker-end="url(#a-sage-9)"/>
 
-  <rect x="680" y="420" width="240" height="120" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
-  <circle cx="700" cy="442" r="11" fill="#9ece6a"/>
-  <text text-anchor="middle" x="700" y="446" fill="#0f1419" font-size="11" font-weight="700">9</text>
-  <text x="720" y="444" fill="#e6edf3" font-size="11" font-weight="600">Unpause</text>
-  <text x="688" y="470" fill="#8b949e" font-size="10">ADMIN proposes unpause()</text>
-  <text x="688" y="486" fill="#8b949e" font-size="10">for each paused contract</text>
-  <text x="688" y="502" fill="#8b949e" font-size="10">48h delay · GUARDIAN-cancelable</text>
-  <text x="688" y="522" fill="#9ece6a" font-size="10" font-style="italic">protocol resumes normal operation</text>
+  <rect x="680" y="420" width="240" height="120" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1"/>
+  <circle cx="700" cy="442" r="11" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="700" y="446" fill="#ffffff" font-size="11" font-weight="700">9</text>
+  <text x="720" y="444" fill="#262524" font-size="11" font-weight="600">Unpause</text>
+  <text x="688" y="470" fill="#736f6c" font-size="10">ADMIN proposes unpause()</text>
+  <text x="688" y="486" fill="#736f6c" font-size="10">for each paused contract</text>
+  <text x="688" y="502" fill="#736f6c" font-size="10">48h delay · GUARDIAN-cancelable</text>
+  <text x="688" y="522" fill="#2f6b3a" font-size="10" font-style="italic">protocol resumes normal operation</text>
 
   <!-- Principles box -->
-  <rect x="40" y="560" width="880" height="96" rx="8" fill="#1c2333" stroke="#bb9af7" stroke-width="1.5"/>
-  <text x="58" y="584" fill="#bb9af7" font-size="12" font-weight="700">Why granular, not scorched-earth?</text>
-  <text x="58" y="604" fill="#8b949e" font-size="11">• Each action names what it is doing to what — reviewable record, bounded blast radius.</text>
-  <text x="58" y="622" fill="#8b949e" font-size="11">• A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders) but cannot escalate roles, unpause, or move funds.</text>
-  <text x="58" y="640" fill="#8b949e" font-size="11">• ADMIN holds the restoration keys under 48h timelock · GUARDIAN holds the emergency brake · separation holds even mid-incident.</text>
+  <rect x="40" y="560" width="880" height="96" rx="8" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text x="58" y="584" fill="#4a3a8e" font-size="12" font-weight="700">Why granular, not scorched-earth?</text>
+  <text x="58" y="604" fill="#736f6c" font-size="11">• Each action names what it is doing to what — reviewable record, bounded blast radius.</text>
+  <text x="58" y="622" fill="#736f6c" font-size="11">• A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders) but cannot escalate roles, unpause, or move funds.</text>
+  <text x="58" y="640" fill="#736f6c" font-size="11">• ADMIN holds the restoration keys under 48h timelock · GUARDIAN holds the emergency brake · separation holds even mid-incident.</text>
 
   <!-- Bottom note -->
-  <text text-anchor="middle" x="480" y="700" fill="#8b949e" font-size="11" font-style="italic">GUARDIAN cannot revoke UPGRADER, DEFAULT_ADMIN, DEPOSITOR, or BURNER — only operational-role holders.</text>
-  <text text-anchor="middle" x="480" y="720" fill="#8b949e" font-size="10">Custodian yield-attestor compromise: the custodian rotates their own key; ADMIN can also rotate the on-chain attestor registration under 48h timelock.</text>
+  <text text-anchor="middle" x="480" y="700" fill="#736f6c" font-size="11" font-style="italic">GUARDIAN cannot revoke UPGRADER, DEFAULT_ADMIN, DEPOSITOR, or BURNER — only operational-role holders.</text>
+  <text text-anchor="middle" x="480" y="720" fill="#736f6c" font-size="10">Custodian yield-attestor compromise: the custodian rotates their own key; ADMIN can also rotate the on-chain attestor registration under 48h timelock.</text>
 </svg>

@@ -15,12 +15,12 @@ token captures both.
 <ol class="steps">
 <li>Offtaker wires USDC to the Capital Wallet when the cargo is sold.</li>
 <li>Trustee records the repayment split on LoanRegistry (informational only — no tokens move).</li>
-<li>Bridge and Custodian co-sign a <code>YieldAttestation</code> after verifying the USDC inflow.</li>
-<li><code>PLUSD.yieldMint</code> delivers the senior coupon leg to the sPLUSD vault.</li>
+<li>Relayer and Custodian co-sign a <code>YieldAttestation</code> after verifying the USDC inflow.</li>
+<li><code>YieldMinter.yieldMint</code> delivers the senior coupon leg to the sPLUSD vault.</li>
 <li>USYC NAV drifts up continuously as T-bills accrue at the custodian.</li>
 <li>A stake or unstake on sPLUSD triggers the lazy NAV reconciliation.</li>
-<li>Bridge and Custodian co-sign a fresh <code>YieldAttestation</code> with a new salt.</li>
-<li><code>PLUSD.yieldMint</code> splits the NAV delta — 70% to the sPLUSD vault, 30% to the Treasury Wallet.</li>
+<li>Relayer and Custodian co-sign a fresh <code>YieldAttestation</code> with a new salt.</li>
+<li><code>YieldMinter.yieldMint</code> splits the NAV delta — 70% to the sPLUSD vault, 30% to the Treasury Wallet.</li>
 </ol>
 
 ## Engine A — Senior-tranche coupons on trade loans
@@ -43,11 +43,13 @@ All three route to the Treasury Wallet, not to the vault. The senior coupon
 net — gross senior interest minus management fee minus performance fee — is
 the amount lenders actually receive.
 
-The moment yield lands in the vault is the yield-mint event. Bridge and the
-custodian co-sign a `YieldAttestation`, and `PLUSD.yieldMint` delivers new
-PLUSD to the sPLUSD vault. That new PLUSD is what moves the share price
-upward. Neither Bridge nor the custodian can mint alone; both signatures are
-verified on-chain.
+The moment yield lands in the vault is the yield-mint event. Relayer and the
+custodian co-sign a `YieldAttestation`; the call goes through
+`YieldMinter.yieldMint`, both signatures are recovered on-chain, and
+`PLUSD.mintForYield` delivers new PLUSD into the sPLUSD vault. That new PLUSD
+is what moves the share price upward. Neither Relayer nor the custodian can
+mint alone; YieldMinter rejects the call unless both signatures verify against
+the configured attestor addresses.
 
 ## Engine B — T-bill accrual on USYC reserves
 
@@ -62,8 +64,9 @@ Distribution on each reconciliation:
 - **70%** of the NAV delta is minted to the sPLUSD vault.
 - **30%** is minted to the Treasury Wallet.
 
-The same two-party attestation applies: Bridge signs, the custodian co-signs,
-and PLUSD checks both on-chain before minting.
+The same two-party attestation applies: Relayer signs, the custodian
+co-signs, and YieldMinter recovers both signatures on-chain before calling
+`PLUSD.mintForYield`.
 
 T-bill yield is minted **lazily** — when someone stakes or unstakes sPLUSD,
 not on a clock. Between mints, the accrued-but-undistributed amount shows on
@@ -94,8 +97,9 @@ sPLUSD share price moves only when a new yield mint lands in the vault — not
 on a clock, and not when the trustee writes a repayment entry to the
 LoanRegistry. The yield mint is the event. LoanRegistry writes are
 informational; they confirm that a repayment happened, but they do not change
-share price. Only `PLUSD.yieldMint`, gated by the two-party attestation and
-the on-chain reserve invariant, moves NAV.
+share price. Only a successful `YieldMinter.yieldMint` call, gated by the
+two-party attestation and the on-chain reserve invariant inside
+`PLUSD.mintForYield`, moves NAV.
 
 {% include chart.html src="c2-yield-attribution.svg" caption="Illustrative attribution for a representative senior-tranche loan plus the T-bill engine. Not live returns." %}
 

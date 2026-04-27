@@ -6,11 +6,11 @@ section: Security & Transparency
 
 # Security & Transparency
 
-Pipeline is built on a split-rail architecture where on-chain contracts track receipts and off-chain custodied USDC is moved by MPC cosigners. No single operator — Bridge, custodian, Trustee, or a single governance Safe — can drain investor capital or mint unbacked PLUSD.
+Pipeline is built on a split-rail architecture where on-chain contracts track receipts and off-chain custodied USDC is moved by MPC cosigners. No single operator — Relayer, custodian, Trustee, or a single governance Safe — can drain investor capital or mint unbacked PLUSD.
 
 {% include diagram.html src="d1-system-context.svg" caption="System context — off-chain cash rail on the left, on-chain token rail on the right, governance by three Safes." %}
 
-The off-chain zone holds the Custodian, Capital Wallet, Treasury Wallet, Bridge, and Trustee. The on-chain zone holds AccessManager plus eight protocol contracts that track deposits, shares, loans, yield, and shutdown state. Three Safes — ADMIN, RISK_COUNCIL, and GUARDIAN — gate every privileged action through AccessManager, each with a distinct signer set and timelock.
+The off-chain zone holds the Custodian, Capital Wallet, Treasury Wallet, Relayer, and Trustee. The on-chain zone holds AccessManager plus nine protocol contracts that track deposits, shares, loans, yield, and shutdown state. Three Safes — ADMIN, RISK_COUNCIL, and GUARDIAN — gate every privileged action through AccessManager, each with a distinct signer set and timelock.
 
 ---
 
@@ -23,7 +23,7 @@ The off-chain zone holds the Custodian, Capital Wallet, Treasury Wallet, Bridge,
   </a>
   <a class="card" href="/security/supply-safeguards/">
     <h4>Supply safeguards</h4>
-    <p>Four structural safeguards that prevent unbacked PLUSD minting.</p>
+    <p>DepositManager vs YieldMinter — who checks what, plus the structural safeguards that prevent unbacked PLUSD minting.</p>
   </a>
   <a class="card" href="/security/emergency-response/">
     <h4>Emergency response</h4>

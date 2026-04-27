@@ -12,7 +12,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## A
 
-**[AccessManager](#accessmanager)** — The OpenZeppelin contract that holds every privileged role in the protocol and enforces scheduled actions with per-selector delays. It is the single hub the three governance Safes operate against; upgrades, role grants, and parameter loosenings all flow through it.
+**AccessManager** — The OpenZeppelin contract that holds every privileged role in the protocol and enforces scheduled actions with per-selector delays. It is the single hub the three governance Safes operate against; upgrades, role grants, and parameter loosenings all flow through it.
 
 **ADMIN Safe** — A 3-of-5 Gnosis Safe that holds every role-granting and upgrading power in the protocol, with a 48-hour AccessManager delay on every action (14 days on changes to the delay itself). Re-enabling a paused contract, re-granting a revoked role, upgrading an implementation, and loosening any cap all require ADMIN, and every such action is cancellable by *GUARDIAN Safe* during the delay window.
 
@@ -22,15 +22,13 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## B
 
-**Bridge** — Pipeline's backend service, running as an on-chain account that holds three operational roles: *YIELD_MINTER* on PLUSD, *FUNDER* on WithdrawalQueue, and *WHITELIST_ADMIN* on WhitelistRegistry. Bridge never custodies USDC (it is one of three MPC cosigners on the *Capital Wallet*), never touches LoanRegistry, and is not in the critical path for deposits — those are atomic through *DepositManager*.
-
 **BURNER (role)** — The role on *PLUSD* that authorises `PLUSD.burn`, called during the withdrawal-claim path to burn escrowed PLUSD as USDC is paid out. Held in MVP by the *WithdrawalQueue* proxy address (contract-held, not an EOA).
 
 ---
 
 ## C
 
-**Capital Wallet** — An on-chain Ethereum address held at a regulated custodian that stores Pipeline's USDC reserves, USDC out on active loans, and *USYC* holdings. Control is split across three MPC cosigners — *Trustee*, *Team*, and *Bridge* — under a fixed custodian policy; all movements in and out are on-chain ERC-20 transfers visible on Etherscan.
+**Capital Wallet** — An on-chain Ethereum address held at a regulated custodian that stores Pipeline's USDC reserves, USDC out on active loans, and *USYC* holdings. Control is split across three MPC cosigners — *Trustee*, *Team*, and *Relayer* — under a fixed custodian policy; all movements in and out are on-chain ERC-20 transfers visible on Etherscan.
 
 **CCR (Collateral Coverage Ratio)** — Collateral value divided by outstanding senior principal on a given loan, reported in basis points on LoanRegistry (e.g. 14000 = 140%). Pipeline's visible risk dial runs on three thresholds: above 130% is performing headroom, below 120% moves the loan to Watchlist, and below 110% triggers *RISK_COUNCIL Safe* escalation.
 
@@ -41,6 +39,8 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 **Commodity** — The physical good financed by a given Pipeline loan — for example jet fuel JET A-1, refined metals, or agricultural products. Recorded as immutable origination data on the LoanRegistry NFT alongside the *Corridor* and *Offtaker*.
 
 **Corridor** — The route the cargo travels, typically stated as "origin country → destination country" (e.g. "South Korea → Mongolia"). Corridor is immutable origination data on every LoanRegistry NFT; sanctioned corridors are not financed, and concentration across corridors is a diversification constraint.
+
+**custodianYieldAttestor** — The custodian's *EIP-1271 signer* contract whose address is stored on *YieldMinter*. The custodian co-signs every yield mint after independently verifying the underlying USDC inflow (or USYC NAV delta) against its own records; the signature is recovered on-chain inside `YieldMinter.yieldMint` before any PLUSD is minted.
 
 ---
 
@@ -54,7 +54,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## E
 
-**EIP-712 attestation** — A structured-data signature format where the signer commits to a domain-separated, typed payload instead of an opaque hash. Pipeline's yield mints carry two independent EIP-712 signatures — one from *Bridge*'s ECDSA key, one from the custodian's *EIP-1271 signer* — both verified on-chain before PLUSD is minted.
+**EIP-712 attestation** — A structured-data signature format where the signer commits to a domain-separated, typed payload instead of an opaque hash. Pipeline's yield mints carry two independent EIP-712 signatures — one from *Relayer*'s ECDSA key (`relayerYieldAttestor`), one from the custodian's *EIP-1271 signer* (`custodianYieldAttestor`) — both verified on-chain inside *YieldMinter* before PLUSD is minted.
 
 **EIP-1271 signer** — A smart-contract signer that validates signatures by calling `isValidSignature(hash, signature)` on the signing contract, rather than recovering an ECDSA public key. Pipeline's custodian is an EIP-1271 signer; it independently verifies the underlying USDC inflow before co-signing any *yieldMint*.
 
@@ -70,7 +70,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **First-loss** — The tranche that absorbs realised losses before any other capital is hit. On Pipeline, the *Originator* equity tranche is first-loss on every loan; only once it is exhausted does loss reach the *sPLUSD* share price.
 
-**FUNDER (role)** — The role on *WithdrawalQueue* that authorises `fundRequest` — pulling USDC from the *Capital Wallet* (via pre-approved allowance) to fund a queue head. Held in MVP by *Bridge*; revocable instantly by *GUARDIAN Safe*.
+**FUNDER (role)** — The role on *WithdrawalQueue* that authorises `fundRequest` — pulling USDC from the *Capital Wallet* (via pre-approved allowance) to fund a queue head. Held in MVP by *Relayer*; revocable instantly by *GUARDIAN Safe*.
 
 ---
 
@@ -82,7 +82,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## H
 
-**Hashnote** — The asset manager that issues *USYC*, the tokenized U.S. Treasury-bill product Pipeline uses as its idle-reserve yield engine. Pipeline's Bridge reads NAV directly from the Hashnote API to compute the lazy *yieldMint* on sPLUSD stake/unstake events.
+**Hashnote** — The asset manager that issues *USYC*, the tokenized U.S. Treasury-bill product Pipeline uses as its idle-reserve yield engine. Pipeline's *Relayer* reads NAV directly from the Hashnote API to compute the lazy *yieldMint* on sPLUSD stake/unstake events.
 
 ---
 
@@ -96,7 +96,15 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## M
 
-**mintForDeposit** — The PLUSD function the *DepositManager* contract calls to mint deposit-leg PLUSD 1:1 against a USDC inflow. It is gated by the *DEPOSITOR* role (held exclusively by the DepositManager proxy) and enforces the *reserve invariant* and rate caps before minting.
+**maxPerLPPerWindow** — A *DepositManager* parameter capping the PLUSD a single lender wallet can mint inside the rolling deposit window. Together with `maxPerWindow` it bounds single-actor concentration on the deposit leg; YieldMinter has no per-account caps.
+
+**maxPerWindow** — A *DepositManager* parameter capping the aggregate PLUSD mintable across all lenders inside the rolling deposit window (launch value: $10M / 24h). Yield mints do not consume this budget — YieldMinter is a separate contract with separate gating.
+
+**maxTotalSupply** — A hard ceiling on `PLUSD.totalSupply()` checked on every PLUSD mint regardless of path (deposit or yield). This is the only economic cap that applies to both *DepositManager* and *YieldMinter*; tightening is instant under ADMIN, loosening is 48h-timelocked.
+
+**mintForDeposit** — The PLUSD function the *DepositManager* contract calls to mint deposit-leg PLUSD 1:1 against a USDC inflow. It is gated by the *DEPOSITOR* role (held exclusively by the DepositManager proxy) and enforces the *reserve invariant* and the `maxTotalSupply` ceiling before minting.
+
+**mintForYield** — The PLUSD function the *YieldMinter* contract calls to mint yield-leg PLUSD into the sPLUSD vault or the *Treasury Wallet*. It is gated by the *YIELD_MINTER* role (held exclusively by the YieldMinter proxy) and enforces the *reserve invariant* and `maxTotalSupply` ceiling before minting; signature verification lives one layer up in YieldMinter.
 
 ---
 
@@ -114,7 +122,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## P
 
-**PLUSD** — Pipeline's ERC-20 deposit receipt. One PLUSD represents one USDC held at the *Capital Wallet*; PLUSD is non-transferable between ordinary lender wallets (every transfer must touch a system address or an approved DeFi venue), and fresh supply enters only through *mintForDeposit* or *yieldMint*.
+**PLUSD** — Pipeline's ERC-20 deposit receipt. One PLUSD represents one USDC held at the *Capital Wallet*; PLUSD is non-transferable between ordinary lender wallets (every transfer must touch a system address or an approved DeFi venue), and fresh supply enters only through *mintForDeposit* or *mintForYield*.
 
 ---
 
@@ -122,9 +130,13 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **RecoveryPool** — The contract that holds USDC for lender recovery payments after shutdown. `redeemInShutdown` and `claimAtShutdown` both draw from RecoveryPool at the fixed recovery rate; as the *Trustee* repatriates capital over time, *RISK_COUNCIL Safe* may ratchet the rate upward.
 
-**recordRepayment** — The LoanRegistry function the *Trustee* calls to book a split of an offtaker payment across Senior principal, Senior interest, and *Equity tranche*. It is pure accounting — it moves no USDC and mints no PLUSD; actual yield delivery runs through the independent *yieldMint* path.
+**recordRepayment** — The LoanRegistry function the *Trustee* calls to book a split of an offtaker payment across Senior principal, Senior interest, and *Equity tranche*. It is pure accounting — it moves no USDC and mints no PLUSD; actual yield delivery runs through the independent *yieldMint* path on *YieldMinter*.
 
 **redeemInShutdown** — The PLUSD function a holder calls during shutdown to exchange PLUSD for USDC at the frozen recovery rate. Every PLUSD redeemed during shutdown pays the same per-unit amount regardless of order, so there is no race to redeem and no queue jump.
+
+**Relayer** — Pipeline's backend service, running as an on-chain account that holds two operational roles: *FUNDER* on WithdrawalQueue and *WHITELIST_ADMIN* on WhitelistRegistry. The Relayer also signs yield attestations with its `relayerYieldAttestor` key, but the *YIELD_MINTER* role itself is held by the *YieldMinter* contract — Relayer never holds it directly. Relayer is one of three MPC cosigners on the *Capital Wallet*, never custodies USDC, never touches LoanRegistry, and is not in the critical path for deposits.
+
+**relayerYieldAttestor** — The Relayer's ECDSA signing key whose address is stored on *YieldMinter*. The Relayer signs the first half of every yield attestation with this key; it is rotated via `YieldMinter.proposeYieldAttestors` under a 48h ADMIN timelock and is held in an air-gapped hardware signer with no internet egress.
 
 **Reserve invariant** — An on-chain, per-transaction check that `totalSupply + amount ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` on every PLUSD mint path. It is an internal-consistency check against PLUSD's own ledger — not a Proof of Reserve — and catches over-mint or counter desync before supply changes.
 
@@ -146,13 +158,13 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## T
 
-**Team** — Pipeline's operating team, which holds one MPC cosigner share on both the *Capital Wallet* and the *Treasury Wallet*. Team holds no on-chain role (no YIELD_MINTER, FUNDER, WHITELIST_ADMIN, TRUSTEE) and has no ability to mint PLUSD.
+**Team** — Pipeline's operating team, which holds one MPC cosigner share on both the *Capital Wallet* and the *Treasury Wallet*. Team holds no on-chain role (no FUNDER, WHITELIST_ADMIN, TRUSTEE) and has no ability to mint PLUSD.
 
 **Tranche** — A slice of a loan with a defined priority in the repayment waterfall. Pipeline's facilities are structured with a *Senior tranche* (lender capital, paid first) and an *Equity tranche* (originator first-loss, paid last).
 
 **Treasury Wallet** — An on-chain Ethereum address at the custodian, using a distinct MPC cosigner set from the *Capital Wallet*. It accumulates protocol fees and the 30% T-bill share of the yield split; a compromise at one wallet does not propagate to the other.
 
-**Trustee** — Pipeline Trust Company, an independent legal entity holding the Trustee key. Operationally the Trustee is (a) the sole caller of every LoanRegistry write — `mintLoan`, `updateMutable`, `recordRepayment`, Trustee-branch `closeLoan` — and (b) one MPC cosigner on the *Capital Wallet*; the Trustee does not custody USDC alone and has no Bridge powers.
+**Trustee** — Pipeline Trust Company, an independent legal entity holding the Trustee key. Operationally the Trustee is (a) the sole caller of every LoanRegistry write — `mintLoan`, `updateMutable`, `recordRepayment`, Trustee-branch `closeLoan` — and (b) one MPC cosigner on the *Capital Wallet*; the Trustee does not custody USDC alone and cannot mint PLUSD.
 
 **TRUSTEE (role)** — The role on *LoanRegistry* that authorises all loan NFT writes. Held in MVP by the *Trustee* key alone; revocable instantly by *GUARDIAN Safe*, re-grantable only by *ADMIN Safe* under the 48h timelock.
 
@@ -170,17 +182,19 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **WhitelistRegistry** — The on-chain allowlist of KYC'd lender wallets and approved DeFi venues, with a Chainalysis `approvedAt` timestamp per entry. Deposits check freshness (default 90-day window); transfers of *PLUSD* require at least one of (sender, receiver) to be a system address or whitelisted entry.
 
-**WHITELIST_ADMIN (role)** — The role on *WhitelistRegistry* that authorises `setAccess`, `refreshScreening`, and `revokeAccess`. Held in MVP by *Bridge*; revocable instantly by *GUARDIAN Safe*.
+**WHITELIST_ADMIN (role)** — The role on *WhitelistRegistry* that authorises `setAccess`, `refreshScreening`, and `revokeAccess`. Held in MVP by *Relayer*; revocable instantly by *GUARDIAN Safe*.
 
-**WithdrawalQueue** — The FIFO queue a lender enters to convert *PLUSD* back to USDC. The queue has four states — Pending, Funded, Claimed, AdminReleased — and is funded in full-amount chunks by *Bridge* under the *FUNDER* role; there are no partial fills or LP-initiated cancellations in MVP.
+**WithdrawalQueue** — The FIFO queue a lender enters to convert *PLUSD* back to USDC. The queue has four states — Pending, Funded, Claimed, AdminReleased — and is funded in full-amount chunks by *Relayer* under the *FUNDER* role; there are no partial fills or LP-initiated cancellations in MVP.
 
 ---
 
 ## Y
 
-**yieldMint** — The PLUSD function that mints yield-leg PLUSD into either the sPLUSD vault or the *Treasury Wallet*. It requires two independent on-chain signature checks — Bridge ECDSA (*EIP-712 attestation*) and custodian *EIP-1271 signer* — plus the *YIELD_MINTER* caller role, so compromising any one party mints zero PLUSD.
+**yieldMint** — The *YieldMinter* function `yieldMint(attestation, relayerSig, custodianSig)` that mints yield-leg PLUSD into either the sPLUSD vault or the *Treasury Wallet*. It is publicly callable but reverts unless both signatures verify on-chain — Relayer ECDSA against `relayerYieldAttestor`, custodian EIP-1271 against `custodianYieldAttestor` — and the attestation `ref` is unused; on success it calls `PLUSD.mintForYield`.
 
-**YIELD_MINTER (role)** — The role on *PLUSD* that authorises `yieldMint`. Held in MVP by *Bridge*; revocable instantly by *GUARDIAN Safe*, and independent of the two attestor-signature requirements (both must still verify on-chain even if the caller holds the role).
+**YieldMinter** — A standalone contract that gates yield-leg PLUSD mints. It verifies the two-party EIP-712 attestation (Relayer ECDSA + custodian EIP-1271), checks the `ref` is unused (replay protection), constrains the destination to the sPLUSD vault or *Treasury Wallet*, and calls `PLUSD.mintForYield`. YieldMinter holds the *YIELD_MINTER* role on PLUSD; pause is GUARDIAN-instant, attestor rotation is 48h ADMIN-timelocked.
+
+**YIELD_MINTER (role)** — The role on *PLUSD* that authorises `mintForYield`. Held in MVP by the *YieldMinter* proxy address (contract-held, not an EOA); revocable instantly by *GUARDIAN Safe*.
 
 ---
 

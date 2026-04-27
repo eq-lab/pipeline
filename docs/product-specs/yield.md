@@ -59,19 +59,19 @@ event.
 ### Repayment on-chain delivery
 
 Once the trustee confirms the waterfall breakdown, they submit final split amounts via the
-Bridge API (`POST /v1/trustee/repayments/{id}/approve`). This triggers on-chain yield delivery:
+Relayer API (`POST /v1/trustee/repayments/{id}/approve`). This triggers on-chain yield delivery:
 
 1. The trustee instructs the on-ramp provider to convert the senior portion
    (`senior_principal_returned + senior_coupon_net + protocol fees`) from USD to USDC,
    settling into the Capital Wallet.
-2. Bridge verifies the USDC inflow matches the Trustee-approved amounts.
-3. Bridge constructs two `YieldAttestation` structs, signs each with `bridgeYieldAttestor`,
+2. Relayer verifies the USDC inflow matches the Trustee-approved amounts.
+3. Relayer constructs two `YieldAttestation` structs, signs each with `relayerYieldAttestor`,
    requests custodian EIP-1271 co-signatures, and calls `PLUSD.yieldMint` for each leg:
    - Vault leg: mints `senior_coupon_net` PLUSD to the sPLUSD vault — accretes NAV for all
      stakers.
    - Treasury leg: mints `management_fee + performance_fee + oet_allocation` PLUSD to the
      Treasury Wallet.
-   Both signatures (Bridge ECDSA + custodian EIP-1271) are verified on-chain. Neither party
+   Both signatures (Relayer ECDSA + custodian EIP-1271) are verified on-chain. Neither party
    alone can mint.
 
 ### USYC NAV yield distribution (lazy, stake/unstake-triggered)
@@ -79,17 +79,17 @@ Bridge API (`POST /v1/trustee/repayments/{id}/approve`). This triggers on-chain 
 USYC NAV accrues continuously. To keep sPLUSD share price current without a time-based cron,
 yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 
-1. Bridge reads the current USYC NAV from the Hashnote API.
+1. Relayer reads the current USYC NAV from the Hashnote API.
 2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
    holdings). If `delta <= 0`, no mint occurs.
-3. If `delta > 0`: Bridge constructs two `YieldAttestation` structs (vault 70%, treasury 30%
-   of `yield_delta`), gets Bridge sig + custodian co-sig, submits both `yieldMint` calls.
-4. After both `yieldMint` transactions confirm on-chain, Bridge advances the
+3. If `delta > 0`: Relayer constructs two `YieldAttestation` structs (vault 70%, treasury 30%
+   of `yield_delta`), gets Relayer sig + custodian co-sig, submits both `yieldMint` calls.
+4. After both `yieldMint` transactions confirm on-chain, Relayer advances the
    `last_minted_NAV` baseline. Until both confirm, the baseline is unchanged — idempotent
    retry is safe.
 
 USYC is not redeemed during yield distribution; it remains in the Capital Wallet. Between
-mints, Bridge polls USYC NAV continuously and exposes accrued-but-undistributed yield via
+mints, Relayer polls USYC NAV continuously and exposes accrued-but-undistributed yield via
 `GET /v1/vault/stats` for dashboard display.
 
 ---
@@ -111,7 +111,7 @@ contents as every other PLUSD holder.
 
 ### Reconciliation indicator
 
-The bridge evaluates the invariant after every yield distribution, deposit, loan
+The relayer evaluates the invariant after every yield distribution, deposit, loan
 disbursement, repayment, and LP withdrawal. The result is published to the protocol
 dashboard with a three-state indicator:
 
@@ -125,8 +125,8 @@ dashboard with a three-state indicator:
 
 ## Security Considerations
 
-- **Two-party yield attestation.** Both repayment and USYC yield mints require Bridge ECDSA
-  signature + custodian EIP-1271 signature + YIELD_MINTER caller role. A compromised Bridge
+- **Two-party yield attestation.** Both repayment and USYC yield mints require Relayer ECDSA
+  signature + custodian EIP-1271 signature + YIELD_MINTER caller role. A compromised Relayer
   alone cannot mint yield PLUSD.
 - **Reserve invariant enforced on-chain.** Every `yieldMint` call checks the cumulative
   counter invariant at the PLUSD contract level, bounding yield issuance against the
@@ -134,6 +134,6 @@ dashboard with a three-state indicator:
 - **Replay protection.** Each `YieldAttestation` is consumed exactly once via the
   `usedRepaymentRefs` mapping on PLUSD. Vault and treasury legs use distinct refs per event.
 - USYC is held exclusively in the Capital Wallet. The USDC↔USYC ratio is managed by the
-  custodian MPC policy engine and Trustee — not by Bridge.
+  custodian MPC policy engine and Trustee — not by Relayer.
 - The reconciliation invariant is continuously re-evaluated; amber and red states produce
   immediate alerts enabling prompt detection of any backing discrepancy.

@@ -26,7 +26,7 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 **What the risk is.** Withdrawal timing is not instant. The Capital Wallet USDC buffer targets 15% of PLUSD supply (operating band 10–20%), but large or concentrated withdrawals can deplete it faster than it refills. Topping up the buffer from USYC takes roughly one day at the custodian. Withdrawal-queue funding is capped at $5M per transaction and $10M per rolling 24 hours.
 
-**What mitigates it.** The withdrawal queue is strict FIFO — no priority lanes, no reordering. The Bridge auto-funds within the $5M/tx and $10M/24h envelope whenever the buffer falls below the target band. Above-envelope requests route to the team and trustee signing queue and clear on the next multi-sig window.
+**What mitigates it.** The withdrawal queue is strict FIFO — no priority lanes, no reordering. The Relayer auto-funds within the $5M/tx and $10M/24h envelope whenever the buffer falls below the target band. Above-envelope requests route to the team and trustee signing queue and clear on the next multi-sig window.
 
 **Residual.** If your position is large relative to the buffer, your exit will stage across multiple windows. Concentration-sized deposits should plan exit timing in advance and not assume same-day liquidity on the full notional. There is no instant-redemption AMM — redemption is queue-based by design.
 
@@ -34,7 +34,7 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 **What the risk is.** The USDC underlying PLUSD sits at a regulated third-party custodian. The custodian is a counterparty — legally separate from Pipeline but still a single point of operational failure. Custody is not trustless.
 
-**What mitigates it.** The Capital Wallet is a 2-of-3 MPC wallet with three independent cosigners: Trustee, Team, and Bridge. No single-key compromise can move USDC. Custodian-side policy caps per-LP cumulative outflow and enforces destination matching for lender payouts, so even a cosigner coalition cannot re-route funds to an arbitrary address. The custodian is regulated and subject to external audit.
+**What mitigates it.** The Capital Wallet is a 2-of-3 MPC wallet with three independent cosigners: Trustee, Team, and Relayer. No single-key compromise can move USDC. Custodian-side policy caps per-LP cumulative outflow and enforces destination matching for lender payouts, so even a cosigner coalition cannot re-route funds to an arbitrary address. The custodian is regulated and subject to external audit.
 
 **Residual.** A custodian operational failure — regulatory action, insolvency, withdrawal suspension — can still delay USDC movement even with cosigners functioning. This is distinct from a single-key compromise and is not mitigated by MPC. See [Custody](/security/custody/).
 
@@ -64,9 +64,9 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 ## Operational risk
 
-**What the risk is.** Three operational keys exist outside the multi-sig boundary: the Bridge operational key, the Trustee key, and the custodian's yield-attestor key. Each can be compromised independently of the others and independently of the governance Safes.
+**What the risk is.** Three operational keys exist outside the multi-sig boundary: the Relayer operational key, the Trustee key, and the custodian's yield-attestor key. Each can be compromised independently of the others and independently of the governance Safes.
 
-**What mitigates it.** Deposits are atomic on-chain via DepositManager, which removes the Bridge from the deposit critical path entirely — a compromised Bridge key cannot mint PLUSD against a depositor. Yield accrual uses two-party EIP-712 attestation (Bridge + custodian), so no single signer can mint yield. LoanRegistry is informational only — sPLUSD share price moves on actual repayment events, not on Trustee writes, so a compromised Trustee cannot inflate share price. GUARDIAN revokes individual operational-role holders instantly without touching unrelated roles.
+**What mitigates it.** Deposits are atomic on-chain via DepositManager, which removes the Relayer from the deposit critical path entirely — a compromised Relayer key cannot mint PLUSD against a depositor. Yield accrual uses two-party EIP-712 attestation (Relayer + custodian), so no single signer can mint yield. LoanRegistry is informational only — sPLUSD share price moves on actual repayment events, not on Trustee writes, so a compromised Trustee cannot inflate share price. GUARDIAN revokes individual operational-role holders instantly without touching unrelated roles.
 
 **Residual.** A compromised operational key can still grief: forced-failed withdrawals, stale whitelist writes, delayed yield posting. Grief windows last until GUARDIAN responds, which is instant in principle but bounded by signer availability in practice. Grief risk is non-zero. See [Emergency response](/security/emergency-response/).
 

@@ -43,13 +43,13 @@ The Capital Wallet has three MPC cosigners. Each holds one share.
 
 - **Trustee** — Pipeline Trust Company, an independent legal entity with its own board.
 - **Team** — the Pipeline core team.
-- **Bridge** — the operational backend that processes withdrawals and yield events.
+- **Relayer** — the operational backend that processes withdrawals and yield events.
 
 Different transaction classes require different signer combinations. The combinations are fixed in custodian policy and cannot be changed by any single party.
 
-Routine LP withdrawals are auto-signed by Bridge within narrow, pre-configured bounds: per-LP cap, per-window cap, destination-set match. Anything outside those bounds stops. Loan disbursements require a Trustee + Team co-signature. USYC-to-USDC rebalancing runs against its own policy rail.
+Routine LP withdrawals are auto-signed by Relayer within narrow, pre-configured bounds: per-LP cap, per-window cap, destination-set match. Anything outside those bounds stops. Loan disbursements require a Trustee + Team co-signature. USYC-to-USDC rebalancing runs against its own policy rail.
 
-**No single operator can move USDC out of the Capital Wallet.** Bridge alone is bounded to policy-shaped payouts to pre-verified LP addresses. Trustee alone cannot release funds. Team alone cannot release funds. A two-party compromise is out of scope for smart-contract mitigations and is handled at the custodian boundary.
+**No single operator can move USDC out of the Capital Wallet.** Relayer alone is bounded to policy-shaped payouts to pre-verified LP addresses. Trustee alone cannot release funds. Team alone cannot release funds. A two-party compromise is out of scope for smart-contract mitigations and is handled at the custodian boundary.
 
 ---
 

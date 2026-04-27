@@ -1,42 +1,42 @@
-# Bridge Service
+# Relayer Service
 
 ## Overview
 
-The Pipeline Bridge Service is a backend operated by the Pipeline team. It watches on-chain
+The Pipeline Relayer Service is a backend operated by the Pipeline team. It watches on-chain
 events, reconciles protocol state, co-signs yield attestations, and submits operational
-transactions. **Bridge is not in the critical path for deposits** — deposits are atomic
-user-driven calls to DepositManager. Bridge also has no role in loan disbursements or
+transactions. **Relayer is not in the critical path for deposits** — deposits are atomic
+user-driven calls to DepositManager. Relayer also has no role in loan disbursements or
 USDC↔USYC rebalancing; those are managed by the Trustee and custodian MPC policy engine.
 
-A Bridge compromise cannot produce unbacked PLUSD. Yield minting requires a second independent
-EIP-1271 signature from the custodian; compromising Bridge alone mints zero PLUSD.
+A Relayer compromise cannot produce unbacked PLUSD. Yield minting requires a second independent
+EIP-1271 signature from the custodian; compromising Relayer alone mints zero PLUSD.
 
 ---
 
 ## Behavior
 
-### 1. Deposit Observation (Bridge not in critical path)
+### 1. Deposit Observation (Relayer not in critical path)
 
-Deposits are fully atomic and user-driven via DepositManager. Bridge observes
+Deposits are fully atomic and user-driven via DepositManager. Relayer observes
 `DepositManager.Deposited` events for reconciliation, exposes deposit history via the LP API,
-and cross-checks `sum(Deposited.amount) == PLUSD.cumulativeLPDeposits()`. Bridge is not a
+and cross-checks `sum(Deposited.amount) == PLUSD.cumulativeLPDeposits()`. Relayer is not a
 signer or gate on the deposit flow.
 
-Bridge also exposes live rate-limit state (`maxPerWindow`, `maxPerLPPerWindow`, window
+Relayer also exposes live rate-limit state (`maxPerWindow`, `maxPerLPPerWindow`, window
 utilisation, per-LP utilisation) via `GET /v1/protocol/limits` so the deposit UI can display
 cap status before the LP submits.
 
 ### 2. Withdrawal Queue Funding
 
-When a `WithdrawalRequested` event is observed, Bridge processes the queue head:
+When a `WithdrawalRequested` event is observed, Relayer processes the queue head:
 
 1. **Whitelist check.** If `WhitelistRegistry.isAllowed(requester)` is false, calls
    `WQ.skipSanctionedHead()` to unblock the queue.
-2. **Freshness check (Bridge-side).** If stale but not revoked, Bridge calls Chainalysis API.
+2. **Freshness check (Relayer-side).** If stale but not revoked, Relayer calls Chainalysis API.
    On clean result: `WhitelistRegistry.refreshScreening(lp, newTs)`, then proceeds. On flag:
-   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Bridge halts and
+   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Relayer halts and
    alerts ops — head is stuck pending manual `adminRelease`.
-3. **Balance check.** If Capital Wallet USDC is insufficient, Bridge requests a USYC → USDC
+3. **Balance check.** If Capital Wallet USDC is insufficient, Relayer requests a USYC → USDC
    redemption via the custodian MPC API and retries after settlement.
 4. **Fund.** Calls `WQ.fundRequest(queueId)`. WQ pulls USDC from Capital Wallet via
    pre-approved allowance. LP's entry moves to `Funded`; LP then calls `WQ.claim()` to burn
@@ -46,10 +46,10 @@ When a `WithdrawalRequested` event is observed, Bridge processes the queue head:
 
 When a loan repayment USDC inflow is detected at the Capital Wallet:
 
-1. Bridge presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
+1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
 2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve`.
-3. Bridge builds two `YieldAttestation` structs (vault leg and treasury leg) and signs each
-   with the `bridgeYieldAttestor` key:
+3. Relayer builds two `YieldAttestation` structs (vault leg and treasury leg) and signs each
+   with the `relayerYieldAttestor` key:
    ```
    YieldAttestation {
      bytes32 repaymentRef;  // keccak256(chainId, repaymentTxHash, destinationTag)
@@ -59,13 +59,13 @@ When a loan repayment USDC inflow is detected at the Capital Wallet:
      uint256 salt;
    }
    ```
-4. Bridge posts structs + Bridge sigs to the custodian's co-signing API (Fireblocks / BitGo).
+4. Relayer posts structs + Relayer sigs to the custodian's co-signing API (Fireblocks / BitGo).
    Custodian independently verifies the USDC inflow and returns EIP-1271 signatures.
-5. Bridge calls `PLUSD.yieldMint(att, bridgeSig, custodianSig)` for each leg via the
+5. Relayer calls `PLUSD.yieldMint(att, relayerSig, custodianSig)` for each leg via the
    transaction outbox. PLUSD verifies both signatures on-chain, checks the reserve invariant,
    and mints to destination.
 
-Neither Bridge alone nor the custodian alone can mint yield — both sigs plus YIELD_MINTER
+Neither Relayer alone nor the custodian alone can mint yield — both sigs plus YIELD_MINTER
 caller role are required.
 
 ### 4. Yield Minting — USYC (Lazy, Stake/Unstake-Triggered)
@@ -73,14 +73,14 @@ caller role are required.
 USYC NAV accrues continuously. To keep sPLUSD share price current without a time-based cron,
 yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 
-1. Bridge reads current USYC NAV from the Hashnote API.
+1. Relayer reads current USYC NAV from the Hashnote API.
 2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
    holdings). If `delta <= 0`, skip.
-3. If `delta > 0`: builds two `YieldAttestation` structs (vault + treasury), gets Bridge sig
+3. If `delta > 0`: builds two `YieldAttestation` structs (vault + treasury), gets Relayer sig
    + custodian co-sig (same flow as repayment), submits both `yieldMint` calls.
 4. Advances `last_minted_NAV` baseline only after both legs confirm on-chain.
 
-Between mints, Bridge polls USYC NAV (e.g., every minute) and exposes
+Between mints, Relayer polls USYC NAV (e.g., every minute) and exposes
 accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 5. WhitelistRegistry Maintenance
@@ -93,7 +93,7 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 6. Price Feed and CCR Monitoring
 
-Bridge monitors every active loan in the LoanRegistry, polling Platts/Argus commodity prices
+Relayer monitors every active loan in the LoanRegistry, polling Platts/Argus commodity prices
 on a configurable cadence (working assumption: every 15 minutes during market hours). Computes
 CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
 notifies recipients and queues a `LoanRegistry.updateMutable` call to update `lastReportedCCR`.
@@ -111,7 +111,7 @@ notifies recipients and queues a `LoanRegistry.updateMutable` call to update `la
 
 ### 7. Reserve Reconciliation
 
-After every state-changing event, Bridge evaluates and publishes the full backing invariant:
+After every state-changing event, Relayer evaluates and publishes the full backing invariant:
 
 ```
 PLUSD totalSupply  ==  USDC in Capital Wallet
@@ -148,13 +148,13 @@ PLUSD totalSupply  ==  USDC in Capital Wallet
 
 ## Service Decomposition
 
-Bridge is described as a "single backend" for simplicity, but is deployed as **separate
+Relayer is described as a "single backend" for simplicity, but is deployed as **separate
 internal services** sharing a Postgres database and communicating via internal RPC. No
 service is internet-facing except the API Gateway.
 
 ```
                     ┌──────────────────────────────────────────────┐
-                    │              Bridge Cluster                   │
+                    │              Relayer Cluster                   │
                     │                                              │
  Ethereum RPC ────► │  ┌─────────────┐    ┌──────────────────┐    │
                     │  │ Indexer     │───►│ Postgres          │    │
@@ -167,12 +167,12 @@ service is internet-facing except the API Gateway.
                     │  └─────────────┘           │                 │
                     │                     ┌──────┴───────────┐    │
                     │                     │ Tx Submitter      │───►  Ethereum
-                    │                     │ (holds Bridge EOA)│    │
+                    │                     │ (holds Relayer EOA)│    │
                     │                     └──────────────────┘    │
                     │                                              │
                     │  ┌──────────────────┐                       │
                     │  │ Signer            │  (holds              │
-                    │  │ (air-gapped       │   bridgeYieldAttestor│
+                    │  │ (air-gapped       │   relayerYieldAttestor│
                     │  │  hardware signer) │   — yield            │
                     │  └──────────────────┘   attestations only;  │
                     │                         no internet egress) │
@@ -195,10 +195,10 @@ service is internet-facing except the API Gateway.
 |---|---|---|
 | Indexer | Poison event data in DB | Sign attestations, submit txs, mint PLUSD |
 | Orchestrator | Queue malicious yield-mint intents | Obtain custodian co-sig (no yield mint possible); submit txs |
-| Tx Submitter | Front-run internal tx queue; submit arbitrary txs under Bridge EOA authority | Forge Bridge yield sig; forge custodian sig; operate outside the permissions granted to the Bridge EOA |
-| Signer | Produce Bridge yield sigs without custodian co-sig | Mint PLUSD alone — custodian EIP-1271 sig and `YIELD_MINTER` caller role are independent requirements |
+| Tx Submitter | Front-run internal tx queue; submit arbitrary txs under Relayer EOA authority | Forge Relayer yield sig; forge custodian sig; operate outside the permissions granted to the Relayer EOA |
+| Signer | Produce Relayer yield sigs without custodian co-sig | Mint PLUSD alone — custodian EIP-1271 sig and `YIELD_MINTER` caller role are independent requirements |
 | API Gateway | Leak read data; inject bad Trustee approvals into the review queue | Sign, submit, or index |
-| Custodian alone (external) | Produce a custodian EIP-1271 sig | Mint PLUSD alone — Bridge ECDSA sig and `YIELD_MINTER` caller role are independent requirements |
+| Custodian alone (external) | Produce a custodian EIP-1271 sig | Mint PLUSD alone — Relayer ECDSA sig and `YIELD_MINTER` caller role are independent requirements |
 
 All service-to-service communication is mTLS with auto-provisioned certificates. No
 service has internet egress except Tx Submitter (Ethereum RPC), API Gateway (frontend),
@@ -208,34 +208,34 @@ and the Custodian Co-Signer Client (custodian API).
 
 ## Role Assignments on Contracts
 
-Bridge holds: **YIELD_MINTER** (PLUSD), **FUNDER** (WithdrawalQueue), **WHITELIST_ADMIN**
+Relayer holds: **YIELD_MINTER** (PLUSD), **FUNDER** (WithdrawalQueue), **WHITELIST_ADMIN**
 (WhitelistRegistry).
 
-Bridge has **no role on LoanRegistry** — loan NFT writes are done by the Trustee key directly.
-Bridge **does not sign loan disbursements** — Trustee + Team co-sign on Capital Wallet.
-Bridge **does not manage the USDC↔USYC ratio** — custodian MPC policy engine and Trustee
-manage the band; Bridge only requests a USYC redemption when Capital Wallet USDC is
+Relayer has **no role on LoanRegistry** — loan NFT writes are done by the Trustee key directly.
+Relayer **does not sign loan disbursements** — Trustee + Team co-sign on Capital Wallet.
+Relayer **does not manage the USDC↔USYC ratio** — custodian MPC policy engine and Trustee
+manage the band; Relayer only requests a USYC redemption when Capital Wallet USDC is
 insufficient at withdrawal funding time.
 
 ---
 
 ## Security Considerations
 
-**Two-party yield attestation.** Yield minting requires Bridge ECDSA sig + custodian EIP-1271
-sig + YIELD_MINTER caller role. Bridge alone cannot mint yield PLUSD.
+**Two-party yield attestation.** Yield minting requires Relayer ECDSA sig + custodian EIP-1271
+sig + YIELD_MINTER caller role. Relayer alone cannot mint yield PLUSD.
 
 **Narrow on-chain roles.** FUNDER can only trigger WQ pulls for existing queue entries;
 WHITELIST_ADMIN cannot mint; YIELD_MINTER still requires custodian co-sig.
 
-**Deposit path is Bridge-free.** A complete Bridge compromise does not stop deposits or allow
+**Deposit path is Relayer-free.** A complete Relayer compromise does not stop deposits or allow
 unbacked deposit-leg mints.
 
-**Key storage.** Bridge hot keys (on-chain caller) are held in a hardware-isolated KMS
-with per-call authorisation and full audit logging. The `bridgeYieldAttestor` key (yield
+**Key storage.** Relayer hot keys (on-chain caller) are held in a hardware-isolated KMS
+with per-call authorisation and full audit logging. The `relayerYieldAttestor` key (yield
 EIP-712 signing) is held in a separate air-gapped signer with no internet egress and is
 exercised only via the co-signing flow defined in the yield-attestation sections above.
 MPC key shares for cash-rail actions are managed through the custodian vendor's key
 ceremony.
 
-**Audit log.** Every bridge action is recorded in an append-only log mirrored to an
-independent third-party sink. Bridge cannot delete or modify historical entries.
+**Audit log.** Every relayer action is recorded in an append-only log mirrored to an
+independent third-party sink. Relayer cannot delete or modify historical entries.

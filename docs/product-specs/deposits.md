@@ -4,7 +4,7 @@
 
 An LP deposits USDC by calling `DepositManager.deposit(amount)` directly. The contract
 atomically pulls USDC from the LP's wallet to the Capital Wallet and mints PLUSD 1:1 to the
-depositor in a single transaction. Bridge is not involved in the deposit flow — the on-chain
+depositor in a single transaction. Relayer is not involved in the deposit flow — the on-chain
 USDC transfer IS the attestation. Deposits that exceed on-chain rate limits revert; the LP
 retries when window headroom opens.
 
@@ -20,7 +20,7 @@ Before presenting the deposit UI, the app reads the LP's on-chain WhitelistRegis
 
 - If not whitelisted, the deposit UI is disabled and the LP is directed to complete onboarding.
 - If whitelisted but the Chainalysis freshness window has expired, the deposit UI is blocked
-  and the LP is prompted to re-verify. Bridge calls `WhitelistRegistry.refreshScreening` on a
+  and the LP is prompted to re-verify. Relayer calls `WhitelistRegistry.refreshScreening` on a
   clean Chainalysis result to update `approvedAt`.
 
 To deposit, the LP first calls `USDC.approve(depositManager, amount)` from their wallet, then
@@ -51,7 +51,7 @@ moved without the corresponding PLUSD mint succeeding in the same transaction.
 ### Over-Rate-Limit Deposits
 
 If a deposit would breach `maxPerWindow` or `maxPerLPPerWindow`, the contract reverts. There
-is no queue: the LP must retry when window headroom has reopened. The Bridge API endpoint
+is no queue: the LP must retry when window headroom has reopened. The Relayer API endpoint
 `GET /v1/protocol/limits` exposes current window utilisation and per-LP utilisation so the
 deposit UI can show live cap status before the LP submits.
 
@@ -139,7 +139,7 @@ on every mint and burn.
 ## Security Considerations
 
 - **No off-chain signer to forge.** The on-chain USDC transfer IS the deposit evidence.
-  There is no EIP-712 attestation or Bridge key that could be forged to mint unbacked PLUSD
+  There is no EIP-712 attestation or Relayer key that could be forged to mint unbacked PLUSD
   on the deposit leg.
 - **Reserve invariant enforced on-chain.** Three cumulative counters updated in the same
   transaction prevent the Resolv-class over-minting attack at the contract level, independently

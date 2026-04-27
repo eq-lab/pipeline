@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Operations Console is the single web application through which the Pipeline Trust Company (Trustee), the Pipeline team, and the Loan Originator (Open Mineral) interact with the protocol. All three parties share the same backend and authentication infrastructure but see only the screens assigned to their role. The console has no Ethereum wallet connection requirement for operators — every on-chain effect is mediated by the bridge service or by MPC co-signature.
+The Operations Console is the single web application through which the Pipeline Trust Company (Trustee), the Pipeline team, and the Loan Originator (Open Mineral) interact with the protocol. All three parties share the same backend and authentication infrastructure but see only the screens assigned to their role. The console has no Ethereum wallet connection requirement for operators — every on-chain effect is mediated by the relayer service or by MPC co-signature.
 
 ---
 
@@ -30,11 +30,11 @@ The Trustee view is accessible only to accounts holding the Trustee role. It cov
 
 ### Origination Queue
 
-The trustee receives origination requests submitted by the Originator. For each request the trustee sees: the full set of immutable loan parameters submitted by the Originator, the Originator's EIP-712 signature (already validated by the bridge service), and the submission timestamp.
+The trustee receives origination requests submitted by the Originator. For each request the trustee sees: the full set of immutable loan parameters submitted by the Originator, the Originator's EIP-712 signature (already validated by the relayer service), and the submission timestamp.
 
 The trustee takes one of three actions:
 
-- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the bridge's disbursement preparation on the Capital Wallet.
+- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the relayer's disbursement preparation on the Capital Wallet.
 - **Request changes** — the trustee adds a comment; the request status becomes ChangesRequested and the Originator is notified.
 - **Reject** — the trustee adds a rejection reason; the request status becomes Rejected and the Originator is notified.
 
@@ -58,16 +58,16 @@ The trustee manually identifies incoming USD wire transfers from borrowers again
 | originator_residual | amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation |
 
 4. The trustee reviews the breakdown. Deviations from the computed baseline (e.g., negotiated fee waivers, partial repayments, early repayment fees) are highlighted. The trustee can adjust individual components.
-5. The trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction). This signature is the trigger for the bridge service to execute on-chain yield delivery and the senior principal USYC sweep.
+5. The trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction). This signature is the trigger for the relayer service to execute on-chain yield delivery and the senior principal USYC sweep.
 
 ### Weekly Yield Signing
 
-Each Thursday, the bridge service pre-builds a TreasuryYieldDistributed transaction and presents it in the trustee tooling. The trustee sees: total accrued USYC yield since the previous distribution, vault share (70%), treasury share (30%), reference USYC NAV, holding amount, and expected on-chain mint amounts. The trustee signs the pre-built transaction (EIP-712 attestation). On receipt of the signature, the bridge executes the two yield mints. The trustee does not compute any values manually; the entire transaction is pre-built.
+Each Thursday, the relayer service pre-builds a TreasuryYieldDistributed transaction and presents it in the trustee tooling. The trustee sees: total accrued USYC yield since the previous distribution, vault share (70%), treasury share (30%), reference USYC NAV, holding amount, and expected on-chain mint amounts. The trustee signs the pre-built transaction (EIP-712 attestation). On receipt of the signature, the relayer executes the two yield mints. The trustee does not compute any values manually; the entire transaction is pre-built.
 
 ### LoanRegistry Lifecycle Updates
 
 As the sole holder of the `TRUSTEE` role on LoanRegistry (signed directly by the Trustee
-key, not relayed through Bridge), the trustee can:
+key, not relayed through Relayer), the trustee can:
 
 - Transition loan status between Performing and Watchlist via `updateMutable`.
 - Extend `currentMaturityDate`.
@@ -91,7 +91,7 @@ The Team view is accessible only to accounts holding the Team role. It covers fi
 
 A unified queue of pending cash-rail transactions requiring team co-signature. Filterable by category:
 
-- **Loan disbursements.** The bridge prepares the Capital Wallet outflow in response to a LoanMinted event. The team member reviews loan ID, amount, and destination (on-ramp provider address) before providing their MPC signature. Trustee MPC signature is required in parallel.
+- **Loan disbursements.** The relayer prepares the Capital Wallet outflow in response to a LoanMinted event. The team member reviews loan ID, amount, and destination (on-ramp provider address) before providing their MPC signature. Trustee MPC signature is required in parallel.
 - **Treasury redemption Stage A (PLUSD → USDC).** Team operator A initiates; team operator B independently verifies and confirms; trustee co-signs via MPC. The console enforces that A and B are different authenticated sessions.
 - **Treasury redemption Stage B (USDC → bank).** Mirrors Stage A authorisation chain. Destination is selected from the foundation-multisig-maintained pre-approved bank account list; free-text entry is not permitted.
 - **Above-envelope LP payouts.** LP payouts exceeding $5M per-tx or $10M rolling 24h route here for trustee + team co-signature. The team member verifies destination (must be the LP's original deposit address), amount, and originating queue_id.
@@ -103,14 +103,14 @@ The two-operator disjoint rule for Treasury redemptions is enforced by the conso
 
 Reached when LP onboarding returned an ambiguous screening result (Sumsub or Chainalysis returned FLAGGED, MANUAL_REVIEW, or another non-binary status). For each queue entry the reviewer sees: Sumsub output, Chainalysis report, accreditation declaration, connected wallet address, and the specific flag triggering manual review.
 
-- **Single-reviewer decision.** A compliance officer (team member with the compliance sub-role) can approve or reject. Approval causes the bridge to write the LP address to the WhitelistRegistry; rejection notifies the LP with a reason.
+- **Single-reviewer decision.** A compliance officer (team member with the compliance sub-role) can approve or reject. Approval causes the relayer to write the LP address to the WhitelistRegistry; rejection notifies the LP with a reason.
 - **Escalation.** Reviewers can escalate complex cases to a two-person review. The second reviewer must be a different team member.
 
 Every compliance decision is recorded in the audit log with the deciding officer, evidence reviewed, and outcome.
 
-### Bridge Alerts Feed
+### Relayer Alerts Feed
 
-A real-time chronological feed of bridge service events: rate-limit hits, mint or payout alerts (threshold: any single mint or payout >= $1M), reconciliation invariant drift (amber/red), failed screening checks during deposits, and unusual activity patterns. Each alert carries severity (info / amber / red), timestamp, category, and originating event or transaction.
+A real-time chronological feed of relayer service events: rate-limit hits, mint or payout alerts (threshold: any single mint or payout >= $1M), reconciliation invariant drift (amber/red), failed screening checks during deposits, and unusual activity patterns. Each alert carries severity (info / amber / red), timestamp, category, and originating event or transaction.
 
 Team members can acknowledge alerts (stopping repeat notifications) and add resolution notes. Acknowledgement does not change on-chain state.
 
@@ -145,7 +145,7 @@ The Originator submits new loan origination requests through a structured form:
 
 1. Originator enters immutable loan parameters: borrower identifier, commodity, corridor, original facility size, senior/equity tranche split, tenor, governing law, optional metadata URI, and initial location data (LocationType, identifier, optional tracking URL).
 2. On submit, the console builds the canonical EIP-712 payload covering all immutable parameters and requests an off-chain signature bound to the Originator's authenticated session. This is not an on-chain transaction and produces no wallet popup; the signature is confirmed via 2FA.
-3. The signed request is submitted to the bridge service, which validates the signature deterministically. A valid request is recorded as SubmittedAwaitingTrustee and surfaced in the trustee's origination queue. An invalid signature is rejected immediately and not forwarded to the trustee.
+3. The signed request is submitted to the relayer service, which validates the signature deterministically. A valid request is recorded as SubmittedAwaitingTrustee and surfaced in the trustee's origination queue. An invalid signature is rejected immediately and not forwarded to the trustee.
 4. If the trustee requests changes, the Originator sees the comment and may resubmit a revised request as a new submission.
 
 ### My Requests View

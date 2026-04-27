@@ -6,7 +6,7 @@ Use this directory for feature and product requirement documents.
 
 ## How to write a product spec
 
-- **Frame as behavior** — describe what the feature does, not what tasks need to be done to build it. Use present tense ("the bridge mints PLUSD", not "implement PLUSD minting").
+- **Frame as behavior** — describe what the feature does, not what tasks need to be done to build it. Use present tense ("the relayer mints PLUSD", not "implement PLUSD minting").
 - **Include implementation details only when they define behavior** — data models, role assignments, threshold values, and interface contracts belong here when they directly determine how the system behaves. Code-level implementation choices (data structures, algorithms, library versions) belong in exec plans.
 - **Describe current behavior only** — no change history, no migration notes, no references to previous versions.
 - **One spec per feature** — each file covers a single coherent domain. Cross-references are fine; duplication is not.
@@ -29,7 +29,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [withdrawals.md](./withdrawals.md) | Withdrawals | FIFO queue, partial fills, automated payout, Treasury redemption |
 | [smart-contracts.md](./smart-contracts.md) | Smart Contracts | 8 contracts + AccessManager, interfaces, role assignments, shutdown, upgradeability, emergency response |
 | [security.md](./security.md) | Security & Threat Model | Threat model, peer-protocol comparison, MVP defence stack, timelock table, accepted trust assumptions |
-| [bridge-service.md](./bridge-service.md) | Bridge Service | Event listening, MPC auto-signing, minting, USYC rebalancing, service decomposition |
+| [relayer-service.md](./relayer-service.md) | Relayer Service | Event listening, MPC auto-signing, minting, USYC rebalancing, service decomposition |
 | [operations-console.md](./operations-console.md) | Operations Console | Trustee tooling, Team interface, Originator UI |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |

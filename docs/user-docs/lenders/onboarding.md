@@ -20,7 +20,7 @@ Pipeline is permissioned — every lender wallet passes KYC and Chainalysis scre
   <li>Connect your wallet via WalletConnect or RainbowKit. The connected address becomes your Pipeline account identifier.</li>
   <li>Submit identity documents through Sumsub. Individuals upload ID and a selfie. Entities upload corporate documents and UBO disclosures.</li>
   <li>The system runs Chainalysis screening on your wallet address against sanctions lists and prohibited categories.</li>
-  <li>If both vendors return clean results, Bridge writes your address to WhitelistRegistry with an <code>approvedAt</code> timestamp. This usually lands within minutes of the second vendor result.</li>
+  <li>If both vendors return clean results, Relayer writes your address to WhitelistRegistry with an <code>approvedAt</code> timestamp. This usually lands within minutes of the second vendor result.</li>
   <li>The deposit UI unblocks. You can now approve USDC and call <code>DepositManager.deposit</code>.</li>
 </ol>
 

@@ -19,12 +19,12 @@ written into the registry.
 The Loan Originator submits a new origination request through the Originator UI. The UI
 builds a canonical EIP-712 payload covering all immutable loan parameters and signs it
 using the Originator's authenticated session (2FA-confirmed, no wallet popup). The signed
-request is POSTed to the bridge service, which validates the signature and records the
+request is POSTed to the relayer service, which validates the signature and records the
 request with status `SubmittedAwaitingTrustee`.
 
 The Originator cannot call `LoanRegistry.mintLoan()` directly. All on-chain mints are
 executed by the Trustee key (the sole holder of the `TRUSTEE` role on LoanRegistry),
-exclusively after trustee approval. Bridge has no role on LoanRegistry and does not relay
+exclusively after trustee approval. Relayer has no role on LoanRegistry and does not relay
 these writes.
 
 ### Trustee review queue
@@ -42,7 +42,7 @@ the trustee can:
 ### Mint and disbursement trigger
 
 On `mintLoan()` succeeding, the contract emits `LoanMinted(tokenId, originator, data)`. The
-bridge service listens for this event and immediately prepares the Capital Wallet outflow
+relayer service listens for this event and immediately prepares the Capital Wallet outflow
 transaction (USDC → on-ramp provider → borrower). The trustee and Pipeline team then
 co-sign the prepared transaction via MPC on the Capital Wallet. The Originator is not part
 of the disbursement signing chain. The LoanRegistry mint and the Capital Wallet
@@ -70,7 +70,7 @@ The following fields are updated during the loan's life by the `TRUSTEE` (Truste
 - `status` — `Performing | Watchlist | Default | Closed`
 - `currentMaturityDate` — may be extended from `originalMaturityDate`
 - `lastReportedCCR` and `lastReportedCCRTimestamp` — written by the Trustee on CCR
-  threshold crossings from the price feed system; Bridge observes and alerts but does not
+  threshold crossings from the price feed system; Relayer observes and alerts but does not
   write to the registry
 - `currentLocation` — updated as cargo moves through the trade corridor
 - `offtakerReceivedTotal` — cumulative USDC received from the offtaker against
@@ -111,7 +111,7 @@ The contract asserts `seniorPrincipal + seniorInterest + equityAmount <= offtake
 (the residual covers protocol fees routed to Treasury off-registry), increments the four
 mutable repayment counters, and emits `RepaymentRecorded`. The call is a pure accounting
 record: it does not move USDC or mint PLUSD. Actual yield PLUSD minting is performed by
-Bridge via the two-party `yieldMint` path on PLUSD, triggered by the same Trustee
+Relayer via the two-party `yieldMint` path on PLUSD, triggered by the same Trustee
 attestation; the registry write and the yield mint are independent transactions.
 
 ### Maturity date extensions
@@ -135,7 +135,7 @@ MarineTraffic) for real-time AIS position.
 interface ILoanRegistry {
     /// @notice Mints a new loan NFT. Emits LoanMinted.
     /// @dev Only callable by TRUSTEE (Trustee key). The resulting LoanMinted event
-    ///      triggers Capital Wallet disbursement preparation in Bridge.
+    ///      triggers Capital Wallet disbursement preparation in Relayer.
     function mintLoan(
         address originator,
         ImmutableLoanData calldata data
@@ -251,7 +251,7 @@ event LoanClosed(uint256 indexed tokenId, ClosureReason reason);
 
 ## Security Considerations
 
-- The `TRUSTEE` role on LoanRegistry is held by the Trustee key alone. Bridge has no role
+- The `TRUSTEE` role on LoanRegistry is held by the Trustee key alone. Relayer has no role
   on LoanRegistry and cannot mint, update, close, or record repayment on a loan NFT. The
   Trustee broadcasts `mintLoan()` only after reviewing and approving the Originator's
   EIP-712 signed request; the mint is never automatic.
@@ -264,7 +264,7 @@ event LoanClosed(uint256 indexed tokenId, ClosureReason reason);
   basis, waterfall parameters, and recovery envelope are tamper-proof.
 - `recordRepayment()` is pure accounting and cannot move USDC or mint PLUSD; it only
   updates the four repayment counters and emits an event. Actual yield PLUSD minting
-  requires the two-party EIP-712 attestation on PLUSD (Bridge + custodian) independent of
+  requires the two-party EIP-712 attestation on PLUSD (Relayer + custodian) independent of
   the LoanRegistry write, so a compromised Trustee key cannot fabricate yield.
 - Repayment accounting splits Senior (principal + interest) and Equity flows explicitly on
   chain. Outstanding obligations are derivable from immutable minus mutable counters; a
