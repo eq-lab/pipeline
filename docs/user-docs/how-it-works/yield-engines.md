@@ -6,8 +6,8 @@ section: How Pipeline works
 
 # Where yield comes from
 
-Pipeline pays yield from two real, ongoing flows — repayments on commodity
-trade loans and Treasury-bill accrual on idle reserves — and the sPLUSD share
+Pipeline pays yield from two distinct sources: repayments on commodity
+trade loans and Treasury-bill accrual on idle reserves. The sPLUSD share
 token captures both.
 
 {% include diagram.html src="d4-yield-accretion.svg" caption="Two engines — senior coupons and T-bill accrual — both deliver yield to the sPLUSD vault through the same two-party attested yieldMint." %}
@@ -18,8 +18,8 @@ token captures both.
 <li>Relayer and Custodian co-sign a <code>YieldAttestation</code> after verifying the USDC inflow.</li>
 <li><code>YieldMinter.yieldMint</code> delivers the senior coupon leg to the sPLUSD vault.</li>
 <li>USYC NAV drifts up continuously as T-bills accrue at the custodian.</li>
-<li>A stake or unstake on sPLUSD triggers the lazy NAV reconciliation.</li>
-<li>Relayer and Custodian co-sign a fresh <code>YieldAttestation</code> with a new salt.</li>
+<li>A stake or unstake on sPLUSD triggers the NAV reconciliation.</li>
+<li>Relayer and Custodian co-sign a fresh <code>YieldAttestation</code> .</li>
 <li><code>YieldMinter.yieldMint</code> splits the NAV delta — 70% to the sPLUSD vault, 30% to the Treasury Wallet.</li>
 </ol>
 
@@ -28,7 +28,7 @@ token captures both.
 Every Pipeline loan is cut into two tranches. The **senior tranche** is funded
 by Pipeline lenders through the vault. The **equity tranche** is funded by the
 loan originator and absorbs first losses. When the **offtaker** — the end
-buyer of the commodity — pays for the cargo, that USDC arrives at the Capital
+buyer of the commodity — pays for the cargo, that money eventually arrives at the Capital
 Wallet. The trustee splits it into senior principal, senior interest (net of
 fees), and an equity residual returned to the originator.
 
@@ -39,19 +39,19 @@ Fees come out before the senior coupon reaches the vault:
 - **OET allocation** — 0.05–0.10% per annum, funding the on-chain operations
   endowment.
 
-All three route to the Treasury Wallet, not to the vault. The senior coupon
+All fees route to the Treasury Wallet, not to the Vault. The senior coupon
 net — gross senior interest minus management fee minus performance fee — is
 the amount lenders actually receive.
 
 The moment yield lands in the vault is the yield-mint event. Relayer and the
-custodian co-sign a `YieldAttestation`; the call goes through
+custodian co-sign a `YieldAttestation`, the call goes through
 `YieldMinter.yieldMint`, both signatures are recovered on-chain, and
 `PLUSD.mintForYield` delivers new PLUSD into the sPLUSD vault. That new PLUSD
-is what moves the share price upward. Neither Relayer nor the custodian can
-mint alone; YieldMinter rejects the call unless both signatures verify against
+is what moves the sPLUSD share price upward. Neither Relayer nor the Custodian can
+mint on their own: YieldMinter rejects the call unless both signatures verify against
 the configured attestor addresses.
 
-## Engine B — T-bill accrual on USYC reserves
+## Engine B — T-bill rate on USYC reserves
 
 The Capital Wallet holds roughly 15% of reserves in USDC so lenders can
 withdraw instantly — the band runs 10–20% and is rebalanced by the custodian
@@ -68,10 +68,9 @@ The same two-party attestation applies: Relayer signs, the custodian
 co-signs, and YieldMinter recovers both signatures on-chain before calling
 `PLUSD.mintForYield`.
 
-T-bill yield is minted **lazily** — when someone stakes or unstakes sPLUSD,
-not on a clock. Between mints, the accrued-but-undistributed amount shows on
-the dashboard. If nobody interacts with the vault for a while, the accrual
-still lands the next time anyone does.
+T-bill yield is minted **automatically** — when someone stakes or unstakes sPLUSD. 
+Between mints, the accrued interest amount shows on the dashboard. 
+If nobody interacts with the vault for a while, the accrual still lands the next time anyone does. 
 
 ## Where yield does NOT come from
 
@@ -83,28 +82,20 @@ still lands the next time anyone does.
 - **No token emissions.** There is no governance token dripping value.
   sPLUSD share price is the return.
 
-## Where the money sits between repayments
-
-Idle USDC and USYC sit at the custodian — both are on-chain ERC-20 holdings
-at the Capital Wallet address, controlled by MPC cosigners. USYC earns the
-T-bill yield every day, whether or not a loan repaid that week. See
-[custody](/security/custody/) and [split-rail architecture](/how-it-works/)
-for how the cash rail is structured.
 
 ## Share price mechanics
 
-sPLUSD share price moves only when a new yield mint lands in the vault — not
-on a clock, and not when the trustee writes a repayment entry to the
-LoanRegistry. The yield mint is the event. LoanRegistry writes are
-informational; they confirm that a repayment happened, but they do not change
+sPLUSD share price increases only when a new yield accrues in the vault. 
+The yield mint is the event. LoanRegistry writes are informational; 
+they confirm that a repayment happened, but they do not change
 share price. Only a successful `YieldMinter.yieldMint` call, gated by the
 two-party attestation and the on-chain reserve invariant inside
 `PLUSD.mintForYield`, moves NAV.
 
 {% include chart.html src="c2-yield-attribution.svg" caption="Illustrative attribution for a representative senior-tranche loan plus the T-bill engine. Not live returns." %}
 
-Both engines stack into the same share price. A quarter with heavy repayments
-shows most of the lift from Engine A. A quiet quarter with few repayments
-shows Engine B carrying more of the accrual. Over a full year, both
+Both engines contribute to the same share price. A quarter with heavy repayments
+shows most of the rise from Engine A. A quiet quarter with few repayments
+shows Engine B carrying most of the accrual. Over a full year, both
 contribute — and both arrive through the same co-signed mint path, against
 the same 1:1 backing invariant PLUSD enforces on every call.
