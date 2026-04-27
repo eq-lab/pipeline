@@ -16,7 +16,7 @@
 | `tokenURI(uint256 tokenId)` | public view (ERC-721) | Returns the IPFS URI of the immutable origination JSON. |
 | `getMutable(uint256 tokenId)` | public view | Returns current mutable lifecycle data. |
 
-Bridge has **no role on LoanRegistry**. All loan NFT writes — including `recordRepayment` —
+Relayer has **no role on LoanRegistry**. All loan NFT writes — including `recordRepayment` —
 are done by the Trustee key directly.
 
 Immutable origination data is stored off-chain as an IPFS JSON document referenced by

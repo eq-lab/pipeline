@@ -8,9 +8,9 @@
 
 **Operational roles** (GUARDIAN can revoke a named holder directly; ADMIN grants and re-grants under 48h timelock):
 
-- Bridge EOA holds: `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry).
-- Bridge yield-attestor key: referenced by `YieldMinter` as `bridgeYieldAttestor` (rotatable under 48h ADMIN timelock via `proposeYieldAttestors`). This is a signing key, not a role — revocation is a rotation, not a `revokeRole` call.
-- Trustee key holds: `TRUSTEE` on LoanRegistry (all loan NFT writes — Bridge has no LoanRegistry role).
+- Relayer EOA holds: `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry).
+- Relayer yield-attestor key: referenced by `YieldMinter` as `relayerYieldAttestor` (rotatable under 48h ADMIN timelock via `proposeYieldAttestors`). This is a signing key, not a role — revocation is a rotation, not a `revokeRole` call.
+- Trustee key holds: `TRUSTEE` on LoanRegistry (all loan NFT writes — Relayer has no LoanRegistry role).
 
 **Contract-held roles** (bound to a proxy address, not an EOA; not subject to GUARDIAN revocation in the ordinary flow):
 
@@ -31,7 +31,7 @@ held by EOAs: `FUNDER`, `WHITELIST_ADMIN`, `TRUSTEE`. Revocation is instant and 
 no timelock. Re-granting a revoked role requires an ADMIN proposal with the 48h
 AccessManager delay (which GUARDIAN may cancel). GUARDIAN cannot revoke `UPGRADER`,
 `DEFAULT_ADMIN`, `DEPOSITOR`, `YIELD_MINTER`, `BURNER`, or any governance role — attempts
-revert. A Bridge-side yield-attestor compromise is handled by rotation via
+revert. A Relayer-side yield-attestor compromise is handled by rotation via
 `YieldMinter.proposeYieldAttestors`, not by `revokeRole`.
 
 ---
@@ -104,11 +104,11 @@ GUARDIAN **cannot** grant roles, unpause any contract, upgrade, revoke governanc
 
 Every restoration runs through ADMIN with the 48h AccessManager delay and is itself
 GUARDIAN-cancelable: `unpause()` on any contract; re-grant of any revoked operational
-role; rotation of `bridgeYieldAttestor` / `custodianYieldAttestor` via
+role; rotation of `relayerYieldAttestor` / `custodianYieldAttestor` via
 `YieldMinter.proposeYieldAttestors`; rotation of `capitalWallet` on DepositManager;
 upgrade of any implementation via the `UPGRADER` role.
 
-### Playbook: Bridge operational-key compromise
+### Playbook: Relayer operational-key compromise
 
 1. **Detection.** Watchdog alerts on anomalous `WhitelistAccess` grants,
    `WithdrawalFunded` without matching Capital Wallet allowance movement, divergence
@@ -117,13 +117,13 @@ upgrade of any implementation via the `UPGRADER` role.
 2. **Immediate (GUARDIAN, < 1 min).** Pause PLUSD, DepositManager, YieldMinter, and
    WithdrawalQueue (defence in depth).
 3. **Containment (GUARDIAN, < 10 min).** Submit separate `revokeRole` transactions for
-   `FUNDER` and `WHITELIST_ADMIN` on the compromised Bridge address. Even a fully
-   compromised Bridge cannot mint yield afterwards (custodian EIP-1271 still required,
+   `FUNDER` and `WHITELIST_ADMIN` on the compromised Relayer address. Even a fully
+   compromised Relayer cannot mint yield afterwards (custodian EIP-1271 still required,
    and YieldMinter is paused), cannot fund withdrawals (`FUNDER` revoked), and cannot
    modify the whitelist.
 4. **Investigation & recovery.** Audit event logs; if the yield-signing key is
-   compromised, ADMIN proposes `YieldMinter.proposeYieldAttestors(newBridgeAttestor,
-   sameCustodian)` under 48h timelock. Provision a new Bridge address; ADMIN proposes
+   compromised, ADMIN proposes `YieldMinter.proposeYieldAttestors(newRelayerAttestor,
+   sameCustodian)` under 48h timelock. Provision a new Relayer address; ADMIN proposes
    re-granting `FUNDER`, `WHITELIST_ADMIN` under 48h timelock each. Unpause via ADMIN.
 
 ### Playbook: Trustee key compromise
@@ -133,7 +133,7 @@ upgrade of any implementation via the `UPGRADER` role.
    are unaffected — LoanRegistry has no capital touchpoints.
 2. **Containment.** Trustee can (out-of-band, via Capital Wallet MPC policy) revoke the
    Capital Wallet → WQ USDC allowance. Single-key Trustee compromise alone cannot move
-   USDC (Bridge cosign required).
+   USDC (Relayer cosign required).
 3. **Data-integrity review.** False LoanRegistry entries do not move funds or share
    price; reconcile against Capital Wallet inflows to identify them.
 4. **Recovery.** Provision a new Trustee key; ADMIN re-grants `TRUSTEE` under 48h
@@ -142,9 +142,9 @@ upgrade of any implementation via the `UPGRADER` role.
 ### Playbook: Custodian yield-attestor compromise
 
 1. **Immediate.** Custodian's own key-management revokes the compromised key; no
-   on-chain action strictly required — the compromised key alone cannot mint (Bridge
+   on-chain action strictly required — the compromised key alone cannot mint (Relayer
    sig and `YIELD_MINTER` caller chain still needed).
-2. **Rotation.** ADMIN calls `YieldMinter.proposeYieldAttestors(sameBridge,
+2. **Rotation.** ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer,
    newCustodian)` under 48h timelock. Yield mints continue during the window (old
    attestor still valid — acceptable because it cannot mint alone).
 3. **Defence in depth.** If coordinated compromise is suspected, GUARDIAN also pauses

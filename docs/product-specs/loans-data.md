@@ -10,7 +10,7 @@
 interface ILoanRegistry {
     /// @notice Mints a new loan NFT. Emits LoanMinted.
     /// @dev Only callable by TRUSTEE (Trustee key). The resulting LoanMinted event
-    ///      triggers Capital Wallet disbursement preparation in Bridge.
+    ///      triggers Capital Wallet disbursement preparation in Relayer.
     function mintLoan(
         address originator,
         ImmutableLoanData calldata data
@@ -126,7 +126,7 @@ event LoanClosed(uint256 indexed tokenId, ClosureReason reason);
 
 ## Security Considerations
 
-- The `TRUSTEE` role on LoanRegistry is held by the Trustee key alone. Bridge has no role
+- The `TRUSTEE` role on LoanRegistry is held by the Trustee key alone. Relayer has no role
   on LoanRegistry and cannot mint, update, close, or record repayment on a loan NFT. The
   Trustee broadcasts `mintLoan()` only after reviewing and approving the Originator's
   EIP-712 signed request; the mint is never automatic.
@@ -139,7 +139,7 @@ event LoanClosed(uint256 indexed tokenId, ClosureReason reason);
   basis, waterfall parameters, and recovery envelope are tamper-proof.
 - `recordRepayment()` is pure accounting and cannot move USDC or mint PLUSD; it only
   updates the four repayment counters and emits an event. Actual yield PLUSD minting
-  requires the two-party EIP-712 attestation on PLUSD (Bridge + custodian) independent of
+  requires the two-party EIP-712 attestation on PLUSD (Relayer + custodian) independent of
   the LoanRegistry write, so a compromised Trustee key cannot fabricate yield.
 - Repayment accounting splits Senior (principal + interest) and Equity flows explicitly on
   chain. Outstanding obligations are derivable from immutable minus mutable counters; a

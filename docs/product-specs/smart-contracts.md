@@ -36,7 +36,7 @@ Three Gnosis Safes hold all privileged roles across the protocol, with distinct 
 | Safe | Threshold | Role | Timelock |
 |---|---|---|---|
 | ADMIN | 3/5 | Role grants, unpause, upgrades, parameter changes | 48h (14d on delay changes) |
-| RISK_COUNCIL | 3/5 | Proposes `setDefault` and `enterShutdown` | 24h |
+| RISK_COUNCIL | 3/5 | Proposes `setDefault` and `proposeShutdown` | 24h |
 | GUARDIAN | 2/5 | Instant pause; cancel pending ADMIN actions; revoke individual operational-role holders | None |
 
 GUARDIAN is defensive-only — it cannot grant any role, unpause a contract, upgrade, or
@@ -87,6 +87,8 @@ in a compromise.
 | ShutdownController | AccessManaged + UUPS | Freezes normal flow on distress; fixes `recoveryRateBps`; opens `redeemInShutdown` / `claimAtShutdown` paths. | ~75 |
 | RecoveryPool | AccessManaged + Pausable + ReentrancyGuard + UUPS | Holds USDC for LP recovery payments on shutdown. | ~70 |
 
+---
+
 ## Contract Interfaces
 
 For the full interface definitions of all nine contracts, see:
@@ -94,6 +96,7 @@ For the full interface definitions of all nine contracts, see:
 - [smart-contracts-interfaces.md](./smart-contracts-interfaces.md) — PLUSD, DepositManager, YieldMinter, sPLUSD, WhitelistRegistry, WithdrawalQueue
 - [smart-contracts-registry.md](./smart-contracts-registry.md) — LoanRegistry, ShutdownController, Shutdown Mode
 - [smart-contracts-operations.md](./smart-contracts-operations.md) — Role Assignments, Upgradeability, Emergency Response, Deferred Features
+
 ---
 
 ## Security Considerations

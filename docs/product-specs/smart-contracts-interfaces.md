@@ -69,7 +69,7 @@ The window is a **fixed 24h window**, not a rolling one: the counters `windowMin
 `lpWindowMinted[lp]` reset whenever `block.timestamp` crosses a `windowStart + 24h`
 boundary. Worst case is `2 × maxPerWindow` over a boundary (last second of window N plus
 first second of window N+1). This is acceptable because `maxTotalSupply` and the custodian
-MPC policy engine's independent cap on Bridge-originated USDC releases both bound the
+MPC policy engine's independent cap on Relayer-originated USDC releases both bound the
 worst-case blast radius, and the fixed-window algorithm is materially simpler than a
 sliding-window counter. The per-tx cap (`maxPerTx`) was dropped in v2.3 — per-LP per
 window already bounds any one actor, and per-tx caps create UX friction for legitimate
@@ -86,8 +86,8 @@ once custodian MPC policy + rolling PoR provide equivalent bounds.
 
 | Function | Access | Description |
 |---|---|---|
-| `yieldMint(YieldAttestation att, bytes bridgeSig, bytes custodianSig)` | public (any caller — sigs are the gate) | Verifies Bridge ECDSA (ecrecover on `bridgeYieldAttestor`) + custodian EIP-1271 (on `custodianYieldAttestor`). Enforces `att.ref` unused, destination ∈ {sPLUSD vault, Treasury Wallet}, amount > 0. On success, calls `PLUSD.mintForYield(att.recipient, att.amount)`. Marks `att.ref` consumed. |
-| `proposeYieldAttestors(address bridge, address custodian)` | ADMIN | Rotates signer addresses; 48h AccessManager delay, GUARDIAN-cancelable. |
+| `yieldMint(YieldAttestation att, bytes relayerSig, bytes custodianSig)` | public (any caller — sigs are the gate) | Verifies Relayer ECDSA (ecrecover on `relayerYieldAttestor`) + custodian EIP-1271 (on `custodianYieldAttestor`). Enforces `att.ref` unused, destination ∈ {sPLUSD vault, Treasury Wallet}, amount > 0. On success, calls `PLUSD.mintForYield(att.recipient, att.amount)`. Marks `att.ref` consumed. |
+| `proposeYieldAttestors(address relayer, address custodian)` | ADMIN | Rotates signer addresses; 48h AccessManager delay, GUARDIAN-cancelable. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of all yield mints. |
 | `unpause()` | ADMIN | 48h-delayed, GUARDIAN-cancelable. |
 
@@ -104,7 +104,7 @@ radius tight.
 | Function | Access | Description |
 |---|---|---|
 | `deposit(uint256 assets, address receiver)` | public | Standard ERC-4626 deposit. `receiver` must pass the shared whitelist check (whitelisted LP or system address); same rule applies as on a plain sPLUSD transfer. |
-| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation; does **not** trigger any on-chain yield mint. Bridge runs the USYC NAV freshness check off-chain against pending `Deposit` / `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
+| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation; does **not** trigger any on-chain yield mint. Relayer runs the USYC NAV freshness check off-chain against pending `Deposit` / `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
 | `transfer / transferFrom` | public | Standard ERC-20. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. Whitelisted LPs can transfer sPLUSD freely amongst themselves. |
 | `totalAssets()` | public view | Returns `PLUSD.balanceOf(address(this))`. Increases when yield mints land in the vault. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of deposits and redemptions. |
@@ -116,9 +116,9 @@ radius tight.
 
 | Function | Access | Description |
 |---|---|---|
-| `setAccess(address lp, uint256 approvedAt)` | WHITELIST_ADMIN (Bridge) | Adds or updates a whitelisted LP with the Chainalysis screening timestamp. |
-| `refreshScreening(address lp, uint256 newApprovedAt)` | WHITELIST_ADMIN (Bridge) | Updates `approvedAt` for an existing whitelisted LP after re-screening. |
-| `revokeAccess(address lp)` | WHITELIST_ADMIN (Bridge) or ADMIN | Removes LP from the whitelist immediately. |
+| `setAccess(address lp, uint256 approvedAt)` | WHITELIST_ADMIN (Relayer) | Adds or updates a whitelisted LP with the Chainalysis screening timestamp. |
+| `refreshScreening(address lp, uint256 newApprovedAt)` | WHITELIST_ADMIN (Relayer) | Updates `approvedAt` for an existing whitelisted LP after re-screening. |
+| `revokeAccess(address lp)` | WHITELIST_ADMIN (Relayer) or ADMIN | Removes LP from the whitelist immediately. |
 | `isAllowed(address lp)` | public view | Returns true if LP is whitelisted. Does not check freshness. Used by WithdrawalQueue and PLUSD `_update`. |
 | `isAllowedForMint(address lp)` | public view | Returns true if LP is whitelisted AND `(block.timestamp − approvedAt) < freshnessWindow`. Used by DepositManager at deposit time. |
 | `setFreshnessWindow(uint256 seconds)` | ADMIN, bounded `[7d, 365d]` | Adjusts the Chainalysis re-screening cutoff. 48h-delayed, GUARDIAN-cancelable. |
@@ -130,8 +130,8 @@ radius tight.
 willing to mint against. Default is 90 days. It is **not** an oracle-freshness concept
 and has no relationship to rate limits; it only gates `isAllowedForMint`. At the deposit
 path, if an LP's last screening is older than `freshnessWindow`, `DepositManager.deposit`
-reverts and the Bridge re-screens via Chainalysis before calling `refreshScreening` to
-update `approvedAt`. At the withdrawal path, staleness is handled by Bridge before
+reverts and the Relayer re-screens via Chainalysis before calling `refreshScreening` to
+update `approvedAt`. At the withdrawal path, staleness is handled by Relayer before
 calling `fundRequest` (see withdrawals spec).
 
 ---
@@ -143,8 +143,8 @@ Lifecycle: `Pending → Funded → Claimed | AdminReleased`
 | Function | Access | Description |
 |---|---|---|
 | `requestWithdrawal(uint256 amount)` | public | Pulls PLUSD from caller into escrow; assigns `queue_id`; emits `WithdrawalRequested`. Reverts if caller not whitelisted with a fresh screen. |
-| `fundRequest(uint256 usdcAmount)` | FUNDER (Bridge) | Pulls `usdcAmount` USDC from Capital Wallet via pre-approved allowance, funds as many consecutive queue heads in full as the amount covers, emits `WithdrawalFunded(queueId)` per filled entry. Reverts if `usdcAmount` is not exactly the sum of one or more contiguous head entries (no change / partial fills). |
-| `skipSanctionedHead()` | FUNDER (Bridge) | Moves a currently-not-`isAllowed` queue head to `AdminReleased`, unblocking the queue. Escrowed PLUSD remains in the contract pending ADMIN disposition. See Sanctioned Head Handling below. |
+| `fundRequest(uint256 usdcAmount)` | FUNDER (Relayer) | Pulls `usdcAmount` USDC from Capital Wallet via pre-approved allowance, funds as many consecutive queue heads in full as the amount covers, emits `WithdrawalFunded(queueId)` per filled entry. Reverts if `usdcAmount` is not exactly the sum of one or more contiguous head entries (no change / partial fills). |
+| `skipSanctionedHead()` | FUNDER (Relayer) | Moves a currently-not-`isAllowed` queue head to `AdminReleased`, unblocking the queue. Escrowed PLUSD remains in the contract pending ADMIN disposition. See Sanctioned Head Handling below. |
 | `claim(uint256 queueId)` | public (original requester only) | Atomically burns escrowed PLUSD and pays out USDC to LP. Only callable after `Funded`. Emits `WithdrawalClaimed`. |
 | `adminRelease(uint256 queueId)` | ADMIN | Manual release of a stuck entry to `AdminReleased`; disposition of escrowed PLUSD handled by a separate ADMIN action. |
 | `getQueueDepth()` | public view | Returns `(totalEscrowed, pendingCount, fundedCount)`. |
@@ -155,9 +155,9 @@ Partial fills, `cancelWithdrawal`, and LP-initiated cancellation are not in the 
 
 ### Sanctioned head handling
 
-If at the moment Bridge evaluates the head `isAllowed(requester) == false` — i.e. the LP
+If at the moment Relayer evaluates the head `isAllowed(requester) == false` — i.e. the LP
 has been removed from the whitelist since `requestWithdrawal` (Chainalysis flag, OFAC
-listing, or manual revoke) — Bridge calls `skipSanctionedHead()`. The entry moves to
+listing, or manual revoke) — Relayer calls `skipSanctionedHead()`. The entry moves to
 `AdminReleased`, unblocking the queue for subsequent LPs. **No USDC is transferred for
 this entry**; the Capital Wallet is untouched. The escrowed PLUSD stays inside WQ
 pending ADMIN disposition (e.g. legal/regulatory direction on a confirmed OFAC match).
@@ -166,5 +166,5 @@ address would expose the protocol to sanctions liability, and USDC itself enforc
 equivalent at the stablecoin level.
 
 This path is reserved for actual sanctions / whitelist revocation. Merely-stale
-Chainalysis screens do not go through `skipSanctionedHead`; Bridge re-screens and calls
+Chainalysis screens do not go through `skipSanctionedHead`; Relayer re-screens and calls
 `WhitelistRegistry.refreshScreening` to restore freshness before funding.
