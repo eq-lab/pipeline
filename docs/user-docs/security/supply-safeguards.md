@@ -67,16 +67,12 @@ Full Chainlink-style PoR that verifies the custodian's actual USDC balance is ph
 
 ## Four economic caps on the mint path
 
-<div class="callout info">
-
 | Cap | Value | Purpose |
 |---|---|---|
 | `maxPerWindow` | $10M / 24h | Aggregate PLUSD minted across all lenders |
 | `maxPerLPPerWindow` | bounded per lender | Prevents single-wallet concentration |
 | `maxTotalSupply` | hard ceiling | Absolute supply cap on PLUSD totalSupply |
 | `freshnessWindow` | 90 days | Chainalysis screen must be fresh for deposits |
-
-</div>
 
 Each cap is enforced on-chain inside the relevant mint path. A deposit that would breach any cap reverts without touching USDC. Per-transaction size is additionally capped at $5M.
 

@@ -42,21 +42,7 @@
   --content-max:     720px;
 }
 
-/* Besley variable font — free, matches pipeline.one's display face */
-@font-face {
-  font-family: Besley;
-  src: url("https://pipeline.one/fonts/Besley-VariableFont_wght.ttf") format("truetype-variations");
-  font-weight: 400 800;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: Besley;
-  src: url("https://pipeline.one/fonts/Besley-Italic-VariableFont_wght.ttf") format("truetype-variations");
-  font-weight: 400 800;
-  font-style: italic;
-  font-display: swap;
-}
+/* Besley is loaded via Google Fonts in the layout head. */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -201,22 +187,24 @@ article h2 {
   color: var(--content-primary);
 }
 article h3 {
-  font-family: var(--font-sans);
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.4;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.002em;
   margin: 32px 0 10px;
   scroll-margin-top: 88px;
   color: var(--content-primary);
 }
 article h4 {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.001em;
   margin: 24px 0 6px;
-  color: var(--content-secondary);
+  color: var(--content-primary);
+  text-transform: none;
 }
 article p, article li {
   font-size: 16px;
@@ -312,12 +300,13 @@ article td { color: var(--content-primary); }
   border-radius: 4px;
 }
 .callout h4 {
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
   margin-top: 0;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+  letter-spacing: -0.001em;
+  text-transform: none;
   color: var(--content-brand);
 }
 .callout.risk    { border-left-color: var(--color-rose);  }
