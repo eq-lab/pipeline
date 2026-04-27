@@ -33,7 +33,7 @@ If Sumsub flags the application or Chainalysis returns a non-clean result, your 
 <div class="callout risk">
 
 - Wallets on OFAC or equivalent sanctions lists.
-- Jurisdictions Pipeline cannot legally serve. See [`/legal/`](legal) — the list is maintained there.
+- Jurisdictions Pipeline cannot legally serve. See [`legal`](/legal/) — the list is maintained there.
 
 </div>
 
