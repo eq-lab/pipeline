@@ -28,8 +28,8 @@ These requirements are non-negotiable. They are what makes the custody layer an 
 
 Pipeline operates two wallets at the custodian. They hold different assets and use different cosigner sets.
 
-- **Capital Wallet** — holds USDC lender reserves, USDC on active loans, and USYC (the tokenised T-bill). The target USDC buffer is 15% of reserves, with an operating band of 10–20%. USYC accrues T-bill yield that feeds Engine B of the yield stack and is redeemed back to USDC on demand to cover withdrawals.
-- **Treasury Wallet** — holds accumulated protocol fees. The Treasury Wallet uses a different MPC cosigner set from the Capital Wallet. A compromise at one does not propagate to the other.
+- **Capital Wallet** — holds USDC lender reserves, USDC on active loans, and USYC (Hashnote's tokenised T-bill). Target USDC buffer 15% (band 10–20%). USYC NAV drifts up daily as T-bills accrue, but that gain is **unrealised** — it stays at the custodian until the Trustee instructs the custodian to sell USYC for USDC. Only on a sale do realised proceeds enter the Capital Wallet, and only then can they be co-signed and minted as PLUSD into the vault.
+- **Treasury Wallet** — accumulates protocol fees and the 30% Treasury share of realised T-bill yield. Different MPC cosigner set. A compromise at one wallet doesn't propagate to the other.
 
 ---
 
@@ -41,7 +41,7 @@ The Capital Wallet has three MPC cosigners. Each holds one share.
 - **Team** — the Pipeline core team.
 - **Relayer** — the operational backend that processes withdrawals and yield events.
 
-Different transaction classes require different signer combinations. The combinations are fixed in custodian policy and cannot be changed by any single party. Routine LP withdrawals are auto-signed by Relayer within narrow, pre-configured bounds: per-LP cap, per-window cap, destination-set match. Anything outside those bounds stops. Loan disbursements require a Trustee + Team co-signature. USYC-to-USDC rebalancing runs against its own policy rail.
+Different transaction classes require different signer combinations. The combinations are fixed in custodian policy and cannot be changed by any single party. Routine LP withdrawals are auto-signed by Relayer within narrow, pre-configured bounds: per-LP cap, per-window cap, destination-set match. Anything outside those bounds stops. Loan disbursements require Trustee + Team. **USYC sales** (yield realisation, or large-withdrawal funding when the USDC buffer drops) are instructed by the Trustee against the custodian's USYC redemption rail; settlement is set by Hashnote and is not instant.
 
 **No single operator can move USDC out of the Capital Wallet.** Relayer alone is bounded to policy-shaped payouts to pre-verified LP addresses. Trustee alone cannot release funds. Team alone cannot release funds. A two-party compromise is out of scope for smart-contract mitigations and is handled at the custodian boundary.
 

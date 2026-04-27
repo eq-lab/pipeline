@@ -93,9 +93,11 @@ Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue.
 
 ## What affects your yield
 
-Two engines feed the vault. Senior loan coupons are minted into the vault as trade-finance borrowers repay their loans. T-bill NAV yield is minted at 70% of accrued USYC appreciation, while the remaining 30% accrues to the Treasury tranche. A 15% USDC buffer (target band 10–20%) sits inside the Capital Wallet so that routine redemptions can be serviced without forcing a T-bill sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the custodian alone can move PLUSD into the vault.
+Two engines feed the vault. Senior coupons are minted in as borrowers repay (offtaker pays USD into the Trustee bank, Trustee on-ramps to USDC, then the senior coupon net of fees is minted into the vault). T-bill yield is **realised**, not accrued — USYC sits at the custodian, NAV drifts up daily, but PLUSD doesn't mint until the Trustee instructs the custodian to sell USYC for USDC. The realised gain (proceeds minus cost basis) is then minted: 70% to the vault, 30% to Treasury.
 
-Loan-coupon mints settle per repayment event. T-bill NAV mints settle lazily, on each stake or unstake that touches the vault, so the share price refreshes at your interaction rather than on a fixed cadence. If there are no stake or unstake events for a period, unrealised NAV still accrues inside the Capital Wallet and materialises at the next vault interaction.
+A 15% USDC buffer (band 10–20%) sits inside the Capital Wallet so routine redemptions don't force a USYC sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the custodian alone can move PLUSD into the vault.
+
+Senior-coupon mints settle per repayment event. USYC realisations happen at the Trustee's discretion — there's no on-chain schedule. If the Trustee doesn't realise for a quarter, share price doesn't move from Engine B, regardless of how high USYC NAV climbed.
 
 See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, the signing parties, and how the buffer is rebalanced.
 

@@ -5,7 +5,7 @@ section: Risk & losses
 ---
 
 <div class="callout risk">
-Yield on Pipeline comes from real commodity trade loans and T-bill accrual. Every yield line carries matching risk. Read this page before depositing.
+Yield on Pipeline comes from real commodity trade loan repayments and realised T-bill yield on USYC. Every yield line carries matching risk. Read this page before depositing.
 </div>
 
 Pipeline's risks fall into seven categories. For each, this page states the exposure, the mitigation, and the residual you are accepting by participating.

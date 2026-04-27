@@ -29,11 +29,11 @@ A regulated third-party that holds the Capital Wallet and the Treasury Wallet. T
 
 ### Capital Wallet
 
-The address holding all lender USDC plus the USYC (tokenized T-bill) position that accrues T-bill yield on idle reserves. Target buffer of 15% USDC sits in the band 10–20%; the balance is kept in USYC. Three independent cosigners share control: **Trustee**, **Team**, and **Relayer**. Routine lender withdrawals are auto-signed by Relayer within tight custodian-policy caps. Loan disbursements and anything above the auto-sign envelope require Trustee and Team cosignature.
+The address holding all lender USDC plus the USYC (tokenised T-bill) position. Target USDC buffer 15% (band 10–20%); the rest is held as USYC. USYC NAV drifts up daily, but that gain is **unrealised** until the Trustee instructs the custodian to sell USYC for USDC — only realised proceeds can feed a PLUSD yield mint. Three independent cosigners share control of the wallet: **Trustee**, **Team**, and **Relayer**. Routine lender withdrawals are auto-signed by the Relayer within tight custodian-policy caps. Loan disbursements, USYC sales, and anything above the auto-sign envelope require Trustee and Team cosignature.
 
 ### Treasury Wallet
 
-A separate custodied address that collects protocol fees (management, performance, OET) and the 30% Treasury share of T-bill accrual. Different MPC cosigner set from the Capital Wallet.
+A separate custodied address that collects protocol fees (management, performance, OET) and the 30% Treasury share of realised T-bill yield. Different MPC cosigner set from the Capital Wallet.
 
 ### Relayer
 

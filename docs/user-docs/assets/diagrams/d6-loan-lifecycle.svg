@@ -104,10 +104,10 @@
   <rect x="40" y="526" width="200" height="106" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1"/>
   <circle cx="60" cy="548" r="11" fill="#2f6b3a"/>
   <text text-anchor="middle" x="60" y="552" fill="#ffffff" font-size="11" font-weight="700">4</text>
-  <text x="80" y="550" fill="#262524" font-size="11" font-weight="600">Offtaker wire lands</text>
-  <text x="48" y="570" fill="#736f6c" font-size="10">USDC in Capital Wallet</text>
-  <text x="48" y="586" fill="#736f6c" font-size="10">amount up to originalOfftakerPrice</text>
-  <text x="48" y="606" fill="#2f6b3a" font-size="10" font-style="italic">on-chain ERC-20 inflow</text>
+  <text x="80" y="550" fill="#262524" font-size="11" font-weight="600">Offtaker → Trustee bank → USDC</text>
+  <text x="48" y="570" fill="#736f6c" font-size="10">USD wired to Trustee bank account;</text>
+  <text x="48" y="586" fill="#736f6c" font-size="10">Trustee on-ramps USD → USDC</text>
+  <text x="48" y="606" fill="#2f6b3a" font-size="10" font-style="italic">USDC settles in Capital Wallet</text>
 
   <line x1="244" y1="580" x2="276" y2="580" stroke="#b9870a" stroke-width="2" marker-end="url(#a-amb-6)"/>
 

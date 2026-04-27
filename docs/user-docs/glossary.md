@@ -112,7 +112,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **Offtake contract** — A commercial agreement under which the *Offtaker* commits to buy a specified cargo at a stated price and schedule. Pipeline typically originates one *Facility* per offtake contract and books the end-buyer obligation as `originalOfftakerPrice` on the LoanRegistry NFT.
 
-**Offtaker** — The end buyer of the physical commodity in a trade-finance deal. When the offtaker pays for the cargo, USDC lands at the *Capital Wallet* and the *Trustee* records the resulting tranche split on LoanRegistry.
+**Offtaker** — The end buyer of the physical commodity in a trade-finance deal. When the offtaker pays for the cargo, USD lands in the *Trustee*'s correspondent bank account; the Trustee then on-ramps USD → USDC into the *Capital Wallet* and records the tranche split on LoanRegistry. The offtaker never touches USDC and never touches the chain.
 
 **Original offtaker price** — The total USDC the end buyer is contracted to pay for the cargo, recorded as `originalOfftakerPrice` on the LoanRegistry NFT at mint time. Outstanding offtaker balance on a live loan is derived as `originalOfftakerPrice − offtakerReceivedTotal`.
 
@@ -174,7 +174,11 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **UPGRADER (role)** — The role on AccessManager that authorises `upgradeTo(newImpl)` on every UUPS proxy. Held in MVP by the *ADMIN Safe*; upgrades are 48h-delayed and *GUARDIAN Safe*-cancellable, and the delay itself is protected by a 14-day meta-timelock.
 
-**USYC** — Hashnote's tokenized U.S. Treasury-bill holding — this is where idle USDC from the *Capital Wallet* is parked. USYC's NAV drifts up as the underlying bills accrue; Pipeline's lazy *yieldMint* splits the NAV delta 70% to the sPLUSD vault and 30% to the *Treasury Wallet*.
+**USYC** — Hashnote's tokenised U.S. Treasury-bill holding, where idle USDC from the *Capital Wallet* is parked. USYC NAV drifts up daily as the underlying bills accrue, but the gain is **unrealised** — it stays at the custodian. Yield is delivered to PLUSD only when the *Trustee* instructs the custodian to sell USYC for USDC; the realised gain (proceeds minus cost basis) is then minted via *YieldMinter*, 70% to the sPLUSD vault and 30% to the *Treasury Wallet*.
+
+**Unrealised gain (USYC)** — `USYC NAV × units − cost basis`. Informational only — does not enter `PLUSD.totalSupply` and does not move sPLUSD share price. Becomes realised only when the Trustee instructs the custodian to sell USYC for USDC.
+
+**Realised gain (USYC)** — `USDC proceeds − cost basis of units sold`, computed at the moment a Trustee-instructed USYC redemption settles. The remaining position's cost basis is reduced by the cost basis of units sold. Realised gains are the only USYC-engine input to PLUSD mints.
 
 ---
 

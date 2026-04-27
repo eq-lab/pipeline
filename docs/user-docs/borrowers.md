@@ -26,8 +26,9 @@ So the question is not "how do I apply." It is "is Pipeline the right route for 
   <li>Deal sourcing is fully off-chain: an approved originator (Open Mineral at MVP) brings the borrower, the term sheet, and the diligence package to Pipeline Trust Company (the Trustee).</li>
   <li>On approval, the Trustee mints the loan NFT directly on LoanRegistry from the Trustee key — this is the first on-chain event in the life of the facility; Relayer has no role on LoanRegistry.</li>
   <li>Relayer prepares the Capital Wallet disbursement; the Trustee and Pipeline team co-sign the MPC outflow to the on-ramp provider; USDC reaches the borrower.</li>
-  <li>As the offtaker pays, USDC lands in the Capital Wallet.</li>
-  <li>The Trustee records the repayment split across Senior principal, Senior interest, and Equity residual — pure accounting on LoanRegistry, no capital move yet.</li>
+  <li>The offtaker pays for the cargo by wiring USD into the Trustee's correspondent bank account.</li>
+  <li>The Trustee identifies the wire, matches it to the loan, and on-ramps USD → USDC into the Capital Wallet (via Circle Mint / Zodia or a similar provider).</li>
+  <li>The Trustee records the repayment split across Senior principal, Senior interest, and Equity residual — pure accounting on LoanRegistry, no PLUSD moves yet.</li>
   <li>Relayer and the custodian co-sign a YieldAttestation; <code>YieldMinter.yieldMint</code> verifies both signatures and calls <code>PLUSD.mintForYield</code>, delivering the senior coupon into the sPLUSD vault.</li>
   <li>At scheduled maturity or on early repayment, the Trustee closes the loan on LoanRegistry.</li>
 </ol>

@@ -17,7 +17,7 @@ Pipeline is a credit facility that finances secured commodity trade deals. Pipel
 <div class="card-grid">
   <a class="card" href="/how-it-works/">
     <h4>How Pipeline works</h4>
-    <p>Split-rail architecture and the two yield engines — senior coupons and T-bill accrual.</p>
+    <p>Split-rail architecture and the two yield engines — senior coupons and realised T-bill yield.</p>
   </a>
   <a class="card" href="/lenders/">
     <h4>For lenders</h4>
@@ -31,13 +31,13 @@ Pipeline is a credit facility that finances secured commodity trade deals. Pipel
 
 ## Where yield comes from
 
-### Senior coupons on commodity trade loans. 
+### Senior coupons on commodity trade loans
 
-Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When a borrower repays, the Senior coupon (net of fees) is delivered to the sPLUSD vault through a secure yield mint system: the Capital Wallet signs, the Relayer co-signs, and both signatures are verified on-chain before any tokens move. See [yield engines](/how-it-works/yield-engines/) for details.
+Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When the offtaker pays for the cargo, USD lands in the Trustee's bank account; the Trustee on-ramps it to USDC into the Capital Wallet, then the senior coupon (net of fees) is co-signed by the Relayer and the custodian and minted into the sPLUSD vault. See [yield engines](/how-it-works/yield-engines/) for details.
 
-### T-bill accrual on USYC reserves. 
+### Realised T-bill yield on USYC reserves
 
-Idle Capital Wallet USDC is converted into USYC, Hashnote's tokenized Treasury-bill holding. T-bill yield accrues continuously via USYC token price appreciation relative to USDC. The target USDC buffer is 15% of reserves, rebalanced when the USDC balance drifts outside a 10–20% band.
+Idle Capital Wallet USDC is held as USYC, Hashnote's tokenised T-bill. USYC NAV drifts up daily as the underlying bills accrue, but that gain is **unrealised** until the Trustee instructs the custodian to sell USYC for USDC. Only the realised gain — sale proceeds minus cost basis — is co-signed and minted as PLUSD. Cadence is at the Trustee's discretion. The target USDC buffer is 15% of reserves (band 10–20%) so routine withdrawals don't force a sale.
 
 ## What can go wrong
 

@@ -6,96 +6,104 @@ section: How Pipeline works
 
 # Where yield comes from
 
-Pipeline pays yield from two distinct sources: repayments on commodity
-trade loans and Treasury-bill accrual on idle reserves. The sPLUSD share
-token captures both.
+Pipeline pays yield from two sources: senior-tranche repayments on commodity trade loans, and realised T-bill yield on USYC held at the custodian. Both arrive in the sPLUSD vault through the same two-party `YieldMinter.yieldMint` call.
 
-{% include diagram.html src="d4-yield-accretion.svg" caption="Two engines — senior coupons and T-bill accrual — both deliver yield to the sPLUSD vault through the same two-party attested yieldMint." %}
+{% include diagram.html src="d4-yield-accretion.svg" caption="Both engines deliver realised yield to the sPLUSD vault through the same two-party YieldMinter call." %}
 
 <ol class="steps">
-<li>Offtaker wires USDC to the Capital Wallet when the cargo is sold.</li>
-<li>Trustee records the repayment split on LoanRegistry (informational only — no tokens move).</li>
-<li>Relayer and Custodian co-sign a <code>YieldAttestation</code> after verifying the USDC inflow.</li>
-<li><code>YieldMinter.yieldMint</code> delivers the senior coupon leg to the sPLUSD vault.</li>
-<li>USYC NAV drifts up continuously as T-bills accrue at the custodian.</li>
-<li>A stake or unstake on sPLUSD triggers the NAV reconciliation.</li>
-<li>Relayer and Custodian co-sign a fresh <code>YieldAttestation</code> .</li>
-<li><code>YieldMinter.yieldMint</code> splits the NAV delta — 70% to the sPLUSD vault, 30% to the Treasury Wallet.</li>
+<li>Offtaker wires USD into the Trustee's correspondent bank account when the cargo is paid.</li>
+<li>Trustee identifies the wire, matches it to a loan, and on-ramps USD → USDC into the Capital Wallet.</li>
+<li>Trustee records the repayment split on LoanRegistry — accounting only, no PLUSD moves.</li>
+<li>Relayer and custodian co-sign a <code>YieldAttestation</code> for the senior coupon (net of fees).</li>
+<li><code>YieldMinter.yieldMint</code> verifies both signatures and calls <code>PLUSD.mintForYield</code>, sending the senior coupon into the sPLUSD vault.</li>
+<li>USYC NAV drifts up daily as the underlying T-bills accrue. This gain is <strong>unrealised</strong>.</li>
+<li>At the Trustee's discretion, the custodian sells some USYC for USDC. USDC settles in the Capital Wallet.</li>
+<li>Realised gain (USDC received minus cost basis of units sold) is co-signed and minted via <code>YieldMinter.yieldMint</code> — 70% to the sPLUSD vault, 30% to the Treasury Wallet.</li>
 </ol>
 
-## Engine A — Senior-tranche coupons on trade loans
+## Engine A — senior coupons on trade loans
 
-Every Pipeline loan is cut into two tranches. The **senior tranche** is funded
-by Pipeline lenders through the vault. The **equity tranche** is funded by the
-loan originator and absorbs first losses. When the **offtaker** — the end
-buyer of the commodity — pays for the cargo, that money eventually arrives at the Capital
-Wallet. The trustee splits it into senior principal, senior interest (net of
-fees), and an equity residual returned to the originator.
+Each loan is cut into two tranches. The **senior tranche** is funded by Pipeline lenders through the vault. The **equity tranche** is funded by the originator and absorbs first losses.
+
+The **offtaker** is the end buyer of the commodity. When the cargo is paid for, the offtaker wires USD into the **Trustee's correspondent bank account** — the Trustee here being Pipeline Trust Company. The offtaker never touches USDC and never touches the chain.
+
+Once the wire lands, the Trustee identifies it, matches it to a loan, and instructs the on-ramp provider (Circle Mint / Zodia or similar) to convert USD → USDC. The USDC settles into the Capital Wallet. From this point the flow is on-chain.
+
+The Trustee records the split on LoanRegistry: senior principal, senior interest (gross), management fee, performance fee, OET allocation, and equity residual. This write is accounting only — no PLUSD moves until the yield mint.
 
 Fees come out before the senior coupon reaches the vault:
 
-- **Management fee** — 0.5–1.5% per annum on deployed senior principal.
+- **Management fee** — 0.5–1.5% per year on deployed senior principal.
 - **Performance fee** — 10–20% of senior net interest.
-- **OET allocation** — 0.05–0.10% per annum, funding the on-chain operations
-  endowment.
+- **OET allocation** — 0.05–0.10% per year, funding the on-chain operations endowment.
 
-All fees route to the Treasury Wallet, not to the Vault. The senior coupon
-net — gross senior interest minus management fee minus performance fee — is
-the amount lenders actually receive.
+All three go to the Treasury Wallet. The senior coupon net — gross senior interest minus management and performance fees — is what lenders actually receive.
 
-The moment yield lands in the vault is the yield-mint event. Relayer and the
-custodian co-sign a `YieldAttestation`, the call goes through
-`YieldMinter.yieldMint`, both signatures are recovered on-chain, and
-`PLUSD.mintForYield` delivers new PLUSD into the sPLUSD vault. That new PLUSD
-is what moves the sPLUSD share price upward. Neither Relayer nor the Custodian can
-mint on their own: YieldMinter rejects the call unless both signatures verify against
-the configured attestor addresses.
+The yield-mint event is when this net coupon lands in the vault. Relayer and custodian co-sign the `YieldAttestation`. The call goes through `YieldMinter.yieldMint`, both signatures are verified on-chain, and `PLUSD.mintForYield` delivers the new PLUSD into the sPLUSD vault. Neither party can mint alone — YieldMinter rejects the call unless both signatures verify against the configured attestor addresses.
 
-## Engine B — T-bill rate on USYC reserves
+## Engine B — realised yield on USYC reserves
 
-The Capital Wallet holds roughly 15% of reserves in USDC so lenders can
-withdraw instantly — the band runs 10–20% and is rebalanced by the custodian
-and trustee. The rest sits in **USYC**, Hashnote's tokenized Treasury-bill
-vehicle. USYC's NAV drifts up as the underlying bills accrue, and the Capital
-Wallet's USYC balance earns that drift directly.
+This is the engine people most often misread. **T-bill yield does not accrue automatically into PLUSD.** It accrues to USYC at the custodian, but until USYC is sold for USDC, the gain is paper.
 
-Distribution on each reconciliation:
+### Where the position sits
 
-- **70%** of the NAV delta is minted to the sPLUSD vault.
-- **30%** is minted to the Treasury Wallet.
+The Capital Wallet keeps roughly 15% of reserves in USDC so lenders can withdraw without forcing a sale (band 10–20%). The rest is held as **USYC**, Hashnote's tokenised T-bill. USYC NAV drifts up daily as the underlying bills accrue. The Capital Wallet's mark-to-market value rises with NAV, but PLUSD totalSupply does not — yet.
 
-The same two-party attestation applies: Relayer signs, the custodian
-co-signs, and YieldMinter recovers both signatures on-chain before calling
-`PLUSD.mintForYield`.
+### Cost basis and realisation
 
-T-bill yield is minted **automatically** — when someone stakes or unstakes sPLUSD. 
-Between mints, the accrued interest amount shows on the dashboard. 
-If nobody interacts with the vault for a while, the accrual still lands the next time anyone does. 
+The Trustee tracks the **cost basis** of the USYC position: the USDC originally spent buying it (FIFO or weighted-average — Trustee policy). At any moment the **unrealised gain** is `USYC NAV × units − cost basis`. This number is informational; it does not enter `PLUSD.totalSupply`.
+
+To realise the gain, the Trustee instructs the custodian to **sell N units of USYC**. This is manual and takes time — Hashnote's redemption flow is not instant, and large redemptions can take longer. When the custodian completes the redemption, USDC proceeds settle into the Capital Wallet.
+
+Realised gain on that batch:
+
+```
+realised_gain = USDC_received − cost_basis_of_units_sold
+```
+
+The remaining position's cost basis is reduced by the cost basis of units sold.
+
+### Minting realised yield as PLUSD
+
+Once the proceeds USDC is in the Capital Wallet, Relayer and custodian co-sign a `YieldAttestation` for `realised_gain`. `YieldMinter.yieldMint` mints that PLUSD: 70% to the sPLUSD vault, 30% to the Treasury Wallet. From a backing standpoint, the new PLUSD is matched 1:1 by the new USDC sitting in the Capital Wallet.
+
+**Cadence is the Trustee's call.** Daily, weekly, monthly — there is no on-chain schedule. If the Trustee never realises, share price never moves on Engine B, regardless of how high USYC NAV climbs.
+
+### Why we don't mint on unrealised gain
+
+Because the gain isn't permanent yet. T-bill prices have low volatility but they are not constant. If we minted PLUSD against a $100K paper gain that then evaporated, we'd be over-minted relative to reserves and lenders would carry the gap. Realisation moves the gain from "paper" into "USDC in the wallet" — only then is the mint safe.
+
+### Residual price risk after realisation
+
+Realisation does not eliminate price risk on the **remaining** USYC. If the Trustee realises a partial gain at a high NAV and USYC then drops, the remaining position is worth less than its post-realisation cost basis. The protocol's mark-to-market backing falls below PLUSD totalSupply.
+
+The on-chain reserve invariant (`totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns`) does **not** catch this — that invariant is an accounting check on the contract's own counters, not a price check on USYC. The check that catches it is the off-chain **reconciliation indicator** published on the Protocol Dashboard:
+
+| Drift between PLUSD totalSupply and reserve mark-to-market | Status | Action |
+|---|---|---|
+| < 0.01% | Green | Normal |
+| 0.01% – 1% | Amber | Alert on-call + Trustee |
+| > 1% | Red | Page on-call + Trustee; consider pausing DepositManager |
+
+Mitigations against this scenario:
+
+- USYC is a tokenised T-bill — historic NAV volatility is very low.
+- The Trustee's realisation policy is conservative — only realise gains that are well above cost basis, leaving a buffer.
+- If drift goes Amber or Red, RISK_COUNCIL can pause `DepositManager` (no new mints) and, if severe, `proposeShutdown` at a recovery rate that reflects the actual recoverable USDC.
+
+There is no automatic clawback of already-minted PLUSD. Once yield has been minted into the vault and stakers have effectively received it, the protocol owns the residual position risk.
 
 ## Where yield does NOT come from
 
-- **No perpetual-futures funding rates.** Pipeline does not run a basis trade.
-- **No leverage on the deposit side.** You are not borrowing against your
-  sPLUSD position to amplify returns.
-- **No rehypothecation of the USDC reserve.** The reserve does not get lent
-  into third-party DeFi venues.
-- **No token emissions.** There is no governance token dripping value.
-  sPLUSD share price is the return.
-
+- **No perp funding rates.** Pipeline doesn't run a basis trade.
+- **No leverage on deposits.** You aren't borrowing against your sPLUSD to amplify returns.
+- **No rehypothecation of reserves.** Reserves don't get lent into third-party DeFi venues.
+- **No token emissions.** No governance token dripping value. sPLUSD share price is the return.
 
 ## Share price mechanics
 
-sPLUSD share price increases only when a new yield accrues in the vault. 
-The yield mint is the event. LoanRegistry writes are informational; 
-they confirm that a repayment happened, but they do not change
-share price. Only a successful `YieldMinter.yieldMint` call, gated by the
-two-party attestation and the on-chain reserve invariant inside
-`PLUSD.mintForYield`, moves NAV.
+sPLUSD share price moves only when a `YieldMinter.yieldMint` call lands a new mint in the vault. Not on a clock. Not on USYC NAV drift. Not on a LoanRegistry write. The mint is the event. LoanRegistry writes confirm a repayment happened on paper; USYC NAV drift confirms an unrealised gain on paper; only `PLUSD.mintForYield`, gated by the two-party attestation, moves NAV.
 
-{% include chart.html src="c2-yield-attribution.svg" caption="Illustrative attribution for a representative senior-tranche loan plus the T-bill engine. Not live returns." %}
+{% include chart.html src="c2-yield-attribution.svg" caption="Illustrative attribution for a representative senior-tranche loan plus realised T-bill yield. Not live returns." %}
 
-Both engines contribute to the same share price. A quarter with heavy repayments
-shows most of the rise from Engine A. A quiet quarter with few repayments
-shows Engine B carrying most of the accrual. Over a full year, both
-contribute — and both arrive through the same co-signed mint path, against
-the same 1:1 backing invariant PLUSD enforces on every call.
+Both engines stack into the same share price. A quarter with heavy repayments shows most of the lift from Engine A. A quarter with no Trustee realisations shows zero from Engine B — even if USYC was accruing the whole time. Over a full year, both contribute — and both arrive through the same co-signed mint path, against the same internal counter invariant PLUSD enforces on every call.

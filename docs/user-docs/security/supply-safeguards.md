@@ -31,7 +31,7 @@ DepositManager gates **lender-initiated** mints. The lender is the trust boundar
 | Destination restriction | Recipient is the depositor (whitelist-gated) | Hard-coded to sPLUSD vault or Treasury Wallet |
 | Holds role on PLUSD | `DEPOSITOR` (DepositManager proxy address) | `YIELD_MINTER` (YieldMinter proxy address) |
 
-**The shared gate is PLUSD itself.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling — the hard ceiling on circulating PLUSD relative to backing — is enforced on every mint regardless of which path called it. Per-account and per-window caps are deliberately absent from YieldMinter because the recipients are protocol system addresses (not LPs) and the volume is bounded by real cash inflow plus real USYC NAV growth, not by lender behaviour.
+**The shared gate is PLUSD itself.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling — the hard ceiling on circulating PLUSD relative to backing — is enforced on every mint regardless of which path called it. Per-account and per-window caps are deliberately absent from YieldMinter because the recipients are protocol system addresses (not LPs) and the volume is bounded by real cash inflow — repayments wired into the Trustee bank then on-ramped to USDC, plus realised USYC redemptions — not by lender behaviour.
 
 ---
 
@@ -47,7 +47,7 @@ This closes the attack class where a compromised signing key mints against a fak
 
 ## Yield mints need two independent signatures
 
-`YieldMinter.yieldMint(attestation, relayerSig, custodianSig)` verifies both signatures on-chain before calling `PLUSD.mintForYield`. The Relayer signs with its `relayerYieldAttestor` key. The custodian's EIP-1271 signer contract independently verifies the underlying USDC inflow (or USYC NAV delta) and signs second. Both signatures must recover to the configured addresses or the call reverts. The YieldMinter contract is the only address that holds the `YIELD_MINTER` role on PLUSD, so a direct call to `PLUSD.mintForYield` from any other address reverts unconditionally.
+`YieldMinter.yieldMint(attestation, relayerSig, custodianSig)` verifies both signatures on-chain before calling `PLUSD.mintForYield`. The Relayer signs with its `relayerYieldAttestor` key. The custodian's EIP-1271 signer contract independently verifies the underlying USDC inflow (a senior-coupon on-ramp from the Trustee bank, or a realised USYC sale's USDC proceeds) and signs second. Both signatures must recover to the configured addresses or the call reverts. The YieldMinter contract is the only address that holds the `YIELD_MINTER` role on PLUSD, so a direct call to `PLUSD.mintForYield` from any other address reverts unconditionally.
 
 Compromising Relayer alone mints zero. Compromising the custodian alone mints zero. Joint compromise of both plus successful replay requires collusion PLUS bypassing the on-chain `usedRepaymentRefs` guard that rejects any attestation ID already consumed.
 
