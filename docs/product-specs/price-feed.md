@@ -2,7 +2,7 @@
 
 ## Overview
 
-The bridge service runs a continuous price feed and notification subsystem that monitors every active loan in the LoanRegistry in real time. It computes per-loan collateral coverage ratios (CCR) against external commodity reference prices and dispatches notifications to relevant parties on threshold crossings and operational events.
+The relayer service runs a continuous price feed and notification subsystem that monitors every active loan in the LoanRegistry in real time. It computes per-loan collateral coverage ratios (CCR) against external commodity reference prices and dispatches notifications to relevant parties on threshold crossings and operational events.
 
 ## Price Feed
 
@@ -48,10 +48,10 @@ The notification feed in the Originator UI is a chronological log filterable by 
 
 ## LoanRegistry Updates on Threshold Crossings
 
-When a CCR computation crosses a defined threshold, the bridge service notifies the trustee
+When a CCR computation crosses a defined threshold, the relayer service notifies the trustee
 via the Operations Console. The trustee writes the updated `lastReportedCCR` and
 `lastReportedCCRTimestamp` on LoanRegistry directly from the Trustee key (holder of the
-`TRUSTEE` role); Bridge has no write access to LoanRegistry. Updates are batched per
+`TRUSTEE` role); Relayer has no write access to LoanRegistry. Updates are batched per
 threshold crossing event; the LoanRegistry is not updated on every price tick. Because
 LoanRegistry is informational — not a NAV input — these writes do not move sPLUSD share
 price.

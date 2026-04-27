@@ -1,109 +1,117 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <rect width="960" height="640" fill="#0f1419"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="820" viewBox="0 0 1080 820" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="1080" height="820" fill="#ffffff"/>
 
   <defs>
-    <marker id="a-sage-4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+    <marker id="arr-sage" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/>
     </marker>
-    <marker id="a-lav-4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#bb9af7"/>
-    </marker>
-    <marker id="a-amb-4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e0af68"/>
+    <marker id="arr-amb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9870a"/>
     </marker>
   </defs>
 
-  <!-- Title bar -->
-  <text text-anchor="middle" x="480" y="32" fill="#e6edf3" font-size="14" font-weight="700">Two engines stack into sPLUSD vault NAV</text>
+  <text x="540" y="40" text-anchor="middle" fill="#262524" font-size="16" font-weight="600">Two engines feed the sPLUSD vault — both deliver realised yield only</text>
+  <text x="540" y="60" text-anchor="middle" fill="#736f6c" font-size="12">PLUSD only mints when the proceeds are real USDC in the Capital Wallet</text>
 
-  <!-- ========== ENGINE A: Loan Coupons (left column) ========== -->
-  <rect x="20" y="56" width="440" height="440" rx="10" fill="rgba(158,206,106,0.04)" stroke="#9ece6a" stroke-width="1.5"/>
-  <text text-anchor="middle" x="240" y="82" fill="#9ece6a" font-size="13" font-weight="700">ENGINE A · LOAN COUPONS</text>
-  <text text-anchor="middle" x="240" y="100" fill="#8b949e" font-size="11">senior-tranche repayments of offtaker wires</text>
+  <!-- ==== ENGINE A column (left) ==== -->
+  <rect x="40" y="92" width="480" height="580" rx="10" fill="#f8f7f6" stroke="#2f6b3a" stroke-width="1.5"/>
+  <text x="280" y="120" text-anchor="middle" fill="#2f6b3a" font-size="13" font-weight="700">ENGINE A · LOAN COUPONS</text>
+  <text x="280" y="138" text-anchor="middle" fill="#736f6c" font-size="11">offtaker pays USD → Trustee on-ramps to USDC</text>
 
-  <!-- A1. Borrower repays -->
-  <rect x="40" y="120" width="400" height="60" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
-  <circle cx="64" cy="150" r="12" fill="#9ece6a"/>
-  <text text-anchor="middle" x="64" y="154" fill="#0f1419" font-size="12" font-weight="700">1</text>
-  <text x="88" y="144" fill="#e6edf3" font-size="12" font-weight="600">Offtaker wires USDC to Capital Wallet</text>
-  <text x="88" y="162" fill="#8b949e" font-size="10">end-buyer payment for the commodity · on-chain ERC-20</text>
-  <text x="88" y="176" fill="#8b949e" font-size="10">(also covers Senior principal amortisation)</text>
+  <!-- A1 -->
+  <rect x="64" y="160" width="432" height="80" rx="6" fill="#ffffff" stroke="#2f6b3a" stroke-width="1"/>
+  <rect x="64" y="160" width="32"  height="80" fill="#2f6b3a"/>
+  <text x="80" y="206" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">1</text>
+  <text x="112" y="184" fill="#262524" font-size="13" font-weight="600">Offtaker wires USD to the Trustee bank account</text>
+  <text x="112" y="206" fill="#736f6c" font-size="11">Pipeline Trust Company correspondent bank · off-chain</text>
+  <text x="112" y="224" fill="#736f6c" font-size="11">borrower's loan tagged in the wire reference</text>
 
-  <!-- A2. Trustee attests + records -->
-  <rect x="40" y="198" width="400" height="60" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="64" cy="228" r="12" fill="#e0af68"/>
-  <text text-anchor="middle" x="64" y="232" fill="#0f1419" font-size="12" font-weight="700">2</text>
-  <text x="88" y="222" fill="#e6edf3" font-size="12" font-weight="600">Trustee records the split on LoanRegistry</text>
-  <text x="88" y="240" fill="#8b949e" font-size="10">recordRepayment(offtaker, seniorPrincipal, seniorInterest, equity)</text>
-  <text x="88" y="254" fill="#8b949e" font-size="10">informational accounting — moves no USDC, mints no PLUSD</text>
+  <!-- A2 -->
+  <rect x="64" y="260" width="432" height="80" rx="6" fill="#ffffff" stroke="#2f6b3a" stroke-width="1"/>
+  <rect x="64" y="260" width="32"  height="80" fill="#2f6b3a"/>
+  <text x="80" y="306" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">2</text>
+  <text x="112" y="284" fill="#262524" font-size="13" font-weight="600">Trustee on-ramps USD → USDC into the Capital Wallet</text>
+  <text x="112" y="306" fill="#736f6c" font-size="11">via on-ramp provider (Circle Mint / Zodia or similar)</text>
+  <text x="112" y="324" fill="#736f6c" font-size="11">first on-chain event in the repayment flow</text>
 
-  <!-- A3. Two-party attestation -->
-  <rect x="40" y="276" width="400" height="60" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <circle cx="64" cy="306" r="12" fill="#bb9af7"/>
-  <text text-anchor="middle" x="64" y="310" fill="#0f1419" font-size="12" font-weight="700">3</text>
-  <text x="88" y="300" fill="#e6edf3" font-size="12" font-weight="600">Bridge + Custodian co-sign YieldAttestation</text>
-  <text x="88" y="318" fill="#8b949e" font-size="10">Bridge ECDSA sig + Custodian EIP-1271 sig</text>
-  <text x="88" y="332" fill="#8b949e" font-size="10">verified on-chain — neither alone can mint</text>
+  <!-- A3 -->
+  <rect x="64" y="360" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
+  <rect x="64" y="360" width="32"  height="80" fill="#b9870a"/>
+  <text x="80" y="406" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">3</text>
+  <text x="112" y="384" fill="#262524" font-size="13" font-weight="600">Trustee records the split on LoanRegistry</text>
+  <text x="112" y="406" fill="#736f6c" font-size="11">recordRepayment(seniorPrincipal, seniorInterest, equity)</text>
+  <text x="112" y="424" fill="#736f6c" font-size="11">accounting only — no PLUSD moves yet</text>
 
-  <!-- A4. PLUSD.yieldMint(vault, amount) -->
-  <rect x="40" y="354" width="400" height="60" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <circle cx="64" cy="384" r="12" fill="#bb9af7"/>
-  <text text-anchor="middle" x="64" y="388" fill="#0f1419" font-size="12" font-weight="700">4</text>
-  <text x="88" y="378" fill="#e6edf3" font-size="12" font-weight="600">PLUSD.yieldMint(sPLUSDvault, seniorCouponNet)</text>
-  <text x="88" y="396" fill="#8b949e" font-size="10">reserve invariant checked · counters advance</text>
-  <text x="88" y="410" fill="#8b949e" font-size="10">fees go separately to Treasury Wallet (same tx pattern)</text>
+  <!-- A4 -->
+  <rect x="64" y="460" width="432" height="80" rx="6" fill="#ffffff" stroke="#4a3a8e" stroke-width="1"/>
+  <rect x="64" y="460" width="32"  height="80" fill="#4a3a8e"/>
+  <text x="80" y="506" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">4</text>
+  <text x="112" y="484" fill="#262524" font-size="13" font-weight="600">Relayer + Trustee co-sign a YieldAttestation</text>
+  <text x="112" y="506" fill="#736f6c" font-size="11">amount = senior coupon net of fees</text>
+  <text x="112" y="524" fill="#736f6c" font-size="11">both signatures verified on-chain</text>
 
-  <!-- A down-arrow to NAV bar -->
-  <line x1="240" y1="430" x2="240" y2="516" stroke="#9ece6a" stroke-width="3" marker-end="url(#a-sage-4)"/>
-  <text text-anchor="middle" x="240" y="458" fill="#9ece6a" font-size="10" font-style="italic">vault balance ↑</text>
+  <!-- A5 -->
+  <rect x="64" y="560" width="432" height="80" rx="6" fill="#ffffff" stroke="#000080" stroke-width="1"/>
+  <rect x="64" y="560" width="32"  height="80" fill="#000080"/>
+  <text x="80" y="606" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">5</text>
+  <text x="112" y="584" fill="#262524" font-size="13" font-weight="600">YieldMinter.yieldMint → PLUSD.mintForYield</text>
+  <text x="112" y="606" fill="#736f6c" font-size="11">destination = sPLUSD vault · fees → Treasury (separate call)</text>
+  <text x="112" y="624" fill="#736f6c" font-size="11">reserve invariant + maxTotalSupply checked atomically</text>
 
-  <!-- ========== ENGINE B: T-bill Accrual (right column) ========== -->
-  <rect x="500" y="56" width="440" height="440" rx="10" fill="rgba(224,175,104,0.04)" stroke="#e0af68" stroke-width="1.5"/>
-  <text text-anchor="middle" x="720" y="82" fill="#e0af68" font-size="13" font-weight="700">ENGINE B · T-BILL ACCRUAL</text>
-  <text text-anchor="middle" x="720" y="100" fill="#8b949e" font-size="11">idle Capital-Wallet USDC parked in USYC</text>
+  <text x="280" y="656" text-anchor="middle" fill="#2f6b3a" font-size="11" font-weight="600">per-repayment event · share price ticks up when the vault leg lands</text>
 
-  <!-- B1. USYC NAV ↑ -->
-  <rect x="520" y="120" width="400" height="60" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="544" cy="150" r="12" fill="#e0af68"/>
-  <text text-anchor="middle" x="544" y="154" fill="#0f1419" font-size="12" font-weight="700">5</text>
-  <text x="568" y="144" fill="#e6edf3" font-size="12" font-weight="600">USYC NAV drifts up (Hashnote feed)</text>
-  <text x="568" y="162" fill="#8b949e" font-size="10">~15% USDC held as USYC · target band 10–20%</text>
-  <text x="568" y="176" fill="#8b949e" font-size="10">Bridge reads NAV off-chain every minute</text>
+  <!-- ==== ENGINE B column (right) — REALISED yield, not accrual ==== -->
+  <rect x="560" y="92" width="480" height="580" rx="10" fill="#f8f7f6" stroke="#b9870a" stroke-width="1.5"/>
+  <text x="800" y="120" text-anchor="middle" fill="#b9870a" font-size="13" font-weight="700">ENGINE B · REALISED USYC YIELD</text>
+  <text x="800" y="138" text-anchor="middle" fill="#736f6c" font-size="11">USYC NAV drifts up — but only realised sales mint PLUSD</text>
 
-  <!-- B2. Lazy trigger on sPLUSD deposit/redeem -->
-  <rect x="520" y="198" width="400" height="60" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="544" cy="228" r="12" fill="#e0af68"/>
-  <text text-anchor="middle" x="544" y="232" fill="#0f1419" font-size="12" font-weight="700">6</text>
-  <text x="568" y="222" fill="#e6edf3" font-size="12" font-weight="600">Any sPLUSD stake/unstake triggers reconciliation</text>
-  <text x="568" y="240" fill="#8b949e" font-size="10">lazy accrual — no scheduled cron</text>
-  <text x="568" y="254" fill="#8b949e" font-size="10">keeps share price current at settlement</text>
+  <!-- B1 -->
+  <rect x="584" y="160" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
+  <rect x="584" y="160" width="32"  height="80" fill="#b9870a"/>
+  <text x="600" y="206" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">6</text>
+  <text x="632" y="184" fill="#262524" font-size="13" font-weight="600">USYC sits in the Capital Wallet · NAV drifts up</text>
+  <text x="632" y="206" fill="#736f6c" font-size="11">unrealised gain = NAV × units − cost basis</text>
+  <text x="632" y="224" fill="#736f6c" font-size="11">PLUSD totalSupply unchanged — gain is paper</text>
 
-  <!-- B3. Two-party attestation (same as A3) -->
-  <rect x="520" y="276" width="400" height="60" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <circle cx="544" cy="306" r="12" fill="#bb9af7"/>
-  <text text-anchor="middle" x="544" y="310" fill="#0f1419" font-size="12" font-weight="700">7</text>
-  <text x="568" y="300" fill="#e6edf3" font-size="12" font-weight="600">Bridge + Custodian co-sign YieldAttestation</text>
-  <text x="568" y="318" fill="#8b949e" font-size="10">same two-party flow · new salt per call</text>
-  <text x="568" y="332" fill="#8b949e" font-size="10">reserve invariant checked</text>
+  <!-- B2 -->
+  <rect x="584" y="260" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
+  <rect x="584" y="260" width="32"  height="80" fill="#b9870a"/>
+  <text x="600" y="306" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">7</text>
+  <text x="632" y="284" fill="#262524" font-size="13" font-weight="600">Trustee decides to realise — at their discretion</text>
+  <text x="632" y="306" fill="#736f6c" font-size="11">no on-chain schedule · cadence is policy, not code</text>
+  <text x="632" y="324" fill="#736f6c" font-size="11">conservative: leave a buffer in the position</text>
 
-  <!-- B4. PLUSD.yieldMint split 70/30 -->
-  <rect x="520" y="354" width="400" height="60" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <circle cx="544" cy="384" r="12" fill="#bb9af7"/>
-  <text text-anchor="middle" x="544" y="388" fill="#0f1419" font-size="12" font-weight="700">8</text>
-  <text x="568" y="378" fill="#e6edf3" font-size="12" font-weight="600">PLUSD.yieldMint — 70% to vault, 30% to Treasury</text>
-  <text x="568" y="396" fill="#8b949e" font-size="10">vault leg: yieldMint(sPLUSDvault, 70% of delta)</text>
-  <text x="568" y="410" fill="#8b949e" font-size="10">treasury leg: yieldMint(TreasuryWallet, 30% of delta)</text>
+  <!-- B3 -->
+  <rect x="584" y="360" width="432" height="80" rx="6" fill="#ffffff" stroke="#b9870a" stroke-width="1"/>
+  <rect x="584" y="360" width="32"  height="80" fill="#b9870a"/>
+  <text x="600" y="406" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">8</text>
+  <text x="632" y="384" fill="#262524" font-size="13" font-weight="600">Capital Wallet sells N units of USYC for USDC</text>
+  <text x="632" y="406" fill="#736f6c" font-size="11">manual redemption · settlement time set by Hashnote</text>
+  <text x="632" y="424" fill="#736f6c" font-size="11">USDC proceeds land in the Capital Wallet</text>
 
-  <!-- B down-arrow to NAV bar -->
-  <line x1="720" y1="430" x2="720" y2="516" stroke="#e0af68" stroke-width="3" marker-end="url(#a-amb-4)"/>
-  <text text-anchor="middle" x="720" y="458" fill="#e0af68" font-size="10" font-style="italic">vault balance ↑ (70% share)</text>
+  <!-- B4 -->
+  <rect x="584" y="460" width="432" height="80" rx="6" fill="#ffffff" stroke="#4a3a8e" stroke-width="1"/>
+  <rect x="584" y="460" width="32"  height="80" fill="#4a3a8e"/>
+  <text x="600" y="506" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">9</text>
+  <text x="632" y="484" fill="#262524" font-size="13" font-weight="600">Realised gain = proceeds USDC − cost basis</text>
+  <text x="632" y="506" fill="#736f6c" font-size="11">remaining position's cost basis updated</text>
+  <text x="632" y="524" fill="#736f6c" font-size="11">Relayer + Trustee co-sign a YieldAttestation</text>
 
-  <!-- ========== sPLUSD vault NAV bar ========== -->
-  <rect x="20" y="524" width="920" height="56" rx="8" fill="#1c2333" stroke="#bb9af7" stroke-width="2"/>
-  <text text-anchor="middle" x="480" y="548" fill="#bb9af7" font-size="14" font-weight="700">sPLUSD vault NAV</text>
-  <text text-anchor="middle" x="480" y="568" fill="#8b949e" font-size="11">totalAssets = PLUSD.balanceOf(vault) · share price = totalAssets / totalSupply</text>
+  <!-- B5 -->
+  <rect x="584" y="560" width="432" height="80" rx="6" fill="#ffffff" stroke="#000080" stroke-width="1"/>
+  <rect x="584" y="560" width="32"  height="80" fill="#000080"/>
+  <text x="600" y="606" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">10</text>
+  <text x="632" y="584" fill="#262524" font-size="13" font-weight="600">YieldMinter.yieldMint × 2 — vault and Treasury legs</text>
+  <text x="632" y="606" fill="#736f6c" font-size="11">vault leg: 70% of realised_gain → sPLUSD vault</text>
+  <text x="632" y="624" fill="#736f6c" font-size="11">treasury leg: 30% of realised_gain → Treasury Wallet</text>
 
-  <!-- bottom note -->
-  <text text-anchor="middle" x="480" y="608" fill="#8b949e" font-size="11" font-style="italic">Yield only appears in the vault after an actual yieldMint call lands on-chain. No time-based accrual, no NAV-reading shortcut.</text>
-  <text text-anchor="middle" x="480" y="626" fill="#8b949e" font-size="10">Share price moves only on yieldMint — nothing else changes it.</text>
+  <text x="800" y="656" text-anchor="middle" fill="#b9870a" font-size="11" font-weight="600">no realisation = no mint · NAV alone never moves share price</text>
+
+  <!-- Two converging arrows to the vault -->
+  <path d="M 280 690 Q 280 730, 480 748" fill="none" stroke="#2f6b3a" stroke-width="2.5" marker-end="url(#arr-sage)"/>
+  <path d="M 800 690 Q 800 730, 600 748" fill="none" stroke="#b9870a" stroke-width="2.5" marker-end="url(#arr-amb)"/>
+
+  <rect x="300" y="758" width="480" height="48" rx="8" fill="#000080" stroke="#000080" stroke-width="2"/>
+  <text x="540" y="780" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">sPLUSD vault NAV</text>
+  <text x="540" y="798" text-anchor="middle" fill="#ebe9e6b3" font-size="11">share price = totalAssets / totalSupply · moves only on yieldMint</text>
 </svg>

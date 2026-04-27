@@ -8,11 +8,11 @@ section: For Lenders
 
 Deposit USDC to receive PLUSD at 1:1, then stake PLUSD into sPLUSD to earn yield. Deposit-and-mint is a single atomic transaction — your USDC never moves without the matching PLUSD mint landing in the same block.
 
-Holding PLUSD is the compliance-bounded representation of your deposit. Staking it into sPLUSD converts that holding into yield-bearing shares. The two steps are separate on-chain calls, so you can hold PLUSD idle, stake part of it, or stake it all.
+Holding PLUSD is the compliance-bounded representation of your deposit. Staking it into sPLUSD converts that holding into yield-bearing tokens. The two steps are separate on-chain calls, so you can hold PLUSD, stake part of it, or stake it all.
 
 | Asset  | What it is                          | Earns yield | Whitelist at transfer |
 |--------|-------------------------------------|-------------|-----------------------|
-| USDC   | Your external stablecoin            | No          | No                    |
+| USDC   | External stablecoin                 | No          | No                    |
 | PLUSD  | 1:1 claim on the Capital Wallet     | No          | Yes                   |
 | sPLUSD | ERC-4626 share of the vault         | Yes         | No at the share level |
 
@@ -25,17 +25,9 @@ Holding PLUSD is the compliance-bounded representation of your deposit. Staking 
 
 ---
 
-## Deposit — atomic USDC → PLUSD
+## Deposit flow
 
-<div class="callout safety">
-
-**No off-chain signer gates deposits. The on-chain USDC movement is the attestation.**
-
-There is no signature, no queue, and no back-office step between your wallet and your PLUSD. The `DepositManager` contract pulls USDC and mints PLUSD in a single transaction. If any check fails, the whole transaction reverts and your USDC stays put.
-
-</div>
-
-{% include diagram.html src="d2-deposit-mint.svg" caption="Deposit to mint — one atomic transaction, no Bridge signer in the critical path." %}
+{% include diagram.html src="d2-deposit-mint.svg" caption="Deposit to mint — one atomic transaction, no Relayer signer in the critical path." %}
 
 ### Walkthrough
 
@@ -50,7 +42,7 @@ There is no signature, no queue, and no back-office step between your wallet and
 
 ### Rate limits
 
-A single deposit cannot exceed $5M. Rolling 24h deposits across all your wallets cannot exceed $10M. If either cap would be breached, the transaction reverts on-chain — there is no auto-queue in MVP. Split the deposit manually and retry when headroom opens. The deposit UI reads the `GET /v1/protocol/limits` endpoint and shows live utilisation before you submit, so you can size each transaction against available headroom.
+A single deposit cannot exceed $5M. 24h deposits across all your wallets cannot exceed $10M. If either cap would be breached, the transaction reverts on-chain — there is no auto-queue in MVP. Split the deposit manually and retry when limits reset. The deposit UI reads the `GET /v1/protocol/limits` endpoint and shows live utilisation before you submit, so you can size each transaction against available headroom.
 
 A third cap — the hard total supply ceiling on PLUSD — is a protocol-wide circuit breaker and is only tightened or loosened by ADMIN governance. Tightening is instant; loosening requires a 48h AccessManager delay. You will almost never see this cap bind; it exists to bound the blast radius of any integration error.
 
@@ -58,17 +50,17 @@ A third cap — the hard total supply ceiling on PLUSD — is a protocol-wide ci
 
 - PLUSD, minted 1:1 to USDC, with no fee deducted at mint time.
 - The deposit event is indexed immediately; your PLUSD balance is spendable in the same block.
-- PLUSD can only be sent to other whitelisted addresses or approved DeFi venues. Transfers to non-whitelisted addresses revert at the `_update` hook on the PLUSD contract.
+- PLUSD can only be sent to other whitelisted addresses. 
 
 ### Where the USDC goes
 
-Your USDC moves in a single ERC-20 transfer to the Capital Wallet, an MPC-custodied wallet operated by the custodian. Smart contracts never hold lender USDC, so a contract exploit cannot drain deposits. The Capital Wallet maintains the 15% USDC buffer (10–20% band) and rotates excess into USYC T-bills for yield. Movement between the Capital Wallet and the custodian is subject to multi-party approval; none of it is gated by Pipeline operators acting alone.
+Your USDC moves in a single ERC-20 transfer to the Capital Wallet — a self-custodied MPC wallet whose three cosigners are Trustee, Team, and Relayer. Smart contracts never hold lender USDC, so a contract exploit can't drain deposits. The Capital Wallet maintains the 15% USDC buffer (band 10–20%) and rotates excess into USYC for yield. Every movement out of the wallet is subject to the MPC quorum; no single Pipeline party can move it.
 
 ---
 
-## Stake — PLUSD → sPLUSD shares
+## Stake flow
 
-Stake by approving the vault and calling `sPLUSD.deposit(assets, receiver)`. sPLUSD is a standard ERC-4626 vault; shares are minted to the receiver at the current share price. Any PLUSD holder may stake — the vault itself has no whitelist. The whitelist lives on PLUSD transfers and is enforced at the underlying-asset level, so compliance re-engages when you unstake.
+sPLUSD is a standard ERC-4626 vault, vault shares are minted to the receiver at the current share price. Any PLUSD holder may stake — the vault itself has no whitelist. The whitelist lives on PLUSD transfers and is enforced at the underlying-asset level, so compliance re-engages when you unstake.
 
 {% include diagram.html src="d3-stake-unstake.svg" caption="Stake is open access; unstake requires the receiver of the returned PLUSD to be whitelisted." %}
 
@@ -83,16 +75,15 @@ Stake by approving the vault and calling `sPLUSD.deposit(assets, receiver)`. sPL
 ### How shares earn yield
 
 Your share count stays constant after stake. The PLUSD each share redeems for grows as fresh PLUSD is minted directly into the vault address from two yield engines. This is passive: no claim call, no restake, no compounding step. The ERC-4626 share price (`totalAssets / totalSupply`) ticks up as `totalAssets` rises while `totalSupply` is unchanged.
-
-You can stake and unstake at any time. There is no lock-up, no queue at the vault, and no minimum hold. Redemptions that cross the whitelist boundary are subject to the PLUSD transfer hook on the receiver address.
+You can stake and unstake at any time. There is no lock-up, no queue at the vault, and no minimum hold. 
 
 ### Who can stake
 
-Any PLUSD holder — including approved DeFi venues that acquired PLUSD through whitelisted pools. The vault performs no KYC check of its own; the check was performed upstream when the PLUSD first entered the holder's address. This is the design point that enables DeFi composability on sPLUSD shares while keeping the compliance boundary intact on the underlying asset.
+Any PLUSD holder. This is the design point that enables DeFi composability on sPLUSD shares while keeping the compliance boundary intact on the underlying asset.
 
 ---
 
-## Unstake preview
+## Unstake flow
 
 Redeeming sPLUSD returns PLUSD, not USDC. Call `sPLUSD.redeem(shares, receiver, owner)` and the vault burns your shares and transfers PLUSD to the receiver. The receiver must be whitelisted on PLUSD, or the PLUSD transfer reverts and the whole redemption fails. The PLUSD amount paid out is `shares * totalAssets / totalSupply`, rounded down — so the exact quantity depends on the share price at the moment your transaction lands.
 
@@ -102,9 +93,11 @@ Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue.
 
 ## What affects your yield
 
-Two engines feed the vault. Senior loan coupons are minted into the vault as trade-finance borrowers repay their drawings. T-bill NAV yield is minted at 70% of accrued USYC appreciation; the remaining 30% accrues to the Treasury tranche. A 15% USDC buffer (target band 10–20%) sits inside the Capital Wallet so that routine redemptions can be serviced without forcing a T-bill sale. Both yield mints require two independent signatures verified on-chain — neither Bridge alone nor the custodian alone can mint yield PLUSD.
+Two engines feed the vault. Senior coupons are minted in as borrowers repay (offtaker pays USD into the Trustee bank, Trustee on-ramps to USDC, then the senior coupon net of fees is minted into the vault). T-bill yield is **realised**, not accrued — USYC sits in the Capital Wallet, NAV drifts up daily, but PLUSD doesn't mint until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail. The realised gain (proceeds minus cost basis) is then minted: 70% to the vault, 30% to Treasury.
 
-Loan-coupon mints settle per repayment event. T-bill NAV mints settle lazily, on each stake or unstake that touches the vault, so the share price refreshes at your interaction rather than on a fixed cadence. If there are no stake or unstake events for a period, unrealised NAV still accrues inside the Capital Wallet and materialises at the next vault interaction.
+A 15% USDC buffer (band 10–20%) sits inside the Capital Wallet so routine redemptions don't force a USYC sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the Trustee's signer alone can move PLUSD into the vault.
+
+Senior-coupon mints settle per repayment event. USYC realisations happen at the Trustee's discretion — there's no on-chain schedule. If the Trustee doesn't realise for a quarter, share price doesn't move from Engine B, regardless of how high USYC NAV climbed.
 
 See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, the signing parties, and how the buffer is rebalanced.
 

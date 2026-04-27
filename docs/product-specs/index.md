@@ -6,7 +6,7 @@ Use this directory for feature and product requirement documents.
 
 ## How to write a product spec
 
-- **Frame as behavior** — describe what the feature does, not what tasks need to be done to build it. Use present tense ("the bridge mints PLUSD", not "implement PLUSD minting").
+- **Frame as behavior** — describe what the feature does, not what tasks need to be done to build it. Use present tense ("the relayer mints PLUSD", not "implement PLUSD minting").
 - **Include implementation details only when they define behavior** — data models, role assignments, threshold values, and interface contracts belong here when they directly determine how the system behaves. Code-level implementation choices (data structures, algorithms, library versions) belong in exec plans.
 - **Describe current behavior only** — no change history, no migration notes, no references to previous versions.
 - **One spec per feature** — each file covers a single coherent domain. Cross-references are fine; duplication is not.
@@ -34,8 +34,8 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [smart-contracts-operations.md](./smart-contracts-operations.md) | Smart Contracts | Role assignments, upgradeability, emergency response, deferred features |
 | [security.md](./security.md) | Security & Threat Model | Threat model, peer comparison, known properties, accepted trust assumptions, internal rug containment |
 | [security-defenses.md](./security-defenses.md) | Security & Threat Model | MVP defence stack, timelock action table, pause cascade, cross-rail sequence integrity |
-| [bridge-service.md](./bridge-service.md) | Bridge Service | Event listening, MPC auto-signing, minting, USYC rebalancing, role assignments, security |
-| [bridge-service-internals.md](./bridge-service-internals.md) | Bridge Service | Service decomposition architecture, blast radius analysis |
+| [relayer-service.md](./relayer-service.md) | Relayer Service | Event listening, MPC auto-signing, minting, USYC rebalancing, role assignments, security |
+| [relayer-service-internals.md](./relayer-service-internals.md) | Relayer Service | Service decomposition architecture, blast radius analysis |
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, authentication, Trustee view |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |

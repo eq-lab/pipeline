@@ -5,7 +5,7 @@ section: Risk & losses
 ---
 
 <div class="callout risk">
-Yield on Pipeline comes from real commodity trade loans and T-bill accrual. Every yield line carries matching risk. Read this page before depositing.
+Yield on Pipeline comes from real commodity trade loan repayments and realised T-bill yield on USYC. Every yield line carries matching risk. Read this page before depositing.
 </div>
 
 Pipeline's risks fall into seven categories. For each, this page states the exposure, the mitigation, and the residual you are accepting by participating.
@@ -24,19 +24,19 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 ## Liquidity risk
 
-**What the risk is.** Withdrawal timing is not instant. The Capital Wallet USDC buffer targets 15% of PLUSD supply (operating band 10–20%), but large or concentrated withdrawals can deplete it faster than it refills. Topping up the buffer from USYC takes roughly one day at the custodian. Withdrawal-queue funding is capped at $5M per transaction and $10M per rolling 24 hours.
+**What the risk is.** Withdrawal timing is not instant. The Capital Wallet USDC buffer targets 15% of PLUSD supply (band 10–20%), but large or concentrated withdrawals can deplete it faster than it refills. Topping up the buffer requires the Trustee to sell USYC for USDC against the Hashnote redemption rail — typically about a day, longer for large redemptions. Withdrawal-queue funding is capped at $5M per transaction and $10M per rolling 24 hours.
 
-**What mitigates it.** The withdrawal queue is strict FIFO — no priority lanes, no reordering. The Bridge auto-funds within the $5M/tx and $10M/24h envelope whenever the buffer falls below the target band. Above-envelope requests route to the team and trustee signing queue and clear on the next multi-sig window.
+**What mitigates it.** The withdrawal queue is strict FIFO — no priority lanes, no reordering. The Relayer auto-funds within the $5M/tx and $10M/24h envelope whenever the buffer falls below the target band. Above-envelope requests route to the team and trustee signing queue and clear on the next multi-sig window.
 
 **Residual.** If your position is large relative to the buffer, your exit will stage across multiple windows. Concentration-sized deposits should plan exit timing in advance and not assume same-day liquidity on the full notional. There is no instant-redemption AMM — redemption is queue-based by design.
 
 ## Custody risk
 
-**What the risk is.** The USDC underlying PLUSD sits at a regulated third-party custodian. The custodian is a counterparty — legally separate from Pipeline but still a single point of operational failure. Custody is not trustless.
+**What the risk is.** Pipeline self-custodies USDC and USYC in MPC wallets operated by the Trustee, Team, and Relayer using a third-party MPC SDK. There is no third-party custodian, but custody is still not trustless — it depends on the MPC quorum operating correctly, the cosigner key material staying secure, and Pipeline Trust Company (a Pipeline-side legal entity) remaining operational and independent.
 
-**What mitigates it.** The Capital Wallet is a 2-of-3 MPC wallet with three independent cosigners: Trustee, Team, and Bridge. No single-key compromise can move USDC. Custodian-side policy caps per-LP cumulative outflow and enforces destination matching for lender payouts, so even a cosigner coalition cannot re-route funds to an arbitrary address. The custodian is regulated and subject to external audit.
+**What mitigates it.** The Capital Wallet is an MPC wallet with three independent cosigners: Trustee, Team, Relayer. No single-key compromise can move USDC. Per-transaction-class policy in the MPC layer caps per-LP cumulative outflow and enforces destination matching for lender payouts, so even a cosigner coalition cannot re-route funds to an arbitrary address. The wallet's on-chain balances are publicly verifiable on Etherscan; the USYC position is verifiable against Hashnote attestations.
 
-**Residual.** A custodian operational failure — regulatory action, insolvency, withdrawal suspension — can still delay USDC movement even with cosigners functioning. This is distinct from a single-key compromise and is not mitigated by MPC. See [Custody](/security/custody/).
+**Residual.** Two-party cosigner compromise (e.g., Trustee + Relayer collude) is out of scope for smart-contract mitigations and rests on operational separation. Trust Company solvency or governance failure can still delay USDC movement even with cosigners functioning. The MPC SDK itself is a software dependency; a vendor-side bug or signing-protocol vulnerability could in principle affect the wallet. These residuals are tracked off-chain and disclosed on the Protocol Dashboard's reconciliation indicator. See [Custody](/security/custody/).
 
 ## Smart contract risk
 
@@ -44,7 +44,7 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 **What mitigates it.** The custom surface is narrow: roughly 500 LOC of custom logic sitting on top of OpenZeppelin v5.x audited bases (ERC-20, ERC-4626, AccessControl, Pausable). The reserve invariant (PLUSD supply ≤ USDC under custody) is checked on every mint path. Four economic caps bound blast radius on any exploited mint path: $5M/tx, $10M/24h, per-LP cumulative, and daily aggregate. Deposits are atomic — no asynchronous attestor sits in the critical path. Yield mints are two-party EIP-712 signed, so no single signer can mint.
 
-**Residual.** Pre-audit, assume the custom code has not been externally reviewed. Phase-2 Chainlink Proof of Reserve is not yet deployed — the reserve invariant is checked against custodian-attested balances, not an independent oracle. A novel exploit is possible even after audit. See [Supply safeguards](/security/supply-safeguards/).
+**Residual.** Pre-audit, assume the custom code has not been externally reviewed. Phase-2 Chainlink Proof of Reserve is not yet deployed — the reserve invariant is checked against the contract's own counters, not an independent oracle reading the wallet's actual balances. A novel exploit is possible even after audit. See [Supply safeguards](/security/supply-safeguards/).
 
 ## Governance risk
 
@@ -64,9 +64,9 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 
 ## Operational risk
 
-**What the risk is.** Three operational keys exist outside the multi-sig boundary: the Bridge operational key, the Trustee key, and the custodian's yield-attestor key. Each can be compromised independently of the others and independently of the governance Safes.
+**What the risk is.** Three operational keys exist outside the multi-sig boundary: the Relayer operational key (`relayerYieldAttestor`), the Trustee's yield-attestor signing facility (`trusteeYieldAttestor`), and the Trustee's MPC cosigner share. Each can be compromised independently of the others and independently of the governance Safes.
 
-**What mitigates it.** Deposits are atomic on-chain via DepositManager, which removes the Bridge from the deposit critical path entirely — a compromised Bridge key cannot mint PLUSD against a depositor. Yield accrual uses two-party EIP-712 attestation (Bridge + custodian), so no single signer can mint yield. LoanRegistry is informational only — sPLUSD share price moves on actual repayment events, not on Trustee writes, so a compromised Trustee cannot inflate share price. GUARDIAN revokes individual operational-role holders instantly without touching unrelated roles.
+**What mitigates it.** Deposits are atomic on-chain via DepositManager — the Relayer isn't in the deposit critical path, so a Relayer compromise can't mint PLUSD against a depositor. Yield mints use two-party EIP-712 attestation (Relayer + Trustee), so no single signer can mint. LoanRegistry is informational only — sPLUSD share price moves on actual repayment events, not on Trustee writes, so a compromised Trustee can't inflate share price by editing the registry. GUARDIAN revokes individual operational-role holders instantly without touching unrelated roles.
 
 **Residual.** A compromised operational key can still grief: forced-failed withdrawals, stale whitelist writes, delayed yield posting. Grief windows last until GUARDIAN responds, which is instant in principle but bounded by signer availability in practice. Grief risk is non-zero. See [Emergency response](/security/emergency-response/).
 
@@ -77,7 +77,7 @@ See [Defaults and losses](/defaults-and-losses/) for the full loss waterfall.
 <li>No guaranteed yield. Illustrative attribution charts are representative, not promises.</li>
 <li>No guaranteed withdrawal time. Caps and queue depth apply, and large exits stage across windows.</li>
 <li>No guarantee against smart-contract exploits — even post-audit, a novel vulnerability is possible.</li>
-<li>No guarantee the custodian will remain operational or regulated in the same jurisdiction forever.</li>
+<li>No guarantee that Pipeline Trust Company stays operational or independent indefinitely. No guarantee that Hashnote keeps redeeming USYC to USDC on the current rail.</li>
 <li>No guarantee that a loan shown in the LoanRegistry reflects real-world performance — Trustee attestations are trusted inputs, not on-chain-verified.</li>
 </ul>
 </div>

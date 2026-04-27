@@ -5,13 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% if page.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
 <meta name="description" content="{{ site.description }}">
+<link rel="icon" type="image/x-icon" href="{{ '/assets/images/favicon.ico' | relative_url }}">
+<link rel="icon" type="image/svg+xml" href="{{ '/assets/images/pipeline-logo.svg' | relative_url }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Besley:ital,wght@0,400..900;1,400..900&display=swap">
 <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+<meta property="og:title" content="{% if page.title %}{{ page.title }} · {% endif %}{{ site.title }}">
+<meta property="og:description" content="{{ site.description }}">
+<meta property="og:type" content="website">
 </head>
 <body>
 <nav class="topnav">
   <button class="menu" aria-label="Toggle sidebar" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
-  <a class="brand" href="{{ '/' | relative_url }}">Pipeline</a>
-  <a class="launch" href="#">Launch app</a>
+  <a class="brand" href="{{ '/' | relative_url }}" aria-label="Pipeline home">
+    <img src="{{ '/assets/images/pipeline-logo.svg' | relative_url }}" alt="Pipeline" width="116" height="32">
+    <span class="brand-docs">docs</span>
+  </a>
+  <a class="launch" href="https://pipeline.one/">Launch app</a>
 </nav>
 {% include sidebar.html %}
 <main>

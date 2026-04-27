@@ -3,7 +3,7 @@
 ## Overview
 
 LPs exit by redeeming sPLUSD for PLUSD, then queuing PLUSD via the WithdrawalQueue contract
-for USDC payout. The queue is strict FIFO. Bridge funds the queue head in full via
+for USDC payout. The queue is strict FIFO. Relayer funds the queue head in full via
 `fundRequest`; the LP then calls `claim` to atomically burn PLUSD and receive USDC. PLUSD is
 held in escrow until `claim`, preserving the backing invariant throughout the lifecycle.
 
@@ -18,7 +18,7 @@ the sPLUSD shares and transfers PLUSD at the current share price to the receiver
 must satisfy `WhitelistRegistry.isAllowed(receiver)` — if not, the PLUSD transfer reverts at
 the PLUSD contract level.
 
-Before processing the redemption, Bridge checks whether a lazy USYC yield mint is due (NAV
+Before processing the redemption, Relayer checks whether a lazy USYC yield mint is due (NAV
 delta > 0) and executes it, keeping the share price current.
 
 ### Step 2 — WithdrawalQueue.requestWithdrawal()
@@ -32,17 +32,17 @@ On success, the contract pulls `amount` PLUSD from the caller into escrow, assig
 sequential `queue_id`, and emits `WithdrawalRequested(lpAddress, amount, queueId)`. Entry
 status is `Pending`.
 
-### Queue Funding — Bridge calls fundRequest
+### Queue Funding — Relayer calls fundRequest
 
-Bridge processes the queue head in strict FIFO order:
+Relayer processes the queue head in strict FIFO order:
 
 1. **Whitelist check.** If `isAllowed(requester)` is false, calls `WQ.skipSanctionedHead()`.
    The entry moves to `AdminReleased` and the next entry becomes the head.
-2. **Freshness check (Bridge-side).** If stale: re-screens via Chainalysis. On clean result,
+2. **Freshness check (Relayer-side).** If stale: re-screens via Chainalysis. On clean result,
    calls `WhitelistRegistry.refreshScreening(lp, newTs)`, then proceeds. On flag, calls
-   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Bridge halts and
+   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Relayer halts and
    alerts ops — head is stuck until manual `adminRelease`.
-3. **Balance check.** If Capital Wallet USDC is insufficient, Bridge requests a USYC → USDC
+3. **Balance check.** If Capital Wallet USDC is insufficient, Relayer requests a USYC → USDC
    redemption via the custodian MPC API and retries after settlement.
 4. **Fund.** Calls `WQ.fundRequest(queueId)`. WQ pulls the full `amount` in USDC from the
    Capital Wallet via pre-approved allowance. Entry moves to `Funded`. Emits
@@ -63,7 +63,7 @@ the backing invariant throughout the funding-to-claim window.
 
 ### Sanctioned Head Handling
 
-If `isAllowed(requester)` is false at funding time, Bridge calls `skipSanctionedHead()`. The
+If `isAllowed(requester)` is false at funding time, Relayer calls `skipSanctionedHead()`. The
 WQ contract moves the entry to `AdminReleased`, unblocking the queue. Escrowed PLUSD in the
 skipped entry is held in the contract; ADMIN determines disposition separately.
 
@@ -75,7 +75,7 @@ extended period).
 
 ### Above-Envelope Payouts
 
-Bridge's custodian MPC payout policy bounds automated Capital Wallet USDC outflows (per-tx
+Relayer's custodian MPC payout policy bounds automated Capital Wallet USDC outflows (per-tx
 cap and rolling 24h aggregate). Payouts exceeding these bounds surface in the Trustee tooling
 signing queue; Trustee and Pipeline team co-sign via MPC.
 
@@ -88,7 +88,7 @@ three-party authorisation:
 2. **Team operator B** (distinct authenticated session) verifies and confirms.
 3. **Trustee** provides the final co-signature via MPC.
 
-On all three signatures, Bridge escrows PLUSD and executes the USDC payout from the Capital
+On all three signatures, Relayer escrows PLUSD and executes the USDC payout from the Capital
 Wallet to a protocol-controlled withdrawal endpoint.
 
 ### Treasury Wallet Redemption — Stage B (USDC to bank account)
@@ -108,11 +108,11 @@ interface IWithdrawalQueue {
     function requestWithdrawal(uint256 amount) external returns (uint256 queueId);
 
     /// @notice Funds the queue head in full by pulling USDC from Capital Wallet.
-    /// @dev Only callable by FUNDER (Bridge). Moves entry to Funded.
+    /// @dev Only callable by FUNDER (Relayer). Moves entry to Funded.
     function fundRequest(uint256 queueId) external;
 
     /// @notice Skips a sanctioned queue head; moves it to AdminReleased.
-    /// @dev Only callable by FUNDER (Bridge). Requires !isAllowed(head requester).
+    /// @dev Only callable by FUNDER (Relayer). Requires !isAllowed(head requester).
     function skipSanctionedHead() external;
 
     /// @notice Atomically burns escrowed PLUSD and pays USDC to original requester.
@@ -181,6 +181,6 @@ the PLUSD backing invariant throughout the full withdrawal lifecycle.
 - **Destination is the original requester.** `claim` always pays to the `lp` address on the
   queue entry — there is no redirect parameter.
 - **MPC policy caps.** The custodian's policy engine bounds automated Capital Wallet USDC
-  outflows by per-tx and rolling aggregate caps, independent of Bridge software.
+  outflows by per-tx and rolling aggregate caps, independent of Relayer software.
 - **GUARDIAN pause.** GUARDIAN 2/5 can freeze all `fundRequest` and `claim` operations
   immediately on incident detection.

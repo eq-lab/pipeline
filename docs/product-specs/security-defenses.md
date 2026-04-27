@@ -63,15 +63,15 @@ the underlying USDC. Full on-chain PoR (Chainlink) is phase 2.
 Yield mints are the remaining signer-dependent path because no user-side collateral
 gates them — yield is an abstract off-chain P&L event (loan repayments and USYC accrual).
 
-- **Bridge** signs first with `bridgeYieldAttestor` (ECDSA).
+- **Relayer** signs first with `relayerYieldAttestor` (ECDSA).
 - The **custodian-provisioned EIP-1271 signer contract** independently verifies the
   underlying USDC inflow against the custodian's own ledger and signs second. Signing
   policy is driven by the custodian's platform (Fireblocks API Co-Signer callback
   handler, BitGo Policy Engine webhook, or equivalent). The on-chain contract validates
   via `IERC1271.isValidSignature` → `0x1626ba7e`.
-- `PLUSD.yieldMint(att, bridgeSig, custodianSig)` verifies both signatures on-chain.
+- `PLUSD.yieldMint(att, relayerSig, custodianSig)` verifies both signatures on-chain.
 
-Compromising Bridge alone mints zero PLUSD. Compromising the custodian alone mints
+Compromising Relayer alone mints zero PLUSD. Compromising the custodian alone mints
 zero PLUSD.
 
 ### Layer 3 — GUARDIAN (Ethena-style) + off-chain Watchdog
@@ -143,7 +143,7 @@ possible pause scope for a given incident class.
 | Sequence | Risk | Mitigation |
 |---|---|---|
 | LP calls `DepositManager.deposit(amount)` → USDC moves LP → Capital Wallet → PLUSD minted 1:1 to LP | `transferFrom` succeeds but `mintForDeposit` reverts | Atomic: any revert propagates and the whole transaction reverts. Cannot produce a dangling USDC transfer without matching PLUSD. |
-| Bridge + custodian co-sign `YieldAttestation`; Bridge submits `yieldMint(att, bridgeSig, custodianSig)`; repeated for each destination (vault, treasury) | First succeeds, second fails: vault yield accreted but treasury share missing | Two separate calls, each idempotent on `repaymentRef` (destination-scoped). Bridge retries the failed leg with a fresh `salt` after re-cosign. |
-| LP submits `requestWithdrawal` → Bridge calls `fundRequest` → LP calls `claim` | Bridge never custodies USDC; `claim` is atomic (burn + transfer). | Capital Wallet → WQ allowance is cosigned (Trustee + Bridge) at deploy. If Bridge is compromised, Trustee revokes allowance out-of-band. |
+| Relayer + custodian co-sign `YieldAttestation`; Relayer submits `yieldMint(att, relayerSig, custodianSig)`; repeated for each destination (vault, treasury) | First succeeds, second fails: vault yield accreted but treasury share missing | Two separate calls, each idempotent on `repaymentRef` (destination-scoped). Relayer retries the failed leg with a fresh `salt` after re-cosign. |
+| LP submits `requestWithdrawal` → Relayer calls `fundRequest` → LP calls `claim` | Relayer never custodies USDC; `claim` is atomic (burn + transfer). | Capital Wallet → WQ allowance is cosigned (Trustee + Relayer) at deploy. If Relayer is compromised, Trustee revokes allowance out-of-band. |
 | LP withdrawal USDC leg (Capital Wallet → WQ → LP) | LP attempts to route payout to a new address | `claim` pays only the original requester on-chain; custodian MPC policy engine also enforces per-LP destination-set matching on the Capital Wallet → WQ release (R2). |
-| Trustee verifies USDC repayment on Capital Wallet → Bridge calls `yieldMint` and Trustee calls `recordRepayment` + `closeLoan(EarlyRepayment)` | Yield mints but registry updates fail (or vice versa) | Two independent transactions; yield is the capital-critical leg and is retried. Registry updates are idempotent (mutating on Closed reverts cleanly). Registry lag does not affect share price — LoanRegistry is informational only. |
+| Trustee verifies USDC repayment on Capital Wallet → Relayer calls `yieldMint` and Trustee calls `recordRepayment` + `closeLoan(EarlyRepayment)` | Yield mints but registry updates fail (or vice versa) | Two independent transactions; yield is the capital-critical leg and is retried. Registry updates are idempotent (mutating on Closed reverts cleanly). Registry lag does not affect share price — LoanRegistry is informational only. |

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Operations Console is the single web application through which the Pipeline Trust Company (Trustee), the Pipeline team, and the Loan Originator (Open Mineral) interact with the protocol. All three parties share the same backend and authentication infrastructure but see only the screens assigned to their role. The console has no Ethereum wallet connection requirement for operators — every on-chain effect is mediated by the bridge service or by MPC co-signature.
+The Operations Console is the single web application through which the Pipeline Trust Company (Trustee), the Pipeline team, and the Loan Originator (Open Mineral) interact with the protocol. All three parties share the same backend and authentication infrastructure but see only the screens assigned to their role. The console has no Ethereum wallet connection requirement for operators — every on-chain effect is mediated by the relayer service or by MPC co-signature.
 
 ---
 
@@ -30,11 +30,11 @@ The Trustee view is accessible only to accounts holding the Trustee role. It cov
 
 ### Origination Queue
 
-The trustee receives origination requests submitted by the Originator. For each request the trustee sees: the full set of immutable loan parameters submitted by the Originator, the Originator's EIP-712 signature (already validated by the bridge service), and the submission timestamp.
+The trustee receives origination requests submitted by the Originator. For each request the trustee sees: the full set of immutable loan parameters submitted by the Originator, the Originator's EIP-712 signature (already validated by the relayer service), and the submission timestamp.
 
 The trustee takes one of three actions:
 
-- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the bridge's disbursement preparation on the Capital Wallet.
+- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the relayer's disbursement preparation on the Capital Wallet.
 - **Request changes** — the trustee adds a comment; the request status becomes ChangesRequested and the Originator is notified.
 - **Reject** — the trustee adds a rejection reason; the request status becomes Rejected and the Originator is notified.
 
@@ -58,16 +58,16 @@ The trustee manually identifies incoming USD wire transfers from borrowers again
 | originator_residual | amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation |
 
 4. The trustee reviews the breakdown. Deviations from the computed baseline (e.g., negotiated fee waivers, partial repayments, early repayment fees) are highlighted. The trustee can adjust individual components.
-5. The trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction). This signature is the trigger for the bridge service to execute on-chain yield delivery and the senior principal USYC sweep.
+5. The trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction). This signature is the trigger for the relayer service to execute on-chain yield delivery and the senior principal USYC sweep.
 
 ### Weekly Yield Signing
 
-Each Thursday, the bridge service pre-builds a TreasuryYieldDistributed transaction and presents it in the trustee tooling. The trustee sees: total accrued USYC yield since the previous distribution, vault share (70%), treasury share (30%), reference USYC NAV, holding amount, and expected on-chain mint amounts. The trustee signs the pre-built transaction (EIP-712 attestation). On receipt of the signature, the bridge executes the two yield mints. The trustee does not compute any values manually; the entire transaction is pre-built.
+Each Thursday, the relayer service pre-builds a TreasuryYieldDistributed transaction and presents it in the trustee tooling. The trustee sees: total accrued USYC yield since the previous distribution, vault share (70%), treasury share (30%), reference USYC NAV, holding amount, and expected on-chain mint amounts. The trustee signs the pre-built transaction (EIP-712 attestation). On receipt of the signature, the relayer executes the two yield mints. The trustee does not compute any values manually; the entire transaction is pre-built.
 
 ### LoanRegistry Lifecycle Updates
 
 As the sole holder of the `TRUSTEE` role on LoanRegistry (signed directly by the Trustee
-key, not relayed through Bridge), the trustee can:
+key, not relayed through Relayer), the trustee can:
 
 - Transition loan status between Performing and Watchlist via `updateMutable`.
 - Extend `currentMaturityDate`.

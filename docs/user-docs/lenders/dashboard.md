@@ -8,7 +8,7 @@ section: For Lenders
 
 The lender dashboard combines your on-chain position (verifiable directly from the contracts) with UI-side conveniences like APR and accumulated yield.
 
-## On-chain, verifiable directly
+## Verifiable directly on-chain
 
 Every item in this list can be read straight from the contracts. If the UI disappeared tomorrow, you could reconstruct all of it with a block explorer or an RPC call.
 
@@ -19,13 +19,13 @@ Every item in this list can be read straight from the contracts. If the UI disap
 - **Full deposit history** — `DepositManager.Deposited` events filtered by your address.
 - **Full mint/burn history** — `Transfer` and related events on PLUSD filtered by your address.
 
-## UI convenience rollups
+## UI aggregates
 
-These numbers are computed client-side from the on-chain data above. They're convenient, but they are not themselves on-chain state. If you want to audit them, recompute from the raw events.
+These numbers are computed client-side from the on-chain data above. They're convenient, but they themselves do not represent an on-chain state. If you want to audit these numbers, recompute them from the raw events.
 
 - Total deposited, total withdrawn, net position.
-- Yield earned, expressed as nominal PLUSD.
-- Time-weighted annualised rate (APR), computed from each stake lot's cost basis.
+- Yield earned, expressed as nominal PLUSD. 
+- Annualised rate (APR), computead as annualised 30 day sPLUSD share price return.
 - Transaction history with friendly labels and links to block explorers.
 
 ## What you can't see
@@ -38,9 +38,9 @@ Protocol-wide figures — total PLUSD supply, Capital Wallet reserves, the 15% U
 
 ## Verifying on your own
 
-Every number on your dashboard can be reconstructed from on-chain calls and event logs. Contract addresses, ABIs, and deployment blocks live on [/security/audits-and-addresses/](/security/audits-and-addresses/). If a UI number disagrees with what the contract returns, the contract is the source of truth.
+Every number on your dashboard can be reconstructed from on-chain calls and event logs. Contract addresses, ABIs, and deployment blocks live in [auidits](/security/audits-and-addresses/) section. If a UI number disagrees with what the contract returns, the contract is the source of truth.
 
 ## See also
 
-- [/security/audits-and-addresses/](/security/audits-and-addresses/) — contract addresses and audit reports.
-- [/how-it-works/yield-engines/](/how-it-works/yield-engines/) — how the APR and yield-earned figures are built up from loan repayments and T-bill distributions.
+- [audits-and-addresses](/security/audits-and-addresses/) — contract addresses and audit reports.
+- [yield-engines](/how-it-works/yield-engines/) — how the APR and yield-earned figures are built up from loan repayments and T-bill distributions.

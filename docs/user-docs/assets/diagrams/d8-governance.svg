@@ -1,87 +1,87 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <rect width="960" height="520" fill="#0f1419"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="960" height="520" fill="#ffffff"/>
 
   <defs>
     <marker id="a-sl-8" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000080"/>
     </marker>
   </defs>
 
   <!-- Title -->
-  <text text-anchor="middle" x="480" y="30" fill="#e6edf3" font-size="14" font-weight="700">Governance — three Safes, distinct signer sets, all writes through AccessManager</text>
+  <text text-anchor="middle" x="480" y="30" fill="#262524" font-size="14" font-weight="700">Governance — three Safes, distinct signer sets, all writes through AccessManager</text>
 
   <!-- AccessManager hub -->
-  <rect x="310" y="56" width="340" height="60" rx="8" fill="#1c2333" stroke="#bb9af7" stroke-width="2.5"/>
-  <text text-anchor="middle" x="480" y="80" fill="#bb9af7" font-size="14" font-weight="700">AccessManager</text>
-  <text text-anchor="middle" x="480" y="100" fill="#8b949e" font-size="11">role hub · per-target delays · scheduled actions</text>
+  <rect x="310" y="56" width="340" height="60" rx="8" fill="#ebeae9" stroke="#4a3a8e" stroke-width="2.5"/>
+  <text text-anchor="middle" x="480" y="80" fill="#4a3a8e" font-size="14" font-weight="700">AccessManager</text>
+  <text text-anchor="middle" x="480" y="100" fill="#736f6c" font-size="11">role hub · per-target delays · scheduled actions</text>
 
   <!-- Three Safes -->
-  <rect x="40" y="160" width="280" height="320" rx="10" fill="#1a2030" stroke="#e0af68" stroke-width="2"/>
-  <text text-anchor="middle" x="180" y="186" fill="#e0af68" font-size="14" font-weight="700">ADMIN · 3/5</text>
-  <text text-anchor="middle" x="180" y="206" fill="#8b949e" font-size="11">48h AccessManager delay</text>
+  <rect x="40" y="160" width="280" height="320" rx="10" fill="#ebeae9" stroke="#b9870a" stroke-width="2"/>
+  <text text-anchor="middle" x="180" y="186" fill="#b9870a" font-size="14" font-weight="700">ADMIN · 3/5</text>
+  <text text-anchor="middle" x="180" y="206" fill="#736f6c" font-size="11">48h AccessManager delay</text>
 
-  <text x="58" y="238" fill="#e6edf3" font-size="11" font-weight="600">Scope</text>
-  <text x="58" y="258" fill="#8b949e" font-size="10">• role grants + re-grants</text>
-  <text x="58" y="274" fill="#8b949e" font-size="10">• unpause any contract</text>
-  <text x="58" y="290" fill="#8b949e" font-size="10">• contract upgrades (UPGRADER)</text>
-  <text x="58" y="306" fill="#8b949e" font-size="10">• parameter changes (caps, fees)</text>
-  <text x="58" y="322" fill="#8b949e" font-size="10">• attestor-key rotation</text>
+  <text x="58" y="238" fill="#262524" font-size="11" font-weight="600">Scope</text>
+  <text x="58" y="258" fill="#736f6c" font-size="10">• role grants + re-grants</text>
+  <text x="58" y="274" fill="#736f6c" font-size="10">• unpause any contract</text>
+  <text x="58" y="290" fill="#736f6c" font-size="10">• contract upgrades (UPGRADER)</text>
+  <text x="58" y="306" fill="#736f6c" font-size="10">• parameter changes (caps, fees)</text>
+  <text x="58" y="322" fill="#736f6c" font-size="10">• attestor-key rotation</text>
 
-  <text x="58" y="352" fill="#e6edf3" font-size="11" font-weight="600">Cannot</text>
-  <text x="58" y="372" fill="#8b949e" font-size="10">× declare loan default</text>
-  <text x="58" y="388" fill="#8b949e" font-size="10">× propose shutdown</text>
-  <text x="58" y="404" fill="#8b949e" font-size="10">× revoke without the delay</text>
+  <text x="58" y="352" fill="#262524" font-size="11" font-weight="600">Cannot</text>
+  <text x="58" y="372" fill="#736f6c" font-size="10">× declare loan default</text>
+  <text x="58" y="388" fill="#736f6c" font-size="10">× propose shutdown</text>
+  <text x="58" y="404" fill="#736f6c" font-size="10">× revoke without the delay</text>
 
-  <text x="58" y="434" fill="#e0af68" font-size="11" font-style="italic">Slow path</text>
-  <text x="58" y="452" fill="#8b949e" font-size="10">14-day meta-timelock on delay</text>
-  <text x="58" y="468" fill="#8b949e" font-size="10">changes — blocks "collapse-then-exploit"</text>
+  <text x="58" y="434" fill="#b9870a" font-size="11" font-style="italic">Slow path</text>
+  <text x="58" y="452" fill="#736f6c" font-size="10">14-day meta-timelock on delay</text>
+  <text x="58" y="468" fill="#736f6c" font-size="10">changes — blocks "collapse-then-exploit"</text>
 
   <!-- Risk Council -->
-  <rect x="340" y="160" width="280" height="320" rx="10" fill="#1a2030" stroke="#bb9af7" stroke-width="2"/>
-  <text text-anchor="middle" x="480" y="186" fill="#bb9af7" font-size="14" font-weight="700">RISK_COUNCIL · 3/5</text>
-  <text text-anchor="middle" x="480" y="206" fill="#8b949e" font-size="11">24h AccessManager delay</text>
+  <rect x="340" y="160" width="280" height="320" rx="10" fill="#ebeae9" stroke="#4a3a8e" stroke-width="2"/>
+  <text text-anchor="middle" x="480" y="186" fill="#4a3a8e" font-size="14" font-weight="700">RISK_COUNCIL · 3/5</text>
+  <text text-anchor="middle" x="480" y="206" fill="#736f6c" font-size="11">24h AccessManager delay</text>
 
-  <text x="358" y="238" fill="#e6edf3" font-size="11" font-weight="600">Scope</text>
-  <text x="358" y="258" fill="#8b949e" font-size="10">• setDefault on LoanRegistry</text>
-  <text x="358" y="274" fill="#8b949e" font-size="10">• proposeShutdown</text>
-  <text x="358" y="290" fill="#8b949e" font-size="10">• adjustRecoveryRateUp</text>
-  <text x="358" y="306" fill="#8b949e" font-size="10">• (up only, never down)</text>
+  <text x="358" y="238" fill="#262524" font-size="11" font-weight="600">Scope</text>
+  <text x="358" y="258" fill="#736f6c" font-size="10">• setDefault on LoanRegistry</text>
+  <text x="358" y="274" fill="#736f6c" font-size="10">• proposeShutdown</text>
+  <text x="358" y="290" fill="#736f6c" font-size="10">• adjustRecoveryRateUp</text>
+  <text x="358" y="306" fill="#736f6c" font-size="10">• (up only, never down)</text>
 
-  <text x="358" y="352" fill="#e6edf3" font-size="11" font-weight="600">Cannot</text>
-  <text x="358" y="372" fill="#8b949e" font-size="10">× upgrade contracts</text>
-  <text x="358" y="388" fill="#8b949e" font-size="10">× grant or revoke roles</text>
-  <text x="358" y="404" fill="#8b949e" font-size="10">× change parameters</text>
+  <text x="358" y="352" fill="#262524" font-size="11" font-weight="600">Cannot</text>
+  <text x="358" y="372" fill="#736f6c" font-size="10">× upgrade contracts</text>
+  <text x="358" y="388" fill="#736f6c" font-size="10">× grant or revoke roles</text>
+  <text x="358" y="404" fill="#736f6c" font-size="10">× change parameters</text>
 
-  <text x="358" y="434" fill="#bb9af7" font-size="11" font-style="italic">Credit + wind-down</text>
-  <text x="358" y="452" fill="#8b949e" font-size="10">All actions 24h-timelocked;</text>
-  <text x="358" y="468" fill="#8b949e" font-size="10">GUARDIAN may cancel.</text>
+  <text x="358" y="434" fill="#4a3a8e" font-size="11" font-style="italic">Credit + wind-down</text>
+  <text x="358" y="452" fill="#736f6c" font-size="10">All actions 24h-timelocked;</text>
+  <text x="358" y="468" fill="#736f6c" font-size="10">GUARDIAN may cancel.</text>
 
   <!-- Guardian -->
-  <rect x="640" y="160" width="280" height="320" rx="10" fill="#1a2030" stroke="#f7768e" stroke-width="2"/>
-  <text text-anchor="middle" x="780" y="186" fill="#f7768e" font-size="14" font-weight="700">GUARDIAN · 2/5</text>
-  <text text-anchor="middle" x="780" y="206" fill="#8b949e" font-size="11">instant · no timelock</text>
+  <rect x="640" y="160" width="280" height="320" rx="10" fill="#ebeae9" stroke="#b1334b" stroke-width="2"/>
+  <text text-anchor="middle" x="780" y="186" fill="#b1334b" font-size="14" font-weight="700">GUARDIAN · 2/5</text>
+  <text text-anchor="middle" x="780" y="206" fill="#736f6c" font-size="11">instant · no timelock</text>
 
-  <text x="658" y="238" fill="#e6edf3" font-size="11" font-weight="600">Scope</text>
-  <text x="658" y="258" fill="#8b949e" font-size="10">• pause any pausable contract</text>
-  <text x="658" y="274" fill="#8b949e" font-size="10">• cancel pending ADMIN actions</text>
-  <text x="658" y="290" fill="#8b949e" font-size="10">• revokeRole for named holders</text>
-  <text x="658" y="306" fill="#8b949e" font-size="10">  of YIELD_MINTER, FUNDER,</text>
-  <text x="658" y="322" fill="#8b949e" font-size="10">  WHITELIST_ADMIN, TRUSTEE</text>
+  <text x="658" y="238" fill="#262524" font-size="11" font-weight="600">Scope</text>
+  <text x="658" y="258" fill="#736f6c" font-size="10">• pause any pausable contract</text>
+  <text x="658" y="274" fill="#736f6c" font-size="10">• cancel pending ADMIN actions</text>
+  <text x="658" y="290" fill="#736f6c" font-size="10">• revokeRole for named holders</text>
+  <text x="658" y="306" fill="#736f6c" font-size="10">  of YIELD_MINTER, FUNDER,</text>
+  <text x="658" y="322" fill="#736f6c" font-size="10">  WHITELIST_ADMIN, TRUSTEE</text>
 
-  <text x="658" y="352" fill="#e6edf3" font-size="11" font-weight="600">Cannot</text>
-  <text x="658" y="372" fill="#8b949e" font-size="10">× grant any role</text>
-  <text x="658" y="388" fill="#8b949e" font-size="10">× unpause</text>
-  <text x="658" y="404" fill="#8b949e" font-size="10">× upgrade</text>
-  <text x="658" y="420" fill="#8b949e" font-size="10">× move funds</text>
+  <text x="658" y="352" fill="#262524" font-size="11" font-weight="600">Cannot</text>
+  <text x="658" y="372" fill="#736f6c" font-size="10">× grant any role</text>
+  <text x="658" y="388" fill="#736f6c" font-size="10">× unpause</text>
+  <text x="658" y="404" fill="#736f6c" font-size="10">× upgrade</text>
+  <text x="658" y="420" fill="#736f6c" font-size="10">× move funds</text>
 
-  <text x="658" y="452" fill="#f7768e" font-size="11" font-style="italic">Defensive · granular</text>
-  <text x="658" y="468" fill="#8b949e" font-size="10">No "revoke everything" switch.</text>
+  <text x="658" y="452" fill="#b1334b" font-size="11" font-style="italic">Defensive · granular</text>
+  <text x="658" y="468" fill="#736f6c" font-size="10">No "revoke everything" switch.</text>
 
   <!-- Connection arrows from each Safe to AccessManager -->
-  <line x1="180" y1="160" x2="340" y2="118" stroke="#7aa2f7" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
-  <line x1="480" y1="160" x2="480" y2="118" stroke="#7aa2f7" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
-  <line x1="780" y1="160" x2="620" y2="118" stroke="#7aa2f7" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
+  <line x1="180" y1="160" x2="340" y2="118" stroke="#000080" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
+  <line x1="480" y1="160" x2="480" y2="118" stroke="#000080" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
+  <line x1="780" y1="160" x2="620" y2="118" stroke="#000080" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-sl-8)"/>
 
   <!-- Distinct signer set reminder -->
-  <text text-anchor="middle" x="480" y="506" fill="#8b949e" font-size="11" font-style="italic">Distinct signer sets across the three Safes are an operational requirement — overlap collapses the three-Safe separation into a single-Safe model.</text>
+  <text text-anchor="middle" x="480" y="506" fill="#736f6c" font-size="11" font-style="italic">Distinct signer sets across the three Safes are an operational requirement — overlap collapses the three-Safe separation into a single-Safe model.</text>
 </svg>

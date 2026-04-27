@@ -3,14 +3,14 @@
 ## Overview
 
 This document is the audit-facing companion to [smart-contracts.md](./smart-contracts.md)
-and [bridge-service.md](./bridge-service.md). It captures the threat model behind the
+and [relayer-service.md](./relayer-service.md). It captures the threat model behind the
 v2.3 design, the MVP defence stack, a peer-protocol comparison, the full timelock action
 table, known residual properties, and the trust assumptions an external reviewer should
 assume.
 
-Guiding principle: **no single compromise — Bridge, custodian, a single governance Safe,
+Guiding principle: **no single compromise — Relayer, custodian, a single governance Safe,
 or the Trustee key — allows an unbacked mint or a unilateral drain of investor capital.**
-Joint compromises (e.g. Bridge yield-signer + custodian signer together) remain bounded
+Joint compromises (e.g. Relayer yield-signer + custodian signer together) remain bounded
 by Layer 0 economic caps and detected by the Layer 3 watchdog.
 
 ---
@@ -21,26 +21,26 @@ by Layer 0 economic caps and detected by the Layer 3 watchdog.
 
 | Compromise | What the attacker does, step by step | Net effect |
 |---|---|---|
-| **Bridge operational key (the modern rollup of FUNDER + WHITELIST_ADMIN + YIELD_MINTER holders)** | Cannot mint deposit PLUSD — deposits are atomic LP-driven calls to DepositManager with no Bridge dependency. Cannot mint yield alone — `PLUSD.yieldMint` still requires a valid custodian EIP-1271 signature. Can submit `fundRequest` on any queued withdrawal (but Bridge never custodies USDC; the transfer is Capital-Wallet-to-WQ via pre-approved allowance). Can modify the WhitelistRegistry, but adding an address is not a drain path — deposit minting is cryptographically bound to the caller's own USDC transfer. | Bounded. GUARDIAN can instantly pause PLUSD/DepositManager/WQ and revoke `YIELD_MINTER`, `FUNDER`, `WHITELIST_ADMIN` one at a time. No unbacked mint; no direct theft. |
-| **Bridge yield-signer key (`bridgeYieldAttestor`) alone** | Can produce valid Bridge-side EIP-712 signatures for yield attestations. | Bounded — zero mints. The custodian's EIP-1271 signer independently verifies the underlying USDC inflow and signs second; PLUSD's `yieldMint` verifies both on-chain. Compromising Bridge's yield signer alone mints nothing. 48h-timelocked rotation via `proposeYieldAttestors`. |
-| **Custodian yield-signer alone** | Can produce a valid EIP-1271 signature for yield attestations. | Bounded — zero mints. Bridge must co-sign (ECDSA) and hold `YIELD_MINTER` to submit. Custodian also carries independent legal/compliance controls. |
-| **Trustee key** | Can write any LoanRegistry state: mint ghost loans, write false `recordRepayment` entries, `closeLoan(ScheduledMaturity)` without an actual repayment. Is also one cosigner on the Capital Wallet MPC. | Data-integrity damage only on the on-chain LoanRegistry — it has no capital touchpoints and is not a NAV source, so false entries do not inflate share price or drain funds. Capital Wallet releases require Bridge cosign too, so single-key Trustee compromise cannot move USDC. `Default` transition requires RISK_COUNCIL (24h timelock) — unreachable by Trustee. GUARDIAN revokes `TRUSTEE` instantly; ADMIN rotates under 48h timelock. |
+| **Relayer operational key (the modern rollup of FUNDER + WHITELIST_ADMIN + YIELD_MINTER holders)** | Cannot mint deposit PLUSD — deposits are atomic LP-driven calls to DepositManager with no Relayer dependency. Cannot mint yield alone — `PLUSD.yieldMint` still requires a valid custodian EIP-1271 signature. Can submit `fundRequest` on any queued withdrawal (but Relayer never custodies USDC; the transfer is Capital-Wallet-to-WQ via pre-approved allowance). Can modify the WhitelistRegistry, but adding an address is not a drain path — deposit minting is cryptographically bound to the caller's own USDC transfer. | Bounded. GUARDIAN can instantly pause PLUSD/DepositManager/WQ and revoke `YIELD_MINTER`, `FUNDER`, `WHITELIST_ADMIN` one at a time. No unbacked mint; no direct theft. |
+| **Relayer yield-signer key (`relayerYieldAttestor`) alone** | Can produce valid Relayer-side EIP-712 signatures for yield attestations. | Bounded — zero mints. The custodian's EIP-1271 signer independently verifies the underlying USDC inflow and signs second; PLUSD's `yieldMint` verifies both on-chain. Compromising Relayer's yield signer alone mints nothing. 48h-timelocked rotation via `proposeYieldAttestors`. |
+| **Custodian yield-signer alone** | Can produce a valid EIP-1271 signature for yield attestations. | Bounded — zero mints. Relayer must co-sign (ECDSA) and hold `YIELD_MINTER` to submit. Custodian also carries independent legal/compliance controls. |
+| **Trustee key** | Can write any LoanRegistry state: mint ghost loans, write false `recordRepayment` entries, `closeLoan(ScheduledMaturity)` without an actual repayment. Is also one cosigner on the Capital Wallet MPC. | Data-integrity damage only on the on-chain LoanRegistry — it has no capital touchpoints and is not a NAV source, so false entries do not inflate share price or drain funds. Capital Wallet releases require Relayer cosign too, so single-key Trustee compromise cannot move USDC. `Default` transition requires RISK_COUNCIL (24h timelock) — unreachable by Trustee. GUARDIAN revokes `TRUSTEE` instantly; ADMIN rotates under 48h timelock. |
 | **WHITELIST_ADMIN in isolation** | Can add any address to the whitelist. | Not a drain path on its own. Whitelisting an address does not mint; mints require the address to actually transfer USDC through DepositManager, or the address to be the destination of a two-party-attested yield mint. The v2.3 elimination of MINT_ATTESTOR closed the "add + attest → mint to self" Resolv-shape class. |
 | **FUNDER in isolation** | Can call `fundRequest` on any queued withdrawal. | Not a drain path. Funding a queue entry pulls USDC from the Capital Wallet to WQ, where the original requester alone can `claim` (PLUSD burn + USDC transfer atomic). FUNDER cannot redirect payouts. Only accelerates legitimate queued claims. |
 | **Single Safe compromise (ADMIN, RISK_COUNCIL, or GUARDIAN)** | ADMIN: can schedule upgrades, role grants, parameter loosenings — all 48h-timelocked; GUARDIAN cancels. RISK_COUNCIL: can propose `setDefault` or `proposeShutdown` — 24h-timelocked; GUARDIAN cancels. GUARDIAN: can pause, cancel, and revoke operational-role holders — cannot grant, unpause, upgrade, move funds. | Timelock + distinct Safe signer sets + Ethena-style granular emergency response contain each single-Safe compromise scenario. |
-| **Joint Bridge yield-signer + custodian signer compromise** | Produce valid two-sig attestation; PLUSD mints; `cumulativeYieldMinted` self-advances. | Bounded by Layer 0 caps (`maxPerWindow`, `maxPerLPPerWindow`, `maxTotalSupply`). Detected by the Watchdog reconciling on-chain mints against custodian-reported inflows. Phase-2 Chainlink PoR removes this residual. |
+| **Joint Relayer yield-signer + custodian signer compromise** | Produce valid two-sig attestation; PLUSD mints; `cumulativeYieldMinted` self-advances. | Bounded by Layer 0 caps (`maxPerWindow`, `maxPerLPPerWindow`, `maxTotalSupply`). Detected by the Watchdog reconciling on-chain mints against custodian-reported inflows. Phase-2 Chainlink PoR removes this residual. |
 
 ### Additional v2.3 threat rows
 
 | Compromise | Mechanism | Net effect / mitigation |
 |---|---|---|
 | **UPGRADER / ADMIN Safe (UUPS upgrade)** | Schedule `upgradeTo(maliciousImpl)` that removes the reserve invariant or adds unrestricted mint. | 48h AccessManager delay + GUARDIAN cancel + EIP-712 domain-pin check in `_authorizeUpgrade` (new implementation must return matching `name`/`version` from `eip712Domain()`). 14-day meta-timelock on delay changes prevents a "collapse-the-delay-then-exploit" sequence. |
-| **Trustee + Bridge yield-signer joint compromise** | Trustee fabricates a `RepaymentRecorded` event; the joint party produces a valid Bridge-side yield attestation; custodian is asked to co-sign. | Custodian's EIP-1271 signer must independently verify the underlying USDC inflow against the custodian's own ledger; if no USDC actually arrived, the co-sign is refused. Additional defence: Watchdog cross-checks `RepaymentRecorded` against Capital Wallet inflows. |
+| **Trustee + Relayer yield-signer joint compromise** | Trustee fabricates a `RepaymentRecorded` event; the joint party produces a valid Relayer-side yield attestation; custodian is asked to co-sign. | Custodian's EIP-1271 signer must independently verify the underlying USDC inflow against the custodian's own ledger; if no USDC actually arrived, the co-sign is refused. Additional defence: Watchdog cross-checks `RepaymentRecorded` against Capital Wallet inflows. |
 | **First-deposit ERC-4626 inflation on sPLUSD** | Attacker is first depositor, donates USDC directly to vault, next LP's shares round to zero. | OZ v5.x `ERC4626Upgradeable` with `_decimalsOffset` mitigation (dead-shares seed). Audit test: first-deposit donation attempt at live config. |
 | **Reentrancy on mint/burn paths** | Re-enter `yieldMint` or `mintForDeposit` inside a callback during `_mint`, before counters are updated. | Counter increments happen before `_mint`; all entry points carry `nonReentrant`. PLUSD is non-transferable and has no external callback in its transfer path. |
 | **Governance capture via overlapping Safe signer sets** | Same people sign ADMIN + RISK_COUNCIL + GUARDIAN — the three-Safe model collapses to a one-Safe model and the 48h / 24h / instant separation is nominal. | Signer-disjointness is an **operational requirement** enforced off-chain. Distinct member sets across ADMIN (3/5), RISK_COUNCIL (3/5), GUARDIAN (2/5). Recommend at least one external signer on GUARDIAN. |
-| **Watchdog compromise or offline** | Watchdog fails to detect mint-vs-inflow divergence; Layer 3 becomes inoperable. | Watchdog runs on infrastructure disjoint from Bridge. Its output is a GUARDIAN-trip recommendation, not an autonomous on-chain action. Fallback: Trustee and any GUARDIAN member can raise alerts independently. Accepted gap in MVP. |
-| **LP sanctioned post-mint** | LP holds PLUSD and is subsequently added to OFAC / flagged by Chainalysis. | Bridge calls `WhitelistRegistry.revokeAccess(lp)`. Subsequent withdrawal: if LP is at queue head, Bridge calls `skipSanctionedHead` (requires `!isAllowed`). ADMIN can `adminRelease` to remove the entry. PLUSD already held is frozen from further transfers by the non-transferability rule (every transfer requires a system-address leg). |
+| **Watchdog compromise or offline** | Watchdog fails to detect mint-vs-inflow divergence; Layer 3 becomes inoperable. | Watchdog runs on infrastructure disjoint from Relayer. Its output is a GUARDIAN-trip recommendation, not an autonomous on-chain action. Fallback: Trustee and any GUARDIAN member can raise alerts independently. Accepted gap in MVP. |
+| **LP sanctioned post-mint** | LP holds PLUSD and is subsequently added to OFAC / flagged by Chainalysis. | Relayer calls `WhitelistRegistry.revokeAccess(lp)`. Subsequent withdrawal: if LP is at queue head, Relayer calls `skipSanctionedHead` (requires `!isAllowed`). ADMIN can `adminRelease` to remove the entry. PLUSD already held is frozen from further transfers by the non-transferability rule (every transfer requires a system-address leg). |
 | **GUARDIAN griefing (DoS, not theft)** | A compromised GUARDIAN (2/5) repeatedly cancels scheduled ADMIN actions, blocking every parameter change or role re-grant. | Not a theft vector; a liveness issue. ADMIN can rotate GUARDIAN signers (via its own 48h-timelocked grant), but that grant is itself GUARDIAN-cancelable — the failure mode is "stuck at current config" until off-chain resolution. Accepted risk; mitigated by distinct signer sets. |
 
 ---
@@ -66,7 +66,7 @@ cross-rail sequence integrity analysis, see
 
 - **Rolling-window boundary.** Rate limit uses a fixed-window algorithm; worst case is
   `2 × maxPerWindow` over a window boundary. Bounded by `maxTotalSupply` and the
-  custodian MPC policy engine's independent cap on Bridge-originated USDC releases.
+  custodian MPC policy engine's independent cap on Relayer-originated USDC releases.
 - **`windowMinted` does not decrease on burn.** Net supply may be lower than window
   usage suggests. Mints and burns have different purposes.
 - **LoanRegistry mutable state is Trustee-attested, not on-chain verified.**
@@ -112,13 +112,13 @@ cross-rail sequence integrity analysis, see
   is phase 2.
 - **Custodian operation of the EIP-1271 yield-attestor.** The custodian provides and
   operates the EIP-1271 contract that signs half of every yield attestation. A
-  compromised custodian signer alone mints zero (Bridge co-signature and `YIELD_MINTER`
-  caller role are independent controls). A colluding custodian + Bridge + compromised
+  compromised custodian signer alone mints zero (Relayer co-signature and `YIELD_MINTER`
+  caller role are independent controls). A colluding custodian + Relayer + compromised
   governance could mint; bounded by the 48h attestor-rotation timelock, the three-Safe
   separation, and the custodian's legal accountability.
-- **Capital Wallet cosigner integrity.** Trustee + Team + Bridge each hold one MPC share
+- **Capital Wallet cosigner integrity.** Trustee + Team + Relayer each hold one MPC share
   of the Capital Wallet. Different transaction categories require different cosigner
-  combinations; routine LP withdrawals are auto-signed by Bridge within narrow custodian
+  combinations; routine LP withdrawals are auto-signed by Relayer within narrow custodian
   policy bounds. A 2-of-3 cosigner compromise is out of scope for smart-contract
   mitigations (custodian boundary).
 - **GUARDIAN compromise is griefing-bounded.** A compromised GUARDIAN can pause
@@ -137,7 +137,7 @@ by policy promises:
   GUARDIAN-cancelable, with a domain-pin check that forces the new implementation's
   EIP-712 `name`/`version` to match. Storage slots are append-only.
 - **Custodian as independent signer (Layer 2).** Yield mints require a regulated third
-  party's EIP-1271 signature in addition to Bridge's. The team cannot mint yield without
+  party's EIP-1271 signature in addition to Relayer's. The team cannot mint yield without
   the custodian's co-operation.
 - **Reserve-bounded mint (Layer 1b, phase-2 PoR).** The invariant is computed from
   on-chain data the team cannot forge. Over-minting beyond the counter envelope reverts
@@ -146,7 +146,7 @@ by policy promises:
   and per-LP caps bound any 24h period.
 - **Timelocked role rotation (Layer 4).** Operational-role rotations and governance
   actions are all 48h-visible on-chain before they land. A compromised ADMIN cannot
-  silently swap Bridge for an attacker-controlled address.
-- **Open-source backend + reproducible builds.** Community can verify the Bridge binary
+  silently swap Relayer for an attacker-controlled address.
+- **Open-source backend + reproducible builds.** Community can verify the Relayer binary
   matches published source. Combined with on-chain invariants, backend behaviour is
   bounded by what the contracts accept.

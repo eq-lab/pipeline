@@ -1,92 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <rect width="960" height="620" fill="#0f1419"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="960" height="620" fill="#ffffff"/>
 
   <defs>
     <marker id="a-sl-5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000080"/>
     </marker>
     <marker id="a-lav-5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#bb9af7"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a3a8e"/>
     </marker>
     <marker id="a-sage-5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/>
     </marker>
   </defs>
 
   <!-- Title -->
-  <text text-anchor="middle" x="480" y="32" fill="#e6edf3" font-size="14" font-weight="700">Withdraw → settle (strict FIFO, auto-funded)</text>
+  <text text-anchor="middle" x="480" y="32" fill="#262524" font-size="14" font-weight="700">Withdraw → settle (strict FIFO, auto-funded)</text>
 
   <!-- Lane headers -->
-  <rect x="30" y="56" width="160" height="40" rx="6" fill="#1a2030" stroke="#7aa2f7" stroke-width="1.5"/>
-  <text text-anchor="middle" x="110" y="74" fill="#e6edf3" font-size="12" font-weight="600">Lender</text>
-  <text text-anchor="middle" x="110" y="89" fill="#8b949e" font-size="10">holds sPLUSD / PLUSD</text>
-  <line x1="110" y1="108" x2="110" y2="540" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="30" y="56" width="160" height="40" rx="6" fill="#ebeae9" stroke="#000080" stroke-width="1.5"/>
+  <text text-anchor="middle" x="110" y="74" fill="#262524" font-size="12" font-weight="600">Lender</text>
+  <text text-anchor="middle" x="110" y="89" fill="#736f6c" font-size="10">holds sPLUSD / PLUSD</text>
+  <line x1="110" y1="108" x2="110" y2="540" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
-  <rect x="210" y="56" width="160" height="40" rx="6" fill="#1a2030" stroke="#bb9af7" stroke-width="1.5"/>
-  <text text-anchor="middle" x="290" y="74" fill="#e6edf3" font-size="12" font-weight="600">sPLUSD vault</text>
-  <text text-anchor="middle" x="290" y="89" fill="#8b949e" font-size="10">ERC-4626</text>
-  <line x1="290" y1="108" x2="290" y2="540" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="210" y="56" width="160" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text text-anchor="middle" x="290" y="74" fill="#262524" font-size="12" font-weight="600">sPLUSD vault</text>
+  <text text-anchor="middle" x="290" y="89" fill="#736f6c" font-size="10">ERC-4626</text>
+  <line x1="290" y1="108" x2="290" y2="540" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
-  <rect x="390" y="56" width="180" height="40" rx="6" fill="#1a2030" stroke="#bb9af7" stroke-width="1.5"/>
-  <text text-anchor="middle" x="480" y="74" fill="#e6edf3" font-size="12" font-weight="600">WithdrawalQueue</text>
-  <text text-anchor="middle" x="480" y="89" fill="#8b949e" font-size="10">FIFO · holds PLUSD escrow</text>
-  <line x1="480" y1="108" x2="480" y2="540" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="390" y="56" width="180" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text text-anchor="middle" x="480" y="74" fill="#262524" font-size="12" font-weight="600">WithdrawalQueue</text>
+  <text text-anchor="middle" x="480" y="89" fill="#736f6c" font-size="10">FIFO · holds PLUSD escrow</text>
+  <line x1="480" y1="108" x2="480" y2="540" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
-  <rect x="590" y="56" width="160" height="40" rx="6" fill="#1a2030" stroke="#f7768e" stroke-width="1.5"/>
-  <text text-anchor="middle" x="670" y="74" fill="#e6edf3" font-size="12" font-weight="600">Bridge</text>
-  <text text-anchor="middle" x="670" y="89" fill="#8b949e" font-size="10">FUNDER role</text>
-  <line x1="670" y1="108" x2="670" y2="540" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="590" y="56" width="160" height="40" rx="6" fill="#ebeae9" stroke="#b1334b" stroke-width="1.5"/>
+  <text text-anchor="middle" x="670" y="74" fill="#262524" font-size="12" font-weight="600">Relayer</text>
+  <text text-anchor="middle" x="670" y="89" fill="#736f6c" font-size="10">FUNDER role</text>
+  <line x1="670" y1="108" x2="670" y2="540" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
-  <rect x="770" y="56" width="160" height="40" rx="6" fill="#1a2030" stroke="#9ece6a" stroke-width="1.5"/>
-  <text text-anchor="middle" x="850" y="74" fill="#e6edf3" font-size="12" font-weight="600">Capital Wallet</text>
-  <text text-anchor="middle" x="850" y="89" fill="#8b949e" font-size="10">MPC-custodied EOA</text>
-  <line x1="850" y1="108" x2="850" y2="540" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="770" y="56" width="160" height="40" rx="6" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1.5"/>
+  <text text-anchor="middle" x="850" y="74" fill="#262524" font-size="12" font-weight="600">Capital Wallet</text>
+  <text text-anchor="middle" x="850" y="89" fill="#736f6c" font-size="10">MPC-custodied EOA</text>
+  <line x1="850" y1="108" x2="850" y2="540" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
   <!-- Step 1: Unstake sPLUSD → PLUSD -->
-  <circle cx="18" cy="138" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="142" fill="#0f1419" font-size="11" font-weight="700">1</text>
-  <line x1="115" y1="138" x2="285" y2="138" stroke="#7aa2f7" stroke-width="2" marker-end="url(#a-sl-5)"/>
-  <text text-anchor="middle" x="200" y="131" fill="#e6edf3" font-size="11" font-weight="600">sPLUSD.redeem(shares)</text>
-  <line x1="290" y1="158" x2="115" y2="158" stroke="#bb9af7" stroke-width="2" marker-end="url(#a-lav-5)"/>
-  <text text-anchor="middle" x="200" y="175" fill="#8b949e" font-size="10">PLUSD returned to lender</text>
+  <circle cx="18" cy="138" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="142" fill="#ffffff" font-size="11" font-weight="700">1</text>
+  <line x1="115" y1="138" x2="285" y2="138" stroke="#000080" stroke-width="2" marker-end="url(#a-sl-5)"/>
+  <text text-anchor="middle" x="200" y="131" fill="#262524" font-size="11" font-weight="600">sPLUSD.redeem(shares)</text>
+  <line x1="290" y1="158" x2="115" y2="158" stroke="#4a3a8e" stroke-width="2" marker-end="url(#a-lav-5)"/>
+  <text text-anchor="middle" x="200" y="175" fill="#736f6c" font-size="10">PLUSD returned to lender</text>
 
   <!-- Step 2: requestWithdrawal -->
-  <circle cx="18" cy="220" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="224" fill="#0f1419" font-size="11" font-weight="700">2</text>
-  <line x1="115" y1="220" x2="474" y2="220" stroke="#7aa2f7" stroke-width="2" marker-end="url(#a-sl-5)"/>
-  <text text-anchor="middle" x="294" y="213" fill="#e6edf3" font-size="11" font-weight="600">WithdrawalQueue.requestWithdrawal(amount)</text>
-  <text text-anchor="middle" x="294" y="236" fill="#8b949e" font-size="10">PLUSD pulled into escrow · queue_id assigned · must be whitelisted</text>
+  <circle cx="18" cy="220" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="224" fill="#ffffff" font-size="11" font-weight="700">2</text>
+  <line x1="115" y1="220" x2="474" y2="220" stroke="#000080" stroke-width="2" marker-end="url(#a-sl-5)"/>
+  <text text-anchor="middle" x="294" y="213" fill="#262524" font-size="11" font-weight="600">WithdrawalQueue.requestWithdrawal(amount)</text>
+  <text text-anchor="middle" x="294" y="236" fill="#736f6c" font-size="10">PLUSD pulled into escrow · queue_id assigned · must be whitelisted</text>
 
-  <!-- Step 3: Bridge observes + fundRequest (pulls USDC Capital → WQ) -->
-  <circle cx="18" cy="292" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="296" fill="#0f1419" font-size="11" font-weight="700">3</text>
-  <line x1="670" y1="278" x2="485" y2="278" stroke="#f7768e" stroke-width="2" marker-end="url(#a-lav-5)"/>
-  <text text-anchor="middle" x="578" y="270" fill="#e6edf3" font-size="11" font-weight="600">fundRequest(queueId)</text>
+  <!-- Step 3: Relayer observes + fundRequest (pulls USDC Capital → WQ) -->
+  <circle cx="18" cy="292" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="296" fill="#ffffff" font-size="11" font-weight="700">3</text>
+  <line x1="670" y1="278" x2="485" y2="278" stroke="#b1334b" stroke-width="2" marker-end="url(#a-lav-5)"/>
+  <text text-anchor="middle" x="578" y="270" fill="#262524" font-size="11" font-weight="600">fundRequest(queueId)</text>
 
   <!-- Step 4: USDC transfer Capital Wallet → WQ (pre-approved allowance) -->
-  <circle cx="18" cy="332" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="336" fill="#0f1419" font-size="11" font-weight="700">4</text>
-  <line x1="845" y1="324" x2="486" y2="324" stroke="#9ece6a" stroke-width="3" marker-end="url(#a-sage-5)"/>
-  <text text-anchor="middle" x="665" y="316" fill="#e6edf3" font-size="11" font-weight="600">USDC.transferFrom(capitalWallet, WQ, amount)</text>
-  <text text-anchor="middle" x="665" y="339" fill="#8b949e" font-size="10">uses Trustee+Bridge-cosigned allowance (set once at deploy)</text>
+  <circle cx="18" cy="332" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="336" fill="#ffffff" font-size="11" font-weight="700">4</text>
+  <line x1="845" y1="324" x2="486" y2="324" stroke="#2f6b3a" stroke-width="3" marker-end="url(#a-sage-5)"/>
+  <text text-anchor="middle" x="665" y="316" fill="#262524" font-size="11" font-weight="600">USDC.transferFrom(capitalWallet, WQ, amount)</text>
+  <text text-anchor="middle" x="665" y="339" fill="#736f6c" font-size="10">uses Trustee+Relayer-cosigned allowance (set once at deploy)</text>
 
   <!-- Step 5: entry moves to Funded -->
-  <circle cx="18" cy="384" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="388" fill="#0f1419" font-size="11" font-weight="700">5</text>
-  <rect x="395" y="370" width="170" height="30" rx="4" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <text text-anchor="middle" x="480" y="389" fill="#8b949e" font-size="10">entry: Pending → Funded</text>
+  <circle cx="18" cy="384" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="388" fill="#ffffff" font-size="11" font-weight="700">5</text>
+  <rect x="395" y="370" width="170" height="30" rx="4" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1"/>
+  <text text-anchor="middle" x="480" y="389" fill="#736f6c" font-size="10">entry: Pending → Funded</text>
 
   <!-- Step 6: Lender claim (burn + payout atomic) -->
-  <circle cx="18" cy="448" r="11" fill="#7aa2f7"/>
-  <text text-anchor="middle" x="18" y="452" fill="#0f1419" font-size="11" font-weight="700">6</text>
-  <line x1="115" y1="448" x2="474" y2="448" stroke="#7aa2f7" stroke-width="2" marker-end="url(#a-sl-5)"/>
-  <text text-anchor="middle" x="294" y="440" fill="#e6edf3" font-size="11" font-weight="600">claim(queueId)</text>
-  <line x1="475" y1="488" x2="115" y2="488" stroke="#9ece6a" stroke-width="3" marker-end="url(#a-sage-5)"/>
-  <text text-anchor="middle" x="294" y="480" fill="#e6edf3" font-size="11" font-weight="600">atomic: PLUSD burn + USDC to lender</text>
-  <text text-anchor="middle" x="294" y="505" fill="#8b949e" font-size="10">destination = original deposit address (MPC policy enforces)</text>
+  <circle cx="18" cy="448" r="11" fill="#000080"/>
+  <text text-anchor="middle" x="18" y="452" fill="#ffffff" font-size="11" font-weight="700">6</text>
+  <line x1="115" y1="448" x2="474" y2="448" stroke="#000080" stroke-width="2" marker-end="url(#a-sl-5)"/>
+  <text text-anchor="middle" x="294" y="440" fill="#262524" font-size="11" font-weight="600">claim(queueId)</text>
+  <line x1="475" y1="488" x2="115" y2="488" stroke="#2f6b3a" stroke-width="3" marker-end="url(#a-sage-5)"/>
+  <text text-anchor="middle" x="294" y="480" fill="#262524" font-size="11" font-weight="600">atomic: PLUSD burn + USDC to lender</text>
+  <text text-anchor="middle" x="294" y="505" fill="#736f6c" font-size="10">destination = original deposit address (MPC policy enforces)</text>
 
   <!-- bottom notes -->
-  <rect x="30" y="556" width="900" height="48" rx="6" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <text x="50" y="577" fill="#e0af68" font-size="11" font-weight="600">Caps · $5M per fundRequest · $10M rolling 24h · above-envelope routes to team + trustee signing queue</text>
-  <text x="50" y="596" fill="#8b949e" font-size="10">Partial fills and LP-initiated cancellation are not in the MVP. Sanctioned heads skipped via skipSanctionedHead to unblock the FIFO.</text>
+  <rect x="30" y="556" width="900" height="48" rx="6" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <text x="50" y="577" fill="#b9870a" font-size="11" font-weight="600">Caps · $5M per fundRequest · $10M rolling 24h · above-envelope routes to team + trustee signing queue</text>
+  <text x="50" y="596" fill="#736f6c" font-size="10">Partial fills and LP-initiated cancellation are not in the MVP. Sanctioned heads skipped via skipSanctionedHead to unblock the FIFO.</text>
 </svg>

@@ -1,123 +1,123 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-  <rect width="960" height="720" fill="#0f1419"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="960" height="720" fill="#ffffff"/>
 
   <defs>
     <marker id="a-sl-7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000080"/>
     </marker>
     <marker id="a-rose-7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f7768e"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b1334b"/>
     </marker>
     <marker id="a-sage-7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f6b3a"/>
     </marker>
     <marker id="a-amb-7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e0af68"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9870a"/>
     </marker>
   </defs>
 
   <!-- Title -->
-  <text text-anchor="middle" x="480" y="30" fill="#e6edf3" font-size="14" font-weight="700">Shutdown — one-way terminal wind-down at a fixed recovery rate</text>
+  <text text-anchor="middle" x="480" y="30" fill="#262524" font-size="14" font-weight="700">Shutdown — one-way terminal wind-down at a fixed recovery rate</text>
 
   <!-- ========== ENTRY PHASE ========== -->
-  <rect x="20" y="54" width="920" height="180" rx="10" fill="rgba(247,118,142,0.04)" stroke="#f7768e" stroke-width="1.5"/>
-  <text x="40" y="80" fill="#f7768e" font-size="12" font-weight="700" letter-spacing="1">ENTRY (one-way, no reversal)</text>
+  <rect x="20" y="54" width="920" height="180" rx="10" fill="rgba(247,118,142,0.04)" stroke="#b1334b" stroke-width="1.5"/>
+  <text x="40" y="80" fill="#b1334b" font-size="12" font-weight="700" letter-spacing="1">ENTRY (one-way, no reversal)</text>
 
-  <rect x="40" y="100" width="200" height="112" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
-  <circle cx="60" cy="122" r="11" fill="#bb9af7"/>
-  <text text-anchor="middle" x="60" y="126" fill="#0f1419" font-size="11" font-weight="700">1</text>
-  <text x="80" y="124" fill="#e6edf3" font-size="11" font-weight="600">RISK_COUNCIL proposes</text>
-  <text x="48" y="148" fill="#8b949e" font-size="10">proposeShutdown(rateBps)</text>
-  <text x="48" y="164" fill="#8b949e" font-size="10">chooses rate consistent with</text>
-  <text x="48" y="180" fill="#8b949e" font-size="10">actual RecoveryPool balance</text>
-  <text x="48" y="200" fill="#bb9af7" font-size="10" font-style="italic">no pre-fund required</text>
+  <rect x="40" y="100" width="200" height="112" rx="8" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1"/>
+  <circle cx="60" cy="122" r="11" fill="#4a3a8e"/>
+  <text text-anchor="middle" x="60" y="126" fill="#ffffff" font-size="11" font-weight="700">1</text>
+  <text x="80" y="124" fill="#262524" font-size="11" font-weight="600">RISK_COUNCIL proposes</text>
+  <text x="48" y="148" fill="#736f6c" font-size="10">proposeShutdown(rateBps)</text>
+  <text x="48" y="164" fill="#736f6c" font-size="10">chooses rate consistent with</text>
+  <text x="48" y="180" fill="#736f6c" font-size="10">actual RecoveryPool balance</text>
+  <text x="48" y="200" fill="#4a3a8e" font-size="10" font-style="italic">no pre-fund required</text>
 
-  <line x1="244" y1="156" x2="276" y2="156" stroke="#f7768e" stroke-width="2" marker-end="url(#a-rose-7)"/>
+  <line x1="244" y1="156" x2="276" y2="156" stroke="#b1334b" stroke-width="2" marker-end="url(#a-rose-7)"/>
 
-  <rect x="280" y="100" width="200" height="112" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <circle cx="300" cy="122" r="11" fill="#f7768e"/>
-  <text text-anchor="middle" x="300" y="126" fill="#0f1419" font-size="11" font-weight="700">2</text>
-  <text x="320" y="124" fill="#e6edf3" font-size="11" font-weight="600">24h AccessManager delay</text>
-  <text x="288" y="148" fill="#8b949e" font-size="10">GUARDIAN may cancel</text>
-  <text x="288" y="164" fill="#8b949e" font-size="10">during this window</text>
-  <text x="288" y="200" fill="#f7768e" font-size="10" font-style="italic">final review gate</text>
+  <rect x="280" y="100" width="200" height="112" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <circle cx="300" cy="122" r="11" fill="#b1334b"/>
+  <text text-anchor="middle" x="300" y="126" fill="#ffffff" font-size="11" font-weight="700">2</text>
+  <text x="320" y="124" fill="#262524" font-size="11" font-weight="600">24h AccessManager delay</text>
+  <text x="288" y="148" fill="#736f6c" font-size="10">GUARDIAN may cancel</text>
+  <text x="288" y="164" fill="#736f6c" font-size="10">during this window</text>
+  <text x="288" y="200" fill="#b1334b" font-size="10" font-style="italic">final review gate</text>
 
-  <line x1="484" y1="156" x2="516" y2="156" stroke="#e0af68" stroke-width="2" marker-end="url(#a-amb-7)"/>
+  <line x1="484" y1="156" x2="516" y2="156" stroke="#b9870a" stroke-width="2" marker-end="url(#a-amb-7)"/>
 
-  <rect x="520" y="100" width="200" height="112" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
-  <circle cx="540" cy="122" r="11" fill="#e0af68"/>
-  <text text-anchor="middle" x="540" y="126" fill="#0f1419" font-size="11" font-weight="700">3</text>
-  <text x="560" y="124" fill="#e6edf3" font-size="11" font-weight="600">ADMIN executes</text>
-  <text x="528" y="148" fill="#8b949e" font-size="10">executeShutdown()</text>
-  <text x="528" y="164" fill="#8b949e" font-size="10">isActive = true</text>
-  <text x="528" y="180" fill="#8b949e" font-size="10">rate fixed · supply snapshotted</text>
-  <text x="528" y="200" fill="#e0af68" font-size="10" font-style="italic">ratchets up only, never down</text>
+  <rect x="520" y="100" width="200" height="112" rx="8" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <circle cx="540" cy="122" r="11" fill="#b9870a"/>
+  <text text-anchor="middle" x="540" y="126" fill="#ffffff" font-size="11" font-weight="700">3</text>
+  <text x="560" y="124" fill="#262524" font-size="11" font-weight="600">ADMIN executes</text>
+  <text x="528" y="148" fill="#736f6c" font-size="10">executeShutdown()</text>
+  <text x="528" y="164" fill="#736f6c" font-size="10">isActive = true</text>
+  <text x="528" y="180" fill="#736f6c" font-size="10">rate fixed · supply snapshotted</text>
+  <text x="528" y="200" fill="#b9870a" font-size="10" font-style="italic">ratchets up only, never down</text>
 
-  <line x1="724" y1="156" x2="756" y2="156" stroke="#f7768e" stroke-width="2" marker-end="url(#a-rose-7)"/>
+  <line x1="724" y1="156" x2="756" y2="156" stroke="#b1334b" stroke-width="2" marker-end="url(#a-rose-7)"/>
 
-  <rect x="760" y="100" width="160" height="112" rx="8" fill="#1a2030" stroke="#f7768e" stroke-width="1"/>
-  <text text-anchor="middle" x="840" y="124" fill="#f7768e" font-size="11" font-weight="700">ALL MINTS HALT</text>
-  <text text-anchor="middle" x="840" y="146" fill="#8b949e" font-size="10">DepositManager reverts</text>
-  <text text-anchor="middle" x="840" y="162" fill="#8b949e" font-size="10">yieldMint reverts</text>
-  <text text-anchor="middle" x="840" y="180" fill="#8b949e" font-size="10">redeemInShutdown +</text>
-  <text text-anchor="middle" x="840" y="196" fill="#8b949e" font-size="10">claimAtShutdown open</text>
+  <rect x="760" y="100" width="160" height="112" rx="8" fill="#ebeae9" stroke="#b1334b" stroke-width="1"/>
+  <text text-anchor="middle" x="840" y="124" fill="#b1334b" font-size="11" font-weight="700">ALL MINTS HALT</text>
+  <text text-anchor="middle" x="840" y="146" fill="#736f6c" font-size="10">DepositManager reverts</text>
+  <text text-anchor="middle" x="840" y="162" fill="#736f6c" font-size="10">yieldMint reverts</text>
+  <text text-anchor="middle" x="840" y="180" fill="#736f6c" font-size="10">redeemInShutdown +</text>
+  <text text-anchor="middle" x="840" y="196" fill="#736f6c" font-size="10">claimAtShutdown open</text>
 
   <!-- ========== EXIT PATHS ========== -->
-  <rect x="20" y="250" width="920" height="340" rx="10" fill="rgba(158,206,106,0.04)" stroke="#9ece6a" stroke-width="1.5"/>
-  <text x="40" y="276" fill="#9ece6a" font-size="12" font-weight="700" letter-spacing="1">EXIT PATHS (pull-based, frozen rate, no race)</text>
+  <rect x="20" y="250" width="920" height="340" rx="10" fill="rgba(158,206,106,0.04)" stroke="#2f6b3a" stroke-width="1.5"/>
+  <text x="40" y="276" fill="#2f6b3a" font-size="12" font-weight="700" letter-spacing="1">EXIT PATHS (pull-based, frozen rate, no race)</text>
 
   <!-- Path A: PLUSD holder direct -->
-  <rect x="40" y="294" width="280" height="120" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
-  <circle cx="60" cy="316" r="11" fill="#9ece6a"/>
-  <text text-anchor="middle" x="60" y="320" fill="#0f1419" font-size="11" font-weight="700">4</text>
-  <text x="80" y="318" fill="#e6edf3" font-size="11" font-weight="600">Path A · PLUSD holders</text>
-  <text x="48" y="342" fill="#8b949e" font-size="10">redeemInShutdown(amount)</text>
-  <text x="48" y="358" fill="#8b949e" font-size="10">→ amount × rateBps / 10_000</text>
-  <text x="48" y="374" fill="#8b949e" font-size="10">USDC from RecoveryPool</text>
-  <text x="48" y="392" fill="#8b949e" font-size="10">PLUSD burned · whitelist required</text>
-  <text x="48" y="408" fill="#9ece6a" font-size="10" font-style="italic">pro-rata — order doesn't matter</text>
+  <rect x="40" y="294" width="280" height="120" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1"/>
+  <circle cx="60" cy="316" r="11" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="60" y="320" fill="#ffffff" font-size="11" font-weight="700">4</text>
+  <text x="80" y="318" fill="#262524" font-size="11" font-weight="600">Path A · PLUSD holders</text>
+  <text x="48" y="342" fill="#736f6c" font-size="10">redeemInShutdown(amount)</text>
+  <text x="48" y="358" fill="#736f6c" font-size="10">→ amount × rateBps / 10_000</text>
+  <text x="48" y="374" fill="#736f6c" font-size="10">USDC from RecoveryPool</text>
+  <text x="48" y="392" fill="#736f6c" font-size="10">PLUSD burned · whitelist required</text>
+  <text x="48" y="408" fill="#2f6b3a" font-size="10" font-style="italic">pro-rata — order doesn't matter</text>
 
   <!-- Path B: sPLUSD holder two-step -->
-  <rect x="340" y="294" width="280" height="120" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
-  <circle cx="360" cy="316" r="11" fill="#9ece6a"/>
-  <text text-anchor="middle" x="360" y="320" fill="#0f1419" font-size="11" font-weight="700">5</text>
-  <text x="380" y="318" fill="#e6edf3" font-size="11" font-weight="600">Path B · sPLUSD holders</text>
-  <text x="348" y="342" fill="#8b949e" font-size="10">step 1: sPLUSD.redeem(shares) → PLUSD</text>
-  <text x="348" y="358" fill="#8b949e" font-size="10">(vault stays unpaused in shutdown)</text>
-  <text x="348" y="376" fill="#8b949e" font-size="10">step 2: PLUSD.redeemInShutdown</text>
-  <text x="348" y="394" fill="#8b949e" font-size="10">same haircut as Path A</text>
+  <rect x="340" y="294" width="280" height="120" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1"/>
+  <circle cx="360" cy="316" r="11" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="360" y="320" fill="#ffffff" font-size="11" font-weight="700">5</text>
+  <text x="380" y="318" fill="#262524" font-size="11" font-weight="600">Path B · sPLUSD holders</text>
+  <text x="348" y="342" fill="#736f6c" font-size="10">step 1: sPLUSD.redeem(shares) → PLUSD</text>
+  <text x="348" y="358" fill="#736f6c" font-size="10">(vault stays unpaused in shutdown)</text>
+  <text x="348" y="376" fill="#736f6c" font-size="10">step 2: PLUSD.redeemInShutdown</text>
+  <text x="348" y="394" fill="#736f6c" font-size="10">same haircut as Path A</text>
 
   <!-- Path C: claimAtShutdown for queued LPs -->
-  <rect x="640" y="294" width="280" height="120" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
-  <circle cx="660" cy="316" r="11" fill="#9ece6a"/>
-  <text text-anchor="middle" x="660" y="320" fill="#0f1419" font-size="11" font-weight="700">6</text>
-  <text x="680" y="318" fill="#e6edf3" font-size="11" font-weight="600">Path C · queued LPs</text>
-  <text x="648" y="342" fill="#8b949e" font-size="10">claimAtShutdown(queueId)</text>
-  <text x="648" y="358" fill="#8b949e" font-size="10">Pending: from RecoveryPool</text>
-  <text x="648" y="374" fill="#8b949e" font-size="10">Funded: from WQ, haircut diff</text>
-  <text x="648" y="390" fill="#8b949e" font-size="10">returned to RecoveryPool</text>
-  <text x="648" y="408" fill="#9ece6a" font-size="10" font-style="italic">symmetric haircut · no queue jump</text>
+  <rect x="640" y="294" width="280" height="120" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1"/>
+  <circle cx="660" cy="316" r="11" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="660" y="320" fill="#ffffff" font-size="11" font-weight="700">6</text>
+  <text x="680" y="318" fill="#262524" font-size="11" font-weight="600">Path C · queued LPs</text>
+  <text x="648" y="342" fill="#736f6c" font-size="10">claimAtShutdown(queueId)</text>
+  <text x="648" y="358" fill="#736f6c" font-size="10">Pending: from RecoveryPool</text>
+  <text x="648" y="374" fill="#736f6c" font-size="10">Funded: from WQ, haircut diff</text>
+  <text x="648" y="390" fill="#736f6c" font-size="10">returned to RecoveryPool</text>
+  <text x="648" y="408" fill="#2f6b3a" font-size="10" font-style="italic">symmetric haircut · no queue jump</text>
 
   <!-- Merged arrow to recovery math -->
-  <line x1="180" y1="418" x2="180" y2="464" stroke="#9ece6a" stroke-width="2" marker-end="url(#a-sage-7)"/>
-  <line x1="480" y1="418" x2="480" y2="464" stroke="#9ece6a" stroke-width="2" marker-end="url(#a-sage-7)"/>
-  <line x1="780" y1="418" x2="780" y2="464" stroke="#9ece6a" stroke-width="2" marker-end="url(#a-sage-7)"/>
+  <line x1="180" y1="418" x2="180" y2="464" stroke="#2f6b3a" stroke-width="2" marker-end="url(#a-sage-7)"/>
+  <line x1="480" y1="418" x2="480" y2="464" stroke="#2f6b3a" stroke-width="2" marker-end="url(#a-sage-7)"/>
+  <line x1="780" y1="418" x2="780" y2="464" stroke="#2f6b3a" stroke-width="2" marker-end="url(#a-sage-7)"/>
 
   <!-- Recovery math box -->
-  <rect x="100" y="468" width="760" height="102" rx="8" fill="#1c2333" stroke="#9ece6a" stroke-width="1.5"/>
-  <circle cx="124" cy="494" r="11" fill="#9ece6a"/>
-  <text text-anchor="middle" x="124" y="498" fill="#0f1419" font-size="11" font-weight="700">7</text>
-  <text x="146" y="496" fill="#e6edf3" font-size="12" font-weight="600">Per-unit payout = PLUSD amount × recoveryRateBps / 10_000</text>
-  <text x="118" y="518" fill="#8b949e" font-size="10">e.g. 7500 bps → every PLUSD redeemed during shutdown pays 0.75 USDC</text>
-  <text x="118" y="536" fill="#8b949e" font-size="10">rate is protocol-wide, frozen per adjustment; later redeemers get at least what earlier ones got</text>
-  <text x="118" y="556" fill="#9ece6a" font-size="10" font-style="italic">no race, no queue jump — order of redemption does not affect per-unit payout</text>
+  <rect x="100" y="468" width="760" height="102" rx="8" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1.5"/>
+  <circle cx="124" cy="494" r="11" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="124" y="498" fill="#ffffff" font-size="11" font-weight="700">7</text>
+  <text x="146" y="496" fill="#262524" font-size="12" font-weight="600">Per-unit payout = PLUSD amount × recoveryRateBps / 10_000</text>
+  <text x="118" y="518" fill="#736f6c" font-size="10">e.g. 7500 bps → every PLUSD redeemed during shutdown pays 0.75 USDC</text>
+  <text x="118" y="536" fill="#736f6c" font-size="10">rate is protocol-wide, frozen per adjustment; later redeemers get at least what earlier ones got</text>
+  <text x="118" y="556" fill="#2f6b3a" font-size="10" font-style="italic">no race, no queue jump — order of redemption does not affect per-unit payout</text>
 
   <!-- ========== RATCHET UP (bottom band) ========== -->
-  <rect x="20" y="606" width="920" height="96" rx="10" fill="rgba(224,175,104,0.04)" stroke="#e0af68" stroke-width="1.5"/>
-  <circle cx="48" cy="634" r="11" fill="#e0af68"/>
-  <text text-anchor="middle" x="48" y="638" fill="#0f1419" font-size="11" font-weight="700">8</text>
-  <text x="68" y="636" fill="#e0af68" font-size="12" font-weight="700">adjustRecoveryRateUp(newRateBps) — RISK_COUNCIL, 24h delay, GUARDIAN-cancelable</text>
-  <text x="40" y="660" fill="#8b949e" font-size="11">As Trustee repatriates USDC to RecoveryPool over subsequent weeks/months, RISK_COUNCIL can ratchet the rate upward.</text>
-  <text x="40" y="678" fill="#8b949e" font-size="11">Rate can only go UP. Lowering would transfer value from patient LPs to early exiters — not allowed.</text>
-  <text x="40" y="696" fill="#e0af68" font-size="10" font-style="italic">Shutdown is terminal — no path back to normal protocol operation.</text>
+  <rect x="20" y="606" width="920" height="96" rx="10" fill="rgba(224,175,104,0.04)" stroke="#b9870a" stroke-width="1.5"/>
+  <circle cx="48" cy="634" r="11" fill="#b9870a"/>
+  <text text-anchor="middle" x="48" y="638" fill="#ffffff" font-size="11" font-weight="700">8</text>
+  <text x="68" y="636" fill="#b9870a" font-size="12" font-weight="700">adjustRecoveryRateUp(newRateBps) — RISK_COUNCIL, 24h delay, GUARDIAN-cancelable</text>
+  <text x="40" y="660" fill="#736f6c" font-size="11">As Trustee repatriates USDC to RecoveryPool over subsequent weeks/months, RISK_COUNCIL can ratchet the rate upward.</text>
+  <text x="40" y="678" fill="#736f6c" font-size="11">Rate can only go UP. Lowering would transfer value from patient LPs to early exiters — not allowed.</text>
+  <text x="40" y="696" fill="#b9870a" font-size="10" font-style="italic">Shutdown is terminal — no path back to normal protocol operation.</text>
 </svg>

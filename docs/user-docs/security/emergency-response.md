@@ -18,12 +18,12 @@ No single-call "revoke everything" switch exists. Every action names what it is 
 
 <ol class="steps">
   <li>Watchdog detects an anomaly — unexpected whitelist grants, cumulative-counter drift, or a rate-limit breach.</li>
-  <li>GUARDIAN instantly pauses PLUSD, DepositManager, and WithdrawalQueue as defence in depth.</li>
+  <li>GUARDIAN instantly pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue as defence in depth.</li>
   <li>GUARDIAN calls <code>AccessManager.cancel(actionId)</code> on any pending ADMIN scheduled actions.</li>
-  <li>GUARDIAN submits <code>revokeRole(YIELD_MINTER, bridgeAddr)</code> — Bridge can no longer mint yield even with both signatures.</li>
-  <li>GUARDIAN submits <code>revokeRole(FUNDER, bridgeAddr)</code> — Bridge can no longer fund withdrawal-queue entries.</li>
-  <li>GUARDIAN submits <code>revokeRole(WHITELIST_ADMIN, bridgeAddr)</code> — Bridge can no longer modify the whitelist.</li>
-  <li>ADMIN investigates and, if needed, rotates the yield-attestor key via <code>proposeYieldAttestors</code> (48h delay, GUARDIAN can cancel).</li>
+  <li>GUARDIAN submits <code>revokeRole(FUNDER, relayerAddr)</code> — Relayer can no longer fund withdrawal-queue entries.</li>
+  <li>GUARDIAN submits <code>revokeRole(WHITELIST_ADMIN, relayerAddr)</code> — Relayer can no longer modify the whitelist.</li>
+  <li>YieldMinter is paused above, so yield mints are halted regardless of the Relayer signing key. To rotate the attestor itself, see step 6.</li>
+  <li>ADMIN rotates the yield-attestor key via <code>YieldMinter.proposeYieldAttestors</code> (48h delay, GUARDIAN can cancel).</li>
   <li>ADMIN re-grants operational roles one by one — each under the 48h timelock, GUARDIAN-cancelable.</li>
   <li>ADMIN calls <code>unpause()</code> on each paused contract (48h delay each).</li>
 </ol>
@@ -41,24 +41,24 @@ No single-call "revoke everything" switch exists. Every action names what it is 
 - Grant any role.
 - Unpause any contract.
 - Upgrade any contract.
-- Revoke `UPGRADER`, `DEFAULT_ADMIN`, `DEPOSITOR`, `BURNER`, or any governance role.
+- Revoke `UPGRADER`, `DEFAULT_ADMIN`, `DEPOSITOR`, `YIELD_MINTER`, `BURNER`, or any governance role. (`YIELD_MINTER` is held by the YieldMinter contract itself; if a problem with YieldMinter is suspected, the response is to pause the contract instantly, not revoke the role.)
 - Move funds.
 
 A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders) but cannot escalate, unpause, or move funds. Restoration of service is strictly ADMIN's job, gated by the 48h timelock and itself GUARDIAN-cancelable.
 
 ## Playbooks
 
-### Bridge operational-key compromise
+### Relayer operational-key compromise
 
-Watchdog flags anomalous `setAccess` calls or drift in the cumulative mint counters. GUARDIAN pauses PLUSD, DepositManager, and WithdrawalQueue, then submits three separate `revokeRole` transactions — `YIELD_MINTER`, `FUNDER`, and `WHITELIST_ADMIN` — within minutes. Even a fully compromised Bridge mints zero yield afterwards, funds no withdrawals, and cannot touch the whitelist. Deposits remain atomic and unaffected by Bridge compromise because DepositManager has no Bridge dependency. ADMIN then rotates keys under the 48h timelock.
+Watchdog flags anomalous `setAccess` calls or drift in the cumulative mint counters. GUARDIAN pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue, then submits two `revokeRole` transactions — `FUNDER` and `WHITELIST_ADMIN` — within minutes. With YieldMinter paused, the compromised `relayerYieldAttestor` key cannot be used to mint yield PLUSD; with FUNDER revoked, the Relayer EOA cannot fund withdrawals; with WHITELIST_ADMIN revoked, it cannot touch the whitelist. Deposits remain atomic and unaffected by Relayer compromise because DepositManager has no Relayer dependency. ADMIN then rotates the attestor key via `YieldMinter.proposeYieldAttestors` and re-grants the Relayer's two operational roles, all under the 48h timelock.
 
 ### Trustee key compromise
 
-GUARDIAN revokes `TRUSTEE` on LoanRegistry instantly. The compromised key can no longer write to LoanRegistry. Capital flows are unaffected because LoanRegistry has no capital touchpoints and is not a NAV source. The Trustee is also a Capital Wallet cosigner, but a single-key Trustee compromise cannot move USDC alone — Bridge cosign is required. Trustee rotation follows the standard 48h ADMIN path.
+GUARDIAN revokes `TRUSTEE` on LoanRegistry instantly. The compromised key can no longer write to LoanRegistry. Capital flows are unaffected because LoanRegistry has no capital touchpoints and is not a NAV source. The Trustee is also a Capital Wallet cosigner, but a single-key Trustee compromise cannot move USDC alone — Relayer cosign is required. Trustee rotation follows the standard 48h ADMIN path.
 
-### Custodian yield-attestor compromise
+### Trustee yield-attestor compromise
 
-The custodian revokes its own key internally. The compromised key alone cannot mint — Bridge signature and `YIELD_MINTER` caller role are independent requirements. ADMIN calls `proposeYieldAttestors(sameBridge, newCustodian)` under the 48h timelock. During the window, yield mints can continue safely: the old attestor alone cannot mint, and the compromise is bounded by the Bridge signature and caller-role requirements that still apply.
+The Trustee revokes the compromised yield-attestor signing material from its own infrastructure. The compromised key alone cannot mint — the Relayer signature and the YieldMinter contract's role on PLUSD are independent requirements. ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer, newTrustee)` under the 48h timelock to rotate the on-chain attestor address. During the window, yield mints continue safely: the old attestor alone cannot mint, and the compromise is bounded by the Relayer signature and the caller-role requirement that still apply.
 
 ## Related
 

@@ -1,18 +1,18 @@
-# Bridge Service — Internal Architecture
+# Relayer Service — Internal Architecture
 
-> Service decomposition detail for the Bridge Service. See [bridge-service.md](./bridge-service.md) for the main spec (behavior, on-chain events, role assignments, security).
+> Service decomposition detail for the Relayer Service. See [relayer-service.md](./relayer-service.md) for the main spec (behavior, on-chain events, role assignments, security).
 
 ---
 
 ## Service Decomposition
 
-Bridge is described as a "single backend" for simplicity, but is deployed as **separate
+Relayer is described as a "single backend" for simplicity, but is deployed as **separate
 internal services** sharing a Postgres database and communicating via internal RPC. No
 service is internet-facing except the API Gateway.
 
 ```
                     ┌──────────────────────────────────────────────┐
-                    │              Bridge Cluster                   │
+                    │              Relayer Cluster                   │
                     │                                              │
  Ethereum RPC ────► │  ┌─────────────┐    ┌──────────────────┐    │
                     │  │ Indexer     │───►│ Postgres          │    │
@@ -25,12 +25,12 @@ service is internet-facing except the API Gateway.
                     │  └─────────────┘           │                 │
                     │                     ┌──────┴───────────┐    │
                     │                     │ Tx Submitter      │───►  Ethereum
-                    │                     │ (holds Bridge EOA)│    │
+                    │                     │ (holds Relayer EOA)│    │
                     │                     └──────────────────┘    │
                     │                                              │
                     │  ┌──────────────────┐                       │
                     │  │ Signer            │  (holds              │
-                    │  │ (air-gapped       │   bridgeYieldAttestor│
+                    │  │ (air-gapped       │   relayerYieldAttestor│
                     │  │  hardware signer) │   — yield            │
                     │  └──────────────────┘   attestations only;  │
                     │                         no internet egress) │
@@ -53,10 +53,10 @@ service is internet-facing except the API Gateway.
 |---|---|---|
 | Indexer | Poison event data in DB | Sign attestations, submit txs, mint PLUSD |
 | Orchestrator | Queue malicious yield-mint intents | Obtain custodian co-sig (no yield mint possible); submit txs |
-| Tx Submitter | Front-run internal tx queue; submit arbitrary txs under Bridge EOA authority | Forge Bridge yield sig; forge custodian sig; operate outside the permissions granted to the Bridge EOA |
-| Signer | Produce Bridge yield sigs without custodian co-sig | Mint PLUSD alone — custodian EIP-1271 sig and `YIELD_MINTER` caller role are independent requirements |
+| Tx Submitter | Front-run internal tx queue; submit arbitrary txs under Relayer EOA authority | Forge Relayer yield sig; forge custodian sig; operate outside the permissions granted to the Relayer EOA |
+| Signer | Produce Relayer yield sigs without custodian co-sig | Mint PLUSD alone — custodian EIP-1271 sig and `YIELD_MINTER` caller role are independent requirements |
 | API Gateway | Leak read data; inject bad Trustee approvals into the review queue | Sign, submit, or index |
-| Custodian alone (external) | Produce a custodian EIP-1271 sig | Mint PLUSD alone — Bridge ECDSA sig and `YIELD_MINTER` caller role are independent requirements |
+| Custodian alone (external) | Produce a custodian EIP-1271 sig | Mint PLUSD alone — Relayer ECDSA sig and `YIELD_MINTER` caller role are independent requirements |
 
 All service-to-service communication is mTLS with auto-provisioned certificates. No
 service has internet egress except Tx Submitter (Ethereum RPC), API Gateway (frontend),
