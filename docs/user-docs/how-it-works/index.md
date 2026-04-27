@@ -6,7 +6,7 @@ section: How Pipeline works
 
 # How Pipeline works
 
-Pipeline runs on two separate rails. The **cash rail** holds real USDC at a regulated custodian. The **token rail** is a set of on-chain contracts that issue receipts and track behaviour. Rules link the two rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
+Pipeline runs on two separate rails. The **cash rail** holds real USDC at a regulated custodian. The **token rail** is a set of on-chain contracts that issue receipts and run Lender-facing business logic. Rules link the two rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens without multi-party approval.
 
 <div class="callout safety">
   <h4>Split-rail safety property</h4>
@@ -15,41 +15,41 @@ Pipeline runs on two separate rails. The **cash rail** holds real USDC at a regu
 
 {% include diagram.html src="d1-system-context.svg" caption="Pipeline system context — cash rail off-chain, token rail on-chain, governance by three Safes." %}
 
-The diagram shows the off-chain cash rail on the left with five boxes (Custodian, Capital Wallet, Treasury Wallet, Bridge, Trustee). The on-chain token rail sits on the right — AccessManager at the top, then eight protocol contracts arranged in a grid. Three Gnosis Safes (ADMIN, RISK_COUNCIL, GUARDIAN) govern from the bottom band. The Bridge and the Trustee appear in the cash-rail column because that is where they operate — Bridge co-signs yield attestations and funds withdrawals; the Trustee is a Capital Wallet cosigner. Both also hold specific on-chain roles described below.
+The diagram shows the off-chain cash rail on the left with five boxes (Custodian, Capital Wallet, Treasury Wallet, Relayer, Trustee). The on-chain token rail sits on the right — AccessManager at the top, then eight protocol contracts arranged in a grid. Three Gnosis Safes (ADMIN, RISK_COUNCIL, GUARDIAN) govern from the bottom. The Relayer and the Trustee appear in the cash-rail column because that is where they operate — Relayer co-signs yield attestations and funds withdrawals; the Trustee is a Capital Wallet cosigner. Both also hold specific on-chain roles described below.
 
 ---
 
 ## The cash rail
 
-The cash rail is where USDC actually sits. A single on-chain address — the Capital Wallet — holds every lender dollar and every dollar deployed to an active loan. The address is held at a regulated third-party custodian, moved only by a fixed set of MPC (multi-party computation) cosigners. **No smart contract in the system can spend from the Capital Wallet.** The cash rail is the protocol's treasury, governed by custodian policy and three independent signers.
+The cash rail is where USDC actually sits. A single on-chain address — the Capital Wallet — holds every lender dollar and every dollar deployed to an active loan. The address is held at a regulated third-party custodian (Bitgo), moved only by a fixed set of MPC (multi-party computation) cosigners. **No smart contract in the system can spend from the Capital Wallet.** The cash rail is the protocol's treasury, governed by custodian policy and three independent signers.
 
 ### Custodian
 
-A regulated third-party that holds the Capital Wallet and the Treasury Wallet. The custodian operates the MPC signing infrastructure for both wallets and runs an EIP-1271 signer contract on chain. That on-chain signer co-signs every yield mint after the custodian has independently verified the underlying USDC inflow against its own records. A compromise of any single other actor — Bridge, Trustee, or Team — cannot produce yield without the custodian's signature.
+A regulated third-party that holds the Capital Wallet and the Treasury Wallet. The custodian operates the MPC signing infrastructure for both wallets and runs an EIP-1271 signer contract on chain. That on-chain signer co-signs every token mint after the custodian has independently verified the underlying USDC inflow against its own records. A compromise of any single other actor — Relayer, Trustee, or Team — cannot uncontrollably mint tokens without the custodian's signature.
 
 ### Capital Wallet
 
-The address holding all lender USDC plus the USYC (tokenized T-bill) position that accrues T-bill yield on idle reserves. Target buffer of 15% USDC sits in the band 10–20%; the balance is kept in USYC. Three independent cosigners share control: **Trustee**, **Team**, and **Bridge**. Routine lender withdrawals are auto-signed by Bridge within tight custodian-policy caps. Loan disbursements and anything above the auto-sign envelope require Trustee and Team cosignature.
+The address holding all lender USDC plus the USYC (tokenized T-bill) position that accrues T-bill yield on idle reserves. Target buffer of 15% USDC sits in the band 10–20%; the balance is kept in USYC. Three independent cosigners share control: **Trustee**, **Team**, and **Relayer**. Routine lender withdrawals are auto-signed by Relayer within tight custodian-policy caps. Loan disbursements and anything above the auto-sign envelope require Trustee and Team cosignature.
 
 ### Treasury Wallet
 
 A separate custodied address that collects protocol fees (management, performance, OET) and the 30% Treasury share of T-bill accrual. Different MPC cosigner set from the Capital Wallet.
 
-### Bridge
+### Relayer
 
-The off-chain backend that indexes on-chain events, co-signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds three on-chain roles: `YIELD_MINTER` on PLUSD, `FUNDER` on WithdrawalQueue, and `WHITELIST_ADMIN` on WhitelistRegistry. Bridge also acts as one of the three Capital Wallet cosigners, but **Bridge never custodies USDC itself**. A fully compromised Bridge cannot mint deposit-leg PLUSD (deposits are atomic and Bridge-free) and cannot mint yield PLUSD alone (the custodian signature is an independent gate).
+The off-chain backend that indexes on-chain events, co-signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds three on-chain roles: `YIELD_MINTER` on PLUSD token contract, `FUNDER` on WithdrawalQueue contract, and `WHITELIST_ADMIN` on WhitelistRegistry contract. Relayer also acts as one of the three Capital Wallet cosigners, but **Relayer never custodies USDC itself**. A fully compromised Relayer cannot mint deposit-leg PLUSD (deposits are atomic and handled by smart contract) and cannot mint PLUSD out of thin air (the custodian signature is an independent gate).
 
 ### Trustee
 
-An independent fiduciary entity. On the cash rail it is one of the three MPC cosigners on the Capital Wallet. On the token rail it holds the `TRUSTEE` role on LoanRegistry — the Trustee mints loan NFTs, records repayment splits, and closes loans at maturity. The Trustee cannot move USDC alone (Bridge cosign is required) and cannot mint PLUSD (LoanRegistry writes are pure accounting; they do not feed sPLUSD share price).
+An independent Swiss-based trusted entity. On the cash rail it is one of the three MPC cosigners on the Capital Wallet. On the token rail it holds the `TRUSTEE` role on LoanRegistry — the Trustee mints loan NFTs, records repayment splits, and closes loans at maturity. The Trustee cannot move USDC alone (Relayer cosign is required) and cannot mint PLUSD. LoanRegistry writes are pure accounting, they do not feed sPLUSD share price.
 
 ---
 
 ## The token rail
 
-The token rail is a set of on-chain contracts. Nine in total: an **AccessManager** role hub and eight protocol contracts that issue receipts and track behaviour. Rules link the rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
+The token rail is a set of on-chain contracts. Nine in total: an **AccessManager** role hub and eight protocol contracts that issue IOUs and track behaviour. Rules link the rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
 
-The **AccessManager** is the central authority on the token rail. Every privileged call — a role grant, an unpause, an upgrade, an emergency revocation — routes through it, either instantly for GUARDIAN or through a timelock for ADMIN and RISK_COUNCIL.
+The **AccessManager** is the central authority contract. Every privileged call — a role grant, an unpause, an upgrade, an emergency revocation — routes through this smart contract, either instantly for GUARDIAN or through a timelock for ADMIN and RISK_COUNCIL.
 
 ### AccessManager
 
@@ -57,11 +57,11 @@ The role hub, deployed fresh from OpenZeppelin v5.x with no custom code. Every p
 
 ### DepositManager
 
-The atomic entry point for deposits. A whitelisted lender calls `deposit(amount)`; the contract pulls USDC to the Capital Wallet and mints PLUSD 1:1 in the **same transaction**. No off-chain signer gates the deposit path — the on-chain USDC movement is itself the attestation. DepositManager holds the `DEPOSITOR` role on PLUSD.
+The atomic entry point for deposits. A whitelisted lender calls `deposit(amount)`; the contract pulls USDC to the Capital Wallet and mints PLUSD 1:1 in the **same transaction**. No off-chain signer gates the deposit path — the on-chain USDC movement is itself the attestation. DepositManager holds the `DEPOSITOR` role on PLUSD. Four economic caps bound supply: `maxPerWindow` ($10M per 24h), `maxPerLPPerWindow`, `maxTotalSupply`, and `freshnessWindow` (the 90-day Chainalysis freshness gate on deposits). 
 
 ### PLUSD
 
-An ERC-20 receipt token minted 1:1 against deposited USDC. Pausable. Every transfer is gated by the WhitelistRegistry — exactly one side of the transfer must be a system address or a whitelisted lender. PLUSD tracks three cumulative counters (deposits, yield mints, burns) and asserts a reserve invariant on every mint path. Four economic caps bound supply: `maxPerWindow` ($10M per 24h), `maxPerLPPerWindow`, `maxTotalSupply`, and `freshnessWindow` (the 90-day Chainalysis freshness gate on deposits).
+An ERC-20 receipt token minted 1:1 against deposited USDC. Currently every transfer is gated by the WhitelistRegistry. Minimum logic, standard token contract interfaces. This contract tracks three cumulative counters (deposits, yield mints, burns) and asserts a reserve invariant on every mint path.
 
 ### sPLUSD
 
@@ -69,11 +69,12 @@ A standard ERC-4626 yield vault where the asset is PLUSD. Any PLUSD holder can s
 
 ### WithdrawalQueue
 
-A strict FIFO exit queue. Lenders call `requestWithdrawal(amount)` to escrow PLUSD and receive a `queue_id`. Bridge then calls `fundRequest(queueId)` to pull USDC from the Capital Wallet to the queue via a pre-approved allowance. The lender calls `claim(queueId)` — PLUSD burns and USDC transfers to the lender atomically in a single transaction. Funding caps at $5M per transaction and $10M per rolling 24 hours; above-envelope requests route to manual Trustee + Team co-sign.
+A strict FIFO exit queue. Lenders call `requestWithdrawal(amount)` to escrow PLUSD and receive a `queue_id`. Relayer then calls `fundRequest(queueId)` to pull USDC from the Capital Wallet to the queue via a pre-approved allowance. The lender calls `claim(queueId)` — PLUSD burns and USDC transfers to the lender atomically in a single transaction. Funding caps at $5M per transaction and $10M per rolling 24 hours; above-envelope requests route to manual Trustee + Team co-sign.
 
 ### WhitelistRegistry
 
-The on-chain allowlist. Maintains the set of KYC'd lender addresses with their Chainalysis `approvedAt` timestamps, plus the allowlist of approved DeFi venues. PLUSD calls `isAllowed` on every transfer; DepositManager calls `isAllowedForMint` (which also checks the 90-day freshness window). A freshness expiry blocks new deposits from that lender until re-screening.
+The on-chain allowlist. Maintains the set of KYC'd lender addresses with their Chainalysis `approvedAt` timestamps. PLUSD calls `isAllowed` on every transfer. 
+DepositManager calls `isAllowedForMint` (which also checks the 90-day freshness window). A freshness expiry blocks new deposits from that lender until re-screening.
 
 ### LoanRegistry
 
