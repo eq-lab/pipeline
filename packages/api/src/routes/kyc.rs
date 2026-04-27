@@ -263,6 +263,18 @@ async fn webhook_callback(
         }
     };
 
+    match state.kyc_repo.get_lp_profile(&wallet_address).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            tracing::warn!(wallet = wallet_address, "webhook for unknown wallet");
+            return (StatusCode::NOT_FOUND, "applicant not found").into_response();
+        }
+        Err(e) => {
+            tracing::error!("failed to look up lp_profile: {e:?}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+    }
+
     let review_status = payload
         .parsed_review_status()
         .unwrap_or(shared::sumsub::models::KycReviewStatus::Pending);
