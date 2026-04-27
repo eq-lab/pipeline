@@ -8,4 +8,12 @@ alloy-primitives  = { workspace = true }
 anyhow            = { workspace = true }
 async-trait       = { workspace = true }
 bigdecimal        = { workspace = true }
+chrono            = { workspace = true }
+hmac              = "0.12"
+hex               = "0.4"
+reqwest           = { workspace = true }
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
+sha2              = "0.10"
 sqlx              = { workspace = true }
+tracing           = { workspace = true }

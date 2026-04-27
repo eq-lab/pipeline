@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@latest"
+      ]
+    },
+    "BitGo Docs": {
+      "type": "http",
+      "url": "https://developers.bitgo.com/mcp"
+    }
+  }
+}

@@ -24,6 +24,7 @@ Planning & tracking:
 
 Product & design:
 
+- [`docs/user-docs/index.md`](./docs/user-docs/index.md) — user-facing documentation (lenders, borrowers, security)
 - [`docs/product-specs/index.md`](./docs/product-specs/index.md) — product intent and feature specs
 - [`docs/design-docs/index.md`](./docs/design-docs/index.md) — design catalog and verification status
 - [`docs/design-docs/core-beliefs.md`](./docs/design-docs/core-beliefs.md) — agent-first operating principles
