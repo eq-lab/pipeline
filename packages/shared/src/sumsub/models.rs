@@ -25,7 +25,13 @@ pub enum AmlStatus {
     Hit = 3,
 }
 
-const AML_REJECT_LABELS: &[&str] = &["SANCTIONS_HIT", "PEP_HIT", "ADVERSE_MEDIA_HIT", "FRAUD_HIT"];
+const AML_REJECT_LABELS: &[&str] = &[
+    "SANCTIONS",
+    "PEP",
+    "ADVERSE_MEDIA",
+    "CRIMINAL",
+    "COMPROMISED_PERSONS",
+];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,6 +97,7 @@ pub struct WebhookPayload {
     #[serde(rename = "type")]
     pub event_type: String,
     pub sandbox_mode: Option<bool>,
+    pub review_mode: Option<String>,
     pub review_status: Option<String>,
     pub review_result: Option<ReviewResult>,
     pub created_at_ms: Option<String>,
