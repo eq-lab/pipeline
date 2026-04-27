@@ -40,7 +40,7 @@ Two sources. The first is the senior coupon paid by borrowers on trade-finance l
 
 ## What can go wrong
 
-Your capital is exposed to loan defaults, liquidity delays at the withdrawal queue, custodian operational failure, smart-contract risk, governance failure, regulatory action, and operator error. Each of these has a dedicated page explaining the mitigation and the residual risk you carry. 
+Your capital is exposed to loan defaults, liquidity delays at the withdrawal queue, custody-policy failure, smart-contract risk, governance failure, regulatory action, and operator error. Each of these has a dedicated page explaining the mitigation and the residual risk you carry. 
 
 Read the full breakdown at [Risks](/risks/) and [Defaults and losses](/defaults-and-losses/).
 

@@ -29,7 +29,7 @@ So the question is not "how do I apply." It is "is Pipeline the right route for 
   <li>The offtaker pays for the cargo by wiring USD into the Trustee's correspondent bank account.</li>
   <li>The Trustee identifies the wire, matches it to the loan, and on-ramps USD → USDC into the Capital Wallet (via Circle Mint / Zodia or a similar provider).</li>
   <li>The Trustee records the repayment split across Senior principal, Senior interest, and Equity residual — pure accounting on LoanRegistry, no PLUSD moves yet.</li>
-  <li>Relayer and the custodian co-sign a YieldAttestation; <code>YieldMinter.yieldMint</code> verifies both signatures and calls <code>PLUSD.mintForYield</code>, delivering the senior coupon into the sPLUSD vault.</li>
+  <li>Relayer and Trustee co-sign a YieldAttestation; <code>YieldMinter.yieldMint</code> verifies both signatures and calls <code>PLUSD.mintForYield</code>, delivering the senior coupon into the sPLUSD vault.</li>
   <li>At scheduled maturity or on early repayment, the Trustee closes the loan on LoanRegistry.</li>
 </ol>
 

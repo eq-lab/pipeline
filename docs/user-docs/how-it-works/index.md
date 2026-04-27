@@ -6,7 +6,7 @@ section: How Pipeline works
 
 # How Pipeline works
 
-Pipeline runs on two separate rails. The **cash rail** holds real USDC at a regulated custodian. The **token rail** is a set of on-chain contracts that issue receipts and run Lender-facing business logic. Rules link the two rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens without multi-party approval.
+Pipeline runs on two separate rails. The **cash rail** holds real USDC in self-custodied MPC wallets. The **token rail** is a set of on-chain contracts that issue receipts and run Lender-facing business logic. Rules link the two rails, not shared control. No contract can spend wallet funds. No single MPC cosigner can move USDC or mint tokens alone.
 
 <div class="callout safety">
   <h4>Split-rail safety property</h4>
@@ -15,21 +15,17 @@ Pipeline runs on two separate rails. The **cash rail** holds real USDC at a regu
 
 {% include diagram.html src="d1-system-context.svg" caption="Pipeline system context — cash rail off-chain, token rail on-chain, governance by three Safes." %}
 
-The diagram shows the off-chain cash rail on the left with five boxes (Custodian, Capital Wallet, Treasury Wallet, Relayer, Trustee). The on-chain token rail sits on the right — AccessManager at the top, then eight protocol contracts arranged in a grid. Three Gnosis Safes (ADMIN, RISK_COUNCIL, GUARDIAN) govern from the bottom. The Relayer and the Trustee appear in the cash-rail column because that is where they operate — Relayer co-signs yield attestations and funds withdrawals; the Trustee is a Capital Wallet cosigner. Both also hold specific on-chain roles described below.
+The diagram shows the off-chain cash rail on the left (Capital Wallet, Treasury Wallet, Trustee, Team, Relayer — three of those are the MPC cosigners on the wallets). The on-chain token rail sits on the right — AccessManager at the top, then nine protocol contracts arranged in a grid. Three Gnosis Safes (ADMIN, RISK_COUNCIL, GUARDIAN) govern from the bottom. The Relayer and the Trustee appear in the cash-rail column because that is where they operate — Relayer co-signs yield attestations and funds withdrawals; the Trustee is one of three MPC cosigners and the second yield-attestation signer. Both also hold specific on-chain roles described below.
 
 ---
 
 ## The cash rail
 
-The cash rail is where USDC actually sits. A single on-chain address — the Capital Wallet — holds every lender dollar and every dollar deployed to an active loan. The address is held at a regulated third-party custodian (Bitgo), moved only by a fixed set of MPC (multi-party computation) cosigners. **No smart contract in the system can spend from the Capital Wallet.** The cash rail is the protocol's treasury, governed by custodian policy and three independent signers.
-
-### Custodian
-
-A regulated third-party that holds the Capital Wallet and the Treasury Wallet. The custodian operates the MPC signing infrastructure for both wallets and runs an EIP-1271 signer contract on chain. That on-chain signer co-signs every token mint after the custodian has independently verified the underlying USDC inflow against its own records. A compromise of any single other actor — Relayer, Trustee, or Team — cannot uncontrollably mint tokens without the custodian's signature.
+The cash rail is where USDC actually sits. A single on-chain address — the Capital Wallet — holds every lender dollar and every dollar deployed to an active loan. It's a **self-custodied MPC wallet**: Pipeline configures the threshold-signature quorum and per-transaction policy using BitGo's MPC TSS SDK; **BitGo is software, not a signer or counterparty**. **No smart contract in the system can spend from the Capital Wallet.** The cash rail is the protocol's treasury, governed by the on-chain wallet policy and three independent cosigners.
 
 ### Capital Wallet
 
-The address holding all lender USDC plus the USYC (tokenised T-bill) position. Target USDC buffer 15% (band 10–20%); the rest is held as USYC. USYC NAV drifts up daily, but that gain is **unrealised** until the Trustee instructs the custodian to sell USYC for USDC — only realised proceeds can feed a PLUSD yield mint. Three independent cosigners share control of the wallet: **Trustee**, **Team**, and **Relayer**. Routine lender withdrawals are auto-signed by the Relayer within tight custodian-policy caps. Loan disbursements, USYC sales, and anything above the auto-sign envelope require Trustee and Team cosignature.
+The address holding all lender USDC plus the USYC (tokenised T-bill) position. Target USDC buffer 15% (band 10–20%); the rest is held as USYC. USYC NAV drifts up daily, but that gain is **unrealised** until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail — only realised proceeds can feed a PLUSD yield mint. Three independent cosigners share control of the wallet: **Trustee**, **Team**, and **Relayer**. Routine lender withdrawals are auto-signed by the Relayer within tight policy caps. Loan disbursements, USYC sales, and anything above the auto-sign envelope require Trustee and Team cosignature.
 
 ### Treasury Wallet
 
@@ -37,7 +33,7 @@ A separate custodied address that collects protocol fees (management, performanc
 
 ### Relayer
 
-The off-chain backend that indexes on-chain events, signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds two on-chain roles: `FUNDER` on WithdrawalQueue and `WHITELIST_ADMIN` on WhitelistRegistry. The Relayer also signs yield attestations with its `relayerYieldAttestor` key, but it does not hold the `YIELD_MINTER` role itself — that role is held by the YieldMinter contract, which verifies the Relayer signature alongside the custodian's EIP-1271 co-signature before any yield PLUSD mints. Relayer also acts as one of the three Capital Wallet cosigners, but **Relayer never custodies USDC itself**. A fully compromised Relayer cannot mint deposit-leg PLUSD (deposits are atomic), cannot mint yield PLUSD alone (custodian co-signature required), and cannot move USDC alone (Trustee or Team cosign required for any out-of-envelope payout).
+The off-chain backend that indexes on-chain events, signs yield attestations, funds withdrawal-queue entries, and maintains the whitelist. It holds two on-chain roles: `FUNDER` on WithdrawalQueue and `WHITELIST_ADMIN` on WhitelistRegistry. The Relayer also signs yield attestations with its `relayerYieldAttestor` key, but it does not hold the `YIELD_MINTER` role itself — that role is held by the YieldMinter contract, which verifies the Relayer signature alongside the Trustee's EIP-1271 co-signature before any yield PLUSD mints. Relayer also acts as one of the three Capital Wallet cosigners, but **Relayer never custodies USDC itself**. A fully compromised Relayer cannot mint deposit-leg PLUSD (deposits are atomic), cannot mint yield PLUSD alone (Trustee co-signature required), and cannot move USDC alone (Trustee or Team cosign required for any out-of-envelope payout).
 
 ### Trustee
 
@@ -47,7 +43,7 @@ An independent Swiss-based trusted entity. On the cash rail it is one of the thr
 
 ## The token rail
 
-The token rail is a set of on-chain contracts. Ten in total: an **AccessManager** role hub and nine protocol contracts that issue IOUs and track behaviour. Rules link the rails, not shared control. No contract can spend custodian funds. No custodian signer can mint tokens alone.
+The token rail is a set of on-chain contracts. Ten in total: an **AccessManager** role hub and nine protocol contracts that issue IOUs and track behaviour. Rules link the rails, not shared control. No contract can spend wallet funds. No single MPC cosigner can mint tokens alone.
 
 The **AccessManager** is the central authority contract. Every privileged call — a role grant, an unpause, an upgrade, an emergency revocation — routes through this smart contract, either instantly for GUARDIAN or through a timelock for ADMIN and RISK_COUNCIL.
 
@@ -65,7 +61,7 @@ An ERC-20 receipt token minted 1:1 against deposited USDC. Currently every trans
 
 ### YieldMinter
 
-A dedicated contract for yield-leg mints. `YieldMinter.yieldMint(attestation, relayerSig, custodianSig)` is the public entry point — anyone can call it, but the call only succeeds if both signatures verify on-chain. Verifies the Relayer ECDSA signature against the configured `relayerYieldAttestor`, the custodian's EIP-1271 signature against `custodianYieldAttestor`, the attestation `ref` is unused (replay protection), the destination is the sPLUSD vault or Treasury Wallet, and the amount is non-zero. On success, calls `PLUSD.mintForYield`. Holds the `YIELD_MINTER` role on PLUSD; pause is GUARDIAN-instant, attestor rotation is 48h ADMIN-timelocked.
+A dedicated contract for yield-leg mints. `YieldMinter.yieldMint(attestation, relayerSig, trusteeSig)` is the public entry point — anyone can call it, but the call only succeeds if both signatures verify on-chain. Verifies the Relayer ECDSA signature against the configured `relayerYieldAttestor`, the Trustee's EIP-1271 signature against `trusteeYieldAttestor`, the attestation `ref` is unused (replay protection), the destination is the sPLUSD vault or Treasury Wallet, and the amount is non-zero. On success, calls `PLUSD.mintForYield`. Holds the `YIELD_MINTER` role on PLUSD; pause is GUARDIAN-instant, attestor rotation is 48h ADMIN-timelocked.
 
 ### sPLUSD
 
@@ -114,7 +110,7 @@ Defensive only. Can pause any pausable contract, cancel any pending ADMIN schedu
 
 ## Why this matters for a lender
 
-Your USDC sits at a regulated custodian, not inside a smart contract. A bug in the token rail cannot drain cash-rail dollars. A compromised custodian signer cannot mint token-rail PLUSD. Every sensitive action on either rail has at least two independent gates: custodian cosigners on one side, AccessManager plus three-Safe governance on the other.
+Your USDC sits in self-custodied MPC wallets, not inside a smart contract. A bug in the token rail cannot drain cash-rail dollars. A single compromised cosigner cannot mint token-rail PLUSD or move cash-rail USDC. Every sensitive action on either rail has at least two independent gates: the MPC cosigner quorum on one side, AccessManager plus three-Safe governance on the other.
 
 ---
 
@@ -122,6 +118,6 @@ Your USDC sits at a regulated custodian, not inside a smart contract. A bug in t
 
 - [Yield engines](/how-it-works/yield-engines/) — how the two engines deliver yield to the sPLUSD vault.
 - [Supply safeguards](/security/supply-safeguards/) — the four structural safeguards that stop PLUSD from being minted against nothing.
-- [Custody](/security/custody/) — the custodian relationship and the MPC cosigner policy in detail.
+- [Custody](/security/custody/) — the self-custody MPC model and the cosigner policy in detail.
 - [For lenders](/lenders/) — the lender-side walkthrough.
 - [Risks](/risks/) — what can still go wrong, in seven named categories.

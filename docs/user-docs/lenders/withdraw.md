@@ -22,7 +22,7 @@ Withdraw by unstaking sPLUSD to PLUSD, submitting the PLUSD to the withdrawal qu
 </ol>
 
 <div class="callout info">
-<strong>Destination rule.</strong> The USDC payout always goes to the original deposit address on record. A different destination requires a manual path with Trustee and Team co-signature — not the auto flow. This rule is enforced by the custodian's MPC policy engine.
+<strong>Destination rule.</strong> The USDC payout always goes to the original deposit address on record. A different destination requires a manual path with Trustee and Team co-signature — not the auto flow. The MPC policy on the Capital Wallet enforces this.
 </div>
 
 ## Caps and queueing
@@ -31,7 +31,7 @@ Relayer funds up to $5M per `fundRequest` call and up to $10M per rolling 24 hou
 
 ## What can delay your withdrawal
 
-- Capital Wallet USDC buffer below 15% (target band 10–20%) triggers a USYC redemption through the custodian before funding, which adds about one day.
+- Capital Wallet USDC buffer below 15% (band 10–20%) triggers a Trustee-instructed USYC redemption against the Hashnote rail before funding — typically about a day, longer for large amounts.
 - Queue depth above your position — strict FIFO means older requests settle first.
 - Your wallet's KYC freshness expired between request and claim — unlikely unless you stop using the app for 90 days mid-queue.
 

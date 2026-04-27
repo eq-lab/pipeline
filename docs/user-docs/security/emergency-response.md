@@ -56,9 +56,9 @@ Watchdog flags anomalous `setAccess` calls or drift in the cumulative mint count
 
 GUARDIAN revokes `TRUSTEE` on LoanRegistry instantly. The compromised key can no longer write to LoanRegistry. Capital flows are unaffected because LoanRegistry has no capital touchpoints and is not a NAV source. The Trustee is also a Capital Wallet cosigner, but a single-key Trustee compromise cannot move USDC alone — Relayer cosign is required. Trustee rotation follows the standard 48h ADMIN path.
 
-### Custodian yield-attestor compromise
+### Trustee yield-attestor compromise
 
-The custodian revokes its own key internally. The compromised key alone cannot mint — the Relayer signature and the YieldMinter contract's role on PLUSD are independent requirements. ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer, newCustodian)` under the 48h timelock. During the window, yield mints can continue safely: the old attestor alone cannot mint, and the compromise is bounded by the Relayer signature and the caller-role requirement that still apply.
+The Trustee revokes the compromised yield-attestor signing material from its own infrastructure. The compromised key alone cannot mint — the Relayer signature and the YieldMinter contract's role on PLUSD are independent requirements. ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer, newTrustee)` under the 48h timelock to rotate the on-chain attestor address. During the window, yield mints continue safely: the old attestor alone cannot mint, and the compromise is bounded by the Relayer signature and the caller-role requirement that still apply.
 
 ## Related
 

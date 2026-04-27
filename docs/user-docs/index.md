@@ -7,7 +7,7 @@ order: 1
 
 > Yield for on-chain capital, backed by real commodity trade finance.
 
-Pipeline is a credit facility that finances secured commodity trade deals. Pipeline pays the senior coupon, and T-bill rate on idle reserves, to KYC'd on-chain lenders. Every loan has full on-chain trail and registry and may be audited at any time. Every USDC dollar supplied by Lenders sits safe with a regulated custodian.
+Pipeline is a credit facility that finances secured commodity trade deals. Pipeline pays the senior coupon, and realised T-bill yield on idle reserves, to KYC'd on-chain lenders. Every loan has a full on-chain trail and registry and may be audited at any time. Lender USDC sits in self-custodied MPC wallets — no Pipeline contract holds it, and no single Pipeline party can move it.
 
 <div class="callout risk">
   <h4>Before you deposit</h4>
@@ -33,15 +33,15 @@ Pipeline is a credit facility that finances secured commodity trade deals. Pipel
 
 ### Senior coupons on commodity trade loans
 
-Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When the offtaker pays for the cargo, USD lands in the Trustee's bank account; the Trustee on-ramps it to USDC into the Capital Wallet, then the senior coupon (net of fees) is co-signed by the Relayer and the custodian and minted into the sPLUSD vault. See [yield engines](/how-it-works/yield-engines/) for details.
+Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When the offtaker pays for the cargo, USD lands in the Trustee's bank account; the Trustee on-ramps it to USDC into the Capital Wallet, then the senior coupon (net of fees) is co-signed by the Relayer and the Trustee and minted into the sPLUSD vault. See [yield engines](/how-it-works/yield-engines/) for details.
 
 ### Realised T-bill yield on USYC reserves
 
-Idle Capital Wallet USDC is held as USYC, Hashnote's tokenised T-bill. USYC NAV drifts up daily as the underlying bills accrue, but that gain is **unrealised** until the Trustee instructs the custodian to sell USYC for USDC. Only the realised gain — sale proceeds minus cost basis — is co-signed and minted as PLUSD. Cadence is at the Trustee's discretion. The target USDC buffer is 15% of reserves (band 10–20%) so routine withdrawals don't force a sale.
+Idle Capital Wallet USDC is held as USYC, Hashnote's tokenised T-bill. USYC NAV drifts up daily as the underlying bills accrue, but that gain is **unrealised** until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail. Only the realised gain — sale proceeds minus cost basis — is co-signed and minted as PLUSD. Cadence is at the Trustee's discretion. The target USDC buffer is 15% of reserves (band 10–20%) so routine withdrawals don't force a sale.
 
 ## What can go wrong
 
-Lenders face loan defaults, liquidity delays on large withdrawals, custodian operational failure, smart-contract risk, governance risk, regulatory exposure, and operational-key compromise. Read [Risks](/risks/) for the enumerated disclosure and [Defaults &amp; losses](/defaults-and-losses/) for the loss waterfall.
+Lenders face loan defaults, liquidity delays on large withdrawals, custody-policy failure, smart-contract risk, governance risk, regulatory exposure, and operational-key compromise. Read [Risks](/risks/) for the enumerated disclosure and [Defaults &amp; losses](/defaults-and-losses/) for the loss waterfall.
 
 ## How to start
 

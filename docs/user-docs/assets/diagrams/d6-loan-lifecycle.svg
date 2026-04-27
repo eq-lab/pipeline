@@ -126,7 +126,7 @@
   <circle cx="540" cy="548" r="11" fill="#4a3a8e"/>
   <text text-anchor="middle" x="540" y="552" fill="#ffffff" font-size="11" font-weight="700">6</text>
   <text x="560" y="550" fill="#262524" font-size="11" font-weight="600">Yield to vault</text>
-  <text x="528" y="570" fill="#736f6c" font-size="10">Relayer + Custodian co-sign</text>
+  <text x="528" y="570" fill="#736f6c" font-size="10">Relayer + Trustee co-sign</text>
   <text x="528" y="586" fill="#736f6c" font-size="10">PLUSD.yieldMint →</text>
   <text x="528" y="602" fill="#736f6c" font-size="10">sPLUSD vault</text>
   <text x="528" y="620" fill="#4a3a8e" font-size="10" font-style="italic">share price ↑</text>

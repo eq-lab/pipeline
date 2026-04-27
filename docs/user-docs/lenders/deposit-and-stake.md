@@ -54,7 +54,7 @@ A third cap — the hard total supply ceiling on PLUSD — is a protocol-wide ci
 
 ### Where the USDC goes
 
-Your USDC moves in a single ERC-20 transfer to the Capital Wallet, an MPC-custodied wallet operated by the custodian. Smart contracts never hold lender USDC, so a contract exploit cannot drain deposits. The Capital Wallet maintains the 15% USDC buffer (10–20% band) and rotates excess into USYC T-bills for yield. Movement between the Capital Wallet and the custodian is subject to multi-party approval; none of it is gated by Pipeline operators acting alone.
+Your USDC moves in a single ERC-20 transfer to the Capital Wallet — a self-custodied MPC wallet whose three cosigners are Trustee, Team, and Relayer. Smart contracts never hold lender USDC, so a contract exploit can't drain deposits. The Capital Wallet maintains the 15% USDC buffer (band 10–20%) and rotates excess into USYC for yield. Every movement out of the wallet is subject to the MPC quorum; no single Pipeline party can move it.
 
 ---
 
@@ -93,9 +93,9 @@ Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue.
 
 ## What affects your yield
 
-Two engines feed the vault. Senior coupons are minted in as borrowers repay (offtaker pays USD into the Trustee bank, Trustee on-ramps to USDC, then the senior coupon net of fees is minted into the vault). T-bill yield is **realised**, not accrued — USYC sits at the custodian, NAV drifts up daily, but PLUSD doesn't mint until the Trustee instructs the custodian to sell USYC for USDC. The realised gain (proceeds minus cost basis) is then minted: 70% to the vault, 30% to Treasury.
+Two engines feed the vault. Senior coupons are minted in as borrowers repay (offtaker pays USD into the Trustee bank, Trustee on-ramps to USDC, then the senior coupon net of fees is minted into the vault). T-bill yield is **realised**, not accrued — USYC sits in the Capital Wallet, NAV drifts up daily, but PLUSD doesn't mint until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail. The realised gain (proceeds minus cost basis) is then minted: 70% to the vault, 30% to Treasury.
 
-A 15% USDC buffer (band 10–20%) sits inside the Capital Wallet so routine redemptions don't force a USYC sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the custodian alone can move PLUSD into the vault.
+A 15% USDC buffer (band 10–20%) sits inside the Capital Wallet so routine redemptions don't force a USYC sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the Trustee's signer alone can move PLUSD into the vault.
 
 Senior-coupon mints settle per repayment event. USYC realisations happen at the Trustee's discretion — there's no on-chain schedule. If the Trustee doesn't realise for a quarter, share price doesn't move from Engine B, regardless of how high USYC NAV climbed.
 
