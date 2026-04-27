@@ -96,7 +96,7 @@ A USDC escrow used only after shutdown. Holds the cash that redeeming lenders pu
 
 ## Governance
 
-Three Gnosis Safes hold every privileged role across the protocol. The three Safes have **distinct signer sets** as an operational requirement — overlap would collapse the separation and render the timelocks nominal.
+Three Gnosis Safes hold every privileged role across the protocol. The three Safes have **distinct signer sets** as an operational requirement.
 
 ### ADMIN · 3-of-5 Safe
 
