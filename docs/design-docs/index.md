@@ -24,5 +24,5 @@ What this enables and what it constrains.
 |----------|-------|--------|
 | [core-beliefs.md](./core-beliefs.md) | Agent-first operating principles | ✅ Current |
 | [split-rail-architecture.md](./split-rail-architecture.md) | Cash rail vs token rail separation | ✅ Current |
-| [bridge-security-model.md](./bridge-security-model.md) | Bridge MPC permission scoping | ✅ Current |
+| [relayer-security-model.md](./relayer-security-model.md) | Relayer MPC permission scoping | ✅ Current |
 | [whitelist-enforcement-model.md](./whitelist-enforcement-model.md) | PLUSD transfer restriction design | ✅ Current |
