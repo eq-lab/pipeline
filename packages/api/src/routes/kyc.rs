@@ -44,6 +44,7 @@ pub struct CreateTokenResponse {
 pub struct KycStatusResponse {
     pub kyc_status: i16,
     pub kyc_review_status: i16,
+    pub aml_status: i16,
 }
 
 #[derive(OpenApi)]
@@ -203,6 +204,7 @@ async fn get_status(
         Ok(Some(profile)) => Json(KycStatusResponse {
             kyc_status: profile.kyc_status,
             kyc_review_status: profile.kyc_review_status,
+            aml_status: profile.aml_status,
         })
         .into_response(),
         Ok(None) => (
@@ -279,10 +281,11 @@ async fn webhook_callback(
         .parsed_review_status()
         .unwrap_or(shared::sumsub::models::KycReviewStatus::Pending);
     let kyc_status = payload.parsed_kyc_status();
+    let aml_status = payload.parsed_aml_status();
 
     if let Err(e) = state
         .kyc_repo
-        .update_kyc_status(&wallet_address, kyc_status, review_status)
+        .update_kyc_status(&wallet_address, kyc_status, review_status, aml_status)
         .await
     {
         tracing::error!("failed to update kyc status: {e:?}");
@@ -302,6 +305,7 @@ async fn webhook_callback(
         wallet = wallet_address,
         review_status = ?review_status,
         kyc_status = ?kyc_status,
+        aml_status = ?aml_status,
         "processed Sumsub webhook"
     );
 
