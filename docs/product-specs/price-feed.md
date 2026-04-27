@@ -48,14 +48,20 @@ The notification feed in the Originator UI is a chronological log filterable by 
 
 ## LoanRegistry Updates on Threshold Crossings
 
-When a CCR computation crosses a defined threshold, the bridge service initiates a `loan_manager` call to update the LoanRegistry's `lastReportedCCR` and `lastReportedCCRTimestamp` fields. Updates are batched per threshold crossing event; the LoanRegistry is not updated on every price tick.
+When a CCR computation crosses a defined threshold, the bridge service notifies the trustee
+via the Operations Console. The trustee writes the updated `lastReportedCCR` and
+`lastReportedCCRTimestamp` on LoanRegistry directly from the Trustee key (holder of the
+`TRUSTEE` role); Bridge has no write access to LoanRegistry. Updates are batched per
+threshold crossing event; the LoanRegistry is not updated on every price tick. Because
+LoanRegistry is informational — not a NAV input — these writes do not move sPLUSD share
+price.
 
 ## Threshold Configuration
 
 CCR thresholds and notification rules are configurable at two levels:
 
 - **Protocol-wide defaults** — set by the foundation multisig and apply to all loans unless overridden.
-- **Per-loan overrides** — set by the `loan_manager` role (Pipeline Trust Company) for loan-specific adjustments.
+- **Per-loan overrides** — set by the Trustee (holder of the `TRUSTEE` role on LoanRegistry) for loan-specific adjustments.
 
 ## Event History
 

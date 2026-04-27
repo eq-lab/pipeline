@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if page.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
+<meta name="description" content="{{ site.description }}">
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+</head>
+<body>
+<nav class="topnav">
+  <button class="menu" aria-label="Toggle sidebar" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+  <a class="brand" href="{{ '/' | relative_url }}">Pipeline</a>
+  <a class="launch" href="#">Launch app</a>
+</nav>
+{% include sidebar.html %}
+<main>
+  <article>
+    {% if page.section %}<div class="breadcrumb"><a href="{{ '/' | relative_url }}">Pipeline</a> &rsaquo; {{ page.section }}</div>{% endif %}
+    {{ content }}
+  </article>
+</main>
+<aside class="toc" aria-label="On this page"></aside>
+<script src="{{ '/assets/js/toc.js' | relative_url }}" defer></script>
+</body>
+</html>

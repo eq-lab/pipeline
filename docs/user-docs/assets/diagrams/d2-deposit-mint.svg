@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="900" height="560" fill="#0f1419"/>
+
+  <!-- arrow-head defs -->
+  <defs>
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/>
+    </marker>
+    <marker id="arrow-sage" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+    </marker>
+    <marker id="arrow-lavender" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#bb9af7"/>
+    </marker>
+  </defs>
+
+  <!-- Atomicity bracket (top-left to bottom-left, label "single transaction") -->
+  <rect x="20" y="90" width="26" height="380" fill="none" stroke="#e0af68" stroke-width="1.5"/>
+  <text x="12" y="280" fill="#e0af68" font-size="11" font-weight="600" transform="rotate(-90 12 280)" text-anchor="middle">ONE ATOMIC TRANSACTION</text>
+
+  <!-- Lane header: Lender -->
+  <rect x="66" y="40" width="138" height="40" rx="6" fill="#1a2030" stroke="#7aa2f7" stroke-width="1.5"/>
+  <text text-anchor="middle" x="135" y="58" fill="#e6edf3" font-size="12" font-weight="600">Lender</text>
+  <text text-anchor="middle" x="135" y="72" fill="#8b949e" font-size="10">KYC'd + whitelisted</text>
+  <line x1="135" y1="90" x2="135" y2="500" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: DepositManager -->
+  <rect x="224" y="40" width="138" height="40" rx="6" fill="#1a2030" stroke="#bb9af7" stroke-width="1.5"/>
+  <text text-anchor="middle" x="293" y="58" fill="#e6edf3" font-size="12" font-weight="600">DepositManager</text>
+  <text text-anchor="middle" x="293" y="72" fill="#8b949e" font-size="10">on-chain contract</text>
+  <line x1="293" y1="90" x2="293" y2="500" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: WhitelistRegistry -->
+  <rect x="382" y="40" width="138" height="40" rx="6" fill="#1a2030" stroke="#bb9af7" stroke-width="1.5"/>
+  <text text-anchor="middle" x="451" y="58" fill="#e6edf3" font-size="12" font-weight="600">WhitelistRegistry</text>
+  <text text-anchor="middle" x="451" y="72" fill="#8b949e" font-size="10">on-chain view</text>
+  <line x1="451" y1="90" x2="451" y2="500" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: USDC (ERC-20) -->
+  <rect x="540" y="40" width="138" height="40" rx="6" fill="#1a2030" stroke="#9ece6a" stroke-width="1.5"/>
+  <text text-anchor="middle" x="609" y="58" fill="#e6edf3" font-size="12" font-weight="600">USDC (ERC-20)</text>
+  <text text-anchor="middle" x="609" y="72" fill="#8b949e" font-size="10">on-chain transfer</text>
+  <line x1="609" y1="90" x2="609" y2="500" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: PLUSD -->
+  <rect x="698" y="40" width="138" height="40" rx="6" fill="#1a2030" stroke="#bb9af7" stroke-width="1.5"/>
+  <text text-anchor="middle" x="767" y="58" fill="#e6edf3" font-size="12" font-weight="600">PLUSD</text>
+  <text text-anchor="middle" x="767" y="72" fill="#8b949e" font-size="10">on-chain receipt</text>
+  <line x1="767" y1="90" x2="767" y2="500" stroke="#2a313c" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Step 1: Lender → DepositManager: deposit(amount) -->
+  <circle cx="60" cy="120" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="124" fill="#0f1419" font-size="12" font-weight="700">1</text>
+  <line x1="135" y1="120" x2="287" y2="120" stroke="#7aa2f7" stroke-width="2" marker-end="url(#arrow-slate)"/>
+  <text text-anchor="middle" x="211" y="113" fill="#e6edf3" font-size="11" font-weight="600">deposit(amount)</text>
+
+  <!-- Step 2: DepositManager → WhitelistRegistry: isAllowedForMint(lp) -->
+  <circle cx="60" cy="170" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="174" fill="#0f1419" font-size="12" font-weight="700">2</text>
+  <line x1="293" y1="170" x2="446" y2="170" stroke="#bb9af7" stroke-width="2" marker-end="url(#arrow-lavender)"/>
+  <text text-anchor="middle" x="370" y="163" fill="#e6edf3" font-size="11" font-weight="600">isAllowedForMint(lp)?</text>
+  <text text-anchor="middle" x="370" y="185" fill="#8b949e" font-size="10">whitelist + 90d freshness</text>
+
+  <!-- Step 3: DepositManager checks caps -->
+  <circle cx="60" cy="230" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="234" fill="#0f1419" font-size="12" font-weight="700">3</text>
+  <rect x="224" y="216" width="138" height="40" rx="4" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
+  <text text-anchor="middle" x="293" y="232" fill="#e6edf3" font-size="10">check caps:</text>
+  <text text-anchor="middle" x="293" y="248" fill="#8b949e" font-size="10">24h / per-LP / totalSupply</text>
+
+  <!-- Step 4: USDC transferFrom(lp → Capital Wallet) -->
+  <circle cx="60" cy="295" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="299" fill="#0f1419" font-size="12" font-weight="700">4</text>
+  <line x1="293" y1="295" x2="603" y2="295" stroke="#9ece6a" stroke-width="3" marker-end="url(#arrow-sage)"/>
+  <text text-anchor="middle" x="448" y="287" fill="#e6edf3" font-size="11" font-weight="600">USDC.transferFrom(lp, capitalWallet, amount)</text>
+  <text text-anchor="middle" x="448" y="310" fill="#8b949e" font-size="10">LP's USDC → Capital Wallet (one on-chain ERC-20 transfer)</text>
+
+  <!-- Step 5: PLUSD.mintForDeposit(lp, amount) -->
+  <circle cx="60" cy="360" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="364" fill="#0f1419" font-size="12" font-weight="700">5</text>
+  <line x1="293" y1="360" x2="761" y2="360" stroke="#bb9af7" stroke-width="2" marker-end="url(#arrow-lavender)"/>
+  <text text-anchor="middle" x="527" y="352" fill="#e6edf3" font-size="11" font-weight="600">mintForDeposit(lp, amount)</text>
+  <text text-anchor="middle" x="527" y="375" fill="#8b949e" font-size="10">DEPOSITOR role · reserve invariant check</text>
+
+  <!-- Step 6: PLUSD → Lender (receipt) -->
+  <circle cx="60" cy="430" r="12" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="434" fill="#0f1419" font-size="12" font-weight="700">6</text>
+  <line x1="767" y1="430" x2="141" y2="430" stroke="#bb9af7" stroke-width="2" marker-end="url(#arrow-lavender)"/>
+  <text text-anchor="middle" x="454" y="422" fill="#e6edf3" font-size="11" font-weight="600">PLUSD balance ↑ (1:1 with USDC deposited)</text>
+  <text text-anchor="middle" x="454" y="445" fill="#8b949e" font-size="10">all six steps settle in the same transaction — revert atomically</text>
+
+  <!-- bottom note -->
+  <rect x="66" y="494" width="770" height="46" rx="6" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
+  <text text-anchor="middle" x="451" y="514" fill="#e6edf3" font-size="12" font-weight="600">No off-chain signer gates deposits.</text>
+  <text text-anchor="middle" x="451" y="530" fill="#8b949e" font-size="11">The on-chain USDC movement itself is the attestation. Bridge is not in the critical path.</text>
+</svg>

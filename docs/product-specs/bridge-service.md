@@ -146,6 +146,66 @@ PLUSD totalSupply  ==  USDC in Capital Wallet
 
 ---
 
+## Service Decomposition
+
+Bridge is described as a "single backend" for simplicity, but is deployed as **separate
+internal services** sharing a Postgres database and communicating via internal RPC. No
+service is internet-facing except the API Gateway.
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │              Bridge Cluster                   │
+                    │                                              │
+ Ethereum RPC ────► │  ┌─────────────┐    ┌──────────────────┐    │
+                    │  │ Indexer     │───►│ Postgres          │    │
+                    │  │ (no keys)   │    │ (shared state)    │    │
+                    │  └─────────────┘    └──────┬───────────┘    │
+                    │                            │                 │
+                    │  ┌─────────────┐    ┌──────┴───────────┐    │
+                    │  │ Orchestrator│───►│ Tx Outbox         │    │
+                    │  │ (no keys)   │    └──────┬───────────┘    │
+                    │  └─────────────┘           │                 │
+                    │                     ┌──────┴───────────┐    │
+                    │                     │ Tx Submitter      │───►  Ethereum
+                    │                     │ (holds Bridge EOA)│    │
+                    │                     └──────────────────┘    │
+                    │                                              │
+                    │  ┌──────────────────┐                       │
+                    │  │ Signer            │  (holds              │
+                    │  │ (air-gapped       │   bridgeYieldAttestor│
+                    │  │  hardware signer) │   — yield            │
+                    │  └──────────────────┘   attestations only;  │
+                    │                         no internet egress) │
+                    │                                              │
+ Frontend ────────► │  ┌─────────────┐                            │
+ Trustee UI ──────► │  │ API Gateway │  (reads DB, proxies to     │
+ Admin ───────────► │  │ (no keys)   │   Orchestrator)            │
+                    │  └─────────────┘                            │
+                    │                                              │
+                    │  ┌────────────────────┐                     │
+                    │  │ Custodian Co-Signer│───────────────────► Custodian API
+                    │  │ Client             │   (EIP-1271 co-sig) │ (yield only)
+                    │  └────────────────────┘                     │
+                    └──────────────────────────────────────────────┘
+```
+
+### Blast radius per internal service compromise
+
+| Service compromised | Can do | Cannot do |
+|---|---|---|
+| Indexer | Poison event data in DB | Sign attestations, submit txs, mint PLUSD |
+| Orchestrator | Queue malicious yield-mint intents | Obtain custodian co-sig (no yield mint possible); submit txs |
+| Tx Submitter | Front-run internal tx queue; submit arbitrary txs under Bridge EOA authority | Forge Bridge yield sig; forge custodian sig; operate outside the permissions granted to the Bridge EOA |
+| Signer | Produce Bridge yield sigs without custodian co-sig | Mint PLUSD alone — custodian EIP-1271 sig and `YIELD_MINTER` caller role are independent requirements |
+| API Gateway | Leak read data; inject bad Trustee approvals into the review queue | Sign, submit, or index |
+| Custodian alone (external) | Produce a custodian EIP-1271 sig | Mint PLUSD alone — Bridge ECDSA sig and `YIELD_MINTER` caller role are independent requirements |
+
+All service-to-service communication is mTLS with auto-provisioned certificates. No
+service has internet egress except Tx Submitter (Ethereum RPC), API Gateway (frontend),
+and the Custodian Co-Signer Client (custodian API).
+
+---
+
 ## Role Assignments on Contracts
 
 Bridge holds: **YIELD_MINTER** (PLUSD), **FUNDER** (WithdrawalQueue), **WHITELIST_ADMIN**
@@ -170,9 +230,12 @@ WHITELIST_ADMIN cannot mint; YIELD_MINTER still requires custodian co-sig.
 **Deposit path is Bridge-free.** A complete Bridge compromise does not stop deposits or allow
 unbacked deposit-leg mints.
 
-**Key storage.** Bridge hot keys (on-chain caller) are in HSM-backed KMS. The
-`bridgeYieldAttestor` key (yield EIP-712 signing) is stored separately in an HSM with no
-internet egress. MPC key shares are managed through the custodian vendor's key ceremony.
+**Key storage.** Bridge hot keys (on-chain caller) are held in a hardware-isolated KMS
+with per-call authorisation and full audit logging. The `bridgeYieldAttestor` key (yield
+EIP-712 signing) is held in a separate air-gapped signer with no internet egress and is
+exercised only via the co-signing flow defined in the yield-attestation sections above.
+MPC key shares for cash-rail actions are managed through the custodian vendor's key
+ceremony.
 
 **Audit log.** Every bridge action is recorded in an append-only log mirrored to an
 independent third-party sink. Bridge cannot delete or modify historical entries.
