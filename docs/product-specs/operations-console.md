@@ -34,7 +34,7 @@ The trustee receives origination requests submitted by the Originator. For each 
 
 The trustee takes one of three actions:
 
-- **Approve** — the trustee tooling calls `LoanRegistry.mintLoan()` via the bridge service (using the loan_manager role). The resulting LoanMinted event triggers the bridge's disbursement preparation.
+- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the bridge's disbursement preparation on the Capital Wallet.
 - **Request changes** — the trustee adds a comment; the request status becomes ChangesRequested and the Originator is notified.
 - **Reject** — the trustee adds a rejection reason; the request status becomes Rejected and the Originator is notified.
 
@@ -66,14 +66,16 @@ Each Thursday, the bridge service pre-builds a TreasuryYieldDistributed transact
 
 ### LoanRegistry Lifecycle Updates
 
-Using the loan_manager role (exercised via the bridge service), the trustee can:
+As the sole holder of the `TRUSTEE` role on LoanRegistry (signed directly by the Trustee
+key, not relayed through Bridge), the trustee can:
 
 - Transition loan status between Performing and Watchlist via `updateMutable`.
 - Extend `currentMaturityDate`.
 - Update `lastReportedCCR` following price feed threshold crossings or manual price-based review.
 - Update `currentLocation` as cargo moves through the trade corridor (LocationType, locationIdentifier, optional trackingURL).
+- Record a repayment split across Senior tranche (principal + interest) and Equity tranche via `recordRepayment` once the client-side waterfall is settled.
 - Close a loan at scheduled maturity or early repayment via `closeLoan`.
-- Escalate to the Risk Council for transitions to Default status or Closed-with-default-reason (which require the 3-of-5 risk_council role, not the loan_manager role).
+- Escalate to the Risk Council for transitions to Default status or Closed-with-default-reason (which require the 3-of-5 `RISK_COUNCIL` role, not `TRUSTEE`).
 
 ### USYC Manual Override
 

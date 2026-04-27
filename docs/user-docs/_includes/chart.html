@@ -1,0 +1,4 @@
+<figure class="figure">
+  <img src="{{ '/assets/charts/' | append: include.src | relative_url }}" alt="{{ include.alt | default: include.caption }}">
+  {% if include.caption %}<figcaption>{{ include.caption }}</figcaption>{% endif %}
+</figure>

@@ -67,13 +67,13 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ### US-DEPOSIT-1: Standard Deposit
 
-**As a** whitelisted LP with a current Chainalysis screen, **I want to** transfer USDC directly from my wallet to the Capital Wallet and receive PLUSD 1:1, **so that** my deposit is immediately earning yield potential.
+**As a** whitelisted LP with a current Chainalysis screen, **I want to** call `DepositManager.deposit(amount)` and receive PLUSD 1:1 in the same transaction, **so that** my deposit is atomic and does not depend on any off-chain signer.
 
 **Acceptance criteria:**
-- [ ] The LP transfers USDC from their whitelisted address directly to the Capital Wallet (standard ERC-20 transfer, no bridge intermediary required from the LP).
-- [ ] The bridge service detects the Transfer event and verifies: address is whitelisted, screen is fresh, amount >= 1,000 USDC, and the mint would not breach the rate limit.
-- [ ] If all checks pass, the bridge calls `PLUSD.mint(lpAddress, amount)`.
+- [ ] The LP calls `DepositManager.deposit(usdcAmount)` after approving DepositManager as spender on USDC (standard ERC-20 permit or prior `approve`).
+- [ ] DepositManager atomically: checks `WhitelistRegistry.isAllowedForMint(lp)` (whitelist + Chainalysis freshness), enforces the per-LP, rolling-window, and total-supply caps, pulls USDC via `transferFrom(lp, capitalWallet, amount)`, and calls `PLUSD.mintForDeposit(lp, amount)`.
 - [ ] The LP receives PLUSD at a 1:1 ratio to USDC deposited in the same transaction.
+- [ ] Bridge is not in the deposit critical path: it observes `DepositManager.Deposited` events for reconciliation and indexing only, with no gating role on the deposit leg.
 - [ ] The deposit appears in the LP's transaction history.
 
 ---
@@ -194,7 +194,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee, **I want to** update mutable loan fields (status, maturity date, CCR, goods location) in response to operational events, **so that** the on-chain LoanRegistry reflects current loan state accurately.
 
 **Acceptance criteria:**
-- [ ] The trustee can call `updateMutable` (via the bridge acting as `loan_manager`) to update: `status` (Performing ↔ Watchlist), `currentMaturityDate`, `lastReportedCCR` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL).
+- [ ] The trustee can call `updateMutable` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry; Bridge has no write access to LoanRegistry) to update: `status` (Performing ↔ Watchlist), `currentMaturityDate`, `lastReportedCCR` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL).
 - [ ] `updateMutable` reverts if `newStatus == Default`; default transitions require the Risk Council 3-of-5 multisig calling `setDefault`.
 - [ ] CCR updates triggered by the price feed subsystem are also written via this path, batched on threshold crossings only.
 - [ ] The updated fields are visible on Protocol Dashboard Panel B and the Originator's loan detail view immediately.
@@ -207,8 +207,8 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee or Risk Council member, **I want to** close a loan with the appropriate closure reason, **so that** the LoanRegistry accurately reflects the final state of the facility.
 
 **Acceptance criteria:**
-- [ ] The `loan_manager` can close a loan with `ClosureReason.ScheduledMaturity` or `ClosureReason.EarlyRepayment`.
-- [ ] The `risk_council` (3-of-5 multisig) can close a loan with `ClosureReason.Default` or `ClosureReason.OtherWriteDown`.
+- [ ] The Trustee (holder of `TRUSTEE` on LoanRegistry) can close a loan with `ClosureReason.ScheduledMaturity` or `ClosureReason.EarlyRepayment`.
+- [ ] The Risk Council (`RISK_COUNCIL`, 3-of-5 multisig) can close a loan with `ClosureReason.Default` or `ClosureReason.OtherWriteDown`.
 - [ ] A closed loan appears in Protocol Dashboard Panel B under historical loans with actual maturity date, closure reason, realised senior coupon, realised originator residual, and realised loss.
 - [ ] No further `updateMutable` calls are permitted once a loan is in Closed status.
 

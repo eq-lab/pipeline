@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="680" viewBox="0 0 960 680" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="960" height="680" fill="#0f1419"/>
+
+  <defs>
+    <marker id="a-sl-6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7aa2f7"/>
+    </marker>
+    <marker id="a-amb-6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e0af68"/>
+    </marker>
+    <marker id="a-sage-6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ece6a"/>
+    </marker>
+    <marker id="a-rose-6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f7768e"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text text-anchor="middle" x="480" y="30" fill="#e6edf3" font-size="14" font-weight="700">Loan lifecycle — origination to closure</text>
+
+  <!-- ========== ORIGINATION (top band) ========== -->
+  <rect x="20" y="54" width="920" height="160" rx="10" fill="rgba(122,162,247,0.04)" stroke="#7aa2f7" stroke-width="1.5"/>
+  <text x="40" y="80" fill="#7aa2f7" font-size="12" font-weight="700" letter-spacing="1">ORIGINATION</text>
+
+  <!-- Origination boxes (three: sourcing · mint · disburse) -->
+  <rect x="40" y="94" width="280" height="108" rx="8" fill="#1a2030" stroke="#7aa2f7" stroke-width="1"/>
+  <circle cx="60" cy="116" r="11" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="60" y="120" fill="#0f1419" font-size="11" font-weight="700">1</text>
+  <text x="80" y="118" fill="#e6edf3" font-size="11" font-weight="600">Deal sourced off-chain</text>
+  <text x="48" y="140" fill="#8b949e" font-size="10">approved originator arrangement</text>
+  <text x="48" y="156" fill="#8b949e" font-size="10">borrower KYB · term sheet</text>
+  <text x="48" y="172" fill="#8b949e" font-size="10">diligence · Trustee brief</text>
+  <text x="48" y="192" fill="#7aa2f7" font-size="10" font-style="italic">Open Mineral at MVP</text>
+
+  <line x1="324" y1="148" x2="356" y2="148" stroke="#e0af68" stroke-width="2" marker-end="url(#a-amb-6)"/>
+
+  <rect x="360" y="94" width="260" height="108" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
+  <circle cx="380" cy="116" r="11" fill="#e0af68"/>
+  <text text-anchor="middle" x="380" y="120" fill="#0f1419" font-size="11" font-weight="700">2</text>
+  <text x="400" y="118" fill="#e6edf3" font-size="11" font-weight="600">Trustee mints loan NFT</text>
+  <text x="368" y="140" fill="#8b949e" font-size="10">LoanRegistry.mintLoan()</text>
+  <text x="368" y="156" fill="#8b949e" font-size="10">soulbound ERC-721</text>
+  <text x="368" y="172" fill="#8b949e" font-size="10">TRUSTEE role · direct call</text>
+  <text x="368" y="192" fill="#e0af68" font-size="10" font-style="italic">first on-chain event</text>
+
+  <line x1="624" y1="148" x2="656" y2="148" stroke="#9ece6a" stroke-width="2" marker-end="url(#a-sage-6)"/>
+
+  <rect x="660" y="94" width="260" height="108" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
+  <circle cx="680" cy="116" r="11" fill="#9ece6a"/>
+  <text text-anchor="middle" x="680" y="120" fill="#0f1419" font-size="11" font-weight="700">3</text>
+  <text x="700" y="118" fill="#e6edf3" font-size="11" font-weight="600">Capital Wallet disburses</text>
+  <text x="668" y="140" fill="#8b949e" font-size="10">Bridge prepares outflow</text>
+  <text x="668" y="156" fill="#8b949e" font-size="10">Trustee + Team MPC cosign</text>
+  <text x="668" y="172" fill="#8b949e" font-size="10">USDC → on-ramp → borrower</text>
+  <text x="668" y="192" fill="#9ece6a" font-size="10" font-style="italic">off-chain from borrower's side</text>
+
+  <!-- ========== LIFECYCLE STATE MACHINE (middle band) ========== -->
+  <rect x="20" y="230" width="920" height="240" rx="10" fill="rgba(224,175,104,0.04)" stroke="#e0af68" stroke-width="1.5"/>
+  <text x="40" y="256" fill="#e0af68" font-size="12" font-weight="700" letter-spacing="1">LIFECYCLE</text>
+
+  <!-- Performing state -->
+  <rect x="60" y="286" width="170" height="60" rx="30" fill="#1a2030" stroke="#9ece6a" stroke-width="2"/>
+  <text text-anchor="middle" x="145" y="310" fill="#9ece6a" font-size="13" font-weight="700">Performing</text>
+  <text text-anchor="middle" x="145" y="328" fill="#8b949e" font-size="10">on-track</text>
+
+  <!-- Watchlist state -->
+  <rect x="290" y="286" width="170" height="60" rx="30" fill="#1a2030" stroke="#e0af68" stroke-width="2"/>
+  <text text-anchor="middle" x="375" y="310" fill="#e0af68" font-size="13" font-weight="700">Watchlist</text>
+  <text text-anchor="middle" x="375" y="328" fill="#8b949e" font-size="10">CCR &lt; 130% · early warning</text>
+
+  <!-- Default state -->
+  <rect x="520" y="286" width="170" height="60" rx="30" fill="#1a2030" stroke="#f7768e" stroke-width="2"/>
+  <text text-anchor="middle" x="605" y="310" fill="#f7768e" font-size="13" font-weight="700">Default</text>
+  <text text-anchor="middle" x="605" y="328" fill="#8b949e" font-size="10">RISK_COUNCIL · 24h timelock</text>
+
+  <!-- Closed state -->
+  <rect x="750" y="286" width="170" height="60" rx="30" fill="#1a2030" stroke="#7aa2f7" stroke-width="2"/>
+  <text text-anchor="middle" x="835" y="310" fill="#7aa2f7" font-size="13" font-weight="700">Closed</text>
+  <text text-anchor="middle" x="835" y="328" fill="#8b949e" font-size="10">terminal</text>
+
+  <!-- Transitions -->
+  <path d="M 230 305 L 285 305" stroke="#e0af68" stroke-width="2" fill="none" marker-end="url(#a-amb-6)"/>
+  <path d="M 285 326 L 230 326" stroke="#9ece6a" stroke-width="2" fill="none" marker-end="url(#a-sage-6)"/>
+  <path d="M 460 305 L 515 305" stroke="#f7768e" stroke-width="2" fill="none" marker-end="url(#a-rose-6)"/>
+  <path d="M 690 305 L 745 305" stroke="#7aa2f7" stroke-width="2" fill="none" marker-end="url(#a-sl-6)"/>
+
+  <!-- Performing direct close -->
+  <path d="M 145 346 Q 145 400 450 400 Q 820 400 820 346" stroke="#7aa2f7" stroke-width="1.5" stroke-dasharray="6 4" fill="none" marker-end="url(#a-sl-6)"/>
+  <text text-anchor="middle" x="480" y="395" fill="#8b949e" font-size="10">routine close (TRUSTEE): ScheduledMaturity | EarlyRepayment</text>
+
+  <!-- Transition labels -->
+  <text text-anchor="middle" x="260" y="278" fill="#e0af68" font-size="10">TRUSTEE flips</text>
+  <text text-anchor="middle" x="490" y="278" fill="#f7768e" font-size="10">RISK_COUNCIL · 24h</text>
+  <text text-anchor="middle" x="720" y="278" fill="#7aa2f7" font-size="10">closeLoan()</text>
+
+  <!-- Separate 24h delay note -->
+  <text text-anchor="middle" x="480" y="448" fill="#8b949e" font-size="11" font-style="italic">Only RISK_COUNCIL (3/5 multisig) can mark Default, under a 24h AccessManager timelock; GUARDIAN may cancel during the window.</text>
+
+  <!-- ========== REPAYMENTS (bottom band) ========== -->
+  <rect x="20" y="486" width="920" height="160" rx="10" fill="rgba(158,206,106,0.04)" stroke="#9ece6a" stroke-width="1.5"/>
+  <text x="40" y="512" fill="#9ece6a" font-size="12" font-weight="700" letter-spacing="1">REPAYMENT (per event)</text>
+
+  <rect x="40" y="526" width="200" height="106" rx="8" fill="#1a2030" stroke="#9ece6a" stroke-width="1"/>
+  <circle cx="60" cy="548" r="11" fill="#9ece6a"/>
+  <text text-anchor="middle" x="60" y="552" fill="#0f1419" font-size="11" font-weight="700">4</text>
+  <text x="80" y="550" fill="#e6edf3" font-size="11" font-weight="600">Offtaker wire lands</text>
+  <text x="48" y="570" fill="#8b949e" font-size="10">USDC in Capital Wallet</text>
+  <text x="48" y="586" fill="#8b949e" font-size="10">amount up to originalOfftakerPrice</text>
+  <text x="48" y="606" fill="#9ece6a" font-size="10" font-style="italic">on-chain ERC-20 inflow</text>
+
+  <line x1="244" y1="580" x2="276" y2="580" stroke="#e0af68" stroke-width="2" marker-end="url(#a-amb-6)"/>
+
+  <rect x="280" y="526" width="200" height="106" rx="8" fill="#1a2030" stroke="#e0af68" stroke-width="1"/>
+  <circle cx="300" cy="548" r="11" fill="#e0af68"/>
+  <text text-anchor="middle" x="300" y="552" fill="#0f1419" font-size="11" font-weight="700">5</text>
+  <text x="320" y="550" fill="#e6edf3" font-size="11" font-weight="600">Trustee records split</text>
+  <text x="288" y="570" fill="#8b949e" font-size="10">recordRepayment(</text>
+  <text x="288" y="586" fill="#8b949e" font-size="10">seniorPrincipal, seniorInterest,</text>
+  <text x="288" y="602" fill="#8b949e" font-size="10">equity)</text>
+  <text x="288" y="620" fill="#e0af68" font-size="10" font-style="italic">pure accounting</text>
+
+  <line x1="484" y1="580" x2="516" y2="580" stroke="#bb9af7" stroke-width="2" marker-end="url(#a-rose-6)"/>
+
+  <rect x="520" y="526" width="200" height="106" rx="8" fill="#1a2030" stroke="#bb9af7" stroke-width="1"/>
+  <circle cx="540" cy="548" r="11" fill="#bb9af7"/>
+  <text text-anchor="middle" x="540" y="552" fill="#0f1419" font-size="11" font-weight="700">6</text>
+  <text x="560" y="550" fill="#e6edf3" font-size="11" font-weight="600">Yield to vault</text>
+  <text x="528" y="570" fill="#8b949e" font-size="10">Bridge + Custodian co-sign</text>
+  <text x="528" y="586" fill="#8b949e" font-size="10">PLUSD.yieldMint →</text>
+  <text x="528" y="602" fill="#8b949e" font-size="10">sPLUSD vault</text>
+  <text x="528" y="620" fill="#bb9af7" font-size="10" font-style="italic">share price ↑</text>
+
+  <line x1="724" y1="580" x2="756" y2="580" stroke="#7aa2f7" stroke-width="2" marker-end="url(#a-sl-6)"/>
+
+  <rect x="760" y="526" width="160" height="106" rx="8" fill="#1a2030" stroke="#7aa2f7" stroke-width="1"/>
+  <circle cx="780" cy="548" r="11" fill="#7aa2f7"/>
+  <text text-anchor="middle" x="780" y="552" fill="#0f1419" font-size="11" font-weight="700">7</text>
+  <text x="800" y="550" fill="#e6edf3" font-size="11" font-weight="600">Close at maturity</text>
+  <text x="768" y="570" fill="#8b949e" font-size="10">closeLoan(</text>
+  <text x="768" y="586" fill="#8b949e" font-size="10">ScheduledMaturity |</text>
+  <text x="768" y="602" fill="#8b949e" font-size="10">EarlyRepayment)</text>
+
+  <!-- Bottom note -->
+  <text text-anchor="middle" x="480" y="664" fill="#8b949e" font-size="10" font-style="italic">LoanRegistry is informational — sPLUSD share price moves only on step 6 (the actual yieldMint), not on any registry write.</text>
+</svg>
