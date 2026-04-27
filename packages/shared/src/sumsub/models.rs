@@ -17,6 +17,16 @@ pub enum KycReviewStatus {
     OnHold = 4,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[repr(i16)]
+pub enum AmlStatus {
+    Pending = 1,
+    Clear = 2,
+    Hit = 3,
+}
+
+const AML_REJECT_LABELS: &[&str] = &["SANCTIONS_HIT", "PEP_HIT", "ADVERSE_MEDIA_HIT", "FRAUD_HIT"];
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateApplicantRequest {
@@ -117,5 +127,27 @@ impl WebhookPayload {
                 "RED" => KycStatus::Red,
                 _ => KycStatus::Yellow,
             })
+    }
+
+    pub fn parsed_aml_status(&self) -> Option<AmlStatus> {
+        let review_result = self.review_result.as_ref()?;
+
+        let has_aml_hit = review_result
+            .reject_labels
+            .as_ref()
+            .map(|labels| {
+                labels
+                    .iter()
+                    .any(|l| AML_REJECT_LABELS.contains(&l.as_str()))
+            })
+            .unwrap_or(false);
+
+        if has_aml_hit {
+            Some(AmlStatus::Hit)
+        } else if review_result.review_answer.as_deref() == Some("GREEN") {
+            Some(AmlStatus::Clear)
+        } else {
+            None
+        }
     }
 }
