@@ -6,15 +6,15 @@ section: Security & Transparency
 
 # Supply safeguards
 
-PLUSD has exactly two mint paths — deposit (USDC → PLUSD 1:1) and yield (sPLUSD vault or Treasury Wallet). Each path lives behind a different contract with a different threat model and a different set of checks. They do not duplicate each other.
+PLUSD has only two mint paths — deposit (USDC → PLUSD 1:1) or yield (sPLUSD vault or Treasury Wallet). Each path lives behind a different contract with a different threat model and a different set of checks. They do not duplicate each other.
 
-This page covers the structural safeguards that prevent inflation of PLUSD supply. Each section names the safeguard, describes its mechanism, and states the attack scenario it defeats.
+This page covers safeguards that prevent inflation of PLUSD supply. Each section names the safeguard, describes its mechanism, and states the attack scenario it defeats.
 
 ---
 
-## DepositManager vs YieldMinter — who checks what
+## DepositManager vs YieldMinter
 
-DepositManager gates **lender-initiated** mints. The lender is the trust boundary; the contract assumes the caller is potentially malicious and rate-limits accordingly. YieldMinter gates **operator-initiated** mints. The operator (Relayer) is the trust boundary, but the constraint is structural — every mint requires a second, independent EIP-1271 signature from the custodian, and the destination is hard-constrained to the sPLUSD vault or the Treasury Wallet. Neither contract enforces the other's checks; the separation is what makes the threat models legible.
+DepositManager validates **lender-initiated** mints. The lender is the trust boundary, the contract assumes the caller is potentially malicious and rate-limits accordingly. YieldMinter validates **operator-initiated** mints. The operator (Relayer) is the trust boundary, but the constraint is structural — every mint requires a second, independent signature from the custodian, and the destination is hard-constrained to the sPLUSD vault or the Treasury Wallet. Neither contract enforces the other's checks, the separation is what makes the threat models legible.
 
 | Check | DepositManager | YieldMinter |
 |---|---|---|
@@ -31,17 +31,13 @@ DepositManager gates **lender-initiated** mints. The lender is the trust boundar
 | Destination restriction | Recipient is the depositor (whitelist-gated) | Hard-coded to sPLUSD vault or Treasury Wallet |
 | Holds role on PLUSD | `DEPOSITOR` (DepositManager proxy address) | `YIELD_MINTER` (YieldMinter proxy address) |
 
-**The shared gate is PLUSD itself.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling — the hard ceiling on circulating PLUSD relative to backing — is enforced on every mint regardless of which path called it. Per-account and per-window caps are deliberately absent from YieldMinter because the recipients are protocol system addresses (not LPs) and the volume is bounded by real cash inflow — repayments wired into the Trustee bank then on-ramped to USDC, plus realised USYC redemptions — not by lender behaviour.
+**PLUSD limits.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling — the hard ceiling on circulating PLUSD relative to backing — is enforced on every mint regardless of which path called it. 
 
 ---
 
 ## Deposits are atomic on-chain
 
 `DepositManager.deposit(amount)` pulls USDC from the lender to the Capital Wallet and mints PLUSD 1:1 in the same transaction. If either leg fails, the whole transaction reverts. There is no intermediate queue, no signing step, no delay.
-
-**No off-chain signer gates the deposit path.** Relayer is not in the deposit critical path. A complete Relayer compromise does not stop deposits or allow unbacked deposit-leg mints. The on-chain USDC movement IS the attestation. The minimum deposit is $1,000 and each transaction is capped at $5M with a $10M/24h aggregate limit.
-
-This closes the attack class where a compromised signing key mints against a fake or spoofed USDC transfer. The Resolv exploit of March 2026 stands as the warning case: an attestor signed a mint for a deposit that never settled. Pipeline removes the attestor from the deposit path entirely.
 
 ---
 
