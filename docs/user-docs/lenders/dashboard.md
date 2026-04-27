@@ -38,9 +38,9 @@ Protocol-wide figures — total PLUSD supply, Capital Wallet reserves, the 15% U
 
 ## Verifying on your own
 
-Every number on your dashboard can be reconstructed from on-chain calls and event logs. Contract addresses, ABIs, and deployment blocks live on [/security/audits-and-addresses/](/security/audits-and-addresses/). If a UI number disagrees with what the contract returns, the contract is the source of truth.
+Every number on your dashboard can be reconstructed from on-chain calls and event logs. Contract addresses, ABIs, and deployment blocks live in [auidits](/security/audits-and-addresses/) section. If a UI number disagrees with what the contract returns, the contract is the source of truth.
 
 ## See also
 
-- [/security/audits-and-addresses/](/security/audits-and-addresses/) — contract addresses and audit reports.
-- [/how-it-works/yield-engines/](/how-it-works/yield-engines/) — how the APR and yield-earned figures are built up from loan repayments and T-bill distributions.
+- [audits-and-addresses](/security/audits-and-addresses/) — contract addresses and audit reports.
+- [yield-engines](/how-it-works/yield-engines/) — how the APR and yield-earned figures are built up from loan repayments and T-bill distributions.
