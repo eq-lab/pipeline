@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
-use crate::sumsub::models::{KycReviewStatus, KycStatus};
+use crate::sumsub::models::{AmlStatus, KycReviewStatus, KycStatus};
 
 pub struct KycRepo {
     pub pool: PgPool,
@@ -13,6 +13,7 @@ pub struct LpProfile {
     pub sumsub_applicant_id: Option<String>,
     pub kyc_status: i16,
     pub kyc_review_status: i16,
+    pub aml_status: i16,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,7 +34,7 @@ impl KycRepo {
 
     pub async fn get_lp_profile(&self, wallet_address: &str) -> anyhow::Result<Option<LpProfile>> {
         let row = sqlx::query_as::<_, LpProfile>(
-            "SELECT wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, created_at, updated_at
+            "SELECT wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, aml_status, created_at, updated_at
              FROM lp_profiles WHERE wallet_address = $1",
         )
         .bind(wallet_address)
@@ -47,7 +48,7 @@ impl KycRepo {
             "INSERT INTO lp_profiles (wallet_address)
              VALUES ($1)
              ON CONFLICT (wallet_address) DO NOTHING
-             RETURNING wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, created_at, updated_at",
+             RETURNING wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, aml_status, created_at, updated_at",
         )
         .bind(wallet_address)
         .fetch_one(&self.pool)
@@ -75,25 +76,22 @@ impl KycRepo {
         wallet_address: &str,
         kyc_status: Option<KycStatus>,
         review_status: KycReviewStatus,
+        aml_status: Option<AmlStatus>,
     ) -> anyhow::Result<()> {
-        if let Some(status) = kyc_status {
-            sqlx::query(
-                "UPDATE lp_profiles SET kyc_status = $2, kyc_review_status = $3, updated_at = NOW() WHERE wallet_address = $1",
-            )
-            .bind(wallet_address)
-            .bind(status as i16)
-            .bind(review_status as i16)
-            .execute(&self.pool)
-            .await?;
-        } else {
-            sqlx::query(
-                "UPDATE lp_profiles SET kyc_review_status = $2, updated_at = NOW() WHERE wallet_address = $1",
-            )
-            .bind(wallet_address)
-            .bind(review_status as i16)
-            .execute(&self.pool)
-            .await?;
-        }
+        sqlx::query(
+            "UPDATE lp_profiles SET
+                kyc_status = COALESCE($2, kyc_status),
+                kyc_review_status = $3,
+                aml_status = COALESCE($4, aml_status),
+                updated_at = NOW()
+             WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .bind(kyc_status.map(|s| s as i16))
+        .bind(review_status as i16)
+        .bind(aml_status.map(|s| s as i16))
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
