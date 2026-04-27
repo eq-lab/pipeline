@@ -8,17 +8,7 @@ fn validate_webhook(
     headers: &HeaderMap,
     body: &[u8],
     webhook_secret_key: &str,
-    webhook_basic_token: &str,
 ) -> Result<(), &'static str> {
-    let auth = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or("missing authorization")?;
-
-    if auth != format!("Basic {webhook_basic_token}") {
-        return Err("invalid auth token");
-    }
-
     let alg = headers
         .get("x-payload-digest-alg")
         .and_then(|v| v.to_str().ok())
@@ -45,13 +35,12 @@ fn validate_webhook(
     Ok(())
 }
 
-fn make_valid_headers(body: &[u8], secret: &str, token: &str) -> HeaderMap {
+fn make_valid_headers(body: &[u8], secret: &str) -> HeaderMap {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(body);
     let digest = hex::encode(mac.finalize().into_bytes());
 
     let mut headers = HeaderMap::new();
-    headers.insert("authorization", format!("Basic {token}").parse().unwrap());
     headers.insert("x-payload-digest-alg", "HMAC_SHA256_HEX".parse().unwrap());
     headers.insert("x-payload-digest", digest.parse().unwrap());
     headers
@@ -61,30 +50,27 @@ fn make_valid_headers(body: &[u8], secret: &str, token: &str) -> HeaderMap {
 fn valid_webhook_passes() {
     let body = b"test payload";
     let secret = "webhook-secret";
-    let token = "basic-token";
-    let headers = make_valid_headers(body, secret, token);
-    assert!(validate_webhook(&headers, body, secret, token).is_ok());
+    let headers = make_valid_headers(body, secret);
+    assert!(validate_webhook(&headers, body, secret).is_ok());
 }
 
 #[test]
-fn wrong_basic_token_fails() {
+fn wrong_secret_fails() {
     let body = b"test payload";
-    let secret = "webhook-secret";
-    let headers = make_valid_headers(body, secret, "correct-token");
-    assert!(validate_webhook(&headers, body, secret, "wrong-token").is_err());
+    let headers = make_valid_headers(body, "correct-secret");
+    assert!(validate_webhook(&headers, body, "wrong-secret").is_err());
 }
 
 #[test]
 fn tampered_body_fails() {
     let body = b"original payload";
     let secret = "webhook-secret";
-    let token = "basic-token";
-    let headers = make_valid_headers(body, secret, token);
-    assert!(validate_webhook(&headers, b"tampered payload", secret, token).is_err());
+    let headers = make_valid_headers(body, secret);
+    assert!(validate_webhook(&headers, b"tampered payload", secret).is_err());
 }
 
 #[test]
 fn missing_headers_fail() {
     let headers = HeaderMap::new();
-    assert!(validate_webhook(&headers, b"body", "secret", "token").is_err());
+    assert!(validate_webhook(&headers, b"body", "secret").is_err());
 }

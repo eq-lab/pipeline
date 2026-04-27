@@ -8,7 +8,6 @@ pub struct SumsubSettings {
     pub base_url: String,
     pub verification_level: String,
     pub webhook_secret_key: String,
-    pub webhook_basic_token: String,
     pub sandbox: bool,
     pub token_ttl_secs: i32,
 }
@@ -21,7 +20,6 @@ impl SumsubSettings {
             base_url: env_require("SUMSUB_BASE_URL")?,
             verification_level: env_require("SUMSUB_VERIFICATION_LEVEL")?,
             webhook_secret_key: env_require("SUMSUB_WEBHOOK_SECRET_KEY")?,
-            webhook_basic_token: env_require("SUMSUB_WEBHOOK_BASIC_TOKEN")?,
             sandbox: env::var("SUMSUB_SANDBOX")
                 .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
                 .unwrap_or(false),

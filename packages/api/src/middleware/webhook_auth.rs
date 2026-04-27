@@ -5,22 +5,14 @@ use sha2::Sha256;
 type HmacSha256 = Hmac<Sha256>;
 
 /// Validate Sumsub webhook headers against the request body.
+///
+/// SumSub signs webhooks with HMAC — the digest is in `x-payload-digest`
+/// and the algorithm in `x-payload-digest-alg`.
 pub fn validate_webhook(
     headers: &HeaderMap,
     body: &[u8],
     webhook_secret_key: &str,
-    webhook_basic_token: &str,
 ) -> Result<(), (StatusCode, &'static str)> {
-    let auth = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .ok_or((StatusCode::UNAUTHORIZED, "missing authorization header"))?;
-
-    let expected_auth = format!("Basic {webhook_basic_token}");
-    if auth != expected_auth {
-        return Err((StatusCode::UNAUTHORIZED, "invalid authorization token"));
-    }
-
     let alg = headers
         .get("x-payload-digest-alg")
         .and_then(|v| v.to_str().ok())

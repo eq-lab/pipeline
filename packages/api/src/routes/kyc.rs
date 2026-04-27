@@ -236,12 +236,9 @@ async fn webhook_callback(
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    if let Err(rejection) = validate_webhook(
-        &headers,
-        &body,
-        &state.sumsub_settings.webhook_secret_key,
-        &state.sumsub_settings.webhook_basic_token,
-    ) {
+    if let Err(rejection) =
+        validate_webhook(&headers, &body, &state.sumsub_settings.webhook_secret_key)
+    {
         return rejection.into_response();
     }
 
