@@ -31,17 +31,21 @@ Pipeline is a credit facility that finances secured commodity trade deals. Pipel
 
 ## Where yield comes from
 
-**Engine A — Senior coupons on commodity trade loans.** Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When a borrower repays, the Senior coupon (net of fees) is delivered to the sPLUSD vault through a secure yield mint system: the Capital Wallet signs, the Relayer co-signs, and both signatures are verified on-chain before any tokens move. See [yield engines](/how-it-works/yield-engines/) for details.
+### Senior coupons on commodity trade loans. 
 
-**Engine B — T-bill accrual on USYC reserves.** Idle Capital Wallet USDC is converted into USYC, Hashnote's tokenized Treasury-bill holding. T-bill yield accrues continuously and is split 70% to the sPLUSD vault, 30% to the Pipeline's Treasury Wallet. The target USDC buffer is 15% of reserves, rebalanced when the USDC balance drifts outside a 10–20% band.
+Every loan is split into a Senior tranche funded by Pipeline lenders and an Equity tranche funded by the originator, which takes first loss. When a borrower repays, the Senior coupon (net of fees) is delivered to the sPLUSD vault through a secure yield mint system: the Capital Wallet signs, the Relayer co-signs, and both signatures are verified on-chain before any tokens move. See [yield engines](/how-it-works/yield-engines/) for details.
+
+### T-bill accrual on USYC reserves. 
+
+Idle Capital Wallet USDC is converted into USYC, Hashnote's tokenized Treasury-bill holding. T-bill yield accrues continuously via USYC token price appreciation relative to USDC. The target USDC buffer is 15% of reserves, rebalanced when the USDC balance drifts outside a 10–20% band.
 
 ## What can go wrong
 
 Lenders face loan defaults, liquidity delays on large withdrawals, custodian operational failure, smart-contract risk, governance risk, regulatory exposure, and operational-key compromise. Read [Risks](/risks/) for the enumerated disclosure and [Defaults &amp; losses](/defaults-and-losses/) for the loss waterfall.
 
-## Starting out
+## How to start
 
-Proceed with the onboarding through the website, complete KYC and Chainalysis screening, and deposit at least $1,000 USDC. Minting caps are $5M per transaction and $10M per rolling 24 hours. See here [Onboarding](/lenders/onboarding/) for the full onboarding procedure.
+Proceed with the onboarding through the [website](https://pipeline.one/), complete KYC and Chainalysis screening, and deposit at least $1,000 USDC. Minting caps are $5M per transaction and $10M per rolling 24 hours. See here [Onboarding](/lenders/onboarding/) for the full onboarding procedure.
 
 ## Not financial advice
 
