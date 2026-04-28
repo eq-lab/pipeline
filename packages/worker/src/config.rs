@@ -2,13 +2,23 @@ use std::env;
 
 use anyhow::{Context, Result};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JobType {
+    Transfer,
+    WithdrawalQueue,
+}
+
 pub struct JobSettings {
     pub name: String,
     pub enabled: bool,
+    pub job_type: JobType,
     pub eth_rpc_url: String,
     pub chain_id: i64,
+    /// ERC-20 contract addresses to watch. Only used by Transfer jobs.
     pub polling_contracts: Vec<String>,
+    /// Only index transfers where from or to is in this list. Only used by Transfer jobs.
     pub polling_targets: Vec<String>,
+    /// Withdrawal queue contract addresses. Only used by WithdrawalQueue jobs.
     pub wq_contracts: Vec<String>,
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
@@ -25,6 +35,7 @@ impl JobSettings {
             return Ok(Self {
                 name: name.to_owned(),
                 enabled: false,
+                job_type: JobType::Transfer,
                 eth_rpc_url: String::new(),
                 chain_id: 0,
                 polling_contracts: vec![],
@@ -36,35 +47,36 @@ impl JobSettings {
             });
         }
 
+        let job_type = match env_require(&format!("{prefix}TYPE"))?
+            .to_lowercase()
+            .as_str()
+        {
+            "transfer" => JobType::Transfer,
+            "withdrawal_queue" => JobType::WithdrawalQueue,
+            other => anyhow::bail!(
+                "{prefix}TYPE must be 'transfer' or 'withdrawal_queue', got '{other}'"
+            ),
+        };
+
         let eth_rpc_url = env_require(&format!("{prefix}ETH_RPC_URL"))?;
         let chain_id: i64 = env_require(&format!("{prefix}CHAIN_ID"))?
             .parse()
             .context("CHAIN_ID must be an integer")?;
-        let polling_contracts: Vec<String> = env_require(&format!("{prefix}POLLING_CONTRACTS"))?
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect();
-        if polling_contracts.is_empty() {
-            anyhow::bail!("{prefix}POLLING_CONTRACTS must not be empty");
+
+        let mut polling_contracts = vec![];
+        let mut polling_targets = vec![];
+        let mut wq_contracts = vec![];
+
+        match job_type {
+            JobType::Transfer => {
+                polling_contracts = env_csv_require(&format!("{prefix}POLLING_CONTRACTS"))?;
+                polling_targets = env_csv_require(&format!("{prefix}POLLING_TARGETS"))?;
+            }
+            JobType::WithdrawalQueue => {
+                wq_contracts = env_csv_require(&format!("{prefix}WQ_CONTRACTS"))?;
+            }
         }
-        let polling_targets: Vec<String> = env_require(&format!("{prefix}POLLING_TARGETS"))?
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect();
-        if polling_targets.is_empty() {
-            anyhow::bail!("{prefix}POLLING_TARGETS must not be empty");
-        }
-        let wq_contracts: Vec<String> = env::var(format!("{prefix}WQ_CONTRACTS"))
-            .unwrap_or_default()
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect();
+
         let polling_block_range = env_parse(&format!("{prefix}POLLING_BLOCK_RANGE"), 1000)?;
         let polling_interval_ms = env_parse(&format!("{prefix}POLLING_INTERVAL_MS"), 500)?;
         let log_confirmations_delay = env_parse(&format!("{prefix}LOG_CONFIRMATIONS_DELAY"), 12)?;
@@ -72,6 +84,7 @@ impl JobSettings {
         Ok(Self {
             name: name.to_owned(),
             enabled,
+            job_type,
             eth_rpc_url,
             chain_id,
             polling_contracts,
@@ -86,6 +99,20 @@ impl JobSettings {
 
 fn env_require(key: &str) -> Result<String> {
     env::var(key).with_context(|| format!("required env var {key} is not set"))
+}
+
+fn env_csv_require(key: &str) -> Result<Vec<String>> {
+    let val = env_require(key)?;
+    let items: Vec<String> = val
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect();
+    if items.is_empty() {
+        anyhow::bail!("{key} must not be empty");
+    }
+    Ok(items)
 }
 
 fn env_bool(key: &str) -> Option<bool> {

@@ -11,7 +11,7 @@ use tracing::Instrument;
 
 use shared::db::EventRepo;
 
-use crate::config::JobSettings;
+use crate::config::{JobSettings, JobType};
 use mappers::ContractLogMapper;
 use parsers::{
     parse_claimable_increased, parse_transfer, parse_withdrawal_claimed, parse_withdrawal_requested,
@@ -22,55 +22,54 @@ pub async fn run_job(settings: JobSettings, pool: PgPool) {
     let repo = Arc::new(EventRepo::new(pool));
     let settings = Arc::new(settings);
 
-    let approved: Vec<alloy::primitives::Address> = settings
-        .polling_targets
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let token_contracts: Vec<alloy::primitives::Address> = settings
-        .polling_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let wq_contracts: Vec<alloy::primitives::Address> = settings
-        .wq_contracts
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
     let mut builder = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
         settings.polling_block_range,
         settings.polling_interval_ms,
     );
 
-    // Transfer handler
-    {
-        let repo = repo.clone();
-        let chain_id = settings.chain_id;
-        builder = builder.add_event_handler(token_contracts, move |log| {
-            parse_transfer(log, &approved).map(|ev| {
-                Box::new(ContractLogMapper::new(ev, chain_id, repo.clone()))
-                    as Box<dyn shared::log_mapper::LogMapper>
-            })
-        });
-    }
+    match settings.job_type {
+        JobType::Transfer => {
+            let approved: Vec<alloy::primitives::Address> = settings
+                .polling_targets
+                .iter()
+                .filter_map(|a| a.parse().ok())
+                .collect();
 
-    // Withdrawal queue handler (only if wq_contracts is non-empty)
-    if !wq_contracts.is_empty() {
-        let repo = repo.clone();
-        let chain_id = settings.chain_id;
-        builder = builder.add_event_handler(wq_contracts, move |log| {
-            parse_withdrawal_requested(log)
-                .or_else(|| parse_withdrawal_claimed(log))
-                .or_else(|| parse_claimable_increased(log))
-                .map(|ev| {
+            let contracts: Vec<alloy::primitives::Address> = settings
+                .polling_contracts
+                .iter()
+                .filter_map(|a| a.parse().ok())
+                .collect();
+
+            let repo = repo.clone();
+            let chain_id = settings.chain_id;
+            builder = builder.add_event_handler(contracts, move |log| {
+                parse_transfer(log, &approved).map(|ev| {
                     Box::new(ContractLogMapper::new(ev, chain_id, repo.clone()))
                         as Box<dyn shared::log_mapper::LogMapper>
                 })
-        });
+            });
+        }
+        JobType::WithdrawalQueue => {
+            let contracts: Vec<alloy::primitives::Address> = settings
+                .wq_contracts
+                .iter()
+                .filter_map(|a| a.parse().ok())
+                .collect();
+
+            let repo = repo.clone();
+            let chain_id = settings.chain_id;
+            builder = builder.add_event_handler(contracts, move |log| {
+                parse_withdrawal_requested(log)
+                    .or_else(|| parse_withdrawal_claimed(log))
+                    .or_else(|| parse_claimable_increased(log))
+                    .map(|ev| {
+                        Box::new(ContractLogMapper::new(ev, chain_id, repo.clone()))
+                            as Box<dyn shared::log_mapper::LogMapper>
+                    })
+            });
+        }
     }
 
     let poller = builder.build();
