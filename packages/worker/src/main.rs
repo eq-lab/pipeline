@@ -9,21 +9,17 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // initialize logging and load .env
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    // initialize DB pool
     let postgres_url = std::env::var("POSTGRES_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
         .map_err(|_| anyhow::anyhow!("POSTGRES_URL is not set"))?;
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
 
-    // run DB migrations
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    // indexer jobs
-    let indexer_job_names: Vec<String> = std::env::var("INDEXER_JOB_NAMES")
+    let job_names: Vec<String> = std::env::var("ENABLED_JOB_NAMES")
         .unwrap_or_default()
         .split(',')
         .map(str::trim)
@@ -31,34 +27,35 @@ async fn main() -> anyhow::Result<()> {
         .map(str::to_owned)
         .collect();
 
-    for name in &indexer_job_names {
-        let settings = IndexerJobSettings::from_env(name)?;
-        if !settings.enabled {
-            tracing::info!(job = %name, "job disabled — skipping");
-            continue;
-        }
+    for name in &job_names {
+        let prefix = format!("JOB_{}_", name.to_uppercase());
+        let job_type = std::env::var(format!("{prefix}TYPE"))
+            .map_err(|_| anyhow::anyhow!("{prefix}TYPE is not set"))?;
 
-        tracing::info!(job = %name, chain_id = settings.chain_id, "indexer started");
-        tokio::spawn(run_job(settings, pool.clone()));
-    }
-
-    // KYC outbox job
-    let kyc_outbox_enabled = std::env::var("JOB_KYC_OUTBOX_ENABLED")
-        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
-        .unwrap_or(false);
-
-    if kyc_outbox_enabled {
-        let outbox_settings = KycOutboxJobSettings::from_env();
-        let sumsub_settings = SumsubSettings::from_env()?;
-        let sumsub_client = Arc::new(SumsubClient::new(sumsub_settings));
-        let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
-
-        tracing::info!("KYC outbox job started");
-        tokio::spawn(async move {
-            if let Err(e) = run_kyc_outbox_job(outbox_settings, kyc_repo, sumsub_client).await {
-                tracing::error!("KYC outbox job exited with error: {e:?}");
+        match job_type.to_lowercase().as_str() {
+            "transfer" | "withdrawal_queue" => {
+                let settings = IndexerJobSettings::from_env(name)?;
+                tracing::info!(job = %name, chain_id = settings.chain_id, "indexer job started");
+                tokio::spawn(run_job(settings, pool.clone()));
             }
-        });
+            "kyc_outbox" => {
+                let settings = KycOutboxJobSettings::from_env(name);
+                let sumsub_settings = SumsubSettings::from_env()?;
+                let sumsub_client = Arc::new(SumsubClient::new(sumsub_settings));
+                let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+
+                tracing::info!(job = %name, "kyc outbox job started");
+                let job_name = name.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = run_kyc_outbox_job(settings, kyc_repo, sumsub_client).await {
+                        tracing::error!(job = %job_name, "kyc outbox job exited with error: {e:?}");
+                    }
+                });
+            }
+            other => {
+                anyhow::bail!("{prefix}TYPE must be 'transfer', 'withdrawal_queue', or 'kyc_outbox', got '{other}'");
+            }
+        }
     }
 
     tokio::signal::ctrl_c().await?;
