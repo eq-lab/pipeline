@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use sqlx::{PgConnection, PgPool};
 
-use crate::events::TokenTransferEvent;
+use crate::events::ContractLog;
 
 pub struct EventRepo {
     pub pool: PgPool,
@@ -47,7 +47,7 @@ impl EventRepo {
         Ok(())
     }
 
-    pub async fn is_token_transfer_duplicate(
+    pub async fn is_duplicate(
         &self,
         conn: &mut PgConnection,
         chain_id: i64,
@@ -57,7 +57,7 @@ impl EventRepo {
     ) -> anyhow::Result<bool> {
         let exists: (bool,) = sqlx::query_as(
             "SELECT EXISTS(
-                SELECT 1 FROM token_transfers
+                SELECT 1 FROM contract_logs
                 WHERE chain_id = $1
                   AND contract_address = $2
                   AND block_number = $3
@@ -74,30 +74,37 @@ impl EventRepo {
         Ok(exists.0)
     }
 
-    pub async fn insert_token_transfer(
+    pub async fn insert_log(
         &self,
         conn: &mut PgConnection,
-        event: &TokenTransferEvent,
+        event: &ContractLog,
         chain_id: i64,
     ) -> anyhow::Result<()> {
         sqlx::query(
-            "INSERT INTO token_transfers
-               (chain_id, contract_address, sender, receiver, amount,
-                block_number, tx_hash, log_index, block_timestamp)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+            "INSERT INTO contract_logs
+               (chain_id, contract_address, event_name,
+                block_number, tx_hash, log_index, block_timestamp,
+                sender, receiver, amount, request_id, cumulative)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
         .bind(chain_id)
         .bind(event.contract_address.to_checksum(None))
-        .bind(event.from.to_checksum(None))
-        .bind(event.to.to_checksum(None))
-        .bind(
-            bigdecimal::BigDecimal::from_str(&event.value.to_string())
-                .expect("U256 is valid decimal"),
-        )
+        .bind(&event.event_name)
         .bind(event.block_number as i64)
         .bind(format!("{:?}", event.tx_hash))
         .bind(event.log_index as i32)
         .bind(event.block_timestamp as i64)
+        .bind(event.sender.map(|a| a.to_checksum(None)))
+        .bind(event.receiver.map(|a| a.to_checksum(None)))
+        .bind(event.amount.map(|v| {
+            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
+        }))
+        .bind(event.request_id.map(|v| {
+            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
+        }))
+        .bind(event.cumulative.map(|v| {
+            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
+        }))
         .execute(conn)
         .await?;
 
