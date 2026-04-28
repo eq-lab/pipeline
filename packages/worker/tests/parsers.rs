@@ -175,6 +175,7 @@ fn withdrawal_claimed_decodes() {
     assert_eq!(ev.request_id, Some(request_id));
     assert_eq!(ev.cumulative, None);
     assert_eq!(ev.block_number, 201);
+    assert_eq!(ev.log_index, 1);
 }
 
 // --- ClaimableIncreased tests ---
