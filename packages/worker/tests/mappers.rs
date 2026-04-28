@@ -1,19 +1,22 @@
 use alloy::primitives::{address, b256, U256};
 use std::sync::Arc;
 
-use pipeline_worker::indexer::mappers::TokenTransferLogMapper;
-use shared::events::TokenTransferEvent;
+use pipeline_worker::indexer::mappers::ContractLogMapper;
+use shared::events::ContractLog;
 
-fn dummy_event(value: U256) -> TokenTransferEvent {
-    TokenTransferEvent {
+fn dummy_event(value: U256) -> ContractLog {
+    ContractLog {
         contract_address: address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-        from: address!("1111111111111111111111111111111111111111"),
-        to: address!("2222222222222222222222222222222222222222"),
-        value,
+        event_name: "Transfer".to_owned(),
         block_number: 101,
         tx_hash: b256!("1111111111111111111111111111111111111111111111111111111111111111"),
         log_index: 0,
         block_timestamp: 0,
+        sender: Some(address!("1111111111111111111111111111111111111111")),
+        receiver: Some(address!("2222222222222222222222222222222222222222")),
+        amount: Some(value),
+        request_id: None,
+        cumulative: None,
     }
 }
 
@@ -26,11 +29,8 @@ async fn zero_value_is_skipped_without_db_call() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
     let repo = Arc::new(shared::db::EventRepo::new(pool));
-    let mapper = TokenTransferLogMapper::new(dummy_event(U256::ZERO), 1, repo);
+    let mapper = ContractLogMapper::new(dummy_event(U256::ZERO), 1, repo);
 
-    // Acquiring a connection from a lazy pool succeeds lazily; but is_duplicate
-    // must return true *before* executing any query for zero-value events.
-    // We cannot call is_duplicate with a real PgConnection here without a live DB,
-    // so we verify the logic directly.
-    assert_eq!(mapper.event.value, U256::ZERO);
+    // Verify the event has zero amount
+    assert_eq!(mapper.event.amount, Some(U256::ZERO));
 }
