@@ -15,9 +15,9 @@ pub struct JobSettings {
     pub eth_rpc_url: String,
     pub chain_id: i64,
     /// ERC-20 contract addresses to watch. Only used by Transfer jobs.
-    pub polling_contracts: Vec<String>,
+    pub transfer_contracts: Vec<String>,
     /// Only index transfers where from or to is in this list. Only used by Transfer jobs.
-    pub polling_targets: Vec<String>,
+    pub transfer_targets: Vec<String>,
     /// Withdrawal queue contract addresses. Only used by WithdrawalQueue jobs.
     pub wq_contracts: Vec<String>,
     pub polling_block_range: u64,
@@ -38,8 +38,8 @@ impl JobSettings {
                 job_type: JobType::Transfer,
                 eth_rpc_url: String::new(),
                 chain_id: 0,
-                polling_contracts: vec![],
-                polling_targets: vec![],
+                transfer_contracts: vec![],
+                transfer_targets: vec![],
                 wq_contracts: vec![],
                 polling_block_range: 0,
                 polling_interval_ms: 0,
@@ -69,8 +69,8 @@ impl JobSettings {
 
         match job_type {
             JobType::Transfer => {
-                polling_contracts = env_csv_require(&format!("{prefix}POLLING_CONTRACTS"))?;
-                polling_targets = env_csv_require(&format!("{prefix}POLLING_TARGETS"))?;
+                polling_contracts = env_csv_require(&format!("{prefix}TRANSFER_CONTRACTS"))?;
+                polling_targets = env_csv_require(&format!("{prefix}TRANSFER_TARGETS"))?;
             }
             JobType::WithdrawalQueue => {
                 wq_contracts = env_csv_require(&format!("{prefix}WQ_CONTRACTS"))?;
@@ -87,8 +87,8 @@ impl JobSettings {
             job_type,
             eth_rpc_url,
             chain_id,
-            polling_contracts,
-            polling_targets,
+            transfer_contracts: polling_contracts,
+            transfer_targets: polling_targets,
             wq_contracts,
             polling_block_range,
             polling_interval_ms,

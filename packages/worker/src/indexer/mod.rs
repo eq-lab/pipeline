@@ -31,13 +31,13 @@ pub async fn run_job(settings: JobSettings, pool: PgPool) {
     match settings.job_type {
         JobType::Transfer => {
             let approved: Vec<alloy::primitives::Address> = settings
-                .polling_targets
+                .transfer_targets
                 .iter()
                 .filter_map(|a| a.parse().ok())
                 .collect();
 
             let contracts: Vec<alloy::primitives::Address> = settings
-                .polling_contracts
+                .transfer_contracts
                 .iter()
                 .filter_map(|a| a.parse().ok())
                 .collect();
