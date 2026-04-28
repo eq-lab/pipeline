@@ -1,6 +1,7 @@
-use pipeline_worker::config::JobSettings;
+use pipeline_worker::indexer::config::IndexerJobSettings;
 use pipeline_worker::indexer::run_job;
-use pipeline_worker::kyc::kyc_outbox::{run_kyc_outbox_job, KycOutboxJobSettings};
+use pipeline_worker::kyc::config::KycOutboxJobSettings;
+use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -31,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
         .collect();
 
     for name in &indexer_job_names {
-        let settings = JobSettings::from_env(name)?;
+        let settings = IndexerJobSettings::from_env(name)?;
         if !settings.enabled {
             tracing::info!(job = %name, "job disabled — skipping");
             continue;
