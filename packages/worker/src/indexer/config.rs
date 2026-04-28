@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 pub struct TransferJobSettings {
     pub eth_rpc_url: String,
     pub chain_id: i64,
+    pub start_block: u64,
     pub transfer_contracts: Vec<String>,
     pub transfer_targets: Vec<String>,
     pub polling_block_range: u64,
@@ -21,6 +22,7 @@ impl TransferJobSettings {
             chain_id: env_require(&format!("{prefix}CHAIN_ID"))?
                 .parse()
                 .context("CHAIN_ID must be an integer")?,
+            start_block: env_parse(&format!("{prefix}START_BLOCK"), 0)?,
             transfer_contracts: env_csv_require(&format!("{prefix}TRANSFER_CONTRACTS"))?,
             transfer_targets: env_csv_require(&format!("{prefix}TRANSFER_TARGETS"))?,
             polling_block_range: env_parse(&format!("{prefix}POLLING_BLOCK_RANGE"), 1000)?,

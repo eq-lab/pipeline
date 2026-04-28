@@ -23,6 +23,21 @@ pub async fn run_transfer_job(settings: TransferJobSettings, pool: PgPool) {
     let repo = Arc::new(EventRepo::new(pool));
     let chain_id = settings.chain_id;
 
+    // Seed cursor from START_BLOCK if no existing state
+    if settings.start_block > 0 {
+        let current = repo.get_cursor(chain_id).await.unwrap_or(0);
+        if current == 0 {
+            let mut conn = repo.pool.acquire().await.expect("acquire connection");
+            repo.set_cursor(&mut conn, chain_id, settings.start_block)
+                .await
+                .expect("seed cursor");
+            tracing::info!(
+                start_block = settings.start_block,
+                "seeded cursor from START_BLOCK"
+            );
+        }
+    }
+
     let approved: Vec<alloy::primitives::Address> = settings
         .transfer_targets
         .iter()
