@@ -54,6 +54,7 @@ pub async fn run_transfer_job(settings: TransferJobSettings, pool: PgPool) {
         chain_id,
         settings.polling_block_range,
         settings.log_confirmations_delay,
+        settings.polling_interval_ms,
         &repo,
         &poller,
     )
@@ -92,6 +93,7 @@ pub async fn run_wq_job(settings: WqJobSettings, pool: PgPool) {
         chain_id,
         settings.polling_block_range,
         settings.log_confirmations_delay,
+        settings.polling_interval_ms,
         &repo,
         &poller,
     )
@@ -103,6 +105,7 @@ async fn index_loop(
     chain_id: i64,
     block_range: u64,
     confirmations_delay: u64,
+    polling_interval_ms: u64,
     repo: &EventRepo,
     poller: &poller::EvmEventPoller,
 ) {
@@ -119,7 +122,7 @@ async fn index_loop(
                 tracing::error!(job = %job_name, error = %e, "indexer error — retrying in 5s");
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(polling_interval_ms)).await;
     }
 }
 
