@@ -19,6 +19,11 @@ pub struct LpProfile {
 }
 
 #[derive(sqlx::FromRow)]
+pub struct WhitelistCandidate {
+    pub wallet_address: String,
+}
+
+#[derive(sqlx::FromRow)]
 pub struct KycOutboxRow {
     pub id: i64,
     pub wallet_address: String,
@@ -140,6 +145,60 @@ impl KycRepo {
             .bind(error)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_profiles_to_allow(&self) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(
+            "SELECT wallet_address FROM lp_profiles
+             WHERE kyc_status = 2
+               AND kyc_review_status = 2
+               AND aml_status = 2
+               AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn fetch_profiles_to_disallow(&self) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(
+            "SELECT wallet_address FROM lp_profiles
+             WHERE (is_whitelisted = true OR is_whitelisted IS NULL)
+               AND kyc_review_status = 2
+               AND (kyc_status != 2 OR aml_status = 3)",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn set_whitelisted(
+        &self,
+        wallet_address: &str,
+        whitelist_reset_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles
+             SET is_whitelisted = true, whitelist_reset_at = $2, updated_at = NOW()
+             WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .bind(whitelist_reset_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_disallowed(&self, wallet_address: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles
+             SET is_whitelisted = false, whitelist_reset_at = NULL, updated_at = NOW()
+             WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

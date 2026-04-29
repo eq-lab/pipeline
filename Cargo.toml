@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-alloy             = { version = "0.8", features = ["provider-http", "sol-types", "rpc-types"] }
+alloy             = { version = "0.8", features = ["provider-http", "sol-types", "rpc-types", "signers", "signer-local", "contract"] }
 reqwest           = { version = "0.12", features = ["json"] }
 alloy-primitives  = "0.8"
 anyhow            = "1"
