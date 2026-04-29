@@ -2,6 +2,8 @@ use pipeline_worker::indexer::config::{env_bool, TransferJobSettings, WqJobSetti
 use pipeline_worker::indexer::{run_transfer_job, run_wq_job};
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
+use pipeline_worker::whitelist::config::WhitelistJobSettings;
+use pipeline_worker::whitelist::whitelist_sync::run_whitelist_sync_job;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -41,6 +43,18 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(async move {
             if let Err(e) = run_kyc_outbox_job(settings, kyc_repo, sumsub_client).await {
                 tracing::error!("kyc outbox job exited with error: {e:?}");
+            }
+        });
+    }
+
+    if env_bool("JOB_WHITELIST_ENABLED") {
+        let settings = WhitelistJobSettings::from_env()?;
+        let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+
+        tracing::info!("whitelist sync job started");
+        tokio::spawn(async move {
+            if let Err(e) = run_whitelist_sync_job(settings, kyc_repo).await {
+                tracing::error!("whitelist sync job exited with error: {e:?}");
             }
         });
     }
