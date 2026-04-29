@@ -8,7 +8,7 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::sol;
 use anyhow::{Context, Result};
 use chrono::Utc;
-use shared::kyc_repo::{KycRepo, WhitelistCandidate};
+use shared::kyc_repo::KycRepo;
 
 use crate::whitelist::config::WhitelistJobSettings;
 
@@ -83,7 +83,7 @@ async fn process_allows<T, P>(
     }
 
     for candidate in candidates {
-        let Some(addr) = parse_wallet(&candidate) else {
+        let Some(addr) = shared::evm::parse_address(&candidate.wallet_address) else {
             continue;
         };
 
@@ -102,7 +102,10 @@ async fn process_allows<T, P>(
         match result {
             Ok(_) => {
                 let reset_at = Utc::now() + chrono::Duration::seconds(ttl_secs as i64);
-                if let Err(e) = kyc_repo.set_whitelisted(&candidate.wallet_address, reset_at).await {
+                if let Err(e) = kyc_repo
+                    .set_whitelisted(&candidate.wallet_address, reset_at)
+                    .await
+                {
                     tracing::error!(wallet = candidate.wallet_address, error = %e, "failed to update DB after allowUser tx");
                 } else {
                     tracing::info!(wallet = candidate.wallet_address, "allowUser tx confirmed");
@@ -135,7 +138,7 @@ async fn process_disallows<T, P>(
     }
 
     for candidate in candidates {
-        let Some(addr) = parse_wallet(&candidate) else {
+        let Some(addr) = shared::evm::parse_address(&candidate.wallet_address) else {
             continue;
         };
 
@@ -156,16 +159,6 @@ async fn process_disallows<T, P>(
             Err(e) => {
                 tracing::error!(wallet = candidate.wallet_address, error = %e, "disallow tx failed, will retry next iteration");
             }
-        }
-    }
-}
-
-fn parse_wallet(candidate: &WhitelistCandidate) -> Option<Address> {
-    match candidate.wallet_address.parse() {
-        Ok(addr) => Some(addr),
-        Err(e) => {
-            tracing::error!(wallet = candidate.wallet_address, error = %e, "invalid wallet address, skipping");
-            None
         }
     }
 }
