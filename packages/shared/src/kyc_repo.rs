@@ -164,8 +164,8 @@ impl KycRepo {
     pub async fn fetch_profiles_to_disallow(&self) -> anyhow::Result<Vec<WhitelistCandidate>> {
         let rows = sqlx::query_as::<_, WhitelistCandidate>(
             "SELECT wallet_address FROM lp_profiles
-             WHERE (is_whitelisted = true OR is_whitelisted IS NULL)
-               AND kyc_review_status = 2
+             WHERE is_whitelisted = true
+               AND whitelist_reset_at <= NOW()
                AND (kyc_status != 2 OR aml_status = 3)",
         )
         .fetch_all(&self.pool)
