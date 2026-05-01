@@ -1,16 +1,8 @@
-use std::sync::Arc;
-use std::time::Duration;
-
-use alloy::network::EthereumWallet;
-use alloy::primitives::{Address, U256};
-use alloy::providers::ProviderBuilder;
-use alloy::signers::local::PrivateKeySigner;
+use alloy::primitives::U256;
 use alloy::sol;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Utc;
 use shared::kyc_repo::KycRepo;
-
-use crate::whitelist::config::WhitelistJobSettings;
 
 sol! {
     #[sol(rpc)]
@@ -20,46 +12,16 @@ sol! {
     }
 }
 
-pub async fn run_whitelist_sync_job(
-    settings: WhitelistJobSettings,
-    kyc_repo: Arc<KycRepo>,
-) -> Result<()> {
-    let signer: PrivateKeySigner = settings
-        .signer_key
-        .parse()
-        .context("failed to parse signer key")?;
-
-    let wallet = EthereumWallet::from(signer);
-
-    let rpc_url = settings
-        .eth_rpc_url
-        .parse()
-        .context("failed to parse ETH RPC URL")?;
-
-    let provider = ProviderBuilder::new()
-        .with_recommended_fillers()
-        .wallet(wallet)
-        .on_http(rpc_url);
-
-    let registry_address: Address = settings
-        .registry_address
-        .parse()
-        .context("failed to parse registry address")?;
-
-    let registry = WhitelistRegistry::new(registry_address, &provider);
-
-    tracing::info!(
-        interval_secs = settings.interval_secs,
-        ttl_secs = settings.ttl_secs,
-        registry = %registry_address,
-        "whitelist sync job running"
-    );
-
-    loop {
-        process_allows(&registry, &kyc_repo, settings.ttl_secs).await;
-        process_disallows(&registry, &kyc_repo).await;
-        tokio::time::sleep(Duration::from_secs(settings.interval_secs)).await;
-    }
+pub async fn phase_whitelist_sync<T, P>(
+    registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
+    kyc_repo: &KycRepo,
+    ttl_secs: u64,
+) where
+    T: alloy::transports::Transport + Clone,
+    P: alloy::providers::Provider<T>,
+{
+    process_allows(registry, kyc_repo, ttl_secs).await;
+    process_disallows(registry, kyc_repo).await;
 }
 
 async fn process_allows<T, P>(
