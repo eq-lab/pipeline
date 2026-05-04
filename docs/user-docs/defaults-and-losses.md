@@ -1,10 +1,10 @@
 ---
-title: Defaults & losses
+title: Default management
 order: 12
-section: Risk & losses
+section: Potential risks
 ---
 
-# Defaults & losses
+# Default management
 
 Pipeline finances real commodity deals; some of them will eventually go bad.
 This page explains how defaults are declared, how losses are absorbed, and

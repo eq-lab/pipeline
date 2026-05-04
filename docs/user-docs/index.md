@@ -57,6 +57,6 @@ Information on this website is not investment, legal, or tax advice. Yield figur
 
 [How it works](./how-it-works/index.md) · [Yield engines](./how-it-works/yield-engines.md)
 
-[Lenders](./lenders/index.md) · [Onboarding](./lenders/onboarding.md) · [Deposit & stake](./lenders/deposit-and-stake.md) · [Withdraw](./lenders/withdraw.md) · [Dashboard](./lenders/dashboard.md)
+[Lenders](./lenders/index.md) · [Onboarding](./lenders/onboarding.md) · [Deposit](./lenders/deposit.md) · [Stake PLUSD](./lenders/stake.md) · [Withdraw](./lenders/withdraw.md) · [Dashboard](./lenders/dashboard.md)
 
-[Security](./security/index.md) · [Custody](./security/custody.md) · [Supply safeguards](./security/supply-safeguards.md) · [Emergency response](./security/emergency-response.md) · [Audits & addresses](./security/audits-and-addresses.md)
+[Security](./security/index.md) · [Custody](./security/custody.md) · [Governance](./security/governance.md) · [Supply safeguards](./security/supply-safeguards.md) · [Emergency response](./security/emergency-response.md) · [Audits & addresses](./security/audits-and-addresses.md)

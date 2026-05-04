@@ -1,7 +1,7 @@
 ---
-title: Risks
+title: Potential risks
 order: 11
-section: Risk & losses
+section: Potential risks
 ---
 
 <div class="callout risk">
