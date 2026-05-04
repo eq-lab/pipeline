@@ -15,7 +15,7 @@ Two further bands sit alongside. **Recovery System** holds the protocol's termin
   <p><em>"A bug or exploit in on-chain code cannot drain investor capital unilaterally."</em></p>
 </div>
 
-{% include diagram.html src="d1-system-context.svg" caption="Pipeline system context — Capital Layer off-chain, Relayer in the middle, Protocol Layer on-chain. The Trustee co-signs every USDC movement and records every loan." %}
+{% include diagram.html src="d1-system-context.png" caption="Pipeline system context — Capital Layer off-chain, Relayer in the middle, Protocol Layer on-chain. The Trustee co-signs every USDC movement and records every loan." %}
 
 ---
 
