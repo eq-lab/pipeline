@@ -83,30 +83,32 @@ pub async fn phase_funding(
         return Ok(());
     }
 
-    let wq_address: Address = settings.wq_address.parse().context("invalid wq_address")?;
+    // let wq_address: Address = settings.wq_address.parse().context("invalid wq_address")?;
 
-    tracing::info!(amount = %funding_amount_u256, "approving USDC for withdrawal queue");
-    signer
-        .approve_usdc(wq_address, funding_amount_u256)
-        .await
-        .context("approve tx failed")?;
+    // // TODO: remove
+    // tracing::info!(amount = %funding_amount_u256, "approving USDC for withdrawal queue");
+    // signer
+    //     .approve_usdc(wq_address, funding_amount_u256)
+    //     .await
+    //     .context("approve tx failed")?;
 
-    tracing::info!(amount = %funding_amount_u256, "funding withdrawals");
-    let tx_hash = signer
-        .fund_withdrawals(funding_amount_u256, capital_wallet)
-        .await
-        .context("fundWithdrawals tx failed")?;
+    // TODO: run on MCP
+    // tracing::info!(amount = %funding_amount_u256, "funding withdrawals");
+    // let tx_hash = signer
+    //     .fund_withdrawals(funding_amount_u256, capital_wallet)
+    //     .await
+    //     .context("fundWithdrawals tx failed")?;
 
-    funding_repo
-        .insert_funding(settings.chain_id, &funding_amount, &format!("{tx_hash:?}"))
-        .await
-        .context("failed to record funding in DB")?;
+    // funding_repo
+    //     .insert_funding(settings.chain_id, &funding_amount, &format!("{tx_hash:?}"))
+    //     .await
+    //     .context("failed to record funding in DB")?;
 
-    tracing::info!(
-        amount = %funding_amount,
-        tx = ?tx_hash,
-        "withdrawal funding completed"
-    );
+    // tracing::info!(
+    //     amount = %funding_amount,
+    //     tx = ?tx_hash,
+    //     "withdrawal funding completed"
+    // );
 
     Ok(())
 }
