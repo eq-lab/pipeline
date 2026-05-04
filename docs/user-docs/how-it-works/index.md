@@ -100,9 +100,9 @@ These parties are active day to day, not just during privileged events.
 
 The privileged-event surface. Three MPCs with distinct signer sets, every write routed through AccessManager.
 
-- **ADMIN · 3/5 · 48h timelock** — role grants, re-grants, unpauses, upgrades, parameter changes. A 14-day meta-timelock gates the delay setting itself, blocking the "collapse the delay then exploit" pattern.
-- **RISK_COUNCIL · 3/5 · 24h timelock** — `setDefault` on LoanRegistry, `proposeShutdown` on ShutdownController, `adjustRecoveryRateUp`. No upgrade authority, no role-grant authority.
-- **GUARDIAN · 2/5 · instant** — pause any pausable contract, cancel pending scheduled actions, revoke named operational-role holders. Cannot grant roles, cannot unpause, cannot upgrade, cannot move funds. A compromised GUARDIAN can grief but cannot escalate.
+- **ADMIN (3/5, 48h timelock)** — role grants, re-grants, unpauses, upgrades, parameter changes. A 14-day meta-timelock gates the delay setting itself, blocking the "collapse the delay then exploit" pattern.
+- **RISK_COUNCIL (3/5, 24h timelock)** — `setDefault` on LoanRegistry, `proposeShutdown` on ShutdownController, `adjustRecoveryRateUp`. No upgrade authority, no role-grant authority.
+- **GUARDIAN (2/5, instant)** — pause any pausable contract, cancel pending scheduled actions, revoke named operational-role holders. Cannot grant roles, cannot unpause, cannot upgrade, cannot move funds. A compromised GUARDIAN can grief but cannot escalate.
 
 The split is deliberate. **Defensive action is fast; constructive action is slow.** GUARDIAN can stop things instantly. Only ADMIN can start them again, and only after a window that GUARDIAN itself can veto. See [Governance](/security/governance/) for the full split.
 
