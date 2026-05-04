@@ -1,3 +1,4 @@
+pub mod bitgo;
 pub mod db;
 pub mod events;
 pub mod evm;

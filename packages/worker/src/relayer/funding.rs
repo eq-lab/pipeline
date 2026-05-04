@@ -3,25 +3,33 @@ use std::str::FromStr;
 use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result};
 use bigdecimal::BigDecimal;
+use shared::bitgo::client::BitgoClient;
 use shared::funding_repo::FundingRepo;
 
 use crate::relayer::config::RelayerJobSettings;
-use crate::relayer::custodian::CustodianSigner;
+use crate::relayer::custodian::OnChainReader;
 
 /// USDC has 6 decimals.
 const USDC_DECIMALS: u32 = 6;
 
-pub async fn phase_funding(
-    signer: &dyn CustodianSigner,
+// const FUND_WITHDRAWALS_SELECTOR: &str = "0x80bef06d";
+
+pub async fn phase_funding<T, P>(
+    reader: &OnChainReader<T, P>,
+    _bitgo: &BitgoClient,
     funding_repo: &FundingRepo,
     settings: &RelayerJobSettings,
-) -> Result<()> {
+) -> Result<()>
+where
+    T: alloy::transports::Transport + Clone,
+    P: alloy::providers::Provider<T>,
+{
     let eligible_queued = funding_repo
         .get_eligible_queued(settings.chain_id)
         .await
         .context("failed to query eligible queued")?;
 
-    let current_claimable_u256 = signer
+    let current_claimable_u256 = reader
         .current_claimable()
         .await
         .context("failed to read on-chain claimable")?;
@@ -69,7 +77,7 @@ pub async fn phase_funding(
         .parse()
         .context("invalid capital_wallet_address")?;
 
-    let balance = signer
+    let balance = reader
         .usdc_balance_of(capital_wallet)
         .await
         .context("failed to read USDC balance")?;
@@ -83,31 +91,30 @@ pub async fn phase_funding(
         return Ok(());
     }
 
-    // let wq_address: Address = settings.wq_address.parse().context("invalid wq_address")?;
-
-    // // TODO: remove
-    // tracing::info!(amount = %funding_amount_u256, "approving USDC for withdrawal queue");
-    // signer
-    //     .approve_usdc(wq_address, funding_amount_u256)
+    tracing::info!(amount = %funding_amount_u256, "funding withdrawals via BitGo");
+    // todo: which function must be called - FUND_WITHDRAWALS_SELECTOR?
+    // todo: insert_funding must store the bitgo request id and wait for it to be executed before marking the queued as funded
+    // let resp = bitgo
+    //     .send_transaction(
+    //         &settings.wq_address,
+    //         "0",
+    //         &settings.bitgo_coin,
+    //         Some(FUND_WITHDRAWALS_SELECTOR),
+    //     )
     //     .await
-    //     .context("approve tx failed")?;
+    //     .context("BitGo fundWithdrawals tx request failed")?;
 
-    // TODO: run on MCP
-    // tracing::info!(amount = %funding_amount_u256, "funding withdrawals");
-    // let tx_hash = signer
-    //     .fund_withdrawals(funding_amount_u256, capital_wallet)
-    //     .await
-    //     .context("fundWithdrawals tx failed")?;
+    // let tx_request_id = resp.tx_request_id.unwrap_or_default();
 
     // funding_repo
-    //     .insert_funding(settings.chain_id, &funding_amount, &format!("{tx_hash:?}"))
+    //     .insert_funding(settings.chain_id, &funding_amount, &tx_request_id)
     //     .await
     //     .context("failed to record funding in DB")?;
 
     // tracing::info!(
     //     amount = %funding_amount,
-    //     tx = ?tx_hash,
-    //     "withdrawal funding completed"
+    //     tx_request_id = %tx_request_id,
+    //     "withdrawal funding submitted to BitGo"
     // );
 
     Ok(())

@@ -6,12 +6,14 @@ use alloy::primitives::Address;
 use alloy::providers::ProviderBuilder;
 use alloy::signers::local::PrivateKeySigner;
 use anyhow::{Context, Result};
+use shared::bitgo::client::BitgoClient;
+use shared::bitgo::config::BitgoSettings;
 use shared::funding_repo::FundingRepo;
 use shared::kyc_repo::KycRepo;
 use sqlx::PgPool;
 
 use crate::relayer::config::RelayerJobSettings;
-use crate::relayer::custodian::{IWithdrawalQueue, LocalCustodianSigner, IERC20};
+use crate::relayer::custodian::{IWithdrawalQueue, OnChainReader, IERC20};
 use crate::relayer::funding::phase_funding;
 use crate::relayer::whitelist_sync::{phase_whitelist_sync, WhitelistRegistry};
 
@@ -55,7 +57,8 @@ pub async fn run_relayer_job(
         .context("failed to parse WQ address")?;
     let wq = IWithdrawalQueue::new(wq_address, &provider);
 
-    let custodian_signer = LocalCustodianSigner::new(usdc, wq);
+    let on_chain_reader = OnChainReader::new(usdc, wq);
+    let bitgo = BitgoClient::new(BitgoSettings::from_env()?);
     let funding_repo = FundingRepo::new(pool);
 
     tracing::info!(
@@ -70,7 +73,7 @@ pub async fn run_relayer_job(
         phase_whitelist_sync(&registry, &kyc_repo, settings.whitelist_ttl_secs).await;
 
         // Phase 2: Withdrawal funding
-        if let Err(e) = phase_funding(&custodian_signer, &funding_repo, &settings).await {
+        if let Err(e) = phase_funding(&on_chain_reader, &bitgo, &funding_repo, &settings).await {
             tracing::error!(error = %e, "funding phase failed");
         }
 

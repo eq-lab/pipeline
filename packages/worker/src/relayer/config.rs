@@ -17,6 +17,7 @@ pub struct RelayerJobSettings {
     pub capital_wallet_address: String,
     pub per_tx_cap_usdc: u64,
     pub rolling_24h_cap_usdc: u64,
+    pub bitgo_coin: String,
 }
 
 impl RelayerJobSettings {
@@ -37,6 +38,7 @@ impl RelayerJobSettings {
             capital_wallet_address: env_require(&format!("{prefix}CAPITAL_WALLET"))?,
             per_tx_cap_usdc: env_parse(&format!("{prefix}PER_TX_CAP"), 5_000_000)?,
             rolling_24h_cap_usdc: env_parse(&format!("{prefix}ROLLING_24H_CAP"), 10_000_000)?,
+            bitgo_coin: env_require(&format!("{prefix}BITGO_COIN"))?,
         })
     }
 }

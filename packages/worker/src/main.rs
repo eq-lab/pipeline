@@ -1,5 +1,5 @@
-use pipeline_worker::indexer::config::{env_bool, TransferJobSettings, WqJobSettings};
-use pipeline_worker::indexer::{run_transfer_job, run_wq_job};
+use pipeline_worker::indexer::config::{env_bool, IndexerJobSettings};
+use pipeline_worker::indexer::run_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
 use pipeline_worker::relayer::config::RelayerJobSettings;
@@ -21,16 +21,10 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    if env_bool("JOB_TRANSFERS_ENABLED") {
-        let settings = TransferJobSettings::from_env()?;
-        tracing::info!(chain_id = settings.chain_id, "transfers job started");
-        tokio::spawn(run_transfer_job(settings, pool.clone()));
-    }
-
-    if env_bool("JOB_WQ_ENABLED") {
-        let settings = WqJobSettings::from_env()?;
-        tracing::info!(chain_id = settings.chain_id, "withdrawal queue job started");
-        tokio::spawn(run_wq_job(settings, pool.clone()));
+    if env_bool("JOB_INDEXER_ENABLED") {
+        let settings = IndexerJobSettings::from_env()?;
+        tracing::info!(chain_id = settings.chain_id, "indexer job started");
+        tokio::spawn(run_indexer_job(settings, pool.clone()));
     }
 
     if env_bool("JOB_KYC_ENABLED") {
