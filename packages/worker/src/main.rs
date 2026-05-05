@@ -44,11 +44,10 @@ async fn main() -> anyhow::Result<()> {
     if env_bool("JOB_RELAYER_ENABLED") {
         let settings = RelayerJobSettings::from_env()?;
         let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
-        let relayer_pool = pool.clone();
 
         tracing::info!("relayer job started");
         tokio::spawn(async move {
-            if let Err(e) = run_relayer_job(settings, kyc_repo, relayer_pool).await {
+            if let Err(e) = run_relayer_job(settings, kyc_repo).await {
                 tracing::error!("relayer job exited with error: {e:?}");
             }
         });

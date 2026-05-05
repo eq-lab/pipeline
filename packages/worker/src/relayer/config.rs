@@ -11,13 +11,6 @@ pub struct RelayerJobSettings {
     // Whitelist phase
     pub registry_address: String,
     pub whitelist_ttl_secs: u64,
-    // Funding phase
-    pub wq_address: String,
-    pub usdc_address: String,
-    pub capital_wallet_address: String,
-    pub per_tx_cap_usdc: u64,
-    pub rolling_24h_cap_usdc: u64,
-    pub bitgo_coin: String,
 }
 
 impl RelayerJobSettings {
@@ -33,12 +26,6 @@ impl RelayerJobSettings {
             signer_key: env_require(&format!("{prefix}SIGNER_KEY"))?,
             registry_address: env_require(&format!("{prefix}REGISTRY_ADDRESS"))?,
             whitelist_ttl_secs: env_parse(&format!("{prefix}WHITELIST_TTL_SECS"), 7_776_000)?,
-            wq_address: env_require(&format!("{prefix}WQ_ADDRESS"))?,
-            usdc_address: env_require(&format!("{prefix}USDC_ADDRESS"))?,
-            capital_wallet_address: env_require(&format!("{prefix}CAPITAL_WALLET"))?,
-            per_tx_cap_usdc: env_parse(&format!("{prefix}PER_TX_CAP"), 5_000_000)?,
-            rolling_24h_cap_usdc: env_parse(&format!("{prefix}ROLLING_24H_CAP"), 10_000_000)?,
-            bitgo_coin: env_require(&format!("{prefix}BITGO_COIN"))?,
         })
     }
 }
