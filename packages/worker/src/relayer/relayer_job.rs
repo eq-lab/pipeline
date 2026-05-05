@@ -42,7 +42,13 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
     );
 
     loop {
-        phase_whitelist_sync(&registry, &kyc_repo, settings.whitelist_ttl_secs).await;
+        phase_whitelist_sync(
+            &registry,
+            &kyc_repo,
+            settings.whitelist_ttl_secs,
+            settings.require_sumsub,
+        )
+        .await;
 
         tokio::time::sleep(Duration::from_secs(settings.interval_secs)).await;
     }

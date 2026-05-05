@@ -16,23 +16,25 @@ pub async fn phase_whitelist_sync<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
     ttl_secs: u64,
+    require_sumsub: bool,
 ) where
     T: alloy::transports::Transport + Clone,
     P: alloy::providers::Provider<T>,
 {
-    process_allows(registry, kyc_repo, ttl_secs).await;
-    process_disallows(registry, kyc_repo).await;
+    process_allows(registry, kyc_repo, ttl_secs, require_sumsub).await;
+    process_disallows(registry, kyc_repo, require_sumsub).await;
 }
 
 async fn process_allows<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
     ttl_secs: u64,
+    require_sumsub: bool,
 ) where
     T: alloy::transports::Transport + Clone,
     P: alloy::providers::Provider<T>,
 {
-    let candidates = match kyc_repo.fetch_profiles_to_allow().await {
+    let candidates = match kyc_repo.fetch_profiles_to_allow(require_sumsub).await {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch profiles to allow");
@@ -83,11 +85,12 @@ async fn process_allows<T, P>(
 async fn process_disallows<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
+    require_sumsub: bool,
 ) where
     T: alloy::transports::Transport + Clone,
     P: alloy::providers::Provider<T>,
 {
-    let candidates = match kyc_repo.fetch_profiles_to_disallow().await {
+    let candidates = match kyc_repo.fetch_profiles_to_disallow(require_sumsub).await {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch profiles to disallow");

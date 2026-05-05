@@ -11,6 +11,7 @@ pub struct RelayerJobSettings {
     // Whitelist phase
     pub registry_address: String,
     pub whitelist_ttl_secs: u64,
+    pub require_sumsub: bool,
 }
 
 impl RelayerJobSettings {
@@ -26,6 +27,7 @@ impl RelayerJobSettings {
             signer_key: env_require(&format!("{prefix}SIGNER_KEY"))?,
             registry_address: env_require(&format!("{prefix}REGISTRY_ADDRESS"))?,
             whitelist_ttl_secs: env_parse(&format!("{prefix}WHITELIST_TTL_SECS"), 7_776_000)?,
+            require_sumsub: env_parse(&format!("{prefix}REQUIRE_SUMSUB"), true)?,
         })
     }
 }

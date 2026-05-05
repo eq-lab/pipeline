@@ -148,28 +148,58 @@ impl KycRepo {
         Ok(())
     }
 
-    pub async fn fetch_profiles_to_allow(&self) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = sqlx::query_as::<_, WhitelistCandidate>(
-            "SELECT wallet_address FROM lp_profiles
-             WHERE kyc_status = 2
-               AND kyc_review_status = 2
-               AND aml_status = 2
-               AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn fetch_profiles_to_allow(
+        &self,
+        require_sumsub: bool,
+    ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = if require_sumsub {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT wallet_address FROM lp_profiles
+                 WHERE kyc_status = 2
+                   AND kyc_review_status = 2
+                   AND aml_status = 2
+                   AND (kyt_status IS NULL OR kyt_status != 2)
+                   AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT wallet_address FROM lp_profiles
+                 WHERE (kyt_status IS NULL OR kyt_status != 2)
+                   AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(rows)
     }
 
-    pub async fn fetch_profiles_to_disallow(&self) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = sqlx::query_as::<_, WhitelistCandidate>(
-            "SELECT wallet_address FROM lp_profiles
-             WHERE is_whitelisted = true
-               AND whitelist_reset_at <= NOW()
-               AND (kyc_status != 2 OR aml_status = 3)",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+    pub async fn fetch_profiles_to_disallow(
+        &self,
+        require_sumsub: bool,
+    ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = if require_sumsub {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT wallet_address FROM lp_profiles
+                 WHERE is_whitelisted = true
+                   AND (whitelist_reset_at <= NOW()
+                        OR kyt_status = 2
+                        OR kyc_status != 2
+                        OR aml_status = 3)",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT wallet_address FROM lp_profiles
+                 WHERE is_whitelisted = true
+                   AND (whitelist_reset_at <= NOW()
+                        OR kyt_status = 2)",
+            )
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(rows)
     }
 
