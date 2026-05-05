@@ -32,6 +32,16 @@ pub struct KycOutboxRow {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct UnverifiedTransfer {
+    pub id: i64,
+    pub sender: Option<String>,
+    pub receiver: Option<String>,
+    pub amount: Option<bigdecimal::BigDecimal>,
+    pub tx_hash: String,
+    pub chain_id: i64,
+}
+
 impl KycRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -225,6 +235,46 @@ impl KycRepo {
             "UPDATE lp_profiles
              SET is_whitelisted = false, whitelist_reset_at = NULL, updated_at = NOW()
              WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_unverified_transfers(
+        &self,
+        batch_size: i64,
+    ) -> anyhow::Result<Vec<UnverifiedTransfer>> {
+        let rows = sqlx::query_as::<_, UnverifiedTransfer>(
+            "SELECT id, sender, receiver, amount, tx_hash, chain_id
+             FROM contract_logs
+             WHERE event_name = 'Transfer' AND kyt_status IS NULL
+             ORDER BY id
+             LIMIT $1",
+        )
+        .bind(batch_size)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn set_transfer_kyt_status(
+        &self,
+        log_id: i64,
+        kyt_status: i16,
+    ) -> anyhow::Result<()> {
+        sqlx::query("UPDATE contract_logs SET kyt_status = $2 WHERE id = $1")
+            .bind(log_id)
+            .bind(kyt_status)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_profile_kyt_failed(&self, wallet_address: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles SET kyt_status = 2, updated_at = NOW() WHERE wallet_address = $1",
         )
         .bind(wallet_address)
         .execute(&self.pool)
