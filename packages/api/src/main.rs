@@ -40,13 +40,13 @@ async fn main() -> anyhow::Result<()> {
         sumsub_settings,
     });
 
+    let mut api_docs = routes::kyc::ApiDoc::openapi();
+    api_docs.merge(routes::emails::EmailsDoc::openapi());
+
     let app = Router::new()
         .nest("/v1/emails", routes::emails::router())
         .nest("/v1/kyc", routes::kyc::router())
-        .merge(
-            SwaggerUi::new("/swagger")
-                .url("/api-docs/openapi.json", routes::kyc::ApiDoc::openapi()),
-        )
+        .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .with_state(state);
 
     let port = std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_owned());

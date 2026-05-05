@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -26,7 +27,6 @@ pub struct CreateEmailRequest {
         (name = "Emails", description = "Waitlist email collection")
     )
 )]
-#[allow(dead_code)]
 pub struct EmailsDoc;
 
 fn is_valid_email(email: &str) -> bool {
@@ -47,7 +47,7 @@ fn is_valid_email(email: &str) -> bool {
     tag = "Emails"
 )]
 async fn create_email(
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateEmailRequest>,
 ) -> impl IntoResponse {
     let email = req.email.trim().to_lowercase();
