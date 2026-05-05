@@ -1,21 +1,12 @@
 use std::sync::Arc;
 
 use axum::Router;
+use pipeline_api::AppState;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
-mod middleware;
-mod routes;
-
-pub struct AppState {
-    pub pool: sqlx::PgPool,
-    pub kyc_repo: KycRepo,
-    pub sumsub_client: SumsubClient,
-    pub sumsub_settings: SumsubSettings,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,12 +31,12 @@ async fn main() -> anyhow::Result<()> {
         sumsub_settings,
     });
 
-    let mut api_docs = routes::kyc::ApiDoc::openapi();
-    api_docs.merge(routes::emails::EmailsDoc::openapi());
+    let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
+    api_docs.merge(pipeline_api::routes::emails::EmailsDoc::openapi());
 
     let app = Router::new()
-        .nest("/v1/emails", routes::emails::router())
-        .nest("/v1/kyc", routes::kyc::router())
+        .nest("/v1/emails", pipeline_api::routes::emails::router())
+        .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .with_state(state);
 
