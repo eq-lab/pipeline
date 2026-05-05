@@ -8,6 +8,6 @@ use shared::sumsub::config::SumsubSettings;
 pub struct AppState {
     pub pool: sqlx::PgPool,
     pub kyc_repo: KycRepo,
-    pub sumsub_client: SumsubClient,
-    pub sumsub_settings: SumsubSettings,
+    pub sumsub_client: Option<SumsubClient>,
+    pub sumsub_settings: Option<SumsubSettings>,
 }

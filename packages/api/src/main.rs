@@ -20,9 +20,22 @@ async fn main() -> anyhow::Result<()> {
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    let sumsub_settings = SumsubSettings::from_env()?;
-    let sumsub_client = SumsubClient::new(sumsub_settings.clone());
+    let sumsub = match SumsubSettings::from_env() {
+        Ok(settings) => {
+            let client = SumsubClient::new(settings.clone());
+            Some((client, settings))
+        }
+        Err(e) => {
+            tracing::warn!("Sumsub not configured, KYC endpoints will be unavailable: {e}");
+            None
+        }
+    };
     let kyc_repo = KycRepo::new(pool.clone());
+
+    let (sumsub_client, sumsub_settings) = match sumsub {
+        Some((client, settings)) => (Some(client), Some(settings)),
+        None => (None, None),
+    };
 
     let state = Arc::new(AppState {
         pool: pool.clone(),

@@ -22,23 +22,13 @@ async fn test_app() -> Option<(Router, sqlx::PgPool)> {
         .await
         .unwrap();
 
-    let sumsub_settings = shared::sumsub::config::SumsubSettings {
-        app_token: "test".into(),
-        secret_key: "test".into(),
-        base_url: "http://localhost".into(),
-        verification_level: "test".into(),
-        webhook_secret_key: "test".into(),
-        sandbox: true,
-        token_ttl_secs: 600,
-    };
-    let sumsub_client = shared::sumsub::client::SumsubClient::new(sumsub_settings.clone());
     let kyc_repo = shared::kyc_repo::KycRepo::new(pool.clone());
 
     let state = Arc::new(pipeline_api::AppState {
         pool: pool.clone(),
         kyc_repo,
-        sumsub_client,
-        sumsub_settings,
+        sumsub_client: None,
+        sumsub_settings: None,
     });
 
     let app = Router::new()
