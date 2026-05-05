@@ -28,7 +28,7 @@ No single-call "revoke everything" switch exists. Every action names what it is 
   <li>ADMIN calls <code>unpause()</code> on each paused contract (3-day delay each).</li>
 </ol>
 
-## GUARDIAN's toolkit
+## Toolkit
 
 | Action | Target | Timelock |
 |---|---|---|
@@ -36,7 +36,7 @@ No single-call "revoke everything" switch exists. Every action names what it is 
 | `AccessManager.cancel(actionId)` | Pending scheduled actions | Instant |
 | `AccessManager.revokeRole(role, holder)` | WHITELIST_MANAGER_ROLE, TRUSTEE | Instant |
 
-## What GUARDIAN cannot do
+## Limits
 
 - Grant any role.
 - Unpause any contract.
@@ -48,7 +48,7 @@ A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders
 
 ## Playbooks
 
-### Relayer operational-key compromise
+### Relayer compromise
 
 Watchdog flags anomalous whitelist writes or yield-attestation patterns. GUARDIAN pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue, then submits `revokeRole(WHITELIST_MANAGER_ROLE, relayerAddr)`. With YieldMinter paused, the compromised `relayerYieldAttestor` key cannot be used to mint yield PLUSD. With WHITELIST_MANAGER_ROLE revoked, the Relayer EOA cannot touch the whitelist. **Withdrawals are unaffected by Relayer compromise** because the WithdrawalQueue is user-pulled. The Relayer is not in the claim critical path. **Deposits remain atomic and unaffected** because DepositManager has no Relayer dependency. ADMIN then rotates the attestor key via `YieldMinter.proposeYieldAttestors` and re-grants the Relayer's operational role under the 3-day timelock.
 
@@ -56,11 +56,11 @@ Watchdog flags anomalous whitelist writes or yield-attestation patterns. GUARDIA
 
 GUARDIAN revokes `TRUSTEE` (the LoanRegistry write role) instantly. The compromised key can no longer write to LoanRegistry. **Capital flows are unaffected** because LoanRegistry has no capital touchpoints and is not a NAV source. The Trustee is also one of five Capital Wallet cosigners. A single-key Trustee compromise cannot move USDC alone, since the cosigner policy requires Team + Trustee + one more on every transfer (3-of-5 with mandatory Team and Trustee). At the custody layer, the Trustee's compromised cosigner share is rotated under the standard MPC-rotation procedure. On-chain, Trustee role rotation follows the standard 3-day ADMIN path.
 
-### Trustee yield-attestor compromise
+### Yield-attestor compromise
 
 The Trustee revokes the compromised yield-attestor signing material from its own infrastructure. The compromised key alone cannot mint. The Relayer signature and the YieldMinter contract's role on PLUSD are independent requirements. ADMIN calls `YieldMinter.proposeYieldAttestors(sameRelayer, newTrustee)` under the 7-day delay to rotate the on-chain attestor address. During the window, yield mints continue safely. The old attestor alone cannot mint, and the compromise is bounded by the Relayer signature and the caller-role requirement that still apply.
 
-### Withdrawal-queue contract suspected exploit
+### Queue contract exploit
 
 GUARDIAN pauses WithdrawalQueue. If the exploit is in the claim path, the Withdrawal Queue Wallet's standing allowance to the queue contract can additionally be revoked at the custody layer. A Trustee + Team operation that is independent of on-chain governance. The blast radius is bounded by whatever USDC was in the Withdrawal Queue Wallet at the moment of compromise. The Capital Wallet itself is unreachable from the queue contract.
 

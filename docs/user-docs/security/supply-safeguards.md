@@ -12,7 +12,7 @@ This page covers the structural safeguards that prevent inflation of PLUSD suppl
 
 ---
 
-## DepositManager vs YieldMinter: who checks what
+## DepositManager vs YieldMinter
 
 DepositManager gates **lender-initiated** mints. The lender is the trust boundary. The contract assumes the caller is potentially malicious and rate-limits accordingly. YieldMinter gates **operator-initiated** mints. The function is permissionless to call, but every mint requires both a Relayer ECDSA signature and a Trustee EIP-1271 signature verified on-chain, and the destination is hard-constrained to the sPLUSD vault or the Treasury Wallet. Neither contract enforces the other's checks. The separation is what makes the threat models legible.
 
@@ -35,7 +35,7 @@ DepositManager gates **lender-initiated** mints. The lender is the trust boundar
 
 ---
 
-## Deposits are atomic on-chain
+## Atomic deposits
 
 `DepositManager.deposit(amount)` pulls USDC from the lender to the Capital Wallet and mints PLUSD 1:1 in the same transaction. If either leg fails, the whole transaction reverts. There is no intermediate queue, no signing step, no delay.
 
@@ -45,7 +45,7 @@ This closes the attack class where a compromised signing key mints against a fak
 
 ---
 
-## Withdrawals are user-pulled and self-limited
+## User-pulled withdrawals
 
 `WithdrawalQueue.claim(queueId)` is called by the lender (or, in the permissionless variant, by anyone). The queue contract pulls USDC via `transferFrom` from the **Withdrawal Queue Wallet**, a separate institutional MPC wallet whose USDC the Trustee and Team top up periodically from the Capital Wallet. The queue contract never has standing authority against the Capital Wallet itself.
 
@@ -63,7 +63,7 @@ On every claim: `require(claimAmount ≤ totalClaimable)`. Even if the Withdrawa
 
 ---
 
-## Yield mints need two independent signatures
+## Two-party yield mints
 
 `YieldMinter.yieldMint(attestation, relayerSig, trusteeSig)` verifies both signatures on-chain before calling `PLUSD.mintForYield`. The Relayer signs with its `relayerYieldAttestor` key. The Trustee's EIP-1271 signer contract (`trusteeYieldAttestor`) independently verifies the underlying USDC inflow (a senior-coupon on-ramp from the Trustee bank, or a realised USYC sale's USDC proceeds) and signs second. Both signatures must recover to the configured addresses or the call reverts. The YieldMinter contract is the only address that holds `MINTER_ROLE` on PLUSD for yield-leg mints, so a direct call to `PLUSD.mintForYield` from any other address reverts unconditionally.
 
@@ -73,7 +73,7 @@ Destinations are constrained at the YieldMinter contract level to the sPLUSD vau
 
 ---
 
-## Reserve invariant on every mint
+## Reserve invariant
 
 PLUSD tracks three cumulative counters: `cumulativeLPDeposits`, `cumulativeYieldMinted`, `cumulativeLPBurns`. Every mint asserts both `totalSupply + amount ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` AND `totalSupply + amount ≤ maxTotalSupply`.
 
@@ -83,7 +83,7 @@ Full Chainlink-style PoR that verifies the wallet's actual USDC balance against 
 
 ---
 
-## Four economic caps on the mint path
+## Mint caps
 
 | Cap | Value | Purpose |
 |---|---|---|
@@ -100,7 +100,7 @@ Tightening any cap is instant (GUARDIAN). Loosening requires a 3-day ADMIN propo
 
 ---
 
-## A compromised Trustee cannot inflate share price
+## Trustee cannot inflate share price
 
 The Trustee holds the LoanRegistry write role and can write any loan NFT state: mint ghost loans, write false repayment splits, close loans at maturity. None of these move USDC or mint PLUSD. **LoanRegistry is informational only.** sPLUSD share price moves exclusively on actual `yieldMint` calls landing in the vault, not on any registry write.
 
@@ -110,7 +110,7 @@ Loan bookkeeping and share-price computation are decoupled so that no single off
 
 ---
 
-## Related pages
+## Related
 
 - [Custody](/security/custody/). Institutional MPC wallet model and cosigner policy.
 - [Emergency response](/security/emergency-response/). GUARDIAN powers, pause, role revocation.

@@ -10,7 +10,7 @@ Withdraw by unstaking sPLUSD to PLUSD, escrowing the PLUSD into the WithdrawalQu
 
 {% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw to settle. FIFO escrow, user-pulled claim from the Withdrawal Queue Wallet via pre-approved allowance. Claim burns PLUSD and pays USDC atomically." %}
 
-## How the flow works
+## Flow
 
 <ol class="steps">
   <li>Unstake sPLUSD by calling <code>sPLUSD.redeem(shares)</code>. PLUSD returns to your wallet. Skip if you already hold PLUSD.</li>
@@ -22,7 +22,7 @@ Withdraw by unstaking sPLUSD to PLUSD, escrowing the PLUSD into the WithdrawalQu
 <strong>Self-pulled.</strong> No Relayer signature, no off-chain step, no waiting for an external party to fund your entry. The Withdrawal Queue Wallet is topped up periodically by the Trustee and Team from the Capital Wallet under the 3-of-5 cosigner quorum. As long as the wallet has USDC and the queue has allowance against it, you can claim immediately.
 </div>
 
-## Three queue aggregates
+## Queue aggregates
 
 The WithdrawalQueue tracks three numbers that bound everything:
 
@@ -34,20 +34,20 @@ The WithdrawalQueue tracks three numbers that bound everything:
 
 The safety invariant on every claim is `require(claimAmount ≤ totalClaimable)`. This is independent of the allowance from the Withdrawal Queue Wallet. Even if allowance is set to `MAX_UINT`, the queue physically refuses to pull more than it owes. Allowance is the permission ceiling. The aggregate ledger is the spending discipline.
 
-## What can delay your withdrawal
+## Delays
 
 - **Withdrawal Queue Wallet underfunded.** If the Wallet's USDC balance falls below the queue's outstanding obligations, claims revert until the next Trustee and Team top-up. Top-ups are routine. The Trustee monitors the wallet's balance against the queue's `totalClaimable` and triggers a top-up before it bites.
 - **Capital Wallet itself is short** (for example, 15% USDC buffer depleted). The Trustee instructs a USYC sale against the Hashnote redemption rail before topping up the Withdrawal Queue Wallet. Typically about a day, longer for large amounts.
 - **Your KYB screen expired** between request and claim. Unlikely unless you stop using the app for 90 days mid-queue.
 - **GUARDIAN paused** the WithdrawalQueue contract. Check the status page before retrying.
 
-## During a default-recovery period
+## During shutdown
 
 If the protocol has set an exchange coefficient on the WithdrawalQueue (see [Default management](/defaults-and-losses/)), every claim pays out USDC at `face_value * coefficient` instead of `face_value * 1.0`. The coefficient applies the same way to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. The coefficient ratchets up only as recoveries land. Once `coefficient = 1.0`, normal economics resume.
 
 There is no separate "shutdown mode". The protocol continues operating with the haircut applied at the queue.
 
-## Related pages
+## Related
 
 - [Lender Dashboard](/lenders/dashboard/)
 - [Potential risks](/risks/)

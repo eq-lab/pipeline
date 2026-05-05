@@ -8,7 +8,7 @@ section: Potential risks
 
 Pipeline finances real commodity deals. Some of them will go bad. This page describes what happens when they do.
 
-## What a default is
+## Loan states
 
 Every loan moves through four states in fixed order: Performing, Watchlist, Default, Closed.
 
@@ -31,29 +31,40 @@ A write-down closure is not reversible. Once a loan closes with Default or Other
 
 ## Loss waterfall
 
-Losses are absorbed in this order.
+The waterfall differs between MVP and post-MVP.
 
-1. **Originator equity tranche.** The Originator funds the equity tranche off-chain as first-loss capital. Realised losses inside the equity tranche do not touch lenders.
-2. **sPLUSD share-price writedown.** If the loss exceeds the equity tranche, the remainder writes down sPLUSD share price. sPLUSD holders absorb their share of the loss as the price they pay for the senior coupon. PLUSD holders are unaffected as long as the cushion is enough.
-3. **The catch-all.** If the loss exceeds the equity tranche AND the sPLUSD cushion, the protocol passes the residual to PLUSD holders. The mechanism is different in MVP and post-MVP.
-   - **MVP**: WithdrawalQueue haircut coefficient.
-   - **Post-MVP**: IOU tokens (Pipeline Recovery Tokens, PRT).
+**MVP** (two layers):
 
-## MVP: exchange coefficient on the WithdrawalQueue
+1. Equity tranche (first-loss, off-chain)
+2. Shutdown: recovery rate on the WithdrawalQueue
 
-When the loss exceeds the equity tranche and the sPLUSD cushion, RISK_COUNCIL sets a haircut coefficient on the WithdrawalQueue.
+**Post-MVP** (three layers):
 
-The Trustee proposes a coefficient `c` that reflects the recoverable value per dollar of outstanding PLUSD (for example, 0.85). RISK_COUNCIL executes `setExchangeCoefficient(c)`. 3-day timelock, GUARDIAN can cancel.
+1. Equity tranche (first-loss, off-chain)
+2. sPLUSD share-price writedown
+3. IOU tokens (Pipeline Recovery Tokens)
 
-From that block on, every claim pays out USDC at `face_value * c` instead of `face_value * 1.0`. The coefficient applies the same way to PLUSD direct redemption and to sPLUSD unstake-then-redeem. There is no path to redeem at face value while the coefficient is below 1.
+In MVP there is no sPLUSD writedown step. Any loss past the equity tranche triggers shutdown.
 
-The coefficient ratchets up only. As recoveries arrive and the Trustee tops up the Withdrawal Queue Wallet, RISK_COUNCIL calls `adjustExchangeCoefficientUp(c_new)` under the same 3-day timelock. When the coefficient reaches 1.0, normal economics resume. There is no separate "exit shutdown" call.
+## Shutdown (MVP)
 
-The protocol does not enter a shutdown mode. There is no shutdown contract. There is no recovery pool contract. The coefficient on the WithdrawalQueue is the entire mechanism.
+When the loss exceeds the equity tranche, RISK_COUNCIL initiates shutdown by setting a recovery rate on the WithdrawalQueue.
 
-## Post-MVP: IOU tokens (Pipeline Recovery Tokens)
+The Trustee proposes a recovery rate `r` (for example, 0.85) reflecting the recoverable value per dollar of outstanding PLUSD. RISK_COUNCIL executes via timelocked call. 3-day delay, GUARDIAN can cancel.
 
-After the audit and hardening period, the queue coefficient is replaced by per-holder IOU tokens.
+From that block on, every claim pays out USDC at `face * r` instead of `face * 1.0`. The rate applies the same way to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. There is no path to redeem at face value while the rate is below 1.
+
+The recovery rate ratchets up only. As recoveries arrive and the Trustee tops up the Withdrawal Queue Wallet, RISK_COUNCIL adjusts the rate up under the same 3-day timelock. When the rate reaches 1.0, normal economics resume.
+
+There is no separate shutdown contract. The recovery rate on the WithdrawalQueue is the entire mechanism.
+
+## IOUs (post-MVP)
+
+After the audit and hardening period, the post-MVP waterfall replaces the MVP shutdown. Losses now flow through three layers: equity tranche, then sPLUSD writedown, then IOU tokens.
+
+If the loss exceeds the equity tranche, the remainder writes down sPLUSD share price. sPLUSD holders absorb their share of the loss as the price they pay for the senior coupon. PLUSD holders are unaffected as long as the cushion is enough.
+
+If the loss exceeds the equity tranche AND the sPLUSD cushion, the residual is passed to PLUSD holders as IOU tokens (Pipeline Recovery Tokens, PRT).
 
 RISK_COUNCIL declares the bad-debt amount `D` via timelocked call. At the execution block, every PLUSD holder's balance and every sPLUSD holder's PLUSD-equivalent (`shares * pricePerShare`) is reduced pro-rata by their share of `D`. Each holder receives 1 PRT for every $1 of reduction.
 
@@ -65,11 +76,11 @@ PRT is freely transferable. A holder who needs cash now can sell PRT on the seco
 
 PLUSD and sPLUSD continue to operate normally on the post-haircut balances. They earn yield, withdraw, and trade as before.
 
-## Historical events
+## History
 
 No defaults have occurred in the protocol's history. At MVP launch this is trivially true because the protocol is not yet operational. Future events will appear here with the on-chain transaction, the originator involved, the principal and recovery amounts, and the dollar impact on holders.
 
-## Related reading
+## Related
 
 - [Potential risks](/risks/)
 - [Emergency response](/security/emergency-response/)

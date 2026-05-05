@@ -27,7 +27,7 @@ In practice:
 
 ---
 
-## Cosigner policy: 3-of-5 with mandatory Team and Trustee
+## Cosigner policy
 
 The Capital Wallet is configured with **five cosigner shares** under a **3-of-5 threshold**, with a hard policy rule that **no transfer signs without both the Team and the Trustee participating**. The five shares:
 
@@ -41,7 +41,7 @@ Every signing combination that satisfies the threshold also satisfies the Team-a
 
 The Relayer is **not a cosigner** on any wallet. The Relayer's role lives entirely on the Protocol Layer. First signer on yield attestations through `YieldMinter`, maintainer of the whitelist. It cannot move USDC out of any Pipeline custody address.
 
-### Per-transaction-class policy
+### Sub-policies
 
 Different transaction classes carry different sub-policies inside the custody. All still satisfy the 3-of-5 + Team + Trustee rule.
 
@@ -52,7 +52,7 @@ Different transaction classes carry different sub-policies inside the custody. A
 
 ---
 
-## Capital Wallet, Withdrawal Queue Wallet, Treasury Wallet
+## The wallets
 
 | Wallet | What it holds | Who pulls from it |
 |---|---|---|
@@ -86,7 +86,7 @@ The live composition (USDC held, USYC held, active-loan USDC, Withdrawal Queue W
 
 ---
 
-## Reserve invariant (and its limits)
+## Reserve invariant
 
 PLUSD tracks three on-chain counters: `cumulativeLPDeposits`, `cumulativeYieldMinted`, `cumulativeLPBurns`. Every mint asserts `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns`. Over-minting beyond this envelope reverts at the contract level.
 

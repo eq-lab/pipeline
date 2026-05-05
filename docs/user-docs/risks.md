@@ -70,7 +70,7 @@ See [Default management](/defaults-and-losses/) for the full loss waterfall and 
 
 **Residual.** A compromised operational key can still grief: stale whitelist writes, delayed yield posting. A compromised Trustee cosigner share could delay Withdrawal Queue Wallet top-ups (since Team and Trustee are both required on every Capital Wallet transfer). Grief windows last until GUARDIAN responds, which is instant in principle but bounded by signer availability in practice. Grief risk is non-zero. See [Emergency response](/security/emergency-response/).
 
-## What we cannot promise
+## Caveats
 
 <div class="callout risk">
 <ul>

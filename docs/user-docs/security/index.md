@@ -8,7 +8,7 @@ section: Security & Transparency
 
 Pipeline is built around four security decisions that compound. Capital lives outside the contracts. Deposits are atomic. Yield mints need two independent signatures. Defensive action is separated from constructive action. None of these is novel by itself. Together they remove most of the failure modes that have hit on-chain credit protocols, and bound the rest with explicit, reviewable scope.
 
-## The four decisions
+## Four decisions
 
 **1. Capital is custodied off-chain.** Lender USDC and the USYC reserve sit in an institutional MPC custody operated under BitGo's TSS policy with a 3-of-5 cosigner quorum (Trustee, 2 Team, 2 reputable counterparties). No protocol contract can spend from the custody. Withdrawal settlement uses an isolated **Withdrawal Queue Wallet** topped up periodically from the Capital Wallet, so a queue-contract exploit can only drain settlement headroom, not the full reserve.
 
@@ -60,7 +60,7 @@ For the full risk categorisation (credit, liquidity, custody, smart-contract, go
 
 ---
 
-## For the full threat model
+## Full threat model
 
 The full threat model, layered defence stack, pause cascade, and cross-rail sequence analysis lives in the product specs. See [security.md on GitHub](https://github.com/eq-lab/pipeline/blob/docs/update-specs-v2.3/docs/product-specs/security.md).
 

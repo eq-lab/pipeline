@@ -42,7 +42,7 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
 
 Yield arrives as fresh PLUSD minted directly into the sPLUSD vault. Your share count stays constant, what each share is worth grows. There is no claim step, no restake, no compounding action. The full mechanics (senior coupons on trade loans plus realised T-bill yield on USYC) are documented in [How it works · Yield engines](/how-it-works/yield-engines/).
 
-## Risks before you deposit
+## Risks
 
 Your capital is exposed to credit, liquidity, custody, smart-contract, governance, regulatory, and operational risks. Each is enumerated with its mitigation and residual on the [Potential risks](/risks/) page. Default mechanics and the loss waterfall live on [Default management](/defaults-and-losses/). **Read both before your first deposit.**
 

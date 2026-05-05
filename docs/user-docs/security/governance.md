@@ -10,7 +10,7 @@ Three MPC multisigs hold every privileged role across the protocol. Their powers
 
 {% include diagram.html src="d8-governance.svg" caption="Three MPCs with distinct signer sets. ADMIN 3/5 (3d standard, 7d upgrades, 14d meta-timelock). RISK_COUNCIL 3/5 (3d). GUARDIAN 2/5 (instant)." %}
 
-## Three MPCs, three roles, three tempos
+## Powers
 
 | MPC | Threshold | Tempo | Powers |
 |---|---|---|---|
@@ -22,7 +22,7 @@ Three MPC multisigs hold every privileged role across the protocol. Their powers
 
 ---
 
-## ADMIN: 3-of-5 MPC
+## ADMIN
 
 Owns role grants and re-grants, unpauses, upgrades, and parameter changes. Standard ADMIN actions are scheduled through AccessManager with a **3-day delay**. Upgrades carry a **7-day delay**. GUARDIAN can cancel during those windows.
 
@@ -32,7 +32,7 @@ ADMIN cannot pause, cannot revoke, and cannot move funds. ADMIN's job is to add 
 
 ---
 
-## RISK_COUNCIL: 3-of-5 MPC, 3-day timelock
+## RISK_COUNCIL
 
 Owns credit and recovery decisions. `setDefault` on LoanRegistry, write-down closures (`closeLoan` with reason `Default` or `OtherWriteDown`), and exchange-coefficient changes on the WithdrawalQueue (set or `adjustExchangeCoefficientUp`). Each selector is gated by a 3-day AccessManager delay, GUARDIAN-cancelable.
 
@@ -40,7 +40,7 @@ RISK_COUNCIL has no upgrade authority and no role-grant authority. It cannot mov
 
 ---
 
-## GUARDIAN: 2-of-5 MPC, instant
+## GUARDIAN
 
 Defensive only. GUARDIAN can:
 
@@ -60,7 +60,7 @@ The three MPCs have **distinct signer sets** as an operational requirement. Over
 
 ---
 
-## Why the meta-timelock
+## Meta-timelock
 
 Without it, ADMIN could call `setTargetAdminDelay(0)` under the standard 3-day delay, then immediately execute any hostile change with no further delay. The 14-day meta-timelock on the delay parameter itself means a captured ADMIN must wait 14 days to unlock a faster lever. Long enough for GUARDIAN, the community, or the auditor to notice and respond. The meta-timelock cannot be reduced by anyone short of an upgrade, which itself runs through ADMIN under the 7-day upgrade delay, which GUARDIAN can cancel.
 
