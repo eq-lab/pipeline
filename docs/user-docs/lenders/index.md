@@ -6,11 +6,11 @@ section: For Lenders
 
 # For lenders
 
-Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and realised T-bill yield on USYC reserves to KYB-ed on-chain lenders. Lending is permissioned — every lender passes KYB and Chainalysis screening before depositing.
+Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and realised T-bill yield on USYC reserves to KYB-ed on-chain lenders. Lending is permissioned. Every lender passes KYB and Chainalysis screening before depositing.
 
 <div class="callout info">
   <h4>Minimum deposit</h4>
-  <p>The minimum deposit is <strong>$1,000 USDC</strong>. There is no maximum at the protocol level, though individual allocations may be capped during subscription windows. Per-transaction and 24-hour caps apply on the deposit path — see <a href="/lenders/deposit/">Deposit</a>.</p>
+  <p>The minimum deposit is <strong>$1,000 USDC</strong>. There is no maximum at the protocol level, though individual allocations may be capped during subscription windows. Per-transaction and 24-hour caps apply on the deposit path. See <a href="/lenders/deposit/">Deposit</a>.</p>
 </div>
 
 ## Start here
@@ -26,11 +26,11 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
   </a>
   <a class="card" href="/lenders/stake/">
     <h4>Stake PLUSD</h4>
-    <p>Stake PLUSD into sPLUSD to earn yield. Unstake at any time — no lock-up.</p>
+    <p>Stake PLUSD into sPLUSD to earn yield. Unstake at any time, no lock-up.</p>
   </a>
   <a class="card" href="/lenders/withdraw/">
     <h4>Withdraw</h4>
-    <p>Escrow PLUSD into the queue, then claim USDC yourself — user-pulled, no off-chain signer in the critical path.</p>
+    <p>Escrow PLUSD into the queue, then claim USDC yourself. User-pulled, no off-chain signer in the critical path.</p>
   </a>
   <a class="card" href="/lenders/dashboard/">
     <h4>Dashboard</h4>
@@ -40,7 +40,7 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
 
 ## How yield reaches you
 
-Yield arrives as fresh PLUSD minted directly into the sPLUSD vault. Your share count stays constant; what each share is worth grows. There is no claim step, no restake, no compounding action. The full mechanics — senior coupons on trade loans plus realised T-bill yield on USYC — are documented in [How it works · Yield engines](/how-it-works/yield-engines/).
+Yield arrives as fresh PLUSD minted directly into the sPLUSD vault. Your share count stays constant, what each share is worth grows. There is no claim step, no restake, no compounding action. The full mechanics (senior coupons on trade loans plus realised T-bill yield on USYC) are documented in [How it works · Yield engines](/how-it-works/yield-engines/).
 
 ## Risks before you deposit
 
