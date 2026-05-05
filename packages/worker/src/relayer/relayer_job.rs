@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use shared::kyc_repo::KycRepo;
 
 use crate::relayer::config::RelayerJobSettings;
+use crate::relayer::kyt::phase_kyt;
 use crate::relayer::whitelist_sync::{phase_whitelist_sync, WhitelistRegistry};
 
 pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo>) -> Result<()> {
@@ -49,6 +50,8 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
             settings.require_sumsub,
         )
         .await;
+
+        phase_kyt(&kyc_repo).await;
 
         tokio::time::sleep(Duration::from_secs(settings.interval_secs)).await;
     }
