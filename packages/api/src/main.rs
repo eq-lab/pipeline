@@ -11,6 +11,7 @@ mod middleware;
 mod routes;
 
 pub struct AppState {
+    pub pool: sqlx::PgPool,
     pub kyc_repo: KycRepo,
     pub sumsub_client: SumsubClient,
     pub sumsub_settings: SumsubSettings,
@@ -33,12 +34,14 @@ async fn main() -> anyhow::Result<()> {
     let kyc_repo = KycRepo::new(pool.clone());
 
     let state = Arc::new(AppState {
+        pool: pool.clone(),
         kyc_repo,
         sumsub_client,
         sumsub_settings,
     });
 
     let app = Router::new()
+        .nest("/v1/emails", routes::emails::router())
         .nest("/v1/kyc", routes::kyc::router())
         .merge(
             SwaggerUi::new("/swagger")
