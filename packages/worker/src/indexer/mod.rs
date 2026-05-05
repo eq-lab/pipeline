@@ -12,14 +12,14 @@ use tracing::Instrument;
 
 use shared::db::EventRepo;
 
-use config::{TransferJobSettings, WqJobSettings};
+use config::IndexerJobSettings;
 use mappers::ContractLogMapper;
 use parsers::{
     parse_claimable_increased, parse_transfer, parse_withdrawal_claimed, parse_withdrawal_requested,
 };
 use poller::EvmEventPollerBuilder;
 
-pub async fn run_transfer_job(settings: TransferJobSettings, pool: PgPool) {
+pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
     let repo = Arc::new(EventRepo::new(pool));
     let chain_id = settings.chain_id;
 
@@ -44,67 +44,45 @@ pub async fn run_transfer_job(settings: TransferJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
-    let contracts: Vec<alloy::primitives::Address> = settings
+    let transfer_contracts: Vec<alloy::primitives::Address> = settings
         .transfer_contracts
         .iter()
         .filter_map(|a| a.parse().ok())
         .collect();
 
-    let handler_repo = repo.clone();
-    let poller = EvmEventPollerBuilder::new(
-        &settings.eth_rpc_url,
-        settings.polling_block_range,
-        settings.polling_interval_ms,
-    )
-    .add_event_handler(contracts, move |log| {
-        parse_transfer(log, &approved).map(|ev| {
-            Box::new(ContractLogMapper::new(ev, chain_id, handler_repo.clone()))
-                as Box<dyn shared::log_mapper::LogMapper>
-        })
-    })
-    .build();
-
-    index_loop(
-        "transfers",
-        chain_id,
-        settings.polling_block_range,
-        settings.log_confirmations_delay,
-        settings.polling_interval_ms,
-        &repo,
-        &poller,
-    )
-    .await;
-}
-
-pub async fn run_wq_job(settings: WqJobSettings, pool: PgPool) {
-    let repo = Arc::new(EventRepo::new(pool));
-    let chain_id = settings.chain_id;
-
-    let contracts: Vec<alloy::primitives::Address> = settings
+    let wq_contracts: Vec<alloy::primitives::Address> = settings
         .wq_contracts
         .iter()
         .filter_map(|a| a.parse().ok())
         .collect();
 
-    let handler_repo = repo.clone();
+    let transfer_repo = repo.clone();
+    let wq_repo = repo.clone();
+
     let poller = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
         settings.polling_block_range,
         settings.polling_interval_ms,
     )
-    .add_event_handler(contracts, move |log| {
+    .add_event_handler(transfer_contracts, move |log| {
+        parse_transfer(log, &approved).map(|ev| {
+            Box::new(ContractLogMapper::new(ev, chain_id, transfer_repo.clone()))
+                as Box<dyn shared::log_mapper::LogMapper>
+        })
+    })
+    .add_event_handler(wq_contracts, move |log| {
         parse_withdrawal_requested(log)
             .or_else(|| parse_withdrawal_claimed(log))
             .or_else(|| parse_claimable_increased(log))
             .map(|ev| {
-                Box::new(ContractLogMapper::new(ev, chain_id, handler_repo.clone()))
+                Box::new(ContractLogMapper::new(ev, chain_id, wq_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>
             })
     })
     .build();
 
     index_loop(
-        "wq",
+        "indexer",
         chain_id,
         settings.polling_block_range,
         settings.log_confirmations_delay,

@@ -1,9 +1,9 @@
-use pipeline_worker::indexer::config::{env_bool, TransferJobSettings, WqJobSettings};
-use pipeline_worker::indexer::{run_transfer_job, run_wq_job};
+use pipeline_worker::indexer::config::{env_bool, IndexerJobSettings};
+use pipeline_worker::indexer::run_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
-use pipeline_worker::whitelist::config::WhitelistJobSettings;
-use pipeline_worker::whitelist::whitelist_sync::run_whitelist_sync_job;
+use pipeline_worker::relayer::config::RelayerJobSettings;
+use pipeline_worker::relayer::relayer_job::run_relayer_job;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -21,16 +21,10 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    if env_bool("JOB_TRANSFERS_ENABLED") {
-        let settings = TransferJobSettings::from_env()?;
-        tracing::info!(chain_id = settings.chain_id, "transfers job started");
-        tokio::spawn(run_transfer_job(settings, pool.clone()));
-    }
-
-    if env_bool("JOB_WQ_ENABLED") {
-        let settings = WqJobSettings::from_env()?;
-        tracing::info!(chain_id = settings.chain_id, "withdrawal queue job started");
-        tokio::spawn(run_wq_job(settings, pool.clone()));
+    if env_bool("JOB_INDEXER_ENABLED") {
+        let settings = IndexerJobSettings::from_env()?;
+        tracing::info!(chain_id = settings.chain_id, "indexer job started");
+        tokio::spawn(run_indexer_job(settings, pool.clone()));
     }
 
     if env_bool("JOB_KYC_ENABLED") {
@@ -47,14 +41,15 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    if env_bool("JOB_WHITELIST_ENABLED") {
-        let settings = WhitelistJobSettings::from_env()?;
+    if env_bool("JOB_RELAYER_ENABLED") {
+        let settings = RelayerJobSettings::from_env()?;
         let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+        let relayer_pool = pool.clone();
 
-        tracing::info!("whitelist sync job started");
+        tracing::info!("relayer job started");
         tokio::spawn(async move {
-            if let Err(e) = run_whitelist_sync_job(settings, kyc_repo).await {
-                tracing::error!("whitelist sync job exited with error: {e:?}");
+            if let Err(e) = run_relayer_job(settings, kyc_repo, relayer_pool).await {
+                tracing::error!("relayer job exited with error: {e:?}");
             }
         });
     }
