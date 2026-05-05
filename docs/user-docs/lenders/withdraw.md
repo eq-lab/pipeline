@@ -1,46 +1,54 @@
 ---
 title: Withdraw
-order: 8
+order: 9
 section: For Lenders
 ---
 
 # Withdraw
 
-Withdraw by unstaking sPLUSD to PLUSD, submitting the PLUSD to the withdrawal queue, waiting for Relayer to fund the entry from the Capital Wallet, and claiming USDC in an atomic burn-and-pay transaction.
+Withdraw by unstaking sPLUSD to PLUSD, escrowing the PLUSD into the WithdrawalQueue, and claiming USDC yourself. The claim transaction burns your PLUSD and pulls USDC from the Withdrawal Queue Wallet via the queue contract's pre-approved allowance — atomic, in a single call, with no off-chain signer in the critical path.
 
-{% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw → settle — FIFO queue, auto-funded by Relayer from the Capital Wallet's pre-approved allowance; claim burns PLUSD and pays USDC atomically." %}
+{% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw → settle — FIFO escrow, user-pulled claim from the Withdrawal Queue Wallet via pre-approved allowance; claim burns PLUSD and pays USDC atomically." %}
 
 ## How the flow works
 
 <ol class="steps">
-  <li>Unstake sPLUSD by calling <code>sPLUSD.redeem(shares)</code> — PLUSD returns to the lender (skip this step if you already hold PLUSD).</li>
-  <li>Call <code>WithdrawalQueue.requestWithdrawal(amount)</code> — PLUSD moves into escrow, a <code>queue_id</code> is assigned, and the caller must still be whitelisted with a fresh screen.</li>
-  <li>Relayer observes the request and calls <code>fundRequest(queueId)</code> under the FUNDER role in strict FIFO order.</li>
-  <li>USDC is pulled from the Capital Wallet to the queue via a pre-approved allowance cosigned at deployment — Relayer never custodies USDC itself.</li>
-  <li>The queue entry moves from Pending to Funded.</li>
-  <li>The lender calls <code>claim(queueId)</code> — PLUSD burns and USDC transfers to the lender in the same transaction.</li>
+  <li>Unstake sPLUSD by calling <code>sPLUSD.redeem(shares)</code> — PLUSD returns to your wallet (skip if you already hold PLUSD).</li>
+  <li>Call <code>WithdrawalQueue.requestWithdrawal(amount)</code> — your PLUSD moves into the queue's escrow, a <code>queue_id</code> is assigned, and the queue's <code>totalRequested</code> aggregate increases. You must still be whitelisted with a fresh KYB screen.</li>
+  <li>Call <code>WithdrawalQueue.claim(queueId)</code> yourself when you're ready. The queue contract checks <code>claimAmount ≤ totalClaimable</code>, calls <code>USDC.transferFrom(WithdrawalQueueWallet, you, amount)</code> against the queue's standing allowance from the Withdrawal Queue Wallet, burns your escrowed PLUSD, and increments <code>totalClaimed</code>. All in the same transaction.</li>
 </ol>
 
 <div class="callout info">
-<strong>Destination rule.</strong> The USDC payout always goes to the original deposit address on record. A different destination requires a manual path with Trustee and Team co-signature — not the auto flow. The MPC policy on the Capital Wallet enforces this.
+<strong>Self-pulled.</strong> No Relayer signature, no off-chain step, no waiting for an external party to fund your entry. The Withdrawal Queue Wallet is topped up periodically by the Trustee + Team from the Capital Wallet under the 3-of-5 cosigner quorum, and as long as the wallet has USDC and the queue has allowance against it, you can claim immediately.
 </div>
 
-## Caps and queueing
+## Three queue aggregates
 
-Relayer funds up to $5M per `fundRequest` call and up to $10M per rolling 24 hours. Above-envelope requests route to the team and trustee signing queue for manual co-signature. MVP has no partial fills and no lender-initiated cancellation once PLUSD enters escrow.
+The WithdrawalQueue tracks three numbers that bound everything:
+
+| Aggregate | What it is |
+|---|---|
+| `totalRequested` | Cumulative PLUSD escrowed across all withdrawal requests ever submitted |
+| `totalClaimed` | Cumulative USDC paid out (= cumulative PLUSD burned via claim) |
+| `totalClaimable` | Currently outstanding obligations: `totalRequested − totalClaimed` |
+
+The safety invariant on every claim is `require(claimAmount ≤ totalClaimable)`. This is independent of the allowance from the Withdrawal Queue Wallet — even if allowance is set to `MAX_UINT`, the queue physically refuses to pull more than it owes. Allowance is the *permission ceiling*; the aggregate ledger is the *spending discipline*.
 
 ## What can delay your withdrawal
 
-- Capital Wallet USDC buffer below 15% (band 10–20%) triggers a Trustee-instructed USYC redemption against the Hashnote rail before funding — typically about a day, longer for large amounts.
-- Queue depth above your position — strict FIFO means older requests settle first.
-- Your wallet's KYC freshness expired between request and claim — unlikely unless you stop using the app for 90 days mid-queue.
+- **Withdrawal Queue Wallet underfunded.** If the Wallet's USDC balance falls below the queue's outstanding obligations, claims revert until the next Trustee + Team top-up. Top-ups are routine; the Trustee monitors the wallet's balance against the queue's `totalClaimable` and triggers a top-up before it bites.
+- **Capital Wallet itself is short** (e.g., 15% USDC buffer depleted). The Trustee instructs a USYC sale against the Hashnote redemption rail before topping up the Withdrawal Queue Wallet — typically about a day, longer for large amounts.
+- **Your KYB screen expired** between request and claim. Unlikely unless you stop using the app for 90 days mid-queue.
+- **GUARDIAN paused** the WithdrawalQueue contract. Check the status page before retrying.
 
-## Shutdown-mode exit
+## During a default-recovery period
 
-If the protocol enters shutdown, the auto flow halts and withdrawals switch to the `claimAtShutdown` path at a fixed recovery rate. See [Defaults and Losses](/defaults-and-losses/) for the full mechanics, including how the recovery rate is set and ratcheted.
+If the protocol has set an exchange coefficient on the WithdrawalQueue (see [Default management](/defaults-and-losses/)), every claim pays out USDC = `face_value × coefficient` instead of `face_value × 1.0`. The coefficient applies symmetrically to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. The coefficient ratchets up only — never down — as recoveries land. Once `coefficient = 1.0`, normal economics resume.
+
+There is no separate "shutdown mode" — the protocol continues operating with the haircut applied at the queue.
 
 ## Related pages
 
 - [Lender Dashboard](/lenders/dashboard/)
-- [Risks](/risks/)
-- [Defaults and Losses](/defaults-and-losses/)
+- [Potential risks](/risks/)
+- [Default management](/defaults-and-losses/)

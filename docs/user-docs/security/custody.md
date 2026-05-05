@@ -14,7 +14,7 @@ Lender USDC and the USYC reserve sit in an **institutional MPC custody** — a 3
 
 ## Institutional substrate
 
-Pipeline operates the Capital Wallet and Treasury Wallet using **BitGo's MPC TSS SDK**. BitGo is the software substrate, the same way a database engine is software in a banking system: Pipeline runs it, configures the cosigner quorum, sets the per-transaction-class signing policy, and generates the cosigner key shares on its own infrastructure. **BitGo is not a signer, not a counterparty, and not a custodian** in the legal sense — there is no third-party institution holding the keys whose own solvency, jurisdiction, or compliance posture is a separate failure mode.
+Pipeline operates the Capital Wallet, the Withdrawal Queue Wallet, and the Treasury Wallet using **BitGo's MPC TSS SDK**. BitGo is the software substrate, the same way a database engine is software in a banking system: Pipeline runs it, configures the cosigner quorum, sets the per-transaction-class signing policy, and generates the cosigner key shares on its own infrastructure. **BitGo is not a signer, not a counterparty, and not a custodian** in the legal sense — there is no third-party institution holding the keys whose own solvency, jurisdiction, or compliance posture is a separate failure mode.
 
 The legal entity that holds custody on paper is **Pipeline Trust Company** — an independent trust entity with its own board. Operationally, custody is enforced by the cosigner quorum, not by any single party. The Trust Company is one of five cosigners; it cannot move funds alone.
 
@@ -39,24 +39,38 @@ The Capital Wallet is configured with **five cosigner shares** under a **3-of-5 
 
 Every signing combination that satisfies the threshold also satisfies the Team-and-Trustee requirement: a 3-of-5 set must include at least one Team share AND the Trustee share, plus one more from any party. **No two parties acting alone can move funds.** A coalition of Counterparties cannot move funds. A Team-only quorum cannot move funds. A Trustee-and-Counterparties quorum cannot move funds. The minimum legitimate quorum is Team + Trustee + one more.
 
-The Relayer is **not a cosigner** on the Capital Wallet. The Relayer's role lives entirely on the Protocol Layer — it is the first signer on yield attestations through `YieldMinter` and the funder of withdrawal-queue entries via a pre-approved allowance, but it cannot move USDC out of the custody and cannot mint PLUSD alone.
+The Relayer is **not a cosigner** on any wallet. The Relayer's role lives entirely on the Protocol Layer — first signer on yield attestations through `YieldMinter`, maintainer of the whitelist — but it cannot move USDC out of any Pipeline custody address.
 
 ### Per-transaction-class policy
 
 Different transaction classes carry different sub-policies inside the custody, all of which still satisfy the 3-of-5 + Team + Trustee rule:
 
-- **Routine LP withdrawal funding** runs against a **pre-approved allowance** that the Relayer can call against without triggering a fresh signing event. The allowance itself was cosigned at deployment and bounds destination (must match the original deposit address), per-LP cumulative cap, and rolling 24-hour aggregate.
-- **Loan disbursements** require a fresh cosigner quorum on the specific outflow.
-- **USYC sales** (yield realisation, or large-withdrawal funding when the USDC buffer drops) are Trustee-instructed against the Hashnote redemption rail, then settled into USDC inside the wallet.
+- **Withdrawal Queue Wallet top-ups** (Capital Wallet → Withdrawal Queue Wallet) — bulk USDC transfers that fund queue settlement; signed by Trustee + Team + one more under the standard 3-of-5 quorum, on the Trustee's monitoring cadence.
+- **Loan disbursements** (Capital Wallet → on-ramp provider) — fresh cosigner quorum on the specific outflow.
+- **USYC sales** (yield realisation, or wallet rebalancing when the USDC buffer drops) — Trustee-instructed against the Hashnote redemption rail, then settled into USDC inside the wallet.
 - **Yield attestations** are an on-chain matter, not a custody matter — the Relayer signs first with `relayerYieldAttestor`; the Trustee co-signs second with `trusteeYieldAttestor` (an EIP-1271 signer contract gated by the Trustee's signing facility); `YieldMinter` verifies both signatures on-chain before any PLUSD mints. Custody is not in the loop.
+
+---
+
+## Capital Wallet, Withdrawal Queue Wallet, Treasury Wallet
+
+| Wallet | What it holds | Who pulls from it |
+|---|---|---|
+| **Capital Wallet** | USDC lender reserves, USDC on active loans, USYC (Hashnote tokenised T-bill) | Trustee + Team for loan disbursement, USYC sales, top-ups to the Withdrawal Queue Wallet |
+| **Withdrawal Queue Wallet** | USDC earmarked for lender withdrawals — sized to cover near-term `totalClaimable` plus headroom | The on-chain `WithdrawalQueue` contract via `transferFrom` against a standing allowance the Wallet has granted to it; lenders trigger this themselves when they call `claim` |
+| **Treasury Wallet** | Accumulated protocol fees (management, performance, OET) | Pipeline Team for fee operations |
+
+The **Withdrawal Queue Wallet is the architecturally important one for safety** — by isolating queue settlement funds in their own MPC wallet, a WithdrawalQueue contract bug or exploit can drain only the topped-up amount, not the full Capital Wallet. The contract holds an allowance against this Wallet, never against the Capital Wallet directly.
+
+All three wallets run on the same custody substrate under separate cosigner-policy configurations, so a compromise at one does not propagate to the others.
 
 ---
 
 ## Emergency disconnect
 
-The custody substrate carries a **hardware circuit breaker** that decouples the Capital Wallet from the protocol contracts on alarm. When triggered, the breaker:
+The custody substrate carries a **hardware circuit breaker** that decouples the wallets from the protocol contracts on alarm. When triggered, the breaker:
 
-- Revokes the standing pre-approved allowance the Relayer calls against to fund withdrawals.
+- Revokes the standing pre-approved allowance the WithdrawalQueue contract has against the Withdrawal Queue Wallet.
 - Freezes any other transfer authorisations issued to protocol addresses.
 - Requires a fresh cosigner quorum to re-establish any allowance once the incident is resolved.
 
@@ -64,19 +78,11 @@ The breaker is a **custody-side action**. It does not require an AccessManager s
 
 ---
 
-## Capital Wallet and Treasury Wallet
-
-The Capital Wallet holds **USDC lender reserves, USDC on active loans, and USYC** (Hashnote's tokenised T-bill). Target USDC buffer 15% (band 10–20%); the rest is held as USYC. USYC NAV drifts up daily as T-bills accrue, but that gain is **unrealised** until the Trustee instructs the wallet to sell USYC for USDC. Only realised proceeds can feed a PLUSD yield mint.
-
-The Treasury Wallet holds accumulated protocol fees and the 30% Treasury share of realised T-bill yield. It runs on the same custody substrate under a separate cosigner-policy configuration, so a compromise at one wallet does not propagate to the other.
-
----
-
 ## Reserve composition
 
 {% include chart.html src="c1-reserve-composition.svg" caption="Illustrative reserve composition at the 15% USDC-buffer target. Not live data." %}
 
-The live composition — USDC held, USYC held, active-loan USDC, buffer utilisation — is on the Protocol Dashboard. *Dashboard URL — to be published at launch.*
+The live composition — USDC held, USYC held, active-loan USDC, Withdrawal Queue Wallet balance, buffer utilisation — is on the Protocol Dashboard. *Dashboard URL — to be published at launch.*
 
 ---
 
@@ -84,7 +90,7 @@ The live composition — USDC held, USYC held, active-loan USDC, buffer utilisat
 
 PLUSD tracks three on-chain counters: `cumulativeLPDeposits`, `cumulativeYieldMinted`, `cumulativeLPBurns`. Every mint asserts `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns`. Over-minting beyond this envelope reverts at the contract level.
 
-This is internal-consistency only. It proves the contract has not minted more PLUSD than it accounted for. It does **not** independently verify that the wallet holds the corresponding USDC. That assurance comes from the wallet's on-chain balances (Etherscan-readable for USDC; Hashnote-attested for USYC) and off-chain reconciliation by the Watchdog service.
+This is internal-consistency only. It proves the contract has not minted more PLUSD than it accounted for. It does **not** independently verify that the wallets hold the corresponding USDC. That assurance comes from the wallets' on-chain balances (Etherscan-readable for USDC; Hashnote-attested for USYC) and off-chain reconciliation by the Watchdog service.
 
 Phase 2 brings on-chain Proof of Reserve via Chainlink PoR — moving the balance check inside the same invariant.
 
@@ -92,7 +98,7 @@ Phase 2 brings on-chain Proof of Reserve via Chainlink PoR — moving the balanc
 
 ## What this means for a lender
 
-Your USDC is held in an institutional MPC custody under a 3-of-5 cosigner quorum that requires the Trustee and the Pipeline Team on every transfer. The contracts guarantee internal consistency and enforce rate limits. The on-chain wallet balances are visible directly on Etherscan. A custody-side circuit breaker can disconnect the wallets from the protocol contracts on alarm without waiting for an on-chain governance action. Three independent checks, not one.
+Your USDC is held in an institutional MPC custody under a 3-of-5 cosigner quorum that requires the Trustee and the Pipeline Team on every transfer. The on-chain wallet balances are visible directly on Etherscan. A custody-side circuit breaker can disconnect the wallets from the protocol contracts on alarm without waiting for an on-chain governance action. Withdrawal settlement funds live in their own isolated wallet, so the worst case for a queue-contract exploit is bounded by current settlement headroom, not by total reserves.
 
 The trade-off: Pipeline Trust Company is a Pipeline-side legal entity, so its independence is a governance commitment rather than an external check. Read [Potential risks](/risks/) for that residual.
 

@@ -1,6 +1,6 @@
 ---
 title: Supply safeguards
-order: 15
+order: 17
 section: Security & Transparency
 ---
 
@@ -14,7 +14,7 @@ This page covers the structural safeguards that prevent inflation of PLUSD suppl
 
 ## DepositManager vs YieldMinter — who checks what
 
-DepositManager gates **lender-initiated** mints. The lender is the trust boundary; the contract assumes the caller is potentially malicious and rate-limits accordingly. YieldMinter gates **operator-initiated** mints. The operator (Relayer) is the trust boundary, but the constraint is structural — every mint requires a second, independent EIP-1271 signature from the Trustee's signing facility, and the destination is hard-constrained to the sPLUSD vault or the Treasury Wallet. Neither contract enforces the other's checks; the separation is what makes the threat models legible.
+DepositManager gates **lender-initiated** mints. The lender is the trust boundary; the contract assumes the caller is potentially malicious and rate-limits accordingly. YieldMinter gates **operator-initiated** mints. The function is permissionless to call, but every mint requires both a Relayer ECDSA signature and a Trustee EIP-1271 signature verified on-chain, and the destination is hard-constrained to the sPLUSD vault or the Treasury Wallet. Neither contract enforces the other's checks; the separation is what makes the threat models legible.
 
 | Check | DepositManager | YieldMinter |
 |---|---|---|
@@ -29,9 +29,9 @@ DepositManager gates **lender-initiated** mints. The lender is the trust boundar
 | Two-party EIP-712 attestation (Relayer + Trustee) | No — the on-chain USDC pull IS the attestation | Yes — Relayer ECDSA + Trustee EIP-1271, both verified on-chain |
 | Replay guard (`usedRepaymentRefs`) | Not applicable | Yes — each attestation ref consumed exactly once |
 | Destination restriction | Recipient is the depositor (whitelist-gated) | Hard-coded to sPLUSD vault or Treasury Wallet |
-| Holds role on PLUSD | `DEPOSITOR` (DepositManager proxy address) | `YIELD_MINTER` (YieldMinter proxy address) |
+| Holds role on PLUSD | `MINTER_ROLE` (DepositManager proxy address) | `MINTER_ROLE` (YieldMinter proxy address) |
 
-**The shared gate is PLUSD itself.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling — the hard ceiling on circulating PLUSD relative to backing — is enforced on every mint regardless of which path called it. Per-account and per-window caps are deliberately absent from YieldMinter because the recipients are protocol system addresses (not LPs) and the volume is bounded by real cash inflow — repayments wired into the Trustee bank then on-ramped to USDC, plus realised USYC redemptions — not by lender behaviour.
+**The shared gate is PLUSD itself.** Both `mintForDeposit` and `mintForYield` increment cumulative counters atomically on PLUSD and assert `totalSupply ≤ cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns` in the same transaction. The `maxTotalSupply` ceiling is enforced on every mint regardless of which path called it. Per-account and per-window caps are deliberately absent from YieldMinter because the recipients are protocol system addresses (not LPs) and the volume is bounded by real cash inflow — repayments wired into the Trustee bank then on-ramped to USDC, plus realised USYC redemptions — not by lender behaviour.
 
 ---
 
@@ -45,9 +45,27 @@ This closes the attack class where a compromised signing key mints against a fak
 
 ---
 
+## Withdrawals are user-pulled and self-limited
+
+`WithdrawalQueue.claim(queueId)` is called by the lender (or, in the permissionless variant, by anyone). The queue contract pulls USDC via `transferFrom` from the **Withdrawal Queue Wallet** — a separate institutional MPC wallet whose USDC the Trustee + Team top up periodically from the Capital Wallet. The queue contract never has standing authority against the Capital Wallet itself.
+
+The queue tracks three aggregates and enforces a per-claim invariant:
+
+| Aggregate | Definition |
+|---|---|
+| `totalRequested` | Cumulative PLUSD escrowed across all withdrawal requests |
+| `totalClaimed` | Cumulative PLUSD burned via successful claims |
+| `totalClaimable` | `totalRequested − totalClaimed` (currently outstanding obligations) |
+
+On every claim: `require(claimAmount ≤ totalClaimable)`. Even if the Withdrawal Queue Wallet has granted the queue contract `MAX_UINT` allowance, the queue physically refuses to pull more than its outstanding obligations. **Allowance from the Wallet is the *permission ceiling*; the aggregate ledger is the *spending discipline*.**
+
+**Blast-radius bound.** A WithdrawalQueue contract bug or exploit can only drain the Withdrawal Queue Wallet — never the Capital Wallet. The settlement-isolation property is the safety guarantee here, not the allowance number.
+
+---
+
 ## Yield mints need two independent signatures
 
-`YieldMinter.yieldMint(attestation, relayerSig, trusteeSig)` verifies both signatures on-chain before calling `PLUSD.mintForYield`. The Relayer signs with its `relayerYieldAttestor` key. The Trustee's EIP-1271 signer contract (`trusteeYieldAttestor`) independently verifies the underlying USDC inflow — a senior-coupon on-ramp from the Trustee bank, or a realised USYC sale's USDC proceeds — and signs second. Both signatures must recover to the configured addresses or the call reverts. The YieldMinter contract is the only address that holds the `YIELD_MINTER` role on PLUSD, so a direct call to `PLUSD.mintForYield` from any other address reverts unconditionally.
+`YieldMinter.yieldMint(attestation, relayerSig, trusteeSig)` verifies both signatures on-chain before calling `PLUSD.mintForYield`. The Relayer signs with its `relayerYieldAttestor` key. The Trustee's EIP-1271 signer contract (`trusteeYieldAttestor`) independently verifies the underlying USDC inflow — a senior-coupon on-ramp from the Trustee bank, or a realised USYC sale's USDC proceeds — and signs second. Both signatures must recover to the configured addresses or the call reverts. The YieldMinter contract is the only address that holds `MINTER_ROLE` on PLUSD for yield-leg mints, so a direct call to `PLUSD.mintForYield` from any other address reverts unconditionally.
 
 Compromising the Relayer alone mints zero. Compromising the Trustee's yield-attestor alone mints zero. Joint compromise of both plus successful replay requires collusion PLUS bypassing the on-chain `usedRepaymentRefs` guard that rejects any attestation ID already consumed.
 
@@ -78,15 +96,15 @@ Each cap is enforced on-chain inside the relevant mint path. A deposit that woul
 
 `maxTotalSupply` is the only one of the four that applies to both DepositManager and YieldMinter (it is checked on PLUSD inside `mintForDeposit` and `mintForYield` alike). The other three are deposit-side guards on lender behaviour.
 
-Tightening any cap is instant (ADMIN). Loosening requires a 48-hour ADMIN proposal through AccessManager, cancelable by GUARDIAN during the window. The RISK_COUNCIL path for risk-parameter changes carries a 24-hour delay. A 14-day meta-timelock on the delay setting itself blocks "collapse the delay then exploit" sequences.
+Tightening any cap is instant (GUARDIAN). Loosening requires a 3-day ADMIN proposal through AccessManager, cancelable by GUARDIAN during the window. A 14-day meta-timelock on the delay setting itself blocks "collapse the delay then exploit" sequences.
 
 ---
 
 ## A compromised Trustee cannot inflate share price
 
-The Trustee holds the `TRUSTEE` role on LoanRegistry and can write any loan NFT state — mint ghost loans, write false repayment splits, close loans at maturity. None of these move USDC or mint PLUSD. LoanRegistry is **informational only**. sPLUSD share price moves exclusively on actual `yieldMint` calls landing in the vault, not on any registry write.
+The Trustee holds the LoanRegistry write role and can write any loan NFT state — mint ghost loans, write false repayment splits, close loans at maturity. None of these move USDC or mint PLUSD. **LoanRegistry is informational only.** sPLUSD share price moves exclusively on actual `yieldMint` calls landing in the vault, not on any registry write.
 
-The Trustee is ALSO a Capital Wallet cosigner, but a single-key Trustee compromise cannot move USDC alone — Relayer cosign is required. GUARDIAN can revoke the `TRUSTEE` role instantly via `AccessManager.revokeRole`, stopping further registry writes while the two-of-two cosign requirement continues to protect custody.
+The Trustee is ALSO one of five Capital Wallet cosigners — but a single-key Trustee compromise cannot move USDC alone. The cosigner policy requires Team + Trustee + one more on every transfer (3-of-5 with mandatory Team and Trustee). GUARDIAN can revoke the LoanRegistry write role instantly via `AccessManager.revokeRole`, stopping further registry writes while the cosigner policy continues to protect custody.
 
 This separation is deliberate. Loan bookkeeping and share-price computation are decoupled so that no single off-chain actor can lift the NAV by editing ledger state. Price moves only when real USDC lands and a two-party yield mint executes against it.
 
@@ -94,6 +112,6 @@ This separation is deliberate. Loan bookkeeping and share-price computation are 
 
 ## Related pages
 
-- [Custody](/security/custody/) — self-custody MPC wallet model and cosigner policy
+- [Custody](/security/custody/) — institutional MPC wallet model and cosigner policy
 - [Emergency response](/security/emergency-response/) — GUARDIAN powers, pause, role revocation
-- [Risks](/risks/) — full risk register including the phase 2 PoR gap
+- [Potential risks](/risks/) — full risk register including the phase 2 PoR gap

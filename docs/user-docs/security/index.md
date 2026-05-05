@@ -10,13 +10,13 @@ Pipeline is built around four security decisions that compound: **capital lives 
 
 ## The four decisions
 
-**1. Capital is custodied off-chain.** Lender USDC and the USYC reserve sit in an institutional MPC custody operated under BitGo's TSS policy with a 3-of-5 cosigner quorum (Trustee + 2 Team + 2 reputable counterparties). No protocol contract can spend from the custody. A bug or exploit in on-chain code cannot drain investor capital — at worst it can grief the receipt-token layer, which an emergency disconnect at the custody side then quarantines.
+**1. Capital is custodied off-chain.** Lender USDC and the USYC reserve sit in an institutional MPC custody operated under BitGo's TSS policy with a 3-of-5 cosigner quorum (Trustee + 2 Team + 2 reputable counterparties). No protocol contract can spend from the custody. Withdrawal settlement uses an isolated **Withdrawal Queue Wallet** topped up periodically from the Capital Wallet, so a queue-contract exploit can only drain settlement headroom — not the full reserve.
 
 **2. The deposit path has no off-chain attestor.** `DepositManager.deposit(amount)` pulls USDC and mints PLUSD 1:1 in the same transaction. There is no signing step, no asynchronous queue, no off-chain "approval" of a deposit. The on-chain USDC movement IS the attestation. This closes the attack class where a compromised signing key mints against a fake or spoofed deposit — the failure mode that took down Resolv in March 2026.
 
 **3. Yield mints are gated by two independent signatures.** `YieldMinter.yieldMint(attestation, relayerSig, trusteeSig)` verifies a Relayer ECDSA signature AND a Trustee EIP-1271 signature on-chain before any PLUSD mints. Compromising the Relayer alone mints zero. Compromising the Trustee's yield-attestor alone mints zero. The destination is hard-constrained to the sPLUSD vault or the Treasury Wallet, and a per-attestation `ref` guard rejects replays.
 
-**4. Defensive action is fast; constructive action is slow.** GUARDIAN (2/5 Safe) can pause any contract, cancel pending ADMIN actions, and revoke named operational-role holders — instantly, with no timelock. ADMIN (3/5 Safe) can grant roles, unpause, and upgrade — only after a 48-hour delay that GUARDIAN can cancel. RISK_COUNCIL (3/5 Safe) handles credit and wind-down — under a 24-hour delay. A compromised GUARDIAN can grief but cannot escalate; a compromised ADMIN cannot move quickly enough to outrun GUARDIAN's veto.
+**4. Defensive action is fast; constructive action is slow.** GUARDIAN (2/5 MPC) can pause any contract, cancel pending ADMIN actions, and revoke named operational-role holders — instantly, with no timelock. ADMIN (3/5 MPC) can grant roles, unpause, and upgrade — only after a 3-day delay (7 days for upgrades) that GUARDIAN can cancel. RISK_COUNCIL (3/5 MPC) handles credit and recovery — under a 3-day delay. A compromised GUARDIAN can grief but cannot escalate; a compromised ADMIN cannot move quickly enough to outrun GUARDIAN's veto.
 
 ---
 
@@ -25,11 +25,11 @@ Pipeline is built around four security decisions that compound: **capital lives 
 <div class="card-grid">
   <a class="card" href="/security/custody/">
     <h4>Custody</h4>
-    <p>Institutional MPC custody, 3-of-5 cosigner quorum, emergency disconnect, why BitGo cannot freeze funds.</p>
+    <p>Institutional MPC custody, 3-of-5 cosigner quorum, separate Withdrawal Queue Wallet, emergency disconnect, why BitGo cannot freeze funds.</p>
   </a>
   <a class="card" href="/security/governance/">
     <h4>Governance</h4>
-    <p>Three Safes, distinct signer sets, what each can and cannot do, the meta-timelock on the delay parameter.</p>
+    <p>Three MPCs, distinct signer sets, what each can and cannot do, the 14-day meta-timelock on the delay parameter.</p>
   </a>
   <a class="card" href="/security/supply-safeguards/">
     <h4>Supply safeguards</h4>
@@ -52,8 +52,8 @@ Pipeline is built around four security decisions that compound: **capital lives 
 Pipeline reduces trust assumptions but does not eliminate them. The accepted assumptions — Trustee independence, MPC cosigner integrity, governance signer-set distinctness, Watchdog correctness — are enumerated and justified on the child pages:
 
 - Self-custody policy and cosigner integrity → [Custody](/security/custody/).
-- Three-Safe governance, signer-set distinctness, and the meta-timelock → [Governance](/security/governance/).
-- Supply-side assumptions (atomic deposits, EIP-712 yield co-signing, Watchdog correctness) → [Supply safeguards](/security/supply-safeguards/).
+- Three-MPC governance, signer-set distinctness, and the meta-timelock → [Governance](/security/governance/).
+- Supply-side assumptions (atomic deposits, two-party yield co-signing, Watchdog correctness) → [Supply safeguards](/security/supply-safeguards/).
 - Pause-and-revoke playbooks for Relayer, Trustee, and yield-attestor compromise → [Emergency response](/security/emergency-response/).
 
 For the full risk categorisation — credit, liquidity, custody, smart-contract, governance, regulatory, operational — see [Potential risks](/risks/).
