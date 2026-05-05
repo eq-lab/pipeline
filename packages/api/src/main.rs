@@ -5,6 +5,7 @@ use pipeline_api::AppState;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -51,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/emails", pipeline_api::routes::emails::router())
         .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     let port = std::env::var("API_PORT").unwrap_or_else(|_| "8080".to_owned());
