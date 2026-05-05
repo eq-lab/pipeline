@@ -1,20 +1,14 @@
 use std::sync::Arc;
 
 use axum::Router;
+use pipeline_api::AppState;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
-
-mod middleware;
-mod routes;
-
-pub struct AppState {
-    pub kyc_repo: KycRepo,
-    pub sumsub_client: SumsubClient,
-    pub sumsub_settings: SumsubSettings,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,21 +22,41 @@ async fn main() -> anyhow::Result<()> {
     let pool = sqlx::PgPool::connect(&postgres_url).await?;
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
-    let sumsub_settings = SumsubSettings::from_env()?;
-    let sumsub_client = SumsubClient::new(sumsub_settings.clone());
+    let sumsub = match SumsubSettings::from_env() {
+        Ok(settings) => {
+            let client = SumsubClient::new(settings.clone());
+            Some((client, settings))
+        }
+        Err(e) => {
+            tracing::warn!("Sumsub not configured, KYC endpoints will be unavailable: {e}");
+            None
+        }
+    };
     let kyc_repo = KycRepo::new(pool.clone());
 
+    let (sumsub_client, sumsub_settings) = match sumsub {
+        Some((client, settings)) => (Some(client), Some(settings)),
+        None => (None, None),
+    };
+
     let state = Arc::new(AppState {
+        pool: pool.clone(),
         kyc_repo,
         sumsub_client,
         sumsub_settings,
     });
 
+    let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
+    api_docs.merge(pipeline_api::routes::emails::EmailsDoc::openapi());
+
     let app = Router::new()
-        .nest("/v1/kyc", routes::kyc::router())
-        .merge(
-            SwaggerUi::new("/swagger")
-                .url("/api-docs/openapi.json", routes::kyc::ApiDoc::openapi()),
+        .nest("/v1/emails", pipeline_api::routes::emails::router())
+        .nest("/v1/kyc", pipeline_api::routes::kyc::router())
+        .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
         .with_state(state);
 

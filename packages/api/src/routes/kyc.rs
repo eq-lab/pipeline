@@ -108,11 +108,15 @@ async fn create_applicant(
         .into_response();
     }
 
-    match state
-        .sumsub_client
-        .create_applicant(&req.wallet_address)
-        .await
-    {
+    let Some(ref sumsub_client) = state.sumsub_client else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "KYC service not configured"})),
+        )
+            .into_response();
+    };
+
+    match sumsub_client.create_applicant(&req.wallet_address).await {
         Ok(resp) => {
             if let Err(e) = state
                 .kyc_repo
@@ -151,14 +155,28 @@ async fn create_token(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateTokenRequest>,
 ) -> impl IntoResponse {
-    match state
-        .sumsub_client
+    let Some(ref sumsub_client) = state.sumsub_client else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "KYC service not configured"})),
+        )
+            .into_response();
+    };
+    let Some(ref sumsub_settings) = state.sumsub_settings else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "KYC service not configured"})),
+        )
+            .into_response();
+    };
+
+    match sumsub_client
         .generate_access_token(&req.wallet_address)
         .await
     {
         Ok(resp) => {
             let expires_at = chrono::Utc::now()
-                + chrono::Duration::seconds(state.sumsub_settings.token_ttl_secs as i64);
+                + chrono::Duration::seconds(sumsub_settings.token_ttl_secs as i64);
 
             match resp.token {
                 Some(token) => Json(CreateTokenResponse {
@@ -238,9 +256,15 @@ async fn webhook_callback(
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    if let Err(rejection) =
-        validate_webhook(&headers, &body, &state.sumsub_settings.webhook_secret_key)
-    {
+    let Some(ref sumsub_settings) = state.sumsub_settings else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "KYC service not configured"})),
+        )
+            .into_response();
+    };
+
+    if let Err(rejection) = validate_webhook(&headers, &body, &sumsub_settings.webhook_secret_key) {
         return rejection.into_response();
     }
 
@@ -252,7 +276,7 @@ async fn webhook_callback(
         }
     };
 
-    if payload.sandbox_mode != Some(state.sumsub_settings.sandbox) {
+    if payload.sandbox_mode != Some(sumsub_settings.sandbox) {
         tracing::warn!("webhook sandbox_mode mismatch");
         return (StatusCode::BAD_REQUEST, "sandbox mode mismatch").into_response();
     }

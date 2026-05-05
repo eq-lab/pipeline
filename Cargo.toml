@@ -23,6 +23,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy            = "0.15"
 axum              = "0.8"
 tower             = "0.5"
-tower-http        = { version = "0.6", features = ["cors"] }
+tower-http        = { version = "0.6", features = ["cors", "trace"] }
 utoipa            = { version = "5" }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
