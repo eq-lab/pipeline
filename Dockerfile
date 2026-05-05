@@ -48,6 +48,7 @@ RUN apt-get update \
 
 COPY --from=build /sln/target/release/pipeline-worker ./worker
 
+ENV RUST_LOG=info
 ENTRYPOINT ["./worker"]
 
 # API image
@@ -60,6 +61,7 @@ RUN apt-get update \
 
 COPY --from=build /sln/target/release/pipeline-api ./api
 
+ENV RUST_LOG=info
 EXPOSE 8080
 
 ENTRYPOINT ["./api"]
