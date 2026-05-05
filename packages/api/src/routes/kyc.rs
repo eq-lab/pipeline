@@ -77,20 +77,15 @@ async fn create_applicant(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateApplicantRequest>,
 ) -> impl IntoResponse {
-    let profile = state.kyc_repo.get_lp_profile(&req.wallet_address).await;
-    let profile = match profile {
+    let profile = match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
         Ok(Some(p)) => p,
-        Ok(None) => match state.kyc_repo.create_lp_profile(&req.wallet_address).await {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("failed to create lp_profile: {e:?}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "internal error"})),
-                )
-                    .into_response();
-            }
-        },
+        Ok(None) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "wallet not registered — call POST /v1/register first"})),
+            )
+                .into_response();
+        }
         Err(e) => {
             tracing::error!("failed to get lp_profile: {e:?}");
             return (
@@ -169,6 +164,25 @@ async fn create_token(
         )
             .into_response();
     };
+
+    match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "wallet not registered — call POST /v1/register first"})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("failed to get lp_profile: {e:?}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response();
+        }
+    }
 
     match sumsub_client
         .generate_access_token(&req.wallet_address)
