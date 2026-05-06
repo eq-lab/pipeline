@@ -9,7 +9,6 @@ features.json
 /target/
 packages/api/target/
 packages/worker/target/
-Cargo.lock
 
 # Node
 node_modules/
