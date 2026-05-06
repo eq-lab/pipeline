@@ -5,6 +5,7 @@ use pipeline_api::AppState;
 use shared::kyc_repo::KycRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 use utoipa::OpenApi;
@@ -55,6 +56,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .nest("/v1/register", pipeline_api::routes::register::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
+        .layer(CorsLayer::very_permissive())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
