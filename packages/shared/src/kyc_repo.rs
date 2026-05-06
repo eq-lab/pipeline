@@ -160,55 +160,102 @@ impl KycRepo {
 
     pub async fn fetch_profiles_to_allow(
         &self,
-        require_sumsub: bool,
+        sumsub_enabled: bool,
+        crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = if require_sumsub {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT wallet_address FROM lp_profiles
-                 WHERE kyc_status = 2
-                   AND kyc_review_status = 2
-                   AND aml_status = 2
-                   AND (kyt_status IS NULL OR kyt_status != 2)
-                   AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
-            )
-            .fetch_all(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT wallet_address FROM lp_profiles
-                 WHERE (kyt_status IS NULL OR kyt_status != 2)
-                   AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
-            )
-            .fetch_all(&self.pool)
-            .await?
+        let rows = match (sumsub_enabled, crystal_enabled) {
+            (true, true) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE kyc_status = 2
+                       AND kyc_review_status = 2
+                       AND aml_status = 2
+                       AND (kyt_status IS NULL OR kyt_status != 2)
+                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (true, false) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE kyc_status = 2
+                       AND kyc_review_status = 2
+                       AND aml_status = 2
+                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (false, true) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE (kyt_status IS NULL OR kyt_status != 2)
+                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (false, false) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE is_whitelisted IS NULL OR whitelist_reset_at <= NOW()",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
         };
         Ok(rows)
     }
 
     pub async fn fetch_profiles_to_disallow(
         &self,
-        require_sumsub: bool,
+        sumsub_enabled: bool,
+        crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = if require_sumsub {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT wallet_address FROM lp_profiles
-                 WHERE is_whitelisted = true
-                   AND (whitelist_reset_at <= NOW()
-                        OR kyt_status = 2
-                        OR kyc_status != 2
-                        OR aml_status = 3)",
-            )
-            .fetch_all(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT wallet_address FROM lp_profiles
-                 WHERE is_whitelisted = true
-                   AND (whitelist_reset_at <= NOW()
-                        OR kyt_status = 2)",
-            )
-            .fetch_all(&self.pool)
-            .await?
+        let rows = match (sumsub_enabled, crystal_enabled) {
+            (true, true) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE is_whitelisted = true
+                       AND (whitelist_reset_at <= NOW()
+                            OR kyt_status = 2
+                            OR kyc_status != 2
+                            OR aml_status = 3)",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (true, false) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE is_whitelisted = true
+                       AND (whitelist_reset_at <= NOW()
+                            OR kyc_status != 2
+                            OR aml_status = 3)",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (false, true) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE is_whitelisted = true
+                       AND (whitelist_reset_at <= NOW()
+                            OR kyt_status = 2)",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            (false, false) => {
+                sqlx::query_as::<_, WhitelistCandidate>(
+                    "SELECT wallet_address FROM lp_profiles
+                     WHERE is_whitelisted = true
+                       AND whitelist_reset_at <= NOW()",
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
         };
         Ok(rows)
     }
@@ -277,6 +324,75 @@ impl KycRepo {
             "UPDATE lp_profiles SET kyt_status = 2, updated_at = NOW() WHERE wallet_address = $1",
         )
         .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_unscreened_profiles(
+        &self,
+        batch_size: i64,
+    ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(
+            "SELECT wallet_address FROM lp_profiles
+             WHERE crystal_screened_at IS NULL
+             ORDER BY created_at
+             LIMIT $1",
+        )
+        .bind(batch_size)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn set_crystal_address_risk(
+        &self,
+        wallet_address: &str,
+        risk: f32,
+        signals: &serde_json::Value,
+        screened_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles
+             SET crystal_address_risk = $2,
+                 crystal_address_risk_signals = $3,
+                 crystal_screened_at = $4,
+                 updated_at = NOW()
+             WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .bind(risk)
+        .bind(signals)
+        .bind(screened_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_transfer_crystal_result(
+        &self,
+        log_id: i64,
+        tx_risk: Option<f32>,
+        tx_signals: Option<&serde_json::Value>,
+        sender_risk: Option<f32>,
+        sender_signals: Option<&serde_json::Value>,
+        screened_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE contract_logs
+             SET crystal_tx_risk = $2,
+                 crystal_tx_signals = $3,
+                 crystal_sender_risk = $4,
+                 crystal_sender_signals = $5,
+                 crystal_screened_at = $6
+             WHERE id = $1",
+        )
+        .bind(log_id)
+        .bind(tx_risk)
+        .bind(tx_signals)
+        .bind(sender_risk)
+        .bind(sender_signals)
+        .bind(screened_at)
         .execute(&self.pool)
         .await?;
         Ok(())
