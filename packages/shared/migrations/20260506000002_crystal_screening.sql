@@ -14,3 +14,9 @@ ALTER TABLE contract_logs ADD COLUMN crystal_screened_at TIMESTAMPTZ;
 CREATE INDEX idx_lp_profiles_crystal_unscreened
     ON lp_profiles (wallet_address)
     WHERE crystal_screened_at IS NULL;
+
+-- Replace the Transfer-only KYT index with one that also covers WithdrawalRequested
+DROP INDEX IF EXISTS idx_contract_logs_kyt_unverified;
+CREATE INDEX idx_contract_logs_kyt_unverified
+    ON contract_logs (id)
+    WHERE event_name IN ('Transfer', 'WithdrawalRequested') AND kyt_status IS NULL;

@@ -2759,6 +2759,7 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]
@@ -2768,6 +2769,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
+ "bigdecimal",
  "chrono",
  "dotenvy",
  "reqwest",
@@ -3540,6 +3542,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-primitives",
  "anyhow",
  "async-trait",
@@ -4401,6 +4404,17 @@ dependencies = [
  "url",
  "utoipa",
  "zip",
+]
+
+[[package]]
+name = "uuid"
+version = "1.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+dependencies = [
+ "getrandom 0.4.2",
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]

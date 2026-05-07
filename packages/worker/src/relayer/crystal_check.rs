@@ -85,7 +85,7 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
     }
 }
 
-/// 2b: Screen unverified Transfer transactions via Crystal.
+/// 2b: Screen unverified Transfer and WithdrawalRequested transactions via Crystal.
 async fn screen_transfers(crystal: &CrystalClient, kyc_repo: &KycRepo) {
     let transfers = match kyc_repo.fetch_unverified_transfers(BATCH_SIZE).await {
         Ok(t) => t,
@@ -125,13 +125,17 @@ async fn screen_single_transfer(
     let tx_signals = serde_json::to_value(&tx_resp.data.riskscore.signals)?;
     let tx_risky = crystal.settings().is_risky(&tx_resp.data.riskscore);
 
-    // Screen the sender address (if available)
-    let (sender_risk, sender_signals, sender_risky) = if let Some(ref sender) = transfer.sender {
-        let addr_resp = crystal.screen_address(sender).await?;
-        let risk = addr_resp.data.riskscore.value as f32;
-        let signals = serde_json::to_value(&addr_resp.data.riskscore.signals)?;
-        let risky = crystal.settings().is_risky(&addr_resp.data.riskscore);
-        (Some(risk), Some(signals), risky)
+    // Screen the sender address (Transfer events only; WithdrawalRequested uses tx hash only)
+    let (sender_risk, sender_signals, sender_risky) = if transfer.event_name == "Transfer" {
+        if let Some(ref sender) = transfer.sender {
+            let addr_resp = crystal.screen_address(sender).await?;
+            let risk = addr_resp.data.riskscore.value as f32;
+            let signals = serde_json::to_value(&addr_resp.data.riskscore.signals)?;
+            let risky = crystal.settings().is_risky(&addr_resp.data.riskscore);
+            (Some(risk), Some(signals), risky)
+        } else {
+            (None, None, false)
+        }
     } else {
         (None, None, false)
     };

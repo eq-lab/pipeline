@@ -35,6 +35,7 @@ pub struct KycOutboxRow {
 #[derive(sqlx::FromRow)]
 pub struct UnverifiedTransfer {
     pub id: i64,
+    pub event_name: String,
     pub sender: Option<String>,
     pub receiver: Option<String>,
     pub amount: Option<bigdecimal::BigDecimal>,
@@ -294,9 +295,9 @@ impl KycRepo {
         batch_size: i64,
     ) -> anyhow::Result<Vec<UnverifiedTransfer>> {
         let rows = sqlx::query_as::<_, UnverifiedTransfer>(
-            "SELECT id, sender, receiver, amount, tx_hash, chain_id
+            "SELECT id, event_name, sender, receiver, amount, tx_hash, chain_id
              FROM contract_logs
-             WHERE event_name = 'Transfer' AND kyt_status IS NULL
+             WHERE event_name IN ('Transfer', 'WithdrawalRequested') AND kyt_status IS NULL
              ORDER BY id
              LIMIT $1",
         )
