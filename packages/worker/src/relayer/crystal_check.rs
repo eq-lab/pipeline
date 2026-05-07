@@ -44,8 +44,20 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
             }
         };
 
-        let risk = resp.data.riskscore.value as f32;
-        let signals_json = match serde_json::to_value(&resp.data.riskscore.signals) {
+        let counterparty = &resp.data.counterparty;
+        let riskscore = match counterparty.riskscore {
+            Some(rs) => rs,
+            None => {
+                tracing::warn!(
+                    wallet = profile.wallet_address,
+                    "Crystal returned null riskscore, will retry next iteration"
+                );
+                continue;
+            }
+        };
+
+        let risk = riskscore as f32;
+        let signals_json = match serde_json::to_value(&counterparty.signals) {
             Ok(v) => v,
             Err(e) => {
                 tracing::error!(wallet = profile.wallet_address, error = %e, "failed to serialize Crystal signals");
@@ -62,7 +74,9 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
             continue;
         }
 
-        let is_risky = crystal.settings().is_risky(&resp.data.riskscore);
+        let is_risky = crystal
+            .settings()
+            .is_risky_address(riskscore, counterparty.signals.as_ref());
         if is_risky {
             tracing::warn!(
                 wallet = profile.wallet_address,
@@ -119,20 +133,53 @@ async fn screen_single_transfer(
     kyc_repo: &KycRepo,
     transfer: &UnverifiedTransfer,
 ) -> anyhow::Result<()> {
-    // Screen the transaction hash
-    let tx_resp = crystal.screen_transaction(&transfer.tx_hash).await?;
-    let tx_risk = tx_resp.data.riskscore.value as f32;
-    let tx_signals = serde_json::to_value(&tx_resp.data.riskscore.signals)?;
-    let tx_risky = crystal.settings().is_risky(&tx_resp.data.riskscore);
+    // Transfer events are deposits; WithdrawalRequested are withdrawals.
+    let sender = transfer.sender.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} {} has no sender address",
+            transfer.event_name,
+            transfer.id
+        )
+    })?;
+    let direction = if transfer.event_name == "Transfer" {
+        "deposit"
+    } else {
+        "withdrawal"
+    };
+
+    // Screen the transaction
+    let tx_resp = crystal
+        .screen_transaction(direction, &transfer.tx_hash, sender)
+        .await?;
+    let tx_counterparty = &tx_resp.data.counterparty;
+    let tx_riskscore = tx_counterparty.riskscore.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Crystal returned null riskscore for tx {}",
+            transfer.tx_hash
+        )
+    })?;
+    let tx_risk = tx_riskscore as f32;
+    let tx_signals = serde_json::to_value(&tx_resp.data.signals)?;
+    let tx_risky = crystal
+        .settings()
+        .is_risky_tx(tx_riskscore, tx_resp.data.signals.as_ref());
 
     // Screen the sender address (Transfer events only; WithdrawalRequested uses tx hash only)
     let (sender_risk, sender_signals, sender_risky) = if transfer.event_name == "Transfer" {
         if let Some(ref sender) = transfer.sender {
             let addr_resp = crystal.screen_address(sender).await?;
-            let risk = addr_resp.data.riskscore.value as f32;
-            let signals = serde_json::to_value(&addr_resp.data.riskscore.signals)?;
-            let risky = crystal.settings().is_risky(&addr_resp.data.riskscore);
-            (Some(risk), Some(signals), risky)
+            let cp = &addr_resp.data.counterparty;
+            match cp.riskscore {
+                Some(rs) => {
+                    let risk = rs as f32;
+                    let signals = serde_json::to_value(&cp.signals)?;
+                    let risky = crystal.settings().is_risky_address(rs, cp.signals.as_ref());
+                    (Some(risk), Some(signals), risky)
+                }
+                None => {
+                    anyhow::bail!("Crystal returned null riskscore for address {}", sender);
+                }
+            }
         } else {
             (None, None, false)
         }

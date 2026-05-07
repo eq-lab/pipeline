@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::env;
 
-use super::models::RiskScore;
+use super::models::{DirectionalSignals, RiskSignals};
 
 const ALL_SIGNALS: &[&str] = &[
     "sanctions",               // OFAC/EU/UN sanctioned entities
@@ -35,6 +35,8 @@ const ALL_SIGNALS: &[&str] = &[
 pub struct CrystalSettings {
     pub api_key: String,
     pub base_url: String,
+    pub blockchain: Option<String>,
+    pub token_id: String,
     pub risk_score_threshold: f64,
     pub hard_fail_signals: Vec<String>,
 }
@@ -45,7 +47,11 @@ impl CrystalSettings {
             env::var("CRYSTAL_API_KEY").context("required env var CRYSTAL_API_KEY is not set")?;
 
         let base_url = env::var("CRYSTAL_BASE_URL")
-            .unwrap_or_else(|_| "https://apieth.crystalblockchain.com".to_owned());
+            .unwrap_or_else(|_| "https://apiexpert.crystalblockchain.com".to_owned());
+
+        let blockchain = env::var("CRYSTAL_BLOCKCHAIN").ok();
+
+        let token_id = env::var("CRYSTAL_TOKEN_ID").unwrap_or_else(|_| "0".to_owned());
 
         let risk_score_threshold = match env::var("CRYSTAL_RISK_SCORE_THRESHOLD") {
             Ok(v) => v
@@ -62,26 +68,54 @@ impl CrystalSettings {
         Ok(Self {
             api_key,
             base_url,
+            blockchain,
+            token_id,
             risk_score_threshold,
             hard_fail_signals,
         })
     }
 
     /// Returns `true` if the risk score exceeds the threshold or any hard-fail
-    /// signal has a non-zero value.
-    pub fn is_risky(&self, riskscore: &RiskScore) -> bool {
-        if riskscore.value > self.risk_score_threshold {
+    /// signal has a non-zero value in either direction (received or sent).
+    /// Use for address checks.
+    pub fn is_risky_address(&self, riskscore: f64, signals: Option<&DirectionalSignals>) -> bool {
+        if riskscore > self.risk_score_threshold {
             return true;
         }
 
+        if let Some(sig) = signals {
+            if self.has_hard_fail_signal(&sig.received) || self.has_hard_fail_signal(&sig.sent) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Returns `true` if the risk score exceeds the threshold or any hard-fail
+    /// signal has a non-zero value. Use for transaction checks (unidirectional signals).
+    pub fn is_risky_tx(&self, riskscore: f64, signals: Option<&RiskSignals>) -> bool {
+        if riskscore > self.risk_score_threshold {
+            return true;
+        }
+
+        if let Some(sig) = signals {
+            if self.has_hard_fail_signal(sig) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn has_hard_fail_signal(&self, signals: &RiskSignals) -> bool {
         for signal_name in &self.hard_fail_signals {
-            if let Some(val) = riskscore.signals.get(signal_name) {
+            if let Some(&val) = signals.get(signal_name.as_str()) {
                 if val > 0.0 {
                     return true;
                 }
             }
         }
-
         false
     }
 }
@@ -89,35 +123,16 @@ impl CrystalSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crystal::models::{RiskScore, RiskSignals};
+    use crate::crystal::models::RiskSignals;
 
-    fn zero_signals() -> RiskSignals {
-        RiskSignals {
-            sanctions: 0.0,
-            terrorism_financing: 0.0,
-            stolen_coins: 0.0,
-            dark_market: 0.0,
-            dark_service: 0.0,
-            scam: 0.0,
-            ransom: 0.0,
-            child_exploitation: 0.0,
-            mixer: 0.0,
-            enforcement_action: 0.0,
-            exchange_fraudulent: 0.0,
-            exchange_licensed: 0.0,
-            exchange_unlicensed: 0.0,
-            gambling: 0.0,
-            illegal_service: 0.0,
-            liquidity_pools: 0.0,
-            marketplace: 0.0,
-            miner: 0.0,
-            other: 0.0,
-            p2p_exchange_licensed: 0.0,
-            p2p_exchange_unlicensed: 0.0,
-            payment: 0.0,
-            seized_assets: 0.0,
-            atm: 0.0,
-            wallet: 0.0,
+    fn empty_signals() -> RiskSignals {
+        RiskSignals::new()
+    }
+
+    fn empty_directional() -> DirectionalSignals {
+        DirectionalSignals {
+            received: empty_signals(),
+            sent: empty_signals(),
         }
     }
 
@@ -125,6 +140,8 @@ mod tests {
         CrystalSettings {
             api_key: "test".to_owned(),
             base_url: "http://localhost".to_owned(),
+            blockchain: Some("eth".to_owned()),
+            token_id: "0".to_owned(),
             risk_score_threshold: threshold,
             hard_fail_signals: signals.into_iter().map(|s| s.to_owned()).collect(),
         }
@@ -133,55 +150,44 @@ mod tests {
     #[test]
     fn low_score_no_signals_is_safe() {
         let s = settings(0.7, vec!["sanctions", "terrorism_financing"]);
-        let rs = RiskScore {
-            value: 0.3,
-            signals: zero_signals(),
-        };
-        assert!(!s.is_risky(&rs));
+        let sig = empty_directional();
+        assert!(!s.is_risky_address(0.3, Some(&sig)));
     }
 
     #[test]
     fn high_score_is_risky() {
         let s = settings(0.7, vec![]);
-        let rs = RiskScore {
-            value: 0.8,
-            signals: zero_signals(),
-        };
-        assert!(s.is_risky(&rs));
+        assert!(s.is_risky_address(0.8, None));
     }
 
     #[test]
     fn exact_threshold_is_not_risky() {
         let s = settings(0.7, vec![]);
-        let rs = RiskScore {
-            value: 0.7,
-            signals: zero_signals(),
-        };
-        assert!(!s.is_risky(&rs));
+        assert!(!s.is_risky_address(0.7, None));
     }
 
     #[test]
-    fn hard_fail_signal_triggers_regardless_of_score() {
+    fn hard_fail_signal_in_sent_triggers() {
         let s = settings(0.7, vec!["sanctions"]);
-        let mut signals = zero_signals();
-        signals.sanctions = 0.001;
-        let rs = RiskScore {
-            value: 0.1,
-            signals,
-        };
-        assert!(s.is_risky(&rs));
+        let mut sig = empty_directional();
+        sig.sent.insert("sanctions".to_owned(), 0.001);
+        assert!(s.is_risky_address(0.1, Some(&sig)));
+    }
+
+    #[test]
+    fn hard_fail_signal_in_received_triggers() {
+        let s = settings(0.7, vec!["sanctions"]);
+        let mut sig = empty_directional();
+        sig.received.insert("sanctions".to_owned(), 0.001);
+        assert!(s.is_risky_address(0.1, Some(&sig)));
     }
 
     #[test]
     fn non_configured_signal_is_ignored() {
         let s = settings(0.7, vec!["sanctions"]);
-        let mut signals = zero_signals();
-        signals.mixer = 0.5;
-        let rs = RiskScore {
-            value: 0.1,
-            signals,
-        };
-        assert!(!s.is_risky(&rs));
+        let mut sig = empty_directional();
+        sig.sent.insert("mixer".to_owned(), 0.5);
+        assert!(!s.is_risky_address(0.1, Some(&sig)));
     }
 
     #[test]
@@ -196,12 +202,8 @@ mod tests {
                 .map(|s| s.as_str())
                 .collect(),
         );
-        let mut signals = zero_signals();
-        signals.gambling = 0.01;
-        let rs = RiskScore {
-            value: 0.1,
-            signals,
-        };
-        assert!(s.is_risky(&rs));
+        let mut sig = empty_directional();
+        sig.received.insert("gambling".to_owned(), 0.01);
+        assert!(s.is_risky_address(0.1, Some(&sig)));
     }
 }

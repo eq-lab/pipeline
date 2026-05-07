@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 use super::config::CrystalSettings;
-use super::models::{AddressData, CrystalResponse, TxData};
+use super::models::{CrystalResponse, RiskCheckRequest};
 
 pub struct CrystalClient {
     http: reqwest::Client,
@@ -20,58 +20,71 @@ impl CrystalClient {
         &self.settings
     }
 
-    /// Screen an address via `GET /explorer/address/{address}`.
-    pub async fn screen_address(&self, address: &str) -> Result<CrystalResponse<AddressData>> {
-        let url = format!("{}/explorer/address/{}", self.settings.base_url, address);
+    /// Screen an address via `POST /risk-check` with `type: "address"`.
+    pub async fn screen_address(&self, address: &str) -> Result<CrystalResponse> {
+        let body = RiskCheckRequest {
+            check_type: "address".to_owned(),
+            address: Some(address.to_owned()),
+            tx: None,
+            blockchain: self.settings.blockchain.clone(),
+            token_id: None,
+        };
 
-        let response = self
-            .http
-            .get(&url)
-            .header("X-Auth-Apikey", &self.settings.api_key)
-            .send()
+        self.risk_check(&body)
             .await
-            .context("Crystal address screening call failed")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Crystal address screening returned {status}: {text}");
-        }
-
-        let resp = response
-            .json::<CrystalResponse<AddressData>>()
-            .await
-            .context("Failed to parse Crystal address screening response")?;
-
-        if let Some(left) = resp.meta.calls_left {
-            tracing::debug!(calls_left = left, "Crystal API rate limit");
-        }
-
-        Ok(resp)
+            .context("Crystal address screening failed")
     }
 
-    /// Screen a transaction via `GET /explorer/tx/{tx_hash}`.
-    pub async fn screen_transaction(&self, tx_hash: &str) -> Result<CrystalResponse<TxData>> {
-        let url = format!("{}/explorer/tx/{}", self.settings.base_url, tx_hash);
+    /// Screen a transaction via `POST /risk-check` with `type: "deposit"` or `"withdrawal"`.
+    ///
+    /// - `direction`: `"deposit"` or `"withdrawal"`
+    /// - `tx_hash`: the transaction hash
+    /// - `address`: the deposit address (for deposits) or the customer withdrawal address
+    pub async fn screen_transaction(
+        &self,
+        direction: &str,
+        tx_hash: &str,
+        address: &str,
+    ) -> Result<CrystalResponse> {
+        let blockchain = self.settings.blockchain.clone().ok_or_else(|| {
+            anyhow::anyhow!("CRYSTAL_BLOCKCHAIN must be set for transaction checks")
+        })?;
+
+        let body = RiskCheckRequest {
+            check_type: direction.to_owned(),
+            address: Some(address.to_owned()),
+            tx: Some(tx_hash.to_owned()),
+            blockchain: Some(blockchain),
+            token_id: Some(self.settings.token_id.clone()),
+        };
+
+        self.risk_check(&body)
+            .await
+            .with_context(|| format!("Crystal {direction} screening failed"))
+    }
+
+    async fn risk_check(&self, body: &RiskCheckRequest) -> Result<CrystalResponse> {
+        let url = format!("{}/risk-check", self.settings.base_url);
 
         let response = self
             .http
-            .get(&url)
+            .post(&url)
             .header("X-Auth-Apikey", &self.settings.api_key)
+            .json(body)
             .send()
             .await
-            .context("Crystal transaction screening call failed")?;
+            .context("Crystal risk-check call failed")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Crystal transaction screening returned {status}: {text}");
+            anyhow::bail!("Crystal risk-check returned {status}: {text}");
         }
 
         let resp = response
-            .json::<CrystalResponse<TxData>>()
+            .json::<CrystalResponse>()
             .await
-            .context("Failed to parse Crystal transaction screening response")?;
+            .context("Failed to parse Crystal risk-check response")?;
 
         if let Some(left) = resp.meta.calls_left {
             tracing::debug!(calls_left = left, "Crystal API rate limit");
