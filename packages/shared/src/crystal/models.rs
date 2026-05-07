@@ -23,7 +23,7 @@ pub struct RiskCheckRequest {
 /// Top-level wrapper for Crystal API responses.
 #[derive(Debug, Deserialize)]
 pub struct CrystalResponse {
-    pub data: RiskCheckData,
+    pub data: Option<RiskCheckData>,
     pub meta: CrystalMeta,
 }
 

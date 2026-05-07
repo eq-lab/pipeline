@@ -86,6 +86,14 @@ impl CrystalClient {
             .await
             .context("Failed to parse Crystal risk-check response")?;
 
+        if resp.meta.error_code != 0 {
+            anyhow::bail!(
+                "Crystal risk-check error {}: {}",
+                resp.meta.error_code,
+                resp.meta.error_message
+            );
+        }
+
         if let Some(left) = resp.meta.calls_left {
             tracing::debug!(calls_left = left, "Crystal API rate limit");
         }
