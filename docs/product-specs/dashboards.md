@@ -12,7 +12,7 @@ Visible to any LP who connects a whitelisted wallet to the Pipeline app.
 
 **Identity and compliance status**
 - Connected wallet address.
-- KYC status and Chainalysis freshness (days remaining until re-screening is required).
+- Whitelist status and freshness (days remaining until re-screening is required).
 
 **Position summary**
 - Current PLUSD balance.

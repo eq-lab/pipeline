@@ -22,9 +22,9 @@ The two-operator disjoint rule for Treasury redemptions is enforced by the conso
 
 ### Compliance Review Queue
 
-Reached when LP onboarding returned an ambiguous screening result (Sumsub or Chainalysis returned FLAGGED, MANUAL_REVIEW, or another non-binary status). For each queue entry the reviewer sees: Sumsub output, Chainalysis report, accreditation declaration, connected wallet address, and the specific flag triggering manual review.
+Reached when KYT screening returns a soft-fail (`UnderReview`) on a deposit ticket, on a standalone enrolment, or on a passive re-screening sweep against an existing whitelisted address. For each queue entry the reviewer sees: KYT report (address risk, transaction risk, hop analysis), connected wallet address, deposit ticket reference if applicable, and the specific flag triggering review.
 
-- **Single-reviewer decision.** A compliance officer (team member with the compliance sub-role) can approve or reject. Approval causes the relayer to write the LP address to the WhitelistRegistry; rejection notifies the LP with a reason.
+- **Single-reviewer decision.** A compliance officer (team member with the compliance sub-role) can approve or reject. Approval causes the Relayer to sign and serve the appropriate attestation (`ClaimAttestation` for a deposit, `EnrolAttestation` for a standalone enrolment), which the address holder then submits on-chain. Rejection triggers refund disposition (for deposits, via Trustee + Team off-chain transfer plus `markRefunded`) or no-enrolment (for standalone). The lender is notified with the reason.
 - **Escalation.** Reviewers can escalate complex cases to a two-person review. The second reviewer must be a different team member.
 
 Every compliance decision is recorded in the audit log with the deciding officer, evidence reviewed, and outcome.

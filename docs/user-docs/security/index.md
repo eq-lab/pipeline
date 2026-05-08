@@ -53,7 +53,7 @@ Pipeline reduces trust assumptions but does not eliminate them. The accepted ass
 
 - Self-custody policy and cosigner integrity. See [Custody](/security/custody/).
 - Three-MPC governance, signer-set distinctness, and the meta-timelock. See [Governance](/security/governance/).
-- Supply-side assumptions (atomic deposits, two-party yield co-signing, Watchdog correctness). See [Supply safeguards](/security/supply-safeguards/).
+- Supply-side assumptions (two-step screened deposits with the Intake Wallet, two-party yield co-signing, Watchdog correctness). See [Supply safeguards](/security/supply-safeguards/).
 - Pause-and-revoke playbooks for Relayer, Trustee, and yield-attestor compromise. See [Emergency response](/security/emergency-response/).
 
 For the full risk categorisation (credit, liquidity, custody, smart-contract, governance, regulatory, operational), see [Potential risks](/risks/).

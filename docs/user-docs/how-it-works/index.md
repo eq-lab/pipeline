@@ -63,10 +63,10 @@ Every originated loan is one NFT carrying immutable origination data (borrower, 
 
 These five contracts run the operational flows. Together they are how the Protocol Layer actually works day to day:
 
-- **DepositManager**. Pulls USDC from the lender to the Capital Wallet and mints PLUSD 1:1 in the same transaction.
+- **DepositManager**. Two-step deposit. `deposit` parks USDC in the Intake Wallet and creates a deposit ticket. After the Relayer marks the ticket claimable on a clean KYT result, the lender calls `claim` to move USDC from the Intake Wallet to the Capital Wallet and mint PLUSD 1:1.
 - **YieldMinter**. Gates yield mints. Verifies a Relayer signature and a Trustee signature on-chain before minting. Destinations are hard-constrained to the sPLUSD vault or Treasury Wallet.
-- **WithdrawalQueue**. FIFO exit queue. Lenders escrow PLUSD via `requestWithdrawal`, then call `claim` themselves to burn PLUSD and pull USDC from the Withdrawal Queue Wallet via the queue contract's pre-approved allowance. No off-chain signer in the critical path. The queue self-limits via three aggregates (`totalRequested`, `totalClaimed`, `totalClaimable`) and asserts `claimAmount ≤ totalClaimable` on every claim.
-- **WhitelistRegistry**. On-chain allowlist of KYB-ed lender addresses. Gates every PLUSD transfer and every deposit-side mint.
+- **WithdrawalQueue**. Exit queue. Lenders escrow PLUSD via `requestWithdrawal`, then call `claim` themselves to burn PLUSD and pull USDC from the Withdrawal Queue Wallet via the queue contract's standing allowance. The claim re-checks compliance via `WhitelistRegistry.isAllowed`. The queue self-limits via three aggregates (`totalRequested`, `totalClaimed`, `totalClaimable`) and asserts `claimAmount ≤ totalClaimable` on every claim.
+- **WhitelistRegistry**. On-chain transfer whitelist. Gates every PLUSD and sPLUSD transfer via `_update`. Entries are written by the Relayer on a clean KYT result, with a 90-day freshness window. Mint and withdraw eligibility are not gated here. They live in DepositManager (ticket book) and WithdrawalQueue (per-claim re-check) respectively.
 - **AccessManager**. The role hub. Every privileged call routes through this contract: instantly for GUARDIAN, through a timelock for ADMIN and RISK_COUNCIL.
 
 ---

@@ -6,44 +6,63 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ## LP Onboarding
 
-### US-LP-ONBOARD-1: Happy Path Onboarding
+### US-LP-ONBOARD-1: Deposit-Triggered Whitelist Enrolment (Happy Path)
 
-**As an** accredited investor, **I want to** connect my Ethereum wallet and complete KYC/KYB and Chainalysis screening in a single flow, **so that** my wallet is automatically whitelisted and I can deposit USDC without waiting for manual review.
+**As a** new lender, **I want to** connect my wallet, deposit USDC, and have my address auto-enrolled in the transfer whitelist on a clean KYT result, **so that** I can claim PLUSD without a separate identity-verification step.
 
 **Acceptance criteria:**
-- [ ] Connecting a wallet via WalletConnect v2 / RainbowKit creates a Pipeline account with that address as the identifier — no separate email/password registration.
-- [ ] Sumsub returns APPROVED and Chainalysis returns a clean result.
-- [ ] The relayer service writes the LP address to the WhitelistRegistry with `approvedAt` set to the current block timestamp within one block of both vendor results arriving.
-- [ ] The LP receives an in-app notification of approval.
-- [ ] The deposit UI is unblocked immediately after whitelisting.
-- [ ] No human review step is required.
+- [ ] Connecting a wallet via WalletConnect v2 or RainbowKit creates a Pipeline session with that address as the identifier. No email or password registration.
+- [ ] The lender approves USDC and calls `DepositManager.deposit(amount)`. USDC moves to the Intake Wallet, a `Pending` ticket is created.
+- [ ] The Relayer runs KYT screening on the lender address and the inbound transaction off-chain.
+- [ ] On a clean KYT result, the Relayer signs a `ClaimAttestation` (EIP-712 against DepositManager's domain) and serves it via `GET /v1/deposits/{depositId}/attestation`. The Relayer makes no on-chain write to DepositManager.
+- [ ] The frontend fetches the attestation. The lender calls `DepositManager.claim(depositId, attestation, signature)`.
+- [ ] DepositManager verifies the signature against `kytAttestor`, calls `WhitelistRegistry.setAccess(lender, att.approvedAt)` to enrol the lender, pulls USDC from Intake to Capital, and mints PLUSD 1:1.
+- [ ] No KYC, KYB, or accreditation declaration is collected.
 
 ---
 
-### US-LP-ONBOARD-2: Manual Review Path
+### US-LP-ONBOARD-2: Standalone Address Enrolment
 
-**As an** investor whose screening returned a non-binary result, **I want to** have my case reviewed by a compliance officer, **so that** I am not incorrectly rejected due to an ambiguous flag.
+**As a** counterparty (CEX hot wallet, OTC desk, treasury operator), **I want to** be added to the transfer whitelist without making my own deposit, **so that** I can receive PLUSD from another whitelisted address.
 
 **Acceptance criteria:**
-- [ ] If Sumsub returns FLAGGED or MANUAL_REVIEW, the LP enters the compliance review queue.
-- [ ] If Chainalysis returns any status other than clean or REJECTED, the LP enters the compliance review queue.
-- [ ] The compliance officer sees the LP's full Sumsub output, Chainalysis report, accreditation declaration, and the specific flag that triggered manual review.
-- [ ] A single compliance officer (team member with compliance sub-role) can approve or reject the LP.
-- [ ] On approval, the relayer service writes the LP to the WhitelistRegistry identically to the happy path.
-- [ ] On rejection, the LP is notified with the reason.
-- [ ] The compliance decision is recorded in the audit log with the deciding officer and outcome.
+- [ ] The counterparty submits their address through the standalone enrolment endpoint, signing an enrolment message to prove control of the address.
+- [ ] The Relayer runs address-only KYT screening (no transaction screening, no funds move).
+- [ ] On a clean KYT result, the Relayer signs an `EnrolAttestation` (EIP-712 against WhitelistRegistry's domain) and returns it via the API.
+- [ ] The address holder calls `WhitelistRegistry.enrol(addr, attestation, signature)` themselves to land the entry on-chain.
+- [ ] On a non-binary result, the entry routes to the manual compliance queue.
+- [ ] On a hard fail, no attestation is signed. The address is rejected and notified with a reason.
+- [ ] No funds move on this path.
 
 ---
 
-### US-LP-ONBOARD-3: Re-screening Gate
+### US-LP-ONBOARD-3: Manual Compliance Review Path
 
-**As a** whitelisted LP whose 90-day Chainalysis freshness window has expired, **I want to** be prompted to re-screen before my next deposit, **so that** I understand why my deposit UI is blocked and can unblock it myself.
+**As a** lender or counterparty whose KYT returned a non-binary result, **I want to** have my case reviewed by a compliance officer, **so that** I am not incorrectly rejected due to an ambiguous flag.
 
 **Acceptance criteria:**
-- [ ] When an LP initiates a deposit and `(block.timestamp - approvedAt) >= freshnessWindow`, the deposit UI is blocked and a re-verify prompt is shown.
-- [ ] Triggering re-verification via the app initiates a fresh Chainalysis screen through the relayer service.
-- [ ] On a clean result, `approvedAt` is refreshed on the WhitelistRegistry and the deposit UI is unblocked.
-- [ ] On a failed or suspicious result, the LP's whitelist entry is flagged for manual compliance review and the deposit UI remains blocked.
+- [ ] On a soft-fail KYT result for a deposit, the Relayer signs no attestation and routes the ticket to the compliance queue. The ticket stays `Pending` on-chain.
+- [ ] On a soft-fail KYT result for a standalone enrolment, the entry appears in the compliance queue.
+- [ ] On a soft-fail KYT result for passive re-screening, the existing whitelist entry appears in the compliance queue.
+- [ ] The compliance officer sees the KYT report (address risk, transaction risk, hop analysis), the relevant deposit ticket or enrolment record, and the specific flag triggering review.
+- [ ] A single compliance officer can approve, reject, or escalate to two-person review.
+- [ ] On approval for a deposit, the Relayer signs and serves a `ClaimAttestation`. On approval for a standalone enrolment, the Relayer signs and serves an `EnrolAttestation`. The address holder submits the attestation on-chain themselves.
+- [ ] On rejection, the Relayer triggers refund disposition for deposits, or no-enrolment for standalone, and notifies the holder.
+- [ ] Every decision is logged with the officer, evidence reviewed, and outcome.
+
+---
+
+### US-LP-ONBOARD-4: Re-screening Freshness Gate
+
+**As a** whitelisted holder whose 90-day freshness window has expired, **I want to** be prompted to re-screen before my next transfer or withdrawal, **so that** I understand why my action is blocked and can unblock it myself.
+
+**Acceptance criteria:**
+- [ ] When `(block.timestamp - approvedAt) >= freshnessWindow`, `WhitelistRegistry.isAllowed(addr)` returns false.
+- [ ] PLUSD `_update` reverts on transfers to or from a stale address.
+- [ ] `WithdrawalQueue.requestWithdrawal` reverts at the PLUSD transfer to escrow.
+- [ ] The frontend prompts re-enrolment via the standalone enrolment endpoint.
+- [ ] On a clean KYT result, `approvedAt` is refreshed via `setAccess` and the address is unblocked.
+- [ ] On a failed result, the entry is flagged for manual compliance review.
 - [ ] The `freshnessWindow` parameter (default 90 days) is configurable by the foundation multisig.
 
 ---
@@ -65,55 +84,84 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 
 ## Deposits
 
-### US-DEPOSIT-1: Standard Deposit
+### US-DEPOSIT-1: Two-Step Screened Deposit (Happy Path)
 
-**As a** whitelisted LP with a current Chainalysis screen, **I want to** call `DepositManager.deposit(amount)` and receive PLUSD 1:1 in the same transaction, **so that** my deposit is atomic and does not depend on any off-chain signer.
+**As a** lender, **I want to** call `DepositManager.deposit(amount)` to park USDC and create a deposit ticket, then call `DepositManager.claim(depositId, attestation, signature)` with the Relayer's KYT attestation, **so that** my USDC is screened before PLUSD is minted, without me providing identity documents and without the Relayer writing on-chain to DepositManager.
 
 **Acceptance criteria:**
-- [ ] The LP calls `DepositManager.deposit(usdcAmount)` after approving DepositManager as spender on USDC (standard ERC-20 permit or prior `approve`).
-- [ ] DepositManager atomically: checks `WhitelistRegistry.isAllowedForMint(lp)` (whitelist + Chainalysis freshness), enforces the per-LP, rolling-window, and total-supply caps, pulls USDC via `transferFrom(lp, capitalWallet, amount)`, and calls `PLUSD.mintForDeposit(lp, amount)`.
-- [ ] The LP receives PLUSD at a 1:1 ratio to USDC deposited in the same transaction.
-- [ ] Relayer is not in the deposit critical path: it observes `DepositManager.Deposited` events for reconciliation and indexing only, with no gating role on the deposit leg.
-- [ ] The deposit appears in the LP's transaction history.
+- [ ] The lender calls `USDC.approve(DepositManager, amount)` then `DepositManager.deposit(usdcAmount)`.
+- [ ] DepositManager enforces minimum deposit, per-lender 24h cap, global 24h cap, and `totalSupply + outstandingTickets + amount <= maxTotalSupply` at deposit time.
+- [ ] DepositManager calls `USDC.transferFrom(lender, intakeWallet, amount)` to park USDC in the Intake Wallet.
+- [ ] DepositManager creates a ticket `(lender, depositId, {amount, status: Pending, createdAt})` and emits `DepositRequested`.
+- [ ] The Relayer runs KYT screening off-chain. On a clean result, it signs a `ClaimAttestation` and serves it via `GET /v1/deposits/{depositId}/attestation`. No on-chain write.
+- [ ] The lender calls `DepositManager.claim(depositId, attestation, signature)`. The contract verifies signature against `kytAttestor`, checks attestation fields and nonce, calls `WhitelistRegistry.setAccess(lender, att.approvedAt)`, pulls USDC from Intake to Capital, calls `PLUSD.mintForDeposit(lender, amount)`.
+- [ ] The lender's PLUSD balance rises 1:1 with the USDC deposited. The ticket flips to `Claimed`. The nonce is consumed.
+- [ ] PLUSD is never minted without the lender's USDC having arrived in the Intake Wallet first.
+- [ ] The Relayer never writes to DepositManager directly in the happy path.
+- [ ] The deposit appears in the lender's transaction history (DepositRequested, Deposited events).
 
 ---
 
-### US-DEPOSIT-2: Below-Minimum Accumulation
+### US-DEPOSIT-2: Below-Minimum Revert
 
-**As an** LP who deposits below the 1,000 USDC minimum, **I want to** have my partial deposits accumulated as a pending balance, **so that** I can unlock minting with a subsequent top-up rather than receiving a refund.
+**As a** lender who calls `deposit` with less than the configured minimum, **I want to** have my deposit reverted on-chain, **so that** I am not left with USDC parked in the Intake Wallet for an amount that cannot be claimed.
 
 **Acceptance criteria:**
-- [ ] A deposit below 1,000 USDC is not rejected; the relayer records an unminted balance for the LP address.
-- [ ] The LP dashboard displays the accumulated pending balance labelled "pending deposits — not yet earning yield" and shows the additional amount required to reach the threshold.
-- [ ] When cumulative pending deposits from the same address reach or exceed 1,000 USDC, the relayer mints PLUSD for the combined total in a single transaction.
-- [ ] The pending balance counter resets to zero after the combined mint.
-- [ ] The 1,000 USDC minimum is configurable by the foundation multisig.
+- [ ] `DepositManager.deposit(amount)` reverts with a `BelowMinimum` error if `amount < minimumDeposit` (default 1,000 USDC).
+- [ ] No state changes occur on revert. USDC stays in the lender's wallet.
+- [ ] The `minimumDeposit` parameter is configurable by ADMIN under 48h timelock.
+- [ ] The deposit UI shows the minimum and prevents submission below it.
 
 ---
 
-### US-DEPOSIT-3: Rate-Limit Queue
+### US-DEPOSIT-3: Rate-Limit Revert
 
-**As an** LP whose deposit would breach the rolling 24h rate limit, **I want to** be queued automatically and receive PLUSD as headroom opens, **so that** I do not lose my deposit or have to resubmit.
+**As a** lender whose deposit would breach a rate limit, **I want to** have my deposit revert on-chain, **so that** I retry when headroom reopens rather than getting stuck in an off-chain queue.
 
 **Acceptance criteria:**
-- [ ] A deposit that would push total mints past the $10M / 24h window or $5M / tx cap is not rejected; the relayer records it in the deposit mint queue with `(lpAddress, amount, deposit_tx_hash, queued_at)`.
-- [ ] The LP dashboard shows "PLUSD mint pending rate limit" status for the queued entry.
-- [ ] As the rolling 24h window advances and headroom becomes available, the relayer processes queued entries in FIFO order, calling `PLUSD.mint()` for each.
-- [ ] A single deposit exceeding the $5M per-transaction cap is split into multiple mint transactions over successive windows; the LP sees incremental PLUSD arrive.
-- [ ] The relayer service reconstructs the queue from USDC Transfer logs and PLUSD mint logs after a restart.
+- [ ] A deposit that would push the rolling 24h window above `maxPerWindow` or `maxPerLPPerWindow` reverts.
+- [ ] A deposit that would push `totalSupply + outstandingClaimable + amount` above `maxTotalSupply` reverts.
+- [ ] No state changes on revert. USDC stays in the lender's wallet.
+- [ ] The deposit UI reads `GET /v1/protocol/limits` and shows live utilisation against each cap before the lender submits.
+- [ ] The lender retries when window headroom reopens. There is no auto-queue.
 
 ---
 
-### US-DEPOSIT-4: Above-Cap Split
+### US-DEPOSIT-4: Abandoned Ticket Refund
 
-**As an** LP depositing more than $5M USDC in a single transfer, **I want to** have my full deposit eventually minted across multiple transactions, **so that** the per-transaction cap does not result in a permanently unfulfilled balance.
+**As a** lender who deposited and received a `Claimable` ticket but did not claim within the 30-day window, **I want to** call `refund(depositId)` to retrieve my USDC, **so that** my abandoned deposit does not stay parked indefinitely in the Intake Wallet.
 
 **Acceptance criteria:**
-- [ ] A single USDC transfer above the $5M per-transaction cap is placed into the deposit mint queue.
-- [ ] The relayer splits the deposit into multiple mint calls, each at or below $5M, processed across successive rolling windows.
-- [ ] The LP dashboard shows incremental PLUSD arrivals with status indicators for the remaining queued amount.
-- [ ] The total PLUSD minted equals the total USDC deposited after all windows are processed.
-- [ ] All partial mints are recorded individually in the LP's transaction history.
+- [ ] A ticket reaches expiry when `block.timestamp - markedAt >= claimWindow` (default 30 days).
+- [ ] The lender calls `DepositManager.refund(depositId)` from their own address.
+- [ ] DepositManager pulls USDC from the Intake Wallet to the lender via standing allowance.
+- [ ] The ticket flips to `Refunded` and `outstandingClaimable` decrements.
+- [ ] After expiry, calls to `claim(depositId)` revert with `TicketExpired`.
+- [ ] The Trustee may also bulk-refund expired tickets quarterly to clean state.
+
+---
+
+### US-DEPOSIT-5: KYT Soft-Fail Refund
+
+**As a** lender whose deposit triggered a soft-fail KYT result, **I want to** receive an automatic refund within 72 hours unless compliance overrides, **so that** I am not stuck with USDC in the Intake Wallet for an indefinite manual review.
+
+**Acceptance criteria:**
+- [ ] On a soft-fail KYT result, the Relayer routes the ticket to the compliance review queue. The Relayer signs no claim attestation. The ticket stays `Pending` on-chain.
+- [ ] The default disposition is auto-refund within 72h. The Trustee + Team co-sign a USDC transfer from the Intake Wallet to the lender's address (off-chain). After settlement, the Trustee calls `DepositManager.markRefunded(lender, depositId)`.
+- [ ] The ticket flips to `Refunded` and `outstandingTickets` decrements.
+- [ ] Compliance can override the default outcome and approve. On override, the Relayer signs and serves a `ClaimAttestation` for the lender to submit, completing the claim flow as in the happy path.
+
+---
+
+### US-DEPOSIT-6: KYT Hard-Fail Hold
+
+**As a** lender whose deposit triggered a hard-fail KYT result (OFAC, sanctioned address), **I want to** have my ticket held pending Trustee disposition, **so that** sanctions-exposed funds are not automatically returned to a sanctioned address.
+
+**Acceptance criteria:**
+- [ ] On a hard-fail KYT result, the Relayer signs no attestation. The ticket stays `Pending` on-chain indefinitely.
+- [ ] The lender cannot claim (no valid attestation). The lender cannot use `refund` (the 30-day timer continues running but Trustee may halt the standard refund path).
+- [ ] Disposition is by Trustee under legal direction. Trustee may bring USDC out of the Intake Wallet and call `markRefunded` to flip the ticket only if legally permitted to return funds.
+- [ ] The lender is notified that their deposit is held pending review.
 
 ---
 
@@ -356,8 +404,8 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** compliance officer (team member with compliance sub-role), **I want to** review flagged LP onboarding cases and make an approve/reject decision, **so that** ambiguous screening results are resolved by a human with full context rather than rejected automatically.
 
 **Acceptance criteria:**
-- [ ] Each queue entry shows: Sumsub output, Chainalysis report, accreditation declaration, wallet address, and the specific flag that triggered manual review.
-- [ ] A single compliance officer can approve or reject; approval writes the LP to the WhitelistRegistry identically to the happy path.
+- [ ] Each queue entry shows: KYT report (address risk, transaction risk, hop analysis), connected wallet address, deposit ticket reference if applicable, and the specific flag that triggered manual review.
+- [ ] A single compliance officer can approve or reject. Approval triggers Relayer signing of a `ClaimAttestation` (for a deposit) or `EnrolAttestation` (for a standalone enrolment) which the address holder then submits on-chain.
 - [ ] Genuinely complex cases can be escalated to a two-person review; the second reviewer must be a different team member.
 - [ ] Rejected LPs receive a notification with the rejection reason.
 - [ ] Every compliance decision (officer, evidence reviewed, outcome) is recorded in the audit log.
@@ -384,7 +432,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As an** LP, **I want to** see my full position, yield earned, withdrawal request status, and transaction history in one place, **so that** I can monitor my investment without querying the blockchain directly.
 
 **Acceptance criteria:**
-- [ ] The dashboard displays: wallet address, KYC status, Chainalysis freshness days remaining.
+- [ ] The dashboard displays: wallet address, whitelist status, freshness days remaining (until re-enrolment is required).
 - [ ] Current PLUSD and sPLUSD balances are shown with the live exchange rate and equivalent PLUSD value of the sPLUSD holding.
 - [ ] Total deposited, total withdrawn, and net position are displayed.
 - [ ] Yield earned is shown both as a nominal PLUSD figure and as a time-weighted annualised rate, computed from the cost basis of each stake lot.

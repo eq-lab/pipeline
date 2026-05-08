@@ -6,7 +6,7 @@ section: For Lenders
 
 # For lenders
 
-Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and realised T-bill yield on USYC reserves to KYB-ed on-chain lenders. Lending is permissioned. Every lender passes KYB and Chainalysis screening before depositing.
+Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and realised T-bill yield on USYC reserves to compliance-screened on-chain lenders. Lending does not require KYC, KYB, or accreditation declarations. Compliance is enforced by KYT screening at the moments where capital enters or leaves the protocol. The legal framework that governs this approach is `[Framework: TBD]`.
 
 <div class="callout info">
   <h4>Minimum deposit</h4>
@@ -18,11 +18,11 @@ Pipeline is a credit facility that finances vetted commodity trade deals. Pipeli
 <div class="card-grid">
   <a class="card" href="/lenders/onboarding/">
     <h4>Onboarding</h4>
-    <p>KYB, whitelist, 90-day Chainalysis freshness, and what we cannot serve.</p>
+    <p>KYT-at-deposit enrolment, standalone enrolment for non-depositors, 90-day freshness, and what we cannot serve.</p>
   </a>
   <a class="card" href="/lenders/deposit/">
     <h4>Deposit</h4>
-    <p>Approve USDC, call DepositManager, receive PLUSD 1:1 in a single atomic transaction.</p>
+    <p>Approve USDC, call DepositManager, wait for KYT screening, claim PLUSD 1:1.</p>
   </a>
   <a class="card" href="/lenders/stake/">
     <h4>Stake PLUSD</h4>

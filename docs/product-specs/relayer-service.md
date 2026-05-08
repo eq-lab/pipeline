@@ -2,45 +2,47 @@
 
 ## Overview
 
-The Pipeline Relayer Service is a backend operated by the Pipeline team. It watches on-chain
-events, reconciles protocol state, co-signs yield attestations, and submits operational
-transactions. **Relayer is not in the critical path for deposits** — deposits are atomic
-user-driven calls to DepositManager. Relayer also has no role in loan disbursements or
-USDC↔USYC rebalancing; those are managed by the Trustee and custodian MPC policy engine.
-
-A Relayer compromise cannot produce unbacked PLUSD. Yield minting requires a second independent
-EIP-1271 signature from the custodian; compromising Relayer alone mints zero PLUSD.
+The Pipeline Relayer Service is a backend operated by the Pipeline team. It watches on-chain events, reconciles protocol state, signs yield attestations and KYT attestations off-chain, and submits a narrow set of operational transactions. **Relayer never writes state-flips on DepositManager or WithdrawalQueue.** It signs off-chain `ClaimAttestation` and `EnrolAttestation` payloads that the lender or address holder submits at claim or enrol time. A Relayer compromise cannot mint PLUSD on its own. Yield minting also requires a custodian EIP-1271 signature.
 
 ---
 
 ## Behavior
 
-### 1. Deposit Observation (Relayer not in critical path)
+### 1. Deposit Observation
 
-Deposits are fully atomic and user-driven via DepositManager. Relayer observes
-`DepositManager.Deposited` events for reconciliation, exposes deposit history via the LP API,
-and cross-checks `sum(Deposited.amount) == PLUSD.cumulativeLPDeposits()`. Relayer is not a
-signer or gate on the deposit flow.
-
-Relayer also exposes live rate-limit state (`maxPerWindow`, `maxPerLPPerWindow`, window
+Relayer observes `DepositManager.DepositRequested` and `Deposited` events for reconciliation, exposes deposit history via the LP API, and cross-checks `sum(Deposited.amount) == PLUSD.cumulativeLPDeposits()`. Relayer is not a state-mutator on the deposit flow. Relayer exposes live rate-limit state (`maxPerWindow`, `maxPerLenderPerWindow`, window
 utilisation, per-LP utilisation) via `GET /v1/protocol/limits` so the deposit UI can display
 cap status before the LP submits.
 
-### 2. Withdrawal Queue Funding
+### 1b. Deposit Claim Attestation
 
-When a `WithdrawalRequested` event is observed, Relayer processes the queue head:
+When a `DepositRequested` event is observed, Relayer:
 
-1. **Whitelist check.** If `WhitelistRegistry.isAllowed(requester)` is false, calls
-   `WQ.skipSanctionedHead()` to unblock the queue.
-2. **Freshness check (Relayer-side).** If stale but not revoked, Relayer calls Chainalysis API.
-   On clean result: `WhitelistRegistry.refreshScreening(lp, newTs)`, then proceeds. On flag:
-   `revokeAccess` then `skipSanctionedHead`. If Chainalysis is unreachable, Relayer halts and
-   alerts ops — head is stuck pending manual `adminRelease`.
-3. **Balance check.** If Capital Wallet USDC is insufficient, Relayer requests a USYC → USDC
-   redemption via the custodian MPC API and retries after settlement.
-4. **Fund.** Calls `WQ.fundRequest(queueId)`. WQ pulls USDC from Capital Wallet via
-   pre-approved allowance. LP's entry moves to `Funded`; LP then calls `WQ.claim()` to burn
-   PLUSD and receive USDC.
+1. Runs KYT screening on the lender address and the inbound USDC transaction via the configured KYT vendor.
+2. **On clean result.** Builds and signs an EIP-712 `ClaimAttestation` for the deposit (DepositManager's domain). Stores the signed attestation in the Relayer's API store and serves it via `GET /v1/deposits/{depositId}/attestation`. The Relayer makes no on-chain write.
+3. **On soft fail.** Routes the ticket to the compliance review queue (see operations-console-team.md). No attestation is signed. If compliance approves, the Relayer signs and serves the attestation. If compliance rejects, the Trustee + Team co-sign the off-chain refund, and Trustee calls `DepositManager.markRefunded` to flip the ticket on-chain.
+4. **On hard fail.** No attestation. Ticket stays `Pending` indefinitely. Trustee disposition is off-chain under legal direction.
+
+Attestations carry a short deadline (default 1 hour). If the lender does not claim before the deadline, the frontend re-fetches a fresh attestation from the API. The Relayer re-runs KYT or returns the cached fresh result depending on the configured cadence.
+
+If the KYT vendor is unreachable, Relayer halts attestation signing and alerts ops. Tickets stay `Pending` until the vendor is restored. PLUSD is never minted without a valid attestation submitted by the lender to `claim`.
+
+### 2. Withdrawal Claim Attestation and Wallet Monitoring
+
+The Relayer signs withdrawal claim attestations on the same pattern as deposits. When a `WithdrawalRequested` event is observed:
+
+1. Runs KYT screening on the holder address.
+2. **On clean result.** Signs an EIP-712 `ClaimAttestation` for the queue entry (WithdrawalQueue's domain). Serves via `GET /v1/withdrawals/{queueId}/attestation`. No on-chain write.
+3. **On soft fail.** Routes to compliance review.
+4. **On hard fail.** No attestation. ADMIN takes disposition via `adminRelease`.
+
+Beyond claim attestations, Relayer monitors the Withdrawal Queue Wallet:
+
+1. **Balance monitoring.** Relayer tracks `WithdrawalQueue.totalClaimable` against the Withdrawal Queue Wallet's USDC balance. When the buffer thins below an operational threshold, Relayer signals the Trustee to initiate a top-up.
+2. **Passive sanctions re-screening.** Relayer runs scheduled re-screening against whitelisted addresses. On a sanctions hit landing on a lender with one or more `Pending` queue entries or `Pending` deposit tickets, Relayer calls `WhitelistRegistry.revokeAccess(lender)` directly. This is the narrow on-chain action retained by the Relayer (a defensive action that needs to land fast). The lender's subsequent claim attempts fail at the queue's `isAllowed` re-check, and the Relayer also stops issuing fresh attestations for the holder.
+3. **Vendor-down handling.** If the KYT vendor is unreachable during scheduled re-screening, Relayer halts revocation calls until the vendor is restored. Existing whitelist entries that were valid before the outage stay valid until their freshness window expires.
+
+Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT fund queue entries. All three are user-pulled by the lender themselves.
 
 ### 3. Yield Minting — Repayment
 
@@ -85,11 +87,11 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 5. WhitelistRegistry Maintenance
 
-- **On Sumsub APPROVED + Chainalysis clean result:** `WhitelistRegistry.setAccess(lp, ts)`.
-- **On failed passive re-screen:** `revokeAccess(lp)`, route to compliance review queue.
-- **On manual compliance approval:** `setAccess(lp, approvedAt)`.
-- **Periodic batch re-screen:** `refreshScreening(lp, newTs)` for each LP on a configurable
-  cadence to maintain freshness.
+- **On clean KYT (deposit-triggered):** Relayer signs a `ClaimAttestation`. The lender calls `DepositManager.claim`, which internally calls `WhitelistRegistry.setAccess` to enrol the lender as a side effect.
+- **On clean KYT (standalone enrolment):** Relayer signs an `EnrolAttestation`. The address holder calls `WhitelistRegistry.enrol(addr, att, sig)` themselves.
+- **On failed passive re-screen:** Relayer calls `revokeAccess(addr)` directly under the `WHITELIST_REVOKER` role. Any in-flight deposit ticket or queue entry routes to compliance review queue.
+- **On manual compliance approval:** Relayer signs the appropriate attestation (claim or enrol) and serves it via API. The address holder submits on-chain.
+- **Periodic batch re-screen:** For freshness maintenance, the Relayer offers fresh `EnrolAttestation` payloads through the standalone enrolment endpoint. Holders refresh by calling `enrol` again with the new attestation. There is no Relayer-direct refresh path.
 
 ### 6. Price Feed and CCR Monitoring
 
@@ -155,27 +157,26 @@ For the internal architecture diagram and blast-radius analysis per service, see
 
 ## Role Assignments on Contracts
 
-Relayer holds: **YIELD_MINTER** (PLUSD), **FUNDER** (WithdrawalQueue), **WHITELIST_ADMIN**
-(WhitelistRegistry).
+Relayer holds: **WHITELIST_REVOKER** (WhitelistRegistry, narrow defensive role). The Relayer also holds the `kytAttestor` signing key, which is referenced as a configured address on DepositManager, WithdrawalQueue, and WhitelistRegistry (not a role grant). The yield-attestation key (`relayerYieldAttestor`) is similarly referenced by YieldMinter as a signing-key address, not a role grant.
 
-Relayer has **no role on LoanRegistry** — loan NFT writes are done by the Trustee key directly.
-Relayer **does not sign loan disbursements** — Trustee + Team co-sign on Capital Wallet.
-Relayer **does not manage the USDC↔USYC ratio** — custodian MPC policy engine and Trustee
-manage the band; Relayer only requests a USYC redemption when Capital Wallet USDC is
-insufficient at withdrawal funding time.
+Relayer **does not write `setAccess`, `markClaimable`, or any other state-flip on DepositManager or WithdrawalQueue**. Enrolment lands via DepositManager.claim (auto-enrol side effect) or via the address holder calling `enrol` with an off-chain attestation. Claims land via the lender submitting an off-chain attestation.
+
+Relayer has **no role on LoanRegistry**. Loan NFT writes are done by the Trustee key directly.
+Relayer **does not sign loan disbursements**. Trustee + Team co-sign on Capital Wallet.
+Relayer **does not manage the USDC/USYC ratio**. Custody MPC policy and Trustee manage the band. Relayer only signals the Trustee when Withdrawal Queue Wallet headroom is thin.
+Relayer **does not fund withdrawals**. The Withdrawal Queue Wallet is topped up by Trustee + Team out-of-band.
 
 ---
 
 ## Security Considerations
 
-**Two-party yield attestation.** Yield minting requires Relayer ECDSA sig + custodian EIP-1271
-sig + YIELD_MINTER caller role. Relayer alone cannot mint yield PLUSD.
+**Two-party yield attestation.** Yield minting requires Relayer ECDSA sig + custodian EIP-1271 sig + the YieldMinter contract holding YIELD_MINTER on PLUSD. Relayer alone cannot mint yield PLUSD.
 
-**Narrow on-chain roles.** FUNDER can only trigger WQ pulls for existing queue entries;
-WHITELIST_ADMIN cannot mint; YIELD_MINTER still requires custodian co-sig.
+**Single-party deposit and withdrawal attestation.** `kytAttestor` signs `ClaimAttestation` and `EnrolAttestation` payloads off-chain. The lender submits the attestation at claim or enrol time. The contract verifies the signature against the configured `kytAttestor` address. A compromised key can sign valid attestations for any depositId, queueId, or address, but cannot bypass the underlying state requirements (a deposit ticket or queue entry must already exist, or for enrolment the address holder must submit).
 
-**Deposit path is Relayer-free.** A complete Relayer compromise does not stop deposits or allow
-unbacked deposit-leg mints.
+**Narrow on-chain role.** `WHITELIST_REVOKER` allows direct `revokeAccess`. This is a defensive action for fast sanctions response. It cannot mint, cannot enrol, cannot affect deposit or withdrawal claims directly. GUARDIAN can revoke this role instantly.
+
+**Relayer compromise is bounded to KYT bypass.** A compromised Relayer can sign valid attestations and revoke arbitrary whitelist entries. Neither action mints PLUSD on its own. PLUSD is only minted when the lender calls `claim` against their own deposited USDC. Whitelist enrolment lands only when DepositManager.claim succeeds (against a real ticket and attestation) or when the address holder themselves submits `enrol`. The risk is AML (illicit USDC entering the Capital Wallet via a bypassed KYT, illicit addresses gaining transfer eligibility), not direct theft. PLUSD remains 1:1 backed in every state.
 
 **Key storage.** Relayer hot keys (on-chain caller) are held in a hardware-isolated KMS
 with per-call authorisation and full audit logging. The `relayerYieldAttestor` key (yield

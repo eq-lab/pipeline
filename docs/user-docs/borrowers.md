@@ -6,7 +6,7 @@ section: For Borrowers
 
 # For borrowers
 
-Pipeline finances physical commodity trade deals — typically one facility per offtake contract. Lenders (KYC'd, on-chain) fund the Senior tranche; the Originator funds the Equity tranche as first-loss; the offtaker (the end buyer of the commodity) pays into a USD account that the Trustee reconciles against the loan and on-ramps to the Capital Wallet.
+Pipeline finances physical commodity trade deals, typically one facility per offtake contract. Lenders (compliance-screened, on-chain) fund the Senior tranche. The Originator funds the Equity tranche as first-loss. The offtaker (the end buyer of the commodity) pays into a USD account that the Trustee reconciles against the loan and on-ramps to the Capital Wallet.
 
 Pipeline is **not a self-service platform for borrowers**. You can't sign up online, fill in a form, and take a loan. Every borrow facility comes to us through an **originator** — a commodity trading firm we already know and trust, that brings the deal, runs first-pass diligence on the borrower, and puts its own money in alongside ours as first-loss capital. At launch our only originator is Open Mineral. More will be onboarded over time.
 

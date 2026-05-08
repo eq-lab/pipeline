@@ -4,7 +4,7 @@
 
 sPLUSD is an ERC-4626 yield-bearing vault whose underlying asset is PLUSD. Staking is a pure on-chain interaction between the LP and the vault contract; the relayer service is not involved in deposit or redemption. Yield accretes passively: the relayer service mints fresh PLUSD directly into the vault address as yield events settle, increasing `totalAssets` while `totalSupply` of sPLUSD shares stays constant, which raises the share price for all stakers.
 
-The vault is **open to any PLUSD holder** — there is no whitelist check on sPLUSD deposit, redemption, or transfer. KYC and sanctions screening are enforced upstream at the PLUSD level. On the way out of the vault, the PLUSD transfer reverts if the receiver is not whitelisted, re-engaging the compliance boundary at the point of delivery.
+The vault is **open to any PLUSD holder**. There is no whitelist check on sPLUSD deposit, redemption, or transfer. Compliance screening is enforced upstream at the PLUSD level via the transfer whitelist. On the way out of the vault, the PLUSD transfer reverts if the receiver is not whitelisted, re-engaging the compliance boundary at the point of delivery.
 
 ---
 
@@ -54,15 +54,15 @@ Standard ERC-4626 rounding direction applies (round down on redemption to protec
 
 Unstaking is always available. There is no lock-up period, no queue, and no minimum hold time.
 
-**WhitelistRegistry re-entry on redemption.** The PLUSD transfer inside `redeem` is subject to the PLUSD contract's `_update` hook. If `receiver` is not currently present on the WhitelistRegistry with a valid Chainalysis freshness timestamp, the PLUSD transfer reverts — and therefore the entire `redeem` call reverts — at the PLUSD contract level, not at the vault level. This is by design: the vault itself does not perform a whitelist check; the PLUSD transfer hook enforces the compliance boundary.
+**WhitelistRegistry re-entry on redemption.** The PLUSD transfer inside `redeem` is subject to the PLUSD contract's `_update` hook. If `receiver` is not currently present on the WhitelistRegistry with a valid `approvedAt` inside the freshness window, the PLUSD transfer reverts and therefore the entire `redeem` call reverts at the PLUSD contract level, not at the vault level. This is by design. The vault itself does not perform a whitelist check. The PLUSD transfer hook enforces the compliance boundary.
 
 ### sPLUSD Is Open — No Whitelist Check
 
 The sPLUSD vault does not consult the WhitelistRegistry on deposit, redemption, or transfer of sPLUSD shares. This is deliberate.
 
-**Architectural principle.** KYC and sanctions screening are enforced at the point where USDC enters the protocol and PLUSD is first minted. PLUSD can only exist in whitelisted addresses (KYCed LP wallets or approved DeFi venues). Any holder of PLUSD has therefore either passed KYC to receive it directly from a mint, or received it from another whitelisted address through a transfer the PLUSD contract permitted. Staking PLUSD into sPLUSD requires only that the caller already holds PLUSD — the compliance check was performed when that PLUSD entered their address. No second KYC is required.
+**Architectural principle.** Compliance screening is enforced at the point where USDC enters the protocol (deposit-triggered KYT in DepositManager, with a side-effect write to WhitelistRegistry on a clean result), and again at every transfer via PLUSD's `_update` hook. PLUSD can only exist in whitelisted addresses (compliance-screened lender wallets or approved DeFi venues). Any holder of PLUSD has therefore either passed KYT to receive it directly from a deposit-triggered mint, or received it from another whitelisted address through a transfer the PLUSD contract permitted. Staking PLUSD into sPLUSD requires only that the caller already holds PLUSD. The compliance check was performed when that PLUSD entered their address. No second screen is required at the vault.
 
-This design enables DeFi composability: third parties who acquire PLUSD through approved DeFi venues (specific Curve pools, Uniswap v4 pools, Aave markets added by the foundation multisig) can stake into sPLUSD and earn yield without undergoing Pipeline's direct onboarding. The protection of LP capital is not weakened, because the only way PLUSD enters circulation is through KYCed deposit mints, and every holder of PLUSD is either whitelisted or an approved venue. sPLUSD inherits this indirect compliance chain without imposing its own additional check.
+This design enables DeFi composability. Third parties who acquire PLUSD through approved DeFi venues (specific Curve pools, Uniswap v4 pools, Aave markets added by the foundation multisig) can stake into sPLUSD and earn yield without undergoing Pipeline's direct onboarding. The protection of LP capital is not weakened, because the only way PLUSD enters circulation is through screened deposit mints, and every holder of PLUSD is either whitelisted or an approved venue. sPLUSD inherits this indirect compliance chain without imposing its own additional check.
 
 On the way out, the chain re-engages: `redeem` delivers PLUSD, and PLUSD's transfer hook enforces the whitelist on the receiver. An sPLUSD holder whose redemption address is not whitelisted cannot convert their shares back to PLUSD.
 
