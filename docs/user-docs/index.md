@@ -7,7 +7,7 @@ order: 1
 
 > Yield for on-chain capital, backed by real commodity trade finance.
 
-Pipeline is a credit facility that finances secured commodity trade deals. Pipeline pays the senior coupon, and realised T-bill yield on idle reserves, to KYC'd on-chain lenders. Every loan has a full on-chain trail and registry and may be audited at any time. Lender USDC sits in self-custodied MPC wallets — no Pipeline contract holds it, and no single Pipeline party can move it.
+Pipeline is a credit facility that finances secured commodity trade deals. Pipeline pays the senior coupon, and realised T-bill yield on idle reserves, to compliance-screened on-chain lenders. Every loan has a full on-chain trail and registry and may be audited at any time. Lender USDC sits in self-custodied MPC wallets, no Pipeline contract holds it, and no single Pipeline party can move it.
 
 <div class="callout risk">
   <h4>Before you deposit</h4>
@@ -45,7 +45,7 @@ Lenders face loan defaults, liquidity delays on large withdrawals, custody-polic
 
 ## How to start
 
-Proceed with the onboarding through the [website](https://pipeline.one/), complete KYC and Chainalysis screening, and deposit at least $1,000 USDC. Minting caps are $5M per transaction and $10M per rolling 24 hours. See here [Onboarding](/lenders/onboarding/) for the full onboarding procedure.
+Connect your wallet at the [website](https://pipeline.one/), call `DepositManager.deposit` with at least $1,000 USDC, wait for KYT screening, then call `claim`. The deposit flow itself enrols you in the transfer whitelist on a clean KYT result. There are no upfront identity documents or accreditation declarations. Per-lender 24h cap is $10M. See [Onboarding](/lenders/onboarding/) for the full procedure.
 
 ## Not financial advice
 
@@ -57,6 +57,6 @@ Information on this website is not investment, legal, or tax advice. Yield figur
 
 [How it works](./how-it-works/index.md) · [Yield engines](./how-it-works/yield-engines.md)
 
-[Lenders](./lenders/index.md) · [Onboarding](./lenders/onboarding.md) · [Deposit & stake](./lenders/deposit-and-stake.md) · [Withdraw](./lenders/withdraw.md) · [Dashboard](./lenders/dashboard.md)
+[Lenders](./lenders/index.md) · [Onboarding](./lenders/onboarding.md) · [Deposit](./lenders/deposit.md) · [Stake PLUSD](./lenders/stake.md) · [Withdraw](./lenders/withdraw.md) · [Dashboard](./lenders/dashboard.md)
 
-[Security](./security/index.md) · [Custody](./security/custody.md) · [Supply safeguards](./security/supply-safeguards.md) · [Emergency response](./security/emergency-response.md) · [Audits & addresses](./security/audits-and-addresses.md)
+[Security](./security/index.md) · [Custody](./security/custody.md) · [Governance](./security/governance.md) · [Supply safeguards](./security/supply-safeguards.md) · [Emergency response](./security/emergency-response.md) · [Audits & addresses](./security/audits-and-addresses.md)

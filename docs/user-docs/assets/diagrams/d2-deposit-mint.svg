@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
-  <rect width="900" height="560" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="780" viewBox="0 0 980 780" font-family="Graphik LC, Inter, ui-sans-serif, system-ui, sans-serif">
+  <rect width="980" height="780" fill="#ffffff"/>
 
   <!-- arrow-head defs -->
   <defs>
@@ -12,85 +12,154 @@
     <marker id="arrow-lavender" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a3a8e"/>
     </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b9670a"/>
+    </marker>
   </defs>
 
-  <!-- Atomicity bracket (top-left to bottom-left, label "single transaction") -->
-  <rect x="20" y="90" width="26" height="380" fill="none" stroke="#b9870a" stroke-width="1.5"/>
-  <text x="12" y="280" fill="#b9870a" font-size="11" font-weight="600" transform="rotate(-90 12 280)" text-anchor="middle">ONE ATOMIC TRANSACTION</text>
+  <!-- Phase brackets -->
+  <rect x="20" y="100" width="22" height="180" fill="none" stroke="#b9870a" stroke-width="1.5"/>
+  <text x="14" y="190" fill="#b9870a" font-size="11" font-weight="600" transform="rotate(-90 14 190)" text-anchor="middle">PHASE 1: DEPOSIT</text>
 
-  <!-- Lane header: Lender -->
-  <rect x="66" y="40" width="138" height="40" rx="6" fill="#ebeae9" stroke="#000080" stroke-width="1.5"/>
-  <text text-anchor="middle" x="135" y="58" fill="#262524" font-size="12" font-weight="600">Lender</text>
-  <text text-anchor="middle" x="135" y="72" fill="#736f6c" font-size="10">KYC'd + whitelisted</text>
-  <line x1="135" y1="90" x2="135" y2="500" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="20" y="290" width="22" height="120" fill="none" stroke="#2f6b3a" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <text x="14" y="350" fill="#2f6b3a" font-size="11" font-weight="600" transform="rotate(-90 14 350)" text-anchor="middle">PHASE 2: KYT (off-chain)</text>
+
+  <rect x="20" y="420" width="22" height="220" fill="none" stroke="#b9870a" stroke-width="1.5"/>
+  <text x="14" y="530" fill="#b9870a" font-size="11" font-weight="600" transform="rotate(-90 14 530)" text-anchor="middle">PHASE 3: CLAIM + MINT</text>
+
+  <!-- Lane: Lender -->
+  <rect x="60" y="50" width="120" height="40" rx="6" fill="#ebeae9" stroke="#000080" stroke-width="1.5"/>
+  <text text-anchor="middle" x="120" y="68" fill="#262524" font-size="12" font-weight="600">Lender</text>
+  <text text-anchor="middle" x="120" y="82" fill="#736f6c" font-size="10">self-custodied wallet</text>
+  <line x1="120" y1="100" x2="120" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
   <!-- Lane: DepositManager -->
-  <rect x="224" y="40" width="138" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
-  <text text-anchor="middle" x="293" y="58" fill="#262524" font-size="12" font-weight="600">DepositManager</text>
-  <text text-anchor="middle" x="293" y="72" fill="#736f6c" font-size="10">on-chain contract</text>
-  <line x1="293" y1="90" x2="293" y2="500" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="200" y="50" width="120" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text text-anchor="middle" x="260" y="68" fill="#262524" font-size="12" font-weight="600">DepositManager</text>
+  <text text-anchor="middle" x="260" y="82" fill="#736f6c" font-size="10">on-chain contract</text>
+  <line x1="260" y1="100" x2="260" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: Relayer (off-chain) -->
+  <rect x="340" y="50" width="120" height="40" rx="6" fill="#f7f5f0" stroke="#2f6b3a" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <text text-anchor="middle" x="400" y="68" fill="#262524" font-size="12" font-weight="600">Relayer</text>
+  <text text-anchor="middle" x="400" y="82" fill="#736f6c" font-size="10">off-chain attestor</text>
+  <line x1="400" y1="100" x2="400" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
   <!-- Lane: WhitelistRegistry -->
-  <rect x="382" y="40" width="138" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
-  <text text-anchor="middle" x="451" y="58" fill="#262524" font-size="12" font-weight="600">WhitelistRegistry</text>
-  <text text-anchor="middle" x="451" y="72" fill="#736f6c" font-size="10">on-chain view</text>
-  <line x1="451" y1="90" x2="451" y2="500" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="480" y="50" width="120" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text text-anchor="middle" x="540" y="68" fill="#262524" font-size="12" font-weight="600">WhitelistRegistry</text>
+  <text text-anchor="middle" x="540" y="82" fill="#736f6c" font-size="10">on-chain registry</text>
+  <line x1="540" y1="100" x2="540" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
-  <!-- Lane: USDC (ERC-20) -->
-  <rect x="540" y="40" width="138" height="40" rx="6" fill="#ebeae9" stroke="#2f6b3a" stroke-width="1.5"/>
-  <text text-anchor="middle" x="609" y="58" fill="#262524" font-size="12" font-weight="600">USDC (ERC-20)</text>
-  <text text-anchor="middle" x="609" y="72" fill="#736f6c" font-size="10">on-chain transfer</text>
-  <line x1="609" y1="90" x2="609" y2="500" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+  <!-- Lane: Intake Wallet -->
+  <rect x="620" y="50" width="120" height="40" rx="6" fill="#fdf3e7" stroke="#b9670a" stroke-width="1.5"/>
+  <text text-anchor="middle" x="680" y="68" fill="#262524" font-size="12" font-weight="600">Intake Wallet</text>
+  <text text-anchor="middle" x="680" y="82" fill="#736f6c" font-size="10">MPC custody</text>
+  <line x1="680" y1="100" x2="680" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- Lane: Capital Wallet -->
+  <rect x="760" y="50" width="120" height="40" rx="6" fill="#fdf3e7" stroke="#b9670a" stroke-width="1.5"/>
+  <text text-anchor="middle" x="820" y="68" fill="#262524" font-size="12" font-weight="600">Capital Wallet</text>
+  <text text-anchor="middle" x="820" y="82" fill="#736f6c" font-size="10">MPC custody</text>
+  <line x1="820" y1="100" x2="820" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
 
   <!-- Lane: PLUSD -->
-  <rect x="698" y="40" width="138" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
-  <text text-anchor="middle" x="767" y="58" fill="#262524" font-size="12" font-weight="600">PLUSD</text>
-  <text text-anchor="middle" x="767" y="72" fill="#736f6c" font-size="10">on-chain receipt</text>
-  <line x1="767" y1="90" x2="767" y2="500" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+  <rect x="900" y="50" width="60" height="40" rx="6" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1.5"/>
+  <text text-anchor="middle" x="930" y="68" fill="#262524" font-size="12" font-weight="600">PLUSD</text>
+  <text text-anchor="middle" x="930" y="82" fill="#736f6c" font-size="9">ERC-20</text>
+  <line x1="930" y1="100" x2="930" y2="650" stroke="#3837352e" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- ===== PHASE 1: DEPOSIT ===== -->
 
   <!-- Step 1: Lender → DepositManager: deposit(amount) -->
-  <circle cx="60" cy="120" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="124" fill="#ffffff" font-size="12" font-weight="700">1</text>
-  <line x1="135" y1="120" x2="287" y2="120" stroke="#000080" stroke-width="2" marker-end="url(#arrow-slate)"/>
-  <text text-anchor="middle" x="211" y="113" fill="#262524" font-size="11" font-weight="600">deposit(amount)</text>
+  <circle cx="50" cy="130" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="134" fill="#ffffff" font-size="12" font-weight="700">1</text>
+  <line x1="120" y1="130" x2="254" y2="130" stroke="#000080" stroke-width="2" marker-end="url(#arrow-slate)"/>
+  <text text-anchor="middle" x="187" y="123" fill="#262524" font-size="11" font-weight="600">deposit(amount)</text>
 
-  <!-- Step 2: DepositManager → WhitelistRegistry: isAllowedForMint(lp) -->
-  <circle cx="60" cy="170" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="174" fill="#ffffff" font-size="12" font-weight="700">2</text>
-  <line x1="293" y1="170" x2="446" y2="170" stroke="#4a3a8e" stroke-width="2" marker-end="url(#arrow-lavender)"/>
-  <text text-anchor="middle" x="370" y="163" fill="#262524" font-size="11" font-weight="600">isAllowedForMint(lp)?</text>
-  <text text-anchor="middle" x="370" y="185" fill="#736f6c" font-size="10">whitelist + 90d freshness</text>
+  <!-- Step 2: DepositManager → Intake Wallet: USDC.transferFrom(lender, intake, amount) -->
+  <circle cx="50" cy="180" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="184" fill="#ffffff" font-size="12" font-weight="700">2</text>
+  <line x1="260" y1="180" x2="674" y2="180" stroke="#2f6b3a" stroke-width="3" marker-end="url(#arrow-sage)"/>
+  <text text-anchor="middle" x="467" y="173" fill="#262524" font-size="11" font-weight="600">USDC.transferFrom(lender, intakeWallet, amount)</text>
+  <text text-anchor="middle" x="467" y="195" fill="#736f6c" font-size="10">lender's USDC parked in Intake Wallet</text>
 
-  <!-- Step 3: DepositManager checks caps -->
-  <circle cx="60" cy="230" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="234" fill="#ffffff" font-size="12" font-weight="700">3</text>
-  <rect x="224" y="216" width="138" height="40" rx="4" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1"/>
-  <text text-anchor="middle" x="293" y="232" fill="#262524" font-size="10">check caps:</text>
-  <text text-anchor="middle" x="293" y="248" fill="#736f6c" font-size="10">24h / per-LP / totalSupply</text>
+  <!-- Step 3: Ticket created (Pending) -->
+  <circle cx="50" cy="240" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="244" fill="#ffffff" font-size="12" font-weight="700">3</text>
+  <rect x="200" y="226" width="120" height="32" rx="4" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1"/>
+  <text text-anchor="middle" x="260" y="240" fill="#262524" font-size="10" font-weight="600">create ticket</text>
+  <text text-anchor="middle" x="260" y="253" fill="#736f6c" font-size="10">{amount, Pending}</text>
 
-  <!-- Step 4: USDC transferFrom(lp → Capital Wallet) -->
-  <circle cx="60" cy="295" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="299" fill="#ffffff" font-size="12" font-weight="700">4</text>
-  <line x1="293" y1="295" x2="603" y2="295" stroke="#2f6b3a" stroke-width="3" marker-end="url(#arrow-sage)"/>
-  <text text-anchor="middle" x="448" y="287" fill="#262524" font-size="11" font-weight="600">USDC.transferFrom(lp, capitalWallet, amount)</text>
-  <text text-anchor="middle" x="448" y="310" fill="#736f6c" font-size="10">LP's USDC → Capital Wallet (one on-chain ERC-20 transfer)</text>
+  <!-- Phase divider 1->2 -->
+  <line x1="60" y1="290" x2="960" y2="290" stroke="#2f6b3a" stroke-width="1" stroke-dasharray="6 3"/>
 
-  <!-- Step 5: PLUSD.mintForDeposit(lp, amount) -->
-  <circle cx="60" cy="360" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="364" fill="#ffffff" font-size="12" font-weight="700">5</text>
-  <line x1="293" y1="360" x2="761" y2="360" stroke="#4a3a8e" stroke-width="2" marker-end="url(#arrow-lavender)"/>
-  <text text-anchor="middle" x="527" y="352" fill="#262524" font-size="11" font-weight="600">mintForDeposit(lp, amount)</text>
-  <text text-anchor="middle" x="527" y="375" fill="#736f6c" font-size="10">DEPOSITOR role · reserve invariant check</text>
+  <!-- ===== PHASE 2: OFF-CHAIN KYT ===== -->
 
-  <!-- Step 6: PLUSD → Lender (receipt) -->
-  <circle cx="60" cy="430" r="12" fill="#000080"/>
-  <text text-anchor="middle" x="60" y="434" fill="#ffffff" font-size="12" font-weight="700">6</text>
-  <line x1="767" y1="430" x2="141" y2="430" stroke="#4a3a8e" stroke-width="2" marker-end="url(#arrow-lavender)"/>
-  <text text-anchor="middle" x="454" y="422" fill="#262524" font-size="11" font-weight="600">PLUSD balance ↑ (1:1 with USDC deposited)</text>
-  <text text-anchor="middle" x="454" y="445" fill="#736f6c" font-size="10">all six steps settle in the same transaction — revert atomically</text>
+  <!-- Step 4: Relayer runs KYT -->
+  <circle cx="50" cy="315" r="12" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="50" y="319" fill="#ffffff" font-size="12" font-weight="700">4</text>
+  <rect x="340" y="301" width="120" height="32" rx="4" fill="#f7f5f0" stroke="#2f6b3a" stroke-width="1" stroke-dasharray="3 2"/>
+  <text text-anchor="middle" x="400" y="315" fill="#262524" font-size="10" font-weight="600">run KYT</text>
+  <text text-anchor="middle" x="400" y="328" fill="#736f6c" font-size="10">address + tx</text>
 
-  <!-- bottom note -->
-  <rect x="66" y="494" width="770" height="46" rx="6" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
-  <text text-anchor="middle" x="451" y="514" fill="#262524" font-size="12" font-weight="600">No off-chain signer gates deposits.</text>
-  <text text-anchor="middle" x="451" y="530" fill="#736f6c" font-size="11">The on-chain USDC movement itself is the attestation. Relayer is not in the critical path.</text>
+  <!-- Step 5: Relayer signs attestation (off-chain, no on-chain write) -->
+  <circle cx="50" cy="360" r="12" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="50" y="364" fill="#ffffff" font-size="12" font-weight="700">5</text>
+  <rect x="340" y="346" width="120" height="32" rx="4" fill="#f7f5f0" stroke="#2f6b3a" stroke-width="1" stroke-dasharray="3 2"/>
+  <text text-anchor="middle" x="400" y="360" fill="#262524" font-size="10" font-weight="600">sign attestation</text>
+  <text text-anchor="middle" x="400" y="373" fill="#736f6c" font-size="9">EIP-712 ClaimAttestation</text>
+
+  <!-- Step 6: Lender fetches attestation via API (off-chain dashed arrow) -->
+  <circle cx="50" cy="395" r="12" fill="#2f6b3a"/>
+  <text text-anchor="middle" x="50" y="399" fill="#ffffff" font-size="12" font-weight="700">6</text>
+  <line x1="394" y1="395" x2="126" y2="395" stroke="#2f6b3a" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arrow-sage)"/>
+  <text text-anchor="middle" x="260" y="388" fill="#262524" font-size="11" font-weight="600">attestation via API</text>
+  <text text-anchor="middle" x="260" y="409" fill="#736f6c" font-size="10">no on-chain Relayer write</text>
+
+  <!-- Phase divider 2->3 -->
+  <line x1="60" y1="420" x2="960" y2="420" stroke="#b9870a" stroke-width="1" stroke-dasharray="6 3"/>
+
+  <!-- ===== PHASE 3: CLAIM + MINT ===== -->
+
+  <!-- Step 7: Lender → DepositManager: claim(depositId, att, sig) -->
+  <circle cx="50" cy="445" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="449" fill="#ffffff" font-size="12" font-weight="700">7</text>
+  <line x1="120" y1="445" x2="254" y2="445" stroke="#000080" stroke-width="2" marker-end="url(#arrow-slate)"/>
+  <text text-anchor="middle" x="187" y="438" fill="#262524" font-size="11" font-weight="600">claim(depositId, att, sig)</text>
+
+  <!-- Step 8: DepositManager verifies signature (self-call box) -->
+  <circle cx="50" cy="490" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="494" fill="#ffffff" font-size="12" font-weight="700">8</text>
+  <rect x="200" y="476" width="120" height="32" rx="4" fill="#ebeae9" stroke="#4a3a8e" stroke-width="1"/>
+  <text text-anchor="middle" x="260" y="490" fill="#262524" font-size="10" font-weight="600">verify sig</text>
+  <text text-anchor="middle" x="260" y="503" fill="#736f6c" font-size="10">vs kytAttestor</text>
+
+  <!-- Step 9: DepositManager → WhitelistRegistry: setAccess (auto-enrol) -->
+  <circle cx="50" cy="535" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="539" fill="#ffffff" font-size="12" font-weight="700">9</text>
+  <line x1="260" y1="535" x2="534" y2="535" stroke="#4a3a8e" stroke-width="2" marker-end="url(#arrow-lavender)"/>
+  <text text-anchor="middle" x="397" y="528" fill="#262524" font-size="11" font-weight="600">setAccess(lender, approvedAt)</text>
+  <text text-anchor="middle" x="397" y="550" fill="#736f6c" font-size="10">auto-enrol depositor in transfer whitelist</text>
+
+  <!-- Step 10: USDC.transferFrom(intake, capital, amount) -->
+  <circle cx="50" cy="575" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="579" fill="#ffffff" font-size="12" font-weight="700">10</text>
+  <line x1="680" y1="575" x2="814" y2="575" stroke="#2f6b3a" stroke-width="3" marker-end="url(#arrow-sage)"/>
+  <text text-anchor="middle" x="747" y="568" fill="#262524" font-size="11" font-weight="600">USDC pull</text>
+  <text text-anchor="middle" x="747" y="590" fill="#736f6c" font-size="10">Intake to Capital</text>
+
+  <!-- Step 11: PLUSD.mintForDeposit -->
+  <circle cx="50" cy="620" r="12" fill="#000080"/>
+  <text text-anchor="middle" x="50" y="624" fill="#ffffff" font-size="12" font-weight="700">11</text>
+  <line x1="260" y1="620" x2="924" y2="620" stroke="#4a3a8e" stroke-width="2" marker-end="url(#arrow-lavender)"/>
+  <text text-anchor="middle" x="592" y="613" fill="#262524" font-size="11" font-weight="600">mintForDeposit(lender, amount)</text>
+  <text text-anchor="middle" x="592" y="634" fill="#736f6c" font-size="10">DEPOSITOR role · PLUSD balance up 1:1</text>
+
+  <!-- Bottom note -->
+  <rect x="60" y="660" width="900" height="78" rx="6" fill="#ebeae9" stroke="#b9870a" stroke-width="1"/>
+  <text text-anchor="middle" x="510" y="682" fill="#262524" font-size="12" font-weight="600">The Relayer never writes to DepositManager directly.</text>
+  <text text-anchor="middle" x="510" y="700" fill="#262524" font-size="11">It signs an off-chain attestation that the lender submits at claim time. The contract verifies the signature on-chain.</text>
+  <text text-anchor="middle" x="510" y="717" fill="#736f6c" font-size="10">PLUSD remains 1:1 backed in every state. Mint only at claim, against USDC the lender already deposited into the Intake Wallet.</text>
+  <text text-anchor="middle" x="510" y="732" fill="#736f6c" font-size="10">A Relayer key compromise can sign valid attestations but cannot mint without a real ticket. Risk is AML, not direct theft.</text>
 </svg>

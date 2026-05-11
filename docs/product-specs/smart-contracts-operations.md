@@ -8,7 +8,7 @@
 
 **Operational roles** (GUARDIAN can revoke a named holder directly; ADMIN grants and re-grants under 48h timelock):
 
-- Relayer EOA holds: `FUNDER` (WithdrawalQueue), `WHITELIST_ADMIN` (WhitelistRegistry).
+- Relayer EOA holds: `WHITELIST_REVOKER` (WhitelistRegistry, narrow defensive role for sanctions response). The Relayer's `kytAttestor` ECDSA key is referenced as a configured address on DepositManager, WithdrawalQueue, and WhitelistRegistry (not a role grant), used to sign off-chain claim and enrol attestations.
 - Relayer yield-attestor key: referenced by `YieldMinter` as `relayerYieldAttestor` (rotatable under 48h ADMIN timelock via `proposeYieldAttestors`). This is a signing key, not a role — revocation is a rotation, not a `revokeRole` call.
 - Trustee key holds: `TRUSTEE` on LoanRegistry (all loan NFT writes — Relayer has no LoanRegistry role).
 
@@ -27,7 +27,7 @@
 ### GUARDIAN revocation scope
 
 GUARDIAN's `revokeRole(role, account)` on AccessManager is restricted to operational roles
-held by EOAs: `FUNDER`, `WHITELIST_ADMIN`, `TRUSTEE`. Revocation is instant and requires
+held by EOAs: `WHITELIST_REVOKER`, `TRUSTEE`. Revocation is instant and requires
 no timelock. Re-granting a revoked role requires an ADMIN proposal with the 48h
 AccessManager delay (which GUARDIAN may cancel). GUARDIAN cannot revoke `UPGRADER`,
 `DEFAULT_ADMIN`, `DEPOSITOR`, `YIELD_MINTER`, `BURNER`, or any governance role — attempts
@@ -94,7 +94,7 @@ reviewable record and a bounded blast radius.
 |---|---|---|
 | `pause()` | Any pausable contract | Instant |
 | `AccessManager.cancel(actionId)` | Any pending scheduled action (upgrade, role grant, parameter loosening, shutdown entry) | Instant |
-| `AccessManager.revokeRole(role, account)` | Individual operational-role holders only — `FUNDER`, `WHITELIST_ADMIN`, `TRUSTEE` | Instant |
+| `AccessManager.revokeRole(role, account)` | Individual operational-role holders only (`WHITELIST_REVOKER`, `TRUSTEE`) | Instant |
 
 GUARDIAN **cannot** grant roles, unpause any contract, upgrade, revoke governance roles
 (`UPGRADER`, `DEFAULT_ADMIN`) or contract-held roles (`DEPOSITOR`, `YIELD_MINTER`,
@@ -116,15 +116,21 @@ upgrade of any implementation via the `UPGRADER` role.
    value from `PLUSD.assertLedgerInvariant()`.
 2. **Immediate (GUARDIAN, < 1 min).** Pause PLUSD, DepositManager, YieldMinter, and
    WithdrawalQueue (defence in depth).
-3. **Containment (GUARDIAN, < 10 min).** Submit separate `revokeRole` transactions for
-   `FUNDER` and `WHITELIST_ADMIN` on the compromised Relayer address. Even a fully
-   compromised Relayer cannot mint yield afterwards (custodian EIP-1271 still required,
-   and YieldMinter is paused), cannot fund withdrawals (`FUNDER` revoked), and cannot
-   modify the whitelist.
-4. **Investigation & recovery.** Audit event logs; if the yield-signing key is
+3. **Containment (GUARDIAN, < 10 min).** Submit `revokeRole` transaction for
+   `WHITELIST_REVOKER` on the compromised Relayer address. The off-chain attestation
+   keys are not roles, so revocation is signing-key rotation rather than `revokeRole`.
+   Even a fully compromised Relayer cannot mint yield afterwards (custodian EIP-1271
+   still required, and YieldMinter is paused), cannot revoke whitelist entries
+   (`WHITELIST_REVOKER` revoked), and any signed attestations issued by the compromised
+   key would still need to land on a real ticket or queue entry. PLUSD remains 1:1
+   backed throughout because mint requires the lender to have already deposited USDC
+   and to call `claim` themselves.
+4. **Investigation & recovery.** Audit event logs. If the yield-signing key is
    compromised, ADMIN proposes `YieldMinter.proposeYieldAttestors(newRelayerAttestor,
-   sameCustodian)` under 48h timelock. Provision a new Relayer address; ADMIN proposes
-   re-granting `FUNDER`, `WHITELIST_ADMIN` under 48h timelock each. Unpause via ADMIN.
+   sameCustodian)` under 48h timelock. If the `kytAttestor` key is compromised, ADMIN
+   proposes `setKytAttestor(newAttestor)` on each of DepositManager, WithdrawalQueue,
+   and WhitelistRegistry under 48h timelock. Provision a new Relayer address. ADMIN
+   proposes re-granting `WHITELIST_REVOKER` under 48h timelock. Unpause via ADMIN.
 
 ### Playbook: Trustee key compromise
 
@@ -187,9 +193,6 @@ will be additive (a `LoanPartialRepaid` event and additional mutable fields).
 
 ### Global pause aggregator
 
-The MVP uses per-contract pause with a documented multi-call cascade. A single
-`GlobalPauser` that every contract reads on its mutating path is a post-MVP option if
-ops friction proves material.
+The MVP uses per-contract pause with a documented multi-call cascade. A single `GlobalPauser` that every contract reads on its mutating path is a post-MVP option if ops friction proves material.
 
-For the LoanRegistry data models (origination JSON schema and MutableLoanData), see
-[smart-contracts-registry.md](./smart-contracts-registry.md).
+For LoanRegistry data models, see [smart-contracts-registry.md](./smart-contracts-registry.md).

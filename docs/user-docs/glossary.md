@@ -46,9 +46,11 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## D
 
-**DEPOSITOR (role)** — The role on *PLUSD* that authorises `PLUSD.mintForDeposit`, the 1:1 deposit-leg mint. Held in MVP by the *DepositManager* proxy address (contract-held, not an EOA); no human key holds it.
+**DEPOSITOR (role)** — The role on *PLUSD* that authorises `PLUSD.mintForDeposit`, the 1:1 deposit-leg mint called inside `DepositManager.claim`. Held in MVP by the *DepositManager* proxy address (contract-held, not an EOA), no human key holds it.
 
-**DepositManager** — The contract lenders call to deposit USDC. `DepositManager.deposit(amount)` pulls USDC from the lender to the *Capital Wallet* and mints *PLUSD* 1:1 in the same transaction, with no off-chain signer in the critical path; if any check fails, the whole transaction reverts.
+**DepositManager** — The contract lenders call to deposit USDC. The flow is two-step. `DepositManager.deposit(amount)` parks USDC in the *Intake Wallet* and creates a deposit ticket. After the *Relayer* runs *KYT* and marks the ticket claimable, the lender calls `DepositManager.claim(depositId)` to pull USDC from the Intake Wallet to the Capital Wallet and mint *PLUSD* 1:1.
+
+**Deposit ticket** — A per-deposit entry in `DepositManager.tickets[lender][depositId]` recording amount, status, and timestamps. Statuses: `Pending` (awaiting KYT), `Claimable` (KYT clean), `UnderReview` (KYT soft fail in compliance queue), `Frozen` (KYT hard fail), `Claimed` (PLUSD minted), `Refunded` (USDC returned to lender).
 
 ---
 
@@ -70,19 +72,31 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **First-loss** — The tranche that absorbs realised losses before any other capital is hit. On Pipeline, the *Originator* equity tranche is first-loss on every loan; only once it is exhausted does loss reach the *sPLUSD* share price.
 
-**FUNDER (role)** — The role on *WithdrawalQueue* that authorises `fundRequest` — pulling USDC from the *Capital Wallet* (via pre-approved allowance) to fund a queue head. Held in MVP by *Relayer*; revocable instantly by *GUARDIAN Safe*.
-
 ---
 
 ## G
 
-**GUARDIAN Safe** — A 2-of-5 Gnosis Safe with instant, defence-only powers: pause any pausable contract, cancel any pending ADMIN-scheduled action, and revoke individual operational-role holders (YIELD_MINTER, FUNDER, WHITELIST_ADMIN, TRUSTEE) one at a time. GUARDIAN cannot grant roles, unpause, upgrade, or initiate any risk-increasing action — restoration is strictly *ADMIN Safe*'s job under the 48h timelock.
+**GUARDIAN Safe** — A 2-of-5 Gnosis Safe with instant, defence-only powers: pause any pausable contract, cancel any pending ADMIN-scheduled action, and revoke individual operational-role holders (YIELD_MINTER, WHITELIST_REVOKER, TRUSTEE) one at a time. GUARDIAN cannot grant roles, unpause, upgrade, or initiate any risk-increasing action. Restoration is strictly *ADMIN Safe*'s job under the 48h timelock.
 
 ---
 
 ## H
 
 **Hashnote** — The asset manager that issues *USYC*, the tokenized U.S. Treasury-bill product Pipeline uses as its idle-reserve yield engine. Pipeline's *Relayer* reads NAV directly from the Hashnote API to compute the lazy *yieldMint* on sPLUSD stake/unstake events.
+
+---
+
+## I
+
+**Intake Wallet** — A separate MPC custody address that holds USDC during the screening window between `DepositManager.deposit` and `DepositManager.claim`. Same cosigner substrate as the *Capital Wallet* under a deposit-specific sub-policy. Smart contracts hold standing allowances against the Intake Wallet for `claim` (Intake to Capital) and `refund` (Intake to lender) settlements. A compromise of the Intake Wallet drains parked deposits but cannot drain the Capital Wallet.
+
+---
+
+## K
+
+**KYT (Know Your Transaction)** — Compliance screening that evaluates an address against sanctions and risk lists, and evaluates an inbound transaction for source-of-funds risk. Pipeline runs KYT on every deposit, on standalone address enrolments, and on scheduled passive re-screening of whitelisted addresses. KYT replaces customer identity verification (KYC, KYB) for lender onboarding under the *Framework: TBD* legal frame.
+
+**kytAttestor** — The Relayer's ECDSA signing key whose address is stored as a parameter on *DepositManager*, *WithdrawalQueue*, and *WhitelistRegistry*. The Relayer signs `ClaimAttestation` (for deposit and withdrawal claims) and `EnrolAttestation` (for standalone whitelist enrolment) with this key. Each contract verifies the signature on-chain at the moment the lender or address holder submits the attestation. Rotated via per-contract `setKytAttestor` setters under 48h ADMIN timelock. This is a signing-key relationship, not a role grant.
 
 ---
 
@@ -96,15 +110,15 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## M
 
-**maxPerLPPerWindow** — A *DepositManager* parameter capping the PLUSD a single lender wallet can mint inside the rolling deposit window. Together with `maxPerWindow` it bounds single-actor concentration on the deposit leg; YieldMinter has no per-account caps.
+**maxPerLPPerWindow** — A *DepositManager* parameter capping the USDC a single lender can deposit inside the rolling 24h deposit window. Together with `maxPerWindow` it bounds single-actor concentration on the deposit leg. YieldMinter has no per-account caps.
 
-**maxPerWindow** — A *DepositManager* parameter capping the aggregate PLUSD mintable across all lenders inside the rolling deposit window (launch value: $10M / 24h). Yield mints do not consume this budget — YieldMinter is a separate contract with separate gating.
+**maxPerWindow** — A *DepositManager* parameter capping the aggregate USDC accepted across all lenders inside the rolling 24h deposit window (launch value: $10M / 24h). Yield mints do not consume this budget. YieldMinter is a separate contract with separate gating.
 
-**maxTotalSupply** — A hard ceiling on `PLUSD.totalSupply()` checked on every PLUSD mint regardless of path (deposit or yield). This is the only economic cap that applies to both *DepositManager* and *YieldMinter*; tightening is instant under ADMIN, loosening is 48h-timelocked.
+**maxTotalSupply** — A hard ceiling on `PLUSD.totalSupply() + outstandingClaimable` checked at deposit time and re-checked at claim time. The `outstandingClaimable` term reserves cap headroom for tickets already screened-clean but not yet claimed. Applies to both *DepositManager* and *YieldMinter* on `mintForYield`. Tightening is instant under ADMIN, loosening is 48h-timelocked.
 
-**mintForDeposit** — The PLUSD function the *DepositManager* contract calls to mint deposit-leg PLUSD 1:1 against a USDC inflow. It is gated by the *DEPOSITOR* role (held exclusively by the DepositManager proxy) and enforces the *reserve invariant* and the `maxTotalSupply` ceiling before minting.
+**mintForDeposit** — The PLUSD function the *DepositManager* contract calls inside `claim` to mint deposit-leg PLUSD 1:1 against a screened USDC deposit. It is gated by the *DEPOSITOR* role (held exclusively by the DepositManager proxy) and enforces the *reserve invariant* and `maxTotalSupply` ceiling before minting.
 
-**mintForYield** — The PLUSD function the *YieldMinter* contract calls to mint yield-leg PLUSD into the sPLUSD vault or the *Treasury Wallet*. It is gated by the *YIELD_MINTER* role (held exclusively by the YieldMinter proxy) and enforces the *reserve invariant* and `maxTotalSupply` ceiling before minting; signature verification lives one layer up in YieldMinter.
+**mintForYield** — The PLUSD function the *YieldMinter* contract calls to mint yield-leg PLUSD into the sPLUSD vault or the *Treasury Wallet*. It is gated by the *YIELD_MINTER* role (held exclusively by the YieldMinter proxy) and enforces the *reserve invariant* and `maxTotalSupply` ceiling before minting. Signature verification lives one layer up in YieldMinter.
 
 ---
 
@@ -122,7 +136,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## P
 
-**PLUSD** — Pipeline's ERC-20 deposit receipt. One PLUSD represents one USDC held at the *Capital Wallet*; PLUSD is non-transferable between ordinary lender wallets (every transfer must touch a system address or an approved DeFi venue), and fresh supply enters only through *mintForDeposit* or *mintForYield*.
+**PLUSD** — Pipeline's ERC-20 deposit receipt. One PLUSD represents one USDC held at the *Capital Wallet*. Transfers require both endpoints to be whitelisted addresses or system addresses (the `_update` hook on PLUSD enforces the rule). Fresh supply enters only through *mintForDeposit* or *mintForYield*.
 
 ---
 
@@ -134,7 +148,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 **redeemInShutdown** — The PLUSD function a holder calls during shutdown to exchange PLUSD for USDC at the frozen recovery rate. Every PLUSD redeemed during shutdown pays the same per-unit amount regardless of order, so there is no race to redeem and no queue jump.
 
-**Relayer** — Pipeline's backend service, running as an on-chain account that holds two operational roles: *FUNDER* on WithdrawalQueue and *WHITELIST_ADMIN* on WhitelistRegistry. The Relayer also signs yield attestations with its `relayerYieldAttestor` key, but the *YIELD_MINTER* role itself is held by the *YieldMinter* contract — Relayer never holds it directly. Relayer is one of three MPC cosigners on the *Capital Wallet*, never custodies USDC, never touches LoanRegistry, and is not in the critical path for deposits.
+**Relayer** — Pipeline's backend service. Holds one operational role on-chain: *WHITELIST_REVOKER* on WhitelistRegistry (narrow defensive role for fast sanctions response). Holds two off-chain signing keys whose addresses are referenced by contracts: `kytAttestor` (signs deposit and withdrawal claim attestations and standalone enrol attestations) and `relayerYieldAttestor` (first signer on yield mints). Relayer never custodies USDC, never touches LoanRegistry, and never writes to DepositManager or WithdrawalQueue directly. It signs off-chain attestations that the lender or address holder submits at claim or enrol time. A compromised Relayer cannot mint PLUSD on its own (PLUSD is only minted when the lender calls `claim` against their own deposited USDC).
 
 **relayerYieldAttestor** — The Relayer's ECDSA signing key whose address is stored on *YieldMinter*. The Relayer signs the first half of every yield attestation with this key; it is rotated via `YieldMinter.proposeYieldAttestors` under a 48h ADMIN timelock and is held in an air-gapped hardware signer with no internet egress.
 
@@ -158,7 +172,7 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## T
 
-**Team** — Pipeline's operating team, which holds one MPC cosigner share on both the *Capital Wallet* and the *Treasury Wallet*. Team holds no on-chain role (no FUNDER, WHITELIST_ADMIN, TRUSTEE) and has no ability to mint PLUSD.
+**Team** — Pipeline's operating team, which holds two MPC cosigner shares on the *Capital Wallet* and one on the *Treasury Wallet*. Team holds no on-chain role (no WHITELIST_REVOKER, TRUSTEE, etc.) and has no ability to mint PLUSD.
 
 **Tranche** — A slice of a loan with a defined priority in the repayment waterfall. Pipeline's facilities are structured with a *Senior tranche* (lender capital, paid first) and an *Equity tranche* (originator first-loss, paid last).
 
@@ -184,11 +198,15 @@ One alphabetical list. Trade-finance terms sit alongside protocol terms because 
 
 ## W
 
-**WhitelistRegistry** — The on-chain allowlist of KYC'd lender wallets and approved DeFi venues, with a Chainalysis `approvedAt` timestamp per entry. Deposits check freshness (default 90-day window); transfers of *PLUSD* require at least one of (sender, receiver) to be a system address or whitelisted entry.
+**Standalone enrolment** — The non-deposit path to the transfer whitelist. A counterparty submits their address through the standalone enrolment endpoint, the *Relayer* runs address-only *KYT*, and on a clean result the address is added to *WhitelistRegistry* via `setAccess`. No funds move on this path. Used by CEX hot wallets, OTC desks, treasury operators, and anyone who needs to receive PLUSD without depositing first.
 
-**WHITELIST_ADMIN (role)** — The role on *WhitelistRegistry* that authorises `setAccess`, `refreshScreening`, and `revokeAccess`. Held in MVP by *Relayer*; revocable instantly by *GUARDIAN Safe*.
+**WhitelistRegistry** — The on-chain allowlist gating PLUSD and sPLUSD transfers via `_update`. Each entry carries an `approvedAt` timestamp set by the *Relayer* on a clean *KYT* screen. Both endpoints of every transfer must be either whitelisted (with a fresh `approvedAt`) or a system address. Default freshness window is 90 days. The registry no longer gates deposits or withdrawals. Mint eligibility lives in the *DepositManager* ticket book, withdrawal eligibility is checked at `WithdrawalQueue.claim` against the same `isAllowed` view.
 
-**WithdrawalQueue** — The FIFO queue a lender enters to convert *PLUSD* back to USDC. The queue has four states — Pending, Funded, Claimed, AdminReleased — and is funded in full-amount chunks by *Relayer* under the *FUNDER* role; there are no partial fills or LP-initiated cancellations in MVP.
+**WHITELIST_ADMIN (role)** — The role on *WhitelistRegistry* that authorises `setAccess`, `refreshScreening`, and `revokeAccess`. Held in MVP by *Relayer*, revocable instantly by *GUARDIAN Safe*.
+
+**WithdrawalQueue** — The queue a lender enters to convert *PLUSD* back to USDC. Three states: `Pending`, `Claimed`, `AdminReleased`. Lenders call `requestWithdrawal` to escrow PLUSD, then `claim` themselves to atomically pull USDC from the *Withdrawal Queue Wallet*, burn escrowed PLUSD, and receive payout. There are no partial fills, no FUNDER role, and no lender-initiated cancellations in MVP.
+
+**Withdrawal Queue Wallet** — A separate MPC custody address that holds USDC earmarked for queue settlement. Top-ups from the *Capital Wallet* are signed by Trustee + Team + one more under the standard 3-of-5 quorum. The on-chain `WithdrawalQueue` contract pulls from this Wallet via standing allowance during `claim`.
 
 ---
 

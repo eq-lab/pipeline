@@ -12,11 +12,11 @@ This page lists deployed contract addresses, third-party audits, formal verifica
 |---|---|---|---|
 | AccessManager | Role hub, timelock scheduler | *Deployed at launch* | — |
 | PLUSD | ERC-20 receipt token | *Deployed at launch* | — |
-| DepositManager | Atomic deposit entry | *Deployed at launch* | — |
+| DepositManager | Two-step deposit (ticket book + KYT-gated claim) | *Deployed at launch* | — |
 | YieldMinter | Two-party yield-attestation gate | *Deployed at launch* | — |
 | sPLUSD | ERC-4626 yield vault | *Deployed at launch* | — |
-| WhitelistRegistry | KYC + venue allowlist | *Deployed at launch* | — |
-| WithdrawalQueue | FIFO withdrawal queue | *Deployed at launch* | — |
+| WhitelistRegistry | Transfer whitelist (compliance-screened addresses + venue allowlist) | *Deployed at launch* | — |
+| WithdrawalQueue | User-pulled withdrawal queue with aggregate ledger | *Deployed at launch* | — |
 | LoanRegistry | Soulbound loan NFT registry | *Deployed at launch* | — |
 | ShutdownController | Terminal wind-down switch | *Deployed at launch* | — |
 | RecoveryPool | Post-shutdown USDC escrow | *Deployed at launch* | — |

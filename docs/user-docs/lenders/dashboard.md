@@ -14,9 +14,10 @@ Every item in this list can be read straight from the contracts. If the UI disap
 
 - **PLUSD balance** — via `PLUSD.balanceOf(yourAddress)`.
 - **sPLUSD balance and share-to-PLUSD exchange rate** — via `sPLUSD.balanceOf(yourAddress)` and `sPLUSD.convertToAssets(shares)`.
-- **Whitelist status and Chainalysis `approvedAt` timestamp** — via `WhitelistRegistry.isAllowed(yourAddress)` and `WhitelistRegistry.isAllowedForMint(yourAddress)`. Screening must be fresher than 90 days for mint.
-- **Withdrawal queue entries** — `queue_id`, amount, status (Pending / Funded / Claimed / AdminReleased) via `WithdrawalQueue.getEntry(queue_id)` and the queue's emitted events.
-- **Full deposit history** — `DepositManager.Deposited` events filtered by your address.
+- **Whitelist status and `approvedAt` timestamp** via `WhitelistRegistry.isAllowed(yourAddress)`. The view returns true only if your entry exists and the 90-day freshness window has not expired.
+- **Deposit tickets** via `DepositManager.getTicket(yourAddress, depositId)`. Each ticket carries amount, status (`Pending`, `Claimable`, `UnderReview`, `Frozen`, `Claimed`, `Refunded`), and timestamps.
+- **Withdrawal queue entries** via `WithdrawalQueue.getEntry(queueId)`. Status is one of `Pending`, `Claimed`, `AdminReleased`.
+- **Full deposit history** via `DepositManager.DepositRequested`, `TicketMarkedClaimable`, and `Deposited` events filtered by your address.
 - **Full mint/burn history** — `Transfer` and related events on PLUSD filtered by your address.
 
 ## UI aggregates
