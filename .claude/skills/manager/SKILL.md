@@ -338,13 +338,13 @@ Branch protection on this repo requires an approval review before a normal merge
 
 1. Mark the PR ready: `gh pr ready <pr-number>`.
 2. Strip the final status label: `gh issue edit <number> --remove-label executed`.
-3. **Initial wait — 10 minutes** to let CI/CD start and finish on a clean run:
+3. **Initial wait — 5 minutes** to let CI/CD start and finish on a clean run:
 
    ```bash
-   sleep 600
+   sleep 300
    ```
 
-4. **Poll the PR's check status** every 10 minutes until checks resolve:
+4. **Poll the PR's check status** every 5 minutes until checks resolve:
 
    ```bash
    gh pr view <pr-number> --json state,mergeable,mergeStateStatus,statusCheckRollup
@@ -355,14 +355,14 @@ Branch protection on this repo requires an approval review before a normal merge
    | Result                                                                  | Action                                                                                  |
    |-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
    | All checks `SUCCESS` in `statusCheckRollup`                              | Go to step 6 (admin merge).                                                             |
-   | Any check `IN_PROGRESS` / `PENDING` / `QUEUED` and time elapsed < 60 min | Wait another 10 minutes (`sleep 600`) and re-poll.                                      |
+   | Any check `IN_PROGRESS` / `PENDING` / `QUEUED` and time elapsed < 60 min | Wait another 5 minutes (`sleep 300`) and re-poll.                                       |
    | Any check `FAILURE` / `CANCELLED` / `TIMED_OUT`                          | Stop. Post the failing-check summary to the PR and the parent Issue. Hand back to the user. Do NOT admin-merge with red checks. |
    | `mergeStateStatus` = `DIRTY`                                             | Stop. The PR has merge conflicts with `main` — needs manual rebase. Tell the user.       |
    | `state: "CLOSED"` and `merged: false`                                    | Abnormal — PR was closed without merging. Stop and tell the user.                       |
 
    Note: `mergeStateStatus = BLOCKED` is expected on this repo — it's the branch-protection "needs approval" signal, which `--admin` will bypass at merge time. Treat `BLOCKED` as "ok to proceed if checks are green". Do NOT bypass `DIRTY` (merge conflicts) — those require a human.
 
-5. **Cap total wait at 60 minutes.** Track elapsed time from the start of step 3. If checks are still running after the initial 10-minute sleep plus five additional 10-minute polls (= 60 minutes total), stop and tell the user. Do not merge a PR whose checks have not landed.
+5. **Cap total wait at 60 minutes.** Track elapsed time from the start of step 3. If checks are still running after the initial 5-minute sleep plus eleven additional 5-minute polls (= 60 minutes total), stop and tell the user. Do not merge a PR whose checks have not landed.
 6. **Admin-merge** the PR with squash strategy and branch deletion. The `--admin` flag bypasses the approval-required branch-protection rule (which is why this is authorized only for Flow C and only after checks are explicitly green):
 
    ```bash
