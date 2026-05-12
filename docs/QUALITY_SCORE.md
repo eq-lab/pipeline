@@ -2,6 +2,23 @@
 
 MVP quality bars. All targets must be met before mainnet launch.
 
+## UX Testing Log
+
+### 2026-05-12 — Issue #38 (Bootstrap TanStack Router file-based routes)
+
+- **Scope:** Issue #38 acceptance criteria (TC-38-1, TC-38-2, TC-38-3)
+- **Cases executed:** 3
+- **Passes:** 3
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 9/10**
+  - All three acceptance criteria pass cleanly.
+  - Build produces no ENOENT warnings; `dist/` is generated.
+  - Dev server renders "Pipeline" at `/` with no JS errors (only a cosmetic favicon 404).
+  - `routeTree.gen.ts` is present and non-empty (1503 bytes).
+  - Deducted 1 point: missing favicon causes a browser console 404 error (cosmetic, low severity — not filed as a blocking bug; can be addressed when branding assets land).
+
 ## Backing invariant
 
 | Status | Drift threshold |
