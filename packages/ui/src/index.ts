@@ -8,3 +8,5 @@ export { Logo } from "./components/Logo";
 export type { LogoProps } from "./components/Logo";
 export { Stat } from "./components/Stat";
 export type { StatProps } from "./components/Stat";
+export { LinkCard } from "./components/LinkCard";
+export type { LinkCardProps } from "./components/LinkCard";
