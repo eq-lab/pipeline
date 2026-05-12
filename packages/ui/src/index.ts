@@ -10,3 +10,8 @@ export { Stat } from "./components/Stat";
 export type { StatProps } from "./components/Stat";
 export { LinkCard } from "./components/LinkCard";
 export type { LinkCardProps } from "./components/LinkCard";
+export { WalletIllustration } from "./components/WalletIllustration";
+export type {
+  WalletIllustrationProps,
+  WalletIllustrationTone,
+} from "./components/WalletIllustration";
