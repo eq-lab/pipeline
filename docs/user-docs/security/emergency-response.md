@@ -1,6 +1,6 @@
 ---
 title: Emergency response
-order: 16
+order: 32
 section: Security & Transparency
 ---
 
@@ -20,7 +20,7 @@ No single-call "revoke everything" switch exists. Every action names what it is 
   <li>Watchdog detects an anomaly: unexpected whitelist grants, cumulative-counter drift, or queue-aggregate mismatch.</li>
   <li>GUARDIAN instantly pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue as defence in depth.</li>
   <li>GUARDIAN calls <code>AccessManager.cancel(actionId)</code> on any pending ADMIN scheduled actions.</li>
-  <li>GUARDIAN submits <code>revokeRole(WHITELIST_MANAGER_ROLE, relayerAddr)</code>. Relayer can no longer modify the whitelist.</li>
+  <li>GUARDIAN submits <code>revokeRole(WHITELIST_REVOKER, relayerAddr)</code>. Relayer can no longer modify the whitelist.</li>
   <li>If yield mints are the suspected vector, the YieldMinter pause above already halts them regardless of attestor key state. Attestor rotation follows under ADMIN.</li>
   <li>If withdrawal-queue settlement is the suspected vector, the custody-side circuit breaker can additionally revoke the Withdrawal Queue Wallet's standing allowance to the queue contract, independent of any on-chain action.</li>
   <li>ADMIN rotates the yield-attestor keys via <code>YieldMinter.proposeYieldAttestors</code> (7-day delay, GUARDIAN can cancel).</li>
@@ -34,14 +34,14 @@ No single-call "revoke everything" switch exists. Every action names what it is 
 |---|---|---|
 | `pause()` | Any pausable contract | Instant |
 | `AccessManager.cancel(actionId)` | Pending scheduled actions | Instant |
-| `AccessManager.revokeRole(role, holder)` | WHITELIST_MANAGER_ROLE, TRUSTEE | Instant |
+| `AccessManager.revokeRole(role, holder)` | WHITELIST_REVOKER, TRUSTEE | Instant |
 
-## Limits
+## Limits — what GUARDIAN cannot do
 
-- Grant any role.
-- Unpause any contract.
-- Upgrade any contract.
-- Revoke `UPGRADER`, `DEFAULT_ADMIN`, `MINTER_ROLE`, `BURNER_ROLE`, or any governance role. (`MINTER_ROLE` is held by the YieldMinter and DepositManager contracts. If a problem with one is suspected, the response is to pause that contract instantly, not revoke the role.)
+- Grant or re-grant any role. ADMIN only.
+- Unpause any contract. ADMIN only.
+- Upgrade any contract. ADMIN only.
+- Revoke contract-held roles (`DEPOSITOR`, `YIELD_MINTER`, `BURNER`, `WHITELIST_ADMIN`). These are held by proxy contracts. If a problem with one of those contracts is suspected, the response is to pause the contract, not revoke its role. GUARDIAN's `revokeRole` capability is scoped to operational EOA-held roles (`WHITELIST_REVOKER`, `TRUSTEE`).
 - Move funds.
 
 A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders) but cannot escalate, unpause, or move funds. Restoration of service is strictly ADMIN's job, gated by the 3-day timelock and itself GUARDIAN-cancelable.
@@ -50,7 +50,7 @@ A compromised GUARDIAN can grief (pause, cancel, revoke operational-role holders
 
 ### Relayer compromise
 
-Watchdog flags anomalous whitelist writes or yield-attestation patterns. GUARDIAN pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue, then submits `revokeRole(WHITELIST_MANAGER_ROLE, relayerAddr)`. With YieldMinter paused, the compromised `relayerYieldAttestor` key cannot be used to mint yield PLUSD. With WHITELIST_MANAGER_ROLE revoked, the Relayer EOA cannot touch the whitelist. **Withdrawals are unaffected by Relayer compromise** because the WithdrawalQueue is user-pulled. The Relayer is not in the claim critical path. **Deposits remain atomic and unaffected** because DepositManager has no Relayer dependency. ADMIN then rotates the attestor key via `YieldMinter.proposeYieldAttestors` and re-grants the Relayer's operational role under the 3-day timelock.
+Watchdog flags anomalous whitelist revocations or yield-attestation patterns. GUARDIAN pauses PLUSD, DepositManager, YieldMinter, and WithdrawalQueue, then submits `revokeRole(WHITELIST_REVOKER, relayerAddr)`. With YieldMinter paused, the compromised `relayerYieldAttestor` key cannot be used to mint yield PLUSD. With `WHITELIST_REVOKER` revoked, the Relayer EOA cannot make further whitelist writes. **Existing in-flight withdrawals stay intact**: the WithdrawalQueue is user-pulled, the Relayer is not in the claim critical path, and the queue's standing allowance against the Withdrawal Queue Wallet is independent of any Relayer key. **Deposit claims pause cleanly**: PLUSD only mints when the lender calls `claim` against their own deposited USDC, so a compromised `kytAttestor` can sign attestations but cannot mint PLUSD on its own. ADMIN then rotates the attestor keys via `YieldMinter.proposeYieldAttestors` and `setKytAttestor` (48-hour timelock) and re-grants `WHITELIST_REVOKER` to a new Relayer key under the 3-day standard timelock.
 
 ### Trustee key compromise
 
@@ -66,6 +66,6 @@ GUARDIAN pauses WithdrawalQueue. If the exploit is in the claim path, the Withdr
 
 ## Related
 
-- [Custody model](/security/custody/)
-- [Supply safeguards](/security/supply-safeguards/)
-- [Default management](/defaults-and-losses/)
+- [Custody](/security/custody/)
+- [Capital safeguards](/security/capital-safeguards/)
+- [Default management](/risks/default-management/)

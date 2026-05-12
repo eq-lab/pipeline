@@ -1,51 +1,29 @@
 ---
-title: For lenders
-order: 5
+title: Overview
+order: 12
 section: For Lenders
 ---
 
-# For lenders
+# Overview
 
-Pipeline is a credit facility that finances vetted commodity trade deals. Pipeline pays the senior coupon and realised T-bill yield on USYC reserves to compliance-screened on-chain lenders. Lending does not require KYC, KYB, or accreditation declarations. Compliance is enforced by KYT screening at the moments where capital enters or leaves the protocol. The legal framework that governs this approach is `[Framework: TBD]`.
+Earn yield from senior commodity-backed lending. Commodity trade finance has historically maintained default rates below 0.3%, with loans secured by physical cargo and repaid by pre-contracted offtakers. Pipeline lenders earn 8–12% net on senior tranches, with an average advance rate of 80% and originator equity cushions up to 30% on every deal. USDC principal sits in institutional custody with BitGo, while unallocated USDC is deployed into tokenised T-bills.
 
-<div class="callout info">
-  <h4>Minimum deposit</h4>
-  <p>The minimum deposit is <strong>$1,000 USDC</strong>. There is no maximum at the protocol level, though individual allocations may be capped during subscription windows. Per-transaction and 24-hour caps apply on the deposit path. See <a href="/lenders/deposit/">Deposit</a>.</p>
-</div>
+## What you get
 
-## Start here
+- Senior-tranche yield from real commodity trade loans, paid as offtakers settle
+- Realised T-bill yield on unallocated USDC held as USYC
+- Indicative blended return: 8–12% net of fees
+- No lock-up — withdraw any time via the WithdrawalQueue
+- Every loan on a public on-chain registry
 
-<div class="card-grid">
-  <a class="card" href="/lenders/onboarding/">
-    <h4>Onboarding</h4>
-    <p>KYT-at-deposit enrolment, standalone enrolment for non-depositors, 90-day freshness, and what we cannot serve.</p>
-  </a>
-  <a class="card" href="/lenders/deposit/">
-    <h4>Deposit</h4>
-    <p>Approve USDC, call DepositManager, wait for KYT screening, claim PLUSD 1:1.</p>
-  </a>
-  <a class="card" href="/lenders/stake/">
-    <h4>Stake PLUSD</h4>
-    <p>Stake PLUSD into sPLUSD to earn yield. Unstake at any time, no lock-up.</p>
-  </a>
-  <a class="card" href="/lenders/withdraw/">
-    <h4>Withdraw</h4>
-    <p>Escrow PLUSD into the queue, then claim USDC yourself. User-pulled, no off-chain signer in the critical path.</p>
-  </a>
-  <a class="card" href="/lenders/dashboard/">
-    <h4>Dashboard</h4>
-    <p>What you can see on-chain, and what you can verify independently.</p>
-  </a>
-</div>
+## Minimum deposit and limits
+
+Minimum $1,000 USDC. Per-transaction cap $5M. 24-hour cap across your wallets $10M. No protocol-level maximum beyond these rate limits.
 
 ## How yield reaches you
 
-Yield arrives as fresh PLUSD minted directly into the sPLUSD vault. Your share count stays constant, what each share is worth grows. There is no claim step, no restake, no compounding action. The full mechanics (senior coupons on trade loans plus realised T-bill yield on USYC) are documented in [How it works · Yield engines](/how-it-works/yield-engines/).
+Yield arrives as fresh PLUSD minted into the sPLUSD vault. Share count stays constant; what each share is worth grows. There is no claim step, no restake, no compounding action.
 
-## Risks
+## Risks before you deposit
 
-Your capital is exposed to credit, liquidity, custody, smart-contract, governance, regulatory, and operational risks. Each is enumerated with its mitigation and residual on the [Potential risks](/risks/) page. Default mechanics and the loss waterfall live on [Default management](/defaults-and-losses/). **Read both before your first deposit.**
-
----
-
-See also: [How it works](/how-it-works/) · [Security](/security/) · [Glossary](/glossary/)
+Capital is exposed to credit, liquidity, custody, smart-contract, governance, regulatory, and operational risks. Each enumerated with mitigation and residual in [Potential risks](/risks/). Default mechanics in [Default management](/risks/default-management/). Read both before depositing.

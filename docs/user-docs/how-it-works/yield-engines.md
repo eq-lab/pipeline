@@ -1,6 +1,6 @@
 ---
 title: Where yield comes from
-order: 4
+order: 12
 section: How Pipeline works
 ---
 
@@ -23,9 +23,9 @@ Pipeline pays yield from two sources: senior-tranche repayments on commodity tra
 
 ## Engine A — senior coupons on trade loans
 
-Each loan is cut into two tranches. The **senior tranche** is funded by Pipeline lenders through the vault. The **equity tranche** is funded by the originator and absorbs first losses.
+Each loan is cut into two tranches. The **senior tranche** is funded by Pipeline lenders through the vault. The **equity tranche** is funded by the Originator and absorbs first losses.
 
-The **offtaker** is the end buyer of the commodity. When the cargo is paid for, the offtaker wires USD into the **Trustee's correspondent bank account** — the Trustee here being Pipeline Trust Company. The offtaker never touches USDC and never touches the chain.
+The **offtaker** is the end buyer of the commodity. When the cargo is paid for, the offtaker wires USD into the **Trustee's correspondent bank account**. The offtaker never touches USDC and never touches the chain.
 
 Once the wire lands, the Trustee identifies it, matches it to a loan, and instructs the on-ramp provider (Circle Mint / Zodia or similar) to convert USD → USDC. The USDC settles into the Capital Wallet. From this point the flow is on-chain.
 
@@ -39,7 +39,7 @@ Fees come out before the senior coupon reaches the vault:
 
 All three go to the Treasury Wallet. The senior coupon net — gross senior interest minus management and performance fees — is what lenders actually receive.
 
-The yield-mint event is when this net coupon lands in the vault. The Relayer signs a `YieldAttestation` with `relayerYieldAttestor`. The Trustee co-signs with `trusteeYieldAttestor` (an EIP-1271 contract gated by the Trustee's signing facility). The call goes through `YieldMinter.yieldMint`, both signatures are verified on-chain, and `PLUSD.mintForYield` delivers the new PLUSD into the sPLUSD vault. Neither party can mint alone — YieldMinter rejects the call unless both signatures verify against the configured attestor addresses.
+The yield-mint event is when this net coupon lands in the vault. The Relayer signs a `YieldAttestation` with `relayerYieldAttestor`. The Trustee co-signs with `trusteeYieldAttestor` (an EIP-1271 contract gated by the Trustee's signing facility). The call goes through `YieldMinter.yieldMint`, both signatures are verified on-chain, and `PLUSD.mintForYield` delivers the new PLUSD into the sPLUSD vault. Neither party can mint alone.
 
 ## Engine B — realised yield on USYC reserves
 
@@ -89,7 +89,7 @@ Mitigations against this scenario:
 
 - USYC is a tokenised T-bill — historic NAV volatility is very low.
 - The Trustee's realisation policy is conservative — only realise gains that are well above cost basis, leaving a buffer.
-- If drift goes Amber or Red, RISK_COUNCIL can pause `DepositManager` (no new mints) and, if severe, `proposeShutdown` at a recovery rate that reflects the actual recoverable USDC.
+- If drift goes Amber or Red, RISK_COUNCIL can pause `DepositManager` (no new mints) and, if severe, engage the WithdrawalQueue exchange coefficient mechanism at a recovery rate that reflects the actual recoverable USDC.
 
 There is no automatic clawback of already-minted PLUSD. Once yield has been minted into the vault and stakers have effectively received it, the protocol owns the residual position risk.
 

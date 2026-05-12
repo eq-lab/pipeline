@@ -1,6 +1,6 @@
 ---
 title: Stake PLUSD
-order: 8
+order: 15
 section: For Lenders
 ---
 
@@ -46,13 +46,13 @@ Converting PLUSD back to USDC is a separate step handled by the WithdrawalQueue.
 
 ## What affects your yield
 
-Two engines feed the vault. Senior coupons are minted in as borrowers repay (offtaker pays USD into the Trustee bank, Trustee on-ramps to USDC, then the senior coupon net of fees is minted into the vault). T-bill yield is **realised**, not accrued — USYC sits in the Capital Wallet, NAV drifts up daily, but PLUSD doesn't mint until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail. The realised gain (proceeds minus cost basis) is then minted: 70% to the vault, 30% to Treasury.
+Two yield streams feed the vault, both routed through `YieldMinter.yieldMint` under two independent signatures (Relayer + Trustee).
 
-A 15% USDC buffer (band 10–20%) sits inside the Capital Wallet so routine redemptions don't force a USYC sale. Both yield mints route through `YieldMinter.yieldMint`, which requires two independent signatures verified on-chain — neither Relayer alone nor the Trustee's signer alone can move PLUSD into the vault.
+**Senior coupons.** Minted as extra PLUSD when borrowers repay. The offtaker pays USD into the Trustee's bank account, the Trustee on-ramps to USDC, and the senior coupon net of fees is minted into the PLUSD staking vault. Settles per repayment event.
 
-Senior-coupon mints settle per repayment event. USYC realisations happen at the Trustee's discretion — there's no on-chain schedule. If the Trustee doesn't realise for a quarter, share price doesn't move from Engine B, regardless of how high USYC NAV climbed.
+**T-bill yield.** USYC sits in the Capital Wallet and NAV drifts up daily, but yield is realised — not accrued. Nothing mints until the Trustee instructs a USYC sale via the Hashnote redemption rail. Realised gain is split 70% as fresh PLUSD to the PLUSD staking vault, 30% to Treasury. Realisation is at the Trustee's discretion; if no sale happens for a quarter, USYC contributes nothing to share price, regardless of NAV.
 
-See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, the signing parties, and how the buffer is rebalanced.
+A 15% USDC buffer in the Capital Wallet (band 10–20%) keeps routine redemptions from forcing a USYC sale.
 
 ---
 
@@ -66,7 +66,7 @@ See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, 
 
 ## Contract addresses
 
-`sPLUSD` and `PLUSD` addresses are published on the [Audits & addresses page](/security/audits-and-addresses/) and are verified on Etherscan. Treat the Audits & addresses page as the source of truth. Do not trust addresses copied from third-party sites.
+`sPLUSD` and `PLUSD` addresses are published on the [Audits & addresses page](/technical/audits-and-addresses/) and are verified on Etherscan. Treat the Audits & addresses page as the source of truth. Do not trust addresses copied from third-party sites.
 
 ---
 
@@ -74,4 +74,3 @@ See [yield engines](/how-it-works/yield-engines/) for the full split mechanics, 
 
 - [Deposit](/lenders/deposit/) — get PLUSD before you can stake.
 - [Withdraw](/lenders/withdraw/) — convert sPLUSD or PLUSD back to USDC.
-- [Yield engines](/how-it-works/yield-engines/) — how senior coupons and T-bill NAV flow into the vault.
