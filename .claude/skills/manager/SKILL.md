@@ -319,11 +319,9 @@ No planning, no approval gate, no ux-tester. Coder runs on `opus` at `effort: hi
    })
    ```
 
-3. After the coder returns, verify the working tree is green. Run from the manager:
-   - `cargo clippy --all -- -D warnings` if Rust changed.
+3. After the coder returns, verify the working tree is green. Run from the manager (frontend-only — do **not** run Rust tooling or `/test-fast`; trivial-frontend Issues never touch backend code):
    - `npx tsx scripts/lint-docs.ts` if TS/docs changed.
-   - The frontend build command appropriate for the changes (inspect `package.json` scripts or the relevant `packages/<frontend-pkg>/` README).
-   - `/test-fast`.
+   - The frontend lint and build commands appropriate for the changes (inspect `package.json` scripts or the relevant `packages/<frontend-pkg>/` README) — typically `yarn workspace @pipeline/frontend lint` and `yarn workspace @pipeline/frontend build` (the latter runs `tsc -b && vite build`, so typecheck is covered).
 
    If any of these fail, post the failure summary as a comment on the Issue and stop — do not auto-recover; ask the user how to proceed.
 4. Transition `executing` → `executed`.
