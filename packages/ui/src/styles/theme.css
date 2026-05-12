@@ -70,3 +70,66 @@
   --font-display: "Besley", ui-serif, Georgia, serif;
   --font-body: "Graphik LC", ui-sans-serif, system-ui, sans-serif;
 }
+
+/* =========================================================
+   Tailwind v4 @theme — Pipeline design tokens
+   Tailwind generates utilities from --color-*, --font-*,
+   --text-*, --radius-*, --font-weight-*, --tracking-* vars.
+   ========================================================= */
+
+@theme {
+  /* --- Colors --- */
+
+  --color-pipeline-paper: #f8f7f6; /* bg/primary — node 1497:94556 */
+  --color-pipeline-surface: #ffffff; /* fill-test/on-primary — node 1497:94565 */
+  --color-pipeline-promo: rgb(
+    211 235 117 / 0.16
+  ); /* fill/warning-secondary — node 1497:94566 */
+  --color-pipeline-brand: #000080; /* fill/brand — node 1497:94689 Convert button */
+  --color-pipeline-cta: #262524; /* fill-test/primary — node 1497:94725 */
+  --color-pipeline-ink: #262524; /* content-test/primary — node 1497:94685 */
+  --color-pipeline-ink-muted: rgb(
+    56 55 53 / 0.6
+  ); /* content-test/secondary — node I1497:94561 */
+  --color-pipeline-ink-subtle: rgb(
+    56 55 53 / 0.3
+  ); /* content-test/tertiary — node I1497:94559;6539:2322 */
+  --color-pipeline-on-dark: #ffffff; /* content-test/primary-on-invert — button label I1497:94566;1360:49021;6307:51 */
+  --color-pipeline-line: rgb(
+    56 55 53 / 0.18
+  ); /* border-test/secondary — node 1497:94562 left border */
+
+  /* --- Typography: families --- */
+
+  --font-display:
+    "Besley", ui-serif, Georgia, serif; /* font/title-font-family */
+  --font-body:
+    "Graphik LC", ui-sans-serif, system-ui, sans-serif; /* font/text-font-family */
+
+  /* --- Typography: type ramp (size + line-height pairs) --- */
+
+  --text-pipeline-title: 64px; /* font/font-size/title — Welcome heading */
+  --text-pipeline-title--line-height: 64px; /* font/line-height/title */
+  --text-pipeline-heading-m: 28px; /* font/font-size/heading-m — Connect Wallet */
+  --text-pipeline-heading-m--line-height: 36px; /* font/line-height/heading-m */
+  --text-pipeline-heading-s: 20px; /* Heading 20 — Get PLUSD card titles */
+  --text-pipeline-heading-s--line-height: 28px; /* Heading 20 line-height */
+  --text-pipeline-body: 16px; /* font/font-size/body */
+  --text-pipeline-body--line-height: 22px; /* font/line-height/body */
+  --text-pipeline-caption: 12px; /* font/font-size/caption */
+  --text-pipeline-caption--line-height: 16px; /* font/line-height/caption */
+
+  /* --- Typography: weights and tracking --- */
+
+  --font-weight-regular: 400; /* font/title-font-weight — Welcome/Body */
+  --font-weight-medium: 500; /* Label — Questions & Answers */
+  --font-weight-emphasized: 600; /* Body Emphasized — Connect button (Semi Bold) */
+  --font-weight-bold: 700; /* Title/Heading M */
+  --tracking-pipeline-label: 7px; /* Label letterSpacing — node I1497:94667;6539:2336 */
+
+  /* --- Radii --- */
+
+  --radius-pipeline-card: 4px; /* radius/radius-s — card outer; node 1497:94556 */
+  --radius-pipeline-button: 4px; /* radius/radius-s — button radius */
+  --radius-pipeline-pill: 9999px; /* round Staking Button — node 1497:94713 */
+}

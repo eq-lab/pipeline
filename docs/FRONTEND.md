@@ -4,6 +4,24 @@
 
 Clean, professional financial interface. Priority: data density and clarity over decoration. Operators and LPs need to trust the numbers they see.
 
+## Typography
+
+Two self-hosted typefaces (declared as `@font-face` in `packages/ui/src/styles/theme.css`):
+
+- **Besley** (display serif, SIL OFL 1.1) — weights 400 and 700, available via `font-display` Tailwind utility.
+- **Graphik LC** (body sans, Type Today commercial license) — weights 400, 400-italic, and 500, available via `font-body` Tailwind utility.
+
+## Design tokens
+
+All design tokens are declared as CSS custom properties inside a Tailwind v4 `@theme { … }` block in `packages/ui/src/styles/theme.css`. Token groups:
+
+- **Color** (`--color-pipeline-*`) — background, surface, promo, brand, CTA, ink, and border values sourced from Figma frame `1497-94556`.
+- **Typography** (`--text-pipeline-*`, `--font-weight-*`, `--tracking-pipeline-*`) — font-size/line-height pairs, semantic weight aliases (regular/medium/emphasized/bold), and label tracking.
+- **Radii** (`--radius-pipeline-*`) — card, button, and pill radii.
+- **Spacing** — Tailwind v4 default 4px numeric scale; no semantic aliases.
+
+Rule: components must not inline raw hex codes. All color, radius, and typography values are consumed through Tailwind utilities (`bg-pipeline-paper`, `text-pipeline-ink`, `rounded-pipeline-card`, `font-display`, etc.).
+
 ## Component workshop
 
 Storybook lives in `packages/ui/.storybook/` and is launched with:
