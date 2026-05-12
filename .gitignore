@@ -16,6 +16,9 @@ packages/frontend/node_modules/
 packages/frontend/dist/
 packages/frontend/.vite/
 
+# TypeScript incremental build info
+**/tsconfig.tsbuildinfo
+
 # Environment
 .env
 .env.local

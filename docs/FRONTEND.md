@@ -22,6 +22,8 @@ All design tokens are declared as CSS custom properties inside a Tailwind v4 `@t
 
 Rule: components must not inline raw hex codes. All color, radius, and typography values are consumed through Tailwind utilities (`bg-pipeline-paper`, `text-pipeline-ink`, `rounded-pipeline-card`, `font-display`, etc.).
 
+The integration point is `packages/frontend/src/index.css`, which imports `@pipeline/ui/styles/theme.css` and adds an `@source` directive so Tailwind v4 scans `packages/ui/src` for utility class names. `packages/frontend/src/routes/index.tsx` carries a token-styled smoke probe that exercises color, typography, and radius tokens until the real WelcomeScreen lands (component issues #42–#49).
+
 ## Component workshop
 
 Storybook lives in `packages/ui/.storybook/` and is launched with:

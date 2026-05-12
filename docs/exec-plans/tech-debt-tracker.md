@@ -52,6 +52,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Stories won't pick up design tokens until theme.css is created and the import is uncommented.
 - **Suggested fix:** Enable the import in preview.ts when the Phase-3 theme/token issue lands.
 
+### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored
+- **Date:** 2026-05-12
+- **Location:** packages/frontend/tsconfig.tsbuildinfo, .gitignore
+- **Gap:** The `tsconfig.tsbuildinfo` build cache file is not listed in the root `.gitignore` or any package-level `.gitignore`. Git reports it as modified after every TypeScript build.
+- **Impact:** The file can inadvertently be staged/committed, polluting history with binary build artifacts.
+- **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
+
 ### TD-6: No Foundation/Tokens Storybook story
 - **Date:** 2026-05-12
 - **Location:** packages/ui/src/stories/
