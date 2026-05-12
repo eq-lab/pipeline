@@ -28,6 +28,9 @@ Thumbs.db
 # Yarn
 .yarn/install-state.gz
 
+# Storybook
+packages/ui/storybook-static/
+
 # IDE
 .idea/
 .vscode/

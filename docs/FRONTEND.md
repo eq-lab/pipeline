@@ -4,6 +4,17 @@
 
 Clean, professional financial interface. Priority: data density and clarity over decoration. Operators and LPs need to trust the numbers they see.
 
+## Component workshop
+
+Storybook lives in `packages/ui/.storybook/` and is launched with:
+
+```bash
+yarn workspace @pipeline/ui storybook        # dev server on http://localhost:6006
+yarn workspace @pipeline/ui build-storybook  # static export → packages/ui/storybook-static/
+```
+
+Each Phase-3 component issue ships a `.stories.tsx` file alongside the component. The Storybook setup uses `@storybook/react-vite` (reusing the existing Vite 6 + Tailwind v4 config) and includes `@storybook/addon-docs` and `@storybook/addon-a11y` from day one.
+
 ## Component library / design system
 
 TBD — evaluate Shadcn/ui (headless, Tailwind-based) or Radix UI primitives. Decision to be made before frontend sprint begins. Add a tech-debt entry if not resolved before Phase 1 implementation.

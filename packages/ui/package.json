@@ -9,16 +9,26 @@
     "./assets/*": "./src/assets/*"
   },
   "scripts": {
-    "lint": "eslint . && prettier --check ."
+    "lint": "eslint . && prettier --check .",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
+    "@storybook/addon-a11y": "10.3.5",
+    "@storybook/addon-docs": "10.3.5",
+    "@storybook/react-vite": "10.3.5",
     "@tailwindcss/vite": "4.2.4",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "4.7.0",
     "eslint": "9.39.4",
     "eslint-plugin-react-hooks": "5.2.0",
     "prettier": "3.8.3",
     "prettier-plugin-tailwindcss": "0.6.14",
+    "react": "19.1.6",
+    "react-dom": "19.1.6",
+    "storybook": "10.3.5",
     "tailwindcss": "4.2.4",
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.0",
