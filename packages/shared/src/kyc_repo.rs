@@ -48,7 +48,7 @@ pub struct RequestInfo {
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub sender: Option<String>,
     pub amount: Option<bigdecimal::BigDecimal>,
-    pub kyt_status: Option<i16>,
+    pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
 }
 
@@ -57,7 +57,7 @@ pub struct RequestEventRow {
     pub event_name: String,
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub amount: Option<bigdecimal::BigDecimal>,
-    pub kyt_status: Option<i16>,
+    pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
 }
 
@@ -66,7 +66,7 @@ pub struct RequestEvent {
     pub event_name: String,
     pub request_id: Option<String>,
     pub amount: Option<String>,
-    pub kyt_status: Option<i16>,
+    pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
 }
 
@@ -76,14 +76,14 @@ impl From<RequestEventRow> for RequestEvent {
             event_name: row.event_name,
             request_id: row.request_id.map(|r| r.to_string()),
             amount: row.amount.map(|a| a.to_string()),
-            kyt_status: row.kyt_status,
+            crystal_kyt_status: row.crystal_kyt_status,
             block_timestamp: row.block_timestamp,
         }
     }
 }
 
 pub struct CrystalTransferResult<'a> {
-    pub kyt_status: i16,
+    pub crystal_kyt_status: i16,
     pub tx_risk: Option<f32>,
     pub tx_signals: Option<&'a serde_json::Value>,
     pub sender_risk: Option<f32>,
@@ -214,7 +214,7 @@ impl KycRepo {
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
         // Only allow profiles that:
         // 1. Have not been allowed on-chain yet
-        // 2. Have at least one DepositRequested with kyt_status = 1 (clear)
+        // 2. Have at least one DepositRequested with crystal_kyt_status = 1 (clear)
         // 3. Pass sumsub/crystal checks if enabled
         let rows = match (sumsub_enabled, crystal_enabled) {
             (true, true) => {
@@ -224,12 +224,12 @@ impl KycRepo {
                        AND p.sumsub_kyc_status = 2
                        AND p.sumsub_review_status = 2
                        AND p.sumsub_aml_status = 2
-                       AND p.kyt_status = 1
+                       AND p.crystal_kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.kyt_status = 1
+                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -246,7 +246,7 @@ impl KycRepo {
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.kyt_status = 1
+                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -256,12 +256,12 @@ impl KycRepo {
                 sqlx::query_as::<_, WhitelistCandidate>(
                     "SELECT p.wallet_address FROM lp_profiles p
                      WHERE p.on_chain_allowed = FALSE
-                       AND p.kyt_status = 1
+                       AND p.crystal_kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.kyt_status = 1
+                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -275,7 +275,7 @@ impl KycRepo {
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.kyt_status = 1
+                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -290,10 +290,10 @@ impl KycRepo {
         _sumsub_enabled: bool,
         _crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        // Sanctions-only: disallow profiles that were allowed but now have kyt_status = 2 (failed)
+        // Sanctions-only: disallow profiles that were allowed but now have crystal_kyt_status = 2 (failed)
         let rows = sqlx::query_as::<_, WhitelistCandidate>(
             "SELECT wallet_address FROM lp_profiles
-             WHERE on_chain_allowed = TRUE AND kyt_status = 2",
+             WHERE on_chain_allowed = TRUE AND crystal_kyt_status = 2",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -357,7 +357,7 @@ impl KycRepo {
         let rows = sqlx::query_as::<_, UnverifiedTransfer>(
             "SELECT id, event_name, sender, receiver, amount, tx_hash, chain_id
              FROM contract_logs
-             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL
+             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND crystal_kyt_status IS NULL
              ORDER BY id
              LIMIT $1",
         )
@@ -369,7 +369,7 @@ impl KycRepo {
 
     pub async fn set_profile_kyt_clear(&self, wallet_address: &str) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE wallet_address = $1",
+            "UPDATE lp_profiles SET crystal_kyt_status = 1, updated_at = NOW() WHERE wallet_address = $1",
         )
         .bind(wallet_address)
         .execute(&self.pool)
@@ -379,7 +379,7 @@ impl KycRepo {
 
     pub async fn set_profile_kyt_failed(&self, wallet_address: &str) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles SET kyt_status = 2, updated_at = NOW() WHERE wallet_address = $1",
+            "UPDATE lp_profiles SET crystal_kyt_status = 2, updated_at = NOW() WHERE wallet_address = $1",
         )
         .bind(wallet_address)
         .execute(&self.pool)
@@ -434,7 +434,7 @@ impl KycRepo {
     ) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE contract_logs
-             SET kyt_status = $2,
+             SET crystal_kyt_status = $2,
                  crystal_tx_risk = $3,
                  crystal_tx_signals = $4,
                  crystal_sender_risk = $5,
@@ -443,7 +443,7 @@ impl KycRepo {
              WHERE id = $1",
         )
         .bind(log_id)
-        .bind(result.kyt_status)
+        .bind(result.crystal_kyt_status)
         .bind(result.tx_risk)
         .bind(result.tx_signals)
         .bind(result.sender_risk)
@@ -471,7 +471,7 @@ impl KycRepo {
         wallet: &str,
     ) -> anyhow::Result<Option<RequestInfo>> {
         let row = sqlx::query_as::<_, RequestInfo>(
-            "SELECT request_id, sender, amount, kyt_status, block_timestamp
+            "SELECT request_id, sender, amount, crystal_kyt_status, block_timestamp
              FROM contract_logs
              WHERE event_name = 'DepositRequested'
                AND request_id::text = $1
@@ -492,7 +492,7 @@ impl KycRepo {
         wallet: &str,
     ) -> anyhow::Result<Option<RequestInfo>> {
         let row = sqlx::query_as::<_, RequestInfo>(
-            "SELECT request_id, sender, amount, kyt_status, block_timestamp
+            "SELECT request_id, sender, amount, crystal_kyt_status, block_timestamp
              FROM contract_logs
              WHERE event_name = 'WithdrawalRequested'
                AND request_id::text = $1
@@ -527,7 +527,7 @@ impl KycRepo {
     /// Get all deposit/withdrawal events for a wallet.
     pub async fn get_all_requests(&self, wallet: &str) -> anyhow::Result<Vec<RequestEvent>> {
         let rows = sqlx::query_as::<_, RequestEventRow>(
-            "SELECT event_name, request_id, amount, kyt_status, block_timestamp
+            "SELECT event_name, request_id, amount, crystal_kyt_status, block_timestamp
              FROM contract_logs
              WHERE LOWER(sender) = $1
                AND event_name IN ('DepositRequested', 'DepositClaimed', 'WithdrawalRequested', 'WithdrawalClaimed')

@@ -2,7 +2,7 @@ use chrono::Utc;
 use shared::crystal::client::CrystalClient;
 use shared::kyc_repo::{CrystalTransferResult, KycRepo, UnverifiedTransfer};
 
-/// KYT status values for contract_logs.kyt_status and lp_profiles.kyt_status
+/// KYT status values for contract_logs.crystal_kyt_status and lp_profiles.crystal_kyt_status
 const KYT_CLEAR: i16 = 1;
 const KYT_FAILED: i16 = 2;
 
@@ -87,7 +87,7 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
                 .set_profile_kyt_failed(&profile.wallet_address)
                 .await
             {
-                tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile kyt_status");
+                tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile crystal_kyt_status");
             }
         } else {
             tracing::info!(
@@ -99,7 +99,7 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
                 .set_profile_kyt_clear(&profile.wallet_address)
                 .await
             {
-                tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile kyt_status");
+                tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile crystal_kyt_status");
             }
         }
     }
@@ -168,7 +168,7 @@ async fn screen_single_event(
             .set_transfer_crystal_result(
                 transfer.id,
                 &CrystalTransferResult {
-                    kyt_status: if tx_risky { KYT_FAILED } else { KYT_CLEAR },
+                    crystal_kyt_status: if tx_risky { KYT_FAILED } else { KYT_CLEAR },
                     tx_risk: Some(tx_risk),
                     tx_signals: Some(&tx_signals),
                     sender_risk: None,
@@ -187,7 +187,7 @@ async fn screen_single_event(
                 "Crystal deposit screening failed — marking sender profile"
             );
             if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
-                tracing::error!(sender = sender, error = %e, "failed to set profile kyt_status");
+                tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }
     } else {
@@ -208,7 +208,7 @@ async fn screen_single_event(
             .set_transfer_crystal_result(
                 transfer.id,
                 &CrystalTransferResult {
-                    kyt_status: if risky { KYT_FAILED } else { KYT_CLEAR },
+                    crystal_kyt_status: if risky { KYT_FAILED } else { KYT_CLEAR },
                     tx_risk: None,
                     tx_signals: None,
                     sender_risk: Some(risk),
@@ -225,7 +225,7 @@ async fn screen_single_event(
                 "Crystal withdrawal address screening failed — marking profile"
             );
             if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
-                tracing::error!(sender = sender, error = %e, "failed to set profile kyt_status");
+                tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }
     }
