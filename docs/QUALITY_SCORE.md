@@ -4,6 +4,24 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-12 — Issue #39 (Download Figma assets into packages/ui/src/assets/)
+
+- **Scope:** Issue #39 acceptance criteria (TC-39-1 through TC-39-8)
+- **Cases executed:** 8
+- **Passes:** 8
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - All 7 required asset files present with exact kebab-case names.
+  - All files are valid SVG (start with `<svg`); no binary blobs.
+  - Zero Figma CDN URLs remain in any source file.
+  - Nav icons and `arrow-up-right.svg` correctly use `fill="currentColor"`; logo and illustration retain literal brand fills.
+  - No fixed `width`/`height` on any root `<svg>` — all use `viewBox` only.
+  - Visual rendering verified via Chrome DevTools MCP: logo wordmark correct, all four nav icons correct shapes, arrow-up-right correct, striped-wallet illustration renders as intended line-pattern artwork.
+  - No JS console errors on dev server (only expected Vite HMR debug message).
+  - Docs lint passes with 0 errors.
+
 ### 2026-05-12 — Issue #38 (Bootstrap TanStack Router file-based routes)
 
 - **Scope:** Issue #38 acceptance criteria (TC-38-1, TC-38-2, TC-38-3)
