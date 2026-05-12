@@ -4,6 +4,27 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-12 — Issue #41 (Define design tokens in Tailwind v4 @theme)
+
+- **Scope:** Issue #41 acceptance criteria (TC-41-1 through TC-41-9)
+- **Cases executed:** 9
+- **Passes:** 5
+- **Failures:** 3
+- **Blocked:** 1
+- **Bugs filed:** #71 (critical), #72 (low)
+- **Score: 3/10**
+  - PASS TC-41-1: `@theme` block is present in `theme.css` with all expected token groups and Figma node comments.
+  - PASS TC-41-7: `theme.css` is exported via `"./styles/*"` entry in `packages/ui/package.json`; `index.css` imports it correctly.
+  - PASS TC-41-8: All token declaration lines have trailing Figma node comments.
+  - PASS TC-41-9: `docs/FRONTEND.md` has a "Design tokens" subsection under "Visual direction" naming token groups and the no-raw-hex rule.
+  - PASS TC-41-5 (partial — font vars only): `--font-display` and `--font-body` resolve correctly in both dev server and Storybook.
+  - **FAIL TC-41-3:** Built CSS `@layer theme` contains only `--font-display` and `--font-body`. All 27 other pipeline tokens (`--color-pipeline-*`, `--text-pipeline-*`, `--font-weight-*`, `--radius-pipeline-*`, `--tracking-pipeline-*`) are completely absent from the production output. Tailwind v4 JIT prunes tokens that have no corresponding utility class usage in scanned source files. Root cause: `@theme` in an imported file without the `inline` keyword; tokens are silently dropped when no utility class references them. Filed as #71 (critical).
+  - **FAIL TC-41-4:** All pipeline CSS custom properties return empty string in both Storybook and frontend dev server. `--color-pipeline-paper`, `--color-pipeline-brand`, `--font-weight-emphasized`, `--radius-pipeline-card`, `--text-pipeline-title` all empty. See #71.
+  - **FAIL TC-41-6:** Tailwind utility classes `bg-pipeline-paper`, `text-pipeline-ink`, `rounded-pipeline-card`, `font-display`, `font-body` all produce no styling — no CSS is generated for them. See #71.
+  - **FAIL TC-41-2:** `Typography.stories.tsx` contains raw hex codes (`#e5e7eb`, `#6b7280`, `#9ca3af`, `#374151`, `#fff`, `#f9fafb`) in inline style props. Filed as #72 (low).
+  - **BLOCKED TC-41-5 (full):** Cannot test full token resolution until #71 is fixed.
+  - Deducted 7 points: the core acceptance criterion ("all tokens reachable via Tailwind utilities") is completely unmet — no pipeline utility class works in any environment. This is a critical spec-contract failure.
+
 ### 2026-05-12 — Issue #40 (Self-host the Figma typefaces in packages/ui)
 
 - **Scope:** Issue #40 acceptance criteria (TC-40-1 through TC-40-10)

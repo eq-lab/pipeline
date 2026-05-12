@@ -197,3 +197,89 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Open `docs/FRONTEND.md` and search for "Typography"
 - **Expected:** A short "Typography" section exists under "Visual direction" naming Besley (display) and Graphik LC (body), the location of `.woff2` files, and how to add a new weight.
+
+---
+
+## S-41 Define design tokens in Tailwind v4 @theme
+
+**Issue:** [#41 Define design tokens in Tailwind v4 @theme](https://github.com/eq-lab/pipeline/issues/41)
+**Plan:** `docs/exec-plans/active/issue-41-define-design-tokens-tailwind-theme.md`
+
+### TC-41-1: @theme block declared in theme.css
+
+- **Actor:** Developer
+- **Preconditions:** Checked out on the feat/41 branch (or later)
+- **Steps:**
+  1. Open `packages/ui/src/styles/theme.css` and confirm `@theme { ... }` block is present after `:root { ... }`.
+- **Expected:** A single `@theme` block exists containing `--color-pipeline-*`, `--text-pipeline-*`, `--font-weight-*`, `--radius-pipeline-*`, and `--tracking-pipeline-*` tokens, each with a one-line Figma node comment.
+
+### TC-41-2: No raw hex codes outside theme.css
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Run `grep -rn "#[0-9a-fA-F]\{3,6\}" packages/ --include="*.ts" --include="*.tsx" --include="*.css" | grep -v theme.css`
+- **Expected:** Zero matches (no raw hex codes in any source file outside `theme.css`).
+
+### TC-41-3: Tailwind utilities reachable in frontend build
+
+- **Actor:** Developer / QA
+- **Preconditions:** `yarn workspace @pipeline/frontend build` has completed
+- **Steps:**
+  1. Inspect `packages/frontend/dist/assets/index-*.css`
+  2. Search for `--color-pipeline-paper`, `--color-pipeline-brand`, `--font-weight-emphasized`, `--radius-pipeline-card`
+- **Expected:** All pipeline token variables appear inside the `@layer theme { :root { … } }` block in the built CSS.
+
+### TC-41-4: CSS custom properties resolve in browser (Storybook)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Storybook dev server running (`http://localhost:6006`)
+- **Steps:**
+  1. Navigate to `http://localhost:6006/iframe.html?id=foundation-typography--scale`
+  2. Open DevTools Console and run: `getComputedStyle(document.documentElement).getPropertyValue('--color-pipeline-paper')`
+  3. Repeat for `--color-pipeline-brand`, `--font-weight-emphasized`, `--radius-pipeline-card`, `--text-pipeline-title`
+- **Expected:** Each token resolves to its specified value: `#f8f7f6`, `#000080`, `600`, `4px`, `64px`.
+
+### TC-41-5: CSS custom properties resolve in browser (frontend dev server)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Frontend dev server running (`http://localhost:3000`)
+- **Steps:**
+  1. Open DevTools Console and run: `getComputedStyle(document.documentElement).getPropertyValue('--color-pipeline-paper')`
+  2. Repeat for all 10 color, 10 type-ramp, 4 weight, 3 radius, and 1 tracking tokens
+- **Expected:** All tokens resolve to their specified values (non-empty strings).
+
+### TC-41-6: Tailwind utility classes apply correct styles
+
+- **Actor:** Developer / QA
+- **Preconditions:** Storybook or frontend dev server running
+- **Steps:**
+  1. In DevTools Console: `const d = document.createElement('div'); d.className = 'bg-pipeline-paper'; document.body.appendChild(d); getComputedStyle(d).backgroundColor`
+  2. Repeat for `text-pipeline-ink`, `rounded-pipeline-card`, `font-display`, `font-body`
+- **Expected:** `bg-pipeline-paper` → `rgb(248, 247, 246)`; `text-pipeline-ink` → `rgb(38, 37, 36)`; `rounded-pipeline-card` → `4px`; `font-display` → Besley family; `font-body` → Graphik LC family.
+
+### TC-41-7: theme.css exported from @pipeline/ui
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Check `packages/ui/package.json` `exports` field for `"./styles/*"` entry.
+  2. Confirm `packages/frontend/src/index.css` imports `@pipeline/ui/styles/theme.css`.
+- **Expected:** Export entry `"./styles/*": "./src/styles/*"` exists; `index.css` has `@import "@pipeline/ui/styles/theme.css"`.
+
+### TC-41-8: All tokens have Figma node comments
+
+- **Actor:** Developer
+- **Preconditions:** `packages/ui/src/styles/theme.css` exists
+- **Steps:**
+  1. Count token lines in `@theme` block.
+  2. Count lines with `/* ... — node ... */` comments.
+- **Expected:** Every token declaration line has a trailing comment naming the Figma variable or node ID.
+
+### TC-41-9: FRONTEND.md has Design tokens section
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Open `docs/FRONTEND.md` and search for "Design tokens"
+- **Expected:** A "Design tokens" subsection exists under "Visual direction" listing the token groups, file location, and no-raw-hex rule.
