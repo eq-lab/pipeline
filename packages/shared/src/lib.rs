@@ -1,6 +1,7 @@
 pub mod bitgo;
 pub mod crystal;
 pub mod db;
+pub mod eip712;
 pub mod events;
 pub mod evm;
 pub mod kyc_repo;

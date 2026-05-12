@@ -82,7 +82,7 @@ async fn create_applicant(
         Ok(None) => {
             return (
                 StatusCode::FORBIDDEN,
-                Json(serde_json::json!({"error": "wallet not registered — call POST /v1/register first"})),
+                Json(serde_json::json!({"error": "wallet not registered — profile is created automatically from a deposit request"})),
             )
                 .into_response();
         }
@@ -170,7 +170,7 @@ async fn create_token(
         Ok(None) => {
             return (
                 StatusCode::FORBIDDEN,
-                Json(serde_json::json!({"error": "wallet not registered — call POST /v1/register first"})),
+                Json(serde_json::json!({"error": "wallet not registered — profile is created automatically from a deposit request"})),
             )
                 .into_response();
         }

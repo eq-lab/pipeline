@@ -57,6 +57,20 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
     );
 
     loop {
+        // Phase 0: Auto-populate lp_profiles from DepositRequested events
+        match kyc_repo.populate_profiles_from_deposits().await {
+            Ok(n) if n > 0 => {
+                tracing::info!(
+                    count = n,
+                    "created new profiles from DepositRequested events"
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "phase 0: failed to populate profiles");
+            }
+            _ => {}
+        }
+
         // Phase 1: Sumsub KYC/KYB/AML status checks (placeholder)
         if settings.sumsub_enabled {
             phase_check_sumsub().await;
@@ -71,7 +85,6 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
         phase_sync_whitelist(
             &registry,
             &kyc_repo,
-            settings.whitelist_ttl_secs,
             settings.sumsub_enabled,
             settings.crystal_enabled,
         )

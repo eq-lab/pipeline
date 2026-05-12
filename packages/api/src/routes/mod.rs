@@ -1,3 +1,3 @@
 pub mod emails;
 pub mod kyc;
-pub mod register;
+pub mod vouchers;

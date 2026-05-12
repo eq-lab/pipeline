@@ -43,6 +43,45 @@ pub struct UnverifiedTransfer {
     pub chain_id: i64,
 }
 
+#[derive(sqlx::FromRow)]
+pub struct RequestInfo {
+    pub request_id: Option<bigdecimal::BigDecimal>,
+    pub sender: Option<String>,
+    pub amount: Option<bigdecimal::BigDecimal>,
+    pub kyt_status: Option<i16>,
+    pub block_timestamp: i64,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct RequestEventRow {
+    pub event_name: String,
+    pub request_id: Option<bigdecimal::BigDecimal>,
+    pub amount: Option<bigdecimal::BigDecimal>,
+    pub kyt_status: Option<i16>,
+    pub block_timestamp: i64,
+}
+
+#[derive(serde::Serialize)]
+pub struct RequestEvent {
+    pub event_name: String,
+    pub request_id: Option<String>,
+    pub amount: Option<String>,
+    pub kyt_status: Option<i16>,
+    pub block_timestamp: i64,
+}
+
+impl From<RequestEventRow> for RequestEvent {
+    fn from(row: RequestEventRow) -> Self {
+        Self {
+            event_name: row.event_name,
+            request_id: row.request_id.map(|r| r.to_string()),
+            amount: row.amount.map(|a| a.to_string()),
+            kyt_status: row.kyt_status,
+            block_timestamp: row.block_timestamp,
+        }
+    }
+}
+
 impl KycRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -164,43 +203,71 @@ impl KycRepo {
         sumsub_enabled: bool,
         crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        // Only allow profiles that:
+        // 1. Have not been allowed on-chain yet
+        // 2. Have at least one DepositRequested with kyt_status = 1 (clear)
+        // 3. Pass sumsub/crystal checks if enabled
         let rows = match (sumsub_enabled, crystal_enabled) {
             (true, true) => {
                 sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE kyc_status = 2
-                       AND kyc_review_status = 2
-                       AND aml_status = 2
-                       AND (kyt_status IS NULL OR kyt_status != 2)
-                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                    "SELECT p.wallet_address FROM lp_profiles p
+                     WHERE p.on_chain_allowed = FALSE
+                       AND p.kyc_status = 2
+                       AND p.kyc_review_status = 2
+                       AND p.aml_status = 2
+                       AND (p.kyt_status IS NULL OR p.kyt_status != 2)
+                       AND EXISTS (
+                           SELECT 1 FROM contract_logs c
+                           WHERE c.event_name = 'DepositRequested'
+                             AND LOWER(c.sender) = p.wallet_address
+                             AND c.kyt_status = 1
+                       )",
                 )
                 .fetch_all(&self.pool)
                 .await?
             }
             (true, false) => {
                 sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE kyc_status = 2
-                       AND kyc_review_status = 2
-                       AND aml_status = 2
-                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                    "SELECT p.wallet_address FROM lp_profiles p
+                     WHERE p.on_chain_allowed = FALSE
+                       AND p.kyc_status = 2
+                       AND p.kyc_review_status = 2
+                       AND p.aml_status = 2
+                       AND EXISTS (
+                           SELECT 1 FROM contract_logs c
+                           WHERE c.event_name = 'DepositRequested'
+                             AND LOWER(c.sender) = p.wallet_address
+                             AND c.kyt_status = 1
+                       )",
                 )
                 .fetch_all(&self.pool)
                 .await?
             }
             (false, true) => {
                 sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE (kyt_status IS NULL OR kyt_status != 2)
-                       AND (is_whitelisted IS NULL OR whitelist_reset_at <= NOW())",
+                    "SELECT p.wallet_address FROM lp_profiles p
+                     WHERE p.on_chain_allowed = FALSE
+                       AND (p.kyt_status IS NULL OR p.kyt_status != 2)
+                       AND EXISTS (
+                           SELECT 1 FROM contract_logs c
+                           WHERE c.event_name = 'DepositRequested'
+                             AND LOWER(c.sender) = p.wallet_address
+                             AND c.kyt_status = 1
+                       )",
                 )
                 .fetch_all(&self.pool)
                 .await?
             }
             (false, false) => {
                 sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE is_whitelisted IS NULL OR whitelist_reset_at <= NOW()",
+                    "SELECT p.wallet_address FROM lp_profiles p
+                     WHERE p.on_chain_allowed = FALSE
+                       AND EXISTS (
+                           SELECT 1 FROM contract_logs c
+                           WHERE c.event_name = 'DepositRequested'
+                             AND LOWER(c.sender) = p.wallet_address
+                             AND c.kyt_status = 1
+                       )",
                 )
                 .fetch_all(&self.pool)
                 .await?
@@ -211,53 +278,16 @@ impl KycRepo {
 
     pub async fn fetch_profiles_to_disallow(
         &self,
-        sumsub_enabled: bool,
-        crystal_enabled: bool,
+        _sumsub_enabled: bool,
+        _crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = match (sumsub_enabled, crystal_enabled) {
-            (true, true) => {
-                sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE is_whitelisted = true
-                       AND (whitelist_reset_at <= NOW()
-                            OR kyt_status = 2
-                            OR kyc_status != 2
-                            OR aml_status = 3)",
-                )
-                .fetch_all(&self.pool)
-                .await?
-            }
-            (true, false) => {
-                sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE is_whitelisted = true
-                       AND (whitelist_reset_at <= NOW()
-                            OR kyc_status != 2
-                            OR aml_status = 3)",
-                )
-                .fetch_all(&self.pool)
-                .await?
-            }
-            (false, true) => {
-                sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE is_whitelisted = true
-                       AND (whitelist_reset_at <= NOW()
-                            OR kyt_status = 2)",
-                )
-                .fetch_all(&self.pool)
-                .await?
-            }
-            (false, false) => {
-                sqlx::query_as::<_, WhitelistCandidate>(
-                    "SELECT wallet_address FROM lp_profiles
-                     WHERE is_whitelisted = true
-                       AND whitelist_reset_at <= NOW()",
-                )
-                .fetch_all(&self.pool)
-                .await?
-            }
-        };
+        // Sanctions-only: disallow profiles that were allowed but now have kyt_status = 2 (failed)
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(
+            "SELECT wallet_address FROM lp_profiles
+             WHERE on_chain_allowed = TRUE AND kyt_status = 2",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         Ok(rows)
     }
 
@@ -278,16 +308,37 @@ impl KycRepo {
         Ok(())
     }
 
-    pub async fn set_disallowed(&self, wallet_address: &str) -> anyhow::Result<()> {
+    pub async fn set_on_chain_allowed(&self, wallet_address: &str) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles
-             SET is_whitelisted = false, whitelist_reset_at = NULL, updated_at = NOW()
-             WHERE wallet_address = $1",
+            "UPDATE lp_profiles SET on_chain_allowed = TRUE, updated_at = NOW() WHERE wallet_address = $1",
         )
         .bind(wallet_address)
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn set_disallowed(&self, wallet_address: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles SET on_chain_allowed = FALSE, updated_at = NOW() WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Auto-create lp_profiles from DepositRequested events for addresses not yet tracked.
+    pub async fn populate_profiles_from_deposits(&self) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "INSERT INTO lp_profiles (wallet_address)
+             SELECT DISTINCT LOWER(sender) FROM contract_logs
+             WHERE event_name = 'DepositRequested' AND sender IS NOT NULL
+             ON CONFLICT (wallet_address) DO NOTHING",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     pub async fn fetch_unverified_transfers(
@@ -297,7 +348,7 @@ impl KycRepo {
         let rows = sqlx::query_as::<_, UnverifiedTransfer>(
             "SELECT id, event_name, sender, receiver, amount, tx_hash, chain_id
              FROM contract_logs
-             WHERE event_name IN ('Transfer', 'WithdrawalRequested') AND kyt_status IS NULL
+             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL
              ORDER BY id
              LIMIT $1",
         )
@@ -397,6 +448,91 @@ impl KycRepo {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// Check if a profile is on-chain allowed.
+    pub async fn is_on_chain_allowed(&self, wallet_address: &str) -> anyhow::Result<bool> {
+        let row: Option<(bool,)> =
+            sqlx::query_as("SELECT on_chain_allowed FROM lp_profiles WHERE wallet_address = $1")
+                .bind(wallet_address)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(v,)| v).unwrap_or(false))
+    }
+
+    /// Get a deposit request by request_id and wallet.
+    pub async fn get_deposit_request(
+        &self,
+        request_id: &str,
+        wallet: &str,
+    ) -> anyhow::Result<Option<RequestInfo>> {
+        let row = sqlx::query_as::<_, RequestInfo>(
+            "SELECT request_id, sender, amount, kyt_status, block_timestamp
+             FROM contract_logs
+             WHERE event_name = 'DepositRequested'
+               AND request_id::text = $1
+               AND LOWER(sender) = $2
+             LIMIT 1",
+        )
+        .bind(request_id)
+        .bind(wallet)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Get a withdrawal request by request_id and wallet.
+    pub async fn get_withdrawal_request(
+        &self,
+        request_id: &str,
+        wallet: &str,
+    ) -> anyhow::Result<Option<RequestInfo>> {
+        let row = sqlx::query_as::<_, RequestInfo>(
+            "SELECT request_id, sender, amount, kyt_status, block_timestamp
+             FROM contract_logs
+             WHERE event_name = 'WithdrawalRequested'
+               AND request_id::text = $1
+               AND LOWER(sender) = $2
+             LIMIT 1",
+        )
+        .bind(request_id)
+        .bind(wallet)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Check if a request has been claimed.
+    pub async fn is_request_claimed(
+        &self,
+        claimed_event: &str,
+        request_id: &str,
+    ) -> anyhow::Result<bool> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT 1 FROM contract_logs
+             WHERE event_name = $1 AND request_id::text = $2
+             LIMIT 1",
+        )
+        .bind(claimed_event)
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
+    /// Get all deposit/withdrawal events for a wallet.
+    pub async fn get_all_requests(&self, wallet: &str) -> anyhow::Result<Vec<RequestEvent>> {
+        let rows = sqlx::query_as::<_, RequestEventRow>(
+            "SELECT event_name, request_id, amount, kyt_status, block_timestamp
+             FROM contract_logs
+             WHERE LOWER(sender) = $1
+               AND event_name IN ('DepositRequested', 'DepositClaimed', 'WithdrawalRequested', 'WithdrawalClaimed')
+             ORDER BY block_timestamp DESC, id DESC",
+        )
+        .bind(wallet)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(RequestEvent::from).collect())
     }
 
     pub async fn update_lp_info(

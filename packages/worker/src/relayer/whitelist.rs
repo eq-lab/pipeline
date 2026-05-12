@@ -1,13 +1,11 @@
-use alloy::primitives::U256;
 use alloy::sol;
 use anyhow::Result;
-use chrono::Utc;
 use shared::kyc_repo::KycRepo;
 
 sol! {
     #[sol(rpc)]
     contract WhitelistRegistry {
-        function allowUser(address user, uint256 until) external;
+        function allowUser(address user) external;
         function disallow(address who) external;
     }
 }
@@ -19,28 +17,19 @@ sol! {
 pub async fn phase_sync_whitelist<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
-    ttl_secs: u64,
     sumsub_enabled: bool,
     crystal_enabled: bool,
 ) where
     T: alloy::transports::Transport + Clone,
     P: alloy::providers::Provider<T>,
 {
-    process_allows(
-        registry,
-        kyc_repo,
-        ttl_secs,
-        sumsub_enabled,
-        crystal_enabled,
-    )
-    .await;
+    process_allows(registry, kyc_repo, sumsub_enabled, crystal_enabled).await;
     process_disallows(registry, kyc_repo, sumsub_enabled, crystal_enabled).await;
 }
 
 async fn process_allows<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
-    ttl_secs: u64,
     sumsub_enabled: bool,
     crystal_enabled: bool,
 ) where
@@ -67,23 +56,16 @@ async fn process_allows<T, P>(
             continue;
         };
 
-        let until_ts = Utc::now().timestamp() as u64 + ttl_secs;
         let result: Result<_, alloy::contract::Error> = async {
-            registry
-                .allowUser(addr, U256::from(until_ts))
-                .send()
-                .await?
-                .watch()
-                .await?;
+            registry.allowUser(addr).send().await?.watch().await?;
             Ok(())
         }
         .await;
 
         match result {
             Ok(_) => {
-                let reset_at = Utc::now() + chrono::Duration::seconds(ttl_secs as i64);
                 if let Err(e) = kyc_repo
-                    .set_whitelisted(&candidate.wallet_address, reset_at)
+                    .set_on_chain_allowed(&candidate.wallet_address)
                     .await
                 {
                     tracing::error!(wallet = candidate.wallet_address, error = %e, "failed to update DB after allowUser tx");

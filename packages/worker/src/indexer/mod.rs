@@ -15,7 +15,8 @@ use shared::db::EventRepo;
 use config::IndexerJobSettings;
 use mappers::ContractLogMapper;
 use parsers::{
-    parse_claimable_increased, parse_transfer, parse_withdrawal_claimed, parse_withdrawal_requested,
+    parse_deposit_claimed, parse_deposit_requested, parse_withdrawal_claimed,
+    parse_withdrawal_requested,
 };
 use poller::EvmEventPollerBuilder;
 
@@ -38,14 +39,8 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         }
     }
 
-    let approved: Vec<alloy::primitives::Address> = settings
-        .transfer_targets
-        .iter()
-        .filter_map(|a| a.parse().ok())
-        .collect();
-
-    let transfer_contracts: Vec<alloy::primitives::Address> = settings
-        .transfer_contracts
+    let dm_contracts: Vec<alloy::primitives::Address> = settings
+        .dm_contracts
         .iter()
         .filter_map(|a| a.parse().ok())
         .collect();
@@ -56,7 +51,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
-    let transfer_repo = repo.clone();
+    let dm_repo = repo.clone();
     let wq_repo = repo.clone();
 
     let poller = EvmEventPollerBuilder::new(
@@ -64,16 +59,17 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         settings.polling_block_range,
         settings.polling_interval_ms,
     )
-    .add_event_handler(transfer_contracts, move |log| {
-        parse_transfer(log, &approved).map(|ev| {
-            Box::new(ContractLogMapper::new(ev, chain_id, transfer_repo.clone()))
-                as Box<dyn shared::log_mapper::LogMapper>
-        })
+    .add_event_handler(dm_contracts, move |log| {
+        parse_deposit_requested(log)
+            .or_else(|| parse_deposit_claimed(log))
+            .map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, dm_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
     })
     .add_event_handler(wq_contracts, move |log| {
         parse_withdrawal_requested(log)
             .or_else(|| parse_withdrawal_claimed(log))
-            .or_else(|| parse_claimable_increased(log))
             .map(|ev| {
                 Box::new(ContractLogMapper::new(ev, chain_id, wq_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>

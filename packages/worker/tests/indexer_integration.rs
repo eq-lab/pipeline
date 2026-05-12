@@ -28,18 +28,23 @@ mod tests {
         Some(pool)
     }
 
-    fn make_transfer(contract: Address, block: u64, log_index: u64, value: U256) -> ContractLog {
+    fn make_deposit_requested(
+        contract: Address,
+        block: u64,
+        log_index: u64,
+        value: U256,
+    ) -> ContractLog {
         ContractLog {
             contract_address: contract,
-            event_name: "Transfer".to_owned(),
+            event_name: "DepositRequested".to_owned(),
             block_number: block,
             tx_hash: b256!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             log_index,
             block_timestamp: 0,
             sender: Some(address!("1111111111111111111111111111111111111111")),
-            receiver: Some(address!("2222222222222222222222222222222222222222")),
+            receiver: None,
             amount: Some(value),
-            request_id: None,
+            request_id: Some(U256::from(log_index)),
             cumulative: None,
         }
     }
@@ -141,10 +146,10 @@ mod tests {
         .unwrap();
 
         let events = vec![
-            make_transfer(contract_a, 101, 0, U256::from(100u64)),
-            make_transfer(contract_a, 102, 0, U256::from(200u64)),
-            make_transfer(contract_b, 103, 0, U256::from(300u64)),
-            make_transfer(contract_b, 104, 0, U256::from(400u64)),
+            make_deposit_requested(contract_a, 101, 0, U256::from(100u64)),
+            make_deposit_requested(contract_a, 102, 0, U256::from(200u64)),
+            make_deposit_requested(contract_b, 103, 0, U256::from(300u64)),
+            make_deposit_requested(contract_b, 104, 0, U256::from(400u64)),
         ];
 
         let inserted = run_once(&repo, 1, &events, 104).await;
@@ -163,8 +168,8 @@ mod tests {
 
         let contract = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         let events = vec![
-            make_transfer(contract, 101, 0, U256::from(100u64)),
-            make_transfer(contract, 102, 0, U256::from(200u64)),
+            make_deposit_requested(contract, 101, 0, U256::from(100u64)),
+            make_deposit_requested(contract, 102, 0, U256::from(200u64)),
         ];
 
         let first = run_once(&repo, 1, &events, 102).await;
@@ -185,10 +190,10 @@ mod tests {
 
         let contract = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-        let ev1 = vec![make_transfer(contract, 101, 0, U256::from(100u64))];
+        let ev1 = vec![make_deposit_requested(contract, 101, 0, U256::from(100u64))];
         run_once(&repo, 1, &ev1, 101).await;
 
-        let ev2 = vec![make_transfer(contract, 200, 0, U256::from(999u64))];
+        let ev2 = vec![make_deposit_requested(contract, 200, 0, U256::from(999u64))];
         run_once(&repo, 2, &ev2, 200).await;
 
         assert_eq!(get_cursor(&pool, 1).await, 102);
@@ -207,13 +212,13 @@ mod tests {
         let contract = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
         let events = vec![
-            make_transfer(contract, 101, 0, U256::from(100u64)),
+            make_deposit_requested(contract, 101, 0, U256::from(100u64)),
             make_withdrawal_requested(contract, 101, 1),
         ];
 
         let inserted = run_once(&repo, 1, &events, 101).await;
         assert_eq!(inserted, 2);
-        assert_eq!(count_logs(&pool, 1, Some("Transfer")).await, 1);
+        assert_eq!(count_logs(&pool, 1, Some("DepositRequested")).await, 1);
         assert_eq!(count_logs(&pool, 1, Some("WithdrawalRequested")).await, 1);
         assert_eq!(count_logs(&pool, 1, None).await, 2);
     }

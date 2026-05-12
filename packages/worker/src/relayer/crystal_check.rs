@@ -11,10 +11,10 @@ const BATCH_SIZE: i64 = 100;
 /// Phase 2: Crystal Intelligence KYT/AML risk screening.
 ///
 /// Sub-task 2a: one-time address screening for new profiles.
-/// Sub-task 2b: transaction + sender screening for unverified transfers.
+/// Sub-task 2b: deposit transaction screening + withdrawal address screening.
 pub async fn phase_check_crystal(crystal: &CrystalClient, kyc_repo: &KycRepo) {
     screen_addresses(crystal, kyc_repo).await;
-    screen_transfers(crystal, kyc_repo).await;
+    screen_events(crystal, kyc_repo).await;
 }
 
 /// 2a: Screen addresses that have never been checked by Crystal.
@@ -99,124 +99,136 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
     }
 }
 
-/// 2b: Screen unverified Transfer and WithdrawalRequested transactions via Crystal.
-async fn screen_transfers(crystal: &CrystalClient, kyc_repo: &KycRepo) {
+/// 2b: Screen unverified DepositRequested and WithdrawalRequested events via Crystal.
+async fn screen_events(crystal: &CrystalClient, kyc_repo: &KycRepo) {
     let transfers = match kyc_repo.fetch_unverified_transfers(BATCH_SIZE).await {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!(error = %e, "failed to fetch unverified transfers");
+            tracing::error!(error = %e, "failed to fetch unverified events");
             return;
         }
     };
 
     if !transfers.is_empty() {
-        tracing::info!(count = transfers.len(), "screening transfers via Crystal");
+        tracing::info!(count = transfers.len(), "screening events via Crystal");
     }
 
     for transfer in &transfers {
-        match screen_single_transfer(crystal, kyc_repo, transfer).await {
+        match screen_single_event(crystal, kyc_repo, transfer).await {
             Ok(()) => {}
             Err(e) => {
                 tracing::warn!(
                     log_id = transfer.id,
                     tx_hash = transfer.tx_hash,
                     error = %e,
-                    "Crystal transfer screening failed, will retry next iteration"
+                    "Crystal event screening failed, will retry next iteration"
                 );
             }
         }
     }
 }
 
-async fn screen_single_transfer(
+async fn screen_single_event(
     crystal: &CrystalClient,
     kyc_repo: &KycRepo,
     transfer: &UnverifiedTransfer,
 ) -> anyhow::Result<()> {
-    // Transfer events are deposits (address = receiver);
-    // WithdrawalRequested are withdrawals (address = sender).
-    let (direction, tx_address) = if transfer.event_name == "Transfer" {
-        let receiver = transfer
-            .receiver
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("Transfer {} has no receiver address", transfer.id))?;
-        ("deposit", receiver)
-    } else {
-        let sender = transfer.sender.as_deref().ok_or_else(|| {
-            anyhow::anyhow!("WithdrawalRequested {} has no sender address", transfer.id)
-        })?;
-        ("withdrawal", sender)
-    };
-
-    // Screen the transaction
-    let tx_resp = crystal
-        .screen_transaction(direction, &transfer.tx_hash, tx_address)
-        .await?;
-    let tx_data = tx_resp
-        .data
-        .ok_or_else(|| anyhow::anyhow!("Crystal returned no data for tx {}", transfer.tx_hash))?;
-    let tx_riskscore = tx_data.counterparty.riskscore.unwrap_or(0.0);
-    let tx_risk = tx_riskscore as f32;
-    let tx_signals = serde_json::to_value(&tx_data.signals)?;
-    let tx_risky = crystal
-        .settings()
-        .is_risky_tx(tx_riskscore, tx_data.signals.as_ref());
-
-    // Screen the sender address (Transfer events only; WithdrawalRequested uses tx hash only)
-    let (sender_risk, sender_signals, sender_risky) = if transfer.event_name == "Transfer" {
-        if let Some(ref sender) = transfer.sender {
-            let addr_resp = crystal.screen_address(sender).await?;
-            let (rs, sig_ref) = match addr_resp.data.as_ref() {
-                Some(data) => {
-                    let cp = &data.counterparty;
-                    (cp.riskscore.unwrap_or(0.0), cp.signals.as_ref())
-                }
-                None => (0.0, None),
-            };
-            let risk = rs as f32;
-            let signals = serde_json::to_value(sig_ref)?;
-            let risky = crystal.settings().is_risky_address(rs, sig_ref);
-            (Some(risk), Some(signals), risky)
-        } else {
-            (None, None, false)
-        }
-    } else {
-        (None, None, false)
-    };
-
-    let screened_at = Utc::now();
-
-    // Store Crystal response details on contract_logs
-    if let Err(e) = kyc_repo
-        .set_transfer_crystal_result(
-            transfer.id,
-            Some(tx_risk),
-            Some(&tx_signals),
-            sender_risk,
-            sender_signals.as_ref(),
-            screened_at,
+    let sender = transfer.sender.as_deref().ok_or_else(|| {
+        anyhow::anyhow!(
+            "{} {} has no sender address",
+            transfer.event_name,
+            transfer.id
         )
-        .await
-    {
-        tracing::error!(log_id = transfer.id, error = %e, "failed to store Crystal transfer result");
-    }
+    })?;
 
-    let failed = tx_risky || sender_risky;
-    let status = if failed { KYT_FAILED } else { KYT_CLEAR };
+    if transfer.event_name == "DepositRequested" {
+        // Deposit: Crystal deposit-type transaction screening
+        let tx_resp = crystal
+            .screen_transaction("deposit", &transfer.tx_hash, sender)
+            .await?;
 
-    kyc_repo
-        .set_transfer_kyt_status(transfer.id, status)
-        .await?;
+        let (tx_riskscore, tx_signals_ref) = match tx_resp.data.as_ref() {
+            Some(data) => (
+                data.counterparty.riskscore.unwrap_or(0.0),
+                data.signals.as_ref(),
+            ),
+            None => (0.0, None),
+        };
+        let tx_risk = tx_riskscore as f32;
+        let tx_signals = serde_json::to_value(tx_signals_ref)?;
+        let tx_risky = crystal.settings().is_risky_tx(tx_riskscore, tx_signals_ref);
 
-    if failed {
-        if let Some(ref sender) = transfer.sender {
+        let screened_at = Utc::now();
+        if let Err(e) = kyc_repo
+            .set_transfer_crystal_result(
+                transfer.id,
+                Some(tx_risk),
+                Some(&tx_signals),
+                None,
+                None,
+                screened_at,
+            )
+            .await
+        {
+            tracing::error!(log_id = transfer.id, error = %e, "failed to store Crystal deposit result");
+        }
+
+        let status = if tx_risky { KYT_FAILED } else { KYT_CLEAR };
+        kyc_repo
+            .set_transfer_kyt_status(transfer.id, status)
+            .await?;
+
+        if tx_risky {
             tracing::warn!(
                 log_id = transfer.id,
                 sender = sender,
                 tx_hash = transfer.tx_hash,
                 tx_risk = tx_risk,
-                sender_risk = sender_risk,
-                "Crystal transfer screening failed — marking sender profile"
+                "Crystal deposit screening failed — marking sender profile"
+            );
+            if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
+                tracing::error!(sender = sender, error = %e, "failed to set profile kyt_status");
+            }
+        }
+    } else {
+        // WithdrawalRequested: address screening only (no tx screening per spec)
+        let addr_resp = crystal.screen_address(sender).await?;
+        let (riskscore, signals_ref) = match addr_resp.data.as_ref() {
+            Some(data) => {
+                let cp = &data.counterparty;
+                (cp.riskscore.unwrap_or(0.0), cp.signals.as_ref())
+            }
+            None => (0.0, None),
+        };
+        let risk = riskscore as f32;
+        let signals = serde_json::to_value(signals_ref)?;
+        let risky = crystal.settings().is_risky_address(riskscore, signals_ref);
+
+        let screened_at = Utc::now();
+        if let Err(e) = kyc_repo
+            .set_transfer_crystal_result(
+                transfer.id,
+                None,
+                None,
+                Some(risk),
+                Some(&signals),
+                screened_at,
+            )
+            .await
+        {
+            tracing::error!(log_id = transfer.id, error = %e, "failed to store Crystal withdrawal result");
+        }
+
+        let status = if risky { KYT_FAILED } else { KYT_CLEAR };
+        kyc_repo
+            .set_transfer_kyt_status(transfer.id, status)
+            .await?;
+
+        if risky {
+            tracing::warn!(
+                log_id = transfer.id,
+                sender = sender,
+                "Crystal withdrawal address screening failed — marking profile"
             );
             if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
                 tracing::error!(sender = sender, error = %e, "failed to set profile kyt_status");

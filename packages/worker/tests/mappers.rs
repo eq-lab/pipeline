@@ -7,15 +7,15 @@ use shared::{events::ContractLog, log_mapper::LogMapper};
 fn dummy_event() -> ContractLog {
     ContractLog {
         contract_address: address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-        event_name: "Transfer".to_owned(),
+        event_name: "DepositRequested".to_owned(),
         block_number: 101,
         tx_hash: b256!("1111111111111111111111111111111111111111111111111111111111111111"),
         log_index: 0,
         block_timestamp: 0,
         sender: Some(address!("1111111111111111111111111111111111111111")),
-        receiver: Some(address!("2222222222222222222222222222222222222222")),
+        receiver: None,
         amount: Some(U256::from(1000u64)),
-        request_id: None,
+        request_id: Some(U256::from(1u64)),
         cumulative: None,
     }
 }

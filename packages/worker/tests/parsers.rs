@@ -6,92 +6,90 @@ use alloy::{
 use alloy::sol_types::SolEvent;
 
 use pipeline_worker::indexer::parsers::{
-    parse_claimable_increased, parse_transfer, parse_withdrawal_claimed, parse_withdrawal_requested,
+    parse_deposit_claimed, parse_deposit_requested, parse_withdrawal_claimed,
+    parse_withdrawal_requested,
 };
 
 // Re-declare sol! events to get correct SIGNATURE_HASH constants for test log construction.
 alloy::sol! {
-    event Transfer(address indexed from, address indexed to, uint256 value);
+    event DepositRequested(address indexed user, uint256 indexed requestId, uint256 amount);
+    event DepositClaimed(uint256 indexed requestId);
     event WithdrawalRequested(address indexed withdrawer, uint256 indexed requestId, uint256 amount, uint256 queued);
     event WithdrawalClaimed(address indexed withdrawer, uint256 indexed requestId, uint256 amount);
-    event ClaimableIncreased(uint256 delta, uint256 newClaimable);
 }
 
 const CONTRACT: Address = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 const TX_HASH: FixedBytes<32> =
     b256!("1111111111111111111111111111111111111111111111111111111111111111");
 
-fn make_transfer_log(from: Address, to: Address, value: U256) -> Log {
-    let topic1: FixedBytes<32> = from.into_word();
-    let topic2: FixedBytes<32> = to.into_word();
+// --- DepositRequested tests ---
+
+#[test]
+fn deposit_requested_decodes() {
+    let user = address!("1111111111111111111111111111111111111111");
+    let request_id = U256::from(7u64);
+    let amount = U256::from(1000u64);
+
+    let topic1: FixedBytes<32> = user.into_word();
+    let topic2: FixedBytes<32> = request_id.into();
+
     let mut data = [0u8; 32];
-    data.copy_from_slice(&value.to_be_bytes::<32>());
+    data.copy_from_slice(&amount.to_be_bytes::<32>());
 
     let inner = alloy::primitives::Log {
         address: CONTRACT,
-        data: LogData::new(vec![Transfer::SIGNATURE_HASH, topic1, topic2], data.into()).unwrap(),
+        data: LogData::new(
+            vec![DepositRequested::SIGNATURE_HASH, topic1, topic2],
+            data.into(),
+        )
+        .unwrap(),
     };
-
-    Log {
+    let log = Log {
         inner,
         block_number: Some(101),
         transaction_hash: Some(TX_HASH),
         log_index: Some(0),
         ..Default::default()
-    }
-}
+    };
 
-// --- Transfer tests ---
-
-#[test]
-fn transfer_correct_log_decodes() {
-    let from = address!("1111111111111111111111111111111111111111");
-    let to = address!("2222222222222222222222222222222222222222");
-    let value = U256::from(1000u64);
-
-    let log = make_transfer_log(from, to, value);
-    let ev = parse_transfer(&log, &[to]).expect("should decode");
-
-    assert_eq!(ev.event_name, "Transfer");
-    assert_eq!(ev.sender, Some(from));
-    assert_eq!(ev.receiver, Some(to));
-    assert_eq!(ev.amount, Some(value));
-    assert_eq!(ev.request_id, None);
+    let ev = parse_deposit_requested(&log).expect("should decode");
+    assert_eq!(ev.event_name, "DepositRequested");
+    assert_eq!(ev.sender, Some(user));
+    assert_eq!(ev.receiver, None);
+    assert_eq!(ev.amount, Some(amount));
+    assert_eq!(ev.request_id, Some(request_id));
     assert_eq!(ev.cumulative, None);
     assert_eq!(ev.block_number, 101);
 }
 
+// --- DepositClaimed tests ---
+
 #[test]
-fn transfer_wrong_topic0_returns_none() {
+fn deposit_claimed_decodes() {
+    let request_id = U256::from(7u64);
+
+    let topic1: FixedBytes<32> = request_id.into();
+
     let inner = alloy::primitives::Log {
         address: CONTRACT,
-        data: LogData::new(vec![FixedBytes::ZERO], vec![].into()).unwrap(),
+        data: LogData::new(vec![DepositClaimed::SIGNATURE_HASH, topic1], vec![].into()).unwrap(),
     };
     let log = Log {
         inner,
+        block_number: Some(102),
+        transaction_hash: Some(TX_HASH),
+        log_index: Some(1),
         ..Default::default()
     };
 
-    assert!(parse_transfer(&log, &[]).is_none());
-}
-
-#[test]
-fn transfer_zero_value_returns_none() {
-    let from = address!("1111111111111111111111111111111111111111");
-    let to = address!("2222222222222222222222222222222222222222");
-
-    let log = make_transfer_log(from, to, U256::ZERO);
-    assert!(parse_transfer(&log, &[to]).is_none());
-}
-
-#[test]
-fn transfer_unapproved_address_returns_none() {
-    let from = address!("1111111111111111111111111111111111111111");
-    let to = address!("2222222222222222222222222222222222222222");
-    let unrelated = address!("3333333333333333333333333333333333333333");
-
-    let log = make_transfer_log(from, to, U256::from(100u64));
-    assert!(parse_transfer(&log, &[unrelated]).is_none());
+    let ev = parse_deposit_claimed(&log).expect("should decode");
+    assert_eq!(ev.event_name, "DepositClaimed");
+    assert_eq!(ev.sender, None);
+    assert_eq!(ev.receiver, None);
+    assert_eq!(ev.amount, None);
+    assert_eq!(ev.request_id, Some(request_id));
+    assert_eq!(ev.cumulative, None);
+    assert_eq!(ev.block_number, 102);
 }
 
 // --- WithdrawalRequested tests ---
@@ -176,37 +174,4 @@ fn withdrawal_claimed_decodes() {
     assert_eq!(ev.cumulative, None);
     assert_eq!(ev.block_number, 201);
     assert_eq!(ev.log_index, 1);
-}
-
-// --- ClaimableIncreased tests ---
-
-#[test]
-fn claimable_increased_decodes() {
-    let delta = U256::from(3000u64);
-    let new_claimable = U256::from(15000u64);
-
-    let mut data = [0u8; 64];
-    data[..32].copy_from_slice(&delta.to_be_bytes::<32>());
-    data[32..].copy_from_slice(&new_claimable.to_be_bytes::<32>());
-
-    let inner = alloy::primitives::Log {
-        address: CONTRACT,
-        data: LogData::new(vec![ClaimableIncreased::SIGNATURE_HASH], data.into()).unwrap(),
-    };
-    let log = Log {
-        inner,
-        block_number: Some(202),
-        transaction_hash: Some(TX_HASH),
-        log_index: Some(0),
-        ..Default::default()
-    };
-
-    let ev = parse_claimable_increased(&log).expect("should decode");
-    assert_eq!(ev.event_name, "ClaimableIncreased");
-    assert_eq!(ev.sender, None);
-    assert_eq!(ev.receiver, None);
-    assert_eq!(ev.amount, Some(delta));
-    assert_eq!(ev.request_id, None);
-    assert_eq!(ev.cumulative, Some(new_claimable));
-    assert_eq!(ev.block_number, 202);
 }
