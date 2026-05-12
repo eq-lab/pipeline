@@ -40,7 +40,7 @@ Two logical views served from the same app, gated by authenticated role:
 
 ### `packages/ui`
 
-Source-only shared design kit consumed by `packages/frontend`. Contains shared theme/tokens, fonts, assets, and UI components. No library build, no `dist/` output — Vite in the frontend workspace transpiles these sources directly via the `@source` directive. Private workspace package; not published to npm.
+Source-only shared design kit consumed by `packages/frontend`. Contains shared theme/tokens, fonts, assets, and UI components. No library build, no `dist/` output — Vite in the frontend workspace transpiles these sources directly via the `@source` directive. Private workspace package; not published to npm. `packages/frontend` declares `"@pipeline/ui": "workspace:^"` under `dependencies`; Tailwind v4 class scanning into `@pipeline/ui` sources is anchored by `@source "../../ui/src/**/*.{ts,tsx}"` in `packages/frontend/src/index.css`.
 
 ### `packages/api`
 

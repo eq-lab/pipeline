@@ -45,7 +45,7 @@ _None_
 
 All paths absolute under `/Users/dima/git/pipeline/`.
 
-1. **Add the dependency.** Edit `packages/frontend/package.json`:
+1. [x] **Add the dependency.** Edit `packages/frontend/package.json`:
    - Add a top-level `"dependencies"` block (currently absent) containing exactly:
      ```json
      "dependencies": {
@@ -54,7 +54,7 @@ All paths absolute under `/Users/dima/git/pipeline/`.
      ```
    - Place it before `devDependencies` per conventional ordering. Do not move or modify any other field.
 
-2. **Create the frontend Tailwind CSS entry.** New file `packages/frontend/src/index.css`:
+2. [x] **Create the frontend Tailwind CSS entry.** New file `packages/frontend/src/index.css`:
    ```css
    @import "tailwindcss";
 
@@ -64,15 +64,15 @@ All paths absolute under `/Users/dima/git/pipeline/`.
    ```
    Rationale: Tailwind v4 scans the consuming package by default; the `@source` directive extends scanning into the source-only `@pipeline/ui` workspace, which is what the issue asks for. The relative path is anchored at the CSS file's location (`packages/frontend/src/index.css`).
 
-3. **Import the CSS once.** Edit `packages/frontend/src/main.tsx` to add a single import at the top:
+3. [x] **Import the CSS once.** Edit `packages/frontend/src/main.tsx` to add a single import at the top:
    ```ts
    import "./index.css";
    ```
    Keep the existing `console.log("Hello, World!");` line untouched. This guarantees Vite includes the CSS (and therefore the `@source` directive) in the build graph. Without an import, the file is dead and Tailwind never sees the directive.
 
-4. **No `vite.config.ts` changes required.** The existing `tailwindcss()` Vite plugin in `packages/frontend/vite.config.ts` is sufficient — the `@source` directive lives in CSS, not in the Vite config. Leave the file alone.
+4. [x] **No `vite.config.ts` changes required.** The existing `tailwindcss()` Vite plugin in `packages/frontend/vite.config.ts` is sufficient — the `@source` directive lives in CSS, not in the Vite config. Leave the file alone.
 
-5. **Install & verify** from repo root `/Users/dima/git/pipeline/`:
+5. [x] **Install & verify** from repo root `/Users/dima/git/pipeline/`:
    ```bash
    yarn install --immutable
    yarn workspace @pipeline/frontend lint
@@ -82,14 +82,14 @@ All paths absolute under `/Users/dima/git/pipeline/`.
    ```
    All five must exit clean. If `yarn install --immutable` mutates `yarn.lock`, investigate — do not relax to `--mode=update-lockfile` without flagging.
 
-6. **Smoke-check resolution.** Inside `packages/frontend/src/main.tsx`, temporarily add (then revert before commit):
+6. [x] **Smoke-check resolution.** Inside `packages/frontend/src/main.tsx`, temporarily add (then revert before commit):
    ```ts
    import * as ui from "@pipeline/ui";
    void ui;
    ```
    Run `yarn workspace @pipeline/frontend build`. It must build with zero TS errors, confirming the import resolves. Revert this change so the committed diff is minimal — the acceptance criterion only requires that the import **would** resolve, not that production code uses it yet. (The coder may instead choose to leave a `// @pipeline/ui resolves` comment in `main.tsx` if preferred, but no real import should ship.)
 
-7. **Docs.** Update `/Users/dima/git/pipeline/ARCHITECTURE.md` "`packages/ui`" subsection (currently lines around 41–43) to note that `@pipeline/frontend` now consumes the workspace via `workspace:^` and that Tailwind class scanning is enabled through `@source` in `packages/frontend/src/index.css`. Keep it to one or two sentences appended to the existing paragraph. No `docs/product-specs/` change — this is infra plumbing with no behavior change.
+7. [x] **Docs.** Update `/Users/dima/git/pipeline/ARCHITECTURE.md` "`packages/ui`" subsection (currently lines around 41–43) to note that `@pipeline/frontend` now consumes the workspace via `workspace:^` and that Tailwind class scanning is enabled through `@source` in `packages/frontend/src/index.css`. Keep it to one or two sentences appended to the existing paragraph. No `docs/product-specs/` change — this is infra plumbing with no behavior change.
 
 ## Test Strategy
 

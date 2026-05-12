@@ -883,6 +883,7 @@ __metadata:
   resolution: "@pipeline/frontend@workspace:packages/frontend"
   dependencies:
     "@eslint/js": "npm:9.39.4"
+    "@pipeline/ui": "workspace:^"
     "@tailwindcss/vite": "npm:4.2.4"
     "@tanstack/router-plugin": "npm:1.167.22"
     "@vitejs/plugin-react": "npm:4.7.0"
@@ -899,7 +900,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@pipeline/ui@workspace:packages/ui":
+"@pipeline/ui@workspace:^, @pipeline/ui@workspace:packages/ui":
   version: 0.0.0-use.local
   resolution: "@pipeline/ui@workspace:packages/ui"
   dependencies:

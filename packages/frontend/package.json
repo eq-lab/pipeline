@@ -9,6 +9,9 @@
     "lint": "eslint . && prettier --check .",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "@pipeline/ui": "workspace:^"
+  },
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "@tailwindcss/vite": "4.2.4",
