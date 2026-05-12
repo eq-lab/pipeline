@@ -56,7 +56,7 @@ When uncertain about frontend vs. backend, label it `backend`. The full step-by-
 - NEVER commit or push directly to `main`. All changes reach `main` only through a PR from a feature branch.
 - Create a feature branch for every task: `feat/`, `fix/`, `docs/`, `chore/` prefixes.
 - Push the branch, open a PR, and wait for review before merging.
-- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. Trivial-frontend (Flow C) PRs are the single exception: the `manager` skill is authorized to enable GitHub auto-merge (`gh pr merge --auto`) on its own Flow C PRs, so GitHub completes the merge once required checks pass. The manager itself never performs an unconditional merge. See [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the polling procedure. Outside Flow C, never enable auto-merge or otherwise merge a PR without explicit human direction.
+- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. Trivial-frontend (Flow C) PRs are the single exception: the `manager` skill is authorized to admin-merge its own Flow C PRs (`gh pr merge --admin --squash --delete-branch`) — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside Flow C, never admin-merge or otherwise bypass branch protection without explicit human direction.
 
 ### Lint & style
 

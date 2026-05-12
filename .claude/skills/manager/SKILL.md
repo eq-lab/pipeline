@@ -330,45 +330,47 @@ No planning, no approval gate, no ux-tester. Coder runs on `opus` at `effort: hi
 5. Commit implementation: `Implement #<number>: <short title>`. Push.
 6. Report: `Issue #{n} implemented (trivial-frontend). Model: opus Effort: high`.
 
-### C2. Completion & auto-merge
+### C2. Completion & admin merge
 
 Flow C is the **only** flow where the manager merges its own PR. Backend (Flow A) and Frontend (Flow B) remain human-merge.
 
-The manager does **not** perform the merge itself — it asks GitHub to auto-merge once required checks pass, then polls until the merge actually lands.
+Branch protection on this repo requires an approval review before a normal merge can proceed, so GitHub's `--auto` flag would queue indefinitely waiting for that review. The repo admin (the user running this manager) can bypass branch protection via `gh pr merge --admin`. The manager uses that bypass **only after CI/CD checks have explicitly turned green** — `--admin` would also skip the checks-required gate, so the manager replaces that gate with an explicit poll-and-confirm loop. Red checks are never bypassed.
 
 1. Mark the PR ready: `gh pr ready <pr-number>`.
 2. Strip the final status label: `gh issue edit <number> --remove-label executed`.
-3. **Enable GitHub auto-merge** with squash strategy and branch deletion:
-
-   ```bash
-   gh pr merge <pr-number> --auto --squash --delete-branch
-   ```
-
-   From this point GitHub itself will merge the PR as soon as its required checks turn green. The manager's job is just to wait for that to happen.
-4. **Initial wait — 10 minutes** before the first check:
+3. **Initial wait — 10 minutes** to let CI/CD start and finish on a clean run:
 
    ```bash
    sleep 600
    ```
 
-5. **Poll merge state** until merged:
+4. **Poll the PR's check status** every 10 minutes until checks resolve:
 
    ```bash
-   gh pr view <pr-number> --json state,merged,mergeStateStatus,statusCheckRollup
+   gh pr view <pr-number> --json state,mergeable,mergeStateStatus,statusCheckRollup
    ```
 
    Interpret:
 
-   | Result                                                  | Action                                                                 |
-   |---------------------------------------------------------|------------------------------------------------------------------------|
-   | `merged: true` (or `state: "MERGED"`)                   | Go to step 7.                                                          |
-   | `state: "OPEN"` and time elapsed since step 4 < 60 min  | Wait another 10 minutes (`sleep 600`) and re-poll.                     |
-   | Any check `FAILURE` / `CANCELLED` / `TIMED_OUT` in `statusCheckRollup` | Stop. GitHub will not auto-merge with red checks. Post the failing-check summary to the PR and to the parent Issue, then hand back to the user. |
-   | `mergeStateStatus` = `DIRTY` / `BLOCKED`                | Stop. PR needs manual attention (conflicts, missing required review). Tell the user. |
-   | `state: "CLOSED"` and `merged: false`                   | Abnormal — PR was closed without merging. Stop and tell the user.      |
+   | Result                                                                  | Action                                                                                  |
+   |-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+   | All checks `SUCCESS` in `statusCheckRollup`                              | Go to step 6 (admin merge).                                                             |
+   | Any check `IN_PROGRESS` / `PENDING` / `QUEUED` and time elapsed < 60 min | Wait another 10 minutes (`sleep 600`) and re-poll.                                      |
+   | Any check `FAILURE` / `CANCELLED` / `TIMED_OUT`                          | Stop. Post the failing-check summary to the PR and the parent Issue. Hand back to the user. Do NOT admin-merge with red checks. |
+   | `mergeStateStatus` = `DIRTY`                                             | Stop. The PR has merge conflicts with `main` — needs manual rebase. Tell the user.       |
+   | `state: "CLOSED"` and `merged: false`                                    | Abnormal — PR was closed without merging. Stop and tell the user.                       |
 
-6. **Cap total wait at 60 minutes.** Track elapsed time from the start of step 4. After the initial 10-minute sleep plus up to five additional 10-minute polls (= 60 minutes total), if the PR is still `state: "OPEN"`, stop and tell the user. Do **not** disable auto-merge — GitHub may still merge it later when checks finally pass; the user can decide whether to wait longer or intervene.
-7. After merge is confirmed, sync local `main` for the next Issue:
+   Note: `mergeStateStatus = BLOCKED` is expected on this repo — it's the branch-protection "needs approval" signal, which `--admin` will bypass at merge time. Treat `BLOCKED` as "ok to proceed if checks are green". Do NOT bypass `DIRTY` (merge conflicts) — those require a human.
+
+5. **Cap total wait at 60 minutes.** Track elapsed time from the start of step 3. If checks are still running after the initial 10-minute sleep plus five additional 10-minute polls (= 60 minutes total), stop and tell the user. Do not merge a PR whose checks have not landed.
+6. **Admin-merge** the PR with squash strategy and branch deletion. The `--admin` flag bypasses the approval-required branch-protection rule (which is why this is authorized only for Flow C and only after checks are explicitly green):
+
+   ```bash
+   gh pr merge <pr-number> --admin --squash --delete-branch
+   ```
+
+   The `Closes #<number>` in the PR body closes the Issue automatically.
+7. After merge, sync local `main` for the next Issue:
 
    ```bash
    git fetch origin
@@ -376,7 +378,6 @@ The manager does **not** perform the merge itself — it asks GitHub to auto-mer
    git pull --ff-only origin main
    ```
 
-   The `Closes #<number>` in the PR body has already closed the Issue.
 8. Increment the session counter and continue to the next Issue (per the trivial-loop's **Task Loop** rules).
 
 ---
@@ -385,7 +386,7 @@ The manager does **not** perform the merge itself — it asks GitHub to auto-mer
 
 - The Issue closes automatically when the PR merges (PR body contains `Closes #<number>`). Do **not** close the Issue manually.
   - Flows A and B: a human performs the merge, so closure happens at human-pace.
-  - Flow C: GitHub auto-merge completes the merge (the manager enabled it via `gh pr merge --auto`), so closure happens as soon as required checks pass — typically within the C2 polling window.
+  - Flow C: the manager admin-merges the PR itself once checks pass per C2, so closure happens as soon as the merge command returns.
 - Single-issue mode: report the final summary and stop. No automatic next-Issue pick.
 - Trivial-loop mode: increment the session counter. If the counter has reached `max-tasks` (default 20) or there are no remaining trivial-frontend candidates, report the final summary and stop. Otherwise loop back to **Issue Selection → Trivial-loop mode** (the C2 step already syncs `main` for you).
 
@@ -395,7 +396,7 @@ The manager does **not** perform the merge itself — it asks GitHub to auto-mer
 |-------------------|----------|------------------------------|----------------------|--------------------|----------|---------------------|------------|
 | Backend           | ✅       | Always (hard gate after plan)| coder (sonnet/high)  | ❌                  | ✅       | reviewer (opus/high) on new features / significant changes / explicit user ask | Human      |
 | Frontend          | ✅       | Only if Open Questions exist | coder (sonnet/high)  | If Figma + FE diff | ✅       | ❌                  | Human      |
-| Trivial frontend  | ❌       | Never                        | coder (opus/high)    | ❌                  | ✅       | ❌                  | GitHub auto-merge (`gh pr merge --auto`); manager polls until merged (10-min cadence, 60-min cap) |
+| Trivial frontend  | ❌       | Never                        | coder (opus/high)    | ❌                  | ✅       | ❌                  | Manager admin-merge (`gh pr merge --admin --squash --delete-branch`) after CI green, 10-min poll, 60-min cap |
 
 ## Rules
 
@@ -409,7 +410,7 @@ The manager does **not** perform the merge itself — it asks GitHub to auto-mer
 - **Never use the Skill tool** for planner, coder, ux-tester, or reviewer delegation.
 - Always verify the status label after each subagent completes before moving to the next phase.
 - If a subagent fails or the Issue gets stuck, post a comment on the Issue and ask the user how to proceed.
-- Follow `AGENTS.md`. In particular: never commit directly to `main`; always work on a feature branch. **Merge policy:** backend (Flow A) and frontend (Flow B) PRs are human-merge only — the manager never enables auto-merge on them. **Trivial-frontend (Flow C) PRs are the single exception**, expressly authorized by the user — the manager enables GitHub's auto-merge (`gh pr merge --auto --squash --delete-branch`) per the C2 procedure, then polls until GitHub actually completes the merge. The manager never performs an unconditional merge itself, and if CI fails or the PR is blocked, the manager hands the PR back to the user.
+- Follow `AGENTS.md`. In particular: never commit directly to `main`; always work on a feature branch. **Merge policy:** backend (Flow A) and frontend (Flow B) PRs are human-merge only — the manager never merges them. **Trivial-frontend (Flow C) PRs are the single exception**, expressly authorized by the user — the manager admin-merges them (`gh pr merge --admin --squash --delete-branch`) per the C2 procedure. The `--admin` flag bypasses the repo's approval-required branch protection; CI/CD checks are NOT bypassed — the manager polls explicitly and only merges after every check reports `SUCCESS` within the 60-minute cap. Red checks, merge conflicts (`DIRTY`), or unresolved within cap → stop and hand back to the user.
 - Each subagent runs in the foreground — wait for it to complete before proceeding.
 
 ## Output
