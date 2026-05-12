@@ -66,9 +66,46 @@
    CSS custom properties for downstream Tailwind v4 token use
    ========================================================= */
 
+/* CSS variables unconditionally available — not dependent on Tailwind utility usage */
 :root {
   --font-display: "Besley", ui-serif, Georgia, serif;
   --font-body: "Graphik LC", ui-sans-serif, system-ui, sans-serif;
+
+  /* Colors */
+  --color-pipeline-paper: #f8f7f6;
+  --color-pipeline-surface: #ffffff;
+  --color-pipeline-promo: rgb(211 235 117 / 0.16);
+  --color-pipeline-brand: #000080;
+  --color-pipeline-cta: #262524;
+  --color-pipeline-ink: #262524;
+  --color-pipeline-ink-muted: rgb(56 55 53 / 0.6);
+  --color-pipeline-ink-subtle: rgb(56 55 53 / 0.3);
+  --color-pipeline-on-dark: #ffffff;
+  --color-pipeline-line: rgb(56 55 53 / 0.18);
+
+  /* Type ramp */
+  --text-pipeline-title: 64px;
+  --text-pipeline-title--line-height: 64px;
+  --text-pipeline-heading-m: 28px;
+  --text-pipeline-heading-m--line-height: 36px;
+  --text-pipeline-heading-s: 20px;
+  --text-pipeline-heading-s--line-height: 28px;
+  --text-pipeline-body: 16px;
+  --text-pipeline-body--line-height: 22px;
+  --text-pipeline-caption: 12px;
+  --text-pipeline-caption--line-height: 16px;
+
+  /* Weights and tracking */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-emphasized: 600;
+  --font-weight-bold: 700;
+  --tracking-pipeline-label: 7px;
+
+  /* Radii */
+  --radius-pipeline-card: 4px;
+  --radius-pipeline-button: 4px;
+  --radius-pipeline-pill: 9999px;
 }
 
 /* =========================================================
