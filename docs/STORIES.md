@@ -283,3 +283,69 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Open `docs/FRONTEND.md` and search for "Design tokens"
 - **Expected:** A "Design tokens" subsection exists under "Visual direction" listing the token groups, file location, and no-raw-hex rule.
+
+---
+
+## S-50 Wire @pipeline/ui theme.css into frontend
+
+**Issue:** [#50 Wire @pipeline/ui theme.css into frontend](https://github.com/eq-lab/pipeline/issues/50)
+**Plan:** `docs/exec-plans/completed/` (feat/41-design-tokens branch)
+
+### TC-50-1: Frontend build succeeds and bundles theme CSS
+
+- **Actor:** Developer
+- **Preconditions:** Checked out on the feat/41-design-tokens branch (or later)
+- **Steps:**
+  1. Run `yarn workspace @pipeline/frontend build`
+- **Expected:** Build completes exit code 0; `dist/assets/index-*.css` exists and contains pipeline token variable names (`pipeline-paper`, `pipeline-brand`, `radius-pipeline`, `font-display`, `font-body`).
+
+### TC-50-2: Dev server renders token-styled probe page with no console errors
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running at `http://localhost:3000`
+- **Steps:**
+  1. Navigate to `http://localhost:3000/`
+  2. Check browser console for errors and warnings
+- **Expected:** Page renders "Pipeline" heading in Besley serif on a warm off-white background with a bordered card; zero console errors or warnings (favicon 404 is acceptable).
+
+### TC-50-3: All pipeline CSS custom properties resolve in dev server
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Open DevTools Console and evaluate: `getComputedStyle(document.documentElement).getPropertyValue('--color-pipeline-paper')`
+  2. Repeat for `--color-pipeline-brand`, `--color-pipeline-ink`, `--color-pipeline-ink-muted`, `--color-pipeline-surface`, `--color-pipeline-line`, `--font-display`, `--font-body`, `--radius-pipeline-card`, `--tracking-pipeline-label`, `--text-pipeline-title`, `--text-pipeline-body`, `--text-pipeline-caption`
+- **Expected:** All return non-empty strings matching their spec values.
+
+### TC-50-4: Tailwind utility classes apply correct token-driven styles
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: create a div with class `bg-pipeline-paper text-pipeline-ink rounded-pipeline-card font-display`, append to body, check computed styles
+- **Expected:** `backgroundColor` = `rgb(248, 247, 246)`; `color` = `rgb(38, 37, 36)`; `borderRadius` = `4px`; `fontFamily` starts with `Besley`.
+
+### TC-50-5: Fonts load from same origin (no CDN)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Open DevTools Network tab filtered to font requests
+- **Expected:** Font files are served from `localhost`; zero requests to `fonts.googleapis.com` or `fonts.gstatic.com`.
+
+### TC-50-6: No duplicate Tailwind config — UI package is single token source
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Confirm `packages/frontend` has no separate `tailwind.config.*` file
+  2. Confirm `packages/frontend/src/index.css` imports `@pipeline/ui/styles/theme.css` and adds `@source` for the UI workspace
+- **Expected:** No `tailwind.config.*` in frontend; `index.css` has both the import and `@source "../../ui/src/**/*.{ts,tsx}"`.
+
+### TC-50-7: main.tsx does NOT directly import theme.css (uses index.css instead)
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Open `packages/frontend/src/main.tsx` and search for `theme.css`
+- **Expected:** `main.tsx` imports `./index.css` (not `@pipeline/ui/styles/theme.css` directly); theme is pulled in transitively via `index.css`.
