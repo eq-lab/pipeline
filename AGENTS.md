@@ -41,27 +41,13 @@ Reference:
 
 ## Workflow
 
-Humans steer, agents execute. Follow this strict order for every task:
+Every piece of dev work starts with a GitHub Issue and runs end-to-end through the [`manager`](./.claude/skills/manager/SKILL.md) skill. Any Issue ready for development MUST carry exactly one flow label (`backend` or `frontend`). Issues without a flow label are not dev work (discussion, questions, tracking) and the manager will skip them.
 
-0. **Pick or add a task.** NEVER skip this step. Every piece of work MUST have a GitHub Issue before any other step begins. Use the `/issue` skill to create or pick up an issue. Do not write any code, create any files, or modify any documentation until an issue exists and you are on a feature branch.
+- **Backend** (`backend` label) — strict spec-first / plan / human approval / implement / test / archive / PR. The full belt-and-suspenders flow.
+- **Frontend** (`frontend` label) — plan, but the human approval gate fires only if the planner has Open Questions. Implement, then `ux-tester` if a Figma reference exists.
+- **Trivial frontend** (`frontend` + `trivial` labels) — no planning, no approval gate, no ux-tester. `coder` runs at `model: opus` / `effort: high` and must leave the working tree linting, building, and green on tests.
 
-1. **Specification first.** Before writing any code, create or update the relevant product spec in `docs/product-specs/`. A product spec describes **what the feature does and how it behaves** — not how to fix a bug or patch existing code. **Skip this step for purely technical tasks** (`chore/`, `fix/` branches) that don't change user- or agent-facing behavior — the exec plan is sufficient documentation for those. See [`docs/product-specs/index.md`](./docs/product-specs/index.md) for format guidelines and examples. If the change affects architecture, update `ARCHITECTURE.md` or add a design doc in `docs/design-docs/`.
-
-2. **Execution plan.** Create a step-by-step plan in `docs/exec-plans/active/<feature>.md`. Break the work into numbered steps with dependencies, test criteria, and estimated complexity. **Every plan must include a dedicated testing step** — unit tests for pure logic, integration tests for repos and endpoints. Use existing completed plans as templates. The plan is the contract — do not deviate without updating it first.
-
-3. **Documentation update.** Before writing implementation code, update all affected documentation: product specs, reliability docs, generated schema docs. Documentation leads, code follows. If docs are stale after the change, the task is not done.
-
-4. **Review & approval.** Present the updated documentation and execution plan to the user. Get explicit approval before proceeding to implementation. Do not start coding until the user confirms the spec and plan are correct.
-
-5. **Implementation.** Write code following the plan step by step. Mark each step as completed in the exec plan as you go. Write unit tests for new logic and integration tests for new repos/endpoints — tests are not optional. Never batch multiple unrelated changes into one step.
-
-6. **Testing.** Run `/test-fast`. Fix all failures before moving on.
-
-7. **Archive the exec plan.** Move it from `docs/exec-plans/active/` to `docs/exec-plans/completed/`.
-
-8. **Commit and push.** Commit with a clear message explaining the "why". Push the feature branch.
-
-9. **Open a PR.** Run the `/pr` skill. Ensure the body includes `Closes #<issue-number>` — this auto-closes the linked issue when the PR merges.
+When uncertain about frontend vs. backend, label it `backend`. The full step-by-step contract for each flow lives in [`.claude/skills/manager/SKILL.md`](./.claude/skills/manager/SKILL.md).
 
 ## Rules
 
@@ -70,7 +56,7 @@ Humans steer, agents execute. Follow this strict order for every task:
 - NEVER commit or push directly to `main`. All changes reach `main` only through a PR from a feature branch.
 - Create a feature branch for every task: `feat/`, `fix/`, `docs/`, `chore/` prefixes.
 - Push the branch, open a PR, and wait for review before merging.
-- NEVER merge a PR unless the human explicitly asks to merge it.
+- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. Trivial-frontend (Flow C) PRs are the single exception: the `manager` skill is authorized to admin-merge its own Flow C PRs (`gh pr merge --admin --squash --delete-branch`) — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside Flow C, never admin-merge or otherwise bypass branch protection without explicit human direction.
 
 ### Lint & style
 
