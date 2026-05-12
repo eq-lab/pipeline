@@ -95,6 +95,12 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
                 risk_score = risk,
                 "Crystal address screening passed"
             );
+            if let Err(e) = kyc_repo
+                .set_profile_kyt_clear(&profile.wallet_address)
+                .await
+            {
+                tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile kyt_status");
+            }
         }
     }
 }

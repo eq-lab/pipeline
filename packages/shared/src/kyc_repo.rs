@@ -215,7 +215,7 @@ impl KycRepo {
                        AND p.kyc_status = 2
                        AND p.kyc_review_status = 2
                        AND p.aml_status = 2
-                       AND (p.kyt_status IS NULL OR p.kyt_status != 2)
+                       AND p.kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
@@ -247,7 +247,7 @@ impl KycRepo {
                 sqlx::query_as::<_, WhitelistCandidate>(
                     "SELECT p.wallet_address FROM lp_profiles p
                      WHERE p.on_chain_allowed = FALSE
-                       AND (p.kyt_status IS NULL OR p.kyt_status != 2)
+                       AND p.kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
@@ -368,6 +368,16 @@ impl KycRepo {
             .bind(kyt_status)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    pub async fn set_profile_kyt_clear(&self, wallet_address: &str) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE wallet_address = $1",
+        )
+        .bind(wallet_address)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
