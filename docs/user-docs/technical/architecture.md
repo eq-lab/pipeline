@@ -53,7 +53,7 @@ Three MPCs with distinct signer sets:
 
 Pipeline backend connecting the Capital Layer and the Protocol Layer. Indexes events, co-signs YieldAttestations alongside the Trustee, and signs KYT attestations off-chain that the lender or address holder submits at claim or enrol time. Holds no custody share. Cannot mint PLUSD alone. On lender withdrawal claims, the lender (not the Relayer) calls `WithdrawalQueue.claim`; the queue contract pulls USDC from the Withdrawal Queue Wallet via the wallet's standing allowance. The Relayer's only on-chain role is `WHITELIST_REVOKER`.
 
-{% include diagram.html src="d1-system-context.png" caption="Technical architecture — capital, relayer, protocol, and origination layers, with governance routed through AccessManager." %}
+{% include diagram.html src="boss-system-architecture.png" caption="Technical architecture — capital, relayer, protocol, and origination layers, with governance routed through AccessManager." %}
 
 ## Trust assumptions, summarised
 

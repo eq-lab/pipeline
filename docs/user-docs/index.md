@@ -79,7 +79,7 @@ Information on this website is not investment, legal, or tax advice. Yield figur
 
 Start here: [FAQs](./start-here/faqs.md) · [Why commodity trade finance](./start-here/why-commodity-trade-finance.md) · [Introduction](./start-here/introduction.md) · [Reference transaction](./start-here/reference-transaction.md) · [Quick start manual](./start-here/quick-start.md)
 
-How Pipeline works: [Overview](./how-it-works/index.md) · [Loan origination](./how-it-works/loan-origination.md) · [Risk management](./how-it-works/risk-management.md) · [Legal structure](./how-it-works/legal-structure.md) · [Capital layer](./how-it-works/capital-layer.md) · [Protocol layer](./how-it-works/protocol-layer.md) · [Where yield comes from](./how-it-works/yield-engines.md)
+How Pipeline works: [Overview](./how-it-works/index.md) · [Loan origination](./how-it-works/loan-origination.md) · [Risk management](./how-it-works/risk-management.md) · [Legal structure](./how-it-works/legal-structure.md) · [Capital layer](./how-it-works/capital-layer.md) · [Protocol layer](./how-it-works/protocol-layer.md)
 
 For lenders: [Overview](./lenders/index.md) · [Onboarding](./lenders/onboarding.md) · [Deposit](./lenders/deposit.md) · [Stake PLUSD](./lenders/stake.md) · [Withdraw](./lenders/withdraw.md) · [Dashboard](./lenders/dashboard.md)
 

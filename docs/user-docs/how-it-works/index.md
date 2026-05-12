@@ -14,7 +14,7 @@ Pipeline comprises three layers working in concert:
 
 A relayer lets the capital layer talk to the protocol layer. A fiduciary trustee manages lender assets and commodity collateral through a dedicated trust structure, co-signs every privileged action, and acts independently of the Pipeline team.
 
-{% include diagram.html src="d1-system-context.png" caption="Pipeline architecture — origination, capital, and protocol layers connected by the relayer, under fiduciary trustee oversight." %}
+{% include diagram.html src="boss-system-architecture.png" caption="Pipeline architecture — origination, capital, and protocol layers connected by the relayer, under fiduciary trustee oversight." %}
 
 <div class="callout safety">
 A bug or exploit in on-chain code cannot drain lender capital unilaterally.

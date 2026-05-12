@@ -30,7 +30,7 @@ The below represents a trade that Pipeline's architecture has been stress-tested
 
 ## Lifecycle flow
 
-{% include diagram.html src="d6-loan-lifecycle.svg" caption="Reference transaction lifecycle — origination through repayment and closure." %}
+{% include diagram.html src="boss-loan-lifecycle.jpeg" caption="Reference transaction lifecycle — origination through repayment and closure." %}
 
 ### Step-by-step
 

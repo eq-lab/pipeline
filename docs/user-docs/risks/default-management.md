@@ -16,7 +16,7 @@ The Trustee can promote a loan into Watchlist and demote it back to Performing a
 
 A loan's collateral coverage ratio (CCR) is collateral value divided by outstanding senior principal. When CCR crosses 130, 120, or 110, the Trustee and the Originator receive staged notifications and the Originator has a defined window to post additional margin. A sustained breach, or a missed repayment past the payment-delay thresholds (amber over 7 days late, red over 21 days late), is the typical route to a Default proposal.
 
-{% include chart.html src="c3-ccr-ladder.svg" caption="CCR thresholds. Watchlist at 130, maintenance margin call at 120, margin call at 110." %}
+{% include chart.html src="boss-ccr-thresholds.png" caption="CCR thresholds. Margin call below 110, maintenance margin call below 120, watchlist below 130, healthy at or above 130." %}
 
 Closure authority by reason:
 
