@@ -105,3 +105,95 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Open `illustrations/striped-wallet.svg` in a browser.
 - **Expected:** Striped wallet illustration renders as horizontal line-pattern artwork.
+
+---
+
+## S-40 Self-host the Figma typefaces in packages/ui
+
+**Issue:** [#40 Self-host the Figma typefaces in packages/ui](https://github.com/eq-lab/pipeline/issues/40)
+**Plan:** `docs/exec-plans/active/issue-40-self-host-figma-typefaces.md`
+
+### TC-40-1: All required font files are present
+
+- **Actor:** Developer
+- **Preconditions:** Checked out on the feat/40 branch (or later)
+- **Steps:**
+  1. Run `ls packages/ui/src/assets/fonts/`
+- **Expected:** The following files exist: `besley-regular.woff2`, `besley-bold.woff2`, `graphik-regular.woff2`, `graphik-medium.woff2`, `graphik-semibold.woff2`, `LICENSE.md`. All filenames are lowercase kebab-case.
+
+### TC-40-2: Font weights match Figma spec
+
+- **Actor:** Developer
+- **Preconditions:** Storybook started (`yarn workspace @pipeline/ui storybook`)
+- **Steps:**
+  1. Open `http://localhost:6006/?path=/story/foundation-typography--scale`
+  2. Inspect computed styles on each row via DevTools
+- **Expected:** Title row: Besley w700 64px; Heading M: Besley w700 28px; Heading 20: Besley w400 20px; Body: Graphik LC w400 16px; Body Emphasized: Graphik LC w600 16px; Caption: Graphik LC w400 12px; Label: Graphik LC w500 12px.
+
+### TC-40-3: No Google Fonts CDN imports
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Run `grep -rn "fonts.googleapis.com\|fonts.gstatic.com" packages/`
+- **Expected:** Zero matches.
+
+### TC-40-4: Font files load from same origin in Storybook and frontend
+
+- **Actor:** Developer / QA
+- **Preconditions:** Storybook and/or dev server running
+- **Steps:**
+  1. Open DevTools Network tab filtered to "Font"
+  2. Navigate to the Typography story in Storybook
+- **Expected:** All `.woff2` requests are served from `localhost` with HTTP 200; zero requests to `fonts.googleapis.com` or `fonts.gstatic.com`.
+
+### TC-40-5: CSS custom properties resolve in browser
+
+- **Actor:** Developer
+- **Preconditions:** Storybook or frontend dev server running
+- **Steps:**
+  1. Open DevTools Console and run: `getComputedStyle(document.documentElement).getPropertyValue('--font-display')`
+  2. Repeat for `--font-body`
+- **Expected:** `--font-display` resolves to `"Besley", ui-serif, Georgia, serif`; `--font-body` resolves to `"Graphik LC", ui-sans-serif, system-ui, sans-serif`.
+
+### TC-40-6: Storybook build succeeds
+
+- **Actor:** Developer
+- **Preconditions:** Clean repo state on feat/40 branch
+- **Steps:**
+  1. Run `yarn workspace @pipeline/ui build-storybook`
+- **Expected:** Build completes with exit code 0; `storybook-static/` directory is produced; no font-related errors in output.
+
+### TC-40-7: Frontend build emits font assets
+
+- **Actor:** Developer
+- **Preconditions:** feat/40 branch
+- **Steps:**
+  1. Run `yarn workspace @pipeline/frontend build`
+  2. Check `packages/frontend/dist/assets/` for `.woff2` files
+- **Expected:** Build succeeds (exit 0); `dist/assets/` contains hashed `.woff2` files for all 5 fonts.
+
+### TC-40-8: font-display: swap is set on all @font-face blocks
+
+- **Actor:** Developer
+- **Preconditions:** `packages/ui/src/styles/theme.css` exists
+- **Steps:**
+  1. Open `packages/ui/src/styles/theme.css`
+  2. Count `font-display: swap` occurrences vs number of `@font-face` blocks
+- **Expected:** Every `@font-face` block includes `font-display: swap`.
+
+### TC-40-9: LICENSE.md present and covers both families
+
+- **Actor:** Developer
+- **Preconditions:** feat/40 branch
+- **Steps:**
+  1. Open `packages/ui/src/assets/fonts/LICENSE.md`
+- **Expected:** File contains a section for Besley (SIL OFL 1.1 with copyright) and a section for Graphik LC (commercial license provenance note with order number).
+
+### TC-40-10: FRONTEND.md has Typography section
+
+- **Actor:** Developer
+- **Preconditions:** feat/40 branch
+- **Steps:**
+  1. Open `docs/FRONTEND.md` and search for "Typography"
+- **Expected:** A short "Typography" section exists under "Visual direction" naming Besley (display) and Graphik LC (body), the location of `.woff2` files, and how to add a new weight.
