@@ -15,3 +15,5 @@ export type {
   WalletIllustrationProps,
   WalletIllustrationTone,
 } from "./components/WalletIllustration";
+export { EmptyState } from "./components/EmptyState";
+export type { EmptyStateProps } from "./components/EmptyState";
