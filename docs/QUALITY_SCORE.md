@@ -4,6 +4,26 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-12 — Issue #40 (Self-host the Figma typefaces in packages/ui)
+
+- **Scope:** Issue #40 acceptance criteria (TC-40-1 through TC-40-10)
+- **Cases executed:** 10
+- **Passes:** 8
+- **Failures:** 2
+- **Blocked:** 0
+- **Bugs filed:** #68 (medium), #69 (low)
+- **Score: 7/10**
+  - All 5 font files present (besley-regular, besley-bold, graphik-regular, graphik-regular-italic, graphik-medium); LICENSE.md present with both family sections.
+  - Zero Google Fonts CDN references in source (`fonts.googleapis.com`, `fonts.gstatic.com`).
+  - All font requests served from localhost with HTTP 200; no CDN requests detected in DevTools Network.
+  - CSS custom properties `--font-display` and `--font-body` resolve correctly in both Storybook and frontend app.
+  - Storybook build succeeds; frontend build succeeds and emits all 5 `.woff2` files into `dist/assets/`.
+  - All 5 `@font-face` blocks include `font-display: swap`.
+  - Besley renders correctly at w400 and w700; Graphik LC renders at w400, w500, and italic w400.
+  - **FAIL TC-40-1/TC-40-2:** Graphik LC semibold (w600) font file is missing — no `graphik-semibold.woff2`, no `@font-face` for w600, and the Typography story renders Body Emphasized at w500 instead of w600 (Figma spec: 16/22 w600). Filed as #68.
+  - **FAIL TC-40-10:** `docs/FRONTEND.md` has no Typography section — the plan required appending one under "Visual direction". Filed as #69.
+  - Deducted 3 points: missing w600 weight is a spec mismatch (medium severity); missing docs update is a plan deliverable gap (low severity).
+
 ### 2026-05-12 — Issue #39 (Download Figma assets into packages/ui/src/assets/)
 
 - **Scope:** Issue #39 acceptance criteria (TC-39-1 through TC-39-8)
