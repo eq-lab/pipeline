@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install
+      - run: yarn install --frozen-lockfile
       - run: npx tsx scripts/lint-docs.ts
 
   lint-rust:
@@ -37,5 +37,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install
+      - run: yarn install --frozen-lockfile
       - run: cd packages/frontend && npx tsc --noEmit
