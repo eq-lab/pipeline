@@ -1,0 +1,72 @@
+/* =========================================================
+   Pipeline UI — self-hosted typefaces
+   Besley (display serif) · Graphik LC (body sans)
+   ========================================================= */
+
+/* --- Besley — SIL Open Font License 1.1 --- */
+
+@font-face {
+  font-family: "Besley";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Besley Regular"),
+    local("Besley-Regular"),
+    url("../assets/fonts/besley-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Besley";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src:
+    local("Besley Bold"),
+    local("Besley-Bold"),
+    url("../assets/fonts/besley-bold.woff2") format("woff2");
+}
+
+/* --- Graphik LC — Type Today LLC Commercial License (order #22050) --- */
+
+@font-face {
+  font-family: "Graphik LC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Graphik LC Regular"),
+    local("GraphikLC-Regular"),
+    url("../assets/fonts/graphik-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Graphik LC";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Graphik LC Regular Italic"),
+    local("GraphikLC-RegularItalic"),
+    url("../assets/fonts/graphik-regular-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Graphik LC";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src:
+    local("Graphik LC Medium"),
+    local("GraphikLC-Medium"),
+    url("../assets/fonts/graphik-medium.woff2") format("woff2");
+}
+
+/* =========================================================
+   CSS custom properties for downstream Tailwind v4 token use
+   ========================================================= */
+
+:root {
+  --font-display: "Besley", ui-serif, Georgia, serif;
+  --font-body: "Graphik LC", ui-sans-serif, system-ui, sans-serif;
+}
