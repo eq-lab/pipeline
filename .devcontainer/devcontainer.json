@@ -1,0 +1,38 @@
+{
+  "name": "pipeline-frontend",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "containerEnv": {
+    "API_PROXY_TARGET": "http://host.docker.internal:3000"
+  },
+  "forwardPorts": [5173, 3000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite dev server",
+      "onAutoForward": "openPreview"
+    },
+    "3000": {
+      "label": "API (proxied at /api)",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "corepack enable && corepack prepare yarn@4.13.0 --activate && yarn install --immutable",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "arcanis.vscode-zipfs"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "eslint.workingDirectories": [{ "pattern": "packages/frontend" }]
+      }
+    }
+  },
+  "remoteUser": "node"
+}
