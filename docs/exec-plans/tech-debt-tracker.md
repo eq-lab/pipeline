@@ -45,6 +45,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Loan disbursement, LP payout, and USYC rebalancing automation blocked.
 - **Suggested fix:** Complete RFI, select vendor, add SDK dependency to worker Cargo.toml.
 
+### TD-5: Storybook preview imports theme.css only as a commented TODO
+- **Date:** 2026-05-12
+- **Location:** packages/ui/.storybook/preview.ts
+- **Gap:** `src/styles/theme.css` does not exist yet; the import line is commented out with a TODO so `yarn storybook` works without the file. Once the theme issue lands, the comment must be enabled.
+- **Impact:** Stories won't pick up design tokens until theme.css is created and the import is uncommented.
+- **Suggested fix:** Enable the import in preview.ts when the Phase-3 theme/token issue lands.
+
 ---
 
 ## Post-MVP

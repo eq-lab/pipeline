@@ -37,7 +37,7 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **Pick exact pinned versions** (verify each clears 14d gate at implementation time via `npm view <pkg> time --json`; today's cutoff is 2026-04-28):
+1. ✅ **Pick exact pinned versions** (verify each clears 14d gate at implementation time via `npm view <pkg> time --json`; today's cutoff is 2026-04-28):
    - `storybook@10.3.5`
    - `@storybook/react-vite@10.3.5`
    - `@storybook/addon-docs@10.3.5`
@@ -46,7 +46,7 @@ Out of scope:
    - `@types/react@<exact>` + `@types/react-dom@<exact>` matching the React major
    If any package is younger than 14d at implementation time, walk the patch version *down* until it clears; document the chosen versions in the PR description.
 
-2. **Update `packages/ui/package.json`:**
+2. ✅ **Update `packages/ui/package.json`:**
    - Add to `scripts`:
      ```json
      "storybook": "storybook dev -p 6006 --no-open",
@@ -55,7 +55,7 @@ Out of scope:
    - Add the pinned Storybook + React deps under `devDependencies` (exact versions, no `^`/`~`).
    - Keep `private: true`, `type: "module"`.
 
-3. **Create `packages/ui/.storybook/main.ts`:**
+3. ✅ **Create `packages/ui/.storybook/main.ts`:**
    - `framework: { name: "@storybook/react-vite", options: {} }`
    - `stories: ["../src/**/*.mdx", "../src/**/*.stories.@(ts|tsx)"]`
    - `addons: ["@storybook/addon-docs", "@storybook/addon-a11y"]` (drop a11y if the Open Question resolves that way)
@@ -63,7 +63,7 @@ Out of scope:
    - No custom `viteFinal` for now — `vite.config.ts` is auto-picked up by the Vite builder, so Tailwind v4 and the `@/` alias come for free.
    - Use `satisfies StorybookConfig` typing from `@storybook/react-vite`.
 
-4. **Create `packages/ui/.storybook/preview.ts`:**
+4. ✅ **Create `packages/ui/.storybook/preview.ts`:**
    - Export `parameters` with `controls: { matchers: { color: /(background|color)$/i, date: /Date$/i } }` and `layout: "centered"`.
    - Add a TODO-commented import line for the future theme stylesheet:
      ```ts
@@ -72,12 +72,12 @@ Out of scope:
      ```
    - Use `satisfies Preview` typing.
 
-5. **Gitignore the build output.** Append to `/Users/dima/git/pipeline/.gitignore`:
+5. ✅ **Gitignore the build output.** Append to `/Users/dima/git/pipeline/.gitignore`:
    ```
    packages/ui/storybook-static/
    ```
 
-6. **Install and verify.**
+6. ✅ **Install and verify.**
    - `yarn install` from repo root (must succeed without `YN0084` age-gate errors).
    - `yarn workspace @pipeline/ui storybook` — confirm dev server boots and serves the empty story index on http://localhost:6006.
    - `yarn workspace @pipeline/ui build-storybook` — confirm static build succeeds and writes `packages/ui/storybook-static/`.
@@ -85,7 +85,7 @@ Out of scope:
    - `yarn workspace @pipeline/ui exec tsc --noEmit` still passes (the new `.storybook/*.ts` files are typechecked).
    - `npx tsx scripts/lint-docs.ts` still passes.
 
-7. **Figma verification.** The Issue links a Figma node (`1497-94556`). The coder should pull that frame with `mcp__plugin_figma_figma__get_screenshot` to confirm it is a component-catalog reference (not a screen we need to wire up now). Storybook setup itself is a tooling task — no Figma-driven pixel work required — but capture the screenshot in the PR description as evidence that the design context was reviewed.
+7. ✅ **Figma verification.** The Issue links a Figma node (`1497-94556`). The coder should pull that frame with `mcp__plugin_figma_figma__get_screenshot` to confirm it is a component-catalog reference (not a screen we need to wire up now). Storybook setup itself is a tooling task — no Figma-driven pixel work required — but capture the screenshot in the PR description as evidence that the design context was reviewed.
 
 ## Test Strategy
 
