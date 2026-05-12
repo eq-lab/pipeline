@@ -1,6 +1,6 @@
 use chrono::Utc;
 use shared::crystal::client::CrystalClient;
-use shared::kyc_repo::{KycRepo, UnverifiedTransfer};
+use shared::kyc_repo::{CrystalTransferResult, KycRepo, UnverifiedTransfer};
 
 /// KYT status values for contract_logs.kyt_status and lp_profiles.kyt_status
 const KYT_CLEAR: i16 = 1;
@@ -164,24 +164,18 @@ async fn screen_single_event(
         let tx_signals = serde_json::to_value(tx_signals_ref)?;
         let tx_risky = crystal.settings().is_risky_tx(tx_riskscore, tx_signals_ref);
 
-        let screened_at = Utc::now();
-        if let Err(e) = kyc_repo
+        kyc_repo
             .set_transfer_crystal_result(
                 transfer.id,
-                Some(tx_risk),
-                Some(&tx_signals),
-                None,
-                None,
-                screened_at,
+                &CrystalTransferResult {
+                    kyt_status: if tx_risky { KYT_FAILED } else { KYT_CLEAR },
+                    tx_risk: Some(tx_risk),
+                    tx_signals: Some(&tx_signals),
+                    sender_risk: None,
+                    sender_signals: None,
+                    screened_at: Utc::now(),
+                },
             )
-            .await
-        {
-            tracing::error!(log_id = transfer.id, error = %e, "failed to store Crystal deposit result");
-        }
-
-        let status = if tx_risky { KYT_FAILED } else { KYT_CLEAR };
-        kyc_repo
-            .set_transfer_kyt_status(transfer.id, status)
             .await?;
 
         if tx_risky {
@@ -210,24 +204,18 @@ async fn screen_single_event(
         let signals = serde_json::to_value(signals_ref)?;
         let risky = crystal.settings().is_risky_address(riskscore, signals_ref);
 
-        let screened_at = Utc::now();
-        if let Err(e) = kyc_repo
+        kyc_repo
             .set_transfer_crystal_result(
                 transfer.id,
-                None,
-                None,
-                Some(risk),
-                Some(&signals),
-                screened_at,
+                &CrystalTransferResult {
+                    kyt_status: if risky { KYT_FAILED } else { KYT_CLEAR },
+                    tx_risk: None,
+                    tx_signals: None,
+                    sender_risk: Some(risk),
+                    sender_signals: Some(&signals),
+                    screened_at: Utc::now(),
+                },
             )
-            .await
-        {
-            tracing::error!(log_id = transfer.id, error = %e, "failed to store Crystal withdrawal result");
-        }
-
-        let status = if risky { KYT_FAILED } else { KYT_CLEAR };
-        kyc_repo
-            .set_transfer_kyt_status(transfer.id, status)
             .await?;
 
         if risky {

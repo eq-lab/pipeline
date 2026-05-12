@@ -11,9 +11,9 @@ pub struct KycRepo {
 pub struct LpProfile {
     pub wallet_address: String,
     pub sumsub_applicant_id: Option<String>,
-    pub kyc_status: i16,
-    pub kyc_review_status: i16,
-    pub aml_status: i16,
+    pub sumsub_kyc_status: i16,
+    pub sumsub_review_status: i16,
+    pub sumsub_aml_status: i16,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -82,6 +82,15 @@ impl From<RequestEventRow> for RequestEvent {
     }
 }
 
+pub struct CrystalTransferResult<'a> {
+    pub kyt_status: i16,
+    pub tx_risk: Option<f32>,
+    pub tx_signals: Option<&'a serde_json::Value>,
+    pub sender_risk: Option<f32>,
+    pub sender_signals: Option<&'a serde_json::Value>,
+    pub screened_at: DateTime<Utc>,
+}
+
 impl KycRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -89,7 +98,7 @@ impl KycRepo {
 
     pub async fn get_lp_profile(&self, wallet_address: &str) -> anyhow::Result<Option<LpProfile>> {
         let row = sqlx::query_as::<_, LpProfile>(
-            "SELECT wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, aml_status, created_at, updated_at
+            "SELECT wallet_address, sumsub_applicant_id, sumsub_kyc_status, sumsub_review_status, sumsub_aml_status, created_at, updated_at
              FROM lp_profiles WHERE wallet_address = $1",
         )
         .bind(wallet_address)
@@ -103,7 +112,7 @@ impl KycRepo {
             "INSERT INTO lp_profiles (wallet_address)
              VALUES ($1)
              ON CONFLICT (wallet_address) DO NOTHING
-             RETURNING wallet_address, sumsub_applicant_id, kyc_status, kyc_review_status, aml_status, created_at, updated_at",
+             RETURNING wallet_address, sumsub_applicant_id, sumsub_kyc_status, sumsub_review_status, sumsub_aml_status, created_at, updated_at",
         )
         .bind(wallet_address)
         .fetch_one(&self.pool)
@@ -126,7 +135,7 @@ impl KycRepo {
         Ok(())
     }
 
-    pub async fn update_kyc_status(
+    pub async fn update_sumsub_status(
         &self,
         wallet_address: &str,
         kyc_status: Option<KycStatus>,
@@ -135,9 +144,9 @@ impl KycRepo {
     ) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE lp_profiles SET
-                kyc_status = COALESCE($2, kyc_status),
-                kyc_review_status = $3,
-                aml_status = COALESCE($4, aml_status),
+                sumsub_kyc_status = COALESCE($2, sumsub_kyc_status),
+                sumsub_review_status = $3,
+                sumsub_aml_status = COALESCE($4, sumsub_aml_status),
                 updated_at = NOW()
              WHERE wallet_address = $1",
         )
@@ -212,9 +221,9 @@ impl KycRepo {
                 sqlx::query_as::<_, WhitelistCandidate>(
                     "SELECT p.wallet_address FROM lp_profiles p
                      WHERE p.on_chain_allowed = FALSE
-                       AND p.kyc_status = 2
-                       AND p.kyc_review_status = 2
-                       AND p.aml_status = 2
+                       AND p.sumsub_kyc_status = 2
+                       AND p.sumsub_review_status = 2
+                       AND p.sumsub_aml_status = 2
                        AND p.kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
@@ -230,9 +239,9 @@ impl KycRepo {
                 sqlx::query_as::<_, WhitelistCandidate>(
                     "SELECT p.wallet_address FROM lp_profiles p
                      WHERE p.on_chain_allowed = FALSE
-                       AND p.kyc_status = 2
-                       AND p.kyc_review_status = 2
-                       AND p.aml_status = 2
+                       AND p.sumsub_kyc_status = 2
+                       AND p.sumsub_review_status = 2
+                       AND p.sumsub_aml_status = 2
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
@@ -358,19 +367,6 @@ impl KycRepo {
         Ok(rows)
     }
 
-    pub async fn set_transfer_kyt_status(
-        &self,
-        log_id: i64,
-        kyt_status: i16,
-    ) -> anyhow::Result<()> {
-        sqlx::query("UPDATE contract_logs SET kyt_status = $2 WHERE id = $1")
-            .bind(log_id)
-            .bind(kyt_status)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
     pub async fn set_profile_kyt_clear(&self, wallet_address: &str) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE wallet_address = $1",
@@ -434,27 +430,25 @@ impl KycRepo {
     pub async fn set_transfer_crystal_result(
         &self,
         log_id: i64,
-        tx_risk: Option<f32>,
-        tx_signals: Option<&serde_json::Value>,
-        sender_risk: Option<f32>,
-        sender_signals: Option<&serde_json::Value>,
-        screened_at: DateTime<Utc>,
+        result: &CrystalTransferResult<'_>,
     ) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE contract_logs
-             SET crystal_tx_risk = $2,
-                 crystal_tx_signals = $3,
-                 crystal_sender_risk = $4,
-                 crystal_sender_signals = $5,
-                 crystal_screened_at = $6
+             SET kyt_status = $2,
+                 crystal_tx_risk = $3,
+                 crystal_tx_signals = $4,
+                 crystal_sender_risk = $5,
+                 crystal_sender_signals = $6,
+                 crystal_screened_at = $7
              WHERE id = $1",
         )
         .bind(log_id)
-        .bind(tx_risk)
-        .bind(tx_signals)
-        .bind(sender_risk)
-        .bind(sender_signals)
-        .bind(screened_at)
+        .bind(result.kyt_status)
+        .bind(result.tx_risk)
+        .bind(result.tx_signals)
+        .bind(result.sender_risk)
+        .bind(result.sender_signals)
+        .bind(result.screened_at)
         .execute(&self.pool)
         .await?;
         Ok(())
