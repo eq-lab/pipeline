@@ -32,3 +32,76 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Check that `packages/frontend/src/routeTree.gen.ts` exists and is non-empty.
 - **Expected:** File exists and contains generated route tree code.
+
+---
+
+## S-39 Download Figma assets into packages/ui/src/assets/
+
+**Issue:** [#39 Download Figma assets into packages/ui/src/assets/](https://github.com/eq-lab/pipeline/issues/39)
+**Plan:** `docs/exec-plans/active/issue-39-figma-assets-download.md`
+
+### TC-39-1: All required asset files are present
+
+- **Actor:** Developer
+- **Preconditions:** Checked out on the feat/39 branch (or later)
+- **Steps:**
+  1. Run `find packages/ui/src/assets -name "*.svg" | sort`
+- **Expected:** Exactly 7 files are listed matching: `logo.svg`, `icons/nav-home.svg`, `icons/nav-dollar.svg`, `icons/nav-stats.svg`, `icons/nav-history.svg`, `icons/arrow-up-right.svg`, `illustrations/striped-wallet.svg`; all filenames are kebab-case.
+
+### TC-39-2: All assets are valid SVG (not binary)
+
+- **Actor:** Developer
+- **Preconditions:** Files from TC-39-1 exist
+- **Steps:**
+  1. Run the asset check script: `for f in packages/ui/src/assets/logo.svg ... ; do head -c 200 "$f" | grep -qE '<\?xml|<svg' || echo "INVALID: $f"; done`
+- **Expected:** All 7 files pass the SVG header check; none print "INVALID".
+
+### TC-39-3: No Figma CDN URLs remain in source
+
+- **Actor:** Developer
+- **Preconditions:** Full checkout
+- **Steps:**
+  1. Run `grep -rn "figma\.com\|mcp/asset/" packages --include="*.ts" --include="*.tsx" --include="*.svg" --include="*.css"`
+- **Expected:** Zero hits in source files (hits in docs/ are acceptable).
+
+### TC-39-4: Icons use currentColor; logo and illustration retain brand fills
+
+- **Actor:** Developer
+- **Preconditions:** Files from TC-39-1 exist
+- **Steps:**
+  1. Open each `icons/*.svg` and confirm `fill="currentColor"` is present on glyph paths.
+  2. Open `logo.svg` and `illustrations/striped-wallet.svg` and confirm literal fill colors (not `currentColor`).
+- **Expected:** Nav icons and arrow-up-right use `currentColor`; logo and illustration have literal hex fills.
+
+### TC-39-5: SVG root elements have no fixed width/height (viewBox only)
+
+- **Actor:** Developer
+- **Preconditions:** Files from TC-39-1 exist
+- **Steps:**
+  1. Check the opening `<svg>` tag of each file for `width=` or `height=` attributes.
+- **Expected:** No fixed `width`/`height` on any root `<svg>`; all have `viewBox`.
+
+### TC-39-6: Visual rendering of logo
+
+- **Actor:** Developer / QA
+- **Preconditions:** Asset static server running (or open file directly in browser)
+- **Steps:**
+  1. Open `logo.svg` in a browser.
+- **Expected:** "Pipeline" wordmark with brand icon renders correctly.
+
+### TC-39-7: Visual rendering of all nav icons
+
+- **Actor:** Developer / QA
+- **Preconditions:** Asset static server running
+- **Steps:**
+  1. Open each `icons/nav-*.svg` in a browser.
+  2. Open `icons/arrow-up-right.svg`.
+- **Expected:** `nav-home.svg` → house shape; `nav-dollar.svg` → dollar coin; `nav-stats.svg` → bar chart; `nav-history.svg` → arrow-clock; `arrow-up-right.svg` → diagonal up-right arrow.
+
+### TC-39-8: Visual rendering of striped-wallet illustration
+
+- **Actor:** Developer / QA
+- **Preconditions:** Asset static server running
+- **Steps:**
+  1. Open `illustrations/striped-wallet.svg` in a browser.
+- **Expected:** Striped wallet illustration renders as horizontal line-pattern artwork.
