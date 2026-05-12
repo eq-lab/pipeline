@@ -13,6 +13,7 @@ Pipeline is a decentralised commodity trade finance protocol. The system is spli
 pipeline/
 ├── packages/
 │   ├── frontend/          # React/TypeScript web app (LP dashboard + Operations Console)
+│   ├── ui/                # Source-only shared design kit consumed by packages/frontend
 │   ├── api/               # Rust REST API server (data access, session management)
 │   └── worker/            # Rust background worker (bridge service, price feed, indexer)
 ├── contracts/             # Solidity smart contracts (Hardhat or Foundry project)
@@ -36,6 +37,10 @@ Two logical views served from the same app, gated by authenticated role:
 **Auth:** WalletConnect v2 / RainbowKit for LPs; email + password + 2FA for operators.
 **Web3:** ethers.js for contract interactions; reads on-chain state via the API (which queries the internal indexer).
 **Port:** 3000 (dev)
+
+### `packages/ui`
+
+Source-only shared design kit consumed by `packages/frontend`. Contains shared theme/tokens, fonts, assets, and UI components. No library build, no `dist/` output — Vite in the frontend workspace transpiles these sources directly via the `@source` directive. Private workspace package; not published to npm.
 
 ### `packages/api`
 

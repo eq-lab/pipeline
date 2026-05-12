@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "packages/frontend"
+    "packages/frontend",
+    "packages/ui"
   ],
   "scripts": {
     "lint:docs": "npx tsx scripts/lint-docs.ts",
