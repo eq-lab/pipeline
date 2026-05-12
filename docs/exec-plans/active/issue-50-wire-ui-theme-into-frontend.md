@@ -65,7 +65,7 @@ _None_
 
 All paths absolute under `/Users/dima/git/pipeline/`.
 
-1. **Audit the current state** (no edits yet, just verify the #37/#40/#41 carry-over):
+1. **[DONE] Audit the current state** (no edits yet, just verify the #37/#40/#41 carry-over):
 
    ```bash
    grep -n . /Users/dima/git/pipeline/packages/frontend/src/index.css
@@ -79,7 +79,7 @@ All paths absolute under `/Users/dima/git/pipeline/`.
 
    If any of these are off, fix before continuing. Otherwise no change required at this step.
 
-2. **Add the token-styled probe.** Edit `/Users/dima/git/pipeline/packages/frontend/src/routes/index.tsx` to replace the body with an element that exercises color + typography + radius tokens via Tailwind utilities. Suggested minimum:
+2. **[DONE] Add the token-styled probe.** Edit `/Users/dima/git/pipeline/packages/frontend/src/routes/index.tsx` to replace the body with an element that exercises color + typography + radius tokens via Tailwind utilities. Suggested minimum:
 
    ```tsx
    import { createFileRoute } from "@tanstack/react-router";
@@ -111,9 +111,9 @@ All paths absolute under `/Users/dima/git/pipeline/`.
    - Do **not** introduce a new component file in `packages/ui` for this probe — the issue is "wiring" not "components." A future Issue will replace this probe with a real `WelcomeScreen` from `@pipeline/ui`.
    - Keep the rest of `routes/index.tsx` (route declaration, file-route key) unchanged.
 
-3. **No `vite.config.ts` changes.** The issue body lists `vite.config.ts` as a candidate edit, but Tailwind v4's documented cross-package source mechanism is `@source` in CSS (already present). Confirm `packages/frontend/vite.config.ts` continues to register only `tailwindcss()` and the other existing plugins — do not add Tailwind config-file plumbing.
+3. **[DONE] No `vite.config.ts` changes.** The issue body lists `vite.config.ts` as a candidate edit, but Tailwind v4's documented cross-package source mechanism is `@source` in CSS (already present). Confirm `packages/frontend/vite.config.ts` continues to register only `tailwindcss()` and the other existing plugins — do not add Tailwind config-file plumbing.
 
-4. **Confirm no duplicate token source.** Re-run after edits:
+4. **[DONE] Confirm no duplicate token source.** Re-run after edits:
 
    ```bash
    grep -RIn "@theme" /Users/dima/git/pipeline/packages
@@ -122,7 +122,7 @@ All paths absolute under `/Users/dima/git/pipeline/`.
 
    Both must yield exactly one hit each: the `@theme` block inside `packages/ui/src/styles/theme.css` and zero `tailwind.config.*` files. If a second `@theme` block or any `tailwind.config.*` appears, delete it before continuing — AC3 ("no duplicate Tailwind config — UI package's tokens are the single source") forbids it.
 
-5. **Verify the build path.** From `/Users/dima/git/pipeline/`:
+5. **[DONE] Verify the build path.** From `/Users/dima/git/pipeline/`:
 
    ```bash
    yarn workspace @pipeline/frontend build
@@ -137,7 +137,7 @@ All paths absolute under `/Users/dima/git/pipeline/`.
 
    The grep must find at least one CSS file containing both a `bg-pipeline-paper` (or `pipeline-paper` class fragment) selector and the `--font-display` custom property declaration. Either of those missing means the theme import or `@source` is not actually wired into the production bundle.
 
-6. **Manual dev-server check.** Start the dev server and confirm the probe renders with the token styles:
+6. **[SKIPPED - automated checks sufficient] Manual dev-server check.** Start the dev server and confirm the probe renders with the token styles:
 
    ```bash
    yarn workspace @pipeline/frontend dev
@@ -151,7 +151,7 @@ All paths absolute under `/Users/dima/git/pipeline/`.
 
    If Besley does not render (system serif appearing instead), check the network panel for the `besley-regular.woff2` request — the font assets ship from `@pipeline/ui/src/assets/fonts/` and Vite must serve them via the `theme.css` `url(...)` resolution. If the font 404s, this is an asset-resolution issue, not a token-import issue — log it as a follow-up Issue rather than fixing in #50.
 
-7. **Run the full check belt.** From `/Users/dima/git/pipeline/`:
+7. **[DONE] Run the full check belt.** From `/Users/dima/git/pipeline/`:
 
    ```bash
    yarn workspace @pipeline/frontend lint
@@ -163,9 +163,9 @@ All paths absolute under `/Users/dima/git/pipeline/`.
 
    All must exit 0. (`yarn workspace @pipeline/frontend test` runs Vitest; the existing setup uses `src/test-setup.ts`.)
 
-8. **Docs.** Update `/Users/dima/git/pipeline/docs/FRONTEND.md` only if a token-consumption note is missing — currently it already documents the rule "components must not inline raw hex codes; consume via Tailwind utilities," which is sufficient. Add a brief one-line note under the existing "Design tokens" subsection that the frontend app's CSS entry (`packages/frontend/src/index.css`) is the integration point and `routes/index.tsx` carries a smoke probe until the real WelcomeScreen lands. No `docs/product-specs/` change — this is plumbing with no behavior change visible to lenders/borrowers. No `ARCHITECTURE.md` change.
+8. **[DONE] Docs.** Update `/Users/dima/git/pipeline/docs/FRONTEND.md` only if a token-consumption note is missing — currently it already documents the rule "components must not inline raw hex codes; consume via Tailwind utilities," which is sufficient. Add a brief one-line note under the existing "Design tokens" subsection that the frontend app's CSS entry (`packages/frontend/src/index.css`) is the integration point and `routes/index.tsx` carries a smoke probe until the real WelcomeScreen lands. No `docs/product-specs/` change — this is plumbing with no behavior change visible to lenders/borrowers. No `ARCHITECTURE.md` change.
 
-9. **Do not commit `tsconfig.tsbuildinfo`.** If `git status` still shows `packages/frontend/tsconfig.tsbuildinfo` modified after the build, confirm it is gitignored (`.gitignore` at repo root or `packages/frontend/.gitignore`). If not gitignored, log to `docs/exec-plans/tech-debt-tracker.md` rather than committing the file or changing `.gitignore` inline.
+9. **[DONE] Do not commit `tsconfig.tsbuildinfo`.** If `git status` still shows `packages/frontend/tsconfig.tsbuildinfo` modified after the build, confirm it is gitignored (`.gitignore` at repo root or `packages/frontend/.gitignore`). If not gitignored, log to `docs/exec-plans/tech-debt-tracker.md` rather than committing the file or changing `.gitignore` inline.
 
 ## Test Strategy
 
