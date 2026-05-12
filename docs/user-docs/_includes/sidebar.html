@@ -1,8 +1,7 @@
 {% assign cur = page.url %}
 <aside class="sidebar">
   <h4>Start here</h4>
-  <a href="{{ '/' | relative_url }}"{% if cur == '/' %} class="active"{% endif %}>Home</a>
-  <a href="{{ '/start-here/faqs/' | relative_url }}"{% if cur == '/start-here/faqs/' %} class="active"{% endif %}>FAQs</a>
+  <a href="{{ '/start-here/faqs/' | relative_url }}"{% if cur == '/start-here/faqs/' or cur == '/' %} class="active"{% endif %}>FAQs</a>
   <a href="{{ '/start-here/why-commodity-trade-finance/' | relative_url }}"{% if cur == '/start-here/why-commodity-trade-finance/' %} class="active"{% endif %}>Why commodity trade finance</a>
   <a href="{{ '/start-here/introduction/' | relative_url }}"{% if cur == '/start-here/introduction/' %} class="active"{% endif %}>Introduction to Pipeline</a>
   <a href="{{ '/start-here/reference-transaction/' | relative_url }}"{% if cur == '/start-here/reference-transaction/' %} class="active"{% endif %}>Reference transaction</a>
