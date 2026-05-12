@@ -41,33 +41,33 @@ Risks:
 
 ## Implementation Steps
 
-1. Add runtime dependencies to `packages/frontend/package.json` under `dependencies`:
+1. [x] Add runtime dependencies to `packages/frontend/package.json` under `dependencies`:
    - `react`: `19.1.6`
    - `react-dom`: `19.1.6`
-   - `@tanstack/react-router`: `1.167.22` (match installed `@tanstack/router-plugin`)
-   - Add `@types/react`: `19.2.14` and `@types/react-dom`: `19.2.3` under `devDependencies`.
-   - Run `yarn install` at the workspace root to update the lockfile.
+   - `@tanstack/react-router`: `1.168.25` (note: pinned to 1.167.22 was intended but that exact version doesn't exist on npm; 1.167.x of react-router only goes up to 1.167.5; the router-plugin@1.167.22 peer dep is optional and requests `^1.168.21`; used 1.168.25 which is the latest version satisfying the age gate)
+   - Added `@types/react`: `19.2.14` and `@types/react-dom`: `19.2.3` under `devDependencies`.
+   - Ran `yarn install` at the workspace root to update the lockfile.
 
-2. Create `packages/frontend/src/routes/__root.tsx`:
-   - Minimal root route using `createRootRoute` from `@tanstack/react-router`, rendering `<Outlet />` and nothing else (no devtools — keep this minimal).
+2. [x] Create `packages/frontend/src/routes/__root.tsx`:
+   - Minimal root route using `createRootRoute` from `@tanstack/react-router`, rendering `<Outlet />` and nothing else.
 
-3. Create `packages/frontend/src/routes/index.tsx`:
+3. [x] Create `packages/frontend/src/routes/index.tsx`:
    - Placeholder route via `createFileRoute('/')` exporting a `Route` whose `component` returns `<main>Pipeline</main>`.
 
-4. Rewrite `packages/frontend/src/main.tsx`:
+4. [x] Rewrite `packages/frontend/src/main.tsx`:
    - Import `./index.css` (preserved).
    - Import `createRouter`, `RouterProvider` from `@tanstack/react-router`.
    - Import the generated `routeTree` from `./routeTree.gen` and instantiate `const router = createRouter({ routeTree })`.
-   - Augment the `Register` interface (`declare module '@tanstack/react-router' { interface Register { router: typeof router } }`) for type-safe links.
-   - `createRoot(document.getElementById('root')!).render(<StrictMode><RouterProvider router={router} /></StrictMode>)`.
+   - Augment the `Register` interface for type-safe links.
+   - `createRoot(rootElement).render(<StrictMode><RouterProvider router={router} /></StrictMode>)`.
 
-5. Let `@tanstack/router-plugin` generate `packages/frontend/src/routeTree.gen.ts` on first `yarn workspace @pipeline/frontend dev` / `build`. Commit the generated file (see Open Questions).
+5. [x] `@tanstack/router-plugin` generated `packages/frontend/src/routeTree.gen.ts` successfully on first build. Generated file includes `// @ts-nocheck` header.
 
-6. If the generated file violates `noUnusedLocals` / `noUncheckedIndexedAccess`, add a narrow override in `packages/frontend/tsconfig.json` (e.g. add `"src/routeTree.gen.ts"` exclusion plan), OR rely on the plugin's existing `/* prettier-ignore */` + `// @ts-nocheck` header which it emits by default. Verify on first run before deciding.
+6. [x] No tsconfig override needed — the generated file has `// @ts-nocheck` header. No strict mode violations.
 
-7. Update `.gitignore` only if Open Questions resolves toward "do not commit `routeTree.gen.ts`".
+7. [x] Added `packages/frontend/src/routeTree.gen.ts` to `.gitignore` per manager decision (do not commit generated file).
 
-8. Run `yarn workspace @pipeline/frontend lint` and fix any prettier/eslint issues.
+8. [x] Ran `yarn workspace @pipeline/frontend lint` — passes.
 
 ## Test Strategy
 
