@@ -27,3 +27,5 @@ export { InfoRow } from "./components/InfoRow/InfoRow";
 export type { InfoRowProps } from "./components/InfoRow/InfoRow";
 export { StepRow } from "./components/StepRow/StepRow";
 export type { StepRowProps } from "./components/StepRow/StepRow";
+export { TokenAmountDisplay } from "./components/TokenAmountDisplay/TokenAmountDisplay";
+export type { TokenAmountDisplayProps } from "./components/TokenAmountDisplay/TokenAmountDisplay";
