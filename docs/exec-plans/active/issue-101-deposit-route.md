@@ -33,7 +33,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Create the route file** `packages/frontend/src/routes/deposit.tsx`:
+1. ✅ **Create the route file** `packages/frontend/src/routes/deposit.tsx`:
 
    ```tsx
    import { createFileRoute } from "@tanstack/react-router";
@@ -49,9 +49,9 @@ _None_
 
    Match the import style and `Route` export pattern used in `routes/index.tsx`. No `TopBar`, no styling — this is intentionally the placeholder body called out in the Issue; the full page lands in D14.
 
-2. **Let the plugin regenerate `routeTree.gen.ts`.** Running `yarn workspace @pipeline/frontend dev` or `yarn workspace @pipeline/frontend build` will re-emit the file via `TanStackRouterVite()`. Commit the regenerated `routeTree.gen.ts` so CI builds are reproducible (the existing tree is already checked in).
+2. ✅ **Let the plugin regenerate `routeTree.gen.ts`.** Running `yarn workspace @pipeline/frontend dev` or `yarn workspace @pipeline/frontend build` will re-emit the file via `TanStackRouterVite()`. Commit the regenerated `routeTree.gen.ts` so CI builds are reproducible (the existing tree is already checked in).
 
-3. **Update `TopBar.tsx` to make the dollar icon navigate:**
+3. ✅ **Update `TopBar.tsx` to make the dollar icon navigate:**
 
    a. Import the router hooks: `import { useNavigate, useRouterState } from "@tanstack/react-router";`.
 
@@ -68,9 +68,9 @@ _None_
 
    e. Remove the now-obsolete `active: true` flag on the `home` item (active state is fully derived from `activeNav` / route). This is a minor cleanup; keep `data-node-id` comments and Figma traceability intact.
 
-4. **Visual sanity-check via Figma** (https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100130&m=dev): the deposit frame uses the same `TopBar`; on `/deposit` the dollar icon must paint with `--color-pipeline-brand` and the home icon must paint with `--color-pipeline-ink-muted`. This is the `1498:100130` design state we are reproducing for the icon highlight only (page body remains the placeholder until D14).
+4. ✅ **Visual sanity-check via Figma** (https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100130&m=dev): the deposit frame uses the same `TopBar`; on `/deposit` the dollar icon must paint with `--color-pipeline-brand` and the home icon must paint with `--color-pipeline-ink-muted`. This is the `1498:100130` design state we are reproducing for the icon highlight only (page body remains the placeholder until D14).
 
-5. **Lint / typecheck / build:**
+5. ✅ **Lint / typecheck / build:**
 
    - `yarn workspace @pipeline/frontend build` — must succeed; route tree regenerated.
    - `npx tsx scripts/lint-docs.ts` from the repo root (required by `AGENTS.md` after any TS change).

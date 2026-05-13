@@ -349,3 +349,31 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Open `packages/frontend/src/main.tsx` and search for `theme.css`
 - **Expected:** `main.tsx` imports `./index.css` (not `@pipeline/ui/styles/theme.css` directly); theme is pulled in transitively via `index.css`.
+
+
+## Issue #101 — Deposit nav
+
+### TC-101-1: Dollar icon navigates to /deposit
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running, browser at `http://localhost:5173/`
+- **Steps:**
+  1. Observe the TopBar nav icons
+  2. Click the dollar (Convert) icon
+- **Expected:** URL changes to `/deposit`; page body shows "Deposit"; dollar icon is highlighted with the brand colour; home icon is muted.
+
+### TC-101-2: Home icon active on /
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:5173/`
+- **Expected:** Home icon is active (brand colour); Convert icon is muted.
+
+### TC-101-3: Back navigation restores home active state
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; currently on `/deposit`
+- **Steps:**
+  1. Click browser Back button (or navigate to `/`)
+- **Expected:** URL is `/`; home icon is active; dollar icon is muted.
