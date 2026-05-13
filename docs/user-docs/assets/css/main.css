@@ -361,6 +361,7 @@ article td { color: var(--content-primary); }
   max-width: 100%;
   height: auto;
   margin: 0 auto;
+  cursor: zoom-in;
 }
 .figure figcaption {
   margin-top: 14px;
@@ -480,3 +481,24 @@ article td { color: var(--content-primary); }
 }
 
 .muted { color: var(--content-secondary); }
+
+/* Lightbox — click any figure image to enlarge */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 20, 0.88);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  z-index: 100;
+  cursor: zoom-out;
+}
+.lightbox-overlay.open { display: flex; }
+.lightbox-overlay img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+  background: var(--bg-secondary);
+}
