@@ -48,3 +48,8 @@ export type {
   ActivityIconProps,
   ActivityIconVariant,
 } from "./components/ActivityIcon/ActivityIcon";
+export { HeroIcon } from "./components/HeroIcon/HeroIcon";
+export type {
+  HeroIconProps,
+  HeroIconName,
+} from "./components/HeroIcon/HeroIcon";
