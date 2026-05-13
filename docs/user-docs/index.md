@@ -25,6 +25,6 @@ Governance: [Overview](./governance/index.md) · [Fiduciary trustee](./governanc
 
 Security & transparency: [Overview](./security/index.md) · [Investor protection](./security/investor-protection.md) · [Custody](./security/custody.md) · [Capital safeguards](./security/capital-safeguards.md) · [Emergency response](./security/emergency-response.md)
 
-Potential risks: [Overview](./risks/index.md) · [Credit policy](./risks/credit-policy.md) · [Default management](./risks/default-management.md)
+Risk management: [Overview](./risks/index.md) · [Credit policy](./risks/credit-policy.md) · [Default management](./risks/default-management.md)
 
 Reference: [Glossary](./references/glossary.md) · [Legal](./references/legal.md)
