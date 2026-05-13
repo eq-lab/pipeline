@@ -36,3 +36,5 @@ export type {
 } from "./components/TokenInput/TokenInput";
 export { ConversionCard } from "./components/ConversionCard";
 export type { ConversionCardProps } from "./components/ConversionCard";
+export { DepositHeader } from "./components/DepositHeader/DepositHeader";
+export type { DepositHeaderProps } from "./components/DepositHeader/DepositHeader";
