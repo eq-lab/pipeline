@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button, IconButton, Logo } from "@pipeline/ui";
 import navHomeIcon from "@pipeline/ui/assets/icons/nav-home.svg";
 import navDollarIcon from "@pipeline/ui/assets/icons/nav-dollar.svg";
@@ -80,18 +81,19 @@ function MaskIcon({ src, title }: { src: string; title: string }) {
   );
 }
 
-/** One nav slot: icon + accessible label + active flag. */
+/** One nav slot: icon + accessible label + optional route target. */
 interface NavItem {
   key: string;
   label: string;
   src: string;
-  active?: boolean;
+  /** TanStack Router path this slot navigates to; omit for slots with no route yet. */
+  to?: string;
 }
 
 // Figma order, node ids on the side for traceability.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
-  { key: "home", label: "Home", src: navHomeIcon, active: true }, // 1497:94719
-  { key: "convert", label: "Convert", src: navDollarIcon }, //         1497:94720
+  { key: "home", label: "Home", src: navHomeIcon, to: "/" }, // 1497:94719
+  { key: "convert", label: "Convert", src: navDollarIcon, to: "/deposit" }, // 1497:94720
   { key: "markets", label: "Markets", src: navStatsIcon }, //          1497:94721
   { key: "history", label: "History", src: navHistoryIcon }, //        1497:94722
 ];
@@ -105,9 +107,23 @@ export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
   function TopBar(
-    { onConnectWallet, activeNav = "home", className, ...rest },
+    { onConnectWallet, activeNav, className, ...rest },
     ref,
   ) {
+    const navigate = useNavigate();
+    const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+    // Derive active key from the current URL, then fall back to "home".
+    const derivedActive: string =
+      pathname === "/deposit"
+        ? "convert"
+        : pathname === "/"
+          ? "home"
+          : "home";
+
+    // Explicit prop wins; otherwise use the URL-derived value.
+    const effectiveActive = activeNav ?? derivedActive;
+
     const composed = [
       // Layout: flex row, three slots, justified between, vertically centred.
       "flex items-center justify-between",
@@ -150,8 +166,13 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             <IconButton
               key={item.key}
               label={item.label}
-              active={activeNav === item.key || (!activeNav && item.active)}
+              active={effectiveActive === item.key}
               icon={<MaskIcon src={item.src} title={item.label} />}
+              onClick={
+                item.to
+                  ? () => void navigate({ to: item.to as string })
+                  : undefined
+              }
             />
           ))}
         </nav>

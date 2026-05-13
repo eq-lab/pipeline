@@ -4,6 +4,21 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-13 — Issue #101 (Add /deposit file-based route in frontend)
+
+- **Scope:** Issue #101 acceptance criteria (TC-101-1 through TC-101-3)
+- **Cases executed:** 3
+- **Passes:** 2
+- **Failures:** 0
+- **Blocked:** 1
+- **Bugs filed:** #131 (medium)
+- **Score: 7/10**
+  - PASS TC-101-2 (build): `yarn workspace @pipeline/frontend build` exits 0; route tree regenerated with `/deposit` entry; `routeTree.gen.ts` contains the deposit route.
+  - PASS TC-101-1 (navigation): Clicking the Convert (dollar) nav button from `/` navigates to `/deposit`; page body shows "Deposit"; URL is correct.
+  - PASS TC-101-3 (back navigation): Browser Back from `/deposit` returns to `/`; Home button is `pressed` (active) and Convert is muted.
+  - BLOCKED TC-101-1 (active icon state): The deposit page renders only `<main>Deposit</main>` — the TopBar is absent. The dollar icon active-state highlight cannot be verified. Filed as #131 (medium). The Issue spec allows a placeholder body but `docs/STORIES.md` TC-101-1 expects the active icon to be visible; this is a story/spec gap.
+  - Deducted 3 points: active-state verification blocked by missing TopBar on the placeholder deposit page (medium severity defect).
+
 ### 2026-05-12 — Issue #50 (Wire @pipeline/ui theme.css into frontend)
 
 - **Scope:** Issue #50 acceptance criteria (TC-50-1 through TC-50-7)

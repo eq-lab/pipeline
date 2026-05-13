@@ -39,3 +39,4 @@ packages/ui/storybook-static/
 .vscode/
 *.swp
 *.swo
+packages/frontend/.tanstack/
