@@ -63,3 +63,5 @@ export type {
   SegmentedTabsProps,
   SegmentedTabsTab,
 } from "./components/SegmentedTabs";
+export { ActivityHeader } from "./components/ActivityHeader/ActivityHeader";
+export type { ActivityHeaderProps } from "./components/ActivityHeader/ActivityHeader";
