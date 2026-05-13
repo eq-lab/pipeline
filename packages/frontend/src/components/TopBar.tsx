@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Button, IconButton, Logo } from "@pipeline/ui";
+import { Button, IconButton, Logo, WalletPill } from "@pipeline/ui";
 import navHomeIcon from "@pipeline/ui/assets/icons/nav-home.svg";
 import navDollarIcon from "@pipeline/ui/assets/icons/nav-dollar.svg";
 import navStatsIcon from "@pipeline/ui/assets/icons/nav-stats.svg";
@@ -33,8 +33,10 @@ import navHistoryIcon from "@pipeline/ui/assets/icons/nav-history.svg";
  *     Home (active), Convert, Markets, History. The active flag is wired
  *     through to the `active` prop so the icon paints with the brand
  *     navy token; the rest stay muted.
- *   - One {@link Button} (variant `primary-dark`) labelled "Connect Wallet"
- *     on the right, matching node `1497:94725`.
+ *   - Right slot: when the `wallet` prop is absent, one {@link Button}
+ *     (variant `primary-dark`) labelled "Connect Wallet" (node `1497:94725`);
+ *     when `wallet` is present, a {@link WalletPill} (node `1498:100168`)
+ *     shows the connected balance instead.
  *
  * Icon handling:
  *   - The four nav SVGs live in `@pipeline/ui/assets/icons/`. Vite resolves
@@ -93,8 +95,8 @@ interface NavItem {
 // Figma order, node ids on the side for traceability.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "home", label: "Home", src: navHomeIcon, to: "/" }, // 1497:94719
-  { key: "convert", label: "Convert", src: navDollarIcon, to: "/deposit" }, // 1497:94720
-  { key: "markets", label: "Markets", src: navStatsIcon }, //          1497:94721
+  { key: "deposit", label: "Deposit", src: navDollarIcon, to: "/deposit" }, // 1497:94720
+  { key: "stats", label: "Stats", src: navStatsIcon }, //               1497:94721
   {
     key: "history",
     label: "History",
@@ -106,19 +108,36 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
 export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
   /** Optional click handler for the Connect Wallet CTA. */
   onConnectWallet?: () => void;
-  /** Active nav key — defaults to the Figma-marked "home" slot. */
-  activeNav?: NavItem["key"];
+  /**
+   * Active nav key — when omitted the active slot is derived from the current
+   * URL.  Accepts the canonical key names: `"home" | "deposit" | "stats" |
+   * "history"`.
+   */
+  activeNav?: "home" | "deposit" | "stats" | "history";
+  /**
+   * When present, the top-bar renders a `WalletPill` on the right instead of
+   * the "Connect Wallet" button, signalling the connected state.
+   *
+   * @example
+   * ```tsx
+   * <TopBar wallet={{ balance: "$10,000.00" }} />
+   * ```
+   */
+  wallet?: { balance: string };
 }
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
-  function TopBar({ onConnectWallet, activeNav, className, ...rest }, ref) {
+  function TopBar(
+    { onConnectWallet, activeNav, wallet, className, ...rest },
+    ref,
+  ) {
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     // Derive active key from the current URL, then fall back to "home".
     const derivedActive: string =
       pathname === "/deposit"
-        ? "convert"
+        ? "deposit"
         : pathname === "/transactions"
           ? "history"
           : pathname === "/"
@@ -183,18 +202,28 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
 
         {/* Right slot — fixed 160px wide so the centre nav stays optically
           centred. Right-aligned content (`justify-end`) keeps the CTA flush
-          to the right edge of the bar. */}
+          to the right edge of the bar.
+          When `wallet` is provided the pill replaces the Connect Wallet CTA,
+          matching Figma node 1498:100168 (connected header state). */}
         <div
           className="flex w-40 shrink-0 items-center justify-end"
           data-node-id="1497:94724"
         >
-          <Button
-            variant="primary-dark"
-            onClick={onConnectWallet}
-            data-node-id="1497:94725"
-          >
-            Connect Wallet
-          </Button>
+          {wallet ? (
+            <WalletPill
+              token="usdc"
+              balance={wallet.balance}
+              data-node-id="1498:100168"
+            />
+          ) : (
+            <Button
+              variant="primary-dark"
+              onClick={onConnectWallet}
+              data-node-id="1497:94725"
+            >
+              Connect Wallet
+            </Button>
+          )}
         </div>
       </header>
     );

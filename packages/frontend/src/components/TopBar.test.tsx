@@ -25,10 +25,12 @@ vi.mock("@pipeline/ui/assets/icons/nav-history.svg", () => ({
 }));
 
 /** Builds a minimal in-test router that renders <TopBar /> on every route. */
-function buildRouter(initialPath: string, activeNavProp?: string) {
+function buildRouter(
+  initialPath: string,
+  props?: Partial<React.ComponentPropsWithoutRef<typeof TopBar>>,
+) {
   const rootRoute = createRootRoute({
-    component: () =>
-      activeNavProp ? <TopBar activeNav={activeNavProp} /> : <TopBar />,
+    component: () => <TopBar {...props} />,
   });
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -67,18 +69,18 @@ describe("TopBar — route-driven active state", () => {
         "true",
       ),
     );
-    expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
       "data-active",
       "false",
     );
   });
 
-  it("highlights Convert on /deposit", async () => {
+  it("highlights Deposit on /deposit", async () => {
     const router = buildRouter("/deposit");
     render(<RouterProvider router={router} />);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -89,7 +91,7 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("navigates to /deposit when Convert is clicked", async () => {
+  it("navigates to /deposit when Deposit is clicked", async () => {
     const user = userEvent.setup();
     const router = buildRouter("/");
     render(<RouterProvider router={router} />);
@@ -102,11 +104,11 @@ describe("TopBar — route-driven active state", () => {
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "Convert" }));
+    await user.click(screen.getByRole("button", { name: "Deposit" }));
 
-    // After navigation, Convert should be active.
+    // After navigation, Deposit should be active.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -118,11 +120,11 @@ describe("TopBar — route-driven active state", () => {
   });
 
   it("explicit activeNav prop overrides route-derived state", async () => {
-    const router = buildRouter("/", "markets");
+    const router = buildRouter("/", { activeNav: "stats" });
     render(<RouterProvider router={router} />);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Markets" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Stats" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -133,16 +135,16 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("clicking Markets (no route) does not throw", async () => {
+  it("clicking Stats (no route) does not throw", async () => {
     const user = userEvent.setup();
     const router = buildRouter("/");
     render(<RouterProvider router={router} />);
 
-    await waitFor(() => screen.getByRole("button", { name: "Markets" }));
+    await waitFor(() => screen.getByRole("button", { name: "Stats" }));
 
-    // Should not throw — Markets has no `to`, so onClick is undefined.
+    // Should not throw — Stats has no `to`, so onClick is undefined.
     await expect(
-      user.click(screen.getByRole("button", { name: "Markets" })),
+      user.click(screen.getByRole("button", { name: "Stats" })),
     ).resolves.not.toThrow();
   });
 
@@ -187,6 +189,44 @@ describe("TopBar — route-driven active state", () => {
     expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
       "data-active",
       "false",
+    );
+  });
+});
+
+describe("TopBar — wallet prop (connected state)", () => {
+  it("renders Connect Wallet button when wallet prop is absent", async () => {
+    const router = buildRouter("/");
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Connect Wallet" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("$10,000.00")).not.toBeInTheDocument();
+  });
+
+  it("renders WalletPill with balance when wallet prop is provided", async () => {
+    const router = buildRouter("/", { wallet: { balance: "$10,000.00" } });
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("$10,000.00")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Connect Wallet" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("home page still renders Connect Wallet button (no wallet prop passed)", async () => {
+    // Regression guard: the home page invocation passes no wallet prop.
+    const router = buildRouter("/");
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Connect Wallet" }),
+      ).toBeInTheDocument(),
     );
   });
 });
