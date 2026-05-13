@@ -19,3 +19,5 @@ export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
 export { CoinIcon } from "./components/CoinIcon/CoinIcon";
 export type { CoinIconProps } from "./components/CoinIcon/CoinIcon";
+export { WalletPill } from "./components/WalletPill/WalletPill";
+export type { WalletPillProps } from "./components/WalletPill/WalletPill";
