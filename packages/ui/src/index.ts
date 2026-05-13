@@ -43,3 +43,8 @@ export type {
   StepsCardProps,
   StepItem,
 } from "./components/StepsCard/StepsCard";
+export { ActivityIcon } from "./components/ActivityIcon/ActivityIcon";
+export type {
+  ActivityIconProps,
+  ActivityIconVariant,
+} from "./components/ActivityIcon/ActivityIcon";
