@@ -1,10 +1,10 @@
 ---
-title: Potential risks
+title: Risk management
 order: 33
-section: Potential risks
+section: Risk management
 ---
 
-# Potential risks
+# Risk management
 
 Yield on Pipeline comes from real commodity trade loan repayments and realised T-bill yield on USYC. Every yield line carries matching risk. Read this page before depositing.
 
