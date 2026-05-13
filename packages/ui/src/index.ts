@@ -29,3 +29,8 @@ export { StepRow } from "./components/StepRow/StepRow";
 export type { StepRowProps } from "./components/StepRow/StepRow";
 export { TokenAmountDisplay } from "./components/TokenAmountDisplay/TokenAmountDisplay";
 export type { TokenAmountDisplayProps } from "./components/TokenAmountDisplay/TokenAmountDisplay";
+export { TokenInput } from "./components/TokenInput/TokenInput";
+export type {
+  TokenInputProps,
+  QuickAmountItem,
+} from "./components/TokenInput/TokenInput";
