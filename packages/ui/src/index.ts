@@ -17,3 +17,5 @@ export type {
 } from "./components/WalletIllustration";
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
+export { CoinIcon } from "./components/CoinIcon/CoinIcon";
+export type { CoinIconProps } from "./components/CoinIcon/CoinIcon";
