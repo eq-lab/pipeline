@@ -25,12 +25,12 @@ function TokenRow({
   sample,
 }: TokenRowProps) {
   return (
-    <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+    <tr style={{ borderBottom: "1px solid var(--color-pipeline-line)" }}>
       <td
         style={{
           padding: "8px 16px 8px 0",
           fontSize: 12,
-          color: "#6b7280",
+          color: "var(--color-pipeline-ink-muted)",
           whiteSpace: "nowrap",
           verticalAlign: "middle",
         }}
@@ -41,7 +41,7 @@ function TokenRow({
         style={{
           padding: "8px 16px 8px 0",
           fontSize: 11,
-          color: "#9ca3af",
+          color: "var(--color-pipeline-ink-subtle)",
           whiteSpace: "nowrap",
           verticalAlign: "middle",
         }}
@@ -69,7 +69,13 @@ function TokenRow({
 
 function TypographyScale() {
   return (
-    <div style={{ padding: 32, background: "#fff", minWidth: 640 }}>
+    <div
+      style={{
+        padding: 32,
+        background: "var(--color-pipeline-surface)",
+        minWidth: 640,
+      }}
+    >
       <h2
         style={{
           fontFamily: "var(--font-body)",
@@ -77,7 +83,7 @@ function TypographyScale() {
           fontWeight: 500,
           letterSpacing: 1,
           textTransform: "uppercase",
-          color: "#6b7280",
+          color: "var(--color-pipeline-ink-muted)",
           marginBottom: 24,
         }}
       >
@@ -86,7 +92,7 @@ function TypographyScale() {
 
       <table style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
-          <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+          <tr style={{ borderBottom: "2px solid var(--color-pipeline-line)" }}>
             <th
               style={{
                 padding: "4px 16px 8px 0",
@@ -94,7 +100,7 @@ function TypographyScale() {
                 fontFamily: "var(--font-body)",
                 fontSize: 11,
                 fontWeight: 500,
-                color: "#374151",
+                color: "var(--color-pipeline-ink)",
               }}
             >
               Token
@@ -106,7 +112,7 @@ function TypographyScale() {
                 fontFamily: "var(--font-body)",
                 fontSize: 11,
                 fontWeight: 500,
-                color: "#374151",
+                color: "var(--color-pipeline-ink)",
               }}
             >
               Spec
@@ -118,7 +124,7 @@ function TypographyScale() {
                 fontFamily: "var(--font-body)",
                 fontSize: 11,
                 fontWeight: 500,
-                color: "#374151",
+                color: "var(--color-pipeline-ink)",
               }}
             >
               Sample
@@ -198,7 +204,7 @@ function TypographyScale() {
             fontWeight: 500,
             letterSpacing: 1,
             textTransform: "uppercase",
-            color: "#6b7280",
+            color: "var(--color-pipeline-ink-muted)",
             marginBottom: 12,
           }}
         >
@@ -211,7 +217,7 @@ function TypographyScale() {
             lineHeight: "22px",
             fontWeight: 400,
             fontStyle: "italic",
-            color: "#374151",
+            color: "var(--color-pipeline-ink)",
           }}
         >
           Note: collateral is held in escrow until settlement.
@@ -223,7 +229,7 @@ function TypographyScale() {
         style={{
           marginTop: 32,
           padding: 16,
-          background: "#f9fafb",
+          background: "var(--color-pipeline-paper)",
           borderRadius: 8,
         }}
       >
@@ -232,7 +238,7 @@ function TypographyScale() {
             fontFamily: "var(--font-body)",
             fontSize: 11,
             fontWeight: 500,
-            color: "#6b7280",
+            color: "var(--color-pipeline-ink-muted)",
             margin: 0,
           }}
         >
