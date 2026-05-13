@@ -8,7 +8,11 @@ section: Start here
 
 ### What is Pipeline?
 
-Pipeline is a decentralized commodity trade finance protocol. Lenders deposit USDC and earn from senior lending to finance commodity trades — high yield, short duration, secured by physical cargo, self-liquidating, tracked on a public on-chain registry. Not a fund, not a yield aggregator.
+Pipeline is a decentralized commodity trade finance protocol. Lenders deposit USDC and earn from senior lending to finance commodity trades — high yield, short duration, secured by physical cargo, self-liquidating, tracked on a public on-chain registry. 
+
+- Deal-by-deal underwriting, not balance-sheet financing.
+- Up to 30% first-loss equity on every facility.
+- Not a fund, not a yield aggregator.
 
 ### Where does the yield come from?
 
