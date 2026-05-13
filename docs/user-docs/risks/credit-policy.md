@@ -1,7 +1,7 @@
 ---
 title: Credit policy overview
 order: 34
-section: Potential risks
+section: Risk management
 ---
 
 # Credit policy overview

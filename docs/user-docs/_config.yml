@@ -1,9 +1,10 @@
 title: Pipeline
-tagline: Yield for on-chain capital, backed by real commodity trade finance.
+tagline: On-chain yield from commodity trade finance.
 description: >-
-  Pipeline is a credit facility that finances vetted commodity trade deals and
-  pays the senior coupon, plus T-bill accrual on idle reserves, to on-chain
-  lenders. This site explains how it works and what can go wrong.
+  Pipeline is a decentralized commodity trade finance protocol. 
+  Lenders deposit USDC and earn from senior lending to finance commodity 
+  trades — high yield, short duration, secured by physical cargo, self-liquidating, 
+  tracked on a public on-chain registry.
 url: https://docs.pipeline.one
 baseurl: ""
 permalink: /:path/

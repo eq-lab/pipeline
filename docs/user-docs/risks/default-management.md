@@ -1,7 +1,7 @@
 ---
 title: Default management
 order: 35
-section: Potential risks
+section: Risk management
 ---
 
 # Default management
