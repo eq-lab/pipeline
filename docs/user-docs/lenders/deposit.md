@@ -1,6 +1,6 @@
 ---
 title: Deposit
-order: 7
+order: 14
 section: For Lenders
 redirect_from:
   - /lenders/deposit-and-stake/
@@ -48,7 +48,7 @@ The Relayer never writes to DepositManager. Its role is to sign the off-chain at
 
 A single deposit cannot exceed $5M. 24h deposits across all your wallets cannot exceed $10M. If either cap would be breached, the deposit transaction reverts on-chain. There is no auto-queue. Split the deposit manually and retry when limits reset. The deposit UI reads the `GET /v1/protocol/limits` endpoint and shows live utilisation before you submit, so you can size each transaction against available headroom.
 
-A third cap, the hard total supply ceiling on PLUSD, is a protocol-wide circuit breaker tightened or loosened by ADMIN governance. Tightening is instant. Loosening requires a 48h AccessManager delay. The ceiling reserves headroom against tickets that have already passed KYT and are waiting for claim, so a claim cannot be blocked by other lenders' claims exhausting the cap.
+A third cap, the hard total supply ceiling on PLUSD, is a protocol-wide circuit breaker. Tightening is instant under GUARDIAN. Loosening is an ADMIN action under the standard 3-day AccessManager delay, GUARDIAN-cancelable during the window. The ceiling reserves headroom against tickets that have already passed KYT and are waiting for claim, so a claim cannot be blocked by other lenders' claims exhausting the cap.
 
 ### What lands in your wallet
 
@@ -74,8 +74,6 @@ Three result classes. Your ticket stays `Pending` on-chain in all three. The off
 - **Soft fail.** The Relayer does not sign the attestation. A compliance officer reviews. The default outcome is auto-refund within 72h. Trustee and Team co-sign a USDC transfer from the Intake Wallet back to your wallet. After settlement, the Trustee calls `markRefunded` to flip the ticket on-chain. Compliance can override and approve, in which case the Relayer signs and serves the attestation as in the clean path.
 - **Hard fail.** No attestation. Ticket stays `Pending` indefinitely. Funds held pending Trustee disposition under legal direction.
 
-Severity classification rules are governed by `[Framework: TBD]`.
-
 ---
 
 ## Abandoned tickets
@@ -98,7 +96,7 @@ A `Pending` ticket that you do not claim within 30 days of `deposit` is refundab
 
 ## Contract addresses
 
-`DepositManager`, `PLUSD`, `WhitelistRegistry`, and the Intake Wallet address are published on the [Audits & addresses page](/security/audits-and-addresses/) and are verified on Etherscan. Treat that page as the source of truth. Do not trust addresses copied from third-party sites.
+`DepositManager`, `PLUSD`, `WhitelistRegistry`, and the Intake Wallet address are published on the [Audits & addresses page](/technical/audits-and-addresses/) and are verified on Etherscan. Treat that page as the source of truth. Do not trust addresses copied from third-party sites.
 
 ---
 
@@ -106,5 +104,4 @@ A `Pending` ticket that you do not claim within 30 days of `deposit` is refundab
 
 - [Stake PLUSD](/lenders/stake/). Convert PLUSD into yield-bearing sPLUSD.
 - [Withdraw](/lenders/withdraw/). Convert sPLUSD or PLUSD back to USDC.
-- [Yield engines](/how-it-works/yield-engines/). How senior coupons and T-bill NAV flow into the vault.
-- [Supply safeguards](/security/supply-safeguards/). The reserve invariant, rate limits, the hard supply cap.
+- [Supply safeguards](/security/capital-safeguards/). The reserve invariant, rate limits, the hard supply cap.

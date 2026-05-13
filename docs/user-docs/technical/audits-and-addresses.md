@@ -1,8 +1,10 @@
 ---
 title: Audits & addresses
-order: 17
-section: Security & Transparency
+order: 23
+section: Technical overview
 ---
+
+# Audits & addresses
 
 This page lists deployed contract addresses, third-party audits, formal verification status, and live-data dashboards for the Pipeline protocol. Contracts are not yet deployed to mainnet; this page lists placeholders today and will be updated at launch.
 
@@ -48,5 +50,5 @@ A public bug bounty will be established before mainnet. Scope, payout tiers, and
 See also:
 
 - [Custody](/security/custody/)
-- [Supply safeguards](/security/supply-safeguards/)
+- [Capital safeguards](/security/capital-safeguards/)
 - [Emergency response](/security/emergency-response/)

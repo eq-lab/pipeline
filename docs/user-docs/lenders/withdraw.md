@@ -1,6 +1,6 @@
 ---
 title: Withdraw
-order: 9
+order: 16
 section: For Lenders
 ---
 
@@ -51,7 +51,7 @@ The safety invariant on every claim is `require(claimAmount ≤ totalClaimable)`
 
 ## During shutdown
 
-If the protocol has set an exchange coefficient on the WithdrawalQueue (see [Default management](/defaults-and-losses/)), every claim pays out USDC at `face_value * coefficient` instead of `face_value * 1.0`. The coefficient applies the same way to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. The coefficient ratchets up only as recoveries land. Once `coefficient = 1.0`, normal economics resume.
+If the protocol has set an exchange coefficient on the WithdrawalQueue (see [Default management](/risks/default-management/)), every claim pays out USDC at `face_value * coefficient` instead of `face_value * 1.0`. The coefficient applies the same way to PLUSD direct-redeem and sPLUSD-unstake-then-redeem. The coefficient ratchets up only as recoveries land. Once `coefficient = 1.0`, normal economics resume.
 
 There is no separate "shutdown mode". The protocol continues operating with the haircut applied at the queue.
 
@@ -59,4 +59,4 @@ There is no separate "shutdown mode". The protocol continues operating with the 
 
 - [Lender Dashboard](/lenders/dashboard/)
 - [Potential risks](/risks/)
-- [Default management](/defaults-and-losses/)
+- [Default management](/risks/default-management/)

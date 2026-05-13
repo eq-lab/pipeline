@@ -1,95 +1,59 @@
 ---
-title: How Pipeline works
-order: 2
+title: Overview
+order: 6
 section: How Pipeline works
 ---
 
-# How Pipeline works
+# Overview
 
-Pipeline runs on two layers connected by a relayer. The **Capital Layer** is off-chain and holds every USD and USDC in an institutional MPC custody. The **Protocol Layer** is on-chain and issues PLUSD and sPLUSD, records loans, and runs Lender-facing business logic. The **Relayer** sits between them. It watches the chain, co-signs yield mints, but never custodies USDC and cannot mint PLUSD.
+Pipeline comprises three layers working in concert:
 
-A second human surface sits alongside the two layers. **Operators and Governance** is who actually moves things: the cosigners who hold custody shares, the relayer that connects the two layers, and the three governance MPCs that gate every privileged change.
+- An off-chain origination layer that sources and underwrites trade loans.
+- A segregated capital layer that holds principal and funds trades.
+- An on-chain protocol layer that tokenises lender claims and tracks every loan publicly.
+
+A relayer lets the capital layer talk to the protocol layer. A fiduciary trustee manages lender assets and commodity collateral through a dedicated trust structure, co-signs every privileged action, and acts independently of the Pipeline team.
+
+{% include diagram.html src="boss-system-architecture.png" caption="Pipeline architecture — origination, capital, and protocol layers connected by the relayer, under fiduciary trustee oversight." %}
 
 <div class="callout safety">
-  <h4>Split-layer safety property</h4>
-  <p><em>"A bug or exploit in on-chain code cannot drain investor capital unilaterally."</em></p>
+A bug or exploit in on-chain code cannot drain lender capital unilaterally.
 </div>
 
-{% include diagram.html src="d1-system-context.png" caption="Pipeline system context. Capital Layer off-chain, Relayer in the middle, Protocol Layer on-chain. The Trustee co-signs every USDC movement and records every loan." %}
+## Origination layer
 
----
+*Facilitates loan origination and underwriting.*
+
+This layer onboards qualified Originators — commodity trade finance experts (including private credit funds) with their own borrower networks. Originators structure deals, contribute the equity tranche (first-loss capital, up to 30%), and stand as merchant of record on the underlying trade. Pipeline provides senior capital.
+
+Each Originator clears KYC, audited financials, track record review, sanctions and AML, and signs the facility agreement before submitting deals.
 
 ## Capital Layer
 
-Lender USDC and the USYC reserve sit in an **institutional MPC custody** by Bitgo. The custody is configured with **five cosigner shares** with a hard policy rule that no transfer signs without both Team and Trustee participating. No protocol contract can spend from the custody.
+*Securely handles all operations with principal.*
 
-### USD Account
+It includes four on-chain accounts in the institutional BitGo custody: Intake Wallet (holds USDC deposits pending KYT), Capital Wallet (lender USDC + USYC reserve), Withdrawal Queue Wallet (queued withdrawals), and Treasury Wallet (protocol fees).
 
-A USD bank account in the Trustee's name. Handles physical-world cash movements: loan origination, offtaker repayments, on-ramp into the Capital Wallet.
+Another important component of the capital layer is a USD bank account managed by the Trustee for fiat operations: loan disbursements, offtaker wires, on-ramping.
 
-### Capital Wallet
-
-The MPC address holding all lender USDC plus the USYC (tokenised T-bill) position. Target USDC buffer is 15% with a 10–20% band. USYC NAV drifts up daily as the underlying T-bills accrue, but that gain is **unrealised** until the Trustee instructs the wallet to sell USYC for USDC against the Hashnote redemption rail. Only realised proceeds can feed a PLUSD yield mint.
-
-### Withdrawal Queue Wallet
-
-A separate institutional-custody address that holds USDC earmarked for lender withdrawals. The Trustee and Team periodically top it up from the Capital Wallet under the 3-of-5 cosigner quorum. The on-chain WithdrawalQueue contract pulls from this wallet (not from the Capital Wallet) when a lender claims, against an allowance the Queue Wallet has granted to the contract. Isolating settlement funds in their own wallet means a WithdrawalQueue contract bug or exploit can drain only the topped-up amount, not the full Capital Wallet.
-
-### Treasury Wallet
-
-A separate institutional-custody address that collects protocol fees (management, performance, OET). Same Bitgo custody, separate cosigner-policy configuration.
-
-### Emergency disconnect
-
-Custody policy carries a **hardware circuit breaker** that disconnects the Capital Wallet and the Withdrawal Queue Wallet from the protocol contracts on alarm. Pre-approved allowances are revoked, all standing transfer authorisations are frozen. The breaker is a custody-side action. It does not require a smart-contract upgrade or a governance vote, and BitGo cannot pull this lever.
-
----
+No protocol contract can spend funds from any of these wallets — every movement is gated by a 3-of-5 cosigner quorum.
 
 ## Protocol Layer
 
-The Protocol Layer is a set of on-chain contracts. **Token architecture** sits at the top: PLUSD as the dollar receipt and sPLUSD as the yield-bearing share. **LoanRegistry** sits as the second-priority surface, the public audit trail of every loan facility. The remaining contracts run the deposit, mint, withdraw, and access flows.
+*Implements all on-chain smart contracts.*
 
-### PLUSD and sPLUSD
+It implements PLUSD and sPLUSD as the lender-facing tokens and LoanRegistry as the public loan book. Also, this layer runs the operational contracts — DepositManager, YieldMinter, WithdrawalQueue, WhitelistRegistry, and AccessManager. Plus the dormant Recovery System (ShutdownController, RecoveryPool).
 
-**PLUSD** is the dollar receipt. An ERC-20 minted 1:1 against USDC entering the Capital Wallet. Every PLUSD transfer is gated by the WhitelistRegistry. Two mint paths exist: mint from deposits, and mint from yield. The contract asserts a reserve invariant (there is always enough USDC backing every PLUSD in existence) on every mint.
+## Relayer
 
-**sPLUSD** is the yield-bearing share. A standard ERC-4626 vault whose underlying asset is PLUSD. Any PLUSD holder can stake. The sPLUSD share price rises in relation to PLUSD when a yield mint lands in the vault.
+*Off-chain backend.*
 
-### LoanRegistry
+It indexes on-chain events, co-signs YieldAttestations alongside the Trustee (neither can mint alone), and signs KYT attestations off-chain that the lender or address holder submits at claim or enrol time. The Relayer holds no custody and cannot mint PLUSD alone (all mints double-validated on smart contracts). Neither can it move USDC out of the capital layer. The only on-chain role the Relayer holds is `WHITELIST_REVOKER` for fast sanctions response.
 
-Every originated loan is one NFT carrying immutable origination data (borrower, commodity, corridor, facility size, tranche split, original offtaker price, senior coupon rate) plus mutable lifecycle state (status, current maturity, CCR, cumulative repayment split). LoanRegistry is the public audit trail of the book.
+The hardware circuit breaker that disconnects the Capital Layer from the protocol contracts is a custody-side action triggered by the Trustee and Team under the BitGo cosigner policy. The Relayer raises the alarm; the cosigner quorum pulls the lever.
 
-### Core protocol contracts
+## Operators and governance
 
-These five contracts run the operational flows. Together they are how the Protocol Layer actually works day to day:
+Operators do continuous work — every block, every withdrawal. Operators are the cosigners on each MPC wallet of the capital layer, the Relayer, and contract role-holders. Initially appointed operators are the Trustee, Pipeline Team, and two external reliable counterparties.
 
-- **DepositManager**. Two-step deposit. `deposit` parks USDC in the Intake Wallet and creates a deposit ticket. After the Relayer marks the ticket claimable on a clean KYT result, the lender calls `claim` to move USDC from the Intake Wallet to the Capital Wallet and mint PLUSD 1:1.
-- **YieldMinter**. Gates yield mints. Verifies a Relayer signature and a Trustee signature on-chain before minting. Destinations are hard-constrained to the sPLUSD vault or Treasury Wallet.
-- **WithdrawalQueue**. Exit queue. Lenders escrow PLUSD via `requestWithdrawal`, then call `claim` themselves to burn PLUSD and pull USDC from the Withdrawal Queue Wallet via the queue contract's standing allowance. The claim re-checks compliance via `WhitelistRegistry.isAllowed`. The queue self-limits via three aggregates (`totalRequested`, `totalClaimed`, `totalClaimable`) and asserts `claimAmount ≤ totalClaimable` on every claim.
-- **WhitelistRegistry**. On-chain transfer whitelist. Gates every PLUSD and sPLUSD transfer via `_update`. Entries are written by the Relayer on a clean KYT result, with a 90-day freshness window. Mint and withdraw eligibility are not gated here. They live in DepositManager (ticket book) and WithdrawalQueue (per-claim re-check) respectively.
-- **AccessManager**. The role hub. Every privileged call routes through this contract: instantly for GUARDIAN, through a timelock for ADMIN and RISK_COUNCIL.
-
----
-
-## Operators and Governance
-
-The two layers above describe what holds capital and what records claims. This section describes who actually moves things. Distinct roles. **Operators** do continuous work (every day, every block, every withdrawal). **Governance** handles privileged events (role grants, defaults, parameter changes). Both interact with the protocol from the outside.
-
-### Operators
-
-These parties are active day to day, not just during privileged events.
-
-- **Trustee**. Independent legal entity, holds one cosigner share on the institutional custody, second signer on every yield attestation, holder of the LoanRegistry write role.
-- **Pipeline Team**. Holds two cosigner shares on the institutional custody. Required (with the Trustee) on every transfer.
-- **External Counterparties**. Two reputable third parties hold the remaining two cosigner shares. Their role is structural: they make a Team-only or Trustee-only quorum impossible.
-- **Relayer**. The off-chain backend that bridges the two layers. Indexes on-chain events, co-signs yield attestations, maintains the whitelist. Holds no cosigner share. Not in the withdrawal critical path. Claims are user-pulled.
-
-### Governance
-
-The privileged-event surface. Three MPCs with distinct signer sets, every write routed through AccessManager.
-
-- **ADMIN (3/5)**. Role grants, re-grants, unpauses, upgrades, parameter changes. Standard delay 3 days. Upgrades 7 days. The meta-timelock on the delay setting itself is 14 days.
-- **RISK_COUNCIL (3/5)**. `setDefault` on LoanRegistry, write-down closures, exchange-coefficient changes on the WithdrawalQueue. 3-day timelock, GUARDIAN-cancelable.
-- **GUARDIAN (2/5, instant)**. Pause any pausable contract, cancel pending scheduled actions, revoke named operational-role holders. Cannot grant roles, cannot unpause, cannot upgrade, cannot move funds.
-
-**Defensive action is fast. Constructive action is slow.** GUARDIAN can stop things instantly. Only ADMIN can start them again, and only after a window that GUARDIAN itself can veto.
+Governance handles privileged events — role grants, defaults, shutdowns. Both interact with the protocol from the outside; neither has unilateral control. At the initial development stage, governance is three MPCs — ADMIN (3/5, 3-day timelock standard, 7-day for upgrades), RISK_COUNCIL (3/5, 3-day timelock), GUARDIAN (2/5, instant) — with distinct signer sets and non-overlapping powers. A 14-day meta-timelock gates the delay parameter itself. Defensive action is fast; constructive action is slow.

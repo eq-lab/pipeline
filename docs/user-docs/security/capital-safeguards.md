@@ -1,10 +1,10 @@
 ---
-title: Supply safeguards
-order: 17
+title: Capital safeguards
+order: 31
 section: Security & Transparency
 ---
 
-# Supply safeguards
+# Capital safeguards
 
 PLUSD has exactly two mint paths: deposit (USDC to PLUSD 1:1) and yield (sPLUSD vault or Treasury Wallet). Each path lives behind a different contract with a different threat model and a different set of checks. They do not duplicate each other.
 
