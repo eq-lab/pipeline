@@ -78,6 +78,6 @@ fn sig_to_bytes(sig: &alloy::primitives::PrimitiveSignature) -> Vec<u8> {
     let mut out = Vec::with_capacity(65);
     out.extend_from_slice(&sig.r().to_be_bytes::<32>());
     out.extend_from_slice(&sig.s().to_be_bytes::<32>());
-    out.push(sig.v() as u8);
+    out.push(sig.v() as u8 + 27);
     out
 }

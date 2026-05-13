@@ -59,25 +59,47 @@ pub struct RequestEventRow {
     pub amount: Option<bigdecimal::BigDecimal>,
     pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
+    pub is_claimed: bool,
 }
 
 #[derive(serde::Serialize)]
-pub struct RequestEvent {
-    pub event_name: String,
-    pub request_id: Option<String>,
-    pub amount: Option<String>,
-    pub crystal_kyt_status: Option<i16>,
-    pub block_timestamp: i64,
+pub struct GroupedRequest {
+    pub request_id: String,
+    #[serde(rename = "type")]
+    pub request_type: String,
+    pub amount: String,
+    pub status: String,
+    pub created_at: String,
 }
 
-impl From<RequestEventRow> for RequestEvent {
+impl From<RequestEventRow> for GroupedRequest {
     fn from(row: RequestEventRow) -> Self {
+        let status = if row.is_claimed {
+            "Claimed"
+        } else {
+            match row.crystal_kyt_status {
+                Some(1) => "PendingClaim",
+                Some(_) => "VerificationFailed",
+                None => "PendingVerification",
+            }
+        };
+
+        let request_type = if row.event_name == "DepositRequested" {
+            "Deposit"
+        } else {
+            "Withdrawal"
+        };
+
+        let created_at = chrono::DateTime::from_timestamp(row.block_timestamp, 0)
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            .unwrap_or_default();
+
         Self {
-            event_name: row.event_name,
-            request_id: row.request_id.map(|r| r.to_string()),
-            amount: row.amount.map(|a| a.to_string()),
-            crystal_kyt_status: row.crystal_kyt_status,
-            block_timestamp: row.block_timestamp,
+            request_id: row.request_id.map(|r| r.to_string()).unwrap_or_default(),
+            request_type: request_type.to_owned(),
+            amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
+            status: status.to_owned(),
+            created_at,
         }
     }
 }
@@ -524,37 +546,43 @@ impl KycRepo {
         Ok(row.is_some())
     }
 
-    /// Get deposit/withdrawal events for a wallet.
+    /// Get deposit/withdrawal requests for a wallet, grouped by request_id.
     /// When `pending_only` is true, only returns requests that have not been claimed.
     pub async fn get_all_requests(
         &self,
         wallet: &str,
         pending_only: bool,
-    ) -> anyhow::Result<Vec<RequestEvent>> {
+    ) -> anyhow::Result<Vec<GroupedRequest>> {
+        let base = "SELECT r.event_name, r.request_id, r.amount, r.crystal_kyt_status,
+                           r.block_timestamp,
+                           EXISTS (
+                               SELECT 1 FROM contract_logs c2
+                               WHERE c2.event_name = 'RequestClaimed'
+                                 AND c2.request_id = r.request_id
+                           ) AS is_claimed
+                    FROM contract_logs r
+                    WHERE LOWER(r.sender) = $1
+                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested')";
+
         let query = if pending_only {
-            "SELECT event_name, request_id, amount, crystal_kyt_status, block_timestamp
-             FROM contract_logs
-             WHERE LOWER(sender) = $1
-               AND event_name IN ('DepositRequested', 'WithdrawalRequested')
-               AND NOT EXISTS (
-                   SELECT 1 FROM contract_logs c2
-                   WHERE c2.event_name = 'RequestClaimed'
-                     AND c2.request_id = contract_logs.request_id
-               )
-             ORDER BY block_timestamp DESC, id DESC"
+            format!(
+                "{base}
+                      AND NOT EXISTS (
+                          SELECT 1 FROM contract_logs c2
+                          WHERE c2.event_name = 'RequestClaimed'
+                            AND c2.request_id = r.request_id
+                      )
+                    ORDER BY r.block_timestamp DESC, r.id DESC"
+            )
         } else {
-            "SELECT event_name, request_id, amount, crystal_kyt_status, block_timestamp
-             FROM contract_logs
-             WHERE LOWER(sender) = $1
-               AND event_name IN ('DepositRequested', 'WithdrawalRequested', 'RequestClaimed')
-             ORDER BY block_timestamp DESC, id DESC"
+            format!("{base} ORDER BY r.block_timestamp DESC, r.id DESC")
         };
 
-        let rows = sqlx::query_as::<_, RequestEventRow>(query)
+        let rows = sqlx::query_as::<_, RequestEventRow>(&query)
             .bind(wallet)
             .fetch_all(&self.pool)
             .await?;
-        Ok(rows.into_iter().map(RequestEvent::from).collect())
+        Ok(rows.into_iter().map(GroupedRequest::from).collect())
     }
 
     pub async fn update_lp_info(

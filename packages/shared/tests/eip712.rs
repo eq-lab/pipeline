@@ -32,7 +32,7 @@ fn withdrawal_domain() -> Eip712Domain {
 }
 
 fn recover(sig_bytes: &[u8], digest: &alloy::primitives::B256) -> Address {
-    let parity = sig_bytes[64] != 0;
+    let parity = sig_bytes[64] - 27 != 0;
     let sig = PrimitiveSignature::from_bytes_and_parity(&sig_bytes[..64], parity);
     sig.recover_address_from_prehash(digest).unwrap()
 }
