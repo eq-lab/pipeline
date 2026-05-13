@@ -11,6 +11,8 @@ Two self-hosted typefaces (declared as `@font-face` in `packages/ui/src/styles/t
 - **Besley** (display serif, SIL OFL 1.1) — weights 400 and 700, available via `font-display` Tailwind utility.
 - **Graphik LC** (body sans, Type Today commercial license) — weights 400, 400-italic, and 500, available via `font-body` Tailwind utility.
 
+The `.woff2` files live in `packages/ui/src/assets/fonts/` and are referenced by relative URL from the `@font-face` rules in `theme.css`. To add a new weight: drop the `.woff2` into `packages/ui/src/assets/fonts/`, add a matching `@font-face` block in `packages/ui/src/styles/theme.css` (with the right `font-family`, `font-weight`, `font-style`, and `font-display: swap`), and — if the new weight needs a semantic alias — extend the `--font-weight-*` tokens in the same file.
+
 ## Design tokens
 
 All design tokens are declared as CSS custom properties inside a Tailwind v4 `@theme { … }` block in `packages/ui/src/styles/theme.css`. Token groups:
