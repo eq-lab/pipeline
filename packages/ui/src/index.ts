@@ -21,3 +21,5 @@ export { CoinIcon } from "./components/CoinIcon/CoinIcon";
 export type { CoinIconProps } from "./components/CoinIcon/CoinIcon";
 export { WalletPill } from "./components/WalletPill/WalletPill";
 export type { WalletPillProps } from "./components/WalletPill/WalletPill";
+export { QuickAmountChip } from "./components/QuickAmountChip/QuickAmountChip";
+export type { QuickAmountChipProps } from "./components/QuickAmountChip/QuickAmountChip";
