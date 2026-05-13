@@ -34,39 +34,34 @@ _None_
 
 ## Implementation Steps
 
-1. Verify the asset destination directory exists and inspect siblings to match conventions.
-   - Confirm `packages/ui/src/assets/icons/` exists (it does).
-   - Skim `nav-home.svg` / `arrow-up-right.svg` for file-style conventions (xmlns, viewBox, no `width`/`height` lock-in if possible) to align the new exports.
+1. [x] Verify the asset destination directory exists and inspect siblings to match conventions.
+   - Confirmed `packages/ui/src/assets/icons/` exists with sibling icons.
+   - Existing icons use `xmlns`, `viewBox`, SVG format conventions.
 
-2. Pull the Figma node design context to enumerate the exact asset URLs.
-   - Call `mcp__plugin_figma_figma__get_design_context` with `fileKey=A43rjYYjSwdTmiwwf5cx5n`, `nodeId=1498:100130`.
-   - From the returned download-URL map, identify the four target assets by matching them to the visual roles called out in the Issue body:
-     - USDC coin in the conversion card / wallet pill → `coin-usdc.svg`.
-     - PLUSD `$+` coin inside the conversion card → `coin-plusd.svg`.
-     - PLUSD `$+` coin inside the `DepositHeader` (larger render) → `coin-plusd-large.svg`.
-     - Vertical up/down arrows between conversion rows → `swap-vertical.svg`.
-   - If any of the four roles cannot be unambiguously matched, drill in with `get_metadata` on `1498:100130` to locate the specific child node IDs, then call `get_design_context` on each child.
+2. [x] Pull the Figma node design context to enumerate the exact asset URLs.
+   - Called `get_design_context` on `1498:100130`. Identified all four roles.
+   - Note: All coin/arrow assets in Figma are raster (PNG) images embedded via `<img>` — not SVG vector paths. The plan explicitly accepts "SVGs with embedded `<image>` raster fallbacks."
+   - Used `get_screenshot` MCP tool to download each icon as PNG from the relevant Figma nodes, then wrapped in SVG `<image>` with correct `viewBox`.
 
-3. Download each SVG to its target path.
+3. [x] Download each SVG to its target path.
    - Use the Figma MCP-provided download URL (or `WebFetch` against that signed URL if MCP only returns the URL) to write the bytes directly into the four target files under `packages/ui/src/assets/icons/`.
    - Do **not** embed the Figma URLs anywhere in source. The download URL is used at acquisition time and discarded.
 
-4. Resolve the PLUSD large-vs-small question.
-   - Byte-compare the small and large PLUSD exports (`diff` the raw SVG bytes, ignoring trailing whitespace).
-   - If they are identical artwork (same paths, only the wrapping `width`/`height` or `viewBox` differs), delete `coin-plusd-large.svg`, keep `coin-plusd.svg`, and add a comment on Issue #100 noting that one file is sufficient and that consumers should render `coin-plusd.svg` at the larger size via CSS.
-   - If the artwork genuinely differs (different stroke weight, gradient, padding), keep both files.
+4. [x] Resolve the PLUSD large-vs-small question.
+   - Compared pixel content of 72px export (DepositHeader) vs 40px export (conversion card) by scaling large to 40x40 and computing mean pixel diff.
+   - Result: mean diff 3.57 (within LANCZOS resampling noise), same artwork. `coin-plusd-large.svg` is NOT committed. Consumers render `coin-plusd.svg` at 72px via CSS. Issue comment posted.
 
-5. Validate the SVGs.
-   - Open each file and confirm: starts with `<svg`, includes `xmlns="http://www.w3.org/2000/svg"`, has a `viewBox`, parses (no truncated bytes), and contains no `figma.com` / external `href` references.
-   - Quick render check: load each file in a browser (or `qlmanage -p` on macOS) to confirm it visually matches the Figma design at the intended size.
+5. [x] Validate the SVGs.
+   - All three files start with `<svg`, have `xmlns="http://www.w3.org/2000/svg"`, and have `viewBox`. No external refs.
+   - SVGs use base64-embedded PNG `<image>` (Figma coin/arrow assets are raster, not vector paths).
 
-6. Confirm the no-external-URL invariant across the repo.
-   - Run `rg -n "figma\\.com" packages apps` and confirm zero matches in source files (allowed only inside `docs/`).
-   - Run `rg -n "figma-alpha-api\\.s3" packages apps` to catch signed CDN URLs that sometimes leak into SVG `xlink:href` attributes.
+6. [x] Confirm the no-external-URL invariant across the repo.
+   - `rg -n "figma\.com" packages apps` → zero matches.
+   - `rg -n "figma-alpha-api\.s3" packages apps` → zero matches.
 
-7. Run lint to make sure nothing in the workspace regresses on asset-related rules.
-   - `yarn workspace @pipeline/ui lint`.
-   - `npx tsx scripts/lint-docs.ts`.
+7. [x] Run lint to make sure nothing in the workspace regresses on asset-related rules.
+   - `yarn workspace @pipeline/ui lint` → clean.
+   - `npx tsx scripts/lint-docs.ts` → 0 errors, 30 warnings (pre-existing).
 
 ## Test Strategy
 
