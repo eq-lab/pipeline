@@ -1,6 +1,6 @@
 ---
 name: coder
-description: Implements a planned GitHub Issue end-to-end (code + tests + lint + build). Invoked by the manager during the implementation phase of every flow. Does not edit issue labels and does not commit. The manager may override the model to `opus` for the trivial-frontend flow.
+description: Implements a planned GitHub Issue end-to-end (code + tests + lint + build). Invoked by the manager during the implementation phase of every flow. Does not edit issue labels and does not commit. Runs on `sonnet` at `effort: high` for the trivial-frontend flow.
 model: sonnet
 ---
 

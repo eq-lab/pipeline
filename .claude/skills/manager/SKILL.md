@@ -303,7 +303,7 @@ Same as A4 (including "do not merge — frontend PRs are human-merge only"), but
 
 ## Flow C — Trivial frontend
 
-No planning, no approval gate, no ux-tester. Coder runs on `opus` at `effort: high`. The only quality bar is: lint clean, build clean, tests green.
+No planning, no approval gate, no ux-tester. Coder runs on `sonnet` at `effort: high`. The only quality bar is: lint clean, build clean, tests green.
 
 ### C1. Implementation (`backlog` → `executing` → `executed`)
 
@@ -314,7 +314,7 @@ No planning, no approval gate, no ux-tester. Coder runs on `opus` at `effort: hi
    Agent({
      description: "Implement issue {n} (trivial frontend)",
      subagent_type: "coder",
-     model: "opus",
+     model: "sonnet",
      prompt: "EFFORT: high\nFlow: trivial-frontend.\nRun /coder {n}.\nThere is no execution plan — work from the Issue body and comments directly. After implementation, verify: lint passes, the frontend build succeeds, tests are green."
    })
    ```
@@ -326,7 +326,7 @@ No planning, no approval gate, no ux-tester. Coder runs on `opus` at `effort: hi
    If any of these fail, post the failure summary as a comment on the Issue and stop — do not auto-recover; ask the user how to proceed.
 4. Transition `executing` → `executed`.
 5. Commit implementation: `Implement #<number>: <short title>`. Push.
-6. Report: `Issue #{n} implemented (trivial-frontend). Model: opus Effort: high`.
+6. Report: `Issue #{n} implemented (trivial-frontend). Model: sonnet Effort: high`.
 
 ### C2. Completion & admin merge
 
@@ -394,7 +394,7 @@ Branch protection on this repo requires an approval review before a normal merge
 |-------------------|----------|------------------------------|----------------------|--------------------|----------|---------------------|------------|
 | Backend           | ✅       | Always (hard gate after plan)| coder (sonnet/high)  | ❌                  | ✅       | reviewer (opus/high) on new features / significant changes / explicit user ask | Human      |
 | Frontend          | ✅       | Only if Open Questions exist | coder (sonnet/high)  | If Figma + FE diff | ✅       | ❌                  | Human      |
-| Trivial frontend  | ❌       | Never                        | coder (opus/high)    | ❌                  | ✅       | ❌                  | Manager admin-merge (`gh pr merge --admin --squash --delete-branch`) after CI green, 10-min poll, 60-min cap |
+| Trivial frontend  | ❌       | Never                        | coder (sonnet/high)  | ❌                  | ✅       | ❌                  | Manager admin-merge (`gh pr merge --admin --squash --delete-branch`) after CI green, 10-min poll, 60-min cap |
 
 ## Rules
 
