@@ -53,3 +53,8 @@ export type {
   HeroIconProps,
   HeroIconName,
 } from "./components/HeroIcon/HeroIcon";
+export { ActivityRow } from "./components/ActivityRow/ActivityRow";
+export type {
+  ActivityRowProps,
+  ActivityIconName,
+} from "./components/ActivityRow/ActivityRow";
