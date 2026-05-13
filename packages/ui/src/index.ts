@@ -23,3 +23,5 @@ export { WalletPill } from "./components/WalletPill/WalletPill";
 export type { WalletPillProps } from "./components/WalletPill/WalletPill";
 export { QuickAmountChip } from "./components/QuickAmountChip/QuickAmountChip";
 export type { QuickAmountChipProps } from "./components/QuickAmountChip/QuickAmountChip";
+export { InfoRow } from "./components/InfoRow/InfoRow";
+export type { InfoRowProps } from "./components/InfoRow/InfoRow";
