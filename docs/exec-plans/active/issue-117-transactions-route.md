@@ -98,7 +98,7 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **Create the route file** `packages/frontend/src/routes/transactions.tsx`:
+1. [x] **Create the route file** `packages/frontend/src/routes/transactions.tsx`:
 
    ```tsx
    import { createFileRoute } from "@tanstack/react-router";
@@ -139,7 +139,7 @@ Out of scope:
    - Do NOT add additional imports, layout primitives, or `<Card>`s. The page
      stays intentionally inert until #125.
 
-2. **Regenerate the route tree.**
+2. [x] **Regenerate the route tree.**
    - Run `yarn workspace @pipeline/frontend build` (or start `dev` once). The
      `TanStackRouterVite()` plugin in `packages/frontend/vite.config.ts`
      re-emits `packages/frontend/src/routeTree.gen.ts` with the new
@@ -156,7 +156,7 @@ Out of scope:
      Expect entries inside the three `FileRoutes*` interfaces, the
      `FileRouteTypes.fullPaths` / `.to` union, and the `declare module` block.
 
-3. **Verify dev render.**
+3. [x] **Verify dev render.**
    - `yarn workspace @pipeline/frontend dev`, then open
      `http://localhost:5173/transactions` (or whichever port vite picks).
    - Expect: TopBar visible, history icon active (painted with
@@ -165,7 +165,7 @@ Out of scope:
    - Also visit `/` and `/deposit` to confirm the existing routes are
      unaffected.
 
-4. **Build & lint gates.**
+4. [x] **Build & lint gates.**
    - `yarn workspace @pipeline/frontend build` — must succeed (this runs
      `tsc -b` first, which is the type-level acceptance check for the new
      route, then `vite build`, which regenerates the route tree).
@@ -177,7 +177,7 @@ Out of scope:
      `AGENTS.md` after any TS change). The plan + new STORIES line below must
      not regress the docs lint baseline.
 
-5. **Visual sanity-check via Figma** —
+5. [x] **Visual sanity-check via Figma** —
    https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev.
    The transactions frame shows the same TopBar with the history icon active
    in the top-right cluster. The placeholder route deliberately renders only
