@@ -6,16 +6,10 @@ use alloy::sol_types::SolStruct;
 use anyhow::{Context, Result};
 
 sol! {
-    struct AllowClaimDeposit {
+    struct VerifiedRequests {
         uint256 requestId;
-        uint256 amount;
         address user;
-    }
-
-    struct AllowClaimWithdrawal {
-        uint256 requestId;
         uint256 amount;
-        address user;
     }
 }
 
@@ -56,18 +50,18 @@ pub fn eip712_digest(domain: &Eip712Domain, struct_hash: B256) -> B256 {
     keccak256(&buf)
 }
 
-/// Sign an `AllowClaimDeposit` voucher.
-pub async fn sign_allow_claim_deposit(
+/// Sign a `VerifiedRequests` voucher (used by both deposit and withdrawal claim flows).
+pub async fn sign_verified_request(
     signer: &PrivateKeySigner,
     domain: &Eip712Domain,
     request_id: U256,
     amount: U256,
     user: Address,
 ) -> Result<Vec<u8>> {
-    let data = AllowClaimDeposit {
+    let data = VerifiedRequests {
         requestId: request_id,
-        amount,
         user,
+        amount,
     };
     let struct_hash = data.eip712_hash_struct();
     let digest = eip712_digest(domain, struct_hash);
@@ -75,31 +69,7 @@ pub async fn sign_allow_claim_deposit(
     let sig = signer
         .sign_hash(&digest)
         .await
-        .context("failed to sign AllowClaimDeposit")?;
-
-    Ok(sig_to_bytes(&sig))
-}
-
-/// Sign an `AllowClaimWithdrawal` voucher.
-pub async fn sign_allow_claim_withdrawal(
-    signer: &PrivateKeySigner,
-    domain: &Eip712Domain,
-    request_id: U256,
-    amount: U256,
-    user: Address,
-) -> Result<Vec<u8>> {
-    let data = AllowClaimWithdrawal {
-        requestId: request_id,
-        amount,
-        user,
-    };
-    let struct_hash = data.eip712_hash_struct();
-    let digest = eip712_digest(domain, struct_hash);
-
-    let sig = signer
-        .sign_hash(&digest)
-        .await
-        .context("failed to sign AllowClaimWithdrawal")?;
+        .context("failed to sign VerifiedRequests")?;
 
     Ok(sig_to_bytes(&sig))
 }

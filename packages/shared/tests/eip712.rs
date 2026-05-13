@@ -1,10 +1,7 @@
 use alloy::primitives::{Address, PrimitiveSignature, U256};
 use alloy::signers::local::PrivateKeySigner;
 use alloy::sol_types::SolStruct;
-use shared::eip712::{
-    eip712_digest, sign_allow_claim_deposit, sign_allow_claim_withdrawal, AllowClaimDeposit,
-    AllowClaimWithdrawal, Eip712Domain,
-};
+use shared::eip712::{eip712_digest, sign_verified_request, Eip712Domain, VerifiedRequests};
 
 fn test_signer() -> PrivateKeySigner {
     "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -50,15 +47,15 @@ async fn sign_and_recover_deposit_voucher() {
         .parse()
         .unwrap();
 
-    let sig_bytes = sign_allow_claim_deposit(&signer, &domain, request_id, amount, user)
+    let sig_bytes = sign_verified_request(&signer, &domain, request_id, amount, user)
         .await
         .unwrap();
     assert_eq!(sig_bytes.len(), 65);
 
-    let data = AllowClaimDeposit {
+    let data = VerifiedRequests {
         requestId: request_id,
-        amount,
         user,
+        amount,
     };
     let digest = eip712_digest(&domain, data.eip712_hash_struct());
     assert_eq!(recover(&sig_bytes, &digest), signer.address());
@@ -74,15 +71,15 @@ async fn sign_and_recover_withdrawal_voucher() {
         .parse()
         .unwrap();
 
-    let sig_bytes = sign_allow_claim_withdrawal(&signer, &domain, request_id, amount, user)
+    let sig_bytes = sign_verified_request(&signer, &domain, request_id, amount, user)
         .await
         .unwrap();
     assert_eq!(sig_bytes.len(), 65);
 
-    let data = AllowClaimWithdrawal {
+    let data = VerifiedRequests {
         requestId: request_id,
-        amount,
         user,
+        amount,
     };
     let digest = eip712_digest(&domain, data.eip712_hash_struct());
     assert_eq!(recover(&sig_bytes, &digest), signer.address());

@@ -7,6 +7,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use utoipa::{OpenApi, ToSchema};
 
 use crate::AppState;
 
@@ -17,12 +18,30 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/requests", get(get_requests))
 }
 
-#[derive(Deserialize)]
+#[derive(OpenApi)]
+#[openapi(
+    paths(deposit_voucher, withdrawal_voucher, get_requests),
+    components(schemas(WalletQuery, RequestsQuery, VoucherResponse)),
+    tags(
+        (name = "Vouchers", description = "Deposit/withdrawal voucher signing and request listing")
+    )
+)]
+pub struct VouchersDoc;
+
+#[derive(Deserialize, ToSchema)]
 pub struct WalletQuery {
     pub wallet: String,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, ToSchema)]
+pub struct RequestsQuery {
+    pub wallet: String,
+    /// "all" (default) or "pending" (only unclaimed requests).
+    #[serde(default)]
+    pub status: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
 pub struct VoucherResponse {
     pub request_id: String,
     pub amount: String,
@@ -30,6 +49,21 @@ pub struct VoucherResponse {
     pub signature: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/deposits/{request_id}/voucher",
+    params(
+        ("request_id" = String, Path, description = "Deposit request ID"),
+        ("wallet" = String, Query, description = "Wallet address"),
+    ),
+    responses(
+        (status = 200, description = "Voucher with signature", body = VoucherResponse),
+        (status = 404, description = "Deposit request not found"),
+        (status = 403, description = "KYT screening not passed or profile not allowed"),
+        (status = 409, description = "Already claimed"),
+    ),
+    tag = "Vouchers"
+)]
 async fn deposit_voucher(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<String>,
@@ -103,7 +137,7 @@ async fn deposit_voucher(
     // Check not already claimed
     match state
         .kyc_repo
-        .is_request_claimed("DepositClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id)
         .await
     {
         Ok(true) => {
@@ -157,7 +191,7 @@ async fn deposit_voucher(
             .into_response();
     };
 
-    match shared::eip712::sign_allow_claim_deposit(signer, domain, rid, amount, user).await {
+    match shared::eip712::sign_verified_request(signer, domain, rid, amount, user).await {
         Ok(sig_bytes) => Json(VoucherResponse {
             request_id: rid_str,
             amount: amount_str,
@@ -176,6 +210,21 @@ async fn deposit_voucher(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/withdrawals/{request_id}/voucher",
+    params(
+        ("request_id" = String, Path, description = "Withdrawal request ID"),
+        ("wallet" = String, Query, description = "Wallet address"),
+    ),
+    responses(
+        (status = 200, description = "Voucher with signature", body = VoucherResponse),
+        (status = 404, description = "Withdrawal request not found"),
+        (status = 403, description = "KYT screening not passed"),
+        (status = 409, description = "Already claimed"),
+    ),
+    tag = "Vouchers"
+)]
 async fn withdrawal_voucher(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<String>,
@@ -227,7 +276,7 @@ async fn withdrawal_voucher(
 
     match state
         .kyc_repo
-        .is_request_claimed("WithdrawalClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id)
         .await
     {
         Ok(true) => {
@@ -281,7 +330,7 @@ async fn withdrawal_voucher(
             .into_response();
     };
 
-    match shared::eip712::sign_allow_claim_withdrawal(signer, domain, rid, amount, user).await {
+    match shared::eip712::sign_verified_request(signer, domain, rid, amount, user).await {
         Ok(sig_bytes) => Json(VoucherResponse {
             request_id: rid_str,
             amount: amount_str,
@@ -300,13 +349,26 @@ async fn withdrawal_voucher(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v1/requests",
+    params(
+        ("wallet" = String, Query, description = "Wallet address"),
+        ("status" = Option<String>, Query, description = "Filter: \"all\" (default) or \"pending\" (unclaimed only)"),
+    ),
+    responses(
+        (status = 200, description = "List of requests"),
+    ),
+    tag = "Vouchers"
+)]
 async fn get_requests(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<WalletQuery>,
+    Query(query): Query<RequestsQuery>,
 ) -> impl IntoResponse {
     let wallet = query.wallet.to_lowercase();
+    let pending_only = query.status.as_deref() == Some("pending");
 
-    match state.kyc_repo.get_all_requests(&wallet).await {
+    match state.kyc_repo.get_all_requests(&wallet, pending_only).await {
         Ok(events) => Json(serde_json::json!({"requests": events})).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch requests");

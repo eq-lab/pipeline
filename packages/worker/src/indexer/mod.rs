@@ -14,10 +14,7 @@ use shared::db::EventRepo;
 
 use config::IndexerJobSettings;
 use mappers::ContractLogMapper;
-use parsers::{
-    parse_deposit_claimed, parse_deposit_requested, parse_withdrawal_claimed,
-    parse_withdrawal_requested,
-};
+use parsers::{parse_deposit_requested, parse_request_claimed, parse_withdrawal_requested};
 use poller::EvmEventPollerBuilder;
 
 pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
@@ -61,7 +58,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
     )
     .add_event_handler(dm_contracts, move |log| {
         parse_deposit_requested(log)
-            .or_else(|| parse_deposit_claimed(log))
+            .or_else(|| parse_request_claimed(log))
             .map(|ev| {
                 Box::new(ContractLogMapper::new(ev, chain_id, dm_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>
@@ -69,7 +66,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
     })
     .add_event_handler(wq_contracts, move |log| {
         parse_withdrawal_requested(log)
-            .or_else(|| parse_withdrawal_claimed(log))
+            .or_else(|| parse_request_claimed(log))
             .map(|ev| {
                 Box::new(ContractLogMapper::new(ev, chain_id, wq_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>

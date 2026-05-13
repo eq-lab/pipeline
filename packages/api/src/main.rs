@@ -98,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
     api_docs.merge(pipeline_api::routes::emails::EmailsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::vouchers::VouchersDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())

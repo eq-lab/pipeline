@@ -6,16 +6,14 @@ use alloy::{
 use alloy::sol_types::SolEvent;
 
 use pipeline_worker::indexer::parsers::{
-    parse_deposit_claimed, parse_deposit_requested, parse_withdrawal_claimed,
-    parse_withdrawal_requested,
+    parse_deposit_requested, parse_request_claimed, parse_withdrawal_requested,
 };
 
 // Re-declare sol! events to get correct SIGNATURE_HASH constants for test log construction.
 alloy::sol! {
-    event DepositRequested(address indexed user, uint256 indexed requestId, uint256 amount);
-    event DepositClaimed(uint256 indexed requestId);
+    event DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount);
     event WithdrawalRequested(address indexed withdrawer, uint256 indexed requestId, uint256 amount, uint256 queued);
-    event WithdrawalClaimed(address indexed withdrawer, uint256 indexed requestId, uint256 amount);
+    event RequestClaimed(uint256 indexed requestId, address indexed user, uint256 amount);
 }
 
 const CONTRACT: Address = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -30,8 +28,8 @@ fn deposit_requested_decodes() {
     let request_id = U256::from(7u64);
     let amount = U256::from(1000u64);
 
-    let topic1: FixedBytes<32> = user.into_word();
-    let topic2: FixedBytes<32> = request_id.into();
+    let topic1: FixedBytes<32> = request_id.into();
+    let topic2: FixedBytes<32> = user.into_word();
 
     let mut data = [0u8; 32];
     data.copy_from_slice(&amount.to_be_bytes::<32>());
@@ -62,17 +60,27 @@ fn deposit_requested_decodes() {
     assert_eq!(ev.block_number, 101);
 }
 
-// --- DepositClaimed tests ---
+// --- RequestClaimed tests ---
 
 #[test]
-fn deposit_claimed_decodes() {
+fn request_claimed_decodes() {
+    let user = address!("1111111111111111111111111111111111111111");
     let request_id = U256::from(7u64);
+    let amount = U256::from(5000u64);
 
     let topic1: FixedBytes<32> = request_id.into();
+    let topic2: FixedBytes<32> = user.into_word();
+
+    let mut data = [0u8; 32];
+    data.copy_from_slice(&amount.to_be_bytes::<32>());
 
     let inner = alloy::primitives::Log {
         address: CONTRACT,
-        data: LogData::new(vec![DepositClaimed::SIGNATURE_HASH, topic1], vec![].into()).unwrap(),
+        data: LogData::new(
+            vec![RequestClaimed::SIGNATURE_HASH, topic1, topic2],
+            data.into(),
+        )
+        .unwrap(),
     };
     let log = Log {
         inner,
@@ -82,11 +90,11 @@ fn deposit_claimed_decodes() {
         ..Default::default()
     };
 
-    let ev = parse_deposit_claimed(&log).expect("should decode");
-    assert_eq!(ev.event_name, "DepositClaimed");
-    assert_eq!(ev.sender, None);
+    let ev = parse_request_claimed(&log).expect("should decode");
+    assert_eq!(ev.event_name, "RequestClaimed");
+    assert_eq!(ev.sender, Some(user));
     assert_eq!(ev.receiver, None);
-    assert_eq!(ev.amount, None);
+    assert_eq!(ev.amount, Some(amount));
     assert_eq!(ev.request_id, Some(request_id));
     assert_eq!(ev.cumulative, None);
     assert_eq!(ev.block_number, 102);
@@ -133,45 +141,4 @@ fn withdrawal_requested_decodes() {
     assert_eq!(ev.cumulative, Some(queued));
     assert_eq!(ev.block_number, 200);
     assert_eq!(ev.log_index, 3);
-}
-
-// --- WithdrawalClaimed tests ---
-
-#[test]
-fn withdrawal_claimed_decodes() {
-    let withdrawer = address!("1111111111111111111111111111111111111111");
-    let request_id = U256::from(42u64);
-    let amount = U256::from(5000u64);
-
-    let topic1: FixedBytes<32> = withdrawer.into_word();
-    let topic2: FixedBytes<32> = request_id.into();
-
-    let mut data = [0u8; 32];
-    data.copy_from_slice(&amount.to_be_bytes::<32>());
-
-    let inner = alloy::primitives::Log {
-        address: CONTRACT,
-        data: LogData::new(
-            vec![WithdrawalClaimed::SIGNATURE_HASH, topic1, topic2],
-            data.into(),
-        )
-        .unwrap(),
-    };
-    let log = Log {
-        inner,
-        block_number: Some(201),
-        transaction_hash: Some(TX_HASH),
-        log_index: Some(1),
-        ..Default::default()
-    };
-
-    let ev = parse_withdrawal_claimed(&log).expect("should decode");
-    assert_eq!(ev.event_name, "WithdrawalClaimed");
-    assert_eq!(ev.sender, Some(withdrawer));
-    assert_eq!(ev.receiver, None);
-    assert_eq!(ev.amount, Some(amount));
-    assert_eq!(ev.request_id, Some(request_id));
-    assert_eq!(ev.cumulative, None);
-    assert_eq!(ev.block_number, 201);
-    assert_eq!(ev.log_index, 1);
 }

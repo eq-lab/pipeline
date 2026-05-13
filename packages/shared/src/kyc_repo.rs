@@ -524,18 +524,36 @@ impl KycRepo {
         Ok(row.is_some())
     }
 
-    /// Get all deposit/withdrawal events for a wallet.
-    pub async fn get_all_requests(&self, wallet: &str) -> anyhow::Result<Vec<RequestEvent>> {
-        let rows = sqlx::query_as::<_, RequestEventRow>(
+    /// Get deposit/withdrawal events for a wallet.
+    /// When `pending_only` is true, only returns requests that have not been claimed.
+    pub async fn get_all_requests(
+        &self,
+        wallet: &str,
+        pending_only: bool,
+    ) -> anyhow::Result<Vec<RequestEvent>> {
+        let query = if pending_only {
             "SELECT event_name, request_id, amount, crystal_kyt_status, block_timestamp
              FROM contract_logs
              WHERE LOWER(sender) = $1
-               AND event_name IN ('DepositRequested', 'DepositClaimed', 'WithdrawalRequested', 'WithdrawalClaimed')
-             ORDER BY block_timestamp DESC, id DESC",
-        )
-        .bind(wallet)
-        .fetch_all(&self.pool)
-        .await?;
+               AND event_name IN ('DepositRequested', 'WithdrawalRequested')
+               AND NOT EXISTS (
+                   SELECT 1 FROM contract_logs c2
+                   WHERE c2.event_name = 'RequestClaimed'
+                     AND c2.request_id = contract_logs.request_id
+               )
+             ORDER BY block_timestamp DESC, id DESC"
+        } else {
+            "SELECT event_name, request_id, amount, crystal_kyt_status, block_timestamp
+             FROM contract_logs
+             WHERE LOWER(sender) = $1
+               AND event_name IN ('DepositRequested', 'WithdrawalRequested', 'RequestClaimed')
+             ORDER BY block_timestamp DESC, id DESC"
+        };
+
+        let rows = sqlx::query_as::<_, RequestEventRow>(query)
+            .bind(wallet)
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(RequestEvent::from).collect())
     }
 
