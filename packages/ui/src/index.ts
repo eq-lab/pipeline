@@ -34,3 +34,5 @@ export type {
   TokenInputProps,
   QuickAmountItem,
 } from "./components/TokenInput/TokenInput";
+export { ConversionCard } from "./components/ConversionCard";
+export type { ConversionCardProps } from "./components/ConversionCard";
