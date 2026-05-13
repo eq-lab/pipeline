@@ -83,6 +83,9 @@
   --color-pipeline-on-dark: #ffffff;
   --color-pipeline-line: rgb(56 55 53 / 0.18);
   --color-pipeline-surface-muted: rgb(56 55 53 / 0.12);
+  --color-pipeline-fill-muted: rgb(
+    191 189 187 / 0.12
+  ); /* fill/primary-muted — icon bg, segmented tab container */
 
   /* Type ramp */
   --text-pipeline-title: 64px;
@@ -139,6 +142,9 @@
   --color-pipeline-surface-muted: rgb(
     56 55 53 / 0.12
   ); /* fill/surface-muted — hero-circle background (Activity hero node 1497:94912) */
+  --color-pipeline-fill-muted: rgb(
+    191 189 187 / 0.12
+  ); /* fill/primary-muted — icon bg, segmented tab container */
 
   /* --- Typography: families --- */
 

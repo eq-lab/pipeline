@@ -58,3 +58,8 @@ export type {
   ActivityRowProps,
   ActivityIconName,
 } from "./components/ActivityRow/ActivityRow";
+export { SegmentedTabs } from "./components/SegmentedTabs";
+export type {
+  SegmentedTabsProps,
+  SegmentedTabsTab,
+} from "./components/SegmentedTabs";
