@@ -40,7 +40,16 @@ function buildRouter(initialPath: string, activeNavProp?: string) {
     path: "/deposit",
     component: () => null,
   });
-  const routeTree = rootRoute.addChildren([indexRoute, depositRoute]);
+  const transactionsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/transactions",
+    component: () => null,
+  });
+  const routeTree = rootRoute.addChildren([
+    indexRoute,
+    depositRoute,
+    transactionsRoute,
+  ]);
   return createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [initialPath] }),
@@ -135,5 +144,49 @@ describe("TopBar — route-driven active state", () => {
     await expect(
       user.click(screen.getByRole("button", { name: "Markets" })),
     ).resolves.not.toThrow();
+  });
+
+  it("highlights History on /transactions", async () => {
+    const router = buildRouter("/transactions");
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "History" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+  });
+
+  it("navigates to /transactions when History is clicked", async () => {
+    const user = userEvent.setup();
+    const router = buildRouter("/");
+    render(<RouterProvider router={router} />);
+
+    // Wait for initial render.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    // After navigation, History should be active.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "History" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
   });
 });

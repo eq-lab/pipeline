@@ -95,7 +95,12 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "home", label: "Home", src: navHomeIcon, to: "/" }, // 1497:94719
   { key: "convert", label: "Convert", src: navDollarIcon, to: "/deposit" }, // 1497:94720
   { key: "markets", label: "Markets", src: navStatsIcon }, //          1497:94721
-  { key: "history", label: "History", src: navHistoryIcon }, //        1497:94722
+  {
+    key: "history",
+    label: "History",
+    src: navHistoryIcon,
+    to: "/transactions",
+  }, // 1497:94722
 ];
 
 export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
@@ -106,10 +111,7 @@ export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
-  function TopBar(
-    { onConnectWallet, activeNav, className, ...rest },
-    ref,
-  ) {
+  function TopBar({ onConnectWallet, activeNav, className, ...rest }, ref) {
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -117,9 +119,11 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const derivedActive: string =
       pathname === "/deposit"
         ? "convert"
-        : pathname === "/"
-          ? "home"
-          : "home";
+        : pathname === "/transactions"
+          ? "history"
+          : pathname === "/"
+            ? "home"
+            : "home";
 
     // Explicit prop wins; otherwise use the URL-derived value.
     const effectiveActive = activeNav ?? derivedActive;

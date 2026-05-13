@@ -351,6 +351,40 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Expected:** `main.tsx` imports `./index.css` (not `@pipeline/ui/styles/theme.css` directly); theme is pulled in transitively via `index.css`.
 
 
+## S-117 — /transactions route scaffold
+
+**Issue:** [#117 Add /transactions file-based route in frontend](https://github.com/eq-lab/pipeline/issues/117)
+**Plan:** `docs/exec-plans/active/issue-117-transactions-route.md`
+
+### TC-117-1: History icon navigates to /transactions
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running, browser at `http://localhost:5173/`
+- **Steps:**
+  1. Observe the TopBar nav icons
+  2. Click the history (clock) icon
+- **Expected:** URL changes to `/transactions`; TopBar is visible with the history icon highlighted in brand colour; page body is blank below the bar; no console errors.
+
+### TC-117-2: History icon active on /transactions
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+- **Expected:** History icon is active (brand colour); all other nav icons are muted.
+
+### TC-117-3: Existing routes unaffected
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; currently on `/transactions`
+- **Steps:**
+  1. Click the Home icon — URL becomes `/`; home icon active, history icon muted.
+  2. Click the Convert (dollar) icon — URL becomes `/deposit`; convert icon active.
+  3. Navigate back to `/transactions` — history icon active again.
+- **Expected:** All three routes render correctly with the correct icon highlighted; no console errors at any step.
+
+---
+
 ## Issue #101 — Deposit nav
 
 ### TC-101-1: Dollar icon navigates to /deposit
