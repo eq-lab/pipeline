@@ -3,12 +3,18 @@ import React from "react";
 /**
  * Card — Pipeline UI surface primitive.
  *
- * Two variants from Figma frame 1497-94556:
+ * Three variants from Figma:
  *   - `white`  — paper-white surface with a subtle hairline border. Used for
  *                Get PLUSD, Stake, Earned, Recent activity, QnA cards, and the
  *                outer container that wraps the dashboard.
+ *                (Figma frame 1497-94556)
  *   - `yellow` — pale yellow promo surface used for the Connect Wallet card on
  *                the left of the dashboard.
+ *                (Figma frame 1497-94556)
+ *   - `muted`  — slightly-grey surface used for step rows in the deposit/
+ *                conversion flow. Background is `--color-pipeline-paper`
+ *                (#f8f7f6). Used by `StepsCard`.
+ *                (Figma node 1498-100130)
  *
  * The Card is a pure surface — it controls fill, border, radius and inner
  * padding only. Children render unstyled so callers compose their own layout
@@ -18,7 +24,7 @@ import React from "react";
  * `@pipeline/ui/styles/theme.css` (no raw colors).
  */
 
-export type CardVariant = "white" | "yellow";
+export type CardVariant = "white" | "yellow" | "muted";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: CardVariant;
@@ -49,6 +55,16 @@ const variantClasses: Record<CardVariant, string> = {
   // Matches the Connect Wallet promo card (node 1497:94688).
   yellow: [
     "bg-[var(--color-pipeline-promo)]",
+    "border-[color:var(--color-pipeline-line)]",
+  ].join(" "),
+
+  // muted — slightly-grey surface (#f8f7f6) used for the step rows in the
+  // deposit/conversion flow. Uses --color-pipeline-paper so the card
+  // visually recedes behind white surfaces. Hairline border from
+  // --color-pipeline-line for consistency.
+  // Matches the StepsCard container (Figma node 1498-100130).
+  muted: [
+    "bg-[var(--color-pipeline-paper)]",
     "border-[color:var(--color-pipeline-line)]",
   ].join(" "),
 };
