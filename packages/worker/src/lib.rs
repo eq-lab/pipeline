@@ -1,3 +1,3 @@
 pub mod indexer;
 pub mod kyc;
-pub mod whitelist;
+pub mod relayer;

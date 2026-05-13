@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 alloy              = { workspace = true }
 anyhow             = { workspace = true }
+bigdecimal        = { workspace = true }
 async-trait        = { workspace = true }
 reqwest            = { workspace = true }
 sqlx               = { workspace = true }

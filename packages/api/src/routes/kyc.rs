@@ -42,9 +42,9 @@ pub struct CreateTokenResponse {
 
 #[derive(Serialize, ToSchema)]
 pub struct KycStatusResponse {
-    pub kyc_status: i16,
-    pub kyc_review_status: i16,
-    pub aml_status: i16,
+    pub sumsub_kyc_status: i16,
+    pub sumsub_review_status: i16,
+    pub sumsub_aml_status: i16,
 }
 
 #[derive(OpenApi)]
@@ -77,20 +77,15 @@ async fn create_applicant(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateApplicantRequest>,
 ) -> impl IntoResponse {
-    let profile = state.kyc_repo.get_lp_profile(&req.wallet_address).await;
-    let profile = match profile {
+    let profile = match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
         Ok(Some(p)) => p,
-        Ok(None) => match state.kyc_repo.create_lp_profile(&req.wallet_address).await {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("failed to create lp_profile: {e:?}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "internal error"})),
-                )
-                    .into_response();
-            }
-        },
+        Ok(None) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "wallet not registered — profile is created automatically from a deposit request"})),
+            )
+                .into_response();
+        }
         Err(e) => {
             tracing::error!("failed to get lp_profile: {e:?}");
             return (
@@ -170,6 +165,25 @@ async fn create_token(
             .into_response();
     };
 
+    match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "wallet not registered — profile is created automatically from a deposit request"})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::error!("failed to get lp_profile: {e:?}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response();
+        }
+    }
+
     match sumsub_client
         .generate_access_token(&req.wallet_address)
         .await
@@ -220,9 +234,9 @@ async fn get_status(
 ) -> impl IntoResponse {
     match state.kyc_repo.get_lp_profile(&wallet_address).await {
         Ok(Some(profile)) => Json(KycStatusResponse {
-            kyc_status: profile.kyc_status,
-            kyc_review_status: profile.kyc_review_status,
-            aml_status: profile.aml_status,
+            sumsub_kyc_status: profile.sumsub_kyc_status,
+            sumsub_review_status: profile.sumsub_review_status,
+            sumsub_aml_status: profile.sumsub_aml_status,
         })
         .into_response(),
         Ok(None) => (
@@ -309,7 +323,7 @@ async fn webhook_callback(
 
     if let Err(e) = state
         .kyc_repo
-        .update_kyc_status(&wallet_address, kyc_status, review_status, aml_status)
+        .update_sumsub_status(&wallet_address, kyc_status, review_status, aml_status)
         .await
     {
         tracing::error!("failed to update kyc status: {e:?}");

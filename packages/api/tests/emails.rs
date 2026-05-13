@@ -29,6 +29,9 @@ async fn test_app() -> Option<(Router, sqlx::PgPool)> {
         kyc_repo,
         sumsub_client: None,
         sumsub_settings: None,
+        voucher_signer: None,
+        dm_domain: None,
+        wq_domain: None,
     });
 
     let app = Router::new()
