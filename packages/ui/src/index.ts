@@ -25,3 +25,5 @@ export { QuickAmountChip } from "./components/QuickAmountChip/QuickAmountChip";
 export type { QuickAmountChipProps } from "./components/QuickAmountChip/QuickAmountChip";
 export { InfoRow } from "./components/InfoRow/InfoRow";
 export type { InfoRowProps } from "./components/InfoRow/InfoRow";
+export { StepRow } from "./components/StepRow/StepRow";
+export type { StepRowProps } from "./components/StepRow/StepRow";
