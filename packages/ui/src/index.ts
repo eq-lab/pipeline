@@ -38,3 +38,8 @@ export { ConversionCard } from "./components/ConversionCard";
 export type { ConversionCardProps } from "./components/ConversionCard";
 export { DepositHeader } from "./components/DepositHeader/DepositHeader";
 export type { DepositHeaderProps } from "./components/DepositHeader/DepositHeader";
+export { StepsCard } from "./components/StepsCard/StepsCard";
+export type {
+  StepsCardProps,
+  StepItem,
+} from "./components/StepsCard/StepsCard";
