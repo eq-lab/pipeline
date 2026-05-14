@@ -28,7 +28,7 @@ impl RelayerJobSettings {
             signer_key: env_require(&format!("{prefix}SIGNER_KEY"))?,
             registry_address: env_require(&format!("{prefix}REGISTRY_ADDRESS"))?,
             sumsub_enabled: env_parse(&format!("{prefix}SUMSUB_ENABLED"), true)?,
-            crystal_enabled: env_parse(&format!("{prefix}CRYSTAL_ENABLED"), true)?,
+            crystal_enabled: env_parse("CRYSTAL_ENABLED", true)?,
         })
     }
 }

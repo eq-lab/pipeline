@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let crystal_enabled = std::env::var("JOB_RELAYER_CRYSTAL_ENABLED")
+    let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
         .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
         .unwrap_or(true);
