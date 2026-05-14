@@ -99,11 +99,13 @@ async fn main() -> anyhow::Result<()> {
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
     api_docs.merge(pipeline_api::routes::emails::EmailsDoc::openapi());
     api_docs.merge(pipeline_api::routes::vouchers::VouchersDoc::openapi());
+    api_docs.merge(pipeline_api::routes::analytics::AnalyticsDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
         .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .nest("/v1", pipeline_api::routes::vouchers::router())
+        .nest("/v1", pipeline_api::routes::analytics::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(
