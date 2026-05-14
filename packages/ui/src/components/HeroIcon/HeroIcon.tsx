@@ -1,5 +1,6 @@
 import React from "react";
 import arrowClockSrc from "../../assets/icons/arrow-clock.svg";
+import navStatsSrc from "../../assets/icons/nav-stats.svg";
 
 /**
  * HeroIcon — 72×72 muted-fill circle with a 36px ink-tinted icon centered
@@ -22,10 +23,11 @@ import arrowClockSrc from "../../assets/icons/arrow-clock.svg";
  */
 
 /** String-literal union of supported icon names. Extend as new icons land. */
-export type HeroIconName = "arrow-clock";
+export type HeroIconName = "arrow-clock" | "chart";
 
 const ICON_SRC_MAP: Record<HeroIconName, string> = {
   "arrow-clock": arrowClockSrc,
+  chart: navStatsSrc,
 };
 
 export interface HeroIconProps extends React.HTMLAttributes<HTMLDivElement> {
