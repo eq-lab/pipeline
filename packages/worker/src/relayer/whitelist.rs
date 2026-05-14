@@ -5,7 +5,7 @@ use shared::kyc_repo::KycRepo;
 sol! {
     #[sol(rpc)]
     contract WhitelistRegistry {
-        function allowUser(address user) external;
+        function allow(address user) external;
         function disallow(address who) external;
     }
 }
@@ -13,7 +13,7 @@ sol! {
 /// Phase 3: Sync whitelist state to the on-chain WhitelistRegistry.
 ///
 /// Reads DB flags set by Phase 1 (Sumsub) and Phase 2 (Crystal) and makes
-/// allowUser/disallow calls accordingly.
+/// allow/disallow calls accordingly.
 pub async fn phase_sync_whitelist<T, P>(
     registry: &WhitelistRegistry::WhitelistRegistryInstance<T, P>,
     kyc_repo: &KycRepo,
@@ -59,7 +59,7 @@ async fn process_allows<T, P>(
         };
 
         let result: Result<_, alloy::contract::Error> = async {
-            registry.allowUser(addr).send().await?.watch().await?;
+            registry.allow(addr).send().await?.watch().await?;
             Ok(())
         }
         .await;
@@ -70,13 +70,13 @@ async fn process_allows<T, P>(
                     .set_on_chain_allowed(&candidate.wallet_address)
                     .await
                 {
-                    tracing::error!(wallet = candidate.wallet_address, error = %e, "failed to update DB after allowUser tx");
+                    tracing::error!(wallet = candidate.wallet_address, error = %e, "failed to update DB after allow tx");
                 } else {
-                    tracing::info!(wallet = candidate.wallet_address, "allowUser tx confirmed");
+                    tracing::info!(wallet = candidate.wallet_address, "allow tx confirmed");
                 }
             }
             Err(e) => {
-                tracing::error!(wallet = candidate.wallet_address, error = %e, "allowUser tx failed, will retry next iteration");
+                tracing::error!(wallet = candidate.wallet_address, error = %e, "allow tx failed, will retry next iteration");
             }
         }
     }
