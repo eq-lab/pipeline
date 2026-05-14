@@ -15,7 +15,7 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  *   ┌────────────────────────────────────┐
  *   │  Start here                        │
  *   │  ($) Get PLUSD                     │
- *   │  Convert with USDC 1:1             │
+ *   │  Convert USDC 1:1                  │
  *   │                                    │
  *   │  [ Convert ]                       │
  *   └────────────────────────────────────┘
@@ -181,7 +181,7 @@ export const StartHereCard = React.forwardRef<
           ].join(" ")}
           data-node-id="1497:94687"
         >
-          Convert with USDC 1:1
+          Convert USDC 1:1
         </p>
       </header>
 
