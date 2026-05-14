@@ -46,7 +46,7 @@ function Deposit() {
           input={{
             token: "usdc",
             tokenLabel: "USDC",
-            balanceLabel: "Balance: 10,000.00",
+            balanceLabel: "10,000.00",
             placeholderValue: "0",
             quickAmounts: [
               { label: "$1,000 (Min)", selected: true },
@@ -58,7 +58,7 @@ function Deposit() {
           output={{
             token: "plusd",
             tokenLabel: "PLUSD",
-            balanceLabel: "Balance: 0.00",
+            balanceLabel: "0.00",
             value: "0",
           }}
           exchangeRate="1 USDC = 1 PLUSD"
