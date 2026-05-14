@@ -66,6 +66,8 @@ pub struct RequestEventRow {
 pub struct GroupedRequest {
     #[serde(rename = "type")]
     pub request_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     pub amount: String,
     pub status: String,
     pub created_at: String,
@@ -102,6 +104,7 @@ impl From<RequestEventRow> for GroupedRequest {
 
         Self {
             request_type: request_type.to_owned(),
+            request_id: row.request_id.map(|r| r.to_string()),
             amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
             status: status.to_owned(),
             created_at,
