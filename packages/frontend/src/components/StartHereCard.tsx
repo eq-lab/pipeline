@@ -1,6 +1,5 @@
 import React from "react";
-import { Button, Card } from "@pipeline/ui";
-import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
+import { Button, Card, CoinIcon } from "@pipeline/ui";
 
 /**
  * StartHereCard — Disconnected-state "Get PLUSD" entry card.
@@ -30,10 +29,9 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  *   - {@link Button} `variant="secondary"` with `disabled` provides the ghost
  *     "Sell" CTA (Figma node `1497:94690`) — ink-primary label, transparent
  *     fill, ~0.32 opacity in the disabled state.
- *   - The PLUSD glyph is the existing `nav-dollar.svg` asset rendered through
- *     a CSS `mask-image` so `currentColor` tints it with the brand-navy token.
- *     This mirrors the WalletIllustration pattern (mask + currentColor) and
- *     avoids inlining a second copy of the SVG path data.
+ *   - The PLUSD coin icon is rendered via {@link CoinIcon} `token="plusd"`
+ *     `size="md"` (24 px), matching Figma node `910:10281` — the full blue
+ *     circle with a white "$" glyph baked into the raster asset.
  *
  * Layout:
  *   - The Card is the positioning context for a vertical flex column with
@@ -58,8 +56,8 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  *   - The Card renders a `<div>`; we promote it to a labelled region via
  *     `role="region"` + `aria-labelledby` referencing the heading id so
  *     assistive tech announces "Get PLUSD, region".
- *   - The dollar glyph is decorative; it is rendered through a CSS mask on a
- *     `<span aria-hidden="true">` so it stays out of the accessibility tree.
+ *   - The PLUSD coin icon is decorative; `CoinIcon` is passed `aria-hidden="true"`
+ *     so it stays out of the accessibility tree.
  *   - Both CTAs are real `<button>` elements from the Button primitive with
  *     their own focus-visible styling. The disabled "Sell" button retains its
  *     semantic role in the accessibility tree so screen readers announce it.
@@ -91,27 +89,6 @@ export interface StartHereCardProps extends Omit<
 // Stable heading id so consumers do not collide if multiple cards mount in a
 // preview / story (rare, but cheap to guarantee).
 const HEADING_ID = "start-here-card-title";
-
-// PLUSD glyph — the existing `nav-dollar.svg` asset rendered through a CSS
-// mask so `currentColor` tints the silhouette with the brand-navy token. This
-// avoids inlining the SVG path data a second time and keeps the icon library
-// the single source of truth for the dollar mark.
-const glyphStyle: React.CSSProperties = {
-  width: "24px",
-  height: "24px",
-  display: "inline-block",
-  flexShrink: 0,
-  color: "var(--color-pipeline-brand)",
-  backgroundColor: "currentColor",
-  WebkitMaskImage: `url(${dollarGlyphUrl})`,
-  maskImage: `url(${dollarGlyphUrl})`,
-  WebkitMaskRepeat: "no-repeat",
-  maskRepeat: "no-repeat",
-  WebkitMaskPosition: "center",
-  maskPosition: "center",
-  WebkitMaskSize: "contain",
-  maskSize: "contain",
-};
 
 export const StartHereCard = React.forwardRef<
   HTMLDivElement,
@@ -157,11 +134,11 @@ export const StartHereCard = React.forwardRef<
 
         {/* Headline row — small dollar glyph + "Get PLUSD" serif heading. */}
         <div className="flex items-center gap-1" data-node-id="1497:94683">
-          {/* Decorative glyph — masked SVG so currentColor paints the
-              brand-navy fill via `--color-pipeline-brand`. */}
-          <span
+          {/* PLUSD coin icon — decorative, 24 px, matches Figma node 910:10281. */}
+          <CoinIcon
+            token="plusd"
+            size="md"
             aria-hidden="true"
-            style={glyphStyle}
             data-node-id="I1497:94683;910:10281"
           />
           <h2
