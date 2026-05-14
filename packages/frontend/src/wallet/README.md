@@ -88,7 +88,10 @@ before delegating to the real read. Returns `{ data, isLoading, error }`.
 Run the dev server, open the browser DevTools console, and paste:
 
 ```js
-localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+localStorage.setItem(
+  "pipeline.mock.wallet.address",
+  "0x1234000000000000000000000000000000000000",
+);
 localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
 localStorage.setItem("pipeline.mock.wallet.balance.usdc", "1000000000"); // 1,000 USDC
 ```
@@ -97,8 +100,11 @@ The UI updates instantly (no reload needed). The TopBar switches to its
 connected state and shows the USDC balance. To reset:
 
 ```js
-["pipeline.mock.wallet.address", "pipeline.mock.wallet.isConnected", "pipeline.mock.wallet.balance.usdc"]
-  .forEach(k => localStorage.removeItem(k));
+[
+  "pipeline.mock.wallet.address",
+  "pipeline.mock.wallet.isConnected",
+  "pipeline.mock.wallet.balance.usdc",
+].forEach((k) => localStorage.removeItem(k));
 ```
 
 ---
