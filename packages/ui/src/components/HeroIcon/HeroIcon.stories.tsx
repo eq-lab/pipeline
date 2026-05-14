@@ -18,7 +18,7 @@ const meta = {
     },
   },
   argTypes: {
-    icon: { control: "select", options: ["arrow-clock"] },
+    icon: { control: "select", options: ["arrow-clock", "chart"] },
     "aria-label": { control: "text" },
   },
   args: {
@@ -62,6 +62,27 @@ export const WithAriaLabel: Story = {
         story:
           "Pass `aria-label` when the HeroIcon is the primary heading " +
           "landmark for a page and needs to be announced by screen readers.",
+      },
+    },
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Chart — stake-page hero glyph (Figma node 1497:95314)                   */
+/* -------------------------------------------------------------------------- */
+
+export const Chart: Story = {
+  name: "Chart",
+  args: {
+    icon: "chart",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "The `chart` variant maps to `nav-stats.svg` — used as the hero " +
+          "glyph on the stake page (Figma node 1497:95314). Renders a 72×72 " +
+          "muted-fill circle with a 36px ink-tinted chart icon centered inside.",
       },
     },
   },
