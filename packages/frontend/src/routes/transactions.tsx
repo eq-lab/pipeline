@@ -101,18 +101,18 @@ function Transactions() {
 
         {/* Five hard-coded activity rows matching Figma frame 1497-94912 */}
         <div className="flex flex-col">
-          {/* Row 1 — PLUSD → USDC, completed, AmountPill success variant */}
+          {/* Row 1 — Sell (PLUSD → USDC), completed, AmountPill success variant */}
           <ActivityRow
             icon="check-circle"
-            title="PLUSD → USDC"
+            title="Sell"
             timestamp="Apr 17, 2:17 PM"
             amount={<AmountPill>+500.00 USDC</AmountPill>}
           />
 
-          {/* Row 2 — PLUSD → USDC, pending, two-line amount */}
+          {/* Row 2 — Sell (PLUSD → USDC), pending, two-line amount */}
           <ActivityRow
             icon="clock-pending"
-            title="PLUSD → USDC"
+            title="Sell"
             timestamp="Apr 17, 2:17 PM"
             amount={
               <TwoLineAmount primary="+1,000.00 USDC" secondary="Pending" />
@@ -145,10 +145,10 @@ function Transactions() {
             }
           />
 
-          {/* Row 5 — USDC → PLUSD, two-line (+1,000.00 PLUSD / −1,000.00 USDC) */}
+          {/* Row 5 — Buy (USDC → PLUSD), two-line (+1,000.00 PLUSD / −1,000.00 USDC) */}
           <ActivityRow
             icon="exchange"
-            title="USDC → PLUSD"
+            title="Buy"
             timestamp="Apr 17, 2:12 PM"
             amount={
               <TwoLineAmount
