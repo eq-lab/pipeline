@@ -8,6 +8,14 @@ sol! {
     event RequestClaimed(uint256 indexed requestId, address indexed user, uint256 amount);
 }
 
+mod erc4626 {
+    use alloy::sol;
+    sol! {
+        event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
+        event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
+    }
+}
+
 fn extract_log_meta(log: &Log) -> Option<(Address, u64, alloy::primitives::B256, u64)> {
     Some((
         log.address(),
@@ -33,6 +41,8 @@ pub fn parse_deposit_requested(log: &Log) -> Option<ContractLog> {
         amount: Some(decoded.amount),
         request_id: Some(decoded.requestId),
         cumulative: None,
+        assets: None,
+        shares: None,
     })
 }
 
@@ -52,6 +62,8 @@ pub fn parse_withdrawal_requested(log: &Log) -> Option<ContractLog> {
         amount: Some(decoded.amount),
         request_id: Some(decoded.requestId),
         cumulative: Some(decoded.queued),
+        assets: None,
+        shares: None,
     })
 }
 
@@ -71,5 +83,49 @@ pub fn parse_request_claimed(log: &Log) -> Option<ContractLog> {
         amount: Some(decoded.amount),
         request_id: Some(decoded.requestId),
         cumulative: None,
+        assets: None,
+        shares: None,
+    })
+}
+
+pub fn parse_staking_deposit(log: &Log) -> Option<ContractLog> {
+    let decoded = erc4626::Deposit::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "StakingDeposit".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        sender: Some(decoded.owner),
+        receiver: None,
+        amount: None,
+        request_id: None,
+        cumulative: None,
+        assets: Some(decoded.assets),
+        shares: Some(decoded.shares),
+    })
+}
+
+pub fn parse_staking_withdraw(log: &Log) -> Option<ContractLog> {
+    let decoded = erc4626::Withdraw::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "StakingWithdrawal".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        sender: Some(decoded.owner),
+        receiver: Some(decoded.receiver),
+        amount: None,
+        request_id: None,
+        cumulative: None,
+        assets: Some(decoded.assets),
+        shares: Some(decoded.shares),
     })
 }

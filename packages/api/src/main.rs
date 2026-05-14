@@ -67,13 +67,13 @@ async fn main() -> anyhow::Result<()> {
 
             let dm_domain = Eip712Domain {
                 name: "PipelineDepositManager".to_owned(),
-                version: "1".to_owned(),
+                version: "v1".to_owned(),
                 chain_id,
                 verifying_contract: dm_addr,
             };
             let wq_domain = Eip712Domain {
                 name: "PipelineWithdrawalQueue".to_owned(),
-                version: "1".to_owned(),
+                version: "v1".to_owned(),
                 chain_id,
                 verifying_contract: wq_addr,
             };
@@ -86,6 +86,11 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
+        .ok()
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(true);
+
     let state = Arc::new(AppState {
         pool: pool.clone(),
         kyc_repo,
@@ -94,16 +99,19 @@ async fn main() -> anyhow::Result<()> {
         voucher_signer,
         dm_domain,
         wq_domain,
+        crystal_enabled,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
     api_docs.merge(pipeline_api::routes::emails::EmailsDoc::openapi());
     api_docs.merge(pipeline_api::routes::vouchers::VouchersDoc::openapi());
+    api_docs.merge(pipeline_api::routes::analytics::AnalyticsDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
         .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .nest("/v1", pipeline_api::routes::vouchers::router())
+        .nest("/v1", pipeline_api::routes::analytics::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

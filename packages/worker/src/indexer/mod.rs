@@ -14,7 +14,10 @@ use shared::db::EventRepo;
 
 use config::IndexerJobSettings;
 use mappers::ContractLogMapper;
-use parsers::{parse_deposit_requested, parse_request_claimed, parse_withdrawal_requested};
+use parsers::{
+    parse_deposit_requested, parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
+    parse_withdrawal_requested,
+};
 use poller::EvmEventPollerBuilder;
 
 pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
@@ -48,8 +51,15 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
+    let splusd_contracts: Vec<alloy::primitives::Address> = settings
+        .splusd_contracts
+        .iter()
+        .filter_map(|a| a.parse().ok())
+        .collect();
+
     let dm_repo = repo.clone();
     let wq_repo = repo.clone();
+    let splusd_repo = repo.clone();
 
     let poller = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
@@ -69,6 +79,14 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
             .or_else(|| parse_request_claimed(log))
             .map(|ev| {
                 Box::new(ContractLogMapper::new(ev, chain_id, wq_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
+            })
+    })
+    .add_event_handler(splusd_contracts, move |log| {
+        parse_staking_deposit(log)
+            .or_else(|| parse_staking_withdraw(log))
+            .map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, splusd_repo.clone()))
                     as Box<dyn shared::log_mapper::LogMapper>
             })
     })

@@ -12,4 +12,6 @@ pub struct ContractLog {
     pub amount: Option<U256>,
     pub request_id: Option<U256>,
     pub cumulative: Option<U256>,
+    pub assets: Option<U256>,
+    pub shares: Option<U256>,
 }
