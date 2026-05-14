@@ -15,7 +15,7 @@ import { TopBar } from "@/components/TopBar";
  *   1. `TopBar` with `activeNav="history"` and a connected wallet pill.
  *   2. Centred content column, `max-w-[480px]`, `p-8` (32 px) page padding.
  *   3. `ActivityHeader` — icon + "Activity" heading.
- *   4. `SegmentedTabs` — All / Convert / Stake / Unstake filter bar.
+ *   4. `SegmentedTabs` — All / Buy / Sell / Stake / Unstake filter bar.
  *      Tab state lives in `useState`; selecting a tab updates active state
  *      but does NOT filter the list (styling-only per the Issue scope).
  *   5. Five hard-coded `ActivityRow` entries matching Figma frame `1497-94912`.
@@ -30,7 +30,8 @@ import { TopBar } from "@/components/TopBar";
 /** Ordered tab definitions for the filter bar. */
 const TABS = [
   { id: "all", label: "All" },
-  { id: "convert", label: "Convert" },
+  { id: "buy", label: "Buy" },
+  { id: "sell", label: "Sell" },
   { id: "stake", label: "Stake" },
   { id: "unstake", label: "Unstake" },
 ];
