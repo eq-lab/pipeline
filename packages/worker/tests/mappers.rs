@@ -17,6 +17,8 @@ fn dummy_event() -> ContractLog {
         amount: Some(U256::from(1000u64)),
         request_id: Some(U256::from(1u64)),
         cumulative: None,
+        assets: None,
+        shares: None,
     }
 }
 
