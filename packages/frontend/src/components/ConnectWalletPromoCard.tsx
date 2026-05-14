@@ -22,7 +22,7 @@ import { Button, Card, WalletIllustration } from "@pipeline/ui";
  *     paints the tokens (`--color-pipeline-promo`, `--color-pipeline-line`)
  *     so this composer adds no raw colors.
  *   - {@link WalletIllustration} `tone="primary"` paints the striped-wallet
- *     decoration in brand navy. It is placed absolutely so the heading +
+ *     decoration in dark ink. It is placed absolutely so the heading +
  *     button column can flow naturally along the left edge while the artwork
  *     anchors to the right. The Figma node positions the 313.672 × 200 vector
  *     at `left: 376.09px / top: 91.38px` inside a 274px-tall card; we mirror

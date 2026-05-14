@@ -10,7 +10,7 @@ import stripedWalletUrl from "../../assets/illustrations/striped-wallet.svg";
  * React tree, this component uses a CSS `mask-image` so:
  *
  *   - The illustration is colored via `currentColor`, which lets the `tone`
- *     prop swap the fill between the brand-navy (`primary`) and muted-ink
+ *     prop swap the fill between the primary-ink (`primary`) and muted-ink
  *     (`muted`) tokens without duplicating SVG paths.
  *   - The artwork preserves its intrinsic 313.672 × 200 aspect ratio
  *     (~1.5684 : 1) at any rendered width.
@@ -22,7 +22,7 @@ import stripedWalletUrl from "../../assets/illustrations/striped-wallet.svg";
  * copy (Recent activity).
  *
  * Reuse points:
- *   - Connect Wallet promo card  — large, primary (brand navy) tone.
+ *   - Connect Wallet promo card  — large, primary (dark ink) tone.
  *   - Recent activity empty state — smaller, muted tone.
  */
 
@@ -39,7 +39,7 @@ export interface WalletIllustrationProps extends Omit<
    */
   width?: number | string;
   /**
-   * Visual emphasis. `primary` paints the strokes in the brand navy token
+   * Visual emphasis. `primary` paints the strokes in the primary ink token
    * (used by the Connect Wallet promo card). `muted` paints them in the
    * neutral muted ink token (used by the Recent activity empty state).
    */
@@ -53,7 +53,7 @@ const INTRINSIC_HEIGHT = 200;
 const DEFAULT_WIDTH = Math.round(INTRINSIC_WIDTH);
 
 const toneColors: Record<WalletIllustrationTone, string> = {
-  primary: "var(--color-pipeline-brand)",
+  primary: "var(--color-pipeline-ink)",
   muted: "var(--color-pipeline-ink-muted)",
 };
 
