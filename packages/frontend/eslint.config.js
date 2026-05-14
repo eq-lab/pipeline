@@ -34,4 +34,30 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Enforce that wagmi / viem / AppKit / TanStack Query are only imported
+    // from within the wallet module (src/wallet/**) or the env accessor
+    // (src/lib/env.ts). All other source files must go through @/wallet.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/wallet/**", "src/lib/env.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            "wagmi",
+            "wagmi/*",
+            "viem",
+            "viem/*",
+            "@reown/appkit",
+            "@reown/appkit/*",
+            "@reown/appkit-adapter-wagmi",
+            "@reown/appkit-adapter-wagmi/*",
+            "@tanstack/react-query",
+            "@tanstack/react-query/*",
+          ],
+        },
+      ],
+    },
+  },
 );

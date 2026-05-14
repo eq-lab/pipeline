@@ -34,8 +34,8 @@ Two logical views served from the same app, gated by authenticated role:
 - **Operations Console** — role-gated back-office interface for Trustee, Team, and Originator operators.
 
 **Entry point:** `packages/frontend/main.ts`
-**Auth:** WalletConnect v2 / RainbowKit for LPs; email + password + 2FA for operators.
-**Web3:** ethers.js for contract interactions; reads on-chain state via the API (which queries the internal indexer).
+**Auth:** wagmi + viem + Reown AppKit (WalletConnect v2) for LPs; email + password + 2FA for operators.
+**Web3:** wagmi + viem for contract interactions; Reown AppKit for the WalletConnect modal. All blockchain access goes through `packages/frontend/src/wallet/`.
 **Port:** 3000 (dev)
 
 ### `packages/ui`
@@ -102,13 +102,13 @@ frontend (TypeScript)
 - `contracts` has no knowledge of off-chain components.
 - `worker` depends on `contracts` ABIs and the MPC vendor SDK. It does NOT import from `api` or `frontend`.
 - `api` depends on the internal indexer DB (populated by `worker`). It does NOT import from `worker` directly at runtime — they communicate via a shared DB or message queue.
-- `frontend` depends on `api` for data and on ethers.js for direct wallet interactions (deposit, stake, unstake, withdrawal request).
+- `frontend` depends on `api` for data and on wagmi + viem (via the `wallet/` module) for direct wallet interactions (deposit, stake, unstake, withdrawal request).
 
 ## Cross-Cutting Concerns
 
 | Concern | Owner |
 |---------|-------|
-| Authentication (LP) | frontend (wallet signature via WalletConnect/RainbowKit) |
+| Authentication (LP) | frontend (wallet signature via wagmi + viem + Reown AppKit / WalletConnect v2) |
 | Authentication (operators) | api (email + password + TOTP/WebAuthn) |
 | MPC signing | worker (via MPC vendor SDK — Fireblocks or BitGo, pending) |
 | KYC/screening | worker (Sumsub + Chainalysis webhooks/API) |

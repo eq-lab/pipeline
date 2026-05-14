@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { TopBar } from "@/components/TopBar";
+import { useWallet, useUsdcBalance } from "@/wallet";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
 import { ConnectWalletPromoCard } from "@/components/ConnectWalletPromoCard";
 import { StartHereCard } from "@/components/StartHereCard";
@@ -42,9 +43,15 @@ import { QnaSection } from "@/components/QnaSection";
  */
 
 function Home() {
+  const { isConnected, connect } = useWallet();
+  const { formatted } = useUsdcBalance();
+
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <TopBar />
+      <TopBar
+        onConnectWallet={connect}
+        wallet={isConnected ? { balance: formatted ?? "—" } : undefined}
+      />
 
       {/* Centred main column. `py-12` (48px) gives the welcome heading air
           under the TopBar; horizontal padding lets the column breathe at
