@@ -27,7 +27,7 @@ import { CoinIcon } from "../CoinIcon/CoinIcon";
 
 export interface TokenAmountDisplayProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which coin token to display. */
-  token: "usdc" | "plusd";
+  token: "usdc" | "plusd" | "splusd";
   /** Token label shown next to the coin, e.g. "PLUSD". */
   tokenLabel: string;
   /** Pre-formatted balance string, e.g. "0.00". */

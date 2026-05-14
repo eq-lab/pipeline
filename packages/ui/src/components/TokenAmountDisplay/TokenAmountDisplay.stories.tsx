@@ -18,7 +18,7 @@ const meta = {
     },
   },
   argTypes: {
-    token: { control: "select", options: ["usdc", "plusd"] },
+    token: { control: "select", options: ["usdc", "plusd", "splusd"] },
     tokenLabel: { control: "text" },
     balanceLabel: { control: "text" },
     value: { control: "text" },
@@ -66,6 +66,20 @@ export const USDC: Story = {
     tokenLabel: "USDC",
     balanceLabel: "10,000.00",
     value: "5,000",
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  sPLUSD                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const SPLUSD: Story = {
+  name: "sPLUSD",
+  args: {
+    token: "splusd",
+    tokenLabel: "sPLUSD",
+    balanceLabel: "0.00",
+    value: "0",
   },
 };
 

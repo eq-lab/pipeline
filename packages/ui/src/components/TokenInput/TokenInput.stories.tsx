@@ -32,7 +32,7 @@ const meta = {
     },
   },
   argTypes: {
-    token: { control: "select", options: ["usdc", "plusd"] },
+    token: { control: "select", options: ["usdc", "plusd", "splusd"] },
     tokenLabel: { control: "text" },
     balanceLabel: { control: "text" },
     placeholderValue: { control: "text" },
@@ -118,6 +118,25 @@ export const MaxSelected: Story = {
       { label: "$5,000" },
       { label: "$10,000" },
       { label: "Max", selected: true },
+    ],
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  sPLUSD                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const SPLUSD: Story = {
+  name: "sPLUSD",
+  args: {
+    token: "splusd",
+    tokenLabel: "sPLUSD",
+    balanceLabel: "0.00",
+    quickAmounts: [
+      { label: "$1,000 (Min)" },
+      { label: "$5,000" },
+      { label: "$10,000" },
+      { label: "Max" },
     ],
   },
 };

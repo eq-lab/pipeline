@@ -41,7 +41,7 @@ export interface TokenInputProps extends Omit<
   "onChange"
 > {
   /** Which coin token to display. */
-  token: "usdc" | "plusd";
+  token: "usdc" | "plusd" | "splusd";
   /** Token label shown next to the coin, e.g. "USDC". */
   tokenLabel: string;
   /** Pre-formatted balance string, e.g. "10,000.00". */

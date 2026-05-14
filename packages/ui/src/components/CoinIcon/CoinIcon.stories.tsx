@@ -9,7 +9,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Displays a USDC or PLUS-D coin icon at one of three sizes. " +
+          "Displays a USDC, PLUS-D, or sPLUSD coin icon at one of three sizes. " +
           'Decorative by default (`aria-hidden="true"`); pass `aria-label` ' +
           "to make it meaningful to assistive tech. " +
           "Sizes: sm (20 px) — wallet pill / conversion-card row; " +
@@ -18,7 +18,7 @@ const meta = {
     },
   },
   argTypes: {
-    token: { control: "select", options: ["usdc", "plusd"] },
+    token: { control: "select", options: ["usdc", "plusd", "splusd"] },
     size: { control: "select", options: ["sm", "md", "lg"] },
     "aria-label": { control: "text" },
   },
@@ -99,6 +99,44 @@ export const BothTokens: Story = {
     <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
       <CoinIcon token="usdc" size="lg" aria-label="USDC" />
       <CoinIcon token="plusd" size="lg" aria-label="PLUS-D" />
+    </div>
+  ),
+};
+
+/* -------------------------------------------------------------------------- */
+/*  sPLUSD                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export const SPLUSD: Story = {
+  name: "sPLUSD — md (default)",
+  args: { token: "splusd", size: "md" },
+};
+
+export const AllSizesSPLUSD: Story = {
+  name: "sPLUSD — all sizes",
+  parameters: {
+    docs: {
+      description: {
+        story: "sm (20 px), md (24 px), lg (40 px) — left to right.",
+      },
+    },
+  },
+  render: () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <CoinIcon token="splusd" size="sm" aria-label="sPLUSD coin, small" />
+      <CoinIcon token="splusd" size="md" aria-label="sPLUSD coin, medium" />
+      <CoinIcon token="splusd" size="lg" aria-label="sPLUSD coin, large" />
+    </div>
+  ),
+};
+
+export const AllThreeTokens: Story = {
+  name: "All three tokens — lg",
+  render: () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+      <CoinIcon token="usdc" size="lg" aria-label="USDC" />
+      <CoinIcon token="plusd" size="lg" aria-label="PLUS-D" />
+      <CoinIcon token="splusd" size="lg" aria-label="sPLUSD" />
     </div>
   ),
 };
