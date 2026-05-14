@@ -150,10 +150,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         </div>
 
         {/* Middle slot — primary navigation. `flex-1` lets it absorb the
-          remaining space; `justify-center` keeps the icon row centred. */}
+          remaining space; icons left-anchor next to the logo per Figma. */}
         <nav
           aria-label="Primary"
-          className="flex min-w-0 flex-1 items-center justify-center gap-8"
+          className="flex min-w-0 flex-1 items-center gap-8"
           data-node-id="1497:94718"
         >
           {NAV_ITEMS.map((item) => (
