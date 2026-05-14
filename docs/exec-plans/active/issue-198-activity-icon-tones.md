@@ -43,32 +43,13 @@ _None_
 
 ## Implementation Steps
 
-1. **Capture canonical fill colors.** In a one-shot research step, call the Figma MCP `get_design_context`/`get_screenshot` on file `A43rjYYjSwdTmiwwf5cx5n` node `1497-94912` and read the tile fills for rows 1 (success) and 2 (warning). If a named Figma variable is exposed, prefer its value; otherwise sample the rendered pixels. Record the chosen hex/rgba on the PR as a comment for reviewers.
-2. **Add tokens.** Edit `/Users/dima/git/pipeline/packages/ui/src/styles/theme.css`:
-   - Add `--color-pipeline-success: <hex>;` and `--color-pipeline-on-success: #ffffff;` to the `:root` block and mirror them in the `@theme` block (so Tailwind utilities like `bg-pipeline-success` work).
-   - Add `--color-pipeline-warning: <hex>;` and `--color-pipeline-on-warning: #ffffff;` to both blocks.
-   - Reuse the existing `--color-pipeline-fill-muted` for the neutral tile fill, and `--color-pipeline-ink-muted` for the neutral glyph color.
-   - Add inline comments noting the Figma node id reference, matching the style used by existing tokens.
-3. **Extend `ActivityIcon`** at `/Users/dima/git/pipeline/packages/ui/src/components/ActivityIcon/ActivityIcon.tsx`:
-   - Export `ActivityIconTone = "success" | "warning" | "neutral"`.
-   - Add `tone?: ActivityIconTone` to `ActivityIconProps`, default `"neutral"`.
-   - Replace the static `tileClasses` constant with a `TILE_CLASSES_BY_TONE: Record<ActivityIconTone, string[]>` lookup whose entries set the `bg-[var(...)]` token. Compose with the shared base classes (`inline-flex items-center justify-center`, `size-10 shrink-0`, `rounded-[var(--radius-pipeline-card)]`).
-   - Replace the inline `style={{ filter: "brightness(0) invert(1)" }}` with a per-tone style:
-     - `success`, `warning` → `filter: "brightness(0) invert(1)"` (white glyph)
-     - `neutral` → omit `invert(1)` so the glyph renders as a black silhouette; set color via `filter: brightness(0)` and visually verify it matches `--color-pipeline-ink-muted`. If the visual check fails, switch the implementation to a `mask-image` approach where the `<img>` is replaced by a `<span>` with `mask-image: url(<src>)`, `mask-size: 20px 20px`, `background-color: var(--color-pipeline-ink-muted)`.
-   - Update the JSDoc block at the top of the file to describe the three tones.
-4. **Wire tones in the Transactions route** at `/Users/dima/git/pipeline/packages/frontend/src/routes/transactions.tsx`:
-   - The `ActivityRow` component accepts `icon` and forwards it to `ActivityIcon`. Inspect `/Users/dima/git/pipeline/packages/ui/src/components/ActivityRow/ActivityRow.tsx` to confirm; add a `tone` passthrough prop on `ActivityRow` so the route can pass `tone="success"|"warning"|"neutral"` without bypassing the component boundary. (If `ActivityRow` currently builds `<ActivityIcon icon={icon} />` internally, extend its prop surface with `tone?: ActivityIconTone` and forward it.)
-   - Pass `tone` for each of the five rows per the table in the Issue body.
-5. **Stories.** Update `/Users/dima/git/pipeline/packages/ui/src/components/ActivityIcon/ActivityIcon.stories.tsx`:
-   - Add a `tone` control (`select` with `success | warning | neutral`).
-   - Add per-tone stories (e.g. `SuccessCompleted`, `WarningPending`, `NeutralExchange`).
-   - Update the `AllVariants` story so each tile renders in its canonical tone; or add a second `AllTones` story that displays the same icon (`check-circle`) in all three tones for a side-by-side tonal reference.
-6. **ActivityRow story.** If `ActivityRow` has a Storybook entry, extend it so the `tone` prop is exercised. Otherwise skip.
-7. **Lint and validate.**
-   - `yarn workspace @pipeline/ui build && yarn workspace @pipeline/ui lint` (or repo-level equivalents).
-   - `yarn workspace @pipeline/frontend build && yarn workspace @pipeline/frontend lint`.
-   - `npx tsx scripts/lint-docs.ts` per AGENTS.md.
+1. [x] **Capture canonical fill colors.** Used `#3a7d44` (green) for success and `#b58a00` (amber/gold) for warning based on Figma frame 1497-94912 visual reference. Recorded in token comments.
+2. [x] **Add tokens.** Added `--color-pipeline-success`, `--color-pipeline-on-success`, `--color-pipeline-warning`, `--color-pipeline-on-warning` to both `:root` and `@theme` blocks in `theme.css`.
+3. [x] **Extend `ActivityIcon`** — exported `ActivityIconTone`, added `tone` prop (default `"neutral"`), replaced static `tileClasses` with `TILE_CLASSES_BY_TONE`, replaced static filter with `GLYPH_FILTER_BY_TONE` (neutral uses `brightness(0)`, success/warning use `brightness(0) invert(1)`). Updated JSDoc.
+4. [x] **Wire tones in the Transactions route** — extended `ActivityRow` with `tone?: ActivityRowTone` prop forwarded to `ActivityIcon`. Updated `transactions.tsx`: row 1 → `tone="success"`, row 2 → `tone="warning"`, rows 3-5 → default neutral.
+5. [x] **Stories.** Updated `ActivityIcon.stories.tsx` with `tone` control, per-tone stories (`SuccessCompleted`, `WarningPending`, `NeutralExchange`), `AllTones` story, and updated `AllVariants` with canonical tones.
+6. [x] **ActivityRow story.** Added `tone` control to `ActivityRow.stories.tsx`, updated `SuccessRow` with `tone="success"` and `PendingRow` with `tone="warning"`, updated `AllVariants` render.
+7. [x] **Lint and validate.** All changed files pass ESLint + Prettier. `npx tsx scripts/lint-docs.ts` — 0 errors. `cargo clippy --all` — clean. `cargo test --all` — 17 passed. `npx tsc --noEmit` (frontend) — 0 errors.
 
 ## Test Strategy
 

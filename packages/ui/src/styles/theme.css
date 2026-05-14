@@ -86,6 +86,10 @@
   --color-pipeline-fill-muted: rgb(
     191 189 187 / 0.12
   ); /* fill/primary-muted — icon bg, segmented tab container */
+  --color-pipeline-success: #3a7d44; /* fill/success — success tile bg; node 1497-94912 row 1 */
+  --color-pipeline-on-success: #ffffff; /* content on success fill */
+  --color-pipeline-warning: #b58a00; /* fill/warning — warning tile bg; node 1497-94912 row 2 */
+  --color-pipeline-on-warning: #ffffff; /* content on warning fill */
 
   /* Type ramp */
   --text-pipeline-title: 64px;
@@ -145,6 +149,10 @@
   --color-pipeline-fill-muted: rgb(
     191 189 187 / 0.12
   ); /* fill/primary-muted — icon bg, segmented tab container */
+  --color-pipeline-success: #3a7d44; /* fill/success — success tile bg; node 1497-94912 row 1 */
+  --color-pipeline-on-success: #ffffff; /* content on success fill */
+  --color-pipeline-warning: #b58a00; /* fill/warning — warning tile bg; node 1497-94912 row 2 */
+  --color-pipeline-on-warning: #ffffff; /* content on warning fill */
 
   /* --- Typography: families --- */
 

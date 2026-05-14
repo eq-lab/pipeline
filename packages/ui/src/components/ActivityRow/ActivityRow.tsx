@@ -1,12 +1,21 @@
 import React from "react";
 import { ActivityIcon } from "../ActivityIcon/ActivityIcon";
-import type { ActivityIconVariant } from "../ActivityIcon/ActivityIcon";
+import type {
+  ActivityIconVariant,
+  ActivityIconTone,
+} from "../ActivityIcon/ActivityIcon";
 
 /**
  * ActivityIconName — re-export of the ActivityIcon variant union so callers
  * can import the type directly from this module.
  */
 export type ActivityIconName = ActivityIconVariant;
+
+/**
+ * ActivityRowTone — re-export of the ActivityIcon tone union so callers
+ * can import the type directly from this module.
+ */
+export type ActivityRowTone = ActivityIconTone;
 
 /**
  * ActivityRow — single row in the activity list.
@@ -35,6 +44,15 @@ export type ActivityIconName = ActivityIconVariant;
 export interface ActivityRowProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which activity icon to display (re-exported from `ActivityIcon`). */
   icon: ActivityIconName;
+  /**
+   * Tonal variant forwarded to `ActivityIcon`:
+   * - `success` — green tile, white glyph
+   * - `warning` — amber tile, white glyph
+   * - `neutral` — muted gray tile, dark glyph (default)
+   *
+   * @default "neutral"
+   */
+  tone?: ActivityRowTone;
   /** Primary text, e.g. "PLUSD → USDC". Truncates with ellipsis on overflow. */
   title: string;
   /** Secondary text, e.g. "Apr 17, 2:17 PM". Uses the secondary-ink token. */
@@ -77,7 +95,7 @@ const amountClasses = ["shrink-0 flex items-center justify-end"].join(" ");
 
 export const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
   function ActivityRow(
-    { icon, title, timestamp, amount, className, ...rest },
+    { icon, tone = "neutral", title, timestamp, amount, className, ...rest },
     ref,
   ) {
     const composed = [rootClasses, className].filter(Boolean).join(" ");
@@ -85,7 +103,7 @@ export const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
     return (
       <div ref={ref} className={composed} {...rest}>
         {/* Leading activity icon */}
-        <ActivityIcon icon={icon} aria-hidden="true" />
+        <ActivityIcon icon={icon} tone={tone} aria-hidden="true" />
 
         {/* Two-line content block */}
         <div className={contentClasses}>
