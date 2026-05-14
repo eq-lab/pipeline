@@ -16,10 +16,12 @@ const meta = {
     docs: {
       description: {
         component:
-          "Full conversion card (Figma node 1498-100130). Composes a white " +
-          "`Card` → `TokenInput` (top) → swap-vertical icon divider → " +
-          "`TokenAmountDisplay` (bottom) → two `InfoRow`s for exchange rate " +
-          "and network fee. No new colors or sizes — everything via design tokens.",
+          "Full conversion card (Figma node 1498-100130). Composes two white " +
+          "`Card`s stacked with a 2px gap: Card A (`TokenInput`, top) and " +
+          "Card B (`TokenAmountDisplay` + `Exchange rate` / `Network fee` " +
+          "details, bottom). The swap-vertical icon button is absolutely " +
+          "positioned over the seam between the two cards. No raw colors or " +
+          "sizes — everything via design tokens.",
       },
     },
   },

@@ -459,3 +459,45 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
      ```
   2. In any component that calls `useContractRead({ address: "0xabc123", abi, functionName: "balanceOf" })`, observe the returned `data` value.
 - **Expected:** The hook returns `data === "42"` (the JSON-parsed mock) without issuing a real contract call.
+
+---
+
+## S-186 — ConversionCard two-card layout
+
+**Issue:** [#186 Deposit: USDC + PLUSD inputs render as one outer card; Figma has two separate cards with 2px gap](https://github.com/eq-lab/pipeline/issues/186)
+**Plan:** `docs/exec-plans/active/issue-186-conversion-card-two-cards.md`
+
+### TC-186-1: Two separate cards with 2px gap on /deposit
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:3000`
+- **Steps:**
+  1. Navigate to `http://localhost:3000/deposit`
+  2. Inspect the ConversionCard area between the DepositHeader and StepsCard
+- **Expected:** Two visually distinct white rounded cards separated by a 2px gap; Card A contains USDC token row + quick-amount chips; Card B contains PLUSD token row + Exchange rate / Network fee rows; no single outer bordered card wrapping both.
+
+### TC-186-2: Swap button straddles the 2px seam
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/deposit`
+  2. Observe the swap-arrows button (up/down arrows icon) between the two cards
+- **Expected:** Swap button is horizontally centered; its vertical center aligns with the 2px gap between the two cards (within 1px tolerance); button has `rounded-[4px]` corners (not a full pill), white-to-paper gradient background, and hairline border.
+
+### TC-186-3: Exchange rate and Network fee are inside Card B
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/deposit`
+  2. In DevTools Console: confirm `document.querySelector('.flex.flex-col.gap-[2px]').children[1].textContent` contains "Exchange rate" and "Network fee"
+- **Expected:** Both info rows are contained within the second (PLUSD) card, not between or outside the two cards.
+
+### TC-186-4: Same two-card layout on /withdraw
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/withdraw`
+- **Expected:** Same two-card structure as on /deposit (Card A = PLUSD input, Card B = USDC output + Exchange rate / Network fee); 2px gap; swap button straddling the seam.

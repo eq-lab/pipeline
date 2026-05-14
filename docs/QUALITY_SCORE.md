@@ -4,6 +4,22 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-14 — Issue #186 (Deposit: ConversionCard two-card layout)
+
+- **Scope:** Issue #186 acceptance criteria (TC-186-1 through TC-186-4)
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-186-1 (two cards with 2px gap on /deposit): DOM confirms `flex flex-col gap-[2px]` outer wrapper; Card A (`relative` wrapper containing TokenInput with `bg-[var(--color-pipeline-surface)] border … rounded-[var(--radius-pipeline-card)]`) at y=241–391; Card B (`block rounded-[…] border … bg-[var(--color-pipeline-surface)]`) at y=393–555; CSS `rowGap` = 2px; pixel gap between card borders = 2px. No single outer bordered wrapper.
+  - PASS TC-186-2 (swap button straddles seam): Swap button rect top=371 bottom=411 (center y=391); gap midpoint y=392; deviation = 1px (within 1px tolerance). Button has `borderRadius: 4px`, `backgroundImage: linear-gradient(rgb(255, 255, 255) 0%, rgb(248, 247, 246) 100%)`, `border: 1px solid rgba(56, 55, 53, 0.18)`, size 40×40px. No full-pill rounding.
+  - PASS TC-186-3 (Exchange rate/Network fee inside Card B): `cardB.textContent` contains both "Exchange rate" and "Network fee". `TokenAmountDisplay` inside Card B has computed `backgroundColor: rgba(0,0,0,0)`, `borderStyle: none`, `borderRadius: 0px` — inline style override suppresses its self-styling correctly. Info rows contained in a `flex flex-col gap-2 pb-2` child of Card B.
+  - PASS TC-186-4 (same layout on /withdraw): Withdraw page renders same two-card structure (Card A = PLUSD input with chips, Card B = USDC output + details); visual gap = 2px; swap button centered on seam; all gradient/border/radius checks match.
+  - Console errors on both pages: only pre-existing WalletConnect/Reown 403 errors (no VITE_WALLETCONNECT_PROJECT_ID in local env), Lit dev-mode warning, and font preload warning — none related to this issue.
+  - Storybook: all 3 stories (Default, WithSelectedAmount, MaxSelected) render correct two-section DOM structure. CSS tokens not applying in Storybook is a pre-existing issue unrelated to #186.
+
 ### 2026-05-13 — Issue #117 (Add /transactions file-based route in frontend)
 
 - **Scope:** Issue #117 acceptance criteria (TC-117-1 through TC-117-3)
