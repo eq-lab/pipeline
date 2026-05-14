@@ -60,8 +60,10 @@ const variantClasses: Record<CardVariant, string> = {
 
   // muted — slightly-grey surface (#f8f7f6) used for the step rows in the
   // deposit/conversion flow. Uses --color-pipeline-paper so the card
-  // visually recedes behind white surfaces. Hairline border from
-  // --color-pipeline-line for consistency.
+  // visually recedes behind white surfaces. Border colour from
+  // --color-pipeline-line. Note: StepsCard overrides individual side widths
+  // to produce the asymmetric 1px top/left + 3px right/bottom effect from
+  // Figma node 1498-100130; generic muted cards keep a uniform 1px border.
   // Matches the StepsCard container (Figma node 1498-100130).
   muted: [
     "bg-[var(--color-pipeline-paper)]",

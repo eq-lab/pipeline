@@ -45,7 +45,23 @@ export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
 export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
   function StepsCard({ steps, className, ...rest }, ref) {
     return (
-      <Card ref={ref} variant="muted" className={className} {...rest}>
+      <Card
+        ref={ref}
+        variant="muted"
+        // Figma node 1498-100130: asymmetric border — 1px on left + top,
+        // 3px on right + bottom — producing a subtle "stamped" elevation effect.
+        // Use `!` important prefix so per-side widths reliably beat the uniform
+        // `border` shorthand in Card's baseClasses regardless of Tailwind's
+        // CSS cascade order. Border colour is inherited from the muted variant's
+        // border-color token (--color-pipeline-line).
+        className={[
+          "!border-l !border-t !border-r-[3px] !border-b-[3px]",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        {...rest}
+      >
         <div className="flex flex-col gap-2">
           {steps.map(({ label, actionLabel, disabled, onAction }, index) => (
             <StepRow
