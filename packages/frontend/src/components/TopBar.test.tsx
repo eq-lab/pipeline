@@ -42,6 +42,11 @@ function buildRouter(
     path: "/deposit",
     component: () => null,
   });
+  const withdrawRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/withdraw",
+    component: () => null,
+  });
   const transactionsRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/transactions",
@@ -50,6 +55,7 @@ function buildRouter(
   const routeTree = rootRoute.addChildren([
     indexRoute,
     depositRoute,
+    withdrawRoute,
     transactionsRoute,
   ]);
   return createRouter({
@@ -77,6 +83,22 @@ describe("TopBar — route-driven active state", () => {
 
   it("highlights Deposit on /deposit", async () => {
     const router = buildRouter("/deposit");
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+  });
+
+  it("highlights Deposit on /withdraw (withdraw shares the dollar icon)", async () => {
+    const router = buildRouter("/withdraw");
     render(<RouterProvider router={router} />);
 
     await waitFor(() =>
