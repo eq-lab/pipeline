@@ -1,10 +1,6 @@
 import React from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Button, IconButton, Logo, WalletPill } from "@pipeline/ui";
-import navHomeIcon from "@pipeline/ui/assets/icons/nav-home.svg";
-import navDollarIcon from "@pipeline/ui/assets/icons/nav-dollar.svg";
-import navStatsIcon from "@pipeline/ui/assets/icons/nav-stats.svg";
-import navHistoryIcon from "@pipeline/ui/assets/icons/nav-history.svg";
+import { Button, IconButton, Logo, NavIcon, WalletPill } from "@pipeline/ui";
 
 /**
  * TopBar — global page header.
@@ -39,12 +35,11 @@ import navHistoryIcon from "@pipeline/ui/assets/icons/nav-history.svg";
  *     shows the connected balance instead.
  *
  * Icon handling:
- *   - The four nav SVGs live in `@pipeline/ui/assets/icons/`. Vite resolves
- *     them as URL imports. To inherit the IconButton `currentColor`-driven
- *     active/inactive state, each icon is rendered as a CSS mask (the SVG
- *     becomes the alpha mask of a `currentColor` block) — the same approach
- *     used in `IconButton.stories.tsx`. This keeps the active state purely
- *     token-driven, with no per-icon recolouring required.
+ *   - Each nav slot uses {@link NavIcon} from `@pipeline/ui`, which renders
+ *     the icon as an inline SVG with `fill="currentColor"`. This means the
+ *     icon colour is inherited directly from the surrounding CSS `color`
+ *     property set by IconButton's active/inactive class, with no URL import
+ *     or CSS mask needed.
  *
  * Responsive notes:
  *   - At the design's 1728px width the bar lays out with comfortable spacing
@@ -64,45 +59,20 @@ import navHistoryIcon from "@pipeline/ui/assets/icons/nav-history.svg";
  *     focus-visible styles inherited from the {@link Button} primitive.
  */
 
-/** Internal: render a nav SVG as a `currentColor`-driven mask so the
- * surrounding IconButton's active/inactive colour wins. */
-function MaskIcon({ src, title }: { src: string; title: string }) {
-  return (
-    <span
-      role="img"
-      aria-label={title}
-      style={{
-        display: "inline-block",
-        width: 24,
-        height: 24,
-        backgroundColor: "currentColor",
-        WebkitMask: `url(${src}) center / contain no-repeat`,
-        mask: `url(${src}) center / contain no-repeat`,
-      }}
-    />
-  );
-}
-
 /** One nav slot: icon + accessible label + optional route target. */
 interface NavItem {
-  key: string;
+  key: "home" | "deposit" | "stats" | "history";
   label: string;
-  src: string;
   /** TanStack Router path this slot navigates to; omit for slots with no route yet. */
   to?: string;
 }
 
 // Figma order, node ids on the side for traceability.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
-  { key: "home", label: "Home", src: navHomeIcon, to: "/" }, // 1497:94719
-  { key: "deposit", label: "Deposit", src: navDollarIcon, to: "/deposit" }, // 1497:94720
-  { key: "stats", label: "Stats", src: navStatsIcon }, //               1497:94721
-  {
-    key: "history",
-    label: "History",
-    src: navHistoryIcon,
-    to: "/transactions",
-  }, // 1497:94722
+  { key: "home", label: "Home", to: "/" }, // 1497:94719
+  { key: "deposit", label: "Deposit", to: "/deposit" }, // 1497:94720
+  { key: "stats", label: "Stats" }, //               1497:94721
+  { key: "history", label: "History", to: "/transactions" }, // 1497:94722
 ];
 
 export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
@@ -191,7 +161,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
               key={item.key}
               label={item.label}
               active={effectiveActive === item.key}
-              icon={<MaskIcon src={item.src} title={item.label} />}
+              icon={<NavIcon name={item.key} />}
               onClick={
                 item.to
                   ? () => void navigate({ to: item.to as string })
