@@ -1,9 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ConversionCard,
-  DepositHeader,
-  StepsCard,
-} from "@pipeline/ui";
+import { ConversionCard, DepositHeader, StepsCard } from "@pipeline/ui";
 import { TopBar } from "@/components/TopBar";
 
 /**
