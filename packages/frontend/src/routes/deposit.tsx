@@ -62,7 +62,7 @@ function Deposit() {
             value: "0",
           }}
           exchangeRate="1 USDC = 1 PLUSD"
-          networkFee="~$1.20"
+          networkFee="~$0.00053 ETH ($1.20)"
         />
 
         {/* Steps card: two disabled on-chain steps — Approve then Convert */}
