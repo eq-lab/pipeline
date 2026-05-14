@@ -9,15 +9,15 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  * dashboard (Figma frame `1497:94556`, node `1497:94676` "card-horizontal"
  * inside the "Balances" stack `1497:94675`). It is the primary on-ramp for a
  * brand-new visitor: an eyebrow label, the "Get PLUSD" headline with a small
- * dollar glyph, a subtitle that explains the 1:1 USDC swap, and a navy
- * "Convert" CTA.
+ * dollar glyph, a subtitle that explains the 1:1 USDC swap, and a row of two
+ * action buttons — "Buy" (active) and "Sell" (disabled/ghost).
  *
  *   ┌────────────────────────────────────┐
  *   │  Start here                        │
  *   │  ($) Get PLUSD                     │
  *   │  Convert USDC 1:1                  │
  *   │                                    │
- *   │  [ Convert ]                       │
+ *   │  [ Buy ]  [ Sell ]                 │
  *   └────────────────────────────────────┘
  *
  * Composition (all primitives from `@pipeline/ui`):
@@ -25,9 +25,11 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  *     hairline border and the 4px corner radius. The Card already paints the
  *     token-driven chrome (`--color-pipeline-surface`, `--color-pipeline-line`)
  *     so this composer adds no raw colors.
- *   - {@link Button} `variant="primary-blue"` provides the brand-navy CTA.
- *     The Button primitive owns its own 48px height, label typography and
- *     focus-visible ring; the composer only positions it at the bottom-left.
+ *   - {@link Button} `variant="primary-blue"` provides the brand-navy "Buy" CTA
+ *     (Figma node `1497:94688` / `1497:94689`).
+ *   - {@link Button} `variant="secondary"` with `disabled` provides the ghost
+ *     "Sell" CTA (Figma node `1497:94690`) — ink-primary label, transparent
+ *     fill, ~0.32 opacity in the disabled state.
  *   - The PLUSD glyph is the existing `nav-dollar.svg` asset rendered through
  *     a CSS `mask-image` so `currentColor` tints it with the brand-navy token.
  *     This mirrors the WalletIllustration pattern (mask + currentColor) and
@@ -36,12 +38,14 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  * Layout:
  *   - The Card is the positioning context for a vertical flex column with
  *     `justify-between`: the heading block hugs the top of the card and the
- *     CTA hugs the bottom — matching the Figma "List" stack which space-
+ *     CTA row hugs the bottom — matching the Figma "List" stack which space-
  *     between's the title block and the buttons row.
  *   - The eyebrow / heading / subtitle are a tight vertical stack: 4px gap
  *     between heading and subtitle (mirrors Figma `gap-4` on `TextCont`),
  *     no gap between the eyebrow and the heading (mirrors Figma `gap-xs=0`
  *     on `PLUSD Balance`).
+ *   - The two action buttons sit side-by-side with `gap-xs` = 8px between them
+ *     (mirrors Figma `gap-2` on the "Buttons" row).
  *
  * Typography (no raw font sizes — every value resolves through theme tokens):
  *   - Eyebrow "Start here": Body token (16/22) in Graphik LC, ink colour.
@@ -56,8 +60,9 @@ import dollarGlyphUrl from "@pipeline/ui/assets/icons/nav-dollar.svg";
  *     assistive tech announces "Get PLUSD, region".
  *   - The dollar glyph is decorative; it is rendered through a CSS mask on a
  *     `<span aria-hidden="true">` so it stays out of the accessibility tree.
- *   - The CTA is a real `<button>` from the Button primitive with its own
- *     focus-visible styling.
+ *   - Both CTAs are real `<button>` elements from the Button primitive with
+ *     their own focus-visible styling. The disabled "Sell" button retains its
+ *     semantic role in the accessibility tree so screen readers announce it.
  *
  * Reuse: this composite belongs to the Disconnected home view, paired with
  * the Connect Wallet promo card and the Earned / Staked cards. It is not
@@ -70,11 +75,17 @@ export interface StartHereCardProps extends Omit<
   "children" | "title"
 > {
   /**
-   * Click handler for the Convert CTA. Optional so the card can be dropped
-   * into preview routes without wiring the convert flow; the page-level
+   * Click handler for the Buy CTA. Optional so the card can be dropped
+   * into preview routes without wiring the buy flow; the page-level
    * container is expected to supply this in production.
    */
-  onConvert?: () => void;
+  onBuy?: () => void;
+  /**
+   * Click handler for the Sell CTA. Optional — the Sell action is currently
+   * in a disabled/coming-soon state in the UI; this prop is provided for
+   * future wiring when the sell flow is implemented.
+   */
+  onSell?: () => void;
 }
 
 // Stable heading id so consumers do not collide if multiple cards mount in a
@@ -105,7 +116,7 @@ const glyphStyle: React.CSSProperties = {
 export const StartHereCard = React.forwardRef<
   HTMLDivElement,
   StartHereCardProps
->(function StartHereCard({ onConvert, className, ...rest }, ref) {
+>(function StartHereCard({ onBuy, onSell, className, ...rest }, ref) {
   const composed = [
     // Eyebrow + heading + subtitle top, CTA bottom — mirrors the Figma "List"
     // stack with `justify-between`.
@@ -185,17 +196,29 @@ export const StartHereCard = React.forwardRef<
         </p>
       </header>
 
-      {/* Convert CTA — bottom of the card. `self-start` keeps the button
-          flush-left and at its intrinsic width (the Figma button hugs its
-          label, not stretched). */}
-      <Button
-        variant="primary-blue"
-        onClick={onConvert}
-        className="self-start"
-        data-node-id="1497:94689"
+      {/* Action buttons row — Buy (primary) + Sell (disabled ghost).
+          `gap-2` = 8px mirrors Figma `gap-xs` on the buttons container.
+          `self-start` keeps the row flush-left at its intrinsic width. */}
+      <div
+        className="flex items-center gap-2 self-start"
+        data-node-id="1497:94688"
       >
-        Convert
-      </Button>
+        <Button
+          variant="primary-blue"
+          onClick={onBuy}
+          data-node-id="1497:94689"
+        >
+          Buy
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={onSell}
+          disabled
+          data-node-id="1497:94690"
+        >
+          Sell
+        </Button>
+      </div>
     </Card>
   );
 });

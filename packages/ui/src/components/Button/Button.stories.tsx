@@ -19,7 +19,7 @@ const meta = {
   argTypes: {
     variant: {
       control: "inline-radio",
-      options: ["primary-dark", "primary-blue", "circular-blue"],
+      options: ["primary-dark", "primary-blue", "secondary", "circular-blue"],
     },
     disabled: { control: "boolean" },
     children: { control: "text" },
@@ -50,7 +50,24 @@ export const PrimaryBlue: Story = {
   name: "primary-blue",
   args: {
     variant: "primary-blue",
-    children: "Convert",
+    children: "Buy",
+  },
+};
+
+export const Secondary: Story = {
+  name: "secondary",
+  args: {
+    variant: "secondary",
+    children: "Sell",
+  },
+};
+
+export const SecondaryDisabled: Story = {
+  name: "secondary (disabled)",
+  args: {
+    variant: "secondary",
+    children: "Sell",
+    disabled: true,
   },
 };
 
@@ -67,7 +84,7 @@ export const CircularBlue: Story = {
 /* -------------------------------------------------------------------------- */
 
 interface StateRowProps {
-  variant: "primary-dark" | "primary-blue" | "circular-blue";
+  variant: "primary-dark" | "primary-blue" | "secondary" | "circular-blue";
   label: string;
 }
 
@@ -171,10 +188,14 @@ export const States: Story = {
         .hover-preview[data-variant="circular-blue"] {
           background-color: color-mix(in oklab, var(--color-pipeline-brand) 85%, white);
         }
+        .hover-preview[data-variant="secondary"] {
+          background-color: var(--color-pipeline-surface-muted);
+        }
       `}</style>
       <StateHeader />
       <StateRow variant="primary-dark" label="Connect Wallet" />
-      <StateRow variant="primary-blue" label="Convert" />
+      <StateRow variant="primary-blue" label="Buy" />
+      <StateRow variant="secondary" label="Sell" />
       <StateRow variant="circular-blue" label="Stake" />
     </div>
   ),
