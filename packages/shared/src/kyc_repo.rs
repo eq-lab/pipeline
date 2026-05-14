@@ -568,6 +568,7 @@ impl KycRepo {
                                SELECT 1 FROM contract_logs c2
                                WHERE c2.event_name = 'RequestClaimed'
                                  AND c2.request_id = r.request_id
+                                 AND c2.contract_address = r.contract_address
                            ) AS is_claimed
                     FROM contract_logs r
                     WHERE LOWER(r.sender) = $1
@@ -580,6 +581,7 @@ impl KycRepo {
                           SELECT 1 FROM contract_logs c2
                           WHERE c2.event_name = 'RequestClaimed'
                             AND c2.request_id = r.request_id
+                            AND c2.contract_address = r.contract_address
                       )
                       AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')
                     ORDER BY r.block_timestamp DESC, r.id DESC"
