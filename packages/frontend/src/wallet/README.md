@@ -1,5 +1,27 @@
 # Wallet module
 
+## Running the dev server
+
+```bash
+# From the repo root
+yarn workspace @pipeline/frontend dev
+```
+
+The app is served at http://localhost:5173.
+
+Copy `.env.example` to `.env` and fill in the values before starting:
+
+```bash
+cp .env.example .env
+# edit VITE_WALLETCONNECT_PROJECT_ID and VITE_USDC_ADDRESS as needed
+```
+
+If you leave `VITE_USDC_ADDRESS` at the zero-address default or omit it, USDC
+balance reads are skipped and the mock layer is the only way to display a
+balance (see below).
+
+---
+
 All blockchain access in the app goes through this module. No other file may
 import `wagmi`, `viem`, `@reown/appkit`, or `@tanstack/react-query` directly —
 the ESLint `no-restricted-imports` rule enforces this boundary.
@@ -60,6 +82,26 @@ before delegating to the real read. Returns `{ data, isLoading, error }`.
 ---
 
 ## localStorage mock key schema
+
+### Quick start — work without a real wallet
+
+Run the dev server, open the browser DevTools console, and paste:
+
+```js
+localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+localStorage.setItem("pipeline.mock.wallet.balance.usdc", "1000000000"); // 1,000 USDC
+```
+
+The UI updates instantly (no reload needed). The TopBar switches to its
+connected state and shows the USDC balance. To reset:
+
+```js
+["pipeline.mock.wallet.address", "pipeline.mock.wallet.isConnected", "pipeline.mock.wallet.balance.usdc"]
+  .forEach(k => localStorage.removeItem(k));
+```
+
+---
 
 When a `pipeline.mock.wallet.*` key is present the wallet module returns the
 parsed mock value and skips the real RPC call entirely. No env flag needed —
