@@ -18,7 +18,7 @@ import React from "react";
  *   - `--color-pipeline-ink-muted`    — unselected label colour
  *   - `--color-pipeline-line`         — subtle border
  *   - `--color-pipeline-brand`        — focus-visible ring
- *   - `--radius-pipeline-pill`        — fully rounded ends
+ *   - `--radius-pipeline-button`      — small rounded corners (4 px, matches Figma radius-3xl)
  *   - `--font-body`, `--text-pipeline-body`, `--font-weight-emphasized`
  */
 
@@ -39,8 +39,8 @@ export const QuickAmountChip = React.forwardRef<
   const chipClasses = [
     // Layout
     "inline-flex items-center justify-center",
-    "h-9 px-3",
-    "rounded-[var(--radius-pipeline-pill)]",
+    "h-9 px-3 whitespace-nowrap",
+    "rounded-[var(--radius-pipeline-button)]",
     // Border — always present
     "border",
     selected
