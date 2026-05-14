@@ -537,18 +537,21 @@ impl KycRepo {
     }
 
     /// Check if a request has been claimed.
+    /// `contract_address` scopes the check to a specific contract (request_id is not unique across contracts).
     pub async fn is_request_claimed(
         &self,
         claimed_event: &str,
         request_id: &str,
+        contract_address: &str,
     ) -> anyhow::Result<bool> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT 1 FROM contract_logs
-             WHERE event_name = $1 AND request_id::text = $2
+             WHERE event_name = $1 AND request_id::text = $2 AND LOWER(contract_address) = LOWER($3)
              LIMIT 1",
         )
         .bind(claimed_event)
         .bind(request_id)
+        .bind(contract_address)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.is_some())

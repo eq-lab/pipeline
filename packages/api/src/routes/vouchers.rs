@@ -126,9 +126,10 @@ async fn deposit_voucher(
     }
 
     // Check not already claimed
+    let dm_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id, &dm_address)
         .await
     {
         Ok(true) => {
@@ -265,9 +266,10 @@ async fn withdrawal_voucher(
             .into_response();
     }
 
+    let wq_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id, &wq_address)
         .await
     {
         Ok(true) => {
