@@ -501,3 +501,59 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Navigate to `http://localhost:3000/withdraw`
 - **Expected:** Same two-card structure as on /deposit (Card A = PLUSD input, Card B = USDC output + Exchange rate / Network fee); 2px gap; swap button straddling the seam.
+
+---
+
+## S-198 — ActivityIcon tonal tile colours
+
+**Issue:** [#198 Transactions: ActivityIcon renders every tile as solid ink; Figma uses success-green / warning-yellow / muted-neutral tones](https://github.com/eq-lab/pipeline/issues/198)
+**Plan:** `docs/exec-plans/completed/issue-198-activity-icon-tones.md`
+
+### TC-198-1: Success tile renders green with white glyph
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+  2. Inspect the first row (PLUSD → USDC, completed)
+  3. In DevTools Console: `getComputedStyle(document.querySelectorAll('.size-10.shrink-0')[0]).backgroundColor`
+- **Expected:** Background is green (resolves to `--color-pipeline-success`, approx `rgb(58, 125, 68)`); glyph filter is `brightness(0) invert(1)` (white).
+
+### TC-198-2: Warning tile renders amber/gold with white glyph
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+  2. Inspect the second row (PLUSD → USDC, pending)
+  3. In DevTools Console: `getComputedStyle(document.querySelectorAll('.size-10.shrink-0')[1]).backgroundColor`
+- **Expected:** Background is amber/gold (resolves to `--color-pipeline-warning`, approx `rgb(181, 138, 0)`); glyph filter is `brightness(0) invert(1)` (white).
+
+### TC-198-3: Neutral tiles render muted gray with dark glyph
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+  2. Inspect rows 3–5 (Unstake, Stake, USDC → PLUSD)
+  3. In DevTools Console: check `.size-10.shrink-0` elements at indices 2–4
+- **Expected:** Each tile background resolves to `--color-pipeline-fill-muted` (transparent muted gray, approx `rgba(191, 189, 187, 0.12)`); glyph filter is `brightness(0)` (dark, no inversion).
+
+### TC-198-4: No single uniform ink tile across all rows
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+  2. Visually confirm five rows show three distinct tile colours
+- **Expected:** Row 1 = green, Row 2 = amber/gold, Rows 3–5 = muted gray; no row uses `--color-pipeline-ink` (dark ink) as tile background.
+
+### TC-198-5: ActivityIcon Storybook stories render all three tones
+
+- **Actor:** Developer / QA
+- **Preconditions:** Storybook running at `http://localhost:6006`
+- **Steps:**
+  1. Navigate to `ActivityIcon > Tone: success (completed)` story
+  2. Navigate to `ActivityIcon > Tone: warning (pending)` story
+  3. Navigate to `ActivityIcon > Tone: neutral (exchange)` story
+- **Expected:** Each story renders the correct tile colour for its tone; success = green, warning = amber, neutral = muted gray.

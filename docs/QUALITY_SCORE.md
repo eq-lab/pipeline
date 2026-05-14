@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-14 — Issue #198 (ActivityIcon tonal tile colours)
+
+- **Scope:** Issue #198 acceptance criteria (TC-198-1 through TC-198-5)
+- **Cases executed:** 5
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 1
+- **Bugs filed:** none
+- **Score: 9/10**
+  - PASS TC-198-1 (success tile — green, white glyph): Tile 0 `backgroundColor = rgb(58, 125, 68)` = `--color-pipeline-success`; `img` filter = `brightness(0) invert(1)`. Visual screenshot confirms green tile with white check-circle icon.
+  - PASS TC-198-2 (warning tile — amber/gold, white glyph): Tile 1 `backgroundColor = rgb(181, 138, 0)` = `--color-pipeline-warning`; `img` filter = `brightness(0) invert(1)`. Visual screenshot confirms amber tile with white clock icon.
+  - PASS TC-198-3 (neutral tiles — muted gray, dark glyph): Tiles 2–4 `backgroundColor = rgba(191, 189, 187, 0.12)` = `--color-pipeline-fill-muted`; `img` filter = `brightness(0)`. All three neutral rows (Unstake, Stake, USDC → PLUSD) confirmed.
+  - PASS TC-198-4 (no uniform ink tile): No tile uses `--color-pipeline-ink`. Three distinct tones visible in screenshot; original bug (all tiles dark ink) is resolved.
+  - BLOCKED TC-198-5 (Storybook tones): Storybook iframe renders blank — CSS token utilities do not apply in Storybook context. The component DOM is correct (`bg-[var(--color-pipeline-success)]` class present, token `--color-pipeline-success` = `#3a7d44` resolves in the iframe) but the Tailwind utility class does not generate a CSS rule for Storybook. This is the pre-existing Storybook/Tailwind v4 CSS issue, not a regression from #198.
+  - Console errors: only pre-existing WalletConnect/Reown 403/400 errors and favicon 404; none related to this issue.
+  - Deducted 1 point: Storybook visual verification blocked by pre-existing CSS issue.
+
 ### 2026-05-14 — Issue #186 (Deposit: ConversionCard two-card layout)
 
 - **Scope:** Issue #186 acceptance criteria (TC-186-1 through TC-186-4)
