@@ -57,6 +57,8 @@ pub struct RequestEventRow {
     pub event_name: String,
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub amount: Option<bigdecimal::BigDecimal>,
+    pub assets: Option<bigdecimal::BigDecimal>,
+    pub shares: Option<bigdecimal::BigDecimal>,
     pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
     pub is_claimed: bool,
@@ -69,6 +71,10 @@ pub struct GroupedRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
     pub amount: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shares: Option<String>,
     pub status: String,
     pub created_at: String,
 }
@@ -106,6 +112,8 @@ impl From<RequestEventRow> for GroupedRequest {
             request_type: request_type.to_owned(),
             request_id: row.request_id.map(|r| r.to_string()),
             amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
+            assets: row.assets.map(|a| a.to_string()),
+            shares: row.shares.map(|s| s.to_string()),
             status: status.to_owned(),
             created_at,
         }
@@ -565,7 +573,7 @@ impl KycRepo {
         wallet: &str,
         pending_only: bool,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
-        let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.crystal_kyt_status,
+        let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.assets, r.shares, r.crystal_kyt_status,
                            r.block_timestamp,
                            EXISTS (
                                SELECT 1 FROM contract_logs c2
