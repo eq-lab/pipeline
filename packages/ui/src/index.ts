@@ -67,3 +67,5 @@ export { ActivityHeader } from "./components/ActivityHeader/ActivityHeader";
 export type { ActivityHeaderProps } from "./components/ActivityHeader/ActivityHeader";
 export { AmountPill } from "./components/AmountPill/AmountPill";
 export type { AmountPillProps } from "./components/AmountPill/AmountPill";
+export { StakeHeader } from "./components/StakeHeader/StakeHeader";
+export type { StakeHeaderProps } from "./components/StakeHeader/StakeHeader";
