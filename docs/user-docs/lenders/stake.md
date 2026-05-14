@@ -14,7 +14,7 @@ The whitelist lives on PLUSD transfers and is enforced at the underlying-asset l
 
 ## Stake flow
 
-{% include diagram.html src="d3-stake-unstake.svg" caption="Stake is open access; unstake requires the receiver of the returned PLUSD to be whitelisted." %}
+{% include diagram.html src="d3-stake-unstake.png" caption="Stake is open access; unstake requires the receiver of the returned PLUSD to be whitelisted." %}
 
 ### Walkthrough
 
