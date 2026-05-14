@@ -189,7 +189,7 @@ Out of scope (per Issue):
 > All file paths are absolute from the repo root. The coder runs every
 > command from the repo root unless noted.
 
-### 1. Install dependencies
+### 1. Install dependencies [DONE]
 
 Add to `/Users/dima/git/pipeline/packages/frontend/package.json` under
 `dependencies` (use the highest stable line at the time of implementation):
@@ -204,7 +204,7 @@ Run `yarn install` from the repo root (workspace install). Confirm
 `yarn workspace @pipeline/frontend build` still passes before any source
 changes.
 
-### 2. Create the typed env accessor
+### 2. Create the typed env accessor [DONE]
 
 New file `/Users/dima/git/pipeline/packages/frontend/src/lib/env.ts`:
 
@@ -223,7 +223,7 @@ New file `/Users/dima/git/pipeline/packages/frontend/src/lib/env.ts`:
 - Export a `withEnvOverride()` test helper that swaps the frozen object
   for the duration of a callback (used by unit tests).
 
-### 3. Add Hoodi chain definition
+### 3. Add Hoodi chain definition [DONE]
 
 New file `/Users/dima/git/pipeline/packages/frontend/src/wallet/chain.ts`:
 
@@ -250,7 +250,7 @@ prod target), the export still works — we keep the export named `hoodi`
 for readability; the constant simply tracks whatever chain the env points
 at.
 
-### 4. Construct the AppKit / wagmi adapter
+### 4. Construct the AppKit / wagmi adapter [DONE]
 
 New file `/Users/dima/git/pipeline/packages/frontend/src/wallet/config.ts`:
 
@@ -268,7 +268,7 @@ New file `/Users/dima/git/pipeline/packages/frontend/src/wallet/config.ts`:
   `document` is unavailable); this app is SPA-only so the DOM is always
   present at runtime, but keep the guard for vitest's `jsdom` environment.
 
-### 5. Mock layer
+### 5. Mock layer [DONE]
 
 New file `/Users/dima/git/pipeline/packages/frontend/src/wallet/mock.ts`:
 
@@ -298,7 +298,7 @@ Module exports:
   `parseJson` (with a try/catch that returns `undefined` on bad JSON so a
   fat-finger in DevTools does not crash the app).
 
-### 6. Provider + hooks
+### 6. Provider + hooks [DONE]
 
 New file `/Users/dima/git/pipeline/packages/frontend/src/wallet/WalletProvider.tsx`:
 
@@ -353,7 +353,7 @@ barrel exporting only `WalletProvider`, `useWallet`, `useUsdcBalance`,
 `UseContractReadArgs`. Anything else (e.g. raw `wagmiConfig`, `hoodi`,
 `mock.ts` internals) is NOT re-exported.
 
-### 7. Wire into the app
+### 7. Wire into the app [DONE]
 
 - `/Users/dima/git/pipeline/packages/frontend/src/main.tsx`: import
   `WalletProvider` from `@/wallet` and wrap `<RouterProvider router={router} />`
@@ -377,7 +377,7 @@ barrel exporting only `WalletProvider`, `useWallet`, `useUsdcBalance`,
 - `/Users/dima/git/pipeline/packages/frontend/src/routes/withdraw.tsx`:
   same change as `deposit.tsx`, with `"$9,000.00"` removed.
 
-### 8. ESLint guard
+### 8. ESLint guard [DONE]
 
 Edit `/Users/dima/git/pipeline/packages/frontend/eslint.config.js`:
 
@@ -397,7 +397,7 @@ Edit `/Users/dima/git/pipeline/packages/frontend/eslint.config.js`:
   ```
 - Confirm `yarn workspace @pipeline/frontend lint` passes.
 
-### 9. Env example + docs
+### 9. Env example + docs [DONE]
 
 - Edit `/Users/dima/git/pipeline/.env.example`. Append a new section after
   the existing ones:
@@ -414,7 +414,7 @@ Edit `/Users/dima/git/pipeline/packages/frontend/eslint.config.js`:
   table with worked DevTools console snippets; (c) the "no `wagmi`/`viem`
   outside this module" rule and how to extend the public surface.
 
-### 10. Doc updates
+### 10. Doc updates [DONE]
 
 - `/Users/dima/git/pipeline/docs/FRONTEND.md` — Web3 integration section:
   replace the WalletConnect v2 / RainbowKit + ethers.js sentences with
@@ -432,7 +432,7 @@ Edit `/Users/dima/git/pipeline/packages/frontend/eslint.config.js`:
   test cases TC-181-1 (real connect against Hoodi), TC-181-2 (mock connect
   via localStorage), TC-181-3 (mock contract-read override).
 
-### 11. Verification
+### 11. Verification [DONE]
 
 - `yarn workspace @pipeline/frontend build` — must pass.
 - `yarn workspace @pipeline/frontend lint` — must pass.

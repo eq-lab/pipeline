@@ -83,10 +83,18 @@ Desktop-first — LPs and operators are expected to use desktop browsers. Mobile
 
 ## Web3 integration
 
-- **Wallet connection:** WalletConnect v2 + RainbowKit
-- **Contract reads:** ethers.js direct calls for balances, exchange rate, whitelist status
-- **Transactions:** LP signs USDC.approve() + DepositManager.deposit(), sPLUSD.deposit(), sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal(), WithdrawalQueue.claim() directly from connected wallet
-- **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer
+- **Wallet connection:** wagmi + viem + Reown AppKit (WalletConnect v2). All blockchain access
+  is wrapped in `packages/frontend/src/wallet/`; see
+  `packages/frontend/src/wallet/README.md` for the public API and the
+  `pipeline.mock.wallet.*` localStorage mock key schema.
+- **Contract reads:** `useContractRead` wrapper in the wallet module (delegates to wagmi's
+  `useReadContract`); USDC balance via `useUsdcBalance`.
+- **Transactions:** LP signs USDC.approve() + DepositManager.deposit(), sPLUSD.deposit(),
+  sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal(), WithdrawalQueue.claim() directly from
+  connected wallet via wagmi `useWriteContract` (in future issues that consume `useWallet()`).
+- **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer.
+- **Chain:** Hoodi testnet (chain id 560048) by default; configurable via `VITE_EVM_CHAIN_ID` /
+  `VITE_EVM_RPC_URL` at runtime using `vite-plugin-runtime-env`.
 
 ## Data fetching
 

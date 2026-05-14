@@ -411,3 +411,51 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Click browser Back button (or navigate to `/`)
 - **Expected:** URL is `/`; home icon is active; dollar icon is muted.
+
+---
+
+## S-181 — EVM wallet connection with localStorage mock layer
+
+**Issue:** [#181 EVM wallet connection with WalletConnect and localStorage mock layer](https://github.com/eq-lab/pipeline/issues/181)
+**Plan:** `docs/exec-plans/active/issue-181-evm-wallet-connection.md`
+
+### TC-181-1: Real connect against Hoodi
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running with a valid `VITE_WALLETCONNECT_PROJECT_ID` set in `.env`, `VITE_EVM_CHAIN_ID=560048`.
+- **Steps:**
+  1. Navigate to `http://localhost:3000/`.
+  2. Click the "Connect Wallet" button in the TopBar.
+  3. In the AppKit modal, choose a mobile wallet via WalletConnect and scan the QR code.
+  4. Approve the connection in the mobile wallet app.
+- **Expected:** AppKit modal opens; after approval the TopBar switches from the "Connect Wallet" button to the `WalletPill` showing the wallet's USDC balance (or "—" if `VITE_USDC_ADDRESS` is the zero default). No console errors.
+
+### TC-181-2: localStorage mock connect (zero RPC calls)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running; NO real wallet connected.
+- **Steps:**
+  1. Open DevTools Console and run:
+     ```js
+     localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+     localStorage.setItem("pipeline.mock.wallet.balance.usdc", "1000000000");
+     ```
+  2. Observe the TopBar (no page reload needed).
+  3. Open DevTools Network panel; confirm zero WebSocket / HTTP requests to a wallet relay or RPC endpoint.
+- **Expected:** TopBar updates to the connected `WalletPill` showing `$1,000.00` without a page reload. DevTools Network panel shows no new wallet-relay or RPC traffic.
+
+### TC-181-3: Mock contract-read override
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running.
+- **Steps:**
+  1. In DevTools Console:
+     ```js
+     localStorage.setItem(
+       "pipeline.mock.wallet.contract.0xabc123.balanceOf",
+       JSON.stringify("42")
+     );
+     ```
+  2. In any component that calls `useContractRead({ address: "0xabc123", abi, functionName: "balanceOf" })`, observe the returned `data` value.
+- **Expected:** The hook returns `data === "42"` (the JSON-parsed mock) without issuing a real contract call.
