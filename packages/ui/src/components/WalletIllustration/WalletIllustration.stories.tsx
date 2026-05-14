@@ -14,7 +14,7 @@ const meta = {
           "primary tone) and the Recent activity empty state (smaller, " +
           "muted tone). The component renders the SVG asset via CSS " +
           "`mask-image` so the `tone` prop swaps the fill between the " +
-          "brand-navy and muted-ink theme tokens. The illustration is " +
+          "primary-ink and muted-ink theme tokens. The illustration is " +
           'purely decorative — it ships with `aria-hidden="true"` and ' +
           "meaning is conveyed by the surrounding copy.",
       },
@@ -46,7 +46,7 @@ export const LargePrimary: Story = {
         story:
           "How the illustration appears inside the Connect Wallet promo " +
           "card on the dashboard: at the Figma intrinsic width with the " +
-          "brand-navy fill. Rendered on the pale-yellow promo surface for " +
+          "dark ink fill. Rendered on the pale-yellow promo surface for " +
           "context.",
       },
     },
