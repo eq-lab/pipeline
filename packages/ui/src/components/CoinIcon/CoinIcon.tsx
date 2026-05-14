@@ -3,9 +3,10 @@ import React from "react";
 /**
  * CoinIcon — displays a USDC, PLUS-D, or sPLUSD coin icon at a given size.
  *
- * The icons are the blue coin SVGs introduced in issue #100.  All assets
- * embed a rasterised PNG sprite via a base64 `<image>` element, so they
- * are not colour-themeable with `currentColor`; the pixels are baked in.
+ * The icons are rasterised PNG sprites embedded as base64 data URIs and
+ * rendered via a plain `<img>` element.  This avoids SVG `<image>` element
+ * rendering issues in React 19 strict mode and is the simplest, most
+ * widely-supported approach.
  *
  * Sizes map to the contexts defined in the Figma spec:
  *   - sm (20 px) — wallet pill / conversion-card row
@@ -33,8 +34,8 @@ const SIZE_MAP: Record<"sm" | "md" | "lg", number> = {
 };
 
 export interface CoinIconProps extends Omit<
-  React.SVGAttributes<SVGSVGElement>,
-  "viewBox"
+  React.ImgHTMLAttributes<HTMLImageElement>,
+  "src" | "width" | "height"
 > {
   /** Which coin to display. */
   token: "usdc" | "plusd" | "splusd";
@@ -47,7 +48,7 @@ export interface CoinIconProps extends Omit<
   size?: "sm" | "md" | "lg";
 }
 
-export const CoinIcon = React.forwardRef<SVGSVGElement, CoinIconProps>(
+export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
   function CoinIcon(
     {
       token,
@@ -66,25 +67,18 @@ export const CoinIcon = React.forwardRef<SVGSVGElement, CoinIconProps>(
     const isHidden = ariaLabel == null ? true : (ariaHidden ?? false);
 
     return (
-      <svg
+      <img
         ref={ref}
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
+        src={`data:image/png;base64,${b64}`}
         width={px}
         height={px}
+        alt={ariaLabel ?? ""}
         aria-hidden={isHidden || undefined}
         aria-label={ariaLabel}
         role={ariaLabel != null ? "img" : undefined}
+        style={{ display: "block", flexShrink: 0 }}
         {...rest}
-      >
-        <image
-          href={`data:image/png;base64,${b64}`}
-          x="0"
-          y="0"
-          width="24"
-          height="24"
-        />
-      </svg>
+      />
     );
   },
 );
