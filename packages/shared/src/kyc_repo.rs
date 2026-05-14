@@ -565,7 +565,7 @@ impl KycRepo {
         wallet: &str,
         pending_only: bool,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
-        let base = "SELECT r.event_name, r.request_id, r.amount, r.crystal_kyt_status,
+        let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.crystal_kyt_status,
                            r.block_timestamp,
                            EXISTS (
                                SELECT 1 FROM contract_logs c2
