@@ -40,16 +40,26 @@ const TABS = [
  * TwoLineAmount — right-aligned two-line amount block for stake / unstake /
  * convert / pending rows. Uses only design tokens via Tailwind utilities.
  *
- * `primary`   — top line, body size, primary ink.
- * `secondary` — bottom line, caption size, muted ink.
+ * `primary`   — top line, body size.
+ * `secondary` — bottom line, caption size, always muted ink.
+ * `tone`      — `"default"` renders the top line in primary ink (completed
+ *               rows); `"muted"` renders both lines in muted ink (pending
+ *               rows, communicating non-final state). Defaults to `"default"`.
  */
 function TwoLineAmount({
   primary,
   secondary,
+  tone = "default",
 }: {
   primary: string;
   secondary: string;
+  tone?: "default" | "muted";
 }) {
+  const primaryColor =
+    tone === "muted"
+      ? "text-[color:var(--color-pipeline-ink-muted)]"
+      : "text-[color:var(--color-pipeline-ink)]";
+
   return (
     <div className="flex flex-col items-end gap-0.5">
       <span
@@ -58,7 +68,7 @@ function TwoLineAmount({
           "text-[length:var(--text-pipeline-body)]",
           "leading-[var(--text-pipeline-body--line-height)]",
           "font-[var(--font-weight-regular)]",
-          "text-[color:var(--color-pipeline-ink)]",
+          primaryColor,
           "whitespace-nowrap",
         ].join(" ")}
       >
@@ -110,13 +120,17 @@ function Transactions() {
             amount={<AmountPill>+500.00 USDC</AmountPill>}
           />
 
-          {/* Row 2 — Sell (PLUSD → USDC), pending, two-line amount */}
+          {/* Row 2 — Sell (PLUSD → USDC), pending, two-line amount (both lines muted) */}
           <ActivityRow
             icon="clock-pending"
             title="Sell"
             timestamp="Apr 17, 2:17 PM"
             amount={
-              <TwoLineAmount primary="+1,000.00 USDC" secondary="Pending" />
+              <TwoLineAmount
+                primary="+1,000.00 USDC"
+                secondary="Pending"
+                tone="muted"
+              />
             }
           />
 
