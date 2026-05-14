@@ -96,8 +96,8 @@ async fn deposit_voucher(
         }
     };
 
-    // Check KYT status is clear
-    if req.crystal_kyt_status != Some(1) {
+    // Check KYT status is clear (skip if Crystal is disabled)
+    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -258,7 +258,8 @@ async fn withdrawal_voucher(
         }
     };
 
-    if req.crystal_kyt_status != Some(1) {
+    // Check KYT status is clear (skip if Crystal is disabled)
+    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),

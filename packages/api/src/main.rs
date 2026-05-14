@@ -67,13 +67,13 @@ async fn main() -> anyhow::Result<()> {
 
             let dm_domain = Eip712Domain {
                 name: "PipelineDepositManager".to_owned(),
-                version: "1".to_owned(),
+                version: "v1".to_owned(),
                 chain_id,
                 verifying_contract: dm_addr,
             };
             let wq_domain = Eip712Domain {
                 name: "PipelineWithdrawalQueue".to_owned(),
-                version: "1".to_owned(),
+                version: "v1".to_owned(),
                 chain_id,
                 verifying_contract: wq_addr,
             };
@@ -86,6 +86,11 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let crystal_enabled = std::env::var("JOB_RELAYER_CRYSTAL_ENABLED")
+        .ok()
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(true);
+
     let state = Arc::new(AppState {
         pool: pool.clone(),
         kyc_repo,
@@ -94,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         voucher_signer,
         dm_domain,
         wq_domain,
+        crystal_enabled,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();

@@ -15,4 +15,5 @@ pub struct AppState {
     pub voucher_signer: Option<PrivateKeySigner>,
     pub dm_domain: Option<Eip712Domain>,
     pub wq_domain: Option<Eip712Domain>,
+    pub crystal_enabled: bool,
 }
