@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -9,20 +9,6 @@ import {
   createMemoryHistory,
 } from "@tanstack/react-router";
 import { TopBar } from "./TopBar";
-
-// Mock SVG assets — jsdom cannot handle CSS mask URLs.
-vi.mock("@pipeline/ui/assets/icons/nav-home.svg", () => ({
-  default: "/nav-home.svg",
-}));
-vi.mock("@pipeline/ui/assets/icons/nav-dollar.svg", () => ({
-  default: "/nav-dollar.svg",
-}));
-vi.mock("@pipeline/ui/assets/icons/nav-stats.svg", () => ({
-  default: "/nav-stats.svg",
-}));
-vi.mock("@pipeline/ui/assets/icons/nav-history.svg", () => ({
-  default: "/nav-history.svg",
-}));
 
 /** Builds a minimal in-test router that renders <TopBar /> on every route. */
 function buildRouter(

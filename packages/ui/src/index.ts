@@ -69,3 +69,5 @@ export { AmountPill } from "./components/AmountPill/AmountPill";
 export type { AmountPillProps } from "./components/AmountPill/AmountPill";
 export { StakeHeader } from "./components/StakeHeader/StakeHeader";
 export type { StakeHeaderProps } from "./components/StakeHeader/StakeHeader";
+export { NavIcon } from "./components/NavIcon";
+export type { NavIconProps, NavIconName } from "./components/NavIcon";
