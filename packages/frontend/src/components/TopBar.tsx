@@ -135,8 +135,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     // Derive active key from the current URL, then fall back to "home".
+    // /withdraw shares the dollar icon with /deposit — no separate nav entry.
     const derivedActive: string =
-      pathname === "/deposit"
+      pathname === "/deposit" || pathname === "/withdraw"
         ? "deposit"
         : pathname === "/transactions"
           ? "history"
