@@ -49,16 +49,6 @@ export const ENV = Object.freeze({
   ),
 
   /**
-   * USDC ERC-20 address on the configured chain.
-   * Defaults to the zero address; when zero the wallet module skips the
-   * balance read and surfaces "balance unknown" to the UI.
-   */
-  USDC_ADDRESS: readString(
-    "VITE_USDC_ADDRESS",
-    "0x0000000000000000000000000000000000000000",
-  ) as `0x${string}`,
-
-  /**
    * DepositManager contract address on the configured chain.
    * Defaults to the zero address; when zero the wallet module short-circuits
    * all DepositManager hooks and returns `undefined` data without making any

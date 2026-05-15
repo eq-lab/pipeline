@@ -428,7 +428,7 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
   2. Click the "Connect Wallet" button in the TopBar.
   3. In the AppKit modal, choose a mobile wallet via WalletConnect and scan the QR code.
   4. Approve the connection in the mobile wallet app.
-- **Expected:** AppKit modal opens; after approval the TopBar switches from the "Connect Wallet" button to the `WalletPill` showing the wallet's USDC balance (or "—" if `VITE_USDC_ADDRESS` is the zero default). No console errors.
+- **Expected:** AppKit modal opens; after approval the TopBar switches from the "Connect Wallet" button to the `WalletPill` showing the wallet's USDC balance (or "—" if `VITE_DEPOSIT_MANAGER_ADDRESS` is unset / the manager's `usdc()` view has not yet resolved). No console errors.
 
 ### TC-181-2: localStorage mock connect (zero RPC calls)
 
