@@ -8,6 +8,7 @@ Entries are sorted alphabetically by name.
 
 | Name | Import path | Description |
 |------|-------------|-------------|
+| `isMockKeyPresent` | `@/wallet` | Non-reactive helper: returns `true` when a `pipeline.mock.wallet.*` key is currently set in `localStorage`. Used by the `/test` diagnostic page to render `MOCKED` badges; see [`/test` route](../../packages/frontend/src/routes/test.tsx) for usage. |
 | `useApproval` | `@/wallet` | Reads ERC-20 `allowance(owner, spender)` and exposes `approve(spender, amount)` for any (token, spender) pair. Returns `{ allowance, isSufficient, approve, data, isLoading, isPending, isSuccess, error, reset, refetch }`. Honours `pipeline.mock.wallet.allowance.<token>.<spender>` and `pipeline.mock.wallet.contract.<token>.approve` for mock testing. |
 | `useClaim` | `@/wallet` | Write hook for `claim(requestId, verifierSignature)` on the DepositManager contract. Returns `{ write, data, isPending, isSuccess, error, reset }`. Honours `pipeline.mock.wallet.contract.depositManager.claim` for mock testing. |
 | `useContractRead` | `@/wallet` | Generic read hook wrapping wagmi's `useReadContract` with the per-address localStorage mock layer. |
@@ -16,6 +17,10 @@ Entries are sorted alphabetically by name.
 | `useRequestDeposit` | `@/wallet` | Write hook for `requestDeposit(amount)` on the DepositManager contract. Returns `{ write, data, isPending, isSuccess, error, reset }`. Honours `pipeline.mock.wallet.contract.depositManager.requestDeposit` for mock testing. |
 | `useToken` | `@/wallet` | Bundles ERC-20 metadata (`decimals`, `symbol`), balance (`balanceOf`), and approval (`useApproval` composition) into one return value for the connected wallet. Returns `{ decimals, symbol, balance, formattedBalance, refetchBalance, allowance, isSufficient, approve, approveData, isApprovePending, isApproveSuccess, refetchAllowance, isLoading, error }`. Honours `pipeline.mock.wallet.contract.<token>.decimals`, `…symbol`, `pipeline.mock.wallet.balance.<token>`, and approval mock keys. |
 | `useWallet` | `@/wallet` | Returns the connected wallet's address, connection state, chain id, and `connect`/`disconnect` actions. Backed by wagmi + Reown AppKit; honours `pipeline.mock.wallet.*` localStorage keys. |
+
+## /test diagnostic route
+
+The `/test` route (`packages/frontend/src/routes/test.tsx`) renders all wallet hooks and env values in one utilitarian page for manual QA and debugging. It uses `isMockKeyPresent` from `@/wallet` to show a `MOCKED` badge next to any field whose value is sourced from the `pipeline.mock.wallet.*` localStorage layer rather than a real RPC call. The page is intentionally not linked from `TopBar`; navigate to it directly at `http://localhost:5173/test`.
 
 ## How to add a row
 
