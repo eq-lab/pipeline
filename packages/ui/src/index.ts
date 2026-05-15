@@ -15,6 +15,11 @@ export type {
   WalletIllustrationProps,
   WalletIllustrationTone,
 } from "./components/WalletIllustration";
+export { ActivityEmptyIllustration } from "./components/ActivityEmptyIllustration";
+export type {
+  ActivityEmptyIllustrationProps,
+  ActivityEmptyIllustrationTone,
+} from "./components/ActivityEmptyIllustration";
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
 export { CoinIcon } from "./components/CoinIcon/CoinIcon";

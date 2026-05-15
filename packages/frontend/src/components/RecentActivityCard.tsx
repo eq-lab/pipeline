@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, EmptyState, WalletIllustration } from "@pipeline/ui";
+import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
 
 /**
  * RecentActivityCard — Disconnected-state right-column card.
@@ -7,17 +7,17 @@ import { Card, EmptyState, WalletIllustration } from "@pipeline/ui";
  * White card that sits in the right column of the Disconnected dashboard
  * (Figma frame `1497:94556`, node `1497:94567` "Section"). It shows the
  * "Recent activity" heading top-left and an `EmptyState` filling the body
- * with a muted `WalletIllustration` plus the caption
+ * with a muted `ActivityEmptyIllustration` plus the caption
  * "You will see all transactions here". When transaction history lands the
  * card body will be swapped for a list; the heading and surface chrome stay.
  *
  *   ┌─────────────────────────────────────┐
  *   │  Recent activity                    │
  *   │                                     │
- *   │              ╱╱╱╱                   │
- *   │          ╱╱╱╱╱╱╱╱                   │
- *   │          ╱╱╱╱╱╱ ◯                   │
- *   │          ╱╱╱╱╱╱                     │
+ *   │          ╱╱╱╱╱╱╱╱╱╱                 │
+ *   │        ╱╱╱╱╱╱╱╱╱╱╱╱╱╱              │
+ *   │        ╱╱╱╱╱╱╱╱╱╱╱╱╱╱              │
+ *   │          ╱╱╱╱╱╱╱╱╱╱                 │
  *   │                                     │
  *   │      You will see all transactions  │
  *   │              here                   │
@@ -30,10 +30,11 @@ import { Card, EmptyState, WalletIllustration } from "@pipeline/ui";
  *     other neutral dashboard cards).
  *   - {@link EmptyState} centres the illustration + caption vertically and
  *     horizontally inside the body region below the heading.
- *   - {@link WalletIllustration} `tone="muted"` paints the striped-wallet
- *     decoration in the neutral muted-ink token. The Figma `IMG` slot is
- *     240×240 (`1497:94570`); we honour that intrinsic size by passing
- *     `width={240}` so the illustration tracks the Figma footprint.
+ *   - {@link ActivityEmptyIllustration} `tone="muted"` paints the
+ *     striped-square silhouette (240×240, Figma node `1497:94570`) in the
+ *     neutral muted-ink token. Distinct from the landscape striped-wallet
+ *     used by the Connect Wallet promo — this is a 240×240 abstract striped
+ *     square with no coin-slot detail.
  *
  * Layout:
  *   - The Card is the positioning context. Inner content is a vertical flex
@@ -58,7 +59,7 @@ import { Card, EmptyState, WalletIllustration } from "@pipeline/ui";
  *   - The Card renders a `<div>`; we promote it to a landmark via
  *     `role="region"` + `aria-labelledby` referencing the heading id so
  *     assistive tech announces "Recent activity, region".
- *   - The illustration is decorative; `WalletIllustration` sets
+ *   - The illustration is decorative; `ActivityEmptyIllustration` sets
  *     `aria-hidden="true"` internally and `EmptyState` wraps the slot in an
  *     `aria-hidden` container, so the empty-state caption is the only thing
  *     the screen reader announces inside the body.
@@ -133,7 +134,7 @@ export const RecentActivityCard = React.forwardRef<
       <div className="flex min-h-0 flex-1" data-node-id="1497:94569">
         <EmptyState
           illustration={
-            <WalletIllustration
+            <ActivityEmptyIllustration
               tone="muted"
               width={ILLUSTRATION_WIDTH}
               data-node-id="1497:94570"
