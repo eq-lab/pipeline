@@ -437,13 +437,18 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Steps:**
   1. Open DevTools Console and run:
      ```js
+     const usdcAddress = "0x2222000000000000000000000000000000000002";
      localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
      localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
-     localStorage.setItem("pipeline.mock.wallet.balance.usdc", "1000000000");
+     localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", usdcAddress);
+     localStorage.setItem(`pipeline.mock.wallet.contract.${usdcAddress}.decimals`, "6");
+     localStorage.setItem(`pipeline.mock.wallet.contract.${usdcAddress}.symbol`, "USDC");
+     localStorage.setItem(`pipeline.mock.wallet.balance.${usdcAddress}`, "1000000000");
      ```
   2. Observe the TopBar (no page reload needed).
   3. Open DevTools Network panel; confirm zero WebSocket / HTTP requests to a wallet relay or RPC endpoint.
-- **Expected:** TopBar updates to the connected `WalletPill` showing `$1,000.00` without a page reload. DevTools Network panel shows no new wallet-relay or RPC traffic.
+- **Expected:** TopBar updates to the connected `WalletPill` showing `1,000.00` without a page reload. DevTools Network panel shows no new wallet-relay or RPC traffic.
+- **Note:** `pipeline.mock.wallet.balance.usdc` was removed; balance is now keyed by token address. See `packages/frontend/src/wallet/README.md`.
 
 ### TC-181-3: Mock contract-read override
 

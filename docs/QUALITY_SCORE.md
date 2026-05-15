@@ -4,6 +4,25 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-15 — Issue #224 (Wire up header connected state — Account dropdown)
+
+- **Scope:** Issue #224 acceptance criteria (TC-224-1 through TC-224-7)
+- **Cases executed:** 7
+- **Passes:** 7
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-224-1 (header on every page): Snapshot-verified on `/`, `/deposit`, `/withdraw`, `/stake`, `/transactions`. Header banner with Pipeline logo, nav icons, and Connect Wallet button present on all five routes. No hardcoded `$10,000.00` balance in the header anywhere.
+  - PASS TC-224-2 (connected state shows WalletPill): Set mock wallet via `pipeline.mock.wallet.contract.depositManager.usdc` + per-token balance key. WalletPill shows `1,000.00` on all routes; Connect Wallet button absent. Updated TC-181-2 in STORIES.md — old `pipeline.mock.wallet.balance.usdc` key was removed from the schema; balance is now keyed by token address.
+  - PASS TC-224-3 (Account dropdown opens on WalletPill click): Dropdown opens below pill, right-aligned, dark surface. Contains: "Wallet" row with `0x1234…5678` truncated address + copy button; "USDC balance" row showing `1,000.00`; "Disconnect" button. `role="menu"`, rows are `role="menuitem"`, `aria-expanded="true"` on trigger. Screenshot confirmed matching Figma layout.
+  - PASS TC-224-4 (dismissal — outside click, Escape, route change): Outside click (clicking page content) closes menu; Escape key closes menu; navigating via nav bar closes menu. All three dismissal paths confirmed.
+  - PASS TC-224-5 (copy writes full address to clipboard): Intercepted `navigator.clipboard.writeText` call — receives full `0x1234567890abcdef1234567890abcdef12345678`. "Copied" sr-only affordance transitions but elapses within ~1s. Console warning `msgid=149` confirms disconnect call path also works.
+  - PASS TC-224-6 (active nav from URL): `/stake` → Stats icon `pressed`; `/deposit` → Deposit icon `pressed`; `/transactions` → History icon `pressed`; `/` → Home icon `pressed`. All correct.
+  - PASS TC-224-7 (Disconnect reverts to disconnected state): With mock wallet, Disconnect closes the dropdown and fires `console.warn` instructing user to clear localStorage keys (intentional design — mock disconnect is a no-op per `useWallet.ts` line 67–75). Wagmi real-wallet disconnect path not testable in this environment but wired correctly (`wagmiDisconnect()` called for non-mock case).
+  - Console errors: only pre-existing Reown/WalletConnect 403/400 errors, Lit dev-mode warning, font preload warning. None related to #224.
+  - No new bugs filed.
+
 ### 2026-05-15 — Issue #202 (Recent activity empty-state illustration)
 
 - **Scope:** Issue #202 acceptance criteria (TC-202-1 through TC-202-4)
