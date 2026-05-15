@@ -83,7 +83,9 @@ _None_
 
 ## Implementation Steps
 
-1. **Expose `isMockKeyPresent` from the wallet barrel.**
+<!-- Progress: All 15 steps completed -->
+
+1. **[DONE] Expose `isMockKeyPresent` from the wallet barrel.**
    - In `packages/frontend/src/wallet/mock.ts`, add:
      ```ts
      export function isMockKeyPresent(key: string): boolean {
@@ -98,7 +100,7 @@ _None_
      near the existing wallet helpers — directly after `useWallet` exports is
      fine).
 
-2. **Create the route file.**
+2. **[DONE] Create the route file.**
    - Path: `packages/frontend/src/routes/test.tsx`.
    - Use the same `createFileRoute` pattern as `routes/deposit.tsx`:
      ```ts
@@ -111,7 +113,7 @@ _None_
      that `MOCKED` badges show when a `pipeline.mock.wallet.*` key is driving
      the value, and notes the page is intentionally not linked from `TopBar`.
 
-3. **Local inline `MockedBadge` component.**
+3. **[DONE] Local inline `MockedBadge` component.**
    - Defined inline in `routes/test.tsx` (utilitarian — no new `@pipeline/ui`
      component).
    - Renders the literal text `MOCKED` in a muted style: small uppercase
@@ -121,7 +123,7 @@ _None_
    - Signature: `function MockedBadge({ when }: { when: boolean })` returning
      `null` when `when` is `false`.
 
-4. **Local inline `KeyValueRow` component.**
+4. **[DONE] Local inline `KeyValueRow` component.**
    - Renders `label`, `value`, and an optional trailing `MockedBadge`.
    - Signature:
      ```ts
@@ -140,7 +142,7 @@ _None_
    - A simple flex row: label on the left, value (monospace where helpful)
      on the right, badge inline next to the value.
 
-5. **Section: Environment.**
+5. **[DONE] Section: Environment.**
    - Render `ENV.EVM_CHAIN_ID`, `ENV.EVM_RPC_URL`, `ENV.DEPOSIT_MANAGER_ADDRESS`,
      `ENV.WALLETCONNECT_PROJECT_ID`.
    - Flag `zero-address` when `DEPOSIT_MANAGER_ADDRESS === "0x000…000"`
@@ -151,7 +153,7 @@ _None_
    - No `MOCKED` badges in this section (env is not mocked via
      `pipeline.mock.*`).
 
-6. **Section: Wallet (`useWallet`).**
+6. **[DONE] Section: Wallet (`useWallet`).**
    - Call `useWallet()` and render `address`, `isConnected`, `chainId`.
    - For each field, set `mocked = isMockKeyPresent(<key>)`:
      - `address` → `pipeline.mock.wallet.address`
@@ -162,7 +164,7 @@ _None_
      (label switches accordingly). Reuse the same `Button` variant the
      `TopBar` uses for its `Connect Wallet` button (`primary-dark`).
 
-7. **Section: DepositManager (`useDepositManagerAddresses`, `useDepositManagerMinDeposit`).**
+7. **[DONE] Section: DepositManager (`useDepositManagerAddresses`, `useDepositManagerMinDeposit`).**
    - Show `plusd`, `usdc`, and `minDeposit` (raw bigint + formatted at 6
      decimals via `Number(minDeposit) / 1e6` — acceptable for diagnostic
      readability; no need for `formatUnits` in the route).
@@ -178,7 +180,7 @@ _None_
      `ENV.DEPOSIT_MANAGER_ADDRESS.toLowerCase()` for the per-address key
      suffix (matches how the wallet module hashes the key).
 
-8. **Section: USDC token (`useToken`).**
+8. **[DONE] Section: USDC token (`useToken`).**
    - Call `useToken({ token: usdc ?? ZERO_ADDRESS })` where `usdc` is read
      from `useDepositManagerAddresses().usdc` (declare a local
      `ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"` constant).
@@ -191,7 +193,7 @@ _None_
    - Render an "—" placeholder when `usdc` is `undefined` (DM not configured
      yet) and skip the `MOCKED` checks in that branch.
 
-9. **Section: ERC-20 approval (USDC → DepositManager) via `useApproval`.**
+9. **[DONE] Section: ERC-20 approval (USDC → DepositManager) via `useApproval`.**
    - Call `useApproval({ token: usdc ?? ZERO_ADDRESS, spender: ENV.DEPOSIT_MANAGER_ADDRESS })`.
    - Also call `useDepositManagerMinDeposit()` (already done above) so the
      `Approve(minDeposit)` button can pass that amount.
@@ -205,7 +207,7 @@ _None_
    - Also surface `isPending`, `isSuccess`, and `error?.message` as small
      read-only rows so manual QA can observe state transitions.
 
-10. **Section: Write hooks (`useRequestDeposit`, `useClaim`).**
+10. **[DONE] Section: Write hooks (`useRequestDeposit`, `useClaim`).**
     - For each, render `data` (the full object — `JSON.stringify(data, null, 2)`
       inside a `<pre>` is fine), `isPending`, `isSuccess`, and
       `error?.message`.
@@ -219,7 +221,7 @@ _None_
       - `useRequestDeposit` row → `pipeline.mock.wallet.contract.depositManager.requestDeposit`
       - `useClaim` row → `pipeline.mock.wallet.contract.depositManager.claim`
 
-11. **Page layout.**
+11. **[DONE] Page layout.**
     - Wrap everything in a `<main>` that mirrors the `routes/deposit.tsx`
       shell (paper background, ink text). Use `max-w-3xl mx-auto px-4 py-12`
       for the column. Inside, a vertical stack (`flex flex-col gap-8`) of
@@ -231,7 +233,7 @@ _None_
     - Include the `TopBar` at the top so wallet state is visible at a glance
       and the user can connect/disconnect from the standard control too.
 
-12. **Smoke render check.**
+12. **[DONE] Smoke render check.**
     - Add a single smoke test at `packages/frontend/src/routes/test.test.tsx`
       that renders `<TestPage />` inside the standard test harness
       (`WalletProvider` + `RouterProvider` if required by other tests, or a
@@ -244,15 +246,15 @@ _None_
       `isMockKeyPresent` plumbing without testing the wallet module itself
       (which already has its own coverage).
 
-13. **Regenerate the route tree.**
+13. **[DONE] Regenerate the route tree.**
     - Run `yarn workspace @pipeline/frontend dev` once (or `yarn workspace @pipeline/frontend build`) so TanStack's generator updates
       `src/routeTree.gen.ts` with the new `/test` route.
     - Commit the regenerated `routeTree.gen.ts` alongside the new route file.
 
-14. **Update `wallet/README.md`.**
+14. **[DONE] Update `wallet/README.md`.**
     - Add `isMockKeyPresent` to the "Public API" list with a one-liner: "Non-reactive helper that returns `true` when a `pipeline.mock.wallet.*` key is currently set in `localStorage`. Used by the `/test` diagnostic page to render `MOCKED` badges."
 
-15. **Lint & validate.**
+15. **[DONE] Lint & validate.**
     - Run `yarn workspace @pipeline/frontend lint` (or the repo-wide equivalent) — must pass with no ESLint errors. In particular, confirm no `wagmi`/`viem`/AppKit imports leaked into `routes/test.tsx`.
     - Run `npx tsx scripts/lint-docs.ts` since `wallet/README.md` was edited.
 

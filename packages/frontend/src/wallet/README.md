@@ -39,6 +39,7 @@ import {
   useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
+  isMockKeyPresent,
 } from "@/wallet";
 ```
 
@@ -216,6 +217,15 @@ write(requestId, verifierSignature); // requestId: bigint; verifierSignature: `0
 
 Write hook for `claim(uint256 requestId, bytes verifierSignature)`. Returns a tx
 hash in `data.hash` after success. Same zero-address guard as `useRequestDeposit`.
+
+### `isMockKeyPresent(key: string): boolean`
+
+Non-reactive helper that returns `true` when a `pipeline.mock.wallet.*` key is
+currently set in `localStorage`. Used by the `/test` diagnostic page to render
+`MOCKED` badges next to each field whose value is sourced from the mock layer
+rather than from a real RPC call. Performs a single `localStorage.getItem` check
+per call — not reactive, but because the wallet hooks re-render when mock keys
+change, the badge is recomputed automatically in the same cycle as the value.
 
 ---
 

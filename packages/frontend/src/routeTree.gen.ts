@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WithdrawRouteImport } from './routes/withdraw'
 import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as TestRouteImport } from './routes/test'
 import { Route as StakeRouteImport } from './routes/stake'
 import { Route as DepositRouteImport } from './routes/deposit'
 import { Route as IndexRouteImport } from './routes/index'
@@ -23,6 +24,11 @@ const WithdrawRoute = WithdrawRouteImport.update({
 const TransactionsRoute = TransactionsRouteImport.update({
   id: '/transactions',
   path: '/transactions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestRoute = TestRouteImport.update({
+  id: '/test',
+  path: '/test',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StakeRoute = StakeRouteImport.update({
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/deposit': typeof DepositRoute
   '/stake': typeof StakeRoute
+  '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
   '/withdraw': typeof WithdrawRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/deposit': typeof DepositRoute
   '/stake': typeof StakeRoute
+  '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
   '/withdraw': typeof WithdrawRoute
 }
@@ -60,21 +68,36 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/deposit': typeof DepositRoute
   '/stake': typeof StakeRoute
+  '/test': typeof TestRoute
   '/transactions': typeof TransactionsRoute
   '/withdraw': typeof WithdrawRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/deposit' | '/stake' | '/transactions' | '/withdraw'
+  fullPaths:
+    | '/'
+    | '/deposit'
+    | '/stake'
+    | '/test'
+    | '/transactions'
+    | '/withdraw'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/deposit' | '/stake' | '/transactions' | '/withdraw'
-  id: '__root__' | '/' | '/deposit' | '/stake' | '/transactions' | '/withdraw'
+  to: '/' | '/deposit' | '/stake' | '/test' | '/transactions' | '/withdraw'
+  id:
+    | '__root__'
+    | '/'
+    | '/deposit'
+    | '/stake'
+    | '/test'
+    | '/transactions'
+    | '/withdraw'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DepositRoute: typeof DepositRoute
   StakeRoute: typeof StakeRoute
+  TestRoute: typeof TestRoute
   TransactionsRoute: typeof TransactionsRoute
   WithdrawRoute: typeof WithdrawRoute
 }
@@ -93,6 +116,13 @@ declare module '@tanstack/react-router' {
       path: '/transactions'
       fullPath: '/transactions'
       preLoaderRoute: typeof TransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test': {
+      id: '/test'
+      path: '/test'
+      fullPath: '/test'
+      preLoaderRoute: typeof TestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stake': {
@@ -123,6 +153,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DepositRoute: DepositRoute,
   StakeRoute: StakeRoute,
+  TestRoute: TestRoute,
   TransactionsRoute: TransactionsRoute,
   WithdrawRoute: WithdrawRoute,
 }

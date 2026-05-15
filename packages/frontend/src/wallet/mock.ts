@@ -79,6 +79,20 @@ export function installSameTabMockBridge(): () => void {
 }
 
 /**
+ * Non-reactive check that returns `true` when the given `pipeline.mock.*`
+ * localStorage key is currently set to any value.
+ *
+ * Used by the `/test` diagnostic page to render `MOCKED` badges next to each
+ * field whose value is being sourced from the mock layer rather than from a
+ * real RPC call.  The check is performed once per render; because the wallet
+ * hooks themselves react to mock-key changes via `useSyncExternalStore`, the
+ * badge is recomputed in the same render cycle that updates the field value.
+ */
+export function isMockKeyPresent(key: string): boolean {
+  return localStorage.getItem(key) !== null;
+}
+
+/**
  * Read a mock value from `localStorage`, parsing it with `parse`.
  * Returns `undefined` if the key is absent or the parse function throws.
  */
