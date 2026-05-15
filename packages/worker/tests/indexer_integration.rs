@@ -46,6 +46,8 @@ mod tests {
             amount: Some(value),
             request_id: Some(U256::from(log_index)),
             cumulative: None,
+            assets: None,
+            shares: None,
         }
     }
 
@@ -62,6 +64,8 @@ mod tests {
             amount: Some(U256::from(5000u64)),
             request_id: Some(U256::from(1u64)),
             cumulative: Some(U256::from(5000u64)),
+            assets: None,
+            shares: None,
         }
     }
 

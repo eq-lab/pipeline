@@ -57,6 +57,8 @@ pub struct RequestEventRow {
     pub event_name: String,
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub amount: Option<bigdecimal::BigDecimal>,
+    pub assets: Option<bigdecimal::BigDecimal>,
+    pub shares: Option<bigdecimal::BigDecimal>,
     pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
     pub is_claimed: bool,
@@ -64,30 +66,42 @@ pub struct RequestEventRow {
 
 #[derive(serde::Serialize)]
 pub struct GroupedRequest {
-    pub request_id: String,
     #[serde(rename = "type")]
     pub request_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
     pub amount: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shares: Option<String>,
     pub status: String,
     pub created_at: String,
 }
 
 impl From<RequestEventRow> for GroupedRequest {
     fn from(row: RequestEventRow) -> Self {
-        let status = if row.is_claimed {
-            "Claimed"
-        } else {
-            match row.crystal_kyt_status {
-                Some(1) => "PendingClaim",
-                Some(_) => "VerificationFailed",
-                None => "PendingVerification",
-            }
+        let request_type = match row.event_name.as_str() {
+            "DepositRequested" => "Deposit",
+            "WithdrawalRequested" => "Withdraw",
+            "StakingDeposit" => "Stake",
+            "StakingWithdrawal" => "Unstake",
+            other => other,
         };
 
-        let request_type = if row.event_name == "DepositRequested" {
-            "Deposit"
-        } else {
-            "Withdrawal"
+        let status = match row.event_name.as_str() {
+            "StakingDeposit" | "StakingWithdrawal" => "Completed",
+            _ => {
+                if row.is_claimed {
+                    "Completed"
+                } else {
+                    match row.crystal_kyt_status {
+                        Some(1) => "PendingClaim",
+                        Some(_) => "VerificationFailed",
+                        None => "PendingVerification",
+                    }
+                }
+            }
         };
 
         let created_at = chrono::DateTime::from_timestamp(row.block_timestamp, 0)
@@ -95,9 +109,11 @@ impl From<RequestEventRow> for GroupedRequest {
             .unwrap_or_default();
 
         Self {
-            request_id: row.request_id.map(|r| r.to_string()).unwrap_or_default(),
             request_type: request_type.to_owned(),
+            request_id: row.request_id.map(|r| r.to_string()),
             amount: row.amount.map(|a| a.to_string()).unwrap_or_default(),
+            assets: row.assets.map(|a| a.to_string()),
+            shares: row.shares.map(|s| s.to_string()),
             status: status.to_owned(),
             created_at,
         }
@@ -529,40 +545,45 @@ impl KycRepo {
     }
 
     /// Check if a request has been claimed.
+    /// `contract_address` scopes the check to a specific contract (request_id is not unique across contracts).
     pub async fn is_request_claimed(
         &self,
         claimed_event: &str,
         request_id: &str,
+        contract_address: &str,
     ) -> anyhow::Result<bool> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT 1 FROM contract_logs
-             WHERE event_name = $1 AND request_id::text = $2
+             WHERE event_name = $1 AND request_id::text = $2 AND LOWER(contract_address) = LOWER($3)
              LIMIT 1",
         )
         .bind(claimed_event)
         .bind(request_id)
+        .bind(contract_address)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.is_some())
     }
 
-    /// Get deposit/withdrawal requests for a wallet, grouped by request_id.
-    /// When `pending_only` is true, only returns requests that have not been claimed.
+    /// Get deposit/withdrawal/staking requests for a wallet.
+    /// When `pending_only` is true, only returns requests that have not been claimed
+    /// (staking events are always excluded from pending-only results as they are always Completed).
     pub async fn get_all_requests(
         &self,
         wallet: &str,
         pending_only: bool,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
-        let base = "SELECT r.event_name, r.request_id, r.amount, r.crystal_kyt_status,
+        let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.assets, r.shares, r.crystal_kyt_status,
                            r.block_timestamp,
                            EXISTS (
                                SELECT 1 FROM contract_logs c2
                                WHERE c2.event_name = 'RequestClaimed'
                                  AND c2.request_id = r.request_id
+                                 AND c2.contract_address = r.contract_address
                            ) AS is_claimed
                     FROM contract_logs r
                     WHERE LOWER(r.sender) = $1
-                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested')";
+                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')";
 
         let query = if pending_only {
             format!(
@@ -571,7 +592,9 @@ impl KycRepo {
                           SELECT 1 FROM contract_logs c2
                           WHERE c2.event_name = 'RequestClaimed'
                             AND c2.request_id = r.request_id
+                            AND c2.contract_address = r.contract_address
                       )
+                      AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')
                     ORDER BY r.block_timestamp DESC, r.id DESC"
             )
         } else {

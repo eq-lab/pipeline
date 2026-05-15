@@ -84,8 +84,9 @@ impl EventRepo {
             "INSERT INTO contract_logs
                (chain_id, contract_address, event_name,
                 block_number, tx_hash, log_index, block_timestamp,
-                sender, receiver, amount, request_id, cumulative)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                sender, receiver, amount, request_id, cumulative,
+                assets, shares)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
         )
         .bind(chain_id)
         .bind(event.contract_address.to_checksum(None))
@@ -103,6 +104,12 @@ impl EventRepo {
             bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
         }))
         .bind(event.cumulative.map(|v| {
+            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
+        }))
+        .bind(event.assets.map(|v| {
+            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
+        }))
+        .bind(event.shares.map(|v| {
             bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
         }))
         .execute(conn)

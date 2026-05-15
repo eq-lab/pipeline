@@ -46,7 +46,7 @@ const baseClasses = [
   "focus-visible:outline-none",
   "focus-visible:ring-2 focus-visible:ring-offset-2",
   "focus-visible:ring-offset-[var(--color-pipeline-paper)]",
-  "disabled:cursor-not-allowed disabled:opacity-50",
+  "disabled:cursor-not-allowed",
 ].join(" ");
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -78,9 +78,10 @@ const variantClasses: Record<ButtonVariant, string> = {
     "disabled:hover:bg-[var(--color-pipeline-brand)]",
   ].join(" "),
 
-  // secondary — 48px tall rect, transparent fill, ink-primary label.
-  // Ghost/outlined variant used for the "Sell" action in the StartHereCard
-  // (data-node-id 1497:94690). Rendered as disabled (opacity ~0.32) to signal
+  // secondary — 48px tall rect, transparent fill, no border, ink-primary label.
+  // Pure ghost variant used for the "Sell" action in the StartHereCard
+  // (data-node-id 1497:94690). No border or background surface — text only.
+  // Rendered as disabled (opacity 0.32, matching Figma opacity-32) to signal
   // the action is not yet available. Focus ring uses ink so it reads against
   // the light card background.
   secondary: [
@@ -88,11 +89,8 @@ const variantClasses: Record<ButtonVariant, string> = {
     "rounded-[var(--radius-pipeline-button)]",
     "bg-transparent",
     "text-[color:var(--color-pipeline-ink)]",
-    "border border-[var(--color-pipeline-line)]",
-    "hover:bg-[var(--color-pipeline-surface-muted)]",
-    "active:bg-[color-mix(in_oklab,var(--color-pipeline-ink)_8%,transparent)]",
     "focus-visible:ring-[var(--color-pipeline-ink)]",
-    "disabled:hover:bg-transparent",
+    "disabled:opacity-[0.32]",
   ].join(" "),
 
   // circular-blue — 128px round CTA, brand/navy background.

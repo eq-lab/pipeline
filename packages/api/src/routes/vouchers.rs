@@ -15,15 +15,14 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/deposits/{request_id}/voucher", get(deposit_voucher))
         .route("/withdrawals/{request_id}/voucher", get(withdrawal_voucher))
-        .route("/requests", get(get_requests))
 }
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(deposit_voucher, withdrawal_voucher, get_requests),
-    components(schemas(WalletQuery, RequestsQuery, VoucherResponse)),
+    paths(deposit_voucher, withdrawal_voucher),
+    components(schemas(WalletQuery, VoucherResponse)),
     tags(
-        (name = "Vouchers", description = "Deposit/withdrawal voucher signing and request listing")
+        (name = "Vouchers", description = "Deposit/withdrawal voucher signing")
     )
 )]
 pub struct VouchersDoc;
@@ -31,14 +30,6 @@ pub struct VouchersDoc;
 #[derive(Deserialize, ToSchema)]
 pub struct WalletQuery {
     pub wallet: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct RequestsQuery {
-    pub wallet: String,
-    /// "all" (default) or "pending" (only unclaimed requests).
-    #[serde(default)]
-    pub status: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -105,8 +96,8 @@ async fn deposit_voucher(
         }
     };
 
-    // Check KYT status is clear
-    if req.crystal_kyt_status != Some(1) {
+    // Check KYT status is clear (skip if Crystal is disabled)
+    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -135,9 +126,10 @@ async fn deposit_voucher(
     }
 
     // Check not already claimed
+    let dm_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id, &dm_address)
         .await
     {
         Ok(true) => {
@@ -266,7 +258,8 @@ async fn withdrawal_voucher(
         }
     };
 
-    if req.crystal_kyt_status != Some(1) {
+    // Check KYT status is clear (skip if Crystal is disabled)
+    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -274,9 +267,10 @@ async fn withdrawal_voucher(
             .into_response();
     }
 
+    let wq_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id)
+        .is_request_claimed("RequestClaimed", &request_id, &wq_address)
         .await
     {
         Ok(true) => {
@@ -343,38 +337,6 @@ async fn withdrawal_voucher(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "signing failed"})),
-            )
-                .into_response()
-        }
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v1/requests",
-    params(
-        ("wallet" = String, Query, description = "Wallet address"),
-        ("status" = Option<String>, Query, description = "Filter: \"all\" (default) or \"pending\" (unclaimed only)"),
-    ),
-    responses(
-        (status = 200, description = "List of requests"),
-    ),
-    tag = "Vouchers"
-)]
-async fn get_requests(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<RequestsQuery>,
-) -> impl IntoResponse {
-    let wallet = query.wallet.to_lowercase();
-    let pending_only = query.status.as_deref() == Some("pending");
-
-    match state.kyc_repo.get_all_requests(&wallet, pending_only).await {
-        Ok(events) => Json(serde_json::json!({"requests": events})).into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to fetch requests");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal error"})),
             )
                 .into_response()
         }

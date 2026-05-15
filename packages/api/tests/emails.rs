@@ -32,6 +32,7 @@ async fn test_app() -> Option<(Router, sqlx::PgPool)> {
         voucher_signer: None,
         dm_domain: None,
         wq_domain: None,
+        crystal_enabled: false,
     });
 
     let app = Router::new()

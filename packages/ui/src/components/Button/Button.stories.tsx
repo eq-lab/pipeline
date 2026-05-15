@@ -9,10 +9,11 @@ const meta = {
     docs: {
       description: {
         component:
-          "Pipeline UI Button primitive. Three variants matching the Figma " +
+          "Pipeline UI Button primitive. Four variants matching the Figma " +
           "frame 1497-94556: `primary-dark` (ink/CTA), `primary-blue` (brand), " +
-          "and `circular-blue` (round brand CTA used for the Stake action). " +
-          "All variants consume design tokens from `@pipeline/ui/styles/theme.css`.",
+          "`secondary` (borderless ghost — transparent background, no border, ink text, " +
+          "opacity-32 when disabled), and `circular-blue` (round brand CTA used for " +
+          "the Stake action). All variants consume design tokens from `@pipeline/ui/styles/theme.css`.",
       },
     },
   },
@@ -188,9 +189,7 @@ export const States: Story = {
         .hover-preview[data-variant="circular-blue"] {
           background-color: color-mix(in oklab, var(--color-pipeline-brand) 85%, white);
         }
-        .hover-preview[data-variant="secondary"] {
-          background-color: var(--color-pipeline-surface-muted);
-        }
+        /* secondary variant is a borderless ghost — no hover surface to preview */
       `}</style>
       <StateHeader />
       <StateRow variant="primary-dark" label="Connect Wallet" />
