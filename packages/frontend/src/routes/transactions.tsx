@@ -115,6 +115,7 @@ function Transactions() {
           {/* Row 1 — Sell (PLUSD → USDC), completed, AmountPill success variant */}
           <ActivityRow
             icon="check-circle"
+            tone="success"
             title="Sell"
             timestamp="Apr 17, 2:17 PM"
             amount={<AmountPill>+500.00 USDC</AmountPill>}
@@ -123,6 +124,7 @@ function Transactions() {
           {/* Row 2 — Sell (PLUSD → USDC), pending, two-line amount (both lines muted) */}
           <ActivityRow
             icon="clock-pending"
+            tone="warning"
             title="Sell"
             timestamp="Apr 17, 2:17 PM"
             amount={

@@ -30,6 +30,10 @@ const meta = {
         "exchange",
       ],
     },
+    tone: {
+      control: "select",
+      options: ["success", "warning", "neutral"],
+    },
     title: { control: "text" },
     timestamp: { control: "text" },
     amount: { control: false },
@@ -129,6 +133,7 @@ export const SuccessRow: Story = {
   name: "Success (conversion complete)",
   args: {
     icon: "check-circle",
+    tone: "success",
     title: "PLUSD → USDC",
     timestamp: "Apr 17, 2:17 PM",
     amount: <SuccessPill>+1,000.00 USDC</SuccessPill>,
@@ -140,6 +145,7 @@ export const PendingRow: Story = {
   name: "Pending (in progress)",
   args: {
     icon: "clock-pending",
+    tone: "warning",
     title: "PLUSD → USDC",
     timestamp: "Apr 17, 2:17 PM",
     amount: (
@@ -220,12 +226,14 @@ export const AllVariants: Story = {
     >
       <ActivityRow
         icon="check-circle"
+        tone="success"
         title="PLUSD → USDC"
         timestamp="Apr 17, 2:17 PM"
         amount={<SuccessPill>+1,000.00 USDC</SuccessPill>}
       />
       <ActivityRow
         icon="clock-pending"
+        tone="warning"
         title="PLUSD → USDC"
         timestamp="Apr 17, 2:17 PM"
         amount={
