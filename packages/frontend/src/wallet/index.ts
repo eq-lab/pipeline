@@ -26,3 +26,5 @@ export type {
   RequestDepositResult,
   ClaimResult,
 } from "./useDepositManager";
+export { useApproval } from "./useApproval";
+export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";

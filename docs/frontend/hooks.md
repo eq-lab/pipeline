@@ -8,6 +8,7 @@ Entries are sorted alphabetically by name.
 
 | Name | Import path | Description |
 |------|-------------|-------------|
+| `useApproval` | `@/wallet` | Reads ERC-20 `allowance(owner, spender)` and exposes `approve(spender, amount)` for any (token, spender) pair. Returns `{ allowance, isSufficient, approve, data, isLoading, isPending, isSuccess, error, reset, refetch }`. Honours `pipeline.mock.wallet.allowance.<token>.<spender>` and `pipeline.mock.wallet.contract.<token>.approve` for mock testing. |
 | `useClaim` | `@/wallet` | Write hook for `claim(requestId, verifierSignature)` on the DepositManager contract. Returns `{ write, data, isPending, isSuccess, error, reset }`. Honours `pipeline.mock.wallet.contract.depositManager.claim` for mock testing. |
 | `useContractRead` | `@/wallet` | Generic read hook wrapping wagmi's `useReadContract` with the per-address localStorage mock layer. |
 | `useDepositManagerAddresses` | `@/wallet` | Reads the `plUsd()` and `usdc()` addresses from the DepositManager contract. Returns `{ plusd, usdc, isLoading, error }` with "fetch once" caching. Honours `pipeline.mock.wallet.contract.depositManager.plusd/usdc` named aliases. |

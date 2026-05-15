@@ -34,6 +34,7 @@ import {
   useWallet,
   useUsdcBalance,
   useContractRead,
+  useApproval,
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
   useRequestDeposit,
@@ -93,12 +94,12 @@ Reads `plUsd()` and `usdc()` from the DepositManager contract. Fetches once
 per page lifetime (`staleTime: Infinity`). Returns `undefined` data when
 `VITE_DEPOSIT_MANAGER_ADDRESS` is the zero address.
 
-| Field       | Type                            | Description                                  |
-| ----------- | ------------------------------- | -------------------------------------------- |
-| `plusd`     | `0x${string} \| undefined`     | plUSD token address, or `undefined` if not configured |
-| `usdc`      | `0x${string} \| undefined`     | USDC token address, or `undefined` if not configured  |
-| `isLoading` | `boolean`                       |                                              |
-| `error`     | `Error \| null`                 |                                              |
+| Field       | Type                       | Description                                           |
+| ----------- | -------------------------- | ----------------------------------------------------- |
+| `plusd`     | `0x${string} \| undefined` | plUSD token address, or `undefined` if not configured |
+| `usdc`      | `0x${string} \| undefined` | USDC token address, or `undefined` if not configured  |
+| `isLoading` | `boolean`                  |                                                       |
+| `error`     | `Error \| null`            |                                                       |
 
 ### `useDepositManagerMinDeposit()`
 
@@ -116,11 +117,55 @@ lifetime (`staleTime: Infinity`). Returns `minDeposit: undefined` when
 | `isLoading`  | `boolean`             |                                                               |
 | `error`      | `Error \| null`       |                                                               |
 
+### `useApproval({ token, spender })`
+
+```ts
+const {
+  allowance,
+  isSufficient,
+  approve,
+  data,
+  isLoading,
+  isPending,
+  isSuccess,
+  error,
+  reset,
+  refetch,
+} = useApproval({ token, spender });
+```
+
+Reads `allowance(owner, spender)` on any ERC-20 token contract and exposes
+`approve(spender, amount)` for the same pair. Token address and spender address
+are parameters — nothing is hard-coded — so the same hook serves any
+(token, spender) combination.
+
+**Parameters:**
+
+| Parameter | Type          | Description                      |
+| --------- | ------------- | -------------------------------- |
+| `token`   | `0x${string}` | ERC-20 token contract address    |
+| `spender` | `0x${string}` | Spender address to check/approve |
+
+**Return fields:**
+
+| Field          | Type                            | Description                                                                                                                          |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `allowance`    | `bigint \| undefined`           | Current allowance for `(owner=connected wallet, spender)`. `undefined` when disconnected, zero address, or loading.                  |
+| `isSufficient` | `(amount: bigint) => boolean`   | Convenience check: `allowance >= amount`. Returns `false` when `allowance` is `undefined` (pessimistic).                             |
+| `approve`      | `(amount: bigint) => void`      | Triggers `approve(spender, amount)` on the token contract. No-op (sets `error`) when token/spender is zero or disconnected.          |
+| `data`         | `{ hash: string } \| undefined` | Populated after approve tx is broadcast.                                                                                             |
+| `isLoading`    | `boolean`                       | `true` while allowance read is in flight.                                                                                            |
+| `isPending`    | `boolean`                       | `true` while approve tx is in flight.                                                                                                |
+| `isSuccess`    | `boolean`                       | `true` once approve tx is broadcast-accepted (does not wait for receipt, consistent with `useRequestDeposit`).                       |
+| `error`        | `Error \| null`                 | Read or write error; cleared by `reset()`.                                                                                           |
+| `reset`        | `() => void`                    | Clears `data`, `error`, and resets `isPending`/`isSuccess`.                                                                          |
+| `refetch`      | `() => void`                    | Re-reads current allowance. Called automatically after a successful approve. Note: external allowance changes are NOT auto-detected. |
+
 ### `useRequestDeposit()`
 
 ```ts
 const { write, data, isPending, isSuccess, error, reset } = useRequestDeposit();
-write(amount);  // amount: bigint (USDC, 6 decimals)
+write(amount); // amount: bigint (USDC, 6 decimals)
 ```
 
 Write hook for `requestDeposit(uint256 amount)`. Returns a tx hash in `data.hash`
@@ -131,7 +176,7 @@ after success. When `VITE_DEPOSIT_MANAGER_ADDRESS` is zero, `write()` surfaces
 
 ```ts
 const { write, data, isPending, isSuccess, error, reset } = useClaim();
-write(requestId, verifierSignature);  // requestId: bigint; verifierSignature: `0x${string}`
+write(requestId, verifierSignature); // requestId: bigint; verifierSignature: `0x${string}`
 ```
 
 Write hook for `claim(uint256 requestId, bytes verifierSignature)`. Returns a tx
@@ -176,19 +221,21 @@ the absence of a key is its own off-switch.
 > the DevTools console dispatch a `pipeline-mock:wallet` custom event that
 > causes React to re-render without a page reload.
 
-| Key                                                                   | Type                                                          | Notes                                                                                                 |
-| --------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `pipeline.mock.wallet.address`                                        | `string` (`0x…`)                                              | Sets the connected wallet address                                                                     |
-| `pipeline.mock.wallet.isConnected`                                    | `"true"` or `"false"`                                         | Defaults to `"true"` when `address` is set                                                            |
-| `pipeline.mock.wallet.chainId`                                        | numeric string e.g. `"560048"`                                | Overrides `useChainId()`                                                                              |
-| `pipeline.mock.wallet.balance.usdc`                                   | numeric string of raw bigint (6 dp) e.g. `"1000000000"`       | 1000 USDC                                                                                             |
-| `pipeline.mock.wallet.contract.<address>.<fn>`                        | JSON-encoded return value                                     | Overrides `useContractRead` for the given contract+function                                           |
-| `pipeline.mock.wallet.contract.depositManager.plusd`                  | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — plUSD address. Takes priority over the generic key.    |
-| `pipeline.mock.wallet.contract.depositManager.usdc`                   | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — USDC address. Takes priority over the generic key.     |
-| `pipeline.mock.wallet.contract.depositManager.minDeposit`             | `string` (decimal bigint, e.g. `"1000000"` = 1 USDC at 6 dp) | Named alias for `useDepositManagerMinDeposit`. Takes priority over the generic per-address key.       |
-| `pipeline.mock.wallet.contract.<address>.minDeposit`                  | `string` (decimal bigint, e.g. `"1000000"`)                   | Generic per-address fallback for `useDepositManagerMinDeposit`.                                       |
-| `pipeline.mock.wallet.contract.depositManager.requestDeposit`         | JSON `{ hash: "0x…", requestId?: "123" }`                    | Bypasses `useRequestDeposit` wagmi call; `write()` settles immediately with this data.                |
-| `pipeline.mock.wallet.contract.depositManager.claim`                  | JSON `{ hash: "0x…", amount?: "1000000" }`                   | Bypasses `useClaim` wagmi call; `write()` settles immediately with this data.                         |
+| Key                                                           | Type                                                         | Notes                                                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `pipeline.mock.wallet.address`                                | `string` (`0x…`)                                             | Sets the connected wallet address                                                                      |
+| `pipeline.mock.wallet.isConnected`                            | `"true"` or `"false"`                                        | Defaults to `"true"` when `address` is set                                                             |
+| `pipeline.mock.wallet.chainId`                                | numeric string e.g. `"560048"`                               | Overrides `useChainId()`                                                                               |
+| `pipeline.mock.wallet.balance.usdc`                           | numeric string of raw bigint (6 dp) e.g. `"1000000000"`      | 1000 USDC                                                                                              |
+| `pipeline.mock.wallet.contract.<address>.<fn>`                | JSON-encoded return value                                    | Overrides `useContractRead` for the given contract+function                                            |
+| `pipeline.mock.wallet.contract.depositManager.plusd`          | `string` (`0x…`)                                             | Named alias for `useDepositManagerAddresses` — plUSD address. Takes priority over the generic key.     |
+| `pipeline.mock.wallet.contract.depositManager.usdc`           | `string` (`0x…`)                                             | Named alias for `useDepositManagerAddresses` — USDC address. Takes priority over the generic key.      |
+| `pipeline.mock.wallet.contract.depositManager.minDeposit`     | `string` (decimal bigint, e.g. `"1000000"` = 1 USDC at 6 dp) | Named alias for `useDepositManagerMinDeposit`. Takes priority over the generic per-address key.        |
+| `pipeline.mock.wallet.contract.<address>.minDeposit`          | `string` (decimal bigint, e.g. `"1000000"`)                  | Generic per-address fallback for `useDepositManagerMinDeposit`.                                        |
+| `pipeline.mock.wallet.contract.depositManager.requestDeposit` | JSON `{ hash: "0x…", requestId?: "123" }`                    | Bypasses `useRequestDeposit` wagmi call; `write()` settles immediately with this data.                 |
+| `pipeline.mock.wallet.contract.depositManager.claim`          | JSON `{ hash: "0x…", amount?: "1000000" }`                   | Bypasses `useClaim` wagmi call; `write()` settles immediately with this data.                          |
+| `pipeline.mock.wallet.allowance.<token>.<spender>`            | decimal bigint string e.g. `"1000000"` (= 1 USDC at 6 dp)    | Bypasses the real `allowance` read in `useApproval`; token and spender are lowercased.                 |
+| `pipeline.mock.wallet.contract.<token>.approve`               | JSON `{ hash: "0x…" }`                                       | Bypasses the real `approve` tx in `useApproval`; token is lowercased. `approve()` settles immediately. |
 
 ### DevTools console snippets
 
@@ -261,6 +308,38 @@ To reset all DepositManager mocks:
   "pipeline.mock.wallet.contract.depositManager.minDeposit",
   "pipeline.mock.wallet.contract.depositManager.requestDeposit",
   "pipeline.mock.wallet.contract.depositManager.claim",
+].forEach((k) => localStorage.removeItem(k));
+```
+
+**Mock USDC → DepositManager allowance + approve:**
+
+```js
+// Replace these with the actual deployed addresses
+const usdcAddress = "0x2222000000000000000000000000000000000002";
+const depositManagerAddress = "0x3333000000000000000000000000000000000003";
+
+// 1. Mock the current allowance (decimal bigint string; 500000 = 0.5 USDC at 6 decimals)
+localStorage.setItem(
+  `pipeline.mock.wallet.allowance.${usdcAddress.toLowerCase()}.${depositManagerAddress.toLowerCase()}`,
+  "500000",
+);
+
+// 2. Mock a successful approve tx (returns a fake tx hash)
+localStorage.setItem(
+  `pipeline.mock.wallet.contract.${usdcAddress.toLowerCase()}.approve`,
+  JSON.stringify({ hash: "0xapprovetxhash" }),
+);
+```
+
+To reset the allowance + approve mocks:
+
+```js
+const usdcAddress = "0x2222000000000000000000000000000000000002";
+const depositManagerAddress = "0x3333000000000000000000000000000000000003";
+
+[
+  `pipeline.mock.wallet.allowance.${usdcAddress.toLowerCase()}.${depositManagerAddress.toLowerCase()}`,
+  `pipeline.mock.wallet.contract.${usdcAddress.toLowerCase()}.approve`,
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
