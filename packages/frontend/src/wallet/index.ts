@@ -7,10 +7,9 @@
  * this boundary.
  */
 export { WalletProvider } from "./WalletProvider";
-export { useWallet, useUsdcBalance, useContractRead } from "./useWallet";
+export { useWallet, useContractRead } from "./useWallet";
 export type {
   WalletState,
-  UsdcBalanceResult,
   UseContractReadArgs,
   ContractReadResult,
 } from "./useWallet";
@@ -28,3 +27,5 @@ export type {
 } from "./useDepositManager";
 export { useApproval } from "./useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
+export { useToken } from "./useToken";
+export type { UseTokenArgs, UseTokenResult } from "./useToken";

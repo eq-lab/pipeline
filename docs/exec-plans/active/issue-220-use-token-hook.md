@@ -92,7 +92,7 @@ _None_ — resolved: `formattedBalance` returns a plain formatted number string
 
 ## Implementation Steps
 
-1. **Add `useToken.ts`** at `packages/frontend/src/wallet/useToken.ts`.
+1. ✅ **Add `useToken.ts`** at `packages/frontend/src/wallet/useToken.ts`.
    - Imports: `useReadContract` from `wagmi`; `useWallet` from `./useWallet`;
      `useApproval` from `./useApproval`; `useMock`, `readMock`, `parseNumber`,
      `parseBigInt` from `./mock`; `erc20Abi` from `./abis/erc20`;
@@ -159,19 +159,19 @@ _None_ — resolved: `formattedBalance` returns a plain formatted number string
      - Aggregate `isLoading` as `(any underlying read isLoading)`.
      - Aggregate `error` as the first non-null among metadata-read errors,
        balance-read error, and `useApproval().error` (only when spender given).
-3. **Optionally extract `CACHE_FOREVER`.** If the literal is now used by
+3. ✅ **Optionally extract `CACHE_FOREVER`.** If the literal is now used by
    two modules (`useDepositManager.ts` + `useToken.ts`), move it to
    `packages/frontend/src/wallet/cache.ts` and have both import it (per
    `docs/FRONTEND.md` rule 3, extracted util ships with a unit test).
    Update `docs/frontend/utils.md`. If we keep the duplicate inline, document
    the choice in the PR comment — the rule is "lift on the second copy".
-4. **Export from the barrel.** Add to
+4. ✅ **Export from the barrel.** Add to
    `packages/frontend/src/wallet/index.ts`:
    ```ts
    export { useToken } from "./useToken";
    export type { UseTokenArgs, UseTokenResult } from "./useToken";
    ```
-5. **Migrate `routes/index.tsx`.**
+5. ✅ **Migrate `routes/index.tsx`.**
    - Remove `useUsdcBalance` from the imports.
    - Inside `Home()`, replace
      ```ts
@@ -187,10 +187,10 @@ _None_ — resolved: `formattedBalance` returns a plain formatted number string
    - Replace `formatted ?? "—"` in the `TopBar wallet={…}` prop with
      `formattedBalance ?? "—"`.
    - Add the corresponding import: `useToken, useDepositManagerAddresses`.
-6. **Migrate `routes/deposit.tsx` and `routes/withdraw.tsx`** with the same
+6. ✅ **Migrate `routes/deposit.tsx` and `routes/withdraw.tsx`** with the same
    pattern as step 5. For `withdraw.tsx`, the existing UI shows USDC balance
    in the TopBar (matches the deposit page) — keep the same migration.
-7. **Delete `useUsdcBalance`.**
+7. ✅ **Delete `useUsdcBalance`.**
    - Remove `useUsdcBalance` export from `useWallet.ts` (delete the function
      plus the `formatUsdcBalance` helper, and the `usdcBalance` key from
      `KEYS`).
@@ -201,9 +201,9 @@ _None_ — resolved: `formattedBalance` returns a plain formatted number string
      `pipeline.mock.wallet.balance.usdc`. Per-token mock balance
      (`pipeline.mock.wallet.balance.<token-address>`) is the only supported
      key after the change.
-8. **Add tests at `packages/frontend/src/wallet/useToken.test.tsx`.** See
+8. ✅ **Add tests at `packages/frontend/src/wallet/useToken.test.tsx`.** See
    "Test Strategy".
-9. **Update `packages/frontend/src/wallet/README.md`.**
+9. ✅ **Update `packages/frontend/src/wallet/README.md`.**
    - Add `useToken` to the public API import example.
    - Add a `useToken({ token, spender? })` section with parameters + return
      field table, mirroring the existing `useApproval` section.
@@ -217,15 +217,15 @@ _None_ — resolved: `formattedBalance` returns a plain formatted number string
      DevTools console snippets.
    - Add a worked DevTools console example for mocking a complete `useToken`
      surface (decimals + symbol + balance + allowance + approve).
-10. **Update `docs/frontend/hooks.md`.**
+10. ✅ **Update `docs/frontend/hooks.md`.**
     - Add a row for `useToken` (sorted alphabetically — between `useRequestDeposit`
       and `useWallet`).
     - Remove the `useUsdcBalance` row.
-11. **Lint + typecheck.**
+11. ✅ **Lint + typecheck.**
     - `yarn workspace @pipeline/frontend lint` (or the repo-wide lint task)
       and resolve any `no-restricted-imports` issues.
     - `npx tsx scripts/lint-docs.ts` to validate the doc edits.
-12. **Update `docs/frontend/utils.md`** only if `CACHE_FOREVER` is extracted in
+12. ✅ **Update `docs/frontend/utils.md`** only if `CACHE_FOREVER` is extracted in
     step 3.
 
 ## Test Strategy

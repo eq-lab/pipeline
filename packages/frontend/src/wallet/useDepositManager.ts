@@ -20,6 +20,7 @@ import {
   parseJson,
 } from "./mock";
 import { depositManagerAbi } from "./abis/depositManager";
+import { CACHE_FOREVER } from "./cache";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -40,18 +41,6 @@ const MOCK_KEYS = {
 };
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
-// ── Shared caching options ────────────────────────────────────────────────────
-
-/** "Fetch once per page lifetime" caching — shared by all view hooks. */
-const CACHE_FOREVER = {
-  staleTime: Infinity,
-  gcTime: Infinity,
-  refetchOnMount: false,
-  refetchOnWindowFocus: false,
-  refetchOnReconnect: false,
-  refetchInterval: false as const,
-};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

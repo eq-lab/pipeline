@@ -7,18 +7,14 @@
  */
 import { useAccount, useChainId, useDisconnect, useReadContract } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
-import { formatUnits } from "viem";
 import type { Abi } from "viem";
 import {
   useMock,
   parseAddress,
   parseBoolean,
   parseNumber,
-  parseBigInt,
   parseJson,
 } from "./mock";
-import { erc20Abi } from "./abis/erc20";
-import { useDepositManagerAddresses } from "./useDepositManager";
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
@@ -26,7 +22,6 @@ const KEYS = {
   address: "pipeline.mock.wallet.address",
   isConnected: "pipeline.mock.wallet.isConnected",
   chainId: "pipeline.mock.wallet.chainId",
-  usdcBalance: "pipeline.mock.wallet.balance.usdc",
   contract: (address: string, fn: string) =>
     `pipeline.mock.wallet.contract.${address.toLowerCase()}.${fn}`,
 };
@@ -82,87 +77,6 @@ export function useWallet(): WalletState {
   }
 
   return { address, isConnected, chainId, connect, disconnect };
-}
-
-// ── USDC balance hook ─────────────────────────────────────────────────────────
-
-export interface UsdcBalanceResult {
-  data: bigint | undefined;
-  formatted: string | undefined;
-  isLoading: boolean;
-  error: Error | null;
-}
-
-export function useUsdcBalance(): UsdcBalanceResult {
-  const { address, isConnected } = useWallet();
-  const mockBalance = useMock(KEYS.usdcBalance, parseBigInt);
-
-  // Derive USDC address from the DepositManager contract (single source of truth).
-  // Must be called unconditionally (hook rules).
-  const { usdc: usdcAddress, isLoading: addressesLoading } =
-    useDepositManagerAddresses();
-
-  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-  const isUsdcResolved =
-    usdcAddress !== undefined && usdcAddress !== ZERO_ADDRESS;
-
-  // When mock is set → return immediately, skip real read.
-  const shouldSkipReal =
-    mockBalance !== undefined || !isConnected || !address || !isUsdcResolved;
-
-  const realRead = useReadContract({
-    address: usdcAddress ?? ZERO_ADDRESS,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: address ? [address] : undefined,
-    query: { enabled: !shouldSkipReal },
-  });
-
-  if (mockBalance !== undefined) {
-    return {
-      data: mockBalance,
-      formatted: formatUsdcBalance(mockBalance),
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  // Manager's usdc() call is still in flight — surface loading state.
-  if (addressesLoading) {
-    return {
-      data: undefined,
-      formatted: undefined,
-      isLoading: true,
-      error: null,
-    };
-  }
-
-  if (!isConnected || !address || !isUsdcResolved) {
-    return {
-      data: undefined,
-      formatted: undefined,
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  const rawData = realRead.data as bigint | undefined;
-  return {
-    data: rawData,
-    formatted: rawData !== undefined ? formatUsdcBalance(rawData) : undefined,
-    isLoading: realRead.isLoading,
-    error: realRead.error as Error | null,
-  };
-}
-
-function formatUsdcBalance(raw: bigint): string {
-  const num = parseFloat(formatUnits(raw, 6));
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
 }
 
 // ── Contract read hook ────────────────────────────────────────────────────────
