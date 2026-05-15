@@ -41,6 +41,22 @@ Each Phase-3 component issue ships a `.stories.tsx` file alongside the component
 
 TBD — evaluate Shadcn/ui (headless, Tailwind-based) or Radix UI primitives. Decision to be made before frontend sprint begins. Add a tech-debt entry if not resolved before Phase 1 implementation.
 
+## Code structure rules
+
+These rules apply to everything under `packages/frontend/` and `packages/ui/`. They exist so a reader can find the logic, the view, or the shared utility without spelunking — and so reused code earns the testing it deserves.
+
+1. **One component per file.** A file exports exactly one React component. Co-located children (small layout subcomponents that are not used elsewhere) are still each in their own file. The file name matches the component name (`StakeCard.tsx` exports `StakeCard`, etc.).
+
+2. **Separate view from logic via a co-located hook.** A component's `.tsx` file is JSX-and-styling only. Any non-trivial state, derivation, side effect, or external integration lives in a `useXxx` hook next to the component (`StakeCard.tsx` + `useStakeCard.ts`). The view calls the hook and renders. This keeps components diff-friendly under UX review, makes the logic unit-testable without a DOM, and gives reviewers one place to look for behaviour.
+
+3. **Extract common utils — and always test them.** When the same helper (formatter, parser, predicate, comparator, mock-resolver, etc.) is needed in two or more places, lift it into a dedicated `utils/` module and import it from there. Every extracted util ships with a unit test in the same commit. Inline duplication is a code smell; an untested util is a regression waiting to happen.
+
+4. **Catalogue every extracted util.** Each shared util is listed in [`docs/frontend/utils.md`](./frontend/utils.md) with its import path and a one-line description. The PR that introduces or moves a util updates this catalogue in the same commit.
+
+5. **Catalogue every reused hook.** Each hook used by two or more components (or intended for reuse) is listed in [`docs/frontend/hooks.md`](./frontend/hooks.md) with its import path and a one-line description. Component-local hooks following rule 2 (e.g. `useStakeCard`) stay out of this list; the catalogue is for genuinely shared hooks.
+
+See [`docs/frontend/index.md`](./frontend/index.md) for the catalogue index.
+
 ## Application structure
 
 File-based routing is provided by [TanStack Router](https://tanstack.com/router) (`@tanstack/react-router`). Route files live in `packages/frontend/src/routes/`. The plugin (`@tanstack/router-plugin`) auto-generates `src/routeTree.gen.ts` on every `vite build` / `vite dev` run; that file is committed (so `tsc` works on a fresh clone without first running the dev server / build) but must not be edited manually.
