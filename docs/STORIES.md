@@ -602,3 +602,71 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
   1. Navigate to `Components/ActivityEmptyIllustration > Muted (Recent activity empty state)`
   2. Navigate to `Components/ActivityEmptyIllustration > Primary (high-contrast variant)`
 - **Expected:** Both stories render the striped-square silhouette; Muted = muted ink color; Primary = dark ink color; no coin-slot or wallet shape visible.
+
+---
+
+## S-224 Wire up header connected state — Account dropdown on WalletPill click
+
+**Issue:** [#224 Wire up header connected state — open Account dropdown on WalletPill click](https://github.com/eq-lab/pipeline/issues/224)
+**Plan:** `docs/exec-plans/active/issue-224-header-account-dropdown.md`
+
+### TC-224-1: Header renders on every page (root layout)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; wallet disconnected (no mock keys)
+- **Steps:**
+  1. Navigate to `/`, `/deposit`, `/withdraw`, `/stake`, `/transactions`
+- **Expected:** The header (Pipeline logo + nav icons + Connect Wallet button) is visible on every page. No hardcoded `$10,000.00` balance appears anywhere.
+
+### TC-224-2: Connected state shows WalletPill with USDC balance
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet set via DevTools console (see `wallet/README.md` quick-start snippet)
+- **Steps:**
+  1. Set the mock connected-wallet keys in DevTools console.
+  2. Navigate to `/`, `/deposit`, `/withdraw`, `/stake`, `/transactions`.
+- **Expected:** The WalletPill with the USDC balance is identical on every route. The Connect Wallet button is absent.
+
+### TC-224-3: Account dropdown opens on WalletPill click
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected
+- **Steps:**
+  1. Click the WalletPill in the header.
+- **Expected:** An "Account" panel opens anchored below the pill, right-aligned. It contains: a truncated wallet address (`0xXXXX…XXXX`), the USDC balance, and a Disconnect button.
+
+### TC-224-4: Dropdown dismissal — outside click, Escape, route change
+
+- **Actor:** User / QA
+- **Preconditions:** Account dropdown open
+- **Steps:**
+  1. Click outside the dropdown.
+  2. Reopen; press Escape.
+  3. Reopen; navigate to another page via the nav bar.
+- **Expected:** Each action closes the dropdown.
+
+### TC-224-5: Copy button writes full address to clipboard
+
+- **Actor:** User / QA
+- **Preconditions:** Account dropdown open
+- **Steps:**
+  1. Click the copy button next to the truncated address.
+  2. Verify clipboard: `await navigator.clipboard.readText()` in DevTools console.
+- **Expected:** Clipboard contains the full `0x…` address. A "Copied" affordance appears for ~1.5 s.
+
+### TC-224-6: Active nav derived from URL (including /stake → Stats)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `/stake`.
+- **Expected:** The Stats nav icon is highlighted (active state). No `activeNav` prop is needed.
+
+### TC-224-7: Disconnect button reverts to disconnected state
+
+- **Actor:** User / QA
+- **Preconditions:** Real wagmi wallet connected (not mock)
+- **Steps:**
+  1. Open the Account dropdown.
+  2. Click Disconnect.
+- **Expected:** Dropdown closes; header reverts to showing the Connect Wallet button.

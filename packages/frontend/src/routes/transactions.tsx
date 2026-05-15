@@ -6,7 +6,6 @@ import {
   AmountPill,
   SegmentedTabs,
 } from "@pipeline/ui";
-import { TopBar } from "@/components/TopBar";
 
 /**
  * Transactions / Activity page — full composition (Figma `1497-94912`).
@@ -95,9 +94,6 @@ function Transactions() {
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      {/* Global top bar — connected wallet state per the Issue spec */}
-      <TopBar wallet={{ balance: "$10,000.00" }} activeNav="history" />
-
       {/* Centred content column: max-w-[480px], p-8 (32 px) padding */}
       <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 p-8">
         {/* Activity header: clock icon + "Activity" heading */}

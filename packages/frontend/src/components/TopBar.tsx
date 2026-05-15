@@ -1,62 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button, IconButton, Logo, NavIcon, WalletPill } from "@pipeline/ui";
+import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
+import { AccountDropdown } from "./AccountDropdown";
 
 /**
- * TopBar — global page header.
+ * TopBar — global page header (self-contained, no external props for wallet).
  *
- * Composite header matching Figma frame `1497:94715` (the top bar of the
- * "Disconnected" home view, frame `1497:94556`):
+ * Mounted in the root layout (`__root.tsx`) so every page renders it
+ * automatically.  All wallet state is read internally via `useWallet()` and
+ * `useToken()`; no per-route prop plumbing is required.
  *
- *   ┌───────────────────────────────────────────────────────────────────┐
- *   │  Pipeline       [Home] [$] [Stats] [History]    [Connect Wallet]  │
- *   └───────────────────────────────────────────────────────────────────┘
+ * Connected state:
+ *   - Renders a `WalletPill` wrapped in a trigger button.
+ *   - Clicking the pill opens the `AccountDropdown` panel (address copy,
+ *     USDC balance, disconnect).
  *
- * Layout:
- *   - The bar is a flex row, justified between three slots: a fixed-width
- *     logo slot on the left (160px), an expanding navigation slot in the
- *     middle, and a fixed-width button slot on the right (160px). The
- *     `justify-between` strategy preserves the centred feel of the nav while
- *     keeping the logo flush-left and the CTA flush-right at all widths.
- *   - Vertical padding: `16px` (`var(--size-16,16px)` in Figma). Horizontal
- *     padding: `16px` to match the design.
- *   - Background: `--color-pipeline-paper` (page bg). Bottom border:
- *     `--color-pipeline-line` (1px, solid). No hardcoded colors.
+ * Disconnected state:
+ *   - Renders a "Connect Wallet" `<Button>` that calls `connect()`.
  *
- * Composition:
- *   - {@link Logo} for the brand wordmark on the left.
- *   - Four {@link IconButton} instances for the nav slots, in Figma order:
- *     Home (active), Convert, Markets, History. The active flag is wired
- *     through to the `active` prop so the icon paints with the brand
- *     navy token; the rest stay muted.
- *   - Right slot: when the `wallet` prop is absent, one {@link Button}
- *     (variant `primary-dark`) labelled "Connect Wallet" (node `1497:94725`);
- *     when `wallet` is present, a {@link WalletPill} (node `1498:100168`)
- *     shows the connected balance instead.
+ * Figma references:
+ *   - Frame: `1497:94715` (TopBar frame)
+ *   - WalletPill: `1498:100168`
+ *   - Account dropdown: `1506:104728` inside `Header / Connected` (`1497:94752`)
  *
- * Icon handling:
- *   - Each nav slot uses {@link NavIcon} from `@pipeline/ui`, which renders
- *     the icon as an inline SVG with `fill="currentColor"`. This means the
- *     icon colour is inherited directly from the surrounding CSS `color`
- *     property set by IconButton's active/inactive class, with no URL import
- *     or CSS mask needed.
- *
- * Responsive notes:
- *   - At the design's 1728px width the bar lays out with comfortable spacing
- *     in the centre slot. At common laptop widths (1280–1440) the nav still
- *     fits without crowding because the icon row uses `gap-8` (32px) and
- *     each icon is only 40px wide. At narrower widths the centre slot can
- *     wrap or shrink — the IconButton already has `shrink-0`, so the only
- *     thing that gives is the gap. We deliberately do not introduce a
- *     mobile-collapsed variant here; the Issue scope is desktop.
- *
- * Accessibility:
- *   - The bar is rendered as a `<header>` with `role="banner"` (implicit
- *     for `<header>` at the document root) and a `<nav aria-label="Primary">`
- *     wrapper around the icon row. Each IconButton supplies its own
- *     `aria-label` via the `label` prop.
- *   - The Connect Wallet button is a real `<button type="button">` with
- *     focus-visible styles inherited from the {@link Button} primitive.
+ * Active nav is derived from the current URL:
+ *   - `/`            → `"home"`
+ *   - `/deposit`     → `"deposit"`
+ *   - `/withdraw`    → `"deposit"` (dollar icon covers both)
+ *   - `/stake`       → `"stats"`
+ *   - `/transactions`→ `"history"`
+ *   - other          → `"home"` (safe fallback)
  */
 
 /** One nav slot: icon + accessible label + optional route target. */
@@ -75,48 +49,35 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "history", label: "History", to: "/transactions" }, // 1497:94722
 ];
 
-export interface TopBarProps extends React.HTMLAttributes<HTMLElement> {
-  /** Optional click handler for the Connect Wallet CTA. */
-  onConnectWallet?: () => void;
-  /**
-   * Active nav key — when omitted the active slot is derived from the current
-   * URL.  Accepts the canonical key names: `"home" | "deposit" | "stats" |
-   * "history"`.
-   */
-  activeNav?: "home" | "deposit" | "stats" | "history";
-  /**
-   * When present, the top-bar renders a `WalletPill` on the right instead of
-   * the "Connect Wallet" button, signalling the connected state.
-   *
-   * @example
-   * ```tsx
-   * <TopBar wallet={{ balance: "$10,000.00" }} />
-   * ```
-   */
-  wallet?: { balance: string };
-}
+export type TopBarProps = React.HTMLAttributes<HTMLElement>;
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
-  function TopBar(
-    { onConnectWallet, activeNav, wallet, className, ...rest },
-    ref,
-  ) {
+  function TopBar({ className, ...rest }, ref) {
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-    // Derive active key from the current URL, then fall back to "home".
-    // /withdraw shares the dollar icon with /deposit — no separate nav entry.
-    const derivedActive: string =
+    // ── Wallet state ──────────────────────────────────────────────────────
+    const { address, isConnected, connect, disconnect } = useWallet();
+    const { usdc } = useDepositManagerAddresses();
+    const { formattedBalance } = useToken({
+      token:
+        usdc ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`),
+    });
+
+    // ── Account dropdown state ────────────────────────────────────────────
+    const [open, setOpen] = useState(false);
+
+    // ── Active nav derivation from URL ────────────────────────────────────
+    const derivedActive: NavItem["key"] =
       pathname === "/deposit" || pathname === "/withdraw"
         ? "deposit"
         : pathname === "/transactions"
           ? "history"
-          : pathname === "/"
-            ? "home"
-            : "home";
-
-    // Explicit prop wins; otherwise use the URL-derived value.
-    const effectiveActive = activeNav ?? derivedActive;
+          : pathname === "/stake"
+            ? "stats"
+            : pathname === "/"
+              ? "home"
+              : "home";
 
     const composed = [
       // Layout: flex row, three slots, justified between, vertically centred.
@@ -127,6 +88,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
       // Surface tokens — no hardcoded colors.
       "bg-[var(--color-pipeline-paper)]",
       "border-b border-[var(--color-pipeline-line)]",
+      // Position context for the dropdown.
+      "relative",
       className,
     ]
       .filter(Boolean)
@@ -160,7 +123,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             <IconButton
               key={item.key}
               label={item.label}
-              active={effectiveActive === item.key}
+              active={derivedActive === item.key}
               icon={<NavIcon name={item.key} />}
               onClick={
                 item.to
@@ -173,23 +136,46 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
 
         {/* Right slot — fixed 160px wide so the centre nav stays optically
           centred. Right-aligned content (`justify-end`) keeps the CTA flush
-          to the right edge of the bar.
-          When `wallet` is provided the pill replaces the Connect Wallet CTA,
-          matching Figma node 1498:100168 (connected header state). */}
+          to the right edge of the bar. */}
         <div
-          className="flex w-40 shrink-0 items-center justify-end"
+          className="relative flex w-40 shrink-0 items-center justify-end"
           data-node-id="1497:94724"
         >
-          {wallet ? (
-            <WalletPill
-              token="usdc"
-              balance={wallet.balance}
-              data-node-id="1498:100168"
-            />
+          {isConnected && address ? (
+            <>
+              {/* Trigger button wrapping the WalletPill */}
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={() => setOpen((o) => !o)}
+                className={[
+                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                  "focus-visible:outline-[var(--color-pipeline-ink)]",
+                  "rounded-[var(--radius-pipeline-pill)]",
+                ].join(" ")}
+                data-node-id="1498:100168"
+              >
+                <WalletPill token="usdc" balance={formattedBalance ?? "—"} />
+              </button>
+
+              {/* Account dropdown panel */}
+              {open && (
+                <AccountDropdown
+                  address={address}
+                  formattedBalance={formattedBalance ?? "—"}
+                  onClose={() => setOpen(false)}
+                  onDisconnect={() => {
+                    disconnect();
+                    setOpen(false);
+                  }}
+                />
+              )}
+            </>
           ) : (
             <Button
               variant="primary-dark"
-              onClick={onConnectWallet}
+              onClick={connect}
               data-node-id="1497:94725"
             >
               Connect Wallet

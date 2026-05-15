@@ -9,7 +9,6 @@ import {
   TokenAmountDisplay,
   TokenInput,
 } from "@pipeline/ui";
-import { TopBar } from "@/components/TopBar";
 
 /**
  * Stake route — full page composition.
@@ -35,8 +34,6 @@ function Stake() {
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <TopBar wallet={{ balance: "$10,000.00" }} activeNav="stats" />
-
       {/* Centred narrow column — mirrors Figma's centred single-column layout
           for the stake screen. py-12 gives breathing room under the TopBar;
           gap-6 (24px) matches the vertical spacing between sections. */}

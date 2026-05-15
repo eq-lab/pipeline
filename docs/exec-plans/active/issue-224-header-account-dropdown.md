@@ -51,7 +51,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Update `__root.tsx`** to mount `<TopBar />` above `<Outlet />`. File: `packages/frontend/src/routes/__root.tsx`.
+1. ✅ **Update `__root.tsx`** to mount `<TopBar />` above `<Outlet />`. File: `packages/frontend/src/routes/__root.tsx`.
 
    ```tsx
    import { createRootRoute, Outlet } from "@tanstack/react-router";
@@ -67,7 +67,7 @@ _None_
    });
    ```
 
-2. **Rewrite `packages/frontend/src/components/TopBar.tsx`** to:
+2. ✅ **Rewrite `packages/frontend/src/components/TopBar.tsx`** to:
    - Remove `TopBarProps` fields `wallet`, `onConnectWallet`, `activeNav` (drop the public surface entirely; keep only `className` + standard `HTMLAttributes<HTMLElement>` so route-level styling overrides still work if needed).
    - Read state internally:
      ```ts
@@ -96,7 +96,7 @@ _None_
    - When disconnected: render the existing "Connect Wallet" `<Button>` with `onClick={connect}`.
    - Keep `data-node-id` attributes for traceability.
 
-3. **Create `packages/frontend/src/components/AccountDropdown.tsx`**.
+3. ✅ **Create `packages/frontend/src/components/AccountDropdown.tsx`**.
 
    File responsibilities (one component per file, view + co-located hook per `docs/FRONTEND.md` rule 2):
 
@@ -128,7 +128,7 @@ _None_
    - Copy button + Disconnect: `role="menuitem"`.
    - `tabIndex={-1}` on the panel; focus moves to the copy button on open (first interactive element) via `useEffect`.
 
-4. **Drop the per-route `<TopBar … />` mounts.** Edit each of these files to remove the `<TopBar … />` JSX line and the now-unused `TopBar` / wallet imports, and verify the top-padding comments still read correctly:
+4. ✅ **Drop the per-route `<TopBar … />` mounts.** Edit each of these files to remove the `<TopBar … />` JSX line and the now-unused `TopBar` / wallet imports, and verify the top-padding comments still read correctly:
    - `packages/frontend/src/routes/index.tsx` — drop `<TopBar … />` (line ~54) and the `useWallet`/`useToken`/`useDepositManagerAddresses` calls + imports that fed the prop. The page then has no header dependency.
    - `packages/frontend/src/routes/deposit.tsx` — drop `<TopBar … activeNav="deposit" />` (lines 34-38) and the wallet hooks (the page no longer needs them; this is fine).
    - `packages/frontend/src/routes/withdraw.tsx` — same as deposit, dropping `activeNav="deposit"`.
@@ -138,24 +138,24 @@ _None_
 
    Each route file keeps its outer `<div className="min-h-screen …">` wrapper around `<main>`; the wrapper is the page background, separate from the header (which now lives in `__root.tsx`).
 
-5. **Rewrite `TopBar.test.tsx`** under `packages/frontend/src/components/`:
+5. ✅ **Rewrite `TopBar.test.tsx`** under `packages/frontend/src/components/`:
    - Drop tests that exercise the removed `wallet`/`onConnectWallet`/`activeNav` props.
    - Keep route-derived active-nav tests; add a new case for `/stake` → `Stats` active (replacing the deleted `activeNav` override test).
    - Add a connected-state test: set the `pipeline.mock.wallet.address` + `pipeline.mock.wallet.isConnected` + `pipeline.mock.wallet.balance.<usdc>` keys in `beforeEach`, set `pipeline.mock.wallet.contract.depositManager.usdc` to a dummy address, mock decimals/symbol via `pipeline.mock.wallet.contract.<usdc>.decimals`/`…symbol`, and assert the `WalletPill` renders with the formatted balance. Clean up in `afterEach`.
    - Add a disconnected-state test: no mock keys → assert `Connect Wallet` button visible.
    - The test will need to wrap the in-memory router with `<WalletProvider>`. Pattern: build the router as today, render with `<WalletProvider><RouterProvider router={…} /></WalletProvider>`.
 
-6. **Create `AccountDropdown.test.tsx`** covering:
+6. ✅ **Create `AccountDropdown.test.tsx`** covering:
    - Open on pill click; close on outside click; close on `Escape`; close on route change.
    - Address rendered truncated (`0x1234…cdef`); clicking the copy button calls a mocked `navigator.clipboard.writeText` with the full address and shows the `Copied` affordance for ≥1s (assert text appears, then assert it disappears after the timer via `vi.useFakeTimers()`).
    - Disconnect button calls `useWallet().disconnect()` (mocked via the mock-layer localStorage keys) and closes the dropdown.
    - Panel has `role="menu"`, copy/disconnect have `role="menuitem"`, trigger has `aria-expanded` toggling.
 
-7. **Smoke test that header renders on non-`/` routes.** Add a single test in `TopBar.test.tsx` (or a new `__root.test.tsx`) that mounts a memory router through `__root.tsx` at `/deposit` and asserts the `Pipeline` logo / nav buttons are present. This is the regression guard for "future routes no longer have to remember to mount the header."
+7. ✅ **Smoke test that header renders on non-`/` routes.** Add a single test in `TopBar.test.tsx` (or a new `__root.test.tsx`) that mounts a memory router through `__root.tsx` at `/deposit` and asserts the `Pipeline` logo / nav buttons are present. This is the regression guard for "future routes no longer have to remember to mount the header."
 
-8. **Update `docs/frontend/index.md` if needed.** `AccountDropdown` is a single-owner component (used only by `TopBar`), so it stays out of `docs/frontend/hooks.md`. `useAccountDropdown` is component-local (rule 2 — co-located hook) and is also excluded from the catalogue. No catalogue updates required.
+8. ✅ **Update `docs/frontend/index.md` if needed.** `AccountDropdown` is a single-owner component (used only by `TopBar`), so it stays out of `docs/frontend/hooks.md`. `useAccountDropdown` is component-local (rule 2 — co-located hook) and is also excluded from the catalogue. No catalogue updates required.
 
-9. **Run the standard pre-commit gauntlet**:
+9. ✅ **Run the standard pre-commit gauntlet**:
    ```bash
    yarn workspace @pipeline/frontend test
    yarn workspace @pipeline/frontend lint

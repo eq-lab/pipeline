@@ -21,7 +21,6 @@
 import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@pipeline/ui";
-import { TopBar } from "@/components/TopBar";
 import { ENV } from "@/lib/env";
 import {
   useWallet,
@@ -239,13 +238,6 @@ function TestPage(): React.JSX.Element {
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <TopBar
-        onConnectWallet={connect}
-        wallet={
-          isConnected ? { balance: usdcFormattedBalance ?? "—" } : undefined
-        }
-      />
-
       <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-12">
         <h1 className="text-xl font-bold text-[color:var(--color-pipeline-ink)]">
           /test — Diagnostic Page
