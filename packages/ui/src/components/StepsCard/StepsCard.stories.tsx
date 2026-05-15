@@ -107,3 +107,54 @@ export const AllEnabled: Story = {
     ],
   },
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Step 1 success / Step 2 idle (Approved state — Figma 1497:95272)          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Approved state: step 1 shows the green check badge (allowance is sufficient)
+ * and step 2 "Convert" is enabled. Matches Figma node 1497:95272.
+ */
+export const Step1SuccessStep2Idle: Story = {
+  name: "Step 1 success / Step 2 idle (Approved)",
+  args: {
+    steps: [
+      {
+        label: "Allow contract to use USDC",
+        actionLabel: "Approve",
+        disabled: false,
+        state: "success",
+      },
+      {
+        label: "Confirm and receive PLUSD",
+        actionLabel: "Convert",
+        disabled: false,
+        state: "idle",
+      },
+    ],
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Step 1 loading (approve tx in flight)                                     */
+/* -------------------------------------------------------------------------- */
+
+export const Step1Loading: Story = {
+  name: "Step 1 loading (approve pending)",
+  args: {
+    steps: [
+      {
+        label: "Allow contract to use USDC",
+        actionLabel: "Approve",
+        disabled: false,
+        loading: true,
+      },
+      {
+        label: "Confirm and receive PLUSD",
+        actionLabel: "Convert",
+        disabled: true,
+      },
+    ],
+  },
+};

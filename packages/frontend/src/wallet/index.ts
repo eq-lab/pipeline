@@ -30,3 +30,4 @@ export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
 export { useToken } from "./useToken";
 export type { UseTokenArgs, UseTokenResult } from "./useToken";
 export { isMockKeyPresent } from "./mock";
+export { parseUnits, formatUnits } from "./units";

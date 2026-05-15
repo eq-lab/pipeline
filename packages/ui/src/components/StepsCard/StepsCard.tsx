@@ -32,6 +32,18 @@ export interface StepItem {
   disabled?: boolean;
   /** Called when the action button is clicked (only fires when not disabled). */
   onAction?: React.MouseEventHandler<HTMLButtonElement>;
+  /**
+   * When true the action button shows a loading / in-flight state (disabled
+   * with a spinner). The row opacity remains full so the user sees progress.
+   */
+  loading?: boolean;
+  /**
+   * Step state:
+   *   - `"idle"` (default) — renders the action button normally.
+   *   - `"success"` — replaces the action button with a green check badge,
+   *     indicating this step has been completed.
+   */
+  state?: "idle" | "success";
 }
 
 export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -55,7 +67,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
         // CSS cascade order. Border colour is inherited from the muted variant's
         // border-color token (--color-pipeline-line).
         className={[
-          "!border-l !border-t !border-r-[3px] !border-b-[3px]",
+          "!border-t !border-r-[3px] !border-b-[3px] !border-l",
           className,
         ]
           .filter(Boolean)
@@ -63,16 +75,23 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
         {...rest}
       >
         <div className="flex flex-col gap-2">
-          {steps.map(({ label, actionLabel, disabled, onAction }, index) => (
-            <StepRow
-              key={index}
-              step={index + 1}
-              label={label}
-              actionLabel={actionLabel}
-              disabled={disabled}
-              onAction={onAction}
-            />
-          ))}
+          {steps.map(
+            (
+              { label, actionLabel, disabled, onAction, loading, state },
+              index,
+            ) => (
+              <StepRow
+                key={index}
+                step={index + 1}
+                label={label}
+                actionLabel={actionLabel}
+                disabled={disabled}
+                onAction={onAction}
+                loading={loading}
+                state={state}
+              />
+            ),
+          )}
         </div>
       </Card>
     );
