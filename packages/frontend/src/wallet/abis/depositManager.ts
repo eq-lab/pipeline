@@ -1,7 +1,7 @@
 /**
  * Minimal DepositManager ABI subset used by the LP UI wallet hooks.
  *
- * Only the four functions consumed by the LP UI are listed here — the full
+ * Only the five functions consumed by the LP UI are listed here — the full
  * ABI lives in `docs.local/manager_abi.txt`. Typed `as const` so viem picks
  * up exact return types for each function.
  */
@@ -19,6 +19,13 @@ export const depositManagerAbi = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "minDeposit",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",

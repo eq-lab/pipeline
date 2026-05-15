@@ -4,6 +4,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { WalletProvider } from "./WalletProvider";
 import {
   useDepositManagerAddresses,
+  useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
 } from "./useDepositManager";
@@ -597,5 +598,247 @@ describe("useClaim — reset semantics", () => {
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isSuccess).toBe(false);
+  });
+});
+
+// ── useDepositManagerMinDeposit ────────────────────────────────────────────────
+
+describe("useDepositManagerMinDeposit — named alias mock", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    fetchSpy.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("returns parsed bigint from named alias and disables real read", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+      "1000000",
+    );
+
+    const { result } = renderHook(() => useDepositManagerMinDeposit(), {
+      wrapper,
+    });
+
+    expect(result.current.minDeposit).toBe(1_000_000n);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    // All useReadContract calls for minDeposit should have enabled=false
+    const calls = mockUseReadContract.mock.calls as unknown as Array<
+      [{ functionName?: string; query?: { enabled?: boolean } }]
+    >;
+    const minDepositCalls = calls.filter(
+      (call) => call[0]?.functionName === "minDeposit",
+    );
+    for (const call of minDepositCalls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("does not call fetch when named alias is set", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+      "1000000",
+    );
+    fetchSpy.mockClear();
+
+    renderHook(() => useDepositManagerMinDeposit(), { wrapper });
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDepositManagerMinDeposit — generic per-address mock", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("returns parsed bigint from generic per-address key", () => {
+    const dmAddr = "0xAAAA000000000000000000000000000000000010";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${dmAddr.toLowerCase()}.minDeposit`,
+      "2500000",
+    );
+
+    const { result } = renderHook(() => useDepositManagerMinDeposit(), {
+      wrapper,
+    });
+
+    expect(result.current.minDeposit).toBe(2_500_000n);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+});
+
+describe("useDepositManagerMinDeposit — named alias priority over generic", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("named alias wins when both alias and generic keys are set", () => {
+    const dmAddr = "0xBBBB000000000000000000000000000000000011";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    // Named alias → 1_000_000n
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+      "1000000",
+    );
+    // Generic per-address → 9_999_999n (should be ignored)
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${dmAddr.toLowerCase()}.minDeposit`,
+      "9999999",
+    );
+
+    const { result } = renderHook(() => useDepositManagerMinDeposit(), {
+      wrapper,
+    });
+
+    expect(result.current.minDeposit).toBe(1_000_000n);
+  });
+});
+
+describe("useDepositManagerMinDeposit — zero-address short-circuit", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  it("returns undefined and disables all reads when DM address is zero", () => {
+    // Default env has zero DM address
+    const { result } = renderHook(() => useDepositManagerMinDeposit(), {
+      wrapper,
+    });
+
+    expect(result.current.minDeposit).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    const calls = mockUseReadContract.mock.calls as unknown as Array<
+      [{ query?: { enabled?: boolean } }]
+    >;
+    for (const call of calls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+});
+
+describe("useDepositManagerMinDeposit — caching options forwarded", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("forwards staleTime:Infinity and all refetch:false flags to useReadContract", () => {
+    const dmAddr = "0xCCCC000000000000000000000000000000000012";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    renderHook(() => useDepositManagerMinDeposit(), { wrapper });
+
+    const calls = mockUseReadContract.mock.calls as unknown as Array<
+      [
+        {
+          functionName?: string;
+          query?: {
+            enabled?: boolean;
+            staleTime?: number;
+            gcTime?: number;
+            refetchOnWindowFocus?: boolean;
+            refetchOnReconnect?: boolean;
+            refetchOnMount?: boolean;
+            refetchInterval?: boolean | number;
+          };
+        },
+      ]
+    >;
+
+    const minDepositCalls = calls.filter(
+      (call) => call[0]?.functionName === "minDeposit",
+    );
+    expect(minDepositCalls.length).toBeGreaterThan(0);
+    for (const call of minDepositCalls) {
+      const q = call[0]?.query;
+      if (q) {
+        expect(q.staleTime).toBe(Infinity);
+        expect(q.gcTime).toBe(Infinity);
+        expect(q.refetchOnWindowFocus).toBe(false);
+        expect(q.refetchOnReconnect).toBe(false);
+        expect(q.refetchOnMount).toBe(false);
+        expect(q.refetchInterval).toBe(false);
+      }
+    }
+  });
+});
+
+describe("useDepositManagerMinDeposit — real RPC path", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockReset();
+    mockUseReadContract.mockImplementation(() => ({
+      data: undefined as unknown,
+      isLoading: false,
+      error: null,
+    }));
+    resetEnv();
+  });
+
+  it("returns wagmi data unchanged on real RPC path", () => {
+    const dmAddr = "0xDDDD000000000000000000000000000000000013";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    // Override mockUseReadContract to return 5_000_000n for minDeposit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockUseReadContract as any).mockImplementation(
+      (args: { functionName?: string }) => {
+        if (args?.functionName === "minDeposit") {
+          return { data: 5_000_000n, isLoading: false, error: null };
+        }
+        return { data: undefined as unknown, isLoading: false, error: null };
+      },
+    );
+
+    const { result } = renderHook(() => useDepositManagerMinDeposit(), {
+      wrapper,
+    });
+
+    expect(result.current.minDeposit).toBe(5_000_000n);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });

@@ -51,7 +51,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Extend the ABI.** Edit `packages/frontend/src/wallet/abis/depositManager.ts`:
+1. [x] **Extend the ABI.** Edit `packages/frontend/src/wallet/abis/depositManager.ts`:
    - Append after the existing `usdc` entry (keep ordering: views first, then writes):
      ```ts
      {
@@ -64,11 +64,11 @@ _None_
      ```
    - Update the file's module-level comment to say "five entries" instead of "four functions".
 
-2. **Add mock-key constants.** In `packages/frontend/src/wallet/useDepositManager.ts`, extend the `MOCK_KEYS` object:
+2. [x] **Add mock-key constants.** In `packages/frontend/src/wallet/useDepositManager.ts`, extend the `MOCK_KEYS` object:
    - `minDepositAlias: "pipeline.mock.wallet.contract.depositManager.minDeposit"`
    - `contractMinDeposit: (address: string) => \`pipeline.mock.wallet.contract.${address.toLowerCase()}.minDeposit\``
 
-3. **Add the `DepositManagerMinDepositResult` type.** Next to `DepositManagerAddressesResult`:
+3. [x] **Add the `DepositManagerMinDepositResult` type.** Next to `DepositManagerAddressesResult`:
    ```ts
    export interface DepositManagerMinDepositResult {
      minDeposit: bigint | undefined;
@@ -77,7 +77,7 @@ _None_
    }
    ```
 
-4. **Implement `useDepositManagerMinDeposit()`.** In `packages/frontend/src/wallet/useDepositManager.ts`, after `useDepositManagerAddresses`:
+4. [x] **Implement `useDepositManagerMinDeposit()`.** In `packages/frontend/src/wallet/useDepositManager.ts`, after `useDepositManagerAddresses`:
    - Read the named alias reactively via `useMock(MOCK_KEYS.minDepositAlias, parseBigInt)`.
    - Read the generic per-address key once via `readMock(MOCK_KEYS.contractMinDeposit(DM_ADDRESS), parseBigInt)`.
    - Compute `isZeroAddress` and `shouldSkipReal = hasMock || isZeroAddress`.
@@ -85,22 +85,22 @@ _None_
    - Reuse the exact `cacheForever` shape from `useDepositManagerAddresses` (extract to a module-level `const CACHE_FOREVER = { … }` and reuse from both hooks to avoid duplication).
    - Return precedence: named alias > generic per-address > zero-address short-circuit > real RPC result. Cast `data as bigint | undefined`.
 
-5. **De-duplicate `cacheForever`.** Lift the `cacheForever` object literal out of `useDepositManagerAddresses` into a module-level `const CACHE_FOREVER` and reference it from both hooks. (Simple refactor inside the same file — no behaviour change.)
+5. [x] **De-duplicate `cacheForever`.** Lift the `cacheForever` object literal out of `useDepositManagerAddresses` into a module-level `const CACHE_FOREVER` and reference it from both hooks. (Simple refactor inside the same file — no behaviour change.)
 
-6. **Re-export from the wallet barrel.** Edit `packages/frontend/src/wallet/index.ts`:
+6. [x] **Re-export from the wallet barrel.** Edit `packages/frontend/src/wallet/index.ts`:
    - Add `useDepositManagerMinDeposit` to the value re-export.
    - Add `DepositManagerMinDepositResult` to the type re-export.
 
-7. **Update the wallet README.** Edit `packages/frontend/src/wallet/README.md`:
+7. [x] **Update the wallet README.** Edit `packages/frontend/src/wallet/README.md`:
    - Add a `useDepositManagerMinDeposit()` section mirroring the `useDepositManagerAddresses()` example.
    - Add two rows to the mock-key table:
      - `pipeline.mock.wallet.contract.depositManager.minDeposit` → `string` (decimal bigint, e.g. `"1000000"`)
      - `pipeline.mock.wallet.contract.<address>.minDeposit` → same shape, generic per-address fallback
    - Include the key in the "set all DepositManager mocks" / "clear all DepositManager mocks" console snippets.
 
-8. **Update the hooks catalogue.** Edit `docs/frontend/hooks.md` — add an alphabetically-placed row for `useDepositManagerMinDeposit` describing return shape and the named-alias mock key. Keep the table sorted alphabetically.
+8. [x] **Update the hooks catalogue.** Edit `docs/frontend/hooks.md` — add an alphabetically-placed row for `useDepositManagerMinDeposit` describing return shape and the named-alias mock key. Keep the table sorted alphabetically.
 
-9. **Run linters.** `npx tsx scripts/lint-docs.ts` after doc edits; verify `npm run lint` (or the local equivalent) is clean.
+9. [x] **Run linters.** `npx tsx scripts/lint-docs.ts` after doc edits; verify `npm run lint` (or the local equivalent) is clean.
 
 ## Test Strategy
 
