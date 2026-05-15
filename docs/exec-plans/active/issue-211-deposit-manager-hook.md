@@ -53,56 +53,43 @@ _None_
 
 ## Implementation Steps
 
-1. **Create the ABI file.**
+1. [x] **Create the ABI file.**
    - New file `packages/frontend/src/wallet/abis/depositManager.ts`.
    - Export `const depositManagerAbi = [...] as const` containing exactly the four entries shown in the Issue body.
    - JSDoc the file: one-paragraph rationale ("only the four functions consumed by the LP UI; full ABI lives in `docs.local/manager_abi.txt`").
 
-2. **Extend `ENV`.**
+2. [x] **Extend `ENV`.**
    - In `packages/frontend/src/lib/env.ts`, add a `DEPOSIT_MANAGER_ADDRESS` field reading `VITE_DEPOSIT_MANAGER_ADDRESS` via `readString(...)` with default `"0x0000000000000000000000000000000000000000"`, typed `as \`0x${string}\``. Match the existing `USDC_ADDRESS` JSDoc style (mention the zero-address default short-circuit).
    - Add the variable to `.env.example` under the existing `# ── Frontend (VITE_) ──` block, just below `VITE_USDC_ADDRESS`, with a one-line comment.
 
-3. **Add new mock-key constants and helpers.**
-   - In `packages/frontend/src/wallet/useWallet.ts` (or a new sibling file — implementer's choice; see step 4), extend the local `KEYS` object with:
-     - `depositManagerPlusdAlias: "pipeline.mock.wallet.contract.depositManager.plusd"`
-     - `depositManagerUsdcAlias: "pipeline.mock.wallet.contract.depositManager.usdc"`
-     - `depositManagerRequestDeposit: "pipeline.mock.wallet.contract.depositManager.requestDeposit"`
-     - `depositManagerClaim: "pipeline.mock.wallet.contract.depositManager.claim"`
-   - Reuse `useMock`, `parseAddress`, `parseJson` from `wallet/mock.ts`. No new parse helpers needed.
+3. [x] **Add new mock-key constants and helpers.**
+   - Constants defined in `MOCK_KEYS` inside `packages/frontend/src/wallet/useDepositManager.ts`.
+   - Reuses `useMock`, `readMock`, `parseAddress`, `parseJson` from `wallet/mock.ts`.
 
-4. **Implement the three new hooks.**
-   - File placement: create a dedicated `packages/frontend/src/wallet/useDepositManager.ts` to keep `useWallet.ts` from growing beyond its current ~200 LOC ceiling. Export `useDepositManagerAddresses`, `useRequestDeposit`, `useClaim`, and their result/arg types.
-   - `useDepositManagerAddresses()`:
-     - Read named-alias mock keys first (`plusd` + `usdc`).
-     - Else if `ENV.DEPOSIT_MANAGER_ADDRESS === 0x0…`: short-circuit to `{ plusd: undefined, usdc: undefined, isLoading: false, error: null }`.
-     - Else issue two `useReadContract` calls (or one parallel pair) with `query: { staleTime: Infinity, gcTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchInterval: false }`.
-     - Also consult the generic `pipeline.mock.wallet.contract.<lowercased-dm-address>.plUsd` / `.usdc` keys (so consumers who set the generic per-address mock pattern still bypass the RPC). The implementation can call the existing public `useContractRead` and let it handle the generic-key path, then layer the named-alias check on top.
-   - `useRequestDeposit()`:
-     - If mock key `pipeline.mock.wallet.contract.depositManager.requestDeposit` present → return a memoised `write(args)` that synchronously parses the mocked JSON and surfaces it as `data` with `isSuccess: true`. `useWriteContract` is NOT called.
-     - Else if `ENV.DEPOSIT_MANAGER_ADDRESS === 0x0…` → `write` is a function that sets internal error state to `new Error("DepositManager not configured")` and resolves; `isPending` never flips true.
-     - Else delegate to `useWriteContract` with `{ abi: depositManagerAbi, address: ENV.DEPOSIT_MANAGER_ADDRESS, functionName: "requestDeposit", args: [amount] }`.
-     - Public surface: `{ write: (amount: bigint) => void, data, isPending, isSuccess, error, reset }`.
-   - `useClaim()`: same shape; `write: (requestId: bigint, verifierSignature: \`0x${string}\`) => void`. Mock key `…depositManager.claim` returns `{ hash, amount }`.
+4. [x] **Implement the three new hooks.**
+   - File: `packages/frontend/src/wallet/useDepositManager.ts`.
+   - Deviation from plan: write hooks use `readMock` (non-reactive) rather than `useMock` (reactive) for JSON mock keys to avoid the React `useSyncExternalStore` "getSnapshot should be cached" infinite-loop. Read hooks use `useMock` with `parseAddress` (stable string primitives). This is correct and sound.
 
-5. **Update the wallet barrel.**
-   - In `packages/frontend/src/wallet/index.ts`, add named exports for the three new hooks and their result/arg types. Keep the JSDoc reminder about the `no-restricted-imports` boundary.
+5. [x] **Update the wallet barrel.**
+   - `packages/frontend/src/wallet/index.ts` exports all three hooks and their types.
 
-6. **Write unit tests** (see Test Strategy for full coverage matrix).
-   - Create `packages/frontend/src/wallet/useDepositManager.test.tsx`. Mock `wagmi`'s `useReadContract` and `useWriteContract` the same way the existing `useContractRead.test.tsx` / `useUsdcBalance.test.tsx` do (vi.mock with the same `@reown/appkit/react`, `@tanstack/react-query`, and `./config` stubs already used in those files).
+6. [x] **Write unit tests.**
+   - `packages/frontend/src/wallet/useDepositManager.test.tsx` — 16 tests, all pass.
+   - Deviation: ENV mocked via `vi.mock("@/lib/env", ...)` + `vi.hoisted` because `Object.freeze(ENV)` prevents `withEnvOverride` from working on the real object in test files that import it.
 
-7. **Update `docs/frontend/hooks.md`.**
-   - Add one row per new shared hook (`useClaim`, `useDepositManagerAddresses`, `useRequestDeposit`) — alphabetical order, `@/wallet` import path, one-sentence description.
+7. [x] **Update `docs/frontend/hooks.md`.**
+   - Added four rows (alphabetical): `useClaim`, `useContractRead`, `useDepositManagerAddresses`, `useRequestDeposit`.
 
-8. **Update `packages/frontend/src/wallet/README.md`.**
-   - Add the four new mock keys to the `localStorage mock key schema` table.
-   - Add a DevTools-console snippet under "DevTools console snippets" showing how to mock the addresses + a successful `requestDeposit`.
-   - Add a `useDepositManagerAddresses` / `useRequestDeposit` / `useClaim` subsection under "Public API" with a brief signature and example.
+8. [x] **Update `packages/frontend/src/wallet/README.md`.**
+   - Added four new mock keys to the schema table.
+   - Added DevTools console snippet for DepositManager mocking.
+   - Added Public API subsections for the three new hooks.
 
-9. **Lint and typecheck.**
-   - `yarn workspace @pipeline/frontend lint` — must pass.
-   - `npx tsx scripts/lint-docs.ts` — must pass (markdown docs structure).
-   - `yarn workspace @pipeline/frontend tsc --noEmit` (or the package's `typecheck` script if defined) — zero errors.
-   - `yarn workspace @pipeline/frontend test` — all new + existing tests green.
+9. [x] **Lint and typecheck.**
+   - `yarn workspace @pipeline/frontend lint` — passes.
+   - `npx tsx scripts/lint-docs.ts` — passes (0 errors).
+   - `yarn workspace @pipeline/frontend tsc --noEmit` — zero errors.
+   - `yarn workspace @pipeline/frontend test` — 57/57 tests pass.
 
 ## Test Strategy
 

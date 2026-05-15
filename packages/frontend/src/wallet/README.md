@@ -34,6 +34,9 @@ import {
   useWallet,
   useUsdcBalance,
   useContractRead,
+  useDepositManagerAddresses,
+  useRequestDeposit,
+  useClaim,
 } from "@/wallet";
 ```
 
@@ -79,6 +82,44 @@ is skipped and `data` is `undefined` ("USDC not configured").
 Thin wrapper around wagmi's `useReadContract` that checks the mock layer
 before delegating to the real read. Returns `{ data, isLoading, error }`.
 
+### `useDepositManagerAddresses()`
+
+```ts
+const { plusd, usdc, isLoading, error } = useDepositManagerAddresses();
+```
+
+Reads `plUsd()` and `usdc()` from the DepositManager contract. Fetches once
+per page lifetime (`staleTime: Infinity`). Returns `undefined` data when
+`VITE_DEPOSIT_MANAGER_ADDRESS` is the zero address.
+
+| Field       | Type                            | Description                                  |
+| ----------- | ------------------------------- | -------------------------------------------- |
+| `plusd`     | `0x${string} \| undefined`     | plUSD token address, or `undefined` if not configured |
+| `usdc`      | `0x${string} \| undefined`     | USDC token address, or `undefined` if not configured  |
+| `isLoading` | `boolean`                       |                                              |
+| `error`     | `Error \| null`                 |                                              |
+
+### `useRequestDeposit()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useRequestDeposit();
+write(amount);  // amount: bigint (USDC, 6 decimals)
+```
+
+Write hook for `requestDeposit(uint256 amount)`. Returns a tx hash in `data.hash`
+after success. When `VITE_DEPOSIT_MANAGER_ADDRESS` is zero, `write()` surfaces
+`Error("DepositManager not configured")` without making an RPC call.
+
+### `useClaim()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useClaim();
+write(requestId, verifierSignature);  // requestId: bigint; verifierSignature: `0x${string}`
+```
+
+Write hook for `claim(uint256 requestId, bytes verifierSignature)`. Returns a tx
+hash in `data.hash` after success. Same zero-address guard as `useRequestDeposit`.
+
 ---
 
 ## localStorage mock key schema
@@ -118,13 +159,17 @@ the absence of a key is its own off-switch.
 > the DevTools console dispatch a `pipeline-mock:wallet` custom event that
 > causes React to re-render without a page reload.
 
-| Key                                            | Type                                                    | Notes                                                       |
-| ---------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
-| `pipeline.mock.wallet.address`                 | `string` (`0x…`)                                        | Sets the connected wallet address                           |
-| `pipeline.mock.wallet.isConnected`             | `"true"` or `"false"`                                   | Defaults to `"true"` when `address` is set                  |
-| `pipeline.mock.wallet.chainId`                 | numeric string e.g. `"560048"`                          | Overrides `useChainId()`                                    |
-| `pipeline.mock.wallet.balance.usdc`            | numeric string of raw bigint (6 dp) e.g. `"1000000000"` | 1000 USDC                                                   |
-| `pipeline.mock.wallet.contract.<address>.<fn>` | JSON-encoded return value                               | Overrides `useContractRead` for the given contract+function |
+| Key                                                                   | Type                                                          | Notes                                                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.address`                                        | `string` (`0x…`)                                              | Sets the connected wallet address                                                                     |
+| `pipeline.mock.wallet.isConnected`                                    | `"true"` or `"false"`                                         | Defaults to `"true"` when `address` is set                                                            |
+| `pipeline.mock.wallet.chainId`                                        | numeric string e.g. `"560048"`                                | Overrides `useChainId()`                                                                              |
+| `pipeline.mock.wallet.balance.usdc`                                   | numeric string of raw bigint (6 dp) e.g. `"1000000000"`       | 1000 USDC                                                                                             |
+| `pipeline.mock.wallet.contract.<address>.<fn>`                        | JSON-encoded return value                                     | Overrides `useContractRead` for the given contract+function                                           |
+| `pipeline.mock.wallet.contract.depositManager.plusd`                  | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — plUSD address. Takes priority over the generic key.    |
+| `pipeline.mock.wallet.contract.depositManager.usdc`                   | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — USDC address. Takes priority over the generic key.     |
+| `pipeline.mock.wallet.contract.depositManager.requestDeposit`         | JSON `{ hash: "0x…", requestId?: "123" }`                    | Bypasses `useRequestDeposit` wagmi call; `write()` settles immediately with this data.                |
+| `pipeline.mock.wallet.contract.depositManager.claim`                  | JSON `{ hash: "0x…", amount?: "1000000" }`                   | Bypasses `useClaim` wagmi call; `write()` settles immediately with this data.                         |
 
 ### DevTools console snippets
 
@@ -154,6 +199,43 @@ localStorage.setItem(
   "pipeline.mock.wallet.contract.0xabc123.balanceOf",
   JSON.stringify("42"),
 );
+```
+
+**Mock DepositManager addresses + simulate a successful requestDeposit:**
+
+```js
+// 1. Set the contract addresses (named aliases — no need to know the deployed address)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.depositManager.plusd",
+  "0x1111000000000000000000000000000000000001",
+);
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.depositManager.usdc",
+  "0x2222000000000000000000000000000000000002",
+);
+
+// 2. Mock a successful requestDeposit (returns a fake tx hash + requestId)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.depositManager.requestDeposit",
+  JSON.stringify({ hash: "0xdeadbeefdeadbeef", requestId: "42" }),
+);
+
+// 3. Mock a successful claim
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.depositManager.claim",
+  JSON.stringify({ hash: "0xcafecafecafecafe", amount: "1000000" }),
+);
+```
+
+To reset DepositManager mocks:
+
+```js
+[
+  "pipeline.mock.wallet.contract.depositManager.plusd",
+  "pipeline.mock.wallet.contract.depositManager.usdc",
+  "pipeline.mock.wallet.contract.depositManager.requestDeposit",
+  "pipeline.mock.wallet.contract.depositManager.claim",
+].forEach((k) => localStorage.removeItem(k));
 ```
 
 ---

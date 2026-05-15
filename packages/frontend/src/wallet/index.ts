@@ -14,3 +14,13 @@ export type {
   UseContractReadArgs,
   ContractReadResult,
 } from "./useWallet";
+export {
+  useDepositManagerAddresses,
+  useRequestDeposit,
+  useClaim,
+} from "./useDepositManager";
+export type {
+  DepositManagerAddressesResult,
+  RequestDepositResult,
+  ClaimResult,
+} from "./useDepositManager";
