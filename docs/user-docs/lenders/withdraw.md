@@ -8,7 +8,7 @@ section: For Lenders
 
 Withdraw by unstaking sPLUSD to PLUSD if needed, escrowing PLUSD into the WithdrawalQueue, and claiming USDC yourself. The claim re-screens your address, burns your PLUSD, and pulls USDC from the Withdrawal Queue Wallet via the queue contract's standing allowance. Single call, no off-chain signer in the critical path.
 
-{% include diagram.html src="d5-withdraw-settle.svg" caption="Withdraw to settle. User-pulled claim from the Withdrawal Queue Wallet via standing allowance. Claim re-checks compliance, burns PLUSD, and pays USDC atomically." %}
+{% include diagram.html src="d5-withdraw-settle.png" caption="Withdraw to settle. User-pulled claim from the Withdrawal Queue Wallet via standing allowance. Claim re-checks compliance, burns PLUSD, and pays USDC atomically." %}
 
 ## Flow
 

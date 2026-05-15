@@ -27,7 +27,7 @@ Deposit USDC, wait for KYT screening, claim PLUSD. Two on-chain transactions on 
 
 ## Deposit flow
 
-{% include diagram.html src="d2-deposit-mint.svg" caption="Two-step deposit. The Intake Wallet holds USDC during KYT screening. The Capital Wallet receives USDC at claim. PLUSD mints to the lender at claim." %}
+{% include diagram.html src="d2-deposit-mint.png" caption="Two-step deposit. The Intake Wallet holds USDC during KYT screening. The Capital Wallet receives USDC at claim. PLUSD mints to the lender at claim." %}
 
 ### Walkthrough
 

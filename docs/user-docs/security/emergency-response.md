@@ -12,7 +12,7 @@ Pipeline follows an Ethena-style emergency model. GUARDIAN (2/5 MPC) takes insta
 No single-call "revoke everything" switch exists. Every action names what it is doing to what. A reviewable record with a bounded blast radius.
 </div>
 
-{% include diagram.html src="d9-incident-response.svg" caption="Incident response. GUARDIAN contains instantly by pausing contracts and revoking named operational-role holders one at a time. ADMIN restores under the 3-day timelock." %}
+{% include diagram.html src="d9-incident-response.png" caption="Incident response. GUARDIAN contains instantly by pausing contracts and revoking named operational-role holders one at a time. ADMIN restores under the 3-day timelock." %}
 
 ## Walkthrough
 
