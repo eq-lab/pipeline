@@ -1,7 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ConversionCard, DepositHeader, StepsCard } from "@pipeline/ui";
-import { TopBar } from "@/components/TopBar";
-import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
 
 /**
  * Deposit route — full page composition.
@@ -23,20 +21,8 @@ import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100130&m=dev
  */
 function Deposit() {
-  const { isConnected, connect } = useWallet();
-  const { usdc } = useDepositManagerAddresses();
-  const { formattedBalance } = useToken({
-    token: usdc ?? "0x0000000000000000000000000000000000000000",
-  });
-
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <TopBar
-        onConnectWallet={connect}
-        wallet={isConnected ? { balance: formattedBalance ?? "—" } : undefined}
-        activeNav="deposit"
-      />
-
       {/* Centred narrow column — mirrors Figma's centred single-column layout
           for the deposit / conversion screen. py-12 gives breathing room under
           the TopBar; gap-6 (24px) matches the vertical spacing between sections. */}
