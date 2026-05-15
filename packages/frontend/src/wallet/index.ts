@@ -16,11 +16,13 @@ export type {
 } from "./useWallet";
 export {
   useDepositManagerAddresses,
+  useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
 } from "./useDepositManager";
 export type {
   DepositManagerAddressesResult,
+  DepositManagerMinDepositResult,
   RequestDepositResult,
   ClaimResult,
 } from "./useDepositManager";

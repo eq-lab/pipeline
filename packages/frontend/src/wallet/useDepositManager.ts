@@ -1,8 +1,9 @@
 /**
  * DepositManager wallet hooks.
  *
- * Provides `useDepositManagerAddresses`, `useRequestDeposit`, and `useClaim`
- * — the three on-chain interactions exposed by the DepositManager contract.
+ * Provides `useDepositManagerAddresses`, `useDepositManagerMinDeposit`,
+ * `useRequestDeposit`, and `useClaim` — the on-chain interactions exposed by
+ * the DepositManager contract.
  *
  * Each hook consults the `pipeline.mock.wallet.contract.depositManager.*`
  * localStorage layer first; when a mock key is present the real wagmi call is
@@ -11,7 +12,7 @@
 import { useState, useCallback } from "react";
 import { useReadContract, useWriteContract } from "wagmi";
 import { ENV } from "@/lib/env";
-import { useMock, readMock, parseAddress, parseJson } from "./mock";
+import { useMock, readMock, parseAddress, parseBigInt, parseJson } from "./mock";
 import { depositManagerAbi } from "./abis/depositManager";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
@@ -20,6 +21,8 @@ const MOCK_KEYS = {
   /** Named alias — takes precedence over the generic per-address key. */
   plusdAlias: "pipeline.mock.wallet.contract.depositManager.plusd",
   usdcAlias: "pipeline.mock.wallet.contract.depositManager.usdc",
+  minDepositAlias:
+    "pipeline.mock.wallet.contract.depositManager.minDeposit",
   requestDeposit: "pipeline.mock.wallet.contract.depositManager.requestDeposit",
   claim: "pipeline.mock.wallet.contract.depositManager.claim",
   /** Generic per-address key for `useContractRead` compatibility. */
@@ -27,9 +30,23 @@ const MOCK_KEYS = {
     `pipeline.mock.wallet.contract.${address.toLowerCase()}.plUsd`,
   contractUsdc: (address: string) =>
     `pipeline.mock.wallet.contract.${address.toLowerCase()}.usdc`,
+  contractMinDeposit: (address: string) =>
+    `pipeline.mock.wallet.contract.${address.toLowerCase()}.minDeposit`,
 };
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+// ── Shared caching options ────────────────────────────────────────────────────
+
+/** "Fetch once per page lifetime" caching — shared by all view hooks. */
+const CACHE_FOREVER = {
+  staleTime: Infinity,
+  gcTime: Infinity,
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  refetchInterval: false as const,
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,6 +73,12 @@ export interface ClaimResult {
   isSuccess: boolean;
   error: Error | null;
   reset: () => void;
+}
+
+export interface DepositManagerMinDepositResult {
+  minDeposit: bigint | undefined;
+  isLoading: boolean;
+  error: Error | null;
 }
 
 // ── useDepositManagerAddresses ─────────────────────────────────────────────────
@@ -99,30 +122,20 @@ export function useDepositManagerAddresses(): DepositManagerAddressesResult {
   const hasMockUsdc = mockUsdc !== undefined || mockUsdcGeneric !== undefined;
   const hasMock = hasMockPlusd || hasMockUsdc;
 
-  // Single-fetch caching options ("fetch once per page lifetime").
-  const cacheForever = {
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchInterval: false as const,
-  };
-
   const shouldSkipReal = hasMock || isZeroAddress;
 
   const plUsdRead = useReadContract({
     address: DM_ADDRESS,
     abi: depositManagerAbi,
     functionName: "plUsd",
-    query: { enabled: !shouldSkipReal, ...cacheForever },
+    query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
   });
 
   const usdcRead = useReadContract({
     address: DM_ADDRESS,
     abi: depositManagerAbi,
     functionName: "usdc",
-    query: { enabled: !shouldSkipReal, ...cacheForever },
+    query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
   });
 
   // Named alias takes priority over generic key.
@@ -164,6 +177,68 @@ export function useDepositManagerAddresses(): DepositManagerAddressesResult {
     usdc: usdcRead.data as `0x${string}` | undefined,
     isLoading,
     error,
+  };
+}
+
+// ── useDepositManagerMinDeposit ────────────────────────────────────────────────
+
+/**
+ * Reads the `minDeposit()` view function from the DepositManager contract.
+ *
+ * Priority order:
+ *   1. Named-alias mock key (`pipeline.mock.wallet.contract.depositManager.minDeposit`).
+ *   2. Generic per-address mock key (`pipeline.mock.wallet.contract.<addr>.minDeposit`).
+ *   3. Zero-address short-circuit — returns `undefined` without making an RPC call.
+ *   4. Real `useReadContract` call with "fetch once per page lifetime" caching.
+ *
+ * Note: `minDeposit` is not immutable (admin can call `setMinDeposit`), but
+ * changes are rare; a stale value surfaces as a `DepositManagerLessThanMinAmount`
+ * revert through the existing tx error path, which is acceptable.
+ */
+export function useDepositManagerMinDeposit(): DepositManagerMinDepositResult {
+  // Named-alias mock key (reactive via useSyncExternalStore; bigint primitives
+  // returned by parseBigInt are stable so getSnapshot will not loop).
+  const mockAlias = useMock(MOCK_KEYS.minDepositAlias, parseBigInt);
+
+  const DM_ADDRESS = ENV.DEPOSIT_MANAGER_ADDRESS;
+  const isZeroAddress = DM_ADDRESS === ZERO_ADDRESS;
+
+  // Generic per-address mock key (read once per render).
+  const mockGeneric = readMock(
+    MOCK_KEYS.contractMinDeposit(DM_ADDRESS),
+    parseBigInt,
+  );
+
+  const hasMock = mockAlias !== undefined || mockGeneric !== undefined;
+  const shouldSkipReal = hasMock || isZeroAddress;
+
+  const minDepositRead = useReadContract({
+    address: DM_ADDRESS,
+    abi: depositManagerAbi,
+    functionName: "minDeposit",
+    query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
+  });
+
+  // Named alias takes priority over generic per-address key.
+  if (mockAlias !== undefined) {
+    return { minDeposit: mockAlias, isLoading: false, error: null };
+  }
+
+  // Generic per-address key.
+  if (mockGeneric !== undefined) {
+    return { minDeposit: mockGeneric, isLoading: false, error: null };
+  }
+
+  // Zero-address short-circuit.
+  if (isZeroAddress) {
+    return { minDeposit: undefined, isLoading: false, error: null };
+  }
+
+  // Real RPC path.
+  return {
+    minDeposit: minDepositRead.data as bigint | undefined,
+    isLoading: minDepositRead.isLoading,
+    error: minDepositRead.error as Error | null,
   };
 }
 

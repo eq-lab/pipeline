@@ -35,6 +35,7 @@ import {
   useUsdcBalance,
   useContractRead,
   useDepositManagerAddresses,
+  useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
 } from "@/wallet";
@@ -98,6 +99,22 @@ per page lifetime (`staleTime: Infinity`). Returns `undefined` data when
 | `usdc`      | `0x${string} \| undefined`     | USDC token address, or `undefined` if not configured  |
 | `isLoading` | `boolean`                       |                                              |
 | `error`     | `Error \| null`                 |                                              |
+
+### `useDepositManagerMinDeposit()`
+
+```ts
+const { minDeposit, isLoading, error } = useDepositManagerMinDeposit();
+```
+
+Reads `minDeposit()` from the DepositManager contract. Fetches once per page
+lifetime (`staleTime: Infinity`). Returns `minDeposit: undefined` when
+`VITE_DEPOSIT_MANAGER_ADDRESS` is the zero address — no RPC call is made.
+
+| Field        | Type                  | Description                                                   |
+| ------------ | --------------------- | ------------------------------------------------------------- |
+| `minDeposit` | `bigint \| undefined` | Minimum USDC amount accepted by `requestDeposit` (6 decimals) |
+| `isLoading`  | `boolean`             |                                                               |
+| `error`      | `Error \| null`       |                                                               |
 
 ### `useRequestDeposit()`
 
@@ -168,6 +185,8 @@ the absence of a key is its own off-switch.
 | `pipeline.mock.wallet.contract.<address>.<fn>`                        | JSON-encoded return value                                     | Overrides `useContractRead` for the given contract+function                                           |
 | `pipeline.mock.wallet.contract.depositManager.plusd`                  | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — plUSD address. Takes priority over the generic key.    |
 | `pipeline.mock.wallet.contract.depositManager.usdc`                   | `string` (`0x…`)                                              | Named alias for `useDepositManagerAddresses` — USDC address. Takes priority over the generic key.     |
+| `pipeline.mock.wallet.contract.depositManager.minDeposit`             | `string` (decimal bigint, e.g. `"1000000"` = 1 USDC at 6 dp) | Named alias for `useDepositManagerMinDeposit`. Takes priority over the generic per-address key.       |
+| `pipeline.mock.wallet.contract.<address>.minDeposit`                  | `string` (decimal bigint, e.g. `"1000000"`)                   | Generic per-address fallback for `useDepositManagerMinDeposit`.                                       |
 | `pipeline.mock.wallet.contract.depositManager.requestDeposit`         | JSON `{ hash: "0x…", requestId?: "123" }`                    | Bypasses `useRequestDeposit` wagmi call; `write()` settles immediately with this data.                |
 | `pipeline.mock.wallet.contract.depositManager.claim`                  | JSON `{ hash: "0x…", amount?: "1000000" }`                   | Bypasses `useClaim` wagmi call; `write()` settles immediately with this data.                         |
 
@@ -201,7 +220,7 @@ localStorage.setItem(
 );
 ```
 
-**Mock DepositManager addresses + simulate a successful requestDeposit:**
+**Mock DepositManager addresses + minDeposit + simulate a successful requestDeposit:**
 
 ```js
 // 1. Set the contract addresses (named aliases — no need to know the deployed address)
@@ -214,25 +233,32 @@ localStorage.setItem(
   "0x2222000000000000000000000000000000000002",
 );
 
-// 2. Mock a successful requestDeposit (returns a fake tx hash + requestId)
+// 2. Set the minimum deposit (decimal bigint string; 1000000 = 1 USDC at 6 decimals)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.depositManager.minDeposit",
+  "1000000",
+);
+
+// 3. Mock a successful requestDeposit (returns a fake tx hash + requestId)
 localStorage.setItem(
   "pipeline.mock.wallet.contract.depositManager.requestDeposit",
   JSON.stringify({ hash: "0xdeadbeefdeadbeef", requestId: "42" }),
 );
 
-// 3. Mock a successful claim
+// 4. Mock a successful claim
 localStorage.setItem(
   "pipeline.mock.wallet.contract.depositManager.claim",
   JSON.stringify({ hash: "0xcafecafecafecafe", amount: "1000000" }),
 );
 ```
 
-To reset DepositManager mocks:
+To reset all DepositManager mocks:
 
 ```js
 [
   "pipeline.mock.wallet.contract.depositManager.plusd",
   "pipeline.mock.wallet.contract.depositManager.usdc",
+  "pipeline.mock.wallet.contract.depositManager.minDeposit",
   "pipeline.mock.wallet.contract.depositManager.requestDeposit",
   "pipeline.mock.wallet.contract.depositManager.claim",
 ].forEach((k) => localStorage.removeItem(k));
