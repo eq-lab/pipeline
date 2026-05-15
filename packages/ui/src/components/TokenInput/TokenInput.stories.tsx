@@ -140,3 +140,32 @@ export const SPLUSD: Story = {
     ],
   },
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Controlled input (value + onValueChange)                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Controlled variant — `value` and `onValueChange` are both provided,
+ * making the `<input>` a React controlled element. Callers that don't pass
+ * these props continue to use the uncontrolled path unchanged.
+ */
+export const Controlled: Story = {
+  name: "Controlled input",
+  args: {
+    token: "usdc",
+    tokenLabel: "USDC",
+    balanceLabel: "5,000.00",
+    placeholderValue: "0",
+    value: "1000",
+    onValueChange: () => {
+      /* In Storybook the value is static; wiring a real setState is done at call sites. */
+    },
+    quickAmounts: [
+      { label: "$1,000 (Min)" },
+      { label: "$5,000" },
+      { label: "$10,000" },
+      { label: "Max" },
+    ],
+  },
+};

@@ -675,3 +675,124 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
   1. Open the Account dropdown.
   2. Click Disconnect.
 - **Expected:** Dropdown closes; header reverts to showing the Connect Wallet button.
+
+---
+
+## S-227 — Wire up /deposit logic — amount input, approval gating, low-balance banner
+
+**Issue:** [#227 Wire up /deposit logic — amount input, approval gating, low-balance banner](https://github.com/eq-lab/pipeline/issues/227)
+**Plan:** `docs/exec-plans/active/issue-227-wire-deposit-logic.md`
+
+Mock setup reference (all examples use `VITE_DEPOSIT_MANAGER_ADDRESS` set to a real address in `.env`; when unset the spender defaults to the zero address — see bug #230):
+
+```js
+const usdc = "0x2222000000000000000000000000000000000002";
+const dm   = "0x<DEPOSIT_MANAGER_ADDRESS>"; // must match VITE_DEPOSIT_MANAGER_ADDRESS
+localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000005678");
+localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", usdc);
+localStorage.setItem("pipeline.mock.wallet.contract.depositManager.plusd", "0x3333000000000000000000000000000000000003");
+localStorage.setItem("pipeline.mock.wallet.contract.depositManager.minDeposit", "1000000000"); // 1000 USDC at 6 dp
+localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.decimals`, "6");
+localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
+```
+
+### TC-227-1: Approve-needed state — step 1 enabled, step 2 disabled
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running with `VITE_DEPOSIT_MANAGER_ADDRESS` set. Mock wallet connected with balance ≥ minDeposit and allowance = 0.
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "5000000000");  // 5000 USDC
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${usdc}.${dm}`, "0");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.approve`, JSON.stringify({ hash: "0xapprove" }));
+  ```
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Type "2000" in the USDC input.
+- **Expected:** Step 1 shows enabled "Approve" button. Step 2 Convert button is disabled. No success badge on step 1.
+
+### TC-227-2: Approve click fires with correct amount
+
+- **Actor:** User / QA
+- **Preconditions:** TC-227-1 setup; DevTools console spy on `navigator.clipboard` or a console.log observer.
+- **Steps:**
+  1. With "2000" typed, click "Approve".
+- **Expected:** Button briefly shows loading spinner (disabled + `aria-busy="true"`). After the mock resolves, step 1 transitions to the success badge ("Done") and step 2 Convert becomes enabled.
+
+### TC-227-3: Approved state — step 1 success badge, step 2 enabled
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running with `VITE_DEPOSIT_MANAGER_ADDRESS` set. Mock wallet with balance ≥ amount and allowance ≥ amount.
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "5000000000");
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${usdc}.${dm}`, "10000000000");  // 10000 USDC
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.requestDeposit", JSON.stringify({ hash: "0xdeposit", requestId: "42" }));
+  ```
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Type "2000" in the USDC input.
+- **Expected:** Step 1 shows green check badge + "Done". Step 2 Convert button is enabled. PLUSD output shows "2000" (1:1 ratio).
+
+### TC-227-4: Convert click fires and transitions to loading
+
+- **Actor:** User / QA
+- **Preconditions:** TC-227-3 setup.
+- **Steps:**
+  1. With "2000" typed and step 1 in success state, click "Convert".
+- **Expected:** Convert button briefly shows loading (disabled + `aria-busy="true"`). After mock resolves, button returns to enabled state. No console errors.
+
+### TC-227-5: Disconnected — both step buttons disabled, no banner
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no mock wallet keys set.
+- **Steps:**
+  1. Navigate to `/deposit`.
+- **Expected:** "Connect Wallet" button in header. USDC balance shows "—". Input is disabled. Both "Approve" and "Convert" buttons are disabled. No banner shown.
+
+### TC-227-6: Insufficient balance — low-balance banner replaces StepsCard
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected with balance < minDeposit.
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "500000000");  // 500 USDC < 1000 min
+  ```
+- **Steps:**
+  1. Navigate to `/deposit` (or trigger balance update via `window.dispatchEvent(new CustomEvent('pipeline-mock:wallet'))`).
+- **Expected:** StepsCard is gone. Banner appears with: heading "Add funds to your USDC balance"; subtitle "Minimum amount — $1,000.00 USDC"; "Copy Address" button.
+
+### TC-227-7: Copy Address — writes full address to clipboard, shows "Copied" affordance
+
+- **Actor:** User / QA
+- **Preconditions:** Insufficient-balance banner visible (TC-227-6 setup).
+- **Steps:**
+  1. Click "Copy Address".
+  2. Check clipboard via `await navigator.clipboard.readText()` in DevTools.
+- **Expected:** Button text changes to "Copied" immediately. Clipboard contains the full `0x…` wallet address. After ~1.5s the button reverts to "Copy Address".
+
+### TC-227-8: Min quick-amount chip uses live minDeposit
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected with minDeposit = 1000000000 (1000 USDC).
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Observe the first quick-amount chip label.
+  3. Click the chip.
+- **Expected:** Chip label is "$1,000.00 (Min)". Clicking it sets the USDC input to "1000.00" and PLUSD output mirrors the same value.
+
+### TC-227-9: Max quick-amount chip uses live balance
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet with balance = 5000000000 (5000 USDC).
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Click "Max".
+- **Expected:** Input is set to "5000.00"; PLUSD output is "5000.00".
+
+### TC-227-10: PLUSD output mirrors USDC input (1:1 exchange)
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected.
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Type "3000" in the USDC input.
+- **Expected:** PLUSD output area shows "3000". Exchange rate row shows "1 USDC = 1 PLUSD". Network fee shows "—".

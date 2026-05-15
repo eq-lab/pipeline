@@ -4,6 +4,28 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-15 — Issue #227 (Wire up /deposit logic — amount input, approval gating, low-balance banner)
+
+- **Scope:** Issue #227 acceptance criteria (TC-227-1 through TC-227-10)
+- **Cases executed:** 10
+- **Passes:** 8
+- **Failures:** 1
+- **Blocked:** 1
+- **Bugs filed:** #230 (high)
+- **Score: 6/10**
+  - PASS TC-227-5 (disconnected state): "Connect Wallet" in header; balance shows "—"; USDC input disabled; both Approve and Convert buttons disabled; no banner. No relevant console errors.
+  - PASS TC-227-6 (insufficient balance banner): When balance (500 USDC) < minDeposit (1000 USDC), StepsCard replaced by banner: "Add funds to your USDC balance" heading, "Minimum amount — $1,000.00 USDC" subtitle, "Copy Address" button. Header balance pill updated reactively to "500.00".
+  - PASS TC-227-7 (Copy Address): Button text changes to "Copied" immediately on click. Clipboard receives full wallet address `0x1234000000000000000000000000000000005678`. Button reverts to "Copy Address" after ~1.5s. Confirmed via stubbed `navigator.clipboard.writeText`.
+  - PASS TC-227-8 (Min chip label and action): Label shows "$1,000.00 (Min)" matching mocked minDeposit of 1000 USDC. Clicking sets input to "1000.00" and PLUSD output mirrors.
+  - PASS TC-227-9 (Max chip uses live balance): With balance=5000 USDC, "Max" sets input to "5000.00" and PLUSD output to "5000.00".
+  - PASS TC-227-10 (PLUSD mirrors USDC 1:1): Input "10000" → PLUSD output "10000". Exchange rate "1 USDC = 1 PLUSD". Network fee "—".
+  - PASS TC-227-3 (Approved state renders correctly): With mock allowance ≥ amount (10000 USDC), step 1 shows green check badge + "Done", step 2 Convert enabled. Visual matches Figma 1497:95272.
+  - PASS TC-227-4 (Convert click transitions to loading): Click triggers `aria-busy="true"` + disabled for ~14ms (mock resolves immediately). No console errors.
+  - FAIL TC-227-1 (Approve-needed state): **Bug #230 (high).** When `VITE_DEPOSIT_MANAGER_ADDRESS` is unset, the zero-address spender causes the `needsApproval` check to return `false` on first render (allowance appears `undefined` despite mock key being set to `"0"`). Step 1 immediately shows "Done" and Convert is enabled even with allowance=0. The approve-needed Figma state (1498:99874) cannot be validated in the local env without the env var configured.
+  - BLOCKED TC-227-2 (Approve click fires): Cannot test because the Approve button never becomes enabled — blocked by bug #230.
+  - Console errors: only pre-existing Reown/WalletConnect 403/400 errors, Lit dev-mode warning, font preload warning. None related to #227.
+  - Deducted 4 points: the approve gate — the most critical user-safety control on the deposit flow — is bypassed in the default local dev environment. TC-227-1 and TC-227-2 could not be verified. The three other states (disconnected, approved, insufficient-balance) all work correctly.
+
 ### 2026-05-15 — Issue #224 (Wire up header connected state — Account dropdown)
 
 - **Scope:** Issue #224 acceptance criteria (TC-224-1 through TC-224-7)

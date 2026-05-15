@@ -52,6 +52,22 @@ export interface TokenInputProps extends Omit<
   quickAmounts: QuickAmountItem[];
   /** Called when a quick-amount chip is clicked. Receives the chip index. */
   onQuickAmountClick?: (index: number, item: QuickAmountItem) => void;
+  /**
+   * Controlled value for the numeric input. When provided the input is
+   * controlled; when omitted it remains uncontrolled (existing behaviour).
+   */
+  value?: string;
+  /**
+   * Fired on every keystroke when the input value changes.
+   * Only used when `value` is provided (controlled mode).
+   */
+  onValueChange?: (next: string) => void;
+  /**
+   * When true, the numeric input is disabled (e.g. wallet disconnected or
+   * data not yet loaded). Existing call sites that omit this prop continue
+   * to render an enabled input unchanged.
+   */
+  disabled?: boolean;
 }
 
 // Outer card — white fill, subtle border, card radius.
@@ -115,6 +131,9 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
       placeholderValue = "0",
       quickAmounts,
       onQuickAmountClick,
+      value,
+      onValueChange,
+      disabled,
       className,
       ...rest
     },
@@ -145,6 +164,13 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               aria-label={`${tokenLabel} amount`}
               // Sizing: wide enough for typical amounts, collapses naturally
               size={8}
+              // Controlled mode: when `value` is provided the input is
+              // controlled; otherwise it falls back to uncontrolled behaviour.
+              value={value ?? undefined}
+              onChange={
+                onValueChange ? (e) => onValueChange(e.target.value) : undefined
+              }
+              disabled={disabled}
             />
           </div>
         </div>
