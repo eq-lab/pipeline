@@ -49,9 +49,9 @@ Out of scope (explicitly):
 - Multi-token batching (one hook call per token is fine).
 - Native ETH balance.
 - Changes to formatter / `Intl.NumberFormat` rendering. `formattedBalance`
-  uses the token's own `symbol` (e.g. `"1,000.00 USDC"`, `"1,000.00 PLUSD"`)
-  — the USDC-specific `"$1,000.00"` currency-symbol rendering in
-  `formatUsdcBalance` does **not** carry forward. See "Open Questions".
+  returns a plain formatted number string with no symbol or currency prefix/suffix
+  (e.g. `"1,000.00"`). The USDC-specific `"$1,000.00"` currency-symbol rendering
+  in `formatUsdcBalance` does not carry forward.
 
 ## Assumptions and Risks
 
@@ -70,15 +70,11 @@ Out of scope (explicitly):
   section as removed.
 - **`formattedBalance` rendering shift.** Today `useUsdcBalance().formatted`
   returns `"$1,000.00"` (currency formatting). After this change, `formattedBalance`
-  for USDC reads `"1,000.00 USDC"` — symbol-suffixed. This affects the visible
-  text in `TopBar.wallet.balance` on `index.tsx`, `deposit.tsx`, `withdraw.tsx`.
-  The current `TopBar` already accepts an opaque string; the visual change is
-  scoped to the formatter. The Figma screens show the suffix-style rendering
-  (`"$1,000.00 USDC"` in some places, plain `"USDC"` label in others), so we
-  pick the symbol-suffix form as the new default and accept that this is a UX
-  delta from the previous build. See "Open Questions" — if reviewers want the
-  USD-currency rendering preserved for USDC specifically, we add a thin caller-
-  side wrapper, not branch logic inside `useToken`.
+  returns a plain formatted number (e.g. `"1,000.00"`) — no currency symbol, no
+  token symbol suffix. This affects the visible text in `TopBar.wallet.balance`
+  on `index.tsx`, `deposit.tsx`, `withdraw.tsx`. The current `TopBar` accepts an
+  opaque string; callers can append a label if needed. Decision confirmed by the
+  user: number-only, no symbol of any kind.
 - **Test mocking.** `useToken` will be the first hook in the suite that
   composes another wallet hook (`useApproval`). Tests must either spy on the
   underlying wagmi `useReadContract` / `useWriteContract` (the existing
@@ -91,12 +87,8 @@ Out of scope (explicitly):
 
 ## Open Questions
 
-- Should `formattedBalance` for USDC keep the legacy `"$1,000.00"` currency
-  rendering (caller-side wrapper in the routes), or accept the new
-  `"1,000.00 USDC"` symbol-suffix rendering as the canonical output of
-  `useToken`? Default chosen here: symbol-suffix in `useToken`. If reviewer
-  prefers the legacy USDC rendering, callers wrap `balance` with a local
-  `formatUsdc(raw)` helper — `useToken` itself stays token-agnostic.
+_None_ — resolved: `formattedBalance` returns a plain formatted number string
+(e.g. `"1,000.00"`) with no currency symbol or token symbol. Confirmed by user.
 
 ## Implementation Steps
 
@@ -159,11 +151,11 @@ Out of scope (explicitly):
        `useApproval({ token, spender: spender ?? ZERO_ADDRESS })`
        unconditionally; mask its fields to `undefined`/no-op when `spender`
        is omitted.
-     - Compose `formattedBalance` from raw balance + decimals + symbol using
+     - Compose `formattedBalance` from raw balance + decimals using
        `formatUnits(balance, decimals)` and a thin `Intl.NumberFormat`
-       call (2 fractional digits, en-US locale, no currency). Return
-       `${number} ${symbol}` (e.g. `"1,000.00 USDC"`). `undefined` if any of
-       balance/decimals/symbol is still `undefined`.
+       call (2 fractional digits, en-US locale, no currency, no symbol).
+       Return a plain number string (e.g. `"1,000.00"`). `undefined` if
+       balance or decimals is still `undefined`. `symbol` is not used here.
      - Aggregate `isLoading` as `(any underlying read isLoading)`.
      - Aggregate `error` as the first non-null among metadata-read errors,
        balance-read error, and `useApproval().error` (only when spender given).
@@ -255,10 +247,10 @@ Test cases:
    metadata in mock mode).
 2. **Balance mock key** — set `pipeline.mock.wallet.balance.<token>`; assert
    `result.current.balance === 1_000_000_000n` and `formattedBalance` matches
-   `"1,000.00 USDC"` after metadata also mocked.
+   `"1,000.00"` after metadata also mocked.
 3. **Real RPC happy path** — no mock keys; wagmi returns
    `decimals=6`, `symbol="USDC"`, `balance=500_000_000n`; assert all three
-   are surfaced and `formattedBalance === "500.00 USDC"`.
+   are surfaced and `formattedBalance === "500.00"`.
 4. **Spender omitted branch** — no `spender` arg; assert `allowance`,
    `isSufficient`, `approve`, `approveData`, `refetchAllowance` are all
    `undefined`; assert `useApproval`'s underlying `useReadContract`
