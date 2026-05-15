@@ -8,6 +8,10 @@ Entries are sorted alphabetically by name.
 
 | Name | Import path | Description |
 |------|-------------|-------------|
+| `useClaim` | `@/wallet` | Write hook for `claim(requestId, verifierSignature)` on the DepositManager contract. Returns `{ write, data, isPending, isSuccess, error, reset }`. Honours `pipeline.mock.wallet.contract.depositManager.claim` for mock testing. |
+| `useContractRead` | `@/wallet` | Generic read hook wrapping wagmi's `useReadContract` with the per-address localStorage mock layer. |
+| `useDepositManagerAddresses` | `@/wallet` | Reads the `plUsd()` and `usdc()` addresses from the DepositManager contract. Returns `{ plusd, usdc, isLoading, error }` with "fetch once" caching. Honours `pipeline.mock.wallet.contract.depositManager.plusd/usdc` named aliases. |
+| `useRequestDeposit` | `@/wallet` | Write hook for `requestDeposit(amount)` on the DepositManager contract. Returns `{ write, data, isPending, isSuccess, error, reset }`. Honours `pipeline.mock.wallet.contract.depositManager.requestDeposit` for mock testing. |
 | `useUsdcBalance` | `@/wallet` | Returns the connected wallet's USDC balance, formatted and raw. Honours `pipeline.mock.wallet.balance.usdc` for mock testing. |
 | `useWallet` | `@/wallet` | Returns the connected wallet's address, connection state, chain id, and `connect`/`disconnect` actions. Backed by wagmi + Reown AppKit; honours `pipeline.mock.wallet.*` localStorage keys. |
 
