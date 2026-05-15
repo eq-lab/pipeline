@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ConversionCard, DepositHeader, StepsCard } from "@pipeline/ui";
 import { TopBar } from "@/components/TopBar";
-import { useWallet, useUsdcBalance } from "@/wallet";
+import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
 
 /**
  * Withdraw route — full page composition.
@@ -25,7 +25,10 @@ import { useWallet, useUsdcBalance } from "@/wallet";
  */
 function Withdraw() {
   const { isConnected, connect } = useWallet();
-  const { formatted } = useUsdcBalance();
+  const { usdc } = useDepositManagerAddresses();
+  const { formattedBalance } = useToken({
+    token: usdc ?? "0x0000000000000000000000000000000000000000",
+  });
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
@@ -33,7 +36,7 @@ function Withdraw() {
           so the correct icon renders as active. */}
       <TopBar
         onConnectWallet={connect}
-        wallet={isConnected ? { balance: formatted ?? "—" } : undefined}
+        wallet={isConnected ? { balance: formattedBalance ?? "—" } : undefined}
         activeNav="deposit"
       />
 

@@ -8,7 +8,7 @@ Entries are sorted alphabetically by name.
 
 | Name | Import path | Description |
 |------|-------------|-------------|
-| _none yet_ | — | First extraction will land here. |
+| `CACHE_FOREVER` | `@/wallet` (internal: `src/wallet/cache.ts`) | Wagmi query options preset for "fetch once per page lifetime" reads (immutable-in-practice on-chain data). Sets `staleTime: Infinity`, `gcTime: Infinity`, and disables all automatic refetch triggers. |
 
 ## How to add a row
 

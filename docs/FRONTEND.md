@@ -104,7 +104,7 @@ Desktop-first — LPs and operators are expected to use desktop browsers. Mobile
   `packages/frontend/src/wallet/README.md` for the public API and the
   `pipeline.mock.wallet.*` localStorage mock key schema.
 - **Contract reads:** `useContractRead` wrapper in the wallet module (delegates to wagmi's
-  `useReadContract`); USDC balance via `useUsdcBalance`.
+  `useReadContract`); token metadata + balance + approval via `useToken`.
 - **Transactions:** LP signs USDC.approve() + DepositManager.deposit(), sPLUSD.deposit(),
   sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal(), WithdrawalQueue.claim() directly from
   connected wallet via wagmi `useWriteContract` (in future issues that consume `useWallet()`).
