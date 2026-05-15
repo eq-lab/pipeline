@@ -557,3 +557,48 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
   2. Navigate to `ActivityIcon > Tone: warning (pending)` story
   3. Navigate to `ActivityIcon > Tone: neutral (exchange)` story
 - **Expected:** Each story renders the correct tile colour for its tone; success = green, warning = amber, neutral = muted gray.
+
+---
+
+## S-202 — Recent activity empty-state uses distinct 240×240 SVG
+
+**Issue:** [#202 Home: Recent activity empty-state illustration reuses the striped-wallet asset; Figma uses a different 240×240 SVG](https://github.com/eq-lab/pipeline/issues/202)
+**Plan:** `docs/exec-plans/completed/` (fix/202 branch)
+
+### TC-202-1: RecentActivityCard renders ActivityEmptyIllustration, not WalletIllustration
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/`
+  2. In DevTools Console: `document.querySelector('[data-node-id="1497:94567"] img')` (should be null — no img in the card)
+  3. In DevTools Console: `document.querySelector('[data-node-id="1497:94567"] [data-tone]')?.getAttribute('data-tone')`
+- **Expected:** No `<img>` inside the Recent activity card; `data-tone` returns `"muted"`.
+
+### TC-202-2: ActivityEmptyIllustration is 240×240 square with correct SVG mask
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).aspectRatio`
+  2. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).width`
+  3. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).maskImage`
+- **Expected:** `aspectRatio` = `"1 / 1"`; `width` = `"240px"`; `maskImage` contains `striped-activity-empty.svg` (not `striped-wallet.svg`).
+
+### TC-202-3: ConnectWalletPromoCard continues to use WalletIllustration (landscape)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:5173/`
+  2. In DevTools Console: `getComputedStyle(document.querySelector('[role="region"][aria-labelledby="connect-wallet-promo-card-title"] [data-tone]')).maskImage`
+- **Expected:** Returns a URL containing `striped-wallet.svg`; aspect ratio is `313.672 / 200` (landscape).
+
+### TC-202-4: ActivityEmptyIllustration Storybook stories exist
+
+- **Actor:** Developer / QA
+- **Preconditions:** Storybook running at `http://localhost:6006`
+- **Steps:**
+  1. Navigate to `Components/ActivityEmptyIllustration > Muted (Recent activity empty state)`
+  2. Navigate to `Components/ActivityEmptyIllustration > Primary (high-contrast variant)`
+- **Expected:** Both stories render the striped-square silhouette; Muted = muted ink color; Primary = dark ink color; no coin-slot or wallet shape visible.

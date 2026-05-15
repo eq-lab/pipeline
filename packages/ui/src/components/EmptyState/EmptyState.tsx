@@ -15,8 +15,9 @@ import React from "react";
  *     stretch to fill via `h-full` so the block centres on the available
  *     space, mirroring `flex-[1_0_0] items-center justify-center` from the
  *     Figma node).
- *   - `illustration` slot — usually a 240×240 SVG (e.g. WalletIllustration
- *     from Issue #48). EmptyState does not constrain the slot's size so the
+ *   - `illustration` slot — usually a 240×240 SVG (e.g.
+ *     `ActivityEmptyIllustration` from Issue #202). EmptyState does not
+ *     constrain the slot's size so the
  *     illustration owns its own dimensions; the slot is rendered above the
  *     caption with no enforced gap (matches Figma which lets the
  *     illustration's intrinsic height drive the spacing).
@@ -31,8 +32,9 @@ import React from "react";
 
 export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
-   * Illustration rendered above the caption. Pass a sized SVG (the Pipeline
-   * dashboard uses the 240×240 `WalletIllustration` from `@pipeline/ui`).
+   * Illustration rendered above the caption. Pass a sized illustration
+   * primitive from `@pipeline/ui` (e.g. the 240×240
+   * `ActivityEmptyIllustration` used by the Recent activity empty state).
    * Optional so callers can render a caption-only empty state when no
    * illustration is appropriate.
    */
