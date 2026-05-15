@@ -12,7 +12,13 @@
 import { useState, useCallback } from "react";
 import { useReadContract, useWriteContract } from "wagmi";
 import { ENV } from "@/lib/env";
-import { useMock, readMock, parseAddress, parseBigInt, parseJson } from "./mock";
+import {
+  useMock,
+  readMock,
+  parseAddress,
+  parseBigInt,
+  parseJson,
+} from "./mock";
 import { depositManagerAbi } from "./abis/depositManager";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
@@ -21,8 +27,7 @@ const MOCK_KEYS = {
   /** Named alias — takes precedence over the generic per-address key. */
   plusdAlias: "pipeline.mock.wallet.contract.depositManager.plusd",
   usdcAlias: "pipeline.mock.wallet.contract.depositManager.usdc",
-  minDepositAlias:
-    "pipeline.mock.wallet.contract.depositManager.minDeposit",
+  minDepositAlias: "pipeline.mock.wallet.contract.depositManager.minDeposit",
   requestDeposit: "pipeline.mock.wallet.contract.depositManager.requestDeposit",
   claim: "pipeline.mock.wallet.contract.depositManager.claim",
   /** Generic per-address key for `useContractRead` compatibility. */
