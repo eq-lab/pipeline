@@ -81,7 +81,6 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const mockEnv = vi.hoisted(() => ({
   EVM_CHAIN_ID: 560048,
   EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
-  USDC_ADDRESS: "0x0000000000000000000000000000000000000000" as `0x${string}`,
   DEPOSIT_MANAGER_ADDRESS:
     "0x0000000000000000000000000000000000000000" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
@@ -111,7 +110,6 @@ function wrapper({ children }: { children: React.ReactNode }) {
 // Helper: reset mockEnv to defaults
 function resetEnv() {
   mockEnv.DEPOSIT_MANAGER_ADDRESS = ZERO_ADDRESS as `0x${string}`;
-  mockEnv.USDC_ADDRESS = ZERO_ADDRESS as `0x${string}`;
 }
 
 // ── useDepositManagerAddresses ─────────────────────────────────────────────────

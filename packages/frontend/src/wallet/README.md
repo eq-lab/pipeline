@@ -13,10 +13,10 @@ Copy `.env.example` to `.env` and fill in the values before starting:
 
 ```bash
 cp .env.example .env
-# edit VITE_WALLETCONNECT_PROJECT_ID and VITE_USDC_ADDRESS as needed
+# edit VITE_WALLETCONNECT_PROJECT_ID and VITE_DEPOSIT_MANAGER_ADDRESS as needed
 ```
 
-If you leave `VITE_USDC_ADDRESS` at the zero-address default or omit it, USDC
+If you leave `VITE_DEPOSIT_MANAGER_ADDRESS` at the zero-address default or omit it, USDC
 balance reads are skipped and the mock layer is the only way to display a
 balance (see below).
 
@@ -68,9 +68,13 @@ const { address, isConnected, chainId, connect, disconnect } = useWallet();
 const { data, formatted, isLoading, error } = useUsdcBalance();
 ```
 
-Reads `balanceOf(address)` on the USDC contract configured via
-`VITE_USDC_ADDRESS`. When the address is the zero address (default) the read
-is skipped and `data` is `undefined` ("USDC not configured").
+Reads `balanceOf(address)` on the USDC contract. The USDC address is derived
+from `useDepositManagerAddresses().usdc` (the `usdc()` view on the
+DepositManager contract) — not from a separate env variable. The read is gated
+on the manager being configured and `usdc()` resolving to a non-zero address.
+`isLoading` is `true` while the manager's `usdc()` call is in flight. When
+`VITE_DEPOSIT_MANAGER_ADDRESS` is the zero address (default), the read is
+skipped and `data` is `undefined`.
 
 | Field       | Type                  | Description                             |
 | ----------- | --------------------- | --------------------------------------- |

@@ -9,7 +9,6 @@ import { useAccount, useChainId, useDisconnect, useReadContract } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { formatUnits } from "viem";
 import type { Abi } from "viem";
-import { ENV } from "@/lib/env";
 import {
   useMock,
   parseAddress,
@@ -19,6 +18,7 @@ import {
   parseJson,
 } from "./mock";
 import { erc20Abi } from "./abis/erc20";
+import { useDepositManagerAddresses } from "./useDepositManager";
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
@@ -97,16 +97,21 @@ export function useUsdcBalance(): UsdcBalanceResult {
   const { address, isConnected } = useWallet();
   const mockBalance = useMock(KEYS.usdcBalance, parseBigInt);
 
-  const USDC_ADDRESS = ENV.USDC_ADDRESS;
-  const isZeroAddress =
-    USDC_ADDRESS === "0x0000000000000000000000000000000000000000";
+  // Derive USDC address from the DepositManager contract (single source of truth).
+  // Must be called unconditionally (hook rules).
+  const { usdc: usdcAddress, isLoading: addressesLoading } =
+    useDepositManagerAddresses();
+
+  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  const isUsdcResolved =
+    usdcAddress !== undefined && usdcAddress !== ZERO_ADDRESS;
 
   // When mock is set → return immediately, skip real read.
   const shouldSkipReal =
-    mockBalance !== undefined || !isConnected || !address || isZeroAddress;
+    mockBalance !== undefined || !isConnected || !address || !isUsdcResolved;
 
   const realRead = useReadContract({
-    address: USDC_ADDRESS,
+    address: usdcAddress ?? ZERO_ADDRESS,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -122,7 +127,17 @@ export function useUsdcBalance(): UsdcBalanceResult {
     };
   }
 
-  if (!isConnected || !address || isZeroAddress) {
+  // Manager's usdc() call is still in flight — surface loading state.
+  if (addressesLoading) {
+    return {
+      data: undefined,
+      formatted: undefined,
+      isLoading: true,
+      error: null,
+    };
+  }
+
+  if (!isConnected || !address || !isUsdcResolved) {
     return {
       data: undefined,
       formatted: undefined,
