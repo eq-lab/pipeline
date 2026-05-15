@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-15 — Issue #202 (Recent activity empty-state illustration)
+
+- **Scope:** Issue #202 acceptance criteria (TC-202-1 through TC-202-4)
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 1 (TC-202-4 Storybook — pre-existing Tailwind v4/Storybook CSS issue; component DOM verified correct)
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-202-1 (no WalletIllustration in RecentActivityCard): `document.querySelector('[data-node-id="1497:94567"] img')` = null; `data-tone` = `"muted"`; zero `<img>` elements inside the card.
+  - PASS TC-202-2 (240×240 square, correct SVG mask): `aspectRatio = "1 / 1"`, `width = "240px"`, `maskImage` contains `striped-activity-empty.svg`. Color resolves to `rgba(56, 55, 53, 0.6)` = `--color-pipeline-ink-muted`.
+  - PASS TC-202-3 (ConnectWalletPromoCard unchanged): Promo card span has `maskImage` = `striped-wallet.svg`, `aspectRatio = "313.672 / 200"`, `tone = "primary"`. The landscape wallet illustration is untouched.
+  - PASS TC-202-4 (Storybook stories exist): `ActivityEmptyIllustration.stories.tsx` has `Muted` and `Primary` story exports; story metadata is correct. Visual rendering in Storybook blocked by pre-existing Tailwind v4 CSS issue (tokens not applied in Storybook context) — not a regression from #202.
+  - SVG asset `striped-activity-empty.svg` confirmed 240×240 viewBox with ~94 stroke paths using `currentColor` + no fixed w/h attributes.
+  - Console errors: only pre-existing WalletConnect/Reown 403/400 errors, Lit dev-mode warning, font preload warning — none related to #202.
+  - No new bugs filed.
+
 ### 2026-05-14 — Issue #198 (ActivityIcon tonal tile colours)
 
 - **Scope:** Issue #198 acceptance criteria (TC-198-1 through TC-198-5)
