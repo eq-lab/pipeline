@@ -4,13 +4,10 @@
  * Surfaces everything the frontend currently "knows" at runtime:
  *
  *   1. **Environment** — every field exported from `@/lib/env` (ENV).
- *   2. **Wallet** — `useWallet()` state, address / isConnected / chainId,
- *      plus a Connect / Disconnect button.
+ *   2. **Wallet** — `useWallet()` state, address / isConnected / chainId.
  *   3. **DepositManager** — `useDepositManagerAddresses()` + `useDepositManagerMinDeposit()`.
  *   4. **USDC token** — `useToken({ token: usdc })`.
  *   5. **ERC-20 approval (USDC → DepositManager)** — `useApproval()`.
- *   6. **Write hooks** — `useRequestDeposit()` + `useClaim()` status, with
- *      guarded "Trigger with dummy input" buttons.
  *
  * Fields whose value is driven by a `pipeline.mock.wallet.*` localStorage key
  * (rather than a real RPC call) are marked with an inline `MOCKED` badge.
@@ -20,7 +17,6 @@
  */
 import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Button } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
 import {
   useWallet,
@@ -28,8 +24,6 @@ import {
   useDepositManagerMinDeposit,
   useToken,
   useApproval,
-  useRequestDeposit,
-  useClaim,
   isMockKeyPresent,
 } from "@/wallet";
 
@@ -119,7 +113,7 @@ function Section({
 
 function TestPage(): React.JSX.Element {
   // ── Wallet ──────────────────────────────────────────────────────────────
-  const { address, isConnected, chainId, connect, disconnect } = useWallet();
+  const { address, isConnected, chainId } = useWallet();
 
   // ── DepositManager ──────────────────────────────────────────────────────
   const {
@@ -148,7 +142,6 @@ function TestPage(): React.JSX.Element {
   const {
     allowance,
     isSufficient,
-    approve,
     data: approveData,
     isPending: isApprovePending,
     isSuccess: isApproveSuccess,
@@ -157,23 +150,6 @@ function TestPage(): React.JSX.Element {
     token: usdcAddress,
     spender: ENV.DEPOSIT_MANAGER_ADDRESS,
   });
-
-  // ── Write hooks ─────────────────────────────────────────────────────────
-  const {
-    write: requestDepositWrite,
-    data: requestDepositData,
-    isPending: isRequestDepositPending,
-    isSuccess: isRequestDepositSuccess,
-    error: requestDepositError,
-  } = useRequestDeposit();
-
-  const {
-    write: claimWrite,
-    data: claimData,
-    isPending: isClaimPending,
-    isSuccess: isClaimSuccess,
-    error: claimError,
-  } = useClaim();
 
   // ── Mock-key checks ─────────────────────────────────────────────────────
   // Wallet
@@ -217,17 +193,6 @@ function TestPage(): React.JSX.Element {
           `pipeline.mock.wallet.allowance.${usdcAddrLower}.${ENV.DEPOSIT_MANAGER_ADDRESS.toLowerCase()}`,
         )
       : false;
-  const approvalApproveMocked = usdcAddrLower
-    ? isMockKeyPresent(`pipeline.mock.wallet.contract.${usdcAddrLower}.approve`)
-    : false;
-
-  // Write hooks
-  const requestDepositMocked = isMockKeyPresent(
-    "pipeline.mock.wallet.contract.depositManager.requestDeposit",
-  );
-  const claimMocked = isMockKeyPresent(
-    "pipeline.mock.wallet.contract.depositManager.claim",
-  );
 
   // ── ENV flags ────────────────────────────────────────────────────────────
   const isZeroAddr =
@@ -292,14 +257,6 @@ function TestPage(): React.JSX.Element {
             value={chainId}
             mocked={walletChainIdMocked}
           />
-          <div className="mt-2">
-            <Button
-              variant="primary-dark"
-              onClick={isConnected ? disconnect : connect}
-            >
-              {isConnected ? "Disconnect" : "Connect Wallet"}
-            </Button>
-          </div>
         </Section>
 
         {/* ── 3. DepositManager ──────────────────────────────────────────── */}
@@ -392,104 +349,6 @@ function TestPage(): React.JSX.Element {
             label="data"
             value={approveData ? JSON.stringify(approveData) : undefined}
           />
-          <div className="mt-2">
-            <Button
-              variant="primary-dark"
-              onClick={() => {
-                if (minDeposit !== undefined && approve) {
-                  approve(minDeposit);
-                }
-              }}
-              disabled={minDeposit === undefined || !approve}
-            >
-              Approve(minDeposit)
-              {approvalApproveMocked && (
-                <span className="ml-1 text-[10px] tracking-wide uppercase opacity-60">
-                  mocked
-                </span>
-              )}
-            </Button>
-          </div>
-        </Section>
-
-        {/* ── 6. Write hooks ────────────────────────────────────────────── */}
-        <Section title="Write hooks">
-          {/* useRequestDeposit */}
-          <div className="mb-4">
-            <h3 className="mb-2 text-sm font-semibold text-[color:var(--color-pipeline-ink)]">
-              useRequestDeposit
-              <MockedBadge when={requestDepositMocked} />
-            </h3>
-            <KeyValueRow
-              label="isPending"
-              value={String(isRequestDepositPending)}
-            />
-            <KeyValueRow
-              label="isSuccess"
-              value={String(isRequestDepositSuccess)}
-            />
-            <KeyValueRow
-              label="error"
-              value={requestDepositError?.message ?? null}
-            />
-            <KeyValueRow
-              label="data"
-              value={
-                requestDepositData
-                  ? JSON.stringify(requestDepositData, null, 2)
-                  : undefined
-              }
-            />
-            <div className="mt-2">
-              <Button
-                variant="primary-dark"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "This will broadcast a real transaction unless a mock key is set. Continue?",
-                    )
-                  ) {
-                    requestDepositWrite(minDeposit ?? 1n);
-                  }
-                }}
-                disabled={isRequestDepositPending}
-              >
-                Trigger requestDeposit(minDeposit ?? 1n)
-              </Button>
-            </div>
-          </div>
-
-          {/* useClaim */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-[color:var(--color-pipeline-ink)]">
-              useClaim
-              <MockedBadge when={claimMocked} />
-            </h3>
-            <KeyValueRow label="isPending" value={String(isClaimPending)} />
-            <KeyValueRow label="isSuccess" value={String(isClaimSuccess)} />
-            <KeyValueRow label="error" value={claimError?.message ?? null} />
-            <KeyValueRow
-              label="data"
-              value={claimData ? JSON.stringify(claimData, null, 2) : undefined}
-            />
-            <div className="mt-2">
-              <Button
-                variant="primary-dark"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "This will broadcast a real transaction unless a mock key is set. Continue?",
-                    )
-                  ) {
-                    claimWrite(0n, "0x00" as `0x${string}`);
-                  }
-                }}
-                disabled={isClaimPending}
-              >
-                Trigger claim(0n, "0x00")
-              </Button>
-            </div>
-          </div>
         </Section>
       </main>
     </div>
