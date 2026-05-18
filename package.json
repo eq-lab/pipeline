@@ -9,7 +9,8 @@
   "scripts": {
     "lint:docs": "npx tsx scripts/lint-docs.ts",
     "codegen": "echo 'TODO: codegen'",
-    "prepare": "husky"
+    "prepare": "husky",
+    "front:dev": "yarn workspace @pipeline/frontend dev"
   },
   "devDependencies": {
     "husky": "9.1.7",
