@@ -15,7 +15,7 @@
  *   3. The "All" tab is absent.
  *   4. Wallet-level empty (zero rows) → illustration + caption render.
  *   5. Wallet-level empty (disconnected) → illustration + caption render.
- *   6. Tab-level empty → muted "No {tab} activity yet" renders, illustration absent.
+ *   6. Tab-level empty (API has rows but active tab yields zero) → illustration + caption render, "No {tab} activity yet" absent.
  *   7. Error state renders "Couldn't load activity" + Retry button.
  *   8. Loading state renders "Loading…".
  *   9. Formatting assertions — amount strings appear in the rendered output.
@@ -257,17 +257,7 @@ describe("Transactions page — tab-level empty state", () => {
     vi.clearAllMocks();
   });
 
-  it("renders 'No Sell activity yet' when Sell tab has no rows", async () => {
-    const user = userEvent.setup();
-    renderTransactions();
-
-    const sellTab = screen.getByRole("tab", { name: "Sell" });
-    await user.click(sellTab);
-
-    expect(screen.getByText("No Sell activity yet")).toBeInTheDocument();
-  });
-
-  it("does not render the illustration when tab filter yields zero rows", async () => {
+  it("renders the illustration + caption when Sell tab has no rows", async () => {
     const user = userEvent.setup();
     renderTransactions();
 
@@ -275,8 +265,18 @@ describe("Transactions page — tab-level empty state", () => {
     await user.click(sellTab);
 
     expect(
-      screen.queryByText("You will see all transactions here"),
-    ).not.toBeInTheDocument();
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render the stale 'No Sell activity yet' text", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+
+    const sellTab = screen.getByRole("tab", { name: "Sell" });
+    await user.click(sellTab);
+
+    expect(screen.queryByText(/No Sell activity yet/i)).not.toBeInTheDocument();
   });
 });
 

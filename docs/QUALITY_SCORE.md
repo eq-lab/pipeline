@@ -4,6 +4,24 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-18 — Issue #261 (/transactions: show full empty state on per-tab empty results, not just text)
+
+- **Scope:** Issue #261 acceptance criteria (TC-261-1 through TC-261-3, plus TC-257-3 regression)
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-261-1 (connected + data; empty tab renders illustration): Mock wallet with one Deposit row (visible on Buy tab). Clicking Sell, Stake, and Unstake tabs each render `ActivityEmptyIllustration` (`tone="muted"`, `width=240`) + "You will see all transactions here" caption inside a `min-h-[400px]` flex-centered wrapper. "No {tab} activity yet" text absent on all tabs. Returning to Buy tab correctly shows the Deposit row. Verified on port 5173 (fix/261-transactions-empty-state branch). Visual screenshot confirmed illustration renders as striped-clock SVG — not a bare text line. Note: pre-existing HeroIcon black square (#245) still visible in the ActivityHeader — not a regression from #261.
+  - PASS TC-261-2 (regression — disconnected): No mock keys; header shows "Connect Wallet". Caption renders, `data-tone="muted"`, `min-h-[400px]` wrapper present. Matches previous #257 TC-257-1 PASS.
+  - PASS TC-261-3 (regression — connected + zero rows): Mock wallet connected (5,000.00 WalletPill); `pipeline.mock.api.GET./v1/requests` = `{ requests: [] }`; illustration + caption render. Matches previous #257 TC-257-2 PASS.
+  - PASS TC-257-3 regression flip (connected + data, active tab empty — now shows illustration): TC-257-3 previously expected muted text line; that expectation was inverted by this Issue. Verified that the per-tab text branch is gone — "No Sell activity yet" is absent; illustration renders instead. `docs/STORIES.md` TC-257-3 updated to reflect the new expected behaviour.
+  - Unit tests: all 324 tests pass across 22 test files (`yarn workspace @pipeline/frontend test`). The `-transactions.test.tsx` tab-level-empty describe now asserts illustration + caption (not the old muted-text).
+  - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode, and font preload warnings — none related to #261.
+  - Note: initial testing was misdirected at port 3000 (main branch) which still has the old per-tab text behavior. The fix is correctly on port 5173 (fix/261-transactions-empty-state branch). No bug filed — this is a branch/port mapping issue during testing, not a product defect.
+  - No new GitHub Issues filed.
+
 ### 2026-05-18 — Issue #257 (Show striped-clock empty state on /transactions when there are no requests)
 
 - **Scope:** Issue #257 acceptance criteria (TC-257-1 through TC-257-3)

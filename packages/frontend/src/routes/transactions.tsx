@@ -23,13 +23,11 @@ import { useWallet } from "@/wallet";
  *      Selecting a tab filters the in-memory array client-side — no re-fetch.
  *   4. Activity rows from `useRequests()`, filtered by the active tab.
  *
- * Empty-state behaviour (two distinct cases):
- *   - **Wallet-level empty**: the wallet is disconnected OR the API returned
- *     zero rows. Shows the full `ActivityEmptyIllustration` + caption
- *     "You will see all transactions here" (Figma 1993:9144).
- *   - **Tab-level empty**: the API has rows but the active tab filter yields
- *     zero. Shows a lighter muted line "No {tab} activity yet" to communicate
- *     that data exists — just not for this tab.
+ * Empty-state behaviour: the full `EmptyState` illustration + caption renders
+ * whenever the visible row count is zero — whether the wallet is disconnected,
+ * the API returned zero rows, or the active tab filter yields zero rows. The
+ * intent is a single consistent visual rather than a different treatment per
+ * cause (a deliberate reversal of part of #257).
  *
  * Token discipline: this file adds no raw colors, font names, or hardcoded
  * pixel sizes. All values flow through `@pipeline/ui` component props or
@@ -63,15 +61,9 @@ function Transactions() {
   const items = data?.requests ?? [];
   const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
 
-  /** True when the wallet has no history at all (disconnected or zero API rows). */
-  const shouldRenderWalletEmpty =
-    !isLoading && !error && (!isConnected || data?.requests.length === 0);
-
-  /** True when the API has rows but the active tab's filter yields zero. */
-  const shouldRenderTabEmpty =
-    !!data && data.requests.length > 0 && filtered.length === 0;
-
-  const activeTabLabel = TABS.find((t) => t.id === activeTab)?.label ?? "";
+  /** True whenever the visible row count is zero (disconnected, wallet-wide empty, or tab-filter empty). */
+  const shouldRenderEmpty =
+    !isLoading && !error && (!isConnected || filtered.length === 0);
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
@@ -109,18 +101,12 @@ function Transactions() {
             </div>
           )}
 
-          {shouldRenderWalletEmpty && (
+          {shouldRenderEmpty && (
             <div className="flex min-h-[400px] flex-col items-center justify-center">
               <EmptyState
                 illustration={<ActivityEmptyIllustration tone="muted" width={240} />}
                 caption="You will see all transactions here"
               />
-            </div>
-          )}
-
-          {shouldRenderTabEmpty && (
-            <div className="text-[color:var(--color-pipeline-ink-muted)]">
-              No {activeTabLabel} activity yet
             </div>
           )}
 
