@@ -985,7 +985,7 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   2. Navigate to `http://localhost:3000/transactions`
 - **Expected:** Same illustration + caption as TC-257-1. WalletPill shows balance. No rows rendered. No "No activity yet" text.
 
-### TC-257-3: Connected + data; active tab empty shows muted line, NOT illustration
+### TC-257-3: Connected + data; active tab empty shows full illustration (not muted text)
 
 - **Actor:** User / QA
 - **Preconditions:** Dev server running; mock connected; API returns only Deposit rows; Sell tab active
@@ -993,7 +993,7 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   1. Set mock with only `Deposit` rows.
   2. Navigate to `/transactions`. Default "Buy" tab shows rows.
   3. Click "Sell" tab (which has zero rows).
-- **Expected:** "No Sell activity yet" muted text appears. The `ActivityEmptyIllustration` and "You will see all transactions here" caption are absent.
+- **Expected:** The full `ActivityEmptyIllustration` (`tone="muted"`, `width=240`) and "You will see all transactions here" caption render — same as the disconnected / zero-rows case. The muted text "No Sell activity yet" is absent. (Deliberate reversal of original #257 design — see #261.)
 
 ---
 
@@ -1049,3 +1049,54 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   2. Refresh the page
   3. Observe the top-left card
 - **Expected:** The "Connect Wallet" promo card reappears; the Portfolio placeholder is gone. Grid layout is unchanged.
+
+---
+
+## S-261 — /transactions: full empty state on per-tab empty results
+
+**Issue:** [#261 /transactions: show full empty state on per-tab empty results, not just text](https://github.com/eq-lab/pipeline/issues/261)
+**Plan:** `docs/exec-plans/active/issue-261-transactions-tab-empty-illustration.md`
+**Figma:** [1993:9144](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9144&m=dev)
+
+### TC-261-1: Connected + data; empty tab renders illustration + caption (not text)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected with one Deposit row in `/v1/requests`
+  ```js
+  const usdc = "0x2222000000000000000000000000000000000002";
+  localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+  localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", usdc);
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.decimals`, "6");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "5000000000");
+  localStorage.setItem("pipeline.mock.api.GET./v1/requests", JSON.stringify({
+    requests: [{ type: "Deposit", amount: "1000000000", request_id: "1", status: "Completed", created_at: "2026-05-15T12:00:00Z" }]
+  }));
+  ```
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+  2. Confirm Buy tab shows the one Deposit row
+  3. Click the "Sell" tab
+  4. Click the "Stake" tab
+  5. Click the "Unstake" tab
+- **Expected:**
+  - On each empty tab (Sell, Stake, Unstake): `ActivityEmptyIllustration` (`tone="muted"`, `width=240`) + "You will see all transactions here" caption render inside a `min-h-[400px]` flex-centered wrapper.
+  - "No Sell/Stake/Unstake activity yet" text is absent on every tab.
+  - Switching back to "Buy" still shows the Deposit row.
+
+### TC-261-2: Regression — disconnected wallet still shows illustration + caption
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no `pipeline.mock.*` keys in localStorage
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+- **Expected:** `ActivityEmptyIllustration` (`tone="muted"`) + "You will see all transactions here" caption render. "Connect Wallet" button in header.
+
+### TC-261-3: Regression — connected + zero API rows still shows illustration + caption
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected; `pipeline.mock.api.GET./v1/requests` = `{ requests: [] }`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/transactions`
+- **Expected:** Same illustration + caption as TC-261-2. WalletPill shows balance.
