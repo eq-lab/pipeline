@@ -25,6 +25,16 @@ export type {
   RequestDepositResult,
   ClaimResult,
 } from "./useDepositManager";
+export {
+  useWithdrawalQueueAddresses,
+  useRequestWithdrawal,
+  useClaimWithdrawal,
+} from "./useWithdrawalQueue";
+export type {
+  WithdrawalQueueAddressesResult,
+  RequestWithdrawalResult,
+  ClaimWithdrawalResult,
+} from "./useWithdrawalQueue";
 export { useApproval } from "./useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
 export { useToken } from "./useToken";
