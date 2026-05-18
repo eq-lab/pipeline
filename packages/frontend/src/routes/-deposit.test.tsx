@@ -16,6 +16,7 @@
  *   8. After requestDeposit resolves → step 3 disabled (no voucher yet).
  *   9. With PendingClaim request + voucher mock → step 3 enabled; Claim works.
  *  10. After claim.isSuccess → step 3 shows success badge.
+ *  11. PendingVerification request → step 2 shows loading affordance (spinner, not greyed).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -816,6 +817,53 @@ describe("Deposit page — three-step flow", () => {
       const doneBadges = screen.getAllByText("Done");
       // At least one Done badge for step 2
       expect(doneBadges.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("step 2 shows loading affordance (not greyed) when request status is PendingVerification", async () => {
+    // Seed a PendingVerification request — verifier has not yet advanced it.
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "2000000000",
+          status: "PendingVerification",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    // When loading=true, StepRow replaces the actionLabel text with a spinner,
+    // so the "Confirm" button is no longer findable by accessible name.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Confirm" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // At least one button in the document should carry aria-busy="true"
+    // (the step 2 action button with the spinner).
+    await waitFor(() => {
+      const busyBtn = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("aria-busy") === "true");
+      expect(busyBtn).toBeDefined();
+      // Button must be disabled — user cannot re-trigger requestDeposit.write.
+      expect(busyBtn).toBeDisabled();
+    });
+
+    // The step 2 row container must NOT carry opacity-30 (full opacity = active).
+    await waitFor(() => {
+      const busyBtn = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("aria-busy") === "true");
+      // Walk up to the StepRow root div (the container that gets opacity-30).
+      // StepRow structure: div.rootClasses > ... > div.shrink-0 > Button
+      const rowRoot = busyBtn?.closest(".flex.items-center.gap-3");
+      expect(rowRoot).toBeDefined();
+      expect(rowRoot?.className).not.toContain("opacity-30");
     });
   });
 

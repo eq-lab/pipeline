@@ -30,8 +30,10 @@ import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
  *
  * 2. **Confirm USDC transfer** (Confirm):
  *    Enabled when `!needsApproval && meetsMin && requestId === undefined`.
- *    Done when a request appears in the API (status PendingVerification or
- *    PendingClaim). Figma: node 1497-95272
+ *    While status is `PendingVerification`, shows loading affordance (spinner,
+ *    full opacity) — button stays non-clickable until verifier advances the
+ *    request to `PendingClaim`. Done when status reaches `PendingClaim`.
+ *    Figma: node 1497-95272
  *
  * 3. **Claim your PLUSD** (Claim):
  *    Enabled when the request status is "PendingClaim" and a voucher signature
@@ -145,6 +147,8 @@ function Deposit() {
 
   // Only fetch the voucher once the request is in "PendingClaim" status.
   const isPendingClaim = activeRequest?.status === "PendingClaim";
+  // Step 2 is in progress (verifier working) while the API reports this status.
+  const isPendingVerification = activeRequest?.status === "PendingVerification";
   const voucherRequestId = isPendingClaim ? requestId : undefined;
 
   const voucher = useDepositVoucher(voucherRequestId);
@@ -324,8 +328,14 @@ function Deposit() {
                 label: "Confirm USDC transfer",
                 actionLabel: "Confirm",
                 disabled: !canConfirm,
+                // loading covers three situations:
+                // 1. wagmi write in-flight (this session)
+                // 2. API reports PendingVerification (verifier still working,
+                //    possibly from a prior session)
+                // 3. Brief post-success window before API picks up the new request
                 loading:
                   requestDeposit.isPending ||
+                  isPendingVerification ||
                   (requestDeposit.isSuccess &&
                     !requestIsConfirmed &&
                     activeRequest === null),
