@@ -963,6 +963,40 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 
 ---
 
+## S-257 — /transactions striped-clock empty state
+
+**Issue:** [#257 Show striped-clock empty state on /transactions when there are no requests](https://github.com/eq-lab/pipeline/issues/257)
+**Figma:** [1993:9144](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9144&m=dev)
+
+### TC-257-1: Disconnected wallet shows illustration + caption
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no mock wallet keys in localStorage
+- **Steps:**
+  1. Navigate to `http://localhost:3000/transactions`
+- **Expected:** `ActivityEmptyIllustration` (striped-clock SVG, `tone="muted"`, `width=240`) and caption "You will see all transactions here" render in the body region below the SegmentedTabs. The bare "No activity yet" text is absent. Wrapper has `min-h-[400px]` with flex centering.
+
+### TC-257-2: Connected + zero API rows shows illustration + caption
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected; `pipeline.mock.api.GET./v1/requests` = `{ requests: [] }`
+- **Steps:**
+  1. Set mock: `localStorage.setItem('pipeline.mock.api.GET./v1/requests', JSON.stringify({ requests: [] }))`
+  2. Navigate to `http://localhost:3000/transactions`
+- **Expected:** Same illustration + caption as TC-257-1. WalletPill shows balance. No rows rendered. No "No activity yet" text.
+
+### TC-257-3: Connected + data; active tab empty shows muted line, NOT illustration
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock connected; API returns only Deposit rows; Sell tab active
+- **Steps:**
+  1. Set mock with only `Deposit` rows.
+  2. Navigate to `/transactions`. Default "Buy" tab shows rows.
+  3. Click "Sell" tab (which has zero rows).
+- **Expected:** "No Sell activity yet" muted text appears. The `ActivityEmptyIllustration` and "You will see all transactions here" caption are absent.
+
+---
+
 ## S-250 — Home Connect-Wallet section: wired Connect + Portfolio placeholder when connected
 
 **Issue:** [#250 Home Connect-Wallet section: wire Connect button + show Portfolio placeholder when connected](https://github.com/eq-lab/pipeline/issues/250)

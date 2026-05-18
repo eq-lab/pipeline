@@ -4,6 +4,22 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-18 — Issue #257 (Show striped-clock empty state on /transactions when there are no requests)
+
+- **Scope:** Issue #257 acceptance criteria (TC-257-1 through TC-257-3)
+- **Cases executed:** 3
+- **Passes:** 3
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-257-1 (disconnected — illustration + caption): No mock keys set; `/transactions` renders `ActivityEmptyIllustration` (`tone="muted"`, `width=240`) + "You will see all transactions here" caption. Wrapper has `min-h-[400px]`, `display:flex`, `align-items:center`, `justify-content:center`. "No activity yet" text absent. Pre-existing HeroIcon black square (#245) still visible — not a regression from #257.
+  - PASS TC-257-2 (connected + zero rows — illustration + caption): Mock wallet connected (1,000.00 WalletPill), `pipeline.mock.api.GET./v1/requests` = `{ requests: [] }`; same illustration + caption render. `data-tone="muted"`, `illustrationWidth=240px`. Caption present, no bare "No activity yet" text.
+  - PASS TC-257-3 (data exists, Sell tab empty — muted line, not illustration): Mock with 2 Deposit rows. Buy tab shows 2 rows. Clicking Sell tab renders "No Sell activity yet" muted text; `[data-tone]` element absent; "You will see all transactions here" caption absent. Illustration correctly withheld for tab-level empty state.
+  - Unit tests: all 22 tests pass in `-transactions.test.tsx` (wallet-level empty, tab-level empty, disconnected, formatting, renderRequestRow contract, loading, error, tab switching).
+  - Console errors: only pre-existing Reown/WalletConnect 403/400 errors — none related to #257.
+  - No new GitHub Issues filed.
+
 ### 2026-05-18 — Issue #250 (Home Connect-Wallet section: wire Connect button + Portfolio placeholder when connected)
 
 - **Scope:** Issue #250 acceptance criteria (TC-250-1 through TC-250-4)
