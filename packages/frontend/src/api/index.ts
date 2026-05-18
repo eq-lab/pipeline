@@ -17,3 +17,9 @@ export type {
   RequestsResponse,
   UseRequestsResult,
 } from "./useRequests";
+export { useDepositVoucher } from "./useDepositVoucher";
+export type {
+  VoucherResponse,
+  VoucherStatus,
+  UseDepositVoucherResult,
+} from "./useDepositVoucher";

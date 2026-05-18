@@ -41,3 +41,4 @@ packages/ui/storybook-static/
 *.swp
 *.swo
 packages/frontend/.tanstack/
+docs.local/
