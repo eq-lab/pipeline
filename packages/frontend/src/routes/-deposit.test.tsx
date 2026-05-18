@@ -17,6 +17,9 @@
  *   9. With PendingClaim request + voucher mock → step 3 enabled; Claim works.
  *  10. After claim.isSuccess → step 3 shows success badge.
  *  11. PendingVerification request → step 2 shows loading affordance (spinner, not greyed).
+ *  12. PendingVerification / PendingClaim → input locked to request amount, chips disabled.
+ *  13. VerificationFailed → input editable (not locked).
+ *  14. No active request → input editable (explicit regression assertion).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -931,5 +934,171 @@ describe("Deposit page — three-step flow", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Deposit page — locked amount on active request", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("PendingVerification — input is synced to request amount and disabled", async () => {
+    // 5 USDC at 6 decimals
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "5000000",
+          status: "PendingVerification",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+
+    await waitFor(() => {
+      // formatUsdc(5_000_000n, 6) → "5.00"; commas stripped → "5.00"
+      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).disabled).toBe(true);
+    });
+  });
+
+  it("PendingClaim — input is synced to request amount and disabled", async () => {
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "99",
+          amount: "5000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+
+    await waitFor(() => {
+      expect((input as HTMLInputElement).value).toBe("5.00");
+      expect((input as HTMLInputElement).disabled).toBe(true);
+    });
+  });
+
+  it("PendingVerification — quick-amount chips are all disabled", async () => {
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "5000000",
+          status: "PendingVerification",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /\(Min\)/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /\$5,000/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /\$10,000/ })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Max" })).toBeDisabled();
+    });
+  });
+
+  it("clicking a disabled chip does not mutate the input value", async () => {
+    // HTML disabled buttons do not fire onClick — this is a regression guard.
+    const user = userEvent.setup();
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "5000000",
+          status: "PendingVerification",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await waitFor(() => {
+      expect((input as HTMLInputElement).value).toBe("5.00");
+    });
+
+    const maxChip = screen.getByRole("button", { name: "Max" });
+    await user.click(maxChip);
+
+    // Input must still show the locked amount, not the balance.
+    expect((input as HTMLInputElement).value).toBe("5.00");
+  });
+
+  it("VerificationFailed — input is editable (not locked)", async () => {
+    const user = userEvent.setup();
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "5000000",
+          status: "VerificationFailed",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+
+    // Input must be editable.
+    await waitFor(() => {
+      expect((input as HTMLInputElement).disabled).toBe(false);
+    });
+
+    // Chips must be enabled.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /\(Min\)/ }),
+      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Max" })).not.toBeDisabled();
+    });
+
+    // Typing must work.
+    await user.clear(input);
+    await user.type(input, "1234");
+    expect((input as HTMLInputElement).value).toBe("1234");
+  });
+
+  it("no active request — input is editable (regression)", async () => {
+    mockRequestsData = { requests: [] };
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+
+    await waitFor(() => {
+      expect((input as HTMLInputElement).disabled).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /\(Min\)/ }),
+      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Max" })).not.toBeDisabled();
+    });
   });
 });

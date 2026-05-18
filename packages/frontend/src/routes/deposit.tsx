@@ -63,6 +63,14 @@ import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
  *   - `useDepositVoucher(requestId)` — fetches verifier signature when request
  *     status is "PendingClaim"
  *
+ * **Amount input lock:** whenever `activeRequest` is non-null (status
+ * `PendingVerification` or `PendingClaim`), the `isAmountLocked` flag is set.
+ * While locked, the input value is synced from `activeRequest.amount` (via
+ * `formatUsdc`, commas stripped) and both the `<input>` element and the four
+ * quick-amount chips are disabled. The lock releases when the request resolves
+ * (`Completed` / `VerificationFailed` / cleared from API); the input is NOT
+ * auto-reset — the user can edit it for the next flow.
+ *
  * Token discipline: no raw colors, fonts, sizes, or radii.
  * Everything goes through design tokens or component primitives from `@pipeline/ui`.
  *
@@ -151,6 +159,14 @@ function Deposit() {
   const isPendingVerification = activeRequest?.status === "PendingVerification";
   const voucherRequestId = isPendingClaim ? requestId : undefined;
 
+  // The amount input is locked to the active request's amount whenever
+  // the API reports a PendingVerification or PendingClaim deposit. This
+  // anchors the displayed value to what's already committed on-chain.
+  // VerificationFailed and "no active request" leave the input editable.
+  // Note: activeRequest is non-null only when status is PendingVerification
+  // or PendingClaim (see selector above), so this single check is sufficient.
+  const isAmountLocked = activeRequest !== null;
+
   const voucher = useDepositVoucher(voucherRequestId);
 
   // ── Step enable/disable gates ─────────────────────────────────────────
@@ -202,6 +218,36 @@ function Deposit() {
     if (requestDeposit.isSuccess) refetchBalance();
   }, [requestDeposit.isSuccess, refetchBalance]);
 
+  // When a deposit request becomes active (PendingVerification or PendingClaim),
+  // copy its amount into the input so the displayed value matches what's already
+  // committed on-chain. Do not auto-clear the input when the request resolves —
+  // leave whatever the user last sees for the next flow.
+  //
+  // Guards:
+  //   - isAmountLocked: only sync while locked; no-op when editable.
+  //   - decimals: format requires decimals; defer until available (avoids "—").
+  //   - activeRequest: type-narrowing guard (isAmountLocked implies non-null,
+  //     but TypeScript doesn't know that).
+  //
+  // Deps use activeRequest?.request_id and activeRequest?.amount (not the whole
+  // object) to avoid re-firing on every 60 s poll when the request is unchanged.
+  useEffect(() => {
+    if (!isAmountLocked) return;
+    if (decimals === undefined) return;
+    if (!activeRequest) return;
+    const formatted = formatUsdc(
+      BigInt(activeRequest.amount),
+      decimals,
+    ).replace(/,/g, "");
+    setAmountInput(formatted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isAmountLocked,
+    activeRequest?.request_id,
+    activeRequest?.amount,
+    decimals,
+  ]);
+
   // ── Copy address handler (1.5s "Copied" affordance) ───────────────────
   const copyAddress = useCallback(() => {
     if (!address || typeof navigator === "undefined" || !navigator.clipboard)
@@ -220,6 +266,10 @@ function Deposit() {
   // ── Quick-amount handlers ─────────────────────────────────────────────
   const onQuickAmount = useCallback(
     (idx: number) => {
+      // Belt-and-suspenders: a locked chip's disabled HTML attribute already
+      // suppresses the click, but guard here too so a stale event cannot
+      // mutate amountInput while a request is in flight.
+      if (isAmountLocked) return;
       if (decimals === undefined) return;
       if (idx === 0 && minDeposit !== undefined) {
         // Min chip — use the live minDeposit value.
@@ -233,7 +283,7 @@ function Deposit() {
         setAmountInput(formatUsdc(balance, decimals).replace(/,/g, ""));
       }
     },
-    [decimals, minDeposit, balance],
+    [decimals, minDeposit, balance, isAmountLocked],
   );
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -258,17 +308,19 @@ function Deposit() {
             // Controlled value state
             value: amountInput,
             onValueChange: setAmountInput,
-            disabled: !isConnected || !isReady,
+            // Also disable when the amount is locked to an active on-chain request.
+            disabled: !isConnected || !isReady || isAmountLocked,
             quickAmounts: [
               {
                 label:
                   minDeposit !== undefined && decimals !== undefined
                     ? `${formatUsdcCurrency(minDeposit, decimals)} (Min)`
                     : "Min",
+                disabled: isAmountLocked,
               },
-              { label: "$5,000" },
-              { label: "$10,000" },
-              { label: "Max" },
+              { label: "$5,000", disabled: isAmountLocked },
+              { label: "$10,000", disabled: isAmountLocked },
+              { label: "Max", disabled: isAmountLocked },
             ],
             onQuickAmountClick: onQuickAmount,
           }}
