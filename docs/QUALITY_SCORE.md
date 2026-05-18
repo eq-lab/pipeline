@@ -4,6 +4,24 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-18 — Issue #238 (ActivityHeader hero icon renders as black square on /transactions)
+
+- **Scope:** Issue #238 acceptance criteria (TC-238-1 through TC-238-4)
+- **Cases executed:** 3 (TC-238-4 blocked — /stake HeroIcon not yet wired)
+- **Passes:** 0
+- **Failures:** 2
+- **Blocked:** 1
+- **Bugs filed:** #245 (high)
+- **Score: 2/10**
+  - FAIL TC-238-1 (glyph renders): Black square still visible in browser screenshot. The `?url` fix was applied to the SVG import, but the mask CSS is not reaching the DOM.
+  - FAIL TC-238-2 (mask-image resolves): `getComputedStyle(...).maskImage` = `"none"`. Mask is not applied.
+  - FAIL TC-238-3 (mask present in inline style): `element.style.maskImage` = `""`. React is silently dropping both `WebkitMask` and `mask` shorthand properties from the inline style object when serialising to DOM. The React fiber `pendingProps.style` contains the correct `WebkitMask` and `mask` values with a valid data-URI, but neither appears in the rendered DOM attribute.
+  - BLOCKED TC-238-4 (/stake chart icon): /stake route exists but does not use a `chart` HeroIcon in the current implementation — blocked pending that route's hero implementation.
+  - Root cause confirmed: `HeroIcon.tsx` uses `WebkitMask`/`mask` shorthand properties which React does not apply to the DOM. Other masked-icon components (`ActivityEmptyIllustration`, `WalletIllustration`) correctly use the longhand `maskImage`/`WebkitMaskImage` properties and render fine (confirmed on home page).
+  - Fix required: replace shorthand with longhands — `maskImage`, `WebkitMaskImage`, `WebkitMaskRepeat`, `WebkitMaskPosition`, `WebkitMaskSize`. Filed as bug #245 (high).
+  - Console errors: only pre-existing WalletConnect/Reown 403/400, Lit dev-mode, font preload warnings. None related to #238.
+  - Deducted 8 points: the primary acceptance criterion (the icon renders as the clock glyph) is completely unmet. The fix shipped in the PR addresses the wrong layer (URL resolution was fine; shorthand vs. longhand is the blocker).
+
 ### 2026-05-15 — Issue #227 (Wire up /deposit logic — amount input, approval gating, low-balance banner)
 
 - **Scope:** Issue #227 acceptance criteria (TC-227-1 through TC-227-10)

@@ -796,3 +796,46 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   1. Navigate to `/deposit`.
   2. Type "3000" in the USDC input.
 - **Expected:** PLUSD output area shows "3000". Exchange rate row shows "1 USDC = 1 PLUSD". Network fee shows "—".
+
+---
+
+## S-238 — ActivityHeader HeroIcon glyph on /transactions
+
+**Issue:** [#238 ActivityHeader hero icon renders as a black square on /transactions](https://github.com/eq-lab/pipeline/issues/238)
+**Plan:** `docs/exec-plans/active/issue-238-heroicon-mask-url.md`
+
+### TC-238-1: HeroIcon renders arrow-clock glyph (not black square)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:3000`
+- **Steps:**
+  1. Navigate to `http://localhost:3000/transactions`
+  2. Observe the 72×72 muted circle above the "Activity" heading
+- **Expected:** The circle contains the arrow-clock glyph (clock face with circular arrow), rendered in ink color. No solid black square is visible.
+
+### TC-238-2: HeroIcon mask-image resolves to a non-empty URL
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/transactions`
+  2. In DevTools Console: `getComputedStyle(document.querySelector('div[style*="width: 72"] span')).maskImage`
+- **Expected:** Returns a non-empty string starting with `url(` — not `"none"`.
+
+### TC-238-3: HeroIcon mask properties present in DOM inline style
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/transactions`
+  2. In DevTools Console: `document.querySelector('div[style*="width: 72"] span').style.maskImage`
+- **Expected:** Returns a non-empty URL string (not empty string). The `maskImage` longhand property is present in the element's inline style.
+
+### TC-238-4: chart (nav-stats) icon also renders correctly on /stake
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/stake` (or whichever route uses the `chart` HeroIcon variant)
+  2. Observe the HeroIcon above the page heading
+- **Expected:** The bar-chart glyph is visible; no solid black square.

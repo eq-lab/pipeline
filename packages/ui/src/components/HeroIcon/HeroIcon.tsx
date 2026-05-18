@@ -84,8 +84,14 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
             width: 36,
             height: 36,
             backgroundColor: "var(--color-pipeline-ink)",
-            WebkitMask: `url(${src}) center / contain no-repeat`,
-            mask: `url(${src}) center / contain no-repeat`,
+            WebkitMaskImage: `url(${src})`,
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            WebkitMaskSize: "contain",
+            maskImage: `url(${src})`,
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+            maskSize: "contain",
           }}
         />
       </div>
