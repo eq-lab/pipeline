@@ -37,15 +37,17 @@ The active tab is reflected in the URL via the `?tab=status|mocks` search param 
 
 **Risks**
 
-- **`__mock_error` semantics drift.** Scenario 12 ("API down") wants the api wrapper to surface an error when it encounters `{ "__mock_error": true, "status": 500 }` in a mock value. The current `apiFetch` parses any mock JSON and returns it as-is — it does NOT interpret an `__mock_error` envelope. We have two choices: (a) extend `apiFetch` to recognise the envelope and throw, (b) drop scenario 12 from the initial set, or (c) ship scenario 12 with a payload that triggers a TS / runtime error in `useRequests` (brittle). The Issue explicitly says "Document the convention … in `src/api/README.md` as part of this PR." We interpret that as: **implement and document**. See Open Questions.
+- **`__mock_error` semantics deferred.** Scenario 12 ("API down") is excluded from this PR per user direction (comment 2026-05-18). The `__mock_error` envelope convention and `apiFetch` changes will be addressed in a follow-up Issue. Scenarios 1–11 are in scope.
 - **Search-param routing is new.** No other route in the project currently uses `validateSearch`. The pattern must be exact (TanStack Router types are strict). Mitigation: keep the search schema minimal — a single `tab: "status" | "mocks"` field with a fallback.
 - **Stake/Unstake-with-real-flow keys** in scenarios 11 (mixed activity) are best-effort: Stake and Unstake rows are derived purely from the API mock; no separate localStorage keys are required for them beyond the api `requests` payload.
 - **`window.location.reload` is unmockable in JSDOM.** Tests that need to assert "reload was called" must either spy on a wrapper function or replace `window.location` with a stub. The plan uses a tiny internal wrapper `reloadPage()` exported from `scenarios.ts` that the tests can `vi.spyOn`.
 
 ## Open Questions
 
-1. **`__mock_error` envelope behaviour** — should `apiFetch` recognise `{ "__mock_error": true, "status": <n>, "message"?: <str> }` in a mock value and throw an `Error` (so React Query enters error state), or should scenario 12 be deferred to a later Issue once the convention is approved? The Issue body implies in-scope ("Document the convention … as part of this PR"), but the code change is a behaviour change in `apiFetch` that affects every consumer. **Default plan: implement it in this PR** — see Implementation Step 6 — but flag for human review on the planning gate.
-2. **Initial scenario set scope** — the Issue lists 12 scenarios as "recommended starting set, implementer can refine." Are all 12 in scope for this PR, or only #1–#6 with the API-dependent ones (#7–#12) deferred? **Default plan: ship all 12** since they're cheap (data, not logic). Easy to drop later.
+_Resolved 2026-05-18:_
+
+1. **`__mock_error` envelope / scenario 12** — **Deferred.** Scenario 12 ("API down") is excluded from this PR. The `__mock_error` convention and `apiFetch` extension will be a follow-up Issue.
+2. **Scenario set scope** — **Scenarios 1–11 in scope.** All non-API-down scenarios are included in this PR.
 
 ## Implementation Steps
 
@@ -94,7 +96,7 @@ Scenario data — exact `id` values (stable for URL fragments / tests / debuggin
 | `request-verification-failed` | Connected, VerificationFailed request | Step 2 in failed state; input still editable. | as `request-pending-verification` with `status:"VerificationFailed"` |
 | `history-completed` | Connected, Completed deposit history | `/transactions` and home RecentActivityCard render historical rows. | wallet keys from `connected-allowance-zero` + `api.GET./v1/requests` with several Completed Deposit/Withdraw rows |
 | `history-mixed` | Connected, mixed activity (Deposit + Withdraw + Stake + Unstake) | Stresses the row-rendering helper across every `type`. | wallet keys + a wide `/v1/requests` mock spanning all 4 types and both terminal/in-flight statuses |
-| `api-down` | API down | `pipeline.mock.api.GET./v1/requests` returns an error envelope; pages fall back to error/empty states. | wallet keys + `api.GET./v1/requests = JSON.stringify({ __mock_error: true, status: 500, message: "API down (mock)" })` |
+| ~~`api-down`~~ | _(deferred — excluded from this PR)_ | | |
 
 Concrete addresses used in keys:
 
@@ -182,37 +184,7 @@ Add a new test file `packages/frontend/src/routes/test/scenarios.test.ts`:
 - `enableScenarioKeys(scenario)` after a previous `enableScenarioKeys(otherScenario)` leaves localStorage with exactly `scenario.keys` (no leakage). Use `clearAllMocks()` semantics — verify with `Object.keys(localStorage).filter(k => k.startsWith("pipeline.mock."))`.
 - `clearAllMocks()` returns the list of removed keys and leaves non-mock keys intact.
 
-### 6. `apiFetch` — surface `__mock_error` envelope (pending Open Question 1)
-
-Edit `packages/frontend/src/api/client.ts`:
-
-After resolving a mock value (in either lookup branch), check if the value is an object of shape `{ __mock_error: true, status?: number, message?: string }`. If so, throw `new Error(value.message ?? \`HTTP ${value.status ?? 500} (mocked)\`)`.
-
-Add tests in `packages/frontend/src/api/client.test.ts`:
-- A mock value with `__mock_error: true` causes `apiFetch` to throw.
-- A regular mock value is returned unchanged.
-- The `status` and `message` fields are honoured in the thrown error.
-
-### 7. Document the `__mock_error` convention — `packages/frontend/src/api/README.md`
-
-Add a subsection under "API module" mock layer:
-
-```
-### Simulating API errors
-
-Set a mock value to a JSON envelope:
-
-\`\`\`js
-localStorage.setItem(
-  "pipeline.mock.api.GET./v1/requests",
-  JSON.stringify({ __mock_error: true, status: 500, message: "API down (mock)" }),
-);
-\`\`\`
-
-`apiFetch` recognises this envelope and throws an `Error` with the given `message` (or a synthesised `HTTP <status> (mocked)` message). React Query then enters the error state — useful for testing error UI without taking the real backend down.
-```
-
-### 8. Lint + format
+### 6. Lint + format
 
 After every change run:
 
@@ -244,11 +216,6 @@ Fix any lint errors before committing.
   - Status tab continues to have zero buttons (regression for #252).
   - MOCKED badge plumbing still works on the Status tab.
 
-- `packages/frontend/src/api/client.test.ts` (update):
-  - `apiFetch` throws when the mock value is `{ __mock_error: true, ... }`.
-  - The thrown error message uses `message` if present, else `HTTP <status> (mocked)`.
-  - A non-error mock value is returned unchanged.
-
 **Manual verification (no Figma reference — `/test` is dev-only)**
 
 1. `yarn workspace @pipeline/frontend dev`, open `/test`, confirm Status is the default and matches today.
@@ -256,15 +223,13 @@ Fix any lint errors before committing.
 3. Enable `connected-allowance-ok`. Page reloads. TopBar shows connected wallet, balance matches, allowance is sufficient. `/deposit` shows Confirm as the live action.
 4. Enable `request-pending-claim`. Reload. `/deposit` shows Step 3 enabled (per #242 fix).
 5. Enable `history-mixed`. Visit `/transactions` — all four tabs (Buy/Sell/Stake/Unstake) show rows.
-6. Enable `api-down`. Visit `/transactions` — error / empty state renders, no crash.
-7. Click Clear mocks. Page reloads to the unmocked state.
-8. `localStorage.setItem("not-a-mock", "x")` in DevTools, then click Clear — confirm `not-a-mock` survives.
+6. Click Clear mocks. Page reloads to the unmocked state.
+7. `localStorage.setItem("not-a-mock", "x")` in DevTools, then click Clear — confirm `not-a-mock` survives.
 
 No Figma node referenced in the Issue; no design-comparison verification step required. Confirm the SegmentedTabs visual on `/test` is consistent with `/transactions` and `/stake` usage.
 
 ## Docs to Update
 
-- `packages/frontend/src/api/README.md` — add the `__mock_error` envelope section (step 7).
 - No product-spec changes — `/test` is a developer surface and isn't documented in `docs/product-specs/`.
 - No design-doc changes — no new design tokens or components are introduced; `SegmentedTabs`, `Button`, and the existing page primitives are reused.
 - No `docs/STORIES.md` change — `/test` is not part of the product user stories.
