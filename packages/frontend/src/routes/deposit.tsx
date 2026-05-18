@@ -173,6 +173,15 @@ function Deposit() {
   // or PendingClaim (see selector above), so this single check is sufficient.
   const isAmountLocked = activeRequest !== null;
 
+  // Faded state: allowance approved and step 2 ("Confirm") is the live action,
+  // but no on-chain request has been submitted yet. Signals "the amount you
+  // entered is locked in" without disabling the input (editing is still valid).
+  // Deliberately excludes isAmountLocked (PendingVerification / PendingClaim)
+  // to avoid double-fading with the disabled state in #243.
+  // Figma: opacity-30 on the USDC value container node 1497:95279.
+  const isInputFaded =
+    isConnected && !needsApproval && amountBig > 0n && !requestIsConfirmed;
+
   const voucher = useDepositVoucher(voucherRequestId);
 
   // ── Step enable/disable gates ─────────────────────────────────────────
@@ -382,6 +391,10 @@ function Deposit() {
             onValueChange: setAmountInput,
             // Also disable when the amount is locked to an active on-chain request.
             disabled: !isConnected || !isReady || isAmountLocked,
+            // Fade the USDC value container once the allowance is approved and
+            // step 2 is live. Purely visual — input remains editable. Figma: opacity-30.
+            // Transition smooths the state change.
+            className: isInputFaded ? "opacity-30 transition-opacity" : "transition-opacity",
             quickAmounts: [
               {
                 label:
