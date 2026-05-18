@@ -34,6 +34,14 @@ export interface QuickAmountItem {
   label: string;
   /** Whether this chip is currently selected. */
   selected?: boolean;
+  /**
+   * When true, the chip is disabled (e.g. the amount input is locked to an
+   * active on-chain request). Forwarded to `QuickAmountChip` which already
+   * handles the disabled visual state natively via `disabled:opacity-50
+   * disabled:cursor-not-allowed`. Existing call sites that omit this prop
+   * render unchanged.
+   */
+  disabled?: boolean;
 }
 
 export interface TokenInputProps extends Omit<
@@ -182,6 +190,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               key={idx}
               label={item.label}
               selected={item.selected}
+              disabled={item.disabled}
               onClick={
                 onQuickAmountClick
                   ? () => onQuickAmountClick(idx, item)
