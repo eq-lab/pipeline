@@ -373,7 +373,7 @@ function Deposit() {
           input={{
             token: "usdc",
             tokenLabel: "USDC",
-            // formattedBalance from useToken is "1,000.00" — no $ or suffix.
+            // formattedBalance from useToken is "$1,000.00" (USD currency format).
             // Fall back to "—" while loading.
             balanceLabel: formattedBalance ?? "—",
             placeholderValue: "0",

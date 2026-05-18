@@ -69,9 +69,8 @@ export interface UseTokenResult {
   /** Raw `balanceOf(owner)`. `undefined` when disconnected or loading. */
   balance: bigint | undefined;
   /**
-   * Formatted balance as a plain number string (e.g. `"1,000.00"`).
+   * Formatted balance as a USD currency string (e.g. `"$1,000.00"`).
    * `undefined` while `balance` or `decimals` are loading.
-   * No currency symbol or token symbol suffix.
    */
   formattedBalance: string | undefined;
   /** Re-reads `balanceOf(owner)`. Delegates to wagmi `refetch`. */
@@ -192,6 +191,8 @@ export function useToken({ token, spender }: UseTokenArgs): UseTokenResult {
   const formattedBalance: string | undefined =
     balance !== undefined && decimals !== undefined
       ? new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(parseFloat(formatUnits(balance, decimals)))

@@ -206,7 +206,7 @@ describe("useToken — balance mock key", () => {
     expect(result.current.balance).toBe(1_000_000_000n);
   });
 
-  it("returns formattedBalance as plain number string when both balance and decimals are mocked", () => {
+  it("returns formattedBalance as USD currency string when both balance and decimals are mocked", () => {
     localStorage.setItem(decimalsKey(TOKEN_ADDRESS), "6");
     localStorage.setItem(symbolKey(TOKEN_ADDRESS), "USDC");
     localStorage.setItem(balanceKey(TOKEN_ADDRESS), "1000000000");
@@ -215,7 +215,7 @@ describe("useToken — balance mock key", () => {
       wrapper,
     });
 
-    expect(result.current.formattedBalance).toBe("1,000.00");
+    expect(result.current.formattedBalance).toBe("$1,000.00");
   });
 
   it("returns formattedBalance undefined while decimals is not yet available", () => {
@@ -285,7 +285,7 @@ describe("useToken — real RPC happy path", () => {
     expect(result.current.decimals).toBe(6);
     expect(result.current.symbol).toBe("USDC");
     expect(result.current.balance).toBe(500_000_000n);
-    expect(result.current.formattedBalance).toBe("500.00");
+    expect(result.current.formattedBalance).toBe("$500.00");
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
   });

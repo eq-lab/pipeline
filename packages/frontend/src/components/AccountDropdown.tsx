@@ -7,7 +7,7 @@
  *
  * Accepts:
  *   - `address`          — connected wallet address (full `0x…` string).
- *   - `formattedBalance` — pre-formatted USDC balance string, e.g. `"1,000.00"`.
+ *   - `formattedBalance` — pre-formatted USDC balance string, e.g. `"$1,000.00"`.
  *   - `onClose`          — called when the panel should be dismissed.
  *   - `onDisconnect`     — called when the user clicks Disconnect.
  *

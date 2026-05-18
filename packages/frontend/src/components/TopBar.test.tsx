@@ -310,14 +310,14 @@ describe("TopBar — wallet state", () => {
         screen.getByRole("button", { name: "Connect Wallet" }),
       ).toBeInTheDocument(),
     );
-    expect(screen.queryByText("1,000.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$1,000.00")).not.toBeInTheDocument();
   });
 
   it("renders WalletPill with formatted balance when connected via mock keys", async () => {
     setConnectedMock();
     renderTopBar("/");
     await waitFor(() =>
-      expect(screen.getByText("1,000.00")).toBeInTheDocument(),
+      expect(screen.getByText("$1,000.00")).toBeInTheDocument(),
     );
     expect(
       screen.queryByRole("button", { name: "Connect Wallet" }),
@@ -331,7 +331,7 @@ describe("TopBar — wallet state", () => {
 
     // Wait for connected state.
     const trigger = await screen.findByRole("button", {
-      name: /1,000\.00|—/,
+      name: /\$1,000\.00|—/,
     });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
