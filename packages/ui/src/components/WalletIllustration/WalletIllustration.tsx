@@ -1,5 +1,5 @@
 import React from "react";
-import stripedWalletUrl from "../../assets/illustrations/striped-wallet.svg";
+import stripedWalletUrl from "../../assets/illustrations/striped-wallet.svg?url";
 
 /**
  * WalletIllustration — striped line-art wallet decoration.

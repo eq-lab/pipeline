@@ -1,6 +1,6 @@
 import React from "react";
-import arrowClockSrc from "../../assets/icons/arrow-clock.svg";
-import navStatsSrc from "../../assets/icons/nav-stats.svg";
+import arrowClockSrc from "../../assets/icons/arrow-clock.svg?url";
+import navStatsSrc from "../../assets/icons/nav-stats.svg?url";
 
 /**
  * HeroIcon — 72×72 muted-fill circle with a 36px ink-tinted icon centered
@@ -84,8 +84,14 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
             width: 36,
             height: 36,
             backgroundColor: "var(--color-pipeline-ink)",
-            WebkitMask: `url(${src}) center / contain no-repeat`,
-            mask: `url(${src}) center / contain no-repeat`,
+            WebkitMaskImage: `url(${src})`,
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            WebkitMaskSize: "contain",
+            maskImage: `url(${src})`,
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+            maskSize: "contain",
           }}
         />
       </div>
