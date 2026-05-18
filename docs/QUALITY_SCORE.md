@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-18 — Issue #247 (Show recent requests on home RecentActivityCard when wallet is connected)
+
+- **Scope:** Issue #247 acceptance criteria (TC-247-1 through TC-247-4)
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-247-4 (disconnected state — unchanged): No mock keys set; header shows "Connect Wallet" button; `region "Recent activity"` contains only "You will see all transactions here" caption; no "View All →" link. Empty state behavior unchanged.
+  - PASS TC-247-3 (connected + empty list — empty state): Mock wallet connected (5,000.00 WalletPill), `pipeline.mock.api.GET./v1/requests` = `{ requests: [] }`; Recent activity shows `ActivityEmptyIllustration` + caption; no "View All →" link. Correct.
+  - PASS TC-247-1 (connected + 3 rows + View All link): Three `ActivityRow` entries rendered. Row 1: "Buy", "15 May, 3:00 pm", "+1,000.00 USDC" AmountPill (completed Deposit). Row 2: "Sell", "14 May, 12:30 pm", "−2,000.00 USDC" / "Pending" TwoLineAmount (PendingClaim Withdraw). Row 3: "Stake", "13 May, 9:00 pm", "−1,000.00 PLUSD" / "+999.50 sPLUSD" TwoLineAmount (Stake). "View All →" link present, URL = `/transactions`. No empty-state caption. Card height = 602px (above min-h 564px, grows with content — does not collapse).
+  - PASS TC-247-2 (connected + 5 rows — cap at 3): With 5-row mock, exactly 3 `<li>` elements rendered (DOM-verified: `listItemCount=3`); rows 4 and 5 not shown; "View All →" still present.
+  - PASS (bonus): "View All →" click confirmed navigates to `/transactions` (History nav icon activates). The shared `renderRequestRow` helper renders the same row visuals on the transactions page (5 rows visible, filtered by "Buy" tab showing 2 completed deposits).
+  - Pre-existing HeroIcon black square (#245) still visible on `/transactions` — not a regression from #247.
+  - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode warning, font preload warnings — none related to #247.
+
 ### 2026-05-18 — Issue #238 (ActivityHeader hero icon renders as black square on /transactions)
 
 - **Scope:** Issue #238 acceptance criteria (TC-238-1 through TC-238-4)
