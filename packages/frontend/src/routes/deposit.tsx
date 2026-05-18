@@ -13,39 +13,58 @@ import {
   useDepositManagerMinDeposit,
   useRequestDeposit,
   useToken,
+  useClaim,
 } from "@/wallet";
+import { useRequests, useDepositVoucher } from "@/api";
 import { ENV } from "@/lib/env";
 import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
 
 /**
- * Deposit route — state-driven conversion page.
+ * Deposit route — three-step conversion page.
  *
- * Drives three Figma states from on-chain reads:
+ * Drives three steps from on-chain reads and API polling:
  *
- * 1. **Approve needed** (allowance < entered amount):
- *    Step 1 "Approve" enabled; step 2 "Convert" disabled.
+ * 1. **Allow Pipeline to use USDC** (Approve):
+ *    Enabled when `needsApproval && meetsMin`. Done when allowance covers amount.
  *    Figma: node 1498-99874
  *
- * 2. **Approved** (allowance ≥ entered amount):
- *    Step 1 shows green check badge; step 2 "Convert" enabled.
- *    Figma: node 1497-95272
+ * 2. **Confirm USDC transfer** (Confirm):
+ *    Enabled when `!needsApproval && meetsMin && requestId === undefined`.
+ *    Done when a request appears in the API (status PendingVerification or
+ *    PendingClaim). Figma: node 1497-95272
  *
- * 3. **Insufficient balance** (balance < minDeposit):
- *    StepsCard replaced by a low-balance banner with "Copy Address" CTA.
+ * 3. **Claim your PLUSD** (Claim):
+ *    Enabled when the request status is "PendingClaim" and a voucher signature
+ *    is available from `GET /v1/deposits/{requestId}/voucher`.
+ *    Done when `claim.isSuccess`. Figma: node 1498-100812
+ *
+ * 4. **Insufficient balance**: StepsCard replaced by a low-balance banner.
  *    Figma: node 1825-10214
  *
- * State sources (all via `@/wallet` — no direct wagmi/viem imports):
+ * State machine (driven by `useRequests` polled every 60 s):
+ *
+ * - Pick the **latest active deposit request** (status = "PendingVerification"
+ *   or "PendingClaim") from the response. If there is one, step 1 is
+ *   automatically done and step 2 status depends on the request status.
+ * - If no active request exists, fall back to the local `requestDeposit` state
+ *   (mock path or real-path tx hash).
+ *
+ * State sources (all via `@/wallet` or `@/api` — no direct wagmi/viem imports):
  *   - `useWallet()` — address, isConnected
  *   - `useDepositManagerAddresses()` — usdc token address
  *   - `useDepositManagerMinDeposit()` — minimum deposit amount
  *   - `useToken({ token: usdc, spender: DEPOSIT_MANAGER_ADDRESS })` —
  *     balance + decimals + formattedBalance + allowance + approve surface
  *   - `useRequestDeposit()` — write + pending/success/error state
+ *   - `useClaim()` — write + pending/success/error state
+ *   - `useRequests({ refetchInterval: 60_000 })` — polls for active requests
+ *   - `useDepositVoucher(requestId)` — fetches verifier signature when request
+ *     status is "PendingClaim"
  *
  * Token discipline: no raw colors, fonts, sizes, or radii.
  * Everything goes through design tokens or component primitives from `@pipeline/ui`.
  *
- * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100130&m=dev
+ * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812&m=dev
  */
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -71,6 +90,10 @@ function Deposit() {
   } = useToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
 
   const requestDeposit = useRequestDeposit();
+  const claim = useClaim();
+
+  // Poll GET /v1/requests every 60 seconds to track the active deposit request.
+  const { data: requestsData } = useRequests({ refetchInterval: 60_000 });
 
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
@@ -90,28 +113,87 @@ function Deposit() {
     allowance !== undefined && amountBig > 0n && allowance < amountBig;
 
   // Amount must be a positive value AND at least the on-chain minDeposit.
-  // While minDeposit is undefined (loading), meetsMin is false → both action
-  // buttons stay disabled. This prevents submitting a requestDeposit tx that
-  // would revert with DepositManagerLessThanMinAmount and trip the wallet's
-  // gas-estimation fallback (see Issue #232 for the underlying error chain).
   const meetsMin =
     minDeposit !== undefined && amountBig > 0n && amountBig >= minDeposit;
 
+  // ── Request state machine ─────────────────────────────────────────────
+  // Pick the latest active deposit request from the polled list.
+  // "Active" = status is "PendingVerification" (step 2 in-progress) or
+  // "PendingClaim" (step 2 done, step 3 available).
+  const activeRequest =
+    requestsData?.requests
+      .filter(
+        (r) =>
+          r.type === "Deposit" &&
+          (r.status === "PendingVerification" || r.status === "PendingClaim"),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0] ?? null;
+
+  // The request ID drives the voucher fetch.
+  // Priority: API-polled request (real path) > local requestDeposit mock result.
+  const requestId: string | undefined =
+    activeRequest?.request_id ?? requestDeposit.data?.requestId;
+
+  // The request is fully confirmed when it appears via API or when local
+  // requestDeposit.isSuccess is true (mock path that also provides requestId).
+  const requestIsConfirmed =
+    activeRequest !== null ||
+    (requestDeposit.isSuccess && requestId !== undefined);
+
+  // Only fetch the voucher once the request is in "PendingClaim" status.
+  const isPendingClaim = activeRequest?.status === "PendingClaim";
+  const voucherRequestId = isPendingClaim ? requestId : undefined;
+
+  const voucher = useDepositVoucher(voucherRequestId);
+
+  // ── Step enable/disable gates ─────────────────────────────────────────
   const canApprove =
     isConnected &&
     hasBalance === true &&
     meetsMin &&
     needsApproval &&
-    !isApprovePending;
+    !isApprovePending &&
+    !requestIsConfirmed;
 
-  const canConvert =
+  const canConfirm =
     isConnected &&
     hasBalance === true &&
     meetsMin &&
     !needsApproval &&
-    !requestDeposit.isPending;
+    !requestDeposit.isPending &&
+    !requestIsConfirmed;
 
-  // ── Refetch balance after a successful requestDeposit ─────────────────
+  const canClaim =
+    isConnected &&
+    requestId !== undefined &&
+    voucher.status === "ready" &&
+    !claim.isPending &&
+    !claim.isSuccess;
+
+  // ── Step state derivations ────────────────────────────────────────────
+  // Step 1 is "success" once the allowance covers the entered amount
+  // OR once a request exists (because at that point approval already happened).
+  const step1State =
+    (!needsApproval && amountBig > 0n && isConnected) || requestIsConfirmed
+      ? "success"
+      : "idle";
+
+  // Step 2 is "success" once the request is in PendingClaim status (verified).
+  const step2State =
+    isPendingClaim || claim.isSuccess ? "success" : ("idle" as const);
+
+  // Step 3 is "success" once claim is done.
+  const step3State = claim.isSuccess ? "success" : ("idle" as const);
+
+  // ── Refetch balance after a successful claim ───────────────────────────
+  useEffect(() => {
+    if (claim.isSuccess) refetchBalance();
+  }, [claim.isSuccess, refetchBalance]);
+
+  // Keep the existing refetch on requestDeposit success.
   useEffect(() => {
     if (requestDeposit.isSuccess) refetchBalance();
   }, [requestDeposit.isSuccess, refetchBalance]);
@@ -137,8 +219,6 @@ function Deposit() {
       if (decimals === undefined) return;
       if (idx === 0 && minDeposit !== undefined) {
         // Min chip — use the live minDeposit value.
-        // formatUsdc returns "1,000.00"; strip commas so parseUsdc gets a
-        // clean decimal string on the next onChange → parseUsdc cycle.
         setAmountInput(formatUsdc(minDeposit, decimals).replace(/,/g, ""));
         return;
       }
@@ -201,7 +281,7 @@ function Deposit() {
           networkFee="—"
         />
 
-        {/* Conditional: low-balance banner OR two-step card */}
+        {/* Conditional: low-balance banner OR three-step card */}
         {hasBalance === false ? (
           /* Insufficient-balance banner — replaces StepsCard.
              Figma: node 1825-10214 */
@@ -227,31 +307,45 @@ function Deposit() {
             </Button>
           </Card>
         ) : (
-          /* Two-step card: Approve + Convert
-             Figma: node 1498-99874 (approve needed) / node 1497-95272 (approved) */
+          /* Three-step card: Approve → Confirm → Claim
+             Figma: node 1498-100812 */
           <StepsCard
             steps={[
               {
-                label: "Allow contract to use USDC",
+                label: "Allow Pipeline to use USDC",
                 actionLabel: "Approve",
-                // Step 1 is disabled when:
-                //   - canApprove is false (loading, insufficient balance, etc.)
-                // In success state the button is replaced by a badge anyway.
+                // Step 1 is disabled when canApprove is false or request exists.
                 disabled: !canApprove,
                 loading: isApprovePending,
-                // Flip to "success" once allowance covers the entered amount.
-                state:
-                  !needsApproval && amountBig > 0n && isConnected
-                    ? "success"
-                    : "idle",
+                state: step1State,
                 onAction: () => approve?.(amountBig),
               },
               {
-                label: "Confirm and receive PLUSD",
-                actionLabel: "Convert",
-                disabled: !canConvert,
-                loading: requestDeposit.isPending,
+                label: "Confirm USDC transfer",
+                actionLabel: "Confirm",
+                disabled: !canConfirm,
+                loading:
+                  requestDeposit.isPending ||
+                  (requestDeposit.isSuccess &&
+                    !requestIsConfirmed &&
+                    activeRequest === null),
+                state: step2State,
                 onAction: () => requestDeposit.write(amountBig),
+              },
+              {
+                label: "Claim your PLUSD",
+                actionLabel: "Claim",
+                disabled: !canClaim,
+                loading: voucher.status === "pending" || claim.isPending,
+                state: step3State,
+                onAction: () => {
+                  if (requestId === undefined || !voucher.data?.signature)
+                    return;
+                  claim.write(
+                    BigInt(requestId),
+                    voucher.data.signature as `0x${string}`,
+                  );
+                },
               },
             ]}
           />

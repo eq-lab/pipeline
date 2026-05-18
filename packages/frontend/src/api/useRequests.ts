@@ -71,6 +71,12 @@ function subscribeMockVersion(listener: () => void) {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
+export interface UseRequestsOptions {
+  /** Polling interval in milliseconds. When provided, the query refetches on
+   *  this cadence in addition to mock-key-change refetches. */
+  refetchInterval?: number;
+}
+
 export interface UseRequestsResult {
   data: RequestsResponse | undefined;
   isLoading: boolean;
@@ -84,8 +90,12 @@ export interface UseRequestsResult {
  * - Disabled when the wallet is disconnected (`enabled: false`).
  * - Refetches automatically when any `pipeline.mock.*` key changes (same-tab
  *   mock bridge) — keeps the DevTools console experience seamless.
+ * - Pass `refetchInterval` to enable background polling (e.g. 60_000 for the
+ *   deposit page state machine).
  */
-export function useRequests(): UseRequestsResult {
+export function useRequests(
+  options: UseRequestsOptions = {},
+): UseRequestsResult {
   const { address, isConnected } = useWallet();
 
   // Subscribe to mock-key changes — version is included in queryKey to force
@@ -101,6 +111,9 @@ export function useRequests(): UseRequestsResult {
     queryFn: () =>
       apiFetch<RequestsResponse>(`/v1/requests?wallet=${address ?? ""}`),
     enabled: isConnected && !!address,
+    ...(options.refetchInterval !== undefined
+      ? { refetchInterval: options.refetchInterval }
+      : {}),
   });
 
   return {
