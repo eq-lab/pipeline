@@ -77,6 +77,12 @@ export const ConversionCard = React.forwardRef<
   { input, output, exchangeRate, networkFee, className, ...rest },
   ref,
 ) {
+  // Prefix the PLUSD output value with "+" when non-zero (purely visual).
+  // Zero values stay un-prefixed to match the Figma "0" placeholder state.
+  const outputValue = output.value && output.value !== "0"
+    ? `+${output.value}`
+    : output.value;
+
   return (
     /* Outer wrapper: two cards stacked with a 2px gap.
        `relative` is NOT needed here — Card A's wrapper carries `relative`
@@ -90,9 +96,11 @@ export const ConversionCard = React.forwardRef<
     >
       {/* Card A (top): TokenInput — sell side (USDC).
           `relative` enables the absolutely-positioned swap button to anchor
-          to this card's bottom edge via `top-full`. */}
+          to this card's bottom edge via `top-full`.
+          signPrefix="−" shows the minus sign (outflow) when a non-zero value
+          is present; the underlying input value stays positive. */}
       <div className="relative">
-        <TokenInput {...input} />
+        <TokenInput {...input} signPrefix="−" />
 
         {/* Swap button — straddles the seam between Card A and Card B.
             Gradient: surface (#ffffff) → paper (#f8f7f6), top-to-bottom.
@@ -125,6 +133,7 @@ export const ConversionCard = React.forwardRef<
             sits flush inside the Card B wrapper without a nested border. */}
         <TokenAmountDisplay
           {...output}
+          value={outputValue}
           style={{
             border: "none",
             background: "transparent",
