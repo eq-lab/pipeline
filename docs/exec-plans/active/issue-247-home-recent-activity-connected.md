@@ -80,7 +80,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Create `packages/frontend/src/components/activity/renderRequestRow.tsx`.**
+1. ✅ **Create `packages/frontend/src/components/activity/renderRequestRow.tsx`.**
    - Export `renderRequestRow(item: RequestItem): React.ReactNode`.
    - Move the existing `RequestRow` component logic (currently
      `routes/transactions.tsx` lines 101–203) verbatim into this helper.
@@ -94,7 +94,7 @@ _None_
    - Add a brief docblock that explains both call sites and the rule "row
      visuals stay identical between home and `/transactions`".
 
-2. **Refactor `packages/frontend/src/routes/transactions.tsx`.**
+2. ✅ **Refactor `packages/frontend/src/routes/transactions.tsx`.**
    - Delete the local `RequestRow` and `TwoLineAmount` definitions.
    - Replace `filtered.map((item, i) => <RequestRow key={i} item={item} />)`
      with
@@ -106,7 +106,7 @@ _None_
    - No other changes to the route file. The page header, tabs, loading /
      empty / error markers, and the `max-w-[480px]` column all stay.
 
-3. **Wire data into `packages/frontend/src/components/RecentActivityCard.tsx`.**
+3. ✅ **Wire data into `packages/frontend/src/components/RecentActivityCard.tsx`.**
    - Convert the file to consume `useWallet()` (`from "@/wallet"`) and
      `useRequests()` (`from "@/api"`).
    - Add a `MAX_ROWS = 3` module constant directly below the existing
@@ -160,13 +160,13 @@ _None_
      for the connected state is `1497:95119`.
    - Import `Link` from `@tanstack/react-router`.
 
-4. **Verify the home page composition still passes.**
+4. ✅ **Verify the home page composition still passes.**
    - `routes/index.tsx` already renders `<RecentActivityCard />` with the
      existing className for grid placement. No changes there; the card's
      external API (`RecentActivityCardProps = Omit<…, "children">`) stays the
      same, which preserves the type contract for the home composer.
 
-5. **Run `yarn lint && yarn build` from the workspace root** (or per
+5. ✅ **Run `yarn lint && yarn build` from the workspace root** (or per
    `packages/frontend` if the repo's preferred granularity demands it) and
    fix any TS or lint findings before moving to tests.
 

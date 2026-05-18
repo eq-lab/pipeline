@@ -23,7 +23,8 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route } from "./transactions";
-import type { RequestsResponse } from "@/api";
+import type { RequestsResponse, RequestItem } from "@/api";
+import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
 // ── Mock @/api ────────────────────────────────────────────────────────────────
 // We mock the entire api module so useRequests returns controlled data. This
@@ -328,5 +329,47 @@ describe("Transactions page — formatting assertions", () => {
 
     const container = document.body.textContent ?? "";
     expect(container).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM)/);
+  });
+});
+
+describe("Shared renderRequestRow helper — contract", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a non-null React element for each FIXTURE row", () => {
+    FIXTURE.requests.forEach((item: RequestItem) => {
+      const node = renderRequestRow(item);
+      expect(node).not.toBeNull();
+      expect(React.isValidElement(node)).toBe(true);
+    });
+  });
+
+  it("returns a non-null element for a pending Deposit row", () => {
+    const pendingDeposit: RequestItem = {
+      type: "Deposit",
+      amount: "500000000",
+      request_id: "99",
+      status: "PendingVerification",
+      created_at: "2026-05-01T10:00:00Z",
+    };
+    const node = renderRequestRow(pendingDeposit);
+    expect(node).not.toBeNull();
+    expect(React.isValidElement(node)).toBe(true);
+  });
+
+  it("returns a non-null element for an Unstake row", () => {
+    const unstake: RequestItem = {
+      type: "Unstake",
+      amount: "500000000000000000000",
+      assets: "500000000000000000000",
+      shares: "499750000000000000000",
+      request_id: "100",
+      status: "Completed",
+      created_at: "2026-05-02T10:00:00Z",
+    };
+    const node = renderRequestRow(unstake);
+    expect(node).not.toBeNull();
+    expect(React.isValidElement(node)).toBe(true);
   });
 });

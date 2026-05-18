@@ -1,14 +1,13 @@
 import { useState } from "react";
+import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ActivityHeader,
-  ActivityRow,
-  AmountPill,
   SegmentedTabs,
 } from "@pipeline/ui";
 import { useRequests } from "@/api";
-import type { RequestItem, RequestType } from "@/api";
-import { formatTokenAmount, formatActivityTime } from "@/lib/format";
+import type { RequestType } from "@/api";
+import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
 /**
  * Transactions / Activity page — wired to `GET /v1/requests` (Figma `1497-94912`).
@@ -44,163 +43,6 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
   Unstake: "unstake",
 };
 
-/**
- * TwoLineAmount — right-aligned two-line amount block for stake / unstake /
- * pending rows. Uses only design tokens via Tailwind utilities.
- *
- * `primary`   — top line, body size.
- * `secondary` — bottom line, caption size, always muted ink.
- * `tone`      — `"default"` renders the top line in primary ink (completed
- *               rows); `"muted"` renders both lines in muted ink (pending
- *               rows, communicating non-final state). Defaults to `"default"`.
- */
-function TwoLineAmount({
-  primary,
-  secondary,
-  tone = "default",
-}: {
-  primary: string;
-  secondary: string;
-  tone?: "default" | "muted";
-}) {
-  const primaryColor =
-    tone === "muted"
-      ? "text-[color:var(--color-pipeline-ink-muted)]"
-      : "text-[color:var(--color-pipeline-ink)]";
-
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      <span
-        className={[
-          "font-[family-name:var(--font-body)]",
-          "text-[length:var(--text-pipeline-body)]",
-          "leading-[var(--text-pipeline-body--line-height)]",
-          "font-[var(--font-weight-regular)]",
-          primaryColor,
-          "whitespace-nowrap",
-        ].join(" ")}
-      >
-        {primary}
-      </span>
-      <span
-        className={[
-          "font-[family-name:var(--font-body)]",
-          "text-[length:var(--text-pipeline-caption)]",
-          "leading-[var(--text-pipeline-caption--line-height)]",
-          "font-[var(--font-weight-regular)]",
-          "text-[color:var(--color-pipeline-ink-muted)]",
-          "whitespace-nowrap",
-        ].join(" ")}
-      >
-        {secondary}
-      </span>
-    </div>
-  );
-}
-
-/** Renders a single `RequestItem` as an `<ActivityRow>`. */
-function RequestRow({ item }: { item: RequestItem }) {
-  const timestamp = formatActivityTime(item.created_at);
-
-  if (item.type === "Deposit") {
-    const amount = formatTokenAmount(item.amount, 6);
-    if (item.status === "Completed") {
-      return (
-        <ActivityRow
-          icon="check-circle"
-          tone="success"
-          title="Buy"
-          timestamp={timestamp}
-          amount={<AmountPill>+{amount} USDC</AmountPill>}
-        />
-      );
-    }
-    const secondary =
-      item.status === "VerificationFailed" ? "Verification failed" : "Pending";
-    return (
-      <ActivityRow
-        icon="clock-pending"
-        tone="warning"
-        title="Buy"
-        timestamp={timestamp}
-        amount={
-          <TwoLineAmount
-            primary={`+${amount} USDC`}
-            secondary={secondary}
-            tone="muted"
-          />
-        }
-      />
-    );
-  }
-
-  if (item.type === "Withdraw") {
-    const amount = formatTokenAmount(item.amount, 6);
-    if (item.status === "Completed") {
-      return (
-        <ActivityRow
-          icon="check-circle"
-          tone="success"
-          title="Sell"
-          timestamp={timestamp}
-          amount={<AmountPill>−{amount} USDC</AmountPill>}
-        />
-      );
-    }
-    const secondary =
-      item.status === "VerificationFailed" ? "Verification failed" : "Pending";
-    return (
-      <ActivityRow
-        icon="clock-pending"
-        tone="warning"
-        title="Sell"
-        timestamp={timestamp}
-        amount={
-          <TwoLineAmount
-            primary={`−${amount} USDC`}
-            secondary={secondary}
-            tone="muted"
-          />
-        }
-      />
-    );
-  }
-
-  if (item.type === "Stake") {
-    const assets = formatTokenAmount(item.assets ?? item.amount, 18);
-    const shares = formatTokenAmount(item.shares ?? "0", 18);
-    return (
-      <ActivityRow
-        icon="arrow-down-circle"
-        title="Stake"
-        timestamp={timestamp}
-        amount={
-          <TwoLineAmount
-            primary={`−${assets} PLUSD`}
-            secondary={`+${shares} sPLUSD`}
-          />
-        }
-      />
-    );
-  }
-
-  // Unstake
-  const assets = formatTokenAmount(item.assets ?? item.amount, 18);
-  const shares = formatTokenAmount(item.shares ?? "0", 18);
-  return (
-    <ActivityRow
-      icon="arrow-up-circle"
-      title="Unstake"
-      timestamp={timestamp}
-      amount={
-        <TwoLineAmount
-          primary={`+${assets} PLUSD`}
-          secondary={`−${shares} sPLUSD`}
-        />
-      }
-    />
-  );
-}
 
 function Transactions() {
   const [activeTab, setActiveTab] = useState("buy");
@@ -253,7 +95,9 @@ function Transactions() {
 
           {data &&
             filtered.length > 0 &&
-            filtered.map((item, i) => <RequestRow key={i} item={item} />)}
+            filtered.map((item, i) => (
+              <React.Fragment key={i}>{renderRequestRow(item)}</React.Fragment>
+            ))}
         </div>
       </main>
     </div>
