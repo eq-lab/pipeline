@@ -1,5 +1,5 @@
 import React from "react";
-import stripedActivityEmptyUrl from "../../assets/illustrations/striped-activity-empty.svg";
+import stripedActivityEmptyUrl from "../../assets/illustrations/striped-activity-empty.svg?url";
 
 /**
  * ActivityEmptyIllustration — striped square silhouette for the Recent-activity

@@ -1,6 +1,6 @@
 import React from "react";
-import arrowClockSrc from "../../assets/icons/arrow-clock.svg";
-import navStatsSrc from "../../assets/icons/nav-stats.svg";
+import arrowClockSrc from "../../assets/icons/arrow-clock.svg?url";
+import navStatsSrc from "../../assets/icons/nav-stats.svg?url";
 
 /**
  * HeroIcon — 72×72 muted-fill circle with a 36px ink-tinted icon centered
