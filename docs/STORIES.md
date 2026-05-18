@@ -960,3 +960,58 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 - **Steps:**
   1. Run `grep -c "data:image/png" packages/ui/src/assets/icons/coin-usdc.svg`
 - **Expected:** Output is `0` — the SVG file contains no embedded PNG data URI.
+
+---
+
+## S-250 — Home Connect-Wallet section: wired Connect + Portfolio placeholder when connected
+
+**Issue:** [#250 Home Connect-Wallet section: wire Connect button + show Portfolio placeholder when connected](https://github.com/eq-lab/pipeline/issues/250)
+**Plan:** `docs/exec-plans/active/issue-250-home-connect-wire-portfolio-placeholder.md`
+
+### TC-250-1: Disconnected — Connect promo CTA opens the wallet modal
+
+- **Actor:** User (no wallet connected)
+- **Preconditions:** Dev server running; no `pipeline.mock.wallet.*` keys in localStorage
+- **Steps:**
+  1. Navigate to `http://localhost:5173/`
+  2. Observe the top-left card — should show "Connect Wallet" / "Access real-world yield on-chain"
+  3. Click the "Connect" button
+- **Expected:** The Reown AppKit wallet-selection modal opens (same modal as the header "Connect" CTA). No page navigation occurs.
+
+### TC-250-2: Connected via DevTools mock — Portfolio placeholder renders correctly
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: `localStorage.setItem('pipeline.mock.wallet.isConnected', 'true'); localStorage.setItem('pipeline.mock.wallet.address', '0x1234000000000000000000000000000000000001')`
+  2. Refresh the page (or navigate to `http://localhost:5173/`)
+  3. Observe the top-left card
+- **Expected:**
+  - The "Connect Wallet" promo card is gone — the top-left slot now shows the Portfolio placeholder.
+  - "Total Balance" eyebrow label, "$0.00" heading, and "Get PLUSD to start" muted link are visible.
+  - A `7D | 1M | 3M | 1Y | All` segmented tab control is visible in the top-right of the card.
+  - A muted bar-chart silhouette fills the body of the card.
+  - The grid does not reflow — the card height is approximately the same as the Connect Wallet promo card (~274px min).
+  - Clicking "Get PLUSD to start" navigates to `/deposit`.
+
+### TC-250-3: Switching tabs updates the active pill — no network call
+
+- **Actor:** User (connected via mock as above)
+- **Preconditions:** TC-250-2 completed; DevTools Network panel open
+- **Steps:**
+  1. Click the "1M" tab in the Portfolio placeholder card
+  2. Observe the tab control and DevTools Network panel
+- **Expected:**
+  - The "1M" pill becomes visually active (white pill background); "7D" becomes inactive (no background).
+  - No network request is logged in the DevTools Network panel for this interaction.
+  - The chart silhouette and "$0.00" balance do not change (static placeholder).
+
+### TC-250-4: Disconnecting via mock — reverts to Connect Wallet promo
+
+- **Actor:** QA
+- **Preconditions:** TC-250-2 completed (connected state)
+- **Steps:**
+  1. In DevTools Console: `localStorage.removeItem('pipeline.mock.wallet.isConnected'); localStorage.removeItem('pipeline.mock.wallet.address')`
+  2. Refresh the page
+  3. Observe the top-left card
+- **Expected:** The "Connect Wallet" promo card reappears; the Portfolio placeholder is gone. Grid layout is unchanged.

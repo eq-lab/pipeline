@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 
+import { useWallet } from "@/wallet/useWallet";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
 import { ConnectWalletPromoCard } from "@/components/ConnectWalletPromoCard";
+import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard";
 import { StartHereCard } from "@/components/StartHereCard";
 import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
@@ -10,7 +12,7 @@ import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
 
 /**
- * Disconnected home page — full composition (Figma `1497:94556`).
+ * Home page — full composition (Figma `1497:94556`).
  *
  * Visual structure (top → bottom):
  *   1. Sticky `TopBar` along the top edge of the viewport.
@@ -19,8 +21,12 @@ import { QnaSection } from "@/components/QnaSection";
  *      `Card` with a 48px gap.
  *   3. Inside the outer card, a 7-column CSS grid lays out the dashboard:
  *        ┌────────────────────────────────┬──────────────────────┐
- *        │ Portfolio (Connect Wallet)     │ Recent activity      │
+ *        │ Portfolio (top-left slot)      │ Recent activity      │
  *        │  col 1-4, row 1                │  col 5-7, row 1-2    │
+ *        │  • Disconnected: ConnectWallet │                      │
+ *        │    PromoCard + onConnect hook  │                      │
+ *        │  • Connected: Portfolio        │                      │
+ *        │    PlaceholderCard ($0.00)     │                      │
  *        ├──────────────┬─────────────────┤                      │
  *        │ Balances     │ StakeCard       │                      │
  *        │  col 1-2     │  col 3-4        │                      │
@@ -30,6 +36,14 @@ import { QnaSection } from "@/components/QnaSection";
  *        └───────────────────────────────────────────────────────┘
  *      The "Balances" column itself is a vertical stack of
  *      `StartHereCard` + `EarnedCard` (Figma node `1497:94675`).
+ *
+ *  Top-left card branching:
+ *    When `isConnected === false`, renders `ConnectWalletPromoCard` with an
+ *    `onConnect` prop wired to `useWallet().connect()` so the home CTA opens
+ *    the same AppKit modal as the header (see #224, #250).
+ *    When `isConnected === true`, renders `PortfolioPlaceholderCard` — a static
+ *    connected-state placeholder ($0.00, segmented tabs, chart silhouette)
+ *    that keeps the grid from reflowing while real data wiring is deferred.
  *
  * Token discipline: this composer adds no raw colors, fonts, sizes or radii.
  * Every value comes from `@pipeline/ui/styles/theme.css` via component
@@ -42,6 +56,8 @@ import { QnaSection } from "@/components/QnaSection";
  */
 
 function Home() {
+  const { isConnected, connect } = useWallet();
+
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
       {/* Centred main column. `py-12` (48px) gives the welcome heading air
@@ -57,8 +73,18 @@ function Home() {
           {/* Seven-column grid mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`.
               16px gap matches the design's `gap-x-16 / gap-y-16`. */}
           <div className="grid w-full grid-cols-7 gap-4">
-            {/* Row 1, columns 1–4: Connect Wallet promo. */}
-            <ConnectWalletPromoCard className="col-span-4 row-start-1" />
+            {/* Row 1, columns 1–4: Connect Wallet promo (disconnected) or
+                Portfolio placeholder (connected). Both cards use
+                `Card variant="yellow"` + `min-h-[274px]` so the grid does
+                not reflow when the wallet state changes. */}
+            {isConnected ? (
+              <PortfolioPlaceholderCard className="col-span-4 row-start-1" />
+            ) : (
+              <ConnectWalletPromoCard
+                className="col-span-4 row-start-1"
+                onConnect={connect}
+              />
+            )}
 
             {/* Rows 1–2, columns 5–7: Recent activity (full-height right
                 column). `row-span-2` lets the card stretch across both rows so

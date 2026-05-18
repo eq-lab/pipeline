@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-18 — Issue #250 (Home Connect-Wallet section: wire Connect button + Portfolio placeholder when connected)
+
+- **Scope:** Issue #250 acceptance criteria (TC-250-1 through TC-250-4)
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-250-1 (disconnected — Connect button opens AppKit modal): Clicking the promo card "Connect" button opens the Reown AppKit "Connect Wallet" modal (WalletConnect + Search Wallet options). No page navigation. Header "Connect Wallet" button is absent (modal covers the page). Note: testing was done against `http://localhost:3000/` — a second dev server on port 5173 was running stale code from a previous branch; all testing against port 3000. Fiber inspection confirmed `onConnect` is wired as a function on port 3000.
+  - PASS TC-250-2 (connected state — Portfolio placeholder): With mock wallet set, the PortfolioPlaceholderCard renders in the top-left slot. "Total Balance" eyebrow, "$0.00" heading, "Get PLUSD to start" link (→ /deposit confirmed), 5 tabs (7D|1M|3M|1Y|All) with "7D" selected, muted bar-chart silhouette all present. `min-h-[274px]` class confirmed on card (actual height 314px). ConnectWalletPromoCard absent. WalletPill in header shows "0.00".
+  - PASS TC-250-3 (tab switching — no network call): Clicking "1M" tab sets `aria-selected="true"` on 1M and `aria-selected="false"` on 7D. No new data fetch requests in DevTools Network (only pre-existing Coinbase metrics beacon). Chart and balance unchanged.
+  - PASS TC-250-4 (disconnect reverts to promo card): Removing mock localStorage keys and reloading restores ConnectWalletPromoCard. Portfolio placeholder gone. Grid layout unchanged.
+  - Unit tests: all 294 tests pass (21 test files), including new `-index.test.tsx` (home route integration) and `PortfolioPlaceholderCard.test.tsx`.
+  - Console errors: only pre-existing Reown font preload warning and WalletConnect 400/403 errors. None related to #250.
+  - Minor observation: "Get PLUSD to start" link wraps to two lines at 1200px viewport width — cosmetic, not filed as a bug (the text is correct and functional; Figma layout at narrower widths may differ).
+
 ### 2026-05-18 — Issue #247 (Show recent requests on home RecentActivityCard when wallet is connected)
 
 - **Scope:** Issue #247 acceptance criteria (TC-247-1 through TC-247-4)
