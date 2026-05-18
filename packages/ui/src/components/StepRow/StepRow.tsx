@@ -40,9 +40,9 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * Step state:
    *   - `"idle"` (default) — renders the normal action button.
-   *   - `"success"` — replaces the action button with a green check badge
-   *     to indicate this step is complete. The numbered square is hidden and
-   *     replaced with the badge.
+   *   - `"success"` — keeps the numeric step badge on the left and replaces
+   *     the action button on the right with a wide green pill containing a
+   *     centred check icon (Figma node 1497-95272).
    */
   state?: "idle" | "success";
 }
@@ -110,44 +110,10 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
 
     return (
       <div ref={ref} className={composed} {...rest}>
-        {/* Numbered square — hidden in success state to make room for badge */}
-        {!isSuccess && (
-          <div className={stepCircleClasses} aria-hidden="true">
-            <span className={stepNumberClasses}>{step}</span>
-          </div>
-        )}
-
-        {/* Success badge — green check replaces the numbered square */}
-        {isSuccess && (
-          <div
-            className={[
-              "flex items-center justify-center",
-              "size-10 shrink-0",
-              "rounded-[var(--radius-pipeline-card)]",
-              "bg-[color-mix(in_oklab,var(--color-pipeline-brand)_15%,transparent)]",
-            ].join(" ")}
-            aria-hidden="true"
-            data-state="success"
-          >
-            {/* Inline SVG check mark — no new exported primitive */}
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M4 10.5L8 14.5L16 6.5"
-                stroke="var(--color-pipeline-brand)"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-        )}
+        {/* Numbered square — always visible, including in success state */}
+        <div className={stepCircleClasses} aria-hidden="true">
+          <span className={stepNumberClasses}>{step}</span>
+        </div>
 
         {/* Label */}
         <span className={labelClasses}>{label}</span>
@@ -155,20 +121,34 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
         {/* Action button / loading spinner wrapper — matches Figma `ButtonCont` */}
         <div className="shrink-0 p-1">
           {isSuccess ? (
-            /* Success state: no action button — the badge above is the affordance */
-            <span
+            /* Success state: wide green pill with check icon — matches Figma node 1497-95272 */
+            <div
               className={[
                 "inline-flex items-center justify-center",
                 "h-8 w-22",
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "font-[var(--font-weight-emphasized)]",
-                "text-[color:var(--color-pipeline-brand)]",
+                "rounded-[var(--radius-pipeline-pill)]",
+                "bg-[color:var(--color-pipeline-positive-secondary)]",
               ].join(" ")}
               aria-label={`${actionLabel} complete`}
+              data-state="success"
             >
-              Done
-            </span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <path
+                  d="M3 8.5L6.5 12L13 5"
+                  stroke="var(--color-pipeline-positive)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
           ) : (
             <Button
               variant="primary-dark"

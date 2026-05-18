@@ -40,8 +40,8 @@ export interface StepItem {
   /**
    * Step state:
    *   - `"idle"` (default) — renders the action button normally.
-   *   - `"success"` — replaces the action button with a green check badge,
-   *     indicating this step has been completed.
+   *   - `"success"` — keeps the numeric step badge and shows a wide green pill
+   *     with a check icon in the right slot, indicating this step is complete.
    */
   state?: "idle" | "success";
 }

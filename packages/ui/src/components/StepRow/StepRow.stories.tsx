@@ -96,6 +96,20 @@ export const Step2Enabled: Story = {
 };
 
 /* -------------------------------------------------------------------------- */
+/*  Success state — step done (green pill check affordance)                   */
+/* -------------------------------------------------------------------------- */
+
+export const Step1Success: Story = {
+  name: "Step 1 — success (Figma node 1497-95272)",
+  args: {
+    step: 1,
+    label: "Allow contract to use USDC",
+    actionLabel: "Approve",
+    state: "success",
+  },
+};
+
+/* -------------------------------------------------------------------------- */
 /*  Pair — mirrors the StepsCard layout from the Figma deposit screen         */
 /* -------------------------------------------------------------------------- */
 
