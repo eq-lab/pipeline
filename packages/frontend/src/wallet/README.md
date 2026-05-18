@@ -231,6 +231,8 @@ change, the badge is recomputed automatically in the same cycle as the value.
 
 ## localStorage mock key schema
 
+> For API mock keys (`pipeline.mock.api.*`) see [`src/api/README.md`](../api/README.md).
+
 ### Quick start — work without a real wallet
 
 Run the dev server, open the browser DevTools console, and paste:

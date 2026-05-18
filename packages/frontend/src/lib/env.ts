@@ -39,6 +39,9 @@ function readNumber(key: string, defaultValue?: number): number {
 }
 
 export const ENV = Object.freeze({
+  /** Base URL for the Pipeline REST API. Defaults to the API crate's default port. */
+  API_BASE_URL: readString("VITE_API_BASE_URL", "http://localhost:8080"),
+
   /** EVM chain id — defaults to Hoodi testnet (560048). */
   EVM_CHAIN_ID: readNumber("VITE_EVM_CHAIN_ID", 560048),
 

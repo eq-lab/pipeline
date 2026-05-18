@@ -36,10 +36,11 @@ export default tseslint.config(
   },
   {
     // Enforce that wagmi / viem / AppKit / TanStack Query are only imported
-    // from within the wallet module (src/wallet/**) or the env accessor
-    // (src/lib/env.ts). All other source files must go through @/wallet.
+    // from within the wallet module (src/wallet/**), the api module
+    // (src/api/**), or the env accessor (src/lib/env.ts).
+    // All other source files must go through @/wallet or @/api.
     files: ["**/*.{ts,tsx}"],
-    ignores: ["src/wallet/**", "src/lib/env.ts"],
+    ignores: ["src/wallet/**", "src/api/**", "src/lib/env.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -56,6 +57,21 @@ export default tseslint.config(
             "@tanstack/react-query",
             "@tanstack/react-query/*",
           ],
+        },
+      ],
+    },
+  },
+  {
+    // Forbid bare `fetch(...)` calls outside `src/api/`.
+    // All HTTP calls must go through `apiFetch` in `src/api/client.ts`.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/api/**", "src/test-setup.ts"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message: "Call fetch only via @/api (src/api/client.ts).",
         },
       ],
     },

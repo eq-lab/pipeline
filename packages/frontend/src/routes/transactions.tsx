@@ -6,18 +6,20 @@ import {
   AmountPill,
   SegmentedTabs,
 } from "@pipeline/ui";
+import { useRequests } from "@/api";
+import type { RequestItem, RequestType } from "@/api";
+import { formatTokenAmount, formatActivityTime } from "@/lib/format";
 
 /**
- * Transactions / Activity page — full composition (Figma `1497-94912`).
+ * Transactions / Activity page — wired to `GET /v1/requests` (Figma `1497-94912`).
  *
  * Visual structure (top → bottom):
- *   1. `TopBar` with `activeNav="history"` and a connected wallet pill.
- *   2. Centred content column, `max-w-[480px]`, `p-8` (32 px) page padding.
- *   3. `ActivityHeader` — icon + "Activity" heading.
- *   4. `SegmentedTabs` — All / Buy / Sell / Stake / Unstake filter bar.
- *      Tab state lives in `useState`; selecting a tab updates active state
- *      but does NOT filter the list (styling-only per the Issue scope).
- *   5. Five hard-coded `ActivityRow` entries matching Figma frame `1497-94912`.
+ *   1. Centred content column, `max-w-[480px]`, `p-8` (32 px) page padding.
+ *   2. `ActivityHeader` — icon + "Activity" heading.
+ *   3. `SegmentedTabs` — Buy / Sell / Stake / Unstake filter bar.
+ *      The "All" tab has been removed; "Buy" is the default.
+ *      Selecting a tab filters the in-memory array client-side — no re-fetch.
+ *   4. Activity rows from `useRequests()`, filtered by the active tab.
  *
  * Token discipline: this file adds no raw colors, font names, or hardcoded
  * pixel sizes. All values flow through `@pipeline/ui` component props or
@@ -26,18 +28,25 @@ import {
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev
  */
 
-/** Ordered tab definitions for the filter bar. */
+/** Ordered tab definitions for the filter bar — "All" tab is intentionally absent. */
 const TABS = [
-  { id: "all", label: "All" },
   { id: "buy", label: "Buy" },
   { id: "sell", label: "Sell" },
   { id: "stake", label: "Stake" },
   { id: "unstake", label: "Unstake" },
 ];
 
+/** Maps each request type to its tab id. */
+const TYPE_TO_TAB: Record<RequestType, string> = {
+  Deposit: "buy",
+  Withdraw: "sell",
+  Stake: "stake",
+  Unstake: "unstake",
+};
+
 /**
  * TwoLineAmount — right-aligned two-line amount block for stake / unstake /
- * convert / pending rows. Uses only design tokens via Tailwind utilities.
+ * pending rows. Uses only design tokens via Tailwind utilities.
  *
  * `primary`   — top line, body size.
  * `secondary` — bottom line, caption size, always muted ink.
@@ -89,8 +98,116 @@ function TwoLineAmount({
   );
 }
 
+/** Renders a single `RequestItem` as an `<ActivityRow>`. */
+function RequestRow({ item }: { item: RequestItem }) {
+  const timestamp = formatActivityTime(item.created_at);
+
+  if (item.type === "Deposit") {
+    const amount = formatTokenAmount(item.amount, 6);
+    if (item.status === "Completed") {
+      return (
+        <ActivityRow
+          icon="check-circle"
+          tone="success"
+          title="Buy"
+          timestamp={timestamp}
+          amount={<AmountPill>+{amount} USDC</AmountPill>}
+        />
+      );
+    }
+    const secondary =
+      item.status === "VerificationFailed" ? "Verification failed" : "Pending";
+    return (
+      <ActivityRow
+        icon="clock-pending"
+        tone="warning"
+        title="Buy"
+        timestamp={timestamp}
+        amount={
+          <TwoLineAmount
+            primary={`+${amount} USDC`}
+            secondary={secondary}
+            tone="muted"
+          />
+        }
+      />
+    );
+  }
+
+  if (item.type === "Withdraw") {
+    const amount = formatTokenAmount(item.amount, 6);
+    if (item.status === "Completed") {
+      return (
+        <ActivityRow
+          icon="check-circle"
+          tone="success"
+          title="Sell"
+          timestamp={timestamp}
+          amount={<AmountPill>−{amount} USDC</AmountPill>}
+        />
+      );
+    }
+    const secondary =
+      item.status === "VerificationFailed" ? "Verification failed" : "Pending";
+    return (
+      <ActivityRow
+        icon="clock-pending"
+        tone="warning"
+        title="Sell"
+        timestamp={timestamp}
+        amount={
+          <TwoLineAmount
+            primary={`−${amount} USDC`}
+            secondary={secondary}
+            tone="muted"
+          />
+        }
+      />
+    );
+  }
+
+  if (item.type === "Stake") {
+    const assets = formatTokenAmount(item.assets ?? item.amount, 18);
+    const shares = formatTokenAmount(item.shares ?? "0", 18);
+    return (
+      <ActivityRow
+        icon="arrow-down-circle"
+        title="Stake"
+        timestamp={timestamp}
+        amount={
+          <TwoLineAmount
+            primary={`−${assets} PLUSD`}
+            secondary={`+${shares} sPLUSD`}
+          />
+        }
+      />
+    );
+  }
+
+  // Unstake
+  const assets = formatTokenAmount(item.assets ?? item.amount, 18);
+  const shares = formatTokenAmount(item.shares ?? "0", 18);
+  return (
+    <ActivityRow
+      icon="arrow-up-circle"
+      title="Unstake"
+      timestamp={timestamp}
+      amount={
+        <TwoLineAmount
+          primary={`+${assets} PLUSD`}
+          secondary={`−${shares} sPLUSD`}
+        />
+      }
+    />
+  );
+}
+
 function Transactions() {
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState("buy");
+  const { data, isLoading, error, refetch } = useRequests();
+
+  const items = data?.requests ?? [];
+  const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
@@ -99,77 +216,44 @@ function Transactions() {
         {/* Activity header: clock icon + "Activity" heading */}
         <ActivityHeader />
 
-        {/* Segmented filter bar — state-driven, no list filtering */}
+        {/* Segmented filter bar */}
         <SegmentedTabs
           tabs={TABS}
           activeId={activeTab}
           onSelect={setActiveTab}
         />
 
-        {/* Five hard-coded activity rows matching Figma frame 1497-94912 */}
+        {/* Activity rows */}
         <div className="flex flex-col">
-          {/* Row 1 — Sell (PLUSD → USDC), completed, AmountPill success variant */}
-          <ActivityRow
-            icon="check-circle"
-            tone="success"
-            title="Sell"
-            timestamp="Apr 17, 2:17 PM"
-            amount={<AmountPill>+500.00 USDC</AmountPill>}
-          />
+          {isLoading && !data && (
+            <div className="text-[color:var(--color-pipeline-ink-muted)]">
+              Loading…
+            </div>
+          )}
 
-          {/* Row 2 — Sell (PLUSD → USDC), pending, two-line amount (both lines muted) */}
-          <ActivityRow
-            icon="clock-pending"
-            tone="warning"
-            title="Sell"
-            timestamp="Apr 17, 2:17 PM"
-            amount={
-              <TwoLineAmount
-                primary="+1,000.00 USDC"
-                secondary="Pending"
-                tone="muted"
-              />
-            }
-          />
+          {error && !data && (
+            <div className="flex flex-col gap-2">
+              <span className="text-[color:var(--color-pipeline-ink-muted)]">
+                Couldn&apos;t load activity
+              </span>
+              <button
+                onClick={refetch}
+                className="self-start text-[color:var(--color-pipeline-ink-muted)] underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
 
-          {/* Row 3 — Unstake, two-line (+1,000.00 PLUSD / −1,000.00 sPLUSD) */}
-          <ActivityRow
-            icon="arrow-up-circle"
-            title="Unstake"
-            timestamp="Apr 17, 2:20 PM"
-            amount={
-              <TwoLineAmount
-                primary="+1,000.00 PLUSD"
-                secondary="−1,000.00 sPLUSD"
-              />
-            }
-          />
+          {data && filtered.length === 0 && (
+            <div className="text-[color:var(--color-pipeline-ink-muted)]">
+              No activity yet
+            </div>
+          )}
 
-          {/* Row 4 — Stake, two-line (−1,000.00 PLUSD / +1,000.00 sPLUSD) */}
-          <ActivityRow
-            icon="arrow-down-circle"
-            title="Stake"
-            timestamp="Apr 17, 2:15 PM"
-            amount={
-              <TwoLineAmount
-                primary="−1,000.00 PLUSD"
-                secondary="+1,000.00 sPLUSD"
-              />
-            }
-          />
-
-          {/* Row 5 — Buy (USDC → PLUSD), two-line (+1,000.00 PLUSD / −1,000.00 USDC) */}
-          <ActivityRow
-            icon="exchange"
-            title="Buy"
-            timestamp="Apr 17, 2:12 PM"
-            amount={
-              <TwoLineAmount
-                primary="+1,000.00 PLUSD"
-                secondary="−1,000.00 USDC"
-              />
-            }
-          />
+          {data &&
+            filtered.length > 0 &&
+            filtered.map((item, i) => <RequestRow key={i} item={item} />)}
         </div>
       </main>
     </div>
