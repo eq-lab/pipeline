@@ -898,3 +898,65 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 - **Expected:**
   - The `ActivityEmptyIllustration` and "You will see all transactions here" caption render (existing behavior, unchanged).
   - No "View All →" link is visible.
+
+---
+
+## S-246 — USDC CoinIcon replaces stale base64 PNG with authoritative SVG
+
+**Issue:** [#246 USDC CoinIcon is a stale base64 PNG — replace with authoritative Figma asset](https://github.com/eq-lab/pipeline/issues/246)
+**Plan:** `docs/exec-plans/completed/issue-246-usdc-coinicon-svg.md`
+
+### TC-246-1: USDC icon in ConversionCard input row renders as SVG (not PNG)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5173`
+- **Steps:**
+  1. Navigate to `http://localhost:5173/deposit`
+  2. In DevTools Console: `document.querySelectorAll('img')[1].src.slice(0, 20)`
+- **Expected:** Returns `"data:image/svg+xml,"` (SVG data URI) — not `"data:image/png;base64"`. The USDC icon in the ConversionCard row is rendered from the new vector SVG.
+
+### TC-246-2: USDC icon in WalletPill header renders as SVG
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected (see TC-181-2 setup)
+- **Steps:**
+  1. Navigate to any page (e.g., `http://localhost:5173/deposit`)
+  2. In DevTools Console: `Array.from(document.querySelectorAll('img')).find(img => img.getAttribute('width') === '20')?.src?.slice(0, 20)`
+- **Expected:** Returns `"data:image/svg+xml,"` — the WalletPill 20px USDC icon is an SVG, not a PNG.
+
+### TC-246-3: USDC icon renders crisply at all three sizes — visual check on /deposit
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected
+- **Steps:**
+  1. Navigate to `http://localhost:5173/deposit`
+  2. Visually inspect: (a) WalletPill header icon (20px), (b) ConversionCard USDC row icon (40px), (c) DepositHeader hero icon (note: this is PLUSD, not USDC — expected to remain PNG until #159 or a PLUSD follow-up)
+- **Expected:** USDC icons at 20px and 40px display as a crisp blue circle with dollar mark — no aliasing, no pixelation, no blurry rasterisation artefacts.
+
+### TC-246-4: USDC icon renders correctly on /withdraw output row
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected
+- **Steps:**
+  1. Navigate to `http://localhost:5173/withdraw`
+  2. Inspect the Card B USDC output row icon
+  3. In DevTools Console: `Array.from(document.querySelectorAll('img')).find(img => img.closest('div')?.textContent?.includes('USDC') && img.getAttribute('width') === '40')?.src?.slice(0, 20)`
+- **Expected:** Returns `"data:image/svg+xml,"`. USDC output icon on withdraw is also crisp vector SVG.
+
+### TC-246-5: PLUSD and sPLUSD icons are visually unchanged
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected
+- **Steps:**
+  1. Navigate to `http://localhost:5173/deposit`
+  2. Inspect the PLUSD row icon (Card B) — should still be a base64 PNG (out-of-scope tokens)
+  3. Navigate to `http://localhost:5173/`; inspect any PLUSD icon
+- **Expected:** PLUSD and sPLUSD icons still render (may appear slightly blurry vs. USDC, which is expected and pre-existing). No regression — they were PNG before and remain PNG after this change.
+
+### TC-246-6: coin-usdc.svg is pure vector — no embedded raster
+
+- **Actor:** Developer
+- **Preconditions:** Repo checkout on fix/246 branch or later
+- **Steps:**
+  1. Run `grep -c "data:image/png" packages/ui/src/assets/icons/coin-usdc.svg`
+- **Expected:** Output is `0` — the SVG file contains no embedded PNG data URI.

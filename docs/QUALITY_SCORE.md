@@ -21,6 +21,26 @@ MVP quality bars. All targets must be met before mainnet launch.
   - Pre-existing HeroIcon black square (#245) still visible on `/transactions` — not a regression from #247.
   - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode warning, font preload warnings — none related to #247.
 
+### 2026-05-18 — Issue #246 (USDC CoinIcon is a stale base64 PNG — replace with authoritative Figma asset)
+
+- **Scope:** Issue #246 acceptance criteria (TC-246-1 through TC-246-6)
+- **Cases executed:** 6
+- **Passes:** 6
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-246-1 (USDC ConversionCard row is SVG): `img` at index 1 on /deposit has `src` starting with `data:image/svg+xml,` — pure vector, not `data:image/png;base64`. Confirmed on /deposit.
+  - PASS TC-246-2 (WalletPill 20px icon is SVG): With mock wallet connected, the 20px `<img>` in the WalletPill header has `src` `data:image/svg+xml,…` — vector SVG rendering confirmed.
+  - PASS TC-246-3 (visual crispness at all sizes): Screenshots on /deposit and /withdraw confirm the USDC icon at 40px renders as a clean deep-blue circle with a crisp dollar mark — no aliasing or rasterisation artefacts. The WalletPill 20px icon in the header is equally sharp. DepositHeader hero uses PLUSD (not USDC) as expected per source code — that PNG remains out of scope.
+  - PASS TC-246-4 (USDC on /withdraw Card B is SVG): The USDC output row icon on /withdraw is `SVG-data-uri`, `width=40`. Visually matches /deposit.
+  - PASS TC-246-5 (PLUSD/sPLUSD icons unchanged): PLUSD icons on both /deposit and /withdraw still render as `PNG-b64` at `width=40` — no regression on the out-of-scope tokens. No visual degradation observed.
+  - PASS TC-246-6 (coin-usdc.svg is pure vector): `grep -c "data:image/png" packages/ui/src/assets/icons/coin-usdc.svg` → `0`. SVG file (1490 bytes) is pure vector geometry — no embedded raster.
+  - Unit tests: all 240 tests pass, including the new CoinIcon regression tests in `packages/frontend/src/components/CoinIcon.test.tsx`.
+  - Console errors: only pre-existing WalletConnect/Reown 403/400, Lit dev-mode, font preload warnings — none related to #246.
+  - Incidental finding (not filed as bug, logged in known-bugs.md): `packages/ui/src/assets/icons/swap-vertical.svg` is an SVG wrapper around a base64 PNG — same pattern as the old stale `coin-usdc.svg`. Not introduced by #246 (pre-existing). Filed in known-bugs.md for follow-up.
+  - No new GitHub Issues filed for #246.
+
 ### 2026-05-18 — Issue #238 (ActivityHeader hero icon renders as black square on /transactions)
 
 - **Scope:** Issue #238 acceptance criteria (TC-238-1 through TC-238-4)
