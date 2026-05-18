@@ -36,7 +36,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Update `packages/frontend/src/routes/transactions.tsx`:**
+1. **[DONE] Update `packages/frontend/src/routes/transactions.tsx`:**
    - Replace the two boolean computations:
      ```ts
      const shouldRenderWalletEmpty =
@@ -66,7 +66,7 @@ _None_
    - Update the file's leading JSDoc block (currently the "Empty-state behaviour (two distinct cases)" paragraph at lines 26–33). Rewrite to a single paragraph: "Empty-state behaviour: the full `EmptyState` illustration + caption renders whenever the visible row count is zero — whether the wallet is disconnected, the API returned zero rows, or the active tab filter yields zero rows. The intent is a single consistent visual rather than a different treatment per cause (a deliberate reversal of part of #257)."
    - Leave the loading branch, the error/Retry branch, and the `filtered.length > 0` mapping branch untouched.
 
-2. **Update `packages/frontend/src/routes/-transactions.test.tsx`:**
+2. **[DONE] Update `packages/frontend/src/routes/-transactions.test.tsx`:**
    - Update the top-of-file scenario list comment (lines 11–23) so item 6 reads: `Tab-level empty (API has rows but active tab yields zero) → illustration + caption render, "No {tab} activity yet" absent.` (i.e. flip from "muted text line" to "illustration").
    - In the `describe("Transactions page — tab-level empty state", ...)` block (currently lines 234–281):
      - Keep the same fixture (one Deposit row) and the same tab-click flow.
