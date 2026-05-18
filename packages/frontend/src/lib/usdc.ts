@@ -44,8 +44,8 @@ export function parseUsdc(raw: string, decimals: number | undefined): bigint {
  *
  * Returns `"—"` when `decimals` is `undefined`.
  *
- * No currency or token-symbol prefix/suffix is added — that matches
- * `useToken().formattedBalance`.
+ * No currency or token-symbol prefix/suffix is added — contrast with
+ * `useToken().formattedBalance` which includes a leading `$`.
  */
 export function formatUsdc(
   value: bigint,
