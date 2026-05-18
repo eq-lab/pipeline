@@ -42,7 +42,7 @@ Two changes to the top-left card on the home page (`packages/frontend/src/routes
 
 ## Implementation Steps
 
-1. **Wire the Connect button (no new component yet) — `packages/frontend/src/routes/index.tsx`.**
+1. [x] **Wire the Connect button (no new component yet) — `packages/frontend/src/routes/index.tsx`.**
    - Add `import { useWallet } from "@/wallet/useWallet";` at the top of the file (next to the existing component imports).
    - Inside `function Home()`, call the hook before the JSX:
      ```ts
@@ -50,7 +50,7 @@ Two changes to the top-left card on the home page (`packages/frontend/src/routes
      ```
    - Pass `onConnect={connect}` onto the existing `<ConnectWalletPromoCard className="col-span-4 row-start-1" />` so the click already works before the placeholder lands. This is the entire "Part 1" deliverable.
 
-2. **Create `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`.**
+2. [x] **Create `packages/frontend/src/components/PortfolioPlaceholderCard.tsx`.**
    - Imports:
      ```ts
      import React from "react";
@@ -94,7 +94,7 @@ Two changes to the top-left card on the home page (`packages/frontend/src/routes
      - Links Figma node `1497:95048`.
      - Notes the chart is `aria-hidden="true"`.
 
-3. **Branch promo ⇄ placeholder in `routes/index.tsx`.**
+3. [x] **Branch promo ⇄ placeholder in `routes/index.tsx`.**
    - Add `import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard";` next to the existing component imports.
    - Replace the single line `<ConnectWalletPromoCard className="col-span-4 row-start-1" />` with the conditional:
      ```tsx
@@ -110,7 +110,7 @@ Two changes to the top-left card on the home page (`packages/frontend/src/routes
    - Leave every other grid slot (`RecentActivityCard`, the `Balances` column with `StartHereCard` + `EarnedCard`, `StakeCard`, `QnaSection`) untouched.
    - Update the route-file docblock's ASCII layout comment to reflect that the top-left card swaps between Connect Wallet promo and Portfolio placeholder based on `isConnected`.
 
-4. **Lint + build.**
+4. [x] **Lint + build.**
    - From the repo root: `yarn lint && yarn build`.
    - Fix any TS strict-null findings (e.g. ensure the `connect` reference is stable — it is, the hook returns a fresh function each render but the prop is wired through the existing `Button onClick`, so this is fine).
 
