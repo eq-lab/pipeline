@@ -1,13 +1,19 @@
 /**
  * Smoke tests for the /test diagnostic page.
  *
- * Verifies that the page renders without throwing, that all expected section
- * headings are present, and that setting a mock key in localStorage causes a
- * MOCKED badge to appear next to the relevant row.
+ * Verifies that:
+ *   - The page renders on the Status tab by default.
+ *   - `?tab=mocks` shows the Mocks tab with Clear + Enable buttons.
+ *   - Invalid tab values fall back to Status.
+ *   - Clear mocks button removes only pipeline.mock.* keys and calls reload.
+ *   - Enable button writes the scenario's keys and calls reload.
+ *   - Status tab has no buttons (read-only, regression for #252).
+ *   - MOCKED badge plumbing still works on the Status tab.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { render, screen, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { WalletProvider } from "@/wallet/WalletProvider";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
@@ -70,14 +76,21 @@ vi.mock("@/wallet/config", () => ({
   wagmiAdapter: {},
 }));
 
-// ── Mock TanStack Router (TopBar uses useNavigate / useRouterState) ───────────
+// ── Mock TanStack Router ──────────────────────────────────────────────────────
+//
+// We mock `Route.useSearch` and `Route.useNavigate` by controlling the module-
+// level mock return values. Since `createFileRoute` is used from the real
+// module, but the route's hook calls are intercepted by overriding the mocked
+// search/navigate functions below.
+
+const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...original,
-    useNavigate: vi.fn(() => vi.fn()),
+    useNavigate: vi.fn(() => mockNavigate),
     useRouterState: vi.fn(() => "/test"),
     createFileRoute: original.createFileRoute,
   };
@@ -97,14 +110,47 @@ vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
 
+// ── Mock scenarios module ─────────────────────────────────────────────────────
+//
+// We mock clearMocksAndReload and enableScenario so we can assert they're
+// called without triggering window.location.reload in tests.
+// reloadPage is kept real so tests can spy on it independently.
+
+const mockClearMocksAndReload = vi.fn();
+const mockEnableScenario = vi.fn();
+
+vi.mock("./test/-scenarios", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./test/-scenarios")>();
+  return {
+    ...original,
+    clearMocksAndReload: () => mockClearMocksAndReload(),
+    enableScenario: (scenario: unknown) => mockEnableScenario(scenario),
+  };
+});
+
+// ── Import Route AFTER mocks are in place ─────────────────────────────────────
+
+import { Route } from "./test";
+import { SCENARIOS } from "./test/-scenarios";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Import the page component directly — avoids needing a full RouterProvider.
-// The createFileRoute wrapper exports the component via `.component`.
-// We import just the function component to render it in isolation.
-import { Route } from "./test";
+/**
+ * Renders the TestPage component in isolation.
+ *
+ * `tab` controls what `Route.useSearch()` returns. We patch the Route's
+ * `useSearch` method directly on the Route object so each test can choose its
+ * starting tab.
+ */
+function renderTestPage(tab: "status" | "mocks" | string = "status") {
+  // Patch Route.useSearch to return the requested tab value.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (Route as any).useSearch = () => ({
+    tab: tab === "mocks" ? "mocks" : "status",
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (Route as any).useNavigate = () => mockNavigate;
 
-function renderTestPage() {
   const TestPage = Route.options.component as React.ComponentType;
   return render(
     <WalletProvider>
@@ -115,22 +161,23 @@ function renderTestPage() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("TestPage — smoke render", () => {
+describe("TestPage — default Status tab", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
   });
 
   it("renders without throwing", () => {
-    expect(() => renderTestPage()).not.toThrow();
+    expect(() => renderTestPage("status")).not.toThrow();
   });
 
-  it("renders the Environment section heading", () => {
-    renderTestPage();
+  it("renders the Environment section heading on the Status tab", () => {
+    renderTestPage("status");
     expect(screen.getByText("Environment")).toBeInTheDocument();
   });
 
-  it("renders all expected section headings", () => {
-    renderTestPage();
+  it("renders all expected section headings on the Status tab", () => {
+    renderTestPage("status");
     expect(screen.getByText("Environment")).toBeInTheDocument();
     expect(screen.getByText("Wallet (useWallet)")).toBeInTheDocument();
     expect(
@@ -144,20 +191,29 @@ describe("TestPage — smoke render", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders no buttons (page is read-only)", () => {
-    const { container } = renderTestPage();
+  it("Status tab has no content buttons (read-only — regression for #252)", () => {
+    const { container } = renderTestPage("status");
+    // The SegmentedTabs renders two tab buttons; only those should be present.
+    // No action buttons (Clear mocks / Enable) should appear on the Status tab.
     const buttons = container.querySelectorAll("button");
-    expect(buttons.length).toBe(0);
+    // The SegmentedTabs always renders exactly 2 buttons (Status + Mocks).
+    expect(buttons.length).toBe(2);
   });
 
   it("does not render the Write hooks section", () => {
-    renderTestPage();
+    renderTestPage("status");
     expect(screen.queryByText("Write hooks")).not.toBeInTheDocument();
   });
 
+  it("does not show the Clear mocks button on the Status tab", () => {
+    renderTestPage("status");
+    expect(
+      screen.queryByRole("button", { name: /clear mocks/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the zero-address note for DEPOSIT_MANAGER_ADDRESS", () => {
-    renderTestPage();
-    // The note is an inline span sibling; query it by its text content directly.
+    renderTestPage("status");
     expect(
       screen.getByText(
         (content) =>
@@ -168,43 +224,130 @@ describe("TestPage — smoke render", () => {
   });
 
   it("shows the replace-me note for WALLETCONNECT_PROJECT_ID", () => {
-    renderTestPage();
-    // The note is rendered as a sibling span; match it by its exact text.
+    renderTestPage("status");
     expect(
       screen.getByText((content) => content.includes("replace-me placeholder")),
     ).toBeInTheDocument();
   });
 });
 
-describe("TestPage — MOCKED badge plumbing", () => {
+describe("TestPage — tab param routing", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("?tab=mocks shows the Mocks tab with a Clear button", () => {
+    renderTestPage("mocks");
+    expect(
+      screen.getByRole("button", { name: /clear mocks/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=mocks shows an Enable button for each scenario", () => {
+    renderTestPage("mocks");
+    const enableButtons = screen.getAllByRole("button", { name: /enable/i });
+    expect(enableButtons.length).toBe(SCENARIOS.length);
+  });
+
+  it("?tab=foo (invalid) falls back to Status tab", () => {
+    renderTestPage("foo");
+    // Status sections visible
+    expect(screen.getByText("Environment")).toBeInTheDocument();
+    // Mocks tab content not visible
+    expect(
+      screen.queryByRole("button", { name: /clear mocks/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Status tab is shown by default (no tab param)", () => {
+    renderTestPage("status");
+    expect(screen.getByText("Environment")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /clear mocks/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("TestPage — Clear mocks button", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("clicking Clear mocks calls clearMocksAndReload", async () => {
+    const user = userEvent.setup();
+    renderTestPage("mocks");
+
+    const clearBtn = screen.getByRole("button", { name: /clear mocks/i });
+    await user.click(clearBtn);
+
+    expect(mockClearMocksAndReload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("TestPage — Enable button", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("clicking Enable calls enableScenario with the correct scenario", async () => {
+    const user = userEvent.setup();
+    renderTestPage("mocks");
+
+    // Click the first Enable button (corresponds to SCENARIOS[0])
+    const enableButtons = screen.getAllByRole("button", { name: /enable/i });
+    await user.click(enableButtons[0]!);
+
+    expect(mockEnableScenario).toHaveBeenCalledTimes(1);
+    expect(mockEnableScenario).toHaveBeenCalledWith(SCENARIOS[0]);
+  });
+
+  it("each Enable button corresponds to the right scenario", async () => {
+    const user = userEvent.setup();
+    renderTestPage("mocks");
+
+    const enableButtons = screen.getAllByRole("button", { name: /enable/i });
+
+    // Click the "connected-allowance-ok" scenario's Enable button
+    const targetIndex = SCENARIOS.findIndex(
+      (s) => s.id === "connected-allowance-ok",
+    );
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+
+    await user.click(enableButtons[targetIndex]!);
+
+    expect(mockEnableScenario).toHaveBeenCalledWith(SCENARIOS[targetIndex]);
+  });
+});
+
+describe("TestPage — MOCKED badge plumbing (Status tab)", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
   it("shows a MOCKED badge next to address when pipeline.mock.wallet.address is set", () => {
-    // Set the mock key before rendering so isMockKeyPresent picks it up
     localStorage.setItem(
       "pipeline.mock.wallet.address",
       "0x1234000000000000000000000000000000000000",
     );
 
-    renderTestPage();
+    renderTestPage("status");
 
-    // There should be at least one MOCKED badge in the document
     const mockedBadges = screen.getAllByText("MOCKED");
     expect(mockedBadges.length).toBeGreaterThan(0);
   });
 
   it("does NOT show MOCKED badges when no mock keys are set", () => {
-    renderTestPage();
+    renderTestPage("status");
     expect(screen.queryByText("MOCKED")).not.toBeInTheDocument();
   });
 
   it("shows MOCKED badge when mock key is set and re-rendered", () => {
-    const { rerender } = renderTestPage();
+    const { rerender } = renderTestPage("status");
     expect(screen.queryByText("MOCKED")).not.toBeInTheDocument();
 
-    // Set the mock key and re-render
     act(() => {
       localStorage.setItem(
         "pipeline.mock.wallet.address",
@@ -212,7 +355,8 @@ describe("TestPage — MOCKED badge plumbing", () => {
       );
     });
 
-    // Re-render the component — isMockKeyPresent is called on each render
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Route as any).useSearch = () => ({ tab: "status" });
     const TestPage = Route.options.component as React.ComponentType;
     rerender(
       <WalletProvider>
