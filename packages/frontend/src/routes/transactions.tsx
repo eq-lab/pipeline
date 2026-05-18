@@ -2,12 +2,15 @@ import { useState } from "react";
 import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  ActivityEmptyIllustration,
   ActivityHeader,
+  EmptyState,
   SegmentedTabs,
 } from "@pipeline/ui";
 import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
+import { useWallet } from "@/wallet";
 
 /**
  * Transactions / Activity page — wired to `GET /v1/requests` (Figma `1497-94912`).
@@ -19,6 +22,14 @@ import { renderRequestRow } from "@/components/activity/renderRequestRow";
  *      The "All" tab has been removed; "Buy" is the default.
  *      Selecting a tab filters the in-memory array client-side — no re-fetch.
  *   4. Activity rows from `useRequests()`, filtered by the active tab.
+ *
+ * Empty-state behaviour (two distinct cases):
+ *   - **Wallet-level empty**: the wallet is disconnected OR the API returned
+ *     zero rows. Shows the full `ActivityEmptyIllustration` + caption
+ *     "You will see all transactions here" (Figma 1993:9144).
+ *   - **Tab-level empty**: the API has rows but the active tab filter yields
+ *     zero. Shows a lighter muted line "No {tab} activity yet" to communicate
+ *     that data exists — just not for this tab.
  *
  * Token discipline: this file adds no raw colors, font names, or hardcoded
  * pixel sizes. All values flow through `@pipeline/ui` component props or
@@ -47,9 +58,20 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 function Transactions() {
   const [activeTab, setActiveTab] = useState("buy");
   const { data, isLoading, error, refetch } = useRequests();
+  const { isConnected } = useWallet();
 
   const items = data?.requests ?? [];
   const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
+
+  /** True when the wallet has no history at all (disconnected or zero API rows). */
+  const shouldRenderWalletEmpty =
+    !isLoading && !error && (!isConnected || data?.requests.length === 0);
+
+  /** True when the API has rows but the active tab's filter yields zero. */
+  const shouldRenderTabEmpty =
+    !!data && data.requests.length > 0 && filtered.length === 0;
+
+  const activeTabLabel = TABS.find((t) => t.id === activeTab)?.label ?? "";
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
@@ -87,14 +109,22 @@ function Transactions() {
             </div>
           )}
 
-          {data && filtered.length === 0 && (
-            <div className="text-[color:var(--color-pipeline-ink-muted)]">
-              No activity yet
+          {shouldRenderWalletEmpty && (
+            <div className="flex min-h-[400px] flex-col items-center justify-center">
+              <EmptyState
+                illustration={<ActivityEmptyIllustration tone="muted" width={240} />}
+                caption="You will see all transactions here"
+              />
             </div>
           )}
 
-          {data &&
-            filtered.length > 0 &&
+          {shouldRenderTabEmpty && (
+            <div className="text-[color:var(--color-pipeline-ink-muted)]">
+              No {activeTabLabel} activity yet
+            </div>
+          )}
+
+          {filtered.length > 0 &&
             filtered.map((item, i) => (
               <React.Fragment key={i}>{renderRequestRow(item)}</React.Fragment>
             ))}

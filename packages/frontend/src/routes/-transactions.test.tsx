@@ -1,9 +1,10 @@
 /**
  * Integration tests for the /transactions route.
  *
- * `useRequests` is mocked to return controlled fixture data. This avoids
- * importing wagmi/AppKit and their network side effects, while still exercising
- * the full rendering and filtering logic of the Transactions page.
+ * `useRequests` and `useWallet` are mocked to return controlled fixture data.
+ * This avoids importing wagmi/AppKit and their network side effects, while
+ * still exercising the full rendering and filtering logic of the Transactions
+ * page.
  *
  * The API module itself (client, useRequests) is tested separately in
  * `src/api/useRequests.test.tsx` and `src/api/client.test.ts`.
@@ -12,11 +13,13 @@
  *   1. Default "Buy" tab renders only Deposit rows.
  *   2. Switching tabs filters in place.
  *   3. The "All" tab is absent.
- *   4. Empty fixture renders "No activity yet" empty state.
- *   5. Error state renders "Couldn't load activity" + Retry button.
- *   6. Disconnected wallet → isLoading false, no data, no rows.
- *   7. Formatting assertions — amount strings appear in the rendered output.
- *   8. Timestamp shape assertion.
+ *   4. Wallet-level empty (zero rows) → illustration + caption render.
+ *   5. Wallet-level empty (disconnected) → illustration + caption render.
+ *   6. Tab-level empty → muted "No {tab} activity yet" renders, illustration absent.
+ *   7. Error state renders "Couldn't load activity" + Retry button.
+ *   8. Loading state renders "Loading…".
+ *   9. Formatting assertions — amount strings appear in the rendered output.
+ *  10. Timestamp shape assertion.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -42,6 +45,21 @@ const mockUseRequests = vi.fn(() => ({
 vi.mock("@/api", () => ({
   useRequests: () => mockUseRequests(),
 }));
+
+// ── Mock @/wallet ─────────────────────────────────────────────────────────────
+// We mock useWallet so the component can import it without pulling in
+// wagmi/AppKit. We preserve all other exports (e.g. formatUnits) via
+// importOriginal so format helpers still work in tests.
+
+const mockUseWallet = vi.fn(() => ({ isConnected: true }));
+
+vi.mock("@/wallet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/wallet")>();
+  return {
+    ...actual,
+    useWallet: () => mockUseWallet(),
+  };
+});
 
 // ── TanStack Router mock ──────────────────────────────────────────────────────
 
@@ -183,8 +201,9 @@ describe("Transactions page — All tab is absent", () => {
   });
 });
 
-describe("Transactions page — empty state", () => {
+describe("Transactions page — wallet-level empty state (zero rows)", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
     mockUseRequests.mockReturnValue({
       data: { requests: [] },
       isLoading: false,
@@ -197,10 +216,67 @@ describe("Transactions page — empty state", () => {
     vi.clearAllMocks();
   });
 
-  it("renders 'No activity yet' when request list is empty", () => {
+  it("renders the illustration caption when request list is empty", () => {
     renderTransactions();
 
-    expect(screen.getByText("No activity yet")).toBeInTheDocument();
+    expect(
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render the bare 'No activity yet' text when request list is empty", () => {
+    renderTransactions();
+
+    expect(screen.queryByText("No activity yet")).not.toBeInTheDocument();
+  });
+});
+
+describe("Transactions page — tab-level empty state", () => {
+  beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    // Data has one Deposit row (maps to Buy tab). Sell tab will yield zero rows.
+    mockUseRequests.mockReturnValue({
+      data: {
+        requests: [
+          {
+            type: "Deposit",
+            amount: "1000000000",
+            request_id: "1",
+            status: "Completed",
+            created_at: "2026-05-15T12:00:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders 'No Sell activity yet' when Sell tab has no rows", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+
+    const sellTab = screen.getByRole("tab", { name: "Sell" });
+    await user.click(sellTab);
+
+    expect(screen.getByText("No Sell activity yet")).toBeInTheDocument();
+  });
+
+  it("does not render the illustration when tab filter yields zero rows", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+
+    const sellTab = screen.getByRole("tab", { name: "Sell" });
+    await user.click(sellTab);
+
+    expect(
+      screen.queryByText("You will see all transactions here"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -259,6 +335,7 @@ describe("Transactions page — error state", () => {
 
 describe("Transactions page — disconnected wallet (no data)", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: false });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -271,11 +348,17 @@ describe("Transactions page — disconnected wallet (no data)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders nothing when data is undefined (hook disabled)", () => {
+  it("renders the illustration caption when wallet is disconnected", () => {
     renderTransactions();
 
-    // No rows, no error, no loading — the page just shows the empty shell
-    expect(screen.queryByText("No activity yet")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render loading or error states when wallet is disconnected", () => {
+    renderTransactions();
+
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Couldn't load activity/),

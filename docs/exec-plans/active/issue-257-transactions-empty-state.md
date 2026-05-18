@@ -35,7 +35,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Update `packages/frontend/src/routes/transactions.tsx`:**
+1. **[DONE] Update `packages/frontend/src/routes/transactions.tsx`:**
    - Add imports: `ActivityEmptyIllustration`, `EmptyState` to the existing `@pipeline/ui` import; add `import { useWallet } from "@/wallet";`.
    - Inside `Transactions()`, after `const { data, isLoading, error, refetch } = useRequests();` add `const { isConnected } = useWallet();`.
    - Compute the two empty conditions:
@@ -69,14 +69,14 @@ _None_
    - Keep the `filtered.length > 0` branch that maps rows, unchanged.
    - Update the file's leading JSDoc block to document the two empty cases.
 
-2. **Update `packages/frontend/src/routes/-transactions.test.tsx`:**
+2. **[DONE] Update `packages/frontend/src/routes/-transactions.test.tsx`:**
    - Add a `vi.mock("@/wallet", ...)` factory with a `mockUseWallet` that returns `{ isConnected: true }` by default, so existing tests keep passing.
    - Rewrite the `"Transactions page — empty state"` describe: assert the illustration caption `"You will see all transactions here"` is rendered, and `"No activity yet"` is **not** rendered. Use `getByText("You will see all transactions here")` for the assertion.
    - Add a new describe `"Transactions page — tab-level empty"` that mocks one Deposit row, switches to the Sell tab, and asserts `"No Sell activity yet"` renders while the illustration caption does **not**.
    - Update `"Transactions page — disconnected wallet"`: set `mockUseWallet` to `{ isConnected: false }`, keep `data: undefined`, and invert the assertion — the illustration caption MUST render; loading / error / muted "No activity" must NOT render.
    - Ensure the existing default-Buy-tab, tab-switching, loading, error, and formatting describes still pass; they need `mockUseWallet` to default to connected.
 
-3. **Run validations** (per `AGENTS.md`):
+3. **[DONE] Run validations** (per `AGENTS.md`):
    - `yarn workspace @pipeline/frontend test -- -t transactions` (or the project's test-fast equivalent) green.
    - `npx tsx scripts/lint-docs.ts` passes after the JSDoc edit.
    - Manual / ux-tester pass against Figma 1993:9144 for the centring and illustration width (240 px feels right at the 480 px content width; tune if Figma disagrees).
