@@ -68,7 +68,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Edit `packages/frontend/src/routes/deposit.tsx`:**
+1. **[DONE] Edit `packages/frontend/src/routes/deposit.tsx`:**
    - Just below the existing `isPendingClaim` derivation (line ~147), add:
 
      ```ts
@@ -100,12 +100,12 @@ _None_
      `PendingVerification`), the button stays non-clickable. The `loading`
      branch on `StepRow` ensures the row is not greyed.
 
-2. **Update the route-level JSDoc** in the same file:
+2. **[DONE] Update the route-level JSDoc** in the same file:
    - Tweak the comment block on step 2 (lines ~31-34) to call out that step 2
      enters a loading affordance while the API reports `PendingVerification`,
      not just while the in-session `requestDeposit` write is pending.
 
-3. **Add a test in `packages/frontend/src/routes/-deposit.test.tsx`:**
+3. **[DONE] Add a test in `packages/frontend/src/routes/-deposit.test.tsx`:**
    - In the existing "Deposit page — three-step flow" `describe`, add a new
      `it` after the `"step 2 shows Done badge when request status is PendingClaim"`
      case:
@@ -157,7 +157,7 @@ _None_
      This unambiguously distinguishes the buggy "Confirm idle disabled" state
      (still queryable by name) from the fixed "spinner active" state.
 
-4. **Run the test suite** to confirm:
+4. **[DONE] Run the test suite** to confirm:
    - New PendingVerification test passes.
    - Existing `PendingClaim` test (`step 2 shows Done badge ...`) still passes.
    - Existing `Approve needed` and `approved` flows still pass.
