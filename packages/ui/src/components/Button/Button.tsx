@@ -3,27 +3,30 @@ import React from "react";
 /**
  * Button — Pipeline UI primitive.
  *
- * Four variants, matching the Figma frame 1497-94556:
+ * Five variants, matching the Figma frame 1497-94556 and toast spec 1497:95109:
  *   - `primary-dark`  — black filled rectangle (e.g. "Connect Wallet" in header)
  *   - `primary-blue`  — navy/cobalt filled rectangle (e.g. "Connect", "Buy")
  *   - `secondary`     — ghost/outlined rectangle (e.g. "Sell" in disabled state —
  *                        transparent fill, ink-primary label, ~0.32 opacity when
  *                        used with the `disabled` prop). Figma nodes 1497:94688–90.
  *   - `circular-blue` — round navy/cobalt CTA (e.g. "Stake")
+ *   - `toast-action`  — compact pill CTA for right-aligned actions inside toasts
+ *                        (Figma node 1497:95109). White fill, ink text, 32 px tall.
  *
  * All variants use design tokens from `@pipeline/ui/styles/theme.css`
  * (no raw colors). Label uses the Body Emphasized type style (Graphik LC
  * 16/22, weight 600). Focus-visible rings use `--color-pipeline-brand` for
- * dark/blue rectangles and `--color-pipeline-ink` for the circular and
- * secondary variants (which sit on light cards), so the ring always has
- * sufficient contrast.
+ * dark/blue rectangles and `--color-pipeline-ink` for the circular, secondary,
+ * and toast-action variants (which sit on light/dark cards), so the ring always
+ * has sufficient contrast.
  */
 
 export type ButtonVariant =
   | "primary-dark"
   | "primary-blue"
   | "secondary"
-  | "circular-blue";
+  | "circular-blue"
+  | "toast-action";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -104,6 +107,24 @@ const variantClasses: Record<ButtonVariant, string> = {
     "active:bg-[color-mix(in_oklab,var(--color-pipeline-brand)_92%,black)]",
     "focus-visible:ring-[var(--color-pipeline-ink)]",
     "disabled:hover:bg-[var(--color-pipeline-brand)]",
+  ].join(" "),
+
+  // toast-action — 32px compact pill, white fill, ink text.
+  // Used inside Toast pills for right-aligned follow-up actions (Figma 1497:95109).
+  // Inherits the toast's outer surface as focus-ring backdrop — no explicit
+  // offset-color needed because the toast background is always dark/coloured.
+  "toast-action": [
+    "h-8 min-w-8 px-3",
+    "rounded-[var(--radius-pipeline-pill)]",
+    "bg-white",
+    "text-[color:var(--color-pipeline-ink)]",
+    "text-[length:var(--text-pipeline-caption)]",
+    "leading-[var(--text-pipeline-caption--line-height)]",
+    "hover:bg-[color-mix(in_oklab,white_90%,var(--color-pipeline-ink))]",
+    "active:bg-[color-mix(in_oklab,white_85%,var(--color-pipeline-ink))]",
+    "focus-visible:ring-[var(--color-pipeline-ink)]",
+    "focus-visible:ring-offset-0",
+    "disabled:opacity-50",
   ].join(" "),
 };
 
