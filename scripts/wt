@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# wt — manage git worktrees for this repo
+#
+# Usage:
+#   wt new <branch>           Create a worktree at ../pipeline-<branch>, symlink .env,
+#                             and run `yarn install`. Pass an existing branch name
+#                             to check it out, or a new branch name to create one
+#                             tracking origin/main.
+#   wt rm  <branch>           Remove the worktree at ../pipeline-<branch>.
+#                             Does NOT delete the branch — use `git branch -d` if needed.
+#   wt ls                     List all worktrees (alias for `git worktree list`).
+#
+# Conventions:
+#   - Worktrees live as sibling directories: ../pipeline-<branch>
+#     (with slashes in the branch name flattened to dashes for the path).
+#   - .env from the main worktree is symlinked into the new worktree so all
+#     branches share the same dev credentials. Edit it once, all worktrees see it.
+#   - .git is shared automatically by git; no extra setup needed.
+
+set -euo pipefail
+
+# Resolve the main (root) worktree path — `git worktree list` lists it first.
+MAIN_WT="$(git worktree list --porcelain | awk '/^worktree / { print $2; exit }')"
+if [[ -z "${MAIN_WT}" ]]; then
+    echo "wt: could not find main worktree — are you inside a git repo?" >&2
+    exit 1
+fi
+
+REPO_NAME="$(basename "${MAIN_WT}")"
+PARENT_DIR="$(dirname "${MAIN_WT}")"
+
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-0}"
+}
+
+# Slugify a branch name into a filesystem-safe suffix.
+slug() {
+    echo "$1" | tr '/' '-'
+}
+
+cmd_new() {
+    local branch="${1:-}"
+    [[ -z "${branch}" ]] && { echo "wt new: branch name required" >&2; exit 1; }
+
+    local wt_path="${PARENT_DIR}/${REPO_NAME}-$(slug "${branch}")"
+    if [[ -e "${wt_path}" ]]; then
+        echo "wt: ${wt_path} already exists" >&2
+        exit 1
+    fi
+
+    # Create the worktree. If the branch exists locally or on origin, check it
+    # out; otherwise create it tracking origin/main.
+    if git show-ref --verify --quiet "refs/heads/${branch}"; then
+        git worktree add "${wt_path}" "${branch}"
+    elif git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+        git worktree add --track -b "${branch}" "${wt_path}" "origin/${branch}"
+    else
+        git fetch origin main --quiet
+        git worktree add -b "${branch}" "${wt_path}" origin/main
+    fi
+
+    # Symlink .env (only if the main worktree has one).
+    if [[ -f "${MAIN_WT}/.env" ]]; then
+        ln -s "${MAIN_WT}/.env" "${wt_path}/.env"
+        echo "  ✓ symlinked .env from main worktree"
+    fi
+
+    # Install JS deps in the new worktree.
+    (cd "${wt_path}" && yarn install)
+
+    echo
+    echo "Worktree ready: ${wt_path}"
+    echo "  cd ${wt_path}"
+}
+
+cmd_rm() {
+    local branch="${1:-}"
+    [[ -z "${branch}" ]] && { echo "wt rm: branch name required" >&2; exit 1; }
+
+    local wt_path="${PARENT_DIR}/${REPO_NAME}-$(slug "${branch}")"
+    if [[ ! -d "${wt_path}" ]]; then
+        echo "wt: ${wt_path} does not exist" >&2
+        exit 1
+    fi
+
+    git worktree remove "${wt_path}"
+    echo "Removed ${wt_path}"
+    echo "Branch '${branch}' is intact; delete it with: git branch -d ${branch}"
+}
+
+cmd_ls() {
+    git worktree list
+}
+
+case "${1:-}" in
+    new) shift; cmd_new "$@" ;;
+    rm)  shift; cmd_rm  "$@" ;;
+    ls|list) cmd_ls ;;
+    -h|--help|help|"") usage 0 ;;
+    *) echo "wt: unknown command '$1'" >&2; usage 1 ;;
+esac

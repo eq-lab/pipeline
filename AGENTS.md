@@ -58,6 +58,18 @@ When uncertain about frontend vs. backend, label it `backend`. The full step-by-
 - Push the branch, open a PR, and wait for review before merging.
 - **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. Trivial-frontend (Flow C) PRs are the single exception: the `manager` skill is authorized to admin-merge its own Flow C PRs (`gh pr merge --admin --squash --delete-branch`) — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside Flow C, never admin-merge or otherwise bypass branch protection without explicit human direction.
 
+### Worktrees
+
+Parallel branches use git worktrees as sibling directories of the main checkout. Use `scripts/wt`:
+
+```bash
+scripts/wt new <branch>      # create ../pipeline-<branch>, symlink .env, yarn install
+scripts/wt rm  <branch>      # remove the worktree (branch is preserved)
+scripts/wt ls                # alias for git worktree list
+```
+
+`.env` is symlinked from the main worktree so all branches share dev credentials — edit once, all worktrees see it. `node_modules` is per-worktree (yarn `nodeLinker: node-modules`); the shared `.yarn/cache` keeps installs fast.
+
 ### Lint & style
 
 - After any Rust change, run `cargo clippy --all -- -D warnings` and verify it passes.
