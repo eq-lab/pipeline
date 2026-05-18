@@ -390,8 +390,11 @@ describe("Deposit page — approved state (allowance ≥ amount)", () => {
     await user.type(input, "2000");
 
     await waitFor(() => {
-      const successBadge = screen.queryByText("Done");
+      // The success state renders a green pill with aria-label="Approve complete"
+      // and data-state="success" (no "Done" text — it is an icon-only pill).
+      const successBadge = screen.queryByLabelText("Approve complete");
       expect(successBadge).toBeInTheDocument();
+      expect(successBadge).toHaveAttribute("data-state", "success");
     });
   });
 
@@ -622,7 +625,10 @@ describe("Deposit page — minDeposit gating", () => {
     await user.type(input, "500");
 
     await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
+      // The success state renders a green pill with aria-label="Approve complete"
+      // (no "Done" text — it is an icon-only check pill).
+      const successBadge = screen.queryByLabelText("Approve complete");
+      expect(successBadge).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
     });
   });
@@ -819,10 +825,11 @@ describe("Deposit page — three-step flow", () => {
     };
     renderDeposit();
     await waitFor(() => {
-      // Step 2 should show Done badge (it's in "success" state when PendingClaim)
-      const doneBadges = screen.getAllByText("Done");
-      // At least one Done badge for step 2
-      expect(doneBadges.length).toBeGreaterThanOrEqual(1);
+      // Step 2 is in "success" state when PendingClaim; it renders a green pill
+      // with aria-label="Confirm complete" and data-state="success" (no "Done" text).
+      const step2Badge = screen.queryByLabelText("Confirm complete");
+      expect(step2Badge).toBeInTheDocument();
+      expect(step2Badge).toHaveAttribute("data-state", "success");
     });
   });
 
