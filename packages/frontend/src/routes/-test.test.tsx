@@ -142,7 +142,17 @@ describe("TestPage — smoke render", () => {
     expect(
       screen.getByText("ERC-20 Approval (useApproval — USDC → DepositManager)"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Write hooks")).toBeInTheDocument();
+  });
+
+  it("renders no buttons (page is read-only)", () => {
+    const { container } = renderTestPage();
+    const buttons = container.querySelectorAll("button");
+    expect(buttons.length).toBe(0);
+  });
+
+  it("does not render the Write hooks section", () => {
+    renderTestPage();
+    expect(screen.queryByText("Write hooks")).not.toBeInTheDocument();
   });
 
   it("shows the zero-address note for DEPOSIT_MANAGER_ADDRESS", () => {
