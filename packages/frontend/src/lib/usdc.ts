@@ -12,13 +12,8 @@
  * `no-restricted-imports` ESLint rule forbids direct viem imports outside
  * `src/wallet/**`, so we consume them through the wallet module boundary.
  */
-import { parseUnits, formatUnits } from "@/wallet";
-
-// Shared Intl formatter — re-created once, not per call.
-const usdcFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+import { parseUnits } from "@/wallet";
+import { formatTokenAmount } from "./format";
 
 /**
  * Parses a raw decimal string (e.g. `"1000"`, `"1000.50"`) into a bigint
@@ -57,8 +52,7 @@ export function formatUsdc(
   decimals: number | undefined,
 ): string {
   if (decimals === undefined) return "—";
-  const float = parseFloat(formatUnits(value, decimals));
-  return usdcFormatter.format(float);
+  return formatTokenAmount(value, decimals);
 }
 
 /**

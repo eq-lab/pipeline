@@ -29,5 +29,11 @@ export { useApproval } from "./useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
 export { useToken } from "./useToken";
 export type { UseTokenArgs, UseTokenResult } from "./useToken";
-export { isMockKeyPresent } from "./mock";
+export {
+  isMockKeyPresent,
+  readMock,
+  useMock,
+  subscribeMock,
+  parseJson,
+} from "./mock";
 export { parseUnits, formatUnits } from "./units";
