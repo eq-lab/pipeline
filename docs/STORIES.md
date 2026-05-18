@@ -4,6 +4,56 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 
 ---
 
+## S-259 Toast notification system
+
+**Issue:** [#259 Add Toast notification system — informational and actionable variants](https://github.com/eq-lab/pipeline/issues/259)
+
+### TC-259-1: Toast container renders at bottom-right
+
+- **Actor:** End-user (on any page)
+- **Preconditions:** Dev server running; mock wallet connected
+- **Steps:**
+  1. Navigate to `/deposit`
+  2. Inspect the DOM for `[aria-label="Notifications"]`
+- **Expected:** Container is `position: fixed`, `bottom: 24px`, `right: 24px`, `z-index: 50`, `display: flex`, `flex-direction: column`, `align-items: flex-end`. Zero toasts when idle.
+
+### TC-259-2: Deposit pending → success toast fires
+
+- **Actor:** End-user
+- **Preconditions:** Mock wallet connected (5 000 USDC balance); allowance=approved; amount=1 000 USDC entered
+- **Steps:**
+  1. Click "Confirm" on step 2
+  2. Observe bottom-right toast
+- **Expected:** "Sending…" pending toast appears first (muted background, `role="status"`, `aria-live="polite"`). It then transitions in place to "Deposit submitted" success toast (green `rgb(58,125,68)` background) with a "View" action button. Toast auto-dismisses after 5 s.
+
+### TC-259-3: Claim pending → success toast fires
+
+- **Actor:** End-user
+- **Preconditions:** Mock wallet; PendingClaim request in API mock; voucher mock set; Claim button enabled
+- **Steps:**
+  1. Click "Claim"
+  2. Observe bottom-right toast
+- **Expected:** "Claiming…" pending toast appears; transitions to "PLUSD claimed" success toast; both `role="status"`, `aria-live="polite"`. No race condition — update() runs in a subsequent render after show() has committed state.
+
+### TC-259-4: A11y attributes per tone
+
+- **Actor:** QA
+- **Preconditions:** Unit tests
+- **Steps:**
+  1. Run `yarn workspace @pipeline/frontend test --run src/lib/toast`
+- **Expected:** All 16 toast tests pass. `danger` tone → `role="alert"`, `aria-live="assertive"`. All other tones → `role="status"`, `aria-live="polite"`.
+
+### TC-259-5: Approval toast (blocked by #230)
+
+- **Actor:** End-user
+- **Preconditions:** VITE_DEPOSIT_MANAGER_ADDRESS env set; allowance=0; amount entered
+- **Steps:**
+  1. Click "Approve"
+  2. Observe bottom-right toast
+- **Expected:** "Approving USDC…" pending toast; transitions to "Approval confirmed" success toast. BLOCKED — approval step bypassed in local dev when VITE_DEPOSIT_MANAGER_ADDRESS is unset (pre-existing bug #230).
+
+---
+
 ## S-38 Bootstrap TanStack Router file-based routes
 
 **Issue:** [#38 Bootstrap TanStack Router file-based routes in frontend](https://github.com/eq-lab/pipeline/issues/38)

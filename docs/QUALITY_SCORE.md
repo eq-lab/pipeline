@@ -22,6 +22,28 @@ MVP quality bars. All targets must be met before mainnet launch.
   - Note: initial testing was misdirected at port 3000 (main branch) which still has the old per-tab text behavior. The fix is correctly on port 5173 (fix/261-transactions-empty-state branch). No bug filed — this is a branch/port mapping issue during testing, not a product defect.
   - No new GitHub Issues filed.
 
+### 2026-05-18 — Issue #259 (Add Toast notification system — informational and actionable variants)
+
+- **Scope:** Issue #259 acceptance criteria (TC-259-1 through TC-259-5)
+- **Cases executed:** 5 (TC-259-5 blocked)
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 1 (TC-259-5 — approval toast blocked by pre-existing #230)
+- **Bugs filed:** none
+- **Score: 9/10**
+  - PASS TC-259-1 (container renders at bottom-right): `[aria-label="Notifications"]` present in DOM on `/deposit`. `position: fixed`, `bottom: 24px`, `right: 24px`, `z-index: 50`, `flex-direction: column`, `align-items: flex-end`. Zero toasts when idle.
+  - PASS TC-259-2 (deposit pending → success toast): Clicking "Confirm" emits "Sending…" pending toast (muted background, `role="status"`, `aria-live="polite"`). Toast updates in-place to "Deposit submitted" (green `rgb(58,125,68)`, `role="status"`, `aria-live="polite"`) with "View" action button. Visual matches Figma node 1497:95109. Auto-dismisses after 5 s.
+  - PASS TC-259-3 (claim pending → success toast): MutationObserver log confirmed "Claiming…" added first, then "PLUSD claimed" updated in-place. No race condition — `show()` and `update()` execute in separate renders. Screenshot shows green pill "PLUSD claimed" bottom-right. All 3 steps show "Done".
+  - PASS TC-259-4 (a11y): `Toast.dom.test.tsx` — 16 tests pass. `danger` → `role="alert"` + `aria-live="assertive"`. All other tones → `role="status"` + `aria-live="polite"`. `useToast.test.tsx` — 7 tests pass (auto-dismiss, pending sticky, update, dismiss, stack cap, upsert, outside-provider error).
+  - BLOCKED TC-259-5 (approval toast): Approval step bypassed in local dev when VITE_DEPOSIT_MANAGER_ADDRESS is unset — pre-existing bug #230. Toast path exists in code but cannot be triggered without the env var.
+  - Race condition investigation: Confirmed no race. `prevClaimIsPending` / `prevClaimIsSuccess` refs track state across renders; `show()` and `update()` cannot both fire in the same effect call for a mock that resolves synchronously, because the `isPending → true` render and `isSuccess → true` render are separate.
+  - Visual comparison against Figma 1497:95187 (informational) and 1497:95109 (actionable): pill shape, green success background, white text, check-circle icon, "View" action button — implementation matches.
+  - Unit tests: all 344 tests pass (24 test files).
+  - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode warning, font preload warnings — none related to #259.
+  - Note: `packages/ui/src/components/Toast/Toast.test.tsx` specified in issue is absent; tests placed in `packages/frontend/src/lib/toast/Toast.dom.test.tsx` instead — coverage is equivalent (plan fallback path).
+  - No new GitHub Issues filed.
+  - Deducted 1 point: approval toast path untestable without VITE_DEPOSIT_MANAGER_ADDRESS env var; not a new regression but worth tracking.
+
 ### 2026-05-18 — Issue #257 (Show striped-clock empty state on /transactions when there are no requests)
 
 - **Scope:** Issue #257 acceptance criteria (TC-257-1 through TC-257-3)
