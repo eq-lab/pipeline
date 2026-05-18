@@ -61,27 +61,7 @@ const WALLET_CONNECTED_BASE: Record<string, string> = {
 // ── Scenarios ─────────────────────────────────────────────────────────────────
 
 export const SCENARIOS: ReadonlyArray<TestScenario> = [
-  // 1. Production defaults ─────────────────────────────────────────────────────
-  {
-    id: "prod-defaults",
-    title: "Production defaults (no mocks)",
-    description:
-      "Every pipeline.mock.* key is removed. The app falls through to real RPC / API.",
-    keys: {},
-  },
-
-  // 2. Disconnected wallet ─────────────────────────────────────────────────────
-  {
-    id: "disconnected",
-    title: "Disconnected wallet",
-    description:
-      "Wallet not connected. App env defaults; no contract/balance overrides.",
-    keys: {
-      "pipeline.mock.wallet.isConnected": "false",
-    },
-  },
-
-  // 3. Connected, fresh wallet (zero USDC, zero allowance) ──────────────────────
+  // 1. Connected, fresh wallet (zero USDC, zero allowance) ──────────────────────
   {
     id: "connected-fresh",
     title: "Connected, fresh wallet (zero USDC, zero allowance)",
@@ -94,7 +74,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 4. Connected, balance below min deposit ────────────────────────────────────
+  // 2. Connected, balance below min deposit ────────────────────────────────────
   {
     id: "connected-below-min",
     title: "Connected, balance below min deposit",
@@ -107,7 +87,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 5. Connected, balance ≥ min, allowance 0 ────────────────────────────────────
+  // 3. Connected, balance ≥ min, allowance 0 ────────────────────────────────────
   {
     id: "connected-allowance-zero",
     title: "Connected, balance ≥ min, allowance 0",
@@ -120,7 +100,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 6. Connected, allowance ≥ amount, no active request ────────────────────────
+  // 4. Connected, allowance ≥ amount, no active request ────────────────────────
   {
     id: "connected-allowance-ok",
     title: "Connected, allowance ≥ amount, no active request",
@@ -134,7 +114,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 7. PendingVerification request ──────────────────────────────────────────────
+  // 5. PendingVerification request ──────────────────────────────────────────────
   {
     id: "request-pending-verification",
     title: "Connected, PendingVerification request",
@@ -159,7 +139,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 8. PendingClaim request, voucher ready ──────────────────────────────────────
+  // 6. PendingClaim request, voucher ready ──────────────────────────────────────
   {
     id: "request-pending-claim",
     title: "Connected, PendingClaim request, voucher ready",
@@ -191,7 +171,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 9. VerificationFailed request ──────────────────────────────────────────────
+  // 7. VerificationFailed request ──────────────────────────────────────────────
   {
     id: "request-verification-failed",
     title: "Connected, VerificationFailed request",
@@ -216,7 +196,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 10. Completed deposit history ───────────────────────────────────────────────
+  // 8. Completed deposit history ───────────────────────────────────────────────
   {
     id: "history-completed",
     title: "Connected, Completed deposit history",
@@ -254,7 +234,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 11. Mixed activity ──────────────────────────────────────────────────────────
+  // 9. Mixed activity ──────────────────────────────────────────────────────────
   {
     id: "history-mixed",
     title: "Connected, mixed activity (Deposit + Withdraw + Stake + Unstake)",
