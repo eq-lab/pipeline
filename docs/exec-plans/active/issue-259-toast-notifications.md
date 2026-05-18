@@ -44,7 +44,7 @@ _None_
 
 ## Implementation Steps
 
-### 1. Add the `danger` design token
+### 1. Add the `danger` design token [DONE]
 
 File: `packages/ui/src/styles/theme.css`
 
@@ -53,7 +53,7 @@ File: `packages/ui/src/styles/theme.css`
   - `--color-pipeline-on-danger: #ffffff;`
 - Add a short Figma-node comment in the same `/* … */` style as the existing tokens.
 
-### 2. Create the `Toast` primitive in `@pipeline/ui`
+### 2. Create the `Toast` primitive in `@pipeline/ui` [DONE]
 
 New folder: `packages/ui/src/components/Toast/`
 
@@ -100,7 +100,7 @@ A11y:
 - `aria-live="assertive"` for danger, `aria-live="polite"` otherwise.
 - The action button is a real `<button>` — focus styles inherit from `Button`.
 
-### 3. Add Storybook coverage
+### 3. Add Storybook coverage [DONE]
 
 File: `packages/ui/src/components/Toast/Toast.stories.tsx`
 
@@ -114,7 +114,7 @@ Stories (one per cell in the tone × action matrix):
 - `NeutralActionable` — `tone="neutral"`, `title="Deposit submitted"`, `action={{ label: "View", onClick: () => {} }}`.
 - `CustomIcon` — demonstrates the `icon` override.
 
-### 4. Extend `Button` with a `toast-action` variant
+### 4. Extend `Button` with a `toast-action` variant [DONE]
 
 File: `packages/ui/src/components/Button/Button.tsx`
 
@@ -126,7 +126,7 @@ File: `packages/ui/src/components/Button/Button.tsx`
   - Focus ring on the surrounding paper tone.
 - Add a Storybook story `ToastAction` in `Button.stories.tsx`.
 
-### 5. Create the toast container + emitter (`@pipeline/frontend`)
+### 5. Create the toast container + emitter (`@pipeline/frontend`) [DONE]
 
 New folder: `packages/frontend/src/lib/toast/`
 
@@ -170,7 +170,7 @@ Behaviour:
 - `dismiss(id)` — remove immediately; clear the timer.
 - Clear all timers on `ToastProvider` unmount.
 
-### 6. Mount the provider
+### 6. Mount the provider [DONE]
 
 File: `packages/frontend/src/main.tsx`
 
@@ -184,7 +184,7 @@ File: `packages/frontend/src/main.tsx`
 </WalletProvider>
 ```
 
-### 7. Emit toasts from `/deposit` call sites
+### 7. Emit toasts from `/deposit` call sites [DONE]
 
 File: `packages/frontend/src/routes/deposit.tsx`
 
@@ -200,13 +200,13 @@ File: `packages/frontend/src/routes/deposit.tsx`
 
 - Confirm: do NOT touch the inline step-row affordances. The toast is additive.
 
-### 8. Export and document
+### 8. Export and document [DONE]
 
 - `packages/ui/src/index.ts` — add `Toast`, `ToastProps`, `ToastTone`, `ToastAction` exports.
 - `docs/frontend/hooks.md` — add a `useToast` row (import path `@/lib/toast`, one-line description).
 - `docs/frontend/index.md` / `docs/FRONTEND.md` — short paragraph noting the toast surface and where to emit from (call sites, not hooks).
 
-### 9. Validate
+### 9. Validate [DONE]
 
 - `npx tsx scripts/lint-docs.ts` — passes after the JSDoc + catalogue edits.
 - `yarn workspace @pipeline/frontend test` — green.

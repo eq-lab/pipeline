@@ -90,6 +90,8 @@
   --color-pipeline-on-success: #ffffff; /* content on success fill */
   --color-pipeline-warning: #b58a00; /* fill/warning — warning tile bg; node 1497-94912 row 2 */
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
+  --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
+  --color-pipeline-on-danger: #ffffff; /* content on danger fill */
 
   /* Type ramp */
   --text-pipeline-title: 64px;
@@ -153,6 +155,8 @@
   --color-pipeline-on-success: #ffffff; /* content on success fill */
   --color-pipeline-warning: #b58a00; /* fill/warning — warning tile bg; node 1497-94912 row 2 */
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
+  --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
+  --color-pipeline-on-danger: #ffffff; /* content on danger fill */
 
   /* --- Typography: families --- */
 

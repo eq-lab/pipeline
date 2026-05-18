@@ -9,18 +9,25 @@ const meta = {
     docs: {
       description: {
         component:
-          "Pipeline UI Button primitive. Four variants matching the Figma " +
-          "frame 1497-94556: `primary-dark` (ink/CTA), `primary-blue` (brand), " +
+          "Pipeline UI Button primitive. Five variants: `primary-dark` (ink/CTA), `primary-blue` (brand), " +
           "`secondary` (borderless ghost — transparent background, no border, ink text, " +
-          "opacity-32 when disabled), and `circular-blue` (round brand CTA used for " +
-          "the Stake action). All variants consume design tokens from `@pipeline/ui/styles/theme.css`.",
+          "opacity-32 when disabled), `circular-blue` (round brand CTA used for " +
+          "the Stake action), and `toast-action` (compact white pill for right-aligned " +
+          "actions inside Toast notifications — Figma node 1497:95109). All variants " +
+          "consume design tokens from `@pipeline/ui/styles/theme.css`.",
       },
     },
   },
   argTypes: {
     variant: {
       control: "inline-radio",
-      options: ["primary-dark", "primary-blue", "secondary", "circular-blue"],
+      options: [
+        "primary-dark",
+        "primary-blue",
+        "secondary",
+        "circular-blue",
+        "toast-action",
+      ],
     },
     disabled: { control: "boolean" },
     children: { control: "text" },
@@ -76,6 +83,50 @@ export const CircularBlue: Story = {
   name: "circular-blue",
   args: {
     variant: "circular-blue",
+    children: "Stake",
+  },
+};
+
+export const ToastAction: Story = {
+  name: "toast-action",
+  parameters: {
+    backgrounds: { default: "dark" },
+    docs: {
+      description: {
+        story:
+          "Compact white pill button used inside Toast notifications for right-aligned follow-up " +
+          "actions (Figma node 1497:95109). Shown here on a dark background to match its " +
+          "typical context inside a success/danger/neutral toast pill.",
+      },
+    },
+  },
+  decorators: [
+    (Story) => (
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 9999,
+          background: "var(--color-pipeline-success)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <span
+          style={{
+            color: "white",
+            fontFamily: "var(--font-body)",
+            fontSize: 16,
+          }}
+        >
+          +1,000.00 PLUSD
+        </span>
+        <Story />
+      </div>
+    ),
+  ],
+  args: {
+    variant: "toast-action",
     children: "Stake",
   },
 };

@@ -57,6 +57,25 @@ These rules apply to everything under `packages/frontend/` and `packages/ui/`. T
 
 See [`docs/frontend/index.md`](./frontend/index.md) for the catalogue index.
 
+## Toast notifications
+
+Transient global feedback is rendered by `<ToastProvider>` in the bottom-right corner of the viewport. The imperative `useToast()` hook (imported from `@/lib/toast`) is the canonical surface for emitting notifications from page components.
+
+**Rule:** toast emissions always live at the call site (e.g. the page component that owns the write hook), never inside the hook itself. The hook stays generic; the page decides what copy to show.
+
+```ts
+const toast = useToast();
+
+// Pending — sticky until updated/dismissed.
+toast.show({ id: "deposit-tx", tone: "pending", title: "Sending…" });
+
+// Terminal — auto-dismisses after 5 s.
+toast.update("deposit-tx", { tone: "success", title: "Deposit submitted",
+  action: { label: "View", onClick: () => navigate({ to: "/transactions" }) } });
+```
+
+See [`docs/frontend/hooks.md`](./frontend/hooks.md) for the full `useToast` API reference.
+
 ## Application structure
 
 File-based routing is provided by [TanStack Router](https://tanstack.com/router) (`@tanstack/react-router`). Route files live in `packages/frontend/src/routes/`. The plugin (`@tanstack/router-plugin`) auto-generates `src/routeTree.gen.ts` on every `vite build` / `vite dev` run; that file is committed (so `tsc` works on a fresh clone without first running the dev server / build) but must not be edited manually.

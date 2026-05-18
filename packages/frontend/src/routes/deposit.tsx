@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Card,
   ConversionCard,
@@ -18,6 +18,7 @@ import {
 import { useRequests, useDepositVoucher } from "@/api";
 import { ENV } from "@/lib/env";
 import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
+import { useToast } from "@/lib/toast";
 
 /**
  * Deposit route — three-step conversion page.
@@ -80,6 +81,10 @@ import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 function Deposit() {
+  // ── Toast + navigation ────────────────────────────────────────────────
+  const toast = useToast();
+  const navigate = useNavigate();
+
   // ── State sources ─────────────────────────────────────────────────────
   const { address, isConnected } = useWallet();
   const { usdc } = useDepositManagerAddresses();
@@ -96,6 +101,7 @@ function Deposit() {
     allowance,
     approve,
     isApprovePending,
+    isApproveSuccess,
     refetchBalance,
   } = useToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
 
@@ -217,6 +223,72 @@ function Deposit() {
   useEffect(() => {
     if (requestDeposit.isSuccess) refetchBalance();
   }, [requestDeposit.isSuccess, refetchBalance]);
+
+  // ── Toast emission: Approve ────────────────────────────────────────────
+  // Track previous state to detect edge transitions.
+  const prevIsApprovePending = useRef(false);
+  const prevIsApproveSuccess = useRef(false);
+  useEffect(() => {
+    if (isApprovePending && !prevIsApprovePending.current) {
+      toast.show({ id: "approve-tx", tone: "pending", title: "Approving USDC…" });
+    }
+    if (isApproveSuccess && !prevIsApproveSuccess.current) {
+      toast.update("approve-tx", { tone: "success", title: "Approval confirmed" });
+    }
+    prevIsApprovePending.current = isApprovePending;
+    prevIsApproveSuccess.current = isApproveSuccess;
+  }, [isApprovePending, isApproveSuccess, toast]);
+
+  // ── Toast emission: Deposit ────────────────────────────────────────────
+  const prevDepositIsPending = useRef(false);
+  const prevDepositIsSuccess = useRef(false);
+  const prevDepositError = useRef<Error | null>(null);
+  useEffect(() => {
+    if (requestDeposit.isPending && !prevDepositIsPending.current) {
+      toast.show({ id: "deposit-tx", tone: "pending", title: "Sending…" });
+    }
+    if (requestDeposit.isSuccess && !prevDepositIsSuccess.current) {
+      toast.update("deposit-tx", {
+        tone: "success",
+        title: "Deposit submitted",
+        action: {
+          label: "View",
+          onClick: () => void navigate({ to: "/transactions" }),
+        },
+      });
+    }
+    if (requestDeposit.error && requestDeposit.error !== prevDepositError.current) {
+      toast.update("deposit-tx", { tone: "danger", title: "Deposit failed", action: undefined });
+    }
+    prevDepositIsPending.current = requestDeposit.isPending;
+    prevDepositIsSuccess.current = requestDeposit.isSuccess;
+    prevDepositError.current = requestDeposit.error;
+  }, [
+    requestDeposit.isPending,
+    requestDeposit.isSuccess,
+    requestDeposit.error,
+    toast,
+    navigate,
+  ]);
+
+  // ── Toast emission: Claim ──────────────────────────────────────────────
+  const prevClaimIsPending = useRef(false);
+  const prevClaimIsSuccess = useRef(false);
+  const prevClaimError = useRef<Error | null>(null);
+  useEffect(() => {
+    if (claim.isPending && !prevClaimIsPending.current) {
+      toast.show({ id: "claim-tx", tone: "pending", title: "Claiming…" });
+    }
+    if (claim.isSuccess && !prevClaimIsSuccess.current) {
+      toast.update("claim-tx", { tone: "success", title: "PLUSD claimed" });
+    }
+    if (claim.error && claim.error !== prevClaimError.current) {
+      toast.update("claim-tx", { tone: "danger", title: "Claim failed" });
+    }
+    prevClaimIsPending.current = claim.isPending;
+    prevClaimIsSuccess.current = claim.isSuccess;
+    prevClaimError.current = claim.error;
+  }, [claim.isPending, claim.isSuccess, claim.error, toast]);
 
   // When a deposit request becomes active (PendingVerification or PendingClaim),
   // copy its amount into the input so the displayed value matches what's already

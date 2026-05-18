@@ -76,3 +76,5 @@ export { StakeHeader } from "./components/StakeHeader/StakeHeader";
 export type { StakeHeaderProps } from "./components/StakeHeader/StakeHeader";
 export { NavIcon } from "./components/NavIcon";
 export type { NavIconProps, NavIconName } from "./components/NavIcon";
+export { Toast } from "./components/Toast";
+export type { ToastProps, ToastTone, ToastAction } from "./components/Toast";
