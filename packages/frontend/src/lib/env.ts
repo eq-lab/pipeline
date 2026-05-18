@@ -74,6 +74,17 @@ export const ENV = Object.freeze({
   ) as `0x${string}`,
 
   /**
+   * StakedPLUSD (sPLUSD) ERC-4626 vault contract address on the configured chain.
+   * Defaults to the zero address; when zero the wallet module short-circuits
+   * all StakedPLUSD hooks and returns `undefined` data without making any
+   * RPC call.
+   */
+  STAKED_PLUSD_ADDRESS: readString(
+    "VITE_STAKED_PLUSD_ADDRESS",
+    "0x0000000000000000000000000000000000000000",
+  ) as `0x${string}`,
+
+  /**
    * Reown Cloud / WalletConnect v2 project id.
    * Defaults to a placeholder; the AppKit modal will construct successfully
    * but will fail to relay to real wallets until a real id is provided.
