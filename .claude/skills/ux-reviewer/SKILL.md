@@ -71,12 +71,15 @@ Read additional context only as needed:
    - Use additional `get_screenshot` and `take_screenshot` calls (including per-element `uid` screenshots) when a difference is unclear.
 
 6. **File one Issue per problem**
-   - For each independent difference, file a new GitHub Issue:
+   - For each independent difference, file a new GitHub Issue. **Labels are not optional** — without a flow label the `manager` skill will skip the Issue. Use:
+     - `bug,frontend,backlog` — default for every UX-review finding (visual / styling / copy fix on a frontend page).
+     - `bug,frontend,trivial,backlog` — add `trivial` when the fix is mechanical and self-contained: a CSS tweak, a prop default change, a string prefix, a single-component visual fix with no data-flow or logic change. Trivial Issues skip planning + the approval gate (`coder` runs directly), so reserve it for changes that obviously don't need design judgement or scope discussion.
+     - **Do not** use `bug,backlog` alone — the missing flow label leaves the Issue invisible to the workflow.
 
      ```bash
      gh issue create \
        --title "<short imperative fix>" \
-       --label "bug,backlog" \
+       --label "bug,frontend,backlog" \
        --body "$(cat <<'EOF'
      **Parent issue:** #<number> (omit if no parent Issue was passed)
      **App URL:** <url>
