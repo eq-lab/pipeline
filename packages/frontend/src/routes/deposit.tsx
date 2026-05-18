@@ -89,17 +89,25 @@ function Deposit() {
   const needsApproval =
     allowance !== undefined && amountBig > 0n && allowance < amountBig;
 
+  // Amount must be a positive value AND at least the on-chain minDeposit.
+  // While minDeposit is undefined (loading), meetsMin is false → both action
+  // buttons stay disabled. This prevents submitting a requestDeposit tx that
+  // would revert with DepositManagerLessThanMinAmount and trip the wallet's
+  // gas-estimation fallback (see Issue #232 for the underlying error chain).
+  const meetsMin =
+    minDeposit !== undefined && amountBig > 0n && amountBig >= minDeposit;
+
   const canApprove =
     isConnected &&
     hasBalance === true &&
-    amountBig > 0n &&
+    meetsMin &&
     needsApproval &&
     !isApprovePending;
 
   const canConvert =
     isConnected &&
     hasBalance === true &&
-    amountBig > 0n &&
+    meetsMin &&
     !needsApproval &&
     !requestDeposit.isPending;
 

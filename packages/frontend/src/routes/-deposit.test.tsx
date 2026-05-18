@@ -553,6 +553,123 @@ describe("Deposit page — disconnected wallet", () => {
   });
 });
 
+describe("Deposit page — minDeposit gating", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Amount = 0 → both Approve and Convert disabled", async () => {
+    // No amount typed — both buttons must stay disabled even with ample allowance
+    seedBaseMocks({ allowance: "10000000000" });
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Convert" })).toBeDisabled();
+    });
+  });
+
+  it("Amount below minDeposit with sufficient allowance → Convert disabled (meetsMin blocks it)", async () => {
+    // allowance covers 500, but 500 < 1000 minDeposit → Convert would normally
+    // be enabled without the meetsMin gate — this proves meetsMin blocks it.
+    // With sufficient allowance, needsApproval=false so step 1 shows "Done" (no
+    // Approve button). We assert Convert is disabled and step 1 shows "Done",
+    // confirming allowance IS sufficient and only meetsMin keeps Convert off.
+    seedBaseMocks({ allowance: "10000000000" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "500");
+
+    await waitFor(() => {
+      // Step 1 shows "Done" — allowance is sufficient, approval is not needed
+      expect(screen.getByText("Done")).toBeInTheDocument();
+      // Convert is disabled because 500 < minDeposit(1000)
+      expect(screen.getByRole("button", { name: "Convert" })).toBeDisabled();
+    });
+  });
+
+  it("Amount below minDeposit with zero allowance → both disabled", async () => {
+    seedBaseMocks({ allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "500");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Convert" })).toBeDisabled();
+    });
+  });
+
+  it("Amount equal to minDeposit with zero allowance → Approve enabled, Convert disabled", async () => {
+    // Boundary: amountBig === minDeposit and allowance=0 → needsApproval=true
+    seedBaseMocks({ allowance: "0" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "1000");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Convert" })).toBeDisabled();
+    });
+  });
+
+  it("Amount equal to minDeposit with sufficient allowance → Convert enabled", async () => {
+    // Boundary: amountBig === minDeposit and allowance covers it → Convert enabled
+    seedBaseMocks({ allowance: "10000000000" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "1000");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Convert" })).not.toBeDisabled();
+    });
+  });
+
+  it("Amount greater than minDeposit with sufficient allowance → Convert enabled", async () => {
+    seedBaseMocks({ allowance: "10000000000" });
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Convert" })).not.toBeDisabled();
+    });
+  });
+
+  it("minDeposit undefined (removed from localStorage) → both buttons disabled regardless of amount", async () => {
+    seedBaseMocks({ allowance: "10000000000" });
+    // Remove minDeposit so the hook returns undefined (still loading / unavailable)
+    localStorage.removeItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+    );
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "5000");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Convert" })).toBeDisabled();
+    });
+  });
+});
+
 describe("Deposit page — Min chip label reflects live minDeposit", () => {
   beforeEach(() => {
     localStorage.clear();
