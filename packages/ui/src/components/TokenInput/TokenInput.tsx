@@ -76,6 +76,13 @@ export interface TokenInputProps extends Omit<
    * to render an enabled input unchanged.
    */
   disabled?: boolean;
+  /**
+   * Optional sign prefix rendered visually to the left of the numeric input
+   * in the same display-serif style (e.g. "−" for outflow). The prefix is
+   * purely presentational — it is never part of the `<input>` value passed
+   * back via `onValueChange`. Only shown when `value` is non-empty and not "0".
+   */
+  signPrefix?: string;
 }
 
 // Outer card — white fill, subtle border, card radius.
@@ -142,12 +149,16 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
       value,
       onValueChange,
       disabled,
+      signPrefix,
       className,
       ...rest
     },
     ref,
   ) {
     const composed = [cardClasses, className].filter(Boolean).join(" ");
+
+    // Only show the sign prefix when there is a non-empty, non-zero value.
+    const showSign = signPrefix !== undefined && !!value && value !== "0";
 
     return (
       <div ref={ref} className={composed} {...rest}>
@@ -162,8 +173,13 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
             </div>
           </div>
 
-          {/* Right: numeric input */}
+          {/* Right: optional sign prefix + numeric input */}
           <div className="flex shrink-0 items-start justify-end">
+            {showSign && (
+              <span className={inputClasses} aria-hidden="true">
+                {signPrefix}
+              </span>
+            )}
             <input
               type="text"
               inputMode="decimal"
