@@ -102,7 +102,7 @@ describe("clearAllMocks()", () => {
 
 describe("enableScenarioKeys()", () => {
   it("sets exactly the scenario's keys in localStorage", () => {
-    const scenario = SCENARIOS.find((s) => s.id === "disconnected")!;
+    const scenario = SCENARIOS.find((s) => s.id === "connected-fresh")!;
     enableScenarioKeys(scenario);
     const active = mockKeys();
     expect(active.sort()).toEqual(Object.keys(scenario.keys).sort());
@@ -112,8 +112,8 @@ describe("enableScenarioKeys()", () => {
   });
 
   it("clears a previous scenario's keys before applying the new one", () => {
-    const scenarioA = SCENARIOS.find((s) => s.id === "disconnected")!;
-    const scenarioB = SCENARIOS.find((s) => s.id === "connected-fresh")!;
+    const scenarioA = SCENARIOS.find((s) => s.id === "connected-fresh")!;
+    const scenarioB = SCENARIOS.find((s) => s.id === "connected-allowance-ok")!;
 
     enableScenarioKeys(scenarioA);
     enableScenarioKeys(scenarioB);
@@ -122,7 +122,7 @@ describe("enableScenarioKeys()", () => {
     const activeAfter = mockKeys().sort();
     expect(activeAfter).toEqual(Object.keys(scenarioB.keys).sort());
 
-    // A's unique keys (isConnected=false) should no longer be present
+    // A's unique keys should no longer be present if not shared with B
     for (const k of Object.keys(scenarioA.keys)) {
       if (!Object.prototype.hasOwnProperty.call(scenarioB.keys, k)) {
         expect(localStorage.getItem(k)).toBeNull();
@@ -132,17 +132,9 @@ describe("enableScenarioKeys()", () => {
 
   it("leaves non-mock keys untouched", () => {
     localStorage.setItem("not-a-mock", "preserve");
-    const scenario = SCENARIOS.find((s) => s.id === "disconnected")!;
+    const scenario = SCENARIOS.find((s) => s.id === "connected-fresh")!;
     enableScenarioKeys(scenario);
     expect(localStorage.getItem("not-a-mock")).toBe("preserve");
-  });
-
-  it("prod-defaults scenario leaves no mock keys", () => {
-    // First seed some keys
-    localStorage.setItem("pipeline.mock.wallet.address", "0x1234");
-    const prodDefaults = SCENARIOS.find((s) => s.id === "prod-defaults")!;
-    enableScenarioKeys(prodDefaults);
-    expect(mockKeys()).toHaveLength(0);
   });
 });
 
@@ -164,7 +156,7 @@ describe("enableScenario() and clearMocksAndReload()", () => {
       .spyOn(_reload, "fn")
       .mockImplementation(() => undefined);
 
-    const scenario = SCENARIOS.find((s) => s.id === "disconnected")!;
+    const scenario = SCENARIOS.find((s) => s.id === "connected-fresh")!;
     enableScenario(scenario);
 
     expect(reloadSpy).toHaveBeenCalledTimes(1);
@@ -176,7 +168,7 @@ describe("enableScenario() and clearMocksAndReload()", () => {
       .spyOn(_reload, "fn")
       .mockImplementation(() => undefined);
 
-    const scenario = SCENARIOS.find((s) => s.id === "disconnected")!;
+    const scenario = SCENARIOS.find((s) => s.id === "connected-fresh")!;
     enableScenario(scenario);
 
     // Keys should be set
