@@ -4,6 +4,7 @@
 # Local agent artifacts (gitignored)
 claude-progress.md
 features.json
+docs.local/
 
 # Rust
 /target/
