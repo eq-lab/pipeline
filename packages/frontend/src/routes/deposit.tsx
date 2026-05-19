@@ -173,14 +173,18 @@ function Deposit() {
   // or PendingClaim (see selector above), so this single check is sufficient.
   const isAmountLocked = activeRequest !== null;
 
-  // Faded state: allowance approved and step 2 ("Confirm") is the live action,
-  // but no on-chain request has been submitted yet. Signals "the amount you
-  // entered is locked in" without disabling the input (editing is still valid).
+  // Faded state: USDC value container is visually deemphasised in two cases:
+  //   1. Low-balance state (#306): balance < minDeposit — deposit is impossible
+  //      until the user funds their wallet. Entire input area fades to opacity-30.
+  //   2. Post-approve state (#268): allowance approved and step 2 ("Confirm") is
+  //      the live action, but no on-chain request has been submitted yet. Signals
+  //      "the amount you entered is locked in" without disabling the input.
   // Deliberately excludes isAmountLocked (PendingVerification / PendingClaim)
   // to avoid double-fading with the disabled state in #243.
   // Figma: opacity-30 on the USDC value container node 1497:95279.
   const isInputFaded =
-    isConnected && !needsApproval && amountBig > 0n && !requestIsConfirmed;
+    hasBalance === false ||
+    (isConnected && !needsApproval && amountBig > 0n && !requestIsConfirmed);
 
   const voucher = useDepositVoucher(voucherRequestId);
 
