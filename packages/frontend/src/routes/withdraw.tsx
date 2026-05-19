@@ -22,7 +22,8 @@ import { useToast } from "@/lib/toast";
  *    Enabled when `needsApproval && canDeposit`. Done when allowance covers amount.
  *
  * 2. **Confirm PLUSD burn** (Confirm):
- *    Enabled when `!needsApproval && canDeposit && !requestIsConfirmed`.
+ *    Enabled when allowance is known to cover amountBig (hasSufficientAllowance)
+ *    && canDeposit && !requestIsConfirmed.
  *    While status is `PendingVerification`, shows loading affordance (spinner,
  *    full opacity) — button stays non-clickable until verifier advances the
  *    request to `PendingClaim`. Done when status reaches `PendingClaim`.
@@ -120,6 +121,13 @@ function Withdraw() {
   const needsApproval =
     allowance !== undefined && amountBig > 0n && allowance < amountBig;
 
+  // Positive "allowance is known and sufficient" gate. Distinct from
+  // !needsApproval, which is true both when allowance covers the amount AND
+  // when allowance is still undefined (loading). Step 2 / Confirm must only
+  // unlock once we know the allowance covers amountBig.
+  const hasSufficientAllowance =
+    allowance !== undefined && amountBig > 0n && allowance >= amountBig;
+
   // ── Request state machine ─────────────────────────────────────────────
   // Pick the latest active withdrawal request from the polled list.
   // "Active" = status is "PendingVerification" (step 2 in-progress) or
@@ -159,11 +167,13 @@ function Withdraw() {
   // VerificationFailed and "no active request" leave the input editable.
   const isAmountLocked = activeRequest !== null;
 
-  // Faded state: allowance approved and step 2 ("Confirm") is the live action,
-  // but no on-chain request has been submitted yet.
+  // Faded state: allowance is known-sufficient and step 2 ("Confirm") is the
+  // live action, but no on-chain request has been submitted yet.
+  // Using hasSufficientAllowance (not !needsApproval) avoids fading while
+  // allowance is still loading (undefined).
   // Deliberately excludes isAmountLocked to avoid double-fading.
   const isInputFaded =
-    isConnected && !needsApproval && amountBig > 0n && !requestIsConfirmed;
+    isConnected && hasSufficientAllowance && !requestIsConfirmed;
 
   const voucher = useWithdrawalVoucher(voucherRequestId);
 
@@ -178,7 +188,7 @@ function Withdraw() {
   const canConfirm =
     isConnected &&
     canDeposit &&
-    !needsApproval &&
+    hasSufficientAllowance &&
     !requestWithdrawal.isPending &&
     !requestIsConfirmed;
 
@@ -190,10 +200,12 @@ function Withdraw() {
     !claim.isSuccess;
 
   // ── Step state derivations ────────────────────────────────────────────
-  // Step 1 is "success" once the allowance covers the entered amount
-  // OR once a request exists (because at that point approval already happened).
+  // Step 1 is "success" once the allowance is known to cover the entered amount
+  // (hasSufficientAllowance) OR once a request exists (approval already happened).
+  // Using hasSufficientAllowance (not !needsApproval) avoids showing "Done"
+  // while allowance is still loading (undefined).
   const step1State =
-    (!needsApproval && amountBig > 0n && isConnected) || requestIsConfirmed
+    (hasSufficientAllowance && isConnected) || requestIsConfirmed
       ? "success"
       : "idle";
 
