@@ -22,7 +22,7 @@ impl EventRepo {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(b,)| b as u64).unwrap_or(0))
+        Ok(row.map_or(0, |(b,)| b as u64))
     }
 
     /// Upserts the cursor for the given chain inside an open transaction.
@@ -85,8 +85,9 @@ impl EventRepo {
                (chain_id, contract_address, event_name,
                 block_number, tx_hash, log_index, block_timestamp,
                 sender, receiver, amount, request_id, cumulative,
-                assets, shares)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+                assets, shares,
+                shares_balance, avg_buy_share_price, realized_pnl)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
         )
         .bind(chain_id)
         .bind(event.contract_address.to_checksum(None))
@@ -112,6 +113,9 @@ impl EventRepo {
         .bind(event.shares.map(|v| {
             bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
         }))
+        .bind(&event.shares_balance)
+        .bind(&event.avg_buy_share_price)
+        .bind(&event.realized_pnl)
         .execute(conn)
         .await?;
 

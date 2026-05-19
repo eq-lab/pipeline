@@ -21,7 +21,7 @@ use parsers::{
 use poller::EvmEventPollerBuilder;
 
 pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
-    let repo = Arc::new(EventRepo::new(pool));
+    let repo = Arc::new(EventRepo::new(pool.clone()));
     let chain_id = settings.chain_id;
 
     // Seed cursor from START_BLOCK if no existing state
@@ -86,8 +86,10 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         parse_staking_deposit(log)
             .or_else(|| parse_staking_withdraw(log))
             .map(|ev| {
-                Box::new(ContractLogMapper::new(ev, chain_id, splusd_repo.clone()))
-                    as Box<dyn shared::log_mapper::LogMapper>
+                Box::new(
+                    ContractLogMapper::new(ev, chain_id, splusd_repo.clone())
+                        .with_position_tracking(),
+                ) as Box<dyn shared::log_mapper::LogMapper>
             })
     })
     .build();

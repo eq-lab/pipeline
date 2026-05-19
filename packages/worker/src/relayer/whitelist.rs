@@ -65,7 +65,7 @@ async fn process_allows<T, P>(
         .await;
 
         match result {
-            Ok(_) => {
+            Ok(()) => {
                 if let Err(e) = kyc_repo
                     .set_on_chain_allowed(&candidate.wallet_address)
                     .await

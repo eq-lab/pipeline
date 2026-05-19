@@ -44,18 +44,15 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
             }
         };
 
-        let (riskscore, signals_ref) = match resp.data.as_ref() {
-            Some(data) => {
-                let cp = &data.counterparty;
-                (cp.riskscore.unwrap_or(0.0), cp.signals.as_ref())
-            }
-            None => {
-                tracing::info!(
-                    wallet = profile.wallet_address,
-                    "Crystal returned no data (address has no on-chain history), treating as clean"
-                );
-                (0.0, None)
-            }
+        let (riskscore, signals_ref) = if let Some(data) = resp.data.as_ref() {
+            let cp = &data.counterparty;
+            (cp.riskscore.unwrap_or(0.0), cp.signals.as_ref())
+        } else {
+            tracing::info!(
+                wallet = profile.wallet_address,
+                "Crystal returned no data (address has no on-chain history), treating as clean"
+            );
+            (0.0, None)
         };
 
         let risk = riskscore as f32;

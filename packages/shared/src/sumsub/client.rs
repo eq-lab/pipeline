@@ -35,8 +35,7 @@ impl SumsubClient {
         let body_json = serde_json::to_string(&body)?;
 
         let response = self
-            .signed_request(reqwest::Method::POST, &url, Some(&body_json))
-            .await?
+            .signed_request(reqwest::Method::POST, &url, Some(&body_json))?
             .header("Content-Type", "application/json")
             .body(body_json)
             .send()
@@ -65,8 +64,7 @@ impl SumsubClient {
         );
 
         let response = self
-            .signed_request(reqwest::Method::GET, &url, None)
-            .await?
+            .signed_request(reqwest::Method::GET, &url, None)?
             .send()
             .await
             .context("Sumsub get_applicant request failed")?;
@@ -96,8 +94,7 @@ impl SumsubClient {
         let body_json = serde_json::to_string(&body)?;
 
         let response = self
-            .signed_request(reqwest::Method::POST, &url, Some(&body_json))
-            .await?
+            .signed_request(reqwest::Method::POST, &url, Some(&body_json))?
             .header("Content-Type", "application/json")
             .body(body_json)
             .send()
@@ -116,7 +113,7 @@ impl SumsubClient {
             .context("Failed to parse access_token response")
     }
 
-    async fn signed_request(
+    fn signed_request(
         &self,
         method: reqwest::Method,
         url: &str,

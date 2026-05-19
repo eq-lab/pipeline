@@ -2,9 +2,12 @@ use pipeline_worker::indexer::config::{env_bool, IndexerJobSettings};
 use pipeline_worker::indexer::run_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
+use pipeline_worker::price_poller::config::PricePollerSettings;
+use pipeline_worker::price_poller::run_price_poller_job;
 use pipeline_worker::relayer::config::RelayerJobSettings;
 use pipeline_worker::relayer::relayer_job::run_relayer_job;
 use shared::kyc_repo::KycRepo;
+use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 use std::sync::Arc;
@@ -38,6 +41,16 @@ async fn main() -> anyhow::Result<()> {
             if let Err(e) = run_kyc_outbox_job(settings, kyc_repo, sumsub_client).await {
                 tracing::error!("kyc outbox job exited with error: {e:?}");
             }
+        });
+    }
+
+    if env_bool("JOB_PRICE_POLLER_ENABLED") {
+        let settings = PricePollerSettings::from_env()?;
+        let position_repo = Arc::new(PositionRepo::new(pool.clone()));
+
+        tracing::info!("price poller job started");
+        tokio::spawn(async move {
+            run_price_poller_job(settings, position_repo).await;
         });
     }
 

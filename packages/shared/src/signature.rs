@@ -26,7 +26,7 @@ pub fn verify_personal_sign(
     let parity = match v {
         0 | 27 => false,
         1 | 28 => true,
-        _ => bail!("invalid signature v byte: {}", v),
+        _ => bail!("invalid signature v byte: {v}"),
     };
     let sig = PrimitiveSignature::from_bytes_and_parity(&sig_bytes[..64], parity);
 
@@ -39,11 +39,7 @@ pub fn verify_personal_sign(
         .context("invalid expected address")?;
 
     if recovered != expected {
-        bail!(
-            "signature mismatch: recovered {} but expected {}",
-            recovered,
-            expected
-        );
+        bail!("signature mismatch: recovered {recovered} but expected {expected}");
     }
 
     Ok(())
