@@ -74,7 +74,9 @@ _None_
 
 ## Implementation Steps
 
-### 1. New hook — `useWithdrawalVoucher`
+> **Status**: All steps completed.
+
+### 1. New hook — `useWithdrawalVoucher` ✅
 
 Create `packages/frontend/src/api/useWithdrawalVoucher.ts` by cloning `useDepositVoucher.ts` and changing:
 
@@ -89,7 +91,7 @@ Update `packages/frontend/src/api/index.ts`:
 - Export `useWithdrawalVoucher` (named export).
 - Export the local `VoucherResponse` / `VoucherStatus` / `UseWithdrawalVoucherResult` types — if names collide with deposit's `VoucherResponse`, alias them on export (`WithdrawalVoucherResponse`, etc.). **Recommended approach:** rename the new file's types to `WithdrawalVoucherResponse` and `UseWithdrawalVoucherResult` (the `VoucherStatus` literal-union is identical across both hooks; either re-export the existing one or re-declare it — re-declaring is the safer choice to keep the two hooks independent).
 
-### 2. New test — `useWithdrawalVoucher.test.tsx`
+### 2. New test — `useWithdrawalVoucher.test.tsx` ✅
 
 Create `packages/frontend/src/api/useWithdrawalVoucher.test.tsx`. Use the existing API-hook test scaffolding (look at `useRequests.test.tsx` for the QueryClientProvider setup pattern). If no prior `useDepositVoucher.test.tsx` exists in the repo (it does not — confirmed), structure this test from scratch with these cases:
 
@@ -102,7 +104,7 @@ Create `packages/frontend/src/api/useWithdrawalVoucher.test.tsx`. Use the existi
 
 Use `vi.useFakeTimers()` for retry-interval assertions where required; see `useRequests.test.tsx` for the pattern.
 
-### 3. Rewrite `withdraw.tsx`
+### 3. Rewrite `withdraw.tsx` ✅
 
 Replace the contents of `packages/frontend/src/routes/withdraw.tsx` with the equivalent of `deposit.tsx` but for the withdraw flow. Concretely:
 
@@ -207,7 +209,7 @@ The Step 3 `onAction` handler: `claim.write(BigInt(requestId), voucher.data.sign
 
 Keep the route export at the bottom: `export const Route = createFileRoute("/withdraw")({ component: Withdraw });`.
 
-### 4. Mocks layer — new test scenario
+### 4. Mocks layer — new test scenario ✅
 
 Update `packages/frontend/src/routes/test/-scenarios.ts`:
 
@@ -254,11 +256,11 @@ Update `packages/frontend/src/routes/test/-scenarios.ts`:
 
 Keep `enableScenarioKeys` / `enableScenario` helpers unchanged.
 
-### 5. `/test` Mocks tab — sanity-check rendering
+### 5. `/test` Mocks tab — sanity-check rendering ✅
 
 The `/test → Mocks` tab renders `SCENARIOS` automatically; no further code needed. Verify the new scenario card appears and activates correctly (covered by manual UX check, not unit test).
 
-### 6. Route test — `-withdraw.test.tsx`
+### 6. Route test — `-withdraw.test.tsx` ✅
 
 Create `packages/frontend/src/routes/-withdraw.test.tsx`. Use `-deposit.test.tsx` as the structural template — copy its entire scaffolding (wagmi/AppKit mocks, `@/api` mock with mutable `mockRequestsData` / `mockVoucherData`, the `WalletProvider` + `ToastProvider` wrapper).
 
@@ -284,7 +286,7 @@ Required test cases:
 
 Coverage target: parity with `-deposit.test.tsx` minus the min-deposit / banner cases (which do not apply).
 
-### 7. Documentation updates
+### 7. Documentation updates ✅
 
 **`packages/frontend/src/api/README.md`** (must update):
 
@@ -303,7 +305,7 @@ Coverage target: parity with `-deposit.test.tsx` minus the min-deposit / banner 
 
 - Locate the section that lists `useWithdrawalQueueAddresses` / `useRequestWithdrawal` / `useClaimWithdrawal`. Append a one-line cross-reference: "The `/withdraw` page composes these hooks with `useWithdrawalVoucher` from `@/api`; see `src/api/README.md` for the voucher endpoint contract."
 
-### 8. Lint + typecheck
+### 8. Lint + typecheck ✅
 
 After every code change, run from repo root:
 

@@ -42,6 +42,8 @@ export interface TestScenario {
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000000";
 const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
 const DM_ADDRESS = "0x3333000000000000000000000000000000000003";
+const PLUSD_ADDRESS = "0x1111000000000000000000000000000000000001";
+const WQ_ADDRESS = "0x4444000000000000000000000000000000000004";
 
 // Shared wallet keys that every "connected" scenario seeds.
 const WALLET_CONNECTED_BASE: Record<string, string> = {
@@ -50,12 +52,18 @@ const WALLET_CONNECTED_BASE: Record<string, string> = {
   // DepositManager named aliases so useDepositManagerAddresses() returns the
   // stub addresses regardless of VITE_DEPOSIT_MANAGER_ADDRESS in .env.
   "pipeline.mock.wallet.contract.depositManager.usdc": USDC_ADDRESS,
-  "pipeline.mock.wallet.contract.depositManager.plusd":
-    "0x1111000000000000000000000000000000000001",
+  "pipeline.mock.wallet.contract.depositManager.plusd": PLUSD_ADDRESS,
   "pipeline.mock.wallet.contract.depositManager.minDeposit": "1000000",
   // USDC token metadata (needed by useToken + useApproval)
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.decimals`]: "6",
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.symbol`]: "USDC",
+  // WithdrawalQueue named aliases so useWithdrawalQueueAddresses() returns the
+  // stub addresses regardless of VITE_WITHDRAWAL_QUEUE_ADDRESS in .env.
+  "pipeline.mock.wallet.contract.withdrawalQueue.plusd": PLUSD_ADDRESS,
+  "pipeline.mock.wallet.contract.withdrawalQueue.usdc": USDC_ADDRESS,
+  // PLUSD token metadata (needed by useToken + useApproval on /withdraw)
+  [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.decimals`]: "18",
+  [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.symbol`]: "PLUSD",
 };
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -287,6 +295,44 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           },
         ],
       }),
+    },
+  },
+
+  // 10. Connected, PendingClaim withdrawal request, voucher ready ─────────────
+  {
+    id: "withdrawal-pending-claim",
+    title: "Connected, PendingClaim withdrawal request, voucher ready",
+    description:
+      "Withdrawal verification passed; a claim voucher is available. Step 3 is enabled on /withdraw.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000", // 100 PLUSD at 18 decimals
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
+        "1000000000000000000000", // 1000 PLUSD allowance
+      "pipeline.mock.api.GET./v1/requests": JSON.stringify({
+        requests: [
+          {
+            type: "Withdraw",
+            amount: "10000000000000000000", // 10 PLUSD at 18 decimals
+            request_id: "77",
+            status: "PendingClaim",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+      "pipeline.mock.api.GET./v1/withdrawals/77/voucher": JSON.stringify({
+        request_id: "77",
+        amount: "10000000000000000000",
+        user: WALLET_ADDRESS,
+        signature:
+          "0xaabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd001122330011",
+      }),
+      "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal":
+        JSON.stringify({
+          hash: "0xc1a100000000000000000000000000000000000000000000000000000000c1a1",
+          amount: "10000000000000000000",
+        }),
     },
   },
 ];
