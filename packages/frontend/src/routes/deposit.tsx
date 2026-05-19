@@ -239,10 +239,17 @@ function Deposit() {
   const prevIsApproveSuccess = useRef(false);
   useEffect(() => {
     if (isApprovePending && !prevIsApprovePending.current) {
-      toast.show({ id: "approve-tx", tone: "pending", title: "Approving USDC…" });
+      toast.show({
+        id: "approve-tx",
+        tone: "pending",
+        title: "Approving USDC…",
+      });
     }
     if (isApproveSuccess && !prevIsApproveSuccess.current) {
-      toast.update("approve-tx", { tone: "success", title: "Approval confirmed" });
+      toast.update("approve-tx", {
+        tone: "success",
+        title: "Approval confirmed",
+      });
     }
     prevIsApprovePending.current = isApprovePending;
     prevIsApproveSuccess.current = isApproveSuccess;
@@ -266,8 +273,15 @@ function Deposit() {
         },
       });
     }
-    if (requestDeposit.error && requestDeposit.error !== prevDepositError.current) {
-      toast.update("deposit-tx", { tone: "danger", title: "Deposit failed", action: undefined });
+    if (
+      requestDeposit.error &&
+      requestDeposit.error !== prevDepositError.current
+    ) {
+      toast.update("deposit-tx", {
+        tone: "danger",
+        title: "Deposit failed",
+        action: undefined,
+      });
     }
     prevDepositIsPending.current = requestDeposit.isPending;
     prevDepositIsSuccess.current = requestDeposit.isSuccess;
@@ -386,7 +400,9 @@ function Deposit() {
             // Strip the leading "$" — the token label ("USDC") already establishes
             // the unit, so the balance line should show a plain decimal number.
             // Fall back to "—" while loading.
-            balanceLabel: formattedBalance ? formattedBalance.replace(/^\$/, "") : "—",
+            balanceLabel: formattedBalance
+              ? formattedBalance.replace(/^\$/, "")
+              : "—",
             placeholderValue: "0",
             // Controlled value state
             value: amountInput,
@@ -396,7 +412,9 @@ function Deposit() {
             // Fade the USDC value container once the allowance is approved and
             // step 2 is live. Purely visual — input remains editable. Figma: opacity-30.
             // Transition smooths the state change.
-            className: isInputFaded ? "opacity-30 transition-opacity" : "transition-opacity",
+            className: isInputFaded
+              ? "opacity-30 transition-opacity"
+              : "transition-opacity",
             quickAmounts: [
               {
                 label:
@@ -427,20 +445,25 @@ function Deposit() {
         {/* Conditional: low-balance banner OR three-step card */}
         {hasBalance === false ? (
           /* Insufficient-balance banner — replaces StepsCard.
-             Figma: node 1825-10214 */
+             Figma: node 1825-10214.
+             Layout: horizontal flex-row with text-stack on left and
+             Copy Address button pinned to the right. Background: yellow
+             promo surface (same token as the home Connect Wallet card). */
           <Card
-            variant="muted"
-            className="flex flex-col items-center gap-3 p-6 text-center"
+            variant="yellow"
+            className="flex flex-row items-center justify-between gap-4"
           >
-            <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
-              Add funds to your USDC balance
-            </p>
-            <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink-muted)]">
-              Minimum amount —{" "}
-              {minDeposit !== undefined && decimals !== undefined
-                ? `${formatUsdcCurrency(minDeposit, decimals)} USDC`
-                : "—"}
-            </p>
+            <div className="flex flex-col items-start gap-1">
+              <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+                Add funds to your USDC balance
+              </p>
+              <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]">
+                Minimum amount —{" "}
+                {minDeposit !== undefined && decimals !== undefined
+                  ? `${formatUsdcCurrency(minDeposit, decimals)} USDC`
+                  : "—"}
+              </p>
+            </div>
             <Button
               variant="primary-dark"
               onClick={copyAddress}
