@@ -35,6 +35,19 @@ export type {
   RequestWithdrawalResult,
   ClaimWithdrawalResult,
 } from "./useWithdrawalQueue";
+export {
+  useStakedPlusdAsset,
+  useStakedPlusdConvertToShares,
+  useStakedPlusdConvertToAssets,
+  useStake,
+  useUnstake,
+} from "./useStakedPlusd";
+export type {
+  StakedPlusdAssetResult,
+  StakedPlusdConvertResult,
+  StakeResult,
+  UnstakeResult,
+} from "./useStakedPlusd";
 export { useApproval } from "./useApproval";
 export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
 export { useToken } from "./useToken";

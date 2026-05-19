@@ -39,6 +39,14 @@ import {
   useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
+  useWithdrawalQueueAddresses,
+  useRequestWithdrawal,
+  useClaimWithdrawal,
+  useStakedPlusdAsset,
+  useStakedPlusdConvertToShares,
+  useStakedPlusdConvertToAssets,
+  useStake,
+  useUnstake,
   isMockKeyPresent,
 } from "@/wallet";
 ```
@@ -218,6 +226,76 @@ write(requestId, verifierSignature); // requestId: bigint; verifierSignature: `0
 Write hook for `claim(uint256 requestId, bytes verifierSignature)`. Returns a tx
 hash in `data.hash` after success. Same zero-address guard as `useRequestDeposit`.
 
+### `useStakedPlusdAsset()`
+
+```ts
+const { plusd, isLoading, error } = useStakedPlusdAsset();
+```
+
+Reads the `asset()` view from the StakedPLUSD vault — returns the underlying
+PLUSD token address. Immutable per the ERC-4626 spec; cached forever
+(`staleTime: Infinity`). Returns `plusd: undefined` when
+`VITE_STAKED_PLUSD_ADDRESS` is the zero address.
+
+| Field       | Type                       | Description                                           |
+| ----------- | -------------------------- | ----------------------------------------------------- |
+| `plusd`     | `0x${string} \| undefined` | PLUSD token address, or `undefined` if not configured |
+| `isLoading` | `boolean`                  |                                                       |
+| `error`     | `Error \| null`            |                                                       |
+
+### `useStakedPlusdConvertToShares(assets)`
+
+```ts
+const { data, isLoading, error } = useStakedPlusdConvertToShares(assets);
+// assets: bigint | undefined — pass undefined or 0n to disable the hook
+```
+
+Reads `convertToShares(uint256 assets)` — "how many sPLUSD shares do I get for
+`assets` PLUSD?" Used for the stake-direction preview. Short cache (`staleTime:
+30_000`, `refetchInterval: 30_000`). Disabled when `assets` is `undefined` or
+`0n`, or when `VITE_STAKED_PLUSD_ADDRESS` is zero.
+
+| Field       | Type                  | Description                                        |
+| ----------- | --------------------- | -------------------------------------------------- |
+| `data`      | `bigint \| undefined` | Projected sPLUSD share count, `undefined` if disabled |
+| `isLoading` | `boolean`             |                                                    |
+| `error`     | `Error \| null`       |                                                    |
+
+### `useStakedPlusdConvertToAssets(shares)`
+
+```ts
+const { data, isLoading, error } = useStakedPlusdConvertToAssets(shares);
+// shares: bigint | undefined — pass undefined or 0n to disable the hook
+```
+
+Reads `convertToAssets(uint256 shares)` — "how much PLUSD do I get for
+`shares` sPLUSD?" Used for the unstake-direction preview. Same caching and
+disable semantics as `useStakedPlusdConvertToShares`.
+
+### `useStake()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useStake();
+write(amount); // amount: bigint (PLUSD, 18 decimals)
+```
+
+Write hook for `deposit(uint256 assets, address receiver)`. `receiver` defaults
+to the connected wallet (applied internally). Returns a tx hash in `data.hash`
+after success. Error guards: `Error("Wallet not connected")` when no wallet is
+connected; `Error("StakedPLUSD not configured")` when the env address is zero.
+
+### `useUnstake()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useUnstake();
+write(shares); // shares: bigint (sPLUSD, 18 decimals)
+```
+
+Write hook for `redeem(uint256 shares, address receiver, address owner)`. Both
+`receiver` and `owner` default to the connected wallet (applied internally). No
+verifier signature required — unstaking is a direct ERC-4626 transaction. Same
+error guards as `useStake`.
+
 ### `isMockKeyPresent(key: string): boolean`
 
 Non-reactive helper that returns `true` when a `pipeline.mock.wallet.*` key is
@@ -307,6 +385,14 @@ the absence of a key is its own off-switch.
 | `pipeline.mock.wallet.contract.<address>.intoToken`           | `string` (`0x…`)                                                | Generic per-address fallback for `useWithdrawalQueueAddresses` — USDC address.                                                                 |
 | `pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "0x…", requestId?: "123", queued?: "1000000" }` | Bypasses `useRequestWithdrawal` wagmi call; `write()` settles immediately with this data. `requestId` and `queued` are mock-path only.         |
 | `pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal` | JSON `{ hash: "0x…", amount?: "1000000" }`                    | Bypasses `useClaimWithdrawal` wagmi call; `write()` settles immediately with this data.                                                        |
+| `pipeline.mock.wallet.contract.stakedPlusd.asset`             | `string` (`0x…`)                                                | Named alias for `useStakedPlusdAsset` — PLUSD token address (maps from `asset()`). Takes priority over the generic key.                        |
+| `pipeline.mock.wallet.contract.<address>.asset`               | `string` (`0x…`)                                                | Generic per-address fallback for `useStakedPlusdAsset`.                                                                                        |
+| `pipeline.mock.wallet.contract.stakedPlusd.convertToShares`   | decimal bigint at 18 decimals (rate scalar)                     | Rate mock for `useStakedPlusdConvertToShares`. Hook returns `(assets * rate) / 1e18`. Example: `"959600000000000000"` ⇒ 0.9596 sPLUSD per 1 PLUSD. Named alias; takes priority over generic key. |
+| `pipeline.mock.wallet.contract.<address>.convertToShares`     | decimal bigint at 18 decimals (rate scalar)                     | Generic per-address fallback for `useStakedPlusdConvertToShares`. Same rate-based arithmetic.                                                  |
+| `pipeline.mock.wallet.contract.stakedPlusd.convertToAssets`   | decimal bigint at 18 decimals (inverse rate scalar)             | Rate mock for `useStakedPlusdConvertToAssets`. Hook returns `(shares * rate) / 1e18`. Example: `"1042100000000000000"` ⇒ 1.0421 PLUSD per 1 sPLUSD. Named alias; takes priority over generic key. |
+| `pipeline.mock.wallet.contract.<address>.convertToAssets`     | decimal bigint at 18 decimals (inverse rate scalar)             | Generic per-address fallback for `useStakedPlusdConvertToAssets`. Same rate-based arithmetic.                                                  |
+| `pipeline.mock.wallet.contract.stakedPlusd.stake`             | JSON `{ hash: "0x…", shares?: "1000000000000000000" }`          | Bypasses `useStake` wagmi call; `write()` settles immediately with this data. `shares` is mock-path only.                                      |
+| `pipeline.mock.wallet.contract.stakedPlusd.unstake`           | JSON `{ hash: "0x…", assets?: "1000000000000000000" }`          | Bypasses `useUnstake` wagmi call; `write()` settles immediately with this data. `assets` is mock-path only.                                    |
 | `pipeline.mock.wallet.allowance.<token>.<spender>`            | decimal bigint string e.g. `"1000000"` (= 1 USDC at 6 dp)       | Bypasses the real `allowance` read in `useApproval`; token and spender are lowercased.                                                         |
 | `pipeline.mock.wallet.contract.<token>.approve`               | JSON `{ hash: "0x…" }`                                          | Bypasses the real `approve` tx in `useApproval`; token is lowercased. `approve()` settles immediately.                                         |
 
@@ -458,6 +544,58 @@ To reset all WithdrawalQueue mocks:
   "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
   "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
   "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
+].forEach((k) => localStorage.removeItem(k));
+```
+
+**Mock StakedPLUSD vault — asset address + convert rates + stake/unstake:**
+
+```js
+// 1. Set the PLUSD underlying asset address (named alias for useStakedPlusdAsset)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.stakedPlusd.asset",
+  "0x1111000000000000000000000000000000000001",
+);
+
+// 2. Mock convertToShares rate: 0.9596 sPLUSD per 1 PLUSD
+//    Formula: (assets * rate) / 1e18
+//    0.9596 at 1e18 scale = 959600000000000000
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.stakedPlusd.convertToShares",
+  "959600000000000000", // 0.9596 sPLUSD per 1 PLUSD ⇒ rate = 959600000000000000
+);
+
+// 3. Mock convertToAssets rate: 1.0421 PLUSD per 1 sPLUSD
+//    Formula: (shares * rate) / 1e18
+//    1.0421 at 1e18 scale = 1042100000000000000
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+  "1042100000000000000", // 1.0421 PLUSD per 1 sPLUSD ⇒ rate = 1042100000000000000
+);
+
+// 4. Mock a successful stake (deposit) — returns a fake tx hash + shares
+//    Note: shares is mock-path only (wagmi real path only yields a hash)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.stakedPlusd.stake",
+  JSON.stringify({ hash: "0xdeadbeefdeadbeef", shares: "959600000000000000" }),
+);
+
+// 5. Mock a successful unstake (redeem) — returns a fake tx hash + assets
+//    Note: assets is mock-path only (wagmi real path only yields a hash)
+localStorage.setItem(
+  "pipeline.mock.wallet.contract.stakedPlusd.unstake",
+  JSON.stringify({ hash: "0xcafecafecafecafe", assets: "1042100000000000000" }),
+);
+```
+
+To reset all StakedPLUSD mocks:
+
+```js
+[
+  "pipeline.mock.wallet.contract.stakedPlusd.asset",
+  "pipeline.mock.wallet.contract.stakedPlusd.convertToShares",
+  "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
+  "pipeline.mock.wallet.contract.stakedPlusd.stake",
+  "pipeline.mock.wallet.contract.stakedPlusd.unstake",
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
