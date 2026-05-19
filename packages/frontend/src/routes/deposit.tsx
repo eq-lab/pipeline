@@ -383,8 +383,10 @@ function Deposit() {
             token: "usdc",
             tokenLabel: "USDC",
             // formattedBalance from useToken is "$1,000.00" (USD currency format).
+            // Strip the leading "$" — the token label ("USDC") already establishes
+            // the unit, so the balance line should show a plain decimal number.
             // Fall back to "—" while loading.
-            balanceLabel: formattedBalance ?? "—",
+            balanceLabel: formattedBalance ? formattedBalance.replace(/^\$/, "") : "—",
             placeholderValue: "0",
             // Controlled value state
             value: amountInput,
