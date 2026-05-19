@@ -44,8 +44,10 @@ import { Card, SegmentedTabs } from "@pipeline/ui";
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
  */
 
-export interface PortfolioPlaceholderCardProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {}
+export type PortfolioPlaceholderCardProps = Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+>;
 
 // Stable heading id — avoids collision when multiple cards mount in a
 // preview / story.
