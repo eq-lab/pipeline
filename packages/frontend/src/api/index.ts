@@ -23,3 +23,9 @@ export type {
   VoucherStatus,
   UseDepositVoucherResult,
 } from "./useDepositVoucher";
+export { useWithdrawalVoucher } from "./useWithdrawalVoucher";
+export type {
+  WithdrawalVoucherResponse,
+  WithdrawalVoucherStatus,
+  UseWithdrawalVoucherResult,
+} from "./useWithdrawalVoucher";

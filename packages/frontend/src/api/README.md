@@ -7,7 +7,12 @@ boundary.
 ## Public API
 
 ```ts
-import { apiFetch, useRequests } from "@/api";
+import {
+  apiFetch,
+  useRequests,
+  useDepositVoucher,
+  useWithdrawalVoucher,
+} from "@/api";
 
 import type {
   RequestItem,
@@ -15,6 +20,12 @@ import type {
   RequestStatus,
   RequestsResponse,
   UseRequestsResult,
+  VoucherResponse,
+  VoucherStatus,
+  UseDepositVoucherResult,
+  WithdrawalVoucherResponse,
+  WithdrawalVoucherStatus,
+  UseWithdrawalVoucherResult,
 } from "@/api";
 ```
 
@@ -51,6 +62,43 @@ Disabled when the wallet is disconnected. Automatically refetches when any
 
 ---
 
+### `useDepositVoucher(requestId?)`
+
+React Query hook that fetches a deposit voucher (verifier signature) from
+`GET /v1/deposits/{request_id}/voucher?wallet=<address>`.
+
+```ts
+const { data, status, error, refetch } = useDepositVoucher(requestId);
+// status: "idle" | "pending" | "ready" | "failed"
+// data?.signature — passed to useClaim.write()
+```
+
+Disabled when `requestId` is `undefined` or the wallet is disconnected. Polls
+every 3 s until the signature is present; retries up to 20 times on retriable
+errors (404/403). Reactive to `pipeline.mock.api.*` localStorage key changes.
+
+---
+
+### `useWithdrawalVoucher(requestId?)`
+
+React Query hook that fetches a withdrawal voucher (verifier signature) from
+`GET /v1/withdrawals/{request_id}/voucher?wallet=<address>`.
+
+```ts
+const { data, status, error, refetch } = useWithdrawalVoucher(requestId);
+// status: "idle" | "pending" | "ready" | "failed"
+// data?.signature — passed to useClaimWithdrawal.write()
+```
+
+Disabled when `requestId` is `undefined` or the wallet is disconnected. Same
+polling / retry semantics as `useDepositVoucher`. The EIP-712 domain for
+withdrawal vouchers differs from deposit vouchers, but the `signature` field
+shape is identical (`0x…` bytes string).
+
+Reactive to `pipeline.mock.api.*` localStorage key changes.
+
+---
+
 ## localStorage mock key schema
 
 The API module reuses the same mock infrastructure as the wallet module. The
@@ -68,6 +116,22 @@ this event and issues a refetch — no page reload needed.
 | -------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------- |
 | `pipeline.mock.api.GET./v1/requests`               | JSON `{ requests: [...] }` | Bypasses the real fetch — `useRequests` returns this immediately for any wallet |
 | `pipeline.mock.api.GET./v1/requests?wallet=<addr>` | JSON `{ requests: [...] }` | Per-wallet override; takes priority over the un-keyed alias above               |
+
+**Lookup order:** with-query-string key → without-query-string key → real fetch.
+
+### `useDepositVoucher` mock keys
+
+| Key                                                                    | Type                                                  | Purpose                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher`               | JSON `{ signature: "0x…", request_id, amount, user }` | Bypasses the real fetch for any wallet                            |
+| `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>` | JSON `{ signature: "0x…", request_id, amount, user }` | Per-wallet override; takes priority over the un-keyed alias above |
+
+### `useWithdrawalVoucher` mock keys
+
+| Key                                                                       | Type                                                  | Purpose                                                           |
+| ------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`               | JSON `{ signature: "0x…", request_id, amount, user }` | Bypasses the real fetch for any wallet                            |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<addr>` | JSON `{ signature: "0x…", request_id, amount, user }` | Per-wallet override; takes priority over the un-keyed alias above |
 
 **Lookup order:** with-query-string key → without-query-string key → real fetch.
 
@@ -120,6 +184,44 @@ localStorage.setItem(
   "pipeline.mock.api.GET./v1/requests?wallet=0x1234000000000000000000000000000000000001",
   JSON.stringify({ requests: [] }),
 );
+```
+
+### DevTools console snippet — seed withdrawal voucher mock (request_id=77)
+
+```js
+// Seed a PendingClaim withdrawal request and a ready voucher for request_id=77.
+// Navigate to /withdraw — step 3 (Claim) will be the enabled action.
+localStorage.setItem(
+  "pipeline.mock.api.GET./v1/requests",
+  JSON.stringify({
+    requests: [
+      {
+        type: "Withdraw",
+        amount: "10000000000000000000", // 10 PLUSD at 18 decimals
+        request_id: "77",
+        status: "PendingClaim",
+        created_at: new Date().toISOString(),
+      },
+    ],
+  }),
+);
+localStorage.setItem(
+  "pipeline.mock.api.GET./v1/withdrawals/77/voucher",
+  JSON.stringify({
+    request_id: "77",
+    amount: "10000000000000000000",
+    user: "0x1234000000000000000000000000000000000000",
+    signature:
+      "0xaabbccdd00112233aabbccdd00112233aabbccdd00112233aabbccdd0011223300112233",
+  }),
+);
+```
+
+To reset:
+
+```js
+localStorage.removeItem("pipeline.mock.api.GET./v1/requests");
+localStorage.removeItem("pipeline.mock.api.GET./v1/withdrawals/77/voucher");
 ```
 
 ---
