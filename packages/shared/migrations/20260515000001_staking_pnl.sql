@@ -32,4 +32,4 @@ ALTER TABLE contract_logs ADD COLUMN realized_pnl        NUMERIC(29, 12);
 
 -- Seed values
 INSERT INTO vaults (chain_id, address, name, asset_decimals, share_decimals)
-VALUES (560048, '0x4C414d0948D8392b1E78e25cb54b4074616Af2B6', 'sPLUSD', 6, 6);                                                                       
+VALUES (560048, '0xD2cf15F273aE6BE2bDF5043Db032D5B59ec4908B', 'sPLUSD', 6, 6);                                                                       

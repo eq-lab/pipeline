@@ -338,6 +338,8 @@ impl KycRepo {
         Ok(rows)
     }
 
+    /// Legacy TTL-based whitelist. Currently unused — replaced by on_chain_allowed.
+    #[allow(dead_code)]
     pub async fn set_whitelisted(
         &self,
         wallet_address: &str,
