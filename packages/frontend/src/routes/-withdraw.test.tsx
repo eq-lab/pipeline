@@ -160,11 +160,18 @@ const AMOUNT_10_PLUSD = "10000000000000000000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Seeds the common mock keys shared by most test scenarios. */
+/** Seeds the common mock keys shared by most test scenarios.
+ *
+ * @param seedAllowance - When false, the allowance localStorage key is NOT
+ *   written. This simulates the production "allowance still loading" state,
+ *   where useToken returns allowance === undefined because the ERC-20
+ *   allowance(owner, spender) read has not yet resolved.
+ */
 function seedBaseMocks({
   balance = BALANCE_100_PLUSD,
   allowance = "0",
   connected = true,
+  seedAllowance = true,
 } = {}) {
   if (connected) {
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
@@ -197,11 +204,13 @@ function seedBaseMocks({
     balance,
   );
 
-  // PLUSD → WQ allowance
-  localStorage.setItem(
-    `pipeline.mock.wallet.allowance.${PLUSD_ADDRESS.toLowerCase()}.${WQ_ADDRESS.toLowerCase()}`,
-    allowance,
-  );
+  // PLUSD → WQ allowance (omitted when seedAllowance=false to simulate loading)
+  if (seedAllowance) {
+    localStorage.setItem(
+      `pipeline.mock.wallet.allowance.${PLUSD_ADDRESS.toLowerCase()}.${WQ_ADDRESS.toLowerCase()}`,
+      allowance,
+    );
+  }
 
   // Mock approve tx
   localStorage.setItem(
@@ -380,6 +389,65 @@ describe("Withdraw page — approved state (allowance ≥ amount)", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Withdraw page — allowance is still loading", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    // Balance and decimals are loaded, but allowance key is NOT written so
+    // the mock layer returns undefined for the allowance read — simulating the
+    // production "allowance call in-flight" state.
+    seedBaseMocks({ seedAllowance: false });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Confirm button stays disabled while allowance is undefined", async () => {
+    const user = userEvent.setup();
+    renderWithdraw();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+
+  it("step 1 does not show Done while allowance is undefined", async () => {
+    const user = userEvent.setup();
+    renderWithdraw();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      const badge = screen.queryByLabelText("Approve complete");
+      // Either the badge is absent or it is not in "success" state.
+      if (badge !== null) {
+        expect(badge).not.toHaveAttribute("data-state", "success");
+      }
+    });
+  });
+
+  it("input is not faded while allowance is undefined", async () => {
+    const user = userEvent.setup();
+    renderWithdraw();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect((input as HTMLInputElement).className).not.toContain("opacity-30");
+    });
   });
 });
 

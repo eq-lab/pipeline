@@ -46,7 +46,7 @@ _None_
 
 All file paths are relative to the repo root unless absolute.
 
-1. Edit `packages/frontend/src/routes/withdraw.tsx`:
+1. [x] Edit `packages/frontend/src/routes/withdraw.tsx`:
    1. After the existing `needsApproval` line (currently line 120–121), introduce:
       ```ts
       // Positive "allowance is known and sufficient" gate. Distinct from
@@ -81,7 +81,7 @@ All file paths are relative to the repo root unless absolute.
       (The `amountBig > 0n` clause is again implicit in `hasSufficientAllowance`.)
    5. Update the route's JSDoc header block (lines 16–72) where it describes the gates. Specifically refresh the "Step 2 Enabled when" sentence at line 25 to read: "Enabled when allowance is known to cover amountBig (hasSufficientAllowance) && canDeposit && !requestIsConfirmed." Keep the rest of the JSDoc intact.
 
-2. Update `packages/frontend/src/routes/-withdraw.test.tsx`:
+2. [x] Update `packages/frontend/src/routes/-withdraw.test.tsx`:
    1. Add a new `describe` block named `"Withdraw page — allowance is still loading"` after the existing `"approved state"` block (after line 384). Use the existing `seedBaseMocks` helper but call it with a custom variant that does NOT write the `pipeline.mock.wallet.allowance.<plusd>.<wq>` key. Two options — pick one:
       - Option A (preferred, minimal surface area): add an optional `seedAllowance` flag to `seedBaseMocks` (default `true`) and skip the `setItem` call when `false`. Then call `seedBaseMocks({ seedAllowance: false })` in the new block's `beforeEach`.
       - Option B: inline the seeding for this block instead of calling the helper.
@@ -95,7 +95,7 @@ All file paths are relative to the repo root unless absolute.
       - `"Confirm button stays disabled when approve is needed"` (lines 290–301) — still passes because allowance is seeded as `0` (known short → `needsApproval = true` → `hasSufficientAllowance = false`).
       - `"PendingVerification"` block (lines 386–454) — still passes because `requestIsConfirmed === true` overrides the step1 state.
 
-3. Lint / typecheck:
+3. [x] Lint / typecheck:
    - Run `yarn workspace @pipeline/frontend lint` (or the repo-level fast test command via `/test-fast`) and fix any reports.
    - Run `npx tsx scripts/lint-docs.ts` per `AGENTS.md`.
 
