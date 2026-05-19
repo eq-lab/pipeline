@@ -137,6 +137,17 @@ const inputClasses = [
   "placeholder:text-[color:var(--color-pipeline-ink-subtle)]",
 ].join(" ");
 
+// Sign prefix span — same font/size/colour as the input but no width or
+// text-alignment overrides; the span is sized to its content only so it
+// sits flush against the number with no gap.
+const signPrefixClasses = [
+  "font-[family-name:var(--font-display)]",
+  "text-[24px] leading-[28px]",
+  "font-normal",
+  "text-[color:var(--color-pipeline-ink-subtle)]",
+  "shrink-0",
+].join(" ");
+
 export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
   function TokenInput(
     {
@@ -176,7 +187,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
           {/* Right: optional sign prefix + numeric input */}
           <div className="flex shrink-0 items-start justify-end">
             {showSign && (
-              <span className={inputClasses} aria-hidden="true">
+              <span className={signPrefixClasses} aria-hidden="true">
                 {signPrefix}
               </span>
             )}
