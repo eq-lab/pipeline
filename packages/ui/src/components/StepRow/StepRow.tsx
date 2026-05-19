@@ -132,18 +132,22 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               aria-label={`${actionLabel} complete`}
               data-state="success"
             >
+              {/* Check icon — 20×20 viewport, strokeWidth 2.5 matches the
+                  medium-heavy Figma weight (node 1498:100802;9285:26314).
+                  Path spans the full usable height so the glyph clearly
+                  reads inside the 32 px pill. */}
               <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
                 aria-hidden="true"
               >
                 <path
-                  d="M3 8.5L6.5 12L13 5"
+                  d="M3.5 10.5L8 15.5L16.5 5"
                   stroke="var(--color-pipeline-positive)"
-                  strokeWidth="2"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />

@@ -110,6 +110,55 @@ export const Step1Success: Story = {
 };
 
 /* -------------------------------------------------------------------------- */
+/*  Step 1 success + Step 2 idle — "Approved" state                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Mirrors the PendingClaim deposit scenario: step 1 shows the Done pill
+ * (green check) and step 2 shows the live "Claim" button, both at the same
+ * 88 px column width. Acceptance criterion for Issue #301 — the pill and
+ * button must be visually flush.
+ */
+export const Step1SuccessStep2Idle: Story = {
+  name: "Step 1 success / Step 2 idle (Approved)",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "PendingClaim scenario: step 1 shows the Done green-check pill and " +
+          "step 2 shows the live action button. Verifies that the pill width " +
+          "aligns with the button width (both 88 px — Figma node 1980-49513).",
+      },
+    },
+  },
+  render: () => (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 16,
+        background: "var(--color-pipeline-paper)",
+        width: 400,
+      }}
+    >
+      <StepRow
+        step={1}
+        label="Allow contract to use USDC"
+        actionLabel="Approve"
+        state="success"
+      />
+      <StepRow
+        step={2}
+        label="Confirm and receive PLUSD"
+        actionLabel="Claim"
+        disabled={false}
+      />
+    </div>
+  ),
+};
+
+/* -------------------------------------------------------------------------- */
 /*  Pair — mirrors the StepsCard layout from the Figma deposit screen         */
 /* -------------------------------------------------------------------------- */
 
