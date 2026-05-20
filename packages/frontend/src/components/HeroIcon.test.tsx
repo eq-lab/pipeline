@@ -1,8 +1,9 @@
 /**
  * HeroIcon — regression test.
  *
- * Guards against the solid-black-square bug (Issue #238) where a broken SVG
- * URL import caused the CSS mask to render as a solid filled rectangle.
+ * Guards against the solid-black-square bugs (Issues #238 and #328) where a
+ * broken or CSS-invalid SVG URL import caused the CSS mask to render as a solid
+ * filled rectangle.
  *
  * Root cause: SVG assets imported without the Vite `?url` suffix can resolve
  * to a non-URL value at runtime (empty string, raw SVG source, or the literal
@@ -15,14 +16,12 @@
  * Test strategy:
  *   1. Assert the SVG asset URLs imported with `?url` are valid non-empty
  *      URL strings (the most direct check that the import is not broken).
- *   2. Assert the rendered `HeroIcon` structure is correct (outer 72×72 circle,
- *      inner 36×36 icon span) for both supported icons.
+ *   2. Assert the rendered `HeroIcon` mask longhands carry quoted URL values
+ *      and expected sizing for both supported icons.
  *
- * Note: jsdom does not implement the CSS `mask` shorthand property, so the
- * inline `mask`/`WebkitMask` values are silently dropped from `style.cssText`
- * in the test environment. The URL-string assertion (test group 1) is the
- * meaningful regression guard — if the import breaks, the asset URL will be
- * empty or undefined and the assertion will fail.
+ * Note: jsdom does not paint CSS masks, but it does preserve valid longhand
+ * inline mask declarations. That lets these tests catch the unquoted data-URI
+ * failure mode that browsers drop as CSS-invalid before paint.
  *
  * Hosted in `packages/frontend` because that package owns the vitest runner
  * (jsdom + globals). `packages/ui` does not have a test runner.
@@ -109,6 +108,40 @@ describe("HeroIcon — structural rendering", () => {
     expect(span).not.toBeNull();
     expect(span?.style.width).toBe("36px");
     expect(span?.style.height).toBe("36px");
+  });
+
+  it("applies quoted mask URL longhands for arrow-clock", () => {
+    const { container } = render(<HeroIcon icon="arrow-clock" />);
+    const span = container.querySelector(
+      "span[aria-hidden='true']",
+    ) as HTMLSpanElement | null;
+    const expectedMaskUrl = `url("${arrowClockUrl}")`;
+
+    expect(span?.style.webkitMaskImage).toBe(expectedMaskUrl);
+    expect(span?.style.maskImage).toBe(expectedMaskUrl);
+    expect(span?.style.webkitMaskRepeat).toBe("no-repeat");
+    expect(span?.style.maskRepeat).toBe("no-repeat");
+    expect(span?.style.webkitMaskPosition).toBe("center");
+    expect(span?.style.maskPosition).toBe("center");
+    expect(span?.style.webkitMaskSize).toBe("contain");
+    expect(span?.style.maskSize).toBe("contain");
+  });
+
+  it("applies quoted mask URL longhands for chart", () => {
+    const { container } = render(<HeroIcon icon="chart" />);
+    const span = container.querySelector(
+      "span[aria-hidden='true']",
+    ) as HTMLSpanElement | null;
+    const expectedMaskUrl = `url("${navStatsUrl}")`;
+
+    expect(span?.style.webkitMaskImage).toBe(expectedMaskUrl);
+    expect(span?.style.maskImage).toBe(expectedMaskUrl);
+    expect(span?.style.webkitMaskRepeat).toBe("no-repeat");
+    expect(span?.style.maskRepeat).toBe("no-repeat");
+    expect(span?.style.webkitMaskPosition).toBe("center");
+    expect(span?.style.maskPosition).toBe("center");
+    expect(span?.style.webkitMaskSize).toBe("contain");
+    expect(span?.style.maskSize).toBe("contain");
   });
 
   it("inner span background-color is the ink token for arrow-clock", () => {

@@ -56,6 +56,7 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
     ref,
   ) {
     const src = ICON_SRC_MAP[icon];
+    const maskImage = `url(${JSON.stringify(src)})`;
 
     // Decorative by default; becomes meaningful when caller supplies aria-label.
     const isHidden = ariaLabel == null ? true : (ariaHidden ?? false);
@@ -84,11 +85,11 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
             width: 36,
             height: 36,
             backgroundColor: "var(--color-pipeline-ink)",
-            WebkitMaskImage: `url(${src})`,
+            WebkitMaskImage: maskImage,
             WebkitMaskRepeat: "no-repeat",
             WebkitMaskPosition: "center",
             WebkitMaskSize: "contain",
-            maskImage: `url(${src})`,
+            maskImage,
             maskRepeat: "no-repeat",
             maskPosition: "center",
             maskSize: "contain",

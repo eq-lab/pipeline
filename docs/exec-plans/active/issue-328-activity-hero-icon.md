@@ -55,6 +55,16 @@ _None_
 
 ## Implementation Steps
 
+Progress:
+
+- [x] 1. Reproduced the issue on `/transactions` before editing.
+- [x] 2. Fixed `HeroIcon` mask rendering while keeping the public API stable.
+- [x] 3. Confirmed `ActivityHeader` remains a thin composition over
+  `HeroIcon`.
+- [x] 4. Updated focused `HeroIcon` regression coverage.
+- [x] 5. Audited adjacent masked components without changing them.
+- [x] 6. Manually verified the fixed page.
+
 1. Reproduce the issue on the active branch before editing:
    - Start the frontend with `yarn front:dev`.
    - Open `http://127.0.0.1:5177/transactions` if the dev server chooses that
