@@ -1,0 +1,4 @@
+interface:
+  display_name: "UX Tester"
+  short_description: "Run manual UX QA for Pipeline"
+  default_prompt: "Use $ux-tester to test issue:123 in the browser and update quality docs."

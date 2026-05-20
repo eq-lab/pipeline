@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manager"
+  short_description: "Orchestrate Pipeline issue workflows"
+  default_prompt: "Use $manager to drive issue 123 through the Pipeline workflow."
