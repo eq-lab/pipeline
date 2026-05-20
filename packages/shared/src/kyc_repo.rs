@@ -284,7 +284,6 @@ impl KycRepo {
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -313,7 +312,6 @@ impl KycRepo {
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
                              AND LOWER(c.sender) = p.wallet_address
-                             AND c.crystal_kyt_status = 1
                        )",
                 )
                 .fetch_all(&self.pool)
