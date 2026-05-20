@@ -21,8 +21,7 @@ impl SumsubSettings {
             verification_level: env_require("SUMSUB_VERIFICATION_LEVEL")?,
             webhook_secret_key: env_require("SUMSUB_WEBHOOK_SECRET_KEY")?,
             sandbox: env::var("SUMSUB_SANDBOX")
-                .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
-                .unwrap_or(false),
+                .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes")),
             token_ttl_secs: env::var("SUMSUB_TOKEN_TTL_SECS")
                 .unwrap_or_else(|_| "600".to_owned())
                 .parse()
