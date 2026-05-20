@@ -80,7 +80,7 @@ _None_
 
 ## Implementation Steps
 
-### 1. Rewrite `stake.tsx`
+### 1. Rewrite `stake.tsx` ✅ DONE
 
 Replace the file at `packages/frontend/src/routes/stake.tsx` with the new on-chain composition.
 
@@ -346,7 +346,7 @@ Keep the outer skeleton from the current `stake.tsx`. Inside the centred column:
 
 Keep the existing `export const Route = createFileRoute("/stake")({ component: Stake });` at the bottom.
 
-### 2. Mock scenarios
+### 2. Mock scenarios ✅ DONE
 
 Update `packages/frontend/src/routes/test/-scenarios.ts`. Extend `WALLET_CONNECTED_BASE` with the sPLUSD named alias for `asset()` so any "connected" scenario navigating to `/stake` resolves the PLUSD address from the vault:
 
@@ -427,7 +427,7 @@ Add three new scenarios at the end of `SCENARIOS`:
 
 Keep `enableScenarioKeys` / `enableScenario` / `clearMocksAndReload` helpers unchanged.
 
-### 3. Route test — `-stake.test.tsx`
+### 3. Route test — `-stake.test.tsx` ✅ DONE
 
 Create `packages/frontend/src/routes/-stake.test.tsx`. Clone the test scaffolding from `-withdraw.test.tsx`:
 
@@ -468,7 +468,7 @@ Required test cases:
 
 Coverage parity target: structurally close to `-withdraw.test.tsx` (drop API/lock/voucher cases — N/A for stake).
 
-### 4. Documentation updates
+### 4. Documentation updates ✅ DONE
 
 **`packages/frontend/src/wallet/README.md`**
 
@@ -480,7 +480,7 @@ Coverage parity target: structurally close to `-withdraw.test.tsx` (drop API/loc
 
 **Comment in code** — add a single-line `// TODO(#APR-followup): wire live yield rate; out of scope for #310` next to the hardcoded `8.42%` title.
 
-### 5. Lint + typecheck + tests
+### 5. Lint + typecheck + tests ✅ DONE
 
 After every code change, run from the repo root:
 
