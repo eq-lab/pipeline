@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coder"
+  short_description: "Implement planned Pipeline issues"
+  default_prompt: "Use $coder to implement issue 123 according to its execution plan."

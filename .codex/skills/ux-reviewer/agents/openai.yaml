@@ -1,0 +1,4 @@
+interface:
+  display_name: "UX Reviewer"
+  short_description: "Compare app pages against Figma"
+  default_prompt: "Use $ux-reviewer to compare url:http://localhost:3000/path against figma:https://figma.com/design/...."

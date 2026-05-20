@@ -1,0 +1,4 @@
+interface:
+  display_name: "Planner"
+  short_description: "Plan Pipeline GitHub issues"
+  default_prompt: "Use $planner to create an execution plan for issue 123."
