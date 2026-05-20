@@ -22,8 +22,8 @@ pub struct SharePriceSnapshot {
 }
 
 #[derive(sqlx::FromRow, Debug)]
-pub struct DailyAvgPrice {
-    pub day: chrono::NaiveDate,
+pub struct AvgPriceBucket {
+    pub bucket: DateTime<Utc>,
     pub avg_price: bigdecimal::BigDecimal,
 }
 
@@ -117,39 +117,42 @@ impl PositionRepo {
         Ok(row)
     }
 
-    /// Get daily average prices for a vault, optionally filtered by a date range.
-    pub async fn get_daily_avg_prices(
+    /// Get average prices grouped by time interval.
+    /// `interval` must be a valid PostgreSQL DATE_TRUNC field: `'hour'`, `'day'`, or `'week'`.
+    pub async fn get_avg_prices(
         &self,
         chain_id: i64,
         vault_address: &str,
+        interval: &str,
         since: Option<DateTime<Utc>>,
-    ) -> anyhow::Result<Vec<DailyAvgPrice>> {
+    ) -> anyhow::Result<Vec<AvgPriceBucket>> {
+        let query = format!(
+            "SELECT DATE_TRUNC('{interval}', block_timestamp) AS bucket, AVG(price) AS avg_price
+             FROM share_prices
+             WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
+             {since_clause}
+             GROUP BY bucket
+             ORDER BY bucket ASC",
+            since_clause = if since.is_some() {
+                "AND block_timestamp >= $3"
+            } else {
+                ""
+            },
+        );
+
         let rows = if let Some(since) = since {
-            sqlx::query_as::<_, DailyAvgPrice>(
-                "SELECT DATE_TRUNC('day', block_timestamp)::date AS day, AVG(price) AS avg_price
-                 FROM share_prices
-                 WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
-                   AND block_timestamp >= $3
-                 GROUP BY day
-                 ORDER BY day ASC",
-            )
-            .bind(chain_id)
-            .bind(vault_address)
-            .bind(since)
-            .fetch_all(&self.pool)
-            .await?
+            sqlx::query_as::<_, AvgPriceBucket>(&query)
+                .bind(chain_id)
+                .bind(vault_address)
+                .bind(since)
+                .fetch_all(&self.pool)
+                .await?
         } else {
-            sqlx::query_as::<_, DailyAvgPrice>(
-                "SELECT DATE_TRUNC('day', block_timestamp)::date AS day, AVG(price) AS avg_price
-                 FROM share_prices
-                 WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
-                 GROUP BY day
-                 ORDER BY day ASC",
-            )
-            .bind(chain_id)
-            .bind(vault_address)
-            .fetch_all(&self.pool)
-            .await?
+            sqlx::query_as::<_, AvgPriceBucket>(&query)
+                .bind(chain_id)
+                .bind(vault_address)
+                .fetch_all(&self.pool)
+                .await?
         };
         Ok(rows)
     }

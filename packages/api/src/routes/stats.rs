@@ -22,7 +22,7 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_stats, get_daily_prices, get_vaults),
-    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, DailyPricesQuery, DailyPricesResponse, DailyPriceItem, VaultsResponse, VaultItem)),
+    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, PricesQuery, PriceInterval, PricesResponse, PriceItem, VaultsResponse, VaultItem)),
     tags(
         (name = "Stats", description = "Protocol-level vault statistics"),
         (name = "Prices", description = "Share price history"),
@@ -130,25 +130,51 @@ async fn compute_stats(state: &AppState, apy_days: u32) -> anyhow::Result<StatsR
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct DailyPricesQuery {
+pub struct PricesQuery {
     /// Vault address.
     pub vault: String,
     /// Number of days to look back (optional — omit for all history).
     pub days: Option<u32>,
+    /// Time grouping: "hourly", "daily" (default), or "weekly".
+    #[serde(default = "default_interval")]
+    pub interval: PriceInterval,
+}
+
+fn default_interval() -> PriceInterval {
+    PriceInterval::Daily
+}
+
+#[derive(Debug, Deserialize, ToSchema, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum PriceInterval {
+    Hourly,
+    Daily,
+    Weekly,
+}
+
+impl PriceInterval {
+    fn as_pg_trunc(self) -> &'static str {
+        match self {
+            Self::Hourly => "hour",
+            Self::Daily => "day",
+            Self::Weekly => "week",
+        }
+    }
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct DailyPriceItem {
-    /// Date (YYYY-MM-DD).
-    pub date: String,
-    /// Average share price for the day.
+pub struct PriceItem {
+    /// ISO-8601 timestamp for the start of the bucket.
+    pub timestamp: String,
+    /// Average share price for the period.
     pub avg_price: String,
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct DailyPricesResponse {
+pub struct PricesResponse {
     pub vault_address: String,
-    pub prices: Vec<DailyPriceItem>,
+    pub interval: String,
+    pub prices: Vec<PriceItem>,
 }
 
 #[utoipa::path(
@@ -157,16 +183,17 @@ pub struct DailyPricesResponse {
     params(
         ("vault" = String, Query, description = "Vault address"),
         ("days" = Option<u32>, Query, description = "Number of days to look back (omit for all history)"),
+        ("interval" = Option<String>, Query, description = "Time grouping: \"hourly\", \"daily\" (default), or \"weekly\""),
     ),
     responses(
-        (status = 200, description = "Daily average share prices", body = DailyPricesResponse),
+        (status = 200, description = "Average share prices grouped by interval", body = PricesResponse),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Prices"
 )]
 async fn get_daily_prices(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<DailyPricesQuery>,
+    Query(query): Query<PricesQuery>,
 ) -> impl IntoResponse {
     let vault = query.vault.clone();
     let since = query
@@ -175,25 +202,26 @@ async fn get_daily_prices(
 
     match state
         .position_repo
-        .get_daily_avg_prices(state.chain_id, &vault, since)
+        .get_avg_prices(state.chain_id, &vault, query.interval.as_pg_trunc(), since)
         .await
     {
         Ok(rows) => {
             let prices = rows
                 .into_iter()
-                .map(|r| DailyPriceItem {
-                    date: r.day.format("%Y-%m-%dT00:00:00Z").to_string(),
+                .map(|r| PriceItem {
+                    timestamp: r.bucket.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
                     avg_price: r.avg_price.to_string(),
                 })
                 .collect();
-            Json(DailyPricesResponse {
+            Json(PricesResponse {
                 vault_address: vault,
+                interval: format!("{:?}", query.interval).to_lowercase(),
                 prices,
             })
             .into_response()
         }
         Err(e) => {
-            tracing::error!(error = %e, "failed to fetch daily prices");
+            tracing::error!(error = %e, "failed to fetch prices");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error"})),
