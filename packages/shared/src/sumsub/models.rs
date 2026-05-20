@@ -116,7 +116,6 @@ pub struct ReviewResult {
 impl WebhookPayload {
     pub fn parsed_review_status(&self) -> Option<KycReviewStatus> {
         self.review_status.as_deref().map(|s| match s {
-            "pending" => KycReviewStatus::Pending,
             "completed" => KycReviewStatus::Completed,
             "init" => KycReviewStatus::Init,
             "onHold" => KycReviewStatus::OnHold,
@@ -139,15 +138,11 @@ impl WebhookPayload {
     pub fn parsed_aml_status(&self) -> Option<AmlStatus> {
         let review_result = self.review_result.as_ref()?;
 
-        let has_aml_hit = review_result
-            .reject_labels
-            .as_ref()
-            .map(|labels| {
-                labels
-                    .iter()
-                    .any(|l| AML_REJECT_LABELS.contains(&l.as_str()))
-            })
-            .unwrap_or(false);
+        let has_aml_hit = review_result.reject_labels.as_ref().is_some_and(|labels| {
+            labels
+                .iter()
+                .any(|l| AML_REJECT_LABELS.contains(&l.as_str()))
+        });
 
         if has_aml_hit {
             Some(AmlStatus::Hit)

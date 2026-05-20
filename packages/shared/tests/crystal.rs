@@ -19,7 +19,10 @@ fn settings(threshold: f64, signals: Vec<&str>) -> CrystalSettings {
         blockchain: Some("eth".to_owned()),
         token_id: "0".to_owned(),
         risk_score_threshold: threshold,
-        hard_fail_signals: signals.into_iter().map(|s| s.to_owned()).collect(),
+        hard_fail_signals: signals
+            .into_iter()
+            .map(std::borrow::ToOwned::to_owned)
+            .collect(),
     }
 }
 

@@ -338,6 +338,8 @@ impl KycRepo {
         Ok(rows)
     }
 
+    /// Legacy TTL-based whitelist. Currently unused — replaced by on_chain_allowed.
+    #[allow(dead_code)]
     pub async fn set_whitelisted(
         &self,
         wallet_address: &str,
@@ -499,7 +501,7 @@ impl KycRepo {
                 .bind(wallet_address)
                 .fetch_optional(&self.pool)
                 .await?;
-        Ok(row.map(|(v,)| v).unwrap_or(false))
+        Ok(row.is_some_and(|(v,)| v))
     }
 
     /// Get a deposit request by request_id and wallet.
@@ -608,7 +610,7 @@ impl KycRepo {
         Ok(rows.into_iter().map(GroupedRequest::from).collect())
     }
 
-    pub async fn update_lp_info(
+    pub fn update_lp_info(
         &self,
         wallet_address: &str,
         first_name: Option<&str>,

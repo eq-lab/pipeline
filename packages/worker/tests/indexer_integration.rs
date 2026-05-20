@@ -48,6 +48,9 @@ mod tests {
             cumulative: None,
             assets: None,
             shares: None,
+            shares_balance: None,
+            avg_buy_share_price: None,
+            realized_pnl: None,
         }
     }
 
@@ -66,6 +69,9 @@ mod tests {
             cumulative: Some(U256::from(5000u64)),
             assets: None,
             shares: None,
+            shares_balance: None,
+            avg_buy_share_price: None,
+            realized_pnl: None,
         }
     }
 
@@ -129,7 +135,7 @@ mod tests {
         .fetch_optional(pool)
         .await
         .unwrap();
-        row.map(|(b,)| b).unwrap_or(0)
+        row.map_or(0, |(b,)| b)
     }
 
     #[tokio::test]

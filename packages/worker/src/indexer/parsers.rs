@@ -43,6 +43,9 @@ pub fn parse_deposit_requested(log: &Log) -> Option<ContractLog> {
         cumulative: None,
         assets: None,
         shares: None,
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     })
 }
 
@@ -64,6 +67,9 @@ pub fn parse_withdrawal_requested(log: &Log) -> Option<ContractLog> {
         cumulative: Some(decoded.queued),
         assets: None,
         shares: None,
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     })
 }
 
@@ -85,6 +91,9 @@ pub fn parse_request_claimed(log: &Log) -> Option<ContractLog> {
         cumulative: None,
         assets: None,
         shares: None,
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     })
 }
 
@@ -106,6 +115,9 @@ pub fn parse_staking_deposit(log: &Log) -> Option<ContractLog> {
         cumulative: None,
         assets: Some(decoded.assets),
         shares: Some(decoded.shares),
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     })
 }
 
@@ -127,5 +139,8 @@ pub fn parse_staking_withdraw(log: &Log) -> Option<ContractLog> {
         cumulative: None,
         assets: Some(decoded.assets),
         shares: Some(decoded.shares),
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     })
 }

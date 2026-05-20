@@ -60,15 +60,12 @@ async fn deposit_voucher(
     Path(request_id): Path<String>,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let (signer, domain) = match (&state.voucher_signer, &state.dm_domain) {
-        (Some(s), Some(d)) => (s, d),
-        _ => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({"error": "voucher signing not configured"})),
-            )
-                .into_response();
-        }
+    let (Some(signer), Some(domain)) = (&state.voucher_signer, &state.dm_domain) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "voucher signing not configured"})),
+        )
+            .into_response();
     };
 
     let wallet = query.wallet.to_lowercase();
@@ -153,12 +150,12 @@ async fn deposit_voucher(
     let amount_str = req
         .amount
         .as_ref()
-        .map(|a| a.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
     let rid_str = req
         .request_id
         .as_ref()
-        .map(|r| r.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     let Ok(rid) = rid_str.parse::<U256>() else {
@@ -222,15 +219,12 @@ async fn withdrawal_voucher(
     Path(request_id): Path<String>,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let (signer, domain) = match (&state.voucher_signer, &state.wq_domain) {
-        (Some(s), Some(d)) => (s, d),
-        _ => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({"error": "voucher signing not configured"})),
-            )
-                .into_response();
-        }
+    let (Some(signer), Some(domain)) = (&state.voucher_signer, &state.wq_domain) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "voucher signing not configured"})),
+        )
+            .into_response();
     };
 
     let wallet = query.wallet.to_lowercase();
@@ -294,12 +288,12 @@ async fn withdrawal_voucher(
     let amount_str = req
         .amount
         .as_ref()
-        .map(|a| a.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
     let rid_str = req
         .request_id
         .as_ref()
-        .map(|r| r.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     let Ok(rid) = rid_str.parse::<U256>() else {

@@ -1,4 +1,5 @@
 use alloy_primitives::{Address, B256, U256};
+use bigdecimal::BigDecimal;
 
 pub struct ContractLog {
     pub contract_address: Address,
@@ -14,4 +15,8 @@ pub struct ContractLog {
     pub cumulative: Option<U256>,
     pub assets: Option<U256>,
     pub shares: Option<U256>,
+    // Position tracking (populated for StakingDeposit/StakingWithdrawal only)
+    pub shares_balance: Option<BigDecimal>,
+    pub avg_buy_share_price: Option<BigDecimal>,
+    pub realized_pnl: Option<BigDecimal>,
 }

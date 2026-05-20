@@ -19,6 +19,9 @@ fn dummy_event() -> ContractLog {
         cumulative: None,
         assets: None,
         shares: None,
+        shares_balance: None,
+        avg_buy_share_price: None,
+        realized_pnl: None,
     }
 }
 
@@ -40,6 +43,6 @@ async fn set_block_timestamp_updates_event() {
     let mut mapper = ContractLogMapper::new(dummy_event(), 1, repo);
 
     assert_eq!(mapper.event.block_timestamp, 0);
-    mapper.set_block_timestamp(1234567890);
-    assert_eq!(mapper.event.block_timestamp, 1234567890);
+    mapper.set_block_timestamp(1_234_567_890);
+    assert_eq!(mapper.event.block_timestamp, 1_234_567_890);
 }

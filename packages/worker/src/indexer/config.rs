@@ -55,8 +55,7 @@ fn env_csv_require(key: &str) -> Result<Vec<String>> {
 pub fn env_bool(key: &str) -> bool {
     env::var(key)
         .ok()
-        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
-        .unwrap_or(false)
+        .is_some_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
 fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> Result<T>
