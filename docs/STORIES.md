@@ -1150,3 +1150,93 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 - **Steps:**
   1. Navigate to `http://localhost:5173/transactions`
 - **Expected:** Same illustration + caption as TC-261-2. WalletPill shows balance.
+
+---
+
+## S-315 — Header nav icon hover tooltips
+
+**Issue:** [#315 Add hover tooltips to header nav icons](https://github.com/eq-lab/pipeline/issues/315)
+**Plan:** `docs/exec-plans/active/issue-315-icon-button-tooltips.md`
+**Figma:** [2074:7187 — frame "Hovers"](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2074-7187&m=dev)
+
+### TC-315-1: Tooltip DOM present and hidden at rest
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:3000`; no hover active
+- **Steps:**
+  1. Navigate to `http://localhost:3000/`
+  2. In DevTools Console: inspect each nav button for a second `span[aria-hidden="true"]`
+  3. Check computed `opacity` of each tooltip span at rest
+- **Expected:** Each of the four nav buttons (Home, Deposit, Stats, History) has a `<span aria-hidden="true">` tooltip child with the button's label text. At rest: `opacity: 0`, `position: absolute`, `pointer-events: none`. Button is `position: relative` (positioning context). No visual tooltip visible.
+
+### TC-315-2: Tooltip appears on hover — all four nav buttons
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; navigate to `/`
+- **Steps:**
+  1. Hover over the Home nav button
+  2. Observe tooltip below the button; check computed `opacity`
+  3. Repeat for Deposit, Stats, History
+- **Expected:**
+  - Each hovered button shows its tooltip (`opacity: 1`) centred directly below the icon (~8px gap = `mt-2`).
+  - Tooltip text matches the button label (Home / Deposit / Stats / History).
+  - Only the hovered button's tooltip is visible; siblings remain at `opacity: 0`.
+  - No layout shift — sibling buttons do not move.
+
+### TC-315-3: Tooltip appears on keyboard focus-visible
+
+- **Actor:** User / QA (keyboard user)
+- **Preconditions:** Dev server running; Tab through the header
+- **Steps:**
+  1. Tab into the header nav (past any focusable elements before it)
+  2. Observe the focused nav button
+- **Expected:** The focused button's tooltip becomes visible (`opacity: 1`) via `:focus-visible`. Non-focused buttons remain hidden.
+
+### TC-315-4: Tooltip styling matches design tokens (no hardcoded colors)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: check `--color-pipeline-ink`, `--color-pipeline-on-dark`, `--text-pipeline-caption`, `--radius-pipeline-button`
+  2. Verify tooltip computed `backgroundColor`, `color`, `fontSize`, `borderRadius` match those token values
+- **Expected:**
+  - `backgroundColor` = `--color-pipeline-ink` = `#262524` → `rgb(38, 37, 36)`
+  - `color` = `--color-pipeline-on-dark` = `#ffffff` → `rgb(255, 255, 255)`
+  - `fontSize` = `--text-pipeline-caption` = `12px`
+  - `borderRadius` = `--radius-pipeline-button` = `4px`
+  - No hardcoded hex colors in the tooltip class string.
+
+### TC-315-5: Tooltip does not appear on logo or Connect Wallet button
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Hover over the Pipeline logo
+  2. Hover over the "Connect Wallet" header button
+  3. Inspect those elements for tooltip spans
+- **Expected:** Neither the logo nor the Connect Wallet button has a tooltip span child (`querySelectorAll('span[aria-hidden="true"]').length` = 0 for Connect Wallet; logo is an `<img>` not an `IconButton`).
+
+### TC-315-6: Tooltip position is centred below the button (horizontal alignment)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: compare `getBoundingClientRect()` center X of the button vs. the tooltip span for any nav button
+- **Expected:** Horizontal center of tooltip aligns with horizontal center of button within ±2px.
+
+### TC-315-7: No layout shift — button dimensions unchanged
+
+- **Actor:** Developer / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. In DevTools Console: `getBoundingClientRect()` on each nav button
+- **Expected:** Each button is exactly 40×40px. Tooltip (absolutely positioned) does not affect button or sibling dimensions.
+
+### TC-315-8: Active nav state unchanged (regression)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `/transactions`
+  2. Inspect computed `color` on the History button and the other three nav buttons
+- **Expected:** History button `color` = `rgb(0, 0, 128)` (`--color-pipeline-brand`), `aria-pressed="true"`. Other three buttons `color` = `rgba(56, 55, 53, 0.6)` (`--color-pipeline-ink-muted`). Active-state derivation is unaffected by the tooltip addition.

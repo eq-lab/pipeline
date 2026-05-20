@@ -4,6 +4,26 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-20 — Issue #315 (Add hover tooltips to header nav icons)
+
+- **Scope:** Issue #315 acceptance criteria (TC-315-1 through TC-315-8)
+- **Cases executed:** 8
+- **Passes:** 8
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-315-1 (tooltip DOM present and hidden at rest): All four nav buttons (Home, Deposit, Stats, History) have a second `span[aria-hidden="true"]` child containing the label text. At rest: `opacity: 0`, `position: absolute`, `pointer-events: none`. Button is `position: relative`. No visual tooltip at rest. Verified on feat/315-icon-button-tooltips branch at `http://localhost:4315/`.
+  - PASS TC-315-2 (tooltip appears on hover — all four buttons): Hovered each nav button. Screenshot confirmed dark tooltip pill visible below each icon. Computed `opacity: 1` on hovered button tooltip; siblings remain `opacity: 0`. No layout shift observed. Text matches labels: Home / Deposit / Stats / History. Gap between button bottom and tooltip top = 8px (mt-2 = 8px, confirmed via getBoundingClientRect). Verified on `/`, `/deposit`, `/transactions`.
+  - PASS TC-315-3 (tooltip appears on keyboard focus-visible): Tabbed into the header nav using keyboard. Focused button (Deposit) showed tooltip at `opacity: 1`. The `group-focus-visible:opacity-100` class is present on the tooltip span; programmatic `.focus()` correctly does not trigger it (only real keyboard input does).
+  - PASS TC-315-4 (styling uses design tokens, no hardcoded colors): Token values — `--color-pipeline-ink: #262524`, `--color-pipeline-on-dark: #ffffff`, `--text-pipeline-caption: 12px`, `--radius-pipeline-button: 4px`. Tooltip computed values — `backgroundColor: rgb(38, 37, 36)`, `color: rgb(255, 255, 255)`, `fontSize: 12px`, `borderRadius: 4px`. All match. No hardcoded hex in class string.
+  - PASS TC-315-5 (no tooltip on logo or Connect Wallet button): Connect Wallet button has 0 tooltip spans (it is not an `IconButton`). Logo is an `<img>`, no tooltip.
+  - PASS TC-315-6 (horizontal centering): `btnCenterX = 196`, `tooltipCenterX = 196` — within 0px. Tooltip is exactly centred below the button via `left-1/2 -translate-x-1/2`.
+  - PASS TC-315-7 (no layout shift — 40×40 dimensions): All four buttons are exactly 40×40px. Tooltip (absolutely positioned) does not affect button dimensions or sibling positions.
+  - PASS TC-315-8 (active nav state regression): On `/transactions`, History = `rgb(0, 0, 128)` brand navy, `aria-pressed="true"`. Home/Deposit/Stats = `rgba(56, 55, 53, 0.6)` muted. Unchanged from pre-tooltip behaviour.
+  - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode, font preload warnings — none related to #315.
+  - No new GitHub Issues filed.
+
 ### 2026-05-18 — Issue #261 (/transactions: show full empty state on per-tab empty results, not just text)
 
 - **Scope:** Issue #261 acceptance criteria (TC-261-1 through TC-261-3, plus TC-257-3 regression)
