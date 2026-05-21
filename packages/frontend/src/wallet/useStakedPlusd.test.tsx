@@ -32,9 +32,13 @@ const stableWriteContractState = {
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
 
-// Mock publicClient for gas estimation.
+// Mock publicClient for gas estimation and simulate pre-flight.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
-const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockSimulateContract = vi.fn(async () => undefined);
+const mockPublicClient = {
+  estimateContractGas: mockEstimateContractGas,
+  simulateContract: mockSimulateContract,
+};
 const mockUsePublicClient = vi.fn(() => mockPublicClient);
 
 vi.mock("wagmi", async (importOriginal) => {
@@ -801,6 +805,8 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
     mockUseReadContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
   });
 
@@ -1036,6 +1042,8 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
     mockUseReadContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
   });
 
@@ -1249,6 +1257,8 @@ describe("useStake — gas estimation: cap clamp", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     mockUseWallet.mockReturnValue({
       address: walletAddr,
@@ -1293,6 +1303,8 @@ describe("useStake — gas estimation: estimation rejects", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     mockUseWallet.mockReturnValue({
       address: walletAddr,
@@ -1334,6 +1346,8 @@ describe("useStake — gas estimation: mock key bypasses estimation", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     mockUseWallet.mockReturnValue({
       address: undefined,
@@ -1367,6 +1381,301 @@ describe("useStake — gas estimation: mock key bypasses estimation", () => {
     });
 
     expect(mockEstimateContractGas).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+// ── simulateOrFail integration ────────────────────────────────────────────────
+
+describe("useStake — simulate reverts → writeContract not called", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000050" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("ERC4626ExceededMaxDeposit()"),
+    );
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "ERC4626ExceededMaxDeposit",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useStake — simulate succeeds → estimate + write proceed", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000051" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(500_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall = simCalls[0]![0]!;
+    expect(simCall.functionName).toBe("deposit");
+    expect((simCall.args as unknown[])[0]).toBe(500_000_000_000_000_000n);
+    expect((simCall.args as unknown[])[1]).toBe(walletAddr);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useStake — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when stake mock key is present", async () => {
+    const mockData = { hash: "0xstakemock", shares: "959600000000000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.stake",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUnstake — simulate reverts → writeContract not called", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000052" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("ERC4626ExceededMaxRedeem()"),
+    );
+
+    const { result } = renderHook(() => useUnstake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain("ERC4626ExceededMaxRedeem");
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useUnstake — simulate succeeds → estimate + write proceed", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000053" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+
+    const { result } = renderHook(() => useUnstake(), { wrapper });
+
+    act(() => {
+      result.current.write(250_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls2 = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall2 = simCalls2[0]![0]!;
+    expect(simCall2.functionName).toBe("redeem");
+    expect((simCall2.args as unknown[])[0]).toBe(250_000_000_000_000_000n);
+    expect((simCall2.args as unknown[])[1]).toBe(walletAddr);
+    expect((simCall2.args as unknown[])[2]).toBe(walletAddr);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useUnstake — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when unstake mock key is present", async () => {
+    const mockData = { hash: "0xunstakemock", assets: "1042100000000000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.unstake",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useUnstake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
     expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });

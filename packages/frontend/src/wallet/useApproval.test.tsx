@@ -39,10 +39,7 @@ const stableReceiptState = {
   isError: false,
   error: null as Error | null,
 };
-const mockUseWaitForTransactionReceipt = vi.fn(
-  (_args?: { hash?: string; query?: { enabled?: boolean } }) =>
-    stableReceiptState,
-);
+const mockUseWaitForTransactionReceipt = vi.fn(() => stableReceiptState);
 
 // useAccount — mutable so individual tests can switch connected/disconnected.
 const mockUseAccount = vi.fn(() => ({
@@ -50,9 +47,13 @@ const mockUseAccount = vi.fn(() => ({
   isConnected: false,
 }));
 
-// Mock publicClient for gas estimation.
+// Mock publicClient for gas estimation and simulate pre-flight.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
-const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockSimulateContract = vi.fn(async () => undefined);
+const mockPublicClient = {
+  estimateContractGas: mockEstimateContractGas,
+  simulateContract: mockSimulateContract,
+};
 const mockUsePublicClient = vi.fn(() => mockPublicClient);
 
 vi.mock("wagmi", async (importOriginal) => {
@@ -375,6 +376,8 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
     mockUseReadContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     setConnectedWallet();
   });
 
@@ -414,6 +417,8 @@ describe("useApproval — gas cap clamp", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     setConnectedWallet();
   });
 
@@ -450,6 +455,8 @@ describe("useApproval — estimation rejects surfaces error", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     setConnectedWallet();
   });
 
@@ -723,7 +730,8 @@ describe("useApproval — auto-refetch after successful approve (real path)", ()
       { wrapper },
     );
 
-    const calls = mockUseWaitForTransactionReceipt.mock.calls as Array<
+    const calls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<
       [{ hash?: string; query?: { enabled?: boolean } }]
     >;
     expect(calls.length).toBeGreaterThan(0);
@@ -740,7 +748,8 @@ describe("useApproval — auto-refetch after successful approve (real path)", ()
       { wrapper },
     );
 
-    const calls = mockUseWaitForTransactionReceipt.mock.calls as Array<
+    const calls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<
       [{ hash?: string; query?: { enabled?: boolean } }]
     >;
     expect(calls.length).toBeGreaterThan(0);
@@ -928,5 +937,150 @@ describe("useApproval — no RPC in mock mode (lock-in guard)", () => {
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── simulateOrFail integration ────────────────────────────────────────────────
+
+describe("useApproval — simulate reverts → writeContract not called", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects with a contract revert", async () => {
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("ERC20InsufficientAllowance()"),
+    );
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(100n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "ERC20InsufficientAllowance",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+
+  it("sets error and skips writeContract when simulate rejects with a generic network error", async () => {
+    mockSimulateContract.mockRejectedValueOnce(new Error("network timeout"));
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(100n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain("network timeout");
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useApproval — simulate succeeds → estimate + write proceed", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(500n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall = simCalls[0]![0]!;
+    expect(simCall.functionName).toBe("approve");
+    expect(simCall.args).toEqual([SPENDER_ADDRESS, 500n]);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useApproval — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when approve mock key is present", async () => {
+    const mockData = { hash: "0xmockedhash" };
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${TOKEN_ADDRESS.toLowerCase()}.approve`,
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(100n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });

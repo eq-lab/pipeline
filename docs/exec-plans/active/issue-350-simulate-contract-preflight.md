@@ -79,7 +79,7 @@ ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; cod
 
 ## Implementation Steps
 
-1. **Add `simulateOrFail` helper.**
+1. **[DONE] Add `simulateOrFail` helper.**
    Create `packages/frontend/src/wallet/simulate.ts` exporting:
    ```ts
    export type SimulateArgs = { publicClient, account, abi, address,
@@ -92,14 +92,14 @@ ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; cod
    `{ ok: true }`; on any throw return `{ ok: false, error }` (no re-shaping
    of viem errors — viem's `ContractFunctionExecutionError.shortMessage`
    already contains the decoded name).
-2. **Port error ABIs.**
+2. **[DONE] Port error ABIs.**
    - `abis/withdrawalQueue.ts` — append `type: "error"` entries from the
      full WithdrawalQueue ABI (obtain via `forge inspect WithdrawalQueue
      abi` or equivalent — see Risks). Pattern: copy `depositManager.ts:52-81`
      style.
    - `abis/stakedPlusd.ts` — same procedure from the StakedPLUSD ABI.
    - `abis/erc20.ts` — add the 6 OZ ERC-20 v5 custom errors listed in Scope.
-3. **Wire `simulateOrFail` into each write hook.** For each of the 7 sites,
+3. **[DONE] Wire `simulateOrFail` into each write hook.** For each of the 7 sites,
    insert immediately before the current `estimateGasCapped` call inside
    the `void (async () => { setIsEstimating(true); … })()` block:
    ```ts
@@ -117,7 +117,7 @@ ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; cod
    Mind: `setIsEstimating(true)` already happens; on simulate failure we
    must reset it before returning (mirrors the existing failure handling
    below the `estimateGasCapped` call).
-4. **Extend test mocks.** In each of:
+4. **[DONE] Extend test mocks.** In each of:
    - `useApproval.test.tsx`
    - `useDepositManager.test.tsx`
    - `useStakedPlusd.test.tsx`
@@ -127,7 +127,7 @@ ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; cod
    and include `simulateContract: mockSimulateContract` in `mockPublicClient`.
    Update `beforeEach` to reset it. Default behavior = resolves so existing
    tests keep passing unchanged.
-5. **Add per-hook branch coverage.** For each of the 7 write hooks, add two
+5. **[DONE] Add per-hook branch coverage.** For each of the 7 write hooks, add two
    focused tests:
    - "simulate reverts → writeContract not called, error surfaced": configure
      `mockSimulateContract.mockRejectedValueOnce(new Error("…"))`, drive the
@@ -139,12 +139,12 @@ ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; cod
      already covered by existing happy-path tests; add an explicit assertion
      that `mockSimulateContract` was called once with the same `(abi,
      address, functionName, args, account)` tuple as the write.
-6. **Verify mock-mode paths still skip the real client.** Each hook's
+6. **[DONE] Verify mock-mode paths still skip the real client.** Each hook's
    `hasMock*` early-return must remain before the `simulateOrFail` call.
    Add a regression assertion: in each existing "does NOT call
    estimateContractGas when mock key is present" test, additionally assert
    `mockSimulateContract` was not called.
-7. **Run lint + tests.**
+7. **[DONE] Run lint + tests.**
    - `yarn --cwd packages/frontend lint`
    - `yarn --cwd packages/frontend test`
    - `npx tsx scripts/lint-docs.ts` from repo root (per AGENTS.md).

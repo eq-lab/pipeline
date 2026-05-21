@@ -22,6 +22,7 @@ import {
 import { depositManagerAbi } from "./abis/depositManager";
 import { CACHE_FOREVER } from "./cache";
 import { estimateGasCapped } from "./estimateGas";
+import { simulateOrFail } from "./simulate";
 import { useWallet } from "./useWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
@@ -336,6 +337,20 @@ export function useRequestDeposit(): RequestDepositResult {
 
       void (async () => {
         setIsEstimating(true);
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "requestDeposit",
+          args: [amount],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,
@@ -493,6 +508,20 @@ export function useClaim(): ClaimResult {
 
       void (async () => {
         setIsEstimating(true);
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "claimDeposit",
+          args: [requestId, verifierSignature],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,

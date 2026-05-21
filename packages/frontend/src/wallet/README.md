@@ -106,22 +106,22 @@ when `spender` is omitted.
 
 **Return fields:**
 
-| Field              | Type                                         | Description                                                                                    |
-| ------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `decimals`         | `number \| undefined`                        | Token decimals from `decimals()`. Cached forever. `undefined` while loading.                   |
-| `symbol`           | `string \| undefined`                        | Token symbol from `symbol()`. Cached forever. `undefined` while loading.                       |
-| `balance`          | `bigint \| undefined`                        | Raw `balanceOf(owner)`. `undefined` when disconnected or loading.                              |
-| `formattedBalance` | `string \| undefined`                        | Plain formatted number string (e.g. `"1,000.00"`). `undefined` while balance or decimals load. |
-| `refetchBalance`   | `() => void`                                 | Re-reads `balanceOf(owner)`.                                                                   |
-| `allowance`        | `bigint \| undefined`                        | Current ERC-20 allowance. `undefined` when spender is omitted.                                 |
-| `isSufficient`     | `((amount: bigint) => boolean) \| undefined` | `allowance >= amount`. `undefined` when spender is omitted.                                    |
-| `approve`          | `((amount: bigint) => void) \| undefined`    | Triggers `approve(spender, amount)`. `undefined` when spender is omitted.                      |
-| `approveData`      | `{ hash: string } \| undefined`              | Populated after approve tx is broadcast. `undefined` when spender is omitted.                  |
-| `isApprovePending` | `boolean`                                    | `true` while approve tx is in flight.                                                          |
+| Field              | Type                                         | Description                                                                                                                                       |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `decimals`         | `number \| undefined`                        | Token decimals from `decimals()`. Cached forever. `undefined` while loading.                                                                      |
+| `symbol`           | `string \| undefined`                        | Token symbol from `symbol()`. Cached forever. `undefined` while loading.                                                                          |
+| `balance`          | `bigint \| undefined`                        | Raw `balanceOf(owner)`. `undefined` when disconnected or loading.                                                                                 |
+| `formattedBalance` | `string \| undefined`                        | Plain formatted number string (e.g. `"1,000.00"`). `undefined` while balance or decimals load.                                                    |
+| `refetchBalance`   | `() => void`                                 | Re-reads `balanceOf(owner)`.                                                                                                                      |
+| `allowance`        | `bigint \| undefined`                        | Current ERC-20 allowance. `undefined` when spender is omitted.                                                                                    |
+| `isSufficient`     | `((amount: bigint) => boolean) \| undefined` | `allowance >= amount`. `undefined` when spender is omitted.                                                                                       |
+| `approve`          | `((amount: bigint) => void) \| undefined`    | Triggers `approve(spender, amount)`. `undefined` when spender is omitted.                                                                         |
+| `approveData`      | `{ hash: string } \| undefined`              | Populated after approve tx is broadcast. `undefined` when spender is omitted.                                                                     |
+| `isApprovePending` | `boolean`                                    | `true` while approve tx is in flight.                                                                                                             |
 | `isApproveSuccess` | `boolean`                                    | `true` once approve tx receipt is mined and status is `success` (receipt-gated, unlike `useRequestDeposit` / `useClaim` which fire on broadcast). |
-| `refetchAllowance` | `(() => void) \| undefined`                  | Re-reads current allowance. `undefined` when spender is omitted.                               |
-| `isLoading`        | `boolean`                                    | `true` when any underlying read is in flight.                                                  |
-| `error`            | `Error \| null`                              | First non-null error across all reads (approval error masked when spender is omitted).         |
+| `refetchAllowance` | `(() => void) \| undefined`                  | Re-reads current allowance. `undefined` when spender is omitted.                                                                                  |
+| `isLoading`        | `boolean`                                    | `true` when any underlying read is in flight.                                                                                                     |
+| `error`            | `Error \| null`                              | First non-null error across all reads (approval error masked when spender is omitted).                                                            |
 
 ### `useContractRead({ address, abi, functionName, args })`
 
@@ -192,18 +192,18 @@ are parameters — nothing is hard-coded — so the same hook serves any
 
 **Return fields:**
 
-| Field          | Type                            | Description                                                                                                                          |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `allowance`    | `bigint \| undefined`           | Current allowance for `(owner=connected wallet, spender)`. `undefined` when disconnected, zero address, or loading.                  |
-| `isSufficient` | `(amount: bigint) => boolean`   | Convenience check: `allowance >= amount`. Returns `false` when `allowance` is `undefined` (pessimistic).                             |
-| `approve`      | `(amount: bigint) => void`      | Triggers `approve(spender, amount)` on the token contract. No-op (sets `error`) when token/spender is zero or disconnected.          |
-| `data`         | `{ hash: string } \| undefined` | Populated after approve tx is broadcast.                                                                                             |
-| `isLoading`    | `boolean`                       | `true` while allowance read is in flight.                                                                                            |
-| `isPending`    | `boolean`                       | `true` from broadcast until the receipt is mined (real path), or while the mocked approve is settling (mock path).                   |
+| Field          | Type                            | Description                                                                                                                                                                                                   |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowance`    | `bigint \| undefined`           | Current allowance for `(owner=connected wallet, spender)`. `undefined` when disconnected, zero address, or loading.                                                                                           |
+| `isSufficient` | `(amount: bigint) => boolean`   | Convenience check: `allowance >= amount`. Returns `false` when `allowance` is `undefined` (pessimistic).                                                                                                      |
+| `approve`      | `(amount: bigint) => void`      | Triggers `approve(spender, amount)` on the token contract. No-op (sets `error`) when token/spender is zero or disconnected.                                                                                   |
+| `data`         | `{ hash: string } \| undefined` | Populated after approve tx is broadcast.                                                                                                                                                                      |
+| `isLoading`    | `boolean`                       | `true` while allowance read is in flight.                                                                                                                                                                     |
+| `isPending`    | `boolean`                       | `true` from broadcast until the receipt is mined (real path), or while the mocked approve is settling (mock path).                                                                                            |
 | `isSuccess`    | `boolean`                       | `true` once the approve tx receipt is mined with status `success` (receipt-gated). Mock path: `true` after mock approve settles. Note: differs from `useRequestDeposit` / `useClaim` which fire on broadcast. |
-| `error`        | `Error \| null`                 | Read or write error; cleared by `reset()`.                                                                                           |
-| `reset`        | `() => void`                    | Clears `data`, `error`, and resets `isPending`/`isSuccess`.                                                                          |
-| `refetch`      | `() => void`                    | Re-reads current allowance. Called automatically after a successful approve. Note: external allowance changes are NOT auto-detected. |
+| `error`        | `Error \| null`                 | Read or write error; cleared by `reset()`.                                                                                                                                                                    |
+| `reset`        | `() => void`                    | Clears `data`, `error`, and resets `isPending`/`isSuccess`.                                                                                                                                                   |
+| `refetch`      | `() => void`                    | Re-reads current allowance. Called automatically after a successful approve. Note: external allowance changes are NOT auto-detected.                                                                          |
 
 ### `useRequestDeposit()`
 
@@ -309,6 +309,19 @@ change, the badge is recomputed automatically in the same cycle as the value.
 
 ---
 
+## Simulate pre-flight
+
+Every write hook in this module runs a read-only `eth_call` simulation
+(`publicClient.simulateContract`) as the first step of every write — before
+gas estimation or the actual `writeContract` call. This pre-flight detects
+contract reverts using `eth_call`, which some RPCs (e.g. Hoodi via
+`publicnode`) do not strip of revert data — unlike `eth_estimateGas`. When
+the simulate rejects, the hook surfaces the (viem-decoded) error on its
+`error` field and skips the estimate/write path entirely.
+
+The helper lives in `simulate.ts` alongside `estimateGas.ts`. See
+[#350](https://github.com/eq-lab/pipeline/issues/350) for motivation.
+
 ## Gas estimation
 
 Every write hook in this module (`useRequestDeposit`, `useClaim`,
@@ -316,6 +329,8 @@ Every write hook in this module (`useRequestDeposit`, `useClaim`,
 and `useApproval`) pre-estimates gas before calling `writeContract`. This
 prevents viem's hard-coded 21,000,000 fallback from exceeding the Hoodi
 chain's per-transaction gas cap of 16,777,215 (`0x1000000 - 1`).
+
+This happens only when the simulate pre-flight (above) succeeds.
 
 ### How it works
 
