@@ -269,6 +269,7 @@ function Withdraw() {
       requestWithdrawal.error &&
       requestWithdrawal.error !== prevWithdrawalError.current
     ) {
+      console.error("Withdrawal failed:", requestWithdrawal.error);
       toast.update("withdraw-tx", {
         tone: "danger",
         title: "Withdrawal failed",
@@ -305,6 +306,7 @@ function Withdraw() {
       });
     }
     if (claim.error && claim.error !== prevClaimError.current) {
+      console.error("Withdrawal claim failed:", claim.error);
       toast.update("withdraw-claim-tx", {
         tone: "danger",
         title: "Claim failed",

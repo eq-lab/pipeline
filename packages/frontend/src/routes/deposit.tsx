@@ -281,6 +281,7 @@ function Deposit() {
       requestDeposit.error &&
       requestDeposit.error !== prevDepositError.current
     ) {
+      console.error("Deposit failed:", requestDeposit.error);
       toast.update("deposit-tx", {
         tone: "danger",
         title: "Deposit failed",
@@ -310,6 +311,7 @@ function Deposit() {
       toast.update("claim-tx", { tone: "success", title: "PLUSD claimed" });
     }
     if (claim.error && claim.error !== prevClaimError.current) {
+      console.error("Claim failed:", claim.error);
       toast.update("claim-tx", { tone: "danger", title: "Claim failed" });
     }
     prevClaimIsPending.current = claim.isPending;
