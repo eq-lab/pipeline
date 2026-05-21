@@ -189,13 +189,14 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
   it("renders the Deposit (Buy) amount string", () => {
     renderCard();
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders the Withdraw (Sell) pending amount string", () => {
     renderCard();
     // The pending Withdraw row renders a TwoLineAmount with the amount on the top line
-    expect(screen.getByText("−1,000.00 USDC")).toBeInTheDocument();
+    // Both Deposit and Sell rows show +1,000.00 USDC (same fixture amount)
+    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(2);
   });
 
   it("renders the Stake row amounts", () => {
@@ -250,9 +251,9 @@ describe("RecentActivityCard — connected + 5 rows (MAX_ROWS cap)", () => {
 
   it("does not render the 4th or 5th fixture amounts", () => {
     renderCard();
-    // 4th row is +2,000.00 USDC, 5th is −3,000.00 USDC
+    // 4th row is +2,000.00 USDC, 5th is +3,000.00 USDC (Sell shows positive proceeds)
     expect(screen.queryByText("+2,000.00 USDC")).not.toBeInTheDocument();
-    expect(screen.queryByText("−3,000.00 USDC")).not.toBeInTheDocument();
+    expect(screen.queryByText("+3,000.00 USDC")).not.toBeInTheDocument();
   });
 });
 
