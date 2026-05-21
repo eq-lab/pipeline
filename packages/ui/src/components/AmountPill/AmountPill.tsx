@@ -16,7 +16,7 @@ import React from "react";
  * Design tokens used:
  *   - `--color-pipeline-ink`     — ink fill background
  *   - `--color-pipeline-on-dark` — white text on ink background
- *   - `--radius-pipeline-card`   — 4 px corner radius (per Figma)
+ *   - `rounded-full`             — fully-rounded pill radius (per Figma)
  *   - `--font-body`              — Graphik LC body typeface
  *   - `--text-pipeline-body`     — 16 px body size
  *   - `--font-weight-emphasized` — 600 semi-bold weight
@@ -34,7 +34,7 @@ const pillClasses = [
   "inline-flex items-center justify-center",
   "px-3 py-1",
   // Shape
-  "rounded-[var(--radius-pipeline-card)]",
+  "rounded-full",
   // Background — ink fill
   "bg-[var(--color-pipeline-ink)]",
   // Typography
