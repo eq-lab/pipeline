@@ -34,6 +34,7 @@ mod tests {
         log_index: u64,
         value: U256,
     ) -> ContractLog {
+        let user = address!("1111111111111111111111111111111111111111");
         ContractLog {
             contract_address: contract,
             event_name: "DepositRequested".to_owned(),
@@ -41,20 +42,16 @@ mod tests {
             tx_hash: b256!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             log_index,
             block_timestamp: 0,
-            sender: Some(address!("1111111111111111111111111111111111111111")),
-            receiver: None,
-            amount: Some(value),
-            request_id: Some(U256::from(log_index)),
-            cumulative: None,
-            assets: None,
-            shares: None,
-            shares_balance: None,
-            avg_buy_share_price: None,
-            realized_pnl: None,
+            params: serde_json::json!({
+                "user": user.to_checksum(None),
+                "amount": value.to_string(),
+                "request_id": log_index.to_string(),
+            }),
         }
     }
 
     fn make_withdrawal_requested(contract: Address, block: u64, log_index: u64) -> ContractLog {
+        let withdrawer = address!("1111111111111111111111111111111111111111");
         ContractLog {
             contract_address: contract,
             event_name: "WithdrawalRequested".to_owned(),
@@ -62,16 +59,12 @@ mod tests {
             tx_hash: b256!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
             log_index,
             block_timestamp: 0,
-            sender: Some(address!("1111111111111111111111111111111111111111")),
-            receiver: None,
-            amount: Some(U256::from(5000u64)),
-            request_id: Some(U256::from(1u64)),
-            cumulative: Some(U256::from(5000u64)),
-            assets: None,
-            shares: None,
-            shares_balance: None,
-            avg_buy_share_price: None,
-            realized_pnl: None,
+            params: serde_json::json!({
+                "withdrawer": withdrawer.to_checksum(None),
+                "amount": "5000",
+                "request_id": "1",
+                "queued": "5000",
+            }),
         }
     }
 

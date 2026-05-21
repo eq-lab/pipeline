@@ -15,8 +15,10 @@ use shared::db::EventRepo;
 use config::IndexerJobSettings;
 use mappers::ContractLogMapper;
 use parsers::{
-    parse_deposit_requested, parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
-    parse_withdrawal_requested,
+    parse_deposit_requested, parse_loan_ccr_updated, parse_loan_closed, parse_loan_defaulted,
+    parse_loan_location_updated, parse_loan_minted, parse_loan_repayment,
+    parse_loan_status_updated, parse_request_claimed, parse_staking_deposit,
+    parse_staking_withdraw, parse_withdrawal_requested,
 };
 use poller::EvmEventPollerBuilder;
 
@@ -57,9 +59,16 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
+    let loan_registry_contracts: Vec<alloy::primitives::Address> = settings
+        .loan_registry_contracts
+        .iter()
+        .filter_map(|a| a.parse().ok())
+        .collect();
+
     let dm_repo = repo.clone();
     let wq_repo = repo.clone();
     let splusd_repo = repo.clone();
+    let loan_repo = repo.clone();
 
     let poller = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
@@ -90,6 +99,19 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
                     ContractLogMapper::new(ev, chain_id, splusd_repo.clone())
                         .with_position_tracking(),
                 ) as Box<dyn shared::log_mapper::LogMapper>
+            })
+    })
+    .add_event_handler(loan_registry_contracts, move |log| {
+        parse_loan_minted(log)
+            .or_else(|| parse_loan_status_updated(log))
+            .or_else(|| parse_loan_ccr_updated(log))
+            .or_else(|| parse_loan_location_updated(log))
+            .or_else(|| parse_loan_defaulted(log))
+            .or_else(|| parse_loan_closed(log))
+            .or_else(|| parse_loan_repayment(log))
+            .map(|ev| {
+                Box::new(ContractLogMapper::new(ev, chain_id, loan_repo.clone()))
+                    as Box<dyn shared::log_mapper::LogMapper>
             })
     })
     .build();

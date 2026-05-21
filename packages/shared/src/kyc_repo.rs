@@ -275,7 +275,7 @@ impl KycRepo {
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
-                             AND LOWER(c.sender) = p.wallet_address
+                             AND LOWER(c.params->>'user') = p.wallet_address
                              AND c.crystal_kyt_status = 1
                        )",
                 )
@@ -292,7 +292,7 @@ impl KycRepo {
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
-                             AND LOWER(c.sender) = p.wallet_address
+                             AND LOWER(c.params->>'user') = p.wallet_address
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -306,7 +306,7 @@ impl KycRepo {
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
-                             AND LOWER(c.sender) = p.wallet_address
+                             AND LOWER(c.params->>'user') = p.wallet_address
                              AND c.crystal_kyt_status = 1
                        )",
                 )
@@ -320,7 +320,7 @@ impl KycRepo {
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.event_name = 'DepositRequested'
-                             AND LOWER(c.sender) = p.wallet_address
+                             AND LOWER(c.params->>'user') = p.wallet_address
                        )",
                 )
                 .fetch_all(&self.pool)
@@ -392,8 +392,8 @@ impl KycRepo {
     pub async fn populate_profiles_from_deposits(&self) -> anyhow::Result<u64> {
         let result = sqlx::query(
             "INSERT INTO lp_profiles (wallet_address)
-             SELECT DISTINCT LOWER(sender) FROM contract_logs
-             WHERE event_name = 'DepositRequested' AND sender IS NOT NULL
+             SELECT DISTINCT LOWER(params->>'user') FROM contract_logs
+             WHERE event_name = 'DepositRequested' AND params->>'user' IS NOT NULL
              ON CONFLICT (wallet_address) DO NOTHING",
         )
         .execute(&self.pool)
@@ -406,7 +406,13 @@ impl KycRepo {
         batch_size: i64,
     ) -> anyhow::Result<Vec<UnverifiedTransfer>> {
         let rows = sqlx::query_as::<_, UnverifiedTransfer>(
-            "SELECT id, event_name, sender, receiver, amount, tx_hash, chain_id
+            "SELECT id,
+                    event_name,
+                    COALESCE(params->>'user', params->>'withdrawer') AS sender,
+                    params->>'receiver' AS receiver,
+                    (params->>'amount')::numeric AS amount,
+                    tx_hash,
+                    chain_id
              FROM contract_logs
              WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND crystal_kyt_status IS NULL
              ORDER BY id
@@ -522,11 +528,15 @@ impl KycRepo {
         wallet: &str,
     ) -> anyhow::Result<Option<RequestInfo>> {
         let row = sqlx::query_as::<_, RequestInfo>(
-            "SELECT request_id, sender, amount, crystal_kyt_status, block_timestamp
+            "SELECT (params->>'request_id')::numeric AS request_id,
+                    params->>'user' AS sender,
+                    (params->>'amount')::numeric AS amount,
+                    crystal_kyt_status,
+                    block_timestamp
              FROM contract_logs
              WHERE event_name = 'DepositRequested'
-               AND request_id::text = $1
-               AND LOWER(sender) = $2
+               AND params->>'request_id' = $1
+               AND LOWER(params->>'user') = $2
              LIMIT 1",
         )
         .bind(request_id)
@@ -543,11 +553,15 @@ impl KycRepo {
         wallet: &str,
     ) -> anyhow::Result<Option<RequestInfo>> {
         let row = sqlx::query_as::<_, RequestInfo>(
-            "SELECT request_id, sender, amount, crystal_kyt_status, block_timestamp
+            "SELECT (params->>'request_id')::numeric AS request_id,
+                    params->>'withdrawer' AS sender,
+                    (params->>'amount')::numeric AS amount,
+                    crystal_kyt_status,
+                    block_timestamp
              FROM contract_logs
              WHERE event_name = 'WithdrawalRequested'
-               AND request_id::text = $1
-               AND LOWER(sender) = $2
+               AND params->>'request_id' = $1
+               AND LOWER(params->>'withdrawer') = $2
              LIMIT 1",
         )
         .bind(request_id)
@@ -567,7 +581,7 @@ impl KycRepo {
     ) -> anyhow::Result<bool> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT 1 FROM contract_logs
-             WHERE event_name = $1 AND request_id::text = $2 AND LOWER(contract_address) = LOWER($3)
+             WHERE event_name = $1 AND params->>'request_id' = $2 AND LOWER(contract_address) = LOWER($3)
              LIMIT 1",
         )
         .bind(claimed_event)
@@ -587,18 +601,34 @@ impl KycRepo {
         pending_only: bool,
         crystal_enabled: bool,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
-        let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.assets, r.shares, r.crystal_kyt_status,
+        // Derive the "sender" from params depending on the event type.
+        // DepositRequested / RequestClaimed  -> params->>'user'
+        // WithdrawalRequested               -> params->>'withdrawer'
+        // StakingDeposit / StakingWithdrawal -> params->>'owner'
+        let base = "SELECT r.event_name,
+                           (r.params->>'request_id')::numeric AS request_id,
+                           COALESCE(
+                               (r.params->>'assets')::numeric,
+                               (r.params->>'amount')::numeric
+                           ) AS amount,
+                           (r.params->>'assets')::numeric AS assets,
+                           (r.params->>'shares')::numeric AS shares,
+                           r.crystal_kyt_status,
                            r.block_timestamp,
                            EXISTS (
                                SELECT 1 FROM contract_logs c2
                                WHERE c2.event_name = 'RequestClaimed'
-                                 AND c2.request_id = r.request_id
+                                 AND c2.params->>'request_id' = r.params->>'request_id'
                                  AND c2.contract_address = r.contract_address
                            ) AS is_claimed,
                            COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
                     FROM contract_logs r
-                    LEFT JOIN lp_profiles p ON p.wallet_address = LOWER(r.sender)
-                    WHERE LOWER(r.sender) = $1
+                    LEFT JOIN lp_profiles p ON p.wallet_address = LOWER(
+                        COALESCE(r.params->>'user', r.params->>'withdrawer', r.params->>'owner')
+                    )
+                    WHERE LOWER(
+                        COALESCE(r.params->>'user', r.params->>'withdrawer', r.params->>'owner')
+                    ) = $1
                       AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')";
 
         let query = if pending_only {
@@ -607,7 +637,7 @@ impl KycRepo {
                       AND NOT EXISTS (
                           SELECT 1 FROM contract_logs c2
                           WHERE c2.event_name = 'RequestClaimed'
-                            AND c2.request_id = r.request_id
+                            AND c2.params->>'request_id' = r.params->>'request_id'
                             AND c2.contract_address = r.contract_address
                       )
                       AND r.event_name NOT IN ('StakingDeposit', 'StakingWithdrawal')

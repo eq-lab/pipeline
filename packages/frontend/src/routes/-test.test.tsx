@@ -55,6 +55,13 @@ vi.mock("wagmi", async (importOriginal) => {
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
     usePublicClient: () => mockUsePublicClient(),
+    useWaitForTransactionReceipt: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    })),
   };
 });
 

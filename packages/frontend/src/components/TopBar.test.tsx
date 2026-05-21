@@ -53,6 +53,13 @@ vi.mock("wagmi", async (importOriginal) => {
     usePublicClient: vi.fn(() => ({
       estimateContractGas: vi.fn(async () => 1_000_000n),
     })),
+    useWaitForTransactionReceipt: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    })),
   };
 });
 

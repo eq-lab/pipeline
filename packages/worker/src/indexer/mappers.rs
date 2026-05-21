@@ -78,57 +78,58 @@ fn clone_contract_log(e: &ContractLog) -> ContractLog {
         tx_hash: e.tx_hash,
         log_index: e.log_index,
         block_timestamp: e.block_timestamp,
-        sender: e.sender,
-        receiver: e.receiver,
-        amount: e.amount,
-        request_id: e.request_id,
-        cumulative: e.cumulative,
-        assets: e.assets,
-        shares: e.shares,
-        shares_balance: e.shares_balance.clone(),
-        avg_buy_share_price: e.avg_buy_share_price.clone(),
-        realized_pnl: e.realized_pnl.clone(),
+        params: e.params.clone(),
     }
 }
 
 /// Query previous position from contract_logs within the same transaction,
 /// then compute shares_balance, avg_buy_share_price, and realized_pnl.
+/// Results are written back into event.params.
 async fn compute_position_fields(
     conn: &mut PgConnection,
     chain_id: i64,
     event: &mut ContractLog,
 ) -> anyhow::Result<()> {
     let vault_address = event.contract_address.to_checksum(None);
+
+    // StakingDeposit uses "owner" as the position holder; StakingWithdrawal uses "owner" too.
     let owner_address = event
-        .sender
-        .map(|a| a.to_checksum(None))
+        .params
+        .get("owner")
+        .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_lowercase();
 
     let zero = BigDecimal::from(0i64);
 
-    let assets_raw = event.assets.map_or_else(
-        || zero.clone(),
-        |v| BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal"),
-    );
-    let shares_raw = event.shares.map_or_else(
-        || zero.clone(),
-        |v| BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal"),
-    );
+    let assets_raw = event
+        .params
+        .get("assets")
+        .and_then(|v| v.as_str())
+        .and_then(|s| BigDecimal::from_str(s).ok())
+        .unwrap_or_else(|| zero.clone());
+
+    let shares_raw = event
+        .params
+        .get("shares")
+        .and_then(|v| v.as_str())
+        .and_then(|s| BigDecimal::from_str(s).ok())
+        .unwrap_or_else(|| zero.clone());
 
     if shares_raw == 0i64 {
         return Ok(());
     }
 
-    // Query through the transaction connection so uncommitted inserts are visible
-    let prev: Option<(BigDecimal, BigDecimal)> = sqlx::query_as(
-        "SELECT shares_balance, avg_buy_share_price
+    // Query through the transaction connection so uncommitted inserts are visible.
+    // Read shares_balance and avg_buy_share_price from the JSONB params column.
+    let prev: Option<(String, String)> = sqlx::query_as(
+        "SELECT params->>'shares_balance', params->>'avg_buy_share_price'
          FROM contract_logs
          WHERE chain_id = $1
            AND LOWER(contract_address) = LOWER($2)
-           AND LOWER(sender) = $3
+           AND LOWER(params->>'owner') = $3
            AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
-           AND shares_balance IS NOT NULL
+           AND params ? 'shares_balance'
          ORDER BY block_number DESC, log_index DESC
          LIMIT 1",
     )
@@ -138,7 +139,13 @@ async fn compute_position_fields(
     .fetch_optional(&mut *conn)
     .await?;
 
-    let (prev_shares, prev_avg_price) = prev.unwrap_or((zero.clone(), zero.clone()));
+    let (prev_shares, prev_avg_price) = match prev {
+        Some((s, p)) => (
+            BigDecimal::from_str(&s).unwrap_or_else(|_| zero.clone()),
+            BigDecimal::from_str(&p).unwrap_or_else(|_| zero.clone()),
+        ),
+        None => (zero.clone(), zero.clone()),
+    };
 
     let is_stake = event.event_name == "StakingDeposit";
 
@@ -169,9 +176,21 @@ async fn compute_position_fields(
         }
     };
 
-    event.shares_balance = Some(new_shares);
-    event.avg_buy_share_price = Some(new_avg_price);
-    event.realized_pnl = Some(realized_pnl);
+    // Write computed position fields back into params.
+    if let Some(obj) = event.params.as_object_mut() {
+        obj.insert(
+            "shares_balance".to_owned(),
+            serde_json::Value::String(new_shares.to_string()),
+        );
+        obj.insert(
+            "avg_buy_share_price".to_owned(),
+            serde_json::Value::String(new_avg_price.to_string()),
+        );
+        obj.insert(
+            "realized_pnl".to_owned(),
+            serde_json::Value::String(realized_pnl.to_string()),
+        );
+    }
 
     Ok(())
 }

@@ -15,7 +15,12 @@
  * DevTools console snippets.
  */
 import { useEffect, useState, useCallback } from "react";
-import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
+import {
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  usePublicClient,
+} from "wagmi";
 import { useMock, readMock, parseBigInt, parseJson } from "./mock";
 import { useWallet } from "./useWallet";
 import { erc20Abi } from "./abis/erc20";
@@ -66,12 +71,16 @@ export interface UseApprovalResult {
   data: { hash: string } | undefined;
   /** `true` while the allowance read is in flight. */
   isLoading: boolean;
-  /** `true` while an approve tx is in flight. */
+  /**
+   * `true` from broadcast until the receipt is mined (real path), or while the
+   * mocked approve is settling (mock path).
+   */
   isPending: boolean;
   /**
-   * `true` once the approve tx is confirmed (broadcast-accepted, consistent
-   * with `useRequestDeposit` / `useClaim` semantics — does not wait for
-   * receipt).
+   * Real path: `true` once the approve tx receipt is mined and status is
+   * `success`. Mock path: `true` after the mocked approve settles in the next
+   * microtask. (This differs from `useRequestDeposit` / `useClaim`, which fire
+   * on broadcast.)
    */
   isSuccess: boolean;
   /** Read or write error; cleared by `reset()`. */
@@ -166,6 +175,14 @@ export function useApproval({
   // ── Wagmi write hook — always called (hooks must not be conditional) ─────────
   const wagmiWrite = useWriteContract();
 
+  // ── Wagmi receipt hook — always called (hooks must not be conditional) ───────
+  // Tracks the mined receipt for the in-flight approve tx hash. Gated on
+  // walletConnected && hash defined to avoid stale watches on disconnect.
+  const wagmiReceipt = useWaitForTransactionReceipt({
+    hash: wagmiWrite.data,
+    query: { enabled: walletConnected && wagmiWrite.data !== undefined },
+  });
+
   // ── Public client for gas estimation — always called ─────────────────────────
   const publicClient = usePublicClient();
 
@@ -177,10 +194,19 @@ export function useApproval({
       ? (allowanceRead.data as bigint | undefined)
       : undefined;
 
-  const isSuccess = hasApproveMock ? mockState.isSuccess : wagmiWrite.isSuccess;
+  // Real path: pending from broadcast until receipt is mined.
+  const realIsPending =
+    wagmiWrite.isPending ||
+    (wagmiWrite.data !== undefined && wagmiReceipt.isLoading);
+  // Real path: success only after receipt confirms with status "success".
+  const realIsSuccess = wagmiReceipt.isSuccess;
+
+  const isSuccess = hasApproveMock ? mockState.isSuccess : realIsSuccess;
 
   // ── Auto-refetch after successful approve ────────────────────────────────────
-  // Covers both mock path (mockState.isSuccess) and real path (wagmiWrite.isSuccess).
+  // Covers both mock path (mockState.isSuccess) and real path (wagmiReceipt.isSuccess).
+  // The refetch now reads the post-mine allowance, eliminating the stale-cache
+  // window that existed when we fired on broadcast (wagmiWrite.isSuccess).
   const refetch = allowanceRead.refetch as () => void;
 
   useEffect(() => {
@@ -336,10 +362,11 @@ export function useApproval({
     approve,
     data: txHash !== undefined ? { hash: txHash } : undefined,
     isLoading: mockAllowanceSet ? false : allowanceRead.isLoading,
-    isPending: isEstimating || wagmiWrite.isPending,
-    isSuccess: wagmiWrite.isSuccess,
+    isPending: isEstimating || realIsPending,
+    isSuccess: realIsSuccess,
     error: (writeError ??
       wagmiWrite.error ??
+      wagmiReceipt.error ??
       allowanceRead.error) as Error | null,
     reset,
     refetch,
