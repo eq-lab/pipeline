@@ -70,15 +70,12 @@ Out of scope:
 
 ## Open Questions
 
-- Should the helper live in `estimateGas.ts` (rename to `gasPreflight.ts`?) or
-  in a new `simulate.ts`? Default: new file `simulate.ts` exporting
-  `simulateOrFail` — keeps `estimateGas.ts` single-purpose. Coder may choose
-  either; flag in PR description.
-- For `useApproval`, the OZ ERC-20 custom errors only exist on OZ v5+ tokens.
-  Older tokens (e.g. USDT on mainnet) revert with plain strings or silently
-  return `false`. Acceptable to add the OZ error list anyway — viem will
-  simply fall back to the raw revert when no ABI entry matches. Confirm this
-  is OK rather than gating ABI entries per-token.
+_Resolved by user (2026-05-21):_
+
+1. **Helper location:** New file `packages/frontend/src/wallet/simulate.ts` exporting `simulateOrFail`. Do not touch `estimateGas.ts`.
+2. **OZ ERC-20 v5 errors:** Add them unconditionally to `abis/erc20.ts`. Viem falls back gracefully on older tokens.
+
+ABIs for `withdrawalQueue` and `stakedPlusd` are available in `docs.local/`; coder ports error entries directly from there — no `forge inspect` regeneration needed.
 
 ## Implementation Steps
 
