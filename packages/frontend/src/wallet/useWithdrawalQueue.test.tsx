@@ -17,6 +17,7 @@ const mockUseReadContract = vi.fn(() => ({
 }));
 
 const mockWriteContract = vi.fn();
+const mockWagmiReset = vi.fn();
 
 // Stable write contract return — new object identity on every call causes
 // infinite re-renders in useSyncExternalStore + useWriteContract chains.
@@ -26,9 +27,28 @@ const stableWriteContractState = {
   isPending: false,
   isSuccess: false,
   error: null as Error | null,
-  reset: vi.fn(),
+  reset: mockWagmiReset,
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
+
+// Stable receipt state — same pattern as stableWriteContractState.
+const stableReceiptState = {
+  data: undefined as unknown,
+  isLoading: false,
+  isSuccess: false,
+  isError: false,
+  error: null as Error | null,
+};
+const mockUseWaitForTransactionReceipt = vi.fn(
+  (_args?: { hash?: string; query?: { enabled?: boolean } }) =>
+    stableReceiptState,
+);
+
+// useAccount — mutable so individual tests can switch connected/disconnected.
+const mockUseAccount = vi.fn(() => ({
+  address: undefined as `0x${string}` | undefined,
+  isConnected: false,
+}));
 
 // Mock publicClient for gas estimation and simulate pre-flight.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
@@ -46,13 +66,16 @@ vi.mock("wagmi", async (importOriginal) => {
     WagmiProvider: ({ children }: { children: React.ReactNode }) => (
       <>{children}</>
     ),
-    useAccount: vi.fn(() => ({ address: undefined, isConnected: false })),
+    useAccount: () => mockUseAccount(),
     useChainId: vi.fn(() => 560048),
     useDisconnect: vi.fn(() => ({ disconnect: vi.fn() })),
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
     usePublicClient: () => mockUsePublicClient(),
+    useWaitForTransactionReceipt: (
+      ...args: Parameters<typeof mockUseWaitForTransactionReceipt>
+    ) => mockUseWaitForTransactionReceipt(...args),
   };
 });
 
@@ -121,6 +144,32 @@ function wrapper({ children }: { children: React.ReactNode }) {
 // Helper: reset mockEnv to defaults
 function resetEnv() {
   mockEnv.WITHDRAWAL_QUEUE_ADDRESS = ZERO_ADDRESS as `0x${string}`;
+}
+
+function setConnectedWallet() {
+  mockUseAccount.mockReturnValue({
+    address: "0xWALLET0000000000000000000000000000000099" as `0x${string}`,
+    isConnected: true,
+  });
+}
+
+function setDisconnectedWallet() {
+  mockUseAccount.mockReturnValue({ address: undefined, isConnected: false });
+}
+
+function resetReceiptState() {
+  stableReceiptState.data = undefined;
+  stableReceiptState.isLoading = false;
+  stableReceiptState.isSuccess = false;
+  stableReceiptState.isError = false;
+  stableReceiptState.error = null;
+}
+
+function resetWriteContractState() {
+  stableWriteContractState.data = undefined;
+  stableWriteContractState.isPending = false;
+  stableWriteContractState.isSuccess = false;
+  stableWriteContractState.error = null;
 }
 
 // ── useWithdrawalQueueAddresses — named alias mocks ───────────────────────────
@@ -1073,5 +1122,198 @@ describe("useClaimWithdrawal — mock key bypasses simulateContract", () => {
 
     expect(mockSimulateContract).not.toHaveBeenCalled();
     expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+// ── useRequestWithdrawal — receipt-gated isSuccess (real wagmi path) ───────────
+
+describe("useRequestWithdrawal — receipt-gated isSuccess", () => {
+  const wqAddr = "0xFFFF000000000000000000000000000000000040";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockUseWriteContract.mockClear();
+    mockUseWaitForTransactionReceipt.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    setDisconnectedWallet();
+  });
+
+  it("isPending stays true while receipt is loading after broadcast", () => {
+    stableWriteContractState.data = "0xhash3";
+    stableReceiptState.isLoading = true;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("isSuccess does NOT flip true on broadcast alone", () => {
+    stableWriteContractState.data = "0xhash3";
+    stableWriteContractState.isSuccess = true;
+    stableReceiptState.isLoading = true;
+    stableReceiptState.isSuccess = false;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("isSuccess flips true only when wagmiReceipt.isSuccess flips true", () => {
+    stableWriteContractState.data = "0xhash3";
+    stableReceiptState.isSuccess = true;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.isPending).toBe(false);
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when wallet disconnected", () => {
+    setDisconnectedWallet();
+
+    renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    const receiptCalls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<[{ query?: { enabled?: boolean } }]>;
+    expect(receiptCalls.length).toBeGreaterThan(0);
+    for (const call of receiptCalls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when hash is undefined", () => {
+    stableWriteContractState.data = undefined;
+    setConnectedWallet();
+
+    renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    const receiptCalls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<[{ query?: { enabled?: boolean } }]>;
+    expect(receiptCalls.length).toBeGreaterThan(0);
+    for (const call of receiptCalls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("surfaces receipt error via error field", () => {
+    const receiptErr = new Error("withdrawal request reverted");
+    stableWriteContractState.data = "0xhash3";
+    stableReceiptState.error = receiptErr;
+    stableReceiptState.isError = true;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    expect(result.current.error).toBe(receiptErr);
+  });
+});
+
+// ── useClaimWithdrawal — receipt-gated isSuccess (real wagmi path) ─────────────
+
+describe("useClaimWithdrawal — receipt-gated isSuccess", () => {
+  const wqAddr = "0xFFFF000000000000000000000000000000000050";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockUseWriteContract.mockClear();
+    mockUseWaitForTransactionReceipt.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    resetReceiptState();
+    resetWriteContractState();
+    setDisconnectedWallet();
+  });
+
+  it("isPending stays true while receipt is loading after broadcast", () => {
+    stableWriteContractState.data = "0xhash4";
+    stableReceiptState.isLoading = true;
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("isSuccess does NOT flip true on broadcast alone", () => {
+    stableWriteContractState.data = "0xhash4";
+    stableWriteContractState.isSuccess = true;
+    stableReceiptState.isLoading = true;
+    stableReceiptState.isSuccess = false;
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("isSuccess flips true only when wagmiReceipt.isSuccess flips true", () => {
+    stableWriteContractState.data = "0xhash4";
+    stableReceiptState.isSuccess = true;
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.isPending).toBe(false);
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when wallet disconnected", () => {
+    setDisconnectedWallet();
+
+    renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    const receiptCalls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<[{ query?: { enabled?: boolean } }]>;
+    expect(receiptCalls.length).toBeGreaterThan(0);
+    for (const call of receiptCalls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when hash is undefined", () => {
+    stableWriteContractState.data = undefined;
+    setConnectedWallet();
+
+    renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    const receiptCalls = mockUseWaitForTransactionReceipt.mock
+      .calls as unknown as Array<[{ query?: { enabled?: boolean } }]>;
+    expect(receiptCalls.length).toBeGreaterThan(0);
+    for (const call of receiptCalls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("surfaces receipt error via error field", () => {
+    const receiptErr = new Error("withdrawal claim reverted");
+    stableWriteContractState.data = "0xhash4";
+    stableReceiptState.error = receiptErr;
+    stableReceiptState.isError = true;
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    expect(result.current.error).toBe(receiptErr);
   });
 });

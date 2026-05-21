@@ -10,7 +10,12 @@
  * skipped entirely (no network request).
  */
 import { useState, useCallback } from "react";
-import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
+import {
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  usePublicClient,
+} from "wagmi";
 import { ENV } from "@/lib/env";
 import {
   useMock,
@@ -57,7 +62,15 @@ export interface DepositManagerAddressesResult {
 export interface RequestDepositResult {
   write: (amount: bigint) => void;
   data: { hash: string; requestId?: string } | undefined;
+  /**
+   * `true` from broadcast until the receipt is mined (real path), or while the
+   * mocked write is settling (mock path).
+   */
   isPending: boolean;
+  /**
+   * Real path: `true` once the tx receipt is mined with status `success`.
+   * Mock path: `true` after the mocked write settles in the next microtask.
+   */
   isSuccess: boolean;
   error: Error | null;
   reset: () => void;
@@ -66,7 +79,15 @@ export interface RequestDepositResult {
 export interface ClaimResult {
   write: (requestId: bigint, verifierSignature: `0x${string}`) => void;
   data: { hash: string; amount?: string } | undefined;
+  /**
+   * `true` from broadcast until the receipt is mined (real path), or while the
+   * mocked write is settling (mock path).
+   */
   isPending: boolean;
+  /**
+   * Real path: `true` once the tx receipt is mined with status `success`.
+   * Mock path: `true` after the mocked write settles in the next microtask.
+   */
   isSuccess: boolean;
   error: Error | null;
   reset: () => void;
@@ -283,11 +304,21 @@ export function useRequestDeposit(): RequestDepositResult {
   // Wagmi write hook — always called (hooks must not be conditional).
   const wagmiWrite = useWriteContract();
 
+  // Connected wallet address for gas estimation and receipt gating.
+  const { address, isConnected } = useWallet();
+
+  // Derived — mirrors useApproval.ts pattern.
+  const walletConnected = isConnected && address !== undefined;
+
+  // Wagmi receipt hook — always called (hooks must not be conditional).
+  // Gates `isSuccess` on the mined receipt instead of broadcast.
+  const wagmiReceipt = useWaitForTransactionReceipt({
+    hash: wagmiWrite.data,
+    query: { enabled: walletConnected && wagmiWrite.data !== undefined },
+  });
+
   // Public client for gas estimation — always called (hooks must not be conditional).
   const publicClient = usePublicClient();
-
-  // Connected wallet address for gas estimation.
-  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -337,6 +368,7 @@ export function useRequestDeposit(): RequestDepositResult {
 
       void (async () => {
         setIsEstimating(true);
+
         const simulated = await simulateOrFail({
           publicClient,
           account: address,
@@ -409,13 +441,17 @@ export function useRequestDeposit(): RequestDepositResult {
   }
 
   // Real wagmi path.
+  // `isSuccess` is gated on the mined receipt (not broadcast) — mirrors useApproval.
   const txHash = wagmiWrite.data;
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: isEstimating || wagmiWrite.isPending,
-    isSuccess: wagmiWrite.isSuccess,
-    error: (writeError ?? wagmiWrite.error) as Error | null,
+    isPending:
+      isEstimating ||
+      wagmiWrite.isPending ||
+      (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
+    isSuccess: wagmiReceipt.isSuccess,
+    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();
@@ -457,11 +493,21 @@ export function useClaim(): ClaimResult {
 
   const wagmiWrite = useWriteContract();
 
+  // Connected wallet address for gas estimation and receipt gating.
+  const { address, isConnected } = useWallet();
+
+  // Derived — mirrors useApproval.ts pattern.
+  const walletConnected = isConnected && address !== undefined;
+
+  // Wagmi receipt hook — always called (hooks must not be conditional).
+  // Gates `isSuccess` on the mined receipt instead of broadcast.
+  const wagmiReceipt = useWaitForTransactionReceipt({
+    hash: wagmiWrite.data,
+    query: { enabled: walletConnected && wagmiWrite.data !== undefined },
+  });
+
   // Public client for gas estimation — always called (hooks must not be conditional).
   const publicClient = usePublicClient();
-
-  // Connected wallet address for gas estimation.
-  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -508,6 +554,7 @@ export function useClaim(): ClaimResult {
 
       void (async () => {
         setIsEstimating(true);
+
         const simulated = await simulateOrFail({
           publicClient,
           account: address,
@@ -579,13 +626,18 @@ export function useClaim(): ClaimResult {
     };
   }
 
+  // Real wagmi path.
+  // `isSuccess` is gated on the mined receipt (not broadcast) — mirrors useApproval.
   const txHash = wagmiWrite.data;
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: isEstimating || wagmiWrite.isPending,
-    isSuccess: wagmiWrite.isSuccess,
-    error: (writeError ?? wagmiWrite.error) as Error | null,
+    isPending:
+      isEstimating ||
+      wagmiWrite.isPending ||
+      (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
+    isSuccess: wagmiReceipt.isSuccess,
+    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();
