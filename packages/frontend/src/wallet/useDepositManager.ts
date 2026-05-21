@@ -498,7 +498,7 @@ export function useClaim(): ClaimResult {
           account: address,
           abi: depositManagerAbi,
           address: DM_ADDRESS,
-          functionName: "claim",
+          functionName: "claimDeposit",
           args: [requestId, verifierSignature],
         });
         setIsEstimating(false);
@@ -511,7 +511,7 @@ export function useClaim(): ClaimResult {
         wagmiWrite.writeContract({
           abi: depositManagerAbi,
           address: DM_ADDRESS,
-          functionName: "claim",
+          functionName: "claimDeposit",
           args: [requestId, verifierSignature],
           gas: result.gas,
         });

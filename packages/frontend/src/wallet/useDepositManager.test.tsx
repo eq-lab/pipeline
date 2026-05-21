@@ -524,7 +524,7 @@ describe("useClaim — args pass-through (no mock, non-zero address)", () => {
 
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
-        functionName: "claim",
+        functionName: "claimDeposit",
         address: dmAddr,
         args: [99n, "0xdeadbeef"],
         gas: 1_200_000n, // 1_000_000n * 12 / 10
