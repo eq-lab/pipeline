@@ -462,13 +462,7 @@ function Deposit() {
 
         {/* Conditional: unreachable-contract banner, low-balance banner, OR three-step card */}
         {isManagerUnreachable ? (
-          /* DepositManager not reachable — replaces StepsCard.
-             Shown only when connected and the contract read has settled
-             with both addresses undefined. */
-          <Card
-            className="border-[color:var(--color-pipeline-danger)] bg-[var(--color-pipeline-danger)] text-[color:var(--color-pipeline-on-danger)]"
-            data-testid="dm-unreachable-banner"
-          >
+          <Card variant="danger" data-testid="dm-unreachable-banner">
             <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
               DepositManager not reachable
             </p>

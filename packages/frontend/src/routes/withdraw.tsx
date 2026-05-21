@@ -424,15 +424,7 @@ function Withdraw() {
 
         {/* Conditional: unreachable-contract banner OR three-step card */}
         {isQueueUnreachable ? (
-          /* WithdrawalQueue not reachable — replaces StepsCard.
-             Uses danger tokens to visually distinguish from the yellow
-             low-balance banner on the deposit page.
-             Shown only when connected and the contract read has settled
-             with both addresses undefined. */
-          <Card
-            className="border-[color:var(--color-pipeline-danger)] bg-[var(--color-pipeline-danger)] text-[color:var(--color-pipeline-on-danger)]"
-            data-testid="wq-unreachable-banner"
-          >
+          <Card variant="danger" data-testid="wq-unreachable-banner">
             <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
               WithdrawalQueue not reachable
             </p>

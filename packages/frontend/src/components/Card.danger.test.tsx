@@ -26,7 +26,9 @@ import { Card } from "@pipeline/ui";
 
 describe("Card danger variant", () => {
   it("renders without throwing", () => {
-    expect(() => render(<Card variant="danger">Error banner</Card>)).not.toThrow();
+    expect(() =>
+      render(<Card variant="danger">Error banner</Card>),
+    ).not.toThrow();
   });
 
   it("sets data-variant='danger' on the root element", () => {
@@ -52,9 +54,7 @@ describe("Card danger variant", () => {
   it("className does NOT include the surface (white) background class", () => {
     const { container } = render(<Card variant="danger">Error banner</Card>);
     const div = container.querySelector("div");
-    expect(div?.className).not.toContain(
-      "bg-[var(--color-pipeline-surface)]",
-    );
+    expect(div?.className).not.toContain("bg-[var(--color-pipeline-surface)]");
   });
 
   it("className includes the danger border color class", () => {
