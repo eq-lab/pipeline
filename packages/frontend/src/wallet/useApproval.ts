@@ -15,10 +15,11 @@
  * DevTools console snippets.
  */
 import { useEffect, useState, useCallback } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { useMock, readMock, parseBigInt, parseJson } from "./mock";
 import { useWallet } from "./useWallet";
 import { erc20Abi } from "./abis/erc20";
+import { estimateGasCapped } from "./estimateGas";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -155,11 +156,18 @@ export function useApproval({
   const [mockState, setMockState] =
     useState<ApproveMockState>(INITIAL_MOCK_STATE);
 
-  // ── Write error state (zero-address / disconnected) ─────────────────────────
+  // ── Write error state (zero-address / disconnected / estimation) ────────────
   const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant approve calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // ── Wagmi write hook — always called (hooks must not be conditional) ─────────
   const wagmiWrite = useWriteContract();
+
+  // ── Public client for gas estimation — always called ─────────────────────────
+  const publicClient = usePublicClient();
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -226,12 +234,34 @@ export function useApproval({
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: erc20Abi,
-        address: token,
-        functionName: "approve",
-        args: [spender, amount],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: erc20Abi,
+          address: token,
+          functionName: "approve",
+          args: [spender, amount],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: erc20Abi,
+          address: token,
+          functionName: "approve",
+          args: [spender, amount],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -240,6 +270,9 @@ export function useApproval({
       walletConnected,
       tokenIsZero,
       spenderIsZero,
+      isEstimating,
+      publicClient,
+      address,
       wagmiWrite.writeContract,
     ],
   );
@@ -303,7 +336,7 @@ export function useApproval({
     approve,
     data: txHash !== undefined ? { hash: txHash } : undefined,
     isLoading: mockAllowanceSet ? false : allowanceRead.isLoading,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
     error: (writeError ??
       wagmiWrite.error ??

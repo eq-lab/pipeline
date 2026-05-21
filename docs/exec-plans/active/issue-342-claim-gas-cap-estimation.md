@@ -76,20 +76,20 @@ _Resolved by user (2026-05-21):_
 
 ## Implementation Steps
 
-1. **Create `packages/frontend/src/wallet/gas.ts`.**
+1. [x] **Create `packages/frontend/src/wallet/gas.ts`.**
    - Export `EVM_TX_GAS_CAP` as `bigint`. Default value `16_777_216n - 1n`. Either hard-coded or read from `ENV.EVM_TX_GAS_CAP` per the Open Questions resolution.
    - Export `GAS_BUFFER_NUMERATOR = 12n` and `GAS_BUFFER_DENOMINATOR = 10n` (or a single `applyGasBuffer(gas: bigint): bigint` helper).
    - Export `clampGas(gas: bigint): bigint` that returns `gas > EVM_TX_GAS_CAP ? EVM_TX_GAS_CAP : gas`.
    - JSDoc the file: why the cap exists, link to the Issue.
 
-2. **Create `packages/frontend/src/wallet/estimateGas.ts`.**
+2. [x] **Create `packages/frontend/src/wallet/estimateGas.ts`.**
    - Import `Abi`, `PublicClient` types from `viem`. Import `applyGasBuffer`, `clampGas` from `./gas`.
    - Export `estimateGasCapped({ publicClient, account, abi, address, functionName, args })` returning `Promise<{ ok: true; gas: bigint } | { ok: false; error: Error }>`.
    - Implementation: if `publicClient === undefined` return `{ ok: true, gas: 0n }` with a flag that the caller can interpret as "skip the gas field" — or return `{ ok: true, gas: undefined }` and let the caller spread `gas !== undefined ? { gas } : {}` into `writeContract`. Pick the variant with the cleanest call sites.
    - Wrap `publicClient.estimateContractGas({ account, abi, address, functionName, args })` in try/catch. On throw, return `{ ok: false, error }` with the original viem `BaseError`-typed message preserved (`error.shortMessage ?? error.message`).
    - On success: `clampGas(applyGasBuffer(estimated))`.
 
-3. **Update `useDepositManager.ts`.**
+3. [x] **Update `useDepositManager.ts`.**
    - Import `usePublicClient` from `wagmi`; `useWallet` (already imported elsewhere) for the connected `address`.
    - Add `const publicClient = usePublicClient()` and `const { address } = useWallet()` at the top of `useRequestDeposit` and `useClaim`.
    - Introduce `const [isEstimating, setIsEstimating] = useState(false)`.
@@ -103,20 +103,21 @@ _Resolved by user (2026-05-21):_
    - Make `write` `async` (callback already supports it via `useCallback` returning `void`; wrap with `void (async () => {...})()` to keep the public signature `(...) => void`).
    - Guard re-entry: at the top of `write`, `if (isEstimating) return`.
 
-4. **Update `useWithdrawalQueue.ts`.**
+4. [x] **Update `useWithdrawalQueue.ts`.**
    - Apply the same pattern as step 3 to `useRequestWithdrawal` and `useClaimWithdrawal`. They already follow `useDepositManager`'s shape so the diff is mechanical.
    - Add `useWallet` import; thread `address` into `estimateContractGas` as the `account`.
 
-5. **Update `useStakedPlusd.ts`.**
+5. [x] **Update `useStakedPlusd.ts`.**
    - Apply the same pattern to `useStake` and `useUnstake`. `useWallet` is already imported.
 
-6. **Update `useApproval.ts`.**
+6. [x] **Update `useApproval.ts`.**
    - Apply the same pattern to the `approve` write. The pre-existing `walletConnected`, `tokenIsZero`, `spenderIsZero` guards already short-circuit before `writeContract`; the new estimation runs only when those pass.
 
-7. **Update `packages/frontend/src/wallet/index.ts`.**
+7. [x] **Update `packages/frontend/src/wallet/index.ts`.**
    - Re-export `EVM_TX_GAS_CAP` only if the Open Questions resolve to "expose publicly". Otherwise no barrel change.
+   - Resolved: no barrel change (kept internal to `wallet/gas.ts`).
 
-8. **Update unit tests.**
+8. [x] **Update unit tests.**
    - `useDepositManager.test.tsx`, `useWithdrawalQueue.test.tsx`, `useStakedPlusd.test.tsx`, `useApproval.test.tsx`.
    - Add a top-level `vi.mock("wagmi", ...)` extension to mock `usePublicClient` returning an object with a `vi.fn()` `estimateContractGas`.
    - For each write hook test add three new cases:
@@ -125,10 +126,10 @@ _Resolved by user (2026-05-21):_
      - **Estimation rejects:** mock `estimateContractGas` to reject with `new Error("execution reverted: stale voucher")`. Assert hook `error` matches that message and `writeContract` is NOT called.
    - Preserve all existing tests (mock-path bypass, zero-address bypass, args pass-through). The args-pass-through tests must be updated to assert on `gas` too, or relaxed to not care about extra fields — pick the stricter "exact object match including gas" form to lock in regression coverage.
 
-9. **Manual smoke test.**
+9. [ ] **Manual smoke test.**
    - Run `yarn workspace @pipeline/frontend dev`. With a wallet connected and a deposit in `PendingClaim` state, click Claim and confirm: (a) the toast shows "Claiming…" while estimation runs, (b) on success the tx broadcasts with a sane gas value (`< 16,777,216`), (c) on failure the toast shows "Claim failed" with the actual revert reason in the `error` (visible in the React DevTools / a temporary `console.error` left out of the commit).
 
-10. **Lint and typecheck.**
+10. [x] **Lint and typecheck.**
     - `yarn workspace @pipeline/frontend lint` (boundary lint — `viem` types must only be imported from inside `wallet/`).
     - `yarn workspace @pipeline/frontend tsc --noEmit`.
     - `npx tsx scripts/lint-docs.ts`.

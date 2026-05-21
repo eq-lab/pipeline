@@ -62,6 +62,11 @@ const stableWriteContractState = {
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
 
+// Mock publicClient for gas estimation.
+const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
+const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockUsePublicClient = vi.fn(() => mockPublicClient);
+
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
@@ -75,6 +80,7 @@ vi.mock("wagmi", async (importOriginal) => {
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
+    usePublicClient: () => mockUsePublicClient(),
   };
 });
 

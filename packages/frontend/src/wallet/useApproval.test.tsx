@@ -37,6 +37,11 @@ const mockUseAccount = vi.fn(() => ({
   isConnected: false,
 }));
 
+// Mock publicClient for gas estimation.
+const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
+const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockUsePublicClient = vi.fn(() => mockPublicClient);
+
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
@@ -50,6 +55,7 @@ vi.mock("wagmi", async (importOriginal) => {
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
+    usePublicClient: () => mockUsePublicClient(),
   };
 });
 
@@ -351,6 +357,8 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
     mockUseReadContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
     setConnectedWallet();
   });
 
@@ -358,7 +366,7 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
     localStorage.clear();
   });
 
-  it("calls wagmi writeContract with correct args", () => {
+  it("calls wagmi writeContract with buffered gas", async () => {
     const { result } = renderHook(
       () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
       { wrapper },
@@ -368,6 +376,10 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
       result.current.approve(123n);
     });
 
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
     expect(mockWriteContract).toHaveBeenCalledOnce();
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -375,8 +387,80 @@ describe("useApproval — approve args pass-through (no mock, non-zero, connecte
         address: TOKEN_ADDRESS,
         functionName: "approve",
         args: [SPENDER_ADDRESS, 123n],
+        gas: 1_200_000n, // 1_000_000n * 12 / 10
       }),
     );
+  });
+});
+
+describe("useApproval — gas cap clamp", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+  });
+
+  it("clamps gas to EVM_TX_GAS_CAP when estimation * 1.2 exceeds cap", async () => {
+    // Estimate that after +20% buffer would exceed 16_777_215n cap
+    mockEstimateContractGas.mockResolvedValue(15_000_000n);
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(123n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    const call = mockWriteContract.mock.calls[0]![0] as { gas?: bigint };
+    // 15_000_000 * 12 / 10 = 18_000_000 > 16_777_215n, so should be clamped
+    expect(call.gas).toBe(16_777_215n);
+  });
+});
+
+describe("useApproval — estimation rejects surfaces error", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    setConnectedWallet();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+  });
+
+  it("sets error and does not call writeContract when estimation rejects", async () => {
+    const rpcErr = new Error("execution reverted");
+    mockEstimateContractGas.mockRejectedValue(rpcErr);
+
+    const { result } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.approve(123n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain("execution reverted");
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
 

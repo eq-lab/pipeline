@@ -309,6 +309,55 @@ change, the badge is recomputed automatically in the same cycle as the value.
 
 ---
 
+## Gas estimation
+
+Every write hook in this module (`useRequestDeposit`, `useClaim`,
+`useRequestWithdrawal`, `useClaimWithdrawal`, `useStake`, `useUnstake`,
+and `useApproval`) pre-estimates gas before calling `writeContract`. This
+prevents viem's hard-coded 21,000,000 fallback from exceeding the Hoodi
+chain's per-transaction gas cap of 16,777,215 (`0x1000000 - 1`).
+
+### How it works
+
+1. Before calling `writeContract`, the hook calls
+   `publicClient.estimateContractGas({ account, abi, address, functionName, args })`.
+2. A **+20% buffer** is applied: `estimatedGas * 12n / 10n`.
+3. The result is **clamped** to `EVM_TX_GAS_CAP = 16_777_215n` (one below the
+   chain cap). The buffer is applied before the clamp so the ceiling is
+   respected in all cases.
+4. The clamped value is passed as the `gas` field on `writeContract`, which
+   prevents viem from falling back to its 21 M default.
+
+### Estimation failures
+
+If `estimateContractGas` throws (revert, network error, or missing RPC),
+the hook surfaces the error on its `error` field and **does not** call
+`writeContract`. This means the existing "Claim failed" / "Deposit failed"
+toasts show the actual revert reason rather than the downstream gas-cap
+rejection.
+
+### `isPending` during estimation
+
+The hook's `isPending` field is `true` while estimation is in flight — not
+just while the wagmi `writeContract` call is pending. This ensures the
+UI's action button shows its pending/spinner state during the full
+end-to-end round-trip.
+
+### Mock path bypass
+
+The localStorage mock keys (`pipeline.mock.wallet.contract.*`) bypass
+estimation entirely. When a mock key is present, `write()` settles
+immediately from the mock data without any RPC call — the same behaviour
+as before this change.
+
+### Zero-address / wallet-not-connected guards
+
+The existing pre-estimation guards (zero contract address, disconnected
+wallet) still fire first. Estimation is never attempted when those
+conditions prevent the write from proceeding.
+
+---
+
 ## localStorage mock key schema
 
 > For API mock keys (`pipeline.mock.api.*`) see [`src/api/README.md`](../api/README.md).

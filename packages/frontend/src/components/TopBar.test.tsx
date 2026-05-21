@@ -50,6 +50,9 @@ vi.mock("wagmi", async (importOriginal) => {
       error: null,
       reset: vi.fn(),
     })),
+    usePublicClient: vi.fn(() => ({
+      estimateContractGas: vi.fn(async () => 1_000_000n),
+    })),
   };
 });
 

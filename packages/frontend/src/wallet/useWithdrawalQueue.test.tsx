@@ -30,6 +30,11 @@ const stableWriteContractState = {
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
 
+// Mock publicClient for gas estimation.
+const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
+const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockUsePublicClient = vi.fn(() => mockPublicClient);
+
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
@@ -43,6 +48,7 @@ vi.mock("wagmi", async (importOriginal) => {
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
+    usePublicClient: () => mockUsePublicClient(),
   };
 });
 
@@ -367,7 +373,14 @@ describe("useRequestWithdrawal — args pass-through (no mock, non-zero address)
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
     mockUseReadContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
     resetEnv();
+    // Set a connected wallet so estimation proceeds.
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000001",
+    );
   });
 
   afterEach(() => {
@@ -375,7 +388,7 @@ describe("useRequestWithdrawal — args pass-through (no mock, non-zero address)
     resetEnv();
   });
 
-  it("calls wagmi writeContract with correct args for non-zero WQ address", () => {
+  it("calls wagmi writeContract with buffered gas for non-zero WQ address", async () => {
     const wqAddr = "0xFFFF000000000000000000000000000000000007";
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
 
@@ -385,11 +398,16 @@ describe("useRequestWithdrawal — args pass-through (no mock, non-zero address)
       result.current.write(123n);
     });
 
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "requestWithdrawal",
         address: wqAddr,
         args: [123n],
+        gas: 1_200_000n, // 1_000_000n * 12 / 10
       }),
     );
   });
@@ -527,7 +545,14 @@ describe("useClaimWithdrawal — args pass-through (no mock, non-zero address)",
     localStorage.clear();
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
     resetEnv();
+    // Set a connected wallet so estimation proceeds.
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000002",
+    );
   });
 
   afterEach(() => {
@@ -535,7 +560,7 @@ describe("useClaimWithdrawal — args pass-through (no mock, non-zero address)",
     resetEnv();
   });
 
-  it("calls wagmi writeContract with correct args for non-zero WQ address", () => {
+  it("calls wagmi writeContract with buffered gas for non-zero WQ address", async () => {
     const wqAddr = "0xFFFF000000000000000000000000000000000008";
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
 
@@ -545,11 +570,16 @@ describe("useClaimWithdrawal — args pass-through (no mock, non-zero address)",
       result.current.write(99n, "0xdeadbeef" as `0x${string}`);
     });
 
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "claimWithdrawal",
         address: wqAddr,
         args: [99n, "0xdeadbeef"],
+        gas: 1_200_000n, // 1_000_000n * 12 / 10
       }),
     );
   });
@@ -654,5 +684,120 @@ describe("useClaimWithdrawal — reset semantics", () => {
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isSuccess).toBe(false);
+  });
+});
+
+// ── useClaimWithdrawal — gas estimation tests ─────────────────────────────────
+
+describe("useClaimWithdrawal — gas estimation: cap clamp", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000003",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("clamps gas to EVM_TX_GAS_CAP when buffered estimate exceeds the cap", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000009";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    mockEstimateContractGas.mockResolvedValue(20_000_000n);
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    const callArgs = mockWriteContract.mock.calls[0]?.[0] as {
+      gas?: bigint;
+    };
+    expect(callArgs?.gas).toBe(16_777_215n);
+  });
+});
+
+describe("useClaimWithdrawal — gas estimation: estimation rejects", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000004",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("surfaces error on hook and does NOT call writeContract when estimation throws", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000010";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    mockEstimateContractGas.mockRejectedValue(
+      new Error("execution reverted: already claimed"),
+    );
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeTruthy();
+    });
+
+    expect(result.current.error?.message).toMatch(/already claimed/);
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useClaimWithdrawal — gas estimation: mock key bypasses estimation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("does NOT call estimateContractGas when mock key is present", async () => {
+    const mockData = { hash: "0xmocked", amount: "1000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });

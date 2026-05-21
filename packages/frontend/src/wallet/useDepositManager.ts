@@ -10,7 +10,7 @@
  * skipped entirely (no network request).
  */
 import { useState, useCallback } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { ENV } from "@/lib/env";
 import {
   useMock,
@@ -21,6 +21,8 @@ import {
 } from "./mock";
 import { depositManagerAbi } from "./abis/depositManager";
 import { CACHE_FOREVER } from "./cache";
+import { estimateGasCapped } from "./estimateGas";
+import { useWallet } from "./useWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -270,11 +272,21 @@ export function useRequestDeposit(): RequestDepositResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  // Zero-address error state.
-  const [zeroAddrError, setZeroAddrError] = useState<Error | null>(null);
+  // Write error state (zero-address, estimation failure, etc.).
+  const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // Wagmi write hook — always called (hooks must not be conditional).
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
+
+  // Connected wallet address for gas estimation.
+  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -283,7 +295,7 @@ export function useRequestDeposit(): RequestDepositResult {
       isSuccess: false,
       error: null,
     });
-    setZeroAddrError(null);
+    setWriteError(null);
   }, []);
 
   const write = useCallback(
@@ -315,19 +327,48 @@ export function useRequestDeposit(): RequestDepositResult {
       }
 
       if (isZeroAddress) {
-        setZeroAddrError(new Error("DepositManager not configured"));
+        setWriteError(new Error("DepositManager not configured"));
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: depositManagerAbi,
-        address: DM_ADDRESS,
-        functionName: "requestDeposit",
-        args: [amount],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "requestDeposit",
+          args: [amount],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "requestDeposit",
+          args: [amount],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isZeroAddress, DM_ADDRESS, wagmiWrite.writeContract],
+    [
+      isZeroAddress,
+      isEstimating,
+      DM_ADDRESS,
+      publicClient,
+      address,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -347,8 +388,8 @@ export function useRequestDeposit(): RequestDepositResult {
       data: undefined,
       isPending: false,
       isSuccess: false,
-      error: zeroAddrError,
-      reset: () => setZeroAddrError(null),
+      error: writeError,
+      reset: () => setWriteError(null),
     };
   }
 
@@ -357,10 +398,13 @@ export function useRequestDeposit(): RequestDepositResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }
 
@@ -389,9 +433,20 @@ export function useClaim(): ClaimResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  const [zeroAddrError, setZeroAddrError] = useState<Error | null>(null);
+  // Write error state (zero-address, estimation failure, etc.).
+  const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
+
+  // Connected wallet address for gas estimation.
+  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -400,7 +455,7 @@ export function useClaim(): ClaimResult {
       isSuccess: false,
       error: null,
     });
-    setZeroAddrError(null);
+    setWriteError(null);
   }, []);
 
   const write = useCallback(
@@ -429,19 +484,48 @@ export function useClaim(): ClaimResult {
       }
 
       if (isZeroAddress) {
-        setZeroAddrError(new Error("DepositManager not configured"));
+        setWriteError(new Error("DepositManager not configured"));
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: depositManagerAbi,
-        address: DM_ADDRESS,
-        functionName: "claim",
-        args: [requestId, verifierSignature],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "claim",
+          args: [requestId, verifierSignature],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: depositManagerAbi,
+          address: DM_ADDRESS,
+          functionName: "claim",
+          args: [requestId, verifierSignature],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isZeroAddress, DM_ADDRESS, wagmiWrite.writeContract],
+    [
+      isZeroAddress,
+      isEstimating,
+      DM_ADDRESS,
+      publicClient,
+      address,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -461,8 +545,8 @@ export function useClaim(): ClaimResult {
       data: undefined,
       isPending: false,
       isSuccess: false,
-      error: zeroAddrError,
-      reset: () => setZeroAddrError(null),
+      error: writeError,
+      reset: () => setWriteError(null),
     };
   }
 
@@ -470,9 +554,12 @@ export function useClaim(): ClaimResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }
