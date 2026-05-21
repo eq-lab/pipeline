@@ -22,11 +22,11 @@ Source: https://github.com/eq-lab/pipeline/issues/336
 - **No LoanRegistryUpgradeable.sol exists in this repo.** Event signatures are taken from the issue body. The sol! macro declarations will be written from those signatures.
 - The `env_csv_require` helper does not support optional fields. A new `env_csv_optional` helper (returning `Vec<String>`, empty if unset) is needed for `loan_registry_contracts`.
 
-## Open Questions
+## Decisions
 
-1. **Backfill strategy**: Should the migration backfill `params` from existing column values before dropping them, or is it acceptable to wipe `contract_logs` and re-index from the start block? Backfill is safer but adds migration complexity.
-2. **Index on JSONB fields**: Do we need a GIN index on `params`, or are expression indexes on specific keys (e.g., `CREATE INDEX ... ON contract_logs ((params->>'sender'))`) sufficient? The `get_position_summaries` and `get_all_requests` queries filter on sender and event-specific fields.
-3. **LoanStatus and ClosureReason enum mappings**: The issue references `LoanStatus` and `ClosureReason` Solidity enums. Should `params` store the numeric enum value or a string name? (The issue implies raw numeric values stored as strings.)
+1. **Migration strategy**: Wipe `contract_logs` (TRUNCATE) and drop/re-add columns. No backfill. Re-indexing from start block will be done manually by the operator after deploy.
+2. **JSONB indexing**: Add a GIN index on the whole `params` column: `CREATE INDEX idx_contract_logs_params ON contract_logs USING GIN (params)`.
+3. **Enum storage**: Store `LoanStatus` and `ClosureReason` values as string names (e.g., `"Performing"`, `"Default"`, `"ScheduledMaturity"`).
 
 ## Implementation Steps
 
@@ -34,25 +34,11 @@ Source: https://github.com/eq-lab/pipeline/issues/336
 
 Create `packages/shared/migrations/20260521000001_contract_logs_jsonb.sql`:
 
-1. Add `params JSONB NOT NULL DEFAULT '{}'` column.
-2. Backfill `params` from existing columns with an UPDATE statement:
-   ```sql
-   UPDATE contract_logs SET params = jsonb_strip_nulls(jsonb_build_object(
-       'sender', sender,
-       'receiver', receiver,
-       'amount', amount::text,
-       'request_id', request_id::text,
-       'cumulative', cumulative::text,
-       'assets', assets::text,
-       'shares', shares::text,
-       'shares_balance', shares_balance::text,
-       'avg_buy_share_price', avg_buy_share_price::text,
-       'realized_pnl', realized_pnl::text
-   ));
-   ```
-3. Drop columns: `sender`, `receiver`, `amount`, `request_id`, `cumulative`, `assets`, `shares`, `shares_balance`, `avg_buy_share_price`, `realized_pnl`.
-4. Recreate necessary indexes using JSONB expressions (replace `idx_contract_logs_kyt_unverified` which references `sender`).
-5. Add expression index on `(LOWER(params->>'sender'))` for the sender-based queries.
+1. TRUNCATE `contract_logs` and `log_collector_state` (wipe all indexed data; operator re-indexes from start block after deploy).
+2. Drop columns: `sender`, `receiver`, `amount`, `request_id`, `cumulative`, `assets`, `shares`, `shares_balance`, `avg_buy_share_price`, `realized_pnl`.
+3. Add `params JSONB NOT NULL DEFAULT '{}'` column.
+4. Drop old column-based indexes that reference dropped columns (e.g. `idx_contract_logs_kyt_unverified` if it references `sender`).
+5. Add GIN index on the whole `params` column: `CREATE INDEX idx_contract_logs_params ON contract_logs USING GIN (params)`.
 
 ### Step 2: Update `ContractLog` struct
 
