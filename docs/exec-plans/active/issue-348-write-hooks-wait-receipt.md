@@ -42,7 +42,7 @@ _None_
 
 ## Implementation Steps
 
-1. **`useDepositManager.ts` — `useRequestDeposit`:**
+1. ✅ **`useDepositManager.ts` — `useRequestDeposit`:**
    - Import `useWaitForTransactionReceipt` from `wagmi` (already imported elsewhere; verify).
    - After `const wagmiWrite = useWriteContract();`, add:
      ```ts
@@ -57,16 +57,16 @@ _None_
      - `isSuccess: wagmiReceipt.isSuccess`
      - `error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null`
 
-2. **`useDepositManager.ts` — `useClaim` (same change pattern):**
+2. ✅ **`useDepositManager.ts` — `useClaim` (same change pattern):**
    - Add `useWaitForTransactionReceipt` hook call after `const wagmiWrite = useWriteContract();` at line ~443.
    - Update the real-path return block at line ~553-564 with the same three field changes as step 1.
 
-3. **`useWithdrawalQueue.ts` — `useRequestWithdrawal` and `useClaimWithdrawal`:**
+3. ✅ **`useWithdrawalQueue.ts` — `useRequestWithdrawal` and `useClaimWithdrawal`:**
    - Same pattern in both hooks. Update real-path return blocks at lines ~340-352 and ~501-513.
 
-4. **Doc comments:** Update the JSDoc on each of the four hooks' `isSuccess` field to read "`true` once the tx receipt is mined with status `success`" (mirror `useApproval.ts:79-85`). If the hook uses a shared `*Result` type alias, update that type's doc comment instead.
+4. ✅ **Doc comments:** Update the JSDoc on each of the four hooks' `isSuccess` field to read "`true` once the tx receipt is mined with status `success`" (mirror `useApproval.ts:79-85`). If the hook uses a shared `*Result` type alias, update that type's doc comment instead.
 
-5. **Tests:**
+5. ✅ **Tests:**
    - `useDepositManager.test.tsx`:
      - Mock `useWaitForTransactionReceipt` with a stable state object pattern (copy from `useApproval.test.tsx:60-90`).
      - For both `useRequestDeposit` and `useClaim`, add the four test cases already present for `useApproval`:
@@ -77,7 +77,7 @@ _None_
      - Update any existing test that asserted `isSuccess: true` right after broadcast to flip the receipt mock as well.
    - `useWithdrawalQueue.test.tsx`: mirror the same set of test changes for `useRequestWithdrawal` and `useClaimWithdrawal`.
 
-6. **Lint & build:**
+6. ✅ **Lint & build:**
    - `yarn lint` (or `npx tsx scripts/lint-docs.ts` per AGENTS.md) and `yarn workspace @pipeline/frontend test` until green.
 
 ## Test Strategy
