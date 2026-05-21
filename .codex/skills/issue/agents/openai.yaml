@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue"
+  short_description: "Manage Pipeline GitHub issues"
+  default_prompt: "Use $issue to create or manage a Pipeline GitHub Issue."

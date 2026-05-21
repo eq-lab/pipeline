@@ -24,9 +24,13 @@ async fn test_app() -> Option<(Router, sqlx::PgPool)> {
 
     let kyc_repo = shared::kyc_repo::KycRepo::new(pool.clone());
 
+    let position_repo = shared::position_repo::PositionRepo::new(pool.clone());
+
     let state = Arc::new(pipeline_api::AppState {
         pool: pool.clone(),
         kyc_repo,
+        position_repo,
+        chain_id: 1,
         sumsub_client: None,
         sumsub_settings: None,
         voucher_signer: None,

@@ -15,7 +15,12 @@ const meta = {
           "`active` state paints the icon in the brand navy token; the inactive " +
           "state uses the neutral muted ink token. Icons should be 24×24 and " +
           'paint with `fill="currentColor"` so they inherit the active ' +
-          "state automatically. Use the `NavIcon` component for nav glyphs.",
+          "state automatically. Use the `NavIcon` component for nav glyphs. " +
+          "**Hover tooltip**: each button renders a small dark caption tooltip " +
+          "centred below the icon on `:hover` and `:focus-visible` (from the " +
+          "existing `label` prop). The tooltip is `aria-hidden`; screen-reader " +
+          "users already receive the label via `aria-label`. Set " +
+          "`showTooltip={false}` to opt out.",
       },
     },
   },
@@ -70,7 +75,8 @@ export const ActiveAndInactive: Story = {
         story:
           "The four top-bar nav icons. The first (Home) is the active route and " +
           "renders in brand navy; the remaining three render in muted ink to " +
-          "indicate they are inactive. Mirrors the Figma top bar exactly.",
+          "indicate they are inactive. Mirrors the Figma top bar exactly. " +
+          "Hover any icon to see the tooltip.",
       },
     },
   },
@@ -81,7 +87,7 @@ export const ActiveAndInactive: Story = {
         gap: 32,
         alignItems: "center",
         justifyContent: "center",
-        padding: 32,
+        padding: "64px 32px",
         background: "var(--color-pipeline-paper)",
         minHeight: "100vh",
       }}
@@ -90,6 +96,59 @@ export const ActiveAndInactive: Story = {
       <IconButton label="Deposit" icon={<NavIcon name="deposit" />} />
       <IconButton label="Stats" icon={<NavIcon name="stats" />} />
       <IconButton label="History" icon={<NavIcon name="history" />} />
+    </div>
+  ),
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Hover Showcase                                                             */
+/* -------------------------------------------------------------------------- */
+
+export const HoverShowcase: Story = {
+  name: "Hover Showcase",
+  parameters: {
+    layout: "fullscreen",
+    docs: {
+      description: {
+        story:
+          "Demonstrates the hover tooltip on all four nav icons. " +
+          "Hover or Tab-focus each icon to see the dark caption tooltip " +
+          "fade in below the button. The tooltip inherits its text from the " +
+          "`label` prop and uses only design tokens — no hardcoded colors.",
+      },
+      story: {
+        height: "160px",
+      },
+    },
+  },
+  render: () => (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 24,
+        padding: "48px 32px 80px",
+        background: "var(--color-pipeline-paper)",
+        minHeight: "160px",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          fontSize: 12,
+          color: "var(--color-pipeline-ink-muted)",
+          fontFamily: "var(--font-body)",
+        }}
+      >
+        Hover or focus each icon to see the tooltip
+      </p>
+      <div style={{ display: "flex", gap: 32, alignItems: "center" }}>
+        <IconButton active label="Home" icon={<NavIcon name="home" />} />
+        <IconButton label="Deposit" icon={<NavIcon name="deposit" />} />
+        <IconButton label="Stats" icon={<NavIcon name="stats" />} />
+        <IconButton label="History" icon={<NavIcon name="history" />} />
+      </div>
     </div>
   ),
 };

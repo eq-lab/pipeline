@@ -3,9 +3,13 @@ name = "pipeline-api"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 axum               = { workspace = true }
 anyhow             = { workspace = true }
+bigdecimal         = { workspace = true }
 dotenvy            = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }

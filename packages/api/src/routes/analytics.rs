@@ -81,7 +81,11 @@ async fn get_requests(
     let wallet = query.wallet.to_lowercase();
     let pending_only = query.status.as_deref() == Some("pending");
 
-    match state.kyc_repo.get_all_requests(&wallet, pending_only).await {
+    match state
+        .kyc_repo
+        .get_all_requests(&wallet, pending_only, state.crystal_enabled)
+        .await
+    {
         Ok(events) => {
             let items: Vec<RequestItem> = events
                 .into_iter()

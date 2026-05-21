@@ -86,7 +86,7 @@ impl EvmEventPoller {
         let all_addresses: Vec<Address> = self
             .handlers
             .iter()
-            .flat_map(|h| h.addresses.iter().cloned())
+            .flat_map(|h| h.addresses.iter().copied())
             .collect();
 
         let mut result: Vec<Box<dyn LogMapper>> = vec![];
@@ -135,7 +135,7 @@ impl EvmEventPoller {
             .provider
             .get_block_by_number(block_number.into(), false.into())
             .await?
-            .ok_or_else(|| anyhow::anyhow!("block {} not found", block_number))?;
+            .ok_or_else(|| anyhow::anyhow!("block {block_number} not found"))?;
 
         let ts = block.header.timestamp;
         cache.insert(block_number, ts);

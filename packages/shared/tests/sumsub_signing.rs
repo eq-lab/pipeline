@@ -6,7 +6,7 @@ type HmacSha256 = Hmac<Sha256>;
 #[test]
 fn hmac_signature_matches_expected() {
     let secret = "test-secret-key";
-    let ts = 1714000000u64;
+    let ts = 1_714_000_000_u64;
     let method = "POST";
     let path = "/resources/applicants?levelName=basic-kyc";
     let body = r#"{"externalUserId":"0xABCDEF"}"#;

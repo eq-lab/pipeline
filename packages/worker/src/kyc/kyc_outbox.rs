@@ -71,14 +71,12 @@ async fn process_record(
         .await?;
 
     if let Some(info) = &applicant.info {
-        kyc_repo
-            .update_lp_info(
-                &record.wallet_address,
-                info.first_name.as_deref(),
-                info.last_name.as_deref(),
-                info.country.as_deref(),
-            )
-            .await?;
+        kyc_repo.update_lp_info(
+            &record.wallet_address,
+            info.first_name.as_deref(),
+            info.last_name.as_deref(),
+            info.country.as_deref(),
+        )?;
     }
 
     tracing::info!(

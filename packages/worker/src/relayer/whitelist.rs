@@ -7,6 +7,7 @@ sol! {
     contract WhitelistRegistry {
         function allow(address user) external;
         function disallow(address who) external;
+        function isAllowed(address user) external view returns (bool);
     }
 }
 
@@ -58,6 +59,27 @@ async fn process_allows<T, P>(
             continue;
         };
 
+        // Skip if already allowed on-chain
+        match registry.isAllowed(addr).call().await {
+            Ok(ret) if ret._0 => {
+                tracing::debug!(
+                    wallet = candidate.wallet_address,
+                    "already allowed on-chain, syncing DB"
+                );
+                if let Err(e) = kyc_repo
+                    .set_on_chain_allowed(&candidate.wallet_address)
+                    .await
+                {
+                    tracing::error!(wallet = candidate.wallet_address, error = %e, "failed to sync DB");
+                }
+                continue;
+            }
+            Ok(_) => {} // not allowed yet, proceed
+            Err(e) => {
+                tracing::warn!(wallet = candidate.wallet_address, error = %e, "isAllowed check failed, proceeding with allow");
+            }
+        }
+
         let result: Result<_, alloy::contract::Error> = async {
             registry.allow(addr).send().await?.watch().await?;
             Ok(())
@@ -65,7 +87,7 @@ async fn process_allows<T, P>(
         .await;
 
         match result {
-            Ok(_) => {
+            Ok(()) => {
                 if let Err(e) = kyc_repo
                     .set_on_chain_allowed(&candidate.wallet_address)
                     .await
