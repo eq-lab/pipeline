@@ -118,7 +118,7 @@ when `spender` is omitted.
 | `approve`          | `((amount: bigint) => void) \| undefined`    | Triggers `approve(spender, amount)`. `undefined` when spender is omitted.                      |
 | `approveData`      | `{ hash: string } \| undefined`              | Populated after approve tx is broadcast. `undefined` when spender is omitted.                  |
 | `isApprovePending` | `boolean`                                    | `true` while approve tx is in flight.                                                          |
-| `isApproveSuccess` | `boolean`                                    | `true` once approve tx is broadcast-accepted.                                                  |
+| `isApproveSuccess` | `boolean`                                    | `true` once approve tx receipt is mined and status is `success` (receipt-gated, unlike `useRequestDeposit` / `useClaim` which fire on broadcast). |
 | `refetchAllowance` | `(() => void) \| undefined`                  | Re-reads current allowance. `undefined` when spender is omitted.                               |
 | `isLoading`        | `boolean`                                    | `true` when any underlying read is in flight.                                                  |
 | `error`            | `Error \| null`                              | First non-null error across all reads (approval error masked when spender is omitted).         |
@@ -199,8 +199,8 @@ are parameters — nothing is hard-coded — so the same hook serves any
 | `approve`      | `(amount: bigint) => void`      | Triggers `approve(spender, amount)` on the token contract. No-op (sets `error`) when token/spender is zero or disconnected.          |
 | `data`         | `{ hash: string } \| undefined` | Populated after approve tx is broadcast.                                                                                             |
 | `isLoading`    | `boolean`                       | `true` while allowance read is in flight.                                                                                            |
-| `isPending`    | `boolean`                       | `true` while approve tx is in flight.                                                                                                |
-| `isSuccess`    | `boolean`                       | `true` once approve tx is broadcast-accepted (does not wait for receipt, consistent with `useRequestDeposit`).                       |
+| `isPending`    | `boolean`                       | `true` from broadcast until the receipt is mined (real path), or while the mocked approve is settling (mock path).                   |
+| `isSuccess`    | `boolean`                       | `true` once the approve tx receipt is mined with status `success` (receipt-gated). Mock path: `true` after mock approve settles. Note: differs from `useRequestDeposit` / `useClaim` which fire on broadcast. |
 | `error`        | `Error \| null`                 | Read or write error; cleared by `reset()`.                                                                                           |
 | `reset`        | `() => void`                    | Clears `data`, `error`, and resets `isPending`/`isSuccess`.                                                                          |
 | `refetch`      | `() => void`                    | Re-reads current allowance. Called automatically after a successful approve. Note: external allowance changes are NOT auto-detected. |
