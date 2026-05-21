@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { ConversionCard, DepositHeader, StepsCard } from "@pipeline/ui";
+import { Card, ConversionCard, DepositHeader, StepsCard } from "@pipeline/ui";
 import {
   useWallet,
   useWithdrawalQueueAddresses,
@@ -81,7 +81,19 @@ function Withdraw() {
 
   // ── State sources ─────────────────────────────────────────────────────
   const { isConnected } = useWallet();
-  const { plusd } = useWithdrawalQueueAddresses();
+  const {
+    plusd,
+    usdc: usdcFromQueue,
+    isLoading: isQueueLoading,
+  } = useWithdrawalQueueAddresses();
+
+  // True when the wallet is connected, the hook has settled, and both token
+  // addresses came back undefined — indicates a contract read failure.
+  const isQueueUnreachable =
+    isConnected &&
+    !isQueueLoading &&
+    plusd === undefined &&
+    usdcFromQueue === undefined;
 
   // Fall back to zero-address when plusd is not yet loaded so the hook is
   // always called with a valid `0x${string}`.
@@ -410,53 +422,72 @@ function Withdraw() {
           networkFee="—"
         />
 
-        {/* Three-step card: Approve → Confirm → Claim
-            No low-balance banner — no design exists for this; steps stay disabled
-            when balance is insufficient. */}
-        <StepsCard
-          steps={[
-            {
-              label: "Allow Pipeline to use PLUSD",
-              actionLabel: "Approve",
-              disabled: !canApprove,
-              loading: isApprovePending,
-              state: step1State,
-              onAction: () => approve?.(amountBig),
-            },
-            {
-              label: "Confirm PLUSD burn",
-              actionLabel: "Confirm",
-              disabled: !canConfirm,
-              // loading covers three situations:
-              // 1. wagmi write in-flight (this session)
-              // 2. API reports PendingVerification (verifier still working,
-              //    possibly from a prior session)
-              // 3. Brief post-success window before API picks up the new request
-              loading:
-                requestWithdrawal.isPending ||
-                isPendingVerification ||
-                (requestWithdrawal.isSuccess &&
-                  !requestIsConfirmed &&
-                  activeRequest === null),
-              state: step2State,
-              onAction: () => requestWithdrawal.write(amountBig),
-            },
-            {
-              label: "Claim your USDC",
-              actionLabel: "Claim",
-              disabled: !canClaim,
-              loading: voucher.status === "pending" || claim.isPending,
-              state: step3State,
-              onAction: () => {
-                if (requestId === undefined || !voucher.data?.signature) return;
-                claim.write(
-                  BigInt(requestId),
-                  voucher.data.signature as `0x${string}`,
-                );
+        {/* Conditional: unreachable-contract banner OR three-step card */}
+        {isQueueUnreachable ? (
+          /* WithdrawalQueue not reachable — replaces StepsCard.
+             Uses danger tokens to visually distinguish from the yellow
+             low-balance banner on the deposit page.
+             Shown only when connected and the contract read has settled
+             with both addresses undefined. */
+          <Card
+            className="border-[color:var(--color-pipeline-danger)] bg-[var(--color-pipeline-danger)] text-[color:var(--color-pipeline-on-danger)]"
+            data-testid="wq-unreachable-banner"
+          >
+            <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+              WithdrawalQueue not reachable
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]">
+              Check <code>VITE_WITHDRAWAL_QUEUE_ADDRESS</code> and RPC
+              connectivity.
+            </p>
+          </Card>
+        ) : (
+          <StepsCard
+            steps={[
+              {
+                label: "Allow Pipeline to use PLUSD",
+                actionLabel: "Approve",
+                disabled: !canApprove,
+                loading: isApprovePending,
+                state: step1State,
+                onAction: () => approve?.(amountBig),
               },
-            },
-          ]}
-        />
+              {
+                label: "Confirm PLUSD burn",
+                actionLabel: "Confirm",
+                disabled: !canConfirm,
+                // loading covers three situations:
+                // 1. wagmi write in-flight (this session)
+                // 2. API reports PendingVerification (verifier still working,
+                //    possibly from a prior session)
+                // 3. Brief post-success window before API picks up the new request
+                loading:
+                  requestWithdrawal.isPending ||
+                  isPendingVerification ||
+                  (requestWithdrawal.isSuccess &&
+                    !requestIsConfirmed &&
+                    activeRequest === null),
+                state: step2State,
+                onAction: () => requestWithdrawal.write(amountBig),
+              },
+              {
+                label: "Claim your USDC",
+                actionLabel: "Claim",
+                disabled: !canClaim,
+                loading: voucher.status === "pending" || claim.isPending,
+                state: step3State,
+                onAction: () => {
+                  if (requestId === undefined || !voucher.data?.signature)
+                    return;
+                  claim.write(
+                    BigInt(requestId),
+                    voucher.data.signature as `0x${string}`,
+                  );
+                },
+              },
+            ]}
+          />
+        )}
       </main>
     </div>
   );

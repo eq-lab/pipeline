@@ -18,7 +18,7 @@
  * hash — it does not decode the receipt return value. This mirrors the
  * behaviour of `useRequestDeposit` and `useClaim` in useDepositManager.ts.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   useReadContract,
   useWriteContract,
@@ -156,6 +156,27 @@ export function useWithdrawalQueueAddresses(): WithdrawalQueueAddressesResult {
     functionName: "intoToken",
     query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
   });
+
+  // Surface read errors to the console (real RPC path only).
+  // Called unconditionally so it follows the Rules of Hooks; the inner
+  // condition gates on whether a real error is present.
+  useEffect(() => {
+    if (fromTokenRead.error) {
+      console.error(
+        "[useWithdrawalQueueAddresses] fromToken() read failed:",
+        fromTokenRead.error,
+      );
+    }
+  }, [fromTokenRead.error]);
+
+  useEffect(() => {
+    if (intoTokenRead.error) {
+      console.error(
+        "[useWithdrawalQueueAddresses] intoToken() read failed:",
+        intoTokenRead.error,
+      );
+    }
+  }, [intoTokenRead.error]);
 
   // Named alias takes priority over generic key.
   if (mockPlusd !== undefined || mockUsdc !== undefined) {
@@ -395,7 +416,9 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
       wagmiWrite.isPending ||
       (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
     isSuccess: wagmiReceipt.isSuccess,
-    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
+    error: (writeError ??
+      wagmiWrite.error ??
+      wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();
@@ -586,7 +609,9 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
       wagmiWrite.isPending ||
       (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
     isSuccess: wagmiReceipt.isSuccess,
-    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
+    error: (writeError ??
+      wagmiWrite.error ??
+      wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();
