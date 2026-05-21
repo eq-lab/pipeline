@@ -31,6 +31,19 @@ const stableWriteContractState = {
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
 
+// Stable receipt state — same pattern as stableWriteContractState.
+const stableReceiptState = {
+  data: undefined as unknown,
+  isLoading: false,
+  isSuccess: false,
+  isError: false,
+  error: null as Error | null,
+};
+const mockUseWaitForTransactionReceipt = vi.fn(
+  (_args?: { hash?: string; query?: { enabled?: boolean } }) =>
+    stableReceiptState,
+);
+
 // useAccount — mutable so individual tests can switch connected/disconnected.
 const mockUseAccount = vi.fn(() => ({
   address: undefined as `0x${string}` | undefined,
@@ -50,6 +63,9 @@ vi.mock("wagmi", async (importOriginal) => {
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
+    useWaitForTransactionReceipt: (
+      ...args: Parameters<typeof mockUseWaitForTransactionReceipt>
+    ) => mockUseWaitForTransactionReceipt(...args),
   };
 });
 
@@ -510,6 +526,7 @@ describe("useApproval — auto-refetch after successful approve (real path)", ()
     mockRefetch.mockClear();
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
+    mockUseWaitForTransactionReceipt.mockClear();
     setConnectedWallet();
   });
 
@@ -524,10 +541,16 @@ describe("useApproval — auto-refetch after successful approve (real path)", ()
     }));
     // Reset write contract state
     stableWriteContractState.isSuccess = false;
+    stableWriteContractState.isPending = false;
     stableWriteContractState.data = undefined;
+    // Reset receipt state
+    stableReceiptState.isSuccess = false;
+    stableReceiptState.isLoading = false;
+    stableReceiptState.isError = false;
+    stableReceiptState.error = null;
   });
 
-  it("calls refetch when wagmi isSuccess becomes true", async () => {
+  it("does NOT call refetch when wagmiWrite.isSuccess flips true but receipt.isSuccess is still false", async () => {
     mockUseReadContract.mockImplementation(() => ({
       data: 50n,
       isLoading: false,
@@ -542,15 +565,104 @@ describe("useApproval — auto-refetch after successful approve (real path)", ()
 
     mockRefetch.mockClear();
 
-    // Simulate wagmi isSuccess = true
+    // Broadcast accepted: wagmiWrite.isSuccess = true, but receipt not yet mined
     stableWriteContractState.isSuccess = true;
     stableWriteContractState.data = "0xhash123";
+    stableReceiptState.isLoading = true;
+    stableReceiptState.isSuccess = false;
+
+    rerender();
+
+    // Wait a tick and confirm refetch was NOT called
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockRefetch).not.toHaveBeenCalled();
+  });
+
+  it("calls refetch once wagmiReceipt.isSuccess flips true, and isSuccess becomes true", async () => {
+    mockUseReadContract.mockImplementation(() => ({
+      data: 50n,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    }));
+
+    const { result, rerender } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    mockRefetch.mockClear();
+
+    // Receipt mined
+    stableWriteContractState.data = "0xhash123";
+    stableReceiptState.isLoading = false;
+    stableReceiptState.isSuccess = true;
 
     rerender();
 
     await waitFor(() => {
       expect(mockRefetch).toHaveBeenCalled();
+      expect(result.current.isSuccess).toBe(true);
     });
+  });
+
+  it("isPending is true during broadcast-to-receipt window", async () => {
+    mockUseReadContract.mockImplementation(() => ({
+      data: 50n,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    }));
+
+    const { result, rerender } = renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    // Broadcast accepted; wagmiWrite.isPending is now false but receipt still loading
+    stableWriteContractState.isPending = false;
+    stableWriteContractState.data = "0xhash123";
+    stableReceiptState.isLoading = true;
+    stableReceiptState.isSuccess = false;
+
+    rerender();
+
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when wallet is disconnected", () => {
+    setDisconnectedWallet();
+
+    renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    const calls = mockUseWaitForTransactionReceipt.mock.calls as Array<
+      [{ hash?: string; query?: { enabled?: boolean } }]
+    >;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
+  });
+
+  it("useWaitForTransactionReceipt is called with query.enabled=false when hash is undefined", () => {
+    stableWriteContractState.data = undefined;
+
+    renderHook(
+      () => useApproval({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      { wrapper },
+    );
+
+    const calls = mockUseWaitForTransactionReceipt.mock.calls as Array<
+      [{ hash?: string; query?: { enabled?: boolean } }]
+    >;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call[0]?.query?.enabled).toBe(false);
+    }
   });
 });
 

@@ -50,6 +50,13 @@ vi.mock("wagmi", async (importOriginal) => {
       error: null,
       reset: vi.fn(),
     })),
+    useWaitForTransactionReceipt: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: false,
+      error: null,
+    })),
   };
 });
 

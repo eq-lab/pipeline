@@ -36,7 +36,7 @@ _None_
 
 ## Implementation Steps
 
-1. Edit `packages/frontend/src/wallet/useApproval.ts`:
+1. [x] Edit `packages/frontend/src/wallet/useApproval.ts`:
    - Import `useWaitForTransactionReceipt` from `wagmi` alongside `useReadContract` / `useWriteContract`.
    - After the `wagmiWrite = useWriteContract()` call, add:
      ```ts
@@ -55,12 +55,12 @@ _None_
    - Adjust the JSDoc on `UseApprovalResult.isPending` to say: "real path: `true` from broadcast until the receipt is mined; mock path: `true` while the mocked approve is settling."
    - Update the comment on the auto-refetch `useEffect` to note that it now reads against the post-mine allowance, eliminating the stale-cache window described in #340.
 
-2. Verify call sites do **not** need code changes (they already consume `isApprovePending` / `isApproveSuccess` semantically):
+2. [x] Verify call sites do **not** need code changes (they already consume `isApprovePending` / `isApproveSuccess` semantically):
    - `packages/frontend/src/wallet/useToken.ts` — passes through unchanged.
    - `packages/frontend/src/routes/deposit.tsx` — `prevIsApproveSuccess` edge-triggered toast and `step1State` derivation now fire after the receipt, exactly as desired. No source change required.
    - `packages/frontend/src/routes/withdraw.tsx` and `packages/frontend/src/routes/stake.tsx` — sanity-check the call sites. Expected to be a no-op; if they read `isApproveSuccess` for similar gating they benefit automatically.
 
-3. Update tests in `packages/frontend/src/wallet/useApproval.test.tsx`:
+3. [x] Update tests in `packages/frontend/src/wallet/useApproval.test.tsx`:
    - Add a wagmi mock for `useWaitForTransactionReceipt` alongside `useReadContract` / `useWriteContract`, using a mutable `stableReceiptState = { data, isLoading, isSuccess, isError, error }` and a `mockUseWaitForTransactionReceipt` returning it (same pattern as `stableWriteContractState`).
    - Existing "auto-refetch after successful approve (real path)" describe block (line 506+) must be updated:
      - Setting `wagmiWrite.isSuccess = true` alone must NOT trigger `refetch()` (assert `mockRefetch` not called).
@@ -70,13 +70,13 @@ _None_
    - Confirm the mock-path auto-refetch test (line 557+) still passes unchanged.
    - Ensure no test regresses the "approve mock key bypasses RPC" path — neither `useWriteContract` nor `useWaitForTransactionReceipt` should be invoked with non-undefined args in the mock path.
 
-4. Run the frontend lint + unit suite:
+4. [x] Run the frontend lint + unit suite:
    - `yarn workspace @pipeline/frontend test --run packages/frontend/src/wallet/useApproval.test.tsx`
    - `yarn workspace @pipeline/frontend test --run` (full FE unit pass)
    - `npx tsx scripts/lint-docs.ts`
    - `yarn workspace @pipeline/frontend build` to confirm no type regression.
 
-5. Manual smoke (handled by ux-tester once the manager moves the issue forward):
+5. [ ] Manual smoke (handled by ux-tester once the manager moves the issue forward):
    - On `/deposit`, with a connected wallet that has zero prior allowance, enter an amount ≥ `minDeposit`, click **Approve**, confirm in wallet. While the tx is in the mempool: step 1 stays in idle/pending visual, toast reads "Approving USDC…", step 2 stays disabled. Once mined: step 1 flips to `success`, toast updates to "Approval confirmed", step 2 becomes enabled. No hard refresh required.
    - On `/withdraw` and `/stake`: same Approve gate should still complete and unlock the next step.
 
