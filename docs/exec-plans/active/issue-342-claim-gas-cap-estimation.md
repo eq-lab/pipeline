@@ -68,9 +68,11 @@ Out of scope:
 
 ## Open Questions
 
-- Should `EVM_TX_GAS_CAP` come from a new env var (`VITE_EVM_TX_GAS_CAP`) defaulted to `16777216`, or stay a hard-coded constant in `wallet/gas.ts`? The chain-side cap is a property of the L2 client config; if a deployer wants to test against a different cap they'd want env config. Recommend env (with the default) but happy to hard-code for the first iteration if the manager prefers to keep the env surface small.
-- When `publicClient === undefined` at write time (RPC not yet connected): fall through to `writeContract` without `gas` (preserves current behaviour, leaves the bug latent until RPC ready) or surface an `Error("RPC not ready")` and bail (safer but causes a one-off failure in the rare race window). Recommend fall-through for parity, but worth a human call.
-- Does the team want a single shared `EVM_TX_GAS_CAP` constant exposed via the `@/wallet` barrel for non-write callers (e.g. future preview logic), or is internal-only sufficient? Recommend internal-only until a second caller appears.
+_Resolved by user (2026-05-21):_
+
+1. **Cap configuration:** Hard-code `EVM_TX_GAS_CAP` in `wallet/gas.ts`. No env var, no `.env.example` change.
+2. **Missing `publicClient` at write time:** Surface `Error("RPC not ready")` via the hook's `error` channel and bail. Do not fall through to `writeContract` without `gas`.
+3. **Public API:** Keep `EVM_TX_GAS_CAP` internal to `wallet/gas.ts`. Do not re-export from `wallet/index.ts`.
 
 ## Implementation Steps
 
