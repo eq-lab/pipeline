@@ -40,6 +40,7 @@ const stableReceiptState = {
   error: null as Error | null,
 };
 const mockUseWaitForTransactionReceipt = vi.fn(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   (_args?: { hash?: string; query?: { enabled?: boolean } }) =>
     stableReceiptState,
 );
@@ -1085,6 +1086,72 @@ describe("useClaimWithdrawal — simulate succeeds → estimate + write proceed"
     expect(simCall2.functionName).toBe("claimWithdrawal");
     expect(simCall2.args).toEqual([3n, "0xabcdef"]);
     expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── useWithdrawalQueueAddresses — console.error on read failures ──────────────
+
+describe("useWithdrawalQueueAddresses — console.error on read failure", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    vi.restoreAllMocks();
+  });
+
+  it("logs console.error when fromToken() read fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dmAddr = "0xEEEE000000000000000000000000000000000099";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = dmAddr as `0x${string}`;
+
+    const fromErr = new Error("fromToken RPC failure");
+    (mockUseReadContract as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { functionName?: string }) => {
+        if (args.functionName === "fromToken") {
+          return { data: undefined, isLoading: false, error: fromErr };
+        }
+        return { data: undefined, isLoading: false, error: null };
+      },
+    );
+
+    renderHook(() => useWithdrawalQueueAddresses(), { wrapper });
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("fromToken() read failed:"),
+        fromErr,
+      );
+    });
+  });
+
+  it("logs console.error when intoToken() read fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dmAddr = "0xEEEE000000000000000000000000000000000098";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = dmAddr as `0x${string}`;
+
+    const intoErr = new Error("intoToken RPC failure");
+    (mockUseReadContract as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { functionName?: string }) => {
+        if (args.functionName === "intoToken") {
+          return { data: undefined, isLoading: false, error: intoErr };
+        }
+        return { data: undefined, isLoading: false, error: null };
+      },
+    );
+
+    renderHook(() => useWithdrawalQueueAddresses(), { wrapper });
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("intoToken() read failed:"),
+        intoErr,
+      );
+    });
   });
 });
 

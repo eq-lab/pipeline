@@ -1378,3 +1378,95 @@ localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.convertToAssets"
   1. Navigate to `/transactions`
   2. Inspect computed `color` on the History button and the other three nav buttons
 - **Expected:** History button `color` = `rgb(0, 0, 128)` (`--color-pipeline-brand`), `aria-pressed="true"`. Other three buttons `color` = `rgba(56, 55, 53, 0.6)` (`--color-pipeline-ink-muted`). Active-state derivation is unaffected by the tooltip addition.
+
+---
+
+## S-354 — /withdraw: PLUSD balance shown and input interactable
+
+**Issue:** [#354 /withdraw: PLUSD balance not shown and amount input is uninteractable](https://github.com/eq-lab/pipeline/issues/354)
+**Plan:** `docs/exec-plans/active/issue-354-withdraw-uninteractable.md`
+
+Mock setup for all TC-354 cases (run in DevTools Console, all addresses lowercase):
+
+```js
+const PLUSD = "0x18d6ccaf8d363309a6c283eea8b2c68d107016b7";
+const USDC  = "0x2222000000000000000000000000000000000002";
+const WQ    = "0xb9f148312a85ec1d3f4512ff04de6b21a4d12c58";
+localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+localStorage.setItem("pipeline.mock.wallet.contract.withdrawalQueue.plusd", "0x18D6cCaF8D363309A6C283eEA8b2C68D107016b7");
+localStorage.setItem("pipeline.mock.wallet.contract.withdrawalQueue.usdc", "0x2222000000000000000000000000000000000002");
+localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.decimals`, "18");
+localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.symbol`, "PLUSD");
+localStorage.setItem(`pipeline.mock.wallet.balance.${PLUSD}`, "500000000000000000000"); // 500 PLUSD
+localStorage.setItem(`pipeline.mock.wallet.allowance.${PLUSD}.${WQ}`, "0");
+localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.approve`, JSON.stringify({ hash: "0xapprove111" }));
+```
+
+### TC-354-1: Connected — balance shown and input enabled
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet set per setup above (allowance=0).
+- **Steps:**
+  1. Navigate to `/withdraw`.
+  2. Observe PLUSD balance label and the amount input.
+- **Expected:** PLUSD balance shows "500.00" (not "—"). The amount input is enabled (not disabled). The four chips (25%, 50%, 75%, Max) are interactive. All three step buttons (Approve, Confirm, Claim) are disabled (no amount entered yet).
+
+### TC-354-2: Amount entry enables Approve; chips set correct amounts
+
+- **Actor:** User / QA
+- **Preconditions:** TC-354-1 setup; dev server running.
+- **Steps:**
+  1. Type "100" in the PLUSD amount input.
+  2. Observe step buttons; note USDC output.
+  3. Click Max chip; observe input value.
+  4. Click 25% chip; observe input value.
+- **Expected:**
+  - After typing "100": Approve button is enabled; Confirm and Claim remain disabled. USDC output shows "+100".
+  - Max chip: input becomes "500.00"; USDC output "+500.00".
+  - 25% chip: input becomes "125.00" (500 × 0.25); USDC output "+125.00".
+  - Exchange rate shows "1 PLUSD = 1 USDC".
+
+### TC-354-3: Approved state — step 1 Done, Confirm enabled
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet; allowance set to 1000 PLUSD (covers any amount ≤ 500).
+  ```js
+  const PLUSD = "0x18d6ccaf8d363309a6c283eea8b2c68d107016b7";
+  const WQ    = "0xb9f148312a85ec1d3f4512ff04de6b21a4d12c58";
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${PLUSD}.${WQ}`, "1000000000000000000000");
+  localStorage.setItem("pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal", JSON.stringify({ hash: "0xrequest111", requestId: "42" }));
+  ```
+- **Steps:**
+  1. Navigate to `/withdraw`; type "125" in the input.
+  2. Observe step 1 state and step 2 button.
+- **Expected:** Step 1 shows "Approve complete" Done badge (green check). Step 2 "Confirm PLUSD burn" button is enabled. Claim remains disabled.
+
+### TC-354-4: Confirm click fires requestWithdrawal and shows toast
+
+- **Actor:** User / QA
+- **Preconditions:** TC-354-3 setup with allowance ≥ amount.
+- **Steps:**
+  1. With amount "125" entered and step 1 in Done state, click "Confirm".
+- **Expected:** A "Withdrawal submitted" success toast appears at bottom-right (`role="status"`, `aria-live="polite"`). Confirm button becomes disabled after submission.
+
+### TC-354-5: Disconnected — balance "—", input disabled, all buttons disabled, no banner
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no mock wallet keys in localStorage.
+- **Steps:**
+  1. Navigate to `/withdraw`.
+- **Expected:** "Connect Wallet" button in header. PLUSD balance shows "—". Input is disabled. Approve, Confirm, Claim all disabled. No "WithdrawalQueue not reachable" banner visible (queue not yet queried without connection).
+
+### TC-354-6: WithdrawalQueue unreachable banner appears after RPC failure (KNOWN BUG #357)
+
+- **Actor:** Developer / QA
+- **Preconditions:** Mock wallet connected (isConnected=true) but no withdrawalQueue mock keys set (forcing real RPC path).
+- **Steps:**
+  1. Navigate to `/withdraw` and wait ~4 seconds for the `fromToken()`/`intoToken()` RPC calls to fail.
+  2. Check console for `[useWithdrawalQueueAddresses] fromToken() read failed` errors.
+  3. Inspect the DOM for `[data-testid="wq-unreachable-banner"]`.
+- **Expected:**
+  - Console shows two `console.error` messages: `[useWithdrawalQueueAddresses] fromToken() read failed` and `intoToken() read failed`.
+  - A "WithdrawalQueue not reachable. Check VITE_WITHDRAWAL_QUEUE_ADDRESS and RPC connectivity." banner replaces the StepsCard in the UI, rendered as a red danger card.
+- **Note:** Console error surfacing PASSES. Banner DOM presence PASSES. Banner visual rendering is BLOCKED by bug #357 (banner text is white-on-white due to Tailwind specificity issue — `bg-[var(--color-pipeline-surface)]` from Card base overrides `bg-[var(--color-pipeline-danger)]` from className prop).

@@ -846,3 +846,56 @@ describe("Withdraw page — amount exceeds balance", () => {
     });
   });
 });
+
+describe("Withdraw page — WithdrawalQueue unreachable banner", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    // Seed wallet as connected but do NOT seed the WithdrawalQueue named aliases.
+    // Without the named aliases, the real useReadContract path runs and returns
+    // undefined for both plusd and usdc — simulating a contract read failure.
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    // No withdrawalQueue mock keys → useWithdrawalQueueAddresses will hit
+    // the real path, and since useReadContract returns { data: undefined, isLoading: false }
+    // by default, both addresses settle as undefined.
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the WithdrawalQueue unreachable banner when both addresses are undefined", async () => {
+    renderWithdraw();
+    await waitFor(() => {
+      expect(screen.getByTestId("wq-unreachable-banner")).toBeInTheDocument();
+    });
+  });
+
+  it("does not render StepsCard when the banner is shown", async () => {
+    renderWithdraw();
+    await waitFor(() => {
+      expect(screen.getByTestId("wq-unreachable-banner")).toBeInTheDocument();
+      // StepsCard buttons are absent when the banner replaces it.
+      expect(
+        screen.queryByRole("button", { name: "Approve" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("banner copy references VITE_WITHDRAWAL_QUEUE_ADDRESS", async () => {
+    renderWithdraw();
+    await waitFor(() => {
+      expect(
+        screen.getByText("WithdrawalQueue not reachable"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/VITE_WITHDRAWAL_QUEUE_ADDRESS/),
+      ).toBeInTheDocument();
+    });
+  });
+});

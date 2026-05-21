@@ -9,7 +9,7 @@
  * localStorage layer first; when a mock key is present the real wagmi call is
  * skipped entirely (no network request).
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   useReadContract,
   useWriteContract,
@@ -155,6 +155,27 @@ export function useDepositManagerAddresses(): DepositManagerAddressesResult {
     functionName: "usdc",
     query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
   });
+
+  // Surface read errors to the console (real RPC path only).
+  // Called unconditionally so it follows the Rules of Hooks; the inner
+  // condition gates on whether a real error is present.
+  useEffect(() => {
+    if (plUsdRead.error) {
+      console.error(
+        "[useDepositManagerAddresses] plUsd() read failed:",
+        plUsdRead.error,
+      );
+    }
+  }, [plUsdRead.error]);
+
+  useEffect(() => {
+    if (usdcRead.error) {
+      console.error(
+        "[useDepositManagerAddresses] usdc() read failed:",
+        usdcRead.error,
+      );
+    }
+  }, [usdcRead.error]);
 
   // Named alias takes priority over generic key.
   if (mockPlusd !== undefined || mockUsdc !== undefined) {
@@ -451,7 +472,9 @@ export function useRequestDeposit(): RequestDepositResult {
       wagmiWrite.isPending ||
       (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
     isSuccess: wagmiReceipt.isSuccess,
-    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
+    error: (writeError ??
+      wagmiWrite.error ??
+      wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();
@@ -637,7 +660,9 @@ export function useClaim(): ClaimResult {
       wagmiWrite.isPending ||
       (wagmiWrite.data !== undefined && wagmiReceipt.isLoading),
     isSuccess: wagmiReceipt.isSuccess,
-    error: (writeError ?? wagmiWrite.error ?? wagmiReceipt.error) as Error | null,
+    error: (writeError ??
+      wagmiWrite.error ??
+      wagmiReceipt.error) as Error | null,
     reset: () => {
       setWriteError(null);
       wagmiWrite.reset();

@@ -87,8 +87,20 @@ function Deposit() {
 
   // ── State sources ─────────────────────────────────────────────────────
   const { address, isConnected } = useWallet();
-  const { usdc } = useDepositManagerAddresses();
+  const {
+    plusd: plusdFromManager,
+    usdc,
+    isLoading: isManagerLoading,
+  } = useDepositManagerAddresses();
   const { minDeposit } = useDepositManagerMinDeposit();
+
+  // True when the wallet is connected, the hook has settled, and both token
+  // addresses came back undefined — indicates a contract read failure.
+  const isManagerUnreachable =
+    isConnected &&
+    !isManagerLoading &&
+    plusdFromManager === undefined &&
+    usdc === undefined;
 
   // Fall back to zero-address when usdc is not yet loaded so the hook is
   // always called with a valid `0x${string}`.
@@ -448,8 +460,18 @@ function Deposit() {
           networkFee="—"
         />
 
-        {/* Conditional: low-balance banner OR three-step card */}
-        {hasBalance === false ? (
+        {/* Conditional: unreachable-contract banner, low-balance banner, OR three-step card */}
+        {isManagerUnreachable ? (
+          <Card variant="danger" data-testid="dm-unreachable-banner">
+            <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+              DepositManager not reachable
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]">
+              Check <code>VITE_DEPOSIT_MANAGER_ADDRESS</code> and RPC
+              connectivity.
+            </p>
+          </Card>
+        ) : hasBalance === false ? (
           /* Insufficient-balance banner — replaces StepsCard.
              Figma: node 1825-10214.
              Layout: horizontal flex-row with text-stack on left and

@@ -4,6 +4,29 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-21 — Issue #354 (/withdraw: PLUSD balance not shown and amount input is uninteractable)
+
+- **Scope:** Issue #354 acceptance criteria (TC-354-1 through TC-354-6)
+- **Cases executed:** 6
+- **Passes:** 5
+- **Failures:** 0
+- **Blocked:** 1 (TC-354-6 — banner visible in DOM but invisible to user due to CSS specificity bug #357)
+- **Bugs filed:** #357 (high)
+- **Score: 7/10**
+  - PASS TC-354-1 (connected — PLUSD balance shown, input enabled): With mock `withdrawalQueue.plusd` and `withdrawalQueue.usdc` keys set (lowercase addresses for `useToken` balance/decimals/allowance keys), PLUSD balance shows "500.00". Input is enabled. Chips are interactive. All step buttons disabled (no amount entered). Root bug described in #354 is fixed.
+  - PASS TC-354-2 (amount entry enables Approve; chips work): Typing "100" enables the Approve button; Confirm/Claim remain disabled; USDC output shows "+100". Max chip → "500.00"; 25% chip → "125.00" (500 × 0.25). Exchange rate "1 PLUSD = 1 USDC". All correct.
+  - PASS TC-354-3 (approved state — step 1 Done, Confirm enabled): With allowance=1000 PLUSD and amount=125, step 1 renders "Approve complete" Done badge (green check). Step 2 Confirm is enabled. Claim remains disabled.
+  - PASS TC-354-4 (Confirm fires requestWithdrawal, toast shown): Clicking Confirm fires the mock requestWithdrawal; a "Withdrawal submitted" toast appears (`role="status"`, `aria-live="polite"`). Confirm button becomes disabled. Input locks to the submitted amount (faded, chips disabled).
+  - PASS TC-354-5 (disconnected — "—" balance, input disabled, no banner): No mock keys → "Connect Wallet" in header; PLUSD balance "—"; input disabled; all three step buttons disabled; no banner rendered. Correct.
+  - PASS (partial) TC-354-6 (unreachable-contract banner):
+    - Console surfacing: `[useWithdrawalQueueAddresses] fromToken() read failed: ContractFunctionExecutionError` and `intoToken() read failed` appear in the browser console. This is the new `console.error` behavior from the fix. PASS.
+    - Banner in DOM: `data-testid="wq-unreachable-banner"` is present and the a11y tree contains "WithdrawalQueue not reachable. Check VITE_WITHDRAWAL_QUEUE_ADDRESS and RPC connectivity." PASS.
+    - Banner visibility: BLOCKED — banner is invisible (white text on white background). `getComputedStyle(bannerEl).backgroundColor = rgb(255, 255, 255)` instead of the expected `rgb(192, 57, 43)` (`--color-pipeline-danger`). Root cause: `Card` default variant applies `bg-[var(--color-pipeline-surface)]`; caller's `className` adds `bg-[var(--color-pipeline-danger)]`; Tailwind v4 generates equal-specificity rules and surface wins. Bug #357 filed (high).
+  - Note: mock key casing matters — `useToken` lowercases token addresses when building localStorage keys (`pipeline.mock.wallet.balance.${token.toLowerCase()}`). Using mixed-case PLUSD address in mock keys causes balance reads to miss. Correct keys use all-lowercase: `pipeline.mock.wallet.balance.0x18d6ccaf8d363309a6c283eea8b2c68d107016b7`.
+  - Unit tests: 165 tests across 4 new test files all pass (`-withdraw.test.tsx`, `-deposit.test.tsx`, `useWithdrawalQueue.test.tsx`, `useDepositManager.test.tsx`). Pre-existing `TopBar.test.tsx` failures (8 tests looking for nav button "Deposit" which was renamed to "Convert") also fail on `main` branch — not a regression from #354.
+  - Console errors on normal flow: only pre-existing Reown/WalletConnect font preload warnings — none from #354 changes.
+  - Deducted 3 points: the unreachable-contract banner — a key diagnostic deliverable of this issue — is invisible to the user due to #357. The functional behaviour (balance shown, input enabled, steps wired) works correctly.
+
 ### 2026-05-20 — Issue #310 (Wire up /stake — Stake and Unstake flows via sPLUSD vault)
 
 - **Scope:** Issue #310 acceptance criteria (TC-310-1 through TC-310-9)

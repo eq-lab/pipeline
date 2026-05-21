@@ -41,6 +41,7 @@ const stableReceiptState = {
   error: null as Error | null,
 };
 const mockUseWaitForTransactionReceipt = vi.fn(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   (_args?: { hash?: string; query?: { enabled?: boolean } }) =>
     stableReceiptState,
 );
@@ -170,6 +171,72 @@ function resetWriteContractState() {
   stableWriteContractState.isSuccess = false;
   stableWriteContractState.error = null;
 }
+
+// ── useDepositManagerAddresses — console.error on read failures ───────────────
+
+describe("useDepositManagerAddresses — console.error on read failure", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUseReadContract.mockClear();
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    vi.restoreAllMocks();
+  });
+
+  it("logs console.error when plUsd() read fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dmAddr = "0xFFFF000000000000000000000000000000000099";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    const plUsdErr = new Error("plUsd RPC failure");
+    (mockUseReadContract as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { functionName?: string }) => {
+        if (args.functionName === "plUsd") {
+          return { data: undefined, isLoading: false, error: plUsdErr };
+        }
+        return { data: undefined, isLoading: false, error: null };
+      },
+    );
+
+    renderHook(() => useDepositManagerAddresses(), { wrapper });
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("plUsd() read failed:"),
+        plUsdErr,
+      );
+    });
+  });
+
+  it("logs console.error when usdc() read fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dmAddr = "0xFFFF000000000000000000000000000000000098";
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+
+    const usdcErr = new Error("usdc RPC failure");
+    (mockUseReadContract as ReturnType<typeof vi.fn>).mockImplementation(
+      (args: { functionName?: string }) => {
+        if (args.functionName === "usdc") {
+          return { data: undefined, isLoading: false, error: usdcErr };
+        }
+        return { data: undefined, isLoading: false, error: null };
+      },
+    );
+
+    renderHook(() => useDepositManagerAddresses(), { wrapper });
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("usdc() read failed:"),
+        usdcErr,
+      );
+    });
+  });
+});
 
 // ── useDepositManagerAddresses ─────────────────────────────────────────────────
 
