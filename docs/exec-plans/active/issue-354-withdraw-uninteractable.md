@@ -30,7 +30,7 @@ Restore `/withdraw` interactivity by fixing the upstream `useWithdrawalQueueAddr
 _Resolved:_
 - **WithdrawalQueue address**: confirmed correct — `0xB9f148312a85Ec1d3f4512fF04de6b21a4d12c58` is the current deployment. No `.env` change needed. Root cause is the silent read error (cause B), not a stale address.
 - **PLUSD address**: `0x18D6cCaF8D363309A6C283eEA8b2C68D107016b7` (operator-confirmed). The `fromToken()` read should return this value; if it doesn't, log it.
-- **`VITE_STAKED_PLUSD_ADDRESS` audit**: deferred — no staked-PLUSD page exists yet, so the symptom doesn't surface to users today.
+- **`VITE_STAKED_PLUSD_ADDRESS`**: confirmed `0xD2cf15F273aE6BE2bDF5043Db032D5B59ec4908B` (operator-confirmed). Audit deferred — no staked-PLUSD page exists yet.
 
 ## Implementation Steps
 
