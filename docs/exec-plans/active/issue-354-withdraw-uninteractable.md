@@ -27,16 +27,14 @@ Restore `/withdraw` interactivity by fixing the upstream `useWithdrawalQueueAddr
 
 ## Open Questions
 
-- What is the current canonical Hoodi `WithdrawalQueue` address that should replace `0xB9f148312a85Ec1d3f4512fF04de6b21a4d12c58` in `.env`? The coder needs this value (or confirmation that the current value is correct) from the operator / deploy logs before touching `.env`.
-- Should the same audit cover `VITE_STAKED_PLUSD_ADDRESS` now (issue suggestion §3) or be deferred to a follow-up — there is no staked-PLUSD page yet, so the symptom does not user-surface today.
+_Resolved:_
+- **WithdrawalQueue address**: confirmed correct — `0xB9f148312a85Ec1d3f4512fF04de6b21a4d12c58` is the current deployment. No `.env` change needed. Root cause is the silent read error (cause B), not a stale address.
+- **PLUSD address**: `0x18D6cCaF8D363309A6C283eEA8b2C68D107016b7` (operator-confirmed). The `fromToken()` read should return this value; if it doesn't, log it.
+- **`VITE_STAKED_PLUSD_ADDRESS` audit**: deferred — no staked-PLUSD page exists yet, so the symptom doesn't surface to users today.
 
 ## Implementation Steps
 
-1. **Verify the WithdrawalQueue address** against the live Hoodi deployment:
-   - Call `fromToken()` on `0xB9f148312a85Ec1d3f4512fF04de6b21a4d12c58` via `cast` or a quick `viem` script using the RPC from `.env`. Expect a PLUSD ERC-20 address; if it reverts or returns 0x, the address is stale.
-   - Call `intoToken()` on the same address; expect a USDC ERC-20 address.
-   - If stale: obtain the current address from deploy artifacts/operator and update `VITE_WITHDRAWAL_QUEUE_ADDRESS` in `/Users/dima/git/pipeline-background/.env`. Re-run both reads to confirm.
-   - Optional parallel check: `fromToken()` against `VITE_STAKED_PLUSD_ADDRESS` is not applicable — staked-PLUSD has a different interface; just record in the PR whether the address still responds to its expected view function. No code change in this issue.
+1. **No `.env` change needed** — `VITE_WITHDRAWAL_QUEUE_ADDRESS=0xB9f148312a85Ec1d3f4512fF04de6b21a4d12c58` is confirmed correct. Expected `fromToken()` return is `0x18D6cCaF8D363309A6C283eEA8b2C68D107016b7` (PLUSD). If the read still fails, the root cause is an ABI mismatch or RPC error — the console.error added in step 2 will surface it.
 
 2. **Surface read errors from `useWithdrawalQueueAddresses` to the console** in `/Users/dima/git/pipeline-background/packages/frontend/src/wallet/useWithdrawalQueue.ts`:
    - In the real-RPC branch (around lines 190-199), add a `useEffect` that `console.error`s `fromTokenRead.error` and `intoTokenRead.error` when they transition from `null` → non-null. Mirror the pattern used in #346 for `useDepositManagerAddresses` (read `useDepositManager.ts` for the exact shape so the two stay symmetric).
