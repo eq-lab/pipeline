@@ -9,13 +9,14 @@ const meta = {
     docs: {
       description: {
         component:
-          "Pipeline UI Card surface primitive. Three variants: `white` " +
+          "Pipeline UI Card surface primitive. Four variants: `white` " +
           "(paper-white surface used for the dashboard cards and outer " +
           "container, Figma frame 1497-94556), `yellow` (pale yellow promo " +
           "surface used for the Connect Wallet card, Figma frame 1497-94556), " +
-          "and `muted` (slightly-grey surface used for step rows in the " +
-          "deposit/conversion flow, Figma node 1498-100130). The Card is a " +
-          "surface only — it owns fill, border, radius, and inner padding. " +
+          "`muted` (slightly-grey surface used for step rows in the " +
+          "deposit/conversion flow, Figma node 1498-100130), and `danger` " +
+          "(red error surface used for unreachable-contract banners). The Card " +
+          "is a surface only — it owns fill, border, radius, and inner padding. " +
           "Children render unstyled. All values come from " +
           "`@pipeline/ui/styles/theme.css`.",
       },
@@ -24,7 +25,7 @@ const meta = {
   argTypes: {
     variant: {
       control: "inline-radio",
-      options: ["white", "yellow", "muted"],
+      options: ["white", "yellow", "muted", "danger"],
     },
     children: { control: false },
   },
@@ -121,6 +122,19 @@ export const Muted: Story = {
       <SampleContent
         title="Steps"
         body="Slightly-grey surface used for step rows in the deposit/conversion flow."
+      />
+    ),
+  },
+};
+
+export const Danger: Story = {
+  name: "danger",
+  args: {
+    variant: "danger",
+    children: (
+      <SampleContent
+        title="Contract Unreachable"
+        body="WithdrawalQueue not reachable. Check VITE_WITHDRAWAL_QUEUE_ADDRESS and RPC connectivity."
       />
     ),
   },

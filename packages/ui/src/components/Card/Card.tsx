@@ -3,7 +3,7 @@ import React from "react";
 /**
  * Card — Pipeline UI surface primitive.
  *
- * Three variants from Figma:
+ * Four variants from Figma:
  *   - `white`  — paper-white surface with a subtle hairline border. Used for
  *                Get PLUSD, Stake, Earned, Recent activity, QnA cards, and the
  *                outer container that wraps the dashboard.
@@ -15,6 +15,11 @@ import React from "react";
  *                conversion flow. Background is `--color-pipeline-paper`
  *                (#f8f7f6). Used by `StepsCard`.
  *                (Figma node 1498-100130)
+ *   - `danger` — red danger surface used for error/unreachable banners.
+ *                Background is `--color-pipeline-danger` (#c0392b) with white
+ *                text (`--color-pipeline-on-danger`) and a matching red border.
+ *                Use this variant instead of appending Tailwind color classes to
+ *                avoid Tailwind v4 equal-specificity conflicts (see Issue #357).
  *
  * The Card is a pure surface — it controls fill, border, radius and inner
  * padding only. Children render unstyled so callers compose their own layout
@@ -24,7 +29,7 @@ import React from "react";
  * `@pipeline/ui/styles/theme.css` (no raw colors).
  */
 
-export type CardVariant = "white" | "yellow" | "muted";
+export type CardVariant = "white" | "yellow" | "muted" | "danger";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: CardVariant;
@@ -32,12 +37,14 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 
 // Shared surface chrome. Padding and radius mirror the Figma card frames
 // (24px inner padding, 4px corner radius from --radius-pipeline-card).
+// Note: text color is intentionally NOT set here — it lives in each variant so
+// the danger variant can override it without hitting Tailwind v4 equal-
+// specificity conflicts.
 const baseClasses = [
   "block",
   "rounded-[var(--radius-pipeline-card)]",
   "p-6",
   "border border-solid",
-  "text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
 
 const variantClasses: Record<CardVariant, string> = {
@@ -47,6 +54,7 @@ const variantClasses: Record<CardVariant, string> = {
   white: [
     "bg-[var(--color-pipeline-surface)]",
     "border-[color:var(--color-pipeline-line)]",
+    "text-[color:var(--color-pipeline-ink)]",
   ].join(" "),
 
   // yellow — pale yellow promo surface. The background token already includes
@@ -56,6 +64,7 @@ const variantClasses: Record<CardVariant, string> = {
   yellow: [
     "bg-[var(--color-pipeline-promo)]",
     "border-[color:var(--color-pipeline-line)]",
+    "text-[color:var(--color-pipeline-ink)]",
   ].join(" "),
 
   // muted — slightly-grey surface (#f8f7f6) used for the step rows in the
@@ -68,6 +77,21 @@ const variantClasses: Record<CardVariant, string> = {
   muted: [
     "bg-[var(--color-pipeline-paper)]",
     "border-[color:var(--color-pipeline-line)]",
+    "text-[color:var(--color-pipeline-ink)]",
+  ].join(" "),
+
+  // danger — red error surface (#c0392b) with white text and a matching red
+  // border. Used for unreachable-contract banners on /withdraw and /deposit.
+  // Implemented as a first-class variant rather than a className override to
+  // avoid Tailwind v4 equal-specificity conflicts where caller-appended
+  // bg-[var(--color-pipeline-danger)] classes lose to the white variant's
+  // bg-[var(--color-pipeline-surface)] rule (Issue #357).
+  // Text color is set here (not in baseClasses) so there is no competing
+  // text-color utility at the same specificity.
+  danger: [
+    "bg-[var(--color-pipeline-danger)]",
+    "border-[color:var(--color-pipeline-danger)]",
+    "text-[color:var(--color-pipeline-on-danger)]",
   ].join(" "),
 };
 
