@@ -1,4 +1,4 @@
-use alloy::primitives::{address, b256, U256};
+use alloy::primitives::{address, b256};
 use std::sync::Arc;
 
 use pipeline_worker::indexer::mappers::ContractLogMapper;
@@ -12,16 +12,11 @@ fn dummy_event() -> ContractLog {
         tx_hash: b256!("1111111111111111111111111111111111111111111111111111111111111111"),
         log_index: 0,
         block_timestamp: 0,
-        sender: Some(address!("1111111111111111111111111111111111111111")),
-        receiver: None,
-        amount: Some(U256::from(1000u64)),
-        request_id: Some(U256::from(1u64)),
-        cumulative: None,
-        assets: None,
-        shares: None,
-        shares_balance: None,
-        avg_buy_share_price: None,
-        realized_pnl: None,
+        params: serde_json::json!({
+            "user": "0x1111111111111111111111111111111111111111",
+            "amount": "1000",
+            "request_id": "1",
+        }),
     }
 }
 

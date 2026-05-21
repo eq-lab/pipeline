@@ -30,7 +30,7 @@ Source: https://github.com/eq-lab/pipeline/issues/336
 
 ## Implementation Steps
 
-### Step 1: Migration file
+### Step 1: Migration file [DONE]
 
 Create `packages/shared/migrations/20260521000001_contract_logs_jsonb.sql`:
 
@@ -40,7 +40,7 @@ Create `packages/shared/migrations/20260521000001_contract_logs_jsonb.sql`:
 4. Drop old column-based indexes that reference dropped columns (e.g. `idx_contract_logs_kyt_unverified` if it references `sender`).
 5. Add GIN index on the whole `params` column: `CREATE INDEX idx_contract_logs_params ON contract_logs USING GIN (params)`.
 
-### Step 2: Update `ContractLog` struct
+### Step 2: Update `ContractLog` struct [DONE]
 
 File: `packages/shared/src/events.rs`
 
@@ -51,19 +51,19 @@ pub params: serde_json::Value,  // replaces sender, receiver, amount, request_id
 
 Add `serde_json` dependency to `packages/shared/Cargo.toml` if not already present.
 
-### Step 3: Update `insert_log`
+### Step 3: Update `insert_log` [DONE]
 
 File: `packages/shared/src/db.rs`
 
 Change the INSERT statement to use only `params` as a JSONB column (bind as `sqlx::types::Json(&event.params)` or directly as `serde_json::Value`). Remove all individual column bindings for the dropped columns.
 
-### Step 4: Update existing parsers
+### Step 4: Update existing parsers [DONE]
 
 File: `packages/worker/src/indexer/parsers.rs`
 
 Update all 5 existing parser functions (`parse_deposit_requested`, `parse_withdrawal_requested`, `parse_request_claimed`, `parse_staking_deposit`, `parse_staking_withdraw`) to populate `params` as a `serde_json::json!({...})` object with the keys specified in the issue table.
 
-### Step 5: Add 7 loan registry parsers
+### Step 5: Add 7 loan registry parsers [DONE]
 
 File: `packages/worker/src/indexer/parsers.rs`
 
@@ -77,7 +77,7 @@ File: `packages/worker/src/indexer/parsers.rs`
    - `parse_loan_closed`
    - `parse_loan_repayment`
 
-### Step 6: Update position tracking mapper
+### Step 6: Update position tracking mapper [DONE]
 
 File: `packages/worker/src/indexer/mappers.rs`
 
@@ -88,7 +88,7 @@ File: `packages/worker/src/indexer/mappers.rs`
    - Change the SQL query in `compute_position_fields` to read from `params->>'shares_balance'` and `params->>'avg_buy_share_price'` instead of direct columns.
    - Write computed `shares_balance`, `avg_buy_share_price`, `realized_pnl` back into `event.params` as string values.
 
-### Step 7: Update read queries in `kyc_repo.rs`
+### Step 7: Update read queries in `kyc_repo.rs` [DONE]
 
 File: `packages/shared/src/kyc_repo.rs`
 
@@ -98,21 +98,21 @@ File: `packages/shared/src/kyc_repo.rs`
 4. `is_request_claimed`: update SQL to use `params->>'request_id'`.
 5. Crystal screening queries that reference `LOWER(sender)`: update to `LOWER(params->>'sender')`.
 
-### Step 8: Update read queries in `position_repo.rs`
+### Step 8: Update read queries in `position_repo.rs` [DONE]
 
 File: `packages/shared/src/position_repo.rs`
 
 1. `get_first_stake_timestamp`: change `LOWER(sender)` to `LOWER(params->>'sender')`.
 2. `get_position_summaries`: rewrite to use `(params->>'shares_balance')::numeric`, `(params->>'avg_buy_share_price')::numeric`, `(params->>'realized_pnl')::numeric`, and `LOWER(params->>'sender')`.
 
-### Step 9: Add config for loan registry contracts
+### Step 9: Add config for loan registry contracts [DONE]
 
 File: `packages/worker/src/indexer/config.rs`
 
 1. Add `fn env_csv_optional(key: &str) -> Vec<String>` that returns empty vec if env var is unset.
 2. Add `loan_registry_contracts: Vec<String>` to `IndexerJobSettings`, reading from `JOB_INDEXER_LOAN_REGISTRY_CONTRACTS`.
 
-### Step 10: Register loan registry event handler
+### Step 10: Register loan registry event handler [DONE]
 
 File: `packages/worker/src/indexer/mod.rs`
 
@@ -120,7 +120,7 @@ File: `packages/worker/src/indexer/mod.rs`
 2. Parse `loan_registry_contracts` addresses.
 3. If non-empty, add a new `.add_event_handler(...)` block chaining all 7 parsers with `.or_else(...)`, creating `ContractLogMapper` without position tracking.
 
-### Step 11: Update tests
+### Step 11: Update tests [DONE]
 
 1. **`packages/worker/tests/parsers.rs`**: Update assertions to check `params` JSON object instead of individual fields. Add tests for at least 2-3 loan registry parsers.
 2. **`packages/worker/tests/mappers.rs`**: Update `dummy_event()` to use new struct shape with `params`.

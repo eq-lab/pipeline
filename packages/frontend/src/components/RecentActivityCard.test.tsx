@@ -189,7 +189,9 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
   it("renders the Deposit (Buy) amount string", () => {
     renderCard();
-    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 
   it("renders the Withdraw (Sell) pending amount string", () => {
