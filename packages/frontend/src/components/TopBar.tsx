@@ -106,89 +106,89 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           it within the full-bleed header bar, matching the Figma max-width
           treatment (node 1497:94715). */}
         <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between">
-
-        {/* Left slot — fixed 160px wide so the centred nav reads symmetrically.
+          {/* Left slot — fixed 160px wide so the centred nav reads symmetrically.
           The Logo intrinsic width (116px) plus the slot's flex container
           mirrors Figma node 1497:94716. */}
-        <div
-          className="flex w-40 shrink-0 items-center"
-          data-node-id="1497:94716"
-        >
-          <Logo />
-        </div>
+          <div
+            className="flex w-40 shrink-0 items-center"
+            data-node-id="1497:94716"
+          >
+            <Logo />
+          </div>
 
-        {/* Middle slot — primary navigation. `flex-1` lets it absorb the
+          {/* Middle slot — primary navigation. `flex-1` lets it absorb the
           remaining space within the 1200px inner container, keeping icons
           away from the far-left edge on wide viewports. */}
-        <nav
-          aria-label="Primary"
-          className="flex min-w-0 flex-1 items-center gap-8"
-          data-node-id="1497:94718"
-        >
-          {NAV_ITEMS.map((item) => (
-            <IconButton
-              key={item.key}
-              label={item.label}
-              active={derivedActive === item.key}
-              icon={<NavIcon name={item.key} />}
-              onClick={
-                item.to
-                  ? () => void navigate({ to: item.to as string })
-                  : undefined
-              }
-            />
-          ))}
-        </nav>
+          <nav
+            aria-label="Primary"
+            className="flex min-w-0 flex-1 items-center gap-8"
+            data-node-id="1497:94718"
+          >
+            {NAV_ITEMS.map((item) => (
+              <IconButton
+                key={item.key}
+                label={item.label}
+                active={derivedActive === item.key}
+                icon={<NavIcon name={item.key} />}
+                onClick={
+                  item.to
+                    ? () => void navigate({ to: item.to as string })
+                    : undefined
+                }
+              />
+            ))}
+          </nav>
 
-        {/* Right slot — fixed 160px wide so the centre nav stays optically
+          {/* Right slot — fixed 160px wide so the centre nav stays optically
           centred. Right-aligned content (`justify-end`) keeps the CTA flush
           to the right edge of the bar. */}
-        <div
-          className="relative flex w-40 shrink-0 items-center justify-end"
-          data-node-id="1497:94724"
-        >
-          {isConnected && address ? (
-            <>
-              {/* Trigger button wrapping the WalletPill */}
-              <button
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={open}
-                onClick={() => setOpen((o) => !o)}
-                className={[
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                  "focus-visible:outline-[var(--color-pipeline-ink)]",
-                  "rounded-[var(--radius-pipeline-pill)]",
-                ].join(" ")}
-                data-node-id="1498:100168"
-              >
-                <WalletPill token="usdc" balance={formattedBalance ?? "—"} />
-              </button>
+          <div
+            className="relative flex w-40 shrink-0 items-center justify-end"
+            data-node-id="1497:94724"
+          >
+            {isConnected && address ? (
+              <>
+                {/* Trigger button wrapping the WalletPill */}
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={open}
+                  onClick={() => setOpen((o) => !o)}
+                  className={[
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                    "focus-visible:outline-[var(--color-pipeline-ink)]",
+                    "rounded-[var(--radius-pipeline-pill)]",
+                  ].join(" ")}
+                  data-node-id="1498:100168"
+                >
+                  <WalletPill token="usdc" balance={formattedBalance ?? "—"} />
+                </button>
 
-              {/* Account dropdown panel */}
-              {open && (
-                <AccountDropdown
-                  address={address}
-                  formattedBalance={formattedBalance ?? "—"}
-                  onClose={() => setOpen(false)}
-                  onDisconnect={() => {
-                    disconnect();
-                    setOpen(false);
-                  }}
-                />
-              )}
-            </>
-          ) : (
-            <Button
-              variant="primary-dark"
-              onClick={connect}
-              data-node-id="1497:94725"
-            >
-              Connect Wallet
-            </Button>
-          )}
+                {/* Account dropdown panel */}
+                {open && (
+                  <AccountDropdown
+                    address={address}
+                    formattedBalance={formattedBalance ?? "—"}
+                    onClose={() => setOpen(false)}
+                    onDisconnect={() => {
+                      disconnect();
+                      setOpen(false);
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <Button
+                variant="primary-dark"
+                onClick={connect}
+                data-node-id="1497:94725"
+              >
+                Connect Wallet
+              </Button>
+            )}
+          </div>
         </div>
-        </div>{/* end max-w inner container */}
+        {/* end max-w inner container */}
       </header>
     );
   },

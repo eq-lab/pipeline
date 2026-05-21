@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use sqlx::{PgConnection, PgPool};
 
 use crate::events::ContractLog;
@@ -84,10 +82,8 @@ impl EventRepo {
             "INSERT INTO contract_logs
                (chain_id, contract_address, event_name,
                 block_number, tx_hash, log_index, block_timestamp,
-                sender, receiver, amount, request_id, cumulative,
-                assets, shares,
-                shares_balance, avg_buy_share_price, realized_pnl)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
+                params)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(chain_id)
         .bind(event.contract_address.to_checksum(None))
@@ -96,26 +92,7 @@ impl EventRepo {
         .bind(format!("{:?}", event.tx_hash))
         .bind(event.log_index as i32)
         .bind(event.block_timestamp as i64)
-        .bind(event.sender.map(|a| a.to_checksum(None)))
-        .bind(event.receiver.map(|a| a.to_checksum(None)))
-        .bind(event.amount.map(|v| {
-            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
-        }))
-        .bind(event.request_id.map(|v| {
-            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
-        }))
-        .bind(event.cumulative.map(|v| {
-            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
-        }))
-        .bind(event.assets.map(|v| {
-            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
-        }))
-        .bind(event.shares.map(|v| {
-            bigdecimal::BigDecimal::from_str(&v.to_string()).expect("U256 is valid decimal")
-        }))
-        .bind(&event.shares_balance)
-        .bind(&event.avg_buy_share_price)
-        .bind(&event.realized_pnl)
+        .bind(sqlx::types::Json(&event.params))
         .execute(conn)
         .await?;
 

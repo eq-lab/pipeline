@@ -167,7 +167,7 @@ impl PositionRepo {
         let row: Option<(Option<i64>,)> = sqlx::query_as(
             "SELECT MIN(block_timestamp) FROM contract_logs
              WHERE chain_id = $1
-               AND LOWER(sender) = $2
+               AND LOWER(params->>'owner') = $2
                AND event_name = 'StakingDeposit'",
         )
         .bind(chain_id)
@@ -209,22 +209,25 @@ impl PositionRepo {
                  COALESCE(agg.total_realized_pnl, 0) AS total_realized_pnl
              FROM (
                  SELECT DISTINCT ON (LOWER(contract_address))
-                     LOWER(contract_address) AS vault_address, shares_balance, avg_buy_share_price
+                     LOWER(contract_address) AS vault_address,
+                     (params->>'shares_balance')::numeric AS shares_balance,
+                     (params->>'avg_buy_share_price')::numeric AS avg_buy_share_price
                  FROM contract_logs
                  WHERE chain_id = $1
-                   AND LOWER(sender) = $2
+                   AND LOWER(params->>'owner') = $2
                    AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
-                   AND shares_balance IS NOT NULL
-                   AND shares_balance > 0
+                   AND params ? 'shares_balance'
+                   AND (params->>'shares_balance')::numeric > 0
                  ORDER BY LOWER(contract_address), block_number DESC, log_index DESC
              ) latest
              LEFT JOIN (
-                 SELECT LOWER(contract_address) AS vault_address, SUM(realized_pnl) AS total_realized_pnl
+                 SELECT LOWER(contract_address) AS vault_address,
+                        SUM((params->>'realized_pnl')::numeric) AS total_realized_pnl
                  FROM contract_logs
                  WHERE chain_id = $1
-                   AND LOWER(sender) = $2
+                   AND LOWER(params->>'owner') = $2
                    AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
-                   AND realized_pnl IS NOT NULL
+                   AND params ? 'realized_pnl'
                  GROUP BY LOWER(contract_address)
              ) agg ON agg.vault_address = latest.vault_address",
         )
