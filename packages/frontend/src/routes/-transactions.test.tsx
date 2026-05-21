@@ -141,7 +141,7 @@ describe("Transactions page — default Buy tab", () => {
     renderTransactions();
 
     expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
-    expect(screen.queryByText("−1,000.00 USDC")).not.toBeInTheDocument();
+    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
   });
 });
 
@@ -166,7 +166,7 @@ describe("Transactions page — tab switching", () => {
     const sellTab = screen.getByRole("tab", { name: "Sell" });
     await user.click(sellTab);
 
-    expect(screen.getByText("−1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
   });
 
   it("clicking Stake shows the Stake row", async () => {
@@ -386,14 +386,14 @@ describe("Transactions page — formatting assertions", () => {
     expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
   });
 
-  it("formats Withdraw amount as '−1,000.00 USDC' on Sell tab", async () => {
+  it("formats Withdraw amount as '+1,000.00 USDC' on Sell tab", async () => {
     const user = userEvent.setup();
     renderTransactions();
 
     const sellTab = screen.getByRole("tab", { name: "Sell" });
     await user.click(sellTab);
 
-    expect(screen.getByText("−1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
   });
 
   it("formats Stake amounts on Stake tab", async () => {

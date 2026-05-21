@@ -119,7 +119,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
           tone="success"
           title="Sell"
           timestamp={timestamp}
-          amount={<AmountPill>−{amount} USDC</AmountPill>}
+          amount={<AmountPill>+{amount} USDC</AmountPill>}
         />
       );
     }
@@ -133,7 +133,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
         timestamp={timestamp}
         amount={
           <TwoLineAmount
-            primary={`−${amount} USDC`}
+            primary={`+${amount} USDC`}
             secondary={secondary}
             tone="muted"
           />
