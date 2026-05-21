@@ -4,6 +4,32 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-20 — Issue #310 (Wire up /stake — Stake and Unstake flows via sPLUSD vault)
+
+- **Scope:** Issue #310 acceptance criteria (TC-310-1 through TC-310-9)
+- **Cases executed:** 9 (TC-310-8 and TC-310-9 blocked)
+- **Passes:** 7
+- **Failures:** 0
+- **Blocked:** 2 (TC-310-8, TC-310-9 — exchange rate and preview rows blocked by bug #322)
+- **Bugs filed:** #322 (medium)
+- **Score: 8/10**
+  - PASS TC-310-1 (allowance=0, Approve enabled, Stake disabled): With mock PLUSD balance=100, allowance=0, amount="50" entered — Approve button enabled, Stake disabled. No Done badge on step 1.
+  - PASS TC-310-2 (allowance≥amount — step 1 Done, Stake enabled → click → Done): With allowance=1000 PLUSD, amount="50" — step 1 shows "Approve complete" Done badge; step 2 Stake is enabled. Clicking Stake fires the mock; "Stake complete" Done badge appears on step 2. Both steps Done simultaneously.
+  - PASS TC-310-3 (Unstake — sPLUSD balance=50, amount=25, click Unstake → Done): Unstake tab shows single "Confirm and unstake sPLUSD" StepRow (no approval step). "Unstake" enabled with amount=25. Clicking fires mock; "Unstake complete" Done badge appears.
+  - PASS TC-310-4 (tab switch resets input, no stale Done bleed): After stake success (both Done badges), switching to Unstake tab — input cleared, no Stake/Approve Done badges visible, single Unstake step with no stale state. Switching back to Stake — input cleared, step 1 Approve disabled (no amount), no stale Done badges.
+  - PASS TC-310-5 (quick-amount chips operate on active tab balance): PLUSD balance=100 on Stake tab — 25% chip → "25.00"; Max chip → "100.00". sPLUSD balance=50 on Unstake tab — 50% chip → "25.00". Math correct.
+  - PASS TC-310-6 (disconnected — all buttons disabled, no banner): No mock keys → "Connect Wallet" in header; both balances "—"; input disabled; Approve, Stake, Unstake all disabled; no banner rendered.
+  - PASS TC-310-7 (zero balance — buttons gated, no banner): Connected with PLUSD=0, sPLUSD=0 → inputs enabled; action buttons disabled (hasBalance=false); no LowBalanceBanner or any banner element in DOM.
+  - BLOCKED TC-310-8 (exchange rate row): `VITE_STAKED_PLUSD_ADDRESS` not in `.env` → `ENV.STAKED_PLUSD_ADDRESS` = zero address → `isZeroAddress` guard in `useStakedPlusdConvertToShares` short-circuits before the mock path → exchange rate always "—". Bug #322 filed (medium).
+  - BLOCKED TC-310-9 (preview output row): Same root cause as TC-310-8. sPLUSD preview output always shows "0" despite mock rate set. Bug #322 covers both.
+  - Step copy verified: "Allow Pipeline to use PLUSD" (step 1), "Confirm and stake PLUSD" (step 2), "Confirm and unstake sPLUSD" (unstake step) — all match spec.
+  - Network fee row: correctly shows "—" on feat/310 branch (a separate dev server on port 3000 from a stale branch showed "~$1.20" — not a regression from #310).
+  - Header: WalletPill shows USDC balance (not PLUSD); Stats nav icon active on /stake — both correct.
+  - Note on mock keying: `VITE_STAKED_PLUSD_ADDRESS` unset means app uses zero address as sPLUSD vault address; mock keys for sPLUSD balance and allowance must use `0x0000...0000` not `0x5555...0005` from the scenarios file.
+  - Console errors: only pre-existing Reown/WalletConnect 403/400, Lit dev-mode, font preload warnings — none from #310.
+  - No unit test regression observed (tests pass on the branch per coder confirmation).
+  - Deducted 2 points: preview and exchange-rate rows non-functional in local dev due to #322; these are the key UX affordances for the staking flow.
+
 ### 2026-05-20 — Issue #328 (Activity hero icon renders as black square on /transactions)
 
 - **Scope:** Issue #328 acceptance criteria for `/transactions` against Figma node `1497:94912`, focused on the Activity hero badge glyph.

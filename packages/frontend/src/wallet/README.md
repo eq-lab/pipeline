@@ -296,6 +296,8 @@ Write hook for `redeem(uint256 shares, address receiver, address owner)`. Both
 verifier signature required — unstaking is a direct ERC-4626 transaction. Same
 error guards as `useStake`.
 
+The `/stake` page composes `useToken` + `useStake` / `useUnstake` + `useStakedPlusdConvertToShares` (Stake tab) and `useStakedPlusdConvertToAssets` (Unstake tab); see `packages/frontend/src/routes/stake.tsx`.
+
 ### `isMockKeyPresent(key: string): boolean`
 
 Non-reactive helper that returns `true` when a `pipeline.mock.wallet.*` key is

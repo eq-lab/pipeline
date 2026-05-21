@@ -18,6 +18,9 @@
  *   - Wallet address : `0x1234000000000000000000000000000000000000`
  *   - USDC           : `0x2222000000000000000000000000000000000002`
  *   - DepositManager : `0x3333000000000000000000000000000000000003`
+ *   - PLUSD          : `0x1111000000000000000000000000000000000001`
+ *   - WithdrawalQueue: `0x4444000000000000000000000000000000000004`
+ *   - StakedPLUSD    : `0x5555000000000000000000000000000000000005`
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -44,6 +47,7 @@ const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
 const DM_ADDRESS = "0x3333000000000000000000000000000000000003";
 const PLUSD_ADDRESS = "0x1111000000000000000000000000000000000001";
 const WQ_ADDRESS = "0x4444000000000000000000000000000000000004";
+const SPLUSD_ADDRESS = "0x5555000000000000000000000000000000000005";
 
 // Shared wallet keys that every "connected" scenario seeds.
 const WALLET_CONNECTED_BASE: Record<string, string> = {
@@ -61,9 +65,15 @@ const WALLET_CONNECTED_BASE: Record<string, string> = {
   // stub addresses regardless of VITE_WITHDRAWAL_QUEUE_ADDRESS in .env.
   "pipeline.mock.wallet.contract.withdrawalQueue.plusd": PLUSD_ADDRESS,
   "pipeline.mock.wallet.contract.withdrawalQueue.usdc": USDC_ADDRESS,
-  // PLUSD token metadata (needed by useToken + useApproval on /withdraw)
+  // PLUSD token metadata (needed by useToken + useApproval on /withdraw and /stake)
   [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.decimals`]: "18",
   [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.symbol`]: "PLUSD",
+  // StakedPLUSD named alias — resolves PLUSD address from the vault's asset()
+  // so useStakedPlusdAsset() returns the PLUSD address on /stake.
+  "pipeline.mock.wallet.contract.stakedPlusd.asset": PLUSD_ADDRESS,
+  // sPLUSD ERC-20 metadata (the share token)
+  [`pipeline.mock.wallet.contract.${SPLUSD_ADDRESS}.decimals`]: "18",
+  [`pipeline.mock.wallet.contract.${SPLUSD_ADDRESS}.symbol`]: "sPLUSD",
 };
 
 // ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -333,6 +343,74 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
           hash: "0xc1a100000000000000000000000000000000000000000000000000000000c1a1",
           amount: "10000000000000000000",
         }),
+    },
+  },
+
+  // 11. Connected, ready to stake (allowance 0) ────────────────────────────────
+  {
+    id: "stake-ready-allowance-zero",
+    title: "Connected, ready to stake (allowance 0)",
+    description:
+      "PLUSD balance present; no approval to the sPLUSD vault yet. Approve is the live action on /stake → Stake tab.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${SPLUSD_ADDRESS}`]:
+        "0",
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
+        "959600000000000000", // 0.9596 sPLUSD per PLUSD
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
+        "1042100000000000000", // 1.0421 PLUSD per sPLUSD
+      [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.approve`]:
+        JSON.stringify({ hash: "0xapprove" }),
+    },
+  },
+
+  // 12. Connected, ready to stake (approved) ───────────────────────────────────
+  {
+    id: "stake-ready-approved",
+    title: "Connected, ready to stake (approved)",
+    description:
+      "Allowance ≥ amount. Stake is the live action on /stake → Stake tab; clicking settles via the mock stake key.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000",
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${SPLUSD_ADDRESS}`]:
+        "1000000000000000000000",
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
+        "959600000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
+        "1042100000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.stake": JSON.stringify({
+        hash: "0xabc1000000000000000000000000000000000000000000000000000000000abc",
+        shares: "9596000000000000000",
+      }),
+    },
+  },
+
+  // 13. Connected, ready to unstake ────────────────────────────────────────────
+  {
+    id: "unstake-ready",
+    title: "Connected, ready to unstake",
+    description:
+      "sPLUSD balance present. Unstake is the live action on /stake → Unstake tab; clicking settles via the mock unstake key.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "0",
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]:
+        "50000000000000000000", // 50 sPLUSD
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
+        "959600000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
+        "1042100000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.unstake": JSON.stringify({
+        hash: "0xde110000000000000000000000000000000000000000000000000000000000de",
+        assets: "52105000000000000000",
+      }),
     },
   },
 ];

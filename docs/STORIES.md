@@ -1153,6 +1153,144 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 
 ---
 
+## S-310 — Wire up /stake — Stake (Approve → Stake) and Unstake flows via sPLUSD vault
+
+**Issue:** [#310 Wire up /stake — Stake and Unstake flows via sPLUSD vault](https://github.com/eq-lab/pipeline/issues/310)
+**Plan:** `docs/exec-plans/active/issue-310-stake-unstake-wiring.md`
+
+Mock setup — add these keys in DevTools Console before navigating to `/stake`. Because `VITE_STAKED_PLUSD_ADDRESS` is unset in the default `.env`, the app uses the zero address (`0x0000...0000`) as `splusdAddr`. Mock keys must use this address for sPLUSD balance and allowance:
+
+```js
+const PLUSD = "0x3333000000000000000000000000000000000003";
+const ZERO  = "0x0000000000000000000000000000000000000000"; // splusdAddr in local dev
+const USDC  = "0x2222000000000000000000000000000000000002";
+localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000000000");
+localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", USDC);
+localStorage.setItem(`pipeline.mock.wallet.contract.${USDC}.decimals`, "6");
+localStorage.setItem(`pipeline.mock.wallet.contract.${USDC}.symbol`, "USDC");
+localStorage.setItem(`pipeline.mock.wallet.balance.${USDC}`, "5000000000");
+localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.asset", PLUSD);
+localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.decimals`, "18");
+localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.symbol`, "PLUSD");
+localStorage.setItem(`pipeline.mock.wallet.contract.${ZERO}.decimals`, "18");
+localStorage.setItem(`pipeline.mock.wallet.contract.${ZERO}.symbol`, "sPLUSD");
+localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.convertToShares", "959600000000000000");
+localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.convertToAssets", "1042100000000000000");
+```
+
+### TC-310-1: Stake tab — allowance=0, Approve enabled, Stake disabled
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected (see setup above); PLUSD balance ≥ amount; allowance = 0.
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${PLUSD}`, "100000000000000000000"); // 100 PLUSD
+  localStorage.setItem(`pipeline.mock.wallet.balance.${ZERO}`, "0");
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${PLUSD}.${ZERO}`, "0");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.approve`, JSON.stringify({ hash: "0xapprove111" }));
+  ```
+- **Steps:**
+  1. Navigate to `http://localhost:<port>/stake`.
+  2. Type "50" in the PLUSD input.
+- **Expected:** Step 1 "Allow Pipeline to use PLUSD" → Approve button is enabled. Step 2 "Confirm and stake PLUSD" → Stake button is disabled. No Done badge on step 1.
+
+### TC-310-2: Stake tab — allowance≥amount, step 1 Done, Stake enabled → click → Done
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet; PLUSD balance 100; allowance = 1000 PLUSD (covers any amount ≤ 100).
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${PLUSD}`, "100000000000000000000");
+  localStorage.setItem(`pipeline.mock.wallet.balance.${ZERO}`, "0");
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${PLUSD}.${ZERO}`, "1000000000000000000000");
+  localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.stake", JSON.stringify({ hash: "0xabc1", shares: "9596000000000000000" }));
+  ```
+- **Steps:**
+  1. Navigate to `/stake`; type "50" in the PLUSD input.
+  2. Observe step states.
+  3. Click "Stake".
+- **Expected:**
+  - Before click: step 1 shows "Approve complete" (Done badge); step 2 "Stake" is enabled.
+  - After click: step 2 shows "Stake complete" (Done badge). Stake button becomes disabled.
+
+### TC-310-3: Unstake tab — sPLUSD balance present, Unstake enabled → click → Done
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet; sPLUSD balance = 50; PLUSD balance = 100.
+  ```js
+  localStorage.setItem(`pipeline.mock.wallet.balance.${PLUSD}`, "100000000000000000000");
+  localStorage.setItem(`pipeline.mock.wallet.balance.${ZERO}`, "50000000000000000000"); // 50 sPLUSD
+  localStorage.setItem(`pipeline.mock.wallet.allowance.${PLUSD}.${ZERO}`, "0");
+  localStorage.setItem("pipeline.mock.wallet.contract.stakedPlusd.unstake", JSON.stringify({ hash: "0xde11", assets: "52105000000000000000" }));
+  ```
+- **Steps:**
+  1. Navigate to `/stake`; click the "Unstake" tab.
+  2. Type "25" in the sPLUSD input.
+  3. Click "Unstake".
+- **Expected:** Step shows "Unstake complete" Done badge. No approval step visible on Unstake tab.
+
+### TC-310-4: Tab switch resets input and clears Done badges (no stale state bleed)
+
+- **Actor:** User / QA
+- **Preconditions:** TC-310-2 completed (stake success state visible).
+- **Steps:**
+  1. With "Stake complete" badge on step 2, click the "Unstake" tab.
+  2. Observe the Unstake tab content.
+  3. Click back to "Stake" tab.
+- **Expected:**
+  - On Unstake tab: amount input is empty; only the single "Unstake" step is visible; no "Stake complete" or "Approve complete" badge from the Stake tab.
+  - On Stake tab: amount input is empty; step 1 Approve is disabled (no amount); no stale Done badges.
+
+### TC-310-5: Quick-amount chips operate on active input token balance
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet; PLUSD balance = 100 (Stake tab active).
+- **Steps:**
+  1. On Stake tab: click "25%" chip → note input value.
+  2. Click "Max" chip → note input value.
+  3. Switch to Unstake tab (sPLUSD balance = 50): click "50%" chip → note input value.
+- **Expected:** 25% on Stake → "25.00". Max on Stake → "100.00". 50% on Unstake → "25.00".
+
+### TC-310-6: Disconnected wallet — all action buttons disabled on both tabs
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no mock wallet keys in localStorage.
+- **Steps:**
+  1. Navigate to `/stake`.
+  2. Observe Stake tab; then switch to Unstake tab.
+- **Expected:** Header shows "Connect Wallet". Both balances show "—". Input disabled on both tabs. Approve and Stake disabled on Stake tab. Unstake disabled on Unstake tab. No LowBalanceBanner or other banner rendered.
+
+### TC-310-7: Zero balance — buttons gated, no banner rendered
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected; PLUSD balance = 0; sPLUSD balance = 0.
+- **Steps:**
+  1. Navigate to `/stake`.
+  2. Enter any amount in the Stake tab input.
+  3. Switch to Unstake tab; enter any amount.
+- **Expected:** Approve and Stake remain disabled (hasBalance = false). Unstake remains disabled. No LowBalanceBanner or any banner element rendered. The StepsCard chrome is present but buttons are gated.
+
+### TC-310-8: Exchange rate row (BLOCKED by #322 in local dev without VITE_STAKED_PLUSD_ADDRESS)
+
+- **Actor:** User / QA
+- **Preconditions:** `VITE_STAKED_PLUSD_ADDRESS` set to a valid address in `.env`; mock `convertToShares` rate = `959600000000000000`.
+- **Steps:**
+  1. Navigate to `/stake`; Stake tab active.
+  2. Observe "Exchange rate" info row.
+- **Expected:** "1 PLUSD = 0.9596 sPLUSD".
+- **Note:** BLOCKED in default local dev env — `isZeroAddress` guard in `useStakedPlusdConvertToShares` short-circuits before the mock path when `VITE_STAKED_PLUSD_ADDRESS` is unset. See bug #322.
+
+### TC-310-9: Preview output row (BLOCKED by #322 in local dev without VITE_STAKED_PLUSD_ADDRESS)
+
+- **Actor:** User / QA
+- **Preconditions:** Same as TC-310-8.
+- **Steps:**
+  1. Navigate to `/stake`; type "50" in the PLUSD input.
+  2. Observe the sPLUSD output card value.
+- **Expected:** sPLUSD output shows "47.9800" (50 × 0.9596).
+- **Note:** BLOCKED by same root cause as TC-310-8 (#322).
+
+---
+
 ## S-315 — Header nav icon hover tooltips
 
 **Issue:** [#315 Add hover tooltips to header nav icons](https://github.com/eq-lab/pipeline/issues/315)
