@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-20 — Issue #328 (Activity hero icon renders as black square on /transactions)
+
+- **Scope:** Issue #328 acceptance criteria for `/transactions` against Figma node `1497:94912`, focused on the Activity hero badge glyph.
+- **Cases executed:** 4
+- **Passes:** 4
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-328-1 (desktop visual match): Compared Figma node `1497:94912` with `http://127.0.0.1:5177/transactions`. The 72×72 muted circular Activity badge now contains the arrow-clock glyph; no solid black 36×36 square is visible. Screenshot evidence: `/Users/dima/.codex/issue-328-activity-hero-viewport.png`.
+  - PASS TC-328-2 (runtime mask styles): Browser inspection on `/transactions` found the outer badge at 72×72 (`backgroundColor: rgba(56, 55, 53, 0.12)`, `borderRadius: 9999px`) and the inner glyph at 36×36 with `maskImage` / `webkitMaskImage` resolving to a quoted SVG data URL, `maskRepeat: no-repeat`, and `maskSize: contain`. This directly covers the previous `maskImage: none` / filled-square failure mode.
+  - PASS TC-328-3 (interaction/layout regression): Clicking the Sell tab kept the Activity header centered and unchanged; the tab state updated correctly and the empty-state body still rendered below the segmented control.
+  - PASS TC-328-4 (mobile visual regression): Resized to 390×844 and verified the Activity badge still renders the arrow-clock glyph above the heading with no overlap or filled-square artifact. Screenshot evidence: `/Users/dima/.codex/issue-328-activity-hero-mobile.png`.
+  - Focused regression test: `yarn workspace @pipeline/frontend test src/components/HeroIcon.test.tsx` passed (1 file, 15 tests).
+  - Console errors: only pre-existing favicon 404, Reown/WalletConnect 403/400, Lit dev-mode warning, and Reown font preload warnings — none related to #328.
+  - No new GitHub Issues filed.
+
 ### 2026-05-20 — Issue #315 (Add hover tooltips to header nav icons)
 
 - **Scope:** Issue #315 acceptance criteria (TC-315-1 through TC-315-8)
