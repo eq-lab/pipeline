@@ -102,16 +102,12 @@ impl GroupedRequest {
                         "PendingVerification"
                     }
                 } else {
+                    #[allow(clippy::match_same_arms)]
                     match row.crystal_kyt_status {
-                        Some(1) => {
-                            if row.on_chain_allowed {
-                                "PendingClaim"
-                            } else {
-                                "PendingVerification"
-                            }
-                        }
+                        Some(1) if row.on_chain_allowed => "PendingClaim",
+                        Some(1) => "PendingVerification", // passed KYT but not yet whitelisted
                         Some(_) => "VerificationFailed",
-                        None => "PendingVerification",
+                        None => "PendingVerification", // not yet screened
                     }
                 }
             }
