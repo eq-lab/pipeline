@@ -50,9 +50,13 @@ const mockUseAccount = vi.fn(() => ({
   isConnected: false,
 }));
 
-// Mock publicClient for gas estimation.
+// Mock publicClient for gas estimation and simulate pre-flight.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
-const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockSimulateContract = vi.fn(async () => undefined);
+const mockPublicClient = {
+  estimateContractGas: mockEstimateContractGas,
+  simulateContract: mockSimulateContract,
+};
 const mockUsePublicClient = vi.fn(() => mockPublicClient);
 
 vi.mock("wagmi", async (importOriginal) => {
@@ -424,6 +428,8 @@ describe("useRequestWithdrawal — args pass-through (no mock, non-zero address)
     mockUseReadContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     // Set a connected wallet so estimation proceeds.
     localStorage.setItem(
@@ -596,6 +602,8 @@ describe("useClaimWithdrawal — args pass-through (no mock, non-zero address)",
     mockUseWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     // Set a connected wallet so estimation proceeds.
     localStorage.setItem(
@@ -743,6 +751,8 @@ describe("useClaimWithdrawal — gas estimation: cap clamp", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     localStorage.setItem(
       "pipeline.mock.wallet.address",
@@ -782,6 +792,8 @@ describe("useClaimWithdrawal — gas estimation: estimation rejects", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     localStorage.setItem(
       "pipeline.mock.wallet.address",
@@ -821,6 +833,8 @@ describe("useClaimWithdrawal — gas estimation: mock key bypasses estimation", 
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
   });
 
@@ -851,6 +865,265 @@ describe("useClaimWithdrawal — gas estimation: mock key bypasses estimation", 
   });
 });
 
+// ── simulateOrFail integration ────────────────────────────────────────────────
+
+describe("useRequestWithdrawal — simulate reverts → writeContract not called", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000030",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000030";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("RateLimiterExceedsTxLimit()"),
+    );
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "RateLimiterExceedsTxLimit",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRequestWithdrawal — simulate succeeds → estimate + write proceed", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000031",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000031";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(2_500_000n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall = simCalls[0]![0]!;
+    expect(simCall.functionName).toBe("requestWithdrawal");
+    expect(simCall.args).toEqual([2_500_000n]);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useRequestWithdrawal — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when requestWithdrawal mock key is present", async () => {
+    const mockData = { hash: "0xrwmock", requestId: "5", queued: "1000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useRequestWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useClaimWithdrawal — simulate reverts → writeContract not called", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000032",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000032";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("VerifiedRequestsQueueAlreadyClaimed()"),
+    );
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "VerifiedRequestsQueueAlreadyClaimed",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useClaimWithdrawal — simulate succeeds → estimate + write proceed", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000033",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    const wqAddr = "0xFFFF000000000000000000000000000000000033";
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = wqAddr as `0x${string}`;
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(3n, "0xabcdef" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls2 = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall2 = simCalls2[0]![0]!;
+    expect(simCall2.functionName).toBe("claimWithdrawal");
+    expect(simCall2.args).toEqual([3n, "0xabcdef"]);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useClaimWithdrawal — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when claimWithdrawal mock key is present", async () => {
+    const mockData = { hash: "0xcwmock", amount: "5000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useClaimWithdrawal(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
 // ── useRequestWithdrawal — receipt-gated isSuccess (real wagmi path) ───────────
 
 describe("useRequestWithdrawal — receipt-gated isSuccess", () => {

@@ -51,9 +51,13 @@ const mockUseAccount = vi.fn(() => ({
   isConnected: false,
 }));
 
-// Mock publicClient for gas estimation.
+// Mock publicClient for gas estimation and simulate pre-flight.
 const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
-const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockSimulateContract = vi.fn(async () => undefined);
+const mockPublicClient = {
+  estimateContractGas: mockEstimateContractGas,
+  simulateContract: mockSimulateContract,
+};
 const mockUsePublicClient = vi.fn(() => mockPublicClient);
 
 vi.mock("wagmi", async (importOriginal) => {
@@ -378,6 +382,8 @@ describe("useRequestDeposit — args pass-through (no mock, non-zero address)", 
     mockUseReadContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     // Set a connected wallet so estimation proceeds.
     localStorage.setItem(
@@ -642,6 +648,8 @@ describe("useClaim — args pass-through (no mock, non-zero address)", () => {
     mockUseWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
     mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     // Set a connected wallet so estimation proceeds.
     localStorage.setItem(
@@ -783,6 +791,8 @@ describe("useClaim — gas estimation: cap clamp", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     localStorage.setItem(
       "pipeline.mock.wallet.address",
@@ -823,6 +833,8 @@ describe("useClaim — gas estimation: estimation rejects", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     localStorage.setItem(
       "pipeline.mock.wallet.address",
@@ -862,6 +874,8 @@ describe("useClaim — gas estimation: re-entrant write ignored", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
     localStorage.setItem(
       "pipeline.mock.wallet.address",
@@ -916,6 +930,8 @@ describe("useClaim — gas estimation: mock key bypasses estimation", () => {
     localStorage.clear();
     mockWriteContract.mockClear();
     mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
     resetEnv();
   });
 
@@ -1282,5 +1298,267 @@ describe("useDepositManagerMinDeposit — real RPC path", () => {
     expect(result.current.minDeposit).toBe(5_000_000n);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+});
+
+// ── simulateOrFail integration ────────────────────────────────────────────────
+
+describe("useRequestDeposit — simulate reverts → writeContract not called", () => {
+  const dmAddr = "0xFFFF000000000000000000000000000000000020";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000020",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("DepositManagerLessThanMinAmount()"),
+    );
+
+    const { result } = renderHook(() => useRequestDeposit(), { wrapper });
+
+    act(() => {
+      result.current.write(100n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "DepositManagerLessThanMinAmount",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useRequestDeposit — simulate succeeds → estimate + write proceed", () => {
+  const dmAddr = "0xFFFF000000000000000000000000000000000021";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000021",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    const { result } = renderHook(() => useRequestDeposit(), { wrapper });
+
+    act(() => {
+      result.current.write(999n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall = simCalls[0]![0]!;
+    expect(simCall.functionName).toBe("requestDeposit");
+    expect(simCall.args).toEqual([999n]);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useRequestDeposit — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when requestDeposit mock key is present", async () => {
+    const mockData = { hash: "0xmockedhash", requestId: "1" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.requestDeposit",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useRequestDeposit(), { wrapper });
+
+    act(() => {
+      result.current.write(100n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useClaim — simulate reverts → writeContract not called", () => {
+  const dmAddr = "0xFFFF000000000000000000000000000000000022";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000022",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("sets error and skips writeContract when simulate rejects", async () => {
+    mockSimulateContract.mockRejectedValueOnce(
+      new Error("VerifiedRequestsInvalidSignature()"),
+    );
+
+    const { result } = renderHook(() => useClaim(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+    });
+
+    expect(result.current.error?.message).toContain(
+      "VerifiedRequestsInvalidSignature",
+    );
+    expect(mockWriteContract).not.toHaveBeenCalled();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+});
+
+describe("useClaim — simulate succeeds → estimate + write proceed", () => {
+  const dmAddr = "0xFFFF000000000000000000000000000000000023";
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = dmAddr as `0x${string}`;
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0xWALLET0000000000000000000000000000000023",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("calls simulateContract once with correct args before estimate + write", async () => {
+    const { result } = renderHook(() => useClaim(), { wrapper });
+
+    act(() => {
+      result.current.write(7n, "0xdeadbeef" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    expect(mockSimulateContract).toHaveBeenCalledTimes(1);
+    const simCalls2 = mockSimulateContract.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    const simCall2 = simCalls2[0]![0]!;
+    expect(simCall2.functionName).toBe("claimDeposit");
+    expect(simCall2.args).toEqual([7n, "0xdeadbeef"]);
+    expect(mockEstimateContractGas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useClaim — mock key bypasses simulateContract", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockSimulateContract.mockClear();
+    mockSimulateContract.mockResolvedValue(undefined);
+    resetEnv();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+    mockSimulateContract.mockResolvedValue(undefined);
+  });
+
+  it("does NOT call simulateContract when claim mock key is present", async () => {
+    const mockData = { hash: "0xcafecafe", amount: "1000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.claim",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useClaim(), { wrapper });
+
+    act(() => {
+      result.current.write(1n, "0xsig" as `0x${string}`);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockSimulateContract).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });

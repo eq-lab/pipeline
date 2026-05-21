@@ -30,6 +30,7 @@ import { useMock, readMock, parseAddress, parseJson } from "./mock";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { CACHE_FOREVER } from "./cache";
 import { estimateGasCapped } from "./estimateGas";
+import { simulateOrFail } from "./simulate";
 import { useWallet } from "./useWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
@@ -311,6 +312,21 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
 
       void (async () => {
         setIsEstimating(true);
+
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "requestWithdrawal",
+          args: [amount],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,
@@ -487,6 +503,21 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
 
       void (async () => {
         setIsEstimating(true);
+
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "claimWithdrawal",
+          args: [requestId, verifierSignature],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,

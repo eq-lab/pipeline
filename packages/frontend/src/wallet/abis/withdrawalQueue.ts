@@ -13,6 +13,10 @@
  * deployed WithdrawalQueue holds PLUSD / USDC at those slots respectively.
  * The wallet hooks expose them under domain-friendly aliases (`plusd` / `usdc`)
  * while this ABI retains the canonical on-chain names.
+ *
+ * Custom-error entries from the full ABI are included so viem can decode
+ * reverts into named errors instead of "execution reverted". Required for
+ * revert decoding via the `simulateOrFail` pre-flight (#350).
  */
 export const withdrawalQueueAbi = [
   {

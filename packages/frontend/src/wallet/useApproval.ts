@@ -25,6 +25,7 @@ import { useMock, readMock, parseBigInt, parseJson } from "./mock";
 import { useWallet } from "./useWallet";
 import { erc20Abi } from "./abis/erc20";
 import { estimateGasCapped } from "./estimateGas";
+import { simulateOrFail } from "./simulate";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -265,6 +266,20 @@ export function useApproval({
 
       void (async () => {
         setIsEstimating(true);
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: erc20Abi,
+          address: token,
+          functionName: "approve",
+          args: [spender, amount],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,

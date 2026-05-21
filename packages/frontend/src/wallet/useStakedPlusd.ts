@@ -44,6 +44,7 @@ import { stakedPlusdAbi } from "./abis/stakedPlusd";
 import { CACHE_FOREVER } from "./cache";
 import { useWallet } from "./useWallet";
 import { estimateGasCapped } from "./estimateGas";
+import { simulateOrFail } from "./simulate";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -443,6 +444,20 @@ export function useStake(): StakeResult {
 
       void (async () => {
         setIsEstimating(true);
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "deposit",
+          args: [amount, address],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,
@@ -619,6 +634,20 @@ export function useUnstake(): UnstakeResult {
 
       void (async () => {
         setIsEstimating(true);
+        const simulated = await simulateOrFail({
+          publicClient,
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "redeem",
+          args: [shares, address, address],
+        });
+        if (!simulated.ok) {
+          setIsEstimating(false);
+          setWriteError(simulated.error);
+          return;
+        }
+
         const result = await estimateGasCapped({
           publicClient,
           account: address,
