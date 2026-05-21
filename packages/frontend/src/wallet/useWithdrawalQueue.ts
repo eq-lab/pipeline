@@ -19,11 +19,13 @@
  * behaviour of `useRequestDeposit` and `useClaim` in useDepositManager.ts.
  */
 import { useState, useCallback } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { ENV } from "@/lib/env";
 import { useMock, readMock, parseAddress, parseJson } from "./mock";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { CACHE_FOREVER } from "./cache";
+import { estimateGasCapped } from "./estimateGas";
+import { useWallet } from "./useWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -214,11 +216,21 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  // Zero-address error state.
-  const [zeroAddrError, setZeroAddrError] = useState<Error | null>(null);
+  // Write error state (zero-address, estimation failure, etc.).
+  const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // Wagmi write hook — always called (hooks must not be conditional).
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
+
+  // Connected wallet address for gas estimation.
+  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -227,7 +239,7 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
       isSuccess: false,
       error: null,
     });
-    setZeroAddrError(null);
+    setWriteError(null);
   }, []);
 
   const write = useCallback(
@@ -259,19 +271,48 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
       }
 
       if (isZeroAddress) {
-        setZeroAddrError(new Error("WithdrawalQueue not configured"));
+        setWriteError(new Error("WithdrawalQueue not configured"));
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: withdrawalQueueAbi,
-        address: WQ_ADDRESS,
-        functionName: "requestWithdrawal",
-        args: [amount],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "requestWithdrawal",
+          args: [amount],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "requestWithdrawal",
+          args: [amount],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isZeroAddress, WQ_ADDRESS, wagmiWrite.writeContract],
+    [
+      isZeroAddress,
+      isEstimating,
+      WQ_ADDRESS,
+      publicClient,
+      address,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -291,8 +332,8 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
       data: undefined,
       isPending: false,
       isSuccess: false,
-      error: zeroAddrError,
-      reset: () => setZeroAddrError(null),
+      error: writeError,
+      reset: () => setWriteError(null),
     };
   }
 
@@ -301,10 +342,13 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }
 
@@ -338,9 +382,20 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  const [zeroAddrError, setZeroAddrError] = useState<Error | null>(null);
+  // Write error state (zero-address, estimation failure, etc.).
+  const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
+
+  // Connected wallet address for gas estimation.
+  const { address } = useWallet();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -349,7 +404,7 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
       isSuccess: false,
       error: null,
     });
-    setZeroAddrError(null);
+    setWriteError(null);
   }, []);
 
   const write = useCallback(
@@ -378,19 +433,48 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
       }
 
       if (isZeroAddress) {
-        setZeroAddrError(new Error("WithdrawalQueue not configured"));
+        setWriteError(new Error("WithdrawalQueue not configured"));
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: withdrawalQueueAbi,
-        address: WQ_ADDRESS,
-        functionName: "claimWithdrawal",
-        args: [requestId, verifierSignature],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "claimWithdrawal",
+          args: [requestId, verifierSignature],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: withdrawalQueueAbi,
+          address: WQ_ADDRESS,
+          functionName: "claimWithdrawal",
+          args: [requestId, verifierSignature],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isZeroAddress, WQ_ADDRESS, wagmiWrite.writeContract],
+    [
+      isZeroAddress,
+      isEstimating,
+      WQ_ADDRESS,
+      publicClient,
+      address,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -410,8 +494,8 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
       data: undefined,
       isPending: false,
       isSuccess: false,
-      error: zeroAddrError,
-      reset: () => setZeroAddrError(null),
+      error: writeError,
+      reset: () => setWriteError(null),
     };
   }
 
@@ -419,9 +503,12 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }

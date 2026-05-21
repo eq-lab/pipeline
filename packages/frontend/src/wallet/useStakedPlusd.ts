@@ -31,7 +31,7 @@
  *   - `Error("StakedPLUSD not configured")` — env state (zero address).
  */
 import { useState, useCallback } from "react";
-import { useReadContract, useWriteContract } from "wagmi";
+import { useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { ENV } from "@/lib/env";
 import {
   useMock,
@@ -43,6 +43,7 @@ import {
 import { stakedPlusdAbi } from "./abis/stakedPlusd";
 import { CACHE_FOREVER } from "./cache";
 import { useWallet } from "./useWallet";
+import { estimateGasCapped } from "./estimateGas";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -376,11 +377,18 @@ export function useStake(): StakeResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  // Zero-address / wallet-not-connected error state.
+  // Zero-address / wallet-not-connected / estimation error state.
   const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // Wagmi write hook — always called (hooks must not be conditional).
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -430,15 +438,44 @@ export function useStake(): StakeResult {
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: stakedPlusdAbi,
-        address: SP_ADDRESS,
-        functionName: "deposit",
-        args: [amount, address],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "deposit",
+          args: [amount, address],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "deposit",
+          args: [amount, address],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [address, isZeroAddress, SP_ADDRESS, wagmiWrite.writeContract],
+    [
+      address,
+      isZeroAddress,
+      isEstimating,
+      SP_ADDRESS,
+      publicClient,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -468,10 +505,13 @@ export function useStake(): StakeResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }
 
@@ -513,11 +553,18 @@ export function useUnstake(): UnstakeResult {
     error: Error | null;
   }>({ data: undefined, isPending: false, isSuccess: false, error: null });
 
-  // Zero-address / wallet-not-connected error state.
+  // Zero-address / wallet-not-connected / estimation error state.
   const [writeError, setWriteError] = useState<Error | null>(null);
+
+  // Estimation in-flight flag — allows isPending to be true during estimation
+  // and guards against re-entrant write calls.
+  const [isEstimating, setIsEstimating] = useState(false);
 
   // Wagmi write hook — always called (hooks must not be conditional).
   const wagmiWrite = useWriteContract();
+
+  // Public client for gas estimation — always called (hooks must not be conditional).
+  const publicClient = usePublicClient();
 
   const resetMock = useCallback(() => {
     setMockState({
@@ -567,15 +614,44 @@ export function useUnstake(): UnstakeResult {
         return;
       }
 
-      wagmiWrite.writeContract({
-        abi: stakedPlusdAbi,
-        address: SP_ADDRESS,
-        functionName: "redeem",
-        args: [shares, address, address],
-      });
+      // Guard re-entrant calls while estimation is in flight.
+      if (isEstimating) return;
+
+      void (async () => {
+        setIsEstimating(true);
+        const result = await estimateGasCapped({
+          publicClient,
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "redeem",
+          args: [shares, address, address],
+        });
+        setIsEstimating(false);
+
+        if (!result.ok) {
+          setWriteError(result.error);
+          return;
+        }
+
+        wagmiWrite.writeContract({
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "redeem",
+          args: [shares, address, address],
+          gas: result.gas,
+        });
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [address, isZeroAddress, SP_ADDRESS, wagmiWrite.writeContract],
+    [
+      address,
+      isZeroAddress,
+      isEstimating,
+      SP_ADDRESS,
+      publicClient,
+      wagmiWrite.writeContract,
+    ],
   );
 
   if (hasMockKey) {
@@ -605,9 +681,12 @@ export function useUnstake(): UnstakeResult {
   return {
     write,
     data: txHash !== undefined ? { hash: txHash } : undefined,
-    isPending: wagmiWrite.isPending,
+    isPending: isEstimating || wagmiWrite.isPending,
     isSuccess: wagmiWrite.isSuccess,
-    error: wagmiWrite.error as Error | null,
-    reset: wagmiWrite.reset,
+    error: (writeError ?? wagmiWrite.error) as Error | null,
+    reset: () => {
+      setWriteError(null);
+      wagmiWrite.reset();
+    },
   };
 }

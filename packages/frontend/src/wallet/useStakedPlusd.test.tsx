@@ -32,6 +32,11 @@ const stableWriteContractState = {
 };
 const mockUseWriteContract = vi.fn(() => stableWriteContractState);
 
+// Mock publicClient for gas estimation.
+const mockEstimateContractGas = vi.fn(async () => 1_000_000n);
+const mockPublicClient = { estimateContractGas: mockEstimateContractGas };
+const mockUsePublicClient = vi.fn(() => mockPublicClient);
+
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
   return {
@@ -45,6 +50,7 @@ vi.mock("wagmi", async (importOriginal) => {
     useReadContract: (...args: Parameters<typeof mockUseReadContract>) =>
       mockUseReadContract(...args),
     useWriteContract: () => mockUseWriteContract(),
+    usePublicClient: () => mockUsePublicClient(),
   };
 });
 
@@ -793,6 +799,8 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
     mockUseReadContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
     resetEnv();
   });
 
@@ -801,7 +809,7 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
     resetEnv();
   });
 
-  it("calls wagmi writeContract with correct args for non-zero SP address and connected wallet", () => {
+  it("calls wagmi writeContract with buffered gas for non-zero SP address and connected wallet", async () => {
     const walletAddr =
       "0xWALL000000000000000000000000000000000099" as `0x${string}`;
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
@@ -819,11 +827,16 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
       result.current.write(1_000_000_000_000_000_000n);
     });
 
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "deposit",
         address: SP_ADDR,
         args: [1_000_000_000_000_000_000n, walletAddr],
+        gas: 1_200_000n, // 1_000_000n * 12 / 10
       }),
     );
   });
@@ -1021,6 +1034,8 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
     mockWriteContract.mockClear();
     mockUseWriteContract.mockClear();
     mockUseReadContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    mockEstimateContractGas.mockResolvedValue(1_000_000n);
     resetEnv();
   });
 
@@ -1029,7 +1044,7 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
     resetEnv();
   });
 
-  it("calls wagmi writeContract with correct args (shares, receiver, owner) for non-zero SP address", () => {
+  it("calls wagmi writeContract with buffered gas (shares, receiver, owner) for non-zero SP address", async () => {
     const walletAddr =
       "0xWALL000000000000000000000000000000000099" as `0x${string}`;
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
@@ -1047,11 +1062,16 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
       result.current.write(500_000_000_000_000_000n);
     });
 
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
     expect(mockWriteContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "redeem",
         address: SP_ADDR,
         args: [500_000_000_000_000_000n, walletAddr, walletAddr],
+        gas: 1_200_000n, // 1_000_000n * 12 / 10
       }),
     );
   });
@@ -1216,5 +1236,137 @@ describe("useUnstake — reset semantics", () => {
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isSuccess).toBe(false);
+  });
+});
+
+// ── useStake — gas estimation tests ──────────────────────────────────────────
+
+describe("useStake — gas estimation: cap clamp", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000099" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("clamps gas to EVM_TX_GAS_CAP when buffered estimate exceeds the cap", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+    mockEstimateContractGas.mockResolvedValue(20_000_000n);
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(mockWriteContract).toHaveBeenCalled();
+    });
+
+    const callArgs = mockWriteContract.mock.calls[0]?.[0] as {
+      gas?: bigint;
+    };
+    expect(callArgs?.gas).toBe(16_777_215n);
+  });
+});
+
+describe("useStake — gas estimation: estimation rejects", () => {
+  const walletAddr =
+    "0xWALL000000000000000000000000000000000099" as `0x${string}`;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: walletAddr,
+      isConnected: true,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("surfaces error and does NOT call writeContract when estimation throws", async () => {
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
+    mockEstimateContractGas.mockRejectedValue(
+      new Error("execution reverted: insufficient balance"),
+    );
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBeTruthy();
+    });
+
+    expect(result.current.error?.message).toMatch(/insufficient balance/);
+    expect(mockWriteContract).not.toHaveBeenCalled();
+  });
+});
+
+describe("useStake — gas estimation: mock key bypasses estimation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockEstimateContractGas.mockClear();
+    resetEnv();
+    mockUseWallet.mockReturnValue({
+      address: undefined,
+      isConnected: false,
+      chainId: 560048,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    resetEnv();
+  });
+
+  it("does NOT call estimateContractGas when mock key is present", async () => {
+    const mockData = { hash: "0xmocked", shares: "959600000000000000" };
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.stake",
+      JSON.stringify(mockData),
+    );
+
+    const { result } = renderHook(() => useStake(), { wrapper });
+
+    act(() => {
+      result.current.write(1_000_000_000_000_000_000n);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+    expect(mockWriteContract).not.toHaveBeenCalled();
   });
 });
