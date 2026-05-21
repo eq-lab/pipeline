@@ -26,10 +26,10 @@ import { AccountDropdown } from "./AccountDropdown";
  *
  * Active nav is derived from the current URL:
  *   - `/`            → `"home"`
- *   - `/deposit`     → `"deposit"`
- *   - `/withdraw`    → `"deposit"` (dollar icon covers both)
- *   - `/stake`       → `"stats"`
- *   - `/transactions`→ `"history"`
+ *   - `/deposit`     → `"deposit"` (Convert)
+ *   - `/withdraw`    → `"deposit"` (Convert — dollar icon covers both)
+ *   - `/stake`       → `"stats"` (Earn)
+ *   - `/transactions`→ `"history"` (Activity)
  *   - other          → `"home"` (safe fallback)
  */
 
@@ -44,9 +44,9 @@ interface NavItem {
 // Figma order, node ids on the side for traceability.
 const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "home", label: "Home", to: "/" }, // 1497:94719
-  { key: "deposit", label: "Deposit", to: "/deposit" }, // 1497:94720
-  { key: "stats", label: "Stats" }, //               1497:94721
-  { key: "history", label: "History", to: "/transactions" }, // 1497:94722
+  { key: "deposit", label: "Convert", to: "/deposit" }, // 1497:94720
+  { key: "stats", label: "Earn", to: "/stake" }, //     1497:94721
+  { key: "history", label: "Activity", to: "/transactions" }, // 1497:94722
 ];
 
 export type TopBarProps = React.HTMLAttributes<HTMLElement>;
