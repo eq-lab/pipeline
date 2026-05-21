@@ -66,8 +66,8 @@ function Transactions() {
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      {/* Centred content column: max-w-[480px], p-8 (32 px) padding */}
-      <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 p-8">
+      {/* Centred content column: max-w-[480px], py-8 (32 px) vertical padding only — no horizontal padding so content spans the full 480px */}
+      <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 py-8">
         {/* Activity header: clock icon + "Activity" heading */}
         <ActivityHeader />
 
