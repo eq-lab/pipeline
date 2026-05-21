@@ -70,8 +70,11 @@ const toast = useToast();
 toast.show({ id: "deposit-tx", tone: "pending", title: "Sending…" });
 
 // Terminal — auto-dismisses after 5 s.
-toast.update("deposit-tx", { tone: "success", title: "Deposit submitted",
-  action: { label: "View", onClick: () => navigate({ to: "/transactions" }) } });
+toast.update("deposit-tx", {
+  tone: "success",
+  title: "Deposit submitted",
+  action: { label: "View", onClick: () => navigate({ to: "/transactions" }) },
+});
 ```
 
 See [`docs/frontend/hooks.md`](./frontend/hooks.md) for the full `useToast` API reference.
@@ -82,10 +85,10 @@ File-based routing is provided by [TanStack Router](https://tanstack.com/router)
 
 Single SPA serving two logical views gated by authenticated role:
 
-| View | Auth | Entry |
-|------|------|-------|
-| LP Dashboard | Wallet connection (WalletConnect v2 / RainbowKit) | `/` |
-| Operations Console | Email + password + 2FA | `/ops` |
+| View               | Auth                                              | Entry  |
+| ------------------ | ------------------------------------------------- | ------ |
+| LP Dashboard       | Wallet connection (WalletConnect v2 / RainbowKit) | `/`    |
+| Operations Console | Email + password + 2FA                            | `/ops` |
 
 ### LP Dashboard panels
 
@@ -99,11 +102,11 @@ Single SPA serving two logical views gated by authenticated role:
 
 ### Operations Console views (role-gated)
 
-| Role | Views visible |
-|------|--------------|
-| Trustee | Origination queue, repayment reconciliation, yield attestation approval, loan lifecycle, USYC NAV tracking |
-| Team | Signing queue, compliance review queue, bridge alerts, operator management, operational monitoring |
-| Originator | New origination request, My Requests, My Loans, statistics, notifications |
+| Role       | Views visible                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| Trustee    | Origination queue, repayment reconciliation, yield attestation approval, loan lifecycle, USYC NAV tracking |
+| Team       | Signing queue, compliance review queue, bridge alerts, operator management, operational monitoring         |
+| Originator | New origination request, My Requests, My Loans, statistics, notifications                                  |
 
 ## Responsive behavior
 
@@ -130,6 +133,59 @@ Desktop-first — LPs and operators are expected to use desktop browsers. Mobile
 - **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer.
 - **Chain:** Hoodi testnet (chain id 560048) by default; configurable via `VITE_EVM_CHAIN_ID` /
   `VITE_EVM_RPC_URL` at runtime using `vite-plugin-runtime-env`.
+
+## Deployment image and runtime configuration
+
+The production frontend image is built from the root Dockerfile target `frontend`:
+
+```bash
+docker build --target frontend -t pipeline-frontend .
+```
+
+The image builds `@pipeline/frontend` once, copies the static Vite output into nginx, and serves
+the SPA on container port 80. Unknown routes fall back to `index.html`, so direct navigation to
+TanStack Router routes returns the application shell instead of nginx 404.
+
+Runtime configuration is injected at container start. The entrypoint writes
+`/usr/share/nginx/html/__env.js` as `window.__ENV__ = { ... };`, and `index.html` loads that file
+before the Vite module script. This keeps one image promotable across environments; do not rebuild
+the image just to change API, chain, contract, or WalletConnect settings.
+
+Supported runtime keys:
+
+| Key                             | Default when unset                           |
+| ------------------------------- | -------------------------------------------- |
+| `VITE_API_BASE_URL`             | `http://localhost:8080`                      |
+| `VITE_EVM_CHAIN_ID`             | `560048`                                     |
+| `VITE_EVM_RPC_URL`              | `https://ethereum-hoodi-rpc.publicnode.com`  |
+| `VITE_DEPOSIT_MANAGER_ADDRESS`  | `0x0000000000000000000000000000000000000000` |
+| `VITE_WITHDRAWAL_QUEUE_ADDRESS` | `0x0000000000000000000000000000000000000000` |
+| `VITE_STAKED_PLUSD_ADDRESS`     | `0x0000000000000000000000000000000000000000` |
+| `VITE_WALLETCONNECT_PROJECT_ID` | `replace-me`                                 |
+
+Local container verification:
+
+```bash
+docker run --rm -p 8081:80 \
+  -e VITE_API_BASE_URL=http://host.docker.internal:8080 \
+  -e VITE_EVM_CHAIN_ID=560048 \
+  -e VITE_EVM_RPC_URL=https://ethereum-hoodi-rpc.publicnode.com \
+  -e VITE_DEPOSIT_MANAGER_ADDRESS=0x0000000000000000000000000000000000000000 \
+  -e VITE_WITHDRAWAL_QUEUE_ADDRESS=0x0000000000000000000000000000000000000000 \
+  -e VITE_STAKED_PLUSD_ADDRESS=0x0000000000000000000000000000000000000000 \
+  -e VITE_WALLETCONNECT_PROJECT_ID=replace-me \
+  pipeline-frontend
+```
+
+Use a host port that does not conflict with the API dev server. Then check the runtime file and a
+direct SPA route:
+
+```bash
+curl -s http://localhost:8081/__env.js
+curl -i http://localhost:8081/deposit/123
+```
+
+The route request should return HTTP 200 with the SPA shell.
 
 ## Data fetching
 

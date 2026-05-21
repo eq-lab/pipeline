@@ -52,7 +52,6 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
   Unstake: "unstake",
 };
 
-
 function Transactions() {
   const [activeTab, setActiveTab] = useState("buy");
   const { data, isLoading, error, refetch } = useRequests();
@@ -104,7 +103,9 @@ function Transactions() {
           {shouldRenderEmpty && (
             <div className="flex min-h-[400px] flex-col items-center justify-center">
               <EmptyState
-                illustration={<ActivityEmptyIllustration tone="muted" width={240} />}
+                illustration={
+                  <ActivityEmptyIllustration tone="muted" width={240} />
+                }
                 caption="You will see all transactions here"
               />
             </div>

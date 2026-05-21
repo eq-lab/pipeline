@@ -6,7 +6,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch: {}
 
 jobs:
@@ -51,6 +51,15 @@ jobs:
             type=sha,format=short,prefix=
             type=ref,event=tag
 
+      - name: Extract metadata for Frontend image
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-frontend
+          tags: |
+            type=sha,format=short,prefix=
+            type=ref,event=tag
+
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -70,3 +79,13 @@ jobs:
           push: true
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}

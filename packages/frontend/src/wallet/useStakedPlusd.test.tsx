@@ -224,7 +224,8 @@ describe("useStakedPlusdAsset — generic per-address mock", () => {
   });
 
   it("generic key works when env address has uppercase hex letters", () => {
-    const spAddrUpper = "0xAAAABBBBCCCCDDDDEEEEFFFF000000000000ABCD" as `0x${string}`;
+    const spAddrUpper =
+      "0xAAAABBBBCCCCDDDDEEEEFFFF000000000000ABCD" as `0x${string}`;
     const spAddrLower = spAddrUpper.toLowerCase();
     mockEnv.STAKED_PLUSD_ADDRESS = spAddrUpper;
 
@@ -394,10 +395,9 @@ describe("useStakedPlusdConvertToShares — zero input disables", () => {
   it("returns data:undefined with enabled:false when input is 0n", () => {
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
 
-    const { result } = renderHook(
-      () => useStakedPlusdConvertToShares(0n),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useStakedPlusdConvertToShares(0n), {
+      wrapper,
+    });
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
@@ -626,10 +626,9 @@ describe("useStakedPlusdConvertToAssets — zero input disables", () => {
   it("returns data:undefined with enabled:false when input is 0n", () => {
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
 
-    const { result } = renderHook(
-      () => useStakedPlusdConvertToAssets(0n),
-      { wrapper },
-    );
+    const { result } = renderHook(() => useStakedPlusdConvertToAssets(0n), {
+      wrapper,
+    });
 
     expect(result.current.data).toBeUndefined();
   });
@@ -803,7 +802,8 @@ describe("useStake — args pass-through (no mock, non-zero address)", () => {
   });
 
   it("calls wagmi writeContract with correct args for non-zero SP address and connected wallet", () => {
-    const walletAddr = "0xWALL000000000000000000000000000000000099" as `0x${string}`;
+    const walletAddr =
+      "0xWALL000000000000000000000000000000000099" as `0x${string}`;
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
     mockUseWallet.mockReturnValue({
       address: walletAddr,
@@ -1030,7 +1030,8 @@ describe("useUnstake — args pass-through (no mock, non-zero address)", () => {
   });
 
   it("calls wagmi writeContract with correct args (shares, receiver, owner) for non-zero SP address", () => {
-    const walletAddr = "0xWALL000000000000000000000000000000000099" as `0x${string}`;
+    const walletAddr =
+      "0xWALL000000000000000000000000000000000099" as `0x${string}`;
     mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDR;
     mockUseWallet.mockReturnValue({
       address: walletAddr,
