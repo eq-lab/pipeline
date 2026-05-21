@@ -88,13 +88,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     useNavigate: vi.fn(() => vi.fn()),
     useRouterState: vi.fn(() => "/"),
     createFileRoute: original.createFileRoute,
-    Link: ({
-      children,
-      to,
-    }: {
-      children: React.ReactNode;
-      to: string;
-    }) => <a href={to}>{children}</a>,
+    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
+      <a href={to}>{children}</a>
+    ),
   };
 });
 
@@ -202,13 +198,17 @@ describe("Home page — connected state (mock)", () => {
   it("shows '$0.00' balance literal", async () => {
     renderHome();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "$0.00" }),
+      ).toBeInTheDocument();
     });
   });
 
   it("'Get PLUSD to start' link is present and points to /deposit", async () => {
     renderHome();
-    const link = await screen.findByRole("link", { name: "Get PLUSD to start" });
+    const link = await screen.findByRole("link", {
+      name: "Get PLUSD to start",
+    });
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute("href", "/deposit");
   });

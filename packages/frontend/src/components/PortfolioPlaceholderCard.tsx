@@ -162,7 +162,11 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           Bars use `--color-pipeline-surface-muted` so the silhouette reads on the
           yellow Card surface without introducing a raw colour value.
           See Figma node 1497:95048 "chart placeholder". */}
-      <div className="flex-1" aria-hidden="true" data-node-id="1497:95048-chart">
+      <div
+        className="flex-1"
+        aria-hidden="true"
+        data-node-id="1497:95048-chart"
+      >
         <svg
           viewBox={`0 0 ${BAR_HEIGHTS.length * 14} 100`}
           preserveAspectRatio="none"

@@ -366,8 +366,7 @@ export function useStake(): StakeResult {
   const { address } = useWallet();
 
   // Detect whether the mock key is present (non-reactive check).
-  const hasMockKey =
-    readMock(MOCK_KEYS.stake, parseJson) !== undefined;
+  const hasMockKey = readMock(MOCK_KEYS.stake, parseJson) !== undefined;
 
   // Mock state for mock-key path.
   const [mockState, setMockState] = useState<{
@@ -504,8 +503,7 @@ export function useUnstake(): UnstakeResult {
   const { address } = useWallet();
 
   // Detect whether the mock key is present (non-reactive check).
-  const hasMockKey =
-    readMock(MOCK_KEYS.unstake, parseJson) !== undefined;
+  const hasMockKey = readMock(MOCK_KEYS.unstake, parseJson) !== undefined;
 
   // Mock state for mock-key path.
   const [mockState, setMockState] = useState<{

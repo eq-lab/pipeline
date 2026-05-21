@@ -65,3 +65,34 @@ ENV RUST_LOG=info
 EXPOSE 8080
 
 ENTRYPOINT ["./api"]
+
+# Frontend build image
+FROM node:22-slim AS frontend-build
+WORKDIR /sln
+
+# Copy workspace manifests first for stable dependency layers.
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
+COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/ui/package.json packages/ui/package.json
+
+RUN corepack enable && yarn install --immutable
+
+# @pipeline/frontend imports the source-only @pipeline/ui workspace package.
+COPY packages/frontend/ packages/frontend/
+COPY packages/ui/ packages/ui/
+
+RUN yarn workspace @pipeline/frontend build
+
+# Frontend runtime image
+FROM nginx:1.27-alpine AS frontend
+WORKDIR /usr/share/nginx/html
+
+RUN apk add --no-cache jq
+
+COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/frontend/entrypoint.sh /docker-entrypoint.d/40-write-runtime-env.sh
+RUN chmod +x /docker-entrypoint.d/40-write-runtime-env.sh
+COPY --from=frontend-build /sln/packages/frontend/dist/ /usr/share/nginx/html/
+
+EXPOSE 80

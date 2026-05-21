@@ -36,7 +36,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Add frontend build and runtime targets to `Dockerfile`.**
+1. **Add frontend build and runtime targets to `Dockerfile`.** Done.
    - Keep the existing Rust `build`, `worker`, and `api` stages intact.
    - Add a `frontend-build` stage based on `node:22-slim` or the current Node LTS.
    - Set `WORKDIR /sln`.
@@ -45,7 +45,7 @@ _None_
    - Copy only the source/config needed for the frontend build after dependency install: `packages/frontend/`, `packages/ui/`, and any root TypeScript/Vite config files required by the workspace if discovered during build.
    - Run `yarn workspace @pipeline/frontend build`, producing `packages/frontend/dist/`.
 
-2. **Add nginx runtime support for the frontend target.**
+2. **Add nginx runtime support for the frontend target.** Done.
    - Add a final `frontend` stage based on `nginx:alpine` or similarly small static server image.
    - Copy `packages/frontend/dist/` from `frontend-build` into `/usr/share/nginx/html/`.
    - Expose port 80.
@@ -55,7 +55,7 @@ _None_
      - a no-cache response for `/__env.js` so runtime config changes are not cached across container restarts.
    - Do not place runtime helper files under `scripts/`, because `.dockerignore` excludes that directory from Docker build context.
 
-3. **Align runtime env injection with the issue contract.**
+3. **Align runtime env injection with the issue contract.** Done.
    - In `packages/frontend/vite.config.ts`, configure `runtimeEnv` so production bundles consistently reference `window.__ENV__` instead of the plugin default `window.env`.
    - Ensure `packages/frontend/index.html` loads `/__env.js` before the Vite module script. The script should be harmless in `vite dev` if the file is absent or should be served from `packages/frontend/public/__env.js` as an empty/default object if Vite requires it.
    - Add a runtime entrypoint file, preferably `docker/frontend/entrypoint.sh`, that writes `/usr/share/nginx/html/__env.js` at container start in the form:
@@ -64,7 +64,7 @@ _None_
    - Generate valid JavaScript even when values are unset or contain quotes/backslashes. Use a robust escaping strategy in shell or a tiny Node command available in the runtime image; avoid hand-written unescaped interpolation.
    - Keep existing defaults in `packages/frontend/src/lib/env.ts`; unset runtime env vars should continue to fall back to those defaults instead of breaking the SPA.
 
-4. **Extend `.github/workflows/docker-build-and-push.yml`.**
+4. **Extend `.github/workflows/docker-build-and-push.yml`.** Done.
    - Add a metadata step with `id: meta-frontend`.
    - Set `images: ghcr.io/${{ github.repository }}-frontend`, which resolves to `ghcr.io/eq-lab/pipeline-frontend`.
    - Use the same tags as API and worker:
@@ -73,7 +73,7 @@ _None_
    - Add a `Build and push Frontend image` step using `docker/build-push-action@v6` with `context: .`, `file: ./Dockerfile`, `target: frontend`, `push: true`, `tags: ${{ steps.meta-frontend.outputs.tags }}`, and matching labels.
    - Leave the API and worker metadata/build steps unchanged except for any ordering needed to keep the workflow readable.
 
-5. **Update `docs/FRONTEND.md`.**
+5. **Update `docs/FRONTEND.md`.** Done.
    - Add a deployment/runtime configuration section near the existing runtime-env and app structure documentation.
    - Document that the image is built once and configured at container start through `VITE_*` variables written into `/__env.js` as `window.__ENV__`.
    - List all required/supported keys from `packages/frontend/src/lib/env.ts` and note current defaults where applicable.

@@ -49,7 +49,9 @@ export interface ToastInput {
   durationMs?: number;
 }
 
-export interface ToastEntry extends Required<Omit<ToastInput, "id" | "action" | "icon">> {
+export interface ToastEntry extends Required<
+  Omit<ToastInput, "id" | "action" | "icon">
+> {
   id: string;
   action?: ToastAction;
   icon?: React.ReactNode;

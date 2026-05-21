@@ -7,7 +7,12 @@ import path from "path";
 
 export default defineConfig({
   envDir: path.resolve(__dirname, "../.."),
-  plugins: [TanStackRouterVite(), react(), tailwindcss(), runtimeEnv()],
+  plugins: [
+    TanStackRouterVite(),
+    react(),
+    tailwindcss(),
+    runtimeEnv({ variableName: "window.__ENV__", injectHtml: false }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

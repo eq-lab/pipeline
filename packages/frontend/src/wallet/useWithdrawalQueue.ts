@@ -21,12 +21,7 @@
 import { useState, useCallback } from "react";
 import { useReadContract, useWriteContract } from "wagmi";
 import { ENV } from "@/lib/env";
-import {
-  useMock,
-  readMock,
-  parseAddress,
-  parseJson,
-} from "./mock";
+import { useMock, readMock, parseAddress, parseJson } from "./mock";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { CACHE_FOREVER } from "./cache";
 

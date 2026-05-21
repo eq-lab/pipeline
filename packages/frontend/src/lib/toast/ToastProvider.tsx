@@ -85,7 +85,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           // Append; drop oldest if > MAX_STACK.
           const appended = [...prev, entry];
           next =
-            appended.length > MAX_STACK ? appended.slice(appended.length - MAX_STACK) : appended;
+            appended.length > MAX_STACK
+              ? appended.slice(appended.length - MAX_STACK)
+              : appended;
           // Clear timer of the dropped toast (if any).
           if (appended.length > MAX_STACK) {
             const dropped = appended[0];
@@ -160,7 +162,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
       {/* Bottom-right toast stack */}
       <div
-        className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end"
+        className="pointer-events-none fixed right-6 bottom-6 z-50 flex flex-col items-end gap-3"
         aria-label="Notifications"
       >
         {toasts.map((entry) => (

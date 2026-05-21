@@ -74,8 +74,7 @@ export const RecentActivityCard = React.forwardRef<
   const { isConnected } = useWallet();
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];
-  const showList =
-    isConnected && !isLoading && !error && requests.length > 0;
+  const showList = isConnected && !isLoading && !error && requests.length > 0;
 
   const composed = [
     // Heading top, body fills the rest — mirrors the Figma
