@@ -197,16 +197,16 @@ describe("TopBar — route-driven active state", () => {
         "true",
       ),
     );
-    expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
       "data-active",
       "false",
     );
   });
 
-  it("highlights Deposit on /deposit", async () => {
+  it("highlights Convert on /deposit", async () => {
     renderTopBar("/deposit");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -217,20 +217,20 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("highlights Deposit on /withdraw (withdraw shares the dollar icon)", async () => {
+  it("highlights Convert on /withdraw (withdraw shares the dollar icon)", async () => {
     renderTopBar("/withdraw");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
         "data-active",
         "true",
       ),
     );
   });
 
-  it("highlights History on /transactions", async () => {
+  it("highlights Activity on /transactions", async () => {
     renderTopBar("/transactions");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "History" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -241,10 +241,10 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("highlights Stats on /stake", async () => {
+  it("highlights Earn on /stake", async () => {
     renderTopBar("/stake");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Stats" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Earn" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -255,7 +255,7 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("navigates to /deposit when Deposit is clicked", async () => {
+  it("navigates to /deposit when Convert is clicked", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
     await waitFor(() =>
@@ -264,9 +264,9 @@ describe("TopBar — route-driven active state", () => {
         "true",
       ),
     );
-    await user.click(screen.getByRole("button", { name: "Deposit" }));
+    await user.click(screen.getByRole("button", { name: "Convert" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Deposit" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -277,7 +277,7 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("navigates to /transactions when History is clicked", async () => {
+  it("navigates to /transactions when Activity is clicked", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
     await waitFor(() =>
@@ -286,22 +286,35 @@ describe("TopBar — route-driven active state", () => {
         "true",
       ),
     );
-    await user.click(screen.getByRole("button", { name: "History" }));
+    await user.click(screen.getByRole("button", { name: "Activity" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "History" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Activity" })).toHaveAttribute(
         "data-active",
         "true",
       ),
     );
   });
 
-  it("clicking Stats (no route) does not throw", async () => {
+  it("navigates to /stake when Earn is clicked", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
-    await waitFor(() => screen.getByRole("button", { name: "Stats" }));
-    await expect(
-      user.click(screen.getByRole("button", { name: "Stats" })),
-    ).resolves.not.toThrow();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Earn" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Earn" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
   });
 });
 
