@@ -102,6 +102,11 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         {...rest}
         data-node-id="1497:94715"
       >
+        {/* Inner container — caps the three-slot layout at 1200px and centres
+          it within the full-bleed header bar, matching the Figma max-width
+          treatment (node 1497:94715). */}
+        <div className="mx-auto flex w-full max-w-[1200px] items-center justify-between">
+
         {/* Left slot — fixed 160px wide so the centred nav reads symmetrically.
           The Logo intrinsic width (116px) plus the slot's flex container
           mirrors Figma node 1497:94716. */}
@@ -113,7 +118,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         </div>
 
         {/* Middle slot — primary navigation. `flex-1` lets it absorb the
-          remaining space; icons left-anchor next to the logo per Figma. */}
+          remaining space within the 1200px inner container, keeping icons
+          away from the far-left edge on wide viewports. */}
         <nav
           aria-label="Primary"
           className="flex min-w-0 flex-1 items-center gap-8"
@@ -182,6 +188,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             </Button>
           )}
         </div>
+        </div>{/* end max-w inner container */}
       </header>
     );
   },
