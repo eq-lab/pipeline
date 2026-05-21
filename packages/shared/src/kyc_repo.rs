@@ -62,6 +62,7 @@ pub struct RequestEventRow {
     pub crystal_kyt_status: Option<i16>,
     pub block_timestamp: i64,
     pub is_claimed: bool,
+    pub on_chain_allowed: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -79,8 +80,8 @@ pub struct GroupedRequest {
     pub created_at: String,
 }
 
-impl From<RequestEventRow> for GroupedRequest {
-    fn from(row: RequestEventRow) -> Self {
+impl GroupedRequest {
+    fn from_row(row: RequestEventRow, crystal_enabled: bool) -> Self {
         let request_type = match row.event_name.as_str() {
             "DepositRequested" => "Deposit",
             "WithdrawalRequested" => "Withdraw",
@@ -94,9 +95,21 @@ impl From<RequestEventRow> for GroupedRequest {
             _ => {
                 if row.is_claimed {
                     "Completed"
+                } else if !crystal_enabled {
+                    if row.on_chain_allowed {
+                        "PendingClaim"
+                    } else {
+                        "PendingVerification"
+                    }
                 } else {
                     match row.crystal_kyt_status {
-                        Some(1) => "PendingClaim",
+                        Some(1) => {
+                            if row.on_chain_allowed {
+                                "PendingClaim"
+                            } else {
+                                "PendingVerification"
+                            }
+                        }
                         Some(_) => "VerificationFailed",
                         None => "PendingVerification",
                     }
@@ -324,8 +337,12 @@ impl KycRepo {
     pub async fn fetch_profiles_to_disallow(
         &self,
         _sumsub_enabled: bool,
-        _crystal_enabled: bool,
+        crystal_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        if !crystal_enabled {
+            return Ok(vec![]);
+        }
+
         // Sanctions-only: disallow profiles that were allowed but now have crystal_kyt_status = 2 (failed)
         let rows = sqlx::query_as::<_, WhitelistCandidate>(
             "SELECT wallet_address FROM lp_profiles
@@ -572,6 +589,7 @@ impl KycRepo {
         &self,
         wallet: &str,
         pending_only: bool,
+        crystal_enabled: bool,
     ) -> anyhow::Result<Vec<GroupedRequest>> {
         let base = "SELECT r.event_name, r.request_id, COALESCE(r.assets, r.amount) AS amount, r.assets, r.shares, r.crystal_kyt_status,
                            r.block_timestamp,
@@ -580,8 +598,10 @@ impl KycRepo {
                                WHERE c2.event_name = 'RequestClaimed'
                                  AND c2.request_id = r.request_id
                                  AND c2.contract_address = r.contract_address
-                           ) AS is_claimed
+                           ) AS is_claimed,
+                           COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
                     FROM contract_logs r
+                    LEFT JOIN lp_profiles p ON p.wallet_address = LOWER(r.sender)
                     WHERE LOWER(r.sender) = $1
                       AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')";
 
@@ -605,7 +625,10 @@ impl KycRepo {
             .bind(wallet)
             .fetch_all(&self.pool)
             .await?;
-        Ok(rows.into_iter().map(GroupedRequest::from).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| GroupedRequest::from_row(row, crystal_enabled))
+            .collect())
     }
 
     pub fn update_lp_info(
