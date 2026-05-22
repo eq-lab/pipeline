@@ -65,7 +65,7 @@ _None_
 
 ## Implementation Steps
 
-1. Read the wallet-mock implementation for the deposit/withdraw write paths so
+1. [x] Read the wallet-mock implementation for the deposit/withdraw write paths so
    the optional `requestDeposit` / `requestWithdrawal` mock-key shapes are
    correct. Search points:
    - `packages/frontend/src/` for
@@ -73,7 +73,7 @@ _None_
      `pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal`.
    - Cross-reference with the existing `stakedPlusd.stake` /
      `withdrawalQueue.claimWithdrawal` mock-key consumers as a template.
-2. Edit `packages/frontend/src/routes/test/-scenarios.ts`:
+2. [x] Edit `packages/frontend/src/routes/test/-scenarios.ts`:
    1. Append the 5 withdraw scenarios after the existing
       `withdrawal-pending-claim` entry, in this order so the Mocks tab reads
       naturally from "empty" to "in-flight":
@@ -107,7 +107,7 @@ _None_
       every request-flow feature should ship with full mock state in this
       registry (balance, allowance, write-side contract mocks where the
       Confirm CTA fires synchronously).
-3. Extend `packages/frontend/src/routes/test/-scenarios.test.ts` with a new
+3. [x] Extend `packages/frontend/src/routes/test/-scenarios.test.ts` with a new
    `describe("withdraw + stake scenario contracts")` block:
    - For each of the 7 new ids, look up the scenario by id and assert that
      the load-bearing keys are present and have the expected values (PLUSD
@@ -116,7 +116,7 @@ _None_
      the two request-status scenarios).
    - Keep assertions narrow (one or two keys per scenario) to minimise
      brittleness.
-4. Run the frontend test suite (`yarn workspace @pipeline/frontend test`)
+4. [x] Run the frontend test suite (`yarn workspace @pipeline/frontend test`)
    plus `npx tsx scripts/lint-docs.ts` from the repo root. Fix any TS / lint
    issues before handing back.
 5. Manually verify in the running app (handled by `ux-tester` post-implement,
