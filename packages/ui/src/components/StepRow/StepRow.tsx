@@ -126,7 +126,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               className={[
                 "inline-flex items-center justify-center",
                 "h-8 w-22",
-                "rounded-[var(--radius-pipeline-pill)]",
+                "rounded-[var(--radius-pipeline-button)]",
                 "bg-[color:var(--color-pipeline-positive-secondary)]",
               ].join(" ")}
               aria-label={`${actionLabel} complete`}
