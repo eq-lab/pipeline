@@ -41,15 +41,17 @@ export function formatTokenAmount(
  *
  * Returns "—" for invalid or unparseable input.
  *
- * Note: the exact output string is timezone-dependent; tests should assert on
- * the *shape* (`/^[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM)$/`) rather
- * than the exact string to avoid CI flakiness.
+ * The locale is pinned to "en-US" so all users see the designed format
+ * (month-first, uppercase AM/PM) regardless of browser locale. The exact
+ * output string is still timezone-dependent; tests should assert on the
+ * *shape* (`/^[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM)$/`) rather than
+ * the exact string to avoid CI flakiness.
  */
 export function formatActivityTime(iso: string): string {
   try {
     const date = new Date(iso);
     if (isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric",
       hour: "numeric",
