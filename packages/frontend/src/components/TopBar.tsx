@@ -25,12 +25,13 @@ import { AccountDropdown } from "./AccountDropdown";
  *   - Account dropdown: `1506:104728` inside `Header / Connected` (`1497:94752`)
  *
  * Active nav is derived from the current URL:
- *   - `/`            → `"home"`
- *   - `/deposit`     → `"deposit"` (Convert)
- *   - `/withdraw`    → `"deposit"` (Convert — dollar icon covers both)
- *   - `/stake`       → `"stats"` (Earn)
- *   - `/transactions`→ `"history"` (Activity)
- *   - other          → `"home"` (safe fallback)
+ *   - `/`                          → `"home"`
+ *   - `/deposit`                   → `"deposit"` (Convert)
+ *   - `/deposit?direction=withdraw`→ `"deposit"` (Convert — direction is a search param,
+ *                                    pathname is still `/deposit` after the redirect)
+ *   - `/stake`                     → `"stats"` (Earn)
+ *   - `/transactions`              → `"history"` (Activity)
+ *   - other                        → `"home"` (safe fallback)
  */
 
 /** One nav slot: icon + accessible label + optional route target. */
@@ -69,7 +70,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
 
     // ── Active nav derivation from URL ────────────────────────────────────
     const derivedActive: NavItem["key"] =
-      pathname === "/deposit" || pathname === "/withdraw"
+      pathname === "/deposit"
         ? "deposit"
         : pathname === "/transactions"
           ? "history"

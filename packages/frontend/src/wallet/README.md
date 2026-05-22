@@ -574,7 +574,7 @@ To reset all DepositManager mocks:
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
-> **Deposit / withdraw symmetry:** the `/withdraw` page composes `useWithdrawalQueueAddresses`, `useRequestWithdrawal`, and `useClaimWithdrawal` (from `@/wallet`) with `useWithdrawalVoucher` (from `@/api`) — the same three-step shape as the deposit flow but pointed at the WithdrawalQueue contract and the `/v1/withdrawals/{request_id}/voucher` endpoint. See [`src/api/README.md`](../api/README.md) for the voucher endpoint contract.
+> **Deposit / withdraw symmetry:** the merged `/deposit?direction=withdraw` view composes `useWithdrawalQueueAddresses`, `useRequestWithdrawal`, and `useClaimWithdrawal` (from `@/wallet`) with `useWithdrawalVoucher` (from `@/api`) — the same three-step shape as the deposit flow but pointed at the WithdrawalQueue contract and the `/v1/withdrawals/{request_id}/voucher` endpoint. See [`src/api/README.md`](../api/README.md) for the voucher endpoint contract. Navigating to `/withdraw` redirects automatically to `/deposit?direction=withdraw`.
 
 **Mock WithdrawalQueue addresses + simulate a successful requestWithdrawal + claimWithdrawal:**
 

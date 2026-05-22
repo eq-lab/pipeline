@@ -26,6 +26,11 @@ import swapVerticalSrc from "../../assets/icons/swap-vertical.svg";
  *   - `output`       — props forwarded directly to `TokenAmountDisplay`.
  *   - `exchangeRate` — string displayed in the "Exchange rate" `InfoRow`.
  *   - `networkFee`   — string displayed in the "Network fee" `InfoRow`.
+ *   - `onSwap`       — optional callback fired when the user clicks the swap
+ *                      button to toggle direction (deposit ↔ withdraw). When
+ *                      omitted, or when either side's `disabled` prop is true,
+ *                      the button is rendered with the HTML `disabled` attribute
+ *                      so it cannot fire during an in-flight wallet action.
  *
  * Design tokens used:
  *   - `--color-pipeline-surface`   — white card fill (Card `white` variant)
@@ -48,6 +53,13 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
   exchangeRate: string;
   /** Value shown in the "Network fee" InfoRow, e.g. "~$1.20". */
   networkFee: string;
+  /**
+   * Called when the user clicks the swap-direction button between the two
+   * token cards. When undefined, or when `input.disabled` is true, the button
+   * is rendered with the HTML `disabled` attribute so it cannot fire during an
+   * in-flight wallet action.
+   */
+  onSwap?: () => void;
 }
 
 // Swap button: absolutely positioned to straddle the 2px seam between the two
@@ -60,6 +72,8 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
 //   - gradient fill: white (--color-pipeline-surface) at top →
 //     paper (#f8f7f6, --color-pipeline-paper) at bottom
 //   - hairline border in --color-pipeline-line
+//   - cursor-pointer + focus ring consistent with TopBar pill trigger
+//   - disabled:opacity-50 + disabled:cursor-not-allowed when button is disabled
 const swapButtonClasses = [
   "absolute z-10",
   "left-1/2 -translate-x-1/2",
@@ -68,13 +82,17 @@ const swapButtonClasses = [
   "size-10",
   "rounded-[4px]",
   "border border-[var(--color-pipeline-line)]",
+  "cursor-pointer",
+  "disabled:opacity-50 disabled:cursor-not-allowed",
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+  "focus-visible:outline-[var(--color-pipeline-ink)]",
 ].join(" ");
 
 export const ConversionCard = React.forwardRef<
   HTMLDivElement,
   ConversionCardProps
 >(function ConversionCard(
-  { input, output, exchangeRate, networkFee, className, ...rest },
+  { input, output, exchangeRate, networkFee, onSwap, className, ...rest },
   ref,
 ) {
   // Prefix the PLUSD output value with "+" when non-zero (purely visual).
@@ -104,14 +122,19 @@ export const ConversionCard = React.forwardRef<
 
         {/* Swap button — straddles the seam between Card A and Card B.
             Gradient: surface (#ffffff) → paper (#f8f7f6), top-to-bottom.
-            Figma node 1498-100157. */}
-        <div
+            Figma node 1498-100157.
+            Disabled when onSwap is not provided or either side is disabled,
+            so it cannot fire during an in-flight wallet action. */}
+        <button
+          type="button"
+          aria-label="Switch direction"
+          onClick={onSwap}
+          disabled={!onSwap || input.disabled === true}
           className={swapButtonClasses}
           style={{
             background:
               "linear-gradient(180deg, var(--color-pipeline-surface) 0%, var(--color-pipeline-paper) 100%)",
           }}
-          aria-hidden="true"
         >
           <img
             src={swapVerticalSrc}
@@ -120,7 +143,7 @@ export const ConversionCard = React.forwardRef<
             width={22}
             height={22}
           />
-        </div>
+        </button>
       </div>
 
       {/* Card B (bottom): TokenAmountDisplay (PLUSD) + Exchange rate / Network fee.

@@ -217,8 +217,10 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("highlights Convert on /withdraw (withdraw shares the dollar icon)", async () => {
-    renderTopBar("/withdraw");
+  it("highlights Convert on /deposit?direction=withdraw (withdraw direction uses /deposit pathname)", async () => {
+    // After the /withdraw → /deposit?direction=withdraw redirect, the active
+    // pathname seen by the router is /deposit, so the Convert button is highlighted.
+    renderTopBar("/deposit");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
         "data-active",

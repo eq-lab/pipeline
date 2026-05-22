@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ConversionCard } from "./ConversionCard";
 
@@ -118,5 +119,67 @@ export const MaxSelected: Story = {
     },
     exchangeRate: "1 USDC = 1 PLUSD",
     networkFee: "~$1.20",
+  },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Interactive — swap button wired to flip direction                          */
+/* -------------------------------------------------------------------------- */
+
+export const Interactive: StoryObj<typeof ConversionCard> = {
+  name: "Interactive — swap button toggles direction",
+  render: () => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const [direction, setDirection] = useState<"deposit" | "withdraw">(
+      "deposit",
+    );
+    const isDeposit = direction === "deposit";
+    return (
+      <div style={{ width: 448, maxWidth: "100%", padding: 24 }}>
+        <p
+          style={{
+            marginBottom: 12,
+            fontFamily: "monospace",
+            fontSize: 12,
+            color: "#666",
+          }}
+        >
+          direction: <strong>{direction}</strong> — click the swap button to
+          toggle
+        </p>
+        <ConversionCard
+          input={{
+            token: isDeposit ? "usdc" : "plusd",
+            tokenLabel: isDeposit ? "USDC" : "PLUSD",
+            balanceLabel: "10,000.00",
+            placeholderValue: "0",
+            quickAmounts: isDeposit
+              ? [
+                  { label: "$1,000 (Min)" },
+                  { label: "$5,000" },
+                  { label: "$10,000" },
+                  { label: "Max" },
+                ]
+              : [
+                  { label: "25%" },
+                  { label: "50%" },
+                  { label: "75%" },
+                  { label: "Max" },
+                ],
+          }}
+          output={{
+            token: isDeposit ? "plusd" : "usdc",
+            tokenLabel: isDeposit ? "PLUSD" : "USDC",
+            balanceLabel: "0.00",
+            value: "0",
+          }}
+          exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
+          networkFee="~$1.20"
+          onSwap={() =>
+            setDirection((d) => (d === "deposit" ? "withdraw" : "deposit"))
+          }
+        />
+      </div>
+    );
   },
 };

@@ -4,6 +4,30 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-22 — Issue #359 (Merge /deposit and /withdraw into one route with direction param + swap button)
+
+- **Scope:** Issue #359 acceptance criteria (TC-359-1 through TC-359-10) plus TC-186-4 two-card layout regression
+- **Cases executed:** 11
+- **Passes:** 11
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-359-1 (`/withdraw` → `/deposit?direction=withdraw` redirect): Address bar updates to `/deposit?direction=withdraw`. Back button does not return to `/withdraw` (`replace: true` confirmed by history.length staying constant at 13 pre/post swap). Page correctly shows withdraw direction content.
+  - PASS TC-359-2 (`/deposit` shows deposit direction): URL normalizes to `/deposit?direction=deposit`. USDC input, Min/$5k/$10k/Max chips, "1 USDC = 1 PLUSD", "Allow Pipeline to use USDC" / "Confirm USDC transfer" / "Claim your PLUSD". TopBar Convert active. Swap button visible.
+  - PASS TC-359-3 (`/deposit?direction=withdraw` shows withdraw direction): PLUSD input, 25/50/75/Max chips, "1 PLUSD = 1 USDC", "Allow Pipeline to use PLUSD" / "Confirm PLUSD burn" / "Claim your USDC". Switch direction button present in a11y tree (disabled when disconnected). TopBar Convert active.
+  - PASS TC-359-4 (garbage param → falls back to deposit): `/deposit?direction=hodor` normalizes to `/deposit?direction=deposit`. USDC input and Min chips shown.
+  - PASS TC-359-5 (swap deposit→withdraw): With mock wallet ($5,000 USDC), "2000" typed, clicking "Switch direction" navigates to `/deposit?direction=withdraw`. Amount input cleared. Chips flip to 25/50/75/Max. Exchange rate flips to "1 PLUSD = 1 USDC". Step labels flip. `history.length` unchanged (replace:true).
+  - PASS TC-359-6 (swap withdraw→deposit): Clicking swap again returns to `/deposit?direction=deposit`. Amount cleared. Chips flip back to Min/$5k/$10k/Max. Step labels revert to deposit copy.
+  - PASS TC-359-7 (swap disabled mid-tx): With PendingVerification request seeded, amount input is locked to "2000.00" and "Switch direction" button has `disabled` attribute. Cannot fire.
+  - PASS TC-359-8 (TopBar Convert active on both directions): `aria-pressed="true"`, `data-active="true"` on Convert button for both `/deposit?direction=deposit` and `/deposit?direction=withdraw`. Direction param does not affect nav highlight.
+  - PASS TC-359-9 (`/withdraw?foo=bar` preserves params): Redirects to `/deposit?foo=bar&direction=withdraw`. Extra search params survive the redirect hop.
+  - PASS TC-359-10 (all routes regression): `/` → Home active; `/deposit?direction=deposit` → Convert; `/deposit?direction=withdraw` → Convert; `/stake` → Earn; `/transactions` → Activity. All correct, no bleed.
+  - PASS TC-186-4 regression (two-card layout on `/deposit?direction=withdraw`): `rowGap: 2px` confirmed. Card A has PLUSD input (correct for withdraw). Swap button present between cards. Visual gap = 2px.
+  - Console errors: zero error-level messages throughout all test cases. Only pre-existing Lit dev-mode and Reown font preload warnings.
+  - Note: dev server for feature branch must be started separately at a dedicated port (port 4359 used here — `yarn workspace @pipeline/frontend dev --port 4359` from the `pipeline-background-2` worktree). The main worktrees at ports 3000 and 3333 serve main/fix branches and do not reflect the #359 changes.
+  - Note: `TC-354` withdraw regression on port 4359 shows Approve button gated (pre-existing mock keying issue #357 around spender address discovery for WQ direction) — not a regression introduced by #359.
+
 ### 2026-05-21 — Issue #354 (/withdraw: PLUSD balance not shown and amount input is uninteractable)
 
 - **Scope:** Issue #354 acceptance criteria (TC-354-1 through TC-354-6)
