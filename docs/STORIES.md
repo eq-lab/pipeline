@@ -4,6 +4,46 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 
 ---
 
+## S-372 Home: Recent activity "View All" button affordance
+
+**Issue:** [#372 Home: Recent activity 'View All' affordance is a small text link; Figma is a button-sized chevron control](https://github.com/eq-lab/pipeline/issues/372)
+**Plan:** `docs/exec-plans/completed/issue-372-view-all-button.md`
+
+### TC-372-1: "View All" renders as button-sized control (connected + data)
+
+- **Actor:** End-user with connected wallet and at least one transaction
+- **Preconditions:** Mock wallet connected (`pipeline.mock.wallet.address` + `isConnected`); `pipeline.mock.api.GET./v1/requests` set with ≥1 request; dev server on `fix/372-view-all-button` branch
+- **Steps:**
+  1. Navigate to `/`
+  2. Locate the "Recent activity" card
+  3. Inspect the "View All" link via `document.querySelector('a[href="/transactions"]')`
+- **Expected:**
+  - `height` = 48px (`h-12`)
+  - `paddingLeft` / `paddingRight` = 12px (`px-3`)
+  - `borderRadius` = 8px (`rounded-lg`)
+  - `fontWeight` = 600 (semi-bold / `--font-weight-emphasized`)
+  - `color` = muted ink (`rgba(56, 55, 53, 0.6)` = `--color-pipeline-ink-muted`), not primary black
+  - `innerHTML` contains a `<svg>` chevron-right icon, not the literal `→` character
+
+### TC-372-2: "View All" navigates to /transactions
+
+- **Actor:** End-user
+- **Preconditions:** Same as TC-372-1
+- **Steps:**
+  1. Click the "View All" button
+- **Expected:** Browser navigates to `/transactions`; Activity nav button becomes `aria-pressed="true"`.
+
+### TC-372-3: "View All" absent when no data
+
+- **Actor:** End-user (disconnected or connected with zero rows)
+- **Preconditions:** No mock wallet keys set (disconnected state)
+- **Steps:**
+  1. Navigate to `/`
+  2. Inspect the "Recent activity" card
+- **Expected:** No `a[href="/transactions"]` element present; empty state illustration and caption shown instead.
+
+---
+
 ## S-259 Toast notification system
 
 **Issue:** [#259 Add Toast notification system — informational and actionable variants](https://github.com/eq-lab/pipeline/issues/259)
