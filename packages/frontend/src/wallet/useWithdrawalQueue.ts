@@ -1,16 +1,18 @@
 /**
  * WithdrawalQueue wallet hooks.
  *
- * Provides `useWithdrawalQueueAddresses`, `useRequestWithdrawal`, and
- * `useClaimWithdrawal` — the on-chain interactions exposed by the
- * WithdrawalQueue contract.
+ * Provides `useRequestWithdrawal` and `useClaimWithdrawal` — the on-chain
+ * interactions exposed by the WithdrawalQueue contract.
+ *
+ * PLUSD / USDC addresses for the withdraw direction are sourced from
+ * `useDepositManagerAddresses()` — not from the WithdrawalQueue contract
+ * itself (the deployed impl does not expose `fromToken()` / `intoToken()`).
  *
  * Mock-key precedence (same pattern as useDepositManager):
  *   1. Named-alias mock keys (`pipeline.mock.wallet.contract.withdrawalQueue.*`).
- *   2. Generic per-address mock keys (`pipeline.mock.wallet.contract.<addr>.*`).
- *   3. Zero-address short-circuit — hooks return `undefined` data without any
+ *   2. Zero-address short-circuit — hooks return `undefined` data without any
  *      RPC call when `VITE_WITHDRAWAL_QUEUE_ADDRESS` is the zero address.
- *   4. Real wagmi / viem calls.
+ *   3. Real wagmi / viem calls.
  *
  * Important: the `requestId`, `queued`, and `amount` fields in `data` returned
  * by the write hooks are **mock-path only**. On the real wagmi path, `data`
@@ -18,17 +20,15 @@
  * hash — it does not decode the receipt return value. This mirrors the
  * behaviour of `useRequestDeposit` and `useClaim` in useDepositManager.ts.
  */
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
-  useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
   usePublicClient,
 } from "wagmi";
 import { ENV } from "@/lib/env";
-import { useMock, readMock, parseAddress, parseJson } from "./mock";
+import { readMock, parseJson } from "./mock";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
-import { CACHE_FOREVER } from "./cache";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
 import { useWallet } from "./useWallet";
@@ -36,30 +36,15 @@ import { useWallet } from "./useWallet";
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
 const MOCK_KEYS = {
-  /** Named alias — takes precedence over the generic per-address key. */
-  plusdAlias: "pipeline.mock.wallet.contract.withdrawalQueue.plusd",
-  usdcAlias: "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
   requestWithdrawal:
     "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
   claimWithdrawal:
     "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
-  /** Generic per-address key for `useContractRead` compatibility. */
-  contractFromToken: (address: string) =>
-    `pipeline.mock.wallet.contract.${address.toLowerCase()}.fromToken`,
-  contractIntoToken: (address: string) =>
-    `pipeline.mock.wallet.contract.${address.toLowerCase()}.intoToken`,
 };
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface WithdrawalQueueAddressesResult {
-  plusd: `0x${string}` | undefined;
-  usdc: `0x${string}` | undefined;
-  isLoading: boolean;
-  error: Error | null;
-}
 
 export interface RequestWithdrawalResult {
   write: (amount: bigint) => void;
@@ -93,131 +78,6 @@ export interface ClaimWithdrawalResult {
   isSuccess: boolean;
   error: Error | null;
   reset: () => void;
-}
-
-// ── useWithdrawalQueueAddresses ────────────────────────────────────────────────
-
-/**
- * Reads the `fromToken()` (→ PLUSD) and `intoToken()` (→ USDC) view functions
- * from the WithdrawalQueue contract.
- *
- * The on-chain names are generic (`fromToken` / `intoToken`); this hook maps
- * them to domain-friendly aliases (`plusd` / `usdc`) matching what the deployed
- * WithdrawalQueue holds at those slots.
- *
- * Priority order:
- *   1. Named-alias mock keys (`pipeline.mock.wallet.contract.withdrawalQueue.plusd`
- *      / `…usdc`).
- *   2. Generic per-address mock keys (`pipeline.mock.wallet.contract.<addr>.fromToken`
- *      / `…intoToken`).
- *   3. Zero-address short-circuit — returns `undefined` data without making an
- *      RPC call.
- *   4. Real `useReadContract` calls with "fetch once per page lifetime" caching.
- */
-export function useWithdrawalQueueAddresses(): WithdrawalQueueAddressesResult {
-  // Named-alias mock keys (reactive via useSyncExternalStore; address strings
-  // are primitives so getSnapshot always returns a stable value or undefined).
-  const mockPlusd = useMock(MOCK_KEYS.plusdAlias, parseAddress);
-  const mockUsdc = useMock(MOCK_KEYS.usdcAlias, parseAddress);
-
-  const WQ_ADDRESS = ENV.WITHDRAWAL_QUEUE_ADDRESS;
-  const isZeroAddress = WQ_ADDRESS === ZERO_ADDRESS;
-
-  // Generic per-address mock keys (read once per render; address strings are
-  // stable primitives so this does not cause re-render loops).
-  const mockFromTokenGeneric = readMock(
-    MOCK_KEYS.contractFromToken(WQ_ADDRESS),
-    parseAddress,
-  );
-  const mockIntoTokenGeneric = readMock(
-    MOCK_KEYS.contractIntoToken(WQ_ADDRESS),
-    parseAddress,
-  );
-
-  // Named aliases take precedence; fall back to generic per-address keys.
-  const hasMockPlusd =
-    mockPlusd !== undefined || mockFromTokenGeneric !== undefined;
-  const hasMockUsdc =
-    mockUsdc !== undefined || mockIntoTokenGeneric !== undefined;
-  const hasMock = hasMockPlusd || hasMockUsdc;
-
-  const shouldSkipReal = hasMock || isZeroAddress;
-
-  const fromTokenRead = useReadContract({
-    address: WQ_ADDRESS,
-    abi: withdrawalQueueAbi,
-    functionName: "fromToken",
-    query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
-  });
-
-  const intoTokenRead = useReadContract({
-    address: WQ_ADDRESS,
-    abi: withdrawalQueueAbi,
-    functionName: "intoToken",
-    query: { enabled: !shouldSkipReal, ...CACHE_FOREVER },
-  });
-
-  // Surface read errors to the console (real RPC path only).
-  // Called unconditionally so it follows the Rules of Hooks; the inner
-  // condition gates on whether a real error is present.
-  useEffect(() => {
-    if (fromTokenRead.error) {
-      console.error(
-        "[useWithdrawalQueueAddresses] fromToken() read failed:",
-        fromTokenRead.error,
-      );
-    }
-  }, [fromTokenRead.error]);
-
-  useEffect(() => {
-    if (intoTokenRead.error) {
-      console.error(
-        "[useWithdrawalQueueAddresses] intoToken() read failed:",
-        intoTokenRead.error,
-      );
-    }
-  }, [intoTokenRead.error]);
-
-  // Named alias takes priority over generic key.
-  if (mockPlusd !== undefined || mockUsdc !== undefined) {
-    return {
-      plusd: mockPlusd ?? mockFromTokenGeneric,
-      usdc: mockUsdc ?? mockIntoTokenGeneric,
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  // Generic per-address key.
-  if (hasMock) {
-    return {
-      plusd: mockFromTokenGeneric,
-      usdc: mockIntoTokenGeneric,
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  // Zero-address short-circuit.
-  if (isZeroAddress) {
-    return {
-      plusd: undefined,
-      usdc: undefined,
-      isLoading: false,
-      error: null,
-    };
-  }
-
-  // Real RPC path.
-  const isLoading = fromTokenRead.isLoading || intoTokenRead.isLoading;
-  const error = (fromTokenRead.error ?? intoTokenRead.error) as Error | null;
-
-  return {
-    plusd: fromTokenRead.data as `0x${string}` | undefined,
-    usdc: intoTokenRead.data as `0x${string}` | undefined,
-    isLoading,
-    error,
-  };
 }
 
 // ── useRequestWithdrawal ──────────────────────────────────────────────────────

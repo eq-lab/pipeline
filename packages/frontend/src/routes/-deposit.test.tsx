@@ -325,13 +325,14 @@ function seedWithdrawMocks({
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
   }
 
-  // WithdrawalQueue named aliases
+  // DepositManager named aliases — the withdraw direction now sources plusd/usdc
+  // from useDepositManagerAddresses() (WithdrawalQueue has no token getters).
   localStorage.setItem(
-    "pipeline.mock.wallet.contract.withdrawalQueue.plusd",
+    "pipeline.mock.wallet.contract.depositManager.plusd",
     PLUSD_ADDRESS,
   );
   localStorage.setItem(
-    "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
+    "pipeline.mock.wallet.contract.depositManager.usdc",
     USDC_ADDRESS,
   );
 
@@ -1784,6 +1785,47 @@ describe("Deposit page — direction=withdraw — three-step flow labels", () =>
       ).toBeInTheDocument();
       expect(screen.getByText("Confirm PLUSD burn")).toBeInTheDocument();
       expect(screen.getByText("Claim your USDC")).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Regression: no wq-unreachable-banner when WithdrawalQueue token keys absent ─
+
+describe("Deposit page — direction=withdraw — no wq-unreachable-banner (regression #365)", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    // Seed DepositManager keys only (no WithdrawalQueue token keys).
+    // This is the post-#365 setup: plusd/usdc come from DepositManager.
+    seedWithdrawMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("does not render wq-unreachable-banner even when no WithdrawalQueue token mock keys are set", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("wq-unreachable-banner"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders the StepsCard (not a banner) on the withdraw direction", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(
+        screen.getByText("Allow Pipeline to use PLUSD"),
+      ).toBeInTheDocument();
     });
   });
 });

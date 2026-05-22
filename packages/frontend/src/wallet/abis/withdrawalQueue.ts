@@ -1,38 +1,23 @@
 /**
  * Minimal WithdrawalQueue ABI subset used by the LP UI wallet hooks.
  *
- * Only the four functions consumed by the LP UI are listed here — the full
- * ABI lives in `docs.local/withdrawal_abi.txt`. Custom-error entries from the
- * full ABI are included so viem can decode reverts into named errors (e.g.
+ * Only the two write functions consumed by the LP UI are listed here — the
+ * full ABI lives in `docs.local/withdrawal_abi.txt`. Custom-error entries from
+ * the full ABI are included so viem can decode reverts into named errors (e.g.
  * `WithdrawalQueueTooEarly()`, `VerifiedRequestsQueueAlreadyClaimed()`)
  * instead of "execution reverted".
  *
  * Typed `as const` so viem picks up exact return types for each function.
  *
- * The on-chain function names (`fromToken` / `intoToken`) are generic; the
- * deployed WithdrawalQueue holds PLUSD / USDC at those slots respectively.
- * The wallet hooks expose them under domain-friendly aliases (`plusd` / `usdc`)
- * while this ABI retains the canonical on-chain names.
+ * PLUSD and USDC addresses are sourced from the DepositManager (`plUsd()` /
+ * `usdc()`), not from the WithdrawalQueue. The deployed WithdrawalQueue does
+ * not expose `fromToken()` / `intoToken()` view functions.
  *
  * Custom-error entries from the full ABI are included so viem can decode
  * reverts into named errors instead of "execution reverted". Required for
  * revert decoding via the `simulateOrFail` pre-flight (#350).
  */
 export const withdrawalQueueAbi = [
-  {
-    type: "function",
-    name: "fromToken",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
-  {
-    type: "function",
-    name: "intoToken",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
   {
     type: "function",
     name: "requestWithdrawal",

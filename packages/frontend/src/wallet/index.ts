@@ -26,12 +26,10 @@ export type {
   ClaimResult,
 } from "./useDepositManager";
 export {
-  useWithdrawalQueueAddresses,
   useRequestWithdrawal,
   useClaimWithdrawal,
 } from "./useWithdrawalQueue";
 export type {
-  WithdrawalQueueAddressesResult,
   RequestWithdrawalResult,
   ClaimWithdrawalResult,
 } from "./useWithdrawalQueue";

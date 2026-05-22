@@ -39,7 +39,6 @@ import {
   useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
-  useWithdrawalQueueAddresses,
   useRequestWithdrawal,
   useClaimWithdrawal,
   useStakedPlusdAsset,
@@ -445,10 +444,6 @@ the absence of a key is its own off-switch.
 | `pipeline.mock.wallet.contract.<address>.minDeposit`              | `string` (decimal bigint, e.g. `"1000000"`)                     | Generic per-address fallback for `useDepositManagerMinDeposit`.                                                                                                                                   |
 | `pipeline.mock.wallet.contract.depositManager.requestDeposit`     | JSON `{ hash: "0x…", requestId?: "123" }`                       | Bypasses `useRequestDeposit` wagmi call; `write()` settles immediately with this data.                                                                                                            |
 | `pipeline.mock.wallet.contract.depositManager.claim`              | JSON `{ hash: "0x…", amount?: "1000000" }`                      | Bypasses `useClaim` wagmi call; `write()` settles immediately with this data.                                                                                                                     |
-| `pipeline.mock.wallet.contract.withdrawalQueue.plusd`             | `string` (`0x…`)                                                | Named alias for `useWithdrawalQueueAddresses` — PLUSD address (maps from on-chain `fromToken`). Takes priority over the generic key.                                                              |
-| `pipeline.mock.wallet.contract.withdrawalQueue.usdc`              | `string` (`0x…`)                                                | Named alias for `useWithdrawalQueueAddresses` — USDC address (maps from on-chain `intoToken`). Takes priority over the generic key.                                                               |
-| `pipeline.mock.wallet.contract.<address>.fromToken`               | `string` (`0x…`)                                                | Generic per-address fallback for `useWithdrawalQueueAddresses` — PLUSD address.                                                                                                                   |
-| `pipeline.mock.wallet.contract.<address>.intoToken`               | `string` (`0x…`)                                                | Generic per-address fallback for `useWithdrawalQueueAddresses` — USDC address.                                                                                                                    |
 | `pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "0x…", requestId?: "123", queued?: "1000000" }`   | Bypasses `useRequestWithdrawal` wagmi call; `write()` settles immediately with this data. `requestId` and `queued` are mock-path only.                                                            |
 | `pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "0x…", amount?: "1000000" }`                      | Bypasses `useClaimWithdrawal` wagmi call; `write()` settles immediately with this data.                                                                                                           |
 | `pipeline.mock.wallet.contract.stakedPlusd.asset`                 | `string` (`0x…`)                                                | Named alias for `useStakedPlusdAsset` — PLUSD token address (maps from `asset()`). Takes priority over the generic key.                                                                           |
@@ -574,23 +569,12 @@ To reset all DepositManager mocks:
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
-> **Deposit / withdraw symmetry:** the merged `/deposit?direction=withdraw` view composes `useWithdrawalQueueAddresses`, `useRequestWithdrawal`, and `useClaimWithdrawal` (from `@/wallet`) with `useWithdrawalVoucher` (from `@/api`) — the same three-step shape as the deposit flow but pointed at the WithdrawalQueue contract and the `/v1/withdrawals/{request_id}/voucher` endpoint. See [`src/api/README.md`](../api/README.md) for the voucher endpoint contract. Navigating to `/withdraw` redirects automatically to `/deposit?direction=withdraw`.
+> **Deposit / withdraw symmetry:** the merged `/deposit?direction=withdraw` view composes `useRequestWithdrawal` and `useClaimWithdrawal` (from `@/wallet`) with `useWithdrawalVoucher` (from `@/api`) — the same three-step shape as the deposit flow but pointed at the WithdrawalQueue contract and the `/v1/withdrawals/{request_id}/voucher` endpoint. PLUSD and USDC addresses are reused from `useDepositManagerAddresses()` — the deployed WithdrawalQueue does not expose token getter functions. See [`src/api/README.md`](../api/README.md) for the voucher endpoint contract. Navigating to `/withdraw` redirects automatically to `/deposit?direction=withdraw`.
 
-**Mock WithdrawalQueue addresses + simulate a successful requestWithdrawal + claimWithdrawal:**
+**Mock WithdrawalQueue — simulate a successful requestWithdrawal + claimWithdrawal:**
 
 ```js
-// 1. Set the contract addresses (named aliases — no need to know the deployed address)
-//    fromToken → PLUSD, intoToken → USDC (on-chain names; aliases are plusd / usdc)
-localStorage.setItem(
-  "pipeline.mock.wallet.contract.withdrawalQueue.plusd",
-  "0x1111000000000000000000000000000000000001",
-);
-localStorage.setItem(
-  "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
-  "0x2222000000000000000000000000000000000002",
-);
-
-// 2. Mock a successful requestWithdrawal (returns a fake tx hash + requestId + queued)
+// 1. Mock a successful requestWithdrawal (returns a fake tx hash + requestId + queued)
 //    Note: requestId and queued are mock-path only (wagmi real path only yields a hash)
 localStorage.setItem(
   "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
@@ -601,7 +585,7 @@ localStorage.setItem(
   }),
 );
 
-// 3. Mock a successful claimWithdrawal (returns a fake tx hash + amount)
+// 2. Mock a successful claimWithdrawal (returns a fake tx hash + amount)
 localStorage.setItem(
   "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
   JSON.stringify({ hash: "0xcafecafecafecafe", amount: "5000000" }),
@@ -612,8 +596,6 @@ To reset all WithdrawalQueue mocks:
 
 ```js
 [
-  "pipeline.mock.wallet.contract.withdrawalQueue.plusd",
-  "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
   "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
   "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
 ].forEach((k) => localStorage.removeItem(k));
