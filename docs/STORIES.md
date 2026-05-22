@@ -1468,6 +1468,159 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${PLUSD}.approve`, JSON.stri
   1. Navigate to `/withdraw`.
 - **Expected:** "Connect Wallet" button in header. PLUSD balance shows "—". Input is disabled. Approve, Confirm, Claim all disabled. No "WithdrawalQueue not reachable" banner visible (queue not yet queried without connection).
 
+---
+
+## S-359 — Merge /deposit and /withdraw into one route with direction param and swap button
+
+**Issue:** [#359 /deposit ↔ /withdraw — merge into one route, switch via URL param + the swap button between inputs](https://github.com/eq-lab/pipeline/issues/359)
+**Plan:** `docs/exec-plans/active/issue-359-merge-deposit-withdraw-routes.md`
+
+All tests run against the feature branch dev server (port 4359). App URL: `http://localhost:4359`.
+
+### TC-359-1: /withdraw redirects to /deposit?direction=withdraw (address bar updates)
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; navigate directly to `/withdraw` (external bookmark simulation)
+- **Steps:**
+  1. Navigate to `http://localhost:4359/withdraw`
+  2. Observe the address bar immediately after navigation
+  3. Press browser back button
+- **Expected:**
+  - Address bar updates to `/deposit?direction=withdraw` — not `/withdraw`
+  - Page shows withdraw direction (PLUSD input, 25/50/75/Max chips, "Allow Pipeline to use PLUSD", "Confirm PLUSD burn", "Claim your USDC")
+  - Back button returns to the previous page (NOT to `/withdraw`) — confirming `replace: true`
+
+### TC-359-2: Direct nav to /deposit shows deposit direction
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit`
+  2. Observe the address bar and page content
+- **Expected:**
+  - Address bar normalizes to `/deposit?direction=deposit`
+  - Page shows deposit direction: USDC input, Min/$5k/$10k/Max chips, "1 USDC = 1 PLUSD", "Allow Pipeline to use USDC", "Confirm USDC transfer", "Claim your PLUSD"
+  - TopBar Convert icon is active (`aria-pressed="true"`)
+
+### TC-359-3: Direct nav to /deposit?direction=withdraw shows withdraw direction
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit?direction=withdraw`
+  2. Observe page content
+- **Expected:**
+  - Address bar stays at `/deposit?direction=withdraw`
+  - Page shows withdraw direction: PLUSD input, 25/50/75/Max chips, "1 PLUSD = 1 USDC", "Allow Pipeline to use PLUSD", "Confirm PLUSD burn", "Claim your USDC"
+  - "Switch direction" button is present in the ConversionCard (disabled when wallet disconnected)
+  - TopBar Convert icon is active
+
+### TC-359-4: Garbage direction param falls back to deposit
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit?direction=hodor`
+  2. Observe address bar and page content
+- **Expected:**
+  - Address bar normalizes to `/deposit?direction=deposit`
+  - Page shows deposit direction (USDC input, Min chips)
+
+### TC-359-5: Swap button click — deposit → withdraw; amount clears; chips/labels flip
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected (USDC balance ≥ 5000)
+  ```js
+  const usdc = "0x2222000000000000000000000000000000000002";
+  localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000005678");
+  localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", usdc);
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.plusd", "0x5555000000000000000000000000000000000005");
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.minDeposit", "1000000000");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.decimals`, "6");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "5000000000");
+  ```
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit?direction=deposit`
+  2. Type "2000" in the USDC input
+  3. Click the "Switch direction" button between the two cards
+  4. Observe address bar, input, chips, exchange-rate copy, step labels
+- **Expected:**
+  - Address bar changes to `/deposit?direction=withdraw`
+  - Amount input is cleared to empty
+  - Input token flips to PLUSD; output shows USDC
+  - Chips switch to 25% / 50% / 75% / Max
+  - Exchange rate reads "1 PLUSD = 1 USDC"
+  - Step 1: "Allow Pipeline to use PLUSD"; Step 2: "Confirm PLUSD burn"; Step 3: "Claim your USDC"
+  - History length is unchanged (swap uses `replace: true`)
+
+### TC-359-6: Swap back — withdraw → deposit; mirrors TC-359-5 in reverse
+
+- **Actor:** User / QA
+- **Preconditions:** TC-359-5 completed; currently on `/deposit?direction=withdraw`
+- **Steps:**
+  1. Click the "Switch direction" button again
+- **Expected:**
+  - Address bar changes to `/deposit?direction=deposit`
+  - Amount input is cleared
+  - Chips switch back to Min / $5k / $10k / Max
+  - Exchange rate reads "1 USDC = 1 PLUSD"
+  - Step labels revert to deposit copy
+  - History length unchanged (replace: true)
+
+### TC-359-7: Swap button disabled when any tx is in-flight
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected; PendingVerification request seeded via mock API
+  ```js
+  localStorage.setItem("pipeline.mock.api.GET./v1/requests", JSON.stringify({ requests: [{
+    type: "Deposit", amount: "2000000000", request_id: "42",
+    status: "PendingVerification", created_at: "2026-05-22T10:00:00Z"
+  }] }));
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.requestDeposit", JSON.stringify({ hash: "0xabc123", requestId: "42" }));
+  ```
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit?direction=deposit`
+  2. Reload (so mock request is loaded)
+  3. Observe the "Switch direction" button
+- **Expected:**
+  - The amount input is locked to "2000.00" (in-flight state)
+  - The "Switch direction" button has `disabled` attribute
+  - Clicking the button does nothing / cannot navigate
+
+### TC-359-8: TopBar Convert icon stays active on both deposit and withdraw direction
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:4359/deposit?direction=deposit`
+  2. Inspect Convert button: `document.querySelector('[aria-label="Convert"]').getAttribute('aria-pressed')`
+  3. Navigate to `http://localhost:4359/deposit?direction=withdraw`
+  4. Inspect Convert button again
+- **Expected:** `aria-pressed="true"` on both. `data-active="true"` on both. The `direction` param does not affect the active nav icon derivation (only the pathname `/deposit` matters).
+
+### TC-359-9: Regression — /withdraw?foo=bar preserves extra params in redirect
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:4359/withdraw?foo=bar`
+  2. Observe address bar
+- **Expected:** Redirects to `/deposit?foo=bar&direction=withdraw` — the `foo=bar` param survives the redirect hop.
+
+### TC-359-10: Regression — all routes have correct active nav after merge
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `/` → check Home active
+  2. Navigate to `/deposit?direction=deposit` → check Convert active
+  3. Navigate to `/deposit?direction=withdraw` → check Convert active
+  4. Navigate to `/stake` → check Earn active
+  5. Navigate to `/transactions` → check Activity active
+- **Expected:** Each route highlights exactly one nav icon. No two icons are simultaneously active. The `/withdraw` route branch is removed from `derivedActive` without regression.
+
 ### TC-354-6: WithdrawalQueue unreachable banner appears after RPC failure (KNOWN BUG #357)
 
 - **Actor:** Developer / QA
