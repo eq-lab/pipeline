@@ -62,10 +62,10 @@ const HEADING_ID = "recent-activity-card-title";
 // reads at the same scale as the design.
 const ILLUSTRATION_WIDTH = 240;
 
-// Maximum rows to show on the home card. The Figma frame `1497:95119` shows
-// one row with substantial whitespace below; 3 fits the card height
-// (min-h-[564px]) without scrolling while providing a useful summary.
-const MAX_ROWS = 3;
+// Maximum rows to show on the home card. The Figma frame `1497:95207` shows
+// 5 rows (Sell / Sell / Unstake / Stake / Buy) filling the card height
+// (min-h-[564px]) with a "View All" affordance below.
+const MAX_ROWS = 5;
 
 export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
