@@ -21,6 +21,16 @@
  *   - PLUSD          : `0x1111000000000000000000000000000000000001`
  *   - WithdrawalQueue: `0x4444000000000000000000000000000000000004`
  *   - StakedPLUSD    : `0x5555000000000000000000000000000000000005`
+ *
+ * Convention — every request-flow feature ships with full mock state:
+ *   - Balance and allowance keys so the UI renders the correct CTA step.
+ *   - A write-side contract mock (e.g. `depositManager.requestDeposit`,
+ *     `withdrawalQueue.requestWithdrawal`) so clicking Confirm settles
+ *     synchronously inside the Mocks tab without falling through to a real
+ *     wagmi/RPC call. Shape: `{ hash: "0x...", requestId?: "123" }` for
+ *     deposit; `{ hash: "0x...", requestId?: "123", queued?: "0" }` for
+ *     withdrawal.
+ *   - API mock keys for in-flight request states (`pipeline.mock.api.GET./v1/requests`).
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -119,12 +129,17 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     id: "connected-allowance-ok",
     title: "Connected, allowance ≥ amount, no active request",
     description:
-      "Sufficient balance and allowance; no pending request. Confirm is the live action on /deposit.",
+      "Sufficient balance and allowance; no pending request. Confirm is the live action on /deposit. Clicking Confirm settles synchronously via the requestDeposit mock.",
     keys: {
       ...WALLET_CONNECTED_BASE,
       [`pipeline.mock.wallet.balance.${USDC_ADDRESS}`]: "100000000", // 100 USDC
       [`pipeline.mock.wallet.allowance.${USDC_ADDRESS}.${DM_ADDRESS}`]:
         "100000000000", // 100,000 USDC
+      "pipeline.mock.wallet.contract.depositManager.requestDeposit":
+        JSON.stringify({
+          hash: "0xde000000000000000000000000000000000000000000000000000000000000de",
+          requestId: "99",
+        }),
     },
   },
 
@@ -342,7 +357,107 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 11. Connected, ready to stake (allowance 0) ────────────────────────────────
+  // 11. Withdraw — connected, fresh wallet ────────────────────────────────────
+  {
+    id: "withdraw-connected-fresh",
+    title: "Withdraw: connected, fresh wallet (zero PLUSD, zero allowance)",
+    description:
+      "Wallet connected; no PLUSD balance; no WQ allowance. /deposit?direction=withdraw shows empty input + disabled Approve.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "0",
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]: "0",
+    },
+  },
+
+  // 12. Withdraw — balance ≥ 0, allowance 0 ───────────────────────────────────
+  {
+    id: "withdraw-connected-allowance-zero",
+    title: "Withdraw: balance ≥ 0, allowance 0",
+    description:
+      "PLUSD balance present but no WQ allowance. Approve is the live action on /deposit?direction=withdraw.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]: "0",
+    },
+  },
+
+  // 13. Withdraw — allowance ≥ amount, no active request ──────────────────────
+  {
+    id: "withdraw-connected-allowance-ok",
+    title: "Withdraw: allowance ≥ amount, no active request",
+    description:
+      "PLUSD balance and WQ allowance are sufficient. Confirm is the live action on /deposit?direction=withdraw. Clicking Confirm settles synchronously via the requestWithdrawal mock.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
+        "1000000000000000000000", // 1000 PLUSD
+      "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal":
+        JSON.stringify({
+          hash: "0xab000000000000000000000000000000000000000000000000000000000000ab",
+          requestId: "88",
+          queued: "0",
+        }),
+    },
+  },
+
+  // 14. Withdraw — PendingVerification ─────────────────────────────────────────
+  {
+    id: "withdraw-request-pending-verification",
+    title: "Withdraw: PendingVerification request",
+    description:
+      "A withdrawal is submitted and awaiting verifier review on /deposit?direction=withdraw.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000",
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
+        "1000000000000000000000",
+      "pipeline.mock.api.GET./v1/requests": JSON.stringify({
+        requests: [
+          {
+            type: "Withdraw",
+            amount: "10000000000000000000",
+            request_id: "77",
+            status: "PendingVerification",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    },
+  },
+
+  // 15. Withdraw — VerificationFailed ──────────────────────────────────────────
+  {
+    id: "withdraw-request-verification-failed",
+    title: "Withdraw: VerificationFailed request",
+    description:
+      "Withdraw verification failed. The withdrawal input is still editable on /deposit?direction=withdraw.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000",
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${WQ_ADDRESS}`]:
+        "1000000000000000000000",
+      "pipeline.mock.api.GET./v1/requests": JSON.stringify({
+        requests: [
+          {
+            type: "Withdraw",
+            amount: "10000000000000000000",
+            request_id: "77",
+            status: "VerificationFailed",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    },
+  },
+
+  // 17. Connected, ready to stake (allowance 0) ────────────────────────────────
   {
     id: "stake-ready-allowance-zero",
     title: "Connected, ready to stake (allowance 0)",
@@ -364,7 +479,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 12. Connected, ready to stake (approved) ───────────────────────────────────
+  // 18. Connected, ready to stake (approved) ───────────────────────────────────
   {
     id: "stake-ready-approved",
     title: "Connected, ready to stake (approved)",
@@ -388,7 +503,7 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
     },
   },
 
-  // 13. Connected, ready to unstake ────────────────────────────────────────────
+  // 19. Connected, ready to unstake ────────────────────────────────────────────
   {
     id: "unstake-ready",
     title: "Connected, ready to unstake",
@@ -407,6 +522,42 @@ export const SCENARIOS: ReadonlyArray<TestScenario> = [
         hash: "0xde110000000000000000000000000000000000000000000000000000000000de",
         assets: "52105000000000000000",
       }),
+    },
+  },
+  // 20. Stake/Unstake — fresh wallet ───────────────────────────────────────────
+  {
+    id: "stake-fresh",
+    title: "Stake: fresh wallet (zero PLUSD and sPLUSD)",
+    description:
+      "No PLUSD or sPLUSD balance; no vault allowance. Both Stake and Unstake tabs show empty state with disabled CTAs on /stake.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]: "0",
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
+      [`pipeline.mock.wallet.allowance.${PLUSD_ADDRESS}.${SPLUSD_ADDRESS}`]:
+        "0",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
+        "959600000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
+        "1042100000000000000",
+    },
+  },
+
+  // 21. Unstake — PLUSD present, sPLUSD zero ────────────────────────────────────
+  {
+    id: "unstake-empty",
+    title: "Unstake: PLUSD present, sPLUSD zero",
+    description:
+      "PLUSD balance is actionable; sPLUSD balance is zero. Stake tab is live; Unstake tab shows empty state with disabled CTA on /stake.",
+    keys: {
+      ...WALLET_CONNECTED_BASE,
+      [`pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`]:
+        "100000000000000000000", // 100 PLUSD
+      [`pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`]: "0",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToShares":
+        "959600000000000000",
+      "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets":
+        "1042100000000000000",
     },
   },
 ];

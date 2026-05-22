@@ -138,6 +138,131 @@ describe("enableScenarioKeys()", () => {
   });
 });
 
+// ── Withdraw + stake scenario contracts ──────────────────────────────────────
+
+describe("withdraw + stake scenario contracts", () => {
+  it("withdraw-connected-fresh: zero PLUSD balance and zero WQ allowance", () => {
+    const s = SCENARIOS.find((x) => x.id === "withdraw-connected-fresh")!;
+    expect(s).toBeDefined();
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
+      ],
+    ).toBe("0");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x4444000000000000000000000000000000000004"
+      ],
+    ).toBe("0");
+  });
+
+  it("withdraw-connected-allowance-zero: PLUSD balance present, WQ allowance zero", () => {
+    const s = SCENARIOS.find(
+      (x) => x.id === "withdraw-connected-allowance-zero",
+    )!;
+    expect(s).toBeDefined();
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
+      ],
+    ).toBe("100000000000000000000");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x4444000000000000000000000000000000000004"
+      ],
+    ).toBe("0");
+  });
+
+  it("withdraw-connected-allowance-ok: PLUSD balance + WQ allowance + requestWithdrawal mock", () => {
+    const s = SCENARIOS.find(
+      (x) => x.id === "withdraw-connected-allowance-ok",
+    )!;
+    expect(s).toBeDefined();
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
+      ],
+    ).toBe("100000000000000000000");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x4444000000000000000000000000000000000004"
+      ],
+    ).toBe("1000000000000000000000");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal"
+      ],
+    ).toBeDefined();
+    const mock = JSON.parse(
+      s.keys[
+        "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal"
+      ]!,
+    );
+    expect(mock.hash).toMatch(/^0x/);
+  });
+
+  it("withdraw-request-pending-verification: API mock has one Withdraw PendingVerification entry", () => {
+    const s = SCENARIOS.find(
+      (x) => x.id === "withdraw-request-pending-verification",
+    )!;
+    expect(s).toBeDefined();
+    const apiMock = JSON.parse(
+      s.keys["pipeline.mock.api.GET./v1/requests"]!,
+    );
+    expect(apiMock.requests).toHaveLength(1);
+    expect(apiMock.requests[0].type).toBe("Withdraw");
+    expect(apiMock.requests[0].status).toBe("PendingVerification");
+  });
+
+  it("withdraw-request-verification-failed: API mock has one Withdraw VerificationFailed entry", () => {
+    const s = SCENARIOS.find(
+      (x) => x.id === "withdraw-request-verification-failed",
+    )!;
+    expect(s).toBeDefined();
+    const apiMock = JSON.parse(
+      s.keys["pipeline.mock.api.GET./v1/requests"]!,
+    );
+    expect(apiMock.requests).toHaveLength(1);
+    expect(apiMock.requests[0].type).toBe("Withdraw");
+    expect(apiMock.requests[0].status).toBe("VerificationFailed");
+  });
+
+  it("stake-fresh: both PLUSD and sPLUSD balances are zero", () => {
+    const s = SCENARIOS.find((x) => x.id === "stake-fresh")!;
+    expect(s).toBeDefined();
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
+      ],
+    ).toBe("0");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x5555000000000000000000000000000000000005"
+      ],
+    ).toBe("0");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.allowance.0x1111000000000000000000000000000000000001.0x5555000000000000000000000000000000000005"
+      ],
+    ).toBe("0");
+  });
+
+  it("unstake-empty: non-zero PLUSD balance, sPLUSD balance zero", () => {
+    const s = SCENARIOS.find((x) => x.id === "unstake-empty")!;
+    expect(s).toBeDefined();
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x1111000000000000000000000000000000000001"
+      ],
+    ).toBe("100000000000000000000");
+    expect(
+      s.keys[
+        "pipeline.mock.wallet.balance.0x5555000000000000000000000000000000000005"
+      ],
+    ).toBe("0");
+  });
+});
+
 // ── enableScenario + clearMocksAndReload ──────────────────────────────────────
 //
 // `enableScenario` and `clearMocksAndReload` call `_reload.fn()` instead of
