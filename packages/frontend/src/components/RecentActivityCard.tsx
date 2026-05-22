@@ -81,6 +81,11 @@ export const RecentActivityCard = React.forwardRef<
     // "heading" / "Placeholder" vertical stack on node 1497:94567.
     "flex flex-col gap-4",
     "min-h-[564px] w-full",
+    // Figma node 1497:95207 — asymmetric border: 1px on top/left, 3px on
+    // right/bottom — same "stamped" elevation effect as StepsCard (1498-100130).
+    // Use `!` prefix so per-side widths beat the uniform `border` shorthand in
+    // Card's baseClasses regardless of Tailwind's CSS cascade order.
+    "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
     .filter(Boolean)
