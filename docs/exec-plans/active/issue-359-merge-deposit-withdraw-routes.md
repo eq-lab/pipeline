@@ -65,7 +65,7 @@ _Resolved by user (2026-05-22):_
 
 The numbering reflects a dependency-friendly order; tests are added alongside their implementation step.
 
-### 1. Promote the ConversionCard swap button to interactive
+### 1. Promote the ConversionCard swap button to interactive ✅
 
 File: `packages/ui/src/components/ConversionCard/ConversionCard.tsx`.
 
@@ -82,7 +82,7 @@ File: `packages/ui/src/components/ConversionCard/ConversionCard.tsx`.
 - `disabled` on either side disables the button (click does not fire).
 - Omitting `onSwap` disables the button.
 
-### 2. `validateSearch` on `/deposit`
+### 2. `validateSearch` on `/deposit` ✅
 
 File: `packages/frontend/src/routes/deposit.tsx`.
 
@@ -99,7 +99,7 @@ File: `packages/frontend/src/routes/deposit.tsx`.
   Pattern matches the existing precedent in `packages/frontend/src/routes/test.tsx:55`.
 - Inside `Deposit()`, read the direction via `Route.useSearch().direction` (TanStack Router hook). Bind to a local `direction` const.
 
-### 3. Generalize the Deposit component to handle both directions
+### 3. Generalize the Deposit component to handle both directions ✅
 
 Still in `packages/frontend/src/routes/deposit.tsx`. The component must call **all** hooks unconditionally; behaviour branches on `direction`.
 
@@ -120,7 +120,7 @@ Still in `packages/frontend/src/routes/deposit.tsx`. The component must call **a
 - **Unreachable-contract banner**: render the deposit-direction banner (`isManagerUnreachable`) only when `direction === "deposit"`, and the withdraw-direction banner (`isQueueUnreachable`) only when `direction === "withdraw"`. Both already exist; gate them on direction.
 - **`useEffect` blocks**: every existing effect (toast emission, balance refetch, amount-lock sync) must short-circuit when the direction's `requestDeposit` / `requestWithdrawal` / `claim` / `claimWithdrawal` state is not the active one. Easiest pattern: wrap the per-direction effects in `if (direction !== "deposit") return;` (or `withdraw`) early returns. Hooks are still called unconditionally.
 
-### 4. Wire the swap button
+### 4. Wire the swap button ✅
 
 Still in `packages/frontend/src/routes/deposit.tsx`.
 
@@ -140,7 +140,7 @@ Still in `packages/frontend/src/routes/deposit.tsx`.
   - Reset the amount input to empty (issue spec). Do **not** clear toast state or write-contract state — see Open Question Q1; defaulting to "preserve" per assumption above.
 - Pass `onSwap` into `<ConversionCard … onSwap={onSwap} />`.
 
-### 5. Convert `/withdraw` to a redirect-only route
+### 5. Convert `/withdraw` to a redirect-only route ✅
 
 File: `packages/frontend/src/routes/withdraw.tsx`.
 
@@ -171,14 +171,14 @@ export const Route = createFileRoute("/withdraw")({
 
 Verify the exact `redirect` import and signature against `@tanstack/react-router` types — adjust if the search shape needs an explicit cast for `validateSearch` compatibility.
 
-### 6. TopBar simplification
+### 6. TopBar simplification ✅
 
 File: `packages/frontend/src/components/TopBar.tsx`.
 
 - In `derivedActive` (line 71), drop `|| pathname === "/withdraw"`. The remaining `pathname === "/deposit"` branch is sufficient because the redirect lands there.
 - Update the docstring (lines 27–34) to match — remove the `/withdraw → "deposit"` line and replace with `/deposit?direction=withdraw → "deposit"` (still via `pathname` only — direction is implicit).
 
-### 7. Tests — fold withdraw cases into deposit test
+### 7. Tests — fold withdraw cases into deposit test ✅
 
 File: `packages/frontend/src/routes/-deposit.test.tsx`.
 
@@ -200,7 +200,7 @@ File: `packages/frontend/src/routes/-deposit.test.tsx`.
 
 File: `packages/frontend/src/routes/-withdraw.test.tsx` — **delete** the file. Whatever residual coverage is unique (none expected — all behaviour is folded above) goes into the merged file.
 
-### 8. Tests — redirect contract
+### 8. Tests — redirect contract ✅
 
 Add a new test file `packages/frontend/src/routes/-withdraw-redirect.test.tsx` (or a top-level `describe` in `-deposit.test.tsx`). Cases:
 
@@ -209,21 +209,21 @@ Add a new test file `packages/frontend/src/routes/-withdraw-redirect.test.tsx` (
 
 Use TanStack Router's `createMemoryHistory` + `createRouter` pattern (or, if the existing tests don't bootstrap the full router, an in-test `beforeLoad` invocation is acceptable). Read `packages/frontend/src/routes/-*.test.tsx` to find an existing pattern; if none exist, the simplest test imports `Route.options.beforeLoad` and asserts it throws a `redirect(...)` with the expected payload.
 
-### 9. Tests — TopBar
+### 9. Tests — TopBar ✅
 
 File: `packages/frontend/src/components/TopBar.test.tsx`.
 
 - Delete the existing "highlights Convert on /withdraw" test (line 220).
 - Add a new test: mount the TopBar at `/deposit?direction=withdraw` (the test currently controls `pathname` via mocked `useRouterState`; pass `"/deposit"` since that is what TanStack Router exposes after the redirect — search params don't affect pathname-based highlight). Assert Convert is highlighted. This restores symmetry without re-introducing the `/withdraw` branch.
 
-### 10. Regenerate routeTree + lint + test
+### 10. Regenerate routeTree + lint + test ✅
 
 - Run `yarn workspace @pipeline/frontend dev` once (or `yarn workspace @pipeline/frontend build`) to regenerate `packages/frontend/src/routeTree.gen.ts`. The file should still list `/withdraw` (the route file still exists, just as a redirect). Commit the regenerated file with the rest of the change.
 - Run `yarn workspace @pipeline/frontend lint`.
 - Run `yarn workspace @pipeline/frontend test` — must be green.
 - Run `npx tsx scripts/lint-docs.ts` per AGENTS §Lint.
 
-### 11. Docs
+### 11. Docs ✅
 
 - `docs/STORIES.md` — update `TC-186-4: Same two-card layout on /withdraw` (line 552) to navigate via `/deposit?direction=withdraw` instead of `/withdraw`. Add a new test case under the same section asserting the swap button toggles direction and clears the input. Update the regression sweeps at lines 673 and 682 to `/`, `/deposit`, `/deposit?direction=withdraw`, `/stake`, `/transactions`.
 - `docs/FRONTEND.md` — no change required; the deposit-page docstring inside `deposit.tsx` already documents the three-step flow. Update the file's JSDoc block to explain the new direction param. The wallet README reference at `packages/frontend/src/wallet/README.md:577` ("/withdraw page composes …") should be edited to say "the merged /deposit?direction=withdraw view composes …" — the underlying hooks are unchanged.

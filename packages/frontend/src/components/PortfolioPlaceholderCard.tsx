@@ -134,6 +134,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           {/* "Get PLUSD to start" — muted caption link to /deposit */}
           <Link
             to="/deposit"
+            search={{ direction: "deposit" as const }}
             className={[
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",

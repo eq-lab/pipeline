@@ -549,13 +549,23 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
   2. In DevTools Console: confirm `document.querySelector('.flex.flex-col.gap-[2px]').children[1].textContent` contains "Exchange rate" and "Network fee"
 - **Expected:** Both info rows are contained within the second (PLUSD) card, not between or outside the two cards.
 
-### TC-186-4: Same two-card layout on /withdraw
+### TC-186-4: Same two-card layout on /deposit?direction=withdraw
 
 - **Actor:** User / QA
 - **Preconditions:** Dev server running
 - **Steps:**
-  1. Navigate to `http://localhost:3000/withdraw`
+  1. Navigate to `http://localhost:3000/deposit?direction=withdraw`
 - **Expected:** Same two-card structure as on /deposit (Card A = PLUSD input, Card B = USDC output + Exchange rate / Network fee); 2px gap; swap button straddling the seam.
+
+### TC-186-5: Swap button toggles direction and clears the amount input
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running
+- **Steps:**
+  1. Navigate to `http://localhost:3000/deposit`
+  2. Enter "500" in the amount input
+  3. Click the swap button (swap-vertical icon between the two cards)
+- **Expected:** URL changes to `/deposit?direction=withdraw`; amount input is cleared to empty; token labels flip (PLUSD → input, USDC → output); quick-amount chips switch from `Min / $5k / $10k / Max` to `25% / 50% / 75% / Max`; exchange-rate copy reads "1 PLUSD = 1 USDC". Clicking the swap button again returns to `/deposit` with the same label/chip reversal.
 
 ---
 
@@ -670,7 +680,7 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Actor:** User / QA
 - **Preconditions:** Dev server running; wallet disconnected (no mock keys)
 - **Steps:**
-  1. Navigate to `/`, `/deposit`, `/withdraw`, `/stake`, `/transactions`
+  1. Navigate to `/`, `/deposit`, `/deposit?direction=withdraw`, `/stake`, `/transactions`
 - **Expected:** The header (Pipeline logo + nav icons + Connect Wallet button) is visible on every page. No hardcoded `$10,000.00` balance appears anywhere.
 
 ### TC-224-2: Connected state shows WalletPill with USDC balance
@@ -679,7 +689,7 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 - **Preconditions:** Dev server running; mock wallet set via DevTools console (see `wallet/README.md` quick-start snippet)
 - **Steps:**
   1. Set the mock connected-wallet keys in DevTools console.
-  2. Navigate to `/`, `/deposit`, `/withdraw`, `/stake`, `/transactions`.
+  2. Navigate to `/`, `/deposit`, `/deposit?direction=withdraw`, `/stake`, `/transactions`.
 - **Expected:** The WalletPill with the USDC balance is identical on every route. The Connect Wallet button is absent.
 
 ### TC-224-3: Account dropdown opens on WalletPill click

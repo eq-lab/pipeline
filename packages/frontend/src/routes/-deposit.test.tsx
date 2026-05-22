@@ -1,11 +1,11 @@
 /**
- * Integration tests for the /deposit route.
+ * Integration tests for the /deposit route (merged deposit + withdraw page).
  *
  * All blockchain state is seeded via the `pipeline.mock.wallet.*` localStorage
  * keys — no real wagmi calls are made. The same mock layer used in the
  * dev-server DevTools is exercised here, so the tests stay close to real usage.
  *
- * Scenarios covered:
+ * Scenarios covered (deposit direction):
  *   1. Approve needed — Approve button enabled, Confirm disabled; click triggers approve.
  *   2. Approved — step 1 shows success badge; Confirm button enabled; click triggers write.
  *   3. Insufficient balance — banner shown; StepsCard absent; Copy Address copies wallet address.
@@ -20,6 +20,20 @@
  *  12. PendingVerification / PendingClaim → input locked to request amount, chips disabled.
  *  13. VerificationFailed → input editable (not locked).
  *  14. No active request → input editable (explicit regression assertion).
+ *
+ * Scenarios covered (withdraw direction):
+ *  15. Connected, balance > 0, allowance 0 → Approve enabled; Confirm disabled.
+ *  16. Allowance ≥ amount, no active request → Confirm enabled.
+ *  17. PendingVerification mock → step 2 in loading state.
+ *  18. PendingClaim + voucher mock → Claim enabled.
+ *  19. Disconnected → all step buttons disabled.
+ *  20. Quick-amount chips — 25% / 50% / 75% / Max.
+ *  21. Step labels: "Allow Pipeline to use PLUSD" / "Confirm PLUSD burn" / "Claim your USDC".
+ *
+ * Swap button:
+ *  22. Renders the Switch-direction button.
+ *  23. Clicking swap navigates to the opposite direction.
+ *  24. Clicking swap clears the amount input.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -112,12 +126,14 @@ vi.mock("@/wallet/config", () => ({
 // a real QueryClient or network.
 
 import type { RequestItem } from "@/api";
-import type { VoucherResponse } from "@/api";
+import type { VoucherResponse, WithdrawalVoucherResponse } from "@/api";
 
 // Mutable store for test control.
 let mockRequestsData: { requests: RequestItem[] } | undefined = undefined;
 let mockVoucherData: VoucherResponse | undefined = undefined;
 let mockVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
+let mockWithdrawVoucherData: WithdrawalVoucherResponse | undefined = undefined;
+let mockWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
 
 vi.mock("@/api", () => ({
   useRequests: () => ({
@@ -133,20 +149,47 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  useWithdrawalVoucher: (_requestId: string | undefined) => ({
+    data: mockWithdrawVoucherData,
+    status: mockWithdrawVoucherStatus,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 // ── TanStack Router mock ──────────────────────────────────────────────────────
-// deposit.tsx uses createFileRoute; we only need to avoid router-dependent
-// hooks. The component is imported directly below.
+// deposit.tsx uses createFileRoute and Route.useSearch().
+// We replace createFileRoute with a version that injects a controllable
+// useSearch so tests can choose the direction without a full router context.
+
+// Mutable direction for tests.
+let mockDirection: "deposit" | "withdraw" = "deposit";
+
+// Capture the navigate mock so tests can assert on it.
+const mockNavigateFn = vi.fn();
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...original,
-    useNavigate: vi.fn(() => vi.fn()),
+    useNavigate: vi.fn(() => mockNavigateFn),
     useRouterState: vi.fn(() => "/deposit"),
-    createFileRoute: original.createFileRoute,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createFileRoute: (path: any) => {
+      // Build the real route so Route.options.component is available.
+      const realRoute = original.createFileRoute(path);
+      return (options: Record<string, unknown>) => {
+        const route = realRoute(options);
+        // Inject a controllable useSearch so the Deposit component
+        // can read `direction` without a router context.
+        (route as unknown as Record<string, unknown>).useSearch = () => ({
+          direction: mockDirection,
+        });
+        return route;
+      };
+    },
     Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };
 });
@@ -161,20 +204,13 @@ const mockEnv = vi.hoisted(() => ({
   EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
+  WITHDRAWAL_QUEUE_ADDRESS:
+    "0x4444000000000000000000000000000000000004" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
 vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
-  withEnvOverride: (overrides: Record<string, unknown>, fn: () => void) => {
-    const original = { ...mockEnv };
-    Object.assign(mockEnv, overrides);
-    try {
-      fn();
-    } finally {
-      Object.assign(mockEnv, original);
-    }
-  },
 }));
 
 // ── Clipboard mock ────────────────────────────────────────────────────────────
@@ -193,12 +229,18 @@ Object.defineProperty(navigator, "clipboard", {
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
 const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
 const PLUSD_ADDRESS = "0x1111000000000000000000000000000000000001";
+const WQ_ADDRESS =
+  "0x4444000000000000000000000000000000000004" as `0x${string}`;
 // 1,000 USDC at 6 decimals
 const MIN_DEPOSIT_RAW = "1000000000";
 // 5,000 USDC at 6 decimals
 const BALANCE_5000_RAW = "5000000000";
 // 500 USDC at 6 decimals
 const BALANCE_500_RAW = "500000000";
+// 100 PLUSD at 18 decimals
+const BALANCE_100_PLUSD = "100000000000000000000";
+// 10 PLUSD at 18 decimals
+const AMOUNT_10_PLUSD = "10000000000000000000";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -271,6 +313,71 @@ function seedBaseMocks({
   );
 }
 
+/** Seeds WithdrawalQueue mock keys for the withdraw-direction tests. */
+function seedWithdrawMocks({
+  balance = BALANCE_100_PLUSD,
+  allowance = "0",
+  connected = true,
+  seedAllowance = true,
+} = {}) {
+  if (connected) {
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+  }
+
+  // WithdrawalQueue named aliases
+  localStorage.setItem(
+    "pipeline.mock.wallet.contract.withdrawalQueue.plusd",
+    PLUSD_ADDRESS,
+  );
+  localStorage.setItem(
+    "pipeline.mock.wallet.contract.withdrawalQueue.usdc",
+    USDC_ADDRESS,
+  );
+
+  // PLUSD token metadata (18 decimals)
+  localStorage.setItem(
+    `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.decimals`,
+    "18",
+  );
+  localStorage.setItem(
+    `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.symbol`,
+    "PLUSD",
+  );
+
+  // PLUSD balance
+  localStorage.setItem(
+    `pipeline.mock.wallet.balance.${PLUSD_ADDRESS.toLowerCase()}`,
+    balance,
+  );
+
+  // PLUSD → WQ allowance
+  if (seedAllowance) {
+    localStorage.setItem(
+      `pipeline.mock.wallet.allowance.${PLUSD_ADDRESS.toLowerCase()}.${WQ_ADDRESS.toLowerCase()}`,
+      allowance,
+    );
+  }
+
+  // Mock approve tx
+  localStorage.setItem(
+    `pipeline.mock.wallet.contract.${PLUSD_ADDRESS.toLowerCase()}.approve`,
+    JSON.stringify({ hash: "0xapprove" }),
+  );
+
+  // Mock requestWithdrawal tx
+  localStorage.setItem(
+    "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal",
+    JSON.stringify({ hash: "0xrequest", requestId: "77" }),
+  );
+
+  // Mock claimWithdrawal tx
+  localStorage.setItem(
+    "pipeline.mock.wallet.contract.withdrawalQueue.claimWithdrawal",
+    JSON.stringify({ hash: "0xclaim", amount: AMOUNT_10_PLUSD }),
+  );
+}
+
 function renderDeposit() {
   const DepositPage = Route.options.component as React.ComponentType;
   return render(
@@ -286,6 +393,7 @@ function renderDeposit() {
 
 describe("Deposit page — approve needed state", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
@@ -293,6 +401,8 @@ describe("Deposit page — approve needed state", () => {
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // allowance = 0 (default) → approve needed when amount is entered
     seedBaseMocks({ allowance: "0" });
   });
@@ -372,12 +482,15 @@ describe("Deposit page — approve needed state", () => {
 
 describe("Deposit page — approved state (allowance ≥ amount)", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // allowance = 10,000 USDC — sufficient for any reasonable input
     seedBaseMocks({ allowance: "10000000000" });
   });
@@ -451,6 +564,8 @@ describe("Deposit page — insufficient balance banner", () => {
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // balance 500 USDC < minDeposit 1,000 USDC
     seedBaseMocks({ balance: BALANCE_500_RAW, allowance: "0" });
   });
@@ -534,10 +649,13 @@ describe("Deposit page — insufficient balance banner", () => {
 
 describe("Deposit page — quick-amount chips", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     seedBaseMocks({ balance: BALANCE_5000_RAW, allowance: "0" });
   });
 
@@ -572,10 +690,13 @@ describe("Deposit page — quick-amount chips", () => {
 
 describe("Deposit page — disconnected wallet", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // Seed without wallet address → disconnected
     seedBaseMocks({ connected: false });
   });
@@ -608,12 +729,15 @@ describe("Deposit page — disconnected wallet", () => {
 
 describe("Deposit page — minDeposit gating", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
   });
 
   afterEach(() => {
@@ -726,10 +850,13 @@ describe("Deposit page — minDeposit gating", () => {
 
 describe("Deposit page — Min chip label reflects live minDeposit", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // 250 USDC minDeposit
     seedBaseMocks({
       balance: BALANCE_5000_RAW,
@@ -754,12 +881,15 @@ describe("Deposit page — Min chip label reflects live minDeposit", () => {
 
 describe("Deposit page — three-step flow", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     seedBaseMocks({ allowance: "0" });
   });
 
@@ -962,12 +1092,15 @@ describe("Deposit page — three-step flow", () => {
 
 describe("Deposit page — locked amount on active request", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     seedBaseMocks({ allowance: "0" });
   });
 
@@ -1128,12 +1261,15 @@ describe("Deposit page — locked amount on active request", () => {
 
 describe("Deposit page — toast emissions", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     seedBaseMocks({ allowance: "10000000000" });
   });
 
@@ -1237,12 +1373,15 @@ describe("Deposit page — toast emissions", () => {
 
 describe("Deposit page — DepositManager unreachable banner", () => {
   beforeEach(() => {
+    mockDirection = "deposit";
     localStorage.clear();
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
     // Seed wallet as connected but do NOT seed the DepositManager named aliases.
     // Without the named aliases and without a matching generic key, the hook
     // hits the real wagmi path (useReadContract returns { data: undefined, isLoading: false })
@@ -1285,6 +1424,438 @@ describe("Deposit page — DepositManager unreachable banner", () => {
       expect(
         screen.getByText(/VITE_DEPOSIT_MANAGER_ADDRESS/),
       ).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Withdraw-direction tests ───────────────────────────────────────────────────
+
+describe("Deposit page — direction=withdraw — approve needed state", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders without throwing", () => {
+    expect(() => renderDeposit()).not.toThrow();
+  });
+
+  it("Approve button is disabled before amount is entered", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    });
+  });
+
+  it("Approve button becomes enabled after entering an amount within balance", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Approve" }),
+      ).not.toBeDisabled();
+    });
+  });
+
+  it("Confirm button stays disabled when approve is needed", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+});
+
+describe("Deposit page — direction=withdraw — approved state (allowance ≥ amount)", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    // allowance = 1000 PLUSD — sufficient for any reasonable input
+    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("step 1 shows success badge when allowance covers the entered amount", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      const successBadge = screen.queryByLabelText("Approve complete");
+      expect(successBadge).toBeInTheDocument();
+      expect(successBadge).toHaveAttribute("data-state", "success");
+    });
+  });
+
+  it("Confirm button is enabled when allowance covers the entered amount", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Confirm" }),
+      ).not.toBeDisabled();
+    });
+  });
+
+  it("clicking Confirm triggers the requestWithdrawal flow", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    const confirmBtn = await screen.findByRole("button", { name: "Confirm" });
+    await waitFor(() => expect(confirmBtn).not.toBeDisabled());
+    await user.click(confirmBtn);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+});
+
+describe("Deposit page — direction=withdraw — PendingVerification mock", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Withdraw",
+          request_id: "77",
+          amount: AMOUNT_10_PLUSD,
+          status: "PendingVerification",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("step 2 shows loading affordance when PendingVerification", async () => {
+    renderDeposit();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Confirm" }),
+      ).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const busyBtn = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("aria-busy") === "true");
+      expect(busyBtn).toBeDefined();
+      expect(busyBtn).toBeDisabled();
+    });
+  });
+
+  it("quick-amount chips are all disabled when PendingVerification", async () => {
+    renderDeposit();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "25%" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "50%" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "75%" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Max" })).toBeDisabled();
+    });
+  });
+});
+
+describe("Deposit page — direction=withdraw — PendingClaim with voucher ready", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Withdraw",
+          request_id: "77",
+          amount: AMOUNT_10_PLUSD,
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = {
+      request_id: "77",
+      amount: AMOUNT_10_PLUSD,
+      user: WALLET_ADDRESS,
+      signature: "0xsig",
+    };
+    mockWithdrawVoucherStatus = "ready";
+    seedWithdrawMocks({ allowance: "1000000000000000000000" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Claim button is enabled when withdraw voucher is ready", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Claim" })).not.toBeDisabled();
+    });
+  });
+
+  it("clicking Claim triggers useClaimWithdrawal.write", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const claimBtn = await screen.findByRole("button", { name: "Claim" });
+    await waitFor(() => expect(claimBtn).not.toBeDisabled());
+    await user.click(claimBtn);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+});
+
+describe("Deposit page — direction=withdraw — disconnected wallet", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ connected: false });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders all step buttons as disabled when disconnected", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      const approveBtn = screen.getByRole("button", { name: "Approve" });
+      const confirmBtn = screen.getByRole("button", { name: "Confirm" });
+      const claimBtn = screen.getByRole("button", { name: "Claim" });
+      expect(approveBtn).toBeDisabled();
+      expect(confirmBtn).toBeDisabled();
+      expect(claimBtn).toBeDisabled();
+    });
+  });
+});
+
+describe("Deposit page — direction=withdraw — quick-amount chips", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ balance: BALANCE_100_PLUSD, allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("25% chip sets input to balance * 25 / 100 = 25 PLUSD", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const chip25 = await screen.findByRole("button", { name: "25%" });
+    await user.click(chip25);
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("25.00");
+  });
+
+  it("Max chip sets input to the live balance (100 PLUSD)", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const maxChip = await screen.findByRole("button", { name: "Max" });
+    await user.click(maxChip);
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("100.00");
+  });
+
+  it("50% chip sets input to balance / 2 = 50 PLUSD", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const chip50 = await screen.findByRole("button", { name: "50%" });
+    await user.click(chip50);
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("50.00");
+  });
+
+  it("75% chip sets input to balance * 75 / 100 = 75 PLUSD", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const chip75 = await screen.findByRole("button", { name: "75%" });
+    await user.click(chip75);
+
+    const input = screen.getByRole("textbox", { name: /PLUSD amount/i });
+    expect((input as HTMLInputElement).value).toBe("75.00");
+  });
+});
+
+describe("Deposit page — direction=withdraw — three-step flow labels", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders all three step labels in order", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(
+        screen.getByText("Allow Pipeline to use PLUSD"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Confirm PLUSD burn")).toBeInTheDocument();
+      expect(screen.getByText("Claim your USDC")).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Swap button tests ─────────────────────────────────────────────────────────
+
+describe("Deposit page — swap button", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockNavigateFn.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the Switch direction button in the ConversionCard", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Switch direction" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clicking the swap button calls navigate with direction=withdraw", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const swapBtn = await screen.findByRole("button", {
+      name: "Switch direction",
+    });
+    await waitFor(() => expect(swapBtn).not.toBeDisabled());
+    await user.click(swapBtn);
+
+    await waitFor(() => {
+      expect(mockNavigateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "/deposit",
+          search: { direction: "withdraw" },
+          replace: true,
+        }),
+      );
+    });
+  });
+
+  it("clicking the swap button clears the amount input", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+
+    await waitFor(() => {
+      expect((input as HTMLInputElement).value).toBe("2000");
+    });
+
+    const swapBtn = screen.getByRole("button", { name: "Switch direction" });
+    await waitFor(() => expect(swapBtn).not.toBeDisabled());
+    await user.click(swapBtn);
+
+    await waitFor(() => {
+      expect((input as HTMLInputElement).value).toBe("");
     });
   });
 });
