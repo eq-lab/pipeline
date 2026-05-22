@@ -61,10 +61,6 @@ const WALLET_CONNECTED_BASE: Record<string, string> = {
   // USDC token metadata (needed by useToken + useApproval)
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.decimals`]: "6",
   [`pipeline.mock.wallet.contract.${USDC_ADDRESS}.symbol`]: "USDC",
-  // WithdrawalQueue named aliases so useWithdrawalQueueAddresses() returns the
-  // stub addresses regardless of VITE_WITHDRAWAL_QUEUE_ADDRESS in .env.
-  "pipeline.mock.wallet.contract.withdrawalQueue.plusd": PLUSD_ADDRESS,
-  "pipeline.mock.wallet.contract.withdrawalQueue.usdc": USDC_ADDRESS,
   // PLUSD token metadata (needed by useToken + useApproval on /withdraw and /stake)
   [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.decimals`]: "18",
   [`pipeline.mock.wallet.contract.${PLUSD_ADDRESS}.symbol`]: "PLUSD",

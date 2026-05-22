@@ -14,7 +14,6 @@ import {
   useRequestDeposit,
   useToken,
   useClaim,
-  useWithdrawalQueueAddresses,
   useRequestWithdrawal,
   useClaimWithdrawal,
 } from "@/wallet";
@@ -81,7 +80,7 @@ import { useToast } from "@/lib/toast";
  *     - `useRequestDeposit()` — write + state
  *     - `useClaim()` — write + state
  *   Withdraw:
- *     - `useWithdrawalQueueAddresses()` — plusd/usdc addresses
+ *     - `useDepositManagerAddresses()` — plusd/usdc addresses (reused; same source as deposit)
  *     - `useToken({ token: plusd, spender: WITHDRAWAL_QUEUE_ADDRESS })`
  *     - `useRequestWithdrawal()` — write + state
  *     - `useClaimWithdrawal()` — write + state
@@ -151,13 +150,9 @@ function Deposit() {
   const claim = useClaim();
 
   // ── Withdraw-direction hooks (called unconditionally) ─────────────────
-  const {
-    plusd: plusdFromQueue,
-    usdc: usdcFromQueue,
-    isLoading: isQueueLoading,
-  } = useWithdrawalQueueAddresses();
-
-  const plusdAddr = (plusdFromQueue ?? ZERO_ADDRESS) as `0x${string}`;
+  // plusd and usdc addresses are sourced from DepositManager (same as deposit
+  // direction) — the deployed WithdrawalQueue does not expose token getters.
+  const plusdAddr = (plusdFromManager ?? ZERO_ADDRESS) as `0x${string}`;
   const {
     decimals: withdrawDecimals,
     balance: withdrawBalance,
@@ -198,12 +193,6 @@ function Deposit() {
     !isManagerLoading &&
     plusdFromManager === undefined &&
     usdc === undefined;
-
-  const isQueueUnreachable =
-    isConnected &&
-    !isQueueLoading &&
-    plusdFromQueue === undefined &&
-    usdcFromQueue === undefined;
 
   // ── Shared amount parsing ─────────────────────────────────────────────
   const amountBig = parseUsdc(amountInput, decimals);
@@ -813,23 +802,13 @@ function Deposit() {
         />
 
         {/* Conditional: unreachable-contract banner, low-balance banner, OR three-step card */}
-        {isDeposit && isManagerUnreachable ? (
+        {isManagerUnreachable ? (
           <Card variant="danger" data-testid="dm-unreachable-banner">
             <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
               DepositManager not reachable
             </p>
             <p className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]">
               Check <code>VITE_DEPOSIT_MANAGER_ADDRESS</code> and RPC
-              connectivity.
-            </p>
-          </Card>
-        ) : !isDeposit && isQueueUnreachable ? (
-          <Card variant="danger" data-testid="wq-unreachable-banner">
-            <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
-              WithdrawalQueue not reachable
-            </p>
-            <p className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]">
-              Check <code>VITE_WITHDRAWAL_QUEUE_ADDRESS</code> and RPC
               connectivity.
             </p>
           </Card>
