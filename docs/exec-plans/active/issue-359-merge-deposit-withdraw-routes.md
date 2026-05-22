@@ -55,9 +55,11 @@ Merge the near-identical `/deposit` (560 lines) and `/withdraw` (490 lines) thre
 
 ## Open Questions
 
-- **Q1**: Should `requestDeposit`/`requestWithdrawal` (wagmi write state) and their toast trackers (refs that detect edge transitions) be reset when the user swaps direction with an in-flight or recently-resolved tx on the other side? The issue requires resetting **the amount input**, but is silent on tx/toast state. Default below: **no** (preserve state — swapping back recovers the in-flight view). Flagging because the alternate stance (reset both sides on swap to avoid stale toasts ever rendering on the wrong page) is also defensible. The manager / human reviewer should decide.
-- **Q2**: When `/withdraw` redirects to `/deposit?direction=withdraw`, should the redirect use HTTP-style `replace: true` (no history entry — issue says yes) **even when** the user landed on `/withdraw` from an external link (so back-button leaves the site)? The issue says `replace: true` for the swap-button-triggered URL change; the `/withdraw` redirect on initial load is a separate scenario. Default below: **also `replace: true`** so a stale bookmark/link doesn't pollute history with an unreachable `/withdraw` entry. Confirm.
-- **Q3**: Should the swap button be disabled during *any* in-flight on-chain action on the active side (`isApprovePending`, `requestDeposit.isPending`, `claim.isPending`, `isPendingVerification`, etc.) or only on the narrower "input disabled" condition the issue specifies (`disabled` is true on either `TokenInput` / `TokenAmountDisplay`)? Default below: **mirror the issue spec verbatim** — disable when either side's `disabled` is true. The active in-flight state already disables `TokenInput` via `isAmountLocked`, so the practical outcome covers the common cases.
+_Resolved by user (2026-05-22):_
+
+1. **Tx/toast state on swap (Q1):** **Preserve state.** Do not reset `wagmiWrite` state or toast trackers on swap. Only the amount input resets. Swapping back recovers the in-flight view on the other direction.
+2. **`/withdraw` redirect history mode (Q2):** **Use `replace: true`.** Initial-load redirects from `/withdraw` (including external bookmarks) should not leave a `/withdraw` history entry.
+3. **Swap-button disabled scope (Q3):** **Disable on any in-flight wallet action.** The swap button must check `isApprovePending`, `requestDeposit.isPending`/`requestWithdrawal.isPending`, `claim.isPending`/`claimWithdrawal.isPending`, and `isPendingVerification` (the verifier-voucher in-flight state) — not just the `TokenInput.disabled` condition. Compute a single `isAnyTxInFlight` boolean for both directions and OR them into the button's `disabled`.
 
 ## Implementation Steps
 
