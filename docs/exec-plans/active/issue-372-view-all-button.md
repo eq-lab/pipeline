@@ -33,7 +33,7 @@ _None_
 
 ## Implementation Steps
 
-1. Edit `packages/frontend/src/components/RecentActivityCard.tsx`:
+1. [x] Edit `packages/frontend/src/components/RecentActivityCard.tsx`:
    - Replace the `<Link to="/transactions">...</Link>` block (current lines 129–141) with a button-shaped `<Link>` rendering:
      - Outer classes: `self-end inline-flex items-center gap-1 h-12 px-3 rounded-lg no-underline transition-colors`.
      - Typography classes: `font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] font-[var(--font-weight-emphasized)]`.
@@ -44,15 +44,15 @@ _None_
      - Standard chevron-right geometry (e.g. `M9 6l6 6-6 6` stroke at 2px, or filled path equivalent). Prefer stroke so it tracks `currentColor` cleanly; set `stroke-linecap="round" stroke-linejoin="round" stroke-width="2"`.
    - Update the JSDoc block (lines 8–49) to describe the button affordance instead of the text link, and bump the Figma reference to node `1497:95216`.
 
-2. Update `packages/frontend/src/components/RecentActivityCard.test.tsx`:
+2. [x] Update `packages/frontend/src/components/RecentActivityCard.test.tsx`:
    - Change the assertion `screen.getByText("View All →")` (line 212) to `screen.getByText("View All")`.
    - Change `screen.getByText("View All →").closest("a")` (line 217) to `screen.getByText("View All").closest("a")`.
    - Other assertions (`/View All/` regex on lines 161, 291, 327, 365) continue to work as-is.
    - Optional new assertion: confirm the link has `role="link"`/is an `<a>` (already covered by `closest("a")`).
 
-3. Run `yarn workspace @pipeline/frontend test --run RecentActivityCard` to verify unit tests pass.
+3. [x] Run `yarn workspace @pipeline/frontend test --run RecentActivityCard` to verify unit tests pass.
 
-4. Run `yarn lint` (or the repo-level lint script) and `npx tsx scripts/lint-docs.ts` per `AGENTS.md`.
+4. [x] Run `yarn lint` (or the repo-level lint script) and `npx tsx scripts/lint-docs.ts` per `AGENTS.md`.
 
 ## Test Strategy
 
