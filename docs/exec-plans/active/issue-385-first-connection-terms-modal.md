@@ -32,14 +32,16 @@ Out of scope:
 
 ## Open Questions
 
-1. **Address-scoped vs global ack?** Spec recommends global (one key, no per-address suffix); please confirm — implementation will proceed with the global key `pipeline.wallet.termsAcknowledged`.
-2. **Terms of Service URL.** Footer link target is TBD; will ship as `/terms` placeholder unless a real URL is provided.
-3. **Mock wallet path.** Should mocks (set via `pipeline.mock.wallet.*`) also pass through the gate, or stay a dev affordance that bypasses it? Recommended: bypass.
+_Resolved by user 2026-05-25:_
+
+1. **Address-scoped ack** — ack key includes the connected address: `pipeline.wallet.termsAcknowledged.<address>`. Each address must acknowledge independently.
+2. **Terms of Service URL** — TBD; ship as `#` placeholder.
+3. **Mock wallet path** — mocks bypass the gate (dev affordance).
 
 ## Implementation Steps
 
 1. **Add the acknowledgement hook.** Create `packages/frontend/src/wallet/useTermsAcknowledgement.ts`:
-   - Constant `TERMS_ACK_KEY = "pipeline.wallet.termsAcknowledged"`.
+   - Key pattern `pipeline.wallet.termsAcknowledged.<address>` (address-scoped; each wallet address acknowledges independently).
    - Hook returns `{ acknowledged: boolean, acknowledge: () => void }`.
    - Read initial value from `localStorage`; subscribe to the browser `storage` event to update state when another tab writes the key.
    - `acknowledge()` writes `"true"` and updates local state (same-tab `storage` events do not fire).
