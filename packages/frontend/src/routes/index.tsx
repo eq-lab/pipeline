@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 
 import { useWallet } from "@/wallet/useWallet";
@@ -36,6 +36,9 @@ import { QnaSection } from "@/components/QnaSection";
  *        └───────────────────────────────────────────────────────┘
  *      The "Balances" column itself is a vertical stack of
  *      `StartHereCard` + `EarnedCard` (Figma node `1497:94675`).
+ *      `StartHereCard` receives `onBuy` (→ `/deposit`) and `onSell`
+ *      (→ `/deposit?direction=withdraw`); `StakeCard` receives `onStake`
+ *      (→ `/stake`) — all three wired via `useNavigate()`.
  *
  *  Top-left card branching:
  *    When `isConnected === false`, renders `ConnectWalletPromoCard` with an
@@ -57,6 +60,11 @@ import { QnaSection } from "@/components/QnaSection";
 
 function Home() {
   const { isConnected, connect } = useWallet();
+  const navigate = useNavigate();
+
+  const onBuy = () => navigate({ to: "/deposit", search: { direction: "deposit" } });
+  const onSell = () => navigate({ to: "/deposit", search: { direction: "withdraw" } });
+  const onStake = () => navigate({ to: "/stake" });
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
@@ -97,12 +105,12 @@ function Home() {
               className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
               data-node-id="1497:94675"
             >
-              <StartHereCard className="flex-1" />
+              <StartHereCard className="flex-1" onBuy={onBuy} onSell={onSell} />
               <EarnedCard />
             </div>
 
             {/* Row 2, columns 3–4: Stake CTA card. */}
-            <StakeCard className="col-span-2 col-start-3 row-start-2" />
+            <StakeCard className="col-span-2 col-start-3 row-start-2" onStake={onStake} />
 
             {/* Row 3, columns 1–7: Questions & Answers strip. */}
             <div className="col-span-7 col-start-1 row-start-3">
