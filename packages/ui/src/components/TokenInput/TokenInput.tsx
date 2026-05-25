@@ -14,14 +14,12 @@ import { QuickAmountChip } from "../QuickAmountChip/QuickAmountChip";
  * logic, validation, or formatting in this issue.
  *
  * Design tokens used:
- *   - `--color-pipeline-surface`         — white card fill
+ *   - `--color-pipeline-fill-muted`      — subtle gray panel background
  *   - `--color-pipeline-paper`           — outer background (focus ring offset)
  *   - `--color-pipeline-ink`             — primary text
  *   - `--color-pipeline-ink-muted`       — balance subtitle, muted text
  *   - `--color-pipeline-ink-subtle`      — placeholder digit colour
- *   - `--color-pipeline-line`            — card border
  *   - `--color-pipeline-brand`           — focus-visible ring on input
- *   - `--radius-pipeline-card`           — card corner radius
  *   - `--font-display`, `--font-body`    — typeface families
  *   - `--text-pipeline-*` size/lh pairs
  *   - `--font-weight-emphasized`
@@ -85,14 +83,13 @@ export interface TokenInputProps extends Omit<
   signPrefix?: string;
 }
 
-// Outer card — white fill, subtle border, card radius.
+// Outer panel — subtle gray fill, no border, 8px radius, uniform 8px padding.
 const cardClasses = [
-  "bg-[var(--color-pipeline-surface)]",
-  "border border-[var(--color-pipeline-line)]",
-  "rounded-[var(--radius-pipeline-card)]",
+  "bg-[var(--color-pipeline-fill-muted)]",
+  "rounded-lg",
   "flex flex-col",
   "w-full",
-  "pt-4 px-2 pb-6",
+  "p-2",
   "gap-8",
 ].join(" ");
 
