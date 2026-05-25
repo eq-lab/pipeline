@@ -3,9 +3,9 @@ import React from "react";
 /**
  * QuickAmountChip — selectable amount pill used in the conversion card.
  *
- * Renders as a `<button type="button">` borderless white pill. Contrast is
- * provided by the white fill against the surrounding gray container.
- * Matches Figma node 1498-99888 ("suggestion bar chip") in file A43rjYYjSwdTmiwwf5cx5n.
+ * Renders as a `<button type="button">` white rounded-rectangle chip with a
+ * 1px hairline border. Matches Figma node 1498-99888 ("suggestion bar chip")
+ * in file A43rjYYjSwdTmiwwf5cx5n.
  *
  * Variants:
  *   - Default: unselected state with muted ink label
@@ -13,7 +13,9 @@ import React from "react";
  *   - Special label: "Max" (same visual, semantic distinction in label only)
  *
  * Design tokens used:
- *   - `--color-pipeline-surface`      — chip fill (white pill on gray container)
+ *   - `--color-pipeline-surface`      — chip fill (white on gray container)
+ *   - `--color-pipeline-line`         — 1px hairline border around each chip
+ *   - `--radius-pipeline-button`      — corner radius (~4px rounded rectangle)
  *   - `--color-pipeline-paper`        — paper background (focus ring offset)
  *   - `--color-pipeline-ink`          — selected label colour
  *   - `--color-pipeline-ink-muted`    — unselected label colour
@@ -39,9 +41,10 @@ export const QuickAmountChip = React.forwardRef<
     // Layout — flex so flex-1 from parent works correctly
     "flex items-center justify-center",
     "h-8 px-2 whitespace-nowrap",
-    "rounded-full",
-    // Background — white pill; no border (contrast comes from gray container)
+    "rounded-[var(--radius-pipeline-button)]",
+    // Background — white chip with hairline border on gray container
     "bg-[var(--color-pipeline-surface)]",
+    "border border-[var(--color-pipeline-line)]",
     // Typography
     "font-[family-name:var(--font-body)]",
     "text-[length:var(--text-pipeline-body)]",

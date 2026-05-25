@@ -7,14 +7,14 @@ const meta = {
   parameters: {
     layout: "centered",
     // Gray background matches the `--color-pipeline-fill-muted` container so
-    // the borderless white pills are visible in the canvas.
+    // the hairline-bordered white chips are visible in the canvas.
     backgrounds: { default: "gray" },
     docs: {
       description: {
         component:
-          "Selectable amount pill used in the conversion card. Renders as a " +
-          '`<button type="button">` borderless white pill. Contrast is ' +
-          "provided by the white fill against the surrounding gray container. " +
+          "Selectable amount chip used in the conversion card. Renders as a " +
+          '`<button type="button">` white rounded-rectangle with a 1px hairline ' +
+          "border (not a pill). Matches the Figma suggestion-bar design. " +
           "Supports default, selected, hover, and focus-visible states.",
       },
     },
@@ -81,7 +81,7 @@ export const MaxSelected: Story = {
 export const AllChips: Story = {
   name: "All chips — side-by-side",
   render: () => (
-    // Simulate the gray container background so borderless white pills are visible
+    // Simulate the gray container background (hairline-bordered chips on muted fill)
     <div
       style={{
         display: "flex",
