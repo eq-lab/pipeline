@@ -34,8 +34,9 @@ import swapVerticalSrc from "../../assets/icons/swap-vertical.svg";
  *
  * Design tokens used:
  *   - `--color-pipeline-surface`   — white card fill (Card `white` variant)
- *   - `--color-pipeline-paper`     — gradient end-stop for swap button fill
- *   - `--color-pipeline-line`      — card border / swap button border
+ *   - `--color-pipeline-fill-muted`  — swap button fill (subtle gray)
+ *   - `--color-pipeline-surface-muted` — swap button hover fill
+ *   - `--color-pipeline-line`      — card border
  *   - `--color-pipeline-ink-muted` — InfoRow label colour (via InfoRow)
  *   - `--color-pipeline-ink`       — InfoRow value colour (via InfoRow)
  *   - `--radius-pipeline-card`     — card corner radius (via Card)
@@ -69,9 +70,9 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
 //
 // Styling per Figma node 1498-100157:
 //   - `rounded-[4px]`  — square-ish corners (not a full pill)
-//   - gradient fill: white (--color-pipeline-surface) at top →
-//     paper (#f8f7f6, --color-pipeline-paper) at bottom
-//   - hairline border in --color-pipeline-line
+//   - size 32×32 (`size-8`) — quiet recessed affordance, not a boxy chip
+//   - fill: --color-pipeline-fill-muted (subtle gray, same family as USDC panel)
+//   - no visible border — design omits the hairline border
 //   - cursor-pointer + focus ring consistent with TopBar pill trigger
 //   - disabled:opacity-50 + disabled:cursor-not-allowed when button is disabled
 const swapButtonClasses = [
@@ -79,9 +80,10 @@ const swapButtonClasses = [
   "left-1/2 -translate-x-1/2",
   "top-full -translate-y-1/2",
   "flex items-center justify-center",
-  "size-10",
+  "size-8",
   "rounded-[4px]",
-  "border border-[var(--color-pipeline-line)]",
+  "bg-[var(--color-pipeline-fill-muted)]",
+  "hover:bg-[var(--color-pipeline-surface-muted)]",
   "cursor-pointer",
   "disabled:opacity-50 disabled:cursor-not-allowed",
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
@@ -121,7 +123,7 @@ export const ConversionCard = React.forwardRef<
         <TokenInput {...input} signPrefix="−" />
 
         {/* Swap button — straddles the seam between Card A and Card B.
-            Gradient: surface (#ffffff) → paper (#f8f7f6), top-to-bottom.
+            Fill: --color-pipeline-fill-muted (subtle gray, no border).
             Figma node 1498-100157.
             Disabled when onSwap is not provided or either side is disabled,
             so it cannot fire during an in-flight wallet action. */}
@@ -131,10 +133,6 @@ export const ConversionCard = React.forwardRef<
           onClick={onSwap}
           disabled={!onSwap || input.disabled === true}
           className={swapButtonClasses}
-          style={{
-            background:
-              "linear-gradient(180deg, var(--color-pipeline-surface) 0%, var(--color-pipeline-paper) 100%)",
-          }}
         >
           <img
             src={swapVerticalSrc}
