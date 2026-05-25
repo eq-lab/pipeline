@@ -80,12 +80,15 @@ vi.mock("@/wallet/config", () => ({
 // We render Link as an <a> passthrough so href assertions work without a real
 // router tree.
 
+// A shared navigate spy so tests can assert calls on it.
+const mockNavigate = vi.fn();
+
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
   return {
     ...original,
-    useNavigate: vi.fn(() => vi.fn()),
+    useNavigate: vi.fn(() => mockNavigate),
     useRouterState: vi.fn(() => "/"),
     createFileRoute: original.createFileRoute,
     Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
@@ -135,6 +138,7 @@ describe("Home page — disconnected state", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
+    mockNavigate.mockClear();
   });
 
   afterEach(() => {
@@ -176,6 +180,50 @@ describe("Home page — disconnected state", () => {
     // useWallet().connect() delegates to useAppKit().open()
     await waitFor(() => {
       expect(mockOpen).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("clicking Buy navigates to /deposit with direction=deposit", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const buyBtn = await screen.findByRole("button", { name: "Buy" });
+    await user.click(buyBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "deposit" },
+      });
+    });
+  });
+
+  it("clicking Sell navigates to /deposit?direction=withdraw", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const sellBtn = await screen.findByRole("button", { name: "Sell" });
+    // Sell button must not be disabled (it was previously hardcoded disabled)
+    expect(sellBtn).not.toBeDisabled();
+    await user.click(sellBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "withdraw" },
+      });
+    });
+  });
+
+  it("clicking Stake navigates to /stake", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
+    await user.click(stakeBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({ to: "/stake" });
     });
   });
 });

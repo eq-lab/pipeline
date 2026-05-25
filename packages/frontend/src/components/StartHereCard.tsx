@@ -9,7 +9,7 @@ import { Button, Card, CoinIcon } from "@pipeline/ui";
  * inside the "Balances" stack `1497:94675`). It is the primary on-ramp for a
  * brand-new visitor: an eyebrow label, the "Get PLUSD" headline with a small
  * dollar glyph, a subtitle that explains the 1:1 USDC swap, and a row of two
- * action buttons — "Buy" (active) and "Sell" (disabled/ghost).
+ * action buttons — "Buy" (deposit entry point) and "Sell" (withdraw entry point).
  *
  *   ┌────────────────────────────────────┐
  *   │  Start here                        │
@@ -26,9 +26,10 @@ import { Button, Card, CoinIcon } from "@pipeline/ui";
  *     so this composer adds no raw colors.
  *   - {@link Button} `variant="primary-blue"` provides the brand-navy "Buy" CTA
  *     (Figma node `1497:94688` / `1497:94689`).
- *   - {@link Button} `variant="secondary"` with `disabled` provides the ghost
- *     "Sell" CTA (Figma node `1497:94690`) — ink-primary label, transparent
- *     fill, ~0.32 opacity in the disabled state.
+ *   - {@link Button} `variant="secondary"` provides the ghost "Sell" CTA
+ *     (Figma node `1497:94690`) — ink-primary label, transparent fill.
+ *     Sell navigates to `/deposit?direction=withdraw`, matching the Buy CTA
+ *     symmetry: Buy → deposit, Sell → withdraw.
  *   - The PLUSD coin icon is rendered via {@link CoinIcon} `token="plusd"`
  *     `size="md"` (24 px), matching Figma node `910:10281` — the full blue
  *     circle with a white "$" glyph baked into the raster asset.
@@ -79,9 +80,10 @@ export interface StartHereCardProps extends Omit<
    */
   onBuy?: () => void;
   /**
-   * Click handler for the Sell CTA. Optional — the Sell action is currently
-   * in a disabled/coming-soon state in the UI; this prop is provided for
-   * future wiring when the sell flow is implemented.
+   * Click handler for the Sell CTA. Optional so the card can be dropped
+   * into preview routes without wiring the withdraw flow; the page-level
+   * container is expected to supply this in production (wired to
+   * `/deposit?direction=withdraw`).
    */
   onSell?: () => void;
 }
@@ -173,7 +175,7 @@ export const StartHereCard = React.forwardRef<
         </p>
       </header>
 
-      {/* Action buttons row — Buy (primary) + Sell (disabled ghost).
+      {/* Action buttons row — Buy (primary) + Sell (ghost, wired to withdraw).
           `gap-2` = 8px mirrors Figma `gap-xs` on the buttons container.
           `self-start` keeps the row flush-left at its intrinsic width. */}
       <div
@@ -190,7 +192,6 @@ export const StartHereCard = React.forwardRef<
         <Button
           variant="secondary"
           onClick={onSell}
-          disabled
           data-node-id="1497:94690"
         >
           Sell

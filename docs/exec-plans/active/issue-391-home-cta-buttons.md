@@ -64,42 +64,39 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **`packages/frontend/src/components/StartHereCard.tsx`** — remove the
+1. ✅ **`packages/frontend/src/components/StartHereCard.tsx`** — remove the
    hardcoded `disabled` attribute on the Sell `<Button>` (line ~193). Update
    the JSDoc block (lines ~12, ~30–34, ~80–86) so it no longer describes Sell
    as disabled/coming-soon; instead describe Sell as the withdraw entry point
    matched to the Buy CTA. Keep `variant="secondary"` so the ghost ink visual
    stays close to the Figma reference.
-2. **`packages/frontend/src/routes/index.tsx`** — import `useNavigate` from
+2. ✅ **`packages/frontend/src/routes/index.tsx`** — import `useNavigate` from
    `@tanstack/react-router` and create three handlers inside `Home()`:
-   - `onBuy = () => navigate({ to: "/deposit" })`
+   - `onBuy = () => navigate({ to: "/deposit", search: { direction: "deposit" } })`
+     (note: `/deposit` requires the `direction` search param — deviation from plan's
+     `{ to: "/deposit" }` which TypeScript rejected)
    - `onSell = () => navigate({ to: "/deposit", search: { direction: "withdraw" } })`
    - `onStake = () => navigate({ to: "/stake" })`
    Pass them into `<StartHereCard onBuy={…} onSell={…} … />` and
-   `<StakeCard onStake={…} … />`. Update the JSDoc block at the top of the
-   file to note the new wiring (one short sentence near the StartHereCard /
-   StakeCard descriptions).
-3. **Tests — `packages/frontend/src/routes/-index.test.tsx`** — extend the
-   existing TanStack Router mock so `useNavigate` returns a `vi.fn()` whose
-   calls can be asserted. Add three cases:
-   - Click "Buy" → `navigate` called with `{ to: "/deposit" }`.
-   - Click "Sell" → `navigate` called with
-     `{ to: "/deposit", search: { direction: "withdraw" } }`.
+   `<StakeCard onStake={…} … />`. Updated JSDoc block at the top of the
+   file to note the new wiring.
+3. ✅ **Tests — `packages/frontend/src/routes/-index.test.tsx`** — promoted the
+   existing `useNavigate: vi.fn(() => vi.fn())` mock to use a shared
+   `mockNavigate` spy. Added three cases in the disconnected describe block:
+   - Click "Buy" → `navigate` called with `{ to: "/deposit", search: { direction: "deposit" } }`.
+   - Click "Sell" → `navigate` called with `{ to: "/deposit", search: { direction: "withdraw" } }`.
+     Also asserts Sell button is not disabled.
    - Click "Stake" → `navigate` called with `{ to: "/stake" }`.
-   All three should run in the disconnected scenario (where the cards are
-   mounted today). If the Buy/Sell/Stake cards are also rendered in the
-   connected scenario, add the same assertions there.
-4. **Component-level tests (optional but preferred)** — if there is no
-   existing `StartHereCard.test.tsx` / `StakeCard.test.tsx`, add minimal
-   ones that verify the buttons render enabled, call their `on*` props
-   when clicked, and that Sell is no longer `disabled`.
-5. **Lint / typecheck / unit test pass.** Run:
-   - `npx tsx scripts/lint-docs.ts` (per `AGENTS.md`).
-   - The project's frontend test suite (`yarn test` / project equivalent
-     via the `test-fast` skill).
-6. **Manual verification** — load `/` (disconnected and connected if cheap),
-   click each CTA, confirm navigation lands on the right route with the
-   expected `direction` query for Sell.
+4. ✅ **Component-level tests** — no separate component test files needed; all
+   three navigation behaviors are covered at the route-integration level in
+   `-index.test.tsx`. The Sell `not.toBeDisabled()` assertion covers the
+   disabled-removal.
+5. ✅ **Lint / typecheck / unit test pass.** All checks green:
+   - `npx tsx scripts/lint-docs.ts` — 0 errors (30 pre-existing warnings).
+   - `cargo clippy --all -- -D warnings` — clean.
+   - `cd packages/frontend && npx tsc --noEmit` — 0 errors.
+   - `yarn test --run` — 582/582 passed.
+6. Manual verification — deferred to `ux-tester` phase.
 
 ## Test Strategy
 
