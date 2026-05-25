@@ -1,5 +1,7 @@
 # Yield Distribution — Product Spec
 
+> For the per-loan mint cap rule on the loan-tied yield path and the split YieldMinter surface (`mintLoanYield` vs `mintTbillYield`), see [trustee-console.md](./trustee-console.md).
+
 ## Overview
 
 Protocol yield reaches LP stakers through two distinct paths: loan repayment yield

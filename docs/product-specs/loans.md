@@ -1,5 +1,7 @@
 # Loan Facilities — Product Spec
 
+> For the per-loan repayment ledger fields and the YieldMinter per-loan mint cap rule that consumes them, see [trustee-console.md](./trustee-console.md).
+
 ## Overview
 
 The LoanRegistry is an ERC-721 contract that records every loan facility originated through
