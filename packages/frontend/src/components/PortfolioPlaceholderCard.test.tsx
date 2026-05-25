@@ -1,5 +1,5 @@
 /**
- * Smoke + accessibility tests for PortfolioPlaceholderCard.
+ * Tests for PortfolioPlaceholderCard.
  *
  * Scenarios covered:
  *   1. Component renders without throwing.
@@ -8,12 +8,14 @@
  *   4. "Get PLUSD to start" link is present and points to /deposit.
  *   5. "7D" tab is the default active tab (aria-selected="true").
  *   6. Other tabs start inactive (aria-selected="false").
- *   7. Switching tabs updates active state; DOM is otherwise unchanged.
- *   8. Chart wrapper has aria-hidden="true" (decorative).
+ *   7. Switching tabs updates active state and the earning caption.
+ *   8. Chart wrapper has role="img" and a descriptive aria-label.
+ *   9. Chart renders 100 bar slots (100 <g data-bar-slot> elements).
+ *  10. Hover shows tooltip; mouse leave hides it.
  */
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
 
@@ -61,6 +63,12 @@ describe("PortfolioPlaceholderCard — smoke tests", () => {
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute("href", "/deposit");
   });
+
+  it("shows '+$42.80 earning' caption by default (7D period)", () => {
+    renderCard();
+    const caption = screen.getByTestId("earning-caption");
+    expect(caption).toHaveTextContent("+$42.80 earning");
+  });
 });
 
 describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
@@ -97,6 +105,32 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
     });
   });
 
+  it("clicking '1M' updates the earning caption to '+$92.80 earning'", async () => {
+    const user = userEvent.setup();
+    renderCard();
+
+    await user.click(screen.getByRole("tab", { name: "1M" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("earning-caption")).toHaveTextContent(
+        "+$92.80 earning",
+      );
+    });
+  });
+
+  it("clicking 'All' updates the earning caption to '+$842.80 earning'", async () => {
+    const user = userEvent.setup();
+    renderCard();
+
+    await user.click(screen.getByRole("tab", { name: "All" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("earning-caption")).toHaveTextContent(
+        "+$842.80 earning",
+      );
+    });
+  });
+
   it("switching tabs leaves '$0.00' and 'Total Balance' unchanged", async () => {
     const user = userEvent.setup();
     renderCard();
@@ -104,27 +138,97 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
     const tab3m = screen.getByRole("tab", { name: "3M" });
     await user.click(tab3m);
 
-    // Verify balance and label are still present after tab switch
     expect(screen.getByText("Total Balance")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
   });
 });
 
-describe("PortfolioPlaceholderCard — accessibility", () => {
-  it("chart wrapper has aria-hidden='true'", () => {
+describe("PortfolioPlaceholderCard — chart structure", () => {
+  it("chart wrapper has role='img' and a descriptive aria-label", () => {
     renderCard();
-    // Find the aria-hidden container for the chart silhouette
-    const hiddenElements = document.querySelectorAll("[aria-hidden='true']");
-    // There should be at least one aria-hidden element (the chart wrapper or SVG)
-    expect(hiddenElements.length).toBeGreaterThan(0);
+    const chart = screen.getByRole("img");
+    expect(chart).toBeInTheDocument();
+    const label = chart.getAttribute("aria-label") ?? "";
+    expect(label).toContain("Total balance");
+    expect(label).toContain("$0.00");
+    expect(label).toContain("earning");
+  });
+
+  it("chart renders 100 bar slots (100 <g data-bar-slot> elements)", () => {
+    const { container } = renderCard();
+    const barSlots = container.querySelectorAll("[data-bar-slot]");
+    expect(barSlots).toHaveLength(100);
   });
 
   it("card region is labelled by the '$0.00' heading", () => {
     renderCard();
-    // The card has role="region" + aria-labelledby pointing to the h2
     const region = screen.getByRole("region");
     expect(region).toBeInTheDocument();
-    // The h2 heading "$0.00" must be in the document
     expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+  });
+});
+
+describe("PortfolioPlaceholderCard — hover behaviour", () => {
+  it("tooltip is initially hidden (aria-hidden='true')", () => {
+    renderCard();
+    const tooltip = screen.getByTestId("chart-tooltip");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("pointerMove on chart wrap shows tooltip with '$1,' balance prefix", async () => {
+    const { container } = renderCard();
+    const chartWrap = container.querySelector("[data-node-id='1497:95048-chart']") as HTMLElement;
+    expect(chartWrap).toBeTruthy();
+
+    // Mock getBoundingClientRect so pointer math works in jsdom.
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    // Fire pointer move at the centre of the chart (slot ~50)
+    fireEvent.pointerMove(chartWrap, { clientX: 300 });
+
+    await waitFor(() => {
+      const tooltip = screen.getByTestId("chart-tooltip");
+      expect(tooltip).toHaveAttribute("aria-hidden", "false");
+      expect(tooltip.textContent).toContain("$1,");
+    });
+  });
+
+  it("pointerLeave hides the tooltip again", async () => {
+    const { container } = renderCard();
+    const chartWrap = container.querySelector("[data-node-id='1497:95048-chart']") as HTMLElement;
+
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.pointerMove(chartWrap, { clientX: 300 });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute("aria-hidden", "false");
+    });
+
+    fireEvent.pointerLeave(chartWrap);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute("aria-hidden", "true");
+    });
   });
 });

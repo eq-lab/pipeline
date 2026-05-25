@@ -94,6 +94,7 @@
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
   --color-pipeline-positive-secondary: rgb(32 128 0 / 0.16); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
+  --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
   /* Type ramp */
   --text-pipeline-title: 64px;
@@ -161,6 +162,7 @@
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
   --color-pipeline-positive-secondary: rgb(32 128 0 / 0.16); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
+  --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
   /* --- Typography: families --- */
 
