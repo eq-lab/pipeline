@@ -40,13 +40,13 @@ _Resolved by user 2026-05-25:_
 
 ## Implementation Steps
 
-1. **Add the acknowledgement hook.** Create `packages/frontend/src/wallet/useTermsAcknowledgement.ts`:
+1. [x] **Add the acknowledgement hook.** Create `packages/frontend/src/wallet/useTermsAcknowledgement.ts`:
    - Key pattern `pipeline.wallet.termsAcknowledged.<address>` (address-scoped; each wallet address acknowledges independently).
    - Hook returns `{ acknowledged: boolean, acknowledge: () => void }`.
    - Read initial value from `localStorage`; subscribe to the browser `storage` event to update state when another tab writes the key.
    - `acknowledge()` writes `"true"` and updates local state (same-tab `storage` events do not fire).
    - Export a non-hook helper `readTermsAcknowledged(): boolean` for the gate check inside `connect()` (avoids needing to re-render `useWallet` consumers when ack flips, and lets the gate run synchronously inside the click handler).
-2. **Add the modal component.** Create `packages/frontend/src/components/FirstConnectionModal.tsx`:
+2. [x] **Add the modal component.** Create `packages/frontend/src/components/FirstConnectionModal.tsx`:
    - Props: `{ open: boolean; onContinue: () => void; onDismiss: () => void }`.
    - Renders a portal-style fixed overlay (scrim `bg-[rgba(56,55,53,0.6)]`), centered modal panel 420px wide, `max-h-[80vh] md:max-h-[80vh]` (mobile `90vh`), `bg-[#f8f7f6]`, 24px padding, 4px radius.
    - Hero: 72px round tinted container with shield-check icon. Reuse existing `HeroIcon` from `@pipeline/ui` if compatible; otherwise inline an SVG (decide during implementation — log to tech-debt if a new variant is needed).
@@ -58,7 +58,7 @@ _Resolved by user 2026-05-25:_
    - Footer: "By continuing, you agree to our Terms of Service" with link to `/terms` (placeholder until OQ #2 resolved).
    - Behavior: Escape and scrim click both call `onDismiss`. Implement focus trap (cycle Tab/Shift+Tab among `[role="switch"]`, "Continue", "Disconnect", "Terms" link). On open, focus the toggle. On close, return focus to the trigger (the wallet provider tracks `document.activeElement` at open time).
    - `data-node-id` annotations referencing Figma nodes `1572:123328` (init) and `1582:69059` (checked) for traceability.
-3. **Gate `connect()` at the provider boundary.** Update `packages/frontend/src/wallet/WalletProvider.tsx` to:
+3. [x] **Gate `connect()` at the provider boundary.** Update `packages/frontend/src/wallet/WalletProvider.tsx` to:
    - Wrap children with a React context that exposes a `requestConnect()` action and an `isGateOpen` boolean.
    - Render `<FirstConnectionModal />` at the provider level.
    - Inside `useWallet.connect()` (in `useWallet.ts`):
@@ -66,8 +66,8 @@ _Resolved by user 2026-05-25:_
      - If `readTermsAcknowledged()` is `true`, call `open()` directly.
      - Otherwise, dispatch the "open gate" action via the new context (e.g., via a module-level event emitter or a shared `useGateController` hook) — modal mounts, user toggles + clicks Continue, the provider calls `acknowledge()` then `open()`.
    - Keep `connect()` synchronous-looking from the caller's perspective; the modal lives in the provider tree.
-4. **Wire up trigger-focus restoration.** The provider captures `document.activeElement as HTMLElement | null` when the gate opens and restores focus to it after dismiss or continue. (TopBar's Connect button and ConnectWalletPromoCard's Connect button are both real `<button>` elements, so this works out of the box.)
-5. **Tests.**
+4. [x] **Wire up trigger-focus restoration.** The provider captures `document.activeElement as HTMLElement | null` when the gate opens and restores focus to it after dismiss or continue. (TopBar's Connect button and ConnectWalletPromoCard's Connect button are both real `<button>` elements, so this works out of the box.)
+5. [x] **Tests.**
    - `useTermsAcknowledgement.test.tsx`: initial false, reads existing `"true"`, `acknowledge()` flips state and writes localStorage, cross-tab `storage` event flips state in second hook instance.
    - `FirstConnectionModal.test.tsx`: renders init state with toggle off + Continue disabled, toggling enables Continue, click Continue → `onContinue`, click Disconnect / press Escape / click scrim → `onDismiss`, focus trap holds inside the dialog, `aria-modal` set.
    - `useWallet.test.tsx`: extend the existing `connect()` describe block:
@@ -75,7 +75,7 @@ _Resolved by user 2026-05-25:_
      - When ack flag is set to `"true"` in `localStorage` → `mockOpen` is called directly (no modal).
      - Mock-wallet short-circuit still bypasses both gate and AppKit.
    - `routes/-index.test.tsx`: update the existing "clicking Connect calls useWallet().connect() → opens AppKit modal" assertion if needed so it primes `pipeline.wallet.termsAcknowledged = "true"` before clicking (keeps the test scoped to the AppKit handoff).
-6. **Manual verification (handed to ux-tester).**
+6. [ ] **Manual verification (handed to ux-tester).**
    - Clear `localStorage`. Click Connect on home or TopBar → our modal appears, AppKit does not.
    - Toggle off → Continue disabled. Toggle on → Continue enabled (Figma checked frame parity).
    - Click Disconnect / X / scrim / Escape → modal closes, no AppKit, no flag.

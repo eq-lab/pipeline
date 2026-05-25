@@ -1673,3 +1673,102 @@ All tests run against the feature branch dev server (port 4359). App URL: `http:
   - Console shows two `console.error` messages: `[useWithdrawalQueueAddresses] fromToken() read failed` and `intoToken() read failed`.
   - A "WithdrawalQueue not reachable. Check VITE_WITHDRAWAL_QUEUE_ADDRESS and RPC connectivity." banner replaces the StepsCard in the UI, rendered as a red danger card.
 - **Note:** Console error surfacing PASSES. Banner DOM presence PASSES. Banner visual rendering is BLOCKED by bug #357 (banner text is white-on-white due to Tailwind specificity issue — `bg-[var(--color-pipeline-surface)]` from Card base overrides `bg-[var(--color-pipeline-danger)]` from className prop).
+
+---
+
+## S-385 First-connection terms acknowledgement modal
+
+**Issue:** [#385 First-connection terms acknowledgement modal gates wallet connect](https://github.com/eq-lab/pipeline/issues/385)
+**Plan:** `docs/exec-plans/active/issue-385-first-connection-terms-modal.md`
+
+### TC-385-1: Gate fires on first connect (no prior ack)
+
+- **Actor:** First-time visitor
+- **Preconditions:** `localStorage` is clear (or `pipeline.wallet.termsAcknowledged.*` keys are absent); dev server running on `fix/379-deposit-quick-amount-chips` branch (or the PR branch)
+- **Steps:**
+  1. Navigate to `/`
+  2. Click **Connect Wallet** in the TopBar
+- **Expected:**
+  - "Before you continue" modal appears (scrim over page)
+  - The AppKit wallet picker does NOT open
+  - Modal heading: "Before you continue"
+  - Toggle is OFF; Continue button is disabled (visually ~32% opacity)
+
+### TC-385-2: Continue disabled until toggle on
+
+- **Actor:** Same visitor
+- **Preconditions:** Modal is open (TC-385-1 state)
+- **Steps:**
+  1. Click **Continue** while toggle is off
+- **Expected:** Nothing happens; AppKit does not open
+
+### TC-385-3: Toggle on enables Continue
+
+- **Actor:** Same visitor
+- **Preconditions:** Modal is open, toggle is off
+- **Steps:**
+  1. Click the toggle switch
+- **Expected:**
+  - Toggle becomes ON (green `#208000` track)
+  - Continue button becomes enabled (solid `#262524` background, full opacity)
+
+### TC-385-4: Continue with toggle on — ack persisted + AppKit opens
+
+- **Actor:** Same visitor
+- **Preconditions:** Modal is open, toggle is ON
+- **Steps:**
+  1. Click **Continue**
+- **Expected:**
+  - Modal closes
+  - AppKit wallet picker opens
+  - `localStorage` — after connecting a wallet — contains `pipeline.wallet.termsAcknowledged.<address>` = `"true"` (or `pipeline.wallet.termsAcknowledged.pending` = `"true"` before the address is resolved)
+
+### TC-385-5: Dismiss paths — no ack persisted
+
+- **Actor:** Visitor who changes their mind
+- **Preconditions:** Modal is open, toggle is off (or on)
+- **Steps (run each independently):**
+  1. Click **Disconnect** button
+  2. Click the **×** close button (top-right corner)
+  3. Click the **scrim** (dark overlay outside the modal)
+  4. Press **Escape**
+- **Expected for each:**
+  - Modal closes
+  - AppKit does NOT open
+  - `pipeline.wallet.termsAcknowledged.*` keys remain absent
+
+### TC-385-6: Second connect skips gate
+
+- **Actor:** Returning visitor who already acknowledged
+- **Preconditions:** `pipeline.wallet.termsAcknowledged.<address>` is set to `"true"` in localStorage (simulated after a successful TC-385-4 flow or set manually)
+- **Steps:**
+  1. Navigate to `/`
+  2. Click **Connect Wallet**
+- **Expected:**
+  - Modal does NOT appear
+  - AppKit wallet picker opens directly
+
+### TC-385-7: Clearing localStorage restores the gate
+
+- **Actor:** Developer / QA
+- **Preconditions:** User has previously acknowledged (TC-385-4)
+- **Steps:**
+  1. In DevTools console: `localStorage.removeItem('pipeline.wallet.termsAcknowledged.<address>')`
+  2. Click **Connect Wallet** again
+- **Expected:** Modal appears again (gate restored)
+
+### TC-385-8: Keyboard navigation
+
+- **Actor:** Keyboard-only user
+- **Preconditions:** Modal is open
+- **Steps:**
+  1. Press **Tab** repeatedly
+  2. Press **Shift+Tab** to cycle back
+  3. Focus the toggle and press **Space**
+  4. Tab to Continue and press **Enter**
+  5. Reopen modal, press **Escape**
+- **Expected:**
+  - Tab cycles only among: toggle switch, Continue, Disconnect, Terms of Service link
+  - Space on toggle flips it (Space → on, Space again → off)
+  - Enter on Continue (when toggle on) calls through to AppKit
+  - Escape closes the modal; focus returns to the Connect Wallet button

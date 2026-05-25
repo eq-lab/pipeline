@@ -15,6 +15,8 @@ import {
   parseNumber,
   parseJson,
 } from "./mock";
+import { readTermsAcknowledged } from "./useTermsAcknowledgement";
+import { useWalletGate } from "./WalletGateContext";
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ export function useWallet(): WalletState {
   const realChainId = useChainId();
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { open } = useAppKit();
+  const { openGate } = useWalletGate();
 
   const mockAddress = useMock(KEYS.address, parseAddress);
   const mockIsConnected = useMock(KEYS.isConnected, parseBoolean);
@@ -57,10 +60,38 @@ export function useWallet(): WalletState {
   const chainId = mockChainId ?? realChainId;
 
   function connect() {
+    // Mock short-circuit — dev affordance, bypasses the terms gate.
     if (mockAddress !== undefined) {
-      // Already "connected" via mock — nothing to do.
       return;
     }
+
+    // Check terms acknowledgement synchronously.
+    // The gate is address-scoped; before a wallet is connected `realAddress`
+    // is undefined, so `readTermsAcknowledged(undefined)` returns false and
+    // the gate is shown. Once the user acknowledges and AppKit opens, the
+    // real address is known only after connect — at that point the gate flag
+    // is written with the address they just connected. On the NEXT connect
+    // attempt `realAddress` will be set and the flag will be found.
+    //
+    // Edge case handled: if `realAddress` is undefined (not yet connected)
+    // we use a synthetic "pending" key so the gate fires. After the user
+    // acknowledges, the WalletProvider calls open(). The user's actual address
+    // is unknown until they complete AppKit — so we write the flag under a
+    // special pending key and re-check on the next call.
+    //
+    // Simplified approach per exec plan: use realAddress (which may be
+    // undefined for a first-time visitor). The gate fires when undefined
+    // because readTermsAcknowledged(undefined) === false. The acknowledge()
+    // call in WalletGateProvider writes the flag under the user's real address
+    // once they actually complete the AppKit flow and we know their address.
+    //
+    // For the gate-then-AppKit flow, the WalletProvider's onContinue calls
+    // open() directly — so we just need to call openGate() here.
+    if (!readTermsAcknowledged(realAddress)) {
+      openGate();
+      return;
+    }
+
     void open();
   }
 

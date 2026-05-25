@@ -58,3 +58,8 @@ export {
   parseJson,
 } from "./mock";
 export { parseUnits, formatUnits } from "./units";
+export {
+  readTermsAcknowledged,
+  useTermsAcknowledgement,
+} from "./useTermsAcknowledgement";
+export type { UseTermsAcknowledgementResult } from "./useTermsAcknowledgement";

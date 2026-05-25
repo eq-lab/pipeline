@@ -161,7 +161,12 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("clicking Connect calls useWallet().connect() → opens AppKit modal", async () => {
+  it("clicking Connect calls useWallet().connect() → opens AppKit modal (when ack flag is pre-set)", async () => {
+    // Pre-seed the terms acknowledgement so the gate is skipped and AppKit
+    // is called directly. The gate modal itself is tested in FirstConnectionModal.test.tsx
+    // and useWallet.test.tsx.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+
     const user = userEvent.setup();
     renderHome();
 
