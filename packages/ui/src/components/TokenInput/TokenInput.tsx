@@ -83,9 +83,10 @@ export interface TokenInputProps extends Omit<
   signPrefix?: string;
 }
 
-// Outer panel — subtle gray fill, no border, 8px radius, uniform 8px padding.
+// Outer panel — subtle gray fill, 1px hairline border, 8px radius, uniform 8px padding.
 const cardClasses = [
   "bg-[var(--color-pipeline-fill-muted)]",
+  "border border-[var(--color-pipeline-line)]",
   "rounded-lg",
   "flex flex-col",
   "w-full",
