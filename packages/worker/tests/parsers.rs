@@ -285,8 +285,12 @@ fn loan_minted_decodes() {
     assert_eq!(ev.params["holder"], holder.to_checksum(None));
     assert_eq!(ev.params["initial_maturity"], initial_maturity);
     assert_eq!(ev.params["location"], "US");
-    // metadata_uri is an indexed string — stored as keccak256 hash (hex string)
-    assert!(ev.params.get("metadata_uri").is_some());
+    // The event field is `string indexed`, so the topic is a keccak256 hash, not the URI.
+    // The real URI is recovered via tokenURI(loanId) and stored in `loan_details`.
+    assert!(
+        ev.params.get("metadata_uri").is_none(),
+        "metadata_uri must not be in LoanMinted params (dead hash) — see issue #363 Scope #9"
+    );
     assert_eq!(ev.block_number, 500);
 }
 

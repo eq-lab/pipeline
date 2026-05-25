@@ -2,356 +2,124 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/363
 
+## Implementation status
+
+Complete (2026-05-22). Lint + tests green.
+
+### Scope simplification (post-implementation user direction)
+
+After the initial implementation landed, the user reviewed the schema and asked to drop both `loan_fetch_failures` AND the lifecycle columns from `loans`, renaming the table to `loan_details` and storing **only the immutable JSON fields** (the Solidity-described `ImmutableLoanData` struct, keyed by `(chain_id, loan_id)`). Lifecycle (`status`, `closed_at`, `closure_reason`) and `holder` are derivable from `contract_logs` — no need to materialise them. Rationale: the failures table was write-only (no consumer in this PR — background retry is out of scope) and lifecycle columns duplicated information already present in event rows.
+
+Final shape:
+
+- [x] Migration `20260522000001_loan_details_table.sql` — one table, immutable fields only, PK `(chain_id, loan_id)`.
+- [x] `shared::metadata_fetcher::MetadataFetcher` — generic `fetch_json<T>` with ipfs:// resolution + 1s/5s/30s retry.
+- [x] `pipeline_worker::indexer::loan_metadata` — `ImmutableLoanData` DTO + traits `LoanMetadataFetcher` / `MetadataUriResolver` for mocking + `HttpLoanMetadataFetcher` adapter.
+- [x] `shared::loan_details_repo::{LoanDetailsRepo, LoanDetailsRow}` — only `upsert_loan_details` + `get_loan_details`. No status mutators, no failure recording.
+- [x] `pipeline_worker::indexer::loan_registry_reader::LoanRegistryReader` — alloy `sol!` binding for ERC-721 `tokenURI`. Stateless (no cache — see Deviations).
+- [x] `pipeline_worker::indexer::loan_mapper::LoanMintedMapper` — handles `LoanMinted` only (writes contract_logs row, then attempts tokenURI + fetch + upsert; failures emit `tracing::warn!` and return Ok). All other LoanRegistry events route through `ContractLogMapper`.
+- [x] **Latent #336 bug fix**: `parse_loan_minted` no longer writes the dead indexed-string topic hash into `params["metadata_uri"]`.
+- [x] `IndexerJobSettings.ipfs_gateway_url` reads `JOB_INDEXER_IPFS_GATEWAY_URL` (default `https://ipfs.io/ipfs/`); `.env.example` updated.
+- [x] `run_indexer_job` constructs `MetadataFetcher`, `LoanRegistryReader`, `LoanDetailsRepo` once at job start; closure branches `LoanMinted` → `LoanMintedMapper`, else → `ContractLogMapper`.
+- [x] Tests — `shared/tests/metadata_fetcher.rs` (7 tests, mockito), `shared/tests/loan_details_repo.rs` (3 tests, DB-gated), `worker/tests/loan_mapper.rs` (4 tests, DB-gated, trait-mocked fetcher+resolver).
+- [x] Tech-debt entries TD-8 (in-tx fetch stall) and TD-9 (stale loans-data.md spec).
+
+### Failure semantics — what the operator sees during a URI outage
+
+Under the "never skip `loan_details`" policy there is no "failed loan_details" steady state: a LoanMinted in `contract_logs` either has a matching `loan_details` row (success) or both rows are absent (the batch rolled back and will be retried). The operator-visible signals are:
+
+- **Indexer logs**: `tracing::error!` from `index_loop` carrying the per-batch failure with full anyhow context (HTTP status, parse error, etc.) plus the message "indexer error — retrying in 5s".
+- **Indexer cursor stalls**: `last_indexed_block` in `log_collector_state` stops advancing past the offending block range. Combined with `eth_blockNumber` from the RPC, this is the canonical "indexer is stuck" alarm.
+- **Mitigation**: point `JOB_INDEXER_IPFS_GATEWAY_URL` at a pinned private gateway, or accept the stall until the public gateway recovers.
+
+### Deviations from the original plan
+
+- `LoanRegistryReader` has **no in-process cache** (original plan called for an LRU). Each `LoanMinted` event is processed exactly once because the `is_duplicate(contract_logs)` gate runs before the mapper's `insert`, so a cache would have a 0% hit rate in the steady state. Reintroduce if a new code path starts calling `tokenURI` outside the once-per-event ingest flow.
+- `MetadataUriResolver::metadata_uri` takes `(contract, loan_id)` so a single resolver serves multiple LoanRegistry contracts.
+- `MetadataFetcher::with_backoffs(Vec<Duration>)` builder lets tests override the 1s/5s/30s defaults.
+- **Scope reduction (post-plan)**: dropped `loan_fetch_failures` table, dropped lifecycle columns (`status`, `closed_at`, `closure_reason`) and `holder` from the materialised table, renamed `loans` → `loan_details`. Lifecycle is derived from `contract_logs` by the downstream API (separate Issue).
+
 ## Scope
 
 **In scope:**
 
-1. Add a new `loans` table (and `loan_fetch_failures` sidecar table) via a new sqlx migration in `packages/shared/migrations/`.
-2. New `shared::loan_repo::LoanRepo` with `upsert_loan`, `update_loan_status`, `record_fetch_failure`, and read helpers (`get_loan`, `list_loans`) used by downstream consumers (separate Portfolio Yield API Issue).
-3. New `pipeline_worker::indexer::loan_metadata` module exposing `fetch_metadata(uri: &str) -> Result<ImmutableLoanData>` over `reqwest`. Supports `http(s)://` and `ipfs://CID` schemes (IPFS via configured gateway). Retry with backoff 1s / 5s / 30s (3 attempts total).
-4. Extend the `LoanMinted` indexing path (already implemented in `packages/worker/src/indexer/mappers.rs` for #336's `contract_logs` row) to additionally call `fetch_metadata` and `upsert_loan`. The new behaviour must run inside the same `mapper.insert(...)` call so it executes in the indexer's open transaction.
-5. Extend the `LoanClosed`, `LoanDefaulted`, and `LoanStatusUpdated` handlers in the same mapper layer to call `update_loan_status` against the existing `loans` row (status / closed_at / closure_reason).
-6. Failure-handling policy: if `fetch_metadata` fails after all retries, insert a `loan_fetch_failures` row, log a warn, and **still insert the `contract_logs` LoanMinted row** (event indexing must not block on URI availability). The mapper must not propagate fetch errors out of `insert(...)`.
-7. New env var `IPFS_GATEWAY_URL` (default `https://ipfs.io/ipfs/`), wired into worker config and `.env.example` if such a file exists for the worker.
-8. Unit and integration tests for `loan_repo`, `loan_metadata`, the LoanMinted upsert path, and the lifecycle-update handlers.
-9. Product-spec note. Add a short paragraph to `docs/product-specs/loans-data.md` (or a new sibling `docs/design-docs/`) documenting the off-chain `loans` materialisation and the failure mode, so future readers know the DB shape is authoritative for read APIs.
+1. Add `loan_details` table via sqlx migration in `packages/shared/migrations/20260522000001_loan_details_table.sql`. Schema mirrors the immutable fields of the off-chain JSON document keyed by `(chain_id, loan_id)`. Lifecycle (`status`, `closed_at`, `closure_reason`) and `holder` are intentionally NOT materialised — the downstream API derives them from `contract_logs`.
+2. New `shared::loan_details_repo::{LoanDetailsRepo, LoanDetailsRow}` with `upsert_loan_details` (idempotent for re-index) and `get_loan_details` (read for downstream API).
+3. New shared HTTP fetcher in `packages/shared/src/metadata_fetcher.rs` exposing a reusable `fetch_json<T: DeserializeOwned>(url) -> Result<T>` API plus an `ipfs://` → gateway URL resolver. Supports `http(s)://` and `ipfs://CID[/path]` schemes. Retries fire on transport errors (both `send` and body-read) and HTTP 5xx; terminal on 4xx, unknown scheme, and JSON parse errors. Default 4 attempts with `[1s, 5s, 30s]` sleeps between them (convention: `attempts = backoffs.len() + 1` — every backoff entry is an actual sleep). `with_backoffs` builder lets tests override the defaults.
+4. New worker-local `tokenURI` reader in `packages/worker/src/indexer/loan_registry_reader.rs` — a thin alloy `sol!` binding for the standard ERC-721 `tokenURI(uint256) returns (string)`. Recovers the URI string because the `LoanMinted` event declares `string indexed metadataURI` (topic value is the keccak256 hash, not the URI). Stateless: one reader instance serves all configured registries, taking `contract: Address` per call.
+5. New worker mapper `pipeline_worker::indexer::loan_mapper::LoanMintedMapper`. Handles ONLY `LoanMinted`: writes the `contract_logs` row first, then attempts `tokenURI` → `fetch_json::<ImmutableLoanData>` → `upsert_loan_details`. Runs inside the indexer's open transaction so the `contract_logs` row and `loan_details` row commit atomically.
+6. Wire the registry handler closure in `mod.rs` to branch: `LoanMinted` → `LoanMintedMapper`; everything else (`LoanClosed`, `LoanDefaulted`, `LoanStatusUpdated`, `LoanCCRUpdated`, `LoanLocationUpdated`, `LoanRepayment`) → existing `ContractLogMapper`. Lifecycle events are not stored in `loan_details`.
+7. Failure-handling policy: any failure (URI recovery via `tokenURI`, `fetch_json`, numeric field parse, DB upsert) propagates out of `LoanMintedMapper::insert` so the indexer's outer transaction rolls back. The batch is re-pulled on the next polling cycle and retried until it succeeds. `loan_details` is never skipped — every `contract_logs` LoanMinted row is guaranteed to have a matching `loan_details` row. Trade-off: while the URI source is unavailable the indexer does not advance past the affected block range (and other event types share the batch, so all indexing stalls). Tracked as TD-8 for the future move to an async backfill worker.
+8. New env var `JOB_INDEXER_IPFS_GATEWAY_URL` (default `https://ipfs.io/ipfs/`), wired into `IndexerJobSettings.ipfs_gateway_url` and `.env.example`.
+9. **Fix latent #336 bug in `parse_loan_minted`.** The old code stored `decoded.metadataURI` into `params["metadata_uri"]`, but because `metadataURI` is `string indexed`, that value is the keccak256 topic hash, not a URI. Remove the `metadata_uri` key from `LoanMinted` `params` JSON entirely. Update the parser unit test to assert the key is absent.
+10. Unit and integration tests for `metadata_fetcher`, `loan_details_repo`, the `LoanMintedMapper` insert path with mocked fetcher + resolver.
 
 **Out of scope:**
 
-- The Portfolio Yield API endpoint (`/v1/portfolio/yield`) that consumes the `loans` table (separate Issue).
-- Backfill for loans minted before this lands. Operator re-runs the indexer from the configured start block; `upsert_loan` is idempotent.
-- Partial-senior-principal amortisation tracking (log in `docs/exec-plans/tech-debt-tracker.md` if not already tracked).
+- The Portfolio Yield API endpoint (`/v1/portfolio/yield`) that consumes the `loan_details` table (separate Issue).
+- Backfill for loans minted before this lands. Operator re-runs the indexer from the configured start block; `upsert_loan_details` is idempotent.
+- Partial-senior-principal amortisation tracking.
 - Renaming `LoanRepayment` → `RepaymentRecorded` (cosmetic; bundle later).
-- Background retry job for `loan_fetch_failures` (separate Issue if failure rate warrants it).
-- Re-emitting / repairing failed metadata fetches in this iteration.
+- Background retry job for failed metadata fetches (no failures table to drive it — see TD-8).
+- Persisting `attempts` / `last_error` for failed fetches (deliberately dropped in favour of `tracing::warn!` + the contract_logs ⋈ loan_details diff).
+- **Updating `docs/product-specs/loans-data.md`** — the spec is out of sync with the deployed contract (it documents a `getImmutable(loanId)` reader that does not exist). A separate docs Issue will be filed (tracked in TD-9).
 
 ## Assumptions and Risks
 
-- **Indexer transaction boundary.** `LogMapper::insert` is called inside an open `&mut PgConnection` tied to the indexer's outer transaction (see `index_once` in `packages/worker/src/indexer/mod.rs`). The `LoanMinted` upsert path must run on that same connection so the `contract_logs` row and the `loans` row land atomically. Any `reqwest` fetch must therefore complete before `insert(...)` returns; the retry budget (1s + 5s + 30s ≈ ~36s worst case) stalls indexing of that block range. This is acceptable for a low-volume LoanMinted event stream but must be made explicit. If a future high-volume scenario emerges, lift the fetch out of the transaction (tech debt).
-- **Indexed `metadataURI` is a hash, not the string.** In the deployed event, `metadataURI` is declared as `string indexed`, so the topic value the indexer receives is the keccak256 hash of the URI, not the URI itself. The existing parser already stores the topic into `params["metadata_uri"]` as the hashed value. We need the actual URI to fetch the JSON. Two paths exist:
-  1. Read the URI from `LoanRegistry.getImmutable(tokenId).metadataURI` via an `eth_call` (extra RPC roundtrip per mint).
-  2. Change the parser to ABI-decode the URI from non-indexed event data — only possible if the event is redeclared with `metadataURI` not indexed (contract change, out of scope).
-  The plan uses option 1: add a `LoanRegistryReader` (alloy contract binding) and call `getImmutable(loanId)` to resolve the on-chain URI. This is captured in **Open Questions** because it changes the worker's contract dependencies.
-- **IPFS gateway availability.** Public gateways (`ipfs.io`) are best-effort. The 3-attempt retry is short; persistent failures are recorded in `loan_fetch_failures`. The operator can swap `IPFS_GATEWAY_URL` to a private pinned gateway in production.
-- **JSON schema drift.** If the off-chain JSON diverges from the Solidity `ImmutableLoanData` field set, `serde_json::from_slice::<ImmutableLoanData>` will fail and the loan row will not be created (failure-recorded path). Schema drift surfaces as `loan_fetch_failures.last_error` containing `serde_json` parse errors.
-- **`NUMERIC(78,0)` representation.** The `uint256` JSON values arrive as decimal strings. They must be bound to SQL as `bigdecimal::BigDecimal` (already a workspace dep). All 5 NUMERIC columns must use `BigDecimal::from_str(...)` and reject any decimal-point input.
-- **Idempotency.** `upsert_loan` runs `INSERT ... ON CONFLICT (chain_id, loan_id) DO UPDATE SET ...`. Status mutators (`update_loan_status`) must NOT clobber immutable fields — they only set `status`, `closed_at`, `closure_reason`.
-- **Re-org safety.** This iteration assumes block reorgs deeper than `log_confirmations_delay` (default 12) never happen. A reorg that removes a `LoanMinted` event after our `loans` row is written would leave an orphan row. Tracked as tech debt for the indexer overall, not unique to this Issue.
+- **Indexer transaction boundary.** `LogMapper::insert` is called inside the indexer's open transaction (`index_once` in `packages/worker/src/indexer/mod.rs`). The `LoanMinted` upsert path runs on the same connection, so the `contract_logs` row and the `loan_details` row commit atomically. The metadata fetch (HTTP/IPFS) and the `tokenURI` `eth_call` both happen INSIDE that transaction. Under the "never skip loan_details" policy, any unrecoverable failure propagates out and the entire batch rolls back; the next polling cycle re-pulls and retries the same range until it succeeds. A prolonged URI outage therefore halts forward progress for ALL indexed events in the affected block range (not just LoanMinted). Tracked as TD-8 for the future move to an async backfill worker.
+- **Indexed `metadataURI` is a hash, not the string.** Recovery via `tokenURI(loanId)` (standard ERC-721). The contract does **not** expose `getImmutable(loanId)` or any on-chain `ImmutableLoanData` struct. The `eth_call` reuses the same `eth_rpc_url` as the indexer poller. No caching — each event is processed exactly once.
+- **IPFS gateway availability.** Public gateways (`ipfs.io`) are best-effort. Persistent failures show up as a missing `loan_details` row for a present `LoanMinted` event; ops can swap `JOB_INDEXER_IPFS_GATEWAY_URL` to a private pinned gateway in production.
+- **JSON schema drift.** `ImmutableLoanData` uses `#[serde(deny_unknown_fields)]` — adding a new field to the JSON breaks ingestion. Drift surfaces as `tracing::warn!` plus a missing `loan_details` row. Trade-off accepted in favour of strict schema enforcement (Q3).
+- **`NUMERIC(78,0)` representation.** `uint256` JSON values arrive as decimal strings → parsed via `BigDecimal::from_str` and rejected if they contain a decimal point.
+- **Idempotency.** `upsert_loan_details` runs `INSERT ... ON CONFLICT (chain_id, loan_id) DO UPDATE SET <all immutable columns>`. A re-fetch with corrected data heals a prior row.
+- **Re-org safety.** Assumes block reorgs deeper than `log_confirmations_delay` (default 12) don't happen. A reorg that removes a `LoanMinted` after our `loan_details` row is written would leave an orphan row. Indexer-wide tech debt, not unique to this Issue.
 
-## Open Questions
+## Resolved questions
 
-- Q1. **`metadataURI` recovery strategy.** Confirm option 1 (`eth_call` to `LoanRegistry.getImmutable(loanId)`) is acceptable. The alternative is to change the on-chain event to make `metadataURI` non-indexed in a future contract version; for now we add an `eth_call` per `LoanMinted` event. Should the `eth_call` happen against the same `eth_rpc_url` used by the indexer poller (yes, default), and should we cache by `loanId` (yes, but cache is in-process only)?
-- Q2. **Where does `LoanRegistryReader` live?** The cleanest home is `packages/shared/src/evm.rs` next to existing alloy bindings, or a new `packages/shared/src/loan_registry.rs`. The plan defaults to a new `loan_registry.rs` module under `packages/shared` so both `worker` and `api` can depend on it; flag if reviewer prefers it under `packages/worker/src/indexer/`.
-- Q3. **Treatment of `metadataURI` being empty / null.** The Solidity struct allows `string metadataURI` to be empty (the event already carries one URI; the field inside the JSON is a *secondary* pointer). The plan stores it as `NULL` via `Option<String>` in the repo, and the migration declares the column as `NULL`-able. Confirm this is OK rather than treating empty `metadataURI` as a hard fetch failure.
+Recorded verbatim for the decision trail (preserves the original phrasing; later scope reductions noted inline).
 
-## Implementation Steps
+- **Q1. `metadataURI` recovery strategy.** Use `eth_call tokenURI(loanId)` (standard ERC-721 read), **not** the fictional `getImmutable(loanId)`. The deployed `LoanRegistryUpgradeable` does not have `getImmutable` or any on-chain `ImmutableLoanData` struct. Use a minimal alloy `sol!` binding for `tokenURI` rather than binding to a non-existent struct. The spec doc (`docs/product-specs/loans-data.md`) is outdated; the deployed contract is the source of truth. Spec update OUT OF SCOPE for this Issue — separate docs Issue (TD-9).
+- **Q2. Module placement.** A shared HTTP client in the `shared` crate. JSON fetcher at `packages/shared/src/metadata_fetcher.rs`, generic `fetch_json<T: DeserializeOwned>(url) -> Result<T>`. The `tokenURI` reader (alloy binding) is worker-specific; lives at `packages/worker/src/indexer/loan_registry_reader.rs`.
+- **Q3. Empty / null inner `metadataURI` (the optional field inside the JSON document).** Store as `NULL` in `loan_details.metadata_uri`. Don't fail the fetch. This is a normal value.
 
-### Step 1: Migration
+## Implementation summary
 
-Create `packages/shared/migrations/20260522000001_loans_table.sql` matching the schema from the Issue body:
+Final code layout (paths are authoritative — see source for full APIs):
 
-```sql
-CREATE TABLE loans (
-    chain_id                    BIGINT       NOT NULL,
-    loan_id                     NUMERIC(78,0) NOT NULL,
-    holder                      TEXT         NOT NULL,
-    originator                  TEXT         NOT NULL,
-    borrower_id                 TEXT         NOT NULL,
-    commodity                   TEXT         NOT NULL,
-    corridor                    TEXT         NOT NULL,
-    original_facility_size      NUMERIC(78,0) NOT NULL,
-    original_senior_tranche     NUMERIC(78,0) NOT NULL,
-    original_equity_tranche     NUMERIC(78,0) NOT NULL,
-    original_offtaker_price     NUMERIC(78,0) NOT NULL,
-    senior_interest_rate_bps    INTEGER      NOT NULL,
-    origination_date            BIGINT       NOT NULL,
-    original_maturity_date      BIGINT       NOT NULL,
-    governing_law               TEXT         NOT NULL,
-    metadata_uri                TEXT         NOT NULL,
-    inner_metadata_uri          TEXT,
-    status                      TEXT         NOT NULL DEFAULT 'Performing',
-    closed_at                   BIGINT,
-    closure_reason              TEXT,
-    indexed_at                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (chain_id, loan_id)
-);
-CREATE INDEX loans_origination_idx ON loans (origination_date);
-CREATE INDEX loans_closed_idx      ON loans (closed_at) WHERE closed_at IS NOT NULL;
-
-CREATE TABLE loan_fetch_failures (
-    chain_id        BIGINT       NOT NULL,
-    loan_id         NUMERIC(78,0) NOT NULL,
-    metadata_uri    TEXT         NOT NULL,
-    last_error      TEXT         NOT NULL,
-    attempts        INT          NOT NULL DEFAULT 0,
-    last_attempt_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (chain_id, loan_id)
-);
-```
-
-Notes:
-- `metadata_uri` stores the URI from the on-chain `getImmutable(loanId).metadataURI` (the URI that was fetched).
-- `inner_metadata_uri` stores the optional secondary URI carried inside the JSON document (`metadataURI` key in the JSON), nullable per Q3.
-
-### Step 2: New `loan_metadata` module in the worker
-
-Create `packages/worker/src/indexer/loan_metadata.rs`:
-
-```rust
-#[derive(Debug, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ImmutableLoanData {
-    pub originator: String,
-    #[serde(rename = "borrowerId")]
-    pub borrower_id: String,
-    pub commodity: String,
-    pub corridor: String,
-    #[serde(rename = "originalFacilitySize")]
-    pub original_facility_size: String,
-    #[serde(rename = "originalSeniorTranche")]
-    pub original_senior_tranche: String,
-    #[serde(rename = "originalEquityTranche")]
-    pub original_equity_tranche: String,
-    #[serde(rename = "originalOfftakerPrice")]
-    pub original_offtaker_price: String,
-    #[serde(rename = "seniorInterestRateBps")]
-    pub senior_interest_rate_bps: String,
-    #[serde(rename = "originationDate")]
-    pub origination_date: String,
-    #[serde(rename = "originalMaturityDate")]
-    pub original_maturity_date: String,
-    #[serde(rename = "governingLaw")]
-    pub governing_law: String,
-    #[serde(default, rename = "metadataURI")]
-    pub metadata_uri: Option<String>,
-}
-
-pub struct LoanMetadataFetcher {
-    http: reqwest::Client,
-    ipfs_gateway_url: String, // e.g. "https://ipfs.io/ipfs/"
-}
-
-impl LoanMetadataFetcher {
-    pub fn new(http: reqwest::Client, ipfs_gateway_url: String) -> Self { ... }
-
-    /// Fetches and parses the metadata document. Retries with 1s/5s/30s backoff (3 attempts).
-    /// Returns Err on terminal failure; the caller logs to `loan_fetch_failures`.
-    pub async fn fetch_metadata(&self, uri: &str) -> Result<ImmutableLoanData> { ... }
-
-    fn resolve(uri: &str, gateway: &str) -> Result<reqwest::Url> { ... }
-}
-```
-
-- For `ipfs://CID[/path]` strip the scheme and join onto `IPFS_GATEWAY_URL` (e.g. `https://ipfs.io/ipfs/CID/path`).
-- For `https://...` and `http://...` use the URL as-is.
-- All other schemes return a terminal error (no retry).
-- Retries fire only on transport / 5xx errors; 4xx and JSON parse errors are terminal (one attempt, no further retries).
-
-### Step 3: New `loan_repo` module in `packages/shared`
-
-Create `packages/shared/src/loan_repo.rs` and wire it into `packages/shared/src/lib.rs`:
-
-```rust
-pub struct LoanRepo { pub pool: sqlx::PgPool }
-
-pub struct LoanRow {
-    pub chain_id: i64,
-    pub loan_id: BigDecimal,
-    pub holder: String,
-    pub originator: String,
-    pub borrower_id: String,
-    pub commodity: String,
-    pub corridor: String,
-    pub original_facility_size: BigDecimal,
-    pub original_senior_tranche: BigDecimal,
-    pub original_equity_tranche: BigDecimal,
-    pub original_offtaker_price: BigDecimal,
-    pub senior_interest_rate_bps: i32,
-    pub origination_date: i64,
-    pub original_maturity_date: i64,
-    pub governing_law: String,
-    pub metadata_uri: String,
-    pub inner_metadata_uri: Option<String>,
-    pub status: String,
-    pub closed_at: Option<i64>,
-    pub closure_reason: Option<String>,
-}
-
-impl LoanRepo {
-    pub async fn upsert_loan(&self, conn: &mut PgConnection, row: &LoanRow) -> Result<()>;
-    pub async fn update_loan_status(
-        &self,
-        conn: &mut PgConnection,
-        chain_id: i64,
-        loan_id: &BigDecimal,
-        status: &str,
-        closed_at: Option<i64>,
-        closure_reason: Option<&str>,
-    ) -> Result<()>;
-    pub async fn record_fetch_failure(
-        &self,
-        conn: &mut PgConnection,
-        chain_id: i64,
-        loan_id: &BigDecimal,
-        metadata_uri: &str,
-        err: &str,
-    ) -> Result<()>;
-    pub async fn get_loan(&self, chain_id: i64, loan_id: &BigDecimal) -> Result<Option<LoanRow>>;
-}
-```
-
-Behaviour:
-- `upsert_loan`: `INSERT ... ON CONFLICT (chain_id, loan_id) DO UPDATE SET <all immutable columns>` so a re-index from genesis is idempotent. Does not touch `status`, `closed_at`, `closure_reason`.
-- `update_loan_status`: noop if no row exists (logs `warn!` with `loan_id`). When `status == "Closed"`, set `closed_at = block_timestamp` and `closure_reason` from the event.
-- `record_fetch_failure`: `INSERT ... ON CONFLICT (chain_id, loan_id) DO UPDATE SET attempts = attempts + 1, last_error = $..., last_attempt_at = NOW()`.
-
-### Step 4: On-chain `LoanRegistry` binding for `getImmutable`
-
-Add a minimal alloy contract binding at `packages/shared/src/loan_registry.rs` (per Q2 — flag if reviewer disagrees):
-
-```rust
-alloy::sol! {
-    #[sol(rpc)]
-    interface ILoanRegistry {
-        struct ImmutableLoanData {
-            address originator;
-            bytes32 borrowerId;
-            string  commodity;
-            string  corridor;
-            uint256 originalFacilitySize;
-            uint256 originalSeniorTranche;
-            uint256 originalEquityTranche;
-            uint256 originalOfftakerPrice;
-            uint256 seniorInterestRateBps;
-            uint256 originationDate;
-            uint256 originalMaturityDate;
-            string  governingLaw;
-            string  metadataURI;
-        }
-        function getImmutable(uint256 tokenId) external view returns (ImmutableLoanData memory);
-    }
-}
-
-pub struct LoanRegistryReader { provider: alloy::providers::RootProvider<...>, ... }
-
-impl LoanRegistryReader {
-    pub fn new(rpc_url: &str) -> Result<Self>;
-    /// Returns the canonical metadata URI for a loan.
-    pub async fn metadata_uri(&self, contract: Address, loan_id: U256) -> Result<String>;
-}
-```
-
-`metadata_uri` simply returns `getImmutable(loanId).metadataURI`. The full on-chain struct is not needed at indexing time — the off-chain JSON is the source of truth — but we read it to recover the URI from the indexed-string topic.
-
-In-process LRU cache: a `tokio::sync::Mutex<HashMap<(Address, U256), String>>` on `LoanRegistryReader` of bounded size (e.g. 4096 entries) to avoid re-fetching across mapper recomputes during a single indexer process lifetime.
-
-### Step 5: Wire metadata fetching into the `LoanMinted` mapper
-
-The current flow registers `parse_loan_*` parsers under the `loan_registry_contracts` event handler in `packages/worker/src/indexer/mod.rs`, all wrapped in a generic `ContractLogMapper`. Change this so the loan handler uses a dedicated `LoanRegistryMapper` instead:
-
-1. Add `packages/worker/src/indexer/loan_mapper.rs`:
-   ```rust
-   pub struct LoanRegistryMapper {
-       event: ContractLog,
-       chain_id: i64,
-       event_repo: Arc<EventRepo>,
-       loan_repo: Arc<LoanRepo>,
-       metadata_fetcher: Arc<LoanMetadataFetcher>,
-       registry_reader: Arc<LoanRegistryReader>,
-   }
-   #[async_trait] impl LogMapper for LoanRegistryMapper { ... }
-   ```
-2. In `insert(...)`:
-   - Always call `event_repo.insert_log(conn, &self.event, self.chain_id)` first (preserves #336's contract_logs behaviour).
-   - Then branch by `event_name`:
-     - `LoanMinted`: resolve `metadata_uri` via `registry_reader.metadata_uri(...)`, call `metadata_fetcher.fetch_metadata(uri)`. On success, build a `LoanRow` and call `loan_repo.upsert_loan(...)`. On failure, call `loan_repo.record_fetch_failure(...)` and `tracing::warn!` — do **not** propagate the error.
-     - `LoanClosed`: parse `loan_id` and `closure_reason` from `event.params`, call `loan_repo.update_loan_status(conn, chain_id, &loan_id, "Closed", Some(event.block_timestamp), Some(reason))`.
-     - `LoanDefaulted`: parse `loan_id`, call `update_loan_status(..., "Default", None, None)`.
-     - `LoanStatusUpdated`: parse `loan_id` and `status` string, call `update_loan_status(..., &status, None, None)`.
-     - Other loan events (`LoanCCRUpdated`, `LoanLocationUpdated`, `LoanRepayment`): no `loans` table change — `contract_logs` insert is sufficient.
-3. In `packages/worker/src/indexer/mod.rs`:
-   - Construct `LoanMetadataFetcher`, `LoanRegistryReader`, and an `Arc<LoanRepo>` once at job start.
-   - Replace the loan-registry `add_event_handler` block to return a `LoanRegistryMapper` instead of a `ContractLogMapper`.
-
-### Step 6: Config wiring
-
-In `packages/worker/src/indexer/config.rs`:
-
-- Add `ipfs_gateway_url: String` to `IndexerJobSettings`, read from `IPFS_GATEWAY_URL` with default `https://ipfs.io/ipfs/`.
-
-In `packages/worker/src/main.rs`: nothing changes; `run_indexer_job(settings, pool)` already receives both.
-
-### Step 7: Update `parsers.rs` for status string normalisation
-
-Verify the existing `parse_loan_status_updated` writes `params["status"]` as the string name (e.g. `"WatchList"`). The mapper relies on this — `update_loan_status` simply forwards the string. No code change expected, but add a unit test that asserts a `StatusUpdated` event with ordinal 3 produces `params["status"] == "Closed"`, since the mapper would route that to a `Closed` lifecycle on the row.
-
-### Step 8: Add `LoanRepo` to `main.rs` wiring
-
-The worker's `main.rs` already calls `run_indexer_job(settings, pool)`. Inside `run_indexer_job` (Step 5) we will instantiate `LoanRepo::new(pool.clone())` from the same pool. No new env vars beyond `IPFS_GATEWAY_URL`.
-
-### Step 9: Tests
-
-See **Test Strategy**. New tests live under:
-- `packages/worker/tests/loan_metadata.rs` — unit tests for the fetcher.
-- `packages/worker/tests/loan_mapper.rs` — integration test for `LoanRegistryMapper::insert` against a real Postgres (skipped without `DATABASE_URL`, matching `indexer_integration.rs` pattern).
-- `packages/shared/tests/loan_repo.rs` — unit tests for `upsert_loan`, `update_loan_status`, `record_fetch_failure` against a real Postgres.
-
-### Step 10: Docs
-
-- Add a short section "Off-chain `loans` materialisation" to `docs/product-specs/loans-data.md` describing the indexer-side `loans` table, the failure mode (event-indexing never blocks on URI availability), and that `loan_fetch_failures` is the operator-visible signal.
-- Add an entry to `docs/exec-plans/tech-debt-tracker.md` for the in-transaction `reqwest` fetch (note the worst-case ~36 s stall risk and the future move to an async backfill job).
+| Layer | File | Purpose |
+|---|---|---|
+| Schema | `packages/shared/migrations/20260522000001_loan_details_table.sql` | `loan_details (chain_id, loan_id, ...immutable fields..., metadata_uri NULL, indexed_at)` |
+| Shared | `packages/shared/src/metadata_fetcher.rs` | `MetadataFetcher::{new, with_backoffs, fetch_json, resolve}` |
+| Shared | `packages/shared/src/loan_details_repo.rs` | `LoanDetailsRepo::{new, upsert_loan_details, get_loan_details}`, `LoanDetailsRow` |
+| Worker | `packages/worker/src/indexer/loan_metadata.rs` | `ImmutableLoanData` DTO + traits `LoanMetadataFetcher` (mocking) + `MetadataUriResolver` (mocking) + `HttpLoanMetadataFetcher` adapter |
+| Worker | `packages/worker/src/indexer/loan_registry_reader.rs` | `LoanRegistryReader::{new, metadata_uri(contract, loan_id)}` — alloy `sol!` binding for `tokenURI`, stateless |
+| Worker | `packages/worker/src/indexer/loan_mapper.rs` | `LoanMintedMapper` impls `LogMapper`. Writes `contract_logs` → attempts `tokenURI` → `fetch_metadata` → `upsert_loan_details`. Failures `tracing::warn!` + return Ok |
+| Worker | `packages/worker/src/indexer/mod.rs` | Constructs the three deps once; closure branches `LoanMinted` → `LoanMintedMapper`, else → `ContractLogMapper` |
+| Worker | `packages/worker/src/indexer/parsers.rs` | `parse_loan_minted` no longer writes the indexed-string topic hash into `params["metadata_uri"]` |
+| Worker | `packages/worker/src/indexer/config.rs` | `IndexerJobSettings.ipfs_gateway_url` reads `JOB_INDEXER_IPFS_GATEWAY_URL` (default `https://ipfs.io/ipfs/`) |
 
 ## Test Strategy
 
-### Unit tests — `loan_metadata.rs`
+Realised tests (see source files for full assertions):
 
-`packages/worker/tests/loan_metadata.rs` (uses `wiremock` or `mockito` — pick `mockito` as it's already common in Rust async test suites; add to `[dev-dependencies]` of `pipeline-worker`):
+| File | Count | Notes |
+|---|---|---|
+| `packages/shared/tests/metadata_fetcher.rs` | 8 | mockito-backed: HTTPS success, IPFS gateway routing, 5xx retry → success, retry exhaustion on persistent 5xx, 4xx terminal, malformed JSON terminal, missing-field terminal, unknown scheme terminal. |
+| `packages/shared/tests/loan_details_repo.rs` | 3 | DB-gated: insert + idempotent re-upsert, overwrite-on-conflict heals corrupted prior row, get-missing returns None. |
+| `packages/worker/tests/loan_mapper.rs` | 4 | DB-gated; mocks `LoanMetadataFetcher` and `MetadataUriResolver` traits: success path writes both rows; fetch failure writes only `contract_logs`; resolver failure writes only `contract_logs`; reindex of same event is dedup'd at `contract_logs` and the `loan_details` upsert is idempotent. |
+| `packages/worker/tests/parsers.rs` (updated) | n/a | Regression: `loan_minted_decodes` now asserts the absence of `params.metadata_uri` (Scope item 9). |
 
-1. `fetches_https_success` — 200 OK with the full JSON sample from the Issue, asserts every parsed field.
-2. `routes_ipfs_to_gateway` — `ipfs://CID/path` → asserts the HTTP request URL is `<gateway>CID/path`.
-3. `retries_on_5xx_three_times` — server returns 500 / 500 / 200; assert success and 3 total requests. Verify backoff is at least configured intervals (test sets short overrides via constructor params to keep the run fast).
-4. `terminal_on_4xx` — server returns 404; one attempt only, returns Err.
-5. `terminal_on_malformed_json` — server returns 200 with invalid JSON; one attempt only.
-6. `terminal_on_missing_fields` — server returns 200 with JSON missing `originatorId`; one attempt only (serde rejection).
-7. `terminal_on_unknown_scheme` — `ftp://...` returns Err without any HTTP attempt.
+DB-gated tests follow the existing project convention: `setup_pool` returns `None` when `DATABASE_URL` is unset, and the test early-returns. Run with `cargo test --all -- --test-threads=1` (a pre-existing issue with parallel DB-backed tests in `indexer_integration.rs` causes races on shared tables; not introduced by this change).
 
-### Unit tests — `loan_repo.rs`
+### Smoke gates
 
-`packages/shared/tests/loan_repo.rs` (DB-backed, gated on `DATABASE_URL` matching the existing convention):
-
-1. `upsert_loan_insert_then_idempotent_update` — insert once, call again with the same fields, assert no change and no duplicate (PK is `(chain_id, loan_id)`).
-2. `upsert_loan_does_not_overwrite_status` — insert with default `status='Performing'`, call `update_loan_status` to `'Closed'`, then `upsert_loan` again, assert `status` is still `'Closed'`.
-3. `update_loan_status_to_closed_sets_closed_at_and_reason`.
-4. `update_loan_status_noop_when_no_row` — returns Ok, logs warn; `get_loan` returns None.
-5. `record_fetch_failure_increments_attempts`.
-
-### Integration test — `loan_mapper.rs`
-
-`packages/worker/tests/loan_mapper.rs` (DB-backed, gated on `DATABASE_URL`):
-
-Use a trait abstraction or dependency injection so the test can substitute a mock `LoanMetadataFetcher` and `LoanRegistryReader`. Concretely:
-
-- Define `trait MetadataFetcher { async fn fetch_metadata(&self, uri: &str) -> Result<ImmutableLoanData>; }` and `trait MetadataResolver { async fn metadata_uri(&self, c: Address, id: U256) -> Result<String>; }`.
-- The mapper holds `Arc<dyn MetadataFetcher>` and `Arc<dyn MetadataResolver>`.
-
-Tests:
-
-1. `loan_minted_success_inserts_both_rows` — feed a synthetic `LoanMinted` ContractLog to the mapper, mock fetcher returns the canonical JSON, assert both `contract_logs` and `loans` rows exist with correct values.
-2. `loan_minted_fetch_failure_still_inserts_contract_log` — fetcher returns Err, assert `contract_logs` LoanMinted row exists AND `loan_fetch_failures` row exists AND `loans` has no row.
-3. `loan_closed_flips_status_and_sets_closure_fields` — insert a loan row, feed `LoanClosed`, assert `status='Closed'`, `closed_at` set, `closure_reason` set.
-4. `loan_status_updated_flips_status_only` — feed `LoanStatusUpdated` with `status='WatchList'`, assert `status` updated, `closed_at` and `closure_reason` remain null.
-5. `loan_defaulted_flips_status_to_default`.
-6. `loan_minted_idempotent_on_reindex` — call the mapper twice for the same event; `contract_logs` dedup kicks in (existing behaviour) and `loans` upsert is idempotent.
-
-### Smoke
-
-- `cargo clippy --all -- -D warnings` passes.
-- `cargo test -p pipeline-worker` + `cargo test -p shared` pass (with and without `DATABASE_URL`).
-- `cargo build --workspace` succeeds.
+- `cargo clippy --all -- -D warnings` — pass.
+- `cargo clippy --all --tests --all-targets -- -D warnings` — pass.
+- `cargo test --all` with and without `DATABASE_URL` — pass.
+- `cargo build --workspace` — pass.
 
 ## Docs to Update
 
-- `docs/product-specs/loans-data.md` — add an "Off-chain `loans` materialisation" subsection describing the DB shape, the failure mode (event indexing is not blocked on URI availability), and the existence of `loan_fetch_failures` as an ops surface.
-- `docs/exec-plans/tech-debt-tracker.md` — log the in-transaction metadata fetch (worst case ~36 s stall) and the long-term move to a separate backfill worker.
-- `docs/product-specs/index.md` — update only if the new subsection in `loans-data.md` requires a navigation entry (read first; likely no change).
-- No user-facing doc changes (this is internal indexer plumbing).
+- `docs/exec-plans/tech-debt-tracker.md` — TD-8 logged (in-transaction fetch stall, suggested fix is the async backfill worker). TD-9 logged (rewrite of `docs/product-specs/loans-data.md`).
+- `docs/product-specs/loans-data.md` — **deliberately NOT touched** in this PR; rewrite tracked as TD-9.
+- No user-facing doc changes (internal indexer plumbing).
