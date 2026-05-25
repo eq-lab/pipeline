@@ -4,6 +4,68 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 
 ---
 
+## S-395 — /deposit: USDC half outer white card (16px radius)
+
+**Issue:** [#395 /deposit: USDC half missing the outer white card (16px radius); Figma wraps the gray input panel in a padded white card](https://github.com/eq-lab/pipeline/issues/395)
+**Plan:** `docs/exec-plans/active/issue-395-deposit-usdc-outer-white-card.md`
+
+### TC-395-1: Card A (USDC half) renders inside a white outer card with 16px radius and correct padding
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running at `http://localhost:5176` (fix/395-deposit-usdc-outer-card branch)
+- **Steps:**
+  1. Navigate to `http://localhost:5176/deposit?direction=deposit`
+  2. In DevTools Console: find the `gap-[2px]` wrapper and inspect its first child (Card A):
+     ```js
+     const gapWrapper = Array.from(document.querySelectorAll('.flex.flex-col')).find(d => getComputedStyle(d).gap === '2px');
+     const cardA = gapWrapper.children[0];
+     const cs = getComputedStyle(cardA);
+     [cardA.className, cs.backgroundColor, cs.borderRadius, cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft]
+     ```
+- **Expected:**
+  - `className` includes `relative pt-4 pr-4 pb-6 pl-4 bg-[var(--color-pipeline-surface)] rounded-[var(--radius-pipeline-card-lg)]`
+  - `backgroundColor` = `rgb(255, 255, 255)` (white surface)
+  - `borderRadius` = `16px`
+  - Padding: top=16px, right=16px, bottom=24px, left=16px
+  - No border class on Card A outer wrapper
+  - `--radius-pipeline-card-lg` token resolves to `16px` on `:root`
+
+### TC-395-2: Swap button still straddles the 2px seam between Card A and Card B
+
+- **Actor:** User / QA
+- **Preconditions:** Same as TC-395-1
+- **Steps:**
+  1. Inspect the swap button (aria-label="Switch direction") bounding rect vs. Card A bottom / Card B top
+- **Expected:**
+  - Gap between Card A bottom and Card B top = 2px
+  - Swap button center Y within 1px of gap midpoint
+  - Swap button `borderRadius: 4px`, size 40×40px
+
+### TC-395-3: Paper background visible around Card A; Card B unaffected
+
+- **Actor:** User / QA
+- **Preconditions:** Same as TC-395-1
+- **Steps:**
+  1. Visually confirm the warm off-white paper (`#f8f7f6`) is visible around the white card edges
+  2. Confirm Card B (PLUSD half) still renders as a white card with `borderRadius: 4px` (unchanged per #382)
+- **Expected:**
+  - Card A `backgroundColor: rgb(255, 255, 255)` (white) — visible contrast with paper background
+  - Card B `backgroundColor: rgb(255, 255, 255)`, `borderRadius: 4px` — unchanged
+  - No border on Card A outer wrapper
+
+### TC-395-4: Withdraw direction — same Card A white outer card layout holds
+
+- **Actor:** User / QA
+- **Preconditions:** Same as TC-395-1
+- **Steps:**
+  1. Navigate to `http://localhost:5176/deposit?direction=withdraw`
+  2. Inspect Card A (now PLUSD input half) with same checks as TC-395-1
+- **Expected:**
+  - Card A `backgroundColor: rgb(255, 255, 255)`, `borderRadius: 16px`, correct padding — same as deposit direction
+  - Withdraw-specific content: PLUSD input, 25%/50%/75%/Max chips, "1 PLUSD = 1 USDC", "Allow Pipeline to use PLUSD" step copy
+
+---
+
 ## S-372 Home: Recent activity "View All" button affordance
 
 **Issue:** [#372 Home: Recent activity 'View All' affordance is a small text link; Figma is a button-sized chevron control](https://github.com/eq-lab/pipeline/issues/372)

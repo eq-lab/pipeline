@@ -4,6 +4,25 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-25 — Issue #395 (/deposit: USDC half missing outer white card — 16px radius)
+
+- **Scope:** Issue #395 acceptance criteria (TC-395-1 through TC-395-4, plus swap button regression)
+- **Cases executed:** 5
+- **Passes:** 5
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-395-1 (Card A white outer card — disconnected): Card A wrapper on `fix/395-deposit-usdc-outer-card` branch at `http://localhost:5176/deposit?direction=deposit`. `className` = `"relative pt-4 pr-4 pb-6 pl-4 bg-[var(--color-pipeline-surface)] rounded-[var(--radius-pipeline-card-lg)]"`. `backgroundColor: rgb(255, 255, 255)` (white). `borderRadius: 16px`. Padding: `16px / 16px / 24px / 16px` (top/right/bottom/left). No border on outer card. `--radius-pipeline-card-lg` token resolves to `16px` on `:root`. All match Figma node `1498:100136` spec exactly.
+  - PASS TC-395-2 (Swap button straddles seam): Gap between Card A bottom and Card B top = 2px. Swap button center Y = 401, gap midpoint = 402 — deviation = 1px (within 1px tolerance). `borderRadius: 4px`. Size: 40×40px. All correct.
+  - PASS TC-395-3 (Paper background visible; Card B unaffected): Card A white (`rgb(255,255,255)`) contrasts against `#f8f7f6` paper. Card B `backgroundColor: rgb(255,255,255)`, `borderRadius: 4px` — unchanged (PLUSD radius delta tracked by #382). No border on Card A.
+  - PASS TC-395-4 (Withdraw direction — same layout): `/deposit?direction=withdraw` Card A has `bg: rgb(255,255,255)`, `borderRadius: 16px`, `pt: 16px / pb: 24px`. Withdraw content correct (PLUSD input, 25/50/75/Max chips, "1 PLUSD = 1 USDC", "Allow Pipeline to use PLUSD"). Layout stable.
+  - PASS TC-395-5 (Connected wallet — Card A stable): Mock wallet connected (5,000.00 USDC). Card A white outer card unchanged; USDC balance shows in inner gray panel; swap button enabled and functional; clicking swap navigates to `/deposit?direction=withdraw` with Card A layout preserved. No console errors throughout.
+  - Inner gray panel (TokenInput) correctly nested inside Card A: `backgroundColor: rgba(191, 189, 187, 0.12)` = `--color-pipeline-fill-muted`; `borderRadius: 8px`; 4 quick-amount chips rendered. Inner panel is untouched — outer card chrome is an additional wrapping layer only.
+  - Note: tested on port 5176 (`pipeline-background` worktree, `fix/395-deposit-usdc-outer-card` branch). Ports 5174 and others serve different repos/branches — always verify the correct port before testing against a fix branch.
+  - Note: pre-existing issue — Card B (PLUSD half) still has `borderRadius: 4px` (not 16px). This is the expected asymmetry tracked by #382 and explicitly accepted in the issue scope.
+  - No new GitHub Issues filed.
+
 ### 2026-05-25 — Issue #385 (First-connection terms acknowledgement modal gates wallet connect)
 
 - **Scope:** Issue #385 acceptance criteria (TC-385-1 through TC-385-8)
