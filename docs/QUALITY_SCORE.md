@@ -4,6 +4,24 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-22 — Issue #372 (Home: Recent activity "View All" button affordance)
+
+- **Scope:** Issue #372 acceptance criteria (TC-372-1 through TC-372-3)
+- **Cases executed:** 3
+- **Passes:** 3
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-372-1 ("View All" renders as button-sized control): `a[href="/transactions"]` on the `fix/372-view-all-button` branch at `http://localhost:5177/`. `height=48px` (h-12), `paddingLeft=12px` / `paddingRight=12px` (px-3), `borderRadius=8px` (rounded-lg), `fontWeight=600` (--font-weight-emphasized), `color=rgba(56,55,53,0.6)` (--color-pipeline-ink-muted). `innerHTML` contains an SVG `<svg>` chevron-right icon — not the literal `→` character. All Figma spec properties match.
+  - PASS TC-372-2 ("View All" navigates to /transactions): Clicking the link navigated to `http://localhost:5177/transactions`; Chrome DevTools MCP confirmed `Page navigated to http://localhost:5177/transactions.`
+  - PASS TC-372-3 ("View All" absent when disconnected): With no mock wallet keys, the "Recent activity" card showed only the empty-state illustration and caption; no `a[href="/transactions"]` element present in DOM.
+  - Unit tests: 21 tests in `RecentActivityCard.test.tsx` all pass (confirmed via `yarn workspace @pipeline/frontend test --run src/components/RecentActivityCard`).
+  - Visual: screenshot confirms "View All ›" label with muted color and chevron icon, right-aligned at the bottom of the activity list. Matches Figma spec (48px hit target, 12px padding, 8px radius, muted ink, right-chevron).
+  - Note: dev server for this branch runs at port 5177 (started separately since main worktree at :5173 served the old main-branch code without the fix). Always verify the correct worktree/port before testing.
+  - Console errors: only pre-existing Reown/WalletConnect font preload and 403/400 warnings — none related to #372.
+  - No new GitHub Issues filed.
+
 ### 2026-05-22 — Issue #359 (Merge /deposit and /withdraw into one route with direction param + swap button)
 
 - **Scope:** Issue #359 acceptance criteria (TC-359-1 through TC-359-10) plus TC-186-4 two-card layout regression

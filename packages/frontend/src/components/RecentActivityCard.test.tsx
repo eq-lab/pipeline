@@ -9,7 +9,7 @@
  * Scenarios covered:
  *   1. Disconnected → empty state renders; no "View All" link.
  *   2. Connected + 3 rows → three list items render with correct amount
- *      strings; "View All →" link present and points to /transactions.
+ *      strings; "View All" button-link present and points to /transactions.
  *   3. Connected + 6 rows → exactly 5 rows render (MAX_ROWS cap).
  *   4. Connected + empty list → empty state renders; no "View All" link.
  *   5. Connected + loading → empty state renders; no "View All" link.
@@ -222,14 +222,14 @@ describe("RecentActivityCard — connected + 3 rows", () => {
     expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
   });
 
-  it("renders the 'View All →' link", () => {
+  it("renders the 'View All' button link", () => {
     renderCard();
-    expect(screen.getByText("View All →")).toBeInTheDocument();
+    expect(screen.getByText(/View All/)).toBeInTheDocument();
   });
 
-  it("'View All →' link points to /transactions", () => {
+  it("'View All' button link points to /transactions", () => {
     renderCard();
-    const link = screen.getByText("View All →").closest("a");
+    const link = screen.getByText(/View All/).closest("a");
     expect(link).toHaveAttribute("href", "/transactions");
   });
 
