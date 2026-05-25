@@ -10,7 +10,7 @@
  *   1. Disconnected → empty state renders; no "View All" link.
  *   2. Connected + 3 rows → three list items render with correct amount
  *      strings; "View All" button-link present and points to /transactions.
- *   3. Connected + 5 rows → exactly 3 rows render (MAX_ROWS cap).
+ *   3. Connected + 6 rows → exactly 5 rows render (MAX_ROWS cap).
  *   4. Connected + empty list → empty state renders; no "View All" link.
  *   5. Connected + loading → empty state renders; no "View All" link.
  *   6. Connected + error → empty state renders; no "View All" link.
@@ -112,6 +112,21 @@ const FIXTURE_5: RequestsResponse = {
       request_id: "5",
       status: "Completed",
       created_at: "2026-05-11T08:00:00Z",
+    },
+  ],
+};
+
+// 6-item fixture used to verify the MAX_ROWS=5 cap: the 6th item must not
+// render.
+const FIXTURE_6: RequestsResponse = {
+  requests: [
+    ...FIXTURE_5.requests,
+    {
+      type: "Deposit",
+      amount: "4000000000", // 4,000 USDC at 6 decimals
+      request_id: "6",
+      status: "Completed",
+      created_at: "2026-05-10T07:00:00Z",
     },
   ],
 };
@@ -226,7 +241,7 @@ describe("RecentActivityCard — connected + 3 rows", () => {
   });
 });
 
-describe("RecentActivityCard — connected + 5 rows (MAX_ROWS cap)", () => {
+describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({
       isConnected: true,
@@ -235,7 +250,7 @@ describe("RecentActivityCard — connected + 5 rows (MAX_ROWS cap)", () => {
       openConnectModal: vi.fn(),
     });
     mockUseRequests.mockReturnValue({
-      data: FIXTURE_5,
+      data: FIXTURE_6,
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -246,16 +261,15 @@ describe("RecentActivityCard — connected + 5 rows (MAX_ROWS cap)", () => {
     vi.clearAllMocks();
   });
 
-  it("renders exactly 3 list items (capped at MAX_ROWS)", () => {
+  it("renders exactly 5 list items (capped at MAX_ROWS)", () => {
     renderCard();
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.getAllByRole("listitem")).toHaveLength(5);
   });
 
-  it("does not render the 4th or 5th fixture amounts", () => {
+  it("does not render the 6th fixture amount", () => {
     renderCard();
-    // 4th row is +2,000.00 USDC, 5th is +3,000.00 USDC (Sell shows positive proceeds)
-    expect(screen.queryByText("+2,000.00 USDC")).not.toBeInTheDocument();
-    expect(screen.queryByText("+3,000.00 USDC")).not.toBeInTheDocument();
+    // 6th row is +4,000.00 USDC — must not appear when MAX_ROWS=5
+    expect(screen.queryByText("+4,000.00 USDC")).not.toBeInTheDocument();
   });
 });
 

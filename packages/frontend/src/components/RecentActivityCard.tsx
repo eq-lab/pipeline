@@ -66,10 +66,10 @@ const HEADING_ID = "recent-activity-card-title";
 // reads at the same scale as the design.
 const ILLUSTRATION_WIDTH = 240;
 
-// Maximum rows to show on the home card. The Figma frame `1497:95119` shows
-// one row with substantial whitespace below; 3 fits the card height
-// (min-h-[564px]) without scrolling while providing a useful summary.
-const MAX_ROWS = 3;
+// Maximum rows to show on the home card. The Figma frame `1497:95207` shows
+// 5 rows (Sell / Sell / Unstake / Stake / Buy) filling the card height
+// (min-h-[564px]) with a "View All" affordance below.
+const MAX_ROWS = 5;
 
 export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
@@ -85,6 +85,11 @@ export const RecentActivityCard = React.forwardRef<
     // "heading" / "Placeholder" vertical stack on node 1497:94567.
     "flex flex-col gap-4",
     "min-h-[564px] w-full",
+    // Figma node 1497:95207 — asymmetric border: 1px on top/left, 3px on
+    // right/bottom — same "stamped" elevation effect as StepsCard (1498-100130).
+    // Use `!` prefix so per-side widths beat the uniform `border` shorthand in
+    // Card's baseClasses regardless of Tailwind's CSS cascade order.
+    "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
     .filter(Boolean)
