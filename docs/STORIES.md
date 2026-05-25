@@ -1124,7 +1124,8 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   - The "Connect Wallet" promo card is gone — the top-left slot now shows the Portfolio placeholder.
   - "Total Balance" eyebrow label, "$0.00" heading, and "Get PLUSD to start" muted link are visible.
   - A `7D | 1M | 3M | 1Y | All` segmented tab control is visible in the top-right of the card.
-  - A muted bar-chart silhouette fills the body of the card.
+  - A 100-bar stacked monotonic-growth chart in the design-system positive green (`--color-pipeline-chart-positive`) fills the body of the card.
+  - A `+$42.80 earning` caption appears below the `$0.00` balance.
   - The grid does not reflow — the card height is approximately the same as the Connect Wallet promo card (~274px min).
   - Clicking "Get PLUSD to start" navigates to `/deposit`.
 
@@ -1138,7 +1139,7 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 - **Expected:**
   - The "1M" pill becomes visually active (white pill background); "7D" becomes inactive (no background).
   - No network request is logged in the DevTools Network panel for this interaction.
-  - The chart silhouette and "$0.00" balance do not change (static placeholder).
+  - The chart re-renders for the 1M period and the "+$X earning" caption updates to "+$92.80 earning". The $0.00 balance does not change. No network request is logged.
 
 ### TC-250-4: Disconnecting via mock — reverts to Connect Wallet promo
 
@@ -1149,6 +1150,75 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
   2. Refresh the page
   3. Observe the top-left card
 - **Expected:** The "Connect Wallet" promo card reappears; the Portfolio placeholder is gone. Grid layout is unchanged.
+
+---
+
+## S-389 — Home Portfolio chart: stacked-bars monotonic-growth + hover tooltip
+
+**Issue:** [#389 Replace home Portfolio chart silhouette with stacked-bars monotonic-growth interactive chart](https://github.com/eq-lab/pipeline/issues/389)
+**Plan:** `docs/exec-plans/active/issue-389-portfolio-stacked-bars-chart.md`
+
+### TC-389-1: Connected — chart renders 100 green stacked bars with earning caption
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; mock wallet connected (same localStorage setup as TC-250-2)
+- **Steps:**
+  1. Navigate to `http://localhost:5173/`
+  2. Observe the top-left Portfolio card
+- **Expected:**
+  - The card body shows 100 stacked bars in `--color-pipeline-chart-positive` (`#2D7B1F`) forming a monotonic-growth curve.
+  - Below the `$0.00` balance, the earning caption reads `+$42.80 earning` (default 7D period).
+  - The "7D" tab is active in the tab control.
+
+### TC-389-2: Period switch — chart and caption update, no network call
+
+- **Actor:** User (connected via mock)
+- **Preconditions:** TC-389-1 completed; DevTools Network panel open
+- **Steps:**
+  1. Click the "1M" tab — confirm earning caption shows `+$92.80 earning`
+  2. Click "3M" — confirm `+$192.80 earning`
+  3. Click "1Y" — confirm `+$542.80 earning`
+  4. Click "All" — confirm `+$842.80 earning`
+  5. Observe the DevTools Network panel throughout
+- **Expected:**
+  - Each tab switch updates the earning caption to the value listed above.
+  - The chart visually re-renders (curve spans differ).
+  - No network request fires for any tab switch.
+
+### TC-389-3: Hover — vertical cursor + tooltip appear
+
+- **Actor:** User (connected via mock)
+- **Preconditions:** TC-389-1 completed
+- **Steps:**
+  1. Slowly move the mouse across the chart body left-to-right
+  2. Pause near the left edge, then near the right edge
+- **Expected:**
+  - A vertical cursor line appears at the hovered position and snaps to the nearest bar slot.
+  - A tooltip floats above the cursor showing a balance (`$1,XXX.XX`) and a period-appropriate timestamp.
+  - At the left edge: the tooltip is clamped to stay within chart bounds; the cursor line is not clamped.
+  - At the right edge: same clamping behaviour (tooltip stays inside; cursor may reach the rightmost slot).
+
+### TC-389-4: Mouse leave — cursor and tooltip disappear
+
+- **Actor:** User (connected via mock)
+- **Preconditions:** TC-389-3 completed (tooltip visible)
+- **Steps:**
+  1. Move the mouse out of the chart area
+- **Expected:**
+  - The vertical cursor line and tooltip both disappear immediately.
+  - The `+$42.80 earning` caption and chart bars remain unchanged.
+
+### TC-389-5: Card grid does not reflow on tab switch or hover
+
+- **Actor:** User (connected via mock)
+- **Preconditions:** TC-389-1 completed
+- **Steps:**
+  1. Switch through all 5 period tabs
+  2. Hover the chart and move the mouse around
+  3. Inspect the card height via DevTools
+- **Expected:**
+  - The card maintains its `min-height: 274px` throughout — no layout shift on tab switch or hover.
+  - Other cards in the home grid are not displaced.
 
 ---
 
