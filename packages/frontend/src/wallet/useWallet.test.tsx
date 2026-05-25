@@ -57,6 +57,30 @@ vi.mock("./config", () => ({
   wagmiAdapter: {},
 }));
 
+// ── Mock FirstConnectionModal to avoid portal/DOM issues ────────────────────
+// We just need to verify gate open/close behavior, not the modal UI.
+
+const mockModalOnContinue = vi.fn();
+const mockModalOnDismiss = vi.fn();
+let capturedModalProps: {
+  open: boolean;
+  onContinue: () => void;
+  onDismiss: () => void;
+} = { open: false, onContinue: () => {}, onDismiss: () => {} };
+
+vi.mock("../components/FirstConnectionModal", () => ({
+  FirstConnectionModal: (props: {
+    open: boolean;
+    onContinue: () => void;
+    onDismiss: () => void;
+  }) => {
+    capturedModalProps = props;
+    mockModalOnContinue.mockImplementation(props.onContinue);
+    mockModalOnDismiss.mockImplementation(props.onDismiss);
+    return null;
+  },
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -131,25 +155,67 @@ describe("useWallet — localStorage mock", () => {
   });
 });
 
-describe("useWallet — connect()", () => {
+describe("useWallet — connect() with terms gate", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
+    mockModalOnContinue.mockClear();
+    mockModalOnDismiss.mockClear();
   });
 
-  it("calls useAppKit().open() when no mock address is set", () => {
+  it("opens the gate (modal) and does NOT call open() when ack flag is absent", () => {
     const { result } = renderHook(() => useWallet(), { wrapper });
+
     act(() => result.current.connect());
+
+    // Gate was opened — modal is open.
+    expect(capturedModalProps.open).toBe(true);
+    // AppKit was NOT called.
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it("calls useAppKit().open() when the ack flag is already set", () => {
+    // Simulate pre-existing acknowledgement (no realAddress → use pending key).
+    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+
+    const { result } = renderHook(() => useWallet(), { wrapper });
+
+    act(() => result.current.connect());
+
+    // Gate was NOT opened.
+    expect(capturedModalProps.open).toBe(false);
+    // AppKit was called directly.
     expect(mockOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("does NOT call open() when a mock address is already set", () => {
+  it("does NOT call open() and does NOT open gate for mock address (dev affordance)", () => {
     localStorage.setItem(
       "pipeline.mock.wallet.address",
       "0x1234000000000000000000000000000000000000",
     );
+
     const { result } = renderHook(() => useWallet(), { wrapper });
+
+    // Reset capturedModalProps to see if gate is opened.
+    capturedModalProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+
     act(() => result.current.connect());
-    expect(mockOpen).toHaveBeenCalledTimes(0);
+
+    // Mock short-circuit — neither gate nor AppKit.
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it("double connect while gate is open is a no-op (deduplication)", () => {
+    const { result } = renderHook(() => useWallet(), { wrapper });
+
+    act(() => result.current.connect());
+    expect(capturedModalProps.open).toBe(true);
+
+    // Second click while modal is open.
+    act(() => result.current.connect());
+    // Still open, no additional side effects.
+    expect(capturedModalProps.open).toBe(true);
+    expect(mockOpen).not.toHaveBeenCalled();
   });
 });
