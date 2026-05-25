@@ -3,8 +3,9 @@ import React from "react";
 /**
  * QuickAmountChip — selectable amount pill used in the conversion card.
  *
- * Renders as a `<button type="button">` chip with a subtle border.
- * Matches Figma node 1498-100130 ("QuickAmountChip" group).
+ * Renders as a `<button type="button">` borderless white pill. Contrast is
+ * provided by the white fill against the surrounding gray container.
+ * Matches Figma node 1498-99888 ("suggestion bar chip") in file A43rjYYjSwdTmiwwf5cx5n.
  *
  * Variants:
  *   - Default: unselected state with muted ink label
@@ -12,13 +13,11 @@ import React from "react";
  *   - Special label: "Max" (same visual, semantic distinction in label only)
  *
  * Design tokens used:
- *   - `--color-pipeline-surface`      — chip fill (default background)
- *   - `--color-pipeline-paper`        — paper background (parent context)
+ *   - `--color-pipeline-surface`      — chip fill (white pill on gray container)
+ *   - `--color-pipeline-paper`        — paper background (focus ring offset)
  *   - `--color-pipeline-ink`          — selected label colour
  *   - `--color-pipeline-ink-muted`    — unselected label colour
- *   - `--color-pipeline-line`         — subtle border
  *   - `--color-pipeline-brand`        — focus-visible ring
- *   - `--radius-pipeline-button`      — small rounded corners (4 px, matches Figma radius-3xl)
  *   - `--font-body`, `--text-pipeline-body`, `--font-weight-emphasized`
  */
 
@@ -37,16 +36,11 @@ export const QuickAmountChip = React.forwardRef<
   ref,
 ) {
   const chipClasses = [
-    // Layout
-    "inline-flex items-center justify-center",
-    "h-9 px-3 whitespace-nowrap",
-    "rounded-[var(--radius-pipeline-button)]",
-    // Border — always present
-    "border",
-    selected
-      ? "border-[var(--color-pipeline-ink)]"
-      : "border-[var(--color-pipeline-line)]",
-    // Background
+    // Layout — flex so flex-1 from parent works correctly
+    "flex items-center justify-center",
+    "h-8 px-2 whitespace-nowrap",
+    "rounded-full",
+    // Background — white pill; no border (contrast comes from gray container)
     "bg-[var(--color-pipeline-surface)]",
     // Typography
     "font-[family-name:var(--font-body)]",
@@ -59,10 +53,10 @@ export const QuickAmountChip = React.forwardRef<
       : "text-[color:var(--color-pipeline-ink-muted)]",
     // Interaction
     "cursor-pointer select-none",
-    "transition-[border-color,color,box-shadow] duration-150 ease-out",
-    // Hover — intensify border/text when unselected
+    "transition-[color,box-shadow] duration-150 ease-out",
+    // Hover — intensify text when unselected
     !selected && !disabled
-      ? "hover:border-[var(--color-pipeline-ink-muted)] hover:text-[color:var(--color-pipeline-ink)]"
+      ? "hover:text-[color:var(--color-pipeline-ink)]"
       : "",
     // Focus-visible ring
     "focus:outline-none focus-visible:outline-none",

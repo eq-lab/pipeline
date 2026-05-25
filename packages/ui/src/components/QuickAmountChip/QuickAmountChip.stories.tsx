@@ -6,12 +6,16 @@ const meta = {
   component: QuickAmountChip,
   parameters: {
     layout: "centered",
+    // Gray background matches the `--color-pipeline-fill-muted` container so
+    // the borderless white pills are visible in the canvas.
+    backgrounds: { default: "gray" },
     docs: {
       description: {
         component:
           "Selectable amount pill used in the conversion card. Renders as a " +
-          '`<button type="button">` chip with a subtle border. Supports ' +
-          "default, selected, hover, and focus-visible states.",
+          '`<button type="button">` borderless white pill. Contrast is ' +
+          "provided by the white fill against the surrounding gray container. " +
+          "Supports default, selected, hover, and focus-visible states.",
       },
     },
   },
@@ -77,11 +81,22 @@ export const MaxSelected: Story = {
 export const AllChips: Story = {
   name: "All chips — side-by-side",
   render: () => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <QuickAmountChip label="$1,000 (Min)" />
-      <QuickAmountChip label="$5,000" selected />
-      <QuickAmountChip label="$10,000" />
-      <QuickAmountChip label="Max" />
+    // Simulate the gray container background so borderless white pills are visible
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        padding: 8,
+        borderRadius: 8,
+        background: "var(--color-pipeline-fill-muted, #f0f0f0)",
+        width: 320,
+      }}
+    >
+      <QuickAmountChip label="$1,000 (Min)" className="flex-1" />
+      <QuickAmountChip label="$5,000" selected className="flex-1" />
+      <QuickAmountChip label="$10,000" className="flex-1" />
+      <QuickAmountChip label="Max" className="flex-1" />
     </div>
   ),
 };
