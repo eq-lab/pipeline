@@ -33,13 +33,14 @@ import swapVerticalSrc from "../../assets/icons/swap-vertical.svg";
  *                      so it cannot fire during an in-flight wallet action.
  *
  * Design tokens used:
- *   - `--color-pipeline-surface`   — white card fill (Card `white` variant)
+ *   - `--color-pipeline-surface`   — white card fill (Card `white` variant and Card A wrapper)
  *   - `--color-pipeline-fill-muted`  — swap button fill (subtle gray)
  *   - `--color-pipeline-surface-muted` — swap button hover fill
  *   - `--color-pipeline-line`      — card border
  *   - `--color-pipeline-ink-muted` — InfoRow label colour (via InfoRow)
  *   - `--color-pipeline-ink`       — InfoRow value colour (via InfoRow)
- *   - `--radius-pipeline-card`     — card corner radius (via Card)
+ *   - `--radius-pipeline-card`     — card corner radius (via Card, used for Card B)
+ *   - `--radius-pipeline-card-lg`  — 16px outer card radius for Card A (USDC input section; Figma 1498:100136)
  *
  * Figma reference: node 1498-100130 (input section, file A43rjYYjSwdTmiwwf5cx5n).
  * Swap button: Figma node 1498-100157.
@@ -115,11 +116,18 @@ export const ConversionCard = React.forwardRef<
       {...rest}
     >
       {/* Card A (top): TokenInput — sell side (USDC).
+          White outer card matching Figma node 1498:100136 ("input-sum-inline"):
+            - background: --color-pipeline-surface (white)
+            - corner radius: --radius-pipeline-card-lg (16px)
+            - padding: 16/16/24/16 (pt-4 pr-4 pb-6 pl-4)
+            - no border (Figma shows none)
           `relative` enables the absolutely-positioned swap button to anchor
           to this card's bottom edge via `top-full`.
           signPrefix="−" shows the minus sign (outflow) when a non-zero value
           is present; the underlying input value stays positive. */}
-      <div className="relative">
+      <div
+        className="relative pt-4 pr-4 pb-6 pl-4 bg-[var(--color-pipeline-surface)] rounded-[var(--radius-pipeline-card-lg)]"
+      >
         <TokenInput {...input} signPrefix="−" />
 
         {/* Swap button — straddles the seam between Card A and Card B.
