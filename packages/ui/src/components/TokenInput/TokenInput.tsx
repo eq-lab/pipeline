@@ -127,7 +127,9 @@ const inputClasses = [
   "font-normal",
   "text-[color:var(--color-pipeline-ink-subtle)]",
   "text-right",
-  "w-full",
+  // field-sizing-content makes the input shrink/grow to fit its typed value,
+  // so the sign prefix sits flush against the first digit (no w-full stretch).
+  "[field-sizing:content]",
   // Caret styled to match design (thin ink-coloured bar)
   "caret-[var(--color-pipeline-ink)]",
   // Focus ring on the overall card, not just the input
