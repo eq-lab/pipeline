@@ -180,7 +180,6 @@ pub fn parse_loan_minted(log: &Log) -> Option<ContractLog> {
         params: json!({
             "loan_id": decoded.loanId.to_string(),
             "holder": decoded.holder.to_checksum(None),
-            "metadata_uri": decoded.metadataURI,
             "initial_maturity": decoded.initialMaturity,
             "location": decoded.location,
         }),

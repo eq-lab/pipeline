@@ -13,6 +13,7 @@ pub struct IndexerJobSettings {
     pub polling_block_range: u64,
     pub polling_interval_ms: u64,
     pub log_confirmations_delay: u64,
+    pub ipfs_gateway_url: String,
 }
 
 impl IndexerJobSettings {
@@ -32,6 +33,8 @@ impl IndexerJobSettings {
             polling_block_range: env_parse(&format!("{prefix}POLLING_BLOCK_RANGE"), 1000)?,
             polling_interval_ms: env_parse(&format!("{prefix}POLLING_INTERVAL_MS"), 500)?,
             log_confirmations_delay: env_parse(&format!("{prefix}LOG_CONFIRMATIONS_DELAY"), 12)?,
+            ipfs_gateway_url: env::var(format!("{prefix}IPFS_GATEWAY_URL"))
+                .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned()),
         })
     }
 }

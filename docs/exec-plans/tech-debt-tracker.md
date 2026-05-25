@@ -73,6 +73,20 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** The bridge works in real browsers (verified manually) but the unit-test coverage gap means a regression could slip through.
 - **Suggested fix:** Add a Playwright/browser test in CI that opens the dev server, sets a mock key via DevTools evaluation, and asserts the UI updates without a reload. Alternatively, refactor the bridge to be injectable/mockable (e.g., accept a `storage` parameter in `installSameTabMockBridge` for test injection).
 
+### TD-8: LoanMintedMapper does metadata fetch inside the indexer transaction, blocking forward progress on URI outage
+- **Date:** 2026-05-22 (policy revised 2026-05-25)
+- **Location:** `packages/worker/src/indexer/loan_mapper.rs` — `LoanMintedMapper::populate_details`, called from `index_once` inside `repo.pool.begin()` ... `tx.commit()`.
+- **Gap:** Each `LoanMinted` event triggers (a) an `eth_call tokenURI(loanId)` and (b) an `https://` or `ipfs://` JSON fetch with 1s/5s/30s retry. The current policy is "never skip `loan_details`": any unrecoverable failure propagates out of `insert(...)`, the indexer's outer transaction rolls back, and the entire block range is retried on the next polling cycle. While the URI source is unavailable the indexer literally does not advance past the affected range — and because all event types share the same `index_once` transaction, deposit/withdrawal/staking indexing is also stalled.
+- **Impact:** Strict consistency (every `contract_logs` LoanMinted has a matching `loan_details` row), at the cost of liveness. A prolonged IPFS gateway outage halts the indexer entirely. Operator mitigation: point `JOB_INDEXER_IPFS_GATEWAY_URL` at a private pinned gateway.
+- **Suggested fix:** Lift the fetch out of the indexer transaction. The mapper writes only the `contract_logs` row (and enqueues a backfill record). A separate worker consumes the queue, performs `tokenURI` + fetch + upsert into `loan_details` with its own retry budget. The indexer always advances; `loan_details` arrives eventually. This is a meaningful change to the failure model — adopt it when the volume of `LoanMinted` events or the unreliability of the URI source justifies the engineering cost.
+
+### TD-9: Outdated loans-data product spec — references non-existent on-chain reader
+- **Date:** 2026-05-22
+- **Location:** `docs/product-specs/loans-data.md`
+- **Gap:** The spec documents a `LoanRegistry.getImmutable(loanId)` reader returning a Solidity `ImmutableLoanData` struct. Neither exists on the deployed `LoanRegistryUpgradeable` contract (verified — it inherits ERC-721 and exposes `tokenURI(uint256)` only; the immutable data lives in the off-chain JSON document `tokenURI` points at).
+- **Impact:** New readers will trust the spec, look for `getImmutable`, find nothing, and either implement against a fictional ABI or get blocked. Issue #363 deliberately left the spec untouched (scope creep) and added the correct design in this tracker plus the active exec plan.
+- **Suggested fix:** Rewrite the "ImmutableLoanData" section of `loans-data.md` to describe (1) the off-chain JSON schema fetched via `tokenURI(loanId)`, (2) the indexer's `loan_details` table materialisation, (3) ops query for failed fetches: `contract_logs LEFT JOIN loan_details WHERE event_name='LoanMinted' AND loan_details.loan_id IS NULL`. File a separate `documentation,backlog` Issue and link it here.
+
 ---
 
 ## Post-MVP
