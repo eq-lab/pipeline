@@ -4,6 +4,35 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-05-25 — Issue #385 (First-connection terms acknowledgement modal gates wallet connect)
+
+- **Scope:** Issue #385 acceptance criteria (TC-385-1 through TC-385-8)
+- **Cases executed:** 8
+- **Passes:** 8
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Score: 10/10**
+  - PASS TC-385-1 (gate fires on first connect): With clean localStorage on `feat/385-first-connection-modal` branch (port 5378), clicking "Connect Wallet" in the TopBar shows the "Before you continue" modal. AppKit does NOT open. Modal heading correct; toggle OFF; Continue disabled; `role="dialog" aria-modal="true"` on the panel; focus on the toggle switch on open.
+  - PASS TC-385-2 (Continue disabled until toggle on): Continue button is `disabled` and not clickable when toggle is off — confirmed via interaction failure (element not interactive) and script inspection (`disabled: true`).
+  - PASS TC-385-3 (toggle on enables Continue): Clicking toggle → `aria-checked="true"`, track background `rgb(32, 128, 0)` = `#208000` (spec). Continue `disabled: false`, `backgroundColor: rgb(38, 37, 36)` = `#262524` (spec), `opacity: 1`. Both colors match Figma spec exactly.
+  - PASS TC-385-4 (Continue with toggle on — ack persisted + AppKit opens): Clicking Continue closes the modal and opens AppKit "Connect Wallet" picker. `pipeline.wallet.termsAcknowledged.pending` = `"true"` set in localStorage (pending key used before address resolution, per implementation design).
+  - PASS TC-385-5 (dismiss paths — no ack persisted): All four dismiss paths tested independently:
+    - Disconnect button: dialog gone, no ack key, focus returned to "Connect Wallet" button.
+    - X close button: dialog gone, no ack key, focus returned to "Connect Wallet" button.
+    - Scrim click (dispatched click on overlay parent at top-left coords): dialog gone, no ack key.
+    - Escape key: dialog gone, no ack key, focus returned to "Connect Wallet" button.
+    - AppKit did NOT open on any dismiss path.
+  - PASS TC-385-6 (second connect skips gate): With `pipeline.wallet.termsAcknowledged.pending = "true"` in localStorage, clicking "Connect Wallet" opens AppKit directly — no "Before you continue" modal.
+  - PASS TC-385-7 (clearing localStorage restores gate): Removing all `termsAcknowledged` keys then clicking Connect shows the modal again.
+  - PASS TC-385-8 (keyboard navigation): Tab cycles among 4 focusable elements inside the dialog (Close button, toggle switch, Disconnect, Terms of Service link). Continue is excluded from tab order when disabled (correct). Focusing Continue and pressing Enter (when enabled) triggers modal close + AppKit open. Escape closes modal and returns focus to originating Connect button.
+  - Visual specs verified: width=420px (spec), bg=rgb(248,247,246)=#f8f7f6 (spec), padding=24px (spec), borderRadius=4px (spec), scrim=rgba(56,55,53,0.6) (spec), maxHeight=~80vh (spec). All match Figma init state node 1572:123328 and checked state node 1582:69059.
+  - Gate also fires from the promo card "Connect" button (entry point regression confirmed).
+  - Unit tests: 32/32 pass across `useTermsAcknowledgement.test.tsx` and `FirstConnectionModal.test.tsx`. 9/9 `useWallet.test.tsx` tests pass including gated and acknowledged paths.
+  - Console errors: only pre-existing Reown/WalletConnect font preload and AppKit warnings — none related to #385.
+  - Note: tested against port 5378 (pipeline-background-2 worktree, `feat/385-first-connection-modal` branch). Port 3000 (main worktree, `fix/379-deposit-quick-amount-chips`) does NOT have this feature — always verify the correct worktree/port before testing.
+  - No new GitHub Issues filed.
+
 ### 2026-05-22 — Issue #372 (Home: Recent activity "View All" button affordance)
 
 - **Scope:** Issue #372 acceptance criteria (TC-372-1 through TC-372-3)

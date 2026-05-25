@@ -1684,7 +1684,7 @@ All tests run against the feature branch dev server (port 4359). App URL: `http:
 ### TC-385-1: Gate fires on first connect (no prior ack)
 
 - **Actor:** First-time visitor
-- **Preconditions:** `localStorage` is clear (or `pipeline.wallet.termsAcknowledged.*` keys are absent); dev server running on `fix/379-deposit-quick-amount-chips` branch (or the PR branch)
+- **Preconditions:** `localStorage` is clear (or `pipeline.wallet.termsAcknowledged.*` keys are absent); dev server running on `feat/385-first-connection-modal` branch (port 5378 in pipeline-background-2 worktree)
 - **Steps:**
   1. Navigate to `/`
   2. Click **Connect Wallet** in the TopBar
