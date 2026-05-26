@@ -138,7 +138,7 @@ export const RecentActivityCard = React.forwardRef<
             <Link
               to="/transactions"
               className={[
-                "self-end",
+                "self-end mt-auto",
                 "inline-flex items-center gap-1",
                 "h-12 px-3 rounded-lg",
                 "no-underline transition-colors",
