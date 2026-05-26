@@ -1,4 +1,5 @@
 pub mod bitgo;
+pub mod contract_logs_repo;
 pub mod crystal;
 pub mod db;
 pub mod eip712;

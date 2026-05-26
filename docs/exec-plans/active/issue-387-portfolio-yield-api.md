@@ -204,6 +204,73 @@ Tests:
 - `cargo build --workspace`
 - `npx tsx scripts/lint-docs.ts`
 
+## Implementation Status
+
+**Completed** (post-review hardening rolled in).
+
+### Files created / modified
+
+| File | Change |
+|------|--------|
+| `packages/shared/src/contract_logs_repo.rs` | New — `ContractLogsRepo::list_loan_lifecycle_events` |
+| `packages/shared/src/lib.rs` | Register `contract_logs_repo` module |
+| `packages/shared/src/loan_details_repo.rs` | Added `list_loans_for_window` + `get_earliest_origination_date` |
+| `packages/api/src/lib.rs` | Added `loan_details_repo` + `contract_logs_repo` fields to `AppState` |
+| `packages/api/src/main.rs` | Instantiate new repos; wire portfolio router + OpenAPI doc |
+| `packages/api/src/routes/mod.rs` | Register `pub mod portfolio` |
+| `packages/api/src/routes/portfolio.rs` | New — DTOs, compute (`pub fn compute_series`), handler |
+| `packages/api/tests/portfolio_compute.rs` | New — 13 compute-layer tests against the 3-loan worked example. Pure unit tests, no DB. |
+| **Removed in this PR** — DB-gated env-var-controlled integration tests: `packages/api/tests/emails.rs`, `packages/shared/tests/loan_details_repo.rs`, `packages/worker/tests/loan_mapper.rs`, `packages/worker/tests/indexer_integration.rs`. See "Test-suite policy change" below. |
+| `docs/product-specs/portfolio-yield.md` | New spec |
+| `docs/product-specs/index.md` | Added row for new spec |
+| `docs/product-specs/dashboards.md` | Added "Portfolio Yield chart" subsection cross-linking the spec |
+
+### Deviations from the plan (recorded after the user-driven review)
+
+1. **`from > to` UX softening (A2 of post-impl review).** Plan / Issue body said "HTTP 400 if `from > to`." Implementation distinguishes the two cases:
+   - Caller *explicitly* sets `from > to` → HTTP 400 (matches plan).
+   - Caller *omits* `from` AND the defaulted value (earliest origination date) is past `to` → HTTP 200 with `series: []` and zeroed headline. Returning 400 about a parameter the caller never set was confusing.
+   Documented in `docs/product-specs/portfolio-yield.md` validation section.
+
+2. **Window cap replaced with sample-count cap (A5 of post-impl review).** Plan said `to - from <= 5 years`; implementation caps `(to - from) / step + 1 <= 5_000` instead. This is a tighter, more honest bound — daily samples → ~13 years allowed, weekly → ~100 years, hourly → ~7 months. Eliminates the multi-second-response failure mode for hourly + multi-year requests.
+
+3. **Defensive `(t − start).max(0)` clamp (A4 of post-impl review).** Plan didn't address pathological data; implementation clamps `active_secs` to ≥ 0 to guard against a hypothetical `LoanClosed.block_timestamp < origination_date` (re-org artifact).
+
+4. **Test file split + relocation (per user request, then convention review).** Compute-layer tests live in `packages/api/tests/portfolio_compute.rs` — sibling of the HTTP integration test, matching the project-wide convention (all tests in `tests/`, no inline-but-separate files in `src/`, feature-named, no `_tests.rs` suffix). Three tautological tests (asserting Rust stdlib facts and constants) were removed; two real-coverage tests were added (`lifecycle_event_after_scheduled_maturity_does_not_extend_loan`, `realized_sums_multiple_repayments_for_same_loan`). `compute_series` is `pub` so the integration-test crate can access it.
+
+5. **Accrued truncation timing.** Plan was silent; implementation sums in `BigDecimal` across all loans first and truncates once at the end. Avoids double-rounding and is semantically correct.
+
+### Gate outcomes
+
+- `cargo clippy --all -- -D warnings`: **clean**
+- `cargo clippy --all --tests --all-targets -- -D warnings`: **clean**
+- `cargo test --all`: **13 compute-layer unit tests pass. No DB-gated tests anywhere in the workspace** (see policy change below). Operator smoke-tests SQL- and HTTP-layer correctness manually (e.g. `cargo run -p pipeline-api` + `curl /v1/portfolio/yield?chain_id=...`).
+
+### Test-suite policy change (this PR)
+
+Removed all four pre-existing env-var-gated DB integration tests:
+
+| Deleted file | What it tested |
+|---|---|
+| `packages/api/tests/emails.rs` | HTTP layer of the `/v1/emails` endpoint against a live DB. |
+| `packages/shared/tests/loan_details_repo.rs` | `LoanDetailsRepo` SQL behaviour (#363). |
+| `packages/worker/tests/loan_mapper.rs` | `LoanMintedMapper` end-to-end against a real Postgres (#363). |
+| `packages/worker/tests/indexer_integration.rs` | Indexer cursor / dedup / cross-chain isolation. |
+
+Rationale: every DB-gated test in the suite read `DATABASE_URL` (some via `POSTGRES_URL` fallback + `dotenvy`) to connect to a Postgres instance. In practice this meant: developers either set the env var to their dev DB (polluting it on every `cargo test --all`), or set it to a separate test DB (extra setup overhead, frequent migration-checksum surprises, sentinel-row accumulation between runs). The operator's preference, settled this PR, is: **no automated test connects to a real Postgres**. Pure unit tests cover compute layers; SQL/HTTP correctness is verified by `cargo sqlx prepare` at compile-time and manual smoke testing.
+
+Unit-test coverage that survives:
+- `shared/tests/metadata_fetcher.rs` — 8 mockito-backed HTTP tests for the fetcher (#363).
+- `shared/tests/crystal.rs`, `eip712.rs`, `sumsub_signing.rs`, `webhook_models.rs` — pure unit tests.
+- `worker/tests/mappers.rs`, `parsers.rs`, `price_poller.rs` — pure unit tests (mock pool only).
+- `api/tests/portfolio_compute.rs` — 13 compute-layer tests (this PR).
+- `api/tests/webhook_validation.rs` — pure unit tests.
+
+Saved as feedback memory `feedback_tests_no_env_db_url.md` so the policy survives across sessions.
+- `npx tsx scripts/lint-docs.ts`: **0 errors, 30 pre-existing warnings**
+
+---
+
 ## Docs to Update
 
 - **New spec**: `docs/product-specs/portfolio-yield.md`. Title "Portfolio Yield API"; sections Overview → Behavior → API Contract → Data Model → Security. Document the three series, the API contract (verbatim from the Issue body), the data sources, the decimal/string conventions, the `apy_bps = null` semantics, and the explicit out-of-scope (caching, per-LP, amortisation, cross-chain).
@@ -211,4 +278,16 @@ Tests:
 - **Cross-link**: one-line addition to `docs/product-specs/dashboards.md` (Protocol Dashboard "Trailing yield" subsection) pointing to the new spec — explicitly contrast "book yield" (this endpoint) vs. "cumulative yield minted into vault" (existing `RepaymentSettled`/USYC-driven counter).
 - **Tech-debt-tracker**: only if implementation surfaces ambiguity (e.g. defaulted-loan accrual treatment differs from the simple rule). The Issue body explicitly invites this. No proactive entry needed.
 - **`docs/exec-plans/active/` lifecycle**: this plan moves to `docs/exec-plans/completed/` after the PR merges (manager-owned).
-- **OpenAPI**: `PortfolioDoc::openapi()` is merged into the master doc at server startup; `/swagger` exposes the new endpoint automatically. No separate spec file to update.
+- **OpenAPI**: `YieldDoc::openapi()` is merged into the master doc at server startup; `/swagger` exposes the new endpoint automatically. No separate spec file to update.
+
+---
+
+## Subsequent changes (post-original-plan)
+
+The history above describes the original plan and the deltas relative to it. After post-implementation review, the following further changes were made:
+
+1. **Route moved to `/v1/stats/yield`.** Originally `/v1/portfolio/yield`. The URL now lives next to `/v1/stats/prices` and `/v1/stats`; the file remains `routes/portfolio.rs` (since `yield` is a Rust keyword and the data is still portfolio-level). The OpenAPI doc bundle is renamed `PortfolioDoc` → `YieldDoc` with tag `"Yield"`.
+2. **Sample-count cap lowered `5_000` → `1_000`.** With daily samples this allows ~2.7 years (was ~13); weekly ~19 years (was ~100); hourly ~42 days (was ~7 months). Applied uniformly to `/v1/stats/yield` and `/v1/stats/prices`; `/v1/stats` caps `apy_days` at 1_000 days.
+3. **Shared formatting helpers extracted to `packages/api/src/formatting.rs`.** Local `iso_utc` / `to_usdc_6dp` in `portfolio.rs` moved to module-scope helpers `iso_utc`, `iso_utc_from_unix`, `base6_to_decimal_string`. Used by both `portfolio.rs` and `stats.rs`. Backed by a `LazyLock<BigDecimal>` cached divisor and seven inline unit tests.
+4. **`/v1/stats/prices` full-history cap.** Added `PositionRepo::get_earliest_price_timestamp`. When `days` is omitted, the implicit window starts at the earliest recorded price for the vault; the same `MAX_SAMPLES` cap applies. Mirrors `/v1/stats/yield`'s full-history bound (earliest origination date).
+5. **`/v1/stats` and `/v1/stats/prices` migrated to `ApiError`.** Replaced the inline `match { Err => 500 }` pattern with `Result<Json<T>, ApiError>` and `?` propagation. Matches `/v1/stats/yield`. `/v1/stats/vaults` migrated for consistency.
