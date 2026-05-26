@@ -455,4 +455,79 @@ describe("Shared renderRequestRow helper — contract", () => {
     expect(node).not.toBeNull();
     expect(React.isValidElement(node)).toBe(true);
   });
+
+  it("renders Stake with correct PLUSD and sPLUSD amounts when assets and shares are present", () => {
+    const stake: RequestItem = {
+      type: "Stake",
+      amount: "1000000000000000000000",
+      assets: "1000000000000000000000",
+      shares: "999500000000000000000",
+      status: "Completed",
+      created_at: "2026-05-03T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(stake)}</>);
+    expect(container.textContent).toContain("−1,000.00 PLUSD");
+    expect(container.textContent).toContain("+999.50 sPLUSD");
+  });
+
+  it("renders Unstake with correct PLUSD and sPLUSD amounts when assets and shares are present", () => {
+    const unstake: RequestItem = {
+      type: "Unstake",
+      amount: "500000000000000000000",
+      assets: "500000000000000000000",
+      shares: "499750000000000000000",
+      status: "Completed",
+      created_at: "2026-05-04T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(unstake)}</>);
+    expect(container.textContent).toContain("+500.00 PLUSD");
+    expect(container.textContent).toContain("−499.75 sPLUSD");
+  });
+
+  it("renders Stake with em-dash when assets is missing (fail-loud)", () => {
+    const stake: RequestItem = {
+      type: "Stake",
+      amount: "1000000000000000000000",
+      // assets and shares intentionally omitted — simulates missing API fields
+      status: "Completed",
+      created_at: "2026-05-05T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(stake)}</>);
+    // Both lines should show em-dash, not zero
+    const text = container.textContent ?? "";
+    expect(text).toContain("−— PLUSD");
+    expect(text).toContain("+— sPLUSD");
+    expect(text).not.toContain("0.00");
+  });
+
+  it("renders Unstake with em-dash when assets is missing (fail-loud)", () => {
+    const unstake: RequestItem = {
+      type: "Unstake",
+      amount: "500000000000000000000",
+      // assets and shares intentionally omitted — simulates missing API fields
+      status: "Completed",
+      created_at: "2026-05-06T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(unstake)}</>);
+    const text = container.textContent ?? "";
+    expect(text).toContain("+— PLUSD");
+    expect(text).toContain("−— sPLUSD");
+    expect(text).not.toContain("0.00");
+  });
+
+  it("renders Stake with em-dash for shares when only shares is missing (fail-loud)", () => {
+    const stake: RequestItem = {
+      type: "Stake",
+      amount: "1000000000000000000000",
+      assets: "1000000000000000000000",
+      // shares intentionally omitted
+      status: "Completed",
+      created_at: "2026-05-07T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(stake)}</>);
+    const text = container.textContent ?? "";
+    expect(text).toContain("−1,000.00 PLUSD");
+    expect(text).toContain("+— sPLUSD");
+    expect(text).not.toContain("+0.00 sPLUSD");
+  });
 });

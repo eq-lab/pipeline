@@ -15,6 +15,13 @@ import { formatTokenAmount, formatActivityTime } from "@/lib/format";
  * `/transactions`. Any change to row appearance belongs here, not in the
  * individual consumers.
  *
+ * Fail-loud contract for Stake / Unstake fields:
+ *   Both `assets` and `shares` are required by the `/v1/requests` API contract
+ *   for Stake/Unstake items. If either field is absent from the API response,
+ *   the renderer deliberately renders `—` (em-dash) instead of silently falling
+ *   back to a zero or approximate value. This makes data regressions immediately
+ *   visible rather than silently zeroing out amounts.
+ *
  * @param item - A single `RequestItem` returned by `GET /v1/requests`.
  * @returns A React element representing the activity row, ready to be embedded
  *          in a list or container by the caller.
@@ -143,8 +150,11 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
   }
 
   if (item.type === "Stake") {
-    const assets = formatTokenAmount(item.assets ?? item.amount, 18);
-    const shares = formatTokenAmount(item.shares ?? "0", 18);
+    // Fail-loud: render "—" when assets or shares are missing from the API
+    // response. Falling back to item.amount or "0" would silently zero out
+    // the row and hide data regressions.
+    const assets = item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+    const shares = item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
     return (
       <ActivityRow
         icon="arrow-down-circle"
@@ -160,9 +170,9 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
     );
   }
 
-  // Unstake
-  const assets = formatTokenAmount(item.assets ?? item.amount, 18);
-  const shares = formatTokenAmount(item.shares ?? "0", 18);
+  // Unstake — fail-loud: see Stake branch above for rationale.
+  const assets = item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+  const shares = item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
   return (
     <ActivityRow
       icon="arrow-up-circle"
