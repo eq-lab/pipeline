@@ -74,6 +74,12 @@ export interface StakeCardProps extends Omit<
    * page-level container is expected to supply this in production.
    */
   onStake?: () => void;
+  /**
+   * When `true`, the Stake CTA is rendered in its disabled state (per Figma
+   * node `1497:95069`). Pass `true` when the connected wallet's PLUSD balance
+   * is zero so the button cannot initiate a stake flow with no tokens.
+   */
+  stakeDisabled?: boolean;
 }
 
 // Stable heading id so consumers do not collide if multiple cards mount in a
@@ -81,7 +87,7 @@ export interface StakeCardProps extends Omit<
 const HEADING_ID = "stake-card-title";
 
 export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
-  function StakeCard({ onStake, className, ...rest }, ref) {
+  function StakeCard({ onStake, stakeDisabled, className, ...rest }, ref) {
     const composed = [
       // Text block top, circular CTA bottom-right — mirrors the Figma
       // "card-horizontal" stack with `justify-between` + `items-end`.
@@ -165,6 +171,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         <Button
           variant="circular-blue"
           onClick={onStake}
+          disabled={stakeDisabled}
           aria-label="Stake PLUSD"
           data-node-id="1497:94713"
         >

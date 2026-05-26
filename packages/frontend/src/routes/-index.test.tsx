@@ -48,6 +48,13 @@ vi.mock("wagmi", async (importOriginal) => {
       error: null,
       reset: vi.fn(),
     })),
+    useWaitForTransactionReceipt: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      error: null,
+    })),
+    usePublicClient: vi.fn(() => undefined),
   };
 });
 
@@ -104,6 +111,8 @@ const mockEnv = vi.hoisted(() => ({
   EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
+  STAKED_PLUSD_ADDRESS:
+    "0x0000000000000000000000000000000000000000" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -215,11 +224,30 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("clicking Stake navigates to /stake", async () => {
+  it("Stake button is disabled when PLUSD balance is zero (no PLUSD address configured)", async () => {
+    renderHome();
+
+    const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
+    expect(stakeBtn).toBeDisabled();
+  });
+
+  it("clicking Stake navigates to /stake when wallet has PLUSD balance", async () => {
+    // Seed a PLUSD address via the named alias and seed a non-zero balance.
+    const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000001";
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000",
+    );
+
     const user = userEvent.setup();
     renderHome();
 
     const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
+    expect(stakeBtn).not.toBeDisabled();
     await user.click(stakeBtn);
 
     await waitFor(() => {
