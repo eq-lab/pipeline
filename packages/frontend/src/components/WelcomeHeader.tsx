@@ -1,5 +1,6 @@
 import React from "react";
 import { Stat } from "@pipeline/ui";
+import { useStakedPlusdConvertToAssets } from "@/wallet/useStakedPlusd";
 
 /**
  * WelcomeHeader — Dashboard top heading with stats strip.
@@ -9,7 +10,8 @@ import { Stat } from "@pipeline/ui";
  *   - Right: stats strip with three Stat readouts separated by hairline
  *     left-borders, plus a trailing external-link icon button.
  *
- * All display strings are hardcoded (no API yet, per product direction).
+ * The exchange rate stat is live — sourced from `useStakedPlusdConvertToAssets`.
+ * TVL and APY remain hardcoded (separate issues).
  * All visual values come from design tokens in `@pipeline/ui/styles/theme.css`.
  */
 
@@ -82,6 +84,12 @@ const iconButtonClasses = [
 export function WelcomeHeader({ className, ...rest }: WelcomeHeaderProps) {
   const composed = [rootClasses, className].filter(Boolean).join(" ");
 
+  const { data: rateRaw } = useStakedPlusdConvertToAssets(10n ** 18n);
+  const exchangeRateValue =
+    rateRaw !== undefined
+      ? `1 sPLUSD = ${(Number(rateRaw) / 1e18).toFixed(4)} PLUSD`
+      : "—";
+
   return (
     <div className={composed} {...rest}>
       {/* Left: display heading */}
@@ -90,7 +98,7 @@ export function WelcomeHeader({ className, ...rest }: WelcomeHeaderProps) {
       {/* Right: stats strip */}
       <div className={stripClasses}>
         {/* Exchange rate — no left-border on the first cell */}
-        <Stat label="Exchange rate" value="1 sPLUSD = 1.0234 PLUSD" />
+        <Stat label="Exchange rate" value={exchangeRateValue} />
 
         {/* Total Value Locked */}
         <div className={separatedCellClasses}>
