@@ -961,6 +961,51 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 
 ---
 
+## S-405 — /deposit: network fee shows live ETH estimate
+
+**Issue:** [#405 /deposit: estimate network fee for representative 1000 USDC / 1000 PLUSD, refreshed once a minute](https://github.com/eq-lab/pipeline/issues/405)
+**Plan:** `docs/exec-plans/active/issue-405-deposit-network-fee-estimate.md`
+
+### TC-405-1: Network fee renders ETH amount for deposit direction
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected; mock fee key set: `localStorage.setItem("pipeline.mock.wallet.networkFeeEstimate.deposit", '"0.00053"')`.
+- **Steps:**
+  1. Navigate to `http://localhost:5173/deposit?direction=deposit`.
+  2. Observe the "Network fee" row in the Details section.
+- **Expected:** Network fee row shows `~0.00053 ETH` (not `—`).
+
+### TC-405-2: Network fee renders ETH amount for withdraw direction
+
+- **Actor:** User / QA
+- **Preconditions:** Mock wallet connected; mock fee key set: `localStorage.setItem("pipeline.mock.wallet.networkFeeEstimate.withdraw", '"0.00042"')`.
+- **Steps:**
+  1. Navigate to `http://localhost:5173/deposit?direction=withdraw`.
+  2. Observe the "Network fee" row in the Details section.
+- **Expected:** Network fee row shows `~0.00042 ETH`.
+
+### TC-405-3: Network fee is decoupled from amount input
+
+- **Actor:** User / QA
+- **Preconditions:** Mock fee key set for deposit direction (TC-405-1).
+- **Steps:**
+  1. Navigate to `/deposit?direction=deposit`.
+  2. Note the displayed fee.
+  3. Type "500" in the USDC input.
+  4. Clear and type "5000".
+- **Expected:** Fee value does NOT change when the amount input changes (it is decoupled from the typed amount).
+
+### TC-405-4: Network fee shows `—` when not configured
+
+- **Actor:** User / QA
+- **Preconditions:** No mock fee key set; `VITE_DEPOSIT_MANAGER_ADDRESS` is the zero address (or wallet disconnected).
+- **Steps:**
+  1. Navigate to `/deposit`.
+  2. Observe the "Network fee" row.
+- **Expected:** Network fee row shows `—`.
+
+---
+
 ## S-238 — ActivityHeader HeroIcon glyph on /transactions
 
 **Issue:** [#238 ActivityHeader hero icon renders as a black square on /transactions](https://github.com/eq-lab/pipeline/issues/238)

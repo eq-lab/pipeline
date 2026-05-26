@@ -41,7 +41,9 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **New hook: `packages/frontend/src/wallet/useNetworkFeeEstimate.ts`.**
+<!-- Status: all steps completed -->
+
+1. **[DONE] New hook: `packages/frontend/src/wallet/useNetworkFeeEstimate.ts`.**
    - Signature: `useNetworkFeeEstimate(direction: "deposit" | "withdraw"): { feeEth: string | undefined; isLoading: boolean; error: Error | null }`.
    - Mock-key support (named alias): `pipeline.mock.wallet.networkFeeEstimate.deposit` / `…withdraw` — JSON string `"0.00053"` short-circuits to `feeEth: "~0.00053 ETH"` (or accept a raw display string).
    - When `direction === "deposit"`:
@@ -64,20 +66,19 @@ Out of scope:
    - Mock path: when the named-alias key is set, parse with `parseJson<string>` and return `~${parsed} ETH` (or pass through if already prefixed).
    - Surface errors only via the returned `error` field — never throw.
 
-2. **Export the hook.**
+2. **[DONE] Export the hook.**
    - Add `useNetworkFeeEstimate` (value) and `UseNetworkFeeEstimateResult` (type) to `packages/frontend/src/wallet/index.ts`.
 
-3. **Wire into `deposit.tsx`.**
+3. **[DONE] Wire into `deposit.tsx`.**
    - Import `useNetworkFeeEstimate` from `@/wallet`.
-   - Call `const { feeEth } = useNetworkFeeEstimate(isDeposit ? "deposit" : "withdraw");`.
-   - Replace `networkFee="—"` (line 800) with `networkFee={feeEth ?? "—"}`.
-   - Keep `—` when `feeEth` is `undefined` (loading / not configured / disconnected).
+   - Call both directions unconditionally (hooks rules); active direction selected via `isDeposit`.
+   - Replace `networkFee="—"` with `networkFee={networkFee ?? "—"}`.
 
-4. **stateOverride helper.**
-   - viem accepts `stateOverride: [{ address, balance, stateDiff: [...] }]`. ERC-20 balance and allowance live in storage slot mappings — slot indices differ per token. To keep this generic, prefer `stateOverride: { [usdcAddress]: { stateDiff: { [slot]: value } } }` only if slot indices are known. **Simpler alternative the coder should attempt first:** call `estimateContractGas` *without* `stateOverride` from the connected wallet — most active testers will have USDC/PLUSD already from local devnet seeding. If estimation reverts, catch the error and fall back to the curated-constant path (see Open Questions). Document the chosen approach in the hook header.
+4. **[DONE] stateOverride approach.**
+   - Decision: use `estimateContractGas` without `stateOverride` first; catch reverts and fall back to curated constants (250k deposit / 180k withdraw). Chosen per manager's instruction (open-question resolution). Documented in hook file header.
 
-5. **Test mock keys.**
-   - Add `pipeline.mock.wallet.networkFeeEstimate.deposit` and `pipeline.mock.wallet.networkFeeEstimate.withdraw` to the mock-key inventory in `packages/frontend/src/wallet/mock.ts` (if such an inventory exists) and to `docs/STORIES.md` if the story mentions deposit fee assertions.
+5. **[DONE] Test mock keys.**
+   - Added `pipeline.mock.wallet.networkFeeEstimate.deposit` and `pipeline.mock.wallet.networkFeeEstimate.withdraw` to `docs/STORIES.md`.
 
 ## Test Strategy
 

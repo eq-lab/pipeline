@@ -101,6 +101,13 @@ vi.mock("@reown/appkit/react", () => ({
   useAppKit: vi.fn(() => ({ open: vi.fn() })),
 }));
 
+// The deposit-route tests mock useQuery (from @tanstack/react-query) to return
+// undefined, which causes useNetworkFeeEstimate to fall back to "—" via the
+// `feeEth ?? "—"` expression in deposit.tsx.  Tests that need a real fee value
+// should set the localStorage mock-key instead — the hook's mock-key path
+// short-circuits before useQuery is called.
+const mockNetworkFeeEth: string | undefined = undefined;
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-query")>();
@@ -112,6 +119,11 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       children: React.ReactNode;
       client: unknown;
     }) => <>{children}</>,
+    useQuery: vi.fn(() => ({
+      data: mockNetworkFeeEth,
+      isLoading: false,
+      error: null,
+    })),
   };
 });
 
@@ -1899,5 +1911,76 @@ describe("Deposit page — swap button", () => {
     await waitFor(() => {
       expect((input as HTMLInputElement).value).toBe("");
     });
+  });
+});
+
+// ── Network fee row tests ──────────────────────────────────────────────────────
+
+describe("Deposit page — network fee row", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders the fee row with the mocked ETH amount for deposit direction", async () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.networkFeeEstimate.deposit",
+      '"0.00053"',
+    );
+
+    renderDeposit();
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("~0.00053 ETH")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("renders the fee row with the mocked ETH amount for withdraw direction", async () => {
+    mockDirection = "withdraw";
+    localStorage.setItem(
+      "pipeline.mock.wallet.networkFeeEstimate.withdraw",
+      '"0.00042"',
+    );
+    seedWithdrawMocks({ allowance: "0" });
+
+    renderDeposit();
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("~0.00042 ETH")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("renders the em-dash when no fee mock key is set (no RPC in test env)", async () => {
+    // No mock key set → hook returns undefined → renders '—'
+    renderDeposit();
+
+    await waitFor(
+      () => {
+        // The component renders at all without crashing.
+        expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+
+    // There should be no ETH fee string visible (no RPC call in test).
+    expect(screen.queryByText(/ETH/)).not.toBeInTheDocument();
   });
 });

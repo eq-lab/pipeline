@@ -122,6 +122,18 @@ Once USDC is at the Treasury Wallet, Team operator A initiates an off-ramp trans
 
 ---
 
+## UI: Network Fee Estimate
+
+The `/deposit` page (withdraw direction) shows a "Network fee" row in the Details section of the conversion card. The fee is an ETH-denominated estimate, decoupled from the user's typed amount:
+
+- **Fixed representative amount:** 1000 PLUSD is used for the gas simulation, not the user's input. This keeps the displayed fee stable while the user types.
+- **Refresh cadence:** The estimate is refreshed once per minute (`refetchInterval: 60_000 ms`).
+- **Format:** Fee is displayed as `~0.00042 ETH` (ETH only, no USD equivalent — no ETH/USD price source is wired up).
+- **Loading / not configured:** When the contract address is the zero address, the wallet is disconnected, or the estimate has not yet resolved, the row shows `—`.
+- **Fallback:** If the gas simulation reverts (e.g., the connected wallet lacks PLUSD balance), a curated constant of ~180,000 gas is used, multiplied by live `gasPrice`.
+
+---
+
 ## API Contract
 
 The full `IWithdrawalQueue` interface, `Entry` struct, `ClaimAttestation` struct, and key events are defined in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
