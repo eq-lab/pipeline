@@ -16,6 +16,7 @@ import {
   useClaim,
   useRequestWithdrawal,
   useClaimWithdrawal,
+  useNetworkFeeEstimate,
 } from "@/wallet";
 import { useRequests, useDepositVoucher, useWithdrawalVoucher } from "@/api";
 import { ENV } from "@/lib/env";
@@ -167,6 +168,13 @@ function Deposit() {
   const requestWithdrawal = useRequestWithdrawal();
   const claimWithdrawal = useClaimWithdrawal();
 
+  // ── Network fee estimate (both directions, called unconditionally) ────────
+  // Hook is called twice — once per direction — so both estimates are always
+  // live regardless of which direction is active.  Rules of Hooks require
+  // unconditional calls; direction is passed as a stable string literal.
+  const { feeEth: depositFeeEth } = useNetworkFeeEstimate("deposit");
+  const { feeEth: withdrawFeeEth } = useNetworkFeeEstimate("withdraw");
+
   // ── Shared: requests poll + vouchers (both called unconditionally) ────
   const { data: requestsData } = useRequests({ refetchInterval: 60_000 });
 
@@ -176,6 +184,9 @@ function Deposit() {
 
   // ── Active-direction derived state ────────────────────────────────────
   const isDeposit = direction === "deposit";
+
+  // Active network fee — selects the already-live estimate for the current direction.
+  const networkFee = isDeposit ? depositFeeEth : withdrawFeeEth;
 
   // Active token state (used in render and per-direction logic)
   const decimals = isDeposit ? depositDecimals : withdrawDecimals;
@@ -797,7 +808,7 @@ function Deposit() {
                 }
           }
           exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
-          networkFee="—"
+          networkFee={networkFee ?? "—"}
           onSwap={isAnyTxInFlight ? undefined : onSwap}
         />
 

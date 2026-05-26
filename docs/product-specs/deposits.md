@@ -117,6 +117,18 @@ If `DepositManager.deposit` would breach the per-lender or global rolling window
 
 ---
 
+## UI: Network Fee Estimate
+
+The `/deposit` page shows a "Network fee" row in the Details section of the deposit card. The fee is an ETH-denominated estimate, decoupled from the user's typed amount:
+
+- **Fixed representative amount:** `max(1000 USDC, minDeposit)` is used for the gas simulation, not the user's input. This keeps the displayed fee stable while the user types.
+- **Refresh cadence:** The estimate is refreshed once per minute (`refetchInterval: 60_000 ms`).
+- **Format:** Fee is displayed as `~0.00053 ETH` (ETH only, no USD equivalent — no ETH/USD price source is wired up).
+- **Loading / not configured:** When the contract address is the zero address, the wallet is disconnected, or the estimate has not yet resolved, the row shows `—`.
+- **Fallback:** If the gas simulation reverts (e.g., the connected wallet lacks USDC allowance), a curated constant of ~250,000 gas is used, multiplied by live `gasPrice`.
+
+---
+
 ## API Contract
 
 The full `IDepositManager` interface, `Ticket` struct, `ClaimAttestation` struct, key events, and rate-limit parameter table are defined in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md). The PLUSD `mintForDeposit` function (called by DepositManager during `claim`) is documented there as well.

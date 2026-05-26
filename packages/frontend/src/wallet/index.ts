@@ -63,3 +63,8 @@ export {
   useTermsAcknowledgement,
 } from "./useTermsAcknowledgement";
 export type { UseTermsAcknowledgementResult } from "./useTermsAcknowledgement";
+export { useNetworkFeeEstimate, formatFeeEth } from "./useNetworkFeeEstimate";
+export type {
+  UseNetworkFeeEstimateResult,
+  NetworkFeeDirection,
+} from "./useNetworkFeeEstimate";
