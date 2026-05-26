@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 
 import { useWallet } from "@/wallet/useWallet";
+import { useStakedPlusdAsset } from "@/wallet/useStakedPlusd";
+import { useToken } from "@/wallet/useToken";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
 import { ConnectWalletPromoCard } from "@/components/ConnectWalletPromoCard";
 import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard";
@@ -62,6 +64,15 @@ function Home() {
   const { isConnected, connect } = useWallet();
   const navigate = useNavigate();
 
+  // Read the connected wallet's PLUSD balance to gate the Stake CTA.
+  const { plusd: plusdAddress } = useStakedPlusdAsset();
+  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+  const { balance: plusdBalance } = useToken({
+    token: plusdAddress ?? ZERO_ADDRESS,
+  });
+  // Disable Stake when balance is zero or not yet loaded.
+  const stakeDisabled = plusdBalance === undefined || plusdBalance === 0n;
+
   const onBuy = () => navigate({ to: "/deposit", search: { direction: "deposit" } });
   const onSell = () => navigate({ to: "/deposit", search: { direction: "withdraw" } });
   const onStake = () => navigate({ to: "/stake" });
@@ -110,7 +121,11 @@ function Home() {
             </div>
 
             {/* Row 2, columns 3–4: Stake CTA card. */}
-            <StakeCard className="col-span-2 col-start-3 row-start-2" onStake={onStake} />
+            <StakeCard
+              className="col-span-2 col-start-3 row-start-2"
+              onStake={onStake}
+              stakeDisabled={stakeDisabled}
+            />
 
             {/* Row 3, columns 1–7: Questions & Answers strip. */}
             <div className="col-span-7 col-start-1 row-start-3">
