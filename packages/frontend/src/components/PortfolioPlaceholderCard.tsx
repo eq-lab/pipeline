@@ -221,12 +221,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           </Link>
         </header>
 
-        {/* Right: time-range segmented tabs */}
+        {/* Right: time-range floating tabs — no outer track, compact inline pills */}
         <SegmentedTabs
           tabs={TABS}
           activeId={activeId}
           onSelect={setActiveId}
-          className="w-[220px] shrink-0"
+          variant="floating"
+          className="shrink-0"
         />
       </div>
 
