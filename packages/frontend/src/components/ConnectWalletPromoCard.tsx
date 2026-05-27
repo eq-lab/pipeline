@@ -109,14 +109,14 @@ export const ConnectWalletPromoCard = React.forwardRef<
       {...rest}
     >
       {/* Decorative illustration — absolutely positioned so it does not
-          participate in the flex layout. Anchored to the right edge with a
-          24px inset so it sits cleanly inside the Card's 24px interior
-          padding, and vertically centred so it reads as the Figma anchor
-          point at top: 91.38px inside a 274px card (= roughly centre). */}
+          participate in the flex layout. Bleeds off the right edge by ~48px
+          (clipped by the Card's overflow-hidden), and vertically anchored at
+          70% of card height matching the Figma anchor point (left: 376px /
+          top: 91px inside a 274px card ≈ vertical centre at ~191px ≈ 70%). */}
       <WalletIllustration
         tone="primary"
         width={314}
-        className="pointer-events-none absolute top-1/2 right-6 -translate-y-1/2"
+        className="pointer-events-none absolute top-[70%] right-[-48px] -translate-y-1/2"
         data-node-id="I1497:94566;1360:49452"
       />
 
