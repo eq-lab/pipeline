@@ -373,7 +373,7 @@ export function FirstConnectionModal({
         </button>
 
         {/* Hero icon — 72×72 tinted circle */}
-        <div className="flex justify-center">
+        <div className="flex justify-start">
           <div
             className="inline-flex shrink-0 items-center justify-center rounded-full"
             style={{
@@ -392,7 +392,7 @@ export function FirstConnectionModal({
         <h2
           id={headingId}
           className={[
-            "m-0 text-center",
+            "m-0 text-left",
             "font-[family-name:var(--font-display)]",
             "text-[length:var(--text-pipeline-heading-m)]",
             "leading-[var(--text-pipeline-heading-m--line-height)]",
