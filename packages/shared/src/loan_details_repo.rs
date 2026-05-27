@@ -88,6 +88,55 @@ impl LoanDetailsRepo {
         Ok(())
     }
 
+    /// Return all loans for `chain_id` with `origination_date <= to_unix`.
+    ///
+    /// Used by the portfolio yield API to identify loans that could be active in the
+    /// requested window. Over-fetching (returning loans that closed before `from`) is
+    /// intentional: lifecycle resolution happens in the compute layer after events are joined.
+    ///
+    /// Generic over `Executor` so callers can run this inside a transaction alongside
+    /// other reads for a consistent snapshot.
+    pub async fn list_loans_for_window<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanDetailsRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, LoanDetailsRow>(
+            "SELECT chain_id, loan_id, originator, borrower_id,
+                    commodity, corridor,
+                    original_facility_size, original_senior_tranche, original_equity_tranche,
+                    original_offtaker_price, senior_interest_rate_bps,
+                    origination_date, original_maturity_date,
+                    governing_law, metadata_uri
+             FROM loan_details
+             WHERE chain_id = $1 AND origination_date <= $2
+             ORDER BY origination_date",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Return the earliest `origination_date` for any loan on `chain_id`, or `None` if there
+    /// are no loans yet. Used by the portfolio yield API to provide a sensible default `from`.
+    pub async fn get_earliest_origination_date(
+        &self,
+        chain_id: i64,
+    ) -> anyhow::Result<Option<i64>> {
+        let row: Option<(Option<i64>,)> =
+            sqlx::query_as("SELECT MIN(origination_date) FROM loan_details WHERE chain_id = $1")
+                .bind(chain_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.and_then(|(v,)| v))
+    }
+
     pub async fn get_loan_details(
         &self,
         chain_id: i64,

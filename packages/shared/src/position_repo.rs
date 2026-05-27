@@ -117,6 +117,27 @@ impl PositionRepo {
         Ok(row)
     }
 
+    /// Earliest recorded `block_timestamp` in `share_prices` for a vault, or `None`
+    /// if the vault has no price history yet. Used to bound full-history price queries
+    /// in the API layer.
+    pub async fn get_earliest_price_timestamp(
+        &self,
+        chain_id: i64,
+        vault_address: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let row: Option<(DateTime<Utc>,)> = sqlx::query_as(
+            "SELECT block_timestamp FROM share_prices
+             WHERE chain_id = $1 AND LOWER(vault_address) = LOWER($2)
+             ORDER BY block_timestamp ASC
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(vault_address)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|(t,)| t))
+    }
+
     /// Get average prices grouped by time interval.
     /// `interval` must be a valid PostgreSQL DATE_TRUNC field: `'hour'`, `'day'`, or `'week'`.
     pub async fn get_avg_prices(

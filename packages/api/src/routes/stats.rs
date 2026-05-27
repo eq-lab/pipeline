@@ -2,15 +2,26 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use crate::error::ApiError;
+use crate::formatting::iso_utc;
+use crate::intervals::Interval;
 use crate::AppState;
+
+/// Maximum sample count for `/stats/prices` responses. Caps `(now - from) / step + 1`
+/// at 1_000 (≈ 2.7 years daily, ≈ 19 years weekly, ≈ 42 days hourly). Matches the
+/// cap used by `/stats/yield` (see `routes::portfolio::MAX_SAMPLES`).
+const MAX_SAMPLES: u32 = 1_000;
+
+/// Maximum value the `/stats` endpoint accepts for the `apy_days` query parameter.
+/// Coupled by product policy to `MAX_SAMPLES` (both 1_000) but semantically distinct:
+/// this is a duration in days, not a sample count.
+const MAX_APY_DAYS: u32 = 1_000;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -22,7 +33,7 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_stats, get_daily_prices, get_vaults),
-    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, PricesQuery, PriceInterval, PricesResponse, PriceItem, VaultsResponse, VaultItem)),
+    components(schemas(StatsQuery, StatsResponse, VaultStatsItem, PricesQuery, Interval, PricesResponse, PriceItem, VaultsResponse, VaultItem)),
     tags(
         (name = "Stats", description = "Protocol-level vault statistics"),
         (name = "Prices", description = "Share price history"),
@@ -61,10 +72,11 @@ pub struct StatsResponse {
     get,
     path = "/v1/stats",
     params(
-        ("apy_days" = Option<u32>, Query, description = "Number of days for APY calculation window (default 30). Uses the oldest available price within this window."),
+        ("apy_days" = Option<u32>, Query, description = "Number of days for APY calculation window (default 30, max 1000). Uses the oldest available price within this window."),
     ),
     responses(
         (status = 200, description = "Protocol vault statistics", body = StatsResponse),
+        (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Stats"
@@ -72,20 +84,15 @@ pub struct StatsResponse {
 async fn get_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StatsQuery>,
-) -> impl IntoResponse {
+) -> Result<Json<StatsResponse>, ApiError> {
+    if query.apy_days > MAX_APY_DAYS {
+        return Err(ApiError::BadRequest(format!(
+            "apy_days exceeds maximum of {MAX_APY_DAYS}"
+        )));
+    }
     let apy_days = query.apy_days.max(1);
 
-    match compute_stats(&state, apy_days).await {
-        Ok(response) => Json(response).into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to compute stats");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal error"})),
-            )
-                .into_response()
-        }
-    }
+    Ok(Json(compute_stats(&state, apy_days).await?))
 }
 
 async fn compute_stats(state: &AppState, apy_days: u32) -> anyhow::Result<StatsResponse> {
@@ -136,30 +143,8 @@ pub struct PricesQuery {
     /// Number of days to look back (optional — omit for all history).
     pub days: Option<u32>,
     /// Time grouping: "hourly", "daily" (default), or "weekly".
-    #[serde(default = "default_interval")]
-    pub interval: PriceInterval,
-}
-
-fn default_interval() -> PriceInterval {
-    PriceInterval::Daily
-}
-
-#[derive(Debug, Deserialize, ToSchema, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-pub enum PriceInterval {
-    Hourly,
-    Daily,
-    Weekly,
-}
-
-impl PriceInterval {
-    fn as_pg_trunc(self) -> &'static str {
-        match self {
-            Self::Hourly => "hour",
-            Self::Daily => "day",
-            Self::Weekly => "week",
-        }
-    }
+    #[serde(default)]
+    pub interval: Interval,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -187,6 +172,7 @@ pub struct PricesResponse {
     ),
     responses(
         (status = 200, description = "Average share prices grouped by interval", body = PricesResponse),
+        (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "Prices"
@@ -194,41 +180,58 @@ pub struct PricesResponse {
 async fn get_daily_prices(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PricesQuery>,
-) -> impl IntoResponse {
-    let vault = query.vault.clone();
-    let since = query
-        .days
-        .map(|d| Utc::now() - Duration::days(i64::from(d)));
+) -> Result<Json<PricesResponse>, ApiError> {
+    let step = query.interval.step_secs();
 
-    match state
-        .position_repo
-        .get_avg_prices(state.chain_id, &vault, query.interval.as_pg_trunc(), since)
-        .await
-    {
-        Ok(rows) => {
-            let prices = rows
-                .into_iter()
-                .map(|r| PriceItem {
-                    timestamp: r.bucket.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-                    avg_price: r.avg_price.to_string(),
-                })
-                .collect();
-            Json(PricesResponse {
-                vault_address: vault,
-                interval: format!("{:?}", query.interval).to_lowercase(),
-                prices,
-            })
-            .into_response()
+    // Resolve the lookback window. With `days = Some(d)` the start is `now - d × 86400`.
+    // With `days = None` we look up the earliest recorded price and treat that as the
+    // implicit window start — this mirrors `/stats/yield`, where full-history queries
+    // are bounded by the earliest origination_date. Without this, full-history /prices
+    // could silently return thousands of rows on long-running chains.
+    let since = match query.days {
+        Some(d) => Some(Utc::now() - Duration::days(i64::from(d))),
+        None => {
+            state
+                .position_repo
+                .get_earliest_price_timestamp(state.chain_id, &query.vault)
+                .await?
         }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to fetch prices");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal error"})),
-            )
-                .into_response()
+    };
+
+    if let Some(start) = since {
+        let secs_window = (Utc::now() - start).num_seconds().max(0);
+        let est_samples = secs_window / step + 1;
+        if est_samples > i64::from(MAX_SAMPLES) {
+            return Err(ApiError::BadRequest(format!(
+                "request could produce up to {est_samples} samples (max {MAX_SAMPLES}); reduce `days` or use a coarser `interval`"
+            )));
         }
     }
+
+    // When `since` is `None` here, the vault has no recorded prices yet — fall through
+    // and return the (empty) result rather than erroring.
+    let rows = state
+        .position_repo
+        .get_avg_prices(
+            state.chain_id,
+            &query.vault,
+            query.interval.as_pg_trunc(),
+            since,
+        )
+        .await?;
+    let prices = rows
+        .into_iter()
+        .map(|r| PriceItem {
+            timestamp: iso_utc(&r.bucket),
+            avg_price: r.avg_price.to_string(),
+        })
+        .collect();
+
+    Ok(Json(PricesResponse {
+        vault_address: query.vault,
+        interval: query.interval.as_str().to_owned(),
+        prices,
+    }))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -255,30 +258,19 @@ pub struct VaultsResponse {
     ),
     tag = "Vaults"
 )]
-async fn get_vaults(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.position_repo.get_vaults(state.chain_id).await {
-        Ok(rows) => {
-            let vaults = rows
-                .into_iter()
-                .map(|v| VaultItem {
-                    chain_id: v.chain_id,
-                    address: v.address,
-                    name: v.name,
-                    asset_decimals: v.asset_decimals,
-                    share_decimals: v.share_decimals,
-                })
-                .collect();
-            Json(VaultsResponse { vaults }).into_response()
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to fetch vaults");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal error"})),
-            )
-                .into_response()
-        }
-    }
+async fn get_vaults(State(state): State<Arc<AppState>>) -> Result<Json<VaultsResponse>, ApiError> {
+    let rows = state.position_repo.get_vaults(state.chain_id).await?;
+    let vaults = rows
+        .into_iter()
+        .map(|v| VaultItem {
+            chain_id: v.chain_id,
+            address: v.address,
+            name: v.name,
+            asset_decimals: v.asset_decimals,
+            share_decimals: v.share_decimals,
+        })
+        .collect();
+    Ok(Json(VaultsResponse { vaults }))
 }
 
 /// Compute APY: (current / past) ^ (365 / actual_days) - 1

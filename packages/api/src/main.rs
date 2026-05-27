@@ -3,8 +3,10 @@ use std::sync::Arc;
 use alloy::signers::local::PrivateKeySigner;
 use axum::Router;
 use pipeline_api::AppState;
+use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
+use shared::loan_details_repo::LoanDetailsRepo;
 use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -38,6 +40,8 @@ async fn main() -> anyhow::Result<()> {
     };
     let kyc_repo = KycRepo::new(pool.clone());
     let position_repo = PositionRepo::new(pool.clone());
+    let loan_details_repo = LoanDetailsRepo::new(pool.clone());
+    let contract_logs_repo = ContractLogsRepo::new(pool.clone());
 
     let chain_id: i64 = std::env::var("API_CHAIN_ID")
         .ok()
@@ -98,6 +102,8 @@ async fn main() -> anyhow::Result<()> {
         pool: pool.clone(),
         kyc_repo,
         position_repo,
+        loan_details_repo,
+        contract_logs_repo,
         chain_id,
         sumsub_client,
         sumsub_settings,
@@ -113,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::analytics::AnalyticsDoc::openapi());
     api_docs.merge(pipeline_api::routes::pnl::PnlDoc::openapi());
     api_docs.merge(pipeline_api::routes::stats::StatsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::portfolio::YieldDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -121,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::analytics::router())
         .nest("/v1", pipeline_api::routes::pnl::router())
         .nest("/v1", pipeline_api::routes::stats::router())
+        .nest("/v1", pipeline_api::routes::portfolio::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(
