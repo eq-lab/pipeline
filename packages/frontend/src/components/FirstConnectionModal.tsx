@@ -13,7 +13,7 @@
  * Scrim:    rgba(56,55,53,0.6)
  * Modal bg: #f8f7f6
  * Padding:  24px
- * Radius:   4px
+ * Radius:   32px (radius-3xl)
  *
  * Accessibility:
  *   - `role="dialog" aria-modal="true"` on the panel.
@@ -334,7 +334,7 @@ export function FirstConnectionModal({
           maxWidth: "calc(100vw - 32px)",
           maxHeight: "min(80vh, 90dvh)",
           backgroundColor: "#f8f7f6",
-          borderRadius: 4,
+          borderRadius: 32,
           padding: 24,
         }}
         data-node-id="1572:123328"
