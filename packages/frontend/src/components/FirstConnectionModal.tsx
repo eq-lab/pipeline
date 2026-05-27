@@ -379,8 +379,8 @@ export function FirstConnectionModal({
             style={{
               width: 72,
               height: 72,
-              backgroundColor: "rgba(32,128,0,0.10)",
-              color: "#208000",
+              backgroundColor: "rgba(184,191,190,0.12)",
+              color: "var(--color-pipeline-ink)",
             }}
             aria-hidden="true"
           >
