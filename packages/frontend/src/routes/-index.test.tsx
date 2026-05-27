@@ -226,11 +226,25 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("Stake button is disabled when PLUSD balance is zero (no PLUSD address configured)", async () => {
+  it("Stake button is enabled when wallet is disconnected (regardless of PLUSD balance)", async () => {
+    // Disconnected state — no PLUSD address or balance seeded.
+    // The CTA must be enabled so the user can navigate to /stake.
     renderHome();
 
     const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
-    expect(stakeBtn).toBeDisabled();
+    expect(stakeBtn).not.toBeDisabled();
+  });
+
+  it("clicking Stake navigates to /stake when disconnected", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
+    await user.click(stakeBtn);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({ to: "/stake" });
+    });
   });
 
   it("clicking Stake navigates to /stake when wallet has PLUSD balance", async () => {
@@ -303,6 +317,14 @@ describe("Home page — connected state (mock)", () => {
         screen.queryByRole("heading", { name: "Connect Wallet" }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("Stake button is disabled when connected with zero PLUSD balance", async () => {
+    // Connected but no PLUSD balance seeded — stakeDisabled should be true.
+    renderHome();
+
+    const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
+    expect(stakeBtn).toBeDisabled();
   });
 });
 
