@@ -70,11 +70,15 @@ function Home() {
   const { balance: plusdBalance } = useToken({
     token: plusdAddress ?? ZERO_ADDRESS,
   });
-  // Disable Stake when balance is zero or not yet loaded.
-  const stakeDisabled = plusdBalance === undefined || plusdBalance === 0n;
+  // Disable Stake only when connected with zero or undefined PLUSD balance.
+  // When disconnected the CTA stays enabled so the user can navigate to /stake.
+  const stakeDisabled =
+    isConnected && (plusdBalance === undefined || plusdBalance === 0n);
 
-  const onBuy = () => navigate({ to: "/deposit", search: { direction: "deposit" } });
-  const onSell = () => navigate({ to: "/deposit", search: { direction: "withdraw" } });
+  const onBuy = () =>
+    navigate({ to: "/deposit", search: { direction: "deposit" } });
+  const onSell = () =>
+    navigate({ to: "/deposit", search: { direction: "withdraw" } });
   const onStake = () => navigate({ to: "/stake" });
 
   return (
