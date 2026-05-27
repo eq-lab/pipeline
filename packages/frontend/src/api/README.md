@@ -12,6 +12,8 @@ import {
   useRequests,
   useDepositVoucher,
   useWithdrawalVoucher,
+  useStats,
+  formatApy,
 } from "@/api";
 
 import type {
@@ -26,6 +28,9 @@ import type {
   WithdrawalVoucherResponse,
   WithdrawalVoucherStatus,
   UseWithdrawalVoucherResult,
+  VaultStatsItem,
+  StatsResponse,
+  UseStatsResult,
 } from "@/api";
 ```
 
@@ -99,6 +104,30 @@ Reactive to `pipeline.mock.api.*` localStorage key changes.
 
 ---
 
+### `useStats()`
+
+React Query hook that fetches protocol vault statistics from `GET /v1/stats`.
+
+```ts
+const { data, isLoading, error } = useStats();
+// data?.vaults[0]?.apy — APY as a decimal fraction string, or null
+```
+
+Always enabled — no wallet connection required. Use `formatApy(apy)` to convert
+the raw fraction to a display string (e.g. `"0.0842"` → `"8.42%"`, null → `"—"`).
+
+### `formatApy(apy)`
+
+Formats an APY decimal fraction string as a percentage string.
+
+```ts
+formatApy("0.0842"); // → "8.42%"
+formatApy(null); // → "—"
+formatApy(undefined); // → "—"
+```
+
+---
+
 ## localStorage mock key schema
 
 The API module reuses the same mock infrastructure as the wallet module. The
@@ -109,6 +138,12 @@ this event and issues a refetch — no page reload needed.
 
 > **Note:** The event name `pipeline-mock:wallet` is a legacy misnomer. The
 > bridge covers all `pipeline.mock.*` keys, not just wallet ones.
+
+### `useStats` mock keys
+
+| Key                               | Type                     | Purpose                                           |
+| --------------------------------- | ------------------------ | ------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/stats` | JSON `{ vaults: [...] }` | Bypasses the real fetch — `useStats` returns this |
 
 ### `useRequests` mock keys
 

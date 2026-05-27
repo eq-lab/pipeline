@@ -1,6 +1,7 @@
 import React from "react";
 import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/useStakedPlusd";
+import { useStats, formatApy } from "@/api";
 
 /**
  * WelcomeHeader — Dashboard top heading with stats strip.
@@ -10,8 +11,9 @@ import { useStakedPlusdConvertToAssets } from "@/wallet/useStakedPlusd";
  *   - Right: stats strip with three Stat readouts separated by hairline
  *     left-borders, plus a trailing external-link icon button.
  *
- * The exchange rate stat is live — sourced from `useStakedPlusdConvertToAssets`.
- * TVL and APY remain hardcoded (separate issues).
+ * The exchange rate and APY stats are live — sourced from
+ * `useStakedPlusdConvertToAssets` and `useStats` respectively.
+ * TVL remains hardcoded (separate issue).
  * All visual values come from design tokens in `@pipeline/ui/styles/theme.css`.
  */
 
@@ -90,6 +92,9 @@ export function WelcomeHeader({ className, ...rest }: WelcomeHeaderProps) {
       ? `1 sPLUSD = ${(Number(rateRaw) / 1e18).toFixed(4)} PLUSD`
       : "—";
 
+  const { data: statsData } = useStats();
+  const apyValue = formatApy(statsData?.vaults[0]?.apy);
+
   return (
     <div className={composed} {...rest}>
       {/* Left: display heading */}
@@ -107,7 +112,7 @@ export function WelcomeHeader({ className, ...rest }: WelcomeHeaderProps) {
 
         {/* Current APY */}
         <div className={separatedCellClasses}>
-          <Stat label="Current APY" value="8.42%" />
+          <Stat label="Current APY" value={apyValue} />
         </div>
 
         {/* External-link icon button */}
