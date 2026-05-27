@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Card } from "@pipeline/ui";
+import { useStats, formatApy } from "@/api";
 
 /**
  * StakeCard — Stake PLUSD entry-point card.
@@ -10,7 +11,7 @@ import { Button, Card } from "@pipeline/ui";
  *
  *   ┌───────────────────────────────────────┐
  *   │  Stake PLUSD                          │
- *   │  Earn 8.42%                           │
+ *   │  Earn X.XX%                           │
  *   │  From loan coupons and T-bills        │
  *   │                                       │
  *   │                              ╭─────╮  │
@@ -38,7 +39,7 @@ import { Button, Card } from "@pipeline/ui";
  *   - The top-line label ("Stake PLUSD") uses the Body token (16/22) in
  *     Graphik LC at primary ink — same treatment as the "Start here" /
  *     "Earned" labels on the sibling cards.
- *   - The main line ("Earn 8.42%") uses the Heading 20 token (20/28) in the
+ *   - The main line ("Earn X.XX%") uses the Heading 20 token (20/28) in the
  *     Besley display family at primary ink, matching "Get PLUSD" / "Coming
  *     soon" headings on the sibling cards.
  *   - The subtitle ("From loan coupons and T-bills") uses the Caption token
@@ -47,8 +48,8 @@ import { Button, Card } from "@pipeline/ui";
  *   token in `@pipeline/ui/styles/theme.css`.
  *
  * Content:
- *   - The 8.42% APY figure is intentionally hardcoded in this issue (per the
- *     Issue body); a future task will wire it to live protocol state.
+ *   - The APY figure is sourced from `useStats` (`GET /v1/stats`). Falls back
+ *     to `—` when the API returns null or the request fails.
  *
  * Accessibility:
  *   - The Card is promoted to a labelled region via `role="region"` +
@@ -88,6 +89,9 @@ const HEADING_ID = "stake-card-title";
 
 export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
   function StakeCard({ onStake, stakeDisabled, className, ...rest }, ref) {
+    const { data: statsData } = useStats();
+    const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)}`;
+
     const composed = [
       // Text block top, circular CTA bottom-right — mirrors the Figma
       // "card-horizontal" stack with `justify-between` + `items-end`.
@@ -134,7 +138,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           >
             Stake PLUSD
           </p>
-          {/* Main line — "Earn 8.42%". Heading 20 in Besley display. */}
+          {/* Main line — "Earn X.XX%". Heading 20 in Besley display. */}
           <p
             className={[
               "font-[family-name:var(--font-display)]",
@@ -146,7 +150,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             ].join(" ")}
             data-node-id="1497:94709"
           >
-            Earn 8.42%
+            {apyLabel}
           </p>
           {/* Subtitle — "From loan coupons and T-bills". Caption in Graphik
               LC, muted ink. */}

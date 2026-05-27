@@ -126,6 +126,8 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/api", () => ({
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
+  useStats: () => ({ data: undefined, isLoading: false, error: null }),
+  formatApy: () => "—",
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
