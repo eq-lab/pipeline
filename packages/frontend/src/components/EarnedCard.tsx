@@ -80,13 +80,21 @@ const valueClasses = [
 
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
   function EarnedCard({ className, ...rest }, ref) {
+    const composed = [
+      // Figma asymmetric elevation border: 1px top/left, 3px right/bottom.
+      "!border-t !border-r-[3px] !border-b-[3px] !border-l",
+      className,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     return (
       <Card
         ref={ref}
         variant="white"
         role="region"
         aria-labelledby={LABEL_ID}
-        className={className}
+        className={composed}
         data-node-id="1497:94691"
         {...rest}
       >
