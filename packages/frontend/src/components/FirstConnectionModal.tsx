@@ -444,7 +444,20 @@ export function FirstConnectionModal({
         </ul>
 
         {/* Toggle + label */}
-        <div className="flex items-start gap-3">
+        <div className="flex w-full items-center justify-between gap-3">
+          <label
+            htmlFor={toggleId}
+            className={[
+              "cursor-pointer select-none",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body)]",
+              "leading-[var(--text-pipeline-body--line-height)]",
+              "text-[color:var(--color-pipeline-ink)]",
+            ].join(" ")}
+          >
+            I&apos;m not a US person and not located in a restricted
+            jurisdiction
+          </label>
           {/*
            * The Toggle button is the first focusable element and receives focus
            * on open. We hold a ref here so the useEffect above can call focus().
@@ -468,19 +481,6 @@ export function FirstConnectionModal({
           >
             <Toggle id={toggleId} checked={toggled} onChange={setToggled} />
           </span>
-          <label
-            htmlFor={toggleId}
-            className={[
-              "cursor-pointer select-none",
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-body)]",
-              "leading-[var(--text-pipeline-body--line-height)]",
-              "text-[color:var(--color-pipeline-ink)]",
-            ].join(" ")}
-          >
-            I&apos;m not a US person and not located in a restricted
-            jurisdiction
-          </label>
         </div>
 
         {/* CTAs */}
