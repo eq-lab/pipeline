@@ -101,6 +101,8 @@ export const StartHereCard = React.forwardRef<
     // stack with `justify-between`.
     "flex flex-col justify-between gap-6",
     "w-full",
+    // Figma asymmetric elevation border: 1px top/left, 3px right/bottom.
+    "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
     .filter(Boolean)
@@ -189,11 +191,7 @@ export const StartHereCard = React.forwardRef<
         >
           Buy
         </Button>
-        <Button
-          variant="secondary"
-          onClick={onSell}
-          data-node-id="1497:94690"
-        >
+        <Button variant="secondary" onClick={onSell} data-node-id="1497:94690">
           Sell
         </Button>
       </div>

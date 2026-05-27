@@ -142,6 +142,8 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     "relative flex flex-col gap-6",
     "min-h-[274px] w-full",
     "overflow-hidden",
+    // Figma asymmetric elevation border: 1px top/left, 3px right/bottom.
+    "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
     .filter(Boolean)
