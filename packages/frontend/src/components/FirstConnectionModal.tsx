@@ -23,12 +23,7 @@
  *   - On close, focus is restored to the element that triggered the modal
  *     (handled by the caller via `triggerRef`).
  */
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 // ── Inline SVG glyphs ──────────────────────────────────────────────────────────
@@ -96,7 +91,13 @@ function MagnifierGlyph() {
       aria-hidden="true"
       className="shrink-0"
     >
-      <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle
+        cx="8.5"
+        cy="8.5"
+        r="5.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
       <path
         d="M13 13l3 3"
         stroke="currentColor"
@@ -143,7 +144,7 @@ function Toggle({ checked, onChange, id }: ToggleProps) {
       aria-checked={checked}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#262524] shrink-0"
+      className="shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#262524]"
       style={{
         // Outer track
         display: "inline-flex",
@@ -345,11 +346,11 @@ export function FirstConnectionModal({
           aria-label="Close"
           onClick={onDismiss}
           className={[
-            "absolute right-4 top-4",
+            "absolute top-4 right-4",
             "flex h-8 w-8 items-center justify-center",
             "rounded-[var(--radius-pipeline-card)]",
             "text-[color:var(--color-pipeline-ink)]",
-            "hover:bg-[rgba(56,55,53,0.08)] transition-colors",
+            "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#262524]",
           ].join(" ")}
         >
@@ -374,7 +375,7 @@ export function FirstConnectionModal({
         {/* Hero icon — 72×72 tinted circle */}
         <div className="flex justify-center">
           <div
-            className="inline-flex items-center justify-center shrink-0 rounded-full"
+            className="inline-flex shrink-0 items-center justify-center rounded-full"
             style={{
               width: 72,
               height: 72,
@@ -455,9 +456,8 @@ export function FirstConnectionModal({
             ref={(el) => {
               // Assign toggleRef to the <button role="switch"> inside the wrapper.
               if (el) {
-                const btn = el.querySelector<HTMLButtonElement>(
-                  '[role="switch"]',
-                );
+                const btn =
+                  el.querySelector<HTMLButtonElement>('[role="switch"]');
                 if (btn) {
                   (
                     toggleRef as React.MutableRefObject<HTMLButtonElement | null>
@@ -466,11 +466,7 @@ export function FirstConnectionModal({
               }
             }}
           >
-            <Toggle
-              id={toggleId}
-              checked={toggled}
-              onChange={setToggled}
-            />
+            <Toggle id={toggleId} checked={toggled} onChange={setToggled} />
           </span>
           <label
             htmlFor={toggleId}
@@ -482,13 +478,33 @@ export function FirstConnectionModal({
               "text-[color:var(--color-pipeline-ink)]",
             ].join(" ")}
           >
-            I&apos;m not a US person and not located in a restricted jurisdiction
+            I&apos;m not a US person and not located in a restricted
+            jurisdiction
           </label>
         </div>
 
         {/* CTAs */}
-        <div className="flex flex-col gap-3">
-          {/* Continue */}
+        <div className="flex gap-2">
+          {/* Disconnect — left */}
+          <button
+            type="button"
+            onClick={onDismiss}
+            className={[
+              "h-12 flex-1 rounded-[var(--radius-pipeline-button)] px-3",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body)]",
+              "leading-[var(--text-pipeline-body--line-height)]",
+              "font-[var(--font-weight-emphasized)]",
+              "bg-[rgba(184,191,190,0.12)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "transition-colors hover:bg-[rgba(184,191,190,0.20)]",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#262524]",
+            ].join(" ")}
+          >
+            Disconnect
+          </button>
+
+          {/* Continue — right */}
           <button
             type="button"
             onClick={handleContinue}
@@ -496,7 +512,7 @@ export function FirstConnectionModal({
             aria-disabled={!toggled}
             data-node-id="1582:69059"
             className={[
-              "h-12 w-full rounded-[var(--radius-pipeline-button)] px-3",
+              "h-12 flex-1 rounded-[var(--radius-pipeline-button)] px-3",
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-body)]",
               "leading-[var(--text-pipeline-body--line-height)]",
@@ -519,25 +535,6 @@ export function FirstConnectionModal({
             ].join(" ")}
           >
             Continue
-          </button>
-
-          {/* Disconnect */}
-          <button
-            type="button"
-            onClick={onDismiss}
-            className={[
-              "h-12 w-full rounded-[var(--radius-pipeline-button)] px-3",
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-body)]",
-              "leading-[var(--text-pipeline-body--line-height)]",
-              "font-[var(--font-weight-emphasized)]",
-              "bg-transparent",
-              "text-[color:var(--color-pipeline-ink)]",
-              "hover:bg-[rgba(56,55,53,0.06)] transition-colors",
-              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#262524]",
-            ].join(" ")}
-          >
-            Disconnect
           </button>
         </div>
 
