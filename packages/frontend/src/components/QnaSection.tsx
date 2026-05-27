@@ -45,8 +45,8 @@ import { LinkCard } from "@pipeline/ui";
  *     Body type token and the ink-muted colour. No raw font sizes here.
  *
  * Links:
- *   - Each card targets `#` for now. Real URLs land later when the help
- *     content is decided (per the Issue acceptance criterion). The hrefs are
+ *   - Each card targets the corresponding docs.pipeline.one URL and opens in
+ *     a new tab with `target="_blank" rel="noopener noreferrer"`. The hrefs are
  *     wired through the `LinkCard` `href` prop so they remain anchors and
  *     keep the existing focus-visible ring.
  *
@@ -75,16 +75,28 @@ export type QnaSectionProps = Omit<
 const HEADING_ID = "qna-section-title";
 
 // Static question / link pairs — three rows mirroring the Figma `Cell` strip
-// on node `1497:94668`. Real URLs will replace the `#` placeholders when the
-// help content is decided (see Issue #58 acceptance criteria).
+// on node `1497:94668`. Each href points to the corresponding docs.pipeline.one
+// page; all three open in a new tab with noopener noreferrer for security.
 const QUESTIONS: ReadonlyArray<{
   label: string;
   href: string;
   nodeId: string;
 }> = [
-  { label: "How it works?", href: "#", nodeId: "1497:94669" },
-  { label: "What is PLUSD?", href: "#", nodeId: "1497:94671" },
-  { label: "What is sPLUSD?", href: "#", nodeId: "1497:94673" },
+  {
+    label: "How it works?",
+    href: "https://docs.pipeline.one/how-it-works/",
+    nodeId: "1497:94669",
+  },
+  {
+    label: "What is PLUSD?",
+    href: "https://docs.pipeline.one/start-here/faqs/",
+    nodeId: "1497:94671",
+  },
+  {
+    label: "What is sPLUSD?",
+    href: "https://docs.pipeline.one/start-here/faqs/",
+    nodeId: "1497:94673",
+  },
 ];
 
 export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
@@ -136,6 +148,8 @@ export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
               key={label}
               href={href}
               label={label}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex-1"
               data-node-id={nodeId}
             />
