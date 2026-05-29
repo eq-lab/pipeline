@@ -6,25 +6,29 @@
 
 ## LoanRegistry
 
-| Function | Access | Description |
-|---|---|---|
-| `mintLoan(address originator, string tokenURI)` | TRUSTEE | Mints a new loan NFT. `tokenURI` points to an IPFS JSON document containing the immutable origination fields (see Data Models). Emits `LoanMinted(tokenId, originator, tokenURI)`. |
-| `updateMutable(uint256 tokenId, LoanStatus status, uint256 newMaturityDate, uint256 newCCR, LocationUpdate newLocation)` | TRUSTEE | Updates mutable lifecycle fields. Reverts if newStatus == Default. |
-| `recordRepayment(uint256 tokenId, uint256 offtakerAmount, uint256 seniorPrincipal, uint256 seniorInterest, uint256 equityAmount)` | TRUSTEE | Records a repayment split across Senior (principal + interest) and Equity tranches. Pure accounting — moves no USDC, mints no PLUSD. Reverts if `seniorPrincipal + seniorInterest + equityAmount > offtakerAmount`. Increments `offtakerReceivedTotal`, `seniorPrincipalRepaid`, `seniorInterestRepaid`, `equityDistributed`. Emits `RepaymentRecorded`. |
-| `setDefault(uint256 tokenId)` | RISK_COUNCIL | Transitions loan to Default (24h timelock). |
-| `closeLoan(uint256 tokenId, ClosureReason reason)` | TRUSTEE or RISK_COUNCIL | TRUSTEE for {ScheduledMaturity, EarlyRepayment}; RISK_COUNCIL for {Default, OtherWriteDown}. |
-| `tokenURI(uint256 tokenId)` | public view (ERC-721) | Returns the IPFS URI of the immutable origination JSON. |
-| `getMutable(uint256 tokenId)` | public view | Returns current mutable lifecycle data. |
+| Function | Access | Timelock | Description |
+|---|---|---|---|
+| `mintLoan(address originator, ImmutableLoanData economics, string metadataURI, string initialLocation)` | TRUSTEE | none | Mints a new loan NFT and writes genesis economics on-chain plus `epochs[0]`. `metadataURI` points to an IPFS JSON document with descriptive material only. Emits `LoanMinted`. |
+| `updateMutable(uint256 loanId, LoanStatus status, uint256 newCCR, LocationUpdate newLocation, string metadataURI)` | TRUSTEE | none | Updates non-economic mutable fields. `status` may be one of {Performing, Watchlist, Matured}. Reverts on Default and Closed. Does not touch rate or maturity. |
+| `recordPayment(uint256 loanId, uint256 offtakerAmount, uint256 seniorPrincipal, uint256 seniorInterest, uint256 mgmtFee, uint256 perfFee, uint256 oetAlloc, uint256 equityAmount)` | TRUSTEE | none | Records a repayment split. Pure accounting, moves no USDC, mints no PLUSD. Reverts unless the loan is in {Performing, Watchlist} and the six components sum to `<= offtakerAmount`. Increments the seven per-loan counters. Emits `PaymentRecorded`. |
+| `rollover(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate)` | TRUSTEE | none | Rolls a loan into a new term after maturity. Reverts unless `now >= currentMaturityDate` and status is not Default or Closed. Appends an `EconomicsEpoch`, sets `currentMaturityDate`, returns status to Performing. Emits `LoanRolledOver`. |
+| `amendEconomics(uint256 loanId, uint32 newRateBps, uint64 newMaturityDate)` | RISK_COUNCIL | 24h | Re-terms a loan outside the rollover fast-path (default penalty rate, off-cycle maturity change). Appends an `EconomicsEpoch` from the call time. Emits `EconomicsAmended`. |
+| `setDefault(uint256 loanId)` | RISK_COUNCIL | 24h | Transitions loan to Default. May fire before or after maturity. Blocks loan-tied mints. |
+| `closeLoan(uint256 loanId, ClosureReason reason)` | TRUSTEE or RISK_COUNCIL | TRUSTEE none / RISK_COUNCIL 24h | TRUSTEE for {ScheduledMaturity, EarlyRepayment}; RISK_COUNCIL for {Default, OtherWriteDown}. |
+| `getImmutable(uint256 loanId)` | public view | none | Returns genesis economics. |
+| `getMutable(uint256 loanId)` | public view | none | Returns current mutable lifecycle and repayment data. |
+| `getEpochs(uint256 loanId)` | public view | none | Returns the append-only economics epoch schedule. |
+| `tokenURI(uint256 loanId)` | public view (ERC-721) | none | Returns the IPFS URI of the descriptive document (the mutable `metadataURI`). |
 
-Relayer has **no role on LoanRegistry**. All loan NFT writes — including `recordRepayment` —
-are done by the Trustee key directly.
+Relayer has **no role on LoanRegistry**. All loan NFT writes, including `recordPayment`,
+`rollover`, and `setDefault`, are executed by the Trustee key or the RISK_COUNCIL multisig
+directly per the table above.
 
-Immutable origination data is stored off-chain as an IPFS JSON document referenced by
-`tokenURI`. No on-chain protocol logic reads these fields (repayment accounting is
-driven by counters, not parameters), so keeping them on-chain would only inflate gas
-without adding trust — the Trustee is the authoritative source at origination
-regardless. The IPFS approach also keeps the registry ERC-721-idiomatic: standard NFT
-explorers, marketplaces, and indexers consume `tokenURI` natively.
+Genesis economics are stored on-chain in `ImmutableLoanData` and mirrored into `epochs[0]`.
+YieldMinter reads them on every loan-tied mint to enforce the maturity-capped interest
+ceiling, so they must be on-chain rather than on IPFS. The IPFS document referenced by
+`metadataURI` carries descriptive material only (borrower hash, commodity, corridor,
+governing law, additional legal documents) and is appendable over the loan's life.
 
 ---
 
@@ -154,46 +158,25 @@ from the GUARDIAN Safe already delivers. Consolidation is a post-MVP refactor ca
 
 ## Data Models
 
-### Loan origination JSON (IPFS, referenced by ERC-721 `tokenURI`)
+Field-level detail is authoritative in [loans-data.md](./loans-data.md). Summary of the
+three on-chain loan structs:
 
-Immutable at mint; stored off-chain as a JSON document pinned to IPFS. No on-chain
-protocol logic reads these fields, so they live outside contract storage. The Trustee
-pins the JSON at mint time and passes the resulting `ipfs://...` URI to
-`mintLoan(originator, tokenURI)`.
+- **`ImmutableLoanData`** — seven numeric genesis fields written once in `mintLoan` and
+  never rewritten: `originalFacilitySize`, `originalSeniorTranche` (the accrual base),
+  `originalEquityTranche`, `originalOfftakerPrice`, `seniorInterestRateBps`,
+  `originationDate`, `originalMaturityDate`. Mirrored into `epochs[0]`. YieldMinter reads
+  these on every loan-tied mint. Descriptive material (borrower hash, commodity, corridor,
+  governing law, additional documents) lives in the IPFS `metadataURI`.
+- **`EconomicsEpoch`** — append-only `{ effectiveFrom, maturityDate, seniorInterestRateBps }`.
+  `epochs[0]` mirrors the genesis term; `rollover` (TRUSTEE) and `amendEconomics`
+  (RISK_COUNCIL) append a row. No row is ever rewritten or removed. The YieldMinter ceiling
+  is the maturity-capped piecewise sum over epochs, accrual base `originalSeniorTranche`.
+- **`MutableLoanData`** — lifecycle plus seven repayment counters: `status`, `ccrBps`,
+  `lastReportedCCRTimestamp`, `currentMaturityDate`, `closureReason`, `currentLocation`,
+  `metadataURI`, `offtakerReceivedTotal`, `seniorPrincipalRepaid`, `seniorInterestRecorded`,
+  `mgmtFeeRecorded`, `perfFeeRecorded`, `oetAllocRecorded`, `equityDistributed`.
 
-| Field | Type | Notes |
-|---|---|---|
-| originator | address | Originator's on-chain identifier |
-| borrowerId | string (hex) | Hashed borrower identifier (bytes32 hex) |
-| commodity | string | e.g. Jet fuel JET A-1 |
-| corridor | string | e.g. South Korea → Mongolia |
-| originalFacilitySize | string (uint256) | 6-decimal USDC units (stringified for JSON) |
-| originalSeniorTranche | string (uint256) | Senior portion at origination |
-| originalEquityTranche | string (uint256) | Equity portion at origination |
-| originalOfftakerPrice | string (uint256) | Total USDC the end buyer is contracted to pay |
-| seniorInterestRateBps | number | Annualised Senior coupon rate (bps); Equity is residual |
-| originationDate | number | Unix seconds at mint |
-| originalMaturityDate | number | Originally agreed maturity |
-| governingLaw | string | e.g. English law, LCIA London |
-| additionalDocuments | array | Optional pointers to legal docs, also IPFS |
-
-### MutableLoanData (on-chain, updated by TRUSTEE / RISK_COUNCIL)
-
-| Field | Type | Notes |
-|---|---|---|
-| status | LoanStatus | Performing \| Watchlist \| Default \| Closed |
-| currentMaturityDate | uint256 | May be extended from original |
-| lastReportedCCR | uint256 | Basis points (e.g. 14000 = 140%) |
-| lastReportedCCRTimestamp | uint256 | When CCR was last updated |
-| currentLocation | LocationUpdate | Embedded struct |
-| offtakerReceivedTotal | uint256 | Cumulative USDC received from offtaker (≤ originalOfftakerPrice from IPFS) |
-| seniorPrincipalRepaid | uint256 | Cumulative Senior principal repaid |
-| seniorInterestRepaid | uint256 | Cumulative Senior coupon (net) delivered |
-| equityDistributed | uint256 | Cumulative Equity-tranche distributions (residual) |
-| closureReason | ClosureReason | Set when status = Closed |
-
-Enums: `LoanStatus { Performing, Watchlist, Default, Closed }` ·
+Enums: `LoanStatus { Performing, Watchlist, Matured, Default, Closed }` ·
 `ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWriteDown }` ·
-`LocationType { Vessel, Warehouse, TankFarm, Other }`
-
-`LocationUpdate` (embedded in MutableLoanData): `locationType`, `locationIdentifier` (vessel IMO / warehouse name), `trackingURL` (optional MarineTraffic etc.), `updatedAt`.
+`LocationType { Vessel, Warehouse, TankFarm, Other }`. `LocationUpdate` embeds
+`locationType`, `locationIdentifier`, `trackingURL`, `updatedAt`.
