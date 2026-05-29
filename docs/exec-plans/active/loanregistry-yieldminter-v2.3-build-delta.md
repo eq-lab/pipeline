@@ -1,104 +1,134 @@
 # LoanRegistry + YieldMinter v2.3 — build delta
 
-**Status:** spec landed, implementation pending
-**Branch:** `docs/update-specs-v2.3`
-**Spec commits:** `09cb08a` (loan-doc core), `28ff51f` (wider reconciliation)
-**Source compared:** `eq-lab/pipeline-contracts@main` (`LoanRegistryUpgradeable.sol`, `PipelineLoanRegistry.sol`, `ILoanRegistry.sol`, `PipelineYieldMinterV1.sol`)
+**Status:** spec landed, implementation in progress on `rework/loan-registry`
+**Spec branch:** `docs/update-specs-v2.3` (commits `09cb08a`, `28ff51f`)
+**Implementation branch:** `eq-lab/pipeline-contracts@rework/loan-registry` (supersedes `main` for tracking)
+**Source compared:** `LoanRegistryUpgradeable.sol`, `PipelineLoanRegistry.sol`, `ILoanRegistry.sol`, `PipelineYieldMinter.sol` on `rework/loan-registry`
 
 This is the engineering hand-off for the v2.3 LoanRegistry and YieldMinter spec
-update. It records what the specs now require, how that differs from the current
-`main` implementation, and the upgrade-safety constraints the implementers must respect.
+update. It records what the specs require, how that differs from the in-progress
+`rework/loan-registry` implementation, and the divergences that still need a product or
+security decision before the contracts are final.
 
 ---
 
 ## Background
 
 Two drivers. First, origination economics move on-chain so the minter can enforce a
-mint cap the operator cannot fake. Second, product confirmed that loans get rolled over
+mint bound the operator cannot fake. Second, product confirmed that loans get rolled over
 (new rate, new maturity) and re-termed on default, so "immutable loan data" cannot be
-literally immutable. We reconciled the two with an append-only epoch model that keeps a
-tamper-proof mint ceiling while allowing terms to change.
+literally immutable. The spec reconciles the two with an append-only epoch model that
+keeps a tamper-proof mint ceiling while allowing terms to change.
 
-## The four decisions (locked with product)
+## The four spec decisions (locked with product)
 
-1. **Genesis snapshot plus append-only epochs.** `ImmutableLoanData` (7 numeric fields)
-   is written once and never rewritten. Rate and maturity live in an append-only
-   `EconomicsEpoch[]`. The original terms and every re-term stay on-chain.
-2. **Maturity-capped mint ceiling.** Vault-leg mints are bounded by a piecewise sum
-   across epochs where each epoch's interest accrual stops at its own maturity. A loan
-   past maturity cannot over-accrue. A rollover re-opens accrual under the new rate.
-3. **Fast-path rollover, gated re-terms.** `rollover` is Trustee, no timelock, only
-   after maturity. `amendEconomics` and `setDefault` are RISK_COUNCIL, 24h. All three
-   only append an epoch, so they can raise the ceiling but cannot mint. Actual minting
-   still needs `recordPayment` plus the Relayer and custodian attestation.
-4. **`Matured` status added.** Mint is allowed only in `Performing` and `Watchlist`.
-   Status control stays Trustee and RISK_COUNCIL.
+1. **Genesis snapshot plus append-only epochs.** `ImmutableLoanData` written once. Rate
+   and maturity live in an append-only `EconomicsEpoch[]`.
+2. **Maturity-capped mint ceiling.** Vault-leg mints bounded by a piecewise sum across
+   epochs, each epoch's accrual stopping at its own maturity. An independent bound the
+   contract computes itself.
+3. **Fast-path rollover, gated re-terms.** `rollover` Trustee/no-timelock/post-maturity.
+   `amendEconomics` and `setDefault` RISK_COUNCIL/24h. All append an epoch, none mint.
+4. **`Matured` status.** Mint allowed only in `Performing` and `Watchlist`.
 
-Plus: `recordPayment` grew to 8 args (fees carved from gross interest, net coupon to the
-vault, may be zero on interest-deferred early payments). `metadataURI` is mutable so
-documents can be appended. YieldMinter splits into `mintLoanYield` and `mintTbillYield`
-with per-loan caps and distinct replay maps.
+Plus 8-field `recordPayment` (fees carved from gross interest), mutable `metadataURI`,
+and a split YieldMinter (`mintLoanYield` + `mintTbillYield`) with two-party attestation.
 
 ---
 
-## Spec (target) vs. current `main`
+## Spec (target) vs. `rework/loan-registry`
 
-### LoanRegistry
+### Where the branch already matches the spec direction
 
-| Dimension | Current `main` | Spec v2.3 (target) |
+- LoanRegistry is UUPS + AccessManaged + ERC-7201, soulbound, pausable.
+- `ImmutableLoanData` is on-chain (7 fields) in a per-loan map, written once at draw.
+- Per-loan `MutableLoanData`, per-loan `cumulativeRepaymentData`, and per-repayment
+  `repaymentData[loanId][repaymentId]` maps replace the old global scalar counters.
+- `recordPayment` carries the 6-component split (`seniorPrincipalRepaid`, `seniorInterest`,
+  `mgmtFee`, `perfFee`, `oetAlloc`, `equityDistributed`) with the `sum <= offtakerAmount`
+  invariant.
+- YieldMinter delivers both legs: net senior coupon to the sPLUSD vault and
+  `mgmtFee + perfFee + oetAlloc` to the Treasury.
+
+### LoanRegistry differences
+
+| Dimension | `rework/loan-registry` | Spec v2.3 (target) |
 |---|---|---|
-| Origination economics | None on-chain. `mintLoan(to, metadataURI, initialMaturity, location)` | `ImmutableLoanData` (7 numeric fields) at mint, mirrored to `epochs[0]`. `mintLoan(originator, economics, metadataURI, initialLocation)` |
-| Rate over loan life | No rate field at all | Per-epoch `seniorInterestRateBps` in append-only `EconomicsEpoch[]` |
-| Maturity | Single `maturity` field, no function extends it | `currentMaturityDate` set by `rollover` / `amendEconomics`. Full history in epochs |
-| Repayment counters | 4 GLOBAL scalars in `LoanRegistryStorage` | 7 PER-LOAN counters in `MutableLoanData` (adds mgmt/perf/oet fees, `seniorInterestRepaid` becomes `seniorInterestRecorded`) |
-| `recordPayment` args | 5 (offtaker, principal, interest, equity) | 8 (adds mgmtFee, perfFee, oetAlloc. interest is the net coupon) |
-| Statuses | `Performing, WatchList, Default, Closed` | adds `Matured`. Mint-eligible is Performing/Watchlist only |
-| Rollover | Absent | `rollover(loanId, newRateBps, newMaturityDate)` Trustee, post-maturity, no timelock |
-| Default re-terms | `setDefault(loanId, ccrBps)` | `setDefault(loanId)` plus `amendEconomics(...)` RISK_COUNCIL 24h, appends epoch |
-| `metadataURI` | set at mint, no setter | mutable via `updateMutable`, appendable docs |
-| Link to minting | none | YieldMinter reads `getMutable` and epochs for the per-loan cap |
-| Events | `Repayment`, `StatusUpdated`, `LoanDefaulted`, ... | `PaymentRecorded`, `LoanRolledOver`, `EconomicsAmended`, `LoanMinted` (carries economics), ... |
-| Soulbound / ERC-7201 / UUPS | Yes / Yes / Yes | Unchanged |
+| Entry point | `drawLoan(to, metadataURI, immutableLoanData, initialCcrBps, location)` | `mintLoan(originator, economics, metadataURI, initialLocation)` |
+| Immutable fields | `seniorTranche, equityTranche, offtakerPrice, rateBps, originationTimestamp, originalMaturityTimestamp, facility (string)` | adds numeric `originalFacilitySize`; `facility` is descriptive only |
+| Mint invariants | only `initialCcrBps >= ONE` (1e6) | `senior + equity == facilitySize`, `offtakerPrice >= facilitySize`, `maturity > origination` |
+| Rate / maturity over life | `ImmutableLoanData` truly immutable; `currentMaturityDate` has no setter | append-only `EconomicsEpoch[]`, `rollover` and `amendEconomics` update terms |
+| Rollover / re-term | **absent** | `rollover` (Trustee, post-maturity) and `amendEconomics` (RISK_COUNCIL) |
+| Statuses | `Performing, WatchList, Default, Closed` | adds `Matured` |
+| Repayment model | per-repayment records (`nextRepaymentId`, per-id `RepaymentData`) plus a cumulative map | cumulative per-loan counters only |
+| Mint replay / bound | `minted[loanId][repaymentId]` one-time flag; mints exactly the recorded amounts | `usedLoanRefs` plus the maturity-capped `ceiling(loanId)` independent bound |
+| CCR scale | `ONE = 1_000_000` (1e6), floor at draw | spec used bps (1e4) |
+| `metadataURI` | set at draw, no setter | mutable, appendable docs |
 
-### YieldMinter
+### YieldMinter differences
 
-| Dimension | Current `PipelineYieldMinterV1` | Spec v2.3 (target v2) |
+| Dimension | `rework` `PipelineYieldMinter` | Spec v2.3 (target) |
 |---|---|---|
-| Functions | `mintYield(amount, signature)` single | `mintLoanYield(att, relayerSig, custodianSig)` plus `mintTbillYield(...)` |
-| Signers | Single ECDSA (`mintAuthority`), no custodian | Two-party: Relayer ECDSA plus custodian EIP-1271 |
-| Destinations | Vault only | Vault and Treasury, bound by leg |
-| Loan linkage / cap | None | reads LoanRegistry, per-loan plus maturity-capped ceiling |
-| Replay | sequential `nextNonce` | `usedLoanRefs` / `usedTbillRefs` ref maps |
-| Mint call | `plUsd.mint(vault, amount)` direct | `PLUSD.mintForYield`, asserts ledger invariant |
-| T-Bill path | Absent | `mintTbillYield`, NAV-delta cap |
-| Upgradeable | No (plain `AccessManaged`, immutables, constructor) | UUPS proxy plus Pausable plus ERC-7201 |
+| Entry point | `mintYield(loanId, repaymentId)` single | `mintLoanYield(att, relayerSig, custodianSig)` + `mintTbillYield(...)` |
+| Authorisation | **AccessManager `restricted` only, no signatures** | Relayer ECDSA + custodian EIP-1271, both verified on-chain |
+| Mint bound | exactly the recorded `seniorInterest` + fees for that repayment | per-loan cap `min(seniorInterestRecorded, ceiling(loanId))` |
+| Mint call | `plUsd.mint(vault, ...)` and `plUsd.mint(treasury, ...)` direct | `PLUSD.mintForYield`, asserts ledger invariant |
+| T-Bill path | **absent** | `mintTbillYield`, NAV-delta cap |
+| Replay | per-`(loanId, repaymentId)` via registry `minted` map | `usedLoanRefs` / `usedTbillRefs` |
+| Upgradeable / pausable | **No** (plain `AccessManaged`, immutables, constructor) | UUPS + Pausable + ERC-7201 |
+| Treasury address | set at construction, no setter | rotatable per spec governance |
+
+---
+
+## Divergences that need a decision
+
+These are points where the in-progress code and the approved spec genuinely disagree.
+They are product or security decisions, not naming cleanups, so they are listed for the
+team rather than silently resolved in either direction.
+
+1. **On-chain two-party attestation dropped.** The spec's core threat-model property is
+   "no single compromise mints": Relayer ECDSA plus custodian EIP-1271 verified in the
+   minter. The branch gates `mintYield` with the AccessManager role alone. If the role is
+   held by an MPC or Safe that itself enforces multi-party signing, the property may hold
+   off-chain, but it is no longer enforced or auditable in the contract.
+2. **No independent mint ceiling.** The spec bounds a vault mint by the maturity-capped
+   `principal x rate x elapsed` sum the contract computes itself, so even a colluding
+   Trustee plus minter cannot mint more interest than the loan's terms could earn. The
+   branch mints exactly the Trustee-recorded `seniorInterest`, bounded only by the
+   `sum <= offtakerAmount` invariant on numbers the Trustee supplies. Decision #2 of the
+   spec (math the contract can do on its own) is not implemented.
+3. **Rollover / re-terms unaddressed on-chain.** Product required that loans roll over
+   under new rate and maturity after maturity, and re-term on default. The branch has no
+   epochs, no `rollover`, no `amendEconomics`, and no setter for `currentMaturityDate`.
+   Either rollover is being deferred, handled off-chain, or modelled as a new loan NFT.
+4. **Per-repayment records vs. cumulative counters.** Here the branch is arguably ahead of
+   the spec: indexed per-repayment `RepaymentData` plus a one-time `minted` flag is a
+   cleaner fit for lumpy and multi-tranche repayments than the spec's cumulative-only
+   counters. Worth folding back into the spec regardless of how 1 to 3 resolve.
+
+Open question for the team: align the code up to the spec (restore attestation, ceiling,
+rollover), or amend the spec down to the simpler branch design (and accept the weaker
+mint bound and off-chain-only multi-party control). Items 1 and 2 are security-relevant
+and should not be settled by default.
 
 ---
 
 ## Upgrade-safety constraints (verified against OpenZeppelin Upgrades docs)
 
-1. **The global-to-per-loan counter move is not an append-safe upgrade if the registry
-   already holds state.** In `LoanRegistryStorage` the four global scalars
-   (`offtakerReceivedTotal` and the rest) sit before the `metadataURI` and
-   `mutableLoanData` mappings. The ERC-7201 and OZ rule is append-only: removing or
-   reordering earlier fields shifts the mapping declaration slots and orphans every
-   existing entry. So either (a) if not yet deployed with real state, author the new
-   layout directly, or (b) if deployed, keep the global scalars as deprecated frozen
-   slots, append the per-loan counters to the end of `MutableLoanData` (safe, because it
-   is a mapping value and new members land in previously-zero slots), and append the
-   `ImmutableLoanData` and `EconomicsEpoch[]` maps to the end of `LoanRegistryStorage`.
-2. **`reinitializer(2)` for migration.** Seed `epochs[0]` from genesis economics and
-   backfill the per-loan counters from historical `Repayment` events in a reinitializer,
-   as the spec's upgrade-migration note states.
-3. **YieldMinter v1 is not a proxy.** Moving to the two-path v2 is a fresh UUPS
-   deployment, not an in-place upgrade. Plan the cutover. It holds no migratable state
-   today beyond `nextNonce`.
+1. **The branch authors the ERC-7201 layout cleanly** (per-loan maps appended after
+   `nextLoanId` and `metadataURI`), so the old `main` global-scalar problem is gone. Any
+   future change must stay append-only: new fields only at the end of a struct or the
+   namespaced storage struct, never reordered or removed.
+2. **`reinitializer` for any migration** that introduces new state on an already-deployed
+   proxy. Not needed yet if `rework` ships as the first real deployment.
+3. **YieldMinter is not a proxy.** If the spec's UUPS + Pausable shape is kept, this is a
+   structural change to the branch, not an in-place upgrade.
 4. **Role granularity is AccessManager config, not in-contract.** Every mutator is
    `restricted`. The Trustee-versus-RISK_COUNCIL split and the 24h `setDefault` timelock
    are wired in AccessManager, so the spec's role and timelock table is a deployment
-   checklist, not contract logic.
-5. **Naming alignment.** The contract enum is `WatchList`. The specs use `Watchlist`.
-   Pick one before codegen.
+   checklist.
+5. **Naming alignment.** Branch uses `drawLoan`, `WatchList`, `mintYield`, CCR in 1e6.
+   Specs use `mintLoan`, `Watchlist`, `mintLoanYield`, CCR in bps. Pick one before codegen.
 
 ---
 
