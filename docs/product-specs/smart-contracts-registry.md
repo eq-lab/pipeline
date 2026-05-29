@@ -74,7 +74,7 @@ PLUSD. Every other contract reads `shutdownController.isActive()` and
 2. After 24h, ADMIN calls `executeShutdown()`. `isActive` flips to true,
    `recoveryRateBps` is fixed, `totalSupplyAtEntry` is snapshotted.
 3. From that moment all mint paths revert (`mintForDeposit`, `mintForYield`, and therefore
-   `DepositManager.deposit` and `YieldMinter.yieldMint`); `redeemInShutdown` and
+   `DepositManager.deposit` and `YieldMinter.mintLoanYield` / `mintTbillYield`); `redeemInShutdown` and
    `claimAtShutdown` become callable.
 
 There is no pool pre-fund requirement at entry. A real solvency crisis implies there is

@@ -69,13 +69,14 @@ Each Thursday, the relayer service pre-builds a TreasuryYieldDistributed transac
 As the sole holder of the `TRUSTEE` role on LoanRegistry (signed directly by the Trustee
 key, not relayed through Relayer), the trustee can:
 
-- Transition loan status between Performing and Watchlist via `updateMutable`.
-- Extend `currentMaturityDate`.
-- Update `lastReportedCCR` following price feed threshold crossings or manual price-based review.
+- Transition loan status among Performing, Watchlist, and Matured via `updateMutable`.
+- Roll a matured loan into a new term (new rate and maturity) via `rollover`, callable only after `currentMaturityDate`.
+- Update `ccrBps` following price feed threshold crossings or manual price-based review.
 - Update `currentLocation` as cargo moves through the trade corridor (LocationType, locationIdentifier, optional trackingURL).
-- Record a repayment split across Senior tranche (principal + interest) and Equity tranche via `recordRepayment` once the client-side waterfall is settled.
+- Append documents to the loan by updating `metadataURI`.
+- Record a repayment split (principal, net senior coupon, management/performance/OET fees, equity) via `recordPayment` once the client-side waterfall is settled.
 - Close a loan at scheduled maturity or early repayment via `closeLoan`.
-- Escalate to the Risk Council for transitions to Default status or Closed-with-default-reason (which require the 3-of-5 `RISK_COUNCIL` role, not `TRUSTEE`).
+- Escalate to the Risk Council for Default transitions, economics re-terms via `amendEconomics`, or Closed-with-default-reason (all requiring the 3-of-5 `RISK_COUNCIL` role, not `TRUSTEE`).
 
 ### USYC Manual Override
 

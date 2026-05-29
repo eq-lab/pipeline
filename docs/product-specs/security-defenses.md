@@ -52,7 +52,7 @@ PLUSD maintains three cumulative counters, updated in the same transaction that 
 value:
 
 - `cumulativeLPDeposits` — incremented on every `mintForDeposit`.
-- `cumulativeYieldMinted` — incremented on every `yieldMint`.
+- `cumulativeYieldMinted` — incremented on every `mintForYield` (YieldMinter loan and T-Bill paths).
 - `cumulativeLPBurns` — incremented on every `burn` (via WithdrawalQueue) and on
   `redeemInShutdown`.
 
@@ -78,7 +78,9 @@ gates them — yield is an abstract off-chain P&L event (loan repayments and USY
   policy is driven by the custodian's platform (Fireblocks API Co-Signer callback
   handler, BitGo Policy Engine webhook, or equivalent). The on-chain contract validates
   via `IERC1271.isValidSignature` → `0x1626ba7e`.
-- `PLUSD.yieldMint(att, relayerSig, custodianSig)` verifies both signatures on-chain.
+- `YieldMinter.mintLoanYield` (loan path) and `mintTbillYield` (USYC path) verify both
+  signatures on-chain. The loan path additionally bounds the mint by the per-loan
+  maturity-capped cap read from LoanRegistry.
 
 Compromising Relayer alone mints zero PLUSD. Compromising the custodian alone mints
 zero PLUSD.
@@ -152,7 +154,7 @@ possible pause scope for a given incident class.
 | Sequence | Risk | Mitigation |
 |---|---|---|
 | LP calls `DepositManager.deposit(amount)` → USDC moves LP → Capital Wallet → PLUSD minted 1:1 to LP | `transferFrom` succeeds but `mintForDeposit` reverts | Atomic: any revert propagates and the whole transaction reverts. Cannot produce a dangling USDC transfer without matching PLUSD. |
-| Relayer + custodian co-sign `YieldAttestation`; Relayer submits `yieldMint(att, relayerSig, custodianSig)`; repeated for each destination (vault, treasury) | First succeeds, second fails: vault yield accreted but treasury share missing | Two separate calls, each idempotent on `repaymentRef` (destination-scoped). Relayer retries the failed leg with a fresh `salt` after re-cosign. |
+| Relayer + custodian co-sign a `LoanYieldAttestation` per leg; Relayer submits `mintLoanYield` for each destination (vault, treasury) | First succeeds, second fails: vault yield accreted but treasury share missing | Two separate calls, each idempotent on `usedLoanRefs[repaymentRef]` (leg-scoped). Relayer retries the failed leg with a fresh `salt` after re-cosign. |
 | LP submits `requestWithdrawal`, then LP calls `claim` directly | Relayer never custodies USDC. `claim` is atomic (re-check, USDC pull from Withdrawal Queue Wallet, burn). | Withdrawal Queue Wallet to WQ allowance is cosigned by Trustee + Team at deploy. If compromised, Trustee revokes allowance via the custody-side circuit breaker. |
 | LP withdrawal USDC leg (Capital Wallet → WQ → LP) | LP attempts to route payout to a new address | `claim` pays only the original requester on-chain; custodian MPC policy engine also enforces per-LP destination-set matching on the Capital Wallet → WQ release (R2). |
-| Trustee verifies USDC repayment on Capital Wallet → Relayer calls `yieldMint` and Trustee calls `recordRepayment` + `closeLoan(EarlyRepayment)` | Yield mints but registry updates fail (or vice versa) | Two independent transactions; yield is the capital-critical leg and is retried. Registry updates are idempotent (mutating on Closed reverts cleanly). Registry lag does not affect share price — LoanRegistry is informational only. |
+| Trustee verifies USDC repayment on Capital Wallet → Trustee calls `recordPayment`, Relayer calls `mintLoanYield`, Trustee calls `closeLoan(EarlyRepayment)` | Yield mints but registry updates fail (or vice versa) | Independent transactions; `recordPayment` must land before any loan mint (the cap reads its counters), and yield is the capital-critical leg that is retried. Registry updates are idempotent (mutating on Closed reverts cleanly). Registry lag does not affect share price — LoanRegistry is informational only. |

@@ -62,7 +62,7 @@ Reads loan identity and immutable parameters from the LoanRegistry on-chain. Rea
 **Per active loan**
 - From chain: `loanId`, originator, borrower (hashed), commodity, corridor, original facility size, original senior/equity tranche split.
 - From trustee feed: current outstanding principal, accrued interest, days remaining to maturity.
-- From chain (mutable): current status, `currentMaturityDate`, `lastReportedCCR` with timestamp.
+- From chain (mutable): current status, `currentMaturityDate`, `ccrBps` with timestamp.
 - From chain (location): location type (Vessel / Warehouse / TankFarm / Other), location identifier, and — for vessels — a link to an external maritime tracking platform showing the vessel's current AIS position.
 - From trustee feed (off-chain, labelled): equity tranche commitment and source originator.
 

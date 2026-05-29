@@ -49,13 +49,18 @@ Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT f
 When a loan repayment USDC inflow is detected at the Capital Wallet:
 
 1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
-2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve`.
-3. Relayer builds two `YieldAttestation` structs (vault leg and treasury leg) and signs each
-   with the `relayerYieldAttestor` key:
+2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and
+   broadcasts `LoanRegistry.recordPayment` from the Trustee key, crediting the per-loan
+   counters. This must land before any loan-tied mint, because the YieldMinter cap reads
+   those counters.
+3. Relayer reads the new counters and builds one `LoanYieldAttestation` per leg, each bound
+   to `loanId`, signing each with the `relayerYieldAttestor` key:
    ```
-   YieldAttestation {
-     bytes32 repaymentRef;  // keccak256(chainId, repaymentTxHash, destinationTag)
-     address destination;   // sPLUSD vault OR Treasury Wallet
+   LoanYieldAttestation {
+     bytes32 repaymentRef;  // keccak256(chainId, repaymentTxHash, loanId, leg)
+     uint256 loanId;
+     uint8   leg;           // Vault OR Treasury
+     address destination;   // sPLUSD vault OR Treasury Wallet (bound to leg)
      uint256 amount;
      uint64  deadline;
      uint256 salt;
@@ -63,12 +68,13 @@ When a loan repayment USDC inflow is detected at the Capital Wallet:
    ```
 4. Relayer posts structs + Relayer sigs to the custodian's co-signing API (Fireblocks / BitGo).
    Custodian independently verifies the USDC inflow and returns EIP-1271 signatures.
-5. Relayer calls `PLUSD.yieldMint(att, relayerSig, custodianSig)` for each leg via the
-   transaction outbox. PLUSD verifies both signatures on-chain, checks the reserve invariant,
-   and mints to destination.
+5. Relayer calls `YieldMinter.mintLoanYield(att, relayerSig, custodianSig)` for each leg via
+   the transaction outbox. YieldMinter verifies both signatures, enforces the per-loan cap
+   (Vault leg `<= min(seniorInterestRecorded, ceiling(loanId))`, Treasury leg `<=` recorded
+   fees), asserts the PLUSD ledger invariant, and mints to the leg-bound destination.
 
-Neither Relayer alone nor the custodian alone can mint yield — both sigs plus YIELD_MINTER
-caller role are required.
+Neither Relayer alone nor the custodian alone can mint yield — both sigs plus YieldMinter
+holding the YIELD_MINTER role are required.
 
 ### 4. Yield Minting — USYC (Lazy, Stake/Unstake-Triggered)
 
@@ -78,8 +84,10 @@ yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 1. Relayer reads current USYC NAV from the Hashnote API.
 2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
    holdings). If `delta <= 0`, skip.
-3. If `delta > 0`: builds two `YieldAttestation` structs (vault + treasury), gets Relayer sig
-   + custodian co-sig (same flow as repayment), submits both `yieldMint` calls.
+3. If `delta > 0`: builds two `TbillYieldAttestation` structs (vault + treasury), gets
+   Relayer sig + custodian co-sig (same flow as repayment), submits both
+   `YieldMinter.mintTbillYield` calls. These carry no `loanId` and no per-loan cap; replay is
+   gated by `usedTbillRefs[navRef]`.
 4. Advances `last_minted_NAV` baseline only after both legs confirm on-chain.
 
 Between mints, Relayer polls USYC NAV (e.g., every minute) and exposes
@@ -98,7 +106,7 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 Relayer monitors every active loan in the LoanRegistry, polling Platts/Argus commodity prices
 on a configurable cadence (working assumption: every 15 minutes during market hours). Computes
 CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
-notifies recipients and queues a `LoanRegistry.updateMutable` call to update `lastReportedCCR`.
+notifies recipients and queues a `LoanRegistry.updateMutable` call to update `ccrBps`.
 
 | Event | Trigger | Recipients |
 |---|---|---|
@@ -140,7 +148,7 @@ PLUSD totalSupply  ==  USDC in Capital Wallet
 | WithdrawalQueue | `WithdrawalRequested` | Flow 2 trigger |
 | WithdrawalQueue | `WithdrawalFunded / WithdrawalClaimed / WithdrawalSanctionedSkip / WithdrawalAdminReleased` | Status tracking |
 | sPLUSD | `Deposit / Withdraw` | Trigger lazy USYC yield |
-| LoanRegistry | `LoanMinted / LoanUpdated / LoanClosed` | Loan book mirror |
+| LoanRegistry | `LoanMinted / LoanStatusChanged / LoanRolledOver / PaymentRecorded / LoanClosed` | Loan book mirror |
 | PLUSD | `RateLimitsChanged / MaxTotalSupplyChanged` | Update local cache |
 | WhitelistRegistry | `LPApproved / ScreeningRefreshed / LPRevoked` | Whitelist sync |
 | ShutdownController | `ShutdownEntered` | Halt all normal flows |

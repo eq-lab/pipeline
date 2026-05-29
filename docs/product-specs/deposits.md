@@ -130,7 +130,7 @@ The full `IDepositManager` interface, `Ticket` struct, `ClaimAttestation` struct
 | Field | Type | Description |
 |---|---|---|
 | `cumulativeLPDeposits` | `uint256` | Cumulative USDC moved from Intake Wallet to Capital Wallet via successful claims (6 decimals) |
-| `cumulativeYieldMinted` | `uint256` | Cumulative PLUSD minted via `yieldMint` |
+| `cumulativeYieldMinted` | `uint256` | Cumulative PLUSD minted via `mintForYield` (YieldMinter loan and T-Bill paths) |
 | `cumulativeLPBurns` | `uint256` | Cumulative PLUSD burned by `WithdrawalQueue` |
 
 `cumulativeLPDeposits` increments at `claim`, not at `deposit`. USDC parked in the Intake Wallet is not yet backing PLUSD because no PLUSD has been minted against it.

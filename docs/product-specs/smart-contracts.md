@@ -80,11 +80,11 @@ revokes in a compromise (for the role) or ADMIN rotates (for the signing keys).
 | AccessManager (OZ) | — | Single role-management hub; timelocked scheduled actions | 0 |
 | PLUSD | OZ ERC20Pausable + ERC20Permit + AccessManaged + UUPS | Receipt token; mint exposed only as restricted `mintForDeposit` / `mintForYield`; `_update` hook enforces whitelist. All signature verification and rate-limit enforcement happens in caller contracts, not in the token. | ~80 |
 | DepositManager | AccessManaged + Pausable + ReentrancyGuard + UUPS | Two-step screened deposit. `deposit` parks USDC in the Intake Wallet and creates a ticket. After Relayer marks the ticket claimable on a clean KYT, the lender calls `claim` to mint PLUSD 1:1. Enforces per-lender, per-window, and supply caps. Holds `DEPOSITOR` role on PLUSD. | ~180 |
-| YieldMinter | AccessManaged + Pausable + UUPS | Verifies the two-party yield attestation (Relayer ECDSA + custodian EIP-1271), enforces replay protection, calls `PLUSD.mintForYield`. Holds `YIELD_MINTER` role on PLUSD. | ~110 |
-| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any whitelisted PLUSD holder. Plain ERC-4626 semantics — share price moves only when Relayer lands a `yieldMint` in the vault. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. | ~55 |
+| YieldMinter | AccessManaged + Pausable + UUPS | Two mint paths: `mintLoanYield` (loan-tied, reads LoanRegistry and enforces the per-loan cap and maturity-capped ceiling) and `mintTbillYield` (USYC NAV). Both verify the two-party attestation (Relayer ECDSA + custodian EIP-1271) and enforce replay protection via distinct ref maps, then call `PLUSD.mintForYield`. Holds `YIELD_MINTER` role on PLUSD. | ~140 |
+| sPLUSD | OZ ERC-4626 + ERC20Pausable + AccessManaged + UUPS | Yield-bearing vault on PLUSD; open to any whitelisted PLUSD holder. Plain ERC-4626 semantics — share price moves only when a YieldMinter mint lands in the vault. `_update` hook mirrors PLUSD: both non-zero endpoints must be a whitelisted LP or a system address. | ~55 |
 | WhitelistRegistry | AccessManaged + TimelockPending + UUPS | On-chain allowlist of compliance-screened addresses and approved DeFi venues. Tracks `approvedAt` timestamp from the most recent clean KYT screen. Exposes `isAllowed` (whitelist + freshness check) used by `PLUSD._update` and `WithdrawalQueue.claim`. | ~75 |
 | WithdrawalQueue | AccessManaged + Pausable + ReentrancyGuard + UUPS | User-pulled withdrawal queue. `Pending → Claimed | AdminReleased` lifecycle. Lenders call `requestWithdrawal` to escrow PLUSD, then `claim` themselves to atomically pull USDC from the Withdrawal Queue Wallet. Enforces self-limit invariant `claimAmount <= totalClaimable`. | ~120 |
-| LoanRegistry | OZ ERC-721 (soulbound) + AccessManaged + Pausable + UUPS | On-chain registry of loan facilities. Origination data stored off-chain in IPFS JSON, referenced via standard ERC-721 `tokenURI`; mutable lifecycle state (status, CCR, location, cumulative repayments) lives on-chain. | ~140 |
+| LoanRegistry | OZ ERC-721 (soulbound) + AccessManaged + Pausable + UUPS | On-chain registry of loan facilities. Genesis economics and an append-only rate/maturity epoch schedule live on-chain (YieldMinter reads them for the per-loan cap); mutable lifecycle state (status, CCR, location, cumulative repayments) is on-chain; descriptive material is in the IPFS `metadataURI`. | ~160 |
 | ShutdownController | AccessManaged + UUPS | Freezes normal flow on distress; fixes `recoveryRateBps`; opens `redeemInShutdown` / `claimAtShutdown` paths. | ~75 |
 | RecoveryPool | AccessManaged + Pausable + ReentrancyGuard + UUPS | Holds USDC for LP recovery payments on shutdown. | ~70 |
 
@@ -129,10 +129,11 @@ For the full interface definitions of all nine contracts, see:
   keeps the permissioned trading universe closed — unscreened wallets cannot be a source
   or destination on either rail — while allowing whitelisted LPs to move PLUSD and sPLUSD
   freely among themselves.
-- **On-chain repayment accounting is informational.** `LoanRegistry.recordRepayment`
-  increments counters and emits an event but moves no USDC and mints no PLUSD. sPLUSD share
-  price moves only on actual yield mints via the two-party `yieldMint` path. A compromised
-  Trustee key cannot inflate share price by writing false repayment entries.
+- **On-chain repayment accounting is informational.** `LoanRegistry.recordPayment`
+  increments per-loan counters and emits an event but moves no USDC and mints no PLUSD.
+  sPLUSD share price moves only on actual yield mints via the two-party YieldMinter paths.
+  A compromised Trustee key cannot inflate share price by writing false payment entries, and
+  the YieldMinter per-loan cap independently bounds what any loan can mint.
 
 ---
 
@@ -144,12 +145,12 @@ For the full interface definitions of all nine contracts, see:
 | RISK_COUNCIL Safe | 3/5 Gnosis Safe | Caller of `setDefault` on LoanRegistry, `proposeShutdown` and `adjustRecoveryRateUp` on ShutdownController | 24h AccessManager delay on these selectors. Distinct signer set from ADMIN. |
 | GUARDIAN Safe | 2/5 Gnosis Safe | `PAUSER` on every pausable contract; `GUARDIAN_ROLE` on AccessManager | Instant pause, cancellation, and operational-role revocation. No ability to grant, unpause, upgrade, or initiate risk-increasing actions. |
 | Relayer | Protocol backend | `WHITELIST_REVOKER` (WhitelistRegistry, defensive role for sanctions response). Off-chain signing keys: `kytAttestor` (signs ClaimAttestation and EnrolAttestation, referenced by DepositManager, WithdrawalQueue, WhitelistRegistry as a configured address), `relayerYieldAttestor` (first signer on yield mints, referenced by YieldMinter). | On-chain EOA or contract wallet. Never custodies USDC. Never writes state-flips on DepositManager or WithdrawalQueue. Signs off-chain attestations served via API, lender submits at claim time. Cannot mint PLUSD on its own (lender's USDC must be in the Intake Wallet first, and the lender calls `claim` themselves). Has no role on LoanRegistry. |
-| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All LoanRegistry writes: `mintLoan`, `updateMutable`, `recordRepayment`, Trustee-branch `closeLoan`. Also one cosigner on the Capital Wallet MPC. Distinct key set from Relayer and Team. |
+| Trustee | Pipeline Trust Company key | `TRUSTEE` on LoanRegistry | All Trustee-branch LoanRegistry writes: `mintLoan`, `updateMutable`, `recordPayment`, `rollover`, Trustee-branch `closeLoan`. Also one cosigner on the Capital Wallet MPC. Distinct key set from Relayer and Team. |
 | Pipeline Team | Team key | — (none on-chain) | One cosigner on Capital Wallet and Treasury Wallet MPC. Co-signs loan disbursement and treasury operations per custodian policy. |
 | Capital Wallet | MPC-controlled on-chain address | — | Holds USDC reserves. Cosigners: Trustee + Team + Relayer. All Capital Wallet transfers are on-chain ERC-20, never off-chain wires. |
 | Treasury Wallet | MPC-controlled on-chain address | — | Protocol fees and yield share. |
 | Custodian yield-attestor | EIP-1271 contract | — (smart-contract signer) | Independent second signer on every yield mint (verified inside YieldMinter). Compromising Relayer alone mints zero; compromising the custodian alone mints zero. |
 | Relayer yield-attestor | EOA | — (ECDSA signer) | First signer on every yield mint. Rotatable via `YieldMinter.proposeYieldAttestors` under 48h ADMIN timelock. |
 | DepositManager | Contract | Holds `DEPOSITOR` on PLUSD | Only account authorised to call `PLUSD.mintForDeposit`. |
-| YieldMinter | Contract | Holds `YIELD_MINTER` on PLUSD | Only account authorised to call `PLUSD.mintForYield`. Contains all attestation-verification logic. |
+| YieldMinter | Contract | Holds `YIELD_MINTER` on PLUSD | Only account authorised to call `PLUSD.mintForYield`. Contains all attestation-verification logic and the per-loan mint cap on the loan path. |
 | WithdrawalQueue | Contract | Holds `BURNER` on PLUSD | Only account authorised to call `PLUSD.burn` on the claim path. |

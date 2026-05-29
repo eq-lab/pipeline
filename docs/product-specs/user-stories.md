@@ -242,7 +242,7 @@ Testable user stories for the Pipeline protocol, grouped by user journey.
 **As a** trustee, **I want to** update mutable loan fields (status, maturity date, CCR, goods location) in response to operational events, **so that** the on-chain LoanRegistry reflects current loan state accurately.
 
 **Acceptance criteria:**
-- [ ] The trustee can call `updateMutable` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry; Relayer has no write access to LoanRegistry) to update: `status` (Performing ↔ Watchlist), `currentMaturityDate`, `lastReportedCCR` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL).
+- [ ] The trustee can call `updateMutable` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry; Relayer has no write access to LoanRegistry) to update: `status` (Performing ↔ Watchlist ↔ Matured), `ccrBps` with timestamp, and `currentLocation` (LocationType, locationIdentifier, trackingURL). Rate and maturity are not updatable here; they move only via `rollover` (post-maturity) or `amendEconomics`.
 - [ ] `updateMutable` reverts if `newStatus == Default`; default transitions require the Risk Council 3-of-5 multisig calling `setDefault`.
 - [ ] CCR updates triggered by the price feed subsystem are also written via this path, batched on threshold crossings only.
 - [ ] The updated fields are visible on Protocol Dashboard Panel B and the Originator's loan detail view immediately.

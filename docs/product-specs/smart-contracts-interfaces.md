@@ -105,14 +105,15 @@ Both allowances can be revoked by the custody-side hardware circuit breaker inde
 
 ## YieldMinter
 
+Two distinct mint paths, per-loan mints tracked in YieldMinter storage (`vaultMintedByLoan`, `treasuryMintedByLoan`). Both verify Relayer ECDSA (on `relayerYieldAttestor`) plus custodian EIP-1271 (on `custodianYieldAttestor`), enforce the leg-bound destination and `amount > 0`, then call `PLUSD.mintForYield`. Holding verification and the cap here rather than in PLUSD keeps incident response to a YieldMinter pause or `YIELD_MINTER` revoke (no token upgrade) and keeps the token free of signature and cap code.
+
 | Function | Access | Description |
 |---|---|---|
-| `yieldMint(YieldAttestation att, bytes relayerSig, bytes custodianSig)` | public (any caller, sigs are the gate) | Verifies Relayer ECDSA (ecrecover on `relayerYieldAttestor`) plus custodian EIP-1271 (on `custodianYieldAttestor`). Enforces `att.ref` unused, destination is in {sPLUSD vault, Treasury Wallet}, amount > 0. On success, calls `PLUSD.mintForYield(att.recipient, att.amount)`. Marks `att.ref` consumed. |
+| `mintLoanYield(LoanYieldAttestation att, bytes relayerSig, bytes custodianSig)` | public (any caller, sigs are the gate) | Loan-tied mint. Reads `LoanRegistry.getMutable(att.loanId)` and reverts unless status is `Performing` or `Watchlist`. Vault leg capped at `min(seniorInterestRecorded, ceiling(loanId))` (the maturity-capped epoch sum); Treasury leg capped at recorded `mgmtFee + perfFee + oetAlloc`. Replay gated by `usedLoanRefs[att.repaymentRef]`. |
+| `mintTbillYield(TbillYieldAttestation att, bytes relayerSig, bytes custodianSig)` | public (any caller, sigs are the gate) | T-Bill mint. No `loanId`, no per-loan cap. Cap governed by USYC NAV delta (see `yield.md`). Replay gated by `usedTbillRefs[att.navRef]`, a distinct map so a T-Bill ref cannot collide with a loan ref. |
 | `proposeYieldAttestors(address relayer, address custodian)` | ADMIN | Rotates signer addresses, 48h AccessManager delay, GUARDIAN-cancellable. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of all yield mints. |
 | `unpause()` | ADMIN | 48h-delayed, GUARDIAN-cancellable. |
-
-Pulling signature verification out of PLUSD has two benefits. (1) Incident response: on a suspected attestor compromise GUARDIAN pauses `YieldMinter` or revokes `YIELD_MINTER` on the PLUSD contract from the YieldMinter proxy. No PLUSD upgrade is needed. (2) Audit surface: the token contract contains no signature-verification code, keeping its blast radius tight.
 
 ---
 
@@ -121,7 +122,7 @@ Pulling signature verification out of PLUSD has two benefits. (1) Incident respo
 | Function | Access | Description |
 |---|---|---|
 | `deposit(uint256 assets, address receiver)` | public | Standard ERC-4626 deposit. `receiver` must pass the shared whitelist check (whitelisted address or system address). Same rule applies as on a plain sPLUSD transfer. |
-| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation, does **not** trigger any on-chain yield mint. Relayer runs the USYC NAV freshness check off-chain against pending `Deposit` and `Withdraw` events and lands the two-party `yieldMint` via `YieldMinter` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
+| `redeem(uint256 shares, address receiver, address owner)` | public | Standard ERC-4626 redeem. Plain OZ implementation, does **not** trigger any on-chain yield mint. Relayer runs the USYC NAV freshness check off-chain against pending `Deposit` and `Withdraw` events and lands the two-party `YieldMinter.mintTbillYield` before allowing the redeem to settle at a stale NAV (see `yield.md`). |
 | `transfer / transferFrom` | public | Standard ERC-20. `_update` mirrors PLUSD. Both non-zero endpoints must be a whitelisted address or a system address. |
 | `totalAssets()` | public view | Returns `PLUSD.balanceOf(address(this))`. Increases when yield mints land in the vault. |
 | `pause()` | PAUSER (GUARDIAN) | Instant freeze of deposits and redemptions. |
