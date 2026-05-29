@@ -67,7 +67,7 @@ no additional protection — the audit catches the same failure modes before dep
 1. Constructor calls `_disableInitializers()`.
 2. EIP-712 `name` and `version` constants are unchanged on the upgrade path, or a
    migration is explicitly part of the upgrade plan. A silent domain-separator change
-   would orphan pre-signed `YieldAttestation` entries and ERC-20 `Permit` signatures;
+   would orphan pre-signed `LoanYieldAttestation` and `TbillYieldAttestation` entries and ERC-20 `Permit` signatures;
    domain stability is therefore an audit gate.
 3. ERC-7201 storage layout: slots may only be appended; existing slots may not be
    reordered, renamed, or resized.
@@ -135,7 +135,7 @@ upgrade of any implementation via the `UPGRADER` role.
 ### Playbook: Trustee key compromise
 
 1. **Immediate.** GUARDIAN revokes `TRUSTEE` from the Trustee key. Blocks `mintLoan`,
-   `updateMutable`, `recordRepayment`, and Trustee-branch `closeLoan`. Capital flows
+   `updateMutable`, `recordPayment`, `rollover`, and Trustee-branch `closeLoan`. Capital flows
    are unaffected — LoanRegistry has no capital touchpoints.
 2. **Containment.** Trustee can (out-of-band, via Capital Wallet MPC policy) revoke the
    Capital Wallet → WQ USDC allowance. Single-key Trustee compromise alone cannot move
@@ -184,12 +184,11 @@ custody balances, is phase 2.
 
 ### Partial loan repayments
 
-Trade-finance loans in MVP are effectively single-shot: principal + interest paid at
-maturity or early in one transfer. `recordRepayment` supports a single tranche-split
-entry per call, which the Trustee may call multiple times if operational reality is
-multi-tranche, but there is no on-chain primitive for "expected schedule of partial
-repayments." If multi-tranche repayment becomes operationally needed, the extension
-will be additive (a `LoanPartialRepaid` event and additional mutable fields).
+`recordPayment` already supports multiple lumpy entries per loan, including early payments
+that carry zero interest when the schedule defers interest to the final payment. What is
+deferred is an on-chain primitive for an "expected schedule of partial repayments" the
+contract could check actual payments against. If that becomes operationally needed, the
+extension will be additive (an expected-schedule struct and reconciliation event).
 
 ### Global pause aggregator
 

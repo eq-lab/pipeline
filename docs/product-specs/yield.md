@@ -1,5 +1,7 @@
 # Yield Distribution — Product Spec
 
+> For the per-loan mint cap rule on the loan-tied yield path and the split YieldMinter surface (`mintLoanYield` vs `mintTbillYield`), see [trustee-console.md](./trustee-console.md).
+
 ## Overview
 
 Protocol yield reaches LP stakers through two distinct paths: loan repayment yield
@@ -58,21 +60,26 @@ event.
 
 ### Repayment on-chain delivery
 
-Once the trustee confirms the waterfall breakdown, they submit final split amounts via the
-Relayer API (`POST /v1/trustee/repayments/{id}/approve`). This triggers on-chain yield delivery:
+Once the trustee confirms the waterfall breakdown, they broadcast `recordPayment` on
+LoanRegistry from the Trustee key, crediting the per-loan counters (net senior coupon,
+the three fee carve-outs, principal, equity). The offtaker pays principal plus gross
+interest, and the fees are carried inside that interest. On-chain yield delivery follows:
 
 1. The trustee instructs the on-ramp provider to convert the senior portion
    (`senior_principal_returned + senior_coupon_net + protocol fees`) from USD to USDC,
    settling into the Capital Wallet.
-2. Relayer verifies the USDC inflow matches the Trustee-approved amounts.
-3. Relayer constructs two `YieldAttestation` structs, signs each with `relayerYieldAttestor`,
-   requests custodian EIP-1271 co-signatures, and calls `PLUSD.yieldMint` for each leg:
-   - Vault leg: mints `senior_coupon_net` PLUSD to the sPLUSD vault — accretes NAV for all
-     stakers.
+2. Relayer reads the new LoanRegistry counters and verifies the USDC inflow matches the
+   recorded amounts.
+3. Relayer constructs one `LoanYieldAttestation` per leg, each bound to `loanId`, signs
+   each with `relayerYieldAttestor`, requests custodian EIP-1271 co-signatures, and calls
+   `YieldMinter.mintLoanYield` for each leg:
+   - Vault leg: mints `senior_coupon_net` PLUSD to the sPLUSD vault, accreting NAV for all
+     stakers. Capped at `min(seniorInterestRecorded[loanId], ceiling(loanId))`.
    - Treasury leg: mints `management_fee + performance_fee + oet_allocation` PLUSD to the
-     Treasury Wallet.
+     Treasury Wallet. Capped at the recorded fee carve-outs for the loan.
    Both signatures (Relayer ECDSA + custodian EIP-1271) are verified on-chain. Neither party
-   alone can mint.
+   alone can mint. The per-loan cap and the maturity-capped ceiling are detailed in
+   [trustee-console.md](./trustee-console.md).
 
 ### USYC NAV yield distribution (lazy, stake/unstake-triggered)
 
@@ -82,10 +89,12 @@ yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 1. Relayer reads the current USYC NAV from the Hashnote API.
 2. Computes `yield_delta = current_NAV - last_minted_NAV` (applied to Capital Wallet USYC
    holdings). If `delta <= 0`, no mint occurs.
-3. If `delta > 0`: Relayer constructs two `YieldAttestation` structs (vault 70%, treasury 30%
-   of `yield_delta`), gets Relayer sig + custodian co-sig, submits both `yieldMint` calls.
-4. After both `yieldMint` transactions confirm on-chain, Relayer advances the
-   `last_minted_NAV` baseline. Until both confirm, the baseline is unchanged — idempotent
+3. If `delta > 0`: Relayer constructs two `TbillYieldAttestation` structs (vault 70%,
+   treasury 30% of `yield_delta`), gets Relayer sig + custodian co-sig, submits both
+   `YieldMinter.mintTbillYield` calls. These carry no `loanId` and no per-loan cap. Replay
+   is gated by `usedTbillRefs[att.navRef]`.
+4. After both `mintTbillYield` transactions confirm on-chain, Relayer advances the
+   `last_minted_NAV` baseline. Until both confirm, the baseline is unchanged, so idempotent
    retry is safe.
 
 USYC is not redeemed during yield distribution; it remains in the Capital Wallet. Between
@@ -125,14 +134,21 @@ dashboard with a three-state indicator:
 
 ## Security Considerations
 
-- **Two-party yield attestation.** Both repayment and USYC yield mints require Relayer ECDSA
-  signature + custodian EIP-1271 signature + YIELD_MINTER caller role. A compromised Relayer
-  alone cannot mint yield PLUSD.
-- **Reserve invariant enforced on-chain.** Every `yieldMint` call checks the cumulative
-  counter invariant at the PLUSD contract level, bounding yield issuance against the
-  contract's own ledger.
-- **Replay protection.** Each `YieldAttestation` is consumed exactly once via the
-  `usedRepaymentRefs` mapping on PLUSD. Vault and treasury legs use distinct refs per event.
+- **Two-party yield attestation.** Both the loan and T-Bill yield paths require Relayer
+  ECDSA signature + custodian EIP-1271 signature, and the YieldMinter proxy must hold
+  `YIELD_MINTER` on PLUSD. A compromised Relayer alone cannot mint yield PLUSD.
+- **Per-loan cap on the loan path.** `mintLoanYield` bounds cumulative vault mints per loan
+  by `min(seniorInterestRecorded[loanId], ceiling(loanId))` and cumulative treasury mints by
+  the recorded fee carve-outs. The ceiling is the maturity-capped piecewise epoch sum, so
+  even a fully colluding Trustee, Relayer, and custodian cannot mint more interest than the
+  loan's terms could have earned.
+- **Reserve invariant enforced on-chain.** Every mint path asserts the PLUSD ledger
+  invariant `cumulativeLPDeposits + cumulativeYieldMinted − cumulativeLPBurns ==
+  totalSupply`, bounding yield issuance against the contract's own ledger.
+- **Replay protection.** Each attestation is consumed exactly once. The loan path uses
+  `usedLoanRefs[att.repaymentRef]` and the T-Bill path uses `usedTbillRefs[att.navRef]`, so
+  a T-Bill ref cannot collide with a loan ref. Vault and treasury legs use distinct refs per
+  event.
 - USYC is held exclusively in the Capital Wallet. The USDC↔USYC ratio is managed by the
   custodian MPC policy engine and Trustee — not by Relayer.
 - The reconciliation invariant is continuously re-evaluated; amber and red states produce
