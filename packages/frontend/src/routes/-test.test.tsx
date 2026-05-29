@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -166,9 +166,9 @@ function renderTestPage(tab: "status" | "mocks" | string = "status") {
 
   const TestPage = Route.options.component as React.ComponentType;
   return render(
-    <WalletProvider>
+    <EvmWalletProvider>
       <TestPage />
-    </WalletProvider>,
+    </EvmWalletProvider>,
   );
 }
 
@@ -192,13 +192,13 @@ describe("TestPage — default Status tab", () => {
   it("renders all expected section headings on the Status tab", () => {
     renderTestPage("status");
     expect(screen.getByText("Environment")).toBeInTheDocument();
-    expect(screen.getByText("Wallet (useWallet)")).toBeInTheDocument();
+    expect(screen.getByText("Wallet (useEvmWallet)")).toBeInTheDocument();
     expect(
       screen.getByText(
         "DepositManager (useDepositManagerAddresses + useDepositManagerMinDeposit)",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("USDC token (useToken)")).toBeInTheDocument();
+    expect(screen.getByText("USDC token (useEvmToken)")).toBeInTheDocument();
     expect(
       screen.getByText("ERC-20 Approval (useApproval — USDC → DepositManager)"),
     ).toBeInTheDocument();
@@ -372,9 +372,9 @@ describe("TestPage — MOCKED badge plumbing (Status tab)", () => {
     (Route as any).useSearch = () => ({ tab: "status" });
     const TestPage = Route.options.component as React.ComponentType;
     rerender(
-      <WalletProvider>
+      <EvmWalletProvider>
         <TestPage />
-      </WalletProvider>,
+      </EvmWalletProvider>,
     );
 
     const mockedBadges = screen.getAllByText("MOCKED");

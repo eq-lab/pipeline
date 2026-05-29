@@ -39,7 +39,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { ToastProvider } from "@/lib/toast";
 import { Route } from "./deposit";
 
@@ -394,11 +394,11 @@ function seedWithdrawMocks({
 function renderDeposit() {
   const DepositPage = Route.options.component as React.ComponentType;
   return render(
-    <WalletProvider>
+    <EvmWalletProvider>
       <ToastProvider>
         <DepositPage />
       </ToastProvider>
-    </WalletProvider>,
+    </EvmWalletProvider>,
   );
 }
 

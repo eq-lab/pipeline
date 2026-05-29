@@ -189,9 +189,7 @@ describe("withdraw + stake scenario contracts", () => {
       ],
     ).toBe("1000000000000000000000");
     expect(
-      s.keys[
-        "pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal"
-      ],
+      s.keys["pipeline.mock.wallet.contract.withdrawalQueue.requestWithdrawal"],
     ).toBeDefined();
     const mock = JSON.parse(
       s.keys[
@@ -206,9 +204,7 @@ describe("withdraw + stake scenario contracts", () => {
       (x) => x.id === "withdraw-request-pending-verification",
     )!;
     expect(s).toBeDefined();
-    const apiMock = JSON.parse(
-      s.keys["pipeline.mock.api.GET./v1/requests"]!,
-    );
+    const apiMock = JSON.parse(s.keys["pipeline.mock.api.GET./v1/requests"]!);
     expect(apiMock.requests).toHaveLength(1);
     expect(apiMock.requests[0].type).toBe("Withdraw");
     expect(apiMock.requests[0].status).toBe("PendingVerification");
@@ -219,9 +215,7 @@ describe("withdraw + stake scenario contracts", () => {
       (x) => x.id === "withdraw-request-verification-failed",
     )!;
     expect(s).toBeDefined();
-    const apiMock = JSON.parse(
-      s.keys["pipeline.mock.api.GET./v1/requests"]!,
-    );
+    const apiMock = JSON.parse(s.keys["pipeline.mock.api.GET./v1/requests"]!);
     expect(apiMock.requests).toHaveLength(1);
     expect(apiMock.requests[0].type).toBe("Withdraw");
     expect(apiMock.requests[0].status).toBe("VerificationFailed");

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { WalletProvider } from "./WalletProvider";
+import { EvmWalletProvider } from "./EvmWalletProvider";
 import {
   useStakedPlusdAsset,
   useStakedPlusdConvertToShares,
@@ -128,13 +128,13 @@ const mockUseWallet = vi.fn(() => ({
   disconnect: vi.fn(),
 }));
 
-vi.mock("./useWallet", () => ({
-  useWallet: () => mockUseWallet(),
+vi.mock("./useEvmWallet", () => ({
+  useEvmWallet: () => mockUseWallet(),
   useContractRead: vi.fn(),
 }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>;
+  return <EvmWalletProvider>{children}</EvmWalletProvider>;
 }
 
 // Helper: reset mockEnv to defaults

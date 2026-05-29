@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
-import { useWallet } from "@/wallet";
+import { useEvmWallet } from "@/wallet";
 import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
@@ -75,7 +75,7 @@ export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
   RecentActivityCardProps
 >(function RecentActivityCard({ className, ...rest }, ref) {
-  const { isConnected } = useWallet();
+  const { isConnected } = useEvmWallet();
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];
   const showList = isConnected && !isLoading && !error && requests.length > 0;
@@ -138,9 +138,9 @@ export const RecentActivityCard = React.forwardRef<
             <Link
               to="/transactions"
               className={[
-                "self-end mt-auto",
+                "mt-auto self-end",
                 "inline-flex items-center gap-1",
-                "h-12 px-3 rounded-lg",
+                "h-12 rounded-lg px-3",
                 "no-underline transition-colors",
                 "font-[family-name:var(--font-body)]",
                 "text-[length:var(--text-pipeline-body)]",
@@ -152,7 +152,7 @@ export const RecentActivityCard = React.forwardRef<
               data-node-id="1497:95216"
             >
               <span>View All </span>
-              <span className="size-6 inline-flex items-center justify-center">
+              <span className="inline-flex size-6 items-center justify-center">
                 <ChevronRight />
               </span>
             </Link>

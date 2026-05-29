@@ -42,7 +42,7 @@ import {
 } from "./mock";
 import { stakedPlusdAbi } from "./abis/stakedPlusd";
 import { CACHE_FOREVER } from "./cache";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
 
@@ -365,7 +365,7 @@ export function useStake(): StakeResult {
   const SP_ADDRESS = ENV.STAKED_PLUSD_ADDRESS;
   const isZeroAddress = SP_ADDRESS === ZERO_ADDRESS;
 
-  const { address } = useWallet();
+  const { address } = useEvmWallet();
 
   // Detect whether the mock key is present (non-reactive check).
   const hasMockKey = readMock(MOCK_KEYS.stake, parseJson) !== undefined;
@@ -555,7 +555,7 @@ export function useUnstake(): UnstakeResult {
   const SP_ADDRESS = ENV.STAKED_PLUSD_ADDRESS;
   const isZeroAddress = SP_ADDRESS === ZERO_ADDRESS;
 
-  const { address } = useWallet();
+  const { address } = useEvmWallet();
 
   // Detect whether the mock key is present (non-reactive check).
   const hasMockKey = readMock(MOCK_KEYS.unstake, parseJson) !== undefined;

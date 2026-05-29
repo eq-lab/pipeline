@@ -1,7 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button, IconButton, Logo, NavIcon, WalletPill } from "@pipeline/ui";
-import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
+import {
+  useEvmWallet,
+  useEvmToken,
+  useDepositManagerAddresses,
+} from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
 
 /**
@@ -58,9 +62,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
     // ── Wallet state ──────────────────────────────────────────────────────
-    const { address, isConnected, connect, disconnect } = useWallet();
+    const { address, isConnected, connect, disconnect } = useEvmWallet();
     const { usdc } = useDepositManagerAddresses();
-    const { formattedBalance } = useToken({
+    const { formattedBalance } = useEvmToken({
       token:
         usdc ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`),
     });

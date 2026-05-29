@@ -17,7 +17,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useWithdrawalVoucher } from "./useWithdrawalVoucher";
 import type { WithdrawalVoucherResponse } from "./useWithdrawalVoucher";
-import { installSameTabMockBridge } from "@/wallet/mock";
+import { installSameTabMockBridge } from "@/wallet/evm/mock";
 
 // ── Mock wagmi / AppKit ───────────────────────────────────────────────────────
 

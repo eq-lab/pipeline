@@ -35,7 +35,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { Route } from "./stake";
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
@@ -272,9 +272,9 @@ function seedBaseMocks({
 function renderStake() {
   const StakePage = Route.options.component as React.ComponentType;
   return render(
-    <WalletProvider>
+    <EvmWalletProvider>
       <StakePage />
-    </WalletProvider>,
+    </EvmWalletProvider>,
   );
 }
 

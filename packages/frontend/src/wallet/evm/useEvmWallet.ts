@@ -38,7 +38,7 @@ export interface WalletState {
   disconnect(): void;
 }
 
-export function useWallet(): WalletState {
+export function useEvmWallet(): WalletState {
   const { address: realAddress, isConnected: realIsConnected } = useAccount();
   const realChainId = useChainId();
   const { disconnect: wagmiDisconnect } = useDisconnect();

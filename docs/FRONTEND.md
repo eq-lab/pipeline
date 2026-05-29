@@ -126,10 +126,10 @@ Desktop-first — LPs and operators are expected to use desktop browsers. Mobile
   `packages/frontend/src/wallet/README.md` for the public API and the
   `pipeline.mock.wallet.*` localStorage mock key schema.
 - **Contract reads:** `useContractRead` wrapper in the wallet module (delegates to wagmi's
-  `useReadContract`); token metadata + balance + approval via `useToken`.
+  `useReadContract`); token metadata + balance + approval via `useEvmToken`.
 - **Transactions:** LP signs USDC.approve() + DepositManager.deposit(), sPLUSD.deposit(),
   sPLUSD.redeem(), WithdrawalQueue.requestWithdrawal(), WithdrawalQueue.claim() directly from
-  connected wallet via wagmi `useWriteContract` (in future issues that consume `useWallet()`).
+  connected wallet via wagmi `useWriteContract` (in future issues that consume `useEvmWallet()`).
 - **No proxy:** contract interactions for LPs go direct from browser wallet to chain — no backend relayer.
 - **Chain:** Hoodi testnet (chain id 560048) by default; configurable via `VITE_EVM_CHAIN_ID` /
   `VITE_EVM_RPC_URL` at runtime using `vite-plugin-runtime-env`.
