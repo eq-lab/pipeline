@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 
-import { useWallet } from "@/wallet/useWallet";
-import { useStakedPlusdAsset } from "@/wallet/useStakedPlusd";
-import { useToken } from "@/wallet/useToken";
+import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
+import { useStakedPlusdAsset } from "@/wallet/evm/useStakedPlusd";
+import { useEvmToken } from "@/wallet/evm/useEvmToken";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
 import { ConnectWalletPromoCard } from "@/components/ConnectWalletPromoCard";
 import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard";
@@ -61,13 +61,13 @@ import { QnaSection } from "@/components/QnaSection";
  */
 
 function Home() {
-  const { isConnected, connect } = useWallet();
+  const { isConnected, connect } = useEvmWallet();
   const navigate = useNavigate();
 
   // Read the connected wallet's PLUSD balance to gate the Stake CTA.
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-  const { balance: plusdBalance } = useToken({
+  const { balance: plusdBalance } = useEvmToken({
     token: plusdAddress ?? ZERO_ADDRESS,
   });
   // Disable Stake only when connected with zero or undefined PLUSD balance.

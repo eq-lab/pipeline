@@ -18,7 +18,7 @@ import {
   RouterProvider,
   createMemoryHistory,
 } from "@tanstack/react-router";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { TopBar } from "./TopBar";
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
@@ -138,9 +138,9 @@ function buildRouter(initialPath: string) {
 function renderTopBar(initialPath = "/") {
   const router = buildRouter(initialPath);
   return render(
-    <WalletProvider>
+    <EvmWalletProvider>
       <RouterProvider router={router} />
-    </WalletProvider>,
+    </EvmWalletProvider>,
   );
 }
 

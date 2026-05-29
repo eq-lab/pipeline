@@ -22,10 +22,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
 import {
-  useWallet,
+  useEvmWallet,
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
-  useToken,
+  useEvmToken,
   useApproval,
   isMockKeyPresent,
 } from "@/wallet";
@@ -145,7 +145,7 @@ function Section({
  */
 function StatusTab(): React.JSX.Element {
   // ── Wallet ──────────────────────────────────────────────────────────────
-  const { address, isConnected, chainId } = useWallet();
+  const { address, isConnected, chainId } = useEvmWallet();
 
   // ── DepositManager ──────────────────────────────────────────────────────
   const {
@@ -168,7 +168,7 @@ function StatusTab(): React.JSX.Element {
     symbol: usdcSymbol,
     balance: usdcBalance,
     formattedBalance: usdcFormattedBalance,
-  } = useToken({ token: usdcAddress });
+  } = useEvmToken({ token: usdcAddress });
 
   // ── Approval ────────────────────────────────────────────────────────────
   const {
@@ -268,7 +268,7 @@ function StatusTab(): React.JSX.Element {
       </Section>
 
       {/* ── 2. Wallet ────────────────────────────────────────────────── */}
-      <Section title="Wallet (useWallet)">
+      <Section title="Wallet (useEvmWallet)">
         <KeyValueRow
           label="address"
           value={address}
@@ -315,7 +315,7 @@ function StatusTab(): React.JSX.Element {
       </Section>
 
       {/* ── 4. USDC token ────────────────────────────────────────────── */}
-      <Section title="USDC token (useToken)">
+      <Section title="USDC token (useEvmToken)">
         {usdc === undefined ? (
           <p className="text-sm text-[color:var(--color-pipeline-ink-muted)] opacity-60">
             USDC address unknown — DepositManager not configured or still

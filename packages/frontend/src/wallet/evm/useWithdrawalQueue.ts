@@ -31,7 +31,7 @@ import { readMock, parseJson } from "./mock";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -130,7 +130,7 @@ export function useRequestWithdrawal(): RequestWithdrawalResult {
   const wagmiWrite = useWriteContract();
 
   // Connected wallet address for gas estimation and receipt gating.
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // Derived — mirrors useApproval.ts pattern.
   const walletConnected = isConnected && address !== undefined;
@@ -326,7 +326,7 @@ export function useClaimWithdrawal(): ClaimWithdrawalResult {
   const wagmiWrite = useWriteContract();
 
   // Connected wallet address for gas estimation and receipt gating.
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // Derived — mirrors useApproval.ts pattern.
   const walletConnected = isConnected && address !== undefined;

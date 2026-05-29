@@ -21,7 +21,7 @@
 import { useReadContract } from "wagmi";
 import { formatUnits } from "viem";
 import { useMock, parseNumber, parseBigInt } from "./mock";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 import { useApproval } from "./useApproval";
 import { erc20Abi } from "./abis/erc20";
 import { CACHE_FOREVER } from "./cache";
@@ -116,8 +116,8 @@ export interface UseTokenResult {
  * All three reads honour the `pipeline.mock.wallet.*` localStorage mock layer.
  * When mock keys are present no RPC call is issued.
  */
-export function useToken({ token, spender }: UseTokenArgs): UseTokenResult {
-  const { address, isConnected } = useWallet();
+export function useEvmToken({ token, spender }: UseTokenArgs): UseTokenResult {
+  const { address, isConnected } = useEvmWallet();
 
   const walletConnected = isConnected && address !== undefined;
   const tokenIsZero = token === ZERO_ADDRESS;

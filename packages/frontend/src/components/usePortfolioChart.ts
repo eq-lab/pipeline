@@ -52,7 +52,11 @@ export const PERIODS: Record<string, PeriodConfig> = {
 };
 
 /** Default period used as a fallback when an unknown id is requested. */
-const DEFAULT_PERIOD: PeriodConfig = { days: 7, earning: 42.8, fmt: "datetime" };
+const DEFAULT_PERIOD: PeriodConfig = {
+  days: 7,
+  earning: 42.8,
+  fmt: "datetime",
+};
 
 /** Safely look up a period, falling back to DEFAULT_PERIOD. */
 export function getPeriod(id: string): PeriodConfig {
@@ -249,7 +253,10 @@ export function usePortfolioChart(): PortfolioChartState {
 
   const tooltip: TooltipInfo | null =
     hoveredIdx !== null && curve[hoveredIdx] != null
-      ? { balance: curve[hoveredIdx]!.balance, timestamp: curve[hoveredIdx]!.timestamp }
+      ? {
+          balance: curve[hoveredIdx]!.balance,
+          timestamp: curve[hoveredIdx]!.timestamp,
+        }
       : null;
 
   return {

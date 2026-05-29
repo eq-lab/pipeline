@@ -1,11 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { WalletProvider } from "./WalletProvider";
-import {
-  useRequestWithdrawal,
-  useClaimWithdrawal,
-} from "./useWithdrawalQueue";
+import { EvmWalletProvider } from "./EvmWalletProvider";
+import { useRequestWithdrawal, useClaimWithdrawal } from "./useWithdrawalQueue";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -138,7 +135,7 @@ vi.mock("@/lib/env", () => ({
 const fetchSpy = vi.spyOn(globalThis, "fetch");
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>;
+  return <EvmWalletProvider>{children}</EvmWalletProvider>;
 }
 
 // Helper: reset mockEnv to defaults

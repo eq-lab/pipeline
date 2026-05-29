@@ -11,8 +11,8 @@ import {
   TokenInput,
 } from "@pipeline/ui";
 import {
-  useWallet,
-  useToken,
+  useEvmWallet,
+  useEvmToken,
   useStakedPlusdAsset,
   useStakedPlusdConvertToShares,
   useStakedPlusdConvertToAssets,
@@ -65,7 +65,7 @@ function formatUnits4(value: bigint, decimals: number): string {
 
 function Stake() {
   // ── State sources ─────────────────────────────────────────────────────
-  const { isConnected } = useWallet();
+  const { isConnected } = useEvmWallet();
 
   // Derive PLUSD address from the sPLUSD vault's `asset()` call.
   // Fall back to zero-address while loading so downstream hooks are always
@@ -77,8 +77,8 @@ function Stake() {
   // Both token surfaces always mounted (React hook rules).
   // Stake-tab input is PLUSD → spender = sPLUSD vault (approval required).
   // Unstake-tab input is sPLUSD → no spender (caller owns shares, no approval).
-  const plusdToken = useToken({ token: plusdAddr, spender: splusdAddr });
-  const splusdToken = useToken({ token: splusdAddr });
+  const plusdToken = useEvmToken({ token: plusdAddr, spender: splusdAddr });
+  const splusdToken = useEvmToken({ token: splusdAddr });
 
   // Write surfaces — always mounted.
   const stake = useStake();

@@ -135,9 +135,7 @@ function makeWrapper() {
   });
   function wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
   }
   return { wrapper, queryClient };
@@ -188,10 +186,9 @@ describe("useNetworkFeeEstimate — zero-address short-circuit", () => {
   });
 
   it("returns feeEth: undefined for deposit when DM is zero address", () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
     expect(result.current.feeEth).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
@@ -199,10 +196,9 @@ describe("useNetworkFeeEstimate — zero-address short-circuit", () => {
   });
 
   it("returns feeEth: undefined for withdraw when WQ is zero address", () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("withdraw"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("withdraw"), {
+      wrapper: makeWrapper().wrapper,
+    });
     expect(result.current.feeEth).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(mockEstimateContractGas).not.toHaveBeenCalled();
@@ -232,10 +228,9 @@ describe("useNetworkFeeEstimate — disconnected wallet", () => {
   });
 
   it("returns feeEth: undefined and no error when wallet is disconnected", () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
     expect(result.current.feeEth).toBeUndefined();
     expect(result.current.error).toBeNull();
     expect(mockEstimateContractGas).not.toHaveBeenCalled();
@@ -261,10 +256,9 @@ describe("useNetworkFeeEstimate — mock-key path (deposit)", () => {
       '"0.00053"',
     );
 
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     expect(result.current.feeEth).toBe("~0.00053 ETH");
     expect(result.current.isLoading).toBe(false);
@@ -278,10 +272,9 @@ describe("useNetworkFeeEstimate — mock-key path (deposit)", () => {
       '"~0.00053 ETH"',
     );
 
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     expect(result.current.feeEth).toBe("~0.00053 ETH");
     expect(mockEstimateContractGas).not.toHaveBeenCalled();
@@ -353,10 +346,9 @@ describe("useNetworkFeeEstimate — real RPC path (estimation succeeds)", () => 
   });
 
   it("returns formatted ETH fee when estimation succeeds (deposit)", async () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     await waitFor(
       () => {
@@ -374,10 +366,9 @@ describe("useNetworkFeeEstimate — real RPC path (estimation succeeds)", () => 
   it("calls estimateContractGas for withdraw direction", async () => {
     mockEstimateContractGas.mockClear();
 
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("withdraw"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("withdraw"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     await waitFor(
       () => {
@@ -423,10 +414,9 @@ describe("useNetworkFeeEstimate — fallback to constant gas on revert", () => {
   });
 
   it("falls back to curated constant gas for deposit on revert", async () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("deposit"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("deposit"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     await waitFor(
       () => {
@@ -443,10 +433,9 @@ describe("useNetworkFeeEstimate — fallback to constant gas on revert", () => {
   });
 
   it("falls back to curated constant gas for withdraw on revert", async () => {
-    const { result } = renderHook(
-      () => useNetworkFeeEstimate("withdraw"),
-      { wrapper: makeWrapper().wrapper },
-    );
+    const { result } = renderHook(() => useNetworkFeeEstimate("withdraw"), {
+      wrapper: makeWrapper().wrapper,
+    });
 
     await waitFor(
       () => {

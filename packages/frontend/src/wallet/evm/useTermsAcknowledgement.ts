@@ -41,9 +41,7 @@ const PENDING_ACK_KEY = "pipeline.wallet.termsAcknowledged.pending";
  * When `address` is undefined, also checks the `pending` key written during a
  * first-ever connect acknowledgement before the address is known.
  */
-export function readTermsAcknowledged(
-  address: string | undefined,
-): boolean {
+export function readTermsAcknowledged(address: string | undefined): boolean {
   if (typeof window === "undefined") return false;
   try {
     if (address) {

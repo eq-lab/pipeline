@@ -5,7 +5,7 @@ import { useAppKit } from "@reown/appkit/react";
 import { wagmiConfig } from "./config";
 import { installSameTabMockBridge } from "./mock";
 import { WalletGateContext } from "./WalletGateContext";
-import { FirstConnectionModal } from "../components/FirstConnectionModal";
+import { FirstConnectionModal } from "../../components/FirstConnectionModal";
 import { readTermsAcknowledged } from "./useTermsAcknowledgement";
 
 /**
@@ -158,7 +158,7 @@ function WalletGateProvider({ children }: { children: React.ReactNode }) {
  * call to `useWallet().connect()` with no terms acknowledgement triggers the
  * terms gate before AppKit is opened.
  */
-export function WalletProvider({ children }: { children: React.ReactNode }) {
+export function EvmWalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return installSameTabMockBridge();
   }, []);

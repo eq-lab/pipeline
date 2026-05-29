@@ -24,15 +24,16 @@ balance (see below).
 
 All blockchain access in the app goes through this module. No other file may
 import `wagmi`, `viem`, `@reown/appkit`, or `@tanstack/react-query` directly —
-the ESLint `no-restricted-imports` rule enforces this boundary.
+the ESLint `no-restricted-imports` rule enforces this boundary (files under
+`src/wallet/evm/**` are the only ones allowed to import those chain libs).
 
 ## Public API
 
 ```ts
 import {
-  WalletProvider,
-  useWallet,
-  useToken,
+  EvmWalletProvider,
+  useEvmWallet,
+  useEvmToken,
   useContractRead,
   useApproval,
   useDepositManagerAddresses,
@@ -50,16 +51,16 @@ import {
 } from "@/wallet";
 ```
 
-### `<WalletProvider>`
+### `<EvmWalletProvider>`
 
 Top-level provider — mount once above `RouterProvider` in `main.tsx`. Wires
 `WagmiProvider` + `QueryClientProvider` and installs the same-tab localStorage
 mock bridge.
 
-### `useWallet()`
+### `useEvmWallet()`
 
 ```ts
-const { address, isConnected, chainId, connect, disconnect } = useWallet();
+const { address, isConnected, chainId, connect, disconnect } = useEvmWallet();
 ```
 
 | Field          | Type                       | Description                                 |
@@ -70,7 +71,7 @@ const { address, isConnected, chainId, connect, disconnect } = useWallet();
 | `connect()`    | `() => void`               | Opens the AppKit wallet modal               |
 | `disconnect()` | `() => void`               | Disconnects the wallet                      |
 
-### `useToken({ token, spender? })`
+### `useEvmToken({ token, spender? })`
 
 ```ts
 const {
@@ -88,7 +89,7 @@ const {
   refetchAllowance,
   isLoading,
   error,
-} = useToken({ token: "0x…", spender: "0x…" /* optional */ });
+} = useEvmToken({ token: "0x…", spender: "0x…" /* optional */ });
 ```
 
 Bundles three ERC-20 reads for the connected wallet into one return value:
@@ -424,7 +425,7 @@ When a `pipeline.mock.wallet.*` key is present the wallet module returns the
 parsed mock value and skips the real RPC call entirely. No env flag needed —
 the absence of a key is its own off-switch.
 
-> Note: the same-tab mock bridge is installed automatically by `WalletProvider`
+> Note: the same-tab mock bridge is installed automatically by `EvmWalletProvider`
 > on mount. This patches `localStorage.setItem` / `removeItem` so writes from
 > the DevTools console dispatch a `pipeline-mock:wallet` custom event that
 > causes React to re-render without a page reload.
@@ -691,8 +692,8 @@ const depositManagerAddress = "0x3333000000000000000000000000000000000003";
 
 To expose a new hook or type:
 
-1. Implement it in a file inside `src/wallet/`.
+1. Implement it in a file inside `src/wallet/evm/`.
 2. Export it from `src/wallet/index.ts`.
 3. Do not re-export raw `wagmi`/`viem` types in the barrel — define wrapper
-   types in `useWallet.ts` instead, so the call sites stay free of direct
+   types in `evm/useEvmWallet.ts` instead, so the call sites stay free of direct
    library imports.

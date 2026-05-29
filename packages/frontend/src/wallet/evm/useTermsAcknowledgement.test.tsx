@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useTermsAcknowledgement, readTermsAcknowledged } from "./useTermsAcknowledgement";
+import {
+  useTermsAcknowledgement,
+  readTermsAcknowledged,
+} from "./useTermsAcknowledgement";
 
 const ADDR = "0xABCDEF0000000000000000000000000000000001";
 const ADDR_LOWER = ADDR.toLowerCase();
@@ -46,24 +49,18 @@ describe("useTermsAcknowledgement — hook", () => {
   afterEach(() => localStorage.clear());
 
   it("returns acknowledged: false by default", () => {
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(ADDR),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
     expect(result.current.acknowledged).toBe(false);
   });
 
   it("reads existing 'true' from localStorage on mount", () => {
     localStorage.setItem(ACK_KEY, "true");
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(ADDR),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
     expect(result.current.acknowledged).toBe(true);
   });
 
   it("acknowledge() flips acknowledged to true and writes localStorage", () => {
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(ADDR),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
     expect(result.current.acknowledged).toBe(false);
 
     act(() => {
@@ -75,9 +72,7 @@ describe("useTermsAcknowledgement — hook", () => {
   });
 
   it("acknowledge() is a no-op when address is undefined", () => {
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(undefined),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(undefined));
     act(() => {
       result.current.acknowledge();
     });
@@ -103,9 +98,7 @@ describe("useTermsAcknowledgement — hook", () => {
   });
 
   it("cross-tab sync: storage event from another tab flips acknowledged", () => {
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(ADDR),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
     expect(result.current.acknowledged).toBe(false);
 
     act(() => {
@@ -123,9 +116,7 @@ describe("useTermsAcknowledgement — hook", () => {
 
   it("cross-tab sync: storage event clearing the key flips acknowledged to false", () => {
     localStorage.setItem(ACK_KEY, "true");
-    const { result } = renderHook(() =>
-      useTermsAcknowledgement(ADDR),
-    );
+    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
     expect(result.current.acknowledged).toBe(true);
 
     act(() => {
