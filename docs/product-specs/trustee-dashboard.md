@@ -151,12 +151,7 @@ accrued-interest ceiling (the piecewise epoch sum), unminted vault and treasury 
 
 ---
 
-## API contracts
-
-The Relayer backend exposes the off-chain decision inputs and accepts the request
-assemblies the Trustee co-signs. These are contract shapes at assignment altitude. The
-implementer chooses transport, session-auth integration, pagination, and real-time delivery
-(poll or push). Each resource names the flow it feeds.
+## API
 
 | Resource | Returns / accepts | Feeds |
 |---|---|---|
