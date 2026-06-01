@@ -6,7 +6,6 @@ use pipeline_api::AppState;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
-use shared::loan_details_repo::LoanDetailsRepo;
 use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -40,7 +39,6 @@ async fn main() -> anyhow::Result<()> {
     };
     let kyc_repo = KycRepo::new(pool.clone());
     let position_repo = PositionRepo::new(pool.clone());
-    let loan_details_repo = LoanDetailsRepo::new(pool.clone());
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
 
     let chain_id: i64 = std::env::var("API_CHAIN_ID")
@@ -102,7 +100,6 @@ async fn main() -> anyhow::Result<()> {
         pool: pool.clone(),
         kyc_repo,
         position_repo,
-        loan_details_repo,
         contract_logs_repo,
         chain_id,
         sumsub_client,

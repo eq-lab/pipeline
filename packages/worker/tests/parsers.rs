@@ -6,10 +6,9 @@ use alloy::{
 use alloy::sol_types::SolEvent;
 
 use pipeline_worker::indexer::parsers::{
-    parse_deposit_requested, parse_loan_ccr_updated, parse_loan_closed, parse_loan_defaulted,
-    parse_loan_location_updated, parse_loan_minted, parse_loan_repayment,
-    parse_loan_status_updated, parse_request_claimed, parse_staking_deposit,
-    parse_staking_withdraw, parse_withdrawal_requested,
+    parse_deposit_requested, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
+    parse_payment_recorded, parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
+    parse_withdrawal_requested, parse_yield_minted,
 };
 
 // Re-declare sol! events to get correct SIGNATURE_HASH constants for test log construction.
@@ -21,13 +20,21 @@ alloy::sol! {
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
     event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares);
 
-    event LoanMinted(uint256 indexed loanId, address indexed holder, string indexed metadataURI, uint64 initialMaturity, string location);
-    event StatusUpdated(uint256 indexed loanId, uint8 indexed newStatus);
-    event CCRUpdated(uint256 indexed loanId, uint32 newCcrBps);
-    event LocationUpdated(uint256 indexed loanId, string indexed newLocation);
+    event LoanDrawn(uint256 indexed loanId, address indexed holder, string indexed metadataURI);
     event LoanDefaulted(uint256 indexed loanId, uint32 ccrBps);
     event LoanClosed(uint256 indexed loanId, uint8 indexed reason);
-    event Repayment(uint256 indexed tokenId, uint256 offtakerAmount, uint256 seniorPrincipal, uint256 seniorInterest, uint256 equityAmount);
+    struct RepaymentData {
+        uint256 offtakerReceived;
+        uint256 seniorPrincipalRepaid;
+        uint256 seniorInterest;
+        uint256 equityDistributed;
+        uint256 mgmtFee;
+        uint256 perfFee;
+        uint256 oetAlloc;
+    }
+    event PaymentRecorded(uint256 indexed tokenId, uint256 indexed repaymentId, RepaymentData repaymentData);
+
+    event YieldMinted(uint256 sPlUsdAmount, uint256 treasuryAmount);
 }
 
 const CONTRACT: Address = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
@@ -234,40 +241,21 @@ fn staking_withdraw_decodes() {
 // --- LoanRegistry parser tests ---
 
 #[test]
-fn loan_minted_decodes() {
+fn loan_drawn_decodes() {
     let loan_id = U256::from(1u64);
     let holder = address!("2222222222222222222222222222222222222222");
-    let initial_maturity: u64 = 1_700_000_000;
-    let location = b"US";
 
-    // LoanMinted has indexed: loanId, holder, metadataURI (string hash) — non-indexed: initialMaturity, location
+    // LoanDrawn has 3 indexed topics: loanId, holder, metadataURI (string hash) — no non-indexed data
     let topic1: FixedBytes<32> = loan_id.into();
     let topic2: FixedBytes<32> = holder.into_word();
     // topic3: keccak256 of metadataURI string — use a dummy hash
     let topic3 = b256!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
-    // ABI-encode non-indexed params: (uint64 initialMaturity, string location)
-    // Layout:
-    //   [0x00..0x1f] uint64 right-aligned
-    //   [0x20..0x3f] offset to string = 0x40
-    //   [0x40..0x5f] string length = 2
-    //   [0x60..0x7f] string bytes "US" + 30 zero bytes
-    let mut data = vec![0u8; 128];
-    // uint64 in last 8 bytes of first slot
-    data[24..32].copy_from_slice(&initial_maturity.to_be_bytes());
-    // offset = 64 = 0x40
-    data[63] = 0x40;
-    // length = 2
-    data[95] = 0x02;
-    // string bytes
-    data[96] = location[0];
-    data[97] = location[1];
-
     let inner = alloy::primitives::Log {
         address: CONTRACT,
         data: LogData::new(
-            vec![LoanMinted::SIGNATURE_HASH, topic1, topic2, topic3],
-            data.into(),
+            vec![LoanDrawn::SIGNATURE_HASH, topic1, topic2, topic3],
+            vec![].into(),
         )
         .unwrap(),
     };
@@ -279,83 +267,17 @@ fn loan_minted_decodes() {
         ..Default::default()
     };
 
-    let ev = parse_loan_minted(&log).expect("should decode LoanMinted");
-    assert_eq!(ev.event_name, "LoanMinted");
+    let ev = parse_loan_drawn(&log).expect("should decode LoanDrawn");
+    assert_eq!(ev.event_name, "LoanDrawn");
     assert_eq!(ev.params["loan_id"], loan_id.to_string());
     assert_eq!(ev.params["holder"], holder.to_checksum(None));
-    assert_eq!(ev.params["initial_maturity"], initial_maturity);
-    assert_eq!(ev.params["location"], "US");
-    // The event field is `string indexed`, so the topic is a keccak256 hash, not the URI.
+    // metadataURI is `string indexed`, so the topic is a keccak256 hash, not the URI.
     // The real URI is recovered via tokenURI(loanId) and stored in `loan_details`.
     assert!(
         ev.params.get("metadata_uri").is_none(),
-        "metadata_uri must not be in LoanMinted params (dead hash) — see issue #363 Scope #9"
+        "metadata_uri must not be in LoanDrawn params (dead hash)"
     );
     assert_eq!(ev.block_number, 500);
-}
-
-#[test]
-fn loan_status_updated_decodes() {
-    let loan_id = U256::from(5u64);
-    let new_status: u8 = 1; // WatchList
-
-    let topic1: FixedBytes<32> = loan_id.into();
-    let mut topic2 = [0u8; 32];
-    topic2[31] = new_status;
-
-    let inner = alloy::primitives::Log {
-        address: CONTRACT,
-        data: LogData::new(
-            vec![
-                StatusUpdated::SIGNATURE_HASH,
-                topic1,
-                FixedBytes::from(topic2),
-            ],
-            vec![].into(),
-        )
-        .unwrap(),
-    };
-    let log = Log {
-        inner,
-        block_number: Some(501),
-        transaction_hash: Some(TX_HASH),
-        log_index: Some(1),
-        ..Default::default()
-    };
-
-    let ev = parse_loan_status_updated(&log).expect("should decode LoanStatusUpdated");
-    assert_eq!(ev.event_name, "LoanStatusUpdated");
-    assert_eq!(ev.params["loan_id"], loan_id.to_string());
-    assert_eq!(ev.params["status"], "WatchList");
-}
-
-#[test]
-fn loan_ccr_updated_decodes() {
-    let loan_id = U256::from(3u64);
-    let ccr_bps: u32 = 7500;
-
-    let topic1: FixedBytes<32> = loan_id.into();
-
-    // Non-indexed: uint32 newCcrBps, ABI-encoded as 32 bytes
-    let mut data = [0u8; 32];
-    data[28..32].copy_from_slice(&ccr_bps.to_be_bytes());
-
-    let inner = alloy::primitives::Log {
-        address: CONTRACT,
-        data: LogData::new(vec![CCRUpdated::SIGNATURE_HASH, topic1], data.into()).unwrap(),
-    };
-    let log = Log {
-        inner,
-        block_number: Some(502),
-        transaction_hash: Some(TX_HASH),
-        log_index: Some(2),
-        ..Default::default()
-    };
-
-    let ev = parse_loan_ccr_updated(&log).expect("should decode LoanCCRUpdated");
-    assert_eq!(ev.event_name, "LoanCCRUpdated");
-    assert_eq!(ev.params["loan_id"], loan_id.to_string());
-    assert_eq!(ev.params["ccr_bps"], ccr_bps);
 }
 
 #[test]
@@ -390,25 +312,21 @@ fn loan_closed_decodes() {
 }
 
 #[test]
-fn loan_repayment_decodes() {
-    let token_id = U256::from(42u64);
-    let offtaker = U256::from(100u64);
-    let senior_principal = U256::from(200u64);
-    let senior_interest = U256::from(10u64);
-    let equity = U256::from(50u64);
+fn loan_closed_other_write_down_decodes() {
+    let loan_id = U256::from(10u64);
+    let reason: u8 = 4; // OtherWriteDown
 
-    let topic1: FixedBytes<32> = token_id.into();
-
-    // Non-indexed: offtakerAmount, seniorPrincipal, seniorInterest, equityAmount
-    let mut data = [0u8; 128];
-    data[0..32].copy_from_slice(&offtaker.to_be_bytes::<32>());
-    data[32..64].copy_from_slice(&senior_principal.to_be_bytes::<32>());
-    data[64..96].copy_from_slice(&senior_interest.to_be_bytes::<32>());
-    data[96..128].copy_from_slice(&equity.to_be_bytes::<32>());
+    let topic1: FixedBytes<32> = loan_id.into();
+    let mut topic2 = [0u8; 32];
+    topic2[31] = reason;
 
     let inner = alloy::primitives::Log {
         address: CONTRACT,
-        data: LogData::new(vec![Repayment::SIGNATURE_HASH, topic1], data.into()).unwrap(),
+        data: LogData::new(
+            vec![LoanClosed::SIGNATURE_HASH, topic1, FixedBytes::from(topic2)],
+            vec![].into(),
+        )
+        .unwrap(),
     };
     let log = Log {
         inner,
@@ -418,27 +336,44 @@ fn loan_repayment_decodes() {
         ..Default::default()
     };
 
-    let ev = parse_loan_repayment(&log).expect("should decode LoanRepayment");
-    assert_eq!(ev.event_name, "LoanRepayment");
-    assert_eq!(ev.params["loan_id"], token_id.to_string());
-    assert_eq!(ev.params["offtaker_amount"], offtaker.to_string());
-    assert_eq!(ev.params["senior_principal"], senior_principal.to_string());
-    assert_eq!(ev.params["senior_interest"], senior_interest.to_string());
-    assert_eq!(ev.params["equity_amount"], equity.to_string());
+    let ev = parse_loan_closed(&log).expect("should decode LoanClosed OtherWriteDown");
+    assert_eq!(ev.event_name, "LoanClosed");
+    assert_eq!(ev.params["closure_reason"], "OtherWriteDown");
 }
 
 #[test]
-fn loan_location_updated_decodes() {
-    let loan_id = U256::from(7u64);
-    let topic1: FixedBytes<32> = loan_id.into();
-    // newLocation is indexed (string) — topic2 is keccak256 of the string; non-indexed data is empty
-    let topic2 = b256!("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+fn payment_recorded_decodes() {
+    let token_id = U256::from(42u64);
+    let repayment_id = U256::from(0u64);
+    // RepaymentData struct — 7 uint256 fields ABI-encoded as a tuple (224 bytes)
+    // New field order: offtakerReceived, seniorPrincipalRepaid, seniorInterest,
+    //                  equityDistributed, mgmtFee, perfFee, oetAlloc
+    let offtaker_received = U256::from(1000u64);
+    let senior_principal_repaid = U256::from(200u64);
+    let senior_interest = U256::from(10u64);
+    let equity_distributed = U256::from(50u64);
+    let mgmt_fee = U256::from(3u64);
+    let perf_fee = U256::from(4u64);
+    let oet_alloc = U256::from(5u64);
+
+    let topic1: FixedBytes<32> = token_id.into();
+    let topic2: FixedBytes<32> = repayment_id.into();
+
+    // Non-indexed data: the ABI encoding of RepaymentData (struct = tuple, 7 × 32 bytes = 224)
+    let mut data = [0u8; 224];
+    data[0..32].copy_from_slice(&offtaker_received.to_be_bytes::<32>());
+    data[32..64].copy_from_slice(&senior_principal_repaid.to_be_bytes::<32>());
+    data[64..96].copy_from_slice(&senior_interest.to_be_bytes::<32>());
+    data[96..128].copy_from_slice(&equity_distributed.to_be_bytes::<32>());
+    data[128..160].copy_from_slice(&mgmt_fee.to_be_bytes::<32>());
+    data[160..192].copy_from_slice(&perf_fee.to_be_bytes::<32>());
+    data[192..224].copy_from_slice(&oet_alloc.to_be_bytes::<32>());
 
     let inner = alloy::primitives::Log {
         address: CONTRACT,
         data: LogData::new(
-            vec![LocationUpdated::SIGNATURE_HASH, topic1, topic2],
-            vec![].into(),
+            vec![PaymentRecorded::SIGNATURE_HASH, topic1, topic2],
+            data.into(),
         )
         .unwrap(),
     };
@@ -450,12 +385,56 @@ fn loan_location_updated_decodes() {
         ..Default::default()
     };
 
-    let ev = parse_loan_location_updated(&log).expect("should decode LoanLocationUpdated");
-    assert_eq!(ev.event_name, "LoanLocationUpdated");
-    assert_eq!(ev.params["loan_id"], loan_id.to_string());
-    // newLocation is indexed (hashed on-chain) — the decoded value is the hash, not the string
-    assert!(ev.params.get("location").is_some());
+    let ev = parse_payment_recorded(&log).expect("should decode PaymentRecorded");
+    assert_eq!(ev.event_name, "PaymentRecorded");
+    assert_eq!(ev.params["loan_id"], token_id.to_string());
+    assert_eq!(ev.params["repayment_id"], repayment_id.to_string());
+    assert_eq!(
+        ev.params["offtaker_received"],
+        offtaker_received.to_string()
+    );
+    assert_eq!(
+        ev.params["senior_principal_repaid"],
+        senior_principal_repaid.to_string()
+    );
+    assert_eq!(ev.params["senior_interest"], senior_interest.to_string());
+    assert_eq!(
+        ev.params["equity_distributed"],
+        equity_distributed.to_string()
+    );
+    assert_eq!(ev.params["mgmt_fee"], mgmt_fee.to_string());
+    assert_eq!(ev.params["perf_fee"], perf_fee.to_string());
+    assert_eq!(ev.params["oet_alloc"], oet_alloc.to_string());
     assert_eq!(ev.block_number, 505);
+}
+
+#[test]
+fn yield_minted_decodes() {
+    let s_plusd_amount = U256::from(500_000u64);
+    let treasury_amount = U256::from(25_000u64);
+
+    // Both fields are non-indexed: packed as 64 bytes in `data`
+    let mut data = [0u8; 64];
+    data[0..32].copy_from_slice(&s_plusd_amount.to_be_bytes::<32>());
+    data[32..64].copy_from_slice(&treasury_amount.to_be_bytes::<32>());
+
+    let inner = alloy::primitives::Log {
+        address: CONTRACT,
+        data: LogData::new(vec![YieldMinted::SIGNATURE_HASH], data.into()).unwrap(),
+    };
+    let log = Log {
+        inner,
+        block_number: Some(600),
+        transaction_hash: Some(TX_HASH),
+        log_index: Some(0),
+        ..Default::default()
+    };
+
+    let ev = parse_yield_minted(&log).expect("should decode YieldMinted");
+    assert_eq!(ev.event_name, "YieldMinted");
+    assert_eq!(ev.params["s_plusd_amount"], s_plusd_amount.to_string());
+    assert_eq!(ev.params["treasury_amount"], treasury_amount.to_string());
+    assert_eq!(ev.block_number, 600);
 }
 
 #[test]

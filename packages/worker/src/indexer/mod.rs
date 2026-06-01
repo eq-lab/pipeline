@@ -14,19 +14,20 @@ use sqlx::PgPool;
 use tracing::Instrument;
 
 use shared::{
-    db::EventRepo, loan_details_repo::LoanDetailsRepo, metadata_fetcher::MetadataFetcher,
+    contract_logs_repo::ContractLogsRepo, db::EventRepo, metadata_fetcher::MetadataFetcher,
 };
 
 use config::IndexerJobSettings;
-use loan_mapper::LoanMintedMapper;
-use loan_metadata::{HttpLoanMetadataFetcher, LoanMetadataFetcher, MetadataUriResolver};
+use loan_mapper::LoanEventMapper;
+use loan_metadata::{
+    HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
+};
 use loan_registry_reader::LoanRegistryReader;
 use mappers::ContractLogMapper;
 use parsers::{
-    parse_deposit_requested, parse_loan_ccr_updated, parse_loan_closed, parse_loan_defaulted,
-    parse_loan_location_updated, parse_loan_minted, parse_loan_repayment,
-    parse_loan_status_updated, parse_request_claimed, parse_staking_deposit,
-    parse_staking_withdraw, parse_withdrawal_requested,
+    parse_deposit_requested, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
+    parse_payment_recorded, parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
+    parse_withdrawal_requested, parse_yield_minted,
 };
 use poller::EvmEventPollerBuilder;
 
@@ -73,24 +74,30 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
+    let yield_minter_contracts: Vec<alloy::primitives::Address> = settings
+        .yield_minter_contracts
+        .iter()
+        .filter_map(|a| a.parse().ok())
+        .collect();
+
     let dm_repo = repo.clone();
     let wq_repo = repo.clone();
     let splusd_repo = repo.clone();
     let loan_event_repo = repo.clone();
-    let loan_log_repo = repo.clone();
+    let yield_minter_repo = repo.clone();
 
-    // Shared deps for the LoanMinted mapper:
-    //  - `MetadataFetcher`: HTTP/IPFS JSON fetcher (lives in shared crate).
-    //  - `LoanRegistryReader`: alloy binding to ERC-721 `tokenURI(loanId)`.
-    //  - `LoanDetailsRepo`: writes to the `loan_details` table.
-    let details_repo = Arc::new(LoanDetailsRepo::new(pool.clone()));
+    // Shared deps for loan mappers.
+    // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
+    let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
     let fetcher: Arc<dyn LoanMetadataFetcher> = Arc::new(HttpLoanMetadataFetcher::new(
         MetadataFetcher::new(reqwest::Client::new(), settings.ipfs_gateway_url.clone()),
     ));
-    let resolver: Arc<dyn MetadataUriResolver> = Arc::new(
+    let reader = Arc::new(
         LoanRegistryReader::new(&settings.eth_rpc_url)
             .expect("LoanRegistryReader: valid eth_rpc_url"),
     );
+    let immutable_resolver: Arc<dyn ImmutableDataResolver> = reader.clone();
+    let mutable_resolver: Arc<dyn MutableDataResolver> = reader.clone();
 
     let poller = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
@@ -124,31 +131,30 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
             })
     })
     .add_event_handler(loan_registry_contracts, move |log| {
-        parse_loan_minted(log)
-            .or_else(|| parse_loan_status_updated(log))
-            .or_else(|| parse_loan_ccr_updated(log))
-            .or_else(|| parse_loan_location_updated(log))
+        parse_loan_drawn(log)
             .or_else(|| parse_loan_defaulted(log))
             .or_else(|| parse_loan_closed(log))
-            .or_else(|| parse_loan_repayment(log))
+            .or_else(|| parse_payment_recorded(log))
             .map(|ev| -> Box<dyn shared::log_mapper::LogMapper> {
-                if ev.event_name == "LoanMinted" {
-                    Box::new(LoanMintedMapper::new(
-                        ev,
-                        chain_id,
-                        loan_event_repo.clone(),
-                        details_repo.clone(),
-                        fetcher.clone(),
-                        resolver.clone(),
-                    ))
-                } else {
-                    // Lifecycle and informational events (LoanClosed, LoanDefaulted,
-                    // LoanStatusUpdated, LoanCCRUpdated, LoanLocationUpdated, LoanRepayment)
-                    // are stored as plain contract_logs rows. Downstream APIs derive the
-                    // current loan status from these events.
-                    Box::new(ContractLogMapper::new(ev, chain_id, loan_log_repo.clone()))
-                }
+                Box::new(LoanEventMapper::new(
+                    ev,
+                    chain_id,
+                    loan_event_repo.clone(),
+                    contract_logs_repo.clone(),
+                    fetcher.clone(),
+                    immutable_resolver.clone(),
+                    mutable_resolver.clone(),
+                ))
             })
+    })
+    .add_event_handler(yield_minter_contracts, move |log| {
+        parse_yield_minted(log).map(|ev| {
+            Box::new(ContractLogMapper::new(
+                ev,
+                chain_id,
+                yield_minter_repo.clone(),
+            )) as Box<dyn shared::log_mapper::LogMapper>
+        })
     })
     .build();
 
