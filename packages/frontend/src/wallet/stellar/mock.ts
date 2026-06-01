@@ -23,8 +23,10 @@ export const STELLAR_MOCK_KEYS = {
   /** `"true"` / `"false"` — connection state override. */
   isConnected: "pipeline.mock.wallet.stellar.isConnected",
   /**
-   * Decimal string USDC balance (7 decimals on Stellar, e.g. `"10000000"` = 1 USDC).
-   * Defined and documented now for sub-issue 2; not consumed in this issue.
+   * Human-scaled decimal string USDC balance, matching what the Horizon API
+   * returns (e.g. `"1.5"` = 1.5 USDC, `"1234.5678900"` = ~1234.57 USDC).
+   * Do NOT use a 7-decimal integer string here — the hook passes this value
+   * directly to `formatUsdcDisplay` without any scaling math.
    */
   balanceUsdc: "pipeline.mock.wallet.stellar.balance.usdc",
 } as const;
