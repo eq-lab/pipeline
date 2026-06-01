@@ -23,9 +23,9 @@ is organised by type.
 
 | Type | Mechanism | Who else signs | Timelock | UX affordance |
 |---|---|---|---|---|
-| 1. Direct Trustee-key write | Trustee EOA broadcasts the transaction | Nobody | None | One-click broadcast after a decoded-calldata review |
-| 2. Capital Wallet MPC co-signature | Trustee is one of 3-of-5 cosigners on the custodian MPC | Team and counterparties to reach 3-of-5 | Per custodian policy | Assemble request, Trustee co-signs in the MPC, dashboard tracks signature collection |
-| 3. RISK_COUNCIL proposal | Trustee composes a proposal into the 3-of-5 RISK_COUNCIL Safe | 3-of-5 Risk Council, GUARDIAN-cancelable | 24h | Proposal builder plus timelock tracker. The Trustee cannot execute |
+| 1. Direct Trustee-key write | The Trustee sends the transaction himself | Nobody | None | One click to send, after the dashboard shows the transaction in readable form |
+| 2. Capital Wallet MPC co-signature | The Trustee is one of 3-of-5 cosigners on the custodian MPC | Team and counterparties, to reach 3-of-5 | Per custodian policy | Build the request, the Trustee co-signs in the MPC, the dashboard tracks who has signed |
+| 3. RISK_COUNCIL proposal | The Trustee drafts a proposal for the 3-of-5 RISK_COUNCIL Safe | 3-of-5 Risk Council, GUARDIAN-cancelable | 24h | Draft the proposal and track the 24h timer. The Trustee cannot execute it |
 | 4. Decision monitoring | No transaction | n/a | n/a | Display, alerting, and a retrigger control where a downstream service acts |
 
 No dashboard action moves USDC from the Capital Wallet on the Trustee's signature alone.
@@ -133,44 +133,44 @@ retrigger control because the Relayer plus custodian execute the mint, not the T
 
 ## Data layer responsibilities
 
-The dashboard reads from three sources. Each presented field must be labelled by source, so
-a chain value and a Relayer-feed value are never confused. The data layer keeps them
-distinct and surfaces staleness on the off-chain feeds.
+The dashboard pulls data from three places. Every number on screen must show where it came
+from, so a value read from the chain is never confused with one from the Relayer. When a
+Relayer value is old, say so.
 
-| Source | The dashboard reads | Notes |
+| Source | What the dashboard reads | Notes |
 |---|---|---|
-| On-chain (LoanRegistry) | `getImmutable`, `getMutable`, `getEpochs` per loan, plus the loan event stream | Authority for economics, lifecycle state, and the repayment ledger. Informational for NAV: share price moves only on actual yield mints, never on `recordPayment` |
-| On-chain (YieldMinter, PLUSD) | `vaultMintedByLoan(loanId)`, `treasuryMintedByLoan(loanId)`, PLUSD `totalSupply`, the ledger invariant | Feeds the Mint Queue unminted deltas and the reserves panel |
-| Relayer backend API | Unmatched Capital Wallet inflows, custodian co-signature status, USYC NAV, withdrawal queue depth and coverage, the forward strip, the Originator request queue, the reconciliation indicator | Off-chain decision inputs. None of these gates a mint. They inform Trustee action |
+| LoanRegistry (on-chain) | For each loan: its fixed terms, its current state, its rate and maturity history, and the events it emits | The source of truth for loan terms, status, and what has been repaid. It does not move the token price. sPLUSD price only changes when yield is actually minted, not when the Trustee records a payment |
+| YieldMinter and PLUSD (on-chain) | How much has already been minted per loan (vault and treasury legs), total PLUSD in circulation, and the backing check | Used to work out how much is still waiting to be minted, and to show reserves |
+| Relayer backend | Incoming USDC the Relayer has not yet matched to a loan, whether the custodian has co-signed, the USYC price, the size and coverage of the withdrawal queue, the cash forecast, the queue of new loan requests, and the reserves health light | Off-chain inputs that help the Trustee decide. None of them can trigger a mint. They only inform |
 
-The data layer derives the per-loan aggregates the UX presents, since these are not stored
-on-chain: outstanding senior principal (`originalSeniorTranche - seniorPrincipalRepaid`),
-outstanding offtaker (`originalOfftakerPrice - offtakerReceivedTotal`), the maturity-capped
-accrued-interest ceiling (the piecewise epoch sum), unminted vault and treasury deltas
-(`recorded - mintedByLoan` per leg), and days to maturity.
+Some numbers on screen are not stored on-chain, so the dashboard calculates them: senior
+principal still owed (original senior tranche minus principal repaid), how much the offtaker
+still owes (original price minus what has come in), interest earned so far (the
+maturity-capped epoch sum), how much is still waiting to be minted per leg (recorded minus
+already minted), and days left to maturity.
 
 ---
 
 ## API
 
-| Resource | Returns / accepts | Feeds |
+| Endpoint | What it returns or takes | Serves |
 |---|---|---|
-| Origination request queue | List of pending Originator requests: immutable economics, validated EIP-712 signature, descriptive-material pointer, status (Pending / ChangesRequested / Rejected / Minted), timestamps | Flow 1 |
-| Capital Wallet inflow matching | The on-ramp USDC settlements that land after `recordPayment`, matched by the Relayer to recorded payments, with any unmatched inflow flagged as an anomaly | Flow 13 |
-| Loan ledger view | Per-loan composite of on-chain immutable, mutable, epochs, plus derived aggregates and resolved descriptive material | Flows 1-5, 10-12, monitoring |
-| Repayment-due worklist | Loans at or past a scheduled coupon or maturity with no matching `recordPayment` yet, dispatched as a prompt to record | Flow 2 |
-| Mint queue | Per-loan unminted vault and treasury deltas, aging, custodian co-sig status, last Relayer attempt and result | Flow 13 |
-| Mint retrigger | Accepts a retrigger request for a loan leg, and returns the Relayer's acceptance and current attestation state | Flow 13 |
-| MPC request assembly | Accepts a disbursement, swap, or top-up request, and returns the assembled MPC payload, then tracks signature collection toward 3-of-5 | Flows 7, 8, 9 |
-| RISK_COUNCIL proposal | Accepts a `setDefault` / `amendEconomics` / `closeLoan(write-down)` proposal for submission to the Safe, and returns the Safe transaction reference and timelock state | Flows 10, 11, 12 |
-| Reserves and reconciliation | Backing invariant result and drift state, USYC NAV and band, the forward strip | Surface 14, Flow 8 |
-| Withdrawal queue stats | Queue depth, Withdrawal Queue Wallet balance, coverage ratio, oldest pending age | Flow 9 |
-| Audit log | Append-only Trustee action stream | Surface 17 |
+| New loan requests | Loan requests waiting for the Trustee: the loan terms, the Originator's signature, a link to the documents, the status, and timestamps | Flow 1 |
+| Incoming USDC matching | The USDC that arrives after a payment is recorded, matched by the Relayer to that recorded payment. Anything it cannot match is flagged as odd | Flow 13 |
+| One loan's full view | Everything about a single loan: the terms we store on-chain, the numbers we calculate from them, and the loan documents | Flows 1-5, 10-12, monitoring |
+| Payments due | Loans whose payment is due or overdue and not yet recorded, used to prompt the Trustee | Flow 2 |
+| Mint queue | Per loan: how much is still waiting to be minted to the vault and treasury, how long it has waited, whether the custodian has signed, and the Relayer's last attempt | Flow 13 |
+| Retry a mint | Asks the Relayer to try a stuck mint again, and reports where it got to | Flow 13 |
+| Build a co-signed request | Takes a disbursement, swap, or top-up request, builds the MPC payload, and tracks how many of the 3-of-5 have signed | Flows 7, 8, 9 |
+| Build a Risk Council proposal | Takes a `setDefault`, `amendEconomics`, or write-down close proposal, sends it to the Safe, and reports the Safe reference and where the 24h timer stands | Flows 10, 11, 12 |
+| Reserves | The backing check and how far off it is, the USYC price and band, and the cash forecast | Surface 14, Flow 8 |
+| Withdrawal queue | How big the queue is, how much USDC the Withdrawal Queue Wallet holds, the coverage ratio, and the oldest waiting request | Flow 9 |
+| Audit log | The running list of everything the Trustee has done | Surface 17 |
 
-The Type 1 writes are broadcast directly from the Trustee key. The dashboard builds and
-decodes the calldata for `mintLoan`, `updateMutable`, `recordPayment`, `rollover`,
-`closeLoan`, and `markRefunded`, presents the decoded transaction for review, and broadcasts
-on confirmation. These do not pass through the Relayer.
+The Type 1 actions are sent straight from the Trustee key. For `mintLoan`, `updateMutable`,
+`recordPayment`, `rollover`, `closeLoan`, and `markRefunded`, the dashboard builds the
+transaction, shows it in readable form for review, and sends it once confirmed. These do not
+go through the Relayer.
 
 ---
 
