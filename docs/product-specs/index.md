@@ -38,7 +38,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [relayer-service-internals.md](./relayer-service-internals.md) | Relayer Service | Service decomposition architecture, blast radius analysis |
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, authentication, Trustee view |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
-| [trustee-console.md](./trustee-console.md) | Operations Console | Trustee dashboard panels and LoanRegistry-backed per-loan mint enforcement |
+| [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
 | [audit-logging.md](./audit-logging.md) | Audit Logging | Append-only log, third-party sink, compliance traceability |

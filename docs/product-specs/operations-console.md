@@ -26,7 +26,7 @@ Every account lifecycle event is recorded in the append-only audit log.
 
 ## Trustee View
 
-The Trustee view is accessible only to accounts holding the Trustee role. For the full panel surface (Loans Board, Repayment Intake, Mint Queue, T-Bill Allocation, Origination Queue, Audit Log), the per-loan repayment ledger, and the YieldMinter per-loan mint cap rule, see [trustee-console.md](./trustee-console.md). The functional area summaries below describe the workflows within those panels.
+The Trustee view is accessible only to accounts holding the Trustee role. For the full action surface and its signing paths see [trustee-dashboard.md](./trustee-dashboard.md), for the per-loan repayment ledger see [loans-data.md](./loans-data.md), and for the YieldMinter per-loan mint cap rule see [yield.md](./yield.md). The functional area summaries below describe the workflows within those panels.
 
 ### Origination Queue
 
