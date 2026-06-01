@@ -25,10 +25,7 @@ export type {
   RequestDepositResult,
   ClaimResult,
 } from "./useDepositManager";
-export {
-  useRequestWithdrawal,
-  useClaimWithdrawal,
-} from "./useWithdrawalQueue";
+export { useRequestWithdrawal, useClaimWithdrawal } from "./useWithdrawalQueue";
 export type {
   RequestWithdrawalResult,
   ClaimWithdrawalResult,

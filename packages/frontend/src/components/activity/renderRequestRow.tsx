@@ -153,8 +153,10 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
     // Fail-loud: render "—" when assets or shares are missing from the API
     // response. Falling back to item.amount or "0" would silently zero out
     // the row and hide data regressions.
-    const assets = item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
-    const shares = item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
+    const assets =
+      item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+    const shares =
+      item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
     return (
       <ActivityRow
         icon="arrow-down-circle"
@@ -171,8 +173,10 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
   }
 
   // Unstake — fail-loud: see Stake branch above for rationale.
-  const assets = item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
-  const shares = item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
+  const assets =
+    item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+  const shares =
+    item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
   return (
     <ActivityRow
       icon="arrow-up-circle"

@@ -197,7 +197,11 @@ describe("useWallet — connect() with terms gate", () => {
     const { result } = renderHook(() => useWallet(), { wrapper });
 
     // Reset capturedModalProps to see if gate is opened.
-    capturedModalProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+    capturedModalProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
 
     act(() => result.current.connect());
 

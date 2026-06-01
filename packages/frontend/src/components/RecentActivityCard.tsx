@@ -138,9 +138,9 @@ export const RecentActivityCard = React.forwardRef<
             <Link
               to="/transactions"
               className={[
-                "self-end mt-auto",
+                "mt-auto self-end",
                 "inline-flex items-center gap-1",
-                "h-12 px-3 rounded-lg",
+                "h-12 rounded-lg px-3",
                 "no-underline transition-colors",
                 "font-[family-name:var(--font-body)]",
                 "text-[length:var(--text-pipeline-body)]",
@@ -152,7 +152,7 @@ export const RecentActivityCard = React.forwardRef<
               data-node-id="1497:95216"
             >
               <span>View All </span>
-              <span className="size-6 inline-flex items-center justify-center">
+              <span className="inline-flex size-6 items-center justify-center">
                 <ChevronRight />
               </span>
             </Link>

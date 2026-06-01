@@ -177,7 +177,9 @@ describe("PortfolioPlaceholderCard — hover behaviour", () => {
 
   it("pointerMove on chart wrap shows tooltip with '$1,' balance prefix", async () => {
     const { container } = renderCard();
-    const chartWrap = container.querySelector("[data-node-id='1497:95048-chart']") as HTMLElement;
+    const chartWrap = container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
     expect(chartWrap).toBeTruthy();
 
     // Mock getBoundingClientRect so pointer math works in jsdom.
@@ -205,7 +207,9 @@ describe("PortfolioPlaceholderCard — hover behaviour", () => {
 
   it("pointerLeave hides the tooltip again", async () => {
     const { container } = renderCard();
-    const chartWrap = container.querySelector("[data-node-id='1497:95048-chart']") as HTMLElement;
+    const chartWrap = container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
 
     vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
       left: 0,
@@ -222,13 +226,19 @@ describe("PortfolioPlaceholderCard — hover behaviour", () => {
     fireEvent.pointerMove(chartWrap, { clientX: 300 });
 
     await waitFor(() => {
-      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute("aria-hidden", "false");
+      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute(
+        "aria-hidden",
+        "false",
+      );
     });
 
     fireEvent.pointerLeave(chartWrap);
 
     await waitFor(() => {
-      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute("aria-hidden", "true");
+      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
     });
   });
 });

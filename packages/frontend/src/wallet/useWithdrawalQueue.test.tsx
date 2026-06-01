@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { WalletProvider } from "./WalletProvider";
-import {
-  useRequestWithdrawal,
-  useClaimWithdrawal,
-} from "./useWithdrawalQueue";
+import { useRequestWithdrawal, useClaimWithdrawal } from "./useWithdrawalQueue";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 

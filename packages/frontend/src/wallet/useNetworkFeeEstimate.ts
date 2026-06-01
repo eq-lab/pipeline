@@ -137,14 +137,14 @@ export function useNetworkFeeEstimate(
   const DM_ADDRESS = ENV.DEPOSIT_MANAGER_ADDRESS;
   const WQ_ADDRESS = ENV.WITHDRAWAL_QUEUE_ADDRESS;
 
-  const contractAddress =
-    direction === "deposit" ? DM_ADDRESS : WQ_ADDRESS;
+  const contractAddress = direction === "deposit" ? DM_ADDRESS : WQ_ADDRESS;
   const isZeroAddress = contractAddress === ZERO_ADDRESS;
 
   // ── Mock-key check (reactive) ─────────────────────────────────────────────
   // Mock values are JSON-encoded strings, e.g. `"0.00053"` or `"~0.00053 ETH"`.
   // parseJson<string> decodes them to a plain string.
-  const mockKey = direction === "deposit" ? MOCK_KEYS.deposit : MOCK_KEYS.withdraw;
+  const mockKey =
+    direction === "deposit" ? MOCK_KEYS.deposit : MOCK_KEYS.withdraw;
   const mockRaw = useMock(mockKey, parseJson<string>);
 
   // ── Query function ────────────────────────────────────────────────────────
