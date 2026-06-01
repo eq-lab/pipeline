@@ -6,10 +6,15 @@
  * Figma reference: node 1506:104728 inside `Header / Connected` (1497:94752).
  *
  * Accepts:
- *   - `address`          — connected wallet address (full `0x…` string).
- *   - `formattedBalance` — pre-formatted USDC balance string, e.g. `"$1,000.00"`.
- *   - `onClose`          — called when the panel should be dismissed.
- *   - `onDisconnect`     — called when the user clicks Disconnect.
+ *   - `kind`              — active namespace (`'evm'` or `'stellar'`).
+ *   - `onKindChange`      — called when the user clicks the other namespace tab.
+ *   - `address`           — connected wallet address (or `undefined` when the
+ *                           active namespace is not connected).
+ *   - `formattedBalance`  — pre-formatted USDC balance string, e.g. `"$1,000.00"`.
+ *   - `onConnect`         — called when the user clicks the "Connect {namespace}"
+ *                           affordance in the not-connected state.
+ *   - `onClose`           — called when the panel should be dismissed.
+ *   - `onDisconnect`      — called when the user clicks Disconnect.
  *
  * This component is composed inside `TopBar` and is NOT exported from
  * `@pipeline/ui` (single-owner rule per docs/FRONTEND.md rule 2).
@@ -17,6 +22,7 @@
 import { useEffect, useRef } from "react";
 import { CoinIcon } from "@pipeline/ui";
 import { useAccountDropdown } from "./useAccountDropdown";
+import type { WalletViewKind } from "@/wallet";
 
 // ── Inline SVG glyphs ─────────────────────────────────────────────────────────
 
@@ -165,31 +171,143 @@ const disconnectClasses = [
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
 ].join(" ");
 
+// ── Segmented control ─────────────────────────────────────────────────────────
+
+interface SegmentedControlProps {
+  kind: WalletViewKind;
+  onKindChange: (k: WalletViewKind) => void;
+}
+
+function SegmentedControl({ kind, onKindChange }: SegmentedControlProps) {
+  const tabClasses = (active: boolean) =>
+    [
+      "flex-1 py-1.5 text-center rounded-[var(--radius-pipeline-card)]",
+      "font-[family-name:var(--font-body)]",
+      "text-[length:var(--text-pipeline-caption)]",
+      "leading-[var(--text-pipeline-caption--line-height)]",
+      "font-[var(--font-weight-emphasized)]",
+      "transition-colors",
+      "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
+      active
+        ? "bg-white/20 text-[color:var(--color-pipeline-on-dark)]"
+        : "text-white/50 hover:text-white/75",
+    ].join(" ");
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Wallet namespace"
+      className="mx-5 mt-3 mb-1 flex rounded-[var(--radius-pipeline-card)] bg-white/10 p-0.5"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={kind === "evm"}
+        onClick={() => onKindChange("evm")}
+        className={tabClasses(kind === "evm")}
+      >
+        EVM
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={kind === "stellar"}
+        onClick={() => onKindChange("stellar")}
+        className={tabClasses(kind === "stellar")}
+      >
+        Stellar
+      </button>
+    </div>
+  );
+}
+
+// ── Not-connected state ───────────────────────────────────────────────────────
+
+interface NotConnectedRowProps {
+  kind: WalletViewKind;
+  onConnect: () => void;
+}
+
+function NotConnectedRow({ kind, onConnect }: NotConnectedRowProps) {
+  const label = kind === "evm" ? "Connect EVM" : "Connect Stellar";
+  return (
+    <div className={walletRowClasses}>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className={captionClasses}>
+          {kind === "evm" ? "EVM" : "Stellar"} wallet not connected
+        </span>
+        <button
+          type="button"
+          onClick={onConnect}
+          className={[
+            "self-start",
+            "font-[family-name:var(--font-body)]",
+            "text-[length:var(--text-pipeline-body)]",
+            "leading-[var(--text-pipeline-body--line-height)]",
+            "font-[var(--font-weight-emphasized)]",
+            "text-[color:var(--color-pipeline-on-dark)]",
+            "underline underline-offset-2",
+            "transition-opacity hover:opacity-80",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
+          ].join(" ")}
+          aria-label={label}
+        >
+          {label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export interface AccountDropdownProps {
-  address: `0x${string}`;
-  formattedBalance: string;
+  /** Active namespace. */
+  kind: WalletViewKind;
+  /** Called when the user clicks the other namespace tab. */
+  onKindChange: (k: WalletViewKind) => void;
+  /**
+   * Connected wallet address for the active namespace.
+   * `undefined` when the active namespace is not connected.
+   */
+  address: string | undefined;
+  /**
+   * Pre-formatted USDC balance string (e.g. `"$1,000.00"`).
+   * `undefined` when disconnected or loading.
+   */
+  formattedBalance: string | undefined;
+  /**
+   * Called when the user clicks the "Connect {namespace}" affordance in the
+   * not-connected state.
+   */
+  onConnect: () => void;
   onClose: () => void;
   onDisconnect: () => void;
 }
 
 export function AccountDropdown({
+  kind,
+  onKindChange,
   address,
   formattedBalance,
+  onConnect,
   onClose,
   onDisconnect,
 }: AccountDropdownProps) {
+  const isConnected = address !== undefined;
+
   const { rootRef, copied, copy, truncated } = useAccountDropdown({
     onClose,
-    address,
+    address: address ?? "",
   });
 
-  // Move focus to the copy button when the panel opens.
+  // Move focus to the copy button when the panel opens (connected state only).
   const copyButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    copyButtonRef.current?.focus();
-  }, []);
+    if (isConnected) {
+      copyButtonRef.current?.focus();
+    }
+  }, [isConnected]);
 
   return (
     <div
@@ -203,82 +321,92 @@ export function AccountDropdown({
       {/* Heading row */}
       <p className={headingClasses}>Account</p>
 
-      <div className={dividerClasses} />
-
-      {/* Wallet address row */}
-      <div
-        className={walletRowClasses}
-        role="group"
-        aria-label="Wallet address"
-      >
-        {/* 40×40 wallet avatar tile */}
-        <div
-          className={[
-            "flex h-10 w-10 shrink-0 items-center justify-center",
-            "rounded-[var(--radius-pipeline-card)]",
-            "bg-white/10",
-            "text-[color:var(--color-pipeline-on-dark)]",
-          ].join(" ")}
-          aria-hidden="true"
-        >
-          <WalletGlyph />
-        </div>
-
-        {/* Address column */}
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={captionClasses}>Wallet</span>
-          <span className={[bodyClasses, "truncate font-mono"].join(" ")}>
-            {truncated}
-          </span>
-        </div>
-
-        {/* Copy button */}
-        <button
-          ref={copyButtonRef}
-          type="button"
-          role="menuitem"
-          aria-label="Copy wallet address"
-          onClick={copy}
-          className={[
-            "flex h-8 w-8 shrink-0 items-center justify-center",
-            "rounded-[var(--radius-pipeline-card)]",
-            "text-[color:var(--color-pipeline-on-dark)]",
-            "transition-colors hover:bg-white/10",
-            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
-          ].join(" ")}
-        >
-          {copied ? <CheckGlyph /> : <CopyGlyph />}
-          <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
-        </button>
-      </div>
+      {/* Namespace segmented control */}
+      <SegmentedControl kind={kind} onKindChange={onKindChange} />
 
       <div className={dividerClasses} />
 
-      {/* USDC balance row */}
-      <div
-        className={[walletRowClasses].join(" ")}
-        role="group"
-        aria-label="USDC balance"
-      >
-        <CoinIcon token="usdc" size="lg" aria-hidden />
+      {isConnected ? (
+        <>
+          {/* Wallet address row */}
+          <div
+            className={walletRowClasses}
+            role="group"
+            aria-label="Wallet address"
+          >
+            {/* 40×40 wallet avatar tile */}
+            <div
+              className={[
+                "flex h-10 w-10 shrink-0 items-center justify-center",
+                "rounded-[var(--radius-pipeline-card)]",
+                "bg-white/10",
+                "text-[color:var(--color-pipeline-on-dark)]",
+              ].join(" ")}
+              aria-hidden="true"
+            >
+              <WalletGlyph />
+            </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className={captionClasses}>USDC balance</span>
-          <span className={bodyClasses}>{formattedBalance}</span>
-        </div>
-      </div>
+            {/* Address column */}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className={captionClasses}>Wallet</span>
+              <span className={[bodyClasses, "truncate font-mono"].join(" ")}>
+                {truncated}
+              </span>
+            </div>
 
-      <div className={dividerClasses} />
+            {/* Copy button */}
+            <button
+              ref={copyButtonRef}
+              type="button"
+              role="menuitem"
+              aria-label="Copy wallet address"
+              onClick={copy}
+              className={[
+                "flex h-8 w-8 shrink-0 items-center justify-center",
+                "rounded-[var(--radius-pipeline-card)]",
+                "text-[color:var(--color-pipeline-on-dark)]",
+                "transition-colors hover:bg-white/10",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
+              ].join(" ")}
+            >
+              {copied ? <CheckGlyph /> : <CopyGlyph />}
+              <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
+            </button>
+          </div>
 
-      {/* Disconnect row */}
-      <button
-        type="button"
-        role="menuitem"
-        onClick={onDisconnect}
-        className={disconnectClasses}
-      >
-        Disconnect
-      </button>
+          <div className={dividerClasses} />
+
+          {/* USDC balance row */}
+          <div
+            className={[walletRowClasses].join(" ")}
+            role="group"
+            aria-label="USDC balance"
+          >
+            <CoinIcon token="usdc" size="lg" aria-hidden />
+
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className={captionClasses}>USDC balance</span>
+              <span className={bodyClasses}>{formattedBalance ?? "—"}</span>
+            </div>
+          </div>
+
+          <div className={dividerClasses} />
+
+          {/* Disconnect row */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={onDisconnect}
+            className={disconnectClasses}
+          >
+            Disconnect
+          </button>
+        </>
+      ) : (
+        // Not-connected state: inline connect affordance, Disconnect hidden.
+        <NotConnectedRow kind={kind} onConnect={onConnect} />
+      )}
     </div>
   );
 }
