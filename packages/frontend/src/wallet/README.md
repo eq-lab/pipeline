@@ -27,7 +27,7 @@ import chain-specific libraries directly — the ESLint `no-restricted-imports`
 rule enforces two independent boundaries:
 
 - **EVM boundary**: `wagmi`, `viem`, `@reown/appkit`, and `@tanstack/react-query`
-  are only importable from `src/wallet/evm/**`.
+  are only importable from `src/wallet/evm/**` or `src/wallet/stellar/**`.
 - **Stellar boundary**: `@creit.tech/stellar-wallets-kit` and
   `@stellar/stellar-sdk` are only importable from `src/wallet/stellar/**`.
 
@@ -57,6 +57,7 @@ import {
   // Stellar namespace
   StellarWalletProvider,
   useStellarWallet,
+  useStellarToken,
   // Utilities
   isMockKeyPresent,
 } from "@/wallet";
@@ -759,13 +760,43 @@ is shown before the kit auth modal opens.
 **Mock path:** when `pipeline.mock.wallet.stellar.address` is set, `connect()`
 and `disconnect()` are no-ops (dev affordance; gate is bypassed).
 
+### `useStellarToken()`
+
+```ts
+const { balance, formattedBalance, refetchBalance, isLoading, error } =
+  useStellarToken();
+```
+
+Reads the connected Stellar account's USDC balance from the Horizon server.
+USDC is matched by BOTH `asset_code === "USDC"` AND `asset_issuer === usdcIssuer`
+(from `stellar/chain.ts`) to avoid picking up a same-code asset from a different
+(fake) issuer.
+
+| Field              | Type                  | Description                                                                         |
+| ------------------ | --------------------- | ----------------------------------------------------------------------------------- |
+| `balance`          | `string \| undefined` | Raw Horizon decimal string (e.g. `"1234.5678900"`). `undefined` when disconnected.  |
+| `formattedBalance` | `string \| undefined` | USD currency string (e.g. `"$1,234.57"`). `undefined` when disconnected or loading. |
+| `refetchBalance`   | `() => void`          | Re-triggers the Horizon query. Mirrors `useEvmToken.refetchBalance`.                |
+| `isLoading`        | `boolean`             | `true` while the first query is in-flight.                                          |
+| `error`            | `Error \| null`       | Error from the Horizon query (network/5xx/parse failures), or `null`.               |
+
+**No-trustline → `$0.00`.** If the account has no USDC trustline, `balance`
+is `"0"` and `formattedBalance` is `"$0.00"` — NOT an error.
+
+**Unfunded account → `$0.00`.** A 404 from Horizon (brand-new/unfunded account)
+is treated as zero balance, not a hard error.
+
+**Mock key wired.** `pipeline.mock.wallet.stellar.balance.usdc` — set a
+human-scaled decimal string (e.g. `"1.5"` = 1.5 USDC). The hook returns the
+mock value without constructing a `Horizon.Server` or calling `loadAccount`.
+
 ### Stellar mock keys
 
-| Key                                         | Type                         | Notes                                               |
-| ------------------------------------------- | ---------------------------- | --------------------------------------------------- |
-| `pipeline.mock.wallet.stellar.address`      | `string` (G… 56-char strkey) | Sets the mock Stellar address                       |
-| `pipeline.mock.wallet.stellar.isConnected`  | `"true"` or `"false"`        | Defaults to `"true"` when address is set            |
-| `pipeline.mock.wallet.stellar.balance.usdc` | decimal string (7 dp)        | USDC balance schema; not yet consumed (sub-issue 2) |
+| Key                                         | Type                         | Notes                                                                                         |
+| ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.address`      | `string` (G… 56-char strkey) | Sets the mock Stellar address                                                                 |
+| `pipeline.mock.wallet.stellar.isConnected`  | `"true"` or `"false"`        | Defaults to `"true"` when address is set                                                      |
+| `pipeline.mock.wallet.stellar.balance.usdc` | human-scaled decimal string  | USDC balance as returned by Horizon (e.g. `"1.5"` = 1.5 USDC). Consumed by `useStellarToken`. |
 
 **DevTools snippet:**
 

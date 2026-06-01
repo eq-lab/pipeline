@@ -83,3 +83,5 @@ export type {
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
 export { useStellarWallet } from "./stellar/useStellarWallet";
 export type { StellarWalletState } from "./stellar/useStellarWallet";
+export { useStellarToken } from "./stellar/useStellarToken";
+export type { UseStellarTokenResult } from "./stellar/useStellarToken";

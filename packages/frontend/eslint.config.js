@@ -36,11 +36,17 @@ export default tseslint.config(
   },
   {
     // Enforce that wagmi / viem / AppKit / TanStack Query are only imported
-    // from within the EVM wallet module (src/wallet/evm/**), the api module
-    // (src/api/**), or the env accessor (src/lib/env.ts).
+    // from within the EVM wallet module (src/wallet/evm/**), the Stellar wallet
+    // module (src/wallet/stellar/**), the api module (src/api/**), or the env
+    // accessor (src/lib/env.ts).
     // All other source files must go through @/wallet or @/api.
     files: ["**/*.{ts,tsx}"],
-    ignores: ["src/wallet/evm/**", "src/api/**", "src/lib/env.ts"],
+    ignores: [
+      "src/wallet/evm/**",
+      "src/wallet/stellar/**",
+      "src/api/**",
+      "src/lib/env.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
