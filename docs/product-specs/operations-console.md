@@ -24,63 +24,8 @@ Every account lifecycle event is recorded in the append-only audit log.
 
 ---
 
-## Trustee View
+## Role views
 
-The Trustee view is accessible only to accounts holding the Trustee role. For the full action surface and its signing paths see [trustee-dashboard.md](./trustee-dashboard.md), for the per-loan repayment ledger see [loans-data.md](./loans-data.md), and for the YieldMinter per-loan mint cap rule see [yield.md](./yield.md). The functional area summaries below describe the workflows within those panels.
-
-### Origination Queue
-
-The trustee receives origination requests submitted by the Originator. For each request the trustee sees: the full set of immutable loan parameters submitted by the Originator, the Originator's EIP-712 signature (already validated by the relayer service), and the submission timestamp.
-
-The trustee takes one of three actions:
-
-- **Approve** — the trustee broadcasts `LoanRegistry.mintLoan()` directly from the Trustee key (holder of the `TRUSTEE` role on LoanRegistry). The resulting LoanMinted event triggers the relayer's disbursement preparation on the Capital Wallet.
-- **Request changes** — the trustee adds a comment; the request status becomes ChangesRequested and the Originator is notified.
-- **Reject** — the trustee adds a rejection reason; the request status becomes Rejected and the Originator is notified.
-
-### Repayment Reconciliation
-
-The trustee manually identifies incoming USD wire transfers from borrowers against open loans. The workflow:
-
-1. Trustee selects the loan from the LoanRegistry-backed loan picker (all active loans are listed with their on-chain identity and mutable lifecycle state).
-2. Trustee enters the repayment amount received and, optionally, the repayment date if different from today.
-3. The console computes the full waterfall client-side using immutable loan parameters from the LoanRegistry, current lifecycle state, the protocol-wide fee schedule, the actual tenor, and the entered amount:
-
-| Component | Formula |
-|---|---|
-| senior_principal_returned | min(amount, outstanding_senior_principal) |
-| senior_gross_interest | tenor × senior_rate × senior_deployed |
-| management_fee | senior_deployed × mgmt_rate × (tenor / 365) |
-| securitisation_agent_fee | 0 (inactive in MVP) |
-| performance_fee | (senior_gross_interest − management_fee) × perf_rate |
-| senior_coupon_net | senior_gross_interest − management_fee − performance_fee |
-| oet_allocation | senior_deployed × oet_rate × (tenor / 365) |
-| originator_residual | amount − senior_principal_returned − senior_coupon_net − fees − oet_allocation |
-
-4. The trustee reviews the breakdown. Deviations from the computed baseline (e.g., negotiated fee waivers, partial repayments, early repayment fees) are highlighted. The trustee can adjust individual components.
-5. The trustee signs the RepaymentSettled event (an EIP-712 attestation, not an on-chain transaction). This signature is the trigger for the relayer service to execute on-chain yield delivery and the senior principal USYC sweep.
-
-### Weekly Yield Signing
-
-Each Thursday, the relayer service pre-builds a TreasuryYieldDistributed transaction and presents it in the trustee tooling. The trustee sees: total accrued USYC yield since the previous distribution, vault share (70%), treasury share (30%), reference USYC NAV, holding amount, and expected on-chain mint amounts. The trustee signs the pre-built transaction (EIP-712 attestation). On receipt of the signature, the relayer executes the two yield mints. The trustee does not compute any values manually; the entire transaction is pre-built.
-
-### LoanRegistry Lifecycle Updates
-
-As the sole holder of the `TRUSTEE` role on LoanRegistry (signed directly by the Trustee
-key, not relayed through Relayer), the trustee can:
-
-- Transition loan status among Performing, Watchlist, and Matured via `updateMutable`.
-- Roll a matured loan into a new term (new rate and maturity) via `rollover`, callable only after `currentMaturityDate`.
-- Update `ccrBps` following price feed threshold crossings or manual price-based review.
-- Update `currentLocation` as cargo moves through the trade corridor (LocationType, locationIdentifier, optional trackingURL).
-- Append documents to the loan by updating `metadataURI`.
-- Record a repayment split (principal, net senior coupon, management/performance/OET fees, equity) via `recordPayment` once the client-side waterfall is settled.
-- Close a loan at scheduled maturity or early repayment via `closeLoan`.
-- Escalate to the Risk Council for Default transitions, economics re-terms via `amendEconomics`, or Closed-with-default-reason (all requiring the 3-of-5 `RISK_COUNCIL` role, not `TRUSTEE`).
-
-### USYC Manual Override
-
-The trustee has access to a manual USDC ↔ USYC swap UI as a backup path for cases outside the automated band-keeping rules. Manual swaps require Trustee + team co-signature via MPC regardless of amount and are not subject to the automated band limits.
-
-For Team view, Originator view, and security considerations, see
-[operations-console-team.md](./operations-console-team.md).
+The Trustee action surface and its signing paths are in
+[trustee-dashboard.md](./trustee-dashboard.md). The Team view, Originator view, and security
+considerations are in [operations-console-team.md](./operations-console-team.md).

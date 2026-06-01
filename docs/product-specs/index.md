@@ -36,7 +36,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [security-defenses.md](./security-defenses.md) | Security & Threat Model | MVP defence stack, timelock action table, pause cascade, cross-rail sequence integrity |
 | [relayer-service.md](./relayer-service.md) | Relayer Service | Event listening, MPC auto-signing, minting, USYC rebalancing, role assignments, security |
 | [relayer-service-internals.md](./relayer-service-internals.md) | Relayer Service | Service decomposition architecture, blast radius analysis |
-| [operations-console.md](./operations-console.md) | Operations Console | Overview, authentication, Trustee view |
+| [operations-console.md](./operations-console.md) | Operations Console | Overview, shared operator authentication and account lifecycle |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
