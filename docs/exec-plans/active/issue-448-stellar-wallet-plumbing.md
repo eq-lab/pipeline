@@ -34,6 +34,17 @@ In scope:
 - Unit tests for `useStellarWallet` and the new mock helpers.
 - Doc updates: wallet `README.md`, `docs/frontend/hooks.md`, `.env.example`.
 
+Also in scope (added by resolved decision — shared terms gate):
+
+- Refactor the existing EVM-scoped terms gate to be chain-agnostic and shared so the
+  first connect of EITHER chain triggers the single terms attestation: move
+  `WalletGateContext.ts` and `useTermsAcknowledgement.ts` out of `src/wallet/evm/`
+  into a shared `src/wallet/` location, switch the storage to a single chain-agnostic
+  flag (`pipeline.wallet.termsAcknowledged`) with migration from the legacy
+  address-scoped keys, hoist the gate provider above both wallet providers, and route
+  Stellar `connect()` through it. `FirstConnectionModal` (already chain-neutral UI in
+  `src/components/`) is reused unchanged.
+
 Out of scope (later epic sub-issues / future epics):
 
 - `useStellarToken` (USDC balance from Horizon) — epic sub-issue 2.
@@ -58,55 +69,99 @@ Out of scope (later epic sub-issues / future epics):
   default network is `testnet`. No consumer reads it in this issue, so even if the
   value needed correcting later it would not block this plumbing — it is wired into
   `chain.ts` and `.env.example` only.
-- **Stellar Wallets Kit API surface / version (real risk — see Open Questions).**
-  The package has two distinct API styles in the wild: the classic instance API
-  (`new StellarWalletsKit({ network, selectedWalletId, modules })` + `kit.openModal({
-  onWalletSelected })` + `kit.getAddress()` + `kit.setWallet(id)` + `kit.disconnect()`)
-  and a newer singleton SDK API (`StellarWalletsKit.init({...})` + `authModal()`).
-  The epic's code sketch and the issue text describe the classic instance API. This
-  plan targets the **instance API** and pins the dependency to a `1.x` release
-  (`@creit.tech/stellar-wallets-kit@^1`) to match. If `yarn` resolves a major that
-  only ships the singleton SDK API, the connect/disconnect call shapes in `config.ts`
-  + `useStellarWallet.ts` change. Mitigation: pin and verify the installed version's
-  exported symbols before writing the hook; the public hook contract
-  (`{ address, isConnected, connect, disconnect }`) stays identical either way, so
-  the blast radius is confined to those two files.
-- **Modal vs. mock parity.** The EVM `connect()` is gated by `FirstConnectionModal`
-  (terms attestation). The epic's open decisions explicitly leave "reuse the gate
-  for Stellar or ship ungated" undecided. This plan ships Stellar connect
-  **ungated** for now (simpler, matches "plumbing, no UI") and notes it in Open
-  Questions so the manager can confirm. The mock short-circuit mirrors EVM: when
-  `pipeline.mock.wallet.stellar.address` is set, `connect()`/`disconnect()` are
-  no-ops with a console hint.
+- **Stellar Wallets Kit — newer singleton SDK API, pinned to an EXACT version
+  (resolved decision).** The package ships two API styles: the classic instance API
+  (`new StellarWalletsKit({...})` + `kit.openModal()` + `kit.setWallet()`) and the
+  newer **singleton SDK API**. Per the resolved decision this plan targets the
+  **singleton SDK API** and pins `@creit.tech/stellar-wallets-kit` to the latest
+  stable EXACT version **`2.2.0`** (no `^`/range). The v2.x surface was verified by
+  unpacking the published tarball — the relevant symbols (all imported from the
+  package root `@creit.tech/stellar-wallets-kit`) are:
+  - `StellarWalletsKit.init(params)` — **static**, returns `void`, called once at
+    module load. `params: { modules: ModuleInterface[]; network?: Networks;
+    selectedWalletId?: string; theme?; authModal?: { showInstallLabel?;
+    hideUnsupportedWallets? } }`.
+  - `StellarWalletsKit.authModal(): Promise<{ address: string }>` — opens the
+    wallet-picker modal, sets the selected wallet as active, and resolves the public
+    key in one call. This **replaces** the classic `openModal` + `setWallet` +
+    `getAddress` three-step flow.
+  - `StellarWalletsKit.getAddress(): Promise<{ address: string }>` — reads the
+    currently-active address from kit memory (async; note the `{ address }` wrapper).
+  - `StellarWalletsKit.disconnect(): Promise<void>` — async.
+  - `Networks` enum (exported from the kit, **not** a separate `WalletNetwork` type):
+    `Networks.TESTNET` / `Networks.PUBLIC`. Its string values **are the network
+    passphrases** themselves (e.g. `TESTNET = "Test SDF Network ; September 2015"`),
+    so the kit's `network` param is passed the passphrase-valued enum.
+  - Modules helper is `defaultModules()` (from
+    `@creit.tech/stellar-wallets-kit/modules/utils`), **not** `allowAllModules` — that
+    name does not exist in v2.x. Individual module classes live under
+    `@creit.tech/stellar-wallets-kit/modules/<name>` (e.g. `freighter`, `xbull`,
+    `lobstr`, `albedo`, `rabet`, `wallet-connect`). `defaultModules()` returns the
+    no-extra-config modules; use it unless a specific module needs options.
+  The public hook contract (`{ address, isConnected, connect, disconnect }`) is
+  unchanged. Blast radius of the API style is confined to `config.ts` +
+  `useStellarWallet.ts`. **Risk:** because the static methods are async and the kit
+  registers web components at `init`, the tests MUST mock the kit module (see Test
+  Strategy) so jsdom never touches the DOM-bound singleton.
+- **Exact version pins for both Stellar deps (resolved decision).** Pin
+  `@stellar/stellar-sdk` to its latest stable EXACT version **`15.1.0`** (no `^`).
+  Record both resolved versions in the PR. (The classic-API `^1`/`^13` ranges from
+  the prior draft are superseded.)
+- **Terms gate — GATED TOGETHER / shared across chains (resolved decision,
+  supersedes prior "ungated" assumption).** The terms self-attestation must be asked
+  **once on the first wallet connect of EITHER chain** (EVM or Stellar) and NOT
+  re-asked when the user later connects the other chain. The existing EVM-scoped gate
+  (`FirstConnectionModal` component in `src/components/`, plus `WalletGateContext.ts`
+  and `useTermsAcknowledgement.ts` in `src/wallet/evm/`) must be refactored to be
+  chain-agnostic and hoisted so both providers share it. Stellar `connect()` routes
+  through the same gate. See Implementation Steps 5a–5d for the minimal refactor.
+  The mock short-circuit still mirrors EVM: when `pipeline.mock.wallet.stellar.address`
+  is set, `connect()`/`disconnect()` are no-ops with a console hint and bypass the gate.
+- **Storage key becomes chain-agnostic (single flag) + migration.** The current EVM
+  gate persists acknowledgement under **address-scoped** keys
+  (`pipeline.wallet.termsAcknowledged.<address>`, plus a transient
+  `pipeline.wallet.termsAcknowledged.pending` written before the address is known and
+  migrated post-connect). Per the resolved decision the new gate uses a **single
+  chain-agnostic flag** — `pipeline.wallet.termsAcknowledged` (value `"true"`) — not a
+  per-chain or per-address key. The address-scoped/pending machinery
+  (`termsKey(address)`, `PENDING_ACK_KEY`, the post-connect migration `useEffect` in
+  `EvmWalletProvider`) is removed. **Migration of the old key:** on first read, treat
+  the user as already acknowledged if EITHER the new flag is `"true"` OR any legacy
+  `pipeline.wallet.termsAcknowledged.<something>` (`.pending` or an address-scoped
+  key) is `"true"`; when a legacy value is found, write the new flat key and (best
+  effort) leave the legacy keys in place (harmless). This avoids re-prompting existing
+  users who already attested under the old EVM scheme.
 - **`@stellar/stellar-sdk` is pulled in now but only `Networks`/passphrase constants
   are used** (for `chain.ts` / kit network config). The Horizon `Server` usage lands
   in sub-issue 2. Importing it now is what justifies adding it to the ESLint Stellar
   boundary in this issue.
-- **SSR/test safety.** `config.ts` constructs the kit at module load (mirroring EVM's
-  `createAppKit` pattern). Tests must mock the kit module to avoid touching the DOM /
-  registering web components, exactly as `useEvmWallet.test.tsx` mocks `./config`,
-  `wagmi`, and `@reown/appkit/react`.
+- **SSR/test safety.** `config.ts` calls `StellarWalletsKit.init(...)` once at module
+  load (mirroring EVM's `createAppKit` pattern). Tests must mock the kit module to
+  avoid touching the DOM / registering web components, exactly as
+  `useEvmWallet.test.tsx` mocks `./config`, `wagmi`, and `@reown/appkit/react`.
+  Because the v2.x kit exposes only **static async** methods (`authModal`,
+  `getAddress`, `disconnect`), the mock spies resolve promises rather than return
+  synchronously — `useStellarWallet`'s `connect()`/`disconnect()` therefore handle the
+  async kit calls internally (the public hook methods remain `void`-returning,
+  fire-and-forget with internal state updates).
 
 ## Open Questions
 
-- Should Stellar `connect()` reuse the `FirstConnectionModal` terms-attestation gate
-  (currently EVM-scoped), or ship ungated for this plumbing issue? This plan assumes
-  **ungated**; confirm before implementation (the epic flags this as an open decision).
-- Confirm the Stellar Wallets Kit major to pin (`^1` instance API assumed). If the
-  team standardises on the newer singleton SDK API, the `config.ts` +
-  `useStellarWallet.ts` call shapes change (public hook contract is unaffected).
+_None_
 
 ## Implementation Steps
 
-1. **Add dependencies.** In `packages/frontend/package.json` add to `dependencies`:
-   `"@creit.tech/stellar-wallets-kit": "^1"` and `"@stellar/stellar-sdk": "^13"`
-   (pin to whatever current stable major resolves; record the resolved version in the
-   PR). Run `yarn install` from the repo root. Inspect the installed package's
-   exported symbols to confirm the instance API (`StellarWalletsKit`,
-   `WalletNetwork`, module classes such as `FreighterModule`, `xBullModule`, etc.,
-   and `allowAllModules` / `defaultModules` helper) before writing `config.ts`. If
-   the resolved version only exposes the singleton SDK API, stop and raise with the
-   manager (see Open Questions) — do not silently switch APIs.
+1. **Add dependencies (EXACT pins, no `^`/range).** In
+   `packages/frontend/package.json` add to `dependencies`:
+   `"@creit.tech/stellar-wallets-kit": "2.2.0"` and `"@stellar/stellar-sdk": "15.1.0"`
+   — both pinned **exactly** (these are the latest stable versions as of this plan;
+   if a newer stable exists at implementation time, pin that exact version and update
+   the call shapes only if the singleton SDK API changed). Run `yarn install` from the
+   repo root. Confirm the installed `@creit.tech/stellar-wallets-kit` exposes the
+   **singleton SDK API** from the package root: `StellarWalletsKit` (class with static
+   `init`/`authModal`/`getAddress`/`disconnect`), the `Networks` enum, and
+   `defaultModules` from `@creit.tech/stellar-wallets-kit/modules/utils`. (`allowAllModules`
+   does NOT exist in v2.x — do not use it.) Record both resolved versions in the PR.
 
 2. **Env vars** — `packages/frontend/src/lib/env.ts`. Add three keys to the frozen
    `ENV` object using the existing `readString` helper with defaults:
@@ -120,26 +175,110 @@ Out of scope (later epic sub-issues / future epics):
    the existing EVM block format, with the testnet defaults inline.
 
 4. **`src/wallet/stellar/chain.ts`** — derive Stellar network config from `ENV`:
-   - Map `ENV.STELLAR_NETWORK` (`"testnet"` | `"mainnet"`) to the Wallets Kit
-     `WalletNetwork` enum and the `@stellar/stellar-sdk` `Networks` passphrase
-     (`Networks.TESTNET` / `Networks.PUBLIC`). Export the resolved
-     `networkPassphrase`, `walletNetwork`, `horizonUrl` (`ENV.STELLAR_HORIZON_URL`),
-     and `usdcIssuer` (`ENV.STELLAR_USDC_ISSUER`). This is the single place env →
-     Stellar config translation happens (mirrors `evm/chain.ts`).
+   - Map `ENV.STELLAR_NETWORK` (`"testnet"` | `"mainnet"`) to the kit's `Networks`
+     enum (imported from `@creit.tech/stellar-wallets-kit`): `Networks.TESTNET` /
+     `Networks.PUBLIC`. In v2.x this enum's string values **are** the network
+     passphrases, so the kit `network` param and the on-chain `networkPassphrase` are
+     the same value — also surface the `@stellar/stellar-sdk` `Networks` passphrase
+     constant (`Networks.TESTNET` / `Networks.PUBLIC` from stellar-sdk) for sub-issue
+     2's Horizon/Soroban calls and assert it equals the kit enum value. Export the
+     resolved `kitNetwork` (kit `Networks` enum value), `networkPassphrase` (string),
+     `horizonUrl` (`ENV.STELLAR_HORIZON_URL`), and `usdcIssuer`
+     (`ENV.STELLAR_USDC_ISSUER`). This is the single place env → Stellar config
+     translation happens (mirrors `evm/chain.ts`).
 
-5. **`src/wallet/stellar/config.ts`** — construct the Wallets Kit instance once at
-   module scope (mirroring `evm/config.ts`'s module-load `createAppKit`):
+5. **`src/wallet/stellar/config.ts`** — initialise the singleton kit once at module
+   scope via the static `init` (mirroring `evm/config.ts`'s module-load `createAppKit`).
+   The v2.x singleton SDK API uses a static `init` (no `new`), and there is no
+   instance to export — consumers call the `StellarWalletsKit` static methods
+   directly:
    ```ts
-   export const stellarKit = new StellarWalletsKit({
-     network: walletNetwork,        // from ./chain
-     modules: allowAllModules(),    // Freighter, Albedo, xBull, Rabet, Lobstr, WalletConnect-for-Stellar
-     // selectedWalletId optional — left unset; modal picks
+   import { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
+   import { defaultModules } from "@creit.tech/stellar-wallets-kit/modules/utils";
+   import { kitNetwork } from "./chain";
+
+   StellarWalletsKit.init({
+     network: kitNetwork,        // kit `Networks` enum value, from ./chain
+     modules: defaultModules(),  // no-extra-config wallets (Freighter, xBull, Albedo, Rabet, Lobstr, …)
+     // selectedWalletId optional — left unset; authModal lets the user pick
    });
+
+   // Re-export the singleton class so the hook imports it from here (boundary).
+   export { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
    ```
-   Keep this the ONLY file that imports `@creit.tech/stellar-wallets-kit`. Export
-   `stellarKit`. (If WalletConnect-for-Stellar requires a project id, reuse
-   `ENV.WALLETCONNECT_PROJECT_ID` via the kit's WalletConnect module options;
-   otherwise omit it — confirm against the resolved package.)
+   Keep this the ONLY file that imports `@creit.tech/stellar-wallets-kit` (the hook
+   imports the re-exported `StellarWalletsKit` from `./config`, not the library). If a
+   WalletConnect-for-Stellar module is wanted it requires extra config (project id via
+   `ENV.WALLETCONNECT_PROJECT_ID`) and is therefore NOT in `defaultModules()` — adding
+   it is optional/out of scope for this plumbing issue; note it but ship
+   `defaultModules()` only.
+
+**Shared terms-gate refactor (steps 5a–5e).** These hoist the existing EVM-scoped
+gate into a chain-agnostic shared gate used by BOTH providers. Do this before wiring
+Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
+
+5a. **Move + de-scope the gate context — `src/wallet/WalletGateContext.ts`.** Move
+   `src/wallet/evm/WalletGateContext.ts` to `src/wallet/WalletGateContext.ts`
+   (chain-agnostic location). The `WalletGateContextValue` (`openGate()`) and
+   `useWalletGate()` no-op fallback are already chain-neutral and stay as-is. Update
+   the doc comment to say it gates the first connect of EITHER chain. Fix imports in
+   consumers (`useEvmWallet.ts` and the new `useStellarWallet.ts` import from
+   `../WalletGateContext`).
+
+5b. **De-scope terms acknowledgement to a single flag —
+   `src/wallet/useTermsAcknowledgement.ts`.** Move
+   `src/wallet/evm/useTermsAcknowledgement.ts` to `src/wallet/useTermsAcknowledgement.ts`
+   and rewrite it to use a **single chain-agnostic key** instead of address-scoped
+   keys:
+   - New key constant: `const TERMS_KEY = "pipeline.wallet.termsAcknowledged";` (value
+     `"true"`).
+   - `readTermsAcknowledged()` becomes **argument-less** (drop the `address` param):
+     returns `true` if `TERMS_KEY === "true"`, OR (migration) if any legacy key is
+     `"true"` — check the old `pipeline.wallet.termsAcknowledged.pending` and scan
+     `localStorage` for any `pipeline.wallet.termsAcknowledged.<addr>` key set to
+     `"true"`. On a legacy hit, write `TERMS_KEY="true"` (best-effort, in a try/catch)
+     so subsequent reads are cheap and the user is never re-prompted.
+   - `useTermsAcknowledgement()` becomes argument-less, seeds state from
+     `readTermsAcknowledged()`, subscribes to the native `storage` event filtered on
+     `TERMS_KEY`, and `acknowledge()` writes `TERMS_KEY="true"` + sets local state.
+   - Remove `termsKey(address)`, `PENDING_ACK_KEY`, and all address/pending plumbing.
+   - Update `useEvmWallet.ts`: `connect()` now calls `readTermsAcknowledged()` (no
+     address arg); when false → `openGate()`; else `void open()`. The mock
+     short-circuit is unchanged.
+
+5c. **Hoist + de-scope the gate provider.** Extract the `WalletGateProvider` inner
+   component out of `EvmWalletProvider.tsx` into its own chain-agnostic
+   `src/wallet/WalletGateProvider.tsx`:
+   - It renders `FirstConnectionModal` (unchanged, from `src/components/`) and provides
+     `WalletGateContext`.
+   - Remove the AppKit/`useAccount` coupling: the old provider called AppKit `open()`
+     itself inside `handleContinue` and read `useAccount()` for address-scoped acks.
+     The shared gate must NOT know about AppKit or wagmi. Instead, `openGate()` accepts
+     (or stores) an `onContinue` callback supplied by the caller of `openGate`, OR the
+     gate exposes a generic "proceed" that the triggering hook wired. Concretely:
+     change `WalletGateContextValue` to `openGate(onProceed: () => void): void`; the
+     provider stores the latest `onProceed`, and `handleContinue` calls
+     `acknowledge()` (writes the single flag) then invokes the stored `onProceed()`.
+     EVM passes `() => void open()`; Stellar passes `() => void runConnect()`.
+   - Drop the post-connect address migration `useEffect` and `pendingAckRef` entirely
+     (the single flag is written at acknowledge time, before connect — no address
+     needed). Keep focus-restore (`triggerRef`) and the "already acknowledged → close"
+     guard (now using argument-less `readTermsAcknowledged()`).
+
+5d. **`EvmWalletProvider` slims down.** `src/wallet/evm/EvmWalletProvider.tsx` keeps
+   `WagmiProvider` + `QueryClientProvider` + `installSameTabMockBridge`, but no longer
+   owns the gate. The shared `WalletGateProvider` is hoisted to wrap BOTH wallet
+   providers in `main.tsx` (step 9) so a single modal instance serves both chains.
+   Remove the gate imports (`FirstConnectionModal`, `WalletGateContext`,
+   `readTermsAcknowledged`, `useAppKit`/`useAccount` usage that existed only for the
+   gate) from this file.
+
+5e. **Barrel + tests for the moved files.** Update `src/wallet/index.ts` if it
+   re-exported any gate symbol. Move the gate test files alongside their new homes:
+   `WalletGateContext`/`useTermsAcknowledgement` tests (currently
+   `src/wallet/evm/useTermsAcknowledgement.test.tsx`) move to `src/wallet/` and are
+   rewritten for the single-flag + migration behavior (see Test Strategy).
+   `FirstConnectionModal.test.tsx` stays (UI unchanged).
 
 6. **`src/wallet/stellar/mock.ts`** — define Stellar mock-key constants and typed
    readers, reusing the shared primitives from `../evm/mock` (`readMock`, `useMock`,
@@ -161,16 +300,28 @@ Out of scope (later epic sub-issues / future epics):
      Resolve `address`/`isConnected` with the same precedence as EVM: mock address
      wins; `isConnected` defaults to `true` when a mock address is present and the
      `isConnected` key is absent.
-   - Track the real connected address in React state seeded from `stellarKit`
-     (e.g. attempt `kit.getAddress()` on mount; the kit persists the last selection).
-   - `connect()`: if a mock address is set → no-op (dev affordance). Otherwise open
-     the kit modal (`kit.openModal({ onWalletSelected })` for the instance API),
-     call `kit.setWallet(option.id)`, read `kit.getAddress()`, and store the address
-     in state. Ungated (no terms modal) per the assumption above.
+   - Track the real connected address in React state. Seed it on mount by calling the
+     async `StellarWalletsKit.getAddress()` (resolves `{ address }`; the kit persists
+     the last selection) inside an effect, guarding against unmount; tolerate the
+     rejection/empty case (no prior connection) by leaving the address undefined.
+   - `connect()`: if a mock address is set → no-op (dev affordance, bypasses the gate).
+     Otherwise route through the **shared terms gate** exactly like EVM: read
+     `readTermsAcknowledged()` (argument-less) synchronously — if not acknowledged,
+     call `openGate(runConnect)` (from the shared `useWalletGate`) and return; the gate
+     invokes `runConnect` after the user attests. `runConnect` performs the real kit
+     flow: `await StellarWalletsKit.authModal()` → `{ address }` (this single call
+     opens the picker, sets the active wallet, and returns the public key), then store
+     `address` in state. `connect()` itself returns `void` (fire-and-forget; the async
+     work updates state on resolution). If terms are already acknowledged, call
+     `runConnect()` directly.
    - `disconnect()`: if a mock address is set → console-warn hint + return (mirror
-     EVM). Otherwise call `kit.disconnect()` and clear local address state.
-   - Keep all kit access via the `stellarKit` import from `./config` — no direct
-     library import in the hook beyond types.
+     EVM). Otherwise `void StellarWalletsKit.disconnect()` (async) and clear local
+     address state.
+   - Import the gate via `useWalletGate` from `../WalletGateContext` and
+     `readTermsAcknowledged` from `../useTermsAcknowledgement` (the moved shared
+     modules from steps 5a–5b). Keep all kit access via the `StellarWalletsKit`
+     re-export from `./config` — no direct `@creit.tech/stellar-wallets-kit` import in
+     the hook beyond types.
 
 8. **`src/wallet/stellar/StellarWalletProvider.tsx`** — lightweight provider. Unlike
    EVM it needs no `WagmiProvider`/`QueryClientProvider` (those are EVM-side and the
@@ -183,15 +334,36 @@ Out of scope (later epic sub-issues / future epics):
    `<EvmWalletProvider>` so it sits within the shared `QueryClientProvider` for
    sub-issue 2.
 
-9. **`src/main.tsx`** — wrap the tree: `<EvmWalletProvider><StellarWalletProvider>
-   <ToastProvider><RouterProvider/></ToastProvider></StellarWalletProvider>
-   </EvmWalletProvider>`. Import `StellarWalletProvider` from `@/wallet`.
+9. **`src/main.tsx`** — wrap the tree so the single shared gate sits ABOVE both
+   wallet providers and serves both chains:
+   ```tsx
+   <WalletGateProvider>
+     <EvmWalletProvider>
+       <StellarWalletProvider>
+         <ToastProvider>
+           <RouterProvider router={router} />
+         </ToastProvider>
+       </StellarWalletProvider>
+     </EvmWalletProvider>
+   </WalletGateProvider>
+   ```
+   Import `WalletGateProvider`, `EvmWalletProvider`, and `StellarWalletProvider` from
+   `@/wallet`. The gate provider is decoupled from wagmi/AppKit (step 5c), so it can
+   sit at the top; the EVM `connect()` still gets AppKit `open` from `useAppKit()`
+   inside `EvmWalletProvider` and hands it to the gate as the `onProceed` callback, and
+   the Stellar hook hands `runConnect` — a single `FirstConnectionModal` instance
+   serves both. `StellarWalletProvider` still mounts inside `EvmWalletProvider` so it
+   sits within the shared `QueryClientProvider` for sub-issue 2.
 
 10. **Barrel — `src/wallet/index.ts`** — export `StellarWalletProvider`,
-    `useStellarWallet`, and its `StellarWalletState` type. Mirror the EVM mock
-    re-exports if any Stellar mock helper needs to be public (likely only the key
-    constants are internal; export only what a consumer/test outside `stellar/**`
-    needs). Do not re-export raw Wallets Kit / stellar-sdk types through the barrel.
+    `useStellarWallet`, and its `StellarWalletState` type. Also export the hoisted
+    shared `WalletGateProvider` from `./WalletGateProvider` (it is now consumed by
+    `main.tsx`). Re-point any existing re-exports of `WalletGateContext`/
+    `useTermsAcknowledgement` to their new `src/wallet/` paths (steps 5a–5b). Mirror
+    the EVM mock re-exports if any Stellar mock helper needs to be public (likely only
+    the key constants are internal; export only what a consumer/test outside
+    `stellar/**` needs). Do not re-export raw Wallets Kit / stellar-sdk types through
+    the barrel.
 
 11. **ESLint boundary (Stellar half) — `packages/frontend/eslint.config.js`.** Add a
     new flat-config block mirroring the existing EVM block: `files: ["**/*.{ts,tsx}"]`,
@@ -210,6 +382,13 @@ Out of scope (later epic sub-issues / future epics):
     - `docs/frontend/hooks.md` — add a `useStellarWallet` row (it is a shared hook).
     - Update the README's intro boundary paragraph to mention the Stellar libs are
       restricted to `src/wallet/stellar/**`.
+    - Document the **shared terms gate** change: the gate is now chain-agnostic
+      (triggers on the first connect of either chain, asked once), lives in
+      `src/wallet/WalletGateProvider.tsx` / `WalletGateContext.ts` /
+      `useTermsAcknowledgement.ts`, and persists a single
+      `pipeline.wallet.termsAcknowledged` flag (note the migration from the legacy
+      address-scoped keys). Update any README text that described the gate as
+      EVM-scoped or address-scoped.
 
 ## Test Strategy
 
@@ -217,22 +396,44 @@ Add `src/wallet/stellar/useStellarWallet.test.tsx` and
 `src/wallet/stellar/mock.test.ts`, mirroring the EVM test scaffolding:
 
 - **Mock the kit module** (`vi.mock("./config", ...)`) so no web component /
-  modal / DOM work runs in jsdom. Expose a `mockOpenModal` / `mockGetAddress` /
-  `mockDisconnect` spy set, mirroring how `useEvmWallet.test.tsx` mocks `mockOpen`.
+  modal / DOM work runs in jsdom. Expose async spies for the v2.x singleton SDK API:
+  `mockAuthModal` (resolves `{ address }`), `mockGetAddress` (resolves `{ address }`
+  or rejects/empty for "no prior connection"), and `mockDisconnect` (resolves), each
+  hung off the mocked `StellarWalletsKit` static methods, mirroring how
+  `useEvmWallet.test.tsx` mocks `mockOpen`. Also mock the shared `../WalletGateContext`
+  so tests can assert gate routing (a spy `openGate`).
 - `useStellarWallet` cases:
-  - Disconnected by default (no mocks, kit reports no address).
+  - Disconnected by default (no mocks, `getAddress` resolves empty/rejects → address
+    undefined).
   - Reports connected when `pipeline.mock.wallet.stellar.address` +
     `.isConnected` are set.
   - Defaults `isConnected` to `true` when only the address key is set.
   - Reports disconnected when `.isConnected` mock is `"false"`.
   - Re-renders when `.isConnected` is flipped post-mount (dispatch the
     `pipeline-mock:wallet` custom event, as the EVM test does).
-  - `connect()` opens the kit modal and stores the returned address (real path,
-    kit spy resolves an address).
-  - `connect()` is a no-op when a mock address is set (dev affordance) — kit
-    modal spy not called.
-  - `disconnect()` calls `kit.disconnect()` on the real path; is a no-op +
-    console-warn on the mock path.
+  - **Gated path:** when terms are NOT acknowledged, `connect()` calls
+    `openGate(onProceed)` and does NOT call `authModal` directly; invoking the captured
+    `onProceed` then calls `authModal` and stores the resolved address. (await the
+    async resolution with `waitFor`.)
+  - **Pre-acknowledged path:** when the single terms flag
+    (`pipeline.wallet.termsAcknowledged="true"`) is set, `connect()` calls `authModal`
+    directly (gate not opened) and stores the returned address.
+  - `connect()` is a no-op when a mock address is set (dev affordance) — neither
+    `openGate` nor `authModal` called.
+  - `disconnect()` calls `StellarWalletsKit.disconnect()` on the real path and clears
+    the address; is a no-op + console-warn on the mock path.
+- **Shared gate tests** (moved to `src/wallet/`, rewritten for the single-flag model):
+  - `useTermsAcknowledgement` / `readTermsAcknowledged()` (argument-less): false when
+    no key set; true when `pipeline.wallet.termsAcknowledged="true"`; `acknowledge()`
+    writes the flag and flips state; `storage`-event sync on the single key.
+  - **Migration:** `readTermsAcknowledged()` returns true and back-fills the new flat
+    key when a legacy `pipeline.wallet.termsAcknowledged.pending="true"` OR a legacy
+    address-scoped `pipeline.wallet.termsAcknowledged.0xabc...="true"` is present.
+  - `WalletGateProvider`: `openGate(onProceed)` opens `FirstConnectionModal`; Continue
+    writes the flag and invokes `onProceed`; dismiss does neither; "already
+    acknowledged" auto-closes. (Adapt the existing `FirstConnectionModal.test.tsx` and
+    `useEvmWallet.test.tsx` gate assertions to the new `openGate(onProceed)` signature
+    and single flag — EVM `connect()` now passes `() => void open()`.)
 - `mock.ts` cases: key constants resolve via `readMock`; Stellar address parser
   accepts a `G...` strkey and rejects an EVM `0x...` value; reuse the EVM
   `mock.test.ts` structure.
@@ -251,8 +452,11 @@ Add `src/wallet/stellar/useStellarWallet.test.tsx` and
 ## Docs to Update
 
 - `packages/frontend/src/wallet/README.md` — Stellar namespace section + mock key
-  schema + ESLint boundary note.
-- `docs/frontend/hooks.md` — `useStellarWallet` row.
+  schema + ESLint boundary note + the shared chain-agnostic terms-gate change (single
+  `pipeline.wallet.termsAcknowledged` flag, hoisted `WalletGateProvider`, legacy-key
+  migration).
+- `docs/frontend/hooks.md` — `useStellarWallet` row; update the `useEvmWallet` /
+  terms-gate entries if they describe the gate as address-scoped or EVM-only.
 - `.env.example` — three `VITE_STELLAR_*` vars with testnet defaults.
 - No product-spec change required: this is internal plumbing with no user- or
   agent-facing behavior change (no UI). The epic #444 already captures product
