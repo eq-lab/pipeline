@@ -23,14 +23,21 @@ balance (see below).
 ---
 
 All blockchain access in the app goes through this module. No other file may
-import `wagmi`, `viem`, `@reown/appkit`, or `@tanstack/react-query` directly —
-the ESLint `no-restricted-imports` rule enforces this boundary (files under
-`src/wallet/evm/**` are the only ones allowed to import those chain libs).
+import chain-specific libraries directly — the ESLint `no-restricted-imports`
+rule enforces two independent boundaries:
+
+- **EVM boundary**: `wagmi`, `viem`, `@reown/appkit`, and `@tanstack/react-query`
+  are only importable from `src/wallet/evm/**`.
+- **Stellar boundary**: `@creit.tech/stellar-wallets-kit` and
+  `@stellar/stellar-sdk` are only importable from `src/wallet/stellar/**`.
 
 ## Public API
 
 ```ts
 import {
+  // Shared
+  WalletGateProvider,
+  // EVM namespace
   EvmWalletProvider,
   useEvmWallet,
   useEvmToken,
@@ -47,15 +54,48 @@ import {
   useStakedPlusdConvertToAssets,
   useStake,
   useUnstake,
+  // Stellar namespace
+  StellarWalletProvider,
+  useStellarWallet,
+  // Utilities
   isMockKeyPresent,
 } from "@/wallet";
 ```
 
+### Shared terms gate
+
+The `<WalletGateProvider>` renders the `FirstConnectionModal` terms attestation once
+on the **first wallet connect of EITHER chain** (EVM or Stellar). Mount it above
+both wallet providers in `main.tsx`:
+
+```tsx
+<WalletGateProvider>
+  <EvmWalletProvider>
+    <StellarWalletProvider>
+      <RouterProvider router={router} />
+    </StellarWalletProvider>
+  </EvmWalletProvider>
+</WalletGateProvider>
+```
+
+The gate persists a single chain-agnostic flag:
+
+| Key                                 | Value    | Notes                                                      |
+| ----------------------------------- | -------- | ---------------------------------------------------------- |
+| `pipeline.wallet.termsAcknowledged` | `"true"` | Set once after the user clicks Continue in the terms modal |
+
+**Migration from legacy address-scoped keys:** on first read, if the new flat
+key is absent but a legacy `pipeline.wallet.termsAcknowledged.pending` or
+address-scoped `pipeline.wallet.termsAcknowledged.<addr>` key is `"true"`, the
+user is treated as already acknowledged and the flat key is back-filled.
+
+The mock wallet paths (EVM and Stellar) bypass the gate as a dev affordance.
+
 ### `<EvmWalletProvider>`
 
-Top-level provider — mount once above `RouterProvider` in `main.tsx`. Wires
+Mount inside `<WalletGateProvider>` in `main.tsx`. Wires
 `WagmiProvider` + `QueryClientProvider` and installs the same-tab localStorage
-mock bridge.
+mock bridge (which covers ALL `pipeline.mock.*` keys, including Stellar).
 
 ### `useEvmWallet()`
 
@@ -688,12 +728,81 @@ const depositManagerAddress = "0x3333000000000000000000000000000000000003";
 
 ---
 
+## Stellar namespace
+
+### `<StellarWalletProvider>`
+
+Thin mount point for the Stellar wallet. Mount inside `<EvmWalletProvider>` (so
+it sits within the shared `QueryClientProvider`) and inside
+`<WalletGateProvider>`. Importing this module triggers the singleton
+`StellarWalletsKit.init(...)` call at module load time. Does NOT install a
+second same-tab mock bridge — the bridge installed by `<EvmWalletProvider>` already
+covers all `pipeline.mock.*` keys.
+
+### `useStellarWallet()`
+
+```ts
+const { address, isConnected, connect, disconnect } = useStellarWallet();
+```
+
+| Field          | Type                  | Description                                          |
+| -------------- | --------------------- | ---------------------------------------------------- |
+| `address`      | `string \| undefined` | Stellar public key (G… strkey), or `undefined`       |
+| `isConnected`  | `boolean`             | True when a Stellar wallet is connected (or mocked)  |
+| `connect()`    | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated) |
+| `disconnect()` | `() => void`          | Disconnects the Stellar wallet and clears state      |
+
+**Terms gate:** `connect()` checks the shared chain-agnostic
+`pipeline.wallet.termsAcknowledged` flag. If absent, the `FirstConnectionModal`
+is shown before the kit auth modal opens.
+
+**Mock path:** when `pipeline.mock.wallet.stellar.address` is set, `connect()`
+and `disconnect()` are no-ops (dev affordance; gate is bypassed).
+
+### Stellar mock keys
+
+| Key                                         | Type                         | Notes                                               |
+| ------------------------------------------- | ---------------------------- | --------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.address`      | `string` (G… 56-char strkey) | Sets the mock Stellar address                       |
+| `pipeline.mock.wallet.stellar.isConnected`  | `"true"` or `"false"`        | Defaults to `"true"` when address is set            |
+| `pipeline.mock.wallet.stellar.balance.usdc` | decimal string (7 dp)        | USDC balance schema; not yet consumed (sub-issue 2) |
+
+**DevTools snippet:**
+
+```js
+localStorage.setItem(
+  "pipeline.mock.wallet.stellar.address",
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+);
+localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+```
+
+To reset:
+
+```js
+[
+  "pipeline.mock.wallet.stellar.address",
+  "pipeline.mock.wallet.stellar.isConnected",
+  "pipeline.mock.wallet.stellar.balance.usdc",
+].forEach((k) => localStorage.removeItem(k));
+```
+
+### Stellar ESLint boundary
+
+`@creit.tech/stellar-wallets-kit` and `@stellar/stellar-sdk` may only be
+imported from `src/wallet/stellar/**`. ESLint reports an error for any import
+of these packages outside that directory. This is enforced by the flat-config
+block in `packages/frontend/eslint.config.js`.
+
+---
+
 ## Adding to the public surface
 
 To expose a new hook or type:
 
-1. Implement it in a file inside `src/wallet/evm/`.
+1. Implement it in a file inside `src/wallet/evm/` (EVM) or `src/wallet/stellar/`
+   (Stellar).
 2. Export it from `src/wallet/index.ts`.
-3. Do not re-export raw `wagmi`/`viem` types in the barrel — define wrapper
-   types in `evm/useEvmWallet.ts` instead, so the call sites stay free of direct
-   library imports.
+3. Do not re-export raw `wagmi`/`viem`/`stellar-wallets-kit`/`stellar-sdk` types
+   in the barrel — define wrapper types in the chain-specific hook file instead,
+   so the call sites stay free of direct library imports.

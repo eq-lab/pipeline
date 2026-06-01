@@ -27,5 +27,15 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test-setup.ts"],
+    server: {
+      deps: {
+        // @stellar/freighter-api ships a CJS-only UMD bundle.
+        // @creit.tech/stellar-wallets-kit's freighter module imports named
+        // exports from it which Node.js ESM cannot resolve from CJS.
+        // Inlining them through Vite's transform pipeline converts the CJS
+        // bundle to ESM with named-export compatibility.
+        inline: ["@stellar/freighter-api", "@creit.tech/stellar-wallets-kit"],
+      },
+    },
   },
 });

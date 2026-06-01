@@ -62,6 +62,27 @@ export default tseslint.config(
     },
   },
   {
+    // Enforce that @creit.tech/stellar-wallets-kit and @stellar/stellar-sdk
+    // are only imported from within the Stellar wallet module (src/wallet/stellar/**)
+    // or the env accessor (src/lib/env.ts).
+    // All other source files must go through @/wallet.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/wallet/stellar/**", "src/lib/env.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            "@creit.tech/stellar-wallets-kit",
+            "@creit.tech/stellar-wallets-kit/*",
+            "@stellar/stellar-sdk",
+            "@stellar/stellar-sdk/*",
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Forbid bare `fetch(...)` calls outside `src/api/`.
     // All HTTP calls must go through `apiFetch` in `src/api/client.ts`.
     files: ["**/*.{ts,tsx}"],

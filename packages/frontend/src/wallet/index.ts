@@ -1,11 +1,18 @@
 /**
  * Public surface of the wallet module.
  *
- * Only import from this barrel outside of `src/wallet/evm/`.
- * Do NOT import wagmi, viem, @reown/appkit, or @tanstack/react-query directly
+ * Only import from this barrel outside of `src/wallet/evm/` or
+ * `src/wallet/stellar/`.
+ * Do NOT import wagmi, viem, @reown/appkit, @tanstack/react-query,
+ * @creit.tech/stellar-wallets-kit, or @stellar/stellar-sdk directly
  * from outside this module — the ESLint `no-restricted-imports` rule enforces
  * this boundary.
  */
+
+// ── Shared gate ───────────────────────────────────────────────────────────────
+export { WalletGateProvider } from "./WalletGateProvider";
+
+// ── EVM namespace ─────────────────────────────────────────────────────────────
 export { EvmWalletProvider } from "./evm/EvmWalletProvider";
 export { useEvmWallet, useContractRead } from "./evm/useEvmWallet";
 export type {
@@ -61,8 +68,8 @@ export { parseUnits, formatUnits } from "./evm/units";
 export {
   readTermsAcknowledged,
   useTermsAcknowledgement,
-} from "./evm/useTermsAcknowledgement";
-export type { UseTermsAcknowledgementResult } from "./evm/useTermsAcknowledgement";
+} from "./useTermsAcknowledgement";
+export type { UseTermsAcknowledgementResult } from "./useTermsAcknowledgement";
 export {
   useNetworkFeeEstimate,
   formatFeeEth,
@@ -71,3 +78,8 @@ export type {
   UseNetworkFeeEstimateResult,
   NetworkFeeDirection,
 } from "./evm/useNetworkFeeEstimate";
+
+// ── Stellar namespace ─────────────────────────────────────────────────────────
+export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
+export { useStellarWallet } from "./stellar/useStellarWallet";
+export type { StellarWalletState } from "./stellar/useStellarWallet";

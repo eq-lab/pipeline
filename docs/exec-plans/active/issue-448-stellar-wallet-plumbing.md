@@ -151,7 +151,7 @@ _None_
 
 ## Implementation Steps
 
-1. **Add dependencies (EXACT pins, no `^`/range).** In
+1. ✅ **Add dependencies (EXACT pins, no `^`/range).** In
    `packages/frontend/package.json` add to `dependencies`:
    `"@creit.tech/stellar-wallets-kit": "2.2.0"` and `"@stellar/stellar-sdk": "15.1.0"`
    — both pinned **exactly** (these are the latest stable versions as of this plan;
@@ -163,7 +163,7 @@ _None_
    `defaultModules` from `@creit.tech/stellar-wallets-kit/modules/utils`. (`allowAllModules`
    does NOT exist in v2.x — do not use it.) Record both resolved versions in the PR.
 
-2. **Env vars** — `packages/frontend/src/lib/env.ts`. Add three keys to the frozen
+2. ✅ **Env vars** — `packages/frontend/src/lib/env.ts`. Add three keys to the frozen
    `ENV` object using the existing `readString` helper with defaults:
    - `STELLAR_NETWORK: readString("VITE_STELLAR_NETWORK", "testnet")`
    - `STELLAR_HORIZON_URL: readString("VITE_STELLAR_HORIZON_URL", "https://horizon-testnet.stellar.org")`
@@ -171,10 +171,10 @@ _None_
    Add a short doc comment per key mirroring the EVM entries. No allowlist validation
    on `STELLAR_NETWORK` (the EVM env keys are not validated either; keep symmetry).
 
-3. **`.env.example`** — append the three vars under a `# Stellar` heading, mirroring
+3. ✅ **`.env.example`** — append the three vars under a `# Stellar` heading, mirroring
    the existing EVM block format, with the testnet defaults inline.
 
-4. **`src/wallet/stellar/chain.ts`** — derive Stellar network config from `ENV`:
+4. ✅ **`src/wallet/stellar/chain.ts`** — derive Stellar network config from `ENV`:
    - Map `ENV.STELLAR_NETWORK` (`"testnet"` | `"mainnet"`) to the kit's `Networks`
      enum (imported from `@creit.tech/stellar-wallets-kit`): `Networks.TESTNET` /
      `Networks.PUBLIC`. In v2.x this enum's string values **are** the network
@@ -187,7 +187,7 @@ _None_
      (`ENV.STELLAR_USDC_ISSUER`). This is the single place env → Stellar config
      translation happens (mirrors `evm/chain.ts`).
 
-5. **`src/wallet/stellar/config.ts`** — initialise the singleton kit once at module
+5. ✅ **`src/wallet/stellar/config.ts`** — initialise the singleton kit once at module
    scope via the static `init` (mirroring `evm/config.ts`'s module-load `createAppKit`).
    The v2.x singleton SDK API uses a static `init` (no `new`), and there is no
    instance to export — consumers call the `StellarWalletsKit` static methods
@@ -213,7 +213,7 @@ _None_
    it is optional/out of scope for this plumbing issue; note it but ship
    `defaultModules()` only.
 
-**Shared terms-gate refactor (steps 5a–5e).** These hoist the existing EVM-scoped
+✅ **Shared terms-gate refactor (steps 5a–5e).** These hoist the existing EVM-scoped
 gate into a chain-agnostic shared gate used by BOTH providers. Do this before wiring
 Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
 
@@ -280,7 +280,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
    rewritten for the single-flag + migration behavior (see Test Strategy).
    `FirstConnectionModal.test.tsx` stays (UI unchanged).
 
-6. **`src/wallet/stellar/mock.ts`** — define Stellar mock-key constants and typed
+6. ✅ **`src/wallet/stellar/mock.ts`** — define Stellar mock-key constants and typed
    readers, reusing the shared primitives from `../evm/mock` (`readMock`, `useMock`,
    `parseAddress`-equivalent, `parseBoolean`, `parseBigInt`/`parseJson`). Note:
    `parseAddress` in `evm/mock.ts` asserts a `0x` prefix and is EVM-specific — add a
@@ -294,7 +294,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
    `EvmWalletProvider` and patches all `pipeline.mock.*` keys, so Stellar keys fan
    out for free. `StellarWalletProvider` should NOT call `installSameTabMockBridge`.
 
-7. **`src/wallet/stellar/useStellarWallet.ts`** — public hook returning
+7. ✅ **`src/wallet/stellar/useStellarWallet.ts`** — public hook returning
    `{ address: string | undefined; isConnected: boolean; connect(): void; disconnect(): void }`.
    - Read `pipeline.mock.wallet.stellar.address` / `.isConnected` via `useMock`.
      Resolve `address`/`isConnected` with the same precedence as EVM: mock address
@@ -323,7 +323,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
      re-export from `./config` — no direct `@creit.tech/stellar-wallets-kit` import in
      the hook beyond types.
 
-8. **`src/wallet/stellar/StellarWalletProvider.tsx`** — lightweight provider. Unlike
+8. ✅ **`src/wallet/stellar/StellarWalletProvider.tsx`** — lightweight provider. Unlike
    EVM it needs no `WagmiProvider`/`QueryClientProvider` (those are EVM-side and the
    shared `QueryClient` lives under `EvmWalletProvider`; Stellar balance reads that
    need Query land in sub-issue 2 and will consume the existing client by being
@@ -334,7 +334,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
    `<EvmWalletProvider>` so it sits within the shared `QueryClientProvider` for
    sub-issue 2.
 
-9. **`src/main.tsx`** — wrap the tree so the single shared gate sits ABOVE both
+9. ✅ **`src/main.tsx`** — wrap the tree so the single shared gate sits ABOVE both
    wallet providers and serves both chains:
    ```tsx
    <WalletGateProvider>
@@ -355,7 +355,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
    serves both. `StellarWalletProvider` still mounts inside `EvmWalletProvider` so it
    sits within the shared `QueryClientProvider` for sub-issue 2.
 
-10. **Barrel — `src/wallet/index.ts`** — export `StellarWalletProvider`,
+10. ✅ **Barrel — `src/wallet/index.ts`** — export `StellarWalletProvider`,
     `useStellarWallet`, and its `StellarWalletState` type. Also export the hoisted
     shared `WalletGateProvider` from `./WalletGateProvider` (it is now consumed by
     `main.tsx`). Re-point any existing re-exports of `WalletGateContext`/
@@ -365,7 +365,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
     `stellar/**` needs). Do not re-export raw Wallets Kit / stellar-sdk types through
     the barrel.
 
-11. **ESLint boundary (Stellar half) — `packages/frontend/eslint.config.js`.** Add a
+11. ✅ **ESLint boundary (Stellar half) — `packages/frontend/eslint.config.js`.** Add a
     new flat-config block mirroring the existing EVM block: `files: ["**/*.{ts,tsx}"]`,
     `ignores: ["src/wallet/stellar/**", "src/lib/env.ts"]`, with
     `no-restricted-imports` patterns `@creit.tech/stellar-wallets-kit`,
@@ -374,7 +374,7 @@ Stellar `connect()` so the hook (step 7) can consume the shared `useWalletGate`.
     `src/wallet/evm/**`; the two blocks are independent so EVM files remain barred
     from Stellar libs and vice versa.)
 
-12. **Docs:**
+12. ✅ **Docs:**
     - `packages/frontend/src/wallet/README.md` — add a "Stellar namespace" section:
       `StellarWalletProvider`, `useStellarWallet` API table, the new
       `pipeline.mock.wallet.stellar.*` key table + a DevTools snippet, and a note on
