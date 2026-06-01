@@ -93,6 +93,31 @@ export const ENV = Object.freeze({
     "VITE_WALLETCONNECT_PROJECT_ID",
     "replace-me",
   ),
+
+  /**
+   * Stellar network identifier. Accepts `"testnet"` (default) or `"mainnet"`.
+   * Maps to the StellarWalletsKit `Networks` enum value at runtime.
+   */
+  STELLAR_NETWORK: readString("VITE_STELLAR_NETWORK", "testnet"),
+
+  /**
+   * Stellar Horizon server URL used for balance and account queries (sub-issue 2).
+   * Defaults to the public Stellar testnet Horizon instance.
+   */
+  STELLAR_HORIZON_URL: readString(
+    "VITE_STELLAR_HORIZON_URL",
+    "https://horizon-testnet.stellar.org",
+  ),
+
+  /**
+   * Stellar USDC issuer address. Defaults to Circle's official testnet issuer.
+   * The mainnet issuer (`GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`)
+   * must be set via env when `VITE_STELLAR_NETWORK=mainnet`.
+   */
+  STELLAR_USDC_ISSUER: readString(
+    "VITE_STELLAR_USDC_ISSUER",
+    "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+  ),
 });
 
 /**

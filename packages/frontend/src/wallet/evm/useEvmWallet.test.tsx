@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { EvmWalletProvider } from "./EvmWalletProvider";
+import { WalletGateProvider } from "../WalletGateProvider";
 import { useEvmWallet } from "./useEvmWallet";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
@@ -83,8 +84,13 @@ vi.mock("../../components/FirstConnectionModal", () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// WalletGateProvider is now above EvmWalletProvider in the tree.
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <EvmWalletProvider>{children}</EvmWalletProvider>;
+  return (
+    <WalletGateProvider>
+      <EvmWalletProvider>{children}</EvmWalletProvider>
+    </WalletGateProvider>
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -174,9 +180,9 @@ describe("useEvmWallet — connect() with terms gate", () => {
     expect(mockOpen).not.toHaveBeenCalled();
   });
 
-  it("calls useAppKit().open() when the ack flag is already set", () => {
-    // Simulate pre-existing acknowledgement (no realAddress → use pending key).
-    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+  it("calls useAppKit().open() when the single flat ack flag is already set", () => {
+    // Simulate pre-existing acknowledgement — new flat chain-agnostic key.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
 
     const { result } = renderHook(() => useEvmWallet(), { wrapper });
 
@@ -185,6 +191,18 @@ describe("useEvmWallet — connect() with terms gate", () => {
     // Gate was NOT opened.
     expect(capturedModalProps.open).toBe(false);
     // AppKit was called directly.
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls useAppKit().open() when ack is set via the legacy pending key (migration)", () => {
+    // Legacy pending key — migration back-fills the new flat key.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+
+    act(() => result.current.connect());
+
+    expect(capturedModalProps.open).toBe(false);
     expect(mockOpen).toHaveBeenCalledTimes(1);
   });
 
@@ -221,5 +239,22 @@ describe("useEvmWallet — connect() with terms gate", () => {
     // Still open, no additional side effects.
     expect(capturedModalProps.open).toBe(true);
     expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it("Continue on gate writes the flat ack flag and calls AppKit open()", () => {
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+
+    act(() => result.current.connect());
+    expect(capturedModalProps.open).toBe(true);
+
+    act(() => mockModalOnContinue());
+
+    // Modal should be closed and AppKit called.
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+    // Flat ack key should have been written.
+    expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe(
+      "true",
+    );
   });
 });
