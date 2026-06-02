@@ -25,9 +25,10 @@ use loan_metadata::{
 use loan_registry_reader::LoanRegistryReader;
 use mappers::ContractLogMapper;
 use parsers::{
-    parse_deposit_requested, parse_loan_closed, parse_loan_defaulted, parse_loan_drawn,
-    parse_payment_recorded, parse_request_claimed, parse_staking_deposit, parse_staking_withdraw,
-    parse_withdrawal_requested, parse_yield_minted,
+    parse_deposit_requested, parse_economics_amended, parse_loan_ccr_updated, parse_loan_closed,
+    parse_loan_defaulted, parse_loan_drawn, parse_loan_location_updated, parse_loan_rolled_over,
+    parse_loan_status_updated, parse_payment_recorded, parse_request_claimed,
+    parse_staking_deposit, parse_staking_withdraw, parse_withdrawal_requested, parse_yield_minted,
 };
 use poller::EvmEventPollerBuilder;
 
@@ -135,6 +136,11 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
             .or_else(|| parse_loan_defaulted(log))
             .or_else(|| parse_loan_closed(log))
             .or_else(|| parse_payment_recorded(log))
+            .or_else(|| parse_loan_status_updated(log))
+            .or_else(|| parse_loan_ccr_updated(log))
+            .or_else(|| parse_loan_location_updated(log))
+            .or_else(|| parse_loan_rolled_over(log))
+            .or_else(|| parse_economics_amended(log))
             .map(|ev| -> Box<dyn shared::log_mapper::LogMapper> {
                 Box::new(LoanEventMapper::new(
                     ev,

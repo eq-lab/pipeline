@@ -3,6 +3,8 @@ use serde_json::json;
 
 use shared::events::ContractLog;
 
+use crate::indexer::loan_mapper::loan_status_name;
+
 sol! {
     event DepositRequested(uint256 indexed requestId, address indexed user, uint256 amount);
     event WithdrawalRequested(address indexed withdrawer, uint256 indexed requestId, uint256 amount, uint256 queued);
@@ -23,6 +25,9 @@ mod loan_registry {
         // LoanStatus:    0=Performing, 1=WatchList, 2=Default, 3=Closed
         // ClosureReason: 0=None, 1=ScheduledMaturity, 2=EarlyRepayment, 3=Default, 4=OtherWriteDown
         event LoanDrawn(uint256 indexed loanId, address indexed holder, string indexed metadataURI);
+        event StatusUpdated(uint256 indexed loanId, uint8 indexed newStatus);
+        event CCRUpdated(uint256 indexed loanId, uint32 newCcr);
+        event LocationUpdated(uint256 indexed loanId, string indexed newLocation);
         event LoanDefaulted(uint256 indexed loanId, uint32 ccrBps);
         event LoanClosed(uint256 indexed loanId, uint8 indexed reason);
         struct RepaymentData {
@@ -35,6 +40,8 @@ mod loan_registry {
             uint256 oetAlloc;
         }
         event PaymentRecorded(uint256 indexed tokenId, uint256 indexed repaymentId, RepaymentData repaymentData);
+        event LoanRolledOver(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
+        event EconomicsAmended(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
     }
 }
 
@@ -246,6 +253,99 @@ pub fn parse_payment_recorded(log: &Log) -> Option<ContractLog> {
             "mgmt_fee": rd.mgmtFee.to_string(),
             "perf_fee": rd.perfFee.to_string(),
             "oet_alloc": rd.oetAlloc.to_string(),
+        }),
+    })
+}
+
+pub fn parse_loan_status_updated(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::StatusUpdated::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "LoanStatusUpdated".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "status": loan_status_name(decoded.newStatus),
+        }),
+    })
+}
+
+pub fn parse_loan_ccr_updated(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::CCRUpdated::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "LoanCCRUpdated".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "new_ccr": decoded.newCcr,
+        }),
+    })
+}
+
+pub fn parse_loan_location_updated(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::LocationUpdated::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "LoanLocationUpdated".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            // newLocation is string indexed — topic carries keccak256 hash, not the value.
+            // The canonical string is recovered from mutableLoanData via block-pinned eth_call.
+            "loan_id": decoded.loanId.to_string(),
+        }),
+    })
+}
+
+pub fn parse_loan_rolled_over(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::LoanRolledOver::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "LoanRolledOver".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "new_rate": decoded.newRate,
+            "new_maturity_timestamp": decoded.newMaturityTimestamp,
+        }),
+    })
+}
+
+pub fn parse_economics_amended(log: &Log) -> Option<ContractLog> {
+    let decoded = loan_registry::EconomicsAmended::decode_log(log.as_ref(), true).ok()?;
+    let (contract_address, block_number, tx_hash, log_index) = extract_log_meta(log)?;
+
+    Some(ContractLog {
+        contract_address,
+        event_name: "EconomicsAmended".to_owned(),
+        block_number,
+        tx_hash,
+        log_index,
+        block_timestamp: 0,
+        params: json!({
+            "loan_id": decoded.loanId.to_string(),
+            "new_rate": decoded.newRate,
+            "new_maturity_timestamp": decoded.newMaturityTimestamp,
         }),
     })
 }

@@ -246,13 +246,15 @@ pub async fn maybe_fetch_refreshed_json(
 /// - `LoanDrawn`: three reads (immutableLoanData + mutableLoanData@block +
 ///   cumulativeRepaymentData@block) + IPFS fetch, then one `contract_logs` insert with
 ///   a fully populated `{loan_id, event, snapshot}` params JSONB.
-/// - Lifecycle events (`PaymentRecorded`, `LoanDefaulted`, `LoanClosed`): fetch the most
-///   recent prior snapshot from `contract_logs`, carry forward IPFS + immutable fields,
-///   overwrite mutable fields from block-pinned eth_calls, then insert.
+/// - Lifecycle events (`PaymentRecorded`, `LoanDefaulted`, `LoanClosed`,
+///   `LoanStatusUpdated`, `LoanCCRUpdated`, `LoanLocationUpdated`,
+///   `LoanRolledOver`, `EconomicsAmended`): fetch the most recent prior snapshot from
+///   `contract_logs`, carry forward IPFS + immutable fields, overwrite mutable fields
+///   from block-pinned eth_calls, then insert.
 ///
-/// Note: `_updateMutable` on the contract is silent (emits no events). The indexer
-/// cannot detect operator mutations to status/CCR/location/URI. Snapshots only refresh
-/// on the 4 emitted events: LoanDrawn, PaymentRecorded, LoanDefaulted, LoanClosed.
+/// All 9 emitted events are surfaced: LoanDrawn, StatusUpdated (via LoanStatusUpdated),
+/// CCRUpdated (via LoanCCRUpdated), LocationUpdated (via LoanLocationUpdated),
+/// LoanDefaulted, LoanClosed, PaymentRecorded, LoanRolledOver, EconomicsAmended.
 /// The on-chain `metadataURI` field is mutable — on lifecycle events, the indexer
 /// compares the on-chain URI against the prior snapshot's `metadata_uri_onchain` and
 /// re-fetches IPFS if it changed.

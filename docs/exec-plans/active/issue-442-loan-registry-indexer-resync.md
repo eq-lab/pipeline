@@ -615,3 +615,45 @@ New: `nextEconomicsEpochsId, nextRepaymentId, status, ccrBps, lastReportedCCRTim
 - `cargo clippy --all -- -D warnings`: 0 errors, 0 warnings
 - `npx tsx scripts/lint-docs.ts`: 0 errors, 29 warnings (pre-existing)
 - `cargo test --all`: 74 tests passed, 0 failed
+
+## Pass 8 (2026-06-02): Restore 3 deleted parsers + add 2 new parsers — now 9 events total
+
+Code review after Pass 5 revealed that 5 loan-registry events were missing from the indexer.
+
+### Issue
+
+Pass 5 deleted `StatusUpdated`, `CCRUpdated`, and `LocationUpdated` parsers based on an
+incorrect read that `_updateMutable` was silent. In fact, the current contract at
+`LoanRegistryUpgradeable.sol` lines 178–180 explicitly emits all three from `_updateMutable`.
+
+Two additional events (`LoanRolledOver`, `EconomicsAmended`) were genuinely new since Pass 5,
+emitted from `_rollover` (line 230) and `_amendEconomics` (line 245).
+
+### Changes
+
+- `packages/worker/src/indexer/parsers.rs` — added 5 event declarations to the `sol!` block
+  (`StatusUpdated`, `CCRUpdated`, `LocationUpdated`, `LoanRolledOver`, `EconomicsAmended`) and
+  5 new parser functions (`parse_loan_status_updated`, `parse_loan_ccr_updated`,
+  `parse_loan_location_updated`, `parse_loan_rolled_over`, `parse_economics_amended`).
+  Imports `loan_status_name` from `loan_mapper` for the status parser.
+- `packages/worker/src/indexer/mod.rs` — added 5 new parsers to the loan-registry
+  `.or_else` dispatch chain and updated the import list.
+- `packages/worker/src/indexer/loan_mapper.rs` — updated the doc-comment to reflect 9 events;
+  no dispatch code change needed (all new events fall through to `snapshot_for_lifecycle`).
+- `packages/shared/src/contract_logs_repo.rs` — extended all three `event_name IN (...)`
+  SQL filters to include the 5 new event names.
+- `packages/worker/tests/parsers.rs` — added 5 new decode tests (one per new parser).
+- `docs/product-specs/loans-data.md` — updated "Key events" to list all 9 emitted events.
+- `ARCHITECTURE.md` — updated the worker event-listener bullet to list all indexed events.
+
+### Result
+
+All 9 events emitted by `LoanRegistryUpgradeable` are now surfaced. Mid-life status, CCR,
+location, and maturity changes are observable. The "silent mutations" caveat from Pass 5 no
+longer applies.
+
+### Gate results
+
+- `cargo clippy --all-targets --all -- -D warnings`: 0 errors, 0 warnings
+- `npx tsx scripts/lint-docs.ts`: 0 errors, 30 warnings (pre-existing)
+- `cargo test --all`: 88 tests passed, 0 failed (was 83; +5 new decode tests)

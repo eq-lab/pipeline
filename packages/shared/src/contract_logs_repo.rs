@@ -100,7 +100,17 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN ('LoanDrawn','LoanDefaulted','LoanClosed','PaymentRecorded')
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
                AND block_timestamp <= $3
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
@@ -154,7 +164,17 @@ impl ContractLogsRepo {
                  params->'snapshot' AS snapshot
              FROM contract_logs
              WHERE chain_id = $1
-               AND event_name IN ('LoanDrawn','LoanDefaulted','LoanClosed','PaymentRecorded')
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
                AND block_timestamp <= $2
              ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
         )
@@ -221,7 +241,17 @@ impl ContractLogsRepo {
              FROM contract_logs
              WHERE chain_id = $1
                AND contract_address = $2
-               AND event_name IN ('LoanDrawn','LoanDefaulted','LoanClosed','PaymentRecorded')
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
                AND (params->>'loan_id')::numeric = $3
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",

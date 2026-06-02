@@ -105,22 +105,28 @@ enum ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWrit
 enum LocationType  { Vessel, Warehouse, TankFarm, Other }
 ```
 
-**Key events**
+**9 emitted events**
 
 ```solidity
-event LoanMinted(uint256 indexed tokenId, address indexed originator, ImmutableLoanData data);
-event LoanStatusChanged(uint256 indexed tokenId, LoanStatus oldStatus, LoanStatus newStatus);
-event LocationUpdated(uint256 indexed tokenId, LocationUpdate newLocation);
-event MaturityExtended(uint256 indexed tokenId, uint256 newMaturityDate);
-event RepaymentRecorded(
-    uint256 indexed tokenId,
-    uint256 offtakerAmount,
-    uint256 seniorPrincipal,
-    uint256 seniorInterest,
-    uint256 equityAmount
-);
-event LoanClosed(uint256 indexed tokenId, ClosureReason reason);
+// Draw
+event LoanDrawn(uint256 indexed loanId, address indexed holder, string indexed metadataURI);
+// _updateMutable — emitted on every mutable-data update
+event StatusUpdated(uint256 indexed loanId, LoanStatus indexed newStatus);
+event CCRUpdated(uint256 indexed loanId, uint32 newCcr);
+event LocationUpdated(uint256 indexed loanId, string indexed newLocation);
+// Terminal / negative-credit events
+event LoanDefaulted(uint256 indexed loanId, uint32 ccr);
+event LoanClosed(uint256 indexed loanId, ClosureReason indexed reason);
+// Repayment
+event PaymentRecorded(uint256 indexed tokenId, uint256 indexed repaymentId, RepaymentData repaymentData);
+// Maturity management
+event LoanRolledOver(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
+event EconomicsAmended(uint256 indexed loanId, uint32 newRate, uint64 newMaturityTimestamp);
 ```
+
+All 9 events are surfaced by the indexer. Mid-life status, CCR, location, and maturity
+changes are observable; the "silent mutations" caveat that applied to earlier indexer
+passes no longer applies.
 
 ---
 
