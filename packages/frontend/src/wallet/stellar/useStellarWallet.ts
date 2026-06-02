@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StellarWalletsKit } from "./config";
+import { networkPassphrase } from "./chain";
 import { useMockStellarAddress, useMockStellarIsConnected } from "./mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
 import { useWalletGate } from "../WalletGateContext";
@@ -42,6 +43,27 @@ export interface StellarWalletState {
    * - When a mock address is set: no-op + console warning (dev affordance).
    */
   disconnect(): void;
+  /**
+   * Sign a transaction XDR with the connected wallet.
+   *
+   * Delegates to `StellarWalletsKit.signTransaction` using the connected
+   * address and the configured network passphrase as defaults. Both can be
+   * overridden via `opts`.
+   *
+   * Mock path: when `pipeline.mock.wallet.stellar.address` is set in
+   * localStorage, `signTransaction` **rejects** with a clear error message —
+   * real Soroban signing is not mockable at the kit layer. The Blend write
+   * hooks mock at their own result-level keys instead, so `signTransaction`
+   * is never called on the mock path.
+   *
+   * @param xdrStr - base64 XDR of the transaction envelope to sign.
+   * @param opts - optional overrides for `networkPassphrase` and `address`.
+   * @returns `{ signedTxXdr, signerAddress? }` on success.
+   */
+  signTransaction(
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ): Promise<{ signedTxXdr: string; signerAddress?: string }>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -126,5 +148,31 @@ export function useStellarWallet(): StellarWalletState {
     void StellarWalletsKit.disconnect();
   }, [mockAddress]);
 
-  return { address, isConnected, connect, disconnect };
+  const signTransaction = useCallback(
+    async (
+      xdrStr: string,
+      opts?: { networkPassphrase?: string; address?: string },
+    ): Promise<{ signedTxXdr: string; signerAddress?: string }> => {
+      // Mock path: signing a real Soroban tx is not mockable at the kit layer.
+      // The Blend hooks mock at their own result-level keys — signTransaction
+      // should never be reached on the mock path, but guard clearly anyway.
+      if (mockAddress !== undefined) {
+        return Promise.reject(
+          new Error(
+            "[stellar mock] signTransaction is not mockable; use the Blend hook mock keys instead",
+          ),
+        );
+      }
+
+      const result = await StellarWalletsKit.signTransaction(xdrStr, {
+        networkPassphrase:
+          opts?.networkPassphrase ?? (networkPassphrase as string),
+        address: opts?.address ?? address,
+      });
+      return result;
+    },
+    [mockAddress, address],
+  );
+
+  return { address, isConnected, connect, disconnect, signTransaction };
 }

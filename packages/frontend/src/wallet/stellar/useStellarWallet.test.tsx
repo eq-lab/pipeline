@@ -8,10 +8,16 @@ import { WalletGateProvider } from "../WalletGateProvider";
 // vi.hoisted ensures the mock functions are available when vi.mock factory runs,
 // because vi.mock is hoisted to the top of the file by Vitest's transform.
 
-const { mockAuthModal, mockGetAddress, mockDisconnect } = vi.hoisted(() => ({
+const {
+  mockAuthModal,
+  mockGetAddress,
+  mockDisconnect,
+  mockSignTransactionKit,
+} = vi.hoisted(() => ({
   mockAuthModal: vi.fn(),
   mockGetAddress: vi.fn(),
   mockDisconnect: vi.fn(),
+  mockSignTransactionKit: vi.fn(),
 }));
 
 vi.mock("./config", () => ({
@@ -19,6 +25,7 @@ vi.mock("./config", () => ({
     authModal: mockAuthModal,
     getAddress: mockGetAddress,
     disconnect: mockDisconnect,
+    signTransaction: mockSignTransactionKit,
   },
 }));
 
@@ -286,5 +293,65 @@ describe("useStellarWallet — disconnect()", () => {
     expect(mockDisconnect).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledOnce();
     consoleSpy.mockRestore();
+  });
+});
+
+describe("useStellarWallet — signTransaction()", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockGetAddress.mockClear();
+    mockAuthModal.mockClear();
+    mockDisconnect.mockClear();
+    mockSignTransactionKit.mockClear();
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("real path: delegates to StellarWalletsKit.signTransaction with correct passphrase and address", async () => {
+    // Pre-set terms so connect() calls authModal directly.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    mockAuthModal.mockResolvedValue({ address: STELLAR_ADDR });
+    mockSignTransactionKit.mockResolvedValue({
+      signedTxXdr: "signed-xdr",
+      signerAddress: STELLAR_ADDR,
+    });
+
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+
+    // Connect to get an address.
+    act(() => result.current.connect());
+    await waitFor(() => expect(result.current.address).toBe(STELLAR_ADDR));
+
+    // Call signTransaction.
+    const signResult = await act(() =>
+      result.current.signTransaction("unsigned-xdr"),
+    );
+
+    expect(mockSignTransactionKit).toHaveBeenCalledOnce();
+    const firstCall = mockSignTransactionKit.mock.calls[0];
+    const calledXdr = firstCall?.[0];
+    const calledOpts = firstCall?.[1];
+    expect(calledXdr).toBe("unsigned-xdr");
+    expect(typeof calledOpts?.networkPassphrase).toBe("string");
+    expect(signResult).toEqual({
+      signedTxXdr: "signed-xdr",
+      signerAddress: STELLAR_ADDR,
+    });
+  });
+
+  it("mock path: signTransaction rejects with the documented mock error", async () => {
+    localStorage.setItem("pipeline.mock.wallet.stellar.address", STELLAR_ADDR);
+
+    const { result } = renderHook(() => useStellarWallet(), { wrapper });
+
+    await expect(
+      act(() => result.current.signTransaction("some-xdr")),
+    ).rejects.toThrow("signTransaction is not mockable");
+
+    // Kit.signTransaction should NOT be called on mock path.
+    expect(mockSignTransactionKit).not.toHaveBeenCalled();
   });
 });

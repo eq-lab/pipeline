@@ -17,7 +17,7 @@
  * The page is intentionally NOT linked from `TopBar`; it is a developer /
  * manual-QA tool only.
  */
-import React from "react";
+import React, { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -28,6 +28,10 @@ import {
   useEvmToken,
   useApproval,
   isMockKeyPresent,
+  useStellarWallet,
+  useBlendDeposit,
+  useBlendWithdraw,
+  useBlendPosition,
 } from "@/wallet";
 import {
   SCENARIOS,
@@ -42,18 +46,21 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type TestTab = "status" | "mocks";
+type TestTab = "status" | "mocks" | "blend";
 
 const TABS = [
   { id: "status", label: "Status" },
   { id: "mocks", label: "Mocks" },
+  { id: "blend", label: "Blend" },
 ];
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/test")({
   validateSearch: (raw): { tab: TestTab } => {
-    const tab = raw.tab === "mocks" ? "mocks" : "status";
+    const t = raw.tab;
+    const tab: TestTab =
+      t === "mocks" ? "mocks" : t === "blend" ? "blend" : "status";
     return { tab };
   },
   component: TestPage,
@@ -438,6 +445,146 @@ function MocksTab(): React.JSX.Element {
   );
 }
 
+// ── BlendTab ──────────────────────────────────────────────────────────────────
+
+/**
+ * Developer / manual-QA tab for the Blend Soroban integration.
+ *
+ * Wires `useBlendDeposit`, `useBlendWithdraw`, and `useBlendPosition` to
+ * the connected Stellar wallet. Not linked from TopBar; dev-only surface.
+ *
+ * Amount input: raw 7-decimal bigint string (1 XLM = "10000000").
+ * The acceptance test asset is XLM (reserve default).
+ */
+function BlendTab(): React.JSX.Element {
+  const [rawAmount, setRawAmount] = useState("10000000");
+
+  const { address: stellarAddress, isConnected: stellarConnected } =
+    useStellarWallet();
+
+  const deposit = useBlendDeposit();
+  const withdraw = useBlendWithdraw();
+  const {
+    position,
+    formattedPosition,
+    isLoading: posLoading,
+    error: posError,
+  } = useBlendPosition();
+
+  function handleDeposit() {
+    try {
+      const amount = BigInt(rawAmount);
+      deposit.write(amount);
+    } catch {
+      // rawAmount is not a valid bigint — ignore; user sees no state change.
+    }
+  }
+
+  function handleWithdraw() {
+    try {
+      const amount = BigInt(rawAmount);
+      withdraw.write(amount);
+    } catch {
+      // same
+    }
+  }
+
+  return (
+    <>
+      {/* ── 1. Stellar wallet ────────────────────────────────────────── */}
+      <Section title="Stellar Wallet">
+        <KeyValueRow label="address" value={stellarAddress} />
+        <KeyValueRow label="isConnected" value={String(stellarConnected)} />
+      </Section>
+
+      {/* ── 2. Position ──────────────────────────────────────────────── */}
+      <Section title="Blend Position (useBlendPosition — XLM collateral)">
+        <KeyValueRow label="isLoading" value={String(posLoading)} />
+        <KeyValueRow label="error" value={posError?.message ?? null} />
+        <KeyValueRow
+          label="position (raw 7dp)"
+          value={position !== undefined ? String(position) : undefined}
+        />
+        <KeyValueRow label="position (formatted)" value={formattedPosition} />
+      </Section>
+
+      {/* ── 3. Deposit ───────────────────────────────────────────────── */}
+      <Section title="Deposit (useBlendDeposit — SupplyCollateral)">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label
+            htmlFor="blend-amount"
+            className="text-sm text-[color:var(--color-pipeline-ink-muted)]"
+          >
+            Amount (raw 7-decimal bigint, e.g. 10000000 = 1 XLM):
+          </label>
+          <input
+            id="blend-amount"
+            type="text"
+            value={rawAmount}
+            onChange={(e) => setRawAmount(e.target.value)}
+            className="rounded border border-[color:var(--color-pipeline-line)] bg-[var(--color-pipeline-paper)] px-2 py-1 font-mono text-sm text-[color:var(--color-pipeline-ink)]"
+          />
+        </div>
+        <KeyValueRow label="isPending" value={String(deposit.isPending)} />
+        <KeyValueRow label="isSuccess" value={String(deposit.isSuccess)} />
+        <KeyValueRow label="error" value={deposit.error?.message ?? null} />
+        <KeyValueRow
+          label="data"
+          value={deposit.data ? JSON.stringify(deposit.data) : undefined}
+        />
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={handleDeposit}
+            disabled={deposit.isPending}
+          >
+            Deposit
+          </Button>
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={() => deposit.reset()}
+          >
+            Reset
+          </Button>
+        </div>
+      </Section>
+
+      {/* ── 4. Withdraw ──────────────────────────────────────────────── */}
+      <Section title="Withdraw (useBlendWithdraw — WithdrawCollateral)">
+        <KeyValueRow label="isPending" value={String(withdraw.isPending)} />
+        <KeyValueRow label="isSuccess" value={String(withdraw.isSuccess)} />
+        <KeyValueRow label="error" value={withdraw.error?.message ?? null} />
+        <KeyValueRow
+          label="data"
+          value={withdraw.data ? JSON.stringify(withdraw.data) : undefined}
+        />
+        <div className="mt-3 flex gap-2">
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={handleWithdraw}
+            disabled={withdraw.isPending}
+          >
+            Withdraw
+          </Button>
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            onClick={() => withdraw.reset()}
+          >
+            Reset
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-[color:var(--color-pipeline-ink-muted)]">
+          Shares the amount input above.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 // ── Page component ────────────────────────────────────────────────────────────
 
 function TestPage(): React.JSX.Element {
@@ -455,7 +602,13 @@ function TestPage(): React.JSX.Element {
 
         <SegmentedTabs tabs={TABS} activeId={tab} onSelect={setTab} />
 
-        {tab === "status" ? <StatusTab /> : <MocksTab />}
+        {tab === "status" ? (
+          <StatusTab />
+        ) : tab === "blend" ? (
+          <BlendTab />
+        ) : (
+          <MocksTab />
+        )}
       </main>
     </div>
   );

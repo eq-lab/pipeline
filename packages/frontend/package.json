@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@blend-capital/blend-sdk": "^3.2.2",
     "@creit.tech/stellar-wallets-kit": "2.2.0",
     "@pipeline/ui": "workspace:^",
     "@reown/appkit": "^1.8.19",

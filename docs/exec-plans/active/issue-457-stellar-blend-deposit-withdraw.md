@@ -171,19 +171,21 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
 
 ## Implementation Steps
 
-1. **Dependency.** Add `@blend-capital/blend-sdk` to `packages/frontend/package.json`
+1. ✅ **Dependency.** Add `@blend-capital/blend-sdk` to `packages/frontend/package.json`
    (`yarn workspace @pipeline/frontend add @blend-capital/blend-sdk`). Verify it
    resolves against the existing `@stellar/stellar-sdk@15.1.0`; if it forces a
    different stellar-sdk version, reconcile and note in
    `docs/exec-plans/tech-debt-tracker.md`.
+   _Deviation: blend-sdk@3.2.2 ships its own @stellar/stellar-sdk@14.4.3 internally.
+   Noted in TD-11. The direct 15.1.0 is still used for the Soroban RPC lifecycle._
 
-2. **ESLint boundary — `packages/frontend/eslint.config.js`.** In the block that
+2. ✅ **ESLint boundary — `packages/frontend/eslint.config.js`.** In the block that
    restricts `@creit.tech/stellar-wallets-kit` / `@stellar/stellar-sdk` to
    `src/wallet/stellar/**` + `src/lib/env.ts` (currently lines ~70–90), add
    `"@blend-capital/blend-sdk"` and `"@blend-capital/blend-sdk/*"` to the
    `patterns` array so blend-sdk is confined to the same boundary.
 
-3. **`src/wallet/stellar/chain.ts`** — add Soroban/Blend constants from `ENV`:
+3. ✅ **`src/wallet/stellar/chain.ts`** — add Soroban/Blend constants from `ENV`:
    - `export const sorobanRpcUrl: string = ENV.STELLAR_RPC_URL;`
    - `export const blendPoolId: string = ENV.STELLAR_BLEND_POOL_ID;`
    - `export const blendUsdcId: string = ENV.STELLAR_BLEND_USDC_ID;`
@@ -193,7 +195,7 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
      `networkPassphrase`). Confirm whether `opts: { allowHttp: ... }` is needed for
      the public testnet RPC (it is HTTPS, so no).
 
-4. **`src/wallet/stellar/blendPool.ts`** — new internal helper module (the only
+4. ✅ **`src/wallet/stellar/blendPool.ts`** — new internal helper module (the only
    place that imports `@blend-capital/blend-sdk` and `@stellar/stellar-sdk`'s
    `rpc` namespace). Exports:
    - `buildSubmitOpXdr({ poolId, from, reserveId, amount, requestType }): string`
@@ -218,7 +220,7 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
    - Full JSDoc header (mirror the other stellar modules) documenting the flow,
      the Soroban-vs-Horizon distinction, and the 7-decimal amount convention.
 
-5. **`src/wallet/stellar/useStellarWallet.ts`** — extend `StellarWalletState` with
+5. ✅ **`src/wallet/stellar/useStellarWallet.ts`** — extend `StellarWalletState` with
    `signTransaction(xdr: string, opts?: { networkPassphrase?: string; address?: string }): Promise<{ signedTxXdr: string; signerAddress?: string }>`.
    Implement by delegating to `StellarWalletsKit.signTransaction` (imported from
    `./config`). Default `networkPassphrase` to `networkPassphrase` from `./chain`
@@ -227,14 +229,14 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
    the Blend hook mock keys instead"`) — document it. Update the JSDoc and the
    `StellarWalletState` interface comment.
 
-6. **`src/wallet/stellar/mock.ts`** — add `STELLAR_MOCK_KEYS` entries:
+6. ✅ **`src/wallet/stellar/mock.ts`** — add `STELLAR_MOCK_KEYS` entries:
    - `blendDeposit: "pipeline.mock.wallet.stellar.blend.deposit"` (JSON `{ hash }`),
    - `blendWithdraw: "pipeline.mock.wallet.stellar.blend.withdraw"` (JSON `{ hash }`),
    - `blendPosition: "pipeline.mock.wallet.stellar.blend.position"` (raw bigint
      string, the supplied collateral for the target reserve).
    Reuse `parseJson` / `parseBigInt` / `readMock` / `useMock` from `../evm/mock`.
 
-7. **`src/wallet/stellar/useBlendDeposit.ts` / `useBlendWithdraw.ts`** — write
+7. ✅ **`src/wallet/stellar/useBlendDeposit.ts` / `useBlendWithdraw.ts`** — write
    hooks mirroring `evm/useDepositManager.ts` (`useRequestDeposit`) conventions:
    - Return `{ write(amount: bigint, reserveId?: string), data: { hash } | undefined,
      isPending, isSuccess, error, reset }`. Default `reserveId` to `blendXlmId`
@@ -255,7 +257,7 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
      `useBlendSubmit(requestType)` to avoid duplication, exporting the two named
      hooks as thin wrappers.
 
-8. **`src/wallet/stellar/useBlendPosition.ts`** — read hook mirroring
+8. ✅ **`src/wallet/stellar/useBlendPosition.ts`** — read hook mirroring
    `useStellarToken` (TanStack Query + mock fast-path):
    - `useBlendPosition(reserveId?: string)` → `{ position: bigint | undefined,
      formattedPosition: string | undefined, refetch, isLoading, error }`.
@@ -267,20 +269,20 @@ _Both resolved by the user during planning (2026-06-02) — see "Resolved decisi
    - `formattedPosition`: scale the raw `bigint` by 1e7 to a decimal display
      string (Stellar 7 decimals).
 
-9. **Barrel — `src/wallet/index.ts`** — add to the Stellar namespace section:
+9. ✅ **Barrel — `src/wallet/index.ts`** — add to the Stellar namespace section:
    `useBlendDeposit`, `useBlendWithdraw`, `useBlendPosition` and their result
    types. Do **not** re-export raw blend-sdk / stellar-sdk types through the barrel.
 
-10. **Tests** (see Test Strategy) — `blendPool.test.ts`, `useBlendDeposit.test.tsx`,
+10. ✅ **Tests** (see Test Strategy) — `blendPool.test.ts`, `useBlendDeposit.test.tsx`,
     `useBlendWithdraw.test.tsx`, `useBlendPosition.test.tsx`, and extend
     `useStellarWallet.test.tsx` for the new `signTransaction` method.
 
-11. **Docs** — `src/wallet/README.md` (Stellar namespace: new hooks API, new mock
+11. ✅ **Docs** — `src/wallet/README.md` (Stellar namespace: new hooks API, new mock
     keys, blend-sdk added to the boundary) and `docs/frontend/hooks.md` (rows for
     `useBlendDeposit`, `useBlendWithdraw`, `useBlendPosition`; update the
     `useStellarWallet` row to mention `signTransaction`).
 
-12. **Full gate before hand-back:**
+12. ✅ **Full gate before hand-back:**
     `yarn workspace @pipeline/frontend lint` (confirms the blend-sdk boundary),
     `yarn workspace @pipeline/frontend build`,
     `yarn workspace @pipeline/frontend test`, and

@@ -28,8 +28,8 @@ rule enforces two independent boundaries:
 
 - **EVM boundary**: `wagmi`, `viem`, `@reown/appkit`, and `@tanstack/react-query`
   are only importable from `src/wallet/evm/**` or `src/wallet/stellar/**`.
-- **Stellar boundary**: `@creit.tech/stellar-wallets-kit` and
-  `@stellar/stellar-sdk` are only importable from `src/wallet/stellar/**`.
+- **Stellar boundary**: `@creit.tech/stellar-wallets-kit`, `@stellar/stellar-sdk`,
+  and `@blend-capital/blend-sdk` are only importable from `src/wallet/stellar/**`.
 
 ## Public API
 
@@ -58,6 +58,9 @@ import {
   StellarWalletProvider,
   useStellarWallet,
   useStellarToken,
+  useBlendDeposit,
+  useBlendWithdraw,
+  useBlendPosition,
   // Utilities
   isMockKeyPresent,
 } from "@/wallet";
@@ -743,15 +746,17 @@ covers all `pipeline.mock.*` keys.
 ### `useStellarWallet()`
 
 ```ts
-const { address, isConnected, connect, disconnect } = useStellarWallet();
+const { address, isConnected, connect, disconnect, signTransaction } =
+  useStellarWallet();
 ```
 
-| Field          | Type                  | Description                                          |
-| -------------- | --------------------- | ---------------------------------------------------- |
-| `address`      | `string \| undefined` | Stellar public key (G… strkey), or `undefined`       |
-| `isConnected`  | `boolean`             | True when a Stellar wallet is connected (or mocked)  |
-| `connect()`    | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated) |
-| `disconnect()` | `() => void`          | Disconnects the Stellar wallet and clears state      |
+| Field                         | Type                  | Description                                                   |
+| ----------------------------- | --------------------- | ------------------------------------------------------------- |
+| `address`                     | `string \| undefined` | Stellar public key (G… strkey), or `undefined`                |
+| `isConnected`                 | `boolean`             | True when a Stellar wallet is connected (or mocked)           |
+| `connect()`                   | `() => void`          | Opens the StellarWalletsKit auth modal (terms-gated)          |
+| `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state               |
+| `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below) |
 
 **Terms gate:** `connect()` checks the shared chain-agnostic
 `pipeline.wallet.termsAcknowledged` flag. If absent, the `FirstConnectionModal`
@@ -759,6 +764,13 @@ is shown before the kit auth modal opens.
 
 **Mock path:** when `pipeline.mock.wallet.stellar.address` is set, `connect()`
 and `disconnect()` are no-ops (dev affordance; gate is bypassed).
+`signTransaction()` rejects with a clear error on the mock path — Blend hooks
+mock at their own result-level keys instead.
+
+**`signTransaction(xdrStr, opts?)`** delegates to `StellarWalletsKit.signTransaction`
+using the connected address and the configured network passphrase as defaults.
+Returns `{ signedTxXdr: string, signerAddress?: string }`. Used internally by
+the Blend write hooks.
 
 ### `useStellarToken()`
 
@@ -790,13 +802,79 @@ is treated as zero balance, not a hard error.
 human-scaled decimal string (e.g. `"1.5"` = 1.5 USDC). The hook returns the
 mock value without constructing a `Horizon.Server` or calling `loadAccount`.
 
+### `useBlendDeposit(defaultReserveId?)`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useBlendDeposit();
+write(10_000_000n); // 1 XLM (7-decimal fixed-point)
+write(10_000_000n, "CUSTOM_RESERVE_ID"); // override reserve
+```
+
+Write hook for `SupplyCollateral` (deposit) on the Blend V2 pool. Runs the full
+Soroban transaction lifecycle: build op → simulate → assemble → sign → send →
+poll. `amount` is a raw 7-decimal bigint (1 XLM = `10_000_000n`). Default
+reserve is the XLM reserve (`STELLAR_BLEND_XLM_ID`).
+
+| Field       | Type                                           | Description                                             |
+| ----------- | ---------------------------------------------- | ------------------------------------------------------- |
+| `write`     | `(amount: bigint, reserveId?: string) => void` | Trigger deposit                                         |
+| `data`      | `{ hash: string } \| undefined`                | Transaction hash on success                             |
+| `isPending` | `boolean`                                      | `true` from `write()` call until terminal SUCCESS/error |
+| `isSuccess` | `boolean`                                      | `true` once the Soroban tx reaches SUCCESS              |
+| `error`     | `Error \| null`                                | Error from simulation, signing, sending, or polling     |
+| `reset`     | `() => void`                                   | Clear all state                                         |
+
+### `useBlendWithdraw(defaultReserveId?)`
+
+Identical shape to `useBlendDeposit` but issues a `WithdrawCollateral` request.
+
+### `useBlendPosition(reserveId?)`
+
+```ts
+const { position, formattedPosition, refetch, isLoading, error } =
+  useBlendPosition();
+```
+
+Read hook for the connected account's supplied-collateral position in the Blend
+V2 pool. Uses Soroban RPC (`PoolV2.load + pool.loadUser`) via TanStack Query.
+Default reserve is the XLM reserve. Returns `position === 0n` when the account
+has no collateral or is unfunded — not an error.
+
+| Field               | Type                  | Description                                                                        |
+| ------------------- | --------------------- | ---------------------------------------------------------------------------------- |
+| `position`          | `bigint \| undefined` | Raw 7-decimal bigint (1 XLM = 10_000_000n). `undefined` when disconnected/loading. |
+| `formattedPosition` | `string \| undefined` | Human-scaled with 7 decimal places (e.g. `"1.0000000"`). `undefined` when loading. |
+| `refetch`           | `() => void`          | Re-triggers the Soroban RPC read                                                   |
+| `isLoading`         | `boolean`             | `true` while the first query is in-flight                                          |
+| `error`             | `Error \| null`       | Soroban RPC error, or `null`                                                       |
+
+**Soroban RPC vs Horizon:** Blend reads go through the Soroban RPC endpoint
+(`STELLAR_RPC_URL`), NOT Horizon. The `blendNetwork` object in `stellar/chain.ts`
+holds the RPC URL and network passphrase that the Blend SDK consumes.
+
+**Amount convention:** Stellar reserves use 7 decimals. All Blend amounts are
+7-decimal fixed-point bigints. Human→raw scaling is the caller's responsibility.
+
+**Manual QA procedure (testnet):**
+
+1. Fund a testnet account: `curl "https://friendbot.stellar.org?addr=<YOUR_G_ADDRESS>"`
+2. Open the app, connect the Stellar wallet at `/test?tab=blend`.
+3. Enter `10000000` (= 1 XLM) in the amount input and click **Deposit**.
+4. Verify `isSuccess=true` and a transaction hash appears under `data`.
+5. The position readout should update to show `~1.0000000` XLM collateral.
+6. Click **Withdraw** with the same amount to reverse. Position should return to 0.
+7. Confirm on [stellar.expert/testnet](https://stellar.expert/explorer/testnet).
+
 ### Stellar mock keys
 
-| Key                                         | Type                         | Notes                                                                                         |
-| ------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `pipeline.mock.wallet.stellar.address`      | `string` (G… 56-char strkey) | Sets the mock Stellar address                                                                 |
-| `pipeline.mock.wallet.stellar.isConnected`  | `"true"` or `"false"`        | Defaults to `"true"` when address is set                                                      |
-| `pipeline.mock.wallet.stellar.balance.usdc` | human-scaled decimal string  | USDC balance as returned by Horizon (e.g. `"1.5"` = 1.5 USDC). Consumed by `useStellarToken`. |
+| Key                                           | Type                         | Notes                                                                                         |
+| --------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.address`        | `string` (G… 56-char strkey) | Sets the mock Stellar address                                                                 |
+| `pipeline.mock.wallet.stellar.isConnected`    | `"true"` or `"false"`        | Defaults to `"true"` when address is set                                                      |
+| `pipeline.mock.wallet.stellar.balance.usdc`   | human-scaled decimal string  | USDC balance as returned by Horizon (e.g. `"1.5"` = 1.5 USDC). Consumed by `useStellarToken`. |
+| `pipeline.mock.wallet.stellar.blend.deposit`  | JSON `{ hash: "..." }`       | Mocks `useBlendDeposit`. `write()` resolves immediately with this hash; no RPC/signing.       |
+| `pipeline.mock.wallet.stellar.blend.withdraw` | JSON `{ hash: "..." }`       | Mocks `useBlendWithdraw`. Same semantics as deposit mock.                                     |
+| `pipeline.mock.wallet.stellar.blend.position` | decimal bigint string        | Mocks `useBlendPosition`. E.g. `"10000000"` = 1 XLM. `loadBlendCollateral` is never called.   |
 
 **DevTools snippet:**
 
@@ -808,22 +886,38 @@ localStorage.setItem(
 localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
 ```
 
-To reset:
+**Mock Blend deposit + position:**
+
+```js
+localStorage.setItem(
+  "pipeline.mock.wallet.stellar.blend.deposit",
+  JSON.stringify({ hash: "mockhash123" }),
+);
+localStorage.setItem(
+  "pipeline.mock.wallet.stellar.blend.position",
+  "10000000", // 1 XLM
+);
+```
+
+To reset Stellar mocks:
 
 ```js
 [
   "pipeline.mock.wallet.stellar.address",
   "pipeline.mock.wallet.stellar.isConnected",
   "pipeline.mock.wallet.stellar.balance.usdc",
+  "pipeline.mock.wallet.stellar.blend.deposit",
+  "pipeline.mock.wallet.stellar.blend.withdraw",
+  "pipeline.mock.wallet.stellar.blend.position",
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
 ### Stellar ESLint boundary
 
-`@creit.tech/stellar-wallets-kit` and `@stellar/stellar-sdk` may only be
-imported from `src/wallet/stellar/**`. ESLint reports an error for any import
-of these packages outside that directory. This is enforced by the flat-config
-block in `packages/frontend/eslint.config.js`.
+`@creit.tech/stellar-wallets-kit`, `@stellar/stellar-sdk`, and
+`@blend-capital/blend-sdk` may only be imported from `src/wallet/stellar/**`.
+ESLint reports an error for any import of these packages outside that directory.
+This is enforced by the flat-config block in `packages/frontend/eslint.config.js`.
 
 ---
 
