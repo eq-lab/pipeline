@@ -85,6 +85,11 @@ export { useStellarWallet } from "./stellar/useStellarWallet";
 export type { StellarWalletState } from "./stellar/useStellarWallet";
 export { useStellarToken } from "./stellar/useStellarToken";
 export type { UseStellarTokenResult } from "./stellar/useStellarToken";
+export { useBlendDeposit } from "./stellar/useBlendDeposit";
+export { useBlendWithdraw } from "./stellar/useBlendWithdraw";
+export { useBlendPosition } from "./stellar/useBlendPosition";
+export type { BlendWriteResult } from "./stellar/useBlendDeposit";
+export type { UseBlendPositionResult } from "./stellar/useBlendPosition";
 
 // ── View selection ────────────────────────────────────────────────────────────
 export { WalletViewProvider, useWalletView } from "./WalletViewContext";

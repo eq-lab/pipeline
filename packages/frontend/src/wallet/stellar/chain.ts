@@ -36,3 +36,30 @@ export const horizonUrl: string = ENV.STELLAR_HORIZON_URL;
 
 /** Circle USDC issuer address on the configured Stellar network. */
 export const usdcIssuer: string = ENV.STELLAR_USDC_ISSUER;
+
+// ── Soroban / Blend constants ──────────────────────────────────────────────────
+
+/**
+ * Soroban RPC URL for contract simulation and submission.
+ * Distinct from the Horizon REST API — Blend calls go here, not to Horizon.
+ */
+export const sorobanRpcUrl: string = ENV.STELLAR_RPC_URL;
+
+/** Blend V2 pool contract address on the configured network. */
+export const blendPoolId: string = ENV.STELLAR_BLEND_POOL_ID;
+
+/** Blend USDC reserve asset address. */
+export const blendUsdcId: string = ENV.STELLAR_BLEND_USDC_ID;
+
+/** Blend XLM reserve asset address. */
+export const blendXlmId: string = ENV.STELLAR_BLEND_XLM_ID;
+
+/**
+ * Network object the Blend SDK consumes.
+ * `passphrase` reuses `networkPassphrase` (the kit Networks enum value IS
+ * the passphrase string in v2.x).
+ */
+export const blendNetwork = {
+  rpc: ENV.STELLAR_RPC_URL,
+  passphrase: kitNetwork as string,
+} as const;

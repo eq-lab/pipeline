@@ -206,11 +206,12 @@ describe("TestPage — default Status tab", () => {
 
   it("Status tab has no content buttons (read-only — regression for #252)", () => {
     const { container } = renderTestPage("status");
-    // The SegmentedTabs renders two tab buttons; only those should be present.
-    // No action buttons (Clear mocks / Enable) should appear on the Status tab.
+    // The SegmentedTabs renders three tab buttons (Status + Mocks + Blend);
+    // only those should be present on the Status tab.
+    // No action buttons (Clear mocks / Enable / Deposit / Withdraw) should appear.
     const buttons = container.querySelectorAll("button");
-    // The SegmentedTabs always renders exactly 2 buttons (Status + Mocks).
-    expect(buttons.length).toBe(2);
+    // The SegmentedTabs always renders exactly 3 buttons (Status + Mocks + Blend).
+    expect(buttons.length).toBe(3);
   });
 
   it("does not render the Write hooks section", () => {

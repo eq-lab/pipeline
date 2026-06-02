@@ -94,6 +94,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Style drift risk if the design token values change (`#208000`, `rgba(56,55,53,0.18)`, scrim opacity) — two places must be updated. Low severity until a second consumer appears.
 - **Suggested fix:** When a second modal or toggle consumer appears in the codebase, extract `Switch` (role="switch", off/on colour tokens) and `Modal` / `ModalOverlay` (portal + focus trap + scrim + `role="dialog"`) into `@pipeline/ui` and update all consumers.
 
+### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk)
+- **Date:** 2026-06-02
+- **Location:** `packages/frontend/package.json`, `node_modules/@blend-capital/blend-sdk/node_modules/@stellar/stellar-sdk`
+- **Gap:** `@blend-capital/blend-sdk@3.2.2` bundles its own `@stellar/stellar-sdk@14.4.3` in a nested `node_modules`, while the app directly depends on `15.1.0`. Two copies are shipped in the bundle. The Soroban RPC lifecycle in `blendPool.ts` uses the direct `15.1.0` import; blend-sdk uses its own `14.4.3` internally. There is no version conflict today — both resolve correctly via Yarn's hoisting — but bundle size increases and type mismatches are possible if the two diverge further.
+- **Impact:** Mild bundle size increase from dual stellar-sdk copies. Low risk in practice since both packages use the SDK only internally and types are not shared across the boundary.
+- **Suggested fix:** When blend-sdk releases a version that declares `@stellar/stellar-sdk@^15` as a peer/dependency range, upgrade blend-sdk and verify the direct install deduplications. Track with `yarn why @stellar/stellar-sdk` to confirm dedup. File a follow-up issue if that version ships.
+
 ---
 
 ## Post-MVP
