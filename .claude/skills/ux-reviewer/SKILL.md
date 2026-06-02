@@ -42,14 +42,16 @@ Read additional context only as needed:
    - If a `url:` / `figma:` pair was passed: use them directly.
    - Extract the Figma `fileKey` and `nodeId` from the Figma URL.
 
-2. **Load the Figma design**
-   - Call `mcp__figma__get_design_context` with the `fileKey` and `nodeId`. Keep the returned code, asset URLs, and screenshot in context. Treat returned React/Tailwind code as a *reference only* — do not copy styling verbatim.
-   - Optionally call `mcp__figma__get_screenshot` for specific child nodes when a section needs a closer look.
+2. **Load the Figma design and enumerate sections**
+   - Call `mcp__figma__get_design_context` with the `fileKey` and `nodeId` to get the overall layout, asset URLs, and reference screenshot. **Ignore the returned React/Tailwind code** — do not read it, do not let it anchor your expectations. It biases you toward confirming structure that may not actually be rendered.
+   - Call `mcp__figma__get_metadata` (or inspect the design context) to enumerate the **direct child nodes** of the top-level frame — these are the sections you will compare. Write down their `nodeId`s and labels. If there are more than ~8 children, group them into logical sections first.
+   - This list is the **review checklist**. Every entry must end up in step 5.
 
 3. **Open the app page**
    - Reuse a running Chrome DevTools session if available; otherwise start one.
    - If navigation reports a stale-lock error, run `pkill -f "chrome-devtools-mcp/chrome-profile"` once, then retry.
-   - `mcp__chrome-devtools__navigate_page` to load the app URL, then `take_snapshot` for structure and `take_screenshot` with `fullPage: true` for visual reference.
+   - **Align the viewport to the Figma frame width** with `mcp__chrome-devtools__resize_page` (typically 1440×900 or whatever the Figma frame's width is — read it from the design context). Mismatched viewports cause false "proportion looks different" dismissals.
+   - `mcp__chrome-devtools__navigate_page` to load the app URL, then `take_snapshot` for structure and `take_screenshot` with `fullPage: true` for an overview only.
 
 4. **Populate realistic content if needed**
    - If the page renders dynamic data and the current state is empty/unrealistic, populate representative content using project-appropriate tooling (seed scripts, dev fixtures, smart-contract dev mocks, etc.). Pipeline is a Rust + TS monorepo, not a Laravel app — there is **no Filament admin and no `php artisan` flow**. Look in `scripts/` and `packages/` for existing seed/fixture commands.
@@ -57,18 +59,26 @@ Read additional context only as needed:
    - Only add data; do **not** change schema, code, or styling in this step.
    - Any data and assets you add are intended to persist for future reviews — do not roll them back.
 
-5. **Compare section-by-section**
-   - Walk top to bottom. For each Figma section, compare against the matching part of the rendered app. Note differences in:
-     - presence/absence of sections
-     - ordering of sections
-     - headings (including hardcoded ones not in Figma)
-     - typography (weight, size, alignment)
-     - colors, backgrounds, shadows, borders, card vs plain styling
-     - grid/column counts and spacing
-     - text content rendering (paragraph splitting, truncation)
-     - images present, aspect ratio, position
-     - extra elements present in the app that do not exist in Figma
-   - Use additional `get_screenshot` and `take_screenshot` calls (including per-element `uid` screenshots) when a difference is unclear.
+5. **Pairwise section comparison — one section at a time**
+   For **every** child node listed in step 2, run this exact loop. Do not skip sections. Do not batch multiple sections into one comparison.
+
+   1. **Figma side:** call `mcp__figma__get_screenshot` for the child `nodeId`. This gives you a focused, full-resolution view of just that section.
+   2. **App side:** from the `take_snapshot` output, find the corresponding element's `uid` and call `mcp__chrome-devtools__take_screenshot` with that `uid` to screenshot just that element. If the section is missing from the app entirely, **that itself is a finding** — record it and continue.
+   3. **Compare the two screenshots** against this explicit checklist. Read each line and answer it before moving on:
+      - [ ] Is the section present in the app at all?
+      - [ ] Is it in the same position relative to other sections (order)?
+      - [ ] Heading: same text? same size/weight? present at all?
+      - [ ] Body copy: same content? same paragraph splitting?
+      - [ ] Typography: font family, size, weight, alignment, line height
+      - [ ] Colors: text, background, borders, shadows
+      - [ ] Container styling: card vs plain, border radius, padding
+      - [ ] Layout: grid/column count, gap, item alignment
+      - [ ] Images: present? aspect ratio? position?
+      - [ ] Are there elements in the **app** that do **not** appear in Figma? (extra headings, debug UI, stray buttons)
+      - [ ] Are there elements in **Figma** that do **not** appear in the app? (most commonly missed — bias yourself to look for absences)
+   4. **Record findings as you go** — do not wait until the end. For each "no" or mismatch above, write one line: `section <label>: <what differs>`. These become Issues in step 6.
+
+   After the loop, do one final full-page scan to catch differences in section *ordering* and *spacing between sections* that per-section screenshots miss.
 
 6. **File one Issue per problem**
    - For each independent difference, file a new GitHub Issue. **Labels are not optional** — without a flow label the `manager` skill will skip the Issue. Use:
@@ -113,7 +123,10 @@ Read additional context only as needed:
 - Do **not** commit unless the user explicitly asks. If asked, commit only newly downloaded storage assets / seed updates with a message like `Log <page> UX review findings`.
 - Always preview the page with realistic content populated. Empty pages are not valid review targets.
 - Prefer `take_snapshot` over `take_screenshot` when inspecting text content; use screenshots for visual styling.
-- When the Figma URL points at a top-level frame, drill into child nodes (`get_screenshot` / `get_design_context` on child `nodeId`s) when a section needs a closer look.
+- **Never rely on a single full-page comparison.** A full-page screenshot pair is for overview and ordering only — every individual section must be compared via its own per-node Figma screenshot + per-uid app screenshot pair. Skipping this is the #1 reason big differences get missed.
+- **Do not read the React/Tailwind code returned by `get_design_context`.** It biases the model toward confirming the design's intended structure instead of seeing what is actually rendered.
+- **Bias toward finding absences.** Models are good at noting what's present in both images and bad at noting what's missing from one. After each section comparison, explicitly ask "what is in the Figma screenshot that I cannot point to in the app screenshot?" before moving on.
+- Align the browser viewport width to the Figma frame width before screenshotting — mismatched widths produce false-negative dismissals ("it's just scaled differently").
 - Respect the 7-day Figma asset URL TTL — always download assets locally before attaching them.
 
 ## Output Expectations
