@@ -8,8 +8,8 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::portfolio::{compute_series, SamplePoint};
-use shared::contract_logs_repo::LifecycleRow;
-use shared::loan_details_repo::LoanDetailsRow;
+use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 
 // Loan A: 100k USDC @ 12% (1200 bps), day 0 – 180
 // Loan B:  50k USDC @ 15% (1500 bps), day 30 – 120
@@ -21,30 +21,71 @@ fn usdc(whole: i64) -> BigDecimal {
     BigDecimal::from(whole * 1_000_000)
 }
 
-fn fixture_loans() -> Vec<LoanDetailsRow> {
+fn zero_repayment() -> RepaymentSnapshot {
+    RepaymentSnapshot {
+        offtaker_received: BigDecimal::from(0_i64),
+        senior_principal_repaid: BigDecimal::from(0_i64),
+        senior_interest: BigDecimal::from(0_i64),
+        equity_distributed: BigDecimal::from(0_i64),
+        mgmt_fee: BigDecimal::from(0_i64),
+        perf_fee: BigDecimal::from(0_i64),
+        oet_alloc: BigDecimal::from(0_i64),
+    }
+}
+
+fn zero_location() -> LocationUpdateSnapshot {
+    LocationUpdateSnapshot {
+        location_type: "Vessel".to_owned(),
+        location_identifier: String::new(),
+        tracking_url: String::new(),
+        updated_at: 0,
+    }
+}
+
+fn fixture_loans() -> Vec<LoanSnapshotRow> {
     fn make(
         loan_id: i64,
         tranche: i64,
-        rate_bps: i32,
+        rate_bps: u32,
         start_day: i64,
         end_day: i64,
-    ) -> LoanDetailsRow {
-        LoanDetailsRow {
+    ) -> LoanSnapshotRow {
+        LoanSnapshotRow {
             chain_id: 1,
             loan_id: BigDecimal::from(loan_id),
-            originator: "orig".to_owned(),
-            borrower_id: "b".to_owned(),
-            commodity: "c".to_owned(),
-            corridor: "cr".to_owned(),
-            original_facility_size: usdc(tranche),
-            original_senior_tranche: usdc(tranche),
-            original_equity_tranche: BigDecimal::from(0_i64),
-            original_offtaker_price: BigDecimal::from(0_i64),
-            senior_interest_rate_bps: rate_bps,
-            origination_date: start_day * DAY,
-            original_maturity_date: end_day * DAY,
-            governing_law: "EN".to_owned(),
-            metadata_uri: None,
+            // identity columns — use sentinel values for unit tests
+            block_number: 0,
+            log_index: 0,
+            event_name: "LoanDrawn".to_owned(),
+            block_timestamp: 0,
+            snapshot: LoanSnapshot {
+                originator: "orig".to_owned(),
+                borrower_id: "b".to_owned(),
+                commodity: "c".to_owned(),
+                corridor: "cr".to_owned(),
+                governing_law: "EN".to_owned(),
+                metadata_uri: None,
+                // immutableLoanData
+                original_facility_size: usdc(tranche),
+                original_senior_tranche: usdc(tranche),
+                original_equity_tranche: BigDecimal::from(0_i64),
+                original_offtaker_price: BigDecimal::from(0_i64),
+                senior_interest_rate_bps: rate_bps,
+                origination_date: start_day * DAY,
+                original_maturity_date: end_day * DAY,
+                // mutableLoanData
+                next_economics_epochs_id: BigDecimal::from(1_i64),
+                next_repayment_id: BigDecimal::from(0_i64),
+                status: "Performing".to_owned(),
+                ccr_bps: 0,
+                last_reported_ccr_timestamp: 0,
+                current_maturity_timestamp: 0,
+                closure_reason: "None".to_owned(),
+                current_location: zero_location(),
+                metadata_uri_onchain: String::new(),
+                // cumulativeRepaymentData
+                repayment: zero_repayment(),
+            },
         }
     }
 
@@ -59,7 +100,7 @@ fn fixture_events() -> Vec<LifecycleRow> {
     vec![]
 }
 
-fn sample_at(t_day: i64, loans: &[LoanDetailsRow], events: &[LifecycleRow]) -> SamplePoint {
+fn sample_at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> SamplePoint {
     let t = t_day * DAY;
     let series = compute_series(loans, events, t, t, DAY);
     assert_eq!(series.len(), 1);

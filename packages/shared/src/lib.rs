@@ -7,7 +7,7 @@ pub mod events;
 pub mod evm;
 pub mod json_numeric;
 pub mod kyc_repo;
-pub mod loan_details_repo;
+pub mod loan_snapshot;
 pub mod log_mapper;
 pub mod metadata_fetcher;
 pub mod position_repo;

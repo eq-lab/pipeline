@@ -9,8 +9,7 @@ use bigdecimal::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::contract_logs_repo::LifecycleRow;
-use shared::loan_details_repo::LoanDetailsRow;
+use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
@@ -121,8 +120,8 @@ async fn handle_yield(state: &AppState, query: YieldQuery) -> Result<Vec<SampleP
     let from = match query.days {
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match state
-            .loan_details_repo
-            .get_earliest_origination_date(chain_id)
+            .contract_logs_repo
+            .get_earliest_origination_date(&state.pool, chain_id)
             .await?
         {
             Some(earliest) => earliest,
@@ -145,8 +144,8 @@ async fn handle_yield(state: &AppState, query: YieldQuery) -> Result<Vec<SampleP
     // loan already in our snapshot. Both outcomes are valid as-of slightly different
     // indexer checkpoints; neither is an incorrect computation.
     let loans = state
-        .loan_details_repo
-        .list_loans_for_window(&state.pool, chain_id, to)
+        .contract_logs_repo
+        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
         .await?;
 
     if loans.is_empty() {
@@ -165,7 +164,7 @@ async fn handle_yield(state: &AppState, query: YieldQuery) -> Result<Vec<SampleP
 
 /// Resolved per-loan view used inside `compute_series`.
 struct LoanView<'a> {
-    row: &'a LoanDetailsRow,
+    row: &'a LoanSnapshotRow,
     /// Effective end of this loan: `min(original_maturity_date, earliest LoanClosed or LoanDefaulted timestamp)`.
     end_at: i64,
 }
@@ -189,7 +188,7 @@ struct LoanView<'a> {
 /// Public so the compute-layer test file in `packages/api/tests/portfolio_compute.rs`
 /// can exercise it directly. Not intended for consumption outside this crate.
 pub fn compute_series(
-    loans: &[LoanDetailsRow],
+    loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
     from: i64,
     to: i64,
@@ -209,8 +208,8 @@ pub fn compute_series(
                 .min();
 
             let end_at = match lifecycle_end {
-                Some(lc) => loan.original_maturity_date.min(lc),
-                None => loan.original_maturity_date,
+                Some(lc) => loan.snapshot.original_maturity_date.min(lc),
+                None => loan.snapshot.original_maturity_date,
             };
 
             LoanView { row: loan, end_at }
@@ -241,12 +240,12 @@ pub fn compute_series(
         // Active loans: origination_date <= t < end_at
         let active: Vec<&LoanView> = loan_views
             .iter()
-            .filter(|lv| lv.row.origination_date <= t && t < lv.end_at)
+            .filter(|lv| lv.row.snapshot.origination_date <= t && t < lv.end_at)
             .collect();
 
         let principal_sum: BigDecimal = active
             .iter()
-            .map(|lv| lv.row.original_senior_tranche.clone())
+            .map(|lv| lv.row.snapshot.original_senior_tranche.clone())
             .sum();
 
         // APY as decimal fraction (e.g. 0.13).
@@ -256,8 +255,8 @@ pub fn compute_series(
             let numerator: BigDecimal = active
                 .iter()
                 .map(|lv| {
-                    lv.row.original_senior_tranche.clone()
-                        * BigDecimal::from(i64::from(lv.row.senior_interest_rate_bps))
+                    lv.row.snapshot.original_senior_tranche.clone()
+                        * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
                 })
                 .sum();
             // Divide by 10_000 inside BigDecimal arithmetic, then convert the
@@ -269,14 +268,14 @@ pub fn compute_series(
         // Cumulative accrued in USDC base units.
         let accrued_base: BigDecimal = loan_views
             .iter()
-            .filter(|lv| lv.row.origination_date <= t)
+            .filter(|lv| lv.row.snapshot.origination_date <= t)
             .map(|lv| {
                 // Defensive .max(0) — guards against pathological data (e.g. a
                 // re-org-artifact `LoanClosed.block_timestamp < origination_date`).
                 let active_secs =
-                    BigDecimal::from((t.min(lv.end_at) - lv.row.origination_date).max(0));
-                lv.row.original_senior_tranche.clone()
-                    * BigDecimal::from(i64::from(lv.row.senior_interest_rate_bps))
+                    BigDecimal::from((t.min(lv.end_at) - lv.row.snapshot.origination_date).max(0));
+                lv.row.snapshot.original_senior_tranche.clone()
+                    * BigDecimal::from(i64::from(lv.row.snapshot.senior_interest_rate_bps))
                     * active_secs
                     / (&ten_thousand * &secs_per_year)
             })

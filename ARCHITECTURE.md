@@ -59,7 +59,7 @@ Responsibilities:
 Rust long-running background service. This is the bridge service described in the spec.
 
 Responsibilities:
-- On-chain event listener: USDC Transfer, WithdrawalRequested, LoanMinted, RepaymentSettled, TreasuryYieldDistributed.
+- On-chain event listener: USDC Transfer, WithdrawalRequested, LoanDrawn, StatusUpdated, CCRUpdated, LocationUpdated, LoanDefaulted, LoanClosed, PaymentRecorded, LoanRolledOver, EconomicsAmended, YieldMinted.
 - MPC auto-signing participant (Capital Wallet) for 4 scoped transaction categories.
 - PLUSD MINTER, WithdrawalQueue FILLER, LoanRegistry loan_manager roles.
 - WhitelistRegistry WHITELIST_ADMIN (KYC/screening writes).

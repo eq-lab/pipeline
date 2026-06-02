@@ -1,6 +1,8 @@
 use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
+use crate::loan_snapshot::LoanSnapshot;
+
 /// A loan-end event row fetched from `contract_logs`.
 ///
 /// Used by the portfolio yield endpoint to determine each loan's `effective_end`:
@@ -10,6 +12,19 @@ pub struct LifecycleRow {
     pub event_name: String,
     pub block_timestamp: i64,
     pub loan_id: BigDecimal,
+}
+
+/// The most recent loan-event snapshot per `(chain_id, loan_id)`.
+/// Used by the Portfolio API to assemble the active-loan set for yield computation.
+#[derive(Debug, Clone)]
+pub struct LoanSnapshotRow {
+    pub chain_id: i64,
+    pub loan_id: BigDecimal,
+    pub block_number: i64,
+    pub log_index: i64,
+    pub event_name: String,
+    pub block_timestamp: i64,
+    pub snapshot: LoanSnapshot,
 }
 
 pub struct ContractLogsRepo {
@@ -53,5 +68,209 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
         Ok(rows)
+    }
+
+    /// The most recent loan-event snapshot per `(chain_id, loan_id)` whose
+    /// `block_timestamp <= to_unix`. Used by Portfolio to assemble the active-loan set
+    /// for a given sample point in the yield time series.
+    ///
+    /// Uses `DISTINCT ON` with `(params->>'loan_id')::numeric` ordering to pick the
+    /// latest row per loan. Generic over `Executor` so callers can run inside a
+    /// transaction for a consistent snapshot.
+    pub async fn list_latest_loan_snapshots<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        contract_address: &str,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanSnapshotRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        // Fetch as raw rows so we can decode the JSONB snapshot manually.
+        let rows = sqlx::query(
+            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+                 chain_id,
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_number,
+                 log_index,
+                 event_name,
+                 block_timestamp,
+                 params->'snapshot' AS snapshot
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND contract_address = $2
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND block_timestamp <= $3
+             ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
+        )
+        .bind(chain_id)
+        .bind(contract_address)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+
+        let mut result = Vec::with_capacity(rows.len());
+        for row in rows {
+            use sqlx::Row;
+            let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
+            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+                .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
+            result.push(LoanSnapshotRow {
+                chain_id: row.try_get("chain_id")?,
+                loan_id: loan_id_decimal,
+                block_number: row.try_get("block_number")?,
+                log_index: row.try_get("log_index")?,
+                event_name: row.try_get("event_name")?,
+                block_timestamp: row.try_get("block_timestamp")?,
+                snapshot,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Like `list_latest_loan_snapshots` but filters only by `chain_id` (no
+    /// contract_address). Used by the Portfolio API which is chain-scoped.
+    ///
+    /// Replaces the old `LoanHistoryRepo::list_loans_for_window`.
+    pub async fn list_latest_loan_snapshots_for_chain<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<LoanSnapshotRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query(
+            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+                 chain_id,
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_number,
+                 log_index,
+                 event_name,
+                 block_timestamp,
+                 params->'snapshot' AS snapshot
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND block_timestamp <= $2
+             ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+
+        let mut result = Vec::with_capacity(rows.len());
+        for row in rows {
+            use sqlx::Row;
+            let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
+            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+                .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
+            result.push(LoanSnapshotRow {
+                chain_id: row.try_get("chain_id")?,
+                loan_id: loan_id_decimal,
+                block_number: row.try_get("block_number")?,
+                log_index: row.try_get("log_index")?,
+                event_name: row.try_get("event_name")?,
+                block_timestamp: row.try_get("block_timestamp")?,
+                snapshot,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Earliest `origination_date` (from `params->'snapshot'->>'origination_date'`)
+    /// across all loans on a chain. Used by the API to default the "full history"
+    /// lookback window. Returns `None` if no loan events have been indexed yet.
+    pub async fn get_earliest_origination_date<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+    ) -> anyhow::Result<Option<i64>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let row: Option<(Option<i64>,)> = sqlx::query_as(
+            "SELECT MIN((params->'snapshot'->>'origination_date')::bigint)
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'LoanDrawn'",
+        )
+        .bind(chain_id)
+        .fetch_optional(executor)
+        .await?;
+        Ok(row.and_then(|(v,)| v))
+    }
+
+    /// Connection-scoped fetch of the latest snapshot for a given loan, for use
+    /// by the indexer's carry-forward path. Returns `None` when no prior `LoanDrawn`
+    /// has been processed (i.e. the loan was never indexed — indexer bug guard).
+    pub async fn get_latest_loan_snapshot(
+        &self,
+        conn: &mut sqlx::PgConnection,
+        chain_id: i64,
+        contract_address: &str,
+        loan_id: &BigDecimal,
+    ) -> anyhow::Result<Option<LoanSnapshot>> {
+        let row = sqlx::query(
+            "SELECT params->'snapshot' AS snapshot
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND contract_address = $2
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND (params->>'loan_id')::numeric = $3
+             ORDER BY block_number DESC, log_index DESC
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(contract_address)
+        .bind(loan_id)
+        .fetch_optional(conn)
+        .await?;
+
+        match row {
+            None => Ok(None),
+            Some(r) => {
+                use sqlx::Row;
+                let snapshot_json: serde_json::Value = r.try_get("snapshot")?;
+                let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+                Ok(Some(snapshot))
+            }
+        }
     }
 }
