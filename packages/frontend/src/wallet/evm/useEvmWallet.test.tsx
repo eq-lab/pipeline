@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act } from "@testing-library/react";
-import { WalletProvider } from "./WalletProvider";
-import { useWallet } from "./useWallet";
+import { EvmWalletProvider } from "./EvmWalletProvider";
+import { WalletGateProvider } from "../WalletGateProvider";
+import { useEvmWallet } from "./useEvmWallet";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ let capturedModalProps: {
   onDismiss: () => void;
 } = { open: false, onContinue: () => {}, onDismiss: () => {} };
 
-vi.mock("../components/FirstConnectionModal", () => ({
+vi.mock("../../components/FirstConnectionModal", () => ({
   FirstConnectionModal: (props: {
     open: boolean;
     onContinue: () => void;
@@ -83,23 +84,28 @@ vi.mock("../components/FirstConnectionModal", () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// WalletGateProvider is now above EvmWalletProvider in the tree.
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>;
+  return (
+    <WalletGateProvider>
+      <EvmWalletProvider>{children}</EvmWalletProvider>
+    </WalletGateProvider>
+  );
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("useWallet — no mocks, no real wallet", () => {
+describe("useEvmWallet — no mocks, no real wallet", () => {
   beforeEach(() => localStorage.clear());
 
   it("reports disconnected by default", () => {
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(false);
     expect(result.current.address).toBeUndefined();
   });
 });
 
-describe("useWallet — localStorage mock", () => {
+describe("useEvmWallet — localStorage mock", () => {
   beforeEach(() => localStorage.clear());
 
   it("reports connected when address + isConnected mocks are set", () => {
@@ -109,7 +115,7 @@ describe("useWallet — localStorage mock", () => {
     );
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
 
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(true);
     expect(result.current.address).toBe(
       "0x1234000000000000000000000000000000000000",
@@ -122,7 +128,7 @@ describe("useWallet — localStorage mock", () => {
       "0x1234000000000000000000000000000000000000",
     );
 
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(true);
   });
 
@@ -133,13 +139,13 @@ describe("useWallet — localStorage mock", () => {
     );
     localStorage.setItem("pipeline.mock.wallet.isConnected", "false");
 
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(false);
   });
 
   it("re-renders when isConnected is flipped post-mount", () => {
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
     expect(result.current.isConnected).toBe(true);
 
     act(() => {
@@ -155,7 +161,7 @@ describe("useWallet — localStorage mock", () => {
   });
 });
 
-describe("useWallet — connect() with terms gate", () => {
+describe("useEvmWallet — connect() with terms gate", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
@@ -164,7 +170,7 @@ describe("useWallet — connect() with terms gate", () => {
   });
 
   it("opens the gate (modal) and does NOT call open() when ack flag is absent", () => {
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
 
     act(() => result.current.connect());
 
@@ -174,11 +180,11 @@ describe("useWallet — connect() with terms gate", () => {
     expect(mockOpen).not.toHaveBeenCalled();
   });
 
-  it("calls useAppKit().open() when the ack flag is already set", () => {
-    // Simulate pre-existing acknowledgement (no realAddress → use pending key).
-    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+  it("calls useAppKit().open() when the single flat ack flag is already set", () => {
+    // Simulate pre-existing acknowledgement — new flat chain-agnostic key.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
 
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
 
     act(() => result.current.connect());
 
@@ -188,13 +194,25 @@ describe("useWallet — connect() with terms gate", () => {
     expect(mockOpen).toHaveBeenCalledTimes(1);
   });
 
+  it("calls useAppKit().open() when ack is set via the legacy pending key (migration)", () => {
+    // Legacy pending key — migration back-fills the new flat key.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
+
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+
+    act(() => result.current.connect());
+
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+  });
+
   it("does NOT call open() and does NOT open gate for mock address (dev affordance)", () => {
     localStorage.setItem(
       "pipeline.mock.wallet.address",
       "0x1234000000000000000000000000000000000000",
     );
 
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
 
     // Reset capturedModalProps to see if gate is opened.
     capturedModalProps = {
@@ -211,7 +229,7 @@ describe("useWallet — connect() with terms gate", () => {
   });
 
   it("double connect while gate is open is a no-op (deduplication)", () => {
-    const { result } = renderHook(() => useWallet(), { wrapper });
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
 
     act(() => result.current.connect());
     expect(capturedModalProps.open).toBe(true);
@@ -221,5 +239,22 @@ describe("useWallet — connect() with terms gate", () => {
     // Still open, no additional side effects.
     expect(capturedModalProps.open).toBe(true);
     expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it("Continue on gate writes the flat ack flag and calls AppKit open()", () => {
+    const { result } = renderHook(() => useEvmWallet(), { wrapper });
+
+    act(() => result.current.connect());
+    expect(capturedModalProps.open).toBe(true);
+
+    act(() => mockModalOnContinue());
+
+    // Modal should be closed and AppKit called.
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockOpen).toHaveBeenCalledTimes(1);
+    // Flat ack key should have been written.
+    expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe(
+      "true",
+    );
   });
 });

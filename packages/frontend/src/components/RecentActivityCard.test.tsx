@@ -49,7 +49,7 @@ vi.mock("@/wallet", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/wallet")>();
   return {
     ...original,
-    useWallet: () => mockUseWallet(),
+    useEvmWallet: () => mockUseWallet(),
   };
 });
 

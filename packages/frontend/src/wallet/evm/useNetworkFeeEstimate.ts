@@ -42,7 +42,7 @@ import { usePublicClient } from "wagmi";
 import { formatEther } from "viem";
 import { ENV } from "@/lib/env";
 import { readMock, useMock, parseJson } from "./mock";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 import { useDepositManagerMinDeposit } from "./useDepositManager";
 import { depositManagerAbi } from "./abis/depositManager";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
@@ -130,7 +130,7 @@ export function formatFeeEth(feeWei: bigint): string {
 export function useNetworkFeeEstimate(
   direction: NetworkFeeDirection,
 ): UseNetworkFeeEstimateResult {
-  const { address } = useWallet();
+  const { address } = useEvmWallet();
   const publicClient = usePublicClient();
   const { minDeposit } = useDepositManagerMinDeposit();
 

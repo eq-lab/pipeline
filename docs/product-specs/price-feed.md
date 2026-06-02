@@ -20,7 +20,7 @@ The relayer service runs a continuous price feed and notification subsystem that
 
 CCR = `collateral_value / outstanding_senior_principal`, expressed in basis points (e.g., 14000 = 140%).
 
-CCR is recomputed on every price feed tick. LoanRegistry `lastReportedCCR` updates are batched and written only on threshold crossings, not on every tick, to avoid on-chain spam.
+CCR is recomputed on every price feed tick. LoanRegistry `ccrBps` updates are batched and written only on threshold crossings, not on every tick, to avoid on-chain spam.
 
 ## Notification Events
 
@@ -49,7 +49,7 @@ The notification feed in the Originator UI is a chronological log filterable by 
 ## LoanRegistry Updates on Threshold Crossings
 
 When a CCR computation crosses a defined threshold, the relayer service notifies the trustee
-via the Operations Console. The trustee writes the updated `lastReportedCCR` and
+via the Operations Console. The trustee writes the updated `ccrBps` and
 `lastReportedCCRTimestamp` on LoanRegistry directly from the Trustee key (holder of the
 `TRUSTEE` role); Relayer has no write access to LoanRegistry. Updates are batched per
 threshold crossing event; the LoanRegistry is not updated on every price tick. Because

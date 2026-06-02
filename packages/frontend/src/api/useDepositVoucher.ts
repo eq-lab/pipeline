@@ -18,7 +18,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { useWallet } from "@/wallet";
+import { useEvmWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { apiFetch } from "./client";
 
@@ -75,7 +75,7 @@ function subscribeMockVersion(listener: () => void) {
 export function useDepositVoucher(
   requestId: string | undefined,
 ): UseDepositVoucherResult {
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // Subscribe to mock-key changes — version is included in queryKey to force
   // React Query to issue a fresh fetch when mock data is written.

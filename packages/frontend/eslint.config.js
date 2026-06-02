@@ -36,11 +36,17 @@ export default tseslint.config(
   },
   {
     // Enforce that wagmi / viem / AppKit / TanStack Query are only imported
-    // from within the wallet module (src/wallet/**), the api module
-    // (src/api/**), or the env accessor (src/lib/env.ts).
+    // from within the EVM wallet module (src/wallet/evm/**), the Stellar wallet
+    // module (src/wallet/stellar/**), the api module (src/api/**), or the env
+    // accessor (src/lib/env.ts).
     // All other source files must go through @/wallet or @/api.
     files: ["**/*.{ts,tsx}"],
-    ignores: ["src/wallet/**", "src/api/**", "src/lib/env.ts"],
+    ignores: [
+      "src/wallet/evm/**",
+      "src/wallet/stellar/**",
+      "src/api/**",
+      "src/lib/env.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -56,6 +62,27 @@ export default tseslint.config(
             "@reown/appkit-adapter-wagmi/*",
             "@tanstack/react-query",
             "@tanstack/react-query/*",
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Enforce that @creit.tech/stellar-wallets-kit and @stellar/stellar-sdk
+    // are only imported from within the Stellar wallet module (src/wallet/stellar/**)
+    // or the env accessor (src/lib/env.ts).
+    // All other source files must go through @/wallet.
+    files: ["**/*.{ts,tsx}"],
+    ignores: ["src/wallet/stellar/**", "src/lib/env.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            "@creit.tech/stellar-wallets-kit",
+            "@creit.tech/stellar-wallets-kit/*",
+            "@stellar/stellar-sdk",
+            "@stellar/stellar-sdk/*",
           ],
         },
       ],

@@ -14,7 +14,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useRequests } from "./useRequests";
 import type { RequestsResponse } from "./useRequests";
-import { installSameTabMockBridge } from "@/wallet/mock";
+import { installSameTabMockBridge } from "@/wallet/evm/mock";
 
 // ── Mock wagmi / AppKit ───────────────────────────────────────────────────────
 

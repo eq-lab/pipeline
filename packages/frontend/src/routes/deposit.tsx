@@ -8,11 +8,11 @@ import {
   Button,
 } from "@pipeline/ui";
 import {
-  useWallet,
+  useEvmWallet,
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
   useRequestDeposit,
-  useToken,
+  useEvmToken,
   useClaim,
   useRequestWithdrawal,
   useClaimWithdrawal,
@@ -125,7 +125,7 @@ function Deposit() {
   const navigate = useNavigate();
 
   // ── State sources ─────────────────────────────────────────────────────
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // ── Deposit-direction hooks (called unconditionally) ──────────────────
   const {
@@ -145,7 +145,7 @@ function Deposit() {
     isApprovePending: isDepositApprovePending,
     isApproveSuccess: isDepositApproveSuccess,
     refetchBalance: refetchDepositBalance,
-  } = useToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
+  } = useEvmToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
 
   const requestDeposit = useRequestDeposit();
   const claim = useClaim();
@@ -163,7 +163,7 @@ function Deposit() {
     isApprovePending: isWithdrawApprovePending,
     isApproveSuccess: isWithdrawApproveSuccess,
     refetchBalance: refetchWithdrawBalance,
-  } = useToken({ token: plusdAddr, spender: ENV.WITHDRAWAL_QUEUE_ADDRESS });
+  } = useEvmToken({ token: plusdAddr, spender: ENV.WITHDRAWAL_QUEUE_ADDRESS });
 
   const requestWithdrawal = useRequestWithdrawal();
   const claimWithdrawal = useClaimWithdrawal();

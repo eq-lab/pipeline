@@ -12,18 +12,23 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouterState } from "@tanstack/react-router";
 
 /**
- * Truncates a wallet address to `0xXXXX…XXXX` (6 + 4 chars after `0x`).
- * Input: `0x8493...3b92` (full hex string, 42 chars).
- * Output: `0x8493…3b92`.
+ * Truncates a wallet address for display.
+ *
+ * EVM (0x…):     slices to `0xXXXX…XXXX` (6 + 4 chars).
+ * Stellar (G…):  slices to `GABCDE…WXYZ` (6 + 4 chars).
+ * The 6+4 slice works uniformly for both formats.
+ *
+ * Input:  `0x8493...3b92` (42-char EVM) or a 56-char Stellar G… strkey.
+ * Output: `0x8493…3b92` / `GABCDE…WXYZ`.
  */
-export function truncateAddress(address: `0x${string}`): string {
+export function truncateAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 export interface UseAccountDropdownOptions {
   onClose: () => void;
-  address: `0x${string}`;
+  address: string;
 }
 
 export interface UseAccountDropdownResult {

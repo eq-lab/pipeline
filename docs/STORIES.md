@@ -1949,3 +1949,143 @@ All tests run against the feature branch dev server (port 4359). App URL: `http:
   - Space on toggle flips it (Space → on, Space again → off)
   - Enter on Continue (when toggle on) calls through to AppKit
   - Escape closes the modal; focus returns to the Connect Wallet button
+
+---
+
+## S-450 — Stellar UI wiring: dropdown toggle, TopBar pill, connect chooser modal
+
+**Issue:** [#450 [FE] [Stellar] UI wiring: dropdown toggle, TopBar pill, connect chooser modal](https://github.com/eq-lab/pipeline/issues/450)
+**Plan:** `docs/exec-plans/active/issue-450-stellar-ui-wiring.md`
+**Figma:** node families `1506:104728` (dropdown), `1497:94715` / `1498:100168` (TopBar/WalletPill)
+
+### TC-450-1: Disconnected — "Connect Wallet" opens ConnectChooserModal
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; no wallet mock keys in localStorage
+- **Steps:**
+  1. Navigate to `http://localhost:5450/`
+  2. Click "Connect Wallet" in the TopBar header
+- **Expected:**
+  - A dialog opens with heading "Connect a wallet"
+  - Body text: "Choose which wallet to connect. You can connect both."
+  - Two CTA buttons: "Connect EVM" and "Connect Stellar"
+  - `role="dialog"`, `aria-modal="true"`, `width=380px`, `borderRadius=32px`, `backgroundColor=rgb(248,247,246)`, `padding=24px`
+  - Close (×) button present in top-right
+
+### TC-450-2: ConnectChooserModal dismissal — Escape, scrim click, × button
+
+- **Actor:** User / QA
+- **Preconditions:** ConnectChooserModal open (TC-450-1 state)
+- **Steps (run each independently):**
+  1. Press **Escape**
+  2. Reopen; click the scrim (overlay outside the panel)
+  3. Reopen; click the **×** Close button
+- **Expected for each:** Modal closes; "Connect Wallet" button returns in the TopBar; no wallet connected
+
+### TC-450-3: EVM connected — WalletPill shows EVM balance; dropdown shows segmented control
+
+- **Actor:** User / QA
+- **Preconditions:** Dev server running; EVM wallet mocked:
+  ```js
+  const usdc = "0x2222000000000000000000000000000000000002";
+  localStorage.setItem("pipeline.mock.wallet.address", "0x1234000000000000000000000000000000005678");
+  localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+  localStorage.setItem("pipeline.mock.wallet.contract.depositManager.usdc", usdc);
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.decimals`, "6");
+  localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
+  localStorage.setItem(`pipeline.mock.wallet.balance.${usdc}`, "1500000000");
+  ```
+- **Steps:**
+  1. Observe the TopBar — "Connect Wallet" replaced by WalletPill showing `$1,500.00`
+  2. Click the WalletPill
+- **Expected:**
+  - WalletPill shows `$1,500.00` (EVM balance)
+  - AccountDropdown opens with `role="menu" aria-label="Account"`
+  - Segmented control (`role="tablist" aria-label="Wallet namespace"`) with EVM tab `aria-selected="true"` and Stellar tab `aria-selected="false"`
+  - Wallet address row shows `0x1234…5678` (truncated EVM address)
+  - USDC balance row shows `$1,500.00`
+  - Disconnect button present
+
+### TC-450-4: Dropdown toggle — switching to Stellar (not connected) shows connect affordance, hides Disconnect
+
+- **Actor:** User / QA
+- **Preconditions:** TC-450-3 setup; AccountDropdown open
+- **Steps:**
+  1. Click the "Stellar" tab in the segmented control
+- **Expected:**
+  - Stellar tab becomes `aria-selected="true"`; EVM tab `aria-selected="false"`
+  - Panel shows: "Stellar wallet not connected" caption + "Connect Stellar" button
+  - Disconnect button is hidden
+  - WalletPill in header still shows "$1,500.00" (EVM balance via cross-namespace fallback — see bug #456)
+
+### TC-450-5: Dropdown toggle — EVM connected, switch Stellar, switch back — EVM not disconnected
+
+- **Actor:** User / QA
+- **Preconditions:** TC-450-3 setup
+- **Steps:**
+  1. Open dropdown; click Stellar tab; click EVM tab again
+- **Expected:**
+  - EVM panel restores: `0x1234…5678` address, `$1,500.00` balance, Disconnect button
+  - EVM mock keys still in localStorage (toggle is view-only, never disconnects)
+
+### TC-450-6: Both namespaces connected — toggle switches pill and panel
+
+- **Actor:** User / QA
+- **Preconditions:** EVM mocked (TC-450-3) + Stellar mocked:
+  ```js
+  localStorage.setItem("pipeline.mock.wallet.stellar.address", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5");
+  localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+  localStorage.setItem("pipeline.mock.wallet.stellar.balance.usdc", "750.00");
+  ```
+- **Steps:**
+  1. Observe WalletPill: EVM view → should show `$1,500.00`
+  2. Click pill; click Stellar tab
+  3. Observe WalletPill and panel
+- **Expected:**
+  - After switching to Stellar tab: WalletPill updates to `$750.00`
+  - Panel shows Stellar address `GBBD47…FLA5` (6+4 truncation), `$750.00` balance, Disconnect button
+  - Switching back to EVM tab: WalletPill reverts to `$1,500.00`, EVM address and balance shown
+
+### TC-450-7: Pill balance when active namespace disconnected (known bug #456)
+
+- **Actor:** User / QA
+- **Preconditions:** Only EVM connected (TC-450-3 setup); Stellar tab selected in dropdown
+- **Steps:**
+  1. With Stellar tab active and Stellar not connected, close dropdown
+  2. Observe WalletPill text
+- **Expected (per plan spec):** `"—"` — active namespace (Stellar) has no balance
+- **Actual (current implementation):** `$1,500.00` — cross-namespace fallback to EVM balance
+- **Note:** Bug #456 filed (medium)
+
+### TC-450-8: AccountDropdown dismissal — outside click, Escape, route change
+
+- **Actor:** User / QA
+- **Preconditions:** EVM mocked; AccountDropdown open
+- **Steps:**
+  1. Click outside the dropdown (on page body)
+  2. Reopen; press Escape
+  3. Reopen; click a nav button (e.g. "Convert")
+- **Expected for each:** Dropdown closes; WalletPill still visible with balance
+
+### TC-450-9: ConnectChooserModal — focus trap and tab cycling
+
+- **Actor:** User / QA (keyboard)
+- **Preconditions:** ConnectChooserModal open
+- **Steps:**
+  1. Tab through all focusable elements; note order
+  2. Press Shift+Tab from the first element
+- **Expected:**
+  - Tab cycles among: Close (×), Connect EVM, Connect Stellar
+  - Shift+Tab from Close wraps to Connect Stellar (last)
+
+### TC-450-10: Stellar address truncation — 56-char G… strkey renders as 6+4 chars
+
+- **Actor:** Developer / QA
+- **Preconditions:** Both EVM and Stellar mocked (TC-450-6 setup); Stellar tab selected in dropdown
+- **Steps:**
+  1. In DevTools Console:
+     ```js
+     const walletGroup = document.querySelector('[aria-label="Wallet address"]');
+     walletGroup.querySelector('.font-mono').textContent
+     ```
+- **Expected:** Returns `"GBBD47…FLA5"` — first 6 chars + ellipsis + last 4 chars of the 56-char Stellar strkey

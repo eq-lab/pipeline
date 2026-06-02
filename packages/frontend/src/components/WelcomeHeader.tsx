@@ -1,6 +1,6 @@
 import React from "react";
 import { Stat } from "@pipeline/ui";
-import { useStakedPlusdConvertToAssets } from "@/wallet/useStakedPlusd";
+import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
 import { useStats, formatApy } from "@/api";
 
 /**

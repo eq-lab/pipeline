@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { WalletProvider } from "./WalletProvider";
-import { useToken } from "./useToken";
+import { EvmWalletProvider } from "./EvmWalletProvider";
+import { useEvmToken } from "./useEvmToken";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -113,7 +113,7 @@ vi.mock("@/lib/env", () => ({
 const fetchSpy = vi.spyOn(globalThis, "fetch");
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>;
+  return <EvmWalletProvider>{children}</EvmWalletProvider>;
 }
 
 function setConnectedWallet() {
@@ -147,7 +147,7 @@ function approveKey(token: string) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("useToken — metadata mock keys", () => {
+describe("useEvmToken — metadata mock keys", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -163,7 +163,7 @@ describe("useToken — metadata mock keys", () => {
     localStorage.setItem(decimalsKey(TOKEN_ADDRESS), "6");
     localStorage.setItem(symbolKey(TOKEN_ADDRESS), "USDC");
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -175,7 +175,7 @@ describe("useToken — metadata mock keys", () => {
     localStorage.setItem(decimalsKey(TOKEN_ADDRESS), "6");
     localStorage.setItem(symbolKey(TOKEN_ADDRESS), "USDC");
 
-    renderHook(() => useToken({ token: TOKEN_ADDRESS }), { wrapper });
+    renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), { wrapper });
 
     const calls = mockUseReadContract.mock.calls as unknown as Array<
       [{ functionName?: string; query?: { enabled?: boolean } }]
@@ -197,7 +197,7 @@ describe("useToken — metadata mock keys", () => {
   });
 });
 
-describe("useToken — balance mock key", () => {
+describe("useEvmToken — balance mock key", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -212,7 +212,7 @@ describe("useToken — balance mock key", () => {
   it("returns raw balance from mock key", () => {
     localStorage.setItem(balanceKey(TOKEN_ADDRESS), "1000000000");
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -224,7 +224,7 @@ describe("useToken — balance mock key", () => {
     localStorage.setItem(symbolKey(TOKEN_ADDRESS), "USDC");
     localStorage.setItem(balanceKey(TOKEN_ADDRESS), "1000000000");
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -235,7 +235,7 @@ describe("useToken — balance mock key", () => {
     // Balance mocked but decimals not mocked and wagmi not returning anything
     localStorage.setItem(balanceKey(TOKEN_ADDRESS), "1000000000");
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -244,7 +244,7 @@ describe("useToken — balance mock key", () => {
   });
 });
 
-describe("useToken — real RPC happy path", () => {
+describe("useEvmToken — real RPC happy path", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -291,7 +291,7 @@ describe("useToken — real RPC happy path", () => {
       };
     });
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -304,7 +304,7 @@ describe("useToken — real RPC happy path", () => {
   });
 });
 
-describe("useToken — spender omitted branch", () => {
+describe("useEvmToken — spender omitted branch", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -316,7 +316,7 @@ describe("useToken — spender omitted branch", () => {
   });
 
   it("returns undefined for all approval fields when spender is not provided", () => {
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -328,7 +328,7 @@ describe("useToken — spender omitted branch", () => {
   });
 
   it("sets isApprovePending and isApproveSuccess to false when spender is omitted", () => {
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -337,7 +337,7 @@ describe("useToken — spender omitted branch", () => {
   });
 
   it("disables the allowance read when spender is omitted (zero-address spender)", () => {
-    renderHook(() => useToken({ token: TOKEN_ADDRESS }), { wrapper });
+    renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), { wrapper });
 
     const calls = mockUseReadContract.mock.calls as unknown as Array<
       [{ functionName?: string; query?: { enabled?: boolean } }]
@@ -352,7 +352,7 @@ describe("useToken — spender omitted branch", () => {
   });
 });
 
-describe("useToken — spender provided (approval delegation)", () => {
+describe("useEvmToken — spender provided (approval delegation)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockWriteContract.mockClear();
@@ -376,7 +376,7 @@ describe("useToken — spender provided (approval delegation)", () => {
     localStorage.setItem(approveKey(TOKEN_ADDRESS), JSON.stringify(mockData));
 
     const { result } = renderHook(
-      () => useToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
       { wrapper },
     );
 
@@ -414,7 +414,7 @@ describe("useToken — spender provided (approval delegation)", () => {
     });
 
     const { result } = renderHook(
-      () => useToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
       { wrapper },
     );
 
@@ -424,7 +424,7 @@ describe("useToken — spender provided (approval delegation)", () => {
   });
 });
 
-describe("useToken — zero-address token short-circuit", () => {
+describe("useEvmToken — zero-address token short-circuit", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -436,7 +436,7 @@ describe("useToken — zero-address token short-circuit", () => {
   });
 
   it("disables all reads when token is zero address", () => {
-    const { result } = renderHook(() => useToken({ token: ZERO_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: ZERO_ADDRESS }), {
       wrapper,
     });
 
@@ -454,7 +454,7 @@ describe("useToken — zero-address token short-circuit", () => {
   });
 });
 
-describe("useToken — disconnected wallet", () => {
+describe("useEvmToken — disconnected wallet", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -466,7 +466,7 @@ describe("useToken — disconnected wallet", () => {
   });
 
   it("returns balance undefined when wallet is disconnected", () => {
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -474,7 +474,7 @@ describe("useToken — disconnected wallet", () => {
   });
 
   it("disables balanceOf read when wallet is disconnected", () => {
-    renderHook(() => useToken({ token: TOKEN_ADDRESS }), { wrapper });
+    renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), { wrapper });
 
     const calls = mockUseReadContract.mock.calls as unknown as Array<
       [{ functionName?: string; query?: { enabled?: boolean } }]
@@ -488,7 +488,7 @@ describe("useToken — disconnected wallet", () => {
   });
 
   it("still fires metadata reads when wallet is disconnected", () => {
-    renderHook(() => useToken({ token: TOKEN_ADDRESS }), { wrapper });
+    renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), { wrapper });
 
     const calls = mockUseReadContract.mock.calls as unknown as Array<
       [{ functionName?: string; query?: { enabled?: boolean } }]
@@ -504,7 +504,7 @@ describe("useToken — disconnected wallet", () => {
   });
 });
 
-describe("useToken — aggregated isLoading", () => {
+describe("useEvmToken — aggregated isLoading", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -540,7 +540,7 @@ describe("useToken — aggregated isLoading", () => {
       };
     });
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -555,7 +555,7 @@ describe("useToken — aggregated isLoading", () => {
       refetch: mockRefetch,
     }));
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -563,7 +563,7 @@ describe("useToken — aggregated isLoading", () => {
   });
 });
 
-describe("useToken — error aggregation", () => {
+describe("useEvmToken — error aggregation", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -601,7 +601,7 @@ describe("useToken — error aggregation", () => {
     });
 
     const { result } = renderHook(
-      () => useToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
       { wrapper },
     );
 
@@ -612,7 +612,7 @@ describe("useToken — error aggregation", () => {
     // Even though allowance read might error internally, useToken masks it
     // when spender is omitted (zero-address spender won't fire, but we test
     // the gating logic at the error aggregation level).
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -621,7 +621,7 @@ describe("useToken — error aggregation", () => {
   });
 });
 
-describe("useToken — no RPC in full mock mode (lock-in guard)", () => {
+describe("useEvmToken — no RPC in full mock mode (lock-in guard)", () => {
   beforeEach(() => {
     localStorage.clear();
     fetchSpy.mockClear();
@@ -647,7 +647,7 @@ describe("useToken — no RPC in full mock mode (lock-in guard)", () => {
     );
 
     const { result } = renderHook(
-      () => useToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
+      () => useEvmToken({ token: TOKEN_ADDRESS, spender: SPENDER_ADDRESS }),
       { wrapper },
     );
 
@@ -663,7 +663,7 @@ describe("useToken — no RPC in full mock mode (lock-in guard)", () => {
   });
 });
 
-describe("useToken — formattedBalance undefined while metadata loading", () => {
+describe("useEvmToken — formattedBalance undefined while metadata loading", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -702,7 +702,7 @@ describe("useToken — formattedBalance undefined while metadata loading", () =>
       };
     });
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -732,7 +732,7 @@ describe("useToken — formattedBalance undefined while metadata loading", () =>
       };
     });
 
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -741,7 +741,7 @@ describe("useToken — formattedBalance undefined while metadata loading", () =>
   });
 });
 
-describe("useToken — refetchBalance is exposed", () => {
+describe("useEvmToken — refetchBalance is exposed", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -761,7 +761,7 @@ describe("useToken — refetchBalance is exposed", () => {
   });
 
   it("exposes refetchBalance and delegates to wagmi refetch", () => {
-    const { result } = renderHook(() => useToken({ token: TOKEN_ADDRESS }), {
+    const { result } = renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), {
       wrapper,
     });
 
@@ -775,7 +775,7 @@ describe("useToken — refetchBalance is exposed", () => {
   });
 });
 
-describe("useToken — balanceOf uses wallet address as arg", () => {
+describe("useEvmToken — balanceOf uses wallet address as arg", () => {
   beforeEach(() => {
     localStorage.clear();
     mockUseReadContract.mockClear();
@@ -787,7 +787,7 @@ describe("useToken — balanceOf uses wallet address as arg", () => {
   });
 
   it("passes connected wallet address as the owner arg to balanceOf", () => {
-    renderHook(() => useToken({ token: TOKEN_ADDRESS }), { wrapper });
+    renderHook(() => useEvmToken({ token: TOKEN_ADDRESS }), { wrapper });
 
     const calls = mockUseReadContract.mock.calls as unknown as Array<
       [{ functionName?: string; args?: unknown[] }]

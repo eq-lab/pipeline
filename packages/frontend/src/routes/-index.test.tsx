@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { WalletProvider } from "@/wallet/WalletProvider";
+import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { Route } from "./index";
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
@@ -137,9 +137,9 @@ const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
 function renderHome() {
   const HomePage = Route.options.component as React.ComponentType;
   return render(
-    <WalletProvider>
+    <EvmWalletProvider>
       <HomePage />
-    </WalletProvider>,
+    </EvmWalletProvider>,
   );
 }
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { renderHook } from "@testing-library/react";
-import { WalletProvider } from "./WalletProvider";
-import { useContractRead } from "./useWallet";
+import { EvmWalletProvider } from "./EvmWalletProvider";
+import { useContractRead } from "./useEvmWallet";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ const testAbi = [
 ] as const;
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <WalletProvider>{children}</WalletProvider>;
+  return <EvmWalletProvider>{children}</EvmWalletProvider>;
 }
 
 describe("useContractRead — mock mode", () => {

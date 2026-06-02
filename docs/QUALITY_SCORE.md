@@ -4,6 +4,31 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-01 — Issue #450 (Stellar UI wiring: dropdown toggle, TopBar pill, connect chooser modal)
+
+- **Scope:** Issue #450 acceptance criteria (TC-450-1 through TC-450-10)
+- **Cases executed:** 10
+- **Passes:** 9
+- **Failures:** 1 (TC-450-7 — pill shows cross-namespace fallback instead of "—")
+- **Blocked:** 0
+- **Bugs filed:** #456 (medium)
+- **Score: 8/10**
+  - PASS TC-450-1 (ConnectChooserModal opens from TopBar "Connect Wallet"): Dialog `role="dialog" aria-modal="true"` renders with heading "Connect a wallet", description "Choose which wallet to connect. You can connect both.", buttons "Connect EVM" and "Connect Stellar". Dimensions: `width=380px`, `borderRadius=32px`, `backgroundColor=rgb(248,247,246)`, `padding=24px`. A11y correct. Close (×) button present and focused on open.
+  - PASS TC-450-2 (ConnectChooserModal dismissal): All three paths tested — Escape closes the modal; scrim click (dispatched to `data-testid="connect-chooser-modal-scrim"`) closes; × button closes. "Connect Wallet" restores in header after all paths.
+  - PASS TC-450-3 (EVM connected — WalletPill + AccountDropdown): With mock EVM wallet (1,500 USDC), WalletPill shows `$1,500.00` reactively without page reload. Clicking pill opens AccountDropdown (`role="menu" aria-label="Account"`). Segmented control `role="tablist" aria-label="Wallet namespace"` with EVM tab `aria-selected="true"`. Address row shows `0x1234…5678`. Balance row shows `$1,500.00`. Disconnect button present. Screenshot: `docs/screenshots/issue-450-account-dropdown-evm.png`.
+  - PASS TC-450-4 (Stellar tab — not connected shows connect affordance): Clicking Stellar tab switches `aria-selected` correctly. Panel shows "Stellar wallet not connected" caption + "Connect Stellar" button. Disconnect button is hidden. No address/balance rows shown.
+  - PASS TC-450-5 (toggle is view-only — EVM not disconnected): Switching Stellar tab then back to EVM restores `0x1234…5678` address and `$1,500.00` balance. EVM mock keys persist in localStorage (toggle is view-only).
+  - PASS TC-450-6 (both namespaces connected — toggle switches pill and panel): With Stellar also mocked (750 USDC, address `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`), switching to Stellar tab updates WalletPill to `$750.00` and panel shows Stellar address `GBBD47…FLA5` + $750.00 balance + Disconnect button. Switching back to EVM restores EVM data. Neither namespace is disconnected by the toggle. Screenshot: `docs/screenshots/issue-450-account-dropdown-stellar-connected.png`.
+  - FAIL TC-450-7 (pill balance when active namespace disconnected): With EVM-only connected and Stellar tab selected, WalletPill shows `$1,500.00` (EVM balance via cross-namespace fallback) instead of `"—"`. The `pillBalance` computation in `TopBar.tsx` lines 105-111 falls back to the other namespace's balance rather than showing `"—"` as specified in the plan. Bug #456 filed (medium).
+  - PASS TC-450-8 (dropdown dismissal — outside click, Escape, route change): Outside click on page body closes dropdown (mousedown capture handler confirmed). Escape closes dropdown. Clicking "Convert" nav navigates to `/deposit?direction=deposit` and dropdown closes. WalletPill persists after each dismiss.
+  - PASS TC-450-9 (ConnectChooserModal focus trap): Tab cycles among Close (×), Connect EVM, Connect Stellar — 3 focusable elements. Shift+Tab from Close wraps to Connect Stellar. Trap confirmed via keyboard navigation.
+  - PASS TC-450-10 (Stellar address truncation): Stellar 56-char strkey `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` correctly truncates to `GBBD47…FLA5` (6+4 chars, same formula as EVM). `truncateAddress()` in `useAccountDropdown.ts` is address-format agnostic.
+  - Unit tests: 701/701 tests pass across 42 test files. `WalletViewContext.test.tsx` (5 tests), `AccountDropdown.test.tsx` (13 tests), `ConnectChooserModal.test.tsx` (7 tests), `TopBar.test.tsx` (16 tests) — all green.
+  - Console errors: zero error-level messages throughout all test cases. Pre-existing Reown font preload warning only.
+  - Figma coverage note: Figma node `1506:104728` (dropdown) is the plan reference. No Figma frame was confirmed for the segmented control or the ConnectChooserModal — components were built from theme tokens (no raw hex per FRONTEND rules, except the chooser's border-radius hardcoded at `32px` via inline style and button hover `color-mix` value which are minor deviations).
+  - Deducted 2 points: TC-450-7 pill fallback is a plan spec violation — confusing UX where the pill shows a different namespace's balance than the one the user selected. Medium severity. Does not block the primary happy path (both wallets connected correctly, pill switches correctly when both are connected).
+
+
 ### 2026-05-25 — Issue #395 (/deposit: USDC half missing outer white card — 16px radius)
 
 - **Scope:** Issue #395 acceptance criteria (TC-395-1 through TC-395-4, plus swap button regression)

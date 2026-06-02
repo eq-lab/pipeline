@@ -1,55 +1,91 @@
 /**
- * Terms acknowledgement hook — address-scoped localStorage gate.
+ * Terms acknowledgement hook — single chain-agnostic localStorage flag.
  *
- * Each wallet address must independently acknowledge the jurisdiction
- * self-attestation before AppKit `open()` is called.
+ * The terms self-attestation is asked ONCE on the first wallet connect of
+ * EITHER chain (EVM or Stellar). A single flat key tracks the acknowledgement
+ * so the gate is not re-triggered when the user later connects the other chain.
  *
- * Key pattern: `pipeline.wallet.termsAcknowledged.<address>`
+ * Key: `pipeline.wallet.termsAcknowledged`
  * Value: `"true"` once accepted; absent or any other value = not acknowledged.
+ *
+ * Migration from legacy address-scoped keys:
+ *   The old scheme wrote per-address keys
+ *   (`pipeline.wallet.termsAcknowledged.<address>`) and a transient pending key
+ *   (`pipeline.wallet.termsAcknowledged.pending`). On first read, if the new flat
+ *   key is absent but a legacy key is `"true"`, the user is treated as already
+ *   acknowledged and the new flat key is back-filled so subsequent reads are fast.
+ *   Legacy keys are left in place (harmless) so a rollback would still work.
  *
  * Cross-tab sync is provided by the browser's native `storage` event.
  * Same-tab updates are applied directly inside `acknowledge()` so the hook
  * re-renders immediately without relying on the `storage` event (which fires
  * only in OTHER tabs).
  *
- * A non-hook helper `readTermsAcknowledged(address)` is exported for use
- * inside synchronous event handlers (e.g., `useWallet.connect()`).
+ * A non-hook helper `readTermsAcknowledged()` is exported for use inside
+ * synchronous event handlers (e.g., `useEvmWallet.connect()`).
  */
 import { useCallback, useEffect, useState } from "react";
 
-// ── Key helpers ────────────────────────────────────────────────────────────────
+// ── Key constants ──────────────────────────────────────────────────────────────
 
-/** Returns the localStorage key for the given wallet address. */
-function termsKey(address: string): string {
-  return `pipeline.wallet.termsAcknowledged.${address.toLowerCase()}`;
-}
+/** New single chain-agnostic key. */
+const TERMS_KEY = "pipeline.wallet.termsAcknowledged";
 
 // ── Non-reactive helper ────────────────────────────────────────────────────────
 
 /**
- * The localStorage key used when a user acknowledges before their address is
- * known (i.e., on their very first ever connect). Mirrors the constant in
- * `WalletProvider.tsx`.
+ * Checks whether any legacy address-scoped or pending key is set to `"true"`.
+ * If found, back-fills the new flat key (best-effort) so future reads are cheap.
  */
-const PENDING_ACK_KEY = "pipeline.wallet.termsAcknowledged.pending";
+function checkAndMigrateLegacy(): boolean {
+  try {
+    // Check the old pending key first.
+    if (
+      localStorage.getItem("pipeline.wallet.termsAcknowledged.pending") ===
+      "true"
+    ) {
+      try {
+        localStorage.setItem(TERMS_KEY, "true");
+      } catch {
+        /* ignore */
+      }
+      return true;
+    }
+    // Scan for any address-scoped legacy key set to "true".
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k !== null &&
+        k.startsWith("pipeline.wallet.termsAcknowledged.") &&
+        localStorage.getItem(k) === "true"
+      ) {
+        try {
+          localStorage.setItem(TERMS_KEY, "true");
+        } catch {
+          /* ignore */
+        }
+        return true;
+      }
+    }
+  } catch {
+    // localStorage unavailable or iteration failed.
+  }
+  return false;
+}
 
 /**
- * Synchronous, non-reactive read.
+ * Synchronous, non-reactive read of the terms acknowledgement flag.
  * Safe to call inside click handlers (no React hook rules apply).
  *
- * When `address` is defined, checks the address-scoped key.
- * When `address` is undefined, also checks the `pending` key written during a
- * first-ever connect acknowledgement before the address is known.
+ * Returns `true` when:
+ *   - The flat `pipeline.wallet.termsAcknowledged` key is `"true"`, OR
+ *   - A legacy address-scoped / pending key is `"true"` (triggers migration).
  */
-export function readTermsAcknowledged(address: string | undefined): boolean {
+export function readTermsAcknowledged(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    if (address) {
-      return localStorage.getItem(termsKey(address)) === "true";
-    }
-    // No address yet — check the pending key (written when user acknowledges
-    // before their first-ever wallet connection completes).
-    return localStorage.getItem(PENDING_ACK_KEY) === "true";
+    if (localStorage.getItem(TERMS_KEY) === "true") return true;
+    return checkAndMigrateLegacy();
   } catch {
     return false;
   }
@@ -58,60 +94,46 @@ export function readTermsAcknowledged(address: string | undefined): boolean {
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export interface UseTermsAcknowledgementResult {
-  /** Whether this address has already acknowledged the terms. */
+  /** Whether the terms have already been acknowledged (any chain). */
   acknowledged: boolean;
   /** Persist the acknowledgement and trigger a re-render in this tab. */
   acknowledge: () => void;
 }
 
 /**
- * Reactive hook that tracks whether the given `address` has acknowledged the
- * jurisdiction terms.
- *
- * Pass `undefined` when no wallet is connected — returns `{ acknowledged: false }`.
+ * Reactive hook that tracks whether the user has acknowledged the jurisdiction
+ * terms. Argument-less — the flag is chain-agnostic.
  *
  * The hook subscribes to the `storage` event so that if another tab persists the
- * acknowledgement for the same address, this tab reflects it immediately.
+ * acknowledgement, this tab reflects it immediately.
  */
-export function useTermsAcknowledgement(
-  address: string | undefined,
-): UseTermsAcknowledgementResult {
+export function useTermsAcknowledgement(): UseTermsAcknowledgementResult {
   const [acknowledged, setAcknowledged] = useState<boolean>(() =>
-    readTermsAcknowledged(address),
+    readTermsAcknowledged(),
   );
-
-  // Re-sync when the address changes (e.g., wallet switches accounts).
-  useEffect(() => {
-    setAcknowledged(readTermsAcknowledged(address));
-  }, [address]);
 
   // Cross-tab sync via the native `storage` event.
   useEffect(() => {
-    if (!address) return;
-
-    const key = termsKey(address);
-
     function onStorage(e: StorageEvent) {
-      if (e.key === key) {
+      if (e.key === TERMS_KEY) {
         setAcknowledged(e.newValue === "true");
       }
     }
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [address]);
+  }, []);
 
   const acknowledge = useCallback(() => {
-    if (!address) return;
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(termsKey(address), "true");
+      localStorage.setItem(TERMS_KEY, "true");
       // Apply immediately in this tab — the `storage` event fires only in other tabs.
       setAcknowledged(true);
     } catch {
       // localStorage unavailable (e.g., private browsing with storage blocked).
     }
-  }, [address]);
+  }, []);
 
   return { acknowledged, acknowledge };
 }

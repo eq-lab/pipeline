@@ -10,7 +10,7 @@ import {
 import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
-import { useWallet } from "@/wallet";
+import { useEvmWallet } from "@/wallet";
 
 /**
  * Transactions / Activity page — wired to `GET /v1/requests` (Figma `1497-94912`).
@@ -55,7 +55,7 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 function Transactions() {
   const [activeTab, setActiveTab] = useState("buy");
   const { data, isLoading, error, refetch } = useRequests();
-  const { isConnected } = useWallet();
+  const { isConnected } = useEvmWallet();
 
   const items = data?.requests ?? [];
   const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);

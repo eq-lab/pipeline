@@ -5,42 +5,45 @@ import {
   readTermsAcknowledged,
 } from "./useTermsAcknowledgement";
 
-const ADDR = "0xABCDEF0000000000000000000000000000000001";
-const ADDR_LOWER = ADDR.toLowerCase();
-const ACK_KEY = `pipeline.wallet.termsAcknowledged.${ADDR_LOWER}`;
+const TERMS_KEY = "pipeline.wallet.termsAcknowledged";
 const PENDING_KEY = "pipeline.wallet.termsAcknowledged.pending";
+const ADDR = "0xabcdef0000000000000000000000000000000001";
 
 describe("readTermsAcknowledged — synchronous helper", () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
   it("returns false when localStorage key is absent", () => {
-    expect(readTermsAcknowledged(ADDR)).toBe(false);
+    expect(readTermsAcknowledged()).toBe(false);
   });
 
-  it("returns true when address-scoped key is 'true'", () => {
-    localStorage.setItem(ACK_KEY, "true");
-    expect(readTermsAcknowledged(ADDR)).toBe(true);
+  it("returns true when the flat key is 'true'", () => {
+    localStorage.setItem(TERMS_KEY, "true");
+    expect(readTermsAcknowledged()).toBe(true);
   });
 
-  it("returns false when address-scoped key is some other value", () => {
-    localStorage.setItem(ACK_KEY, "yes");
-    expect(readTermsAcknowledged(ADDR)).toBe(false);
+  it("returns false when the flat key is some other value", () => {
+    localStorage.setItem(TERMS_KEY, "yes");
+    expect(readTermsAcknowledged()).toBe(false);
   });
 
-  it("returns false when address is undefined and pending key is absent", () => {
-    expect(readTermsAcknowledged(undefined)).toBe(false);
-  });
-
-  it("returns true when address is undefined and pending key is 'true'", () => {
+  it("Migration: returns true and back-fills flat key when legacy pending key is 'true'", () => {
     localStorage.setItem(PENDING_KEY, "true");
-    expect(readTermsAcknowledged(undefined)).toBe(true);
+    expect(readTermsAcknowledged()).toBe(true);
+    // Back-fill should have happened.
+    expect(localStorage.getItem(TERMS_KEY)).toBe("true");
   });
 
-  it("is case-insensitive (normalises address to lowercase)", () => {
-    localStorage.setItem(ACK_KEY, "true");
-    expect(readTermsAcknowledged(ADDR.toUpperCase())).toBe(true);
-    expect(readTermsAcknowledged(ADDR.toLowerCase())).toBe(true);
+  it("Migration: returns true and back-fills flat key when legacy address-scoped key is 'true'", () => {
+    const legacyKey = `pipeline.wallet.termsAcknowledged.${ADDR}`;
+    localStorage.setItem(legacyKey, "true");
+    expect(readTermsAcknowledged()).toBe(true);
+    expect(localStorage.getItem(TERMS_KEY)).toBe("true");
+  });
+
+  it("Migration: returns false when legacy key is present but value is not 'true'", () => {
+    localStorage.setItem(PENDING_KEY, "false");
+    expect(readTermsAcknowledged()).toBe(false);
   });
 });
 
@@ -49,18 +52,18 @@ describe("useTermsAcknowledgement — hook", () => {
   afterEach(() => localStorage.clear());
 
   it("returns acknowledged: false by default", () => {
-    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
+    const { result } = renderHook(() => useTermsAcknowledgement());
     expect(result.current.acknowledged).toBe(false);
   });
 
   it("reads existing 'true' from localStorage on mount", () => {
-    localStorage.setItem(ACK_KEY, "true");
-    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
+    localStorage.setItem(TERMS_KEY, "true");
+    const { result } = renderHook(() => useTermsAcknowledgement());
     expect(result.current.acknowledged).toBe(true);
   });
 
   it("acknowledge() flips acknowledged to true and writes localStorage", () => {
-    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
+    const { result } = renderHook(() => useTermsAcknowledgement());
     expect(result.current.acknowledged).toBe(false);
 
     act(() => {
@@ -68,43 +71,16 @@ describe("useTermsAcknowledgement — hook", () => {
     });
 
     expect(result.current.acknowledged).toBe(true);
-    expect(localStorage.getItem(ACK_KEY)).toBe("true");
+    expect(localStorage.getItem(TERMS_KEY)).toBe("true");
   });
 
-  it("acknowledge() is a no-op when address is undefined", () => {
-    const { result } = renderHook(() => useTermsAcknowledgement(undefined));
-    act(() => {
-      result.current.acknowledge();
-    });
-    expect(result.current.acknowledged).toBe(false);
-    expect(localStorage.getItem(ACK_KEY)).toBeNull();
-  });
-
-  it("re-syncs acknowledged when address prop changes", () => {
-    const ADDR2 = "0x0000000000000000000000000000000000000002";
-    const KEY2 = `pipeline.wallet.termsAcknowledged.${ADDR2.toLowerCase()}`;
-    localStorage.setItem(KEY2, "true");
-
-    const { result, rerender } = renderHook(
-      ({ addr }: { addr: string }) => useTermsAcknowledgement(addr),
-      { initialProps: { addr: ADDR } },
-    );
-
-    expect(result.current.acknowledged).toBe(false);
-
-    rerender({ addr: ADDR2 });
-
-    expect(result.current.acknowledged).toBe(true);
-  });
-
-  it("cross-tab sync: storage event from another tab flips acknowledged", () => {
-    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
+  it("cross-tab sync: storage event on the flat key flips acknowledged to true", () => {
+    const { result } = renderHook(() => useTermsAcknowledgement());
     expect(result.current.acknowledged).toBe(false);
 
     act(() => {
-      // Simulate another tab writing the key by dispatching a StorageEvent.
       const event = new StorageEvent("storage", {
-        key: ACK_KEY,
+        key: TERMS_KEY,
         newValue: "true",
         storageArea: localStorage,
       });
@@ -115,19 +91,36 @@ describe("useTermsAcknowledgement — hook", () => {
   });
 
   it("cross-tab sync: storage event clearing the key flips acknowledged to false", () => {
-    localStorage.setItem(ACK_KEY, "true");
-    const { result } = renderHook(() => useTermsAcknowledgement(ADDR));
+    localStorage.setItem(TERMS_KEY, "true");
+    const { result } = renderHook(() => useTermsAcknowledgement());
     expect(result.current.acknowledged).toBe(true);
 
     act(() => {
       const event = new StorageEvent("storage", {
-        key: ACK_KEY,
+        key: TERMS_KEY,
         newValue: null,
         storageArea: localStorage,
       });
       window.dispatchEvent(event);
     });
 
+    expect(result.current.acknowledged).toBe(false);
+  });
+
+  it("cross-tab sync: storage event on an unrelated key does NOT flip acknowledged", () => {
+    const { result } = renderHook(() => useTermsAcknowledgement());
+    expect(result.current.acknowledged).toBe(false);
+
+    act(() => {
+      const event = new StorageEvent("storage", {
+        key: "pipeline.wallet.termsAcknowledged.pending",
+        newValue: "true",
+        storageArea: localStorage,
+      });
+      window.dispatchEvent(event);
+    });
+
+    // No change — we only listen to the flat TERMS_KEY.
     expect(result.current.acknowledged).toBe(false);
   });
 });

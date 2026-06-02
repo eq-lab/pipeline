@@ -22,7 +22,7 @@ import {
   usePublicClient,
 } from "wagmi";
 import { useMock, readMock, parseBigInt, parseJson } from "./mock";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 import { erc20Abi } from "./abis/erc20";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
@@ -129,7 +129,7 @@ export function useApproval({
   token,
   spender,
 }: UseApprovalArgs): UseApprovalResult {
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   const tokenIsZero = token === ZERO_ADDRESS;
   const spenderIsZero = spender === ZERO_ADDRESS;

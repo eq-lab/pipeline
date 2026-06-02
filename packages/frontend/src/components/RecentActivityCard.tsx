@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
-import { useWallet } from "@/wallet";
+import { useEvmWallet } from "@/wallet";
 import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
@@ -75,7 +75,7 @@ export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
   RecentActivityCardProps
 >(function RecentActivityCard({ className, ...rest }, ref) {
-  const { isConnected } = useWallet();
+  const { isConnected } = useEvmWallet();
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];
   const showList = isConnected && !isLoading && !error && requests.length > 0;

@@ -28,7 +28,7 @@ import { depositManagerAbi } from "./abis/depositManager";
 import { CACHE_FOREVER } from "./cache";
 import { estimateGasCapped } from "./estimateGas";
 import { simulateOrFail } from "./simulate";
-import { useWallet } from "./useWallet";
+import { useEvmWallet } from "./useEvmWallet";
 
 // ── Mock-key constants ────────────────────────────────────────────────────────
 
@@ -326,7 +326,7 @@ export function useRequestDeposit(): RequestDepositResult {
   const wagmiWrite = useWriteContract();
 
   // Connected wallet address for gas estimation and receipt gating.
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // Derived — mirrors useApproval.ts pattern.
   const walletConnected = isConnected && address !== undefined;
@@ -517,7 +517,7 @@ export function useClaim(): ClaimResult {
   const wagmiWrite = useWriteContract();
 
   // Connected wallet address for gas estimation and receipt gating.
-  const { address, isConnected } = useWallet();
+  const { address, isConnected } = useEvmWallet();
 
   // Derived — mirrors useApproval.ts pattern.
   const walletConnected = isConnected && address !== undefined;

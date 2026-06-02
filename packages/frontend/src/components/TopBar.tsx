@@ -1,23 +1,31 @@
 import React, { useState } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Button, IconButton, Logo, NavIcon, WalletPill } from "@pipeline/ui";
-import { useWallet, useToken, useDepositManagerAddresses } from "@/wallet";
+import {
+  useEvmWallet,
+  useEvmToken,
+  useDepositManagerAddresses,
+  useStellarWallet,
+  useStellarToken,
+  useWalletView,
+} from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
+import { ConnectChooserModal } from "./ConnectChooserModal";
 
 /**
  * TopBar — global page header (self-contained, no external props for wallet).
  *
  * Mounted in the root layout (`__root.tsx`) so every page renders it
- * automatically.  All wallet state is read internally via `useWallet()` and
- * `useToken()`; no per-route prop plumbing is required.
+ * automatically.  All wallet state is read internally; no per-route prop
+ * plumbing is required.
  *
  * Connected state:
  *   - Renders a `WalletPill` wrapped in a trigger button.
  *   - Clicking the pill opens the `AccountDropdown` panel (address copy,
- *     USDC balance, disconnect).
+ *     USDC balance, namespace toggle, disconnect).
  *
- * Disconnected state:
- *   - Renders a "Connect Wallet" `<Button>` that calls `connect()`.
+ * Disconnected state (neither namespace connected):
+ *   - Renders a "Connect Wallet" `<Button>` that opens `ConnectChooserModal`.
  *
  * Figma references:
  *   - Frame: `1497:94715` (TopBar frame)
@@ -57,16 +65,56 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-    // ── Wallet state ──────────────────────────────────────────────────────
-    const { address, isConnected, connect, disconnect } = useWallet();
-    const { usdc } = useDepositManagerAddresses();
-    const { formattedBalance } = useToken({
+    // ── Wallet state — all four hooks called unconditionally ──────────────
+    const evm = useEvmWallet();
+    const { usdc: usdcAddress } = useDepositManagerAddresses();
+    const evmToken = useEvmToken({
       token:
-        usdc ?? ("0x0000000000000000000000000000000000000000" as `0x${string}`),
+        usdcAddress ??
+        ("0x0000000000000000000000000000000000000000" as `0x${string}`),
     });
+    const stellar = useStellarWallet();
+    const stellarToken = useStellarToken();
 
-    // ── Account dropdown state ────────────────────────────────────────────
-    const [open, setOpen] = useState(false);
+    // ── View selection ────────────────────────────────────────────────────
+    const { kind, setKind } = useWalletView();
+
+    // ── Derived state ─────────────────────────────────────────────────────
+    const anyConnected = evm.isConnected || stellar.isConnected;
+
+    // Active namespace data.
+    const activeAddress =
+      kind === "evm"
+        ? evm.isConnected
+          ? evm.address
+          : undefined
+        : stellar.isConnected
+          ? stellar.address
+          : undefined;
+
+    const activeFormattedBalance =
+      kind === "evm"
+        ? evmToken.formattedBalance
+        : stellarToken.formattedBalance;
+
+    const activeDisconnect =
+      kind === "evm" ? evm.disconnect : stellar.disconnect;
+
+    // Pill shows the active namespace's balance, falling back to EVM if active
+    // namespace is disconnected but the other is connected.
+    const pillBalance =
+      activeFormattedBalance ??
+      (anyConnected
+        ? kind === "evm"
+          ? (stellarToken.formattedBalance ?? "—")
+          : (evmToken.formattedBalance ?? "—")
+        : "—");
+
+    // ── Dropdown state ────────────────────────────────────────────────────
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+
+    // ── Chooser modal state ───────────────────────────────────────────────
+    const [chooserOpen, setChooserOpen] = useState(false);
 
     // ── Active nav derivation from URL ────────────────────────────────────
     const derivedActive: NavItem["key"] =
@@ -143,14 +191,14 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           className="relative flex w-40 shrink-0 items-center justify-end"
           data-node-id="1497:94724"
         >
-          {isConnected && address ? (
+          {anyConnected ? (
             <>
               {/* Trigger button wrapping the WalletPill */}
               <button
                 type="button"
                 aria-haspopup="menu"
-                aria-expanded={open}
-                onClick={() => setOpen((o) => !o)}
+                aria-expanded={dropdownOpen}
+                onClick={() => setDropdownOpen((o) => !o)}
                 className={[
                   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
                   "focus-visible:outline-[var(--color-pipeline-ink)]",
@@ -158,30 +206,42 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
                 ].join(" ")}
                 data-node-id="1498:100168"
               >
-                <WalletPill token="usdc" balance={formattedBalance ?? "—"} />
+                <WalletPill token="usdc" balance={pillBalance} />
               </button>
 
               {/* Account dropdown panel */}
-              {open && (
+              {dropdownOpen && (
                 <AccountDropdown
-                  address={address}
-                  formattedBalance={formattedBalance ?? "—"}
-                  onClose={() => setOpen(false)}
+                  kind={kind}
+                  onKindChange={setKind}
+                  address={activeAddress}
+                  formattedBalance={activeFormattedBalance}
+                  onConnect={kind === "evm" ? evm.connect : stellar.connect}
+                  onClose={() => setDropdownOpen(false)}
                   onDisconnect={() => {
-                    disconnect();
-                    setOpen(false);
+                    activeDisconnect();
+                    setDropdownOpen(false);
                   }}
                 />
               )}
             </>
           ) : (
-            <Button
-              variant="primary-dark"
-              onClick={connect}
-              data-node-id="1497:94725"
-            >
-              Connect Wallet
-            </Button>
+            <>
+              <Button
+                variant="primary-dark"
+                onClick={() => setChooserOpen(true)}
+                data-node-id="1497:94725"
+              >
+                Connect Wallet
+              </Button>
+
+              <ConnectChooserModal
+                open={chooserOpen}
+                onConnectEvm={evm.connect}
+                onConnectStellar={stellar.connect}
+                onDismiss={() => setChooserOpen(false)}
+              />
+            </>
           )}
         </div>
       </header>

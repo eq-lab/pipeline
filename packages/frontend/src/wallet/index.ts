@@ -1,67 +1,94 @@
 /**
  * Public surface of the wallet module.
  *
- * Only import from this barrel outside of `src/wallet/`.
- * Do NOT import wagmi, viem, @reown/appkit, or @tanstack/react-query directly
+ * Only import from this barrel outside of `src/wallet/evm/` or
+ * `src/wallet/stellar/`.
+ * Do NOT import wagmi, viem, @reown/appkit, @tanstack/react-query,
+ * @creit.tech/stellar-wallets-kit, or @stellar/stellar-sdk directly
  * from outside this module — the ESLint `no-restricted-imports` rule enforces
  * this boundary.
  */
-export { WalletProvider } from "./WalletProvider";
-export { useWallet, useContractRead } from "./useWallet";
+
+// ── Shared gate ───────────────────────────────────────────────────────────────
+export { WalletGateProvider } from "./WalletGateProvider";
+
+// ── EVM namespace ─────────────────────────────────────────────────────────────
+export { EvmWalletProvider } from "./evm/EvmWalletProvider";
+export { useEvmWallet, useContractRead } from "./evm/useEvmWallet";
 export type {
   WalletState,
   UseContractReadArgs,
   ContractReadResult,
-} from "./useWallet";
+} from "./evm/useEvmWallet";
 export {
   useDepositManagerAddresses,
   useDepositManagerMinDeposit,
   useRequestDeposit,
   useClaim,
-} from "./useDepositManager";
+} from "./evm/useDepositManager";
 export type {
   DepositManagerAddressesResult,
   DepositManagerMinDepositResult,
   RequestDepositResult,
   ClaimResult,
-} from "./useDepositManager";
-export { useRequestWithdrawal, useClaimWithdrawal } from "./useWithdrawalQueue";
+} from "./evm/useDepositManager";
+export {
+  useRequestWithdrawal,
+  useClaimWithdrawal,
+} from "./evm/useWithdrawalQueue";
 export type {
   RequestWithdrawalResult,
   ClaimWithdrawalResult,
-} from "./useWithdrawalQueue";
+} from "./evm/useWithdrawalQueue";
 export {
   useStakedPlusdAsset,
   useStakedPlusdConvertToShares,
   useStakedPlusdConvertToAssets,
   useStake,
   useUnstake,
-} from "./useStakedPlusd";
+} from "./evm/useStakedPlusd";
 export type {
   StakedPlusdAssetResult,
   StakedPlusdConvertResult,
   StakeResult,
   UnstakeResult,
-} from "./useStakedPlusd";
-export { useApproval } from "./useApproval";
-export type { UseApprovalResult, UseApprovalArgs } from "./useApproval";
-export { useToken } from "./useToken";
-export type { UseTokenArgs, UseTokenResult } from "./useToken";
+} from "./evm/useStakedPlusd";
+export { useApproval } from "./evm/useApproval";
+export type { UseApprovalResult, UseApprovalArgs } from "./evm/useApproval";
+export { useEvmToken } from "./evm/useEvmToken";
+export type { UseTokenArgs, UseTokenResult } from "./evm/useEvmToken";
 export {
   isMockKeyPresent,
   readMock,
   useMock,
   subscribeMock,
   parseJson,
-} from "./mock";
-export { parseUnits, formatUnits } from "./units";
+} from "./evm/mock";
+export { parseUnits, formatUnits } from "./evm/units";
 export {
   readTermsAcknowledged,
   useTermsAcknowledgement,
 } from "./useTermsAcknowledgement";
 export type { UseTermsAcknowledgementResult } from "./useTermsAcknowledgement";
-export { useNetworkFeeEstimate, formatFeeEth } from "./useNetworkFeeEstimate";
+export {
+  useNetworkFeeEstimate,
+  formatFeeEth,
+} from "./evm/useNetworkFeeEstimate";
 export type {
   UseNetworkFeeEstimateResult,
   NetworkFeeDirection,
-} from "./useNetworkFeeEstimate";
+} from "./evm/useNetworkFeeEstimate";
+
+// ── Stellar namespace ─────────────────────────────────────────────────────────
+export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
+export { useStellarWallet } from "./stellar/useStellarWallet";
+export type { StellarWalletState } from "./stellar/useStellarWallet";
+export { useStellarToken } from "./stellar/useStellarToken";
+export type { UseStellarTokenResult } from "./stellar/useStellarToken";
+
+// ── View selection ────────────────────────────────────────────────────────────
+export { WalletViewProvider, useWalletView } from "./WalletViewContext";
+export type {
+  WalletViewKind,
+  WalletViewContextValue,
+} from "./WalletViewContext";
