@@ -148,20 +148,26 @@ defaults. This plan builds on those — it does **not** re-add them.
 
 ## Open Questions
 
-- **How is the acceptance criterion exercised end-to-end?** The criterion
-  ("deposit XLM into the Blend pool and see the position reflected; withdraw it
-  back; confirmed on stellar.expert") implies a way to *trigger* the hooks against
-  a live wallet. The hooks themselves are headless. Options: (a) ship hooks only
-  and verify via a throwaway test harness / story, (b) add a dev-only QA affordance
-  (e.g. a hidden panel behind a flag) to invoke deposit/withdraw, or (c) defer the
-  live-testnet acceptance run to manual QA with a scripted harness. Which does the
-  team want for this issue's "Done"? (Scope says no production UI; this asks what
-  the *minimum* trigger surface is.)
-- **Is a live-testnet round-trip required to close this issue, or is mocked
-  unit-test coverage + a documented manual procedure sufficient?** A real
-  round-trip depends on a funded testnet account + current (non-reset) contract
-  IDs and is not reproducible in CI. Confirm whether the manager expects the live
-  confirmation as a gating check or as a documented manual step.
+_Both resolved by the user during planning (2026-06-02) — see "Resolved decisions" below._
+
+### Resolved decisions
+
+- **Trigger surface → a new tab on the existing `/test` diagnostic page.** Add a
+  third tab (alongside `Status` and `Mocks`) to `packages/frontend/src/routes/test.tsx`
+  with **deposit** and **withdraw** buttons (plus an amount input and a position
+  readout) that invoke the new Blend hooks against the connected Stellar wallet.
+  Follow the page's existing pattern exactly: extend the `TestTab` union, the
+  `TABS` array, the `validateSearch` whitelist, and the tab-render switch; build
+  the tab body from the existing `Section` / `KeyValueRow` primitives and
+  `@pipeline/ui` `Button`. The page is intentionally NOT linked from `TopBar`
+  (developer / manual-QA only) — keep it that way. This is the agreed "minimum
+  trigger surface"; no production deposit/withdraw UI in this issue.
+- **Closing bar → mocked unit tests + a documented manual procedure.** A live
+  testnet round-trip is **not** a gating check. The issue closes on: green mocked
+  unit tests for the hooks/helper, plus a written manual-QA procedure (fund via
+  Friendbot → connect → deposit XLM on the `/test` Blend tab → see position →
+  withdraw). Document that procedure in the plan's Test Strategy / a docs note;
+  the live run is a documented manual step, not CI-gated.
 
 ## Implementation Steps
 
