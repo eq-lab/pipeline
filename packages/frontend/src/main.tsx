@@ -7,6 +7,7 @@ import {
   EvmWalletProvider,
   StellarWalletProvider,
   WalletGateProvider,
+  WalletViewProvider,
 } from "@/wallet";
 import { ToastProvider } from "@/lib/toast";
 
@@ -26,9 +27,11 @@ createRoot(rootElement).render(
     <WalletGateProvider>
       <EvmWalletProvider>
         <StellarWalletProvider>
-          <ToastProvider>
-            <RouterProvider router={router} />
-          </ToastProvider>
+          <WalletViewProvider>
+            <ToastProvider>
+              <RouterProvider router={router} />
+            </ToastProvider>
+          </WalletViewProvider>
         </StellarWalletProvider>
       </EvmWalletProvider>
     </WalletGateProvider>

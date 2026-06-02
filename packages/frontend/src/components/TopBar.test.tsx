@@ -5,8 +5,15 @@
  * mock-wallet localStorage keys), and a smoke test that the header renders
  * on non-`/` routes (regression guard for the root-layout approach).
  *
- * All wallet state is driven via `pipeline.mock.wallet.*` localStorage keys —
- * no provider mocking needed (the mock layer is the documented testing pattern).
+ * Also covers:
+ *   - Neither wallet connected → "Connect Wallet" present; clicking opens
+ *     ConnectChooserModal with "Connect EVM" / "Connect Stellar" buttons.
+ *   - EVM connected → pill shows EVM balance.
+ *   - Both connected → pill shows active namespace's balance.
+ *
+ * Stellar hooks (useStellarWallet / useStellarToken) are mocked at module level
+ * to avoid a real StellarWalletsKit initialisation and QueryClient requirement.
+ * EVM state is driven via `pipeline.mock.wallet.*` localStorage keys.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -19,7 +26,52 @@ import {
   createMemoryHistory,
 } from "@tanstack/react-router";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
+import { WalletViewProvider } from "@/wallet/WalletViewContext";
 import { TopBar } from "./TopBar";
+
+// ── Stellar hook mocks ────────────────────────────────────────────────────────
+
+const {
+  mockStellarConnect,
+  mockStellarDisconnect2,
+  mockStellarWalletState,
+  mockStellarTokenState,
+} = vi.hoisted(() => ({
+  mockStellarConnect: vi.fn(),
+  mockStellarDisconnect2: vi.fn(),
+  mockStellarWalletState: {
+    address: undefined as string | undefined,
+    isConnected: false,
+  },
+  mockStellarTokenState: {
+    balance: undefined as string | undefined,
+    formattedBalance: undefined as string | undefined,
+    refetchBalance: vi.fn(),
+    isLoading: false,
+    error: null,
+  },
+}));
+
+vi.mock("@/wallet/stellar/useStellarWallet", () => ({
+  useStellarWallet: () => ({
+    ...mockStellarWalletState,
+    connect: mockStellarConnect,
+    disconnect: mockStellarDisconnect2,
+  }),
+}));
+
+vi.mock("@/wallet/stellar/useStellarToken", () => ({
+  useStellarToken: () => ({ ...mockStellarTokenState }),
+}));
+
+vi.mock("@/wallet/stellar/config", () => ({
+  StellarWalletsKit: {
+    authModal: vi.fn(),
+    getAddress: vi.fn().mockResolvedValue({ address: undefined }),
+    disconnect: vi.fn(),
+    init: vi.fn(),
+  },
+}));
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
@@ -91,6 +143,8 @@ vi.mock("@/wallet/config", () => ({
 
 const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
 const MOCK_ADDRESS = "0x8493000000000000000000000000000000003b92";
+const MOCK_STELLAR_ADDRESS =
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 /** Builds a minimal in-test router that renders <TopBar /> on every route. */
 function buildRouter(initialPath: string) {
@@ -139,7 +193,9 @@ function renderTopBar(initialPath = "/") {
   const router = buildRouter(initialPath);
   return render(
     <EvmWalletProvider>
-      <RouterProvider router={router} />
+      <WalletViewProvider>
+        <RouterProvider router={router} />
+      </WalletViewProvider>
     </EvmWalletProvider>,
   );
 }
@@ -167,6 +223,13 @@ function setConnectedMock() {
   );
 }
 
+function setStellarConnected() {
+  mockStellarWalletState.address = MOCK_STELLAR_ADDRESS;
+  mockStellarWalletState.isConnected = true;
+  mockStellarTokenState.balance = "2000.00";
+  mockStellarTokenState.formattedBalance = "$2,000.00";
+}
+
 function clearMocks() {
   [
     "pipeline.mock.wallet.address",
@@ -176,6 +239,10 @@ function clearMocks() {
     `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.symbol`,
     `pipeline.mock.wallet.balance.${USDC_ADDRESS.toLowerCase()}`,
   ].forEach((k) => localStorage.removeItem(k));
+  mockStellarWalletState.address = undefined;
+  mockStellarWalletState.isConnected = false;
+  mockStellarTokenState.balance = undefined;
+  mockStellarTokenState.formattedBalance = undefined;
 }
 
 // ── Tests: route-driven active nav ────────────────────────────────────────────
@@ -218,8 +285,6 @@ describe("TopBar — route-driven active state", () => {
   });
 
   it("highlights Convert on /deposit?direction=withdraw (withdraw direction uses /deposit pathname)", async () => {
-    // After the /withdraw → /deposit?direction=withdraw redirect, the active
-    // pathname seen by the router is /deposit, so the Convert button is highlighted.
     renderTopBar("/deposit");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Convert" })).toHaveAttribute(
@@ -354,7 +419,6 @@ describe("TopBar — wallet state", () => {
     setConnectedMock();
     renderTopBar("/");
 
-    // Wait for connected state.
     const trigger = await screen.findByRole("button", {
       name: /\$1,000\.00|—/,
     });
@@ -363,8 +427,97 @@ describe("TopBar — wallet state", () => {
     await user.click(trigger);
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    // The Account dropdown panel should be present.
     expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument();
+  });
+});
+
+// ── Tests: ConnectChooserModal integration ────────────────────────────────────
+
+describe("TopBar — ConnectChooserModal", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("clicking Connect Wallet opens ConnectChooserModal", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    const connectBtn = await screen.findByRole("button", {
+      name: "Connect Wallet",
+    });
+    await user.click(connectBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Connect a wallet" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Connect EVM" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Connect Stellar" }),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking Connect EVM in the chooser modal dismisses it", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Connect Wallet" }),
+    );
+    await screen.findByRole("dialog", { name: "Connect a wallet" });
+
+    await user.click(screen.getByRole("button", { name: "Connect EVM" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Connect a wallet" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("clicking Connect Stellar in the chooser modal calls stellar.connect and dismisses", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Connect Wallet" }),
+    );
+    await screen.findByRole("dialog", { name: "Connect a wallet" });
+
+    await user.click(screen.getByRole("button", { name: "Connect Stellar" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Connect a wallet" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(mockStellarConnect).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Tests: both wallets connected ─────────────────────────────────────────────
+
+describe("TopBar — both namespaces connected", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("pill shows EVM balance when both connected and EVM is the active namespace", async () => {
+    setConnectedMock();
+    setStellarConnected();
+    renderTopBar("/");
+
+    // Default is EVM view — show EVM balance.
+    await waitFor(() =>
+      expect(screen.getByText("$1,000.00")).toBeInTheDocument(),
+    );
   });
 });
 
@@ -382,11 +535,9 @@ describe("TopBar — root layout smoke test", () => {
   it("renders the Pipeline logo and nav on /deposit (regression guard for root layout)", async () => {
     renderTopBar("/deposit");
 
-    // Wait for the router to hydrate and the TopBar to render.
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument(),
     );
-    // The logo is rendered inside the TopBar — confirm it exists on /deposit.
     expect(
       screen.getByRole("navigation", { name: "Primary" }),
     ).toBeInTheDocument();
