@@ -28,13 +28,13 @@ All dev work is grouped under an epic. An epic describes one business feature.
 - **Body must contain:** what needs to happen, why, affected areas. The issue must be a sub-issue of an epic.
 - Modifier `trivial` marks work that needs no planning — the implementing agent may go straight to code.
 - Non-trivial work may use the optional planning statuses (§3): the plan is posted as a comment or linked doc while `planning`, then the issue sits in `planned` until an implementer picks it up.
-- **Done when:** code, tests, and lint are green; a **user-stories doc** for the change exists (see §6); the PR is merged; and a comment linking the user-stories doc is posted on the epic's `qa` issue (see §5.3).
+- **Done when:** code, tests, and lint are green; a **user-stories doc** for the change exists (see §6); the PR is merged. Agents do not touch the epic's `qa` issue (see §5.3).
 
 ### `bug` — defect
 
 - **Body must contain:** observed vs expected behavior, reproduction steps, location (page/module).
 - Bugs found while testing an epic are filed as sub-issues of that epic. Bugs with no related epic may stand alone.
-- **Done when:** fixed with a regression test and the PR is merged. If the fix changes user-visible behavior, update the relevant user-stories doc and notify the `qa` issue as in §5.3.
+- **Done when:** fixed with a regression test and the PR is merged. If the fix changes user-visible behavior, update the relevant user-stories doc.
 
 ### `docs` — documentation update
 
@@ -43,14 +43,14 @@ All dev work is grouped under an epic. An epic describes one business feature.
 
 ### `qa` — testing pass
 
-One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — it happens when an agent picks up the `qa` issue.
+One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — a **human requests a pass** by flipping the `qa` issue to `backlog`, and it happens when an agent picks the issue up.
 
-- **Body:** a checklist of user-stories docs to verify. Implementing agents append to it via comments (§5.3); the QA agent folds comments into the checklist when claiming.
+- **Body:** points to the epic's user-stories directory (`docs/user-stories/epic-<N>/`, see §6). The QA agent discovers the stories to run from that directory; verification history lives in the results comments.
 - **Lifecycle:**
   1. Created `blocked` (nothing to test yet).
-  2. First merged `implementation`/`bug` sub-issue flips it to `backlog`.
-  3. A QA agent claims it (`in-progress`), executes every linked user-stories doc not yet verified, files found defects as `bug` sub-issues of the same epic, and posts a results comment (stories run, pass/fail per story, bugs filed).
-  4. If the epic still has open work issues → back to `blocked` (waiting for more work to test).
+  2. A human flips it to `backlog` when they want a testing pass. Agents never make this transition (§5.3).
+  3. A QA agent claims it (`in-progress`), executes every user-stories doc in the epic's directory (at minimum those not yet verified per the latest results comment), files found defects as `bug` sub-issues of the same epic, and posts a results comment (stories run, pass/fail per story, bugs filed).
+  4. After posting results → back to `blocked` (the next pass is again human-requested).
   5. When all sibling sub-issues are closed and the latest pass is green → close the `qa` issue, then the epic.
 
 ## 3. Labels
@@ -126,14 +126,9 @@ gh issue edit <number> --add-assignee @me --remove-label backlog --add-label in-
 - The issue **body** is the source of truth for *what*; **comments** are the log of *what changed since*. Significant scope changes get folded back into the body with a comment noting the edit.
 - Every decision that another agent might depend on goes in a comment — model choices, deferred work, discovered constraints.
 
-### 5.3 QA hand-off
+### 5.3 QA scheduling
 
-When an `implementation` or `bug` PR merges, the implementing agent must:
-
-1. Comment on the epic's `qa` issue with a link to the user-stories doc covering the change (path, see §6).
-2. If the `qa` issue is `blocked`, flip it to `backlog`.
-
-This is the only signal QA agents watch — work that skips it is invisible to testing.
+QA passes are **requested by humans**, not triggered by agents. Implementing agents only commit user-stories docs in their PRs (§6) — they never edit, comment on, or relabel the epic's `qa` issue. When a human wants a testing pass, they flip the `qa` issue `blocked` → `backlog`; the QA agent that claims it discovers the stories to run from `docs/user-stories/epic-<N>/`.
 
 ### 5.4 Discovering work
 
