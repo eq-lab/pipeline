@@ -27,6 +27,7 @@ All dev work is grouped under an epic. An epic describes one business feature.
 
 - **Body must contain:** what needs to happen, why, affected areas. The issue must be a sub-issue of an epic.
 - Modifier `trivial` marks work that needs no planning — the implementing agent may go straight to code.
+- Non-trivial work may use the optional planning statuses (§3): the plan is posted as a comment or linked doc while `planning`, then the issue sits in `planned` until approval. **Approval is recorded as an issue comment** (by a human, or by whoever the agent's own rules designate) before implementation starts.
 - **Done when:** code, tests, and lint are green; a **user-stories doc** for the change exists (see §6); the PR is merged; and a comment linking the user-stories doc is posted on the epic's `qa` issue (see §5.3).
 
 ### `bug` — defect
@@ -69,11 +70,15 @@ One `qa` issue per epic, created together with the epic as its sub-issue. Manual
 | Label | Meaning |
 |---|---|
 | `backlog` | Ready to pick up, unclaimed |
+| `planning` | *Optional* — a plan is being produced (assignee must be set) |
+| `planned` | *Optional* — plan posted, awaiting approval and/or an implementer |
 | `in-progress` | Claimed and being worked (assignee must be set) |
 | `review` | PR open, awaiting human review/merge |
 | `blocked` | Cannot proceed — explain the blocker in a comment |
 
 Closed = done. There is no `completed` label. Every new issue enters as `backlog` or `blocked`.
+
+The planning pair is optional: work that needs no reviewed plan (e.g. `trivial`) goes straight `backlog` → `in-progress`. When used, the plan lives in a comment or a linked doc, and the approval that releases `planned` → `in-progress` is recorded as a comment on the issue. A `planned` issue may stay assigned (the planner implements it) or be unassigned for another agent to claim.
 
 ### Modifier labels (optional, combine freely)
 
@@ -86,11 +91,12 @@ Closed = done. There is no `completed` label. Every new issue enters as `backlog
 ## 4. Status transitions
 
 ```text
-            ┌──────────► blocked ◄──────────┐
-            │               │                │
-backlog ────┴──► in-progress ──► review ──► closed
-   ▲                │
-   └────────────────┘  (work abandoned: unassign + back to backlog)
+backlog ──► planning ──► planned ──► in-progress ──► review ──► closed
+   │            (optional pair)           ▲    │
+   ├──────────────────────────────────────┘    │ (work abandoned:
+   ◄───────────────────────────────────────────┘  unassign + back to backlog)
+
+blocked ◄──► any open state (explain the blocker in a comment)
 ```
 
 A status change is always a remove-then-add pair so exactly one status label is set:
@@ -191,6 +197,8 @@ gh label create bug            --color d73a4a --description "Something isn't wor
 gh label create docs           --color 0075ca --description "Documentation-only change" --force
 gh label create qa             --color D4C5F9 --description "Testing pass for an epic" --force
 gh label create backlog        --color C5DEF5 --description "Ready to pick up, unclaimed" --force
+gh label create planning       --color C5DEF5 --description "Optional — plan being produced" --force
+gh label create planned        --color BFD4F2 --description "Optional — plan posted, awaiting approval" --force
 gh label create in-progress    --color FBCA04 --description "Claimed and being worked" --force
 gh label create review         --color FEF2C0 --description "PR open, awaiting review" --force
 gh label create blocked        --color B60205 --description "Cannot proceed — see comments" --force
@@ -198,4 +206,4 @@ gh label create trivial        --color C2E0C6 --description "No planning step ne
 gh label create priority       --color FF6B6B --description "Pick before other backlog items" --force
 ```
 
-Labels retired by this protocol (delete after migration): `planning`, `planned`, `executing`, `executed`, `testing`, `tested`, `enhancement`, `documentation`.
+Labels retired by this protocol (delete after migration): `executing`, `executed`, `testing`, `tested`, `enhancement`, `documentation`.
