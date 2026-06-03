@@ -17,7 +17,7 @@ Before doing anything, orient yourself:
 Planning & tracking:
 
 - [GitHub Issues](https://github.com/eq-lab/pipeline/issues) — team backlog and task board (use `/issue` skill to manage)
-- [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — agent-agnostic issue/label contract (draft, not yet in force)
+- [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — agent-agnostic issue/label contract (canonical)
 - [`docs/exec-plans/active/`](./docs/exec-plans/active/) — in-flight work with progress and decision logs
 - [`docs/exec-plans/completed/`](./docs/exec-plans/completed/) — archived execution plans
 - [`docs/exec-plans/known-bugs.md`](./docs/exec-plans/known-bugs.md) — bugs found during development, not yet fixed
@@ -42,13 +42,14 @@ Reference:
 
 ## Workflow
 
-Every piece of dev work starts with a GitHub Issue and runs end-to-end through the [`manager`](./.claude/skills/manager/SKILL.md) skill. Any Issue ready for development MUST carry exactly one flow label (`backend` or `frontend`). Issues without a flow label are not dev work (discussion, questions, tracking) and the manager will skip them.
+Every piece of dev work is a **sub-issue of an epic**, tracked per [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — issue types, labels, statuses, and claiming all live there. The [`manager`](./.claude/skills/manager/SKILL.md) skill drives tasks end-to-end and parks anything that needs a human (`needs-feedback` label) without stalling.
 
-- **Backend** (`backend` label) — strict spec-first / plan / human approval / implement / test / archive / PR. The full belt-and-suspenders flow.
-- **Frontend** (`frontend` label) — plan, but the human approval gate fires only if the planner has Open Questions. Implement, then `ux-tester` if a Figma reference exists.
-- **Trivial frontend** (`frontend` + `trivial` labels) — no planning, no approval gate, no ux-tester. `coder` runs at `model: opus` / `effort: high` and must leave the working tree linting, building, and green on tests.
+- **Backend** (`backend` label) — plan → park for human plan feedback → implement → PR.
+- **Frontend** (`frontend` label) — plan (gate only on planner Open Questions) → implement → PR. **No testing phase.**
+- **Trivial frontend** (`frontend` + `trivial`) — implement → PR → manager admin-merge after explicitly green CI.
+- **QA** (`qa` label) — one issue per epic; runs only when a human flips it to `backlog`. The QA agent executes the epic's user-stories docs and files bugs.
 
-When uncertain about frontend vs. backend, label it `backend`. The full step-by-step contract for each flow lives in [`.claude/skills/manager/SKILL.md`](./.claude/skills/manager/SKILL.md).
+When uncertain about frontend vs. backend, label it `backend`. Per-flow specifics live in [`.claude/skills/manager/SKILL.md`](./.claude/skills/manager/SKILL.md).
 
 ## Rules
 
