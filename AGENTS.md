@@ -17,6 +17,7 @@ Before doing anything, orient yourself:
 Planning & tracking:
 
 - [GitHub Issues](https://github.com/eq-lab/pipeline/issues) — team backlog and task board (use `/issue` skill to manage)
+- [`docs/ISSUE_PROTOCOL.md`](./docs/ISSUE_PROTOCOL.md) — agent-agnostic issue/label contract (draft, not yet in force)
 - [`docs/exec-plans/active/`](./docs/exec-plans/active/) — in-flight work with progress and decision logs
 - [`docs/exec-plans/completed/`](./docs/exec-plans/completed/) — archived execution plans
 - [`docs/exec-plans/known-bugs.md`](./docs/exec-plans/known-bugs.md) — bugs found during development, not yet fixed
