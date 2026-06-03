@@ -103,7 +103,7 @@ packages/worker/src/relayer/
 ├── relayer_job.rs                                 ← MODIFIED: invoke Phase 4
 ├── relayer_settings.rs                            ← MODIFIED: 2-3 new env vars
 └── yield_mint/                                    ← NEW submodule
-    ├── mod.rs                                     ← run_phase_4 orchestration
+    ├── mod.rs                                     ← phase_yield_mint orchestration
     ├── calldata.rs                                ← alloy sol! + encoder
     └── on_chain.rs                                ← canYieldBeMinted helper
 ```
@@ -247,7 +247,7 @@ Exact state name set will be validated against BitGo's docs during implementatio
 ### `packages/worker/src/relayer/yield_mint/mod.rs`
 
 ```rust
-pub async fn run_phase_4(
+pub async fn phase_yield_mint(
     settings: &RelayerJobSettings,
     bitgo: &BitgoClient,
     outbox: &YieldMintOutboxRepo,
@@ -445,8 +445,8 @@ Test cases:
 | `confirm_terminal_delivered_marks_confirmed` | Mocks `state: Delivered, tx_hash: '0xabc'`; asserts row → `confirmed`. |
 | `confirm_pending_leaves_row_alone` | Mocks `state: PendingApproval`; asserts row stays `submitted`. |
 | `confirm_rejected_marks_failed` | Mocks `state: Rejected`; asserts row → `failed`. |
-| `phase_4_runs_all_three_steps_per_cycle` | Seeds: 2 new payments + 1 existing `submitted` row; one Phase 4 invocation; asserts all three transitions. |
-| `phase_4_failure_in_one_row_does_not_block_others` | Two pending rows; mock fails row 1; asserts row 1 → `failed`, row 2 → `submitted`. |
+| `submit_then_confirm_chained_in_memory` | Chains Steps B and C against the same in-memory outbox; asserts both rows transition pending → submitted → confirmed. |
+| `phase_yield_mint_failure_in_one_row_does_not_block_others` | Two pending rows; mock fails row 1; asserts row 1 → `failed`, row 2 → `submitted`. |
 
 ### Manual end-to-end (documented, not automated)
 
@@ -491,7 +491,7 @@ For the writing-plans skill that follows:
 2. Extend `BitgoClient` with `get_tx_request` + extend `models.rs` with `TxRequestState`.
 3. `yield_mint/calldata.rs` + unit tests for the encoder.
 4. `yield_mint/on_chain.rs` + (eth_call mock-backed) unit test for the view caller.
-5. `yield_mint/mod.rs` orchestration + `run_phase_4` integration tests with mocked BitGo + mocked provider.
+5. `yield_mint/mod.rs` orchestration + `phase_yield_mint` integration tests with mocked BitGo + mocked provider.
 6. Wire Phase 4 into `relayer_job.rs` behind a feature toggle (presence of `JOB_RELAYER_YIELD_MINTER_ADDRESS`).
 7. Settings + `.env.example` update.
 8. Docs touch-up (relayer README if any, mention Phase 4).

@@ -12,6 +12,7 @@ use shared::{
     contract_logs_repo::ContractLogsRepo,
     db::EventRepo,
     events::ContractLog,
+    json_numeric::u256_to_bigdecimal,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
 };
@@ -63,10 +64,6 @@ fn extract_loan_id(event: &ContractLog) -> anyhow::Result<BigDecimal> {
 fn loan_id_to_u256(loan_id: &BigDecimal) -> anyhow::Result<U256> {
     U256::from_str(&loan_id.to_string())
         .map_err(|e| anyhow::anyhow!("loan_id `{loan_id}` is not a valid U256: {e}"))
-}
-
-pub fn u256_to_bigdecimal(v: U256) -> BigDecimal {
-    BigDecimal::from_str(&v.to_string()).expect("U256 stringifies to a valid decimal")
 }
 
 fn block_id_for(block_number: u64) -> BlockId {

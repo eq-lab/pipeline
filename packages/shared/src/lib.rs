@@ -13,3 +13,4 @@ pub mod metadata_fetcher;
 pub mod position_repo;
 pub mod signature;
 pub mod sumsub;
+pub mod yield_mint_outbox_repo;
