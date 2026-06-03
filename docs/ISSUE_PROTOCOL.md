@@ -87,6 +87,7 @@ The planning pair is optional: work that needs no plan (e.g. `trivial`) goes str
 | `trivial` | Implementation needs no planning step |
 | `priority` | Pick before other backlog items |
 | `frontend` / `backend` | Routing hint — which kind of agent should pick it up |
+| `needs-feedback` | A human's input is requested — the question is in the latest comment. Agents skip these issues; the human removes the label after answering |
 
 ## 4. Status transitions
 
@@ -199,6 +200,7 @@ gh label create review         --color FEF2C0 --description "PR open, awaiting r
 gh label create blocked        --color B60205 --description "Cannot proceed — see comments" --force
 gh label create trivial        --color C2E0C6 --description "No planning step needed" --force
 gh label create priority       --color FF6B6B --description "Pick before other backlog items" --force
+gh label create needs-feedback --color D93F0B --description "Awaiting user input — see latest comment; remove after answering" --force
 ```
 
 Labels retired by this protocol (delete after migration): `executing`, `executed`, `testing`, `tested`, `enhancement`, `documentation`.
