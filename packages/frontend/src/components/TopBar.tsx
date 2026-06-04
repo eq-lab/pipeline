@@ -136,8 +136,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const composed = [
       // Layout: flex row, three slots, justified between, vertically centred.
       "flex items-center justify-between",
-      // Padding mirrors Figma `p-16` (16px all sides).
-      "p-4",
+      // Padding: 8px on mobile (Figma 1989:9052 = 56px tall = 8px + 40px + 8px),
+      // restored to 16px on desktop (md and above).
+      "p-2 md:p-4",
       "w-full",
       // Surface tokens — no hardcoded colors.
       "bg-[var(--color-pipeline-paper)]",

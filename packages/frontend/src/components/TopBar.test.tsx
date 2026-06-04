@@ -565,6 +565,20 @@ describe("TopBar — mobile responsive classes", () => {
     vi.clearAllMocks();
   });
 
+  it("header element has `p-2` (8px mobile padding) and `md:p-4` (16px desktop padding) classes", async () => {
+    renderTopBar("/");
+
+    // The <header> element is the landmark with role="banner".
+    await waitFor(() =>
+      expect(screen.getByRole("banner")).toBeInTheDocument(),
+    );
+    const header = screen.getByRole("banner");
+    // Mobile: 8px padding (Figma 1989:9052 — 56px total = 8+40+8).
+    expect(header.className).toContain("p-2");
+    // Desktop: restore 16px padding at md breakpoint.
+    expect(header.className).toContain("md:p-4");
+  });
+
   it("desktop nav wrapper has `hidden md:flex` class (invisible below md breakpoint)", async () => {
     renderTopBar("/");
 
