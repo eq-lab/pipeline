@@ -1,8 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
+import { ENV } from "@/lib/env";
 
 import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
-import { useStakedPlusdAsset } from "@/wallet/evm/useStakedPlusd";
+import {
+  useStakedPlusdAsset,
+  useStakedPlusdConvertToAssets,
+} from "@/wallet/evm/useStakedPlusd";
 import { useEvmToken } from "@/wallet/evm/useEvmToken";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
 import { HomeStatsStrip } from "@/components/HomeStatsStrip";
@@ -66,6 +71,42 @@ import { QnaSection } from "@/components/QnaSection";
  * preserved at md+ via `md:grid` and `md:grid-cols-7`.
  */
 
+/**
+ * Derives a human-readable USD string from a bigint balance at 18-decimal
+ * precision. Returns `"$0.00"` when the value is `undefined` or `0n`.
+ */
+function formatBigintUSD(value: bigint | undefined): string {
+  if (value === undefined || value === 0n) return "$0.00";
+  const asFloat = parseFloat(formatUnits(value, 18));
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(asFloat);
+}
+
+/**
+ * Connected-wallet balance state selector for the mobile home page.
+ *
+ *   "splusd" — wallet has sPLUSD shares (State C, Figma `1886:46777`)
+ *   "plusd"  — wallet has PLUSD but no sPLUSD (State B, Figma `1984:6501`)
+ *   "empty"  — connected but zero balances (State A, Figma `1988:7074`)
+ *
+ * Only meaningful when `isConnected === true`; callers should short-circuit
+ * to the disconnected layout otherwise.
+ */
+type MobileHomeState = "empty" | "plusd" | "splusd";
+
+function deriveMobileHomeState(
+  plusdBalance: bigint | undefined,
+  splusdBalance: bigint | undefined,
+): MobileHomeState {
+  if (splusdBalance !== undefined && splusdBalance > 0n) return "splusd";
+  if (plusdBalance !== undefined && plusdBalance > 0n) return "plusd";
+  return "empty";
+}
+
 function Home() {
   const { isConnected, connect } = useEvmWallet();
   const navigate = useNavigate();
@@ -73,9 +114,35 @@ function Home() {
   // Read the connected wallet's PLUSD balance to gate the Stake CTA.
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-  const { balance: plusdBalance } = useEvmToken({
-    token: plusdAddress ?? ZERO_ADDRESS,
+  const { balance: plusdBalance, formattedBalance: plusdFormatted } =
+    useEvmToken({
+      token: plusdAddress ?? ZERO_ADDRESS,
+    });
+
+  // Read the sPLUSD ERC-20 share balance for the mobile home state.
+  // The sPLUSD vault IS the ERC-20 token for shares; use its address directly.
+  const { balance: splusdBalance } = useEvmToken({
+    token: ENV.STAKED_PLUSD_ADDRESS,
   });
+
+  // Convert sPLUSD shares → PLUSD-equivalent for Total Balance (State C).
+  const { data: splusdInPlusd } = useStakedPlusdConvertToAssets(splusdBalance);
+
+  // Total Balance = PLUSD balance + sPLUSD converted to PLUSD.
+  const totalBalanceBigint: bigint | undefined =
+    plusdBalance !== undefined || splusdInPlusd !== undefined
+      ? (plusdBalance ?? 0n) + (splusdInPlusd ?? 0n)
+      : undefined;
+
+  const totalBalanceFormatted = isConnected
+    ? formatBigintUSD(totalBalanceBigint)
+    : "$0.00";
+
+  // Derive mobile home state (only when connected).
+  const mobileHomeState: MobileHomeState = isConnected
+    ? deriveMobileHomeState(plusdBalance, splusdBalance)
+    : "empty";
+
   // Disable Stake only when connected with zero or undefined PLUSD balance.
   // When disconnected the CTA stays enabled so the user can navigate to /stake.
   const stakeDisabled =
@@ -93,7 +160,10 @@ function Home() {
           under the TopBar; horizontal padding lets the column breathe at
           narrower widths without ever exceeding the 1200px design cap. */}
       <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-12 px-2 py-12 md:px-8">
-        <WelcomeHeader />
+        {/* WelcomeHeader: on mobile, pass isConnected so the greeting says
+            "Welcome back" for connected users and "Welcome" otherwise.
+            The prop is ignored on desktop (the desktop block renders at md+). */}
+        <WelcomeHeader isConnected={isConnected} />
 
         {/* ── Mobile layout (below md): single-column stack ────────────────
             On desktop (md+) this div is hidden and the grid Card below
@@ -103,7 +173,11 @@ function Home() {
         <div className="flex flex-col gap-2 md:hidden">
           {/* Top card: promo (disconnected) or portfolio (connected) — 256px */}
           {isConnected ? (
-            <PortfolioPlaceholderCard className="min-h-[256px] md:min-h-[274px]" />
+            <PortfolioPlaceholderCard
+              className="min-h-[256px] md:min-h-[274px]"
+              mobileHomeState={mobileHomeState}
+              mobileTotalBalance={totalBalanceFormatted}
+            />
           ) : (
             <ConnectWalletPromoCard
               className="min-h-[256px] md:min-h-[274px]"
@@ -118,8 +192,14 @@ function Home() {
               className="flex flex-1 flex-col gap-2"
               data-node-id="1989:9007"
             >
-              <StartHereCard className="flex-1" onBuy={onBuy} onSell={onSell} />
-              <EarnedCard />
+              <StartHereCard
+                className="flex-1"
+                onBuy={onBuy}
+                onSell={onSell}
+                mobileHomeState={isConnected ? mobileHomeState : undefined}
+                mobilePlusdBalance={plusdFormatted}
+              />
+              <EarnedCard mobileHomeState={isConnected ? mobileHomeState : undefined} />
             </div>
 
             {/* Right: StakeCard — fixed 189px wide, 224px tall */}
@@ -128,15 +208,18 @@ function Home() {
               style={{ width: 189, flexShrink: 0 }}
               onStake={onStake}
               stakeDisabled={stakeDisabled}
+              mobileHomeState={isConnected ? mobileHomeState : undefined}
+              mobileSplusdShares={splusdBalance}
+              mobileSplusdInPlusd={splusdInPlusd}
             />
           </div>
 
-          {/* RecentActivityCard — shown on mobile in the connected state.
-              Per issue comment #4, the activity card IS shown in the
-              connected state (Figma node 1993:6527 context). Keep it always
-              in the DOM for both states so layout does not shift; the card
-              itself shows an empty state when disconnected. */}
-          <RecentActivityCard />
+          {/* RecentActivityCard — shown on mobile only in States B and C
+              (connected with any balance). Per issue #466 answer Q6: if
+              there is no activity the entire block is hidden on mobile. */}
+          {isConnected && mobileHomeState !== "empty" && (
+            <RecentActivityCard />
+          )}
 
           {/* Bottom stats strip — horizontally scrollable on mobile.
               Replaces the WelcomeHeader stats strip which is hidden on mobile. */}

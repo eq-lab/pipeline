@@ -57,9 +57,8 @@ export type RecentActivityCardProps = Omit<
   "children"
 >;
 
-// Stable heading id so consumers do not collide if multiple cards mount in a
-// preview / story (rare, but cheap to guarantee).
-const HEADING_ID = "recent-activity-card-title";
+/** Base heading id prefix — each instance gets a unique suffix from useId(). */
+const HEADING_ID_BASE = "recent-activity-card-title";
 
 // Figma `IMG` slot inside the Placeholder is exactly 240×240
 // (node `1497:94570`). Pin the illustration to that size so the muted variant
@@ -75,6 +74,11 @@ export const RecentActivityCard = React.forwardRef<
   HTMLDivElement,
   RecentActivityCardProps
 >(function RecentActivityCard({ className, ...rest }, ref) {
+  // Use a unique id per instance to avoid duplicate id attributes when both
+  // the mobile and desktop blocks render this card in the same DOM.
+  const instanceId = React.useId();
+  const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
+
   const { isConnected } = useEvmWallet();
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];

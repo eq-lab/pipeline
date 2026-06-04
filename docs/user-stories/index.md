@@ -12,3 +12,4 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 | Issue | Doc | Status |
 |-------|-----|--------|
 | [#465 Mobile home base layout + wallet-not-connected state](https://github.com/eq-lab/pipeline/issues/465) | [465-mobile-home-base.md](./epic-463/465-mobile-home-base.md) | Initial |
+| [#466 Mobile home page balance states (0/0, has PLUSD, has sPLUSD)](https://github.com/eq-lab/pipeline/issues/466) | [466-mobile-home-balance-states.md](./epic-463/466-mobile-home-balance-states.md) | Initial |

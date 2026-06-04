@@ -1,4 +1,5 @@
 import React from "react";
+import { formatUnits } from "viem";
 import { Button, Card } from "@pipeline/ui";
 import { useStats, formatApy } from "@/api";
 
@@ -65,6 +66,9 @@ import { useStats, formatApy } from "@/api";
  * page composers in `packages/frontend/src/components/`.
  */
 
+/** Mobile home balance state — drives the StakeCard variant. */
+type MobileHomeState = "empty" | "plusd" | "splusd";
+
 export interface StakeCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children" | "title"
@@ -81,14 +85,55 @@ export interface StakeCardProps extends Omit<
    * is zero so the button cannot initiate a stake flow with no tokens.
    */
   stakeDisabled?: boolean;
+  /**
+   * Mobile-only: connected balance state.
+   * - `"empty"` (State A): circular CTA disabled, labelled "Nothing to Stake".
+   * - `"plusd"` (State B): circular CTA enabled, labelled "Stake".
+   * - `"splusd"` (State C): "Staked PLUSD" balance display + "Stake More" CTA
+   *   + "Unstake" text link.
+   * When `undefined` the desktop/disconnected appearance is preserved.
+   */
+  mobileHomeState?: MobileHomeState;
+  /**
+   * Mobile-only: sPLUSD share balance (raw bigint, 18 decimals).
+   * Displayed as the top number ("shares") in State C.
+   */
+  mobileSplusdShares?: bigint;
+  /**
+   * Mobile-only: sPLUSD shares converted to PLUSD-equivalent (raw bigint, 18 dec).
+   * Displayed as the sub-line ("X.XX sPLUSD") in State C.
+   */
+  mobileSplusdInPlusd?: bigint;
 }
 
-// Stable heading id so consumers do not collide if multiple cards mount in a
-// preview / story (rare, but cheap to guarantee).
-const HEADING_ID = "stake-card-title";
+/** Base heading id prefix — each instance gets a unique suffix from useId(). */
+const HEADING_ID_BASE = "stake-card-title";
+
+/** Format a bigint at 18 decimals to a locale number string (e.g. "1,000.00"). */
+function formatBigintNumber(value: bigint | undefined): string {
+  if (value === undefined) return "0.00";
+  const asFloat = parseFloat(formatUnits(value, 18));
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(asFloat);
+}
 
 export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
-  function StakeCard({ onStake, stakeDisabled, className, ...rest }, ref) {
+  function StakeCard({
+    onStake,
+    stakeDisabled,
+    className,
+    mobileHomeState,
+    mobileSplusdShares,
+    mobileSplusdInPlusd,
+    ...rest
+  }, ref) {
+    // Use a unique id per instance to avoid duplicate id attributes when both
+    // the mobile and desktop blocks render this card in the same DOM.
+    const instanceId = React.useId();
+    const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
+
     const { data: statsData } = useStats();
     const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)}`;
 
@@ -105,6 +150,102 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
     ]
       .filter(Boolean)
       .join(" ");
+
+    // State C: "Staked PLUSD" display with shares and PLUSD-equivalent.
+    if (mobileHomeState === "splusd") {
+      const sharesFormatted = formatBigintNumber(mobileSplusdShares);
+      const inPlusdFormatted = formatBigintNumber(mobileSplusdInPlusd);
+
+      return (
+        <Card
+          ref={ref}
+          variant="white"
+          role="region"
+          aria-labelledby={HEADING_ID}
+          className={composed}
+          data-node-id="1497:94702"
+          {...rest}
+        >
+          {/* Staked PLUSD header */}
+          <header
+            className="flex w-full flex-col items-start gap-1 self-start"
+            data-node-id="1497:94703"
+          >
+            <p
+              id={HEADING_ID}
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body)]",
+                "leading-[var(--text-pipeline-body--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "m-0",
+              ].join(" ")}
+            >
+              Staked PLUSD
+            </p>
+            {/* Top number: sPLUSD shares */}
+            <p
+              className={[
+                "font-[family-name:var(--font-display)]",
+                "text-[length:var(--text-pipeline-heading-s)]",
+                "leading-[var(--text-pipeline-heading-s--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "m-0",
+              ].join(" ")}
+              data-testid="splusd-shares"
+            >
+              {sharesFormatted}
+            </p>
+            {/* Sub-line: PLUSD-equivalent */}
+            <p
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+                "m-0",
+              ].join(" ")}
+              data-testid="splusd-in-plusd"
+            >
+              {inPlusdFormatted} sPLUSD
+            </p>
+          </header>
+
+          {/* Bottom section: "Stake More" CTA + "Unstake" text link */}
+          <div className="flex w-full flex-col items-end gap-2">
+            {/* "Unstake" text link */}
+            <button
+              type="button"
+              onClick={onStake}
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+                "underline-offset-2 hover:underline",
+                "bg-transparent border-0 cursor-pointer p-0",
+              ].join(" ")}
+              data-testid="unstake-link"
+            >
+              Unstake
+            </button>
+            {/* "Stake More" circular CTA */}
+            <Button
+              variant="circular-blue"
+              onClick={onStake}
+              aria-label="Stake More PLUSD"
+              data-node-id="1497:94713"
+            >
+              Stake More
+            </Button>
+          </div>
+        </Card>
+      );
+    }
 
     return (
       <Card
@@ -173,15 +314,22 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
 
         {/* Stake CTA — bottom-right of the card. The parent flex column uses
             `items-end`, so the circular button naturally anchors to the
-            right edge. */}
+            right edge.
+            State A (empty): disabled, labelled "Nothing to Stake".
+            State B (plusd) or disconnected: enabled, labelled "Stake". */}
         <Button
           variant="circular-blue"
           onClick={onStake}
-          disabled={stakeDisabled}
-          aria-label="Stake PLUSD"
+          disabled={
+            stakeDisabled ||
+            (mobileHomeState !== undefined && mobileHomeState === "empty")
+          }
+          aria-label={
+            mobileHomeState === "empty" ? "Nothing to Stake" : "Stake PLUSD"
+          }
           data-node-id="1497:94713"
         >
-          Stake
+          {mobileHomeState === "empty" ? "Nothing to Stake" : "Stake"}
         </Button>
       </Card>
     );

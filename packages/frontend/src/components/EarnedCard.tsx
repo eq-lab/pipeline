@@ -47,14 +47,24 @@ import { Card } from "@pipeline/ui";
  * "coming soon" framing has a bounded lifetime.
  */
 
-export type EarnedCardProps = Omit<
-  React.HTMLAttributes<HTMLDivElement>,
-  "children"
->;
+/** Mobile home balance state — drives the earned value display. */
+type MobileHomeState = "empty" | "plusd" | "splusd";
 
-// Stable id so the region's `aria-labelledby` reference always resolves even
-// when several cards mount in a Storybook / preview composition.
-const LABEL_ID = "earned-card-label";
+export interface EarnedCardProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+  /**
+   * Mobile-only: connected balance state.
+   * When `"splusd"` (State C), renders "—" as a placeholder earned value
+   * (no real earned-balance API exists yet — #389 tracks the live data).
+   * When `"empty"` or `"plusd"` (States A/B), renders "Nothing yet".
+   * When `undefined`, renders the previous "Coming soon" text (desktop
+   * and disconnected — no change to existing behaviour).
+   */
+  mobileHomeState?: MobileHomeState;
+}
+
+/** Base label id prefix — each instance gets a unique suffix from useId(). */
+const LABEL_ID_BASE = "earned-card-label";
 
 // Label row — Body token (16/22) in Graphik LC, primary ink. Mirrors Figma
 // node `1497:94693` "Earned" string.
@@ -79,7 +89,12 @@ const valueClasses = [
 ].join(" ");
 
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
-  function EarnedCard({ className, ...rest }, ref) {
+  function EarnedCard({ className, mobileHomeState, ...rest }, ref) {
+    // Use a unique id per instance to avoid duplicate id attributes when both
+    // the mobile and desktop blocks render this card in the same DOM.
+    const instanceId = React.useId();
+    const LABEL_ID = `${LABEL_ID_BASE}-${instanceId}`;
+
     const composed = [
       // Figma asymmetric elevation border: 1px top/left, 3px right/bottom.
       "!border-t !border-r-[3px] !border-b-[3px] !border-l",
@@ -87,6 +102,40 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
     ]
       .filter(Boolean)
       .join(" ");
+
+    // Determine the display value based on state.
+    // State C (splusd): placeholder "—" (no real earned API yet, #389).
+    // States A/B (empty/plusd) when connected: "Nothing yet".
+    // Disconnected / desktop (undefined): original "Coming soon".
+    let earnedValue: string;
+    let valueExtra: string | undefined;
+
+    if (mobileHomeState === "splusd") {
+      // State C: earned placeholder — no real source yet.
+      earnedValue = "—";
+      valueExtra = undefined;
+    } else if (mobileHomeState === "empty" || mobileHomeState === "plusd") {
+      // States A/B: "Nothing yet" per Figma frames 1988:7074 / 1984:6501.
+      earnedValue = "Nothing yet";
+      valueExtra = undefined;
+    } else {
+      // Desktop / disconnected: original "Coming soon".
+      earnedValue = "Coming soon";
+      valueExtra = undefined;
+    }
+
+    // State C value classes: use green positive token for the earned value.
+    const stateValueClasses =
+      mobileHomeState === "splusd"
+        ? [
+            "font-[family-name:var(--font-display)]",
+            "text-[length:var(--text-pipeline-heading-s)]",
+            "leading-[var(--text-pipeline-heading-s--line-height)]",
+            "font-[var(--font-weight-regular)]",
+            "text-[color:var(--color-pipeline-chart-positive)]",
+            "m-0",
+          ].join(" ")
+        : valueClasses;
 
     return (
       <Card
@@ -105,9 +154,23 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
           <p id={LABEL_ID} className={labelClasses} data-node-id="1497:94693">
             Earned
           </p>
-          <p className={valueClasses} data-node-id="1497:94698">
-            Coming soon
+          <p className={stateValueClasses} data-node-id="1497:94698">
+            {earnedValue}
           </p>
+          {valueExtra !== undefined && (
+            <p
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+                "m-0",
+              ].join(" ")}
+            >
+              {valueExtra}
+            </p>
+          )}
         </div>
       </Card>
     );

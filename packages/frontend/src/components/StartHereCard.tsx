@@ -69,6 +69,9 @@ import { Button, Card, CoinIcon } from "@pipeline/ui";
  * page-level components in `packages/frontend/src/components/`.
  */
 
+/** Mobile home balance state — drives the card's connected variant display. */
+type MobileHomeState = "empty" | "plusd" | "splusd";
+
 export interface StartHereCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children" | "title"
@@ -86,16 +89,46 @@ export interface StartHereCardProps extends Omit<
    * `/deposit?direction=withdraw`).
    */
   onSell?: () => void;
+  /**
+   * Mobile-only: connected balance state.
+   * When `"plusd"` or `"splusd"`, renders the "PLUSD Balance" connected
+   * variant (eyebrow "PLUSD Balance", formatted balance, USDC sub-line, Buy
+   * + Sell both enabled). When `"empty"`, Sell is disabled. When `undefined`
+   * the component renders its default disconnected appearance (no change to
+   * desktop rendering).
+   */
+  mobileHomeState?: MobileHomeState;
+  /**
+   * Mobile-only: formatted PLUSD balance string (e.g. `"$1,000.00"`).
+   * Displayed as the balance value in the connected variant (States B/C).
+   * Ignored when `mobileHomeState` is `undefined` or `"empty"`.
+   */
+  mobilePlusdBalance?: string;
 }
 
-// Stable heading id so consumers do not collide if multiple cards mount in a
-// preview / story (rare, but cheap to guarantee).
-const HEADING_ID = "start-here-card-title";
+/** Base heading id prefix — each instance gets a unique suffix from useId(). */
+const HEADING_ID_BASE = "start-here-card-title";
 
 export const StartHereCard = React.forwardRef<
   HTMLDivElement,
   StartHereCardProps
->(function StartHereCard({ onBuy, onSell, className, ...rest }, ref) {
+>(function StartHereCard({
+  onBuy,
+  onSell,
+  className,
+  mobileHomeState,
+  mobilePlusdBalance,
+  ...rest
+}, ref) {
+  // Use a unique id per instance to avoid duplicate id attributes when both
+  // the mobile and desktop blocks render this card in the same DOM.
+  const instanceId = React.useId();
+  const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
+
+  // "Connected" variant: shown in States B and C on mobile.
+  const isConnectedVariant =
+    mobileHomeState === "plusd" || mobileHomeState === "splusd";
+
   const composed = [
     // Eyebrow + heading + subtitle top, CTA bottom — mirrors the Figma "List"
     // stack with `justify-between`.
@@ -118,66 +151,108 @@ export const StartHereCard = React.forwardRef<
       data-node-id="1497:94676"
       {...rest}
     >
-      {/* Heading block — eyebrow label, headline row (glyph + title), and
-          muted subtitle. Stays grouped at the top of the card. */}
-      <header className="flex flex-col gap-1" data-node-id="1497:94678">
-        {/* Eyebrow "Start here" — Body token in Graphik LC, ink colour. */}
-        <p
-          className={[
-            "font-[family-name:var(--font-body)]",
-            "text-[length:var(--text-pipeline-body)]",
-            "leading-[var(--text-pipeline-body--line-height)]",
-            "font-[var(--font-weight-regular)]",
-            "text-[color:var(--color-pipeline-ink)]",
-            "m-0",
-          ].join(" ")}
-          data-node-id="1497:94679"
-        >
-          Start here
-        </p>
-
-        {/* Headline row — small dollar glyph + "Get PLUSD" serif heading. */}
-        <div className="flex items-center gap-1" data-node-id="1497:94683">
-          {/* PLUSD coin icon — decorative, 24 px, matches Figma node 910:10281. */}
-          <CoinIcon
-            token="plusd"
-            size="md"
-            aria-hidden="true"
-            data-node-id="I1497:94683;910:10281"
-          />
-          <h2
-            id={HEADING_ID}
+      {isConnectedVariant ? (
+        /* ── Connected variant (States B & C): "PLUSD Balance" ──────────── */
+        <header className="flex flex-col gap-1" data-node-id="1497:94678">
+          {/* Eyebrow "PLUSD Balance" */}
+          <p
             className={[
-              "font-[family-name:var(--font-display)]",
-              "text-[length:var(--text-pipeline-heading-s)]",
-              "leading-[var(--text-pipeline-heading-s--line-height)]",
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body)]",
+              "leading-[var(--text-pipeline-body--line-height)]",
               "font-[var(--font-weight-regular)]",
               "text-[color:var(--color-pipeline-ink)]",
               "m-0",
             ].join(" ")}
-            data-node-id="1497:94685"
           >
-            Get PLUSD
-          </h2>
-        </div>
+            PLUSD Balance
+          </p>
 
-        {/* Subtitle — Caption token in Graphik LC, ink-muted. */}
-        <p
-          className={[
-            "font-[family-name:var(--font-body)]",
-            "text-[length:var(--text-pipeline-caption)]",
-            "leading-[var(--text-pipeline-caption--line-height)]",
-            "font-[var(--font-weight-regular)]",
-            "text-[color:var(--color-pipeline-ink-muted)]",
-            "m-0",
-          ].join(" ")}
-          data-node-id="1497:94687"
-        >
-          Convert USDC 1:1
-        </p>
-      </header>
+          {/* Balance row — PLUSD coin icon + formatted balance value */}
+          <div className="flex items-center gap-1">
+            <CoinIcon
+              token="plusd"
+              size="md"
+              aria-hidden="true"
+              data-node-id="I1497:94683;910:10281"
+            />
+            <h2
+              id={HEADING_ID}
+              className={[
+                "font-[family-name:var(--font-display)]",
+                "text-[length:var(--text-pipeline-heading-s)]",
+                "leading-[var(--text-pipeline-heading-s--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "m-0",
+              ].join(" ")}
+            >
+              {mobilePlusdBalance ?? "$0.00"}
+            </h2>
+          </div>
+        </header>
+      ) : (
+        /* ── Disconnected / State A variant: "Start here / Get PLUSD" ───── */
+        <header className="flex flex-col gap-1" data-node-id="1497:94678">
+          {/* Eyebrow "Start here" — Body token in Graphik LC, ink colour. */}
+          <p
+            className={[
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-body)]",
+              "leading-[var(--text-pipeline-body--line-height)]",
+              "font-[var(--font-weight-regular)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "m-0",
+            ].join(" ")}
+            data-node-id="1497:94679"
+          >
+            Start here
+          </p>
+
+          {/* Headline row — small dollar glyph + "Get PLUSD" serif heading. */}
+          <div className="flex items-center gap-1" data-node-id="1497:94683">
+            {/* PLUSD coin icon — decorative, 24 px, matches Figma node 910:10281. */}
+            <CoinIcon
+              token="plusd"
+              size="md"
+              aria-hidden="true"
+              data-node-id="I1497:94683;910:10281"
+            />
+            <h2
+              id={HEADING_ID}
+              className={[
+                "font-[family-name:var(--font-display)]",
+                "text-[length:var(--text-pipeline-heading-s)]",
+                "leading-[var(--text-pipeline-heading-s--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink)]",
+                "m-0",
+              ].join(" ")}
+              data-node-id="1497:94685"
+            >
+              Get PLUSD
+            </h2>
+          </div>
+
+          {/* Subtitle — Caption token in Graphik LC, ink-muted. */}
+          <p
+            className={[
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
+              "font-[var(--font-weight-regular)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
+              "m-0",
+            ].join(" ")}
+            data-node-id="1497:94687"
+          >
+            Convert USDC 1:1
+          </p>
+        </header>
+      )}
 
       {/* Action buttons row — Buy (primary) + Sell (ghost, wired to withdraw).
+          State A (empty): Sell disabled. States B/C (connected): both enabled.
           `gap-2` = 8px mirrors Figma `gap-xs` on the buttons container.
           `self-start` keeps the row flush-left at its intrinsic width. */}
       <div
@@ -191,7 +266,12 @@ export const StartHereCard = React.forwardRef<
         >
           Buy
         </Button>
-        <Button variant="secondary" onClick={onSell} data-node-id="1497:94690">
+        <Button
+          variant="secondary"
+          onClick={onSell}
+          disabled={mobileHomeState === "empty"}
+          data-node-id="1497:94690"
+        >
           Sell
         </Button>
       </div>
