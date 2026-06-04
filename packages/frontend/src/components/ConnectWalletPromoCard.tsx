@@ -152,8 +152,12 @@ export const ConnectWalletPromoCard = React.forwardRef<
           id={HEADING_ID}
           className={[
             "font-[family-name:var(--font-display)]",
-            "text-[length:var(--text-pipeline-heading-m)]",
-            "leading-[var(--text-pipeline-heading-m--line-height)]",
+            // Mobile (base): heading-m-mobile = 20px / 28px (Figma node 1989:9176)
+            "text-[length:var(--text-pipeline-heading-m-mobile)]",
+            "leading-[var(--text-pipeline-heading-m-mobile--line-height)]",
+            // Desktop (md+): heading-m = 28px / 36px
+            "md:text-[length:var(--text-pipeline-heading-m)]",
+            "md:leading-[var(--text-pipeline-heading-m--line-height)]",
             "font-[var(--font-weight-regular)]",
             "text-[color:var(--color-pipeline-ink)]",
             "m-0",

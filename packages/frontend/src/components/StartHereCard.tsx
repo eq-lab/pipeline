@@ -182,8 +182,12 @@ export const StartHereCard = React.forwardRef<
               id={HEADING_ID}
               className={[
                 "font-[family-name:var(--font-display)]",
-                "text-[length:var(--text-pipeline-heading-s)]",
-                "leading-[var(--text-pipeline-heading-s--line-height)]",
+                // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1984:6501)
+                "text-[length:var(--text-pipeline-heading-s-mobile)]",
+                "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+                // Desktop (md+): heading-s = 20px / 28px
+                "md:text-[length:var(--text-pipeline-heading-s)]",
+                "md:leading-[var(--text-pipeline-heading-s--line-height)]",
                 "font-[var(--font-weight-regular)]",
                 "text-[color:var(--color-pipeline-ink)]",
                 "m-0",
@@ -224,8 +228,12 @@ export const StartHereCard = React.forwardRef<
               id={HEADING_ID}
               className={[
                 "font-[family-name:var(--font-display)]",
-                "text-[length:var(--text-pipeline-heading-s)]",
-                "leading-[var(--text-pipeline-heading-s--line-height)]",
+                // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1989:9017)
+                "text-[length:var(--text-pipeline-heading-s-mobile)]",
+                "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+                // Desktop (md+): heading-s = 20px / 28px
+                "md:text-[length:var(--text-pipeline-heading-s)]",
+                "md:leading-[var(--text-pipeline-heading-s--line-height)]",
                 "font-[var(--font-weight-regular)]",
                 "text-[color:var(--color-pipeline-ink)]",
                 "m-0",

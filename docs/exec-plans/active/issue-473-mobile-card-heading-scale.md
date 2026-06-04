@@ -43,23 +43,19 @@ The exact mechanism depends on the Q1/Q2 answers. Two variants below — the cod
 
 ### Preferred (tokenized) variant — pending Q1/Q2 = "add tokens"
 
-1. In `packages/ui/src/styles/theme.css`, add a mobile heading token to the `@theme` block (and mirror it in the documented token list lower in the file, lines ~177-186):
+1. [x] In `packages/ui/src/styles/theme.css`, add a mobile heading token to the `@theme` block (and mirror it in the documented token list lower in the file, lines ~177-186):
    - `--text-pipeline-heading-s-mobile: 18px;` and `--text-pipeline-heading-s-mobile--line-height: 28px;` (new — the 18px small-heading size).
-   - For the `heading-m` mobile size (20/28), reuse the existing `--text-pipeline-heading-s` (20/28); no new token needed unless Q2 says otherwise.
-2. `packages/frontend/src/components/ConnectWalletPromoCard.tsx` — the `<h2>` "Connect Wallet" class array (lines ~134-147): make the size responsive. Base (mobile) = `heading-s` (20/28); `md:` = `heading-m` (28/36). Concretely replace the single `text-[length:var(--text-pipeline-heading-m)]` + `leading-[var(--text-pipeline-heading-m--line-height)]` with the mobile pair as base and `md:text-[length:var(--text-pipeline-heading-m)] md:leading-[var(--text-pipeline-heading-m--line-height)]`.
-3. `packages/frontend/src/components/StartHereCard.tsx` — apply the same base/`md:` pattern to BOTH `<h2>` heading elements (disconnected "Get PLUSD" at lines ~221-234 and connected "PLUSD Balance" value at lines ~179-191): base (mobile) = `heading-s-mobile` (18/28); `md:` = `heading-s` (20/28).
-4. `packages/frontend/src/components/StakeCard.tsx` — apply the same base/`md:` pattern to the "Earn X.XX%" `<p>` (lines ~285-297) and the State C "Staked PLUSD" shares `<p>` (lines ~188-200).
-5. `packages/frontend/src/components/EarnedCard.tsx` — update the module-level `valueClasses` (lines ~82-89) and the State C `stateValueClasses` branch (lines ~129-138) to use base = `heading-s-mobile` (18/28), `md:` = `heading-s` (20/28). Because these are shared class constants used by every state, the step-down applies uniformly.
-6. Confirm the route at `packages/frontend/src/routes/index.tsx` needs no change — the responsive utility on each component handles both blocks. Do NOT add per-block overrides.
-
-### Fallback (raw-value) variant — only if Q1 = "inline raw values"
-
-Same component edits as steps 2-5, but instead of a token use `text-[18px] leading-[28px]` (and `text-[20px]` for the Connect Wallet base) at the mobile base with `md:` restoring the existing token utilities. If this path is taken, add a tech-debt entry per AGENTS.md noting the inlined raw font sizes and the missing `heading-s-mobile` token.
+   - Per Q2 answer ("add new token"), also added `--text-pipeline-heading-m-mobile: 20px;` and `--text-pipeline-heading-m-mobile--line-height: 28px;` for semantic clarity.
+2. [x] `packages/frontend/src/components/ConnectWalletPromoCard.tsx` — the `<h2>` "Connect Wallet" class array: made the size responsive. Base (mobile) = `heading-m-mobile` (20/28); `md:` = `heading-m` (28/36).
+3. [x] `packages/frontend/src/components/StartHereCard.tsx` — applied the same base/`md:` pattern to BOTH `<h2>` heading elements (disconnected "Get PLUSD" and connected "PLUSD Balance" value): base (mobile) = `heading-s-mobile` (18/28); `md:` = `heading-s` (20/28).
+4. [x] `packages/frontend/src/components/StakeCard.tsx` — applied the same base/`md:` pattern to the "Earn X.XX%" `<p>` and the State C "Staked PLUSD" shares `<p>`.
+5. [x] `packages/frontend/src/components/EarnedCard.tsx` — updated the module-level `valueClasses` and the State C `stateValueClasses` branch to use base = `heading-s-mobile` (18/28), `md:` = `heading-s` (20/28).
+6. [x] Confirmed the route at `packages/frontend/src/routes/index.tsx` needs no change — the responsive utility on each component handles both blocks.
 
 ### Common closing steps
 
-7. Run `npx tsx scripts/lint-docs.ts` (required after any TypeScript/docs change per AGENTS.md).
-8. Run the frontend unit tests (see Test Strategy) and the type-check.
+7. [x] Run `npx tsx scripts/lint-docs.ts` — 0 errors, 37 warnings (all pre-existing).
+8. [x] Run the frontend unit tests and type-check — 779 tests pass, 0 type errors.
 
 ## Test Strategy
 

@@ -77,12 +77,16 @@ const labelClasses = [
   "m-0",
 ].join(" ");
 
-// Value row — Besley display at 20 / 28 ("Heading 20" style), tertiary ink
-// to read as muted/disabled. Mirrors Figma node `1497:94698` "Coming soon".
+// Value row — Besley display, tertiary ink to read as muted/disabled.
+// Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1989:9030).
+// Desktop (md+): heading-s = 20px / 28px.
+// Mirrors Figma node `1497:94698` "Coming soon".
 const valueClasses = [
   "font-[family-name:var(--font-display)]",
-  "text-[length:var(--text-pipeline-heading-s)]",
-  "leading-[var(--text-pipeline-heading-s--line-height)]",
+  "text-[length:var(--text-pipeline-heading-s-mobile)]",
+  "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+  "md:text-[length:var(--text-pipeline-heading-s)]",
+  "md:leading-[var(--text-pipeline-heading-s--line-height)]",
   "font-[var(--font-weight-regular)]",
   "text-[color:var(--color-pipeline-ink-subtle)]",
   "m-0",
@@ -125,12 +129,16 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
     }
 
     // State C value classes: use green positive token for the earned value.
+    // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1886:46777).
+    // Desktop (md+): heading-s = 20px / 28px.
     const stateValueClasses =
       mobileHomeState === "splusd"
         ? [
             "font-[family-name:var(--font-display)]",
-            "text-[length:var(--text-pipeline-heading-s)]",
-            "leading-[var(--text-pipeline-heading-s--line-height)]",
+            "text-[length:var(--text-pipeline-heading-s-mobile)]",
+            "leading-[var(--text-pipeline-heading-s-mobile--line-height)]",
+            "md:text-[length:var(--text-pipeline-heading-s)]",
+            "md:leading-[var(--text-pipeline-heading-s--line-height)]",
             "font-[var(--font-weight-regular)]",
             "text-[color:var(--color-pipeline-chart-positive)]",
             "m-0",

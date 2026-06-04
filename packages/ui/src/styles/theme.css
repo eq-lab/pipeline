@@ -101,8 +101,12 @@
   --text-pipeline-title--line-height: 64px;
   --text-pipeline-heading-m: 28px;
   --text-pipeline-heading-m--line-height: 36px;
+  --text-pipeline-heading-m-mobile: 20px;
+  --text-pipeline-heading-m-mobile--line-height: 28px;
   --text-pipeline-heading-s: 20px;
   --text-pipeline-heading-s--line-height: 28px;
+  --text-pipeline-heading-s-mobile: 18px;
+  --text-pipeline-heading-s-mobile--line-height: 28px;
   --text-pipeline-body: 16px;
   --text-pipeline-body--line-height: 22px;
   --text-pipeline-caption: 12px;
@@ -176,10 +180,14 @@
 
   --text-pipeline-title: 64px; /* font/font-size/title — Welcome heading */
   --text-pipeline-title--line-height: 64px; /* font/line-height/title */
-  --text-pipeline-heading-m: 28px; /* font/font-size/heading-m — Connect Wallet */
-  --text-pipeline-heading-m--line-height: 36px; /* font/line-height/heading-m */
-  --text-pipeline-heading-s: 20px; /* Heading 20 — Get PLUSD card titles */
-  --text-pipeline-heading-s--line-height: 28px; /* Heading 20 line-height */
+  --text-pipeline-heading-m: 28px; /* font/font-size/heading-m — Connect Wallet (desktop) */
+  --text-pipeline-heading-m--line-height: 36px; /* font/line-height/heading-m (desktop) */
+  --text-pipeline-heading-m-mobile: 20px; /* font/font-size/heading-m — Connect Wallet (mobile, below md) */
+  --text-pipeline-heading-m-mobile--line-height: 28px; /* font/line-height/heading-m (mobile) */
+  --text-pipeline-heading-s: 20px; /* Heading 20 — Get PLUSD card titles (desktop) */
+  --text-pipeline-heading-s--line-height: 28px; /* Heading 20 line-height (desktop) */
+  --text-pipeline-heading-s-mobile: 18px; /* Heading 18 — Get PLUSD / Earn / Coming soon (mobile, below md) */
+  --text-pipeline-heading-s-mobile--line-height: 28px; /* Heading 18 line-height (mobile) */
   --text-pipeline-body: 16px; /* font/font-size/body */
   --text-pipeline-body--line-height: 22px; /* font/line-height/body */
   --text-pipeline-caption: 12px; /* font/font-size/caption */
