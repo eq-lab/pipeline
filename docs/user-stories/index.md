@@ -18,3 +18,4 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 | [#477 StakeCard circular Stake button size on mobile](https://github.com/eq-lab/pipeline/issues/477) | [477-stake-button-size.md](./epic-463/477-stake-button-size.md) | Initial |
 | [#478 StakeCard copy fixes (APY p.a. + senior)](https://github.com/eq-lab/pipeline/issues/478) | [478-stake-card-copy.md](./epic-463/478-stake-card-copy.md) | Initial |
 | [#480 ConnectWalletPromoCard decorative graphic size/position (mobile)](https://github.com/eq-lab/pipeline/issues/480) | [480-promo-graphic-size.md](./epic-463/480-promo-graphic-size.md) | Initial |
+| [#481 Welcome heading → content gap (mobile)](https://github.com/eq-lab/pipeline/issues/481) | [481-welcome-heading-gap.md](./epic-463/481-welcome-heading-gap.md) | Initial |
