@@ -60,13 +60,31 @@ import {
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
  */
 
-export type PortfolioPlaceholderCardProps = Omit<
-  React.HTMLAttributes<HTMLDivElement>,
-  "children"
->;
+/** Mobile home balance state — drives CTA copy and earning caption. */
+export type MobileHomeState = "empty" | "plusd" | "splusd";
 
-/** Stable heading id — avoids collision when multiple cards mount in preview/story. */
-const HEADING_ID = "portfolio-placeholder-card-title";
+export interface PortfolioPlaceholderCardProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+  /**
+   * Mobile-only: the connected balance state (empty / plusd / splusd).
+   * When provided, overrides the static `$0.00` heading and CTA link:
+   *   - "empty"  → `$0.00` + "Get PLUSD to start" → /deposit (State A)
+   *   - "plusd"  → totalBalance + "Stake PLUSD to start earning" → /stake (B)
+   *   - "splusd" → totalBalance (no link, earning caption) (C)
+   * When `undefined` the desktop behaviour ($0.00 + "Get PLUSD to start") is
+   * preserved byte-for-byte.
+   */
+  mobileHomeState?: MobileHomeState;
+  /**
+   * Mobile-only: formatted total balance string to display in States B and C
+   * (e.g. `"$1,042.80"`). Ignored when `mobileHomeState` is `undefined`.
+   * Defaults to `"$0.00"` when not provided.
+   */
+  mobileTotalBalance?: string;
+}
+
+/** Base heading id prefix — each instance gets a unique suffix from useId(). */
+const HEADING_ID_BASE = "portfolio-placeholder-card-title";
 
 const TABS = [
   { id: "7d", label: "7D" },
@@ -95,7 +113,17 @@ function slotCentreX(idx: number): number {
 export const PortfolioPlaceholderCard = React.forwardRef<
   HTMLDivElement,
   PortfolioPlaceholderCardProps
->(function PortfolioPlaceholderCard({ className, ...rest }, ref) {
+>(function PortfolioPlaceholderCard({
+  className,
+  mobileHomeState,
+  mobileTotalBalance = "$0.00",
+  ...rest
+}, ref) {
+  // Use a unique id per instance to avoid duplicate id attributes when both
+  // the mobile and desktop blocks render this card in the same DOM.
+  const instanceId = React.useId();
+  const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
+
   const {
     activeId,
     setActiveId,
@@ -161,7 +189,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     >
       {/* Header row — left: balance stack; right: segmented time-range tabs */}
       <div className="flex items-start justify-between gap-4">
-        {/* Left: Total Balance label + $0.00 display + earning caption + "Get PLUSD" link */}
+        {/* Left: Total Balance label + balance display + CTA/caption row */}
         <header className="flex flex-col gap-1">
           {/* Eyebrow label — Caption token, muted ink */}
           <span
@@ -176,7 +204,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             Total Balance
           </span>
 
-          {/* Balance display — Heading M token, display serif */}
+          {/* Balance display — Heading M token, display serif.
+              Mobile connected states show the derived total balance;
+              desktop (and disconnected) always shows the static $0.00. */}
           <h2
             id={HEADING_ID}
             className={[
@@ -188,10 +218,14 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "m-0",
             ].join(" ")}
           >
-            $0.00
+            {mobileHomeState !== undefined && mobileHomeState !== "empty"
+              ? mobileTotalBalance
+              : "$0.00"}
           </h2>
 
-          {/* Earning caption — updates with selected period */}
+          {/* Earning caption — updates with selected period.
+              Mobile State C: show "—" placeholder (no real earned data yet).
+              All other states: show the synthetic period-based earning. */}
           <span
             data-testid="earning-caption"
             className={[
@@ -199,28 +233,41 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
               "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink-muted)]",
+              // State C shows "—" as a placeholder; other states use muted
+              // ink with synthetic earning value.
+              mobileHomeState === "splusd"
+                ? "text-[color:var(--color-pipeline-ink-muted)]"
+                : "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
-            +{earningStr} earning
+            {mobileHomeState === "splusd"
+              ? "—"
+              : `+${earningStr} earning`}
           </span>
 
-          {/* "Get PLUSD to start" — muted caption link to /deposit */}
-          <Link
-            to="/deposit"
-            search={{ direction: "deposit" as const }}
-            className={[
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-caption)]",
-              "leading-[var(--text-pipeline-caption--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink-muted)]",
-              "underline-offset-2 hover:underline",
-              "no-underline",
-            ].join(" ")}
-          >
-            Get PLUSD to start
-          </Link>
+          {/* State A: "Get PLUSD to start" link to /deposit.
+              State B: "Stake PLUSD to start earning" link to /stake.
+              State C: no link (earning caption is sufficient context).
+              Desktop (no mobileHomeState): "Get PLUSD to start" as before. */}
+          {mobileHomeState === "splusd" ? null : (
+            <Link
+              to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
+              search={mobileHomeState === "plusd" ? undefined : { direction: "deposit" as const }}
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "font-[var(--font-weight-regular)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+                "underline-offset-2 hover:underline",
+                "no-underline",
+              ].join(" ")}
+            >
+              {mobileHomeState === "plusd"
+                ? "Stake PLUSD to start earning"
+                : "Get PLUSD to start"}
+            </Link>
+          )}
         </header>
 
         {/* Right: time-range floating tabs — no outer track, compact inline pills */}
@@ -240,7 +287,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         ref={wrapRef}
         className="relative flex-1"
         role="img"
-        aria-label={`Total balance for ${periodLabel}: $0.00 (+${earningStr} earning)`}
+        aria-label={`Total balance for ${periodLabel}: ${mobileHomeState !== undefined && mobileHomeState !== "empty" ? mobileTotalBalance : "$0.00"} (+${earningStr} earning)`}
         data-node-id="1497:95048-chart"
         onPointerMove={handlePointerMove}
         onPointerLeave={onPointerLeave}

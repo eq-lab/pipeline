@@ -76,12 +76,17 @@ export interface ConnectWalletPromoCardProps extends Omit<
 
 // Stable heading id so consumers do not collide if multiple cards mount in a
 // preview / story (rare, but cheap to guarantee).
-const HEADING_ID = "connect-wallet-promo-card-title";
+/** Base heading id prefix — each instance gets a unique suffix from useId(). */
+const HEADING_ID_BASE = "connect-wallet-promo-card-title";
 
 export const ConnectWalletPromoCard = React.forwardRef<
   HTMLDivElement,
   ConnectWalletPromoCardProps
 >(function ConnectWalletPromoCard({ onConnect, className, ...rest }, ref) {
+  // Use a unique id per instance to avoid duplicate id attributes when both
+  // the mobile and desktop blocks render this card in the same DOM.
+  const instanceId = React.useId();
+  const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
   const composed = [
     // Positioning context for the absolutely-positioned illustration.
     "relative",
