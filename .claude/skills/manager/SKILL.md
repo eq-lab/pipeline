@@ -22,7 +22,7 @@ Read these before taking action:
 
 ## Status model (from the protocol)
 
-`backlog` → [`planning` → `planned`] → `in-progress` → `review` → *(closed)*, plus `blocked` and the `needs-feedback` modifier. Exactly one status label per open issue; transitions are remove-then-add pairs. The manager is the **only** agent that mutates labels — planner, coder, ux-tester, and reviewer never do.
+`backlog` → [`planning` → `planned`] → `in-progress` → `review` → *(closed)*, plus `blocked` and the `needs-feedback` modifier. Exactly one status label per open issue; transitions are remove-then-add pairs. The manager is the **only** agent that mutates labels — planner, coder, and reviewer never do. Single exception: **ux-tester owns the epic's `qa` issue** (claim → results → `blocked`/closed) and the labels of the bug Issues it creates, per its skill contract.
 
 ## Modes & Arguments
 
@@ -73,6 +73,7 @@ The manager works **only on sub-issues of an epic** (`epic`-labelled Issue, nati
    - no `blocked` label;
    - unassigned or assigned to `@me`;
    - matches the session filter (`frontend` / `backend` / `trivial`); `qa` and `docs` sub-issues are picked only by `all` (no filter).
+   **Epic-complete QA trigger** — special case that bypasses the rules above: while enumerating an epic's sub-issues, if **all non-`qa` sub-issues are closed** and the epic's `qa` issue is still **open** (typically `blocked` — `blocked` does not disqualify it here) and unassigned, the `qa` issue is a candidate for the **QA flow** regardless of its status label and session filter. This is the final QA pass that lets the epic close.
 3. Order: `priority` first, then by issue number ascending.
 4. Proceed with the chosen Issue immediately — no confirmation pause.
 5. No candidates and nothing to resume → the loop is done. Report and stop.
@@ -81,6 +82,8 @@ The manager works **only on sub-issues of an epic** (`epic`-labelled Issue, nati
 
 1. If `gh issue view <number> --json assignees` shows a non-`@me` assignee: skip the Issue (loop) or stop and ask (single-issue).
 2. Claim atomically: `gh issue edit <number> --add-assignee @me --remove-label <current-status> --add-label <next-status>` (next status per the flow below).
+
+Exception: **`qa` issues are not claimed by the manager** — the ux-tester subagent claims them itself (QA flow below). The manager only performs check 1 (skip if assigned to someone else).
 
 ## Parking a task (`needs-feedback`)
 
@@ -117,8 +120,8 @@ Agent({ description: "Plan issue {n}", subagent_type: "planner",
 Agent({ description: "Implement issue {n}", subagent_type: "coder",
         prompt: "EFFORT: high\nRun /coder {n}.\nDefinition of done additionally requires (ISSUE_PROTOCOL §6): a user-stories doc at docs/user-stories/epic-{epic}/{n}-<slug>.md committed in the same branch and linked from docs/user-stories/index.md." })
 
-Agent({ description: "QA pass for epic {epic}", subagent_type: "ux-tester",
-        prompt: "EFFORT: medium\nRun /ux-tester issue:{n}.\nExecute every user-stories doc under docs/user-stories/epic-{epic}/ (at minimum those not yet verified per the latest results comment on Issue #{n}). File defects as bug Issues. Post a results comment on Issue #{n}: stories run, pass/fail, bugs filed." })
+Agent({ description: "QA pass for epic {epic}", subagent_type: "ux-tester", model: "opus",
+        prompt: "EFFORT: medium\nRun /ux-tester {epic}." })
 
 Agent({ description: "Review PR for issue {n}", subagent_type: "reviewer",
         prompt: "EFFORT: high\nReview PR #<pr> for Issue #{n}. Run /review on the PR, then post the review summary as a PR comment. Do not approve or merge." })
@@ -146,7 +149,7 @@ Plan, park for human plan review, implement, PR ready. No manual testing phase.
 
 ## Frontend flow
 
-Plan, gate only on open questions, implement, PR ready. **No testing phase of any kind** — no ux-tester, no Figma-triggered checks; QA happens later via the epic's `qa` issue when the user requests it.
+Plan, gate only on open questions, implement, PR ready. **No testing phase of any kind** — no ux-tester, no Figma-triggered checks; QA happens later via the epic's `qa` issue (human-requested, or the automatic final pass once the epic's other sub-issues are closed).
 
 1. **Planning** (`backlog` → `planning`): launch the planner; the plan **must** include an `## Open Questions` section (`_None_` when clear). Commit, push, transition to `planned`.
 2. **Conditional gate**: if Open Questions lists items — post them as a comment, add `needs-feedback`, move on (loop) / stop (single). If `_None_` — proceed immediately.
@@ -170,12 +173,17 @@ No planning, no gates, no testing. Quality bar: lint clean, build clean, tests g
 
 ## QA flow
 
-Entry: a `qa` sub-issue in `backlog` — **only a human puts it there** (ISSUE_PROTOCOL §5.3); the manager never flips a `qa` issue to `backlog`.
+Entry — either of:
 
-1. `backlog` → `in-progress`. No feature branch needed unless the pass updates docs (e.g. `docs/QUALITY_SCORE.md`) — then branch + PR as usual.
-2. Launch `ux-tester` (prompt above) against the epic's `docs/user-stories/epic-<N>/` directory.
-3. After it returns: attach every bug Issue it filed as a sub-issue of the epic (`POST .../issues/<epic>/sub_issues`), and verify the results comment exists on the `qa` issue.
-4. If all sibling sub-issues of the epic are closed and the pass is green: close the `qa` issue, then close the epic. Otherwise: `in-progress` → `blocked` (the next pass is again human-requested).
+- **Human-requested**: a `qa` sub-issue in `backlog` (ISSUE_PROTOCOL §5.3). The manager never flips a `qa` issue to `backlog` itself.
+- **Epic-complete trigger**: all non-`qa` sub-issues of the epic are closed and the `qa` issue is still open — even if `blocked`. The epic cannot close without a green final pass, so the manager runs it without waiting for a human.
+
+Steps:
+
+1. Launch `ux-tester` (prompt above — `model: "opus"`, `EFFORT: medium`, argument is the **epic** number). The ux-tester owns the `qa` issue end-to-end: it claims it (`in-progress`), executes the user-stories docs under `docs/user-stories/epic-<N>/`, verifies against the epic's Figma references, files defects as `bug` sub-issues of the epic, posts the results comment, and finishes with the `qa` issue back to `blocked` — or closed (together with the epic) when all siblings are closed and the pass is green. The manager does **not** touch the `qa` issue's labels.
+2. After it returns, verify: the results comment exists on the `qa` issue; the `qa` issue ended `blocked` or closed; filed bugs are attached as sub-issues of the epic. Repair any gap (e.g. attach a missed bug via `POST .../issues/<epic>/sub_issues`).
+3. If the pass updated docs (e.g. `docs/QUALITY_SCORE.md`): branch, commit `QA pass for epic #<N>`, push, PR ready. Human-merge only.
+4. Loop mode: bugs the pass filed are new `backlog` candidates — continue the loop as usual.
 
 ---
 
@@ -191,9 +199,9 @@ Entry: a `qa` sub-issue in `backlog` — **only a human puts it there** (ISSUE_P
 ## Rules
 
 - The manager does **not** write code, tests, plans, specs, or reviews itself — it delegates.
-- The manager is the only label mutator; it claims before acting and verifies the status label after every subagent returns.
+- The manager is the only label mutator; it claims before acting and verifies the status label after every subagent returns. Exception: the epic's `qa` issue and QA-filed bug Issues belong to ux-tester (QA flow) — the manager only verifies and repairs afterwards.
 - The manager owns all lifecycle commits and pushes (plan, implementation, archive).
-- Never close Issues manually — `Closes #<n>` in the PR body does it on merge. Exception: the QA flow closes the `qa` issue and its epic by hand (no PR carries them).
+- Never close Issues manually — `Closes #<n>` in the PR body does it on merge. The `qa` issue and its epic are closed by ux-tester when the final pass is green (no PR carries them); the manager closes them only when repairing a gap ux-tester left.
 - Merge policy per `AGENTS.md`: trivial-frontend admin-merge after explicit green checks is the single exception; everything else is human-merge.
 - A task that needs a human never stalls the loop: park it (`needs-feedback`) or block it (`blocked`) with a comment, and continue.
 
