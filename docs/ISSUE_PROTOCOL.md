@@ -43,7 +43,7 @@ All dev work is grouped under an epic. An epic describes one business feature.
 
 ### `qa` — testing pass
 
-One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — a **human requests a pass** by flipping the `qa` issue to `backlog`, and it happens when an agent picks the issue up.
+One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — a **human requests a pass** by flipping the `qa` issue to `backlog`, and it happens when an agent picks the issue up. Exception: the **final pass** — when all non-`qa` sibling sub-issues are closed and the `qa` issue is still open (even `blocked`), an agent may run the pass without a human request, since the epic cannot close without it (§5.3).
 
 - **Body:** points to the epic's user-stories directory (`docs/user-stories/epic-<N>/`, see §6). The QA agent discovers the stories to run from that directory; verification history lives in the results comments.
 - **Lifecycle:**
@@ -129,7 +129,9 @@ gh issue edit <number> --add-assignee @me --remove-label backlog --add-label in-
 
 ### 5.3 QA scheduling
 
-QA passes are **requested by humans**, not triggered by agents. Implementing agents only commit user-stories docs in their PRs (§6) — they never edit, comment on, or relabel the epic's `qa` issue. When a human wants a testing pass, they flip the `qa` issue `blocked` → `backlog`; the QA agent that claims it discovers the stories to run from `docs/user-stories/epic-<N>/`.
+Mid-epic QA passes are **requested by humans**, not triggered by agents. Implementing agents only commit user-stories docs in their PRs (§6) — they never edit, comment on, or relabel the epic's `qa` issue. When a human wants a testing pass, they flip the `qa` issue `blocked` → `backlog`; the QA agent that claims it discovers the stories to run from `docs/user-stories/epic-<N>/`.
+
+**Final-pass exception:** when **all non-`qa` sub-issues of an epic are closed** and the `qa` issue is still open, an orchestrating agent may start the pass directly — claiming the `qa` issue from `blocked` or `backlog` — because the epic can only close after a green final pass.
 
 ### 5.4 Discovering work
 

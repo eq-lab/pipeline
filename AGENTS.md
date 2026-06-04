@@ -47,7 +47,7 @@ Every piece of dev work is a **sub-issue of an epic**, tracked per [`docs/ISSUE_
 - **Backend** (`backend` label) — plan → park for human plan feedback → implement → PR.
 - **Frontend** (`frontend` label) — plan (gate only on planner Open Questions) → implement → PR. **No testing phase.**
 - **Trivial frontend** (`frontend` + `trivial`) — implement → PR → manager admin-merge after explicitly green CI.
-- **QA** (`qa` label) — one issue per epic; runs only when a human flips it to `backlog`. The QA agent executes the epic's user-stories docs and files bugs.
+- **QA** (`qa` label) — one issue per epic; runs when a human flips it to `backlog`, or automatically as the **final pass** once all other sub-issues of the epic are closed. The QA agent executes the epic's user-stories docs, verifies against the epic's Figma references, and files bugs.
 
 When uncertain about frontend vs. backend, label it `backend`. Per-flow specifics live in [`.claude/skills/manager/SKILL.md`](./.claude/skills/manager/SKILL.md).
 
