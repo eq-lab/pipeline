@@ -17,6 +17,7 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 | [#476 StartHereCard Sell button dimmed style](https://github.com/eq-lab/pipeline/issues/476) | [476-sell-button-dimmed.md](./epic-463/476-sell-button-dimmed.md) | Initial |
 | [#477 StakeCard circular Stake button size on mobile](https://github.com/eq-lab/pipeline/issues/477) | [477-stake-button-size.md](./epic-463/477-stake-button-size.md) | Initial |
 | [#478 StakeCard copy fixes (APY p.a. + senior)](https://github.com/eq-lab/pipeline/issues/478) | [478-stake-card-copy.md](./epic-463/478-stake-card-copy.md) | Initial |
+| [#479 Cards row overflow fix (mobile)](https://github.com/eq-lab/pipeline/issues/479) | [479-cards-row-overflow.md](./epic-463/479-cards-row-overflow.md) | Initial |
 | [#480 ConnectWalletPromoCard decorative graphic size/position (mobile)](https://github.com/eq-lab/pipeline/issues/480) | [480-promo-graphic-size.md](./epic-463/480-promo-graphic-size.md) | Initial |
 | [#481 Welcome heading → content gap (mobile)](https://github.com/eq-lab/pipeline/issues/481) | [481-welcome-heading-gap.md](./epic-463/481-welcome-heading-gap.md) | Initial |
 | [#482 Mobile header height — TopBar padding](https://github.com/eq-lab/pipeline/issues/482) | [482-mobile-header-padding.md](./epic-463/482-mobile-header-padding.md) | Initial |
