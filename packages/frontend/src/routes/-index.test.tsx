@@ -218,12 +218,18 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render StartHereCard; grab the first Sell.
+    // Both mobile and desktop blocks render StartHereCard.
+    // Since #476, the mobile Sell (index 0, renders first in DOM) is intentionally
+    // disabled + dimmed when the wallet is disconnected (mobileHomeState="empty").
+    // The desktop Sell (index 1) remains enabled and is used for navigation.
     const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
-    // Sell button must not be disabled (disconnected state has no sell-disabled)
-    expect(sellBtns[0]).not.toBeDisabled();
+    expect(sellBtns.length).toBeGreaterThanOrEqual(2);
+    // Mobile instance must be disabled in disconnected state.
+    expect(sellBtns[0]).toBeDisabled();
+    // Desktop instance must be enabled.
+    expect(sellBtns[1]).not.toBeDisabled();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await user.click(sellBtns[0]!);
+    await user.click(sellBtns[1]!);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({
