@@ -20,4 +20,5 @@ dotenvy            = { workspace = true }
 chrono             = { workspace = true }
 serde              = { workspace = true }
 serde_json         = { workspace = true }
+thiserror          = "1"
 shared             = { path = "../shared" }

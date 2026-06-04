@@ -31,7 +31,7 @@ use bigdecimal::BigDecimal;
 use pipeline_worker::indexer::{
     loan_mapper::{
         closure_reason_name, compose_drawn_snapshot, compose_lifecycle_snapshot, loan_status_name,
-        maybe_fetch_refreshed_json, u256_to_bigdecimal, LoanEventMapper,
+        maybe_fetch_refreshed_json, LoanEventMapper,
     },
     loan_metadata::{
         ImmutableDataResolver, ImmutableLoanDataView, LoanMetadataFetcher, LoanMetadataJson,
@@ -42,6 +42,7 @@ use pipeline_worker::indexer::{
 use shared::{
     contract_logs_repo::ContractLogsRepo,
     events::ContractLog,
+    json_numeric::u256_to_bigdecimal,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
 };
