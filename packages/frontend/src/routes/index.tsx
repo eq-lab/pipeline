@@ -159,7 +159,7 @@ function Home() {
       {/* Centred main column. `py-12` (48px) gives the welcome heading air
           under the TopBar; horizontal padding lets the column breathe at
           narrower widths without ever exceeding the 1200px design cap. */}
-      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-12 px-2 py-12 md:px-8">
+      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-2 py-12 md:gap-12 md:px-8">
         {/* WelcomeHeader: on mobile, pass isConnected so the greeting says
             "Welcome back" for connected users and "Welcome" otherwise.
             The prop is ignored on desktop (the desktop block renders at md+). */}
