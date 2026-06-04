@@ -147,7 +147,7 @@ gh issue list --state open --label in-progress --json number,title,assignees
 ## 6. Artifacts
 
 - **User-stories docs** live at `docs/user-stories/epic-<epic-number>/<issue-number>-<slug>.md` and are committed in the same PR as the implementation. Each doc lists story-based test cases: persona, steps, expected outcome — concrete enough for an agent to execute against the running app.
-- Each new doc is linked from `docs/user-stories/index.md` (reachability requirement of `lint-docs`).
+- Each new doc is linked from [`docs/user-stories/index.md`](./user-stories/index.md) (reachability requirement of `lint-docs`).
 - Stable stories may be promoted into the permanent regression suite by the QA agent after a green pass.
 
 ## 7. Command reference

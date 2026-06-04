@@ -543,3 +543,122 @@ describe("TopBar — root layout smoke test", () => {
     ).toBeInTheDocument();
   });
 });
+
+// ── Tests: mobile responsive classes ─────────────────────────────────────────
+//
+// JSDOM has no real media-query engine, so we assert on CSS class presence
+// rather than computed visibility — mirroring the "min-h-[274px]" class-based
+// approach used in other component tests in this codebase.
+//
+// The mobile hamburger control is always present in the DOM but hidden above
+// `md` via `md:hidden`.  The desktop nav is always present but hidden below
+// `md` via `hidden md:flex`.  Asserting on the classes is the reliable,
+// media-query-free way to verify the responsive contract.
+
+describe("TopBar — mobile responsive classes", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("desktop nav wrapper has `hidden md:flex` class (invisible below md breakpoint)", async () => {
+    renderTopBar("/");
+
+    // The nav element rendered for desktop has `hidden md:flex` on its parent wrapper.
+    // We target the nav itself — its parent div carries the responsive classes.
+    await waitFor(() =>
+      expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument(),
+    );
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    // The nav element itself carries `hidden md:flex` per the implementation.
+    expect(nav.className).toContain("hidden");
+    expect(nav.className).toContain("md:flex");
+  });
+
+  it("hamburger button is present in the DOM and has `md:hidden` class", async () => {
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("mobile-hamburger"),
+      ).toBeInTheDocument(),
+    );
+    const hamburger = screen.getByTestId("mobile-hamburger");
+    // The parent container carries `md:hidden`; the hamburger is inside it.
+    const wrapper = hamburger.closest("div");
+    expect(wrapper?.className).toContain("md:hidden");
+  });
+
+  it("clicking the hamburger opens the mobile nav menu", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    // Mobile nav menu is not in the DOM while closed.
+    expect(screen.queryByTestId("mobile-nav-menu")).not.toBeInTheDocument();
+
+    const hamburger = await screen.findByTestId("mobile-hamburger");
+    await user.click(hamburger);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mobile-nav-menu")).toBeInTheDocument(),
+    );
+  });
+
+  it("mobile menu lists four nav destinations", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    const hamburger = await screen.findByTestId("mobile-hamburger");
+    await user.click(hamburger);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mobile-nav-menu")).toBeInTheDocument(),
+    );
+
+    // The mobile menu's nav section contains the four nav labels.
+    expect(screen.getAllByText("Home").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Convert").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Earn").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Activity").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("mobile menu has a wallet connect entry point when disconnected", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    const hamburger = await screen.findByTestId("mobile-hamburger");
+    await user.click(hamburger);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mobile-nav-menu")).toBeInTheDocument(),
+    );
+
+    // The mobile menu shows a "Connect Wallet" CTA in the disconnected state.
+    // There may be multiple "Connect Wallet" elements (desktop button + mobile menu);
+    // at least one should be inside the mobile nav menu panel.
+    const menuPanel = screen.getByTestId("mobile-nav-menu");
+    expect(menuPanel).toHaveTextContent("Connect Wallet");
+  });
+
+  it("mobile menu closes when the close button is clicked", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+
+    const hamburger = await screen.findByTestId("mobile-hamburger");
+    await user.click(hamburger);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("mobile-nav-menu")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByTestId("mobile-nav-menu-close"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("mobile-nav-menu")).not.toBeInTheDocument(),
+    );
+  });
+});

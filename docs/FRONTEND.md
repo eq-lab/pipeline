@@ -110,7 +110,29 @@ Single SPA serving two logical views gated by authenticated role:
 
 ## Responsive behavior
 
-Desktop-first — LPs and operators are expected to use desktop browsers. Mobile layout should be readable but is not a primary concern for MVP.
+The home route (`/`) has a designed mobile layout that pixel-matches the Figma mobile frames (402px viewport).
+
+Breakpoint: Tailwind `md` (768px). Below 768px is the mobile layout; 768px and above uses the desktop layout.
+
+**Home page mobile layout (below `md`):**
+
+- `TopBar` collapses the inline nav and "Connect Wallet" button into a single hamburger icon button on the right. Tapping the hamburger opens `MobileNavMenu` — a full-width overlay panel listing the four nav destinations (Home / Convert / Earn / Activity) plus a wallet entry point.
+- The page body becomes a single-column vertical stack:
+  1. `WelcomeHeader` — title only (32px), stats strip hidden.
+  2. `ConnectWalletPromoCard` (disconnected) or `PortfolioPlaceholderCard` (connected) — full width, 256px tall.
+  3. A flex row: left = `StartHereCard` + `EarnedCard` stacked (`flex-1`); right = `StakeCard` (fixed 189px wide, 224px tall).
+  4. `RecentActivityCard`.
+  5. `HomeStatsStrip` — horizontally scrollable, at the bottom.
+- `QnaSection` is hidden on mobile (`hidden md:block`).
+- The 7-column desktop grid `Card` is hidden on mobile (`hidden md:block`).
+
+**Desktop (md and above):**
+
+- `TopBar` shows the inline icon nav and "Connect Wallet" / `WalletPill` on the right; hamburger is hidden.
+- Home page renders a white `Card` with the 7-column grid layout (Figma frame `1497:94556`).
+- `WelcomeHeader` shows the 64px title and the stats strip on the right.
+
+Other routes (deposit, stake, transactions, ops) currently use desktop-only layouts. Mobile treatment for these routes is deferred to future issues.
 
 ## Real-time updates
 

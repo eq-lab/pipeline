@@ -9,6 +9,7 @@ Entries are sorted alphabetically by name.
 | Name | Import path | Description |
 |------|-------------|-------------|
 | `CACHE_FOREVER` | `@/wallet` (internal: `src/wallet/evm/cache.ts`) | Wagmi query options preset for "fetch once per page lifetime" reads (immutable-in-practice on-chain data). Sets `staleTime: Infinity`, `gcTime: Infinity`, and disables all automatic refetch triggers. |
+| `HomeStatsStrip` | `@/components/HomeStatsStrip` | Exchange rate / TVL / Current APY stat row extracted from `WelcomeHeader`. Rendered at the top-right of the heading on desktop (inside `WelcomeHeader`) and as a horizontally-scrollable strip at the bottom of the home page on mobile (in `routes/index.tsx`). |
 
 ## How to add a row
 
