@@ -181,6 +181,7 @@ function Home() {
           ) : (
             <ConnectWalletPromoCard
               className="min-h-[256px] md:min-h-[274px]"
+              padding="md"
               onConnect={connect}
             />
           )}
@@ -194,17 +195,19 @@ function Home() {
             >
               <StartHereCard
                 className="flex-1"
+                padding="sm"
                 onBuy={onBuy}
                 onSell={onSell}
                 mobileHomeState={isConnected ? mobileHomeState : "empty"}
                 mobilePlusdBalance={plusdFormatted}
               />
-              <EarnedCard mobileHomeState={isConnected ? mobileHomeState : undefined} />
+              <EarnedCard padding="sm" mobileHomeState={isConnected ? mobileHomeState : undefined} />
             </div>
 
             {/* Right: StakeCard — fixed 189px wide, 224px tall */}
             <StakeCard
               className="min-h-[224px] md:min-h-[274px]"
+              padding="sm"
               style={{ width: 189, flexShrink: 0 }}
               onStake={onStake}
               stakeDisabled={stakeDisabled}

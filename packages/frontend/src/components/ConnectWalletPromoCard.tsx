@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Card, WalletIllustration } from "@pipeline/ui";
+import type { CardPadding } from "@pipeline/ui";
 
 /**
  * ConnectWalletPromoCard — Disconnected-state hero card.
@@ -72,6 +73,11 @@ export interface ConnectWalletPromoCardProps extends Omit<
    * page-level container is expected to supply this in production.
    */
   onConnect?: () => void;
+  /**
+   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
+   * (24px). Set to `"md"` (16px) on mobile per Figma frame `1989:8292`.
+   */
+  padding?: CardPadding;
 }
 
 // Stable heading id so consumers do not collide if multiple cards mount in a

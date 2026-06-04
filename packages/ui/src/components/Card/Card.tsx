@@ -27,25 +27,59 @@ import React from "react";
  *
  * All visual values come from design tokens declared in
  * `@pipeline/ui/styles/theme.css` (no raw colors).
+ *
+ * ## Padding
+ *
+ * The `padding` prop controls interior padding as a first-class variant to
+ * avoid Tailwind v4 equal-specificity conflicts (Issue #357). Padding is NOT
+ * in `baseClasses`; it is injected from the `paddingClasses` map so there is
+ * no same-specificity competitor that a caller className could lose to.
+ *
+ *   - `"sm"` — 8px  (`p-2`). Used by mobile home small cards (StartHere,
+ *               Earned, Stake) per Figma frame `1989:8292`.
+ *   - `"md"` — 16px (`p-4`). Used by mobile home promo card
+ *               (ConnectWalletPromoCard) per Figma frame `1989:8292`.
+ *   - `"lg"` — 24px (`p-6`). Default; matches every desktop card and all
+ *               consumers that don't pass an explicit padding value.
  */
 
 export type CardVariant = "white" | "yellow" | "muted" | "danger";
 
+/**
+ * Controls interior padding as a first-class variant (avoids Tailwind v4
+ * equal-specificity hazard documented in Issue #357).
+ * - `"sm"` = 8px  (`p-2`)
+ * - `"md"` = 16px (`p-4`)
+ * - `"lg"` = 24px (`p-6`) — default; preserves all existing consumer behavior
+ */
+export type CardPadding = "sm" | "md" | "lg";
+
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: CardVariant;
+  padding?: CardPadding;
 }
 
-// Shared surface chrome. Padding and radius mirror the Figma card frames
-// (24px inner padding, 4px corner radius from --radius-pipeline-card).
+// Shared surface chrome. Radius mirrors the Figma card frames
+// (4px corner radius from --radius-pipeline-card).
+// Padding is NOT included here — it lives in paddingClasses so it can be
+// overridden safely without hitting Tailwind v4 equal-specificity conflicts.
 // Note: text color is intentionally NOT set here — it lives in each variant so
 // the danger variant can override it without hitting Tailwind v4 equal-
 // specificity conflicts.
 const baseClasses = [
   "block",
   "rounded-[var(--radius-pipeline-card)]",
-  "p-6",
   "border border-solid",
 ].join(" ");
+
+// Padding as a first-class variant map. Each key corresponds to a CardPadding
+// value. Using a map (like variantClasses) ensures there is exactly one padding
+// utility per card instance — no competing same-specificity rule.
+const paddingClasses: Record<CardPadding, string> = {
+  sm: "p-2",  // 8px  — mobile home small cards
+  md: "p-4",  // 16px — mobile home promo card
+  lg: "p-6",  // 24px — desktop default (all existing consumers)
+};
 
 const variantClasses: Record<CardVariant, string> = {
   // white — #ffffff surface with hairline border in --color-pipeline-line.
@@ -96,10 +130,15 @@ const variantClasses: Record<CardVariant, string> = {
 };
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(function Card(
-  { variant = "white", className, children, ...rest },
+  { variant = "white", padding = "lg", className, children, ...rest },
   ref,
 ) {
-  const composed = [baseClasses, variantClasses[variant], className]
+  const composed = [
+    baseClasses,
+    paddingClasses[padding],
+    variantClasses[variant],
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
 

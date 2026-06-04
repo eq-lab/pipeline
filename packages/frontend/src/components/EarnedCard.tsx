@@ -1,5 +1,6 @@
 import React from "react";
 import { Card } from "@pipeline/ui";
+import type { CardPadding } from "@pipeline/ui";
 
 /**
  * EarnedCard — Disconnected-state "Earned" placeholder card.
@@ -61,6 +62,11 @@ export interface EarnedCardProps
    * and disconnected — no change to existing behaviour).
    */
   mobileHomeState?: MobileHomeState;
+  /**
+   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
+   * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
+   */
+  padding?: CardPadding;
 }
 
 /** Base label id prefix — each instance gets a unique suffix from useId(). */

@@ -41,30 +41,29 @@ The exact mechanism depends on the Q1 answer. Preferred (primitive) variant is d
 
 ### Preferred variant — first-class `padding` on the `Card` primitive
 
-1. `packages/ui/src/components/Card/Card.tsx`:
+1. [x] `packages/ui/src/components/Card/Card.tsx`:
    - Remove `p-6` from `baseClasses` (line ~47) so padding is no longer baked into the base rule.
    - Add a `CardPadding` type (`"sm" | "md" | "lg"`) and a `paddingClasses` map: `sm: "p-2"` (8px), `md: "p-4"` (16px), `lg: "p-6"` (24px). Mirror the existing `variantClasses` pattern.
    - Add `padding?: CardPadding` to `CardProps`, default `"lg"` (preserves every current consumer's 24px padding with no other change).
    - Compose padding into the className string *before* the caller `className`, in the same array as `baseClasses`/`variantClasses`, so a caller can still override with a responsive utility if needed. Update the JSDoc comment block (lines ~38-48) which currently says "24px inner padding" to describe the new prop and its default.
    - Because the responsive step-down is per-breakpoint, the cleanest call is for consumers to pass a responsive *className* on top of the `lg` default rather than a single `padding` enum (the enum cannot express `md:`). So: keep the `padding` prop for static cases (and to remove the baked-in `p-6` from base), and have the four home cards pass a responsive className. See step 3. (If the team prefers a `responsivePadding` boolean or a richer prop API, raise it under Q1 — the plan keeps the prop minimal.)
-2. Confirm no regression for existing `Card` consumers: the new default `padding="lg"` reproduces `p-6` exactly. Audit consumers that already pass a `p-*` className (the desktop outer card in `routes/index.tsx` passes `p-8`; `routes/stake.tsx` passes no padding override). With `p-6` no longer in `baseClasses`, the outer card must now read `padding="lg"`-equivalent overridden by its own `p-8` className — verify `p-8` still wins (it sorts after `p-6`, and there is no longer a base `p-6` at all, so `p-8` applies cleanly). Adjust the `p-8` site only if the audit shows a gap.
-3. In `packages/frontend/src/routes/index.tsx`, the **mobile block** instances (lines ~175-214) get a responsive padding className that sets the mobile value and resets to desktop at `md:`. The **desktop block** instances (lines ~245-274) need no padding className (they inherit the `lg` default). Concretely, append to each mobile-instance `className`:
-   - `ConnectWalletPromoCard` (mobile, ~182): `p-4 md:p-6` (16px → 24px).
-   - `StartHereCard` (mobile, ~195): `p-2 md:p-6` (8px → 24px).
-   - `EarnedCard` (mobile, ~202): `p-2 md:p-6`.
-   - `StakeCard` (mobile, ~206): `p-2 md:p-6`.
-   With `p-6` removed from `baseClasses`, these responsive utilities now have no same-specificity competitor in the base rule, so the override is safe in both directions. The desktop-block instances of the same components keep the `lg` default (24px) — verify they are genuinely separate DOM nodes (they are: mobile div is `md:hidden`, desktop card is `hidden md:block`).
-   - Note: because the mobile and desktop instances are distinct nodes, an even simpler option is to pass the static `padding` prop on the mobile instances (`padding="sm"` / `padding="md"`) with no className and rely on `md:hidden` to never show them at desktop. This avoids responsive utilities entirely. The coder may choose this if it reads cleaner; document the choice. Either way desktop instances stay at `lg`.
-4. Do **not** edit the heading typography elements inside the four card components (reserved for #473). If a card component must change at all, restrict edits to its top-level `composed` class array (the `border-*`/layout block), not the `<h2>`/`<p>` heading class arrays.
+2. [x] Confirm no regression for existing `Card` consumers: the new default `padding="lg"` reproduces `p-6` exactly. Audit consumers that already pass a `p-*` className (the desktop outer card in `routes/index.tsx` passes `p-8`; `routes/stake.tsx` passes no padding override). With `p-6` no longer in `baseClasses`, the outer card must now read `padding="lg"`-equivalent overridden by its own `p-8` className — verify `p-8` still wins (it sorts after `p-6`, and there is no longer a base `p-6` at all, so `p-8` applies cleanly). Adjust the `p-8` site only if the audit shows a gap.
+3. [x] In `packages/frontend/src/routes/index.tsx`, the **mobile block** instances pass static `padding` props (`padding="md"` on promo, `padding="sm"` on small cards). Desktop instances keep the `lg` default. Coder chose the simpler static prop approach (noted in plan step 3's "Note") — avoids responsive utilities, relies on `md:hidden` for display control.
+   - `ConnectWalletPromoCard` (mobile, ~182): `padding="md"` (16px).
+   - `StartHereCard` (mobile, ~195): `padding="sm"` (8px).
+   - `EarnedCard` (mobile, ~202): `padding="sm"`.
+   - `StakeCard` (mobile, ~206): `padding="sm"`.
+   `padding?: CardPadding` added to each card component's props interface and forwarded via `...rest` to the inner `Card`. `CardPadding` exported from `@pipeline/ui` barrel.
+4. [x] Heading typography elements inside the four card components were not touched (reserved for #473).
 
 ### Fallback variant — responsive className only (no primitive change)
 
-Only if Q1 = "do not change the Card primitive": append `p-4 md:p-6` (promo) / `p-2 md:p-6` (three small cards) to each mobile-instance `className` in `routes/index.tsx`. Because `p-6` remains in `baseClasses`, the coder MUST verify in a real browser (not jsdom) that the smaller `p-2`/`p-4` actually wins over the baked-in `p-6` at the mobile breakpoint. If it does not win (the #357 cascade hazard), escalate back to the primitive change — do not paper over with `!p-2`/`!p-4` important hacks without flagging it, and if `!important` is used, log a tech-debt entry per `AGENTS.md`.
+~~Only if Q1 = "do not change the Card primitive"...~~ The fallback was attempted first per human's instruction, but browser verification at 402px confirmed the #357 cascade hazard was real (computed padding remained 24px despite appended `p-4`/`p-2` className). Escalated back to the primitive change per plan guidance.
 
 ### Common closing steps
 
-5. Run `npx tsx scripts/lint-docs.ts` (required after any TypeScript/docs change per `AGENTS.md`).
-6. Type-check and run the frontend unit tests (see Test Strategy).
+5. [x] Run `npx tsx scripts/lint-docs.ts` — 0 errors.
+6. [x] Type-check (`npx tsc --noEmit`) and `yarn workspace @pipeline/frontend test --run` — 779/779 pass.
 
 ## Test Strategy
 
