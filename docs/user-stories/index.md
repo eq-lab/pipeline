@@ -16,3 +16,4 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 | [#475 StartHereCard Buy/Sell button height (mobile)](https://github.com/eq-lab/pipeline/issues/475) | [475-buy-sell-button-height.md](./epic-463/475-buy-sell-button-height.md) | Initial |
 | [#476 StartHereCard Sell button dimmed style](https://github.com/eq-lab/pipeline/issues/476) | [476-sell-button-dimmed.md](./epic-463/476-sell-button-dimmed.md) | Initial |
 | [#477 StakeCard circular Stake button size on mobile](https://github.com/eq-lab/pipeline/issues/477) | [477-stake-button-size.md](./epic-463/477-stake-button-size.md) | Initial |
+| [#480 ConnectWalletPromoCard decorative graphic size/position (mobile)](https://github.com/eq-lab/pipeline/issues/480) | [480-promo-graphic-size.md](./epic-463/480-promo-graphic-size.md) | Initial |

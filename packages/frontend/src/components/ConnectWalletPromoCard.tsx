@@ -118,12 +118,29 @@ export const ConnectWalletPromoCard = React.forwardRef<
           (clipped by the Card's overflow-hidden), and vertically anchored at
           70% of card height matching the Figma anchor point (left: 376px /
           top: 91px inside a 274px card ≈ vertical centre at ~191px ≈ 70%). */}
-      <WalletIllustration
-        tone="primary"
-        width={314}
-        className="pointer-events-none absolute top-[70%] right-[-48px] -translate-y-1/2"
-        data-node-id="I1497:94566;1360:49452"
-      />
+      {/* On mobile (< md): 235×150 anchored lower-right per Figma node 1989:9179
+          (card ≈ 386px wide, illustration x≈187 → right-bleed). Width set via
+          a wrapper so responsive Tailwind classes control size while the
+          illustration fills 100% of the wrapper.
+          On desktop (md+): original 314px width and vertical position. */}
+      <span
+        className={[
+          "pointer-events-none absolute -translate-y-1/2",
+          // Mobile: 235px wide, top=192px (Figma node 1989:9179 top edge at
+          // y=117px, height=150px → centre at 117+75=192px ≈ 70% of 274px).
+          // -translate-y-1/2 positions by centre, so we supply the centre
+          // value directly rather than the top-edge value.
+          "w-[235px] top-[192px] right-[-48px]",
+          // Desktop: restore original 314px width and percentage-based top.
+          "md:w-[314px] md:top-[70%]",
+        ].join(" ")}
+      >
+        <WalletIllustration
+          tone="primary"
+          width="100%"
+          data-node-id="I1497:94566;1360:49452"
+        />
+      </span>
 
       {/* Heading block — top of the card. `relative` keeps the text above the
           absolutely-positioned illustration in the stacking order. */}
