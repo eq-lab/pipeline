@@ -11,6 +11,8 @@ import {
 } from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
 import { ConnectChooserModal } from "./ConnectChooserModal";
+import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
+import { useMobileNavMenu } from "./useMobileNavMenu";
 
 /**
  * TopBar — global page header (self-contained, no external props for wallet).
@@ -116,6 +118,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     // ── Chooser modal state ───────────────────────────────────────────────
     const [chooserOpen, setChooserOpen] = useState(false);
 
+    // ── Mobile nav menu state ─────────────────────────────────────────────
+    const mobileMenu = useMobileNavMenu();
+
     // ── Active nav derivation from URL ────────────────────────────────────
     const derivedActive: NavItem["key"] =
       pathname === "/deposit"
@@ -161,12 +166,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           <Logo />
         </div>
 
-        {/* Middle slot — primary navigation. `flex-1` lets it absorb all
-          remaining space between the two fixed slots; `max-w-[1200px]`
-          keeps the nav icons from spreading too far on ultra-wide viewports. */}
+        {/* Middle slot — primary navigation (desktop: md and above). */}
         <nav
           aria-label="Primary"
-          className="flex max-w-[1200px] min-w-0 flex-1 items-center gap-8"
+          className="hidden max-w-[1200px] min-w-0 flex-1 items-center gap-8 md:flex"
           data-node-id="1497:94718"
         >
           {NAV_ITEMS.map((item) => (
@@ -184,11 +187,9 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ))}
         </nav>
 
-        {/* Right slot — fixed 160px wide so the centre nav stays optically
-          centred. Right-aligned content (`justify-end`) keeps the CTA flush
-          to the right edge of the bar. */}
+        {/* Right slot — desktop wallet controls (md and above). */}
         <div
-          className="relative flex w-40 shrink-0 items-center justify-end"
+          className="relative hidden w-40 shrink-0 items-center justify-end md:flex"
           data-node-id="1497:94724"
         >
           {anyConnected ? (
@@ -226,24 +227,61 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
               )}
             </>
           ) : (
-            <>
-              <Button
-                variant="primary-dark"
-                onClick={() => setChooserOpen(true)}
-                data-node-id="1497:94725"
-              >
-                Connect Wallet
-              </Button>
-
-              <ConnectChooserModal
-                open={chooserOpen}
-                onConnectEvm={evm.connect}
-                onConnectStellar={stellar.connect}
-                onDismiss={() => setChooserOpen(false)}
-              />
-            </>
+            <Button
+              variant="primary-dark"
+              onClick={() => setChooserOpen(true)}
+              data-node-id="1497:94725"
+            >
+              Connect Wallet
+            </Button>
           )}
         </div>
+
+        {/* Mobile right slot — hamburger button (below md). */}
+        <div className="flex shrink-0 items-center justify-end md:hidden">
+          <button
+            type="button"
+            aria-label="Open menu"
+            aria-expanded={mobileMenu.isOpen}
+            onClick={mobileMenu.toggle}
+            className={[
+              "flex size-10 items-center justify-center",
+              "rounded-[var(--radius-pipeline-button)]",
+              "bg-[var(--color-pipeline-surface)]",
+              "text-[color:var(--color-pipeline-ink)]",
+              "transition-colors hover:bg-[color-mix(in_oklab,var(--color-pipeline-ink)_8%,transparent)]",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+              "focus-visible:ring-[var(--color-pipeline-brand)]",
+            ].join(" ")}
+            data-testid="mobile-hamburger"
+            data-node-id="I1989:9052;9159:21649;1989:9054"
+          >
+            <HamburgerGlyph />
+          </button>
+        </div>
+
+        {/* Mobile nav menu panel (portal). */}
+        <MobileNavMenu
+          open={mobileMenu.isOpen}
+          onClose={mobileMenu.close}
+          pathname={pathname}
+          onNavigate={(to) => void navigate({ to })}
+          anyConnected={anyConnected}
+          address={activeAddress}
+          formattedBalance={activeFormattedBalance}
+          onConnect={() => setChooserOpen(true)}
+          onDisconnect={() => {
+            activeDisconnect();
+          }}
+        />
+
+        {/* ConnectChooserModal — shared between desktop and mobile. */}
+        <ConnectChooserModal
+          open={chooserOpen}
+          onConnectEvm={evm.connect}
+          onConnectStellar={stellar.connect}
+          onDismiss={() => setChooserOpen(false)}
+        />
       </header>
     );
   },

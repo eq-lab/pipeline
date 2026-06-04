@@ -5,6 +5,7 @@ import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
 import { useStakedPlusdAsset } from "@/wallet/evm/useStakedPlusd";
 import { useEvmToken } from "@/wallet/evm/useEvmToken";
 import { WelcomeHeader } from "@/components/WelcomeHeader";
+import { HomeStatsStrip } from "@/components/HomeStatsStrip";
 import { ConnectWalletPromoCard } from "@/components/ConnectWalletPromoCard";
 import { PortfolioPlaceholderCard } from "@/components/PortfolioPlaceholderCard";
 import { StartHereCard } from "@/components/StartHereCard";
@@ -14,9 +15,9 @@ import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
 
 /**
- * Home page — full composition (Figma `1497:94556`).
+ * Home page — full composition (Figma `1497:94556` desktop, `1989:8292` mobile).
  *
- * Visual structure (top → bottom):
+ * ## Desktop (md+) visual structure — top → bottom:
  *   1. Sticky `TopBar` along the top edge of the viewport.
  *   2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room
  *      under the bar. The column stacks the `WelcomeHeader` and a white outer
@@ -38,26 +39,31 @@ import { QnaSection } from "@/components/QnaSection";
  *        └───────────────────────────────────────────────────────┘
  *      The "Balances" column itself is a vertical stack of
  *      `StartHereCard` + `EarnedCard` (Figma node `1497:94675`).
- *      `StartHereCard` receives `onBuy` (→ `/deposit`) and `onSell`
- *      (→ `/deposit?direction=withdraw`); `StakeCard` receives `onStake`
- *      (→ `/stake`) — all three wired via `useNavigate()`.
  *
- *  Top-left card branching:
- *    When `isConnected === false`, renders `ConnectWalletPromoCard` with an
- *    `onConnect` prop wired to `useWallet().connect()` so the home CTA opens
- *    the same AppKit modal as the header (see #224, #250).
- *    When `isConnected === true`, renders `PortfolioPlaceholderCard` — a static
- *    connected-state placeholder ($0.00, segmented tabs, chart silhouette)
- *    that keeps the grid from reflowing while real data wiring is deferred.
+ * ## Mobile (below md) visual structure — single-column stack:
+ *   1. `WelcomeHeader` — title only (32px), stats strip hidden.
+ *   2. `ConnectWalletPromoCard` / `PortfolioPlaceholderCard` — full width, 256px tall.
+ *   3. A flex row: left = `StartHereCard` + `EarnedCard` stacked (flex-1);
+ *      right = `StakeCard` (fixed 189px wide, 224px tall).
+ *   4. `RecentActivityCard` — shown in the connected state on mobile.
+ *   5. Stats strip (`HomeStatsStrip`) — horizontally scrollable, at the bottom.
+ *   6. `QnaSection` and desktop `RecentActivityCard` column — hidden on mobile.
+ *
+ * ## Top-left card branching:
+ *   When `isConnected === false`, renders `ConnectWalletPromoCard` with an
+ *   `onConnect` prop wired to `useWallet().connect()` so the home CTA opens
+ *   the same AppKit modal as the header (see #224, #250).
+ *   When `isConnected === true`, renders `PortfolioPlaceholderCard` — a static
+ *   connected-state placeholder ($0.00, segmented tabs, chart silhouette)
+ *   that keeps the grid from reflowing while real data wiring is deferred.
  *
  * Token discipline: this composer adds no raw colors, fonts, sizes or radii.
  * Every value comes from `@pipeline/ui/styles/theme.css` via component
  * primitives or Tailwind utilities that resolve theme tokens.
  *
- * Responsive behaviour: the outer column is capped at 1200px so the layout
- * stays stable from the 1728px Figma design width down through common laptop
- * widths (1680 / 1440 / 1280). The 7-column grid uses `minmax(0, 1fr)` so the
- * columns share remaining space evenly and cards never overflow their tracks.
+ * Responsive behaviour: below md (768px) the layout becomes a single-column
+ * stack matching Figma mobile frame `1989:8292`. The 7-column desktop grid is
+ * preserved at md+ via `md:grid` and `md:grid-cols-7`.
  */
 
 function Home() {
@@ -86,13 +92,66 @@ function Home() {
       {/* Centred main column. `py-12` (48px) gives the welcome heading air
           under the TopBar; horizontal padding lets the column breathe at
           narrower widths without ever exceeding the 1200px design cap. */}
-      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-12 px-8 py-12">
+      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-12 px-2 py-12 md:px-8">
         <WelcomeHeader />
 
-        {/* Outer white Card — Figma node `1497:94565`. The Card primitive owns
-            its surface/border/radius tokens; we override the default 24px
-            interior padding with `p-8` (32px) to mirror the design. */}
-        <Card variant="white" className="p-8" data-node-id="1497:94565">
+        {/* ── Mobile layout (below md): single-column stack ────────────────
+            On desktop (md+) this div is hidden and the grid Card below
+            takes over. On mobile we render the stacked layout directly here
+            without an outer white Card wrapper (Figma frame 1989:8292 uses
+            the page background, not a white card). */}
+        <div className="flex flex-col gap-2 md:hidden">
+          {/* Top card: promo (disconnected) or portfolio (connected) — 256px */}
+          {isConnected ? (
+            <PortfolioPlaceholderCard className="min-h-[256px] md:min-h-[274px]" />
+          ) : (
+            <ConnectWalletPromoCard
+              className="min-h-[256px] md:min-h-[274px]"
+              onConnect={connect}
+            />
+          )}
+
+          {/* Balances + Stake row */}
+          <div className="flex gap-2" data-node-id="1989:9006">
+            {/* Left: Balances stack (StartHereCard + EarnedCard) */}
+            <div
+              className="flex flex-1 flex-col gap-2"
+              data-node-id="1989:9007"
+            >
+              <StartHereCard className="flex-1" onBuy={onBuy} onSell={onSell} />
+              <EarnedCard />
+            </div>
+
+            {/* Right: StakeCard — fixed 189px wide, 224px tall */}
+            <StakeCard
+              className="min-h-[224px] md:min-h-[274px]"
+              style={{ width: 189, flexShrink: 0 }}
+              onStake={onStake}
+              stakeDisabled={stakeDisabled}
+            />
+          </div>
+
+          {/* RecentActivityCard — shown on mobile in the connected state.
+              Per issue comment #4, the activity card IS shown in the
+              connected state (Figma node 1993:6527 context). Keep it always
+              in the DOM for both states so layout does not shift; the card
+              itself shows an empty state when disconnected. */}
+          <RecentActivityCard />
+
+          {/* Bottom stats strip — horizontally scrollable on mobile.
+              Replaces the WelcomeHeader stats strip which is hidden on mobile. */}
+          <div className="overflow-x-auto py-6">
+            <HomeStatsStrip />
+          </div>
+        </div>
+
+        {/* ── Desktop layout (md+): white Card + 7-column grid ─────────────
+            Hidden on mobile; the mobile stack above takes over below md. */}
+        <Card
+          variant="white"
+          className="hidden p-8 md:block"
+          data-node-id="1497:94565"
+        >
           {/* Seven-column grid mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`.
               16px gap matches the design's `gap-x-16 / gap-y-16`. */}
           <div className="grid w-full grid-cols-7 gap-4">
