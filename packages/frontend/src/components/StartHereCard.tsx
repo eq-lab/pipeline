@@ -93,9 +93,11 @@ export interface StartHereCardProps extends Omit<
    * Mobile-only: connected balance state.
    * When `"plusd"` or `"splusd"`, renders the "PLUSD Balance" connected
    * variant (eyebrow "PLUSD Balance", formatted balance, USDC sub-line, Buy
-   * + Sell both enabled). When `"empty"`, Sell is disabled. When `undefined`
-   * the component renders its default disconnected appearance (no change to
-   * desktop rendering).
+   * + Sell both enabled). When `"empty"`, Sell is disabled and rendered at
+   * 32% opacity (Figma node 1989:9022) — used for both the disconnected mobile
+   * state and the connected-but-zero-balance state. When `undefined` the
+   * component renders its default disconnected appearance without disabling
+   * Sell (desktop context).
    */
   mobileHomeState?: MobileHomeState;
   /**

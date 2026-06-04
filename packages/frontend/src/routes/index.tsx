@@ -196,7 +196,7 @@ function Home() {
                 className="flex-1"
                 onBuy={onBuy}
                 onSell={onSell}
-                mobileHomeState={isConnected ? mobileHomeState : undefined}
+                mobileHomeState={isConnected ? mobileHomeState : "empty"}
                 mobilePlusdBalance={plusdFormatted}
               />
               <EarnedCard mobileHomeState={isConnected ? mobileHomeState : undefined} />
