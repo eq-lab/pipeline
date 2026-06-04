@@ -136,7 +136,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
     const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
     const { data: statsData } = useStats();
-    const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)}`;
+    const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`;
 
     const composed = [
       // Text block top, circular CTA bottom-right — mirrors the Figma
@@ -299,7 +299,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           >
             {apyLabel}
           </p>
-          {/* Subtitle — "From loan coupons and T-bills". Caption in Graphik
+          {/* Subtitle — "From senior loan coupons and T-bills". Caption in Graphik
               LC, muted ink. */}
           <p
             className={[
@@ -312,7 +312,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             ].join(" ")}
             data-node-id="1497:94711"
           >
-            From loan coupons and T-bills
+            From senior loan coupons and T-bills
           </p>
         </header>
 

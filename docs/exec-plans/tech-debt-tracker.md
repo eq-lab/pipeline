@@ -108,6 +108,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** The local lint gate is permanently red, so agents cannot use `lint` exit status as a pass/fail signal for their own changes; per-file checks are needed instead. New drift accumulates silently.
 - **Suggested fix:** One-shot `prettier --write` pass over the workspace in a dedicated chore PR, then make CI run the same lint script so drift fails fast.
 
+### TD-13: CI does not run the frontend unit test suite (vitest)
+- **Date:** 2026-06-04
+- **Location:** `.github/workflows/` — Lint workflow runs docs lint, Rust clippy, TS typecheck; Tests workflow runs Rust unit tests only
+- **Gap:** `yarn workspace @pipeline/frontend test` (778 vitest tests) is not executed by any CI check, so PRs can merge with a red frontend suite.
+- **Impact:** Already happened: #476 (PR #488) merged green CI but broke `src/routes/-index.test.tsx` ("clicking Sell navigates…") — tracked as Issue #492. Regressions surface only when someone runs the suite locally.
+- **Suggested fix:** Add a frontend-tests job (`yarn workspace @pipeline/frontend test --run`) to the Tests workflow and make it a required check.
+
 ---
 
 ## Post-MVP
