@@ -104,13 +104,13 @@ padding.
 All changes in `packages/frontend/src/routes/index.tsx`, in the mobile block
 (`<div className="flex flex-col gap-2 md:hidden">`):
 
-1. Constrain the cards row container to its parent content box so it cannot
+1. [x] Constrain the cards row container to its parent content box so it cannot
    overflow to the right. On the row div (`data-node-id="1989:9006"`) change
    `className="flex gap-2"` to `className="flex w-full gap-2"` (and add
    `max-w-full` if needed to defeat min-content overflow). This forces the row to
    resolve against the 386px content box rather than its min-content width.
 
-2. Allow the `flex-1` left column to shrink to the available space (defeat the
+2. [x] Allow the `flex-1` left column to shrink to the available space (defeat the
    default `min-width: auto`). On the left column div
    (`data-node-id="1989:9007"`) change
    `className="flex flex-1 flex-col gap-2"` to

@@ -186,10 +186,10 @@ function Home() {
           )}
 
           {/* Balances + Stake row */}
-          <div className="flex gap-2" data-node-id="1989:9006">
+          <div className="flex w-full gap-2" data-node-id="1989:9006">
             {/* Left: Balances stack (StartHereCard + EarnedCard) */}
             <div
-              className="flex flex-1 flex-col gap-2"
+              className="flex min-w-0 flex-1 flex-col gap-2"
               data-node-id="1989:9007"
             >
               <StartHereCard
