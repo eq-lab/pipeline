@@ -15,3 +15,4 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 | [#466 Mobile home page balance states (0/0, has PLUSD, has sPLUSD)](https://github.com/eq-lab/pipeline/issues/466) | [466-mobile-home-balance-states.md](./epic-463/466-mobile-home-balance-states.md) | Initial |
 | [#475 StartHereCard Buy/Sell button height (mobile)](https://github.com/eq-lab/pipeline/issues/475) | [475-buy-sell-button-height.md](./epic-463/475-buy-sell-button-height.md) | Initial |
 | [#476 StartHereCard Sell button dimmed style](https://github.com/eq-lab/pipeline/issues/476) | [476-sell-button-dimmed.md](./epic-463/476-sell-button-dimmed.md) | Initial |
+| [#477 StakeCard circular Stake button size on mobile](https://github.com/eq-lab/pipeline/issues/477) | [477-stake-button-size.md](./epic-463/477-stake-button-size.md) | Initial |

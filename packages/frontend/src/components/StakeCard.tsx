@@ -24,8 +24,9 @@ import { useStats, formatApy } from "@/api";
  *   - {@link Card} `variant="white"` supplies the paper-white surface with the
  *     hairline border, 4px radius and 16px interior padding mirroring the
  *     Figma "card-horizontal" frame.
- *   - {@link Button} `variant="circular-blue"` provides the 128px round navy
- *     "Stake" CTA anchored bottom-right (Figma node `1497:94713`).
+ *   - {@link Button} `variant="circular-blue"` provides the round navy
+ *     "Stake" CTA anchored bottom-right (Figma node `1497:94713`): 88px on
+ *     mobile (Figma frame 1989-8292, node 2113:9115) and 128px on desktop.
  *
  * Layout:
  *   - The Card hosts a vertical flex column with `justify-between` so the
@@ -233,11 +234,14 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             >
               Unstake
             </button>
-            {/* "Stake More" circular CTA */}
+            {/* "Stake More" circular CTA.
+                Size: 88px on mobile (matching the base Stake button),
+                restoring the default 128px on desktop (md+). */}
             <Button
               variant="circular-blue"
               onClick={onStake}
               aria-label="Stake More PLUSD"
+              className="size-[88px] md:size-32"
               data-node-id="1497:94713"
             >
               Stake More
@@ -316,7 +320,9 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             `items-end`, so the circular button naturally anchors to the
             right edge.
             State A (empty): disabled, labelled "Nothing to Stake".
-            State B (plusd) or disconnected: enabled, labelled "Stake". */}
+            State B (plusd) or disconnected: enabled, labelled "Stake".
+            Size: 88px on mobile (Figma node 2113:9115 in frame 1989-8292),
+            restoring the default 128px on desktop (md+). */}
         <Button
           variant="circular-blue"
           onClick={onStake}
@@ -327,6 +333,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           aria-label={
             mobileHomeState === "empty" ? "Nothing to Stake" : "Stake PLUSD"
           }
+          className="size-[88px] md:size-32"
           data-node-id="1497:94713"
         >
           {mobileHomeState === "empty" ? "Nothing to Stake" : "Stake"}
