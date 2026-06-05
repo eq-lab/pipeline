@@ -114,6 +114,8 @@ The home route (`/`) has a designed mobile layout that pixel-matches the Figma m
 
 Breakpoint: Tailwind `md` (768px). Below 768px is the mobile layout; 768px and above uses the desktop layout.
 
+**Typography token responsive behavior:** Home card headings step down one type-scale step below the `md` breakpoint to match the mobile Figma type scale. Two mobile-specific tokens cover this step-down: `--text-pipeline-heading-m-mobile` (20px/28px, used by `ConnectWalletPromoCard`) and `--text-pipeline-heading-s-mobile` (18px/28px, used by `StartHereCard`, `StakeCard`, and `EarnedCard`). At `md` and above the desktop tokens (`heading-m` 28/36 and `heading-s` 20/28) are restored via responsive `md:` utilities.
+
 **Home page mobile layout (below `md`):**
 
 - `TopBar` collapses the inline nav and "Connect Wallet" button into a single hamburger icon button on the right. Tapping the hamburger opens `MobileNavMenu` — a full-width overlay panel listing the four nav destinations (Home / Convert / Earn / Activity) plus a wallet entry point.
