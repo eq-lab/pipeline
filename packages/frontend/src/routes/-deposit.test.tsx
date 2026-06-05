@@ -610,8 +610,7 @@ describe("Deposit page — insufficient balance banner", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          (content) =>
-            content.includes("$1,000.00") && content.includes("USDC"),
+          (content) => content.includes("1,000") && content.includes("USDC"),
         ),
       ).toBeInTheDocument();
     });
@@ -1030,8 +1029,8 @@ describe("Deposit page — three-step flow", () => {
         .find((b) => b.getAttribute("aria-busy") === "true");
       // Walk up to the StepRow root div (the container that gets opacity-30).
       // StepRow structure: div.rootClasses > ... > div.shrink-0 > Button
-      const rowRoot = busyBtn?.closest(".flex.items-center.gap-3");
-      expect(rowRoot).toBeDefined();
+      const rowRoot = busyBtn?.closest(".flex.items-start.gap-3");
+      expect(rowRoot).not.toBeNull();
       expect(rowRoot?.className).not.toContain("opacity-30");
     });
   });

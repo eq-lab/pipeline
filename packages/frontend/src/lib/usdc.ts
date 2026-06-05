@@ -13,7 +13,7 @@
  * `src/wallet/**`, so we consume them through the wallet module boundary.
  */
 import { parseUnits } from "@/wallet";
-import { formatTokenAmount } from "./format";
+import { formatTokenAmount, formatTokenAmountWhole } from "./format";
 
 /**
  * Parses a raw decimal string (e.g. `"1000"`, `"1000.50"`) into a bigint
@@ -57,8 +57,6 @@ export function formatUsdc(
 
 /**
  * Same as `formatUsdc` but prefixes the result with `"$"`.
- * Used for the low-balance banner subtitle
- * (`"Minimum amount — $1,000.00 USDC"`).
  *
  * Returns `"—"` when `decimals` is `undefined`.
  */
@@ -68,6 +66,21 @@ export function formatUsdcCurrency(
 ): string {
   if (decimals === undefined) return "—";
   return `$${formatUsdc(value, decimals)}`;
+}
+
+/**
+ * Formats a raw bigint as a whole-number string (no `$`, no fraction digits).
+ * Used where the design omits cents, e.g. the below-min banner subtitle
+ * (`"Minimum amount — 1,000 USDC"`).
+ *
+ * Returns `"—"` when `decimals` is `undefined`.
+ */
+export function formatUsdcWhole(
+  value: bigint,
+  decimals: number | undefined,
+): string {
+  if (decimals === undefined) return "—";
+  return formatTokenAmountWhole(value, decimals);
 }
 
 // Intl formatter with no fractional digits — used for chip labels where

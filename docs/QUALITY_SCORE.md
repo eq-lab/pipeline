@@ -4,6 +4,26 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-05 — Epic #463 (Home page) — QA pass via `qa` issue #464
+
+- **Scope:** Full QA pass for Epic #463 (home page). 8 user-stories docs under `docs/user-stories/epic-463/` executed against `main` @ ff8840d (http://localhost:3000/). First pass on this `qa` issue.
+- **Docs run:** 8 (`465`, `466`, `476`, `478`, `247`, `250`, `372`, `389`)
+- **Stories executed:** 26
+- **Passes:** 24
+- **Doc-stale (not a bug):** 2 (`247` Story 2 "cap at 3" — code is intentionally `MAX_ROWS=5`; `465` Story 1 Step 9 "RecentActivityCard visible disconnected" — Figma 1989:8292 has no Recent Activity, app correctly hides it)
+- **Not exercised:** `389` Stories 3/4 (chart hover tooltip — synthetic SVG, low priority)
+- **Blocked:** 0
+- **Bugs filed:** #508 (medium), #509 (medium) — both sub-issues of #463
+- **Figma frames compared:** 1989:8292 (mobile disconnected), 1988:7074 (State A), 1984:6501 (State B), 1886:46777 (State C)
+- **Score: 8/10**
+  - Mobile disconnected + all three connected balance states (A/B/C) render the correct sections, copy, balances, button enable/disable, and greeting ("Welcome" desktop / "Welcome back" mobile connected). `#476` Sell-dimming verified across all 5 stories (opacity 0.32 + disabled when nothing to sell; full opacity + interactive with a position). `#478` "% p.a." suffix and "From senior loan coupons and T-bills" copy present on mobile and desktop. `#250`/`#389` portfolio placeholder + 100-bar green chart + period-caption switching (7D +$42.80 → 3M +$192.80 → All +$842.80) work with no network call. `#372`/`#247` View All navigates to /transactions; empty/connected states correct. Desktop 7-col grid regression intact at 1440px and at the inclusive 768px breakpoint.
+  - **#508 (medium):** mobile Portfolio period tabs render top-right (desktop arrangement) instead of left-aligned below the balance/CTA as the mobile Figma frames specify (1987:7995 @ x=0,y=84). Desktop placement is correct.
+  - **#509 (medium):** mobile connected StartHereCard omits the "$X USDC" sub-line under the PLUSD balance that the Figma frames show (SubtitleCont 1984:6771/6772).
+  - **Seeding-doc gap (not an app bug):** `466-mobile-home-balance-states.md` State B/C seeding omits the `pipeline.mock.wallet.contract.<token>.decimals` key; without it `useEvmToken.formattedBalance` is undefined and StartHereCard shows `$0.00` despite a non-zero balance (the portfolio Total Balance, which formats the raw bigint, shows the correct value). Adding `.decimals = "18"` for the PLUSD and sPLUSD mock addresses makes balances render correctly.
+  - Zero error-level console messages across all states/viewports.
+  - Note: mobile tested at Chrome's ~500px minimum window width (the 402px Figma frame width is unreachable in non-headless Chrome); still below the `md` 768px breakpoint, so the mobile layout was exercised. Pixel-exact width comparisons account for the ~98px delta.
+  - Deducted 2 points: two medium Figma-fidelity deviations (#508, #509) on the primary mobile surface; everything functional/structural otherwise passes. `qa` issue #464 returned to `blocked` — epic cannot close until #508/#509 are fixed and a follow-up pass is green.
+
 ### 2026-06-01 — Issue #450 (Stellar UI wiring: dropdown toggle, TopBar pill, connect chooser modal)
 
 - **Scope:** Issue #450 acceptance criteria (TC-450-1 through TC-450-10)
