@@ -48,7 +48,9 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const rootClasses = [
-  "flex items-center gap-3",
+  // items-start so the step badge and action button align to the top of the
+  // label when it wraps to two lines on mobile (402px viewport).
+  "flex items-start gap-3",
   "w-full",
   "transition-opacity duration-150",
 ].join(" ");
@@ -77,7 +79,9 @@ const labelClasses = [
   "leading-[var(--text-pipeline-body--line-height)]",
   "font-[var(--font-weight-regular)]",
   "text-[color:var(--color-pipeline-ink)]",
-  "truncate",
+  // Allow labels to wrap on mobile so long step descriptions
+  // (e.g. "Allow Pipeline to use USDC") remain fully readable.
+  // Previously `truncate` clipped them at 402px mobile width.
 ].join(" ");
 
 export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
@@ -159,8 +163,10 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               disabled={disabled || loading}
               onClick={onAction}
               /* Override default 48px height to the 32px height used in the
-                 step card (Figma button height: min-h-[32px] w-[88px]). */
-              className="h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
+                 step card (Figma button height: 32px × 88px).
+                 Uses !h-8 (important modifier) so the override reliably beats
+                 the h-12 from the primary-dark variant class in Tailwind v4. */
+              className="!h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
               aria-busy={loading}
             >
               {loading ? (

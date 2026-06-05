@@ -199,3 +199,51 @@ export const Pair: Story = {
     </div>
   ),
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Mobile — 402px viewport with long labels that wrap (Issue #505)           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Verifies fix for Issue #505: long step labels must wrap to two lines at
+ * 402px mobile width instead of truncating with ellipsis.
+ * Action buttons must render at 32px (h-8) not 48px.
+ */
+export const MobileLongLabels: Story = {
+  name: "Mobile 402px — long labels wrap (Issue #505)",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Fix #505 regression test: at 402 px mobile width, " +
+          '"Allow Pipeline to use USDC" and "Confirm USDC transaction" must ' +
+          "wrap to two lines (no ellipsis). Action buttons must be 32 px tall.",
+      },
+    },
+  },
+  render: () => (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 16,
+        background: "var(--color-pipeline-paper)",
+        width: 370, // card interior at 402px viewport with 8px page margins × 2
+      }}
+    >
+      <StepRow
+        step={1}
+        label="Allow Pipeline to use USDC"
+        actionLabel="Approve"
+        disabled
+      />
+      <StepRow
+        step={2}
+        label="Confirm USDC transaction"
+        actionLabel="Confirm"
+        disabled
+      />
+    </div>
+  ),
+};
