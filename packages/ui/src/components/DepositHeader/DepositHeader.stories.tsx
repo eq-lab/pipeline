@@ -9,11 +9,13 @@ const meta = {
     docs: {
       description: {
         component:
-          "Centered header displayed above the deposit / conversion card. " +
-          "Renders a large PLUSD coin icon (40 px) stacked above a display-serif " +
-          "heading (`1:1 Conversion` by default). The `title` prop defaults to " +
-          '`"1:1 Conversion"` so callers can override the copy without extra wiring. ' +
-          "Matches Figma node 1498-100130.",
+          "Responsive header displayed above the deposit / conversion card. " +
+          "Below the `md` breakpoint (768 px) the coin icon is hidden and the heading " +
+          "is left-aligned (Figma node 1993:7911). At `md+` the coin icon reappears " +
+          "centred above the heading (Figma node 1498:100130). " +
+          "Both breakpoints use `heading-m` (28 px / 36 px) at Besley Regular weight. " +
+          "The `title` prop defaults to " +
+          '`"1:1 Conversion"` so callers can override the copy without extra wiring.',
       },
     },
   },
