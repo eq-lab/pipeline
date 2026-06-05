@@ -9,45 +9,48 @@ Figma references:
 
 ---
 
-## Story 1 — APY line includes "p.a." suffix
+## Story 1: APY line includes "p.a." suffix
 
-**Given** the home page renders the StakeCard (disconnected or connected, any state)
-**When** the APY figure is available from the API
-**Then** the APY line reads "Earn X.XX% p.a." (with the " p.a." suffix)
+**Persona:** Any user viewing the home page (disconnected or connected, any state).
 
-### Verification steps
+**Pre-conditions:** App running; the APY figure is available from the API.
 
-1. Open the app (any viewport).
+**Steps:**
+
+1. Open the app at `/` (any viewport).
 2. Locate the StakeCard (the white card advertising staking yield).
-3. Find the large display-font line showing the APY.
-4. Confirm the text ends with "% p.a." — e.g. "Earn 8.42% p.a.".
+3. Read the large display-font line showing the APY.
+
+**Expected outcomes:** The APY line reads "Earn X.XX% p.a." — the text ends with "% p.a." (e.g. "Earn 8.42% p.a.").
 
 ---
 
-## Story 2 — Subtitle reads "From senior loan coupons and T-bills"
+## Story 2: Subtitle reads "From senior loan coupons and T-bills"
 
-**Given** the home page renders the StakeCard (disconnected or connected, any state except State C)
-**When** the card renders
-**Then** the caption line reads "From senior loan coupons and T-bills"
+**Persona:** Any user viewing the home page (disconnected or State A/B — any state except State C).
 
-### Verification steps
+**Pre-conditions:** App running; wallet disconnected or connected without sPLUSD.
 
-1. Open the app (any viewport, wallet disconnected or State A/B).
+**Steps:**
+
+1. Open the app at `/` (any viewport).
 2. Locate the StakeCard.
-3. Find the small muted caption below the APY line.
-4. Confirm the text is "From senior loan coupons and T-bills" (note "senior").
+3. Read the small muted caption below the APY line.
+
+**Expected outcomes:** The caption reads exactly "From senior loan coupons and T-bills" (note "senior").
 
 ---
 
-## Story 3 — Desktop variant uses the same strings
+## Story 3: Desktop variant uses the same strings
 
-**Given** the app is viewed at a desktop viewport (>= 768px)
-**When** the StakeCard renders
-**Then** the APY line reads "Earn X.XX% p.a." and the subtitle reads "From senior loan coupons and T-bills"
+**Persona:** A desktop user (≥ 768px viewport).
 
-### Verification steps
+**Pre-conditions:** App running; viewport ≥ 768px (e.g. 1280px).
 
-1. Open the app at a 1280px viewport.
+**Steps:**
+
+1. Open the app at `/` at a 1280px viewport.
 2. Locate the StakeCard in the desktop grid.
-3. Confirm APY line ends with "% p.a.".
-4. Confirm subtitle includes "senior".
+3. Read the APY line and the subtitle.
+
+**Expected outcomes:** The APY line ends with "% p.a." and the subtitle includes "senior" — identical strings to the mobile variant.

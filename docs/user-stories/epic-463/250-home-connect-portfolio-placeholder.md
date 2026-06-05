@@ -9,7 +9,7 @@ Plan: `docs/exec-plans/completed/issue-250-home-connect-wire-portfolio-placehold
 
 ---
 
-## Story 1 (TC-250-1): Disconnected — Connect promo CTA opens the wallet modal
+## Story 1: Disconnected — Connect promo CTA opens the wallet modal
 
 **Persona:** User (no wallet connected).
 
@@ -25,7 +25,7 @@ Plan: `docs/exec-plans/completed/issue-250-home-connect-wire-portfolio-placehold
 
 ---
 
-## Story 2 (TC-250-2): Connected via DevTools mock — Portfolio placeholder renders correctly
+## Story 2: Connected via DevTools mock — Portfolio placeholder renders correctly
 
 **Persona:** User / QA.
 
@@ -49,7 +49,7 @@ Plan: `docs/exec-plans/completed/issue-250-home-connect-wire-portfolio-placehold
 
 ---
 
-## Story 3 (TC-250-3): Switching tabs updates the active pill — no network call
+## Story 3: Switching tabs updates the active pill — no network call
 
 **Persona:** User (connected via mock as above).
 
@@ -68,7 +68,7 @@ Plan: `docs/exec-plans/completed/issue-250-home-connect-wire-portfolio-placehold
 
 ---
 
-## Story 4 (TC-250-4): Disconnecting via mock — reverts to Connect Wallet promo
+## Story 4: Disconnecting via mock — reverts to Connect Wallet promo
 
 **Persona:** QA.
 

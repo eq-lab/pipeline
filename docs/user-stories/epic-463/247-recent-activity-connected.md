@@ -10,7 +10,7 @@ Figma: [Connected state 1497:95119](https://www.figma.com/design/A43rjYYjSwdTmiw
 
 ---
 
-## Story 1 (TC-247-1): Connected + data — 3 rows and View All link
+## Story 1: Connected + data — 3 rows and View All link
 
 **Persona:** User with connected wallet and existing requests.
 
@@ -35,7 +35,7 @@ Figma: [Connected state 1497:95119](https://www.figma.com/design/A43rjYYjSwdTmiw
 
 ---
 
-## Story 2 (TC-247-2): Connected + more than 3 rows — cap at 3
+## Story 2: Connected + more than 3 rows — cap at 3
 
 **Persona:** User with connected wallet and 5+ requests.
 
@@ -51,7 +51,7 @@ Figma: [Connected state 1497:95119](https://www.figma.com/design/A43rjYYjSwdTmiw
 
 ---
 
-## Story 3 (TC-247-3): Connected + empty list — empty state
+## Story 3: Connected + empty list — empty state
 
 **Persona:** User with connected wallet but no requests.
 
@@ -70,7 +70,7 @@ Figma: [Connected state 1497:95119](https://www.figma.com/design/A43rjYYjSwdTmiw
 
 ---
 
-## Story 4 (TC-247-4): Disconnected — empty state unchanged
+## Story 4: Disconnected — empty state unchanged
 
 **Persona:** User with no wallet connected.
 

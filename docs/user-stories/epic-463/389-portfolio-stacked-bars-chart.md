@@ -9,7 +9,7 @@ Plan: `docs/exec-plans/completed/issue-389-portfolio-stacked-bars-chart.md`
 
 ---
 
-## Story 1 (TC-389-1): Connected — chart renders 100 green stacked bars with earning caption
+## Story 1: Connected — chart renders 100 green stacked bars with earning caption
 
 **Persona:** User / QA.
 
@@ -28,7 +28,7 @@ Plan: `docs/exec-plans/completed/issue-389-portfolio-stacked-bars-chart.md`
 
 ---
 
-## Story 2 (TC-389-2): Period switch — chart and caption update, no network call
+## Story 2: Period switch — chart and caption update, no network call
 
 **Persona:** User (connected via mock).
 
@@ -50,7 +50,7 @@ Plan: `docs/exec-plans/completed/issue-389-portfolio-stacked-bars-chart.md`
 
 ---
 
-## Story 3 (TC-389-3): Hover — vertical cursor + tooltip appear
+## Story 3: Hover — vertical cursor + tooltip appear
 
 **Persona:** User (connected via mock).
 
@@ -70,7 +70,7 @@ Plan: `docs/exec-plans/completed/issue-389-portfolio-stacked-bars-chart.md`
 
 ---
 
-## Story 4 (TC-389-4): Mouse leave — cursor and tooltip disappear
+## Story 4: Mouse leave — cursor and tooltip disappear
 
 **Persona:** User (connected via mock).
 
@@ -84,22 +84,3 @@ Plan: `docs/exec-plans/completed/issue-389-portfolio-stacked-bars-chart.md`
 
 - The vertical cursor line and tooltip both disappear immediately.
 - The `+$42.80 earning` caption and chart bars remain unchanged.
-
----
-
-## Story 5 (TC-389-5): Card grid does not reflow on tab switch or hover
-
-**Persona:** User (connected via mock).
-
-**Pre-conditions:** Story 1 completed.
-
-**Steps:**
-
-1. Switch through all 5 period tabs
-2. Hover the chart and move the mouse around
-3. Inspect the card height via DevTools
-
-**Expected outcomes:**
-
-- The card maintains its `min-height: 274px` throughout — no layout shift on tab switch or hover.
-- Other cards in the home grid are not displaced.
