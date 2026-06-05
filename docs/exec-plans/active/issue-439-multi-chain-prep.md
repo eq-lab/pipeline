@@ -1,0 +1,254 @@
+# Issue #439: Multi-chain prep: make api + worker chain-agnostic
+
+Source: https://github.com/eq-lab/pipeline/issues/439
+
+## Scope
+
+Refactor `packages/api` and `packages/worker` so the application layer stops treating "the chain" as a process-wide singleton. After this Issue the codebase carries a `default_chain_id` plus per-chain maps (`HashMap<i64, …>`) for everything that was previously a single value, and the worker compiles against a `ChainEventPoller` trait so a Stellar implementation can later plug in without rewriting the indexer loop, parser registry, price poller, or relayer.
+
+**In scope:**
+
+- **API config / env:** rename `API_CHAIN_ID` → `DEFAULT_CHAIN_ID`; introduce `CHAINS=<csv>` and per-chain keys `CHAIN_<id>_SIGNER_KEY`, `CHAIN_<id>_DM_ADDRESS`, `CHAIN_<id>_WQ_ADDRESS` (exact shape locked below — see Implementation Step 1).
+- **API `AppState`:** flip `chain_id` → `default_chain_id` and turn `voucher_signer`, `dm_domain`, `wq_domain` from `Option<_>` into `HashMap<i64, _>` (entries only for EVM chains that have a signer configured).
+- **API routes:** every route that currently reads `state.chain_id` accepts an optional `chain_id` query param and falls back to `state.default_chain_id`. Voucher routes additionally accept `chain_id` and 400 when the chain has no signer.
+- **Worker indexer:** extract a `ChainEventPoller` trait covering `latest_block`, `fetch_logs_since`/`poll`, and `get_block_timestamp`; refactor the existing `EvmEventPoller` into the first impl; refactor `index_once` / `index_loop` / `run_indexer_job` to consume the trait rather than the concrete `EvmEventPoller`.
+- **Worker parsers:** split alloy-`SolEvent` coupling out of `indexer::mod.rs` into a per-chain event handler set so Stellar-equivalent decoders can later live next to a Horizon poller.
+- **Worker config (all three jobs):** indexer / price-poller / relayer all switch from a single `JOB_<X>_CHAIN_ID` + `_ETH_RPC_URL` block to a per-chain list. Worker `main.rs` spawns one task per configured chain per enabled job.
+- **DB schema audit:** decide whether `lp_profiles` and `kyc_outbox` stay global or get a `chain_id`. Document the decision in a new design doc under `docs/design-docs/`. No DDL change is in scope unless the audit produces a "needs `chain_id`" decision — see Open Questions.
+- **Bug surfaced during research, fix scoped in:** `kyc_repo::get_deposit_request` / `get_withdrawal_request` and `is_request_claimed` are not scoped by `chain_id`. With multi-chain `contract_logs`, identical `request_id`s on two chains would collide. Add `chain_id` to these reads as part of voucher route refactor (see Step 4).
+- **Smoke validation:** local indexer fixture run under `chain_id = 99999` continues to write the same events end-to-end.
+
+**Explicitly out of scope (already enumerated in the Issue body, restated here so the coder doesn't drift):**
+
+- Any Stellar code: no Horizon poller, no Soroban price reads, no Stellar contract addresses, no Stellar event decoders.
+- Stellar voucher signing (if vouchers translate to Stellar at all — product TBD).
+- Cross-chain bridging logic (PLUSD/USDC).
+- Renaming `block_number` / `log_index` / `tx_hash` columns — the Stellar mapping convention (`ledger_sequence → block_number`, operation order → `log_index`) is documented but no DDL change.
+- Pulling `eth_rpc_url` per chain out of the relayer's `EthereumWallet` setup any further than necessary — the relayer's whitelist phase stays EVM-only for now; only its config shape changes.
+- Touching `frontend/`.
+
+## Assumptions and Risks
+
+- **Single deployment configured for a single EVM chain stays unchanged operationally.** Default env vars (`API_CHAIN_ID`, `JOB_INDEXER_CHAIN_ID`, etc.) are being renamed; this is a breaking infra change, but staging + prod each run one chain today so the migration is a one-deploy env rewrite. Document the new shape in `.env.example` and call it out in the PR description so the deploy-time rename is not missed. We do **not** keep backward compatibility on the old names — adding fallback parsing for renamed envs doubles the surface area and obscures the new shape.
+- **`AppState` voucher maps are `HashMap<i64, _>`, not concurrent maps.** They are built once at startup, never mutated; the existing `Arc<AppState>` already gives us safe shared reads. No `RwLock`.
+- **Voucher fallback semantics.** `/v1/deposits/.../voucher` and `/v1/withdrawals/.../voucher` accept an **optional** `chain_id` query param and fall back to `default_chain_id`. If the resolved chain has no signer configured → HTTP 400 (`"voucher signing not configured for chain X"`), per Issue body. This replaces the previous 503-when-signer-missing path. We keep 503 only as a transient "no signer config at all loaded" guard — but in practice once `CHAINS` is set with any entry, the per-chain check produces 400 for the missing chain.
+- **`/v1/stats/yield` reference pattern is kept literally.** That route already takes a required `chain_id`. The Issue body explicitly says we do **not** add a fallback there — keeping the strict contract avoids a silent behaviour shift for the dashboard caller, which always passes `chain_id`.
+- **`/v1/requests` (`analytics.rs`), `/v1/emails`, `/v1/kyc/*` are chain-agnostic in their current implementation and the Issue confirms they stay that way.** `populate_profiles_from_deposits` likewise reads across all chains today (no `chain_id` clause), which is the intended global behaviour for KYC identity per wallet.
+- **`kyc_repo::get_deposit_request` and friends lack `chain_id` scoping.** Today this isn't a bug because there is one chain; with the new code it becomes a real collision risk. Tightening these reads inside this Issue is correct scope (the voucher routes depend on them and the per-chain map of signers / domains means the wrong-chain row produces a wrong signature). Open Questions tracks whether to also tighten `is_on_chain_allowed`.
+- **Per-chain task spawn changes restart semantics.** With multiple indexers, a panic in one task no longer kills the worker process (each spawned future is independent). For dev parity with today's behaviour we propagate panics by logging on join error; existing `tokio::spawn(run_indexer_job(...))` already runs detached so this is no behavioural regression.
+- **Trait design risk.** The worker's `index_once` currently relies on:
+  - `poller.get_latest_block() -> u64`
+  - `poller.poll(from, to) -> Vec<Box<dyn LogMapper>>`
+  - `poller.get_block_timestamp(block_number, cache)` for per-mapper enrichment
+  - cursor semantics keyed by EVM `block_number`.
+  The trait must keep `u64` cursors for the EVM impl (drop-in) but be documented as a "monotonic per-chain cursor" so a future Stellar impl can use a ledger sequence (same `u64` shape) without renaming the type. The Stellar-side note in the Issue (`ledger_sequence → block_number`, synthesised `log_index`) is captured as a doc comment on the trait, no code change.
+- **Existing tests.** `packages/worker/tests/parsers.rs` exercises `parse_*` symbols directly. The parser registry refactor must keep those exported (or expose an equivalent EVM helper) so the test file still compiles. Plan keeps the free functions; the change is to group them into a per-chain `EvmParserSet` registry that the new indexer wiring consumes.
+- **DB schema audit risk.** Until the design doc lands, `lp_profiles` and `kyc_outbox` are treated as global. If the audit decision goes the other way (shard by chain), it falls under the documented decision but its DDL is a follow-up Issue — flagged in Open Questions.
+- **Per-chain relayer task spawn introduces a multiplier on BitGo / Crystal usage.** Each chain spawns its own relayer loop with its own signer; the BitGo `bitgo_native_symbol` is per-chain by nature. The yield-mint outbox is already keyed by `(chain_id, yield_minter_address, …)` so it shards cleanly. The Issue scopes the relayer change to "per-chain config + per-chain signer (optionally)" — the implementation should default to one signer per chain so the change is symmetric with the indexer/price-poller layout.
+- **PR #496 has no code yet (only the empty start commit).** All of the work below is greenfield within this branch.
+
+## Open Questions
+
+1. **DB schema audit decision — `lp_profiles` and `kyc_outbox`.** The Issue says "Document the decision (per-chain vs global) in `docs/design-docs/`." Strong prior: keep global (one wallet = one KYC identity, KYC providers are not chain-specific). Asking explicitly because the wrong answer here causes a migration in a follow-up Issue. **Default if no human input:** keep global, document the rationale in a new `docs/design-docs/multi-chain-kyc-identity.md`.
+2. **Per-chain env var shape.** Issue body says "Exact env-var shape TBD in planning." Concrete proposal (default if no human input):
+   ```
+   CHAINS=1,99999                       # comma-separated chain ids
+   DEFAULT_CHAIN_ID=1                   # required
+   # Per-chain (replace <id> with each chain id from CHAINS):
+   CHAIN_<id>_SIGNER_KEY=0x...          # optional; voucher signing only on chains with a signer
+   CHAIN_<id>_DM_ADDRESS=0x...          # required iff SIGNER_KEY set
+   CHAIN_<id>_WQ_ADDRESS=0x...          # required iff SIGNER_KEY set
+   # Worker (per chain):
+   CHAIN_<id>_ETH_RPC_URL=https://...   # required for EVM chains
+   CHAIN_<id>_DM_CONTRACTS=...          # CSV, existing JOB_INDEXER_DM_CONTRACTS contents
+   CHAIN_<id>_WQ_CONTRACTS=...
+   CHAIN_<id>_SPLUSD_CONTRACTS=...
+   CHAIN_<id>_LOAN_REGISTRY_CONTRACTS=...
+   CHAIN_<id>_YIELD_MINTER_CONTRACTS=...
+   CHAIN_<id>_START_BLOCK=...
+   # Job-level (still global):
+   JOB_INDEXER_ENABLED=true
+   JOB_PRICE_POLLER_ENABLED=true
+   JOB_RELAYER_ENABLED=true
+   JOB_INDEXER_POLLING_BLOCK_RANGE=...  # cross-chain defaults
+   JOB_INDEXER_POLLING_INTERVAL_MS=...
+   JOB_INDEXER_LOG_CONFIRMATIONS_DELAY=...
+   ```
+   This unifies the API and worker per-chain prefix under `CHAIN_<id>_*` and keeps the job-level toggles / tuning knobs un-sharded. Confirm or override the prefix scheme.
+3. **Relayer per-chain signer.** Today there is one `JOB_RELAYER_SIGNER_KEY`. Should each chain have its own (yes — defensive segregation of on-chain authority per chain, matches the Issue body's "per-chain signer (optionally)") or share one? **Default:** per-chain `CHAIN_<id>_RELAYER_SIGNER_KEY`. Same answer for `CHAIN_<id>_RELAYER_REGISTRY_ADDRESS`, `CHAIN_<id>_RELAYER_YIELD_MINTER_ADDRESS`, `CHAIN_<id>_RELAYER_LOAN_REGISTRY_ADDRESS`.
+4. **`is_on_chain_allowed` scoping.** This currently reads `lp_profiles.on_chain_allowed` without a chain. If `lp_profiles` stays global (Q1 default), this is fine. If sharded later, it must be scoped. Flag this in the design doc but **no code change here** under the default decision.
+5. **Soroban / Stellar trait shape preview.** The Issue is explicit that no Stellar code lands. But the trait shape we lock in this Issue affects the next one. Lock the trait around the EVM call sites only (`poll`, `get_latest_block`, `get_block_timestamp`); Stellar concerns documented as a doc comment, not in the signature. Confirm this is the right scope (i.e. don't pre-emptively shape a Soroban-friendly signature).
+
+## Implementation Steps
+
+### Stage A — API: env config + AppState (small, mostly mechanical)
+
+1. **Env-var parsing.** Extend `packages/api/src/main.rs` with a new helper module `pipeline_api::config::ChainsConfig` (new file `packages/api/src/config.rs`, exported via `pub mod config;` in `lib.rs`).
+   - Parses `CHAINS` as a comma-separated CSV of `i64`. Must be non-empty.
+   - Parses `DEFAULT_CHAIN_ID` as `i64` (must be a member of `CHAINS`; else `anyhow::bail!`).
+   - For each id in `CHAINS`, builds an optional `VoucherChainConfig { signer: PrivateKeySigner, dm_domain: Eip712Domain, wq_domain: Eip712Domain }`. If `CHAIN_<id>_SIGNER_KEY` is set, the two address vars are required. If not set, the chain is voucher-disabled.
+   - Returns `ChainsConfig { default_chain_id: i64, voucher: HashMap<i64, VoucherChainConfig> }`.
+
+2. **`AppState`.** In `packages/api/src/lib.rs`:
+   ```rust
+   pub struct AppState {
+       pub pool: sqlx::PgPool,
+       pub kyc_repo: KycRepo,
+       pub position_repo: PositionRepo,
+       pub contract_logs_repo: ContractLogsRepo,
+       pub default_chain_id: i64,
+       pub sumsub_client: Option<SumsubClient>,
+       pub sumsub_settings: Option<SumsubSettings>,
+       pub voucher_signers: HashMap<i64, PrivateKeySigner>,
+       pub dm_domains: HashMap<i64, Eip712Domain>,
+       pub wq_domains: HashMap<i64, Eip712Domain>,
+       pub crystal_enabled: bool,
+   }
+   ```
+   Drop `voucher_signer`, `dm_domain`, `wq_domain`, `chain_id`.
+
+3. **`packages/api/src/main.rs`** wires the new config into `AppState` and removes the old `API_CHAIN_ID` / `API_SIGNER_KEY` / `API_DM_ADDRESS` / `API_WQ_ADDRESS` reads. The voucher-signer-missing tracing warn now logs per chain that has no signer.
+
+### Stage B — API: routes
+
+4. **Common query helper.** Add a small `routes::common::ChainQuery { chain_id: Option<i64> }` (new module `packages/api/src/routes/common.rs`) with a helper `resolve_chain(state, q.chain_id) -> i64` returning `q.chain_id.unwrap_or(state.default_chain_id)`. No validation against `CHAINS`; the worker's per-chain config is independent from the API's awareness of a chain.
+
+5. **`stats.rs`** — three routes get a `ChainQuery` merged into their existing `Query<…>` type (use `serde(flatten)` so the OpenAPI `params(…)` lists the merged fields):
+   - `/v1/stats` (`StatsQuery`) — add `chain_id: Option<i64>`; pass `resolve_chain(...)` into `compute_stats`.
+   - `/v1/stats/prices` (`PricesQuery`) — same; thread through into both `get_earliest_price_timestamp` and `get_avg_prices`.
+   - `/v1/stats/vaults` — currently takes `()`; introduce a new `VaultsQuery { chain_id: Option<i64> }` (matches Issue Acceptance Criterion: "All existing API routes that currently read `state.chain_id` accept an optional `chain_id` query param").
+   Update `#[utoipa::path]` `params(…)` blocks accordingly.
+
+6. **`pnl.rs`** — extend `PnlQuery` with `chain_id: Option<i64>`. Resolve via the helper. Update `utoipa::path` params.
+
+7. **`vouchers.rs`** — extend `WalletQuery` with `chain_id: Option<i64>`.
+   - Replace `(&state.voucher_signer, &state.dm_domain)` lookups with `state.voucher_signers.get(&chain_id)` + `state.dm_domains.get(&chain_id)` (and `wq_domains` for the withdrawal route). On miss, **HTTP 400** (`"voucher signing not configured for chain {chain_id}"`).
+   - Pass `chain_id` into the KYC repo lookups (see step 8) so we read the right `contract_logs` row.
+   - The EIP-712 domain object already carries `chain_id` internally (`Eip712Domain.chain_id`) which must equal the query chain — assert at config-load time (Stage A step 1), not in the hot path.
+
+8. **`shared::kyc_repo` — add chain scoping.** Extend the four DB methods used by vouchers with a `chain_id: i64` parameter:
+   - `get_deposit_request(chain_id, request_id, wallet)` — add `AND chain_id = $N` to the SQL.
+   - `get_withdrawal_request(chain_id, request_id, wallet)` — same.
+   - `is_request_claimed(chain_id, claimed_event, request_id, contract_address)` — add `AND chain_id = $N`.
+   Call sites: `packages/api/src/routes/vouchers.rs` (only existing callers).
+   Update `packages/worker/tests/mappers.rs` / any other call sites where these methods may be invoked (search `kyc_repo.get_deposit_request|get_withdrawal_request|is_request_claimed`).
+
+9. **`portfolio.rs`** — no behavioural change (already takes a required `chain_id` query). Verify it still compiles after dropping `state.chain_id`.
+
+10. **`analytics.rs`, `emails.rs`, `kyc.rs`** — no change. Add a one-line comment in `analytics.rs` near the SQL pointing out the global-across-chains semantics with a link to the new design doc (Stage F step 17).
+
+### Stage C — Worker: trait for event polling
+
+11. **New file `packages/worker/src/indexer/chain_poller.rs`.** Defines:
+   ```rust
+   #[async_trait::async_trait]
+   pub trait ChainEventPoller: Send + Sync {
+       /// Latest finalised cursor on the source (EVM block, Stellar ledger).
+       async fn latest_block(&self) -> anyhow::Result<u64>;
+
+       /// Poll all decoded events in `[from, to]` as `LogMapper` boxes.
+       async fn poll(&self, from: u64, to: u64) -> anyhow::Result<Vec<Box<dyn shared::log_mapper::LogMapper>>>;
+
+       /// Per-event timestamp enrichment. EVM impl uses `eth_getBlockByNumber`;
+       /// a Stellar impl can return ledger close time. `cache` is a per-cycle scratch.
+       async fn get_block_timestamp(
+           &self,
+           block_number: u64,
+           cache: &mut std::collections::HashMap<u64, u64>,
+       ) -> anyhow::Result<u64>;
+   }
+   ```
+   Move the existing concrete `EvmEventPoller` (already in `poller.rs`) to implement this trait (`impl ChainEventPoller for EvmEventPoller`). Keep the inherent methods so older direct callers (if any) still work; this preserves backwards-compat inside the crate.
+
+12. **`indexer::mod.rs`** — change `index_once` and `index_loop` signatures from `&EvmEventPoller` to `&dyn ChainEventPoller` (or generic `<P: ChainEventPoller>`; pick generic to keep static dispatch and avoid `async fn` in trait-object pain — `async_trait` makes either work, choose static for perf parity with today). `run_indexer_job` keeps building the `EvmEventPoller` for now and passes it as `&P`.
+
+### Stage D — Worker: parser registry
+
+13. **New file `packages/worker/src/indexer/evm_parsers.rs`** (renamed from / additive to `parsers.rs`). Refactor `run_indexer_job` so the giant `EvmEventPollerBuilder::add_event_handler(…)` chain is wrapped in a public function:
+   ```rust
+   pub fn register_evm_handlers(
+       builder: EvmEventPollerBuilder,
+       chain_id: i64,
+       contracts: EvmContractAddresses,
+       repos: EvmRepos,
+       loan_deps: EvmLoanDeps,
+   ) -> EvmEventPollerBuilder { ... }
+   ```
+   `EvmContractAddresses`, `EvmRepos`, `EvmLoanDeps` are small wrapper structs that group what `run_indexer_job` already collects. The point is to keep the parsing code path explicit, EVM-tagged, and reusable per-chain.
+
+   The existing free `parse_*` functions in `parsers.rs` stay where they are (tests depend on them). The new file `evm_parsers.rs` is a thin grouping layer.
+
+14. **Per-chain spawn.** Restructure `worker/src/main.rs` `JOB_INDEXER_ENABLED` block:
+   ```rust
+   if env_bool("JOB_INDEXER_ENABLED") {
+       let settings_per_chain = IndexerJobSettings::all_from_env()?;
+       for s in settings_per_chain {
+           tokio::spawn(run_indexer_job(s, pool.clone()));
+       }
+   }
+   ```
+   `IndexerJobSettings::all_from_env()` returns `Vec<IndexerJobSettings>` by iterating the `CHAINS` CSV and pulling `CHAIN_<id>_*` for each. Single-chain installs declare `CHAINS=1` and continue to work.
+
+### Stage E — Worker: price-poller + relayer config split
+
+15. **`price_poller/config.rs`** — add `PricePollerSettings::all_from_env() -> Vec<PricePollerSettings>` reading `CHAIN_<id>_ETH_RPC_URL` per chain, falling back to `CHAIN_<id>_*` indexer-shared values if not separately overridden (mirrors today's `JOB_PRICE_POLLER_ETH_RPC_URL` fallback to `JOB_INDEXER_ETH_RPC_URL`). `run_price_poller_job` already takes a single `PricePollerSettings`; spawn one task per chain.
+
+16. **`relayer/config.rs`** — same shape: `RelayerJobSettings::all_from_env() -> Vec<RelayerJobSettings>`. `chain_id`, `eth_rpc_url`, `signer_key`, `registry_address`, `yield_minter_address`, `loan_registry_address` all come from `CHAIN_<id>_RELAYER_*`. `bitgo_native_symbol`, `yield_minter_batch_size`, `interval_secs`, `sumsub_enabled`, `crystal_enabled` stay job-level (current `CRYSTAL_ENABLED` / `BITGO_NATIVE_SYMBOL` semantics). `run_relayer_job` keeps its single-settings signature; spawn one task per chain.
+
+   The yield-mint outbox is already chain-scoped at the row level (`yield_mint_outbox.chain_id` is part of its PK), so per-chain relayer tasks reading their own slice works without further changes to `YieldMintOutboxRepo`.
+
+### Stage F — Schema audit + docs
+
+17. **Design doc.** New `docs/design-docs/multi-chain-kyc-identity.md` capturing the audit decision for `lp_profiles` and `kyc_outbox`. Default decision (subject to Open Question #1): both stay global, one row per wallet, KYC identity is chain-independent. Cite the three relevant SQL paths:
+   - `populate_profiles_from_deposits()` — reads across all `contract_logs.DepositRequested`, inserts one row per distinct wallet. Multi-chain-safe by design.
+   - `is_on_chain_allowed(wallet)` — keyed on `lp_profiles.on_chain_allowed`. Global; chain-independent. Consequence: a wallet allowed on chain A is API-treated as allowed for vouchers on chain B, **but** voucher signing is also gated by per-chain `voucher_signers` map, and the on-chain `WhitelistRegistry` is per-chain — so a chain without its registry sync still rejects on-chain. Document this layering.
+   - `kyc_outbox` — async work queue for KYC provider calls; provider calls are chain-agnostic. Global.
+
+   Add the new doc to `docs/design-docs/index.md`'s table.
+
+18. **`.env.example`.** Rewrite the affected sections under Q2's shape. Keep current values as commented examples for `CHAINS=1`.
+
+19. **`ARCHITECTURE.md`.** No structural change but add a one-paragraph note under "Cross-Cutting Concerns" that the indexer / price-poller / relayer run one task per configured chain and the API resolves chain by query param with a `DEFAULT_CHAIN_ID` fallback.
+
+20. **`docs/product-specs/`.** No product-facing behavioural change (existing endpoints still serve the same single-chain answer with default `chain_id`). Add a short note to `docs/product-specs/dashboards.md` that all `/v1/stats/*` and `/v1/pnl` endpoints accept an optional `chain_id` and `/v1/stats/yield` requires it. Skip if the file does not already cite these endpoints; in that case no spec change.
+
+## Test Strategy
+
+The Issue's acceptance criterion is "existing EVM behaviour is preserved end-to-end (smoke-test against the local indexer fixture under `chain_id=99999`)" plus `cargo clippy --all -- -D warnings` clean and `/test-fast` green. The plan keeps the surface of changes mechanical, so testing is mostly regression-shaped.
+
+**Unit tests (new):**
+
+- `packages/api/src/config.rs` — `ChainsConfig::from_env()`:
+  - Happy path: `CHAINS=1,99999`, `DEFAULT_CHAIN_ID=1`, both chains have signer configs → returns two voucher entries.
+  - Default-chain not in `CHAINS` → returns `Err`.
+  - Empty `CHAINS` → `Err`.
+  - Chain with `SIGNER_KEY` but missing `DM_ADDRESS` → `Err` (mirrors today's `.expect`).
+  - Chain without `SIGNER_KEY` → voucher map missing that key, no error.
+- `packages/worker/src/indexer/config.rs::IndexerJobSettings::all_from_env()` — happy path + missing `CHAIN_<id>_*` required key.
+
+**Integration / behavioural tests:**
+
+- `packages/api/tests/vouchers_chain_param.rs` (new) — spin up an in-process `AppState` with two chains (memory mock pool not feasible; **DB-gated**: skip the test if `DATABASE_URL` isn't set, per the MEMORY rule "tests must not depend on a live Postgres without a gate" — *correction:* the MEMORY rule forbids env-gated DB reads outright, so this test must be pure-function instead). Concretely:
+  - Move voucher resolution to a pure helper `resolve_voucher_signing(state, chain_id) -> Result<(&PrivateKeySigner, &Eip712Domain), VoucherError>` and unit-test that helper directly. The HTTP layer becomes a thin shell. No DB needed.
+- `packages/api/tests/portfolio_compute.rs` — unchanged, still works.
+- `packages/worker/tests/parsers.rs` — unchanged. Verify the move of `parse_*` registration into `evm_parsers.rs` did not break the public `pub use` paths the test imports.
+
+**Smoke validation (manual, per acceptance criterion):**
+
+- Local dev: set `CHAINS=99999`, `DEFAULT_CHAIN_ID=99999`, `CHAIN_99999_ETH_RPC_URL=<local fixture>`, …, run `cargo run -p pipeline_worker` and `cargo run -p pipeline_api`, hit `/v1/stats?chain_id=99999`, `/v1/stats/yield?chain_id=99999`, and a voucher endpoint with `?chain_id=99999`. Compare against pre-refactor output if available; otherwise verify the indexer cursor advances and contract_logs rows continue to land.
+- Coder records the smoke result in a PR comment.
+
+**Pre-merge gates (unchanged from project policy):**
+
+- `cargo clippy --all -- -D warnings`
+- `npx tsx scripts/lint-docs.ts` (since `.env.example`, design docs, exec plan touched).
+- `/test-fast` green.
+
+## Docs to Update
+
+- `docs/design-docs/multi-chain-kyc-identity.md` (new) — schema audit decision for `lp_profiles` / `kyc_outbox`.
+- `docs/design-docs/index.md` — add the new entry to the table.
+- `.env.example` — rewrite API + worker per-chain blocks; keep the current single-chain values as a commented example.
+- `ARCHITECTURE.md` — one paragraph under "Cross-Cutting Concerns" describing the per-chain task model.
+- `docs/product-specs/dashboards.md` — note that `/v1/stats/*` and `/v1/pnl` accept an optional `chain_id` (only if the file already references these endpoints; otherwise no change).
+- `docs/exec-plans/active/issue-439-multi-chain-prep.md` (this file) — kept until the PR merges; manager moves it to `completed/` then.
