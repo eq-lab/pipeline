@@ -23,8 +23,8 @@ import { ENV } from "@/lib/env";
 import {
   parseUsdc,
   formatUsdc,
-  formatUsdcCurrency,
   formatUsdcWhole,
+  formatUsdcCurrencyCompact,
 } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
@@ -765,7 +765,7 @@ function Deposit() {
                     {
                       label:
                         minDeposit !== undefined && decimals !== undefined
-                          ? `${formatUsdcCurrency(minDeposit, decimals)} (Min)`
+                          ? `${formatUsdcCurrencyCompact(minDeposit, decimals)} (Min)`
                           : "Min",
                       disabled: isAmountLocked,
                     },

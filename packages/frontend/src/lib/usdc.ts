@@ -57,7 +57,6 @@ export function formatUsdc(
 
 /**
  * Same as `formatUsdc` but prefixes the result with `"$"`.
- * Used for quick-amount chip labels (`"$1,000.00 (Min)"`).
  *
  * Returns `"—"` when `decimals` is `undefined`.
  */
@@ -82,4 +81,35 @@ export function formatUsdcWhole(
 ): string {
   if (decimals === undefined) return "—";
   return formatTokenAmountWhole(value, decimals);
+}
+
+// Intl formatter with no fractional digits — used for chip labels where
+// whole-dollar amounts like "$1,000" are preferred over "$1,000.00".
+const compactCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+/**
+ * Same as `formatUsdcCurrency` but omits the fractional part when the value
+ * is a whole number of dollars (i.e. no cents).
+ * Used for quick-amount chip labels (`"$1,000 (Min)"` instead of `"$1,000.00 (Min)"`).
+ *
+ * When cents are non-zero the result still shows two decimal places.
+ *
+ * Returns `"—"` when `decimals` is `undefined`.
+ */
+export function formatUsdcCurrencyCompact(
+  value: bigint,
+  decimals: number | undefined,
+): string {
+  if (decimals === undefined) return "—";
+  // Compute the number of sub-units per dollar (10^decimals).
+  const scale = BigInt(10 ** decimals);
+  // If the value is an exact multiple of the scale there are no fractional cents.
+  if (value % scale === 0n) {
+    const dollars = Number(value / scale);
+    return `$${compactCurrencyFormatter.format(dollars)}`;
+  }
+  return `$${formatUsdc(value, decimals)}`;
 }
