@@ -740,7 +740,7 @@ function Deposit() {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12">
+      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-2 py-12 md:px-4">
         {/* Section header */}
         <DepositHeader title="1:1 Conversion" />
 
