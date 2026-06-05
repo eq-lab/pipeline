@@ -1,56 +1,93 @@
-# #476 — StartHereCard Sell button dimmed style
+# User Stories: #476 — StartHereCard Sell button dimmed style
 
-**Epic:** #463 Mobile home page  
-**Issue:** https://github.com/eq-lab/pipeline/issues/476  
-**Figma:** https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1989-8292 (node 1989:9022)
+Epic: [#463 — Home page](https://github.com/eq-lab/pipeline/issues/463)
+Issue: [#476](https://github.com/eq-lab/pipeline/issues/476)
+Figma: [node 1989:9022 in frame 1989-8292](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1989-8292)
 
-## Background
+On mobile, the Sell button in `StartHereCard` is de-emphasized (32% opacity via the
+`secondary` Button variant's `disabled:opacity-[0.32]`) and non-interactive when the
+user has nothing to sell — disconnected or zero balances. With a positive PLUSD or
+sPLUSD balance, Sell renders at full opacity and is interactive.
 
-On mobile, the Sell button in `StartHereCard` should be visually de-emphasized (32% opacity)
-when the user has no PLUSD to sell — both when the wallet is disconnected and when it is
-connected but has a zero balance. Only when the wallet is connected and holds a positive
-PLUSD or sPLUSD balance should Sell render at full opacity and be interactive.
+---
 
-The `secondary` Button variant already applies `disabled:opacity-[0.32]` via Tailwind.
-The fix ensures the `disabled` prop is set correctly in both the disconnected and
-empty-balance states on mobile.
+## Story 1: Wallet disconnected — Sell dimmed and not clickable (mobile)
 
-## User stories
+**Persona:** A mobile visitor (< 768px viewport) without a connected wallet.
 
-### Story 1 — Wallet disconnected (mobile, < 768px)
+**Pre-conditions:** App running; home route loaded; no wallet connected; viewport < 768px.
 
-**Given** the user opens the home page on a mobile viewport (< 768 px) without a connected wallet  
-**Then** the StartHereCard is visible with a "Start here / Get PLUSD" heading  
-**And** the Buy button is fully opaque and interactive  
-**And** the Sell button is rendered at ~32% opacity (visually dimmed) and is not clickable
+**Steps:**
 
-### Story 2 — Wallet connected, zero balances (mobile, < 768px)
+1. Load the home page at `/` on a mobile viewport.
+2. Locate the StartHereCard ("Start here / Get PLUSD" heading).
+3. Inspect the Buy and Sell buttons.
 
-**Given** the user is on a mobile viewport with a connected wallet but holds 0 PLUSD and 0 sPLUSD  
-**Then** the StartHereCard shows the "Start here / Get PLUSD" heading  
-**And** the Sell button is rendered at ~32% opacity and is not clickable
+**Expected outcomes:**
 
-### Story 3 — Wallet connected, has PLUSD (mobile, < 768px)
+- The Buy button is fully opaque and interactive.
+- The Sell button is dimmed (`opacity` resolves to approximately 0.32) and not clickable — the `disabled` attribute is present on the button element.
 
-**Given** the user is on a mobile viewport with a connected wallet and a positive PLUSD balance  
-**Then** the StartHereCard shows the "PLUSD Balance" heading with the formatted balance  
-**And** the Buy button is fully opaque and interactive  
-**And** the Sell button is fully opaque and interactive
+---
 
-### Story 4 — Wallet connected, has sPLUSD (mobile, < 768px)
+## Story 2: Connected, zero balances — Sell dimmed and not clickable (mobile)
 
-**Given** the user is on a mobile viewport with a connected wallet and a positive sPLUSD balance  
-**Then** the StartHereCard shows the "PLUSD Balance" heading  
-**And** both Buy and Sell buttons are fully opaque and interactive
+**Persona:** A mobile user with a connected wallet holding 0 PLUSD and 0 sPLUSD.
 
-### Story 5 — Desktop viewport (≥ 768px)
+**Pre-conditions:** App running; wallet connected (mock keys set) with zero balances; viewport < 768px.
 
-**Given** the user opens the home page on a desktop viewport (≥ 768 px)  
-**Then** the StartHereCard in the desktop grid does not apply any opacity dimming to Sell  
-**And** the Sell button is interactive regardless of wallet state
+**Steps:**
 
-## Test notes
+1. Load the home page at `/`.
+2. Locate the StartHereCard ("Start here / Get PLUSD" heading).
+3. Inspect the Sell button.
 
-- Opacity check: inspect the Sell `<button>` element and confirm `opacity` resolves to approximately 0.32 in Stories 1 and 2.
-- Confirm `disabled` attribute is present on the button element in Stories 1 and 2.
-- Confirm `disabled` attribute is absent in Stories 3, 4, and 5.
+**Expected outcomes:** The Sell button is dimmed (~32% opacity), not clickable, and carries the `disabled` attribute.
+
+---
+
+## Story 3: Connected, has PLUSD — Sell fully interactive (mobile)
+
+**Persona:** A mobile user with a connected wallet and a positive PLUSD balance.
+
+**Pre-conditions:** App running; wallet connected with PLUSD > 0; viewport < 768px.
+
+**Steps:**
+
+1. Load the home page at `/`.
+2. Locate the StartHereCard ("PLUSD Balance" heading with the formatted balance).
+3. Inspect the Buy and Sell buttons.
+
+**Expected outcomes:** Both Buy and Sell are fully opaque and interactive; the `disabled` attribute is absent from both.
+
+---
+
+## Story 4: Connected, has sPLUSD — Sell fully interactive (mobile)
+
+**Persona:** A mobile user with a connected wallet and a positive sPLUSD balance.
+
+**Pre-conditions:** App running; wallet connected with sPLUSD > 0; viewport < 768px.
+
+**Steps:**
+
+1. Load the home page at `/`.
+2. Locate the StartHereCard ("PLUSD Balance" heading).
+3. Inspect the Buy and Sell buttons.
+
+**Expected outcomes:** Both Buy and Sell are fully opaque and interactive; the `disabled` attribute is absent from both.
+
+---
+
+## Story 5: Desktop — Sell not dimmed regardless of wallet state
+
+**Persona:** A desktop user (≥ 768px viewport) in any wallet state.
+
+**Pre-conditions:** App running; viewport ≥ 768px.
+
+**Steps:**
+
+1. Load the home page at `/`.
+2. Locate the StartHereCard in the desktop grid.
+3. Inspect the Sell button.
+
+**Expected outcomes:** The desktop StartHereCard applies no opacity dimming to Sell; the button is interactive regardless of wallet state, and the `disabled` attribute is absent.

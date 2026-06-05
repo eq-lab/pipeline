@@ -9,7 +9,7 @@ Plan: `docs/exec-plans/completed/issue-372-view-all-button.md`
 
 ---
 
-## Story 1 (TC-372-1): "View All" renders as button-sized control (connected + data)
+## Story 1: "View All" navigates to /transactions
 
 **Persona:** End-user with connected wallet and at least one transaction.
 
@@ -19,34 +19,13 @@ Plan: `docs/exec-plans/completed/issue-372-view-all-button.md`
 
 1. Navigate to `/`
 2. Locate the "Recent activity" card
-3. Inspect the "View All" link via `document.querySelector('a[href="/transactions"]')`
-
-**Expected outcomes:**
-
-- `height` = 48px (`h-12`)
-- `paddingLeft` / `paddingRight` = 12px (`px-3`)
-- `borderRadius` = 8px (`rounded-lg`)
-- `fontWeight` = 600 (semi-bold / `--font-weight-emphasized`)
-- `color` = muted ink (`rgba(56, 55, 53, 0.6)` = `--color-pipeline-ink-muted`), not primary black
-- `innerHTML` contains a `<svg>` chevron-right icon, not the literal `→` character
-
----
-
-## Story 2 (TC-372-2): "View All" navigates to /transactions
-
-**Persona:** End-user.
-
-**Pre-conditions:** Same as Story 1.
-
-**Steps:**
-
-1. Click the "View All" button
+3. Click the "View All" button
 
 **Expected outcomes:** Browser navigates to `/transactions`; Activity nav button becomes `aria-pressed="true"`.
 
 ---
 
-## Story 3 (TC-372-3): "View All" absent when no data
+## Story 2: "View All" absent when no data
 
 **Persona:** End-user (disconnected or connected with zero rows).
 

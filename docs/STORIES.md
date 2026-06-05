@@ -694,7 +694,7 @@ Moved to [`docs/user-stories/epic-463/372-recent-activity-view-all.md`](./user-s
 
 ## S-202 — Recent activity empty-state uses distinct 240×240 SVG
 
-Moved to [`docs/user-stories/epic-463/202-recent-activity-empty-state.md`](./user-stories/epic-463/202-recent-activity-empty-state.md) (home page stories live with epic #463).
+Removed — styling-only coverage (which illustration/mask/aspect renders). Visual fidelity of the home page is verified by the epic #463 QA Figma comparison.
 
 ---
 ## S-224 Wire up header connected state — Account dropdown on WalletPill click

@@ -5,26 +5,20 @@ concrete enough for a QA agent to execute against the running app.
 
 See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 
+Styling-only stories (sizes, spacing, typography, colors) are not kept here — visual
+fidelity is verified by the QA agent's Figma comparison, not by story execution.
+
 ---
 
 ## Epic #463 — Home page
 
 | Issue | Doc | Status |
 |-------|-----|--------|
-| [#202 Recent activity empty-state uses distinct 240×240 SVG](https://github.com/eq-lab/pipeline/issues/202) | [202-recent-activity-empty-state.md](./epic-463/202-recent-activity-empty-state.md) | Migrated from `docs/STORIES.md` |
 | [#247 RecentActivityCard connected state shows recent requests](https://github.com/eq-lab/pipeline/issues/247) | [247-recent-activity-connected.md](./epic-463/247-recent-activity-connected.md) | Migrated from `docs/STORIES.md` |
 | [#250 Home Connect-Wallet section: wired Connect + Portfolio placeholder](https://github.com/eq-lab/pipeline/issues/250) | [250-home-connect-portfolio-placeholder.md](./epic-463/250-home-connect-portfolio-placeholder.md) | Migrated from `docs/STORIES.md` |
 | [#372 Home: Recent activity "View All" button affordance](https://github.com/eq-lab/pipeline/issues/372) | [372-recent-activity-view-all.md](./epic-463/372-recent-activity-view-all.md) | Migrated from `docs/STORIES.md` |
 | [#389 Home Portfolio chart: stacked-bars + hover tooltip](https://github.com/eq-lab/pipeline/issues/389) | [389-portfolio-stacked-bars-chart.md](./epic-463/389-portfolio-stacked-bars-chart.md) | Migrated from `docs/STORIES.md` |
 | [#465 Mobile home base layout + wallet-not-connected state](https://github.com/eq-lab/pipeline/issues/465) | [465-mobile-home-base.md](./epic-463/465-mobile-home-base.md) | Initial |
 | [#466 Mobile home page balance states (0/0, has PLUSD, has sPLUSD)](https://github.com/eq-lab/pipeline/issues/466) | [466-mobile-home-balance-states.md](./epic-463/466-mobile-home-balance-states.md) | Initial |
-| [#474 Mobile home: card interior padding](https://github.com/eq-lab/pipeline/issues/474) | [474-mobile-card-padding.md](./epic-463/474-mobile-card-padding.md) | Initial |
-| [#475 StartHereCard Buy/Sell button height (mobile)](https://github.com/eq-lab/pipeline/issues/475) | [475-buy-sell-button-height.md](./epic-463/475-buy-sell-button-height.md) | Initial |
 | [#476 StartHereCard Sell button dimmed style](https://github.com/eq-lab/pipeline/issues/476) | [476-sell-button-dimmed.md](./epic-463/476-sell-button-dimmed.md) | Initial |
-| [#477 StakeCard circular Stake button size on mobile](https://github.com/eq-lab/pipeline/issues/477) | [477-stake-button-size.md](./epic-463/477-stake-button-size.md) | Initial |
 | [#478 StakeCard copy fixes (APY p.a. + senior)](https://github.com/eq-lab/pipeline/issues/478) | [478-stake-card-copy.md](./epic-463/478-stake-card-copy.md) | Initial |
-| [#479 Cards row overflow fix (mobile)](https://github.com/eq-lab/pipeline/issues/479) | [479-cards-row-overflow.md](./epic-463/479-cards-row-overflow.md) | Initial |
-| [#480 ConnectWalletPromoCard decorative graphic size/position (mobile)](https://github.com/eq-lab/pipeline/issues/480) | [480-promo-graphic-size.md](./epic-463/480-promo-graphic-size.md) | Initial |
-| [#481 Welcome heading → content gap (mobile)](https://github.com/eq-lab/pipeline/issues/481) | [481-welcome-heading-gap.md](./epic-463/481-welcome-heading-gap.md) | Initial |
-| [#482 Mobile header height — TopBar padding](https://github.com/eq-lab/pipeline/issues/482) | [482-mobile-header-padding.md](./epic-463/482-mobile-header-padding.md) | Initial |
-| [#473 Mobile home: card headings render one type-scale step larger than Figma](https://github.com/eq-lab/pipeline/issues/473) | [473-mobile-card-heading-scale.md](./epic-463/473-mobile-card-heading-scale.md) | Initial |
