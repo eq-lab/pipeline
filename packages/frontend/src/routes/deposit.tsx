@@ -20,7 +20,12 @@ import {
 } from "@/wallet";
 import { useRequests, useDepositVoucher, useWithdrawalVoucher } from "@/api";
 import { ENV } from "@/lib/env";
-import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
+import {
+  parseUsdc,
+  formatUsdc,
+  formatUsdcWhole,
+  formatUsdcCurrencyCompact,
+} from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
 /**
@@ -735,7 +740,7 @@ function Deposit() {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12">
+      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-2 py-12 md:px-4">
         {/* Section header */}
         <DepositHeader title="1:1 Conversion" />
 
@@ -760,7 +765,7 @@ function Deposit() {
                     {
                       label:
                         minDeposit !== undefined && decimals !== undefined
-                          ? `${formatUsdcCurrency(minDeposit, decimals)} (Min)`
+                          ? `${formatUsdcCurrencyCompact(minDeposit, decimals)} (Min)`
                           : "Min",
                       disabled: isAmountLocked,
                     },
@@ -830,18 +835,19 @@ function Deposit() {
             className="flex flex-row items-center justify-between gap-4"
           >
             <div className="flex flex-col items-start gap-1">
-              <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+              <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
                 Add funds to your USDC balance
               </p>
               <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]">
                 Minimum amount —{" "}
                 {minDeposit !== undefined && decimals !== undefined
-                  ? `${formatUsdcCurrency(minDeposit, decimals)} USDC`
+                  ? `${formatUsdcWhole(minDeposit, decimals)} USDC`
                   : "—"}
               </p>
             </div>
             <Button
               variant="primary-dark"
+              className="whitespace-nowrap"
               onClick={copyAddress}
               disabled={!address}
             >
