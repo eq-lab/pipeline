@@ -20,7 +20,12 @@ import {
 } from "@/wallet";
 import { useRequests, useDepositVoucher, useWithdrawalVoucher } from "@/api";
 import { ENV } from "@/lib/env";
-import { parseUsdc, formatUsdc, formatUsdcCurrency } from "@/lib/usdc";
+import {
+  parseUsdc,
+  formatUsdc,
+  formatUsdcCurrency,
+  formatUsdcCurrencyCompact,
+} from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
 /**
@@ -760,7 +765,7 @@ function Deposit() {
                     {
                       label:
                         minDeposit !== undefined && decimals !== undefined
-                          ? `${formatUsdcCurrency(minDeposit, decimals)} (Min)`
+                          ? `${formatUsdcCurrencyCompact(minDeposit, decimals)} (Min)`
                           : "Min",
                       disabled: isAmountLocked,
                     },

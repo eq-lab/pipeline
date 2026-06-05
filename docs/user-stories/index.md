@@ -10,6 +10,14 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
+## Epic #498 — Deposit/withdraw page
+
+| Issue | Doc | Status |
+|-------|-----|--------|
+| [#502 Deposit suggestion bar: Min chip reads "$1,000.00 (Min)" and chip row overflows on mobile](https://github.com/eq-lab/pipeline/issues/502) | [502-deposit-min-chip.md](./epic-498/502-deposit-min-chip.md) | Initial |
+
+---
+
 ## Epic #463 — Home page
 
 | Issue | Doc | Status |
