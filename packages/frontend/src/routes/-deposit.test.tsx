@@ -610,8 +610,7 @@ describe("Deposit page — insufficient balance banner", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          (content) =>
-            content.includes("$1,000.00") && content.includes("USDC"),
+          (content) => content.includes("1,000") && content.includes("USDC"),
         ),
       ).toBeInTheDocument();
     });

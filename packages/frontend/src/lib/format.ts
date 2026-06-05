@@ -15,6 +15,13 @@ const tokenFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+// Whole-number Intl formatter (no fraction digits) — used for amounts where
+// cents are irrelevant, e.g. the below-min banner subtitle ("1,000 USDC").
+const tokenFormatterWhole = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
 /**
  * Formats a raw bigint (or decimal bigint string) into a human-readable
  * decimal string with exactly two fraction digits.
@@ -33,6 +40,23 @@ export function formatTokenAmount(
   const value = typeof raw === "string" ? BigInt(raw) : raw;
   const float = parseFloat(formatUnits(value, decimals));
   return tokenFormatter.format(float);
+}
+
+/**
+ * Same as `formatTokenAmount` but rounds to a whole number (no fraction
+ * digits). Used where the design omits cents, e.g. "1,000 USDC".
+ *
+ * Examples:
+ *   formatTokenAmountWhole(1_000_000_000n, 6)  → "1,000"
+ *   formatTokenAmountWhole(1_500_000n, 6)       → "2"   (rounds half-up)
+ */
+export function formatTokenAmountWhole(
+  raw: bigint | string,
+  decimals: number,
+): string {
+  const value = typeof raw === "string" ? BigInt(raw) : raw;
+  const float = parseFloat(formatUnits(value, decimals));
+  return tokenFormatterWhole.format(float);
 }
 
 /**
