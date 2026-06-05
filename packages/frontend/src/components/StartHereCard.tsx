@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Card, CoinIcon } from "@pipeline/ui";
+import type { CardPadding } from "@pipeline/ui";
 
 /**
  * StartHereCard — Disconnected-state "Get PLUSD" entry card.
@@ -106,6 +107,11 @@ export interface StartHereCardProps extends Omit<
    * Ignored when `mobileHomeState` is `undefined` or `"empty"`.
    */
   mobilePlusdBalance?: string;
+  /**
+   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
+   * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
+   */
+  padding?: CardPadding;
 }
 
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */

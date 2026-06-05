@@ -1,6 +1,7 @@
 import React from "react";
 import { formatUnits } from "viem";
 import { Button, Card } from "@pipeline/ui";
+import type { CardPadding } from "@pipeline/ui";
 import { useStats, formatApy } from "@/api";
 
 /**
@@ -105,6 +106,11 @@ export interface StakeCardProps extends Omit<
    * Displayed as the sub-line ("X.XX sPLUSD") in State C.
    */
   mobileSplusdInPlusd?: bigint;
+  /**
+   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
+   * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
+   */
+  padding?: CardPadding;
 }
 
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */
