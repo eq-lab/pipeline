@@ -24,7 +24,7 @@ import React from "react";
  */
 
 export interface QuickAmountChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Label text, e.g. "$1,000 (Min)", "$5,000", "Max". */
+  /** Label text, e.g. "$1,000 (Min)", "$5,000", "Max". Whole-dollar amounts omit the ".00" suffix. */
   label: string;
   /** Whether this chip is currently selected. */
   selected?: boolean;

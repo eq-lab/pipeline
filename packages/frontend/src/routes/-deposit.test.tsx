@@ -681,7 +681,7 @@ describe("Deposit page — quick-amount chips", () => {
     renderDeposit();
 
     const minChip = await screen.findByRole("button", {
-      name: /\$1,000\.00 \(Min\)/,
+      name: /\$1,000 \(Min\)/,
     });
     await user.click(minChip);
 
@@ -886,7 +886,7 @@ describe("Deposit page — Min chip label reflects live minDeposit", () => {
     renderDeposit();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /\$250\.00 \(Min\)/ }),
+        screen.getByRole("button", { name: /\$250 \(Min\)/ }),
       ).toBeInTheDocument();
     });
   });
