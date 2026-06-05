@@ -11,6 +11,11 @@ See [`docs/ISSUE_PROTOCOL.md` §6](../ISSUE_PROTOCOL.md) for conventions.
 
 | Issue | Doc | Status |
 |-------|-----|--------|
+| [#202 Recent activity empty-state uses distinct 240×240 SVG](https://github.com/eq-lab/pipeline/issues/202) | [202-recent-activity-empty-state.md](./epic-463/202-recent-activity-empty-state.md) | Migrated from `docs/STORIES.md` |
+| [#247 RecentActivityCard connected state shows recent requests](https://github.com/eq-lab/pipeline/issues/247) | [247-recent-activity-connected.md](./epic-463/247-recent-activity-connected.md) | Migrated from `docs/STORIES.md` |
+| [#250 Home Connect-Wallet section: wired Connect + Portfolio placeholder](https://github.com/eq-lab/pipeline/issues/250) | [250-home-connect-portfolio-placeholder.md](./epic-463/250-home-connect-portfolio-placeholder.md) | Migrated from `docs/STORIES.md` |
+| [#372 Home: Recent activity "View All" button affordance](https://github.com/eq-lab/pipeline/issues/372) | [372-recent-activity-view-all.md](./epic-463/372-recent-activity-view-all.md) | Migrated from `docs/STORIES.md` |
+| [#389 Home Portfolio chart: stacked-bars + hover tooltip](https://github.com/eq-lab/pipeline/issues/389) | [389-portfolio-stacked-bars-chart.md](./epic-463/389-portfolio-stacked-bars-chart.md) | Migrated from `docs/STORIES.md` |
 | [#465 Mobile home base layout + wallet-not-connected state](https://github.com/eq-lab/pipeline/issues/465) | [465-mobile-home-base.md](./epic-463/465-mobile-home-base.md) | Initial |
 | [#466 Mobile home page balance states (0/0, has PLUSD, has sPLUSD)](https://github.com/eq-lab/pipeline/issues/466) | [466-mobile-home-balance-states.md](./epic-463/466-mobile-home-balance-states.md) | Initial |
 | [#474 Mobile home: card interior padding](https://github.com/eq-lab/pipeline/issues/474) | [474-mobile-card-padding.md](./epic-463/474-mobile-card-padding.md) | Initial |

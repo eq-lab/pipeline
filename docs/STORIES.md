@@ -68,44 +68,9 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 
 ## S-372 Home: Recent activity "View All" button affordance
 
-**Issue:** [#372 Home: Recent activity 'View All' affordance is a small text link; Figma is a button-sized chevron control](https://github.com/eq-lab/pipeline/issues/372)
-**Plan:** `docs/exec-plans/completed/issue-372-view-all-button.md`
-
-### TC-372-1: "View All" renders as button-sized control (connected + data)
-
-- **Actor:** End-user with connected wallet and at least one transaction
-- **Preconditions:** Mock wallet connected (`pipeline.mock.wallet.address` + `isConnected`); `pipeline.mock.api.GET./v1/requests` set with ≥1 request; dev server on `fix/372-view-all-button` branch
-- **Steps:**
-  1. Navigate to `/`
-  2. Locate the "Recent activity" card
-  3. Inspect the "View All" link via `document.querySelector('a[href="/transactions"]')`
-- **Expected:**
-  - `height` = 48px (`h-12`)
-  - `paddingLeft` / `paddingRight` = 12px (`px-3`)
-  - `borderRadius` = 8px (`rounded-lg`)
-  - `fontWeight` = 600 (semi-bold / `--font-weight-emphasized`)
-  - `color` = muted ink (`rgba(56, 55, 53, 0.6)` = `--color-pipeline-ink-muted`), not primary black
-  - `innerHTML` contains a `<svg>` chevron-right icon, not the literal `→` character
-
-### TC-372-2: "View All" navigates to /transactions
-
-- **Actor:** End-user
-- **Preconditions:** Same as TC-372-1
-- **Steps:**
-  1. Click the "View All" button
-- **Expected:** Browser navigates to `/transactions`; Activity nav button becomes `aria-pressed="true"`.
-
-### TC-372-3: "View All" absent when no data
-
-- **Actor:** End-user (disconnected or connected with zero rows)
-- **Preconditions:** No mock wallet keys set (disconnected state)
-- **Steps:**
-  1. Navigate to `/`
-  2. Inspect the "Recent activity" card
-- **Expected:** No `a[href="/transactions"]` element present; empty state illustration and caption shown instead.
+Moved to [`docs/user-stories/epic-463/372-recent-activity-view-all.md`](./user-stories/epic-463/372-recent-activity-view-all.md) (home page stories live with epic #463).
 
 ---
-
 ## S-259 Toast notification system
 
 **Issue:** [#259 Add Toast notification system — informational and actionable variants](https://github.com/eq-lab/pipeline/issues/259)
@@ -729,49 +694,9 @@ Story-based test cases for manual / UX testing. Each case maps to a GitHub Issue
 
 ## S-202 — Recent activity empty-state uses distinct 240×240 SVG
 
-**Issue:** [#202 Home: Recent activity empty-state illustration reuses the striped-wallet asset; Figma uses a different 240×240 SVG](https://github.com/eq-lab/pipeline/issues/202)
-**Plan:** `docs/exec-plans/completed/` (fix/202 branch)
-
-### TC-202-1: RecentActivityCard renders ActivityEmptyIllustration, not WalletIllustration
-
-- **Actor:** User / QA
-- **Preconditions:** Dev server running at `http://localhost:5173`
-- **Steps:**
-  1. Navigate to `http://localhost:5173/`
-  2. In DevTools Console: `document.querySelector('[data-node-id="1497:94567"] img')` (should be null — no img in the card)
-  3. In DevTools Console: `document.querySelector('[data-node-id="1497:94567"] [data-tone]')?.getAttribute('data-tone')`
-- **Expected:** No `<img>` inside the Recent activity card; `data-tone` returns `"muted"`.
-
-### TC-202-2: ActivityEmptyIllustration is 240×240 square with correct SVG mask
-
-- **Actor:** User / QA
-- **Preconditions:** Dev server running
-- **Steps:**
-  1. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).aspectRatio`
-  2. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).width`
-  3. In DevTools Console: `getComputedStyle(document.querySelector('[data-tone="muted"]')).maskImage`
-- **Expected:** `aspectRatio` = `"1 / 1"`; `width` = `"240px"`; `maskImage` contains `striped-activity-empty.svg` (not `striped-wallet.svg`).
-
-### TC-202-3: ConnectWalletPromoCard continues to use WalletIllustration (landscape)
-
-- **Actor:** User / QA
-- **Preconditions:** Dev server running
-- **Steps:**
-  1. Navigate to `http://localhost:5173/`
-  2. In DevTools Console: `getComputedStyle(document.querySelector('[role="region"][aria-labelledby="connect-wallet-promo-card-title"] [data-tone]')).maskImage`
-- **Expected:** Returns a URL containing `striped-wallet.svg`; aspect ratio is `313.672 / 200` (landscape).
-
-### TC-202-4: ActivityEmptyIllustration Storybook stories exist
-
-- **Actor:** Developer / QA
-- **Preconditions:** Storybook running at `http://localhost:6006`
-- **Steps:**
-  1. Navigate to `Components/ActivityEmptyIllustration > Muted (Recent activity empty state)`
-  2. Navigate to `Components/ActivityEmptyIllustration > Primary (high-contrast variant)`
-- **Expected:** Both stories render the striped-square silhouette; Muted = muted ink color; Primary = dark ink color; no coin-slot or wallet shape visible.
+Moved to [`docs/user-stories/epic-463/202-recent-activity-empty-state.md`](./user-stories/epic-463/202-recent-activity-empty-state.md) (home page stories live with epic #463).
 
 ---
-
 ## S-224 Wire up header connected state — Account dropdown on WalletPill click
 
 **Issue:** [#224 Wire up header connected state — open Account dropdown on WalletPill click](https://github.com/eq-lab/pipeline/issues/224)
@@ -1051,63 +976,9 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 
 ## S-247 — RecentActivityCard connected state shows recent requests
 
-**Issue:** [#247 Show recent requests on home RecentActivityCard when wallet is connected](https://github.com/eq-lab/pipeline/issues/247)
-**Plan:** `docs/exec-plans/active/issue-247-home-recent-activity-connected.md`
-**Figma:** [Connected state 1497:95119](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95119&m=dev)
-
-### TC-247-1: Connected + data — 3 rows and View All link
-
-- **Actor:** User with connected wallet and existing requests
-- **Preconditions:** Dev server running; wallet connected (or mock key set); `pipeline.mock.api.GET./v1/requests` returns at least 3 rows
-- **Steps:**
-  1. Set mock data: `localStorage.setItem('pipeline.mock.api.GET./v1/requests', JSON.stringify({ requests: [ { type: 'Deposit', amount: '1000000000', request_id: '1', status: 'Completed', created_at: '2026-05-15T12:00:00Z' }, { type: 'Withdraw', amount: '2000000000', request_id: '2', status: 'PendingClaim', created_at: '2026-05-14T09:30:00Z' }, { type: 'Stake', amount: '1000000000000000000000', assets: '1000000000000000000000', shares: '999500000000000000000', status: 'Completed', created_at: '2026-05-13T18:00:00Z' } ] }))`
-  2. Navigate to `http://localhost:3000/`
-  3. Observe the "Recent activity" card in the right column
-- **Expected:**
-  - Three `ActivityRow` entries are rendered inside the card.
-  - First row shows "Buy" with "+1,000.00 USDC" (completed Deposit).
-  - Second row shows "Sell" with "−2,000.00 USDC" and "Pending" (PendingClaim Withdraw).
-  - Third row shows "Stake" with "−1,000.00 PLUSD" / "+999.50 sPLUSD".
-  - A right-aligned "View All →" link is present below the rows.
-  - Clicking "View All →" navigates to `/transactions`.
-  - The "You will see all transactions here" caption is absent.
-  - Card height is approximately 564 px (does not reflow vs disconnected state).
-
-### TC-247-2: Connected + more than 3 rows — cap at 3
-
-- **Actor:** User with connected wallet and 5+ requests
-- **Preconditions:** Dev server running; mock set with 5 rows
-- **Steps:**
-  1. Set mock data with 5 requests (add rows 4 and 5 to the fixture above)
-  2. Navigate to `http://localhost:3000/`
-  3. Observe the "Recent activity" card
-- **Expected:** Exactly 3 rows are rendered — the 4th and 5th are not shown. The "View All →" link is still present.
-
-### TC-247-3: Connected + empty list — empty state
-
-- **Actor:** User with connected wallet but no requests
-- **Preconditions:** Dev server running; `pipeline.mock.api.GET./v1/requests` returns `{ requests: [] }`
-- **Steps:**
-  1. Set mock: `localStorage.setItem('pipeline.mock.api.GET./v1/requests', JSON.stringify({ requests: [] }))`
-  2. Navigate to `http://localhost:3000/`
-  3. Observe the "Recent activity" card
-- **Expected:**
-  - The `ActivityEmptyIllustration` (striped square) and "You will see all transactions here" caption render.
-  - No "View All →" link is visible.
-
-### TC-247-4: Disconnected — empty state unchanged
-
-- **Actor:** User with no wallet connected
-- **Preconditions:** Dev server running; wallet disconnected (no mock keys)
-- **Steps:**
-  1. Navigate to `http://localhost:3000/`
-  2. Observe the "Recent activity" card
-- **Expected:**
-  - The `ActivityEmptyIllustration` and "You will see all transactions here" caption render (existing behavior, unchanged).
-  - No "View All →" link is visible.
+Moved to [`docs/user-stories/epic-463/247-recent-activity-connected.md`](./user-stories/epic-463/247-recent-activity-connected.md) (home page stories live with epic #463).
 
 ---
-
 ## S-246 — USDC CoinIcon replaces stale base64 PNG with authoritative SVG
 
 **Issue:** [#246 USDC CoinIcon is a stale base64 PNG — replace with authoritative Figma asset](https://github.com/eq-lab/pipeline/issues/246)
@@ -1206,129 +1077,14 @@ localStorage.setItem(`pipeline.mock.wallet.contract.${usdc}.symbol`, "USDC");
 
 ## S-250 — Home Connect-Wallet section: wired Connect + Portfolio placeholder when connected
 
-**Issue:** [#250 Home Connect-Wallet section: wire Connect button + show Portfolio placeholder when connected](https://github.com/eq-lab/pipeline/issues/250)
-**Plan:** `docs/exec-plans/active/issue-250-home-connect-wire-portfolio-placeholder.md`
-
-### TC-250-1: Disconnected — Connect promo CTA opens the wallet modal
-
-- **Actor:** User (no wallet connected)
-- **Preconditions:** Dev server running; no `pipeline.mock.wallet.*` keys in localStorage
-- **Steps:**
-  1. Navigate to `http://localhost:5173/`
-  2. Observe the top-left card — should show "Connect Wallet" / "Access real-world yield on-chain"
-  3. Click the "Connect" button
-- **Expected:** The Reown AppKit wallet-selection modal opens (same modal as the header "Connect" CTA). No page navigation occurs.
-
-### TC-250-2: Connected via DevTools mock — Portfolio placeholder renders correctly
-
-- **Actor:** User / QA
-- **Preconditions:** Dev server running
-- **Steps:**
-  1. In DevTools Console: `localStorage.setItem('pipeline.mock.wallet.isConnected', 'true'); localStorage.setItem('pipeline.mock.wallet.address', '0x1234000000000000000000000000000000000001')`
-  2. Refresh the page (or navigate to `http://localhost:5173/`)
-  3. Observe the top-left card
-- **Expected:**
-  - The "Connect Wallet" promo card is gone — the top-left slot now shows the Portfolio placeholder.
-  - "Total Balance" eyebrow label, "$0.00" heading, and "Get PLUSD to start" muted link are visible.
-  - A `7D | 1M | 3M | 1Y | All` segmented tab control is visible in the top-right of the card.
-  - A 100-bar stacked monotonic-growth chart in the design-system positive green (`--color-pipeline-chart-positive`) fills the body of the card.
-  - A `+$42.80 earning` caption appears below the `$0.00` balance.
-  - The grid does not reflow — the card height is approximately the same as the Connect Wallet promo card (~274px min).
-  - Clicking "Get PLUSD to start" navigates to `/deposit`.
-
-### TC-250-3: Switching tabs updates the active pill — no network call
-
-- **Actor:** User (connected via mock as above)
-- **Preconditions:** TC-250-2 completed; DevTools Network panel open
-- **Steps:**
-  1. Click the "1M" tab in the Portfolio placeholder card
-  2. Observe the tab control and DevTools Network panel
-- **Expected:**
-  - The "1M" pill becomes visually active (white pill background); "7D" becomes inactive (no background).
-  - No network request is logged in the DevTools Network panel for this interaction.
-  - The chart re-renders for the 1M period and the "+$X earning" caption updates to "+$92.80 earning". The $0.00 balance does not change. No network request is logged.
-
-### TC-250-4: Disconnecting via mock — reverts to Connect Wallet promo
-
-- **Actor:** QA
-- **Preconditions:** TC-250-2 completed (connected state)
-- **Steps:**
-  1. In DevTools Console: `localStorage.removeItem('pipeline.mock.wallet.isConnected'); localStorage.removeItem('pipeline.mock.wallet.address')`
-  2. Refresh the page
-  3. Observe the top-left card
-- **Expected:** The "Connect Wallet" promo card reappears; the Portfolio placeholder is gone. Grid layout is unchanged.
+Moved to [`docs/user-stories/epic-463/250-home-connect-portfolio-placeholder.md`](./user-stories/epic-463/250-home-connect-portfolio-placeholder.md) (home page stories live with epic #463).
 
 ---
-
 ## S-389 — Home Portfolio chart: stacked-bars monotonic-growth + hover tooltip
 
-**Issue:** [#389 Replace home Portfolio chart silhouette with stacked-bars monotonic-growth interactive chart](https://github.com/eq-lab/pipeline/issues/389)
-**Plan:** `docs/exec-plans/active/issue-389-portfolio-stacked-bars-chart.md`
-
-### TC-389-1: Connected — chart renders 100 green stacked bars with earning caption
-
-- **Actor:** User / QA
-- **Preconditions:** Dev server running; mock wallet connected (same localStorage setup as TC-250-2)
-- **Steps:**
-  1. Navigate to `http://localhost:5173/`
-  2. Observe the top-left Portfolio card
-- **Expected:**
-  - The card body shows 100 stacked bars in `--color-pipeline-chart-positive` (`#2D7B1F`) forming a monotonic-growth curve.
-  - Below the `$0.00` balance, the earning caption reads `+$42.80 earning` (default 7D period).
-  - The "7D" tab is active in the tab control.
-
-### TC-389-2: Period switch — chart and caption update, no network call
-
-- **Actor:** User (connected via mock)
-- **Preconditions:** TC-389-1 completed; DevTools Network panel open
-- **Steps:**
-  1. Click the "1M" tab — confirm earning caption shows `+$92.80 earning`
-  2. Click "3M" — confirm `+$192.80 earning`
-  3. Click "1Y" — confirm `+$542.80 earning`
-  4. Click "All" — confirm `+$842.80 earning`
-  5. Observe the DevTools Network panel throughout
-- **Expected:**
-  - Each tab switch updates the earning caption to the value listed above.
-  - The chart visually re-renders (curve spans differ).
-  - No network request fires for any tab switch.
-
-### TC-389-3: Hover — vertical cursor + tooltip appear
-
-- **Actor:** User (connected via mock)
-- **Preconditions:** TC-389-1 completed
-- **Steps:**
-  1. Slowly move the mouse across the chart body left-to-right
-  2. Pause near the left edge, then near the right edge
-- **Expected:**
-  - A vertical cursor line appears at the hovered position and snaps to the nearest bar slot.
-  - A tooltip floats above the cursor showing a balance (`$1,XXX.XX`) and a period-appropriate timestamp.
-  - At the left edge: the tooltip is clamped to stay within chart bounds; the cursor line is not clamped.
-  - At the right edge: same clamping behaviour (tooltip stays inside; cursor may reach the rightmost slot).
-
-### TC-389-4: Mouse leave — cursor and tooltip disappear
-
-- **Actor:** User (connected via mock)
-- **Preconditions:** TC-389-3 completed (tooltip visible)
-- **Steps:**
-  1. Move the mouse out of the chart area
-- **Expected:**
-  - The vertical cursor line and tooltip both disappear immediately.
-  - The `+$42.80 earning` caption and chart bars remain unchanged.
-
-### TC-389-5: Card grid does not reflow on tab switch or hover
-
-- **Actor:** User (connected via mock)
-- **Preconditions:** TC-389-1 completed
-- **Steps:**
-  1. Switch through all 5 period tabs
-  2. Hover the chart and move the mouse around
-  3. Inspect the card height via DevTools
-- **Expected:**
-  - The card maintains its `min-height: 274px` throughout — no layout shift on tab switch or hover.
-  - Other cards in the home grid are not displaced.
+Moved to [`docs/user-stories/epic-463/389-portfolio-stacked-bars-chart.md`](./user-stories/epic-463/389-portfolio-stacked-bars-chart.md) (home page stories live with epic #463).
 
 ---
-
 ## S-261 — /transactions: full empty state on per-tab empty results
 
 **Issue:** [#261 /transactions: show full empty state on per-tab empty results, not just text](https://github.com/eq-lab/pipeline/issues/261)
