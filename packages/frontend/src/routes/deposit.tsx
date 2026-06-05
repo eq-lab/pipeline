@@ -23,7 +23,7 @@ import { ENV } from "@/lib/env";
 import {
   parseUsdc,
   formatUsdc,
-  formatUsdcCurrency,
+  formatUsdcWhole,
   formatUsdcCurrencyCompact,
 } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
@@ -835,18 +835,19 @@ function Deposit() {
             className="flex flex-row items-center justify-between gap-4"
           >
             <div className="flex flex-col items-start gap-1">
-              <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+              <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
                 Add funds to your USDC balance
               </p>
               <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]">
                 Minimum amount —{" "}
                 {minDeposit !== undefined && decimals !== undefined
-                  ? `${formatUsdcCurrency(minDeposit, decimals)} USDC`
+                  ? `${formatUsdcWhole(minDeposit, decimals)} USDC`
                   : "—"}
               </p>
             </div>
             <Button
               variant="primary-dark"
+              className="whitespace-nowrap"
               onClick={copyAddress}
               disabled={!address}
             >
