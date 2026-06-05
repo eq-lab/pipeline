@@ -10,14 +10,6 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
-## Epic #498 — Deposit/withdraw page
-
-| Issue | Doc | Status |
-|-------|-----|--------|
-| [#502 Deposit suggestion bar: Min chip reads "$1,000.00 (Min)" and chip row overflows on mobile](https://github.com/eq-lab/pipeline/issues/502) | [502-deposit-min-chip.md](./epic-498/502-deposit-min-chip.md) | Initial |
-
----
-
 ## Epic #463 — Home page
 
 | Issue                                                                                                                    | Doc                                                                                               | Status                          |
@@ -35,6 +27,8 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ## Epic #498 — Deposit/withdraw page
 
-| Issue                                                                                                                                    | Doc                                                           | Status  |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------- |
-| [#503 Below-min deposit banner: serif title, wrapped Copy Address, wrong subtitle format](https://github.com/eq-lab/pipeline/issues/503) | [503-below-min-banner.md](./epic-498/503-below-min-banner.md) | Initial |
+| Issue                                                                                                                                                                          | Doc                                                           | Status  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ------- |
+| [#502 Deposit suggestion bar: Min chip reads "$1,000.00 (Min)" and chip row overflows on mobile](https://github.com/eq-lab/pipeline/issues/502)                                | [502-deposit-min-chip.md](./epic-498/502-deposit-min-chip.md) | Initial |
+| [#503 Below-min deposit banner: serif title, wrapped Copy Address, wrong subtitle format](https://github.com/eq-lab/pipeline/issues/503)                                       | [503-below-min-banner.md](./epic-498/503-below-min-banner.md) | Initial |
+| [#505 StepsCard mobile: step labels truncate with ellipsis and buttons are 48px tall; Figma wraps labels and uses 32px buttons](https://github.com/eq-lab/pipeline/issues/505) | [505-stepscard-mobile.md](./epic-498/505-stepscard-mobile.md) | Initial |
