@@ -103,8 +103,10 @@ export interface StartHereCardProps extends Omit<
   mobileHomeState?: MobileHomeState;
   /**
    * Mobile-only: formatted PLUSD balance string (e.g. `"$1,000.00"`).
-   * Displayed as the balance value in the connected variant (States B/C).
-   * Ignored when `mobileHomeState` is `undefined` or `"empty"`.
+   * Displayed as the balance value in the connected variant (States B/C)
+   * and also drives the `"$X USDC"` sub-line caption beneath the balance
+   * row (PLUSD is 1:1 with USDC). Ignored when `mobileHomeState` is
+   * `undefined` or `"empty"`.
    */
   mobilePlusdBalance?: string;
   /**
@@ -202,6 +204,24 @@ export const StartHereCard = React.forwardRef<
               {mobilePlusdBalance ?? "$0.00"}
             </h2>
           </div>
+
+          {/* USDC sub-line — Figma node 1984:6772 `Description`.
+              PLUSD is 1:1 with USDC so the balance value doubles as the
+              USDC-equivalent. Always shown (even when balance is $0.00). */}
+          <p
+            className={[
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
+              "font-[var(--font-weight-regular)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
+              "m-0",
+            ].join(" ")}
+            data-node-id="1984:6772"
+            data-testid="plusd-in-usdc"
+          >
+            {mobilePlusdBalance ?? "$0.00"} USDC
+          </p>
         </header>
       ) : (
         /* ── Disconnected / State A variant: "Start here / Get PLUSD" ───── */

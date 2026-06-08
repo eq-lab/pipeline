@@ -58,7 +58,9 @@ Out of scope:
 
 ## Implementation Steps
 
-1. Edit `packages/frontend/src/components/StartHereCard.tsx`, connected-variant branch
+<!-- Steps completed during implementation of fix/509-starthere-usdc-subline -->
+
+1. ✅ Edit `packages/frontend/src/components/StartHereCard.tsx`, connected-variant branch
    (`isConnectedVariant`, the `<header data-node-id="1497:94678">` block around lines
    163–205). After the balance row `<div className="flex items-center gap-1"> … </div>`
    (the coin icon + `<h2>` block, closing at line 204), add a caption `<p>` for the USDC
@@ -76,27 +78,27 @@ Out of scope:
      ```
    - Add `data-node-id="1984:6772"` (the Figma `Description` node) and a
      `data-testid="plusd-in-usdc"` for stable test selection.
-2. Confirm the connected-variant header gap still matches Figma. Currently the connected
+2. ✅ Confirm the connected-variant header gap still matches Figma. Currently the connected
    header uses `flex flex-col gap-1`; the Figma `SubtitleCont` sits as a 3rd child of the
    same `gap-4`-style stack. Keep `gap-1` (4px) unless visual verification against the
    frame shows the eyebrow→balance gap must differ from balance→sub-line; if a different
    gap is required between the balance row and the sub-line, wrap the balance row +
    sub-line so only the intended gap applies. Decide during Figma verification (step 1 of
    Test Strategy).
-3. Update the `StartHereCard` JSDoc:
+3. ✅ Update the `StartHereCard` JSDoc:
    - The connected-variant ASCII sketch / prose currently lists eyebrow + balance only;
      add the USDC sub-line.
    - The `mobilePlusdBalance` prop doc already says it is "Displayed as the balance value
      in the connected variant" — extend it to note it also drives the `"$X USDC"`
      sub-line caption.
-4. Update tests in `packages/frontend/src/routes/-index.test.tsx`:
+4. ✅ Update tests in `packages/frontend/src/routes/-index.test.tsx`:
    - In the State B block (around line 596), add an assertion that the USDC sub-line is
      present, e.g. `screen.getAllByText(/\$1,000\.00 USDC/)` resolves to ≥1 element (the
      mobile block renders it; the desktop block uses the disconnected variant and will not).
    - In the State C block (around line 646), add the equivalent assertion for the
      connected variant's sub-line. Reuse the State C seeding already present in that block.
    - Optionally assert via the `data-testid="plusd-in-usdc"` selector for robustness.
-5. Run lint/build and the frontend test suite (see Test Strategy).
+5. ✅ Run lint/build and the frontend test suite (see Test Strategy).
 
 ## Test Strategy
 

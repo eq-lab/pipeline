@@ -22,6 +22,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#466 Mobile home page balance states (0/0, has PLUSD, has sPLUSD)](https://github.com/eq-lab/pipeline/issues/466)       | [466-mobile-home-balance-states.md](./epic-463/466-mobile-home-balance-states.md)                 | Initial                         |
 | [#476 StartHereCard Sell button dimmed style](https://github.com/eq-lab/pipeline/issues/476)                             | [476-sell-button-dimmed.md](./epic-463/476-sell-button-dimmed.md)                                 | Initial                         |
 | [#478 StakeCard copy fixes (APY p.a. + senior)](https://github.com/eq-lab/pipeline/issues/478)                           | [478-stake-card-copy.md](./epic-463/478-stake-card-copy.md)                                       | Initial                         |
+| [#509 Mobile home StartHereCard (connected): missing '$X USDC' sub-line](https://github.com/eq-lab/pipeline/issues/509)  | [509-starthere-usdc-subline.md](./epic-463/509-starthere-usdc-subline.md)                         | Initial                         |
 
 ---
 
