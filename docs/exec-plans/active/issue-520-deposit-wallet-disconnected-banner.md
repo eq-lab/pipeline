@@ -37,14 +37,14 @@ Out of scope:
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/routes/deposit.tsx`, destructure `connect` from `useEvmWallet()` (line ~133: `const { address, isConnected, connect } = useEvmWallet();`).
-2. In the conditional render block (currently starts at line ~820 with `{isManagerUnreachable ? (...)`), add a new **first** branch for `!isConnected`:
+1. [x] In `packages/frontend/src/routes/deposit.tsx`, destructure `connect` from `useEvmWallet()` (line ~133: `const { address, isConnected, connect } = useEvmWallet();`).
+2. [x] In the conditional render block (currently starts at line ~820 with `{isManagerUnreachable ? (...)`), add a new **first** branch for `!isConnected`:
    - Render `<Card variant="yellow" data-testid="connect-wallet-banner" className="flex flex-row items-center justify-between gap-4">`.
    - Left: a `<p>` with body typography reading `Connect your wallet first` (mirror the classes used by the low-balance banner's body text).
    - Right: `<Button variant="primary-dark" className="whitespace-nowrap" onClick={connect}>Connect</Button>`.
    - This branch precedes `isManagerUnreachable`, the low-balance branch, and both `StepsCard` branches, so it wins for both `deposit` and `withdraw` directions when disconnected.
-3. Keep all hooks unconditional (no change needed — only the JSX branch order changes; React Rules of Hooks remain satisfied).
-4. Verify the connected-state branches are otherwise untouched (low-balance banner, unreachable banner, deposit/withdraw StepsCards).
+3. [x] Keep all hooks unconditional (no change needed — only the JSX branch order changes; React Rules of Hooks remain satisfied).
+4. [x] Verify the connected-state branches are otherwise untouched (low-balance banner, unreachable banner, deposit/withdraw StepsCards).
 
 ## Test Strategy
 

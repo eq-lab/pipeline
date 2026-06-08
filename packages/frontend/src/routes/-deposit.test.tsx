@@ -10,7 +10,7 @@
  *   2. Approved — step 1 shows success badge; Confirm button enabled; click triggers write.
  *   3. Insufficient balance — banner shown; StepsCard absent; Copy Address copies wallet address.
  *   4. Quick-amount chips: Min uses minDeposit; Max uses live balance.
- *   5. Disconnected wallet — all step buttons disabled, no banner.
+ *   5. Disconnected wallet — yellow "Connect your wallet first" banner shown; StepsCard absent; no low-balance banner.
  *   6. Min chip label reflects live minDeposit.
  *   7. Three-step flow: all three step labels render in order.
  *   8. After requestDeposit resolves → step 3 disabled (no voucher yet).
@@ -26,7 +26,7 @@
  *  16. Allowance ≥ amount, no active request → Confirm enabled.
  *  17. PendingVerification mock → step 2 in loading state.
  *  18. PendingClaim + voucher mock → Claim enabled.
- *  19. Disconnected → all step buttons disabled.
+ *  19. Disconnected → yellow "Connect your wallet first" banner shown; withdraw StepsCard absent.
  *  20. Quick-amount chips — 25% / 50% / 75% / Max.
  *  21. Step labels: "Allow Pipeline to use PLUSD" / "Confirm PLUSD burn" / "Claim your USDC".
  *
@@ -762,15 +762,21 @@ describe("Deposit page — disconnected wallet", () => {
     localStorage.clear();
   });
 
-  it("renders all step buttons as disabled when disconnected", async () => {
+  it("shows the wallet-not-connected banner instead of the StepsCard", async () => {
     renderDeposit();
     await waitFor(() => {
-      const approveBtn = screen.getByRole("button", { name: "Approve" });
-      const confirmBtn = screen.getByRole("button", { name: "Confirm" });
-      const claimBtn = screen.getByRole("button", { name: "Claim" });
-      expect(approveBtn).toBeDisabled();
-      expect(confirmBtn).toBeDisabled();
-      expect(claimBtn).toBeDisabled();
+      expect(screen.getByText("Connect your wallet first")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
+      // StepsCard must not be rendered
+      expect(
+        screen.queryByRole("button", { name: "Approve" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Confirm" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Claim" }),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -781,6 +787,15 @@ describe("Deposit page — disconnected wallet", () => {
         screen.queryByText("Add funds to your USDC balance"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("Connect button in the banner is enabled and clickable", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+    const connectBtn = await screen.findByRole("button", { name: "Connect" });
+    expect(connectBtn).toBeEnabled();
+    // Click must not throw (connect() calls AppKit open() internally)
+    await user.click(connectBtn);
   });
 });
 
@@ -1741,15 +1756,24 @@ describe("Deposit page — direction=withdraw — disconnected wallet", () => {
     localStorage.clear();
   });
 
-  it("renders all step buttons as disabled when disconnected", async () => {
+  it("shows the wallet-not-connected banner instead of the withdraw StepsCard", async () => {
     renderDeposit();
     await waitFor(() => {
-      const approveBtn = screen.getByRole("button", { name: "Approve" });
-      const confirmBtn = screen.getByRole("button", { name: "Confirm" });
-      const claimBtn = screen.getByRole("button", { name: "Claim" });
-      expect(approveBtn).toBeDisabled();
-      expect(confirmBtn).toBeDisabled();
-      expect(claimBtn).toBeDisabled();
+      expect(screen.getByText("Connect your wallet first")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
+      // Withdraw StepsCard must not be rendered
+      expect(
+        screen.queryByText("Allow Pipeline to use PLUSD"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Approve" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Confirm" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Claim" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
