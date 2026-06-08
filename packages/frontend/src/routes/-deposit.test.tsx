@@ -550,6 +550,31 @@ describe("Deposit page — approved state (allowance ≥ amount)", () => {
     });
   });
 
+  it("input card IS dimmed (opacity-30) in the approved/step-2-live state", async () => {
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2000");
+
+    // Once approved with an amount entered, step 2 is live → TokenInput root should fade.
+    // Walk up until we find an ancestor that contains "transition-opacity" in its class
+    // (that is the TokenInput root div which receives the isInputFaded className).
+    await waitFor(() => {
+      let el: Element | null = input;
+      let tokenInputRoot: Element | null = null;
+      while (el) {
+        if (el.className?.includes?.("transition-opacity")) {
+          tokenInputRoot = el;
+          break;
+        }
+        el = el.parentElement;
+      }
+      expect(tokenInputRoot).not.toBeNull();
+      expect(tokenInputRoot?.className).toContain("opacity-30");
+    });
+  });
+
   it("clicking Confirm triggers the requestDeposit flow", async () => {
     const user = userEvent.setup();
     renderDeposit();
@@ -656,6 +681,26 @@ describe("Deposit page — insufficient balance banner", () => {
     );
 
     vi.useRealTimers();
+  });
+
+  it("input card is NOT dimmed (no opacity-30) in the below-min state", async () => {
+    renderDeposit();
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    // Walk up to the TokenInput root div (the element that receives the className prop
+    // which contains "transition-opacity" in both the faded and non-faded state).
+    await waitFor(() => {
+      let el: Element | null = input;
+      let tokenInputRoot: Element | null = null;
+      while (el) {
+        if (el.className?.includes?.("transition-opacity")) {
+          tokenInputRoot = el;
+          break;
+        }
+        el = el.parentElement;
+      }
+      expect(tokenInputRoot).not.toBeNull();
+      expect(tokenInputRoot?.className).not.toContain("opacity-30");
+    });
   });
 });
 

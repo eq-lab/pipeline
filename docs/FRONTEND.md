@@ -134,7 +134,12 @@ Breakpoint: Tailwind `md` (768px). Below 768px is the mobile layout; 768px and a
 - Home page renders a white `Card` with the 7-column grid layout (Figma frame `1497:94556`).
 - `WelcomeHeader` shows the 64px title and the stats strip on the right.
 
-Other routes (deposit, stake, transactions, ops) currently use desktop-only layouts. Mobile treatment for these routes is deferred to future issues.
+**Deposit page (`/deposit`) mobile layout (below `md`):**
+
+- `DepositHeader`: coin icon hidden (`hidden md:block`); heading left-aligned, `heading-m` 28 px / 36 px, Besley Regular (400). Reuses the same `heading-m` token as desktop — no size inversion. (Figma node 1993:7911.)
+- At `md+` the coin icon reappears centred above the heading. (Figma node 1498:100130.)
+
+Other routes (stake, transactions, ops) currently use desktop-only layouts. Mobile treatment for these routes is deferred to future issues.
 
 ## Real-time updates
 
