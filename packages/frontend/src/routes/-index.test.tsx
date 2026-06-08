@@ -601,6 +601,15 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
     });
   });
 
+  it("mobile StartHereCard shows '$X USDC' sub-line (State B)", async () => {
+    renderHome();
+    await waitFor(() => {
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toBeInTheDocument();
+      expect(subLine.textContent).toMatch(/\$[\d,]+\.\d{2} USDC/);
+    });
+  });
+
   it("mobile StakeCard 'Stake' button is enabled (State B)", async () => {
     // In State B, both the mobile 'Stake' button (mobileHomeState="plusd") and
     // the desktop 'Stake PLUSD' button should be enabled.
@@ -681,6 +690,15 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     renderHome();
     await waitFor(() => {
       expect(screen.getByText("Welcome back")).toBeInTheDocument();
+    });
+  });
+
+  it("mobile StartHereCard shows '$X USDC' sub-line (State C)", async () => {
+    renderHome();
+    await waitFor(() => {
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toBeInTheDocument();
+      expect(subLine.textContent).toMatch(/\$[\d,]+\.\d{2} USDC/);
     });
   });
 

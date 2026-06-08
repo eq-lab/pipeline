@@ -164,6 +164,8 @@ sPLUSD shares.
   - `StartHereCard` shows the connected "PLUSD Balance" variant:
     - Eyebrow: "PLUSD Balance"
     - A PLUSD coin icon appears next to the balance value (e.g. `$1,000.00`).
+    - A `"$1,000.00 USDC"` caption appears below the balance row (USDC sub-line;
+      PLUSD is 1:1 with USDC).
     - Both "Buy" and "Sell" buttons are **enabled**.
 
   - `EarnedCard` shows:
@@ -226,6 +228,8 @@ convertToAssets rate).
   - `StartHereCard` shows the "PLUSD Balance" connected variant:
     - Eyebrow: "PLUSD Balance"
     - PLUSD coin icon + balance value (e.g. `$1,000.00`).
+    - A `"$1,000.00 USDC"` caption appears below the balance row (USDC sub-line;
+      always shown — shows `"$0.00 USDC"` when PLUSD balance is zero).
     - Both "Buy" and "Sell" buttons are **enabled** (State C activates both even if
       PLUSD = 0; enablement is keyed on "has a position").
 
