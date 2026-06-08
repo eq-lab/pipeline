@@ -63,8 +63,10 @@ import {
 /** Mobile home balance state — drives CTA copy and earning caption. */
 export type MobileHomeState = "empty" | "plusd" | "splusd";
 
-export interface PortfolioPlaceholderCardProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+export interface PortfolioPlaceholderCardProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   /**
    * Mobile-only: the connected balance state (empty / plusd / splusd).
    * When provided, overrides the static `$0.00` heading and CTA link:
@@ -113,12 +115,10 @@ function slotCentreX(idx: number): number {
 export const PortfolioPlaceholderCard = React.forwardRef<
   HTMLDivElement,
   PortfolioPlaceholderCardProps
->(function PortfolioPlaceholderCard({
-  className,
-  mobileHomeState,
-  mobileTotalBalance = "$0.00",
-  ...rest
-}, ref) {
+>(function PortfolioPlaceholderCard(
+  { className, mobileHomeState, mobileTotalBalance = "$0.00", ...rest },
+  ref,
+) {
   // Use a unique id per instance to avoid duplicate id attributes when both
   // the mobile and desktop blocks render this card in the same DOM.
   const instanceId = React.useId();
@@ -187,8 +187,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       data-node-id="1497:95048"
       {...rest}
     >
-      {/* Header row — left: balance stack; right: segmented time-range tabs */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Header row — mobile: stacked (balance then tabs, both left-aligned);
+          md+: row with tabs top-right (restores current desktop layout). */}
+      <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
         {/* Left: Total Balance label + balance display + CTA/caption row */}
         <header className="flex flex-col gap-1">
           {/* Eyebrow label — Caption token, muted ink */}
@@ -240,9 +241,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                 : "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
-            {mobileHomeState === "splusd"
-              ? "—"
-              : `+${earningStr} earning`}
+            {mobileHomeState === "splusd" ? "—" : `+${earningStr} earning`}
           </span>
 
           {/* State A: "Get PLUSD to start" link to /deposit.
@@ -252,7 +251,11 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           {mobileHomeState === "splusd" ? null : (
             <Link
               to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
-              search={mobileHomeState === "plusd" ? undefined : { direction: "deposit" as const }}
+              search={
+                mobileHomeState === "plusd"
+                  ? undefined
+                  : { direction: "deposit" as const }
+              }
               className={[
                 "font-[family-name:var(--font-body)]",
                 "text-[length:var(--text-pipeline-caption)]",

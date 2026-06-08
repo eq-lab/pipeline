@@ -168,6 +168,22 @@ describe("PortfolioPlaceholderCard — chart structure", () => {
   });
 });
 
+describe("PortfolioPlaceholderCard — responsive header layout", () => {
+  it("header wrapper has mobile-stacked and md-row responsive classes", () => {
+    const { container } = renderCard();
+    // The header wrapper is the first div inside the Card element.
+    // It wraps the <header> (balance stack) and the SegmentedTabs.
+    const wrapper = container.querySelector(
+      "[data-node-id='1497:95048'] > div:first-child",
+    ) as HTMLElement;
+    expect(wrapper).toBeTruthy();
+    expect(wrapper.className).toContain("flex-col");
+    expect(wrapper.className).toContain("items-start");
+    expect(wrapper.className).toContain("md:flex-row");
+    expect(wrapper.className).toContain("md:justify-between");
+  });
+});
+
 describe("PortfolioPlaceholderCard — hover behaviour", () => {
   it("tooltip is initially hidden (aria-hidden='true')", () => {
     renderCard();
