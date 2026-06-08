@@ -424,11 +424,10 @@ function Deposit() {
 
   // Faded state (deposit-only: approved step 2 live)
   const isDepositInputFaded =
-    hasBalance === false ||
-    (isConnected &&
-      !depositNeedsApproval &&
-      amountBig > 0n &&
-      !depositRequestIsConfirmed);
+    isConnected &&
+    !depositNeedsApproval &&
+    amountBig > 0n &&
+    !depositRequestIsConfirmed;
 
   // Withdraw fade: allowance is known-sufficient and step 2 is live
   const isWithdrawInputFaded =
