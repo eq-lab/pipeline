@@ -9,11 +9,12 @@ const meta = {
     docs: {
       description: {
         component:
-          "Centered header displayed above the transaction list on the Activity " +
-          'page. Renders a `HeroIcon` with `icon=\\"arrow-clock\\"` (72×72 px ' +
-          "muted-fill circle) stacked above a display-serif heading (`Activity` " +
-          'by default). The `title` prop defaults to `\\"Activity\\"` so callers ' +
-          "can override the copy. Matches Figma node 1497-94912.",
+          "Responsive header displayed above the transaction list on the Activity " +
+          "page. Below the `md` breakpoint (768 px) the arrow-clock icon is hidden " +
+          "and the heading is left-aligned (Figma node 1993-9592). At `md+` the icon " +
+          "reappears centred above the heading (Figma node 1497-94912). " +
+          "Both breakpoints use `heading-m` (28 px / 36 px) at Besley Regular weight. " +
+          'The `title` prop defaults to `"Activity"` so callers can override the copy.',
       },
     },
   },
@@ -67,6 +68,36 @@ export const CustomTitle: Story = {
       },
     },
   },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Mobile — 402px viewport, icon hidden, heading left-aligned               */
+/* -------------------------------------------------------------------------- */
+
+export const Mobile: Story = {
+  name: "Mobile 402px — icon hidden, heading left-aligned",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Below the `md` (768 px) breakpoint the arrow-clock icon is hidden " +
+          "and the heading is left-aligned — matches Figma mobile frame " +
+          "node 1993-9592. Rendered at 386 px (402 px viewport with 8 px " +
+          "page margins on each side).",
+      },
+    },
+  },
+  render: () => (
+    <div
+      style={{
+        width: 386,
+        padding: "0 8px",
+        background: "var(--color-pipeline-paper)",
+      }}
+    >
+      <ActivityHeader />
+    </div>
+  ),
 };
 
 /* -------------------------------------------------------------------------- */

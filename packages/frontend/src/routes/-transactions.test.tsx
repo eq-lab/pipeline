@@ -113,6 +113,29 @@ function renderTransactions() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe("Transactions page — responsive layout (Issue #523)", () => {
+  beforeEach(() => {
+    mockRefetch.mockClear();
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("<main> carries px-2 class for 8px mobile side margins", () => {
+    const { container } = renderTransactions();
+    const main = container.querySelector("main");
+    expect(main).not.toBeNull();
+    expect(main?.className).toContain("px-2");
+  });
+});
+
 describe("Transactions page — default Buy tab", () => {
   beforeEach(() => {
     mockRefetch.mockClear();

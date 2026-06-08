@@ -27,6 +27,14 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
+## Epic #522 — Activity page
+
+| Issue                                                                                                                                          | Doc                                                                                                     | Status  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------- |
+| [#523 Mobile Activity page: with-data state (responsive layout + rows)](https://github.com/eq-lab/pipeline/issues/523) | [523-mobile-activity-with-data.md](./epic-522/523-mobile-activity-with-data.md) | Initial |
+
+---
+
 ## Epic #498 — Deposit/withdraw page
 
 | Issue                                                                                                                                                                          | Doc                                                                                   | Status  |
