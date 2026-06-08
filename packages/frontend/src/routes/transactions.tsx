@@ -13,11 +13,20 @@ import { renderRequestRow } from "@/components/activity/renderRequestRow";
 import { useEvmWallet } from "@/wallet";
 
 /**
- * Transactions / Activity page — wired to `GET /v1/requests` (Figma `1497-94912`).
+ * Transactions / Activity page — wired to `GET /v1/requests`.
+ *
+ * Responsive layout:
+ *   - Mobile (< 768 px) — Figma node 1993-9592 (402×874):
+ *     8 px side margins (`px-2`); `ActivityHeader` shows left-aligned heading
+ *     with no arrow-clock icon.
+ *   - Desktop (≥ 768 px) — Figma node 1497-94912:
+ *     centred content column capped at `max-w-[480px]`; `ActivityHeader`
+ *     shows centred icon + heading.
  *
  * Visual structure (top → bottom):
- *   1. Centred content column, `max-w-[480px]`, `p-8` (32 px) page padding.
- *   2. `ActivityHeader` — icon + "Activity" heading.
+ *   1. Centred content column, `max-w-[480px]`, `px-2 py-8` page padding.
+ *   2. `ActivityHeader` — responsive (icon + centred heading on desktop;
+ *      no icon, left-aligned heading on mobile).
  *   3. `SegmentedTabs` — Buy / Sell / Stake / Unstake filter bar.
  *      The "All" tab has been removed; "Buy" is the default.
  *      Selecting a tab filters the in-memory array client-side — no re-fetch.
@@ -33,7 +42,9 @@ import { useEvmWallet } from "@/wallet";
  * pixel sizes. All values flow through `@pipeline/ui` component props or
  * Tailwind utilities that resolve design tokens.
  *
- * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev
+ * Figma references:
+ *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev
+ *   Mobile:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev
  */
 
 /** Ordered tab definitions for the filter bar — "All" tab is intentionally absent. */
@@ -66,8 +77,8 @@ function Transactions() {
 
   return (
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
-      {/* Centred content column: max-w-[480px], py-8 (32 px) vertical padding only — no horizontal padding so content spans the full 480px */}
-      <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 py-8">
+      {/* Centred content column: max-w-[480px], px-2 mobile side margins (8 px), py-8 vertical padding */}
+      <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 px-2 py-8">
         {/* Activity header: clock icon + "Activity" heading */}
         <ActivityHeader />
 

@@ -2,18 +2,24 @@ import React from "react";
 import { HeroIcon } from "../HeroIcon/HeroIcon";
 
 /**
- * ActivityHeader — centered header displayed above the transaction list on the
- * Activity page.
+ * ActivityHeader — responsive header displayed above the transaction list on
+ * the Activity page.
  *
- * Layout (Figma node 1497-94912):
- *   - Vertically-stacked flex column, centred on both axes.
+ * Two treatments driven by the `md` (768 px) breakpoint:
+ *
+ * Mobile (< 768 px) — Figma node 1993-9592:
+ *   - Full-width flex column, left-aligned (`items-start`).
+ *   - `HeroIcon` with `icon="arrow-clock"` is **hidden**.
+ *   - Heading: `heading-m` 28 px / 36 px, Besley Regular (400), left-aligned.
+ *
+ * Desktop (≥ 768 px) — Figma node 1497-94912:
+ *   - Centered flex column (`items-center`).
  *   - `HeroIcon` with `icon="arrow-clock"` (72×72 px muted-fill circle) above
- *     the heading with a small gap.
- *   - Display-serif heading at `heading-m` scale (28 px / 36 px line-height).
+ *     the heading.
+ *   - Heading: `heading-m` 28 px / 36 px, Besley Regular (400), centered.
  *
  * Design tokens used:
  *   - `--font-display`                         — Besley serif typeface
- *   - `--font-weight-bold`                     — 700
  *   - `--text-pipeline-heading-m`              — 28 px
  *   - `--text-pipeline-heading-m--line-height` — 36 px
  *   - `--color-pipeline-ink`                   — primary ink colour
@@ -33,18 +39,25 @@ export interface ActivityHeaderProps extends React.HTMLAttributes<HTMLDivElement
   title?: string;
 }
 
-// Root container — centred column, no fixed width so it fills its parent.
-const rootClasses = ["flex flex-col items-center", "gap-3"].join(" ");
+// Root container — left-aligned on mobile, centred on desktop (md+).
+// w-full ensures left-alignment fills the row on mobile.
+const rootClasses = [
+  "flex flex-col items-start md:items-center",
+  "w-full",
+  "gap-3",
+].join(" ");
 
-// Heading — display-serif at heading-m scale, bold weight, primary ink.
-// Matches Figma text style for the ActivityHeader label (node 1497-94912).
+// Heading — display-serif at heading-m scale, regular weight (400), primary ink.
+// Left-aligned on mobile, centred on desktop (md+).
+// Weight is Besley Regular (font-normal) matching DepositHeader per maintainer
+// confirmation ("regular at both") — applies to both mobile and desktop breakpoints.
 const headingClasses = [
   "font-[family-name:var(--font-display)]",
   "text-[length:var(--text-pipeline-heading-m)]",
   "leading-[var(--text-pipeline-heading-m--line-height)]",
-  "font-[var(--font-weight-bold)]",
+  "font-normal",
   "text-[color:var(--color-pipeline-ink)]",
-  "text-center",
+  "text-left md:text-center",
   "select-none",
 ].join(" ");
 
@@ -56,8 +69,12 @@ export const ActivityHeader = React.forwardRef<
 
   return (
     <div ref={ref} className={composed} {...rest}>
-      {/* HeroIcon with arrow-clock glyph — decorative, centred above the heading */}
-      <HeroIcon icon="arrow-clock" aria-hidden="true" />
+      {/* HeroIcon with arrow-clock glyph — decorative, hidden on mobile, shown at md+ */}
+      <HeroIcon
+        icon="arrow-clock"
+        aria-hidden="true"
+        className="hidden md:block"
+      />
 
       {/* Display-serif heading */}
       <h2 className={headingClasses}>{title}</h2>
