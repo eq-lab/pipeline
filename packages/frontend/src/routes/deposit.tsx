@@ -96,10 +96,19 @@ import { useToast } from "@/lib/toast";
  *     - `useDepositVoucher(requestId)` — deposit voucher
  *     - `useWithdrawalVoucher(requestId)` — withdrawal voucher
  *
+ * Wallet-disconnected state:
+ *   When the wallet is not connected, a yellow "Connect your wallet first"
+ *   banner with a dark "Connect" button is shown in place of the StepsCard
+ *   (and in place of the low-balance banner) for both directions.
+ *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
+ *   identical to the home-page CTA.
+ *   Figma: node 1994-6885 (desktop / mobile identical per node 1993-8916).
+ *
  * Figma references:
  *   Deposit page: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812
  *   Withdraw page: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351
  *   Swap button: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157
+ *   Wallet not connected: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -130,7 +139,7 @@ function Deposit() {
   const navigate = useNavigate();
 
   // ── State sources ─────────────────────────────────────────────────────
-  const { address, isConnected } = useEvmWallet();
+  const { address, isConnected, connect } = useEvmWallet();
 
   // ── Deposit-direction hooks (called unconditionally) ──────────────────
   const {
@@ -816,8 +825,26 @@ function Deposit() {
           onSwap={isAnyTxInFlight ? undefined : onSwap}
         />
 
-        {/* Conditional: unreachable-contract banner, low-balance banner, OR three-step card */}
-        {isManagerUnreachable ? (
+        {/* Conditional: disconnected banner, unreachable-contract banner, low-balance banner, OR three-step card */}
+        {!isConnected ? (
+          /* Wallet-not-connected banner. Figma: node 1994-6885. */
+          <Card
+            variant="yellow"
+            data-testid="connect-wallet-banner"
+            className="flex flex-row items-center justify-between gap-4"
+          >
+            <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
+              Connect your wallet first
+            </p>
+            <Button
+              variant="primary-dark"
+              className="whitespace-nowrap"
+              onClick={connect}
+            >
+              Connect
+            </Button>
+          </Card>
+        ) : isManagerUnreachable ? (
           <Card variant="danger" data-testid="dm-unreachable-banner">
             <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
               DepositManager not reachable
