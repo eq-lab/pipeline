@@ -12,6 +12,8 @@ use reqwest::Client;
 
 use shared::log_mapper::LogMapper;
 
+use super::chain_poller::ChainEventPoller;
+
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 type DecodeFn = Box<dyn Fn(&alloy::rpc::types::Log) -> Option<Box<dyn LogMapper>> + Send + Sync>;
 
@@ -140,5 +142,24 @@ impl EvmEventPoller {
         let ts = block.header.timestamp;
         cache.insert(block_number, ts);
         Ok(ts)
+    }
+}
+
+#[async_trait::async_trait]
+impl ChainEventPoller for EvmEventPoller {
+    async fn get_latest_block(&self) -> Result<u64> {
+        self.get_latest_block().await
+    }
+
+    async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
+        self.poll(from, to).await
+    }
+
+    async fn get_block_timestamp(
+        &self,
+        block_number: u64,
+        cache: &mut HashMap<u64, u64>,
+    ) -> Result<u64> {
+        self.get_block_timestamp(block_number, cache).await
     }
 }

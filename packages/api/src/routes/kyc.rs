@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use crate::middleware::webhook_auth::validate_webhook;
+use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -67,6 +68,9 @@ pub struct ApiDoc;
     post,
     path = "/v1/kyc/applicants",
     request_body = CreateApplicantRequest,
+    params(
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+    ),
     responses(
         (status = 200, description = "Applicant created or already exists", body = CreateApplicantResponse),
         (status = 502, description = "Sumsub unavailable"),
@@ -75,9 +79,16 @@ pub struct ApiDoc;
 )]
 async fn create_applicant(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ChainQuery>,
     Json(req): Json<CreateApplicantRequest>,
 ) -> impl IntoResponse {
-    let profile = match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
+    let chain_id = resolve_chain(&state, query.chain_id);
+
+    let profile = match state
+        .kyc_repo
+        .get_lp_profile(chain_id, &req.wallet_address)
+        .await
+    {
         Ok(Some(p)) => p,
         Ok(None) => {
             return (
@@ -115,7 +126,7 @@ async fn create_applicant(
         Ok(resp) => {
             if let Err(e) = state
                 .kyc_repo
-                .set_applicant_id(&req.wallet_address, &resp.id)
+                .set_applicant_id(chain_id, &req.wallet_address, &resp.id)
                 .await
             {
                 tracing::error!("failed to store applicant_id: {e:?}");
@@ -140,6 +151,9 @@ async fn create_applicant(
     post,
     path = "/v1/kyc/token",
     request_body = CreateTokenRequest,
+    params(
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+    ),
     responses(
         (status = 200, description = "Access token generated", body = CreateTokenResponse),
         (status = 502, description = "Sumsub unavailable"),
@@ -148,8 +162,11 @@ async fn create_applicant(
 )]
 async fn create_token(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ChainQuery>,
     Json(req): Json<CreateTokenRequest>,
 ) -> impl IntoResponse {
+    let chain_id = resolve_chain(&state, query.chain_id);
+
     let Some(ref sumsub_client) = state.sumsub_client else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -165,7 +182,11 @@ async fn create_token(
             .into_response();
     };
 
-    match state.kyc_repo.get_lp_profile(&req.wallet_address).await {
+    match state
+        .kyc_repo
+        .get_lp_profile(chain_id, &req.wallet_address)
+        .await
+    {
         Ok(Some(_)) => {}
         Ok(None) => {
             return (
@@ -220,7 +241,8 @@ async fn create_token(
     get,
     path = "/v1/kyc/status/{wallet_address}",
     params(
-        ("wallet_address" = String, Path, description = "Wallet address of the LP")
+        ("wallet_address" = String, Path, description = "Wallet address of the LP"),
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
     ),
     responses(
         (status = 200, description = "KYC status retrieved", body = KycStatusResponse),
@@ -231,8 +253,15 @@ async fn create_token(
 async fn get_status(
     State(state): State<Arc<AppState>>,
     Path(wallet_address): Path<String>,
+    Query(query): Query<ChainQuery>,
 ) -> impl IntoResponse {
-    match state.kyc_repo.get_lp_profile(&wallet_address).await {
+    let chain_id = resolve_chain(&state, query.chain_id);
+
+    match state
+        .kyc_repo
+        .get_lp_profile(chain_id, &wallet_address)
+        .await
+    {
         Ok(Some(profile)) => Json(KycStatusResponse {
             sumsub_kyc_status: profile.sumsub_kyc_status,
             sumsub_review_status: profile.sumsub_review_status,
@@ -303,40 +332,56 @@ async fn webhook_callback(
         }
     };
 
-    match state.kyc_repo.get_lp_profile(&wallet_address).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            tracing::warn!(wallet = wallet_address, "webhook for unknown wallet");
-            return (StatusCode::NOT_FOUND, "applicant not found").into_response();
-        }
-        Err(e) => {
-            tracing::error!("failed to look up lp_profile: {e:?}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-        }
-    }
-
     let review_status = payload
         .parsed_review_status()
         .unwrap_or(shared::sumsub::models::KycReviewStatus::Pending);
     let kyc_status = payload.parsed_kyc_status();
     let aml_status = payload.parsed_aml_status();
 
-    if let Err(e) = state
+    // Sumsub identity is wallet-scoped (one external_user_id = one identity).
+    // A single review verdict applies to every chain that has a profile for
+    // this wallet. Do the UPDATE in a single atomic statement and let it
+    // return the list of chains it touched — avoids a SELECT-then-UPDATE
+    // race against concurrent profile inserts.
+    let chains_updated = match state
         .kyc_repo
-        .update_sumsub_status(&wallet_address, kyc_status, review_status, aml_status)
+        .update_sumsub_status_all_chains(&wallet_address, kyc_status, review_status, aml_status)
         .await
     {
-        tracing::error!("failed to update kyc status: {e:?}");
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::error!(
+                wallet = wallet_address,
+                "failed to update kyc status: {e:?}"
+            );
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
+    };
+
+    if chains_updated.is_empty() {
+        tracing::warn!(
+            wallet = wallet_address,
+            "webhook for unknown wallet (no profiles found on any chain)"
+        );
+        return (StatusCode::NOT_FOUND, "applicant not found").into_response();
     }
 
-    if let Err(e) = state
-        .kyc_repo
-        .insert_outbox(&wallet_address, review_status, kyc_status)
-        .await
-    {
-        tracing::error!("failed to insert kyc outbox: {e:?}");
-        return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+    // Enqueue an outbox row per (chain, wallet). If any insert fails, return 500
+    // so Sumsub retries the whole webhook — partial-success ack would leave some
+    // chains stuck without an outbox entry.
+    for chain_id in &chains_updated {
+        if let Err(e) = state
+            .kyc_repo
+            .insert_outbox(*chain_id, &wallet_address, review_status, kyc_status)
+            .await
+        {
+            tracing::error!(
+                chain_id = *chain_id,
+                wallet = wallet_address,
+                "failed to insert kyc outbox: {e:?}"
+            );
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+        }
     }
 
     tracing::info!(
@@ -344,6 +389,7 @@ async fn webhook_callback(
         review_status = ?review_status,
         kyc_status = ?kyc_status,
         aml_status = ?aml_status,
+        chains_updated = chains_updated.len(),
         "processed Sumsub webhook"
     );
 

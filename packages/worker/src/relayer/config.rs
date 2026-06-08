@@ -3,6 +3,8 @@ use std::env;
 use alloy::primitives::Address;
 use anyhow::{Context, Result};
 
+use crate::indexer::config::parse_chains_env;
+
 pub struct RelayerJobSettings {
     // Shared
     pub interval_secs: u64,
@@ -29,27 +31,35 @@ pub struct RelayerJobSettings {
 }
 
 impl RelayerJobSettings {
-    pub fn from_env() -> Result<Self> {
-        let prefix = "JOB_RELAYER_";
+    /// Parse relayer settings for a single chain using `CHAIN_<id>_RELAYER_*` env vars.
+    pub fn from_chain_env(chain_id: i64) -> Result<Self> {
+        let p = format!("CHAIN_{chain_id}_RELAYER_");
 
         Ok(Self {
-            interval_secs: env_parse(&format!("{prefix}INTERVAL_SECS"), 60)?,
-            eth_rpc_url: env_require(&format!("{prefix}ETH_RPC_URL"))?,
-            chain_id: env_require(&format!("{prefix}CHAIN_ID"))?
-                .parse()
-                .context("CHAIN_ID must be an integer")?,
-            signer_key: env_require(&format!("{prefix}SIGNER_KEY"))?,
-            registry_address: env_require_address(&format!("{prefix}REGISTRY_ADDRESS"))?,
-            sumsub_enabled: env_parse(&format!("{prefix}SUMSUB_ENABLED"), true)?,
+            interval_secs: env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?,
+            eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))
+                // Fall back to the chain's shared RPC URL
+                .or_else(|_| env_require(&format!("CHAIN_{chain_id}_ETH_RPC_URL")))?,
+            chain_id,
+            signer_key: env_require(&format!("{p}SIGNER_KEY"))?,
+            registry_address: env_require_address(&format!("{p}REGISTRY_ADDRESS"))?,
+            sumsub_enabled: env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?,
             crystal_enabled: env_parse("CRYSTAL_ENABLED", true)?,
-            yield_minter_address: env_require_address(&format!("{prefix}YIELD_MINTER_ADDRESS"))?,
-            loan_registry_address: env_require_address(&format!("{prefix}LOAN_REGISTRY_ADDRESS"))?,
+            yield_minter_address: env_require_address(&format!("{p}YIELD_MINTER_ADDRESS"))?,
+            loan_registry_address: env_require_address(&format!("{p}LOAN_REGISTRY_ADDRESS"))?,
             bitgo_native_symbol: env_parse_string("BITGO_NATIVE_SYMBOL", "hteth"),
-            yield_minter_batch_size: env_parse(
-                &format!("{prefix}YIELD_MINTER_BATCH_SIZE"),
-                50usize,
-            )?,
+            yield_minter_batch_size: env_parse("JOB_RELAYER_YIELD_MINTER_BATCH_SIZE", 50usize)?,
         })
+    }
+
+    /// Parse relayer settings for every chain in `CHAINS`.
+    /// Returns one `RelayerJobSettings` per configured chain.
+    pub fn all_from_env() -> Result<Vec<Self>> {
+        let chain_ids = parse_chains_env()?;
+        chain_ids
+            .into_iter()
+            .map(RelayerJobSettings::from_chain_env)
+            .collect()
     }
 }
 

@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use std::env;
 
+use crate::indexer::config::parse_chains_env;
+
 pub struct PricePollerSettings {
     pub eth_rpc_url: String,
     pub chain_id: i64,
@@ -15,35 +17,30 @@ pub struct PricePollerSettings {
 }
 
 impl PricePollerSettings {
-    pub fn from_env() -> Result<Self> {
-        let prefix = "JOB_PRICE_POLLER_";
+    /// Parse price-poller settings for a single chain using `CHAIN_<id>_*` env vars.
+    /// Falls back to `CHAIN_<id>_ETH_RPC_URL` from the indexer config (same URL).
+    pub fn from_chain_env(chain_id: i64) -> Result<Self> {
+        let p = format!("CHAIN_{chain_id}_");
 
-        let eth_rpc_url = env::var(format!("{prefix}ETH_RPC_URL"))
-            .or_else(|_| env::var("JOB_INDEXER_ETH_RPC_URL"))
-            .context("JOB_PRICE_POLLER_ETH_RPC_URL (or JOB_INDEXER_ETH_RPC_URL) is not set")?;
+        let eth_rpc_url = env::var(format!("{p}ETH_RPC_URL"))
+            .with_context(|| format!("CHAIN_{chain_id}_ETH_RPC_URL is not set"))?;
 
-        let chain_id: i64 = env::var(format!("{prefix}CHAIN_ID"))
-            .or_else(|_| env::var("JOB_INDEXER_CHAIN_ID"))
-            .context("JOB_PRICE_POLLER_CHAIN_ID (or JOB_INDEXER_CHAIN_ID) is not set")?
-            .parse()
-            .context("CHAIN_ID must be an integer")?;
-
-        let start_block: u64 = env::var(format!("{prefix}START_BLOCK"))
+        let start_block: u64 = env::var("JOB_PRICE_POLLER_START_BLOCK")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0);
 
-        let block_interval: u64 = env::var(format!("{prefix}BLOCK_INTERVAL"))
+        let block_interval: u64 = env::var("JOB_PRICE_POLLER_BLOCK_INTERVAL")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(300);
 
-        let poll_interval_secs: u64 = env::var(format!("{prefix}POLL_INTERVAL_SECS"))
+        let poll_interval_secs: u64 = env::var("JOB_PRICE_POLLER_POLL_INTERVAL_SECS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(60);
 
-        let rpc_delay_ms: u64 = env::var(format!("{prefix}RPC_DELAY_MS"))
+        let rpc_delay_ms: u64 = env::var("JOB_PRICE_POLLER_RPC_DELAY_MS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(200);
@@ -56,5 +53,15 @@ impl PricePollerSettings {
             poll_interval_secs,
             rpc_delay_ms,
         })
+    }
+
+    /// Parse price-poller settings for every chain in `CHAINS`.
+    /// Returns one `PricePollerSettings` per configured chain.
+    pub fn all_from_env() -> Result<Vec<Self>> {
+        let chain_ids = parse_chains_env()?;
+        chain_ids
+            .into_iter()
+            .map(PricePollerSettings::from_chain_env)
+            .collect()
     }
 }

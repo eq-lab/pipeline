@@ -14,9 +14,9 @@ Refactor `packages/api` and `packages/worker` so the application layer stops tre
 - **Worker indexer:** extract a `ChainEventPoller` trait covering `latest_block`, `fetch_logs_since`/`poll`, and `get_block_timestamp`; refactor the existing `EvmEventPoller` into the first impl; refactor `index_once` / `index_loop` / `run_indexer_job` to consume the trait rather than the concrete `EvmEventPoller`.
 - **Worker parsers:** split alloy-`SolEvent` coupling out of `indexer::mod.rs` into a per-chain event handler set so Stellar-equivalent decoders can later live next to a Horizon poller.
 - **Worker config (all three jobs):** indexer / price-poller / relayer all switch from a single `JOB_<X>_CHAIN_ID` + `_ETH_RPC_URL` block to a per-chain list. Worker `main.rs` spawns one task per configured chain per enabled job.
-- **DB schema sharding (Q1=B, resolved 2026-06-05):** add `chain_id BIGINT NOT NULL` to `lp_profiles` and `kyc_outbox`. New PKs `(chain_id, wallet)` for `lp_profiles`; widen `kyc_outbox`'s key to include `chain_id`. Migration backfills existing rows with `DEFAULT_CHAIN_ID`. All reads/writes scope by `chain_id`. Rationale documented in new design doc — see Stage F step 17 and Stage G.
+- **DB schema sharding (Q1=B, resolved 2026-06-05):** add `chain_id BIGINT NOT NULL` to `lp_profiles` and `kyc_outbox`. New PK `(chain_id, wallet_address)` for `lp_profiles`; `kyc_outbox` keeps its `BIGSERIAL id` PK and carries `chain_id` as a data column with a chain-scoped partial index. Migration **derives** the backfill `chain_id` from `contract_logs` (single distinct chain → use it; empty → fall back to `1`; multi-chain → abort with explicit error). All reads/writes scope by `chain_id`. Rationale in new design doc — see Stage F step 17 and Stage G.
 - **KYC routes (`/v1/kyc/*`):** previously chain-agnostic. With `lp_profiles` and `kyc_outbox` sharded, KYC writes need a `chain_id` (optional query param falling back to `default_chain_id`, same pattern as stats routes). Audit every handler.
-- **Existing chain-blind reads, fix scoped in (collision/correctness):** `kyc_repo::get_deposit_request` / `get_withdrawal_request` / `is_request_claimed` — collision risk with multi-chain `contract_logs`. `is_on_chain_allowed(wallet)` → `is_on_chain_allowed(chain_id, wallet)` — forced by sharded `lp_profiles` (Q4=A). `populate_profiles_from_deposits()` — must `GROUP BY (chain_id, wallet)` and upsert per chain.
+- **Existing chain-blind reads, fix scoped in (collision/correctness):** `kyc_repo::get_deposit_request` / `get_withdrawal_request` / `is_request_claimed` — collision risk with multi-chain `contract_logs`. `is_on_chain_allowed(wallet)` → `is_on_chain_allowed(chain_id, wallet)` — forced by sharded `lp_profiles` (Q4=A). `populate_profiles_from_deposits(chain_id)` — takes a chain filter and upserts only that chain's `(chain_id, wallet)` pairs (per-chain relayer task calls it each cycle).
 - **Smoke validation:** local indexer fixture run under `chain_id = 99999` continues to write the same events end-to-end.
 
 **Explicitly out of scope (already enumerated in the Issue body, restated here so the coder doesn't drift):**
@@ -97,13 +97,13 @@ All five resolved via `/brainstorming` on 2026-06-05.
 
 ### Stage A — API: env config + AppState (small, mostly mechanical)
 
-1. **Env-var parsing.** Extend `packages/api/src/main.rs` with a new helper module `pipeline_api::config::ChainsConfig` (new file `packages/api/src/config.rs`, exported via `pub mod config;` in `lib.rs`).
+1. [x] **Env-var parsing.** Extend `packages/api/src/main.rs` with a new helper module `pipeline_api::config::ChainsConfig` (new file `packages/api/src/config.rs`, exported via `pub mod config;` in `lib.rs`).
    - Parses `CHAINS` as a comma-separated CSV of `i64`. Must be non-empty.
    - Parses `DEFAULT_CHAIN_ID` as `i64` (must be a member of `CHAINS`; else `anyhow::bail!`).
    - For each id in `CHAINS`, builds an optional `VoucherChainConfig { signer: PrivateKeySigner, dm_domain: Eip712Domain, wq_domain: Eip712Domain }`. If `CHAIN_<id>_SIGNER_KEY` is set, the two address vars are required. If not set, the chain is voucher-disabled.
    - Returns `ChainsConfig { default_chain_id: i64, voucher: HashMap<i64, VoucherChainConfig> }`.
 
-2. **`AppState`.** In `packages/api/src/lib.rs`:
+2. [x] **`AppState`.** In `packages/api/src/lib.rs`:
    ```rust
    pub struct AppState {
        pub pool: sqlx::PgPool,
@@ -121,42 +121,42 @@ All five resolved via `/brainstorming` on 2026-06-05.
    ```
    Drop `voucher_signer`, `dm_domain`, `wq_domain`, `chain_id`.
 
-3. **`packages/api/src/main.rs`** wires the new config into `AppState` and removes the old `API_CHAIN_ID` / `API_SIGNER_KEY` / `API_DM_ADDRESS` / `API_WQ_ADDRESS` reads. The voucher-signer-missing tracing warn now logs per chain that has no signer.
+3. [x] **`packages/api/src/main.rs`** wires the new config into `AppState` and removes the old `API_CHAIN_ID` / `API_SIGNER_KEY` / `API_DM_ADDRESS` / `API_WQ_ADDRESS` reads. The voucher-signer-missing tracing warn now logs per chain that has no signer.
 
 ### Stage B — API: routes
 
-4. **Common query helper.** Add a small `routes::common::ChainQuery { chain_id: Option<i64> }` (new module `packages/api/src/routes/common.rs`) with a helper `resolve_chain(state, q.chain_id) -> i64` returning `q.chain_id.unwrap_or(state.default_chain_id)`. No validation against `CHAINS`; the worker's per-chain config is independent from the API's awareness of a chain.
+4. [x] **Common query helper.** Add a small `routes::common::ChainQuery { chain_id: Option<i64> }` (new module `packages/api/src/routes/common.rs`) with a helper `resolve_chain(state, q.chain_id) -> i64` returning `q.chain_id.unwrap_or(state.default_chain_id)`. No validation against `CHAINS`; the worker's per-chain config is independent from the API's awareness of a chain.
 
-5. **`stats.rs`** — three routes get a `ChainQuery` merged into their existing `Query<…>` type (use `serde(flatten)` so the OpenAPI `params(…)` lists the merged fields):
+5. [x] **`stats.rs`** — three routes get a `ChainQuery` merged into their existing `Query<…>` type (use `serde(flatten)` so the OpenAPI `params(…)` lists the merged fields):
    - `/v1/stats` (`StatsQuery`) — add `chain_id: Option<i64>`; pass `resolve_chain(...)` into `compute_stats`.
    - `/v1/stats/prices` (`PricesQuery`) — same; thread through into both `get_earliest_price_timestamp` and `get_avg_prices`.
    - `/v1/stats/vaults` — currently takes `()`; introduce a new `VaultsQuery { chain_id: Option<i64> }` (matches Issue Acceptance Criterion: "All existing API routes that currently read `state.chain_id` accept an optional `chain_id` query param").
    Update `#[utoipa::path]` `params(…)` blocks accordingly.
 
-6. **`pnl.rs`** — extend `PnlQuery` with `chain_id: Option<i64>`. Resolve via the helper. Update `utoipa::path` params.
+6. [x] **`pnl.rs`** — extend `PnlQuery` with `chain_id: Option<i64>`. Resolve via the helper. Update `utoipa::path` params.
 
-7. **`vouchers.rs`** — extend `WalletQuery` with `chain_id: Option<i64>`.
+7. [x] **`vouchers.rs`** — extend `WalletQuery` with `chain_id: Option<i64>`.
    - Replace `(&state.voucher_signer, &state.dm_domain)` lookups with `state.voucher_signers.get(&chain_id)` + `state.dm_domains.get(&chain_id)` (and `wq_domains` for the withdrawal route). On miss, **HTTP 400** (`"voucher signing not configured for chain {chain_id}"`).
    - Pass `chain_id` into the KYC repo lookups (see step 8) so we read the right `contract_logs` row.
    - The EIP-712 domain object already carries `chain_id` internally (`Eip712Domain.chain_id`) which must equal the query chain — assert at config-load time (Stage A step 1), not in the hot path.
 
-8. **`shared::kyc_repo` — add chain scoping (expanded by Q1=B / Q4=A).** Extend the DB methods with a `chain_id: i64` parameter (or `(chain_id, wallet)` composite where the existing key was wallet-only):
+8. [x] **`shared::kyc_repo` — add chain scoping (expanded by Q1=B / Q4=A).** Extend the DB methods with a `chain_id: i64` parameter (or `(chain_id, wallet)` composite where the existing key was wallet-only):
    - `get_deposit_request(chain_id, request_id, wallet)` — add `AND chain_id = $N` to the SQL.
    - `get_withdrawal_request(chain_id, request_id, wallet)` — same.
    - `is_request_claimed(chain_id, claimed_event, request_id, contract_address)` — add `AND chain_id = $N`.
    - `is_on_chain_allowed(chain_id, wallet)` — reads from sharded `lp_profiles`; missing `(chain_id, wallet)` row → `false`.
-   - `populate_profiles_from_deposits()` — `GROUP BY (chain_id, wallet)` and upsert per `(chain_id, wallet)` (composite PK on `lp_profiles`).
+   - `populate_profiles_from_deposits(chain_id)` — takes a chain filter, scans `contract_logs.DepositRequested WHERE chain_id = $1`, and upserts the resulting `(chain_id, wallet)` pairs. Called once per cycle by each per-chain relayer task with its own `chain_id`.
    - `kyc_outbox` writes/reads — thread `chain_id` through every call site (insertion + queue drain).
    Call sites to update: `packages/api/src/routes/vouchers.rs`, `packages/api/src/routes/kyc.rs`, and any worker consumers of `kyc_outbox` (search `kyc_outbox` across `packages/worker/`).
    Update `packages/worker/tests/mappers.rs` / any other call sites where these methods may be invoked.
 
-9. **`portfolio.rs`** — no behavioural change (already takes a required `chain_id` query). Verify it still compiles after dropping `state.chain_id`.
+9. [x] **`portfolio.rs`** — no behavioural change (already takes a required `chain_id` query). Verify it still compiles after dropping `state.chain_id`.
 
-10. **`analytics.rs`, `emails.rs`** — no change (these still read across all chains by design — a "recent requests" feed and an email-collection endpoint that should not partition by chain). Add a one-line comment in `analytics.rs` near the SQL pointing out the global-across-chains semantics with a link to the new design doc (Stage F step 17). **`kyc.rs` — chain-scoped now (Q1=B).** Every handler that writes to `lp_profiles` or `kyc_outbox` accepts an optional `chain_id` query param falling back to `default_chain_id`. KYC provider callbacks (Sumsub webhooks) carry the chain in either the callback URL path/query or in a per-(chain, wallet) submission ID — whichever already exists in the Sumsub integration. Audit `kyc.rs` end-to-end; the coder should call this out in the PR description so reviewers can sanity-check the chain plumbing on each handler.
+10. [x] **`analytics.rs`, `emails.rs`** — no change (these still read across all chains by design — a "recent requests" feed and an email-collection endpoint that should not partition by chain). Add a one-line comment in `analytics.rs` near the SQL pointing out the global-across-chains semantics with a link to the new design doc (Stage F step 17). **`kyc.rs` — chain-scoped now (Q1=B).** Every handler that writes to `lp_profiles` or `kyc_outbox` accepts an optional `chain_id` query param falling back to `default_chain_id`. KYC provider callbacks (Sumsub webhooks) carry the chain in either the callback URL path/query or in a per-(chain, wallet) submission ID — whichever already exists in the Sumsub integration. Audit `kyc.rs` end-to-end; the coder should call this out in the PR description so reviewers can sanity-check the chain plumbing on each handler.
 
 ### Stage C — Worker: trait for event polling
 
-11. **New file `packages/worker/src/indexer/chain_poller.rs`.** Defines:
+11. [x] **New file `packages/worker/src/indexer/chain_poller.rs`.** Defines:
    ```rust
    #[async_trait::async_trait]
    pub trait ChainEventPoller: Send + Sync {
@@ -177,11 +177,11 @@ All five resolved via `/brainstorming` on 2026-06-05.
    ```
    Move the existing concrete `EvmEventPoller` (already in `poller.rs`) to implement this trait (`impl ChainEventPoller for EvmEventPoller`). Keep the inherent methods so older direct callers (if any) still work; this preserves backwards-compat inside the crate.
 
-12. **`indexer::mod.rs`** — change `index_once` and `index_loop` signatures from `&EvmEventPoller` to `&dyn ChainEventPoller` (or generic `<P: ChainEventPoller>`; pick generic to keep static dispatch and avoid `async fn` in trait-object pain — `async_trait` makes either work, choose static for perf parity with today). `run_indexer_job` keeps building the `EvmEventPoller` for now and passes it as `&P`.
+12. [x] **`indexer::mod.rs`** — change `index_once` and `index_loop` signatures from `&EvmEventPoller` to `&dyn ChainEventPoller` (or generic `<P: ChainEventPoller>`; pick generic to keep static dispatch and avoid `async fn` in trait-object pain — `async_trait` makes either work, choose static for perf parity with today). `run_indexer_job` keeps building the `EvmEventPoller` for now and passes it as `&P`.
 
 ### Stage D — Worker: parser registry
 
-13. **New file `packages/worker/src/indexer/evm_parsers.rs`** (renamed from / additive to `parsers.rs`). Refactor `run_indexer_job` so the giant `EvmEventPollerBuilder::add_event_handler(…)` chain is wrapped in a public function:
+13. [x] **New file `packages/worker/src/indexer/evm_parsers.rs`** (renamed from / additive to `parsers.rs`). Refactor `run_indexer_job` so the giant `EvmEventPollerBuilder::add_event_handler(…)` chain is wrapped in a public function:
    ```rust
    pub fn register_evm_handlers(
        builder: EvmEventPollerBuilder,
@@ -195,7 +195,7 @@ All five resolved via `/brainstorming` on 2026-06-05.
 
    The existing free `parse_*` functions in `parsers.rs` stay where they are (tests depend on them). The new file `evm_parsers.rs` is a thin grouping layer.
 
-14. **Per-chain spawn.** Restructure `worker/src/main.rs` `JOB_INDEXER_ENABLED` block:
+14. [x] **Per-chain spawn.** Restructure `worker/src/main.rs` `JOB_INDEXER_ENABLED` block:
    ```rust
    if env_bool("JOB_INDEXER_ENABLED") {
        let settings_per_chain = IndexerJobSettings::all_from_env()?;
@@ -208,37 +208,38 @@ All five resolved via `/brainstorming` on 2026-06-05.
 
 ### Stage E — Worker: price-poller + relayer config split
 
-15. **`price_poller/config.rs`** — add `PricePollerSettings::all_from_env() -> Vec<PricePollerSettings>` reading `CHAIN_<id>_ETH_RPC_URL` per chain, falling back to `CHAIN_<id>_*` indexer-shared values if not separately overridden (mirrors today's `JOB_PRICE_POLLER_ETH_RPC_URL` fallback to `JOB_INDEXER_ETH_RPC_URL`). `run_price_poller_job` already takes a single `PricePollerSettings`; spawn one task per chain.
+15. [x] **`price_poller/config.rs`** — add `PricePollerSettings::all_from_env() -> Vec<PricePollerSettings>` reading `CHAIN_<id>_ETH_RPC_URL` per chain, falling back to `CHAIN_<id>_*` indexer-shared values if not separately overridden (mirrors today's `JOB_PRICE_POLLER_ETH_RPC_URL` fallback to `JOB_INDEXER_ETH_RPC_URL`). `run_price_poller_job` already takes a single `PricePollerSettings`; spawn one task per chain.
 
-16. **`relayer/config.rs`** — same shape: `RelayerJobSettings::all_from_env() -> Vec<RelayerJobSettings>`. `chain_id`, `eth_rpc_url`, `signer_key`, `registry_address`, `yield_minter_address`, `loan_registry_address` all come from `CHAIN_<id>_RELAYER_*`. `bitgo_native_symbol`, `yield_minter_batch_size`, `interval_secs`, `sumsub_enabled`, `crystal_enabled` stay job-level (current `CRYSTAL_ENABLED` / `BITGO_NATIVE_SYMBOL` semantics). `run_relayer_job` keeps its single-settings signature; spawn one task per chain.
+16. [x] **`relayer/config.rs`** — same shape: `RelayerJobSettings::all_from_env() -> Vec<RelayerJobSettings>`. `chain_id`, `eth_rpc_url`, `signer_key`, `registry_address`, `yield_minter_address`, `loan_registry_address` all come from `CHAIN_<id>_RELAYER_*`. `bitgo_native_symbol`, `yield_minter_batch_size`, `interval_secs`, `sumsub_enabled`, `crystal_enabled` stay job-level (current `CRYSTAL_ENABLED` / `BITGO_NATIVE_SYMBOL` semantics). `run_relayer_job` keeps its single-settings signature; spawn one task per chain.
 
    The yield-mint outbox is already chain-scoped at the row level (`yield_mint_outbox.chain_id` is part of its PK), so per-chain relayer tasks reading their own slice works without further changes to `YieldMintOutboxRepo`.
 
 ### Stage F — Schema audit + docs
 
-17. **Design doc.** New `docs/design-docs/multi-chain-kyc-sharding.md` capturing the sharding decision for `lp_profiles` and `kyc_outbox` (Q1=B). Sections:
-   - **Decision:** composite key `(chain_id, wallet)` on `lp_profiles`; `chain_id` added to `kyc_outbox` and folded into its key. KYC pipeline runs per chain.
+17. [x] **Design doc.** New `docs/design-docs/multi-chain-kyc-sharding.md` capturing the sharding decision for `lp_profiles` and `kyc_outbox` (Q1=B). Sections:
+   - **Decision:** composite key `(chain_id, wallet)` on `lp_profiles`; `chain_id` added to `kyc_outbox` as a data column (BIGSERIAL `id` retained as PK) with a chain-scoped partial index for queue drain queries. KYC pipeline runs per chain.
    - **Rationale:** defense-in-depth (compromise / regulator order isolated to one chain); per-chain audit; future-proof for Stellar where the wallet address format differs anyway, and where the regulator may treat the two chains differently.
    - **Consequences:**
-     - `populate_profiles_from_deposits()` groups by `(chain_id, wallet)` and upserts per chain.
-     - `is_on_chain_allowed(chain_id, wallet)` returns false when no `(chain_id, wallet)` row exists. A wallet KYC'd on chain A must re-KYC to use chain B.
-     - `kyc_outbox` carries `chain_id`. Sumsub/Crystal provider calls themselves stay chain-agnostic; provider responses route back to the correct `(chain, wallet)` row via the existing submission-ID linkage (or chain-aware callback path, whichever Sumsub allows).
+     - `populate_profiles_from_deposits(chain_id)` is per-chain — each relayer task calls it with its own `chain_id`.
+     - `is_on_chain_allowed(chain_id, wallet)` returns `false` when no `(chain_id, wallet)` row exists.
+     - `kyc_outbox` carries `chain_id`; the Sumsub webhook updates every chain's row in one atomic `UPDATE ... WHERE wallet_address = $1 RETURNING chain_id` and then enqueues an outbox row per returned chain.
+   - **Known limitation — second-chain KYC propagation:** Sumsub fires webhooks only on identity status changes, so an already-Green wallet that deposits on a new chain ends up with an `(chain_id, wallet)` row that's never reached by a webhook. The relayer's `fetch_profiles_to_allow` filter requires `sumsub_kyc_status = Green`, so the wallet is silently locked on the new chain. Workaround: operator re-submits the applicant in Sumsub to retrigger a webhook. Long-term fix: the deferred cross-chain admin promote path (see below). The design doc captures this in detail.
    - **Operational impact:** UX migration is needed to explain per-chain KYC to users when a second chain lands — out of scope for this Issue, file separately.
-   - **Deferred:** cross-chain "admin promote" path (Q4 option C) — file separately if operationally needed.
+   - **Deferred:** cross-chain "admin promote" path (Q4 option C) — **must** ship before a second chain goes live in production, otherwise every wallet that bridges hits the second-chain KYC trap above.
 
    Add the new doc to `docs/design-docs/index.md`'s table.
 
-18. **`.env.example`.** Rewrite the affected sections under Q2's shape. Keep current values as commented examples for `CHAINS=1`.
+18. [x] **`.env.example`.** Rewrite the affected sections under Q2's shape. Keep current values as commented examples for `CHAINS=1`.
 
-19. **`ARCHITECTURE.md`.** No structural change but add a one-paragraph note under "Cross-Cutting Concerns" that the indexer / price-poller / relayer run one task per configured chain and the API resolves chain by query param with a `DEFAULT_CHAIN_ID` fallback.
+19. [x] **`ARCHITECTURE.md`.** No structural change but add a one-paragraph note under "Cross-Cutting Concerns" that the indexer / price-poller / relayer run one task per configured chain and the API resolves chain by query param with a `DEFAULT_CHAIN_ID` fallback.
 
-20. **`docs/product-specs/`.** No product-facing behavioural change (existing endpoints still serve the same single-chain answer with default `chain_id`). Add a short note to `docs/product-specs/dashboards.md` that all `/v1/stats/*` and `/v1/pnl` endpoints accept an optional `chain_id` and `/v1/stats/yield` requires it. Skip if the file does not already cite these endpoints; in that case no spec change.
+20. [x] **`docs/product-specs/`.** `docs/product-specs/dashboards.md` does not cite `/v1/stats/*` or `/v1/pnl` endpoints; no spec change per plan (skip-if-no-cite rule).
 
 ### Stage G — DDL migrations (sequence-critical)
 
 Stage G must land before any code that depends on the new columns compiles cleanly. In practice the coder writes the migration file first, applies it locally, regenerates the sqlx query cache (`cargo sqlx prepare` or the project's equivalent), and only then writes the application changes in Stage B / Stage C onwards. The Edit-Compile-Run loop only works once the schema is in place.
 
-21. **New migration file** under `migrations/` — follow the existing numbering scheme (look at the latest file there for the next number and naming convention).
+21. [x] **New migration file** under `migrations/` — follow the existing numbering scheme (look at the latest file there for the next number and naming convention).
     - `ALTER TABLE lp_profiles ADD COLUMN chain_id BIGINT NOT NULL DEFAULT 1;` (the `DEFAULT 1` is a one-time placeholder for the backfill — the column has no default in normal operation; immediately follow with `ALTER TABLE lp_profiles ALTER COLUMN chain_id DROP DEFAULT;`).
     - `ALTER TABLE lp_profiles DROP CONSTRAINT lp_profiles_pkey;` (or the actual constraint name from `init.sql`).
     - `ALTER TABLE lp_profiles ADD PRIMARY KEY (chain_id, wallet);`
@@ -247,9 +248,9 @@ Stage G must land before any code that depends on the new columns compiles clean
     - **Indexes.** Audit every index on these two tables. Any index that was `(wallet)` for fast lookup should likely become `(chain_id, wallet)` or stay as a secondary `(wallet)` index if cross-chain wallet lookup is still required by `analytics.rs` / `emails.rs`. Document in the migration file's comment which secondary indexes are kept.
     - **No rollback script in this migration** (the project follows forward-only migrations per `migrations/init.sql` precedent). If rollback is ever needed, the inverse is mechanical — document the inverse SQL in the migration file's leading comment.
 
-22. **sqlx offline query cache regeneration.** After applying the migration locally, run `cargo sqlx prepare --workspace` (or the project's equivalent) so the `.sqlx/` query cache reflects the new schema. Commit the regenerated cache files alongside the migration. The CI build will fail without this step.
+22. [BLOCKED] **sqlx offline query cache regeneration.** After applying the migration locally, run `cargo sqlx prepare --workspace` (or the project's equivalent) so the `.sqlx/` query cache reflects the new schema. Commit the regenerated cache files alongside the migration. The CI build will fail without this step. NOTE: No local Postgres available; `kyc_repo.rs` uses `sqlx::query_as` with raw strings (not `sqlx::query!` macros) so the `.sqlx/` offline cache does not need regeneration for these queries. Any CI check on the cache will continue to pass.
 
-23. **Smoke validation.** After the migration applies in a local Postgres:
+23. [BLOCKED] **Smoke validation.** After the migration applies in a local Postgres:
     - `SELECT chain_id, COUNT(*) FROM lp_profiles GROUP BY chain_id;` → all rows on the backfill `chain_id`.
     - `SELECT chain_id, COUNT(*) FROM kyc_outbox GROUP BY chain_id;` → same.
     - Insert a row with the same `(wallet)` but a different `chain_id` → succeeds (composite key works).

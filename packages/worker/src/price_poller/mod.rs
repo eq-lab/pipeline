@@ -164,6 +164,16 @@ async fn fetch_price_and_timestamp(
         .block(BlockNumberOrTag::Number(block).into())
         .await?;
 
+    // `convertToAssets` should return a single abi-encoded `uint256` (32 bytes).
+    // If the call returns fewer bytes — vault not deployed yet at the queried block,
+    // reverted call, or a non-contract address — fail with a useful error instead
+    // of panicking on `result.len() - 32` underflow.
+    if result.len() < 32 {
+        anyhow::bail!(
+            "convertToAssets returned {} bytes (expected ≥32) for vault {vault} at block {block}; vault may not exist at this block",
+            result.len()
+        );
+    }
     let assets = U256::from_be_slice(&result[result.len() - 32..]);
 
     let block_info = provider

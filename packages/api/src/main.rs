@@ -1,10 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use alloy::signers::local::PrivateKeySigner;
 use axum::Router;
+use pipeline_api::config::ChainsConfig;
 use pipeline_api::AppState;
 use shared::contract_logs_repo::ContractLogsRepo;
-use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
@@ -41,56 +41,23 @@ async fn main() -> anyhow::Result<()> {
     let position_repo = PositionRepo::new(pool.clone());
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
 
-    let chain_id: i64 = std::env::var("API_CHAIN_ID")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1);
+    // Parse multi-chain config (CHAINS, DEFAULT_CHAIN_ID, per-chain signer keys).
+    let chains_config = ChainsConfig::from_env()?;
 
     let (sumsub_client, sumsub_settings) = match sumsub {
         Some((client, settings)) => (Some(client), Some(settings)),
         None => (None, None),
     };
 
-    // Voucher signing config (optional — endpoints return 503 if not configured)
-    let (voucher_signer, dm_domain, wq_domain) = if let Ok(key) = std::env::var("API_SIGNER_KEY") {
-        let signer: PrivateKeySigner = key
-            .parse()
-            .expect("API_SIGNER_KEY must be a valid private key");
-        tracing::info!(address = %signer.address(), "voucher signer loaded");
-
-        let chain_id: u64 = std::env::var("API_CHAIN_ID")
-            .expect("API_CHAIN_ID required when API_SIGNER_KEY is set")
-            .parse()
-            .expect("API_CHAIN_ID must be a valid integer");
-
-        let dm_addr = std::env::var("API_DM_ADDRESS")
-            .expect("API_DM_ADDRESS required when API_SIGNER_KEY is set")
-            .parse()
-            .expect("API_DM_ADDRESS must be a valid address");
-
-        let wq_addr = std::env::var("API_WQ_ADDRESS")
-            .expect("API_WQ_ADDRESS required when API_SIGNER_KEY is set")
-            .parse()
-            .expect("API_WQ_ADDRESS must be a valid address");
-
-        let dm_domain = Eip712Domain {
-            name: "PipelineDepositManager".to_owned(),
-            version: "v1".to_owned(),
-            chain_id,
-            verifying_contract: dm_addr,
-        };
-        let wq_domain = Eip712Domain {
-            name: "PipelineWithdrawalQueue".to_owned(),
-            version: "v1".to_owned(),
-            chain_id,
-            verifying_contract: wq_addr,
-        };
-
-        (Some(signer), Some(dm_domain), Some(wq_domain))
-    } else {
-        tracing::warn!("API_SIGNER_KEY not set, voucher endpoints will return 503");
-        (None, None, None)
-    };
+    // Decompose per-chain voucher config into separate maps for AppState.
+    let mut voucher_signers = HashMap::new();
+    let mut dm_domains = HashMap::new();
+    let mut wq_domains = HashMap::new();
+    for (chain_id, vcfg) in chains_config.voucher {
+        voucher_signers.insert(chain_id, vcfg.signer);
+        dm_domains.insert(chain_id, vcfg.dm_domain);
+        wq_domains.insert(chain_id, vcfg.wq_domain);
+    }
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -101,12 +68,12 @@ async fn main() -> anyhow::Result<()> {
         kyc_repo,
         position_repo,
         contract_logs_repo,
-        chain_id,
+        default_chain_id: chains_config.default_chain_id,
         sumsub_client,
         sumsub_settings,
-        voucher_signer,
-        dm_domain,
-        wq_domain,
+        voucher_signers,
+        dm_domains,
+        wq_domains,
         crystal_enabled,
     });
 

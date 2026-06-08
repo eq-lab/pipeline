@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod common;
 pub mod emails;
 pub mod kyc;
 pub mod pnl;

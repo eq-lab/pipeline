@@ -25,9 +25,16 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
     if env_bool("JOB_INDEXER_ENABLED") {
-        let settings = IndexerJobSettings::from_env()?;
-        tracing::info!(chain_id = settings.chain_id, "indexer job started");
-        tokio::spawn(run_indexer_job(settings, pool.clone()));
+        let settings_per_chain = IndexerJobSettings::all_from_env()?;
+        for s in settings_per_chain {
+            tracing::info!(chain_id = s.chain_id, "indexer job started");
+            let pool = pool.clone();
+            tokio::spawn(async move {
+                if let Err(e) = run_indexer_job(s, pool).await {
+                    tracing::error!("indexer job exited with error: {e:?}");
+                }
+            });
+        }
     }
 
     if env_bool("JOB_KYC_ENABLED") {
@@ -45,25 +52,30 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if env_bool("JOB_PRICE_POLLER_ENABLED") {
-        let settings = PricePollerSettings::from_env()?;
+        let settings_per_chain = PricePollerSettings::all_from_env()?;
         let position_repo = Arc::new(PositionRepo::new(pool.clone()));
 
-        tracing::info!("price poller job started");
-        tokio::spawn(async move {
-            run_price_poller_job(settings, position_repo).await;
-        });
+        for s in settings_per_chain {
+            tracing::info!(chain_id = s.chain_id, "price poller job started");
+            let repo = position_repo.clone();
+            tokio::spawn(async move {
+                run_price_poller_job(s, repo).await;
+            });
+        }
     }
 
     if env_bool("JOB_RELAYER_ENABLED") {
-        let settings = RelayerJobSettings::from_env()?;
-        let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+        let settings_per_chain = RelayerJobSettings::all_from_env()?;
 
-        tracing::info!("relayer job started");
-        tokio::spawn(async move {
-            if let Err(e) = run_relayer_job(settings, kyc_repo).await {
-                tracing::error!("relayer job exited with error: {e:?}");
-            }
-        });
+        for s in settings_per_chain {
+            tracing::info!(chain_id = s.chain_id, "relayer job started");
+            let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+            tokio::spawn(async move {
+                if let Err(e) = run_relayer_job(s, kyc_repo).await {
+                    tracing::error!("relayer job exited with error: {e:?}");
+                }
+            });
+        }
     }
 
     tokio::signal::ctrl_c().await?;

@@ -2,6 +2,8 @@ use std::env;
 
 use anyhow::{Context, Result};
 
+pub use shared::chains::parse_chains_env;
+
 pub struct IndexerJobSettings {
     pub eth_rpc_url: String,
     pub chain_id: i64,
@@ -18,26 +20,36 @@ pub struct IndexerJobSettings {
 }
 
 impl IndexerJobSettings {
-    pub fn from_env() -> Result<Self> {
-        let prefix = "JOB_INDEXER_";
+    /// Parse indexer settings for a single chain using `CHAIN_<id>_*` env vars.
+    pub fn from_chain_env(chain_id: i64) -> Result<Self> {
+        let p = format!("CHAIN_{chain_id}_");
 
         Ok(Self {
-            eth_rpc_url: env_require(&format!("{prefix}ETH_RPC_URL"))?,
-            chain_id: env_require(&format!("{prefix}CHAIN_ID"))?
-                .parse()
-                .context("CHAIN_ID must be an integer")?,
-            start_block: env_parse(&format!("{prefix}START_BLOCK"), 0)?,
-            dm_contracts: env_csv_require(&format!("{prefix}DM_CONTRACTS"))?,
-            wq_contracts: env_csv_require(&format!("{prefix}WQ_CONTRACTS"))?,
-            splusd_contracts: env_csv_require(&format!("{prefix}SPLUSD_CONTRACTS"))?,
-            loan_registry_contracts: env_csv_require(&format!("{prefix}LOAN_REGISTRY_CONTRACTS"))?,
-            yield_minter_contracts: env_csv_require(&format!("{prefix}YIELD_MINTER_CONTRACTS"))?,
-            polling_block_range: env_parse(&format!("{prefix}POLLING_BLOCK_RANGE"), 1000)?,
-            polling_interval_ms: env_parse(&format!("{prefix}POLLING_INTERVAL_MS"), 500)?,
-            log_confirmations_delay: env_parse(&format!("{prefix}LOG_CONFIRMATIONS_DELAY"), 12)?,
-            ipfs_gateway_url: env::var(format!("{prefix}IPFS_GATEWAY_URL"))
+            eth_rpc_url: env_require(&format!("{p}ETH_RPC_URL"))?,
+            chain_id,
+            start_block: env_parse(&format!("{p}START_BLOCK"), 0)?,
+            dm_contracts: env_csv_require(&format!("{p}DM_CONTRACTS"))?,
+            wq_contracts: env_csv_require(&format!("{p}WQ_CONTRACTS"))?,
+            splusd_contracts: env_csv_require(&format!("{p}SPLUSD_CONTRACTS"))?,
+            loan_registry_contracts: env_csv_require(&format!("{p}LOAN_REGISTRY_CONTRACTS"))?,
+            yield_minter_contracts: env_csv_require(&format!("{p}YIELD_MINTER_CONTRACTS"))?,
+            polling_block_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
+            polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
+            log_confirmations_delay: env_parse("JOB_INDEXER_LOG_CONFIRMATIONS_DELAY", 12)?,
+            ipfs_gateway_url: env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
                 .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned()),
         })
+    }
+
+    /// Parse per-chain indexer settings for every chain in `CHAINS`.
+    /// Returns a `Vec<IndexerJobSettings>` — one entry per configured chain.
+    /// Single-chain installs declare `CHAINS=1` and get one entry.
+    pub fn all_from_env() -> Result<Vec<Self>> {
+        let chain_ids = parse_chains_env()?;
+        chain_ids
+            .into_iter()
+            .map(IndexerJobSettings::from_chain_env)
+            .collect()
     }
 }
 

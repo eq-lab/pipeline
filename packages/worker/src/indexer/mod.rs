@@ -1,4 +1,6 @@
+pub mod chain_poller;
 pub mod config;
+pub mod evm_parsers;
 pub mod loan_mapper;
 pub mod loan_metadata;
 pub mod loan_registry_reader;
@@ -17,33 +19,29 @@ use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, metadata_fetcher::MetadataFetcher,
 };
 
+use chain_poller::ChainEventPoller;
 use config::IndexerJobSettings;
-use loan_mapper::LoanEventMapper;
+use evm_parsers::register_evm_handlers;
 use loan_metadata::{
     HttpLoanMetadataFetcher, ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver,
 };
 use loan_registry_reader::LoanRegistryReader;
-use mappers::ContractLogMapper;
-use parsers::{
-    parse_deposit_requested, parse_economics_amended, parse_loan_ccr_updated, parse_loan_closed,
-    parse_loan_defaulted, parse_loan_drawn, parse_loan_location_updated, parse_loan_rolled_over,
-    parse_loan_status_updated, parse_payment_recorded, parse_request_claimed,
-    parse_staking_deposit, parse_staking_withdraw, parse_withdrawal_requested, parse_yield_minted,
-};
 use poller::EvmEventPollerBuilder;
 
-pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
+pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Result<()> {
     let repo = Arc::new(EventRepo::new(pool.clone()));
     let chain_id = settings.chain_id;
 
-    // Seed cursor from START_BLOCK if no existing state
+    // Seed cursor from START_BLOCK if no existing state.
+    // A transient DB hiccup at this exact moment used to panic the spawned task
+    // silently (tokio::spawn discards panics); propagate as Err instead so the
+    // spawn site in worker/main.rs can log + the operator sees what happened.
     if settings.start_block > 0 {
         let current = repo.get_cursor(chain_id).await.unwrap_or(0);
         if current == 0 {
-            let mut conn = repo.pool.acquire().await.expect("acquire connection");
+            let mut conn = repo.pool.acquire().await?;
             repo.set_cursor(&mut conn, chain_id, settings.start_block)
-                .await
-                .expect("seed cursor");
+                .await?;
             tracing::info!(
                 start_block = settings.start_block,
                 "seeded cursor from START_BLOCK"
@@ -81,12 +79,6 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         .filter_map(|a| a.parse().ok())
         .collect();
 
-    let dm_repo = repo.clone();
-    let wq_repo = repo.clone();
-    let splusd_repo = repo.clone();
-    let loan_event_repo = repo.clone();
-    let yield_minter_repo = repo.clone();
-
     // Shared deps for loan mappers.
     // `LoanRegistryReader` implements all three resolver traits; we upcast to trait objects.
     let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
@@ -100,68 +92,32 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
     let immutable_resolver: Arc<dyn ImmutableDataResolver> = reader.clone();
     let mutable_resolver: Arc<dyn MutableDataResolver> = reader.clone();
 
-    let poller = EvmEventPollerBuilder::new(
+    let base_builder = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,
         settings.polling_block_range,
         settings.polling_interval_ms,
+    );
+
+    let poller = register_evm_handlers(
+        base_builder,
+        chain_id,
+        evm_parsers::EvmContractAddresses {
+            dm_contracts,
+            wq_contracts,
+            splusd_contracts,
+            loan_registry_contracts,
+            yield_minter_contracts,
+        },
+        evm_parsers::EvmRepos {
+            repo: repo.clone(),
+            contract_logs_repo,
+        },
+        evm_parsers::EvmLoanDeps {
+            fetcher,
+            immutable_resolver,
+            mutable_resolver,
+        },
     )
-    .add_event_handler(dm_contracts, move |log| {
-        parse_deposit_requested(log)
-            .or_else(|| parse_request_claimed(log))
-            .map(|ev| {
-                Box::new(ContractLogMapper::new(ev, chain_id, dm_repo.clone()))
-                    as Box<dyn shared::log_mapper::LogMapper>
-            })
-    })
-    .add_event_handler(wq_contracts, move |log| {
-        parse_withdrawal_requested(log)
-            .or_else(|| parse_request_claimed(log))
-            .map(|ev| {
-                Box::new(ContractLogMapper::new(ev, chain_id, wq_repo.clone()))
-                    as Box<dyn shared::log_mapper::LogMapper>
-            })
-    })
-    .add_event_handler(splusd_contracts, move |log| {
-        parse_staking_deposit(log)
-            .or_else(|| parse_staking_withdraw(log))
-            .map(|ev| {
-                Box::new(
-                    ContractLogMapper::new(ev, chain_id, splusd_repo.clone())
-                        .with_position_tracking(),
-                ) as Box<dyn shared::log_mapper::LogMapper>
-            })
-    })
-    .add_event_handler(loan_registry_contracts, move |log| {
-        parse_loan_drawn(log)
-            .or_else(|| parse_loan_defaulted(log))
-            .or_else(|| parse_loan_closed(log))
-            .or_else(|| parse_payment_recorded(log))
-            .or_else(|| parse_loan_status_updated(log))
-            .or_else(|| parse_loan_ccr_updated(log))
-            .or_else(|| parse_loan_location_updated(log))
-            .or_else(|| parse_loan_rolled_over(log))
-            .or_else(|| parse_economics_amended(log))
-            .map(|ev| -> Box<dyn shared::log_mapper::LogMapper> {
-                Box::new(LoanEventMapper::new(
-                    ev,
-                    chain_id,
-                    loan_event_repo.clone(),
-                    contract_logs_repo.clone(),
-                    fetcher.clone(),
-                    immutable_resolver.clone(),
-                    mutable_resolver.clone(),
-                ))
-            })
-    })
-    .add_event_handler(yield_minter_contracts, move |log| {
-        parse_yield_minted(log).map(|ev| {
-            Box::new(ContractLogMapper::new(
-                ev,
-                chain_id,
-                yield_minter_repo.clone(),
-            )) as Box<dyn shared::log_mapper::LogMapper>
-        })
-    })
     .build();
 
     index_loop(
@@ -174,16 +130,20 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) {
         &poller,
     )
     .await;
+
+    // `index_loop` never returns under normal operation (infinite poll loop);
+    // this is reachable only if the loop is ever made to exit.
+    Ok(())
 }
 
-async fn index_loop(
+async fn index_loop<P: ChainEventPoller>(
     job_name: &str,
     chain_id: i64,
     block_range: u64,
     confirmations_delay: u64,
     polling_interval_ms: u64,
     repo: &EventRepo,
-    poller: &poller::EvmEventPoller,
+    poller: &P,
 ) {
     loop {
         let span = tracing::info_span!("index_once", job = %job_name);
@@ -202,12 +162,12 @@ async fn index_loop(
     }
 }
 
-async fn index_once(
+async fn index_once<P: ChainEventPoller>(
     chain_id: i64,
     block_range: u64,
     confirmations_delay: u64,
     repo: &EventRepo,
-    poller: &poller::EvmEventPoller,
+    poller: &P,
 ) -> Result<()> {
     let cursor = repo.get_cursor(chain_id).await?;
     let latest = poller.get_latest_block().await?;

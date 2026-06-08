@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use alloy::primitives::{Address, U256};
+use alloy::signers::local::PrivateKeySigner;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -9,6 +10,9 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use shared::eip712::Eip712Domain;
+
+use crate::routes::common::resolve_chain;
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -30,6 +34,8 @@ pub struct VouchersDoc;
 #[derive(Deserialize, ToSchema)]
 pub struct WalletQuery {
     pub wallet: String,
+    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
+    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -40,15 +46,52 @@ pub struct VoucherResponse {
     pub signature: String,
 }
 
+/// Error returned when voucher signing resolution fails.
+#[derive(Debug)]
+pub enum VoucherError {
+    /// The chain has no signer configured.
+    ChainNotConfigured(i64),
+}
+
+/// Resolve voucher signing config for the given chain_id.
+/// Returns `Ok((&signer, &dm_domain))` when the chain has a signer configured.
+/// Returns `Err(VoucherError::ChainNotConfigured(chain_id))` when the chain has no signer.
+///
+/// This is a pure function (no DB access) testable without a database connection.
+pub fn resolve_voucher_signing(
+    state: &AppState,
+    chain_id: i64,
+    use_dm: bool,
+) -> Result<(&PrivateKeySigner, &Eip712Domain), VoucherError> {
+    let signer = state
+        .voucher_signers
+        .get(&chain_id)
+        .ok_or(VoucherError::ChainNotConfigured(chain_id))?;
+    let domain = if use_dm {
+        state
+            .dm_domains
+            .get(&chain_id)
+            .ok_or(VoucherError::ChainNotConfigured(chain_id))?
+    } else {
+        state
+            .wq_domains
+            .get(&chain_id)
+            .ok_or(VoucherError::ChainNotConfigured(chain_id))?
+    };
+    Ok((signer, domain))
+}
+
 #[utoipa::path(
     get,
     path = "/v1/deposits/{request_id}/voucher",
     params(
         ("request_id" = String, Path, description = "Deposit request ID"),
         ("wallet" = String, Query, description = "Wallet address"),
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
     ),
     responses(
         (status = 200, description = "Voucher with signature", body = VoucherResponse),
+        (status = 400, description = "Voucher signing not configured for the requested chain"),
         (status = 404, description = "Deposit request not found"),
         (status = 403, description = "KYT screening not passed or profile not allowed"),
         (status = 409, description = "Already claimed"),
@@ -60,19 +103,24 @@ async fn deposit_voucher(
     Path(request_id): Path<String>,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let (Some(signer), Some(domain)) = (&state.voucher_signer, &state.dm_domain) else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error": "voucher signing not configured"})),
-        )
-            .into_response();
+    let chain_id = resolve_chain(&state, query.chain_id);
+
+    let (signer, domain) = match resolve_voucher_signing(&state, chain_id, true) {
+        Ok(pair) => pair,
+        Err(VoucherError::ChainNotConfigured(cid)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("voucher signing not configured for chain {cid}")})),
+            )
+                .into_response();
+        }
     };
 
     let wallet = query.wallet.to_lowercase();
 
     let req = match state
         .kyc_repo
-        .get_deposit_request(&request_id, &wallet)
+        .get_deposit_request(chain_id, &request_id, &wallet)
         .await
     {
         Ok(Some(r)) => r,
@@ -102,8 +150,8 @@ async fn deposit_voucher(
             .into_response();
     }
 
-    // Check profile is on-chain allowed
-    match state.kyc_repo.is_on_chain_allowed(&wallet).await {
+    // Check profile is on-chain allowed for this chain
+    match state.kyc_repo.is_on_chain_allowed(chain_id, &wallet).await {
         Ok(true) => {}
         Ok(false) => {
             return (
@@ -126,7 +174,7 @@ async fn deposit_voucher(
     let dm_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id, &dm_address)
+        .is_request_claimed(chain_id, "RequestClaimed", &request_id, &dm_address)
         .await
     {
         Ok(true) => {
@@ -205,9 +253,11 @@ async fn deposit_voucher(
     params(
         ("request_id" = String, Path, description = "Withdrawal request ID"),
         ("wallet" = String, Query, description = "Wallet address"),
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
     ),
     responses(
         (status = 200, description = "Voucher with signature", body = VoucherResponse),
+        (status = 400, description = "Voucher signing not configured for the requested chain"),
         (status = 404, description = "Withdrawal request not found"),
         (status = 403, description = "KYT screening not passed"),
         (status = 409, description = "Already claimed"),
@@ -219,19 +269,24 @@ async fn withdrawal_voucher(
     Path(request_id): Path<String>,
     Query(query): Query<WalletQuery>,
 ) -> impl IntoResponse {
-    let (Some(signer), Some(domain)) = (&state.voucher_signer, &state.wq_domain) else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({"error": "voucher signing not configured"})),
-        )
-            .into_response();
+    let chain_id = resolve_chain(&state, query.chain_id);
+
+    let (signer, domain) = match resolve_voucher_signing(&state, chain_id, false) {
+        Ok(pair) => pair,
+        Err(VoucherError::ChainNotConfigured(cid)) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("voucher signing not configured for chain {cid}")})),
+            )
+                .into_response();
+        }
     };
 
     let wallet = query.wallet.to_lowercase();
 
     let req = match state
         .kyc_repo
-        .get_withdrawal_request(&request_id, &wallet)
+        .get_withdrawal_request(chain_id, &request_id, &wallet)
         .await
     {
         Ok(Some(r)) => r,
@@ -264,7 +319,7 @@ async fn withdrawal_voucher(
     let wq_address = domain.verifying_contract.to_checksum(None);
     match state
         .kyc_repo
-        .is_request_claimed("RequestClaimed", &request_id, &wq_address)
+        .is_request_claimed(chain_id, "RequestClaimed", &request_id, &wq_address)
         .await
     {
         Ok(true) => {

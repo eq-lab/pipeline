@@ -117,6 +117,8 @@ frontend (TypeScript)
 | Audit logging | worker (append-only, mirrored to third-party log sink) |
 | Notifications | worker (email + optional Telegram/Slack webhook) |
 
+**Per-chain task model.** The worker spawns one independent tokio task per configured chain for each enabled job (indexer, price-poller, relayer). Chains are listed in the `CHAINS` environment variable (comma-separated chain IDs); each chain is configured via `CHAIN_<id>_*` prefixed variables. A single-chain deployment sets `CHAINS=1` and is operationally identical to the previous design. The API resolves chain by an optional `chain_id` query parameter on every route, falling back to `DEFAULT_CHAIN_ID` when the parameter is absent. KYC and whitelist state (`lp_profiles`, `kyc_outbox`) is sharded by `chain_id` so that regulatory actions and KYC status on one chain do not affect other chains. See `docs/design-docs/multi-chain-kyc-sharding.md` for the rationale.
+
 ## Deployment Targets
 
 | Service | Target |

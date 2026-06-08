@@ -93,7 +93,7 @@ impl ContractLogsRepo {
                  chain_id,
                  (params->>'loan_id')::numeric AS loan_id,
                  block_number,
-                 log_index,
+                 log_index::bigint AS log_index,
                  event_name,
                  block_timestamp,
                  params->'snapshot' AS snapshot
@@ -158,7 +158,7 @@ impl ContractLogsRepo {
                  chain_id,
                  (params->>'loan_id')::numeric AS loan_id,
                  block_number,
-                 log_index,
+                 log_index::bigint AS log_index,
                  event_name,
                  block_timestamp,
                  params->'snapshot' AS snapshot

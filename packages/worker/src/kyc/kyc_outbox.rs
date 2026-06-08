@@ -72,6 +72,7 @@ async fn process_record(
 
     if let Some(info) = &applicant.info {
         kyc_repo.update_lp_info(
+            record.chain_id,
             &record.wallet_address,
             info.first_name.as_deref(),
             info.last_name.as_deref(),
