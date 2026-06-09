@@ -12,14 +12,17 @@ const BATCH_SIZE: i64 = 100;
 ///
 /// Sub-task 2a: one-time address screening for new profiles.
 /// Sub-task 2b: deposit transaction screening + withdrawal address screening.
-pub async fn phase_check_crystal(crystal: &CrystalClient, kyc_repo: &KycRepo) {
-    screen_addresses(crystal, kyc_repo).await;
+pub async fn phase_check_crystal(crystal: &CrystalClient, kyc_repo: &KycRepo, chain_id: i64) {
+    screen_addresses(crystal, kyc_repo, chain_id).await;
     screen_events(crystal, kyc_repo).await;
 }
 
-/// 2a: Screen addresses that have never been checked by Crystal.
-async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
-    let profiles = match kyc_repo.fetch_unscreened_profiles(BATCH_SIZE).await {
+/// 2a: Screen addresses that have never been checked by Crystal (for the given chain).
+async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo, chain_id: i64) {
+    let profiles = match kyc_repo
+        .fetch_unscreened_profiles(chain_id, BATCH_SIZE)
+        .await
+    {
         Ok(p) => p,
         Err(e) => {
             tracing::error!(error = %e, "failed to fetch unscreened profiles");
@@ -66,7 +69,13 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
         let screened_at = Utc::now();
 
         if let Err(e) = kyc_repo
-            .set_crystal_address_risk(&profile.wallet_address, risk, &signals_json, screened_at)
+            .set_crystal_address_risk(
+                chain_id,
+                &profile.wallet_address,
+                risk,
+                &signals_json,
+                screened_at,
+            )
             .await
         {
             tracing::error!(wallet = profile.wallet_address, error = %e, "failed to store Crystal address risk");
@@ -81,7 +90,7 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
                 "Crystal address screening failed — marking profile"
             );
             if let Err(e) = kyc_repo
-                .set_profile_kyt_failed(&profile.wallet_address)
+                .set_profile_kyt_failed(chain_id, &profile.wallet_address)
                 .await
             {
                 tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile crystal_kyt_status");
@@ -93,7 +102,7 @@ async fn screen_addresses(crystal: &CrystalClient, kyc_repo: &KycRepo) {
                 "Crystal address screening passed"
             );
             if let Err(e) = kyc_repo
-                .set_profile_kyt_clear(&profile.wallet_address)
+                .set_profile_kyt_clear(chain_id, &profile.wallet_address)
                 .await
             {
                 tracing::error!(wallet = profile.wallet_address, error = %e, "failed to set profile crystal_kyt_status");
@@ -136,6 +145,7 @@ async fn screen_single_event(
     kyc_repo: &KycRepo,
     transfer: &UnverifiedTransfer,
 ) -> anyhow::Result<()> {
+    let chain_id = transfer.chain_id;
     let sender = transfer.sender.as_deref().ok_or_else(|| {
         anyhow::anyhow!(
             "{} {} has no sender address",
@@ -183,7 +193,7 @@ async fn screen_single_event(
                 tx_risk = tx_risk,
                 "Crystal deposit screening failed — marking sender profile"
             );
-            if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
+            if let Err(e) = kyc_repo.set_profile_kyt_failed(chain_id, sender).await {
                 tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }
@@ -221,7 +231,7 @@ async fn screen_single_event(
                 sender = sender,
                 "Crystal withdrawal address screening failed — marking profile"
             );
-            if let Err(e) = kyc_repo.set_profile_kyt_failed(sender).await {
+            if let Err(e) = kyc_repo.set_profile_kyt_failed(chain_id, sender).await {
                 tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }

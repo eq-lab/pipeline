@@ -11,6 +11,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
+use crate::routes::common::resolve_chain;
 use crate::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -30,6 +31,8 @@ pub struct PnlDoc;
 #[derive(Deserialize, ToSchema)]
 pub struct PnlQuery {
     pub wallet: String,
+    /// Chain ID (optional — defaults to DEFAULT_CHAIN_ID).
+    pub chain_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -60,6 +63,7 @@ pub struct PnlResponse {
     path = "/v1/pnl",
     params(
         ("wallet" = String, Query, description = "Wallet address"),
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
     ),
     responses(
         (status = 200, description = "Staking PnL for the wallet", body = PnlResponse),
@@ -72,8 +76,9 @@ async fn get_pnl(
     Query(query): Query<PnlQuery>,
 ) -> impl IntoResponse {
     let wallet = query.wallet.to_lowercase();
+    let chain_id = resolve_chain(&state, query.chain_id);
 
-    match compute_pnl(&state, &wallet).await {
+    match compute_pnl(&state, &wallet, chain_id).await {
         Ok(response) => Json(response).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to compute PnL");
@@ -86,8 +91,7 @@ async fn get_pnl(
     }
 }
 
-async fn compute_pnl(state: &AppState, wallet: &str) -> anyhow::Result<PnlResponse> {
-    let chain_id = state.chain_id;
+async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::Result<PnlResponse> {
     let summaries = state
         .position_repo
         .get_position_summaries(chain_id, wallet)

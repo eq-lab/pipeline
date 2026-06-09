@@ -26,3 +26,4 @@ What this enables and what it constrains.
 | [split-rail-architecture.md](./split-rail-architecture.md) | Cash rail vs token rail separation | ✅ Current |
 | [relayer-security-model.md](./relayer-security-model.md) | Relayer MPC permission scoping | ✅ Current |
 | [whitelist-enforcement-model.md](./whitelist-enforcement-model.md) | PLUSD transfer restriction design | ✅ Current |
+| [multi-chain-kyc-sharding.md](./multi-chain-kyc-sharding.md) | Per-chain sharding of `lp_profiles` and `kyc_outbox` | ✅ Current |

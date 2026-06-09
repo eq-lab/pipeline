@@ -78,6 +78,7 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
     let outbox = Arc::new(YieldMintOutboxRepo::new(kyc_repo.pool.clone()));
 
     tracing::info!(
+        chain_id = settings.chain_id,
         interval_secs = settings.interval_secs,
         registry = %settings.registry_address,
         sumsub_enabled = settings.sumsub_enabled,
@@ -86,11 +87,14 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
         "relayer job running"
     );
 
+    let chain_id = settings.chain_id;
+
     loop {
-        // Phase 0: Auto-populate lp_profiles from DepositRequested events
-        match kyc_repo.populate_profiles_from_deposits().await {
+        // Phase 0: Auto-populate lp_profiles from DepositRequested events for this chain
+        match kyc_repo.populate_profiles_from_deposits(chain_id).await {
             Ok(n) if n > 0 => {
                 tracing::info!(
+                    chain_id,
                     count = n,
                     "created new profiles from DepositRequested events"
                 );
@@ -106,15 +110,16 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
             phase_check_sumsub().await;
         }
 
-        // Phase 2: Crystal Intelligence KYT/AML risk screening
+        // Phase 2: Crystal Intelligence KYT/AML risk screening (chain-scoped)
         if let Some(ref crystal) = crystal_client {
-            phase_check_crystal(crystal, &kyc_repo).await;
+            phase_check_crystal(crystal, &kyc_repo, chain_id).await;
         }
 
-        // Phase 3: Sync whitelist to on-chain registry
+        // Phase 3: Sync whitelist to on-chain registry (chain-scoped)
         phase_sync_whitelist(
             &registry,
             &kyc_repo,
+            chain_id,
             settings.sumsub_enabled,
             settings.crystal_enabled,
         )
