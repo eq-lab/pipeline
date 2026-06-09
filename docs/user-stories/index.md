@@ -41,6 +41,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | Issue                                                                                                                  | Doc                                                         | Status  |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------- |
 | [#534 Stake/unstake page: wrong sPLUSD icon — use the one from Figma](https://github.com/eq-lab/pipeline/issues/534) | [534-splusd-icon.md](./epic-531/534-splusd-icon.md)        | Initial |
+| [#535 Stake/unstake page: PLUSD icon is blurry — replace base64 PNG with SVG](https://github.com/eq-lab/pipeline/issues/535) | [535-plusd-icon-quality.md](./epic-531/535-plusd-icon-quality.md) | Initial |
 
 ---
 
