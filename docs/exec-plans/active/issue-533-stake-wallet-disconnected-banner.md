@@ -90,12 +90,12 @@ verbatim.
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/routes/stake.tsx`, add `Button` to the `@pipeline/ui`
+1. [x] In `packages/frontend/src/routes/stake.tsx`, add `Button` to the `@pipeline/ui`
    import block (lines 4-12), e.g. insert `Button,` before `Card,`.
-2. Destructure `connect` from `useEvmWallet()` at line 68:
+2. [x] Destructure `connect` from `useEvmWallet()` at line 68:
    change `const { isConnected } = useEvmWallet();` to
    `const { isConnected, connect } = useEvmWallet();`.
-3. Wrap the existing steps ternary (the `{isStakeTab ? (<StepsCard…/>) : (<StepsCard…/>)}`
+3. [x] Wrap the existing steps ternary (the `{isStakeTab ? (<StepsCard…/>) : (<StepsCard…/>)}`
    block at lines ~328-363) with an outer `!isConnected` guard:
    - When `!isConnected`, render the disconnected banner (copy verbatim from
      `deposit.tsx` lines 829-846, minus the surrounding conditional):
@@ -120,10 +120,10 @@ verbatim.
      Add a comment noting the Figma node: `/* Wallet-not-connected banner. Figma: node 1994-7280. */`.
    - When connected, render the existing `isStakeTab ? <StepsCard/> : <StepsCard/>`
      ternary unchanged.
-4. Keep all hooks unconditional (only JSX branch order changes — Rules of Hooks
+4. [x] Keep all hooks unconditional (only JSX branch order changes — Rules of Hooks
    stay satisfied). Do not touch the input card, output card, step gates, preview
    hooks, tab-switch handler, or refetch effects.
-5. Update the route's JSDoc header (lines 25-51) to document the
+5. [x] Update the route's JSDoc header (lines 25-51) to document the
    wallet-disconnected banner state and its Figma node (1994-7280), mirroring the
    "Wallet-disconnected state" JSDoc block already present in deposit.tsx
    (lines 99-111).
@@ -133,7 +133,7 @@ verbatim.
 File: `packages/frontend/src/routes/-stake.test.tsx` (Vitest + Testing Library;
 disconnected scenarios use `seedBaseMocks({ connected: false })`).
 
-- **Rewrite** the two tests in `describe("Stake page — disconnected wallet", …)`:
+- [x] **Rewrite** the two tests in `describe("Stake page — disconnected wallet", …)`:
   - Replace `renders all step buttons as disabled when disconnected (Stake tab)`
     with a test asserting the banner is shown and the StepsCard is gone:
     `getByText("Connect your wallet first")` present (or

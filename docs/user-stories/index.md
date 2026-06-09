@@ -36,6 +36,14 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ---
 
+## Epic #531 — Stake/unstake page
+
+| Issue                                                                                                                                                                               | Doc                                                                                                                         | Status  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------- |
+| [#533 Stake/unstake page: missing wallet-disconnected state (desktop + mobile)](https://github.com/eq-lab/pipeline/issues/533) | [533-stake-wallet-disconnected-banner.md](./epic-531/533-stake-wallet-disconnected-banner.md) | Initial |
+
+---
+
 ## Epic #498 — Deposit/withdraw page
 
 | Issue                                                                                                                                                                          | Doc                                                                                   | Status  |
