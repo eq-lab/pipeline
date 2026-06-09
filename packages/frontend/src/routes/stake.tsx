@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { parseUnits, formatUnits } from "@/wallet";
 import {
+  Button,
   Card,
   InfoRow,
   SegmentedTabs,
@@ -44,6 +45,15 @@ import { parseUsdc, formatUsdc } from "@/lib/usdc";
  * Tab switching clears the amount input and resets write surfaces so no stale
  * Done badge from a previous tab can bleed into the new tab.
  *
+ * Wallet-disconnected state:
+ *   When the wallet is not connected, a yellow "Connect your wallet first"
+ *   banner with a dark "Connect" button is shown in place of the StepsCard
+ *   for both the Stake and Unstake tabs. The input card and output card
+ *   remain visible above the banner.
+ *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
+ *   identical to the deposit page and home-page CTA.
+ *   Figma: node 1994-7280.
+ *
  * Token discipline: no raw colors, fonts, sizes, or radii. Everything goes
  * through design tokens or component primitives from `@pipeline/ui`.
  *
@@ -65,7 +75,7 @@ function formatUnits4(value: bigint, decimals: number): string {
 
 function Stake() {
   // ── State sources ─────────────────────────────────────────────────────
-  const { isConnected } = useEvmWallet();
+  const { isConnected, connect } = useEvmWallet();
 
   // Derive PLUSD address from the sPLUSD vault's `asset()` call.
   // Fall back to zero-address while loading so downstream hooks are always
@@ -325,8 +335,26 @@ function Stake() {
           <InfoRow label="Network fee" value="—" />
         </Card>
 
-        {/* Steps card — conditional on activeTab */}
-        {isStakeTab ? (
+        {/* Steps card — conditional on wallet connection and activeTab */}
+        {!isConnected ? (
+          /* Wallet-not-connected banner. Figma: node 1994-7280. */
+          <Card
+            variant="yellow"
+            data-testid="connect-wallet-banner"
+            className="flex flex-row items-center justify-between gap-4"
+          >
+            <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
+              Connect your wallet first
+            </p>
+            <Button
+              variant="primary-dark"
+              className="whitespace-nowrap"
+              onClick={connect}
+            >
+              Connect
+            </Button>
+          </Card>
+        ) : isStakeTab ? (
           <StepsCard
             steps={[
               {

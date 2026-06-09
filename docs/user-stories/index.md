@@ -38,8 +38,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ## Epic #531 — Stake/unstake page
 
-| Issue                                                                                                                  | Doc                                                         | Status  |
-| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------- |
+| Issue                                                                                                                                                                               | Doc                                                                                                                         | Status  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------- |
+| [#533 Stake/unstake page: missing wallet-disconnected state (desktop + mobile)](https://github.com/eq-lab/pipeline/issues/533) | [533-stake-wallet-disconnected-banner.md](./epic-531/533-stake-wallet-disconnected-banner.md) | Initial |
 | [#534 Stake/unstake page: wrong sPLUSD icon — use the one from Figma](https://github.com/eq-lab/pipeline/issues/534) | [534-splusd-icon.md](./epic-531/534-splusd-icon.md)        | Initial |
 | [#535 Stake/unstake page: PLUSD icon is blurry — replace base64 PNG with SVG](https://github.com/eq-lab/pipeline/issues/535) | [535-plusd-icon-quality.md](./epic-531/535-plusd-icon-quality.md) | Initial |
 

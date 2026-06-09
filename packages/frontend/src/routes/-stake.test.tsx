@@ -28,7 +28,7 @@
  *  14. Switch back to Stake after Unstake → stake step labels render correctly.
  *
  * Edge cases:
- *  15. Disconnected wallet → all step buttons disabled on both tabs.
+ *  15. Disconnected wallet → banner shown; step buttons absent on both tabs.
  *  16. Zero balance → action buttons disabled; no low-balance banner rendered.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -848,17 +848,25 @@ describe("Stake page — disconnected wallet", () => {
     localStorage.clear();
   });
 
-  it("renders all step buttons as disabled when disconnected (Stake tab)", async () => {
+  it("shows the connect-wallet banner and hides step buttons (Stake tab)", async () => {
     renderStake();
     await waitFor(() => {
-      const approveBtn = screen.getByRole("button", { name: "Approve" });
-      const stakeBtn = screen.getByRole("button", { name: "Stake" });
-      expect(approveBtn).toBeDisabled();
-      expect(stakeBtn).toBeDisabled();
+      expect(
+        screen.getByTestId("connect-wallet-banner"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Connect your wallet first"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Approve" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Stake" }),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it("renders Unstake button as disabled when disconnected", async () => {
+  it("shows the connect-wallet banner and hides Unstake button (Unstake tab)", async () => {
     const user = userEvent.setup();
     renderStake();
 
@@ -866,8 +874,24 @@ describe("Stake page — disconnected wallet", () => {
     await user.click(unstakeTab);
 
     await waitFor(() => {
-      const unstakeBtn = screen.getByRole("button", { name: "Unstake" });
-      expect(unstakeBtn).toBeDisabled();
+      expect(
+        screen.getByTestId("connect-wallet-banner"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Connect your wallet first"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Unstake" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("Connect button is present and enabled in the banner", async () => {
+    renderStake();
+    await waitFor(() => {
+      const connectBtn = screen.getByRole("button", { name: "Connect" });
+      expect(connectBtn).toBeInTheDocument();
+      expect(connectBtn).not.toBeDisabled();
     });
   });
 });
