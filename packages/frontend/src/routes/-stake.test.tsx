@@ -551,6 +551,94 @@ describe("Stake page — preview and exchange rate (Stake tab)", () => {
   });
 });
 
+// ── Regression #541: address-mismatch path (sPLUSD decimals = 6 from live RPC) ──
+//
+// In the real app ENV.STAKED_PLUSD_ADDRESS may differ from the fixture's
+// hardcoded 0x5555…0005. When they differ, useEvmToken falls back to a live
+// decimals() RPC that returns 6 for the deployed contract. Before the fix,
+// formatting an 18-decimal convert value with 6 decimals produced results
+// inflated by 1e12 (e.g. "959600000000.0000" instead of "0.9596").
+//
+// These tests reproduce that condition by deliberately seeding sPLUSD decimals
+// as 6 (simulating the live-RPC fallback) while the convert alias remains
+// 18-scaled. After the fix the rate and preview rows must still show the
+// correct human-readable values.
+
+describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    // Use the normal base mocks but override sPLUSD decimals to 6 to simulate
+    // the live RPC returning 6 for a different contract address.
+    seedBaseMocks({ allowance: "0" });
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.decimals`,
+      "6",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("exchange-rate row shows '1 PLUSD = 0.9596 sPLUSD' even when sPLUSD decimals resolve to 6", async () => {
+    renderStake();
+
+    await waitFor(() => {
+      expect(screen.getByText("1 PLUSD = 0.9596 sPLUSD")).toBeInTheDocument();
+    });
+  });
+
+  it("output shows ~9.60 sPLUSD for 10 PLUSD even when sPLUSD decimals resolve to 6", async () => {
+    const user = userEvent.setup();
+    renderStake();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      const outputEl = screen.queryByLabelText(/sPLUSD amount:/i);
+      expect(outputEl).toBeInTheDocument();
+      expect(outputEl?.getAttribute("aria-label")).toMatch(/9\.60/);
+    });
+  });
+});
+
+describe("Stake page — regression #541: address-mismatch / sPLUSD decimals=6 (Unstake tab)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    seedBaseMocks({
+      balance: "0",
+      splusdBalance: BALANCE_50_SPLUSD,
+      allowance: "0",
+    });
+    // Override sPLUSD decimals to 6 to simulate address-mismatch path
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${SPLUSD_ADDRESS.toLowerCase()}.decimals`,
+      "6",
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("exchange-rate row shows '1 sPLUSD = 1.0421 PLUSD' even when sPLUSD decimals resolve to 6", async () => {
+    const user = userEvent.setup();
+    renderStake();
+
+    const unstakeTab = await screen.findByRole("tab", { name: "Unstake" });
+    await user.click(unstakeTab);
+
+    await waitFor(() => {
+      expect(screen.getByText("1 sPLUSD = 1.0421 PLUSD")).toBeInTheDocument();
+    });
+  });
+});
+
 // ── Tests — Unstake tab ───────────────────────────────────────────────────────
 
 describe("Stake page — Unstake tab", () => {
@@ -851,12 +939,8 @@ describe("Stake page — disconnected wallet", () => {
   it("shows the connect-wallet banner and hides step buttons (Stake tab)", async () => {
     renderStake();
     await waitFor(() => {
-      expect(
-        screen.getByTestId("connect-wallet-banner"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Connect your wallet first"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("connect-wallet-banner")).toBeInTheDocument();
+      expect(screen.getByText("Connect your wallet first")).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Approve" }),
       ).not.toBeInTheDocument();
@@ -874,12 +958,8 @@ describe("Stake page — disconnected wallet", () => {
     await user.click(unstakeTab);
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("connect-wallet-banner"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Connect your wallet first"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("connect-wallet-banner")).toBeInTheDocument();
+      expect(screen.getByText("Connect your wallet first")).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Unstake" }),
       ).not.toBeInTheDocument();

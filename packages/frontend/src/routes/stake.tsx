@@ -63,6 +63,19 @@ import { parseUsdc, formatUsdc } from "@/lib/usdc";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 /**
+ * convertToShares / convertToAssets return values scaled to 18 decimal places
+ * regardless of the sPLUSD contract address configured in ENV, because the
+ * convert-mock convention in useStakedPlusd.ts (RATE_SCALE = 1e18) is address-
+ * independent. Hard-coding this here avoids depending on a live `decimals()`
+ * RPC read that can resolve to a different value (e.g. 6) when the env address
+ * doesn't match the fixture address used by the mock layer.
+ *
+ * If sPLUSD or PLUSD ever become non-18-decimal tokens, update this constant
+ * and the convert-mock convention together.
+ */
+const CONVERT_DECIMALS = 18;
+
+/**
  * Formats a bigint to exactly 4 decimal places (truncated, not rounded).
  * Used for exchange-rate display rows.
  */
@@ -146,15 +159,14 @@ function Stake() {
   );
 
   // Exchange-rate hooks — called with a fixed "1 unit" to show the rate row.
-  // When decimals are not yet loaded we pass undefined so the hook short-circuits.
-  const oneStake =
-    isStakeTab && plusdToken.decimals !== undefined
-      ? parseUnits("1", plusdToken.decimals)
-      : undefined;
-  const oneUnstake =
-    !isStakeTab && splusdToken.decimals !== undefined
-      ? parseUnits("1", splusdToken.decimals)
-      : undefined;
+  // Use CONVERT_DECIMALS (18) rather than the live token decimals read so the
+  // input scale matches the convert-mock convention regardless of which sPLUSD
+  // contract address is configured in ENV. (The mock convention is address-
+  // independent; a live decimals() RPC may return 6 for a different address.)
+  const oneStake = isStakeTab ? parseUnits("1", CONVERT_DECIMALS) : undefined;
+  const oneUnstake = !isStakeTab
+    ? parseUnits("1", CONVERT_DECIMALS)
+    : undefined;
   const rateSharesPerPlusd = useStakedPlusdConvertToShares(oneStake);
   const rateAssetsPerSplusd = useStakedPlusdConvertToAssets(oneUnstake);
 
@@ -247,31 +259,29 @@ function Stake() {
   );
 
   // ── Preview render values ──────────────────────────────────────────────
+  // Format convert-hook outputs against CONVERT_DECIMALS (18) — not the live
+  // token decimals read — because convertToShares / convertToAssets return
+  // values in 18-decimal base units per the convert-mock convention.
   const previewOutputValue = isStakeTab
-    ? sharesPreview.data !== undefined && splusdToken.decimals !== undefined
-      ? formatUsdc(sharesPreview.data, splusdToken.decimals).replace(/,/g, "")
+    ? sharesPreview.data !== undefined
+      ? formatUsdc(sharesPreview.data, CONVERT_DECIMALS).replace(/,/g, "")
       : "0"
-    : assetsPreview.data !== undefined && plusdToken.decimals !== undefined
-      ? formatUsdc(assetsPreview.data, plusdToken.decimals).replace(/,/g, "")
+    : assetsPreview.data !== undefined
+      ? formatUsdc(assetsPreview.data, CONVERT_DECIMALS).replace(/,/g, "")
       : "0";
 
   // Exchange-rate row text (truncated to 4 dp, not rounded).
+  // Format against CONVERT_DECIMALS (18) — not the live token decimals read —
+  // because convertToShares / convertToAssets return 18-decimal values per the
+  // convert-mock convention.
   const exchangeRateText = (() => {
     if (isStakeTab) {
-      if (
-        rateSharesPerPlusd.data === undefined ||
-        splusdToken.decimals === undefined
-      )
-        return "—";
-      const n = formatUnits4(rateSharesPerPlusd.data, splusdToken.decimals);
+      if (rateSharesPerPlusd.data === undefined) return "—";
+      const n = formatUnits4(rateSharesPerPlusd.data, CONVERT_DECIMALS);
       return `1 PLUSD = ${n} sPLUSD`;
     }
-    if (
-      rateAssetsPerSplusd.data === undefined ||
-      plusdToken.decimals === undefined
-    )
-      return "—";
-    const n = formatUnits4(rateAssetsPerSplusd.data, plusdToken.decimals);
+    if (rateAssetsPerSplusd.data === undefined) return "—";
+    const n = formatUnits4(rateAssetsPerSplusd.data, CONVERT_DECIMALS);
     return `1 sPLUSD = ${n} PLUSD`;
   })();
 
