@@ -141,3 +141,42 @@ describe("CoinIcon — accessibility", () => {
     expect(img?.getAttribute("aria-label")).toBe("USDC coin");
   });
 });
+
+// ── Group 5: Responsive display — Issue #547 regression ──────────────────────
+//
+// Regression guard: CoinIcon must NOT hard-code `display:block` in an inline
+// style.  Inline styles win over Tailwind utility classes, so callers could
+// never use `className="hidden md:block"` to hide the icon on mobile.
+// The fix moves `display` into the className ("block" default) so callers can
+// override it with responsive utilities.
+
+describe("CoinIcon — responsive display (Issue #547 regression)", () => {
+  it("renders with class 'block' by default (no inline display style)", () => {
+    const { container } = render(<CoinIcon token="plusd" size="lg" />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    // Must have the default "block" class
+    expect(img?.classList.contains("block")).toBe(true);
+    // Must NOT set display via inline style (would defeat responsive hiding)
+    expect(img?.style.display).toBe("");
+  });
+
+  it("merges caller className with default 'block' — hidden md:block is present", () => {
+    const { container } = render(
+      <CoinIcon token="plusd" size="lg" className="hidden md:block" />,
+    );
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    // Both the default 'block' and the caller's classes must appear
+    expect(img?.classList.contains("block")).toBe(true);
+    expect(img?.classList.contains("hidden")).toBe(true);
+    // Still no inline display override
+    expect(img?.style.display).toBe("");
+  });
+
+  it("preserves flexShrink:0 in the inline style", () => {
+    const { container } = render(<CoinIcon token="plusd" size="lg" />);
+    const img = container.querySelector("img");
+    expect(img?.style.flexShrink).toBe("0");
+  });
+});

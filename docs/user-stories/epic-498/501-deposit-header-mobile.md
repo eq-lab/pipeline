@@ -48,3 +48,32 @@ Figma (mobile): node 1993:7911 | Figma (desktop): node 1498:100130
 
 - There is exactly one `<h2>` element containing the deposit heading text at every
   viewport width (no duplicate headings introduced by the responsive implementation).
+
+---
+
+## Story 4 — CoinIcon inline style does not defeat responsive hide (Issue #547 regression)
+
+**As a** mobile user on the `/deposit` page,
+**I want** the PLUSD coin icon to remain hidden below 768 px even after future
+refactors of `CoinIcon`,
+**so that** the mobile layout matches the Figma spec and is not silently broken by
+changes to the component's default display property.
+
+### Acceptance criteria
+
+- `CoinIcon` does **not** set `display` via an inline `style` attribute.  Inline
+  styles override Tailwind utility classes (including `hidden`) regardless of
+  specificity order, so this must remain absent.
+- `CoinIcon` renders with a `block` CSS class by default so standalone usage
+  (without explicit `className`) still shows the icon as a block element.
+- When `DepositHeader` renders `<CoinIcon className="hidden md:block" …>`, the
+  `hidden` class is present on the `<img>` element in the DOM.
+- At a viewport narrower than 768 px the coin icon computes `display:none`
+  (i.e. `getComputedStyle(icon).display === "none"`).
+- At 768 px and wider the coin icon computes `display:block`.
+
+### Automated regression (CoinIcon.test.tsx — Group 5)
+
+The regression is guarded by the "CoinIcon — responsive display (Issue #547
+regression)" describe block in
+`packages/frontend/src/components/CoinIcon.test.tsx`.
