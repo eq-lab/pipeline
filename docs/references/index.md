@@ -18,3 +18,8 @@ Links to be added as vendor selections are finalised:
 - Sumsub KYC/KYB API docs
 - Chainalysis Address Screening API docs
 - Platts/Argus price feed API docs
+
+## Stellar / Soroban
+
+- [Soroban RPC documentation](https://developers.stellar.org/docs/data/apis/rpc) — `getEvents`, `getLatestLedger`, and pagination
+- [pipeline-stellar-contracts](https://github.com/eq-lab/pipeline-stellar-contracts) — DepositManager, WithdrawalQueue, StakedPipelineUSD contracts; testnet IDs in `deployments/testnet.json`

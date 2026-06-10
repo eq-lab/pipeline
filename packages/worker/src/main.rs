@@ -1,5 +1,6 @@
-use pipeline_worker::indexer::config::{env_bool, IndexerJobSettings};
+use pipeline_worker::indexer::config::{env_bool, IndexerSettings};
 use pipeline_worker::indexer::run_indexer_job;
+use pipeline_worker::indexer::stellar::run_stellar_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
 use pipeline_worker::price_poller::config::PricePollerSettings;
@@ -25,15 +26,35 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("../shared/migrations").run(&pool).await?;
 
     if env_bool("JOB_INDEXER_ENABLED") {
-        let settings_per_chain = IndexerJobSettings::all_from_env()?;
+        let settings_per_chain = IndexerSettings::all_from_env()?;
         for s in settings_per_chain {
-            tracing::info!(chain_id = s.chain_id, "indexer job started");
             let pool = pool.clone();
-            tokio::spawn(async move {
-                if let Err(e) = run_indexer_job(s, pool).await {
-                    tracing::error!("indexer job exited with error: {e:?}");
+            match s {
+                IndexerSettings::Evm(s) => {
+                    tracing::info!(
+                        chain_id = s.chain_id,
+                        chain_type = "evm",
+                        "indexer job started"
+                    );
+                    tokio::spawn(async move {
+                        if let Err(e) = run_indexer_job(s, pool).await {
+                            tracing::error!("evm indexer exited: {e:?}");
+                        }
+                    });
                 }
-            });
+                IndexerSettings::Stellar(s) => {
+                    tracing::info!(
+                        chain_id = s.chain_id,
+                        chain_type = "stellar",
+                        "indexer job started"
+                    );
+                    tokio::spawn(async move {
+                        if let Err(e) = run_stellar_indexer_job(s, pool).await {
+                            tracing::error!("stellar indexer exited: {e:?}");
+                        }
+                    });
+                }
+            }
         }
     }
 
@@ -52,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if env_bool("JOB_PRICE_POLLER_ENABLED") {
-        let settings_per_chain = PricePollerSettings::all_from_env()?;
+        let settings_per_chain = PricePollerSettings::all_evm_from_env()?;
         let position_repo = Arc::new(PositionRepo::new(pool.clone()));
 
         for s in settings_per_chain {
@@ -65,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if env_bool("JOB_RELAYER_ENABLED") {
-        let settings_per_chain = RelayerJobSettings::all_from_env()?;
+        let settings_per_chain = RelayerJobSettings::all_evm_from_env()?;
 
         for s in settings_per_chain {
             tracing::info!(chain_id = s.chain_id, "relayer job started");

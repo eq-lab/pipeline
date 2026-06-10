@@ -99,7 +99,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
 
 ## Implementation Steps
 
-### Stage A — Workspace deps
+### Stage A — Workspace deps [DONE]
 
 1. **Add Soroban deps to `Cargo.toml`.** In the workspace `[workspace.dependencies]` table:
    ```toml
@@ -111,7 +111,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    - The coder MUST verify the latest stable versions at code time via `cargo search stellar-rpc-client stellar-xdr stellar-strkey` and pin specific versions in the workspace table. The versions above are placeholders — confirm before committing.
    - If `stellar-rpc-client` fails to build on the current Rust toolchain (1.82+), fall back to direct `reqwest`-based JSON-RPC + the two utility crates. The plan budgets one half-day for this contingency.
 
-### Stage B — Config: discriminator + Stellar settings
+### Stage B — Config: discriminator + Stellar settings [DONE]
 
 2. **Discriminator in `packages/worker/src/indexer/config.rs`.** Add a `pub enum ChainType { Evm, Stellar }` and a `pub fn parse_chain_type(chain_id: i64) -> ChainType` that reads `CHAIN_<id>_TYPE` (defaulting to `Evm` when unset or set to `"evm"`; returns `Stellar` when set to `"stellar"`; errors on any other value). EVM-only deployments need no env change.
 
@@ -153,7 +153,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    ```
    `IndexerJobSettings::all_from_env()` (added by #439) **stays as-is** to avoid touching the EVM call site shape; the new `IndexerSettings::all_from_env()` is what `worker/main.rs` consumes after step 11.
 
-### Stage C — Stellar RPC client
+### Stage C — Stellar RPC client [DONE]
 
 5. **New file `packages/worker/src/indexer/stellar/rpc.rs`** — a thin async wrapper around the Soroban RPC `getEvents` and `getLatestLedger` endpoints. Public surface:
    ```rust
@@ -189,9 +189,18 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    ```
    Implementation note: prefer the `stellar-rpc-client` crate's typed bindings if its API is stable on the chosen version; otherwise use `reqwest` to POST JSON-RPC directly. Either way, ScVal decoding lives in `parsers.rs`, not here — this file only handles transport + envelope.
 
-### Stage D — Parsers
+### Stage D — Parsers [DONE]
 
 6. **New file `packages/worker/src/indexer/stellar/parsers.rs`** — pure decoder functions, one per declared `#[contractevent]`. Each parser inspects `raw.topics_base64[0]` (the canonical Soroban event symbol) and returns `None` on mismatch, otherwise produces a `StellarLog` with the parsed `params` JSON. The `event_name` stored in `contract_logs` is shown in the second column (remapped for vault events to match the EVM analytics shape).
+
+   Alongside the parsers, `parsers.rs` exposes `dispatch_parser(raw, dm_id, wq_id, splusd_id) -> Option<StellarLog>` — the contract-ID router that selects which parser group is allowed to run against `raw`, based on `raw.contract_id`. It mirrors the EVM `add_event_handler(contracts.<type>_contracts, …)` binding in `evm_parsers.rs`:
+
+   - **DM-emitted events**: `dispatch_parser` tries `parse_deposit_requested` then `parse_request_claimed`; returns `None` if neither matches (which skips the unindexed admin events `CustodianSet`, `VerifierSet`, and the redundant `RequestEnqueued`).
+   - **WQ-emitted events**: tries `parse_withdrawal_requested` then `parse_request_claimed`; returns `None` otherwise.
+   - **splusd-emitted events**: tries `parse_vault_deposit` then `parse_vault_withdraw`; returns `None` otherwise (Mint/Transfer/Approve fall through the same way).
+   - **Any other `contract_id`**: returns `None` immediately and emits a `tracing::warn!` — this branch should be unreachable because the RPC `contractIds` filter is the first line of defense, so hitting it signals filter drift.
+
+   `request_claimed` is intentionally permitted for both DM and WQ because `request_queue::claim_request` publishes it from inside the shared library. To keep the dispatch's `if/else if` branches semantically distinct, `StellarIndexerSettings::from_chain_env` rejects configurations where two roles share a contract id, and uppercases each configured Strkey so case mismatch with RPC-returned ids can't silently drop events.
 
    | Parser | Source event | Stored `event_name` | `params` keys |
    |---|---|---|---|
@@ -231,7 +240,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    ```
    This deliberately mirrors `shared::events::ContractLog` field-for-field except `contract_address: String` (vs alloy `Address`). The mapper in step 9 calls the new chain-agnostic `EventRepo::insert_row` helper added in step 10.
 
-### Stage E — Shared repo refactor (chain-agnostic insert)
+### Stage E — Shared repo refactor (chain-agnostic insert) [DONE]
 
 8. **Extract `EventRepo::insert_log_raw` in `packages/shared/src/db.rs`** — a private helper that takes all fields as primitives:
    ```rust
@@ -264,7 +273,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    ```
    No DDL change. The new struct is purely an internal type used by chain-agnostic write paths.
 
-### Stage F — Mapper + poller
+### Stage F — Mapper + poller [DONE]
 
 9. **New file `packages/worker/src/indexer/stellar/mappers.rs`** — `StellarLogMapper` that implements `LogMapper`:
    - `is_duplicate`: calls `EventRepo::is_duplicate(conn, chain_id, &row.contract_address, row.block_number, row.log_index)` — the existing method takes `&str`, so Strkey passes through unchanged.
@@ -291,8 +300,11 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
         async fn poll(&self, from: u64, to: u64) -> Result<Vec<Box<dyn LogMapper>>> {
             // Build EventFilter over the three contract IDs.
             // Call rpc.get_events(from, to, &filter).
-            // For each RawEvent, run the parser that matches event_name and produce a StellarLogMapper.
-            // Return the Vec<Box<dyn LogMapper>>.
+            // For each RawEvent, call dispatch_parser(&raw, &self.deposit_manager_id,
+            //   &self.withdrawal_queue_id, &self.staked_plusd_id) — it routes by
+            //   raw.contract_id to the parsers permitted for that contract, mirroring
+            //   the EVM add_event_handler(contracts.<type>_contracts, ...) binding.
+            // Wrap each resulting StellarLog in a StellarLogMapper and return the Vec.
         }
         async fn get_block_timestamp(&self, ledger: u64, cache: &mut HashMap<u64, u64>) -> Result<u64> {
             // Stellar poller pre-populates block_timestamp on each mapper at poll time,
@@ -307,7 +319,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
     - Builds the `StellarEventPoller`.
     - Calls `index_loop("stellar-indexer", chain_id, polling_ledger_range, 0, polling_interval_ms, &repo, &poller)` — note `confirmations_delay = 0` (Stellar has finality on ledger close; no reorg gap needed).
 
-### Stage G — Wire into worker main
+### Stage G — Wire into worker main [DONE]
 
 11. **`packages/worker/src/main.rs`** — swap the indexer block to consume the new `IndexerSettings` enum:
     ```rust
@@ -332,7 +344,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
 12. **Skip Stellar chains in price-poller + relayer spawn loops.** In `worker/main.rs`'s `JOB_PRICE_POLLER_ENABLED` and `JOB_RELAYER_ENABLED` blocks, iterate `parse_chains_env()?`, call `parse_chain_type(chain_id)`, and only build `PricePollerSettings::from_chain_env(chain_id)` / `RelayerJobSettings::from_chain_env(chain_id)` when the chain is `Evm`. Log an `info!` line per Stellar chain explaining "price-poller skipped on Stellar chain {id}: no sPlUSD vault" (similar for relayer). This prevents the existing per-chain spawn from panicking on missing `CHAIN_<id>_ETH_RPC_URL`.
     - Concretely: `PricePollerSettings::all_from_env()` and `RelayerJobSettings::all_from_env()` (added by #439) iterate **all** chains and call EVM-shaped `from_chain_env`. Both need an `evm_chains_only()` helper or inline filter to skip Stellar entries. Add `pub fn all_evm_from_env() -> Result<Vec<Self>>` on both settings types and switch `main.rs` to it; keep `all_from_env` for back-compat with anyone who imports it but mark it deprecated in a doc comment.
 
-### Stage H — `.env.example` + docs
+### Stage H — `.env.example` + docs [DONE]
 
 13. **`.env.example`** — append a "Stellar chain example" block under the existing per-chain example:
     ```bash
@@ -340,8 +352,8 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
     # CHAIN_99000001_TYPE=stellar
     # CHAIN_99000001_STELLAR_RPC_URL=https://soroban-testnet.stellar.org
     # CHAIN_99000001_STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
-    # CHAIN_99000001_STELLAR_DEPOSIT_MANAGER_ID=CDM4Z2EMF46JTUX7VZVYQ6JD3PALEDTTLPJHSNCT7GTBQ6YWJYNRLWUW
-    # CHAIN_99000001_STELLAR_WITHDRAWAL_QUEUE_ID=CBERV5WQYDFHTB3SL6KL72N5GFCJYTD6FAFZ6PJ3XSDURYILM2COFNQS
+    # CHAIN_99000001_STELLAR_DEPOSIT_MANAGER_ID=CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO
+    # CHAIN_99000001_STELLAR_WITHDRAWAL_QUEUE_ID=CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL
     # CHAIN_99000001_STELLAR_STAKED_PLUSD_ID=CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5
     # CHAIN_99000001_STELLAR_ACCESS_MANAGER_ID=CBJUO44GFUU3NTDTTNJTLLIIC6RGNAS6NLPNIJYYZKFY5NSZ3IMMZ4Q5
     # CHAIN_99000001_STELLAR_USDC_ASSET_ID=CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7
@@ -406,7 +418,7 @@ All new tests are **pure unit tests** — no live network, no DB. Fixtures live 
 - Invoke `request_deposit` on the testnet DepositManager via Stellar CLI:
   ```bash
   stellar contract invoke \
-    --id CDM4Z2EMF46JTUX7VZVYQ6JD3PALEDTTLPJHSNCT7GTBQ6YWJYNRLWUW \
+    --id CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO \
     --source <your-G…-key> \
     --network testnet \
     -- request_deposit --amount 1000000

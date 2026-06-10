@@ -26,6 +26,8 @@ tower             = "0.5"
 tower-http        = { version = "0.6", features = ["cors", "trace"] }
 utoipa            = { version = "5" }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
+stellar-xdr        = { version = "25", features = ["std", "base64", "serde"] }
+stellar-strkey     = "0.0.16"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

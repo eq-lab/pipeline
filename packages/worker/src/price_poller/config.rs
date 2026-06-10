@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::env;
 
-use crate::indexer::config::parse_chains_env;
+use crate::indexer::config::{parse_chain_type, parse_chains_env, ChainType};
 
 pub struct PricePollerSettings {
     pub eth_rpc_url: String,
@@ -57,11 +57,28 @@ impl PricePollerSettings {
 
     /// Parse price-poller settings for every chain in `CHAINS`.
     /// Returns one `PricePollerSettings` per configured chain.
+    #[deprecated(note = "use all_evm_from_env to skip non-EVM chains")]
     pub fn all_from_env() -> Result<Vec<Self>> {
+        Self::all_evm_from_env()
+    }
+
+    /// Parse price-poller settings for every EVM chain in `CHAINS`.
+    /// Stellar chains are skipped silently (they have no EVM RPC or sPLUSD vault).
+    pub fn all_evm_from_env() -> Result<Vec<Self>> {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(PricePollerSettings::from_chain_env)
+            .filter_map(|id| match parse_chain_type(id) {
+                Ok(ChainType::Stellar) => {
+                    tracing::info!(
+                        chain_id = id,
+                        "price-poller skipped on Stellar chain: no EVM RPC or sPLUSD vault"
+                    );
+                    None
+                }
+                Ok(ChainType::Evm) => Some(PricePollerSettings::from_chain_env(id)),
+                Err(e) => Some(Err(e)),
+            })
             .collect()
     }
 }
