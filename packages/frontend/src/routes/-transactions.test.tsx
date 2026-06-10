@@ -136,6 +136,34 @@ describe("Transactions page — responsive layout (Issue #523)", () => {
   });
 });
 
+describe("Transactions page — mobile empty-state layout (Issue #524)", () => {
+  beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseRequests.mockReturnValue({
+      data: { requests: [] },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("empty-state wrapper uses pt-8 for mobile top-anchoring and md:min-h-[400px] md:justify-center for desktop centering", () => {
+    const { container } = renderTransactions();
+    // The outer wrapper div surrounds the EmptyState — find it via the unique
+    // pt-8 class applied to it in transactions.tsx.
+    const wrapper = container.querySelector("[class*='pt-8']");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.className).toContain("pt-8");
+    expect(wrapper?.className).toContain("md:min-h-[400px]");
+    expect(wrapper?.className).toContain("md:justify-center");
+    expect(wrapper?.className).toContain("md:pt-0");
+  });
+});
+
 describe("Transactions page — default Buy tab", () => {
   beforeEach(() => {
     mockRefetch.mockClear();
