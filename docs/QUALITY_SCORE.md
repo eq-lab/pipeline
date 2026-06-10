@@ -4,6 +4,25 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-10 — Epic #463 (Home page) — FINAL QA pass via `qa` issue #464 (epic closed)
+
+- **Scope:** Final QA pass for Epic #463. Second pass on `qa` issue #464, focused on the two bugs that blocked the 2026-06-05 pass — **#508** (mobile Portfolio period-tabs placement) and **#509** (StartHereCard "$X USDC" sub-line) — both now CLOSED/merged with their own user-stories docs. Tested against `main` served at http://localhost:3000/ (from `/Users/dima/git/pipeline/packages/frontend`). Surrounding mobile states (A/B/C, disconnected, desktop) re-exercised for regression; the rest of the docs were green on 2026-06-05 against unchanged code.
+- **Docs run this pass:** 4 directly driven (`508`, `509`, plus `466` and `476` regression spot-checks)
+- **Stories executed:** 9 — #508 ×2, #509 ×5, #466 State A/B/C re-verify, #476 Story 2 re-verify
+- **Passes:** 9
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Figma frames compared:** 1987:7990 (mobile period-tabs), 1984:6501 (State B), 1886:46777 (State C)
+- **Score: 10/10**
+  - **#508 verified:** mobile Portfolio header row computes `flex-direction: column`; balance block (`Total Balance / value / earning / CTA`) at `y=182..278, x=33`, tablist (`7D 1M 3M 1Y All`) at `y=294, x=33` — stacked below and left-aligned. Desktop (1440px) header row is `flex-direction: row` with the tablist top-right (`x=599` vs balance `x=210`, both `y=299`) — no regression. Matches Figma 1987:7990.
+  - **#509 verified:** State B `[data-testid="plusd-in-usdc"]` present, `"$1,000.00 USDC"`, muted ink `rgba(56,55,53,0.6)`, 12px caption. State C zero-PLUSD shows `"$0.00 USDC"` (not hidden). Disconnected / State A / desktop show no subline. Eyebrow "PLUSD Balance", PLUSD coin icon + value, Buy/Sell enabled in B/C.
+  - **State C totals:** visible mobile Portfolio Total Balance `$2,042.80` (1000 PLUSD + 1042.80 sPLUSD-in-PLUSD @ convertToAssets 1.0428), earning caption `—`, no CTA link — per spec. (A transient `$0.00` reading was traced to the hidden desktop-duplicate card instance, not a regression.)
+  - **#476 regression intact:** State A Sell button `disabled` + `opacity 0.32`; Buy enabled.
+  - Zero error-level console messages across all states/viewports.
+  - **Outcome:** fully green; both blocking bugs fixed and verified; no new defects; all sibling sub-issues closed. `qa` issue #464 closed, then Epic #463 closed per ISSUE_PROTOCOL §2/§5.3.
+  - Seeding-doc gap from the prior pass still applies (#466/#509 State B/C omit the `.decimals` mock key needed for `formattedBalance`); worked around by seeding `.decimals="18"`. Worth a doc fix but not an app bug.
+
 ### 2026-06-05 — Epic #463 (Home page) — QA pass via `qa` issue #464
 
 - **Scope:** Full QA pass for Epic #463 (home page). 8 user-stories docs under `docs/user-stories/epic-463/` executed against `main` @ ff8840d (http://localhost:3000/). First pass on this `qa` issue.
