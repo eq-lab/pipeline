@@ -19,6 +19,7 @@ import {
   useStakedPlusdConvertToAssets,
   useStake,
   useUnstake,
+  useNetworkFeeEstimate,
 } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { parseUsdc, formatUsdc } from "@/lib/usdc";
@@ -107,12 +108,20 @@ function Stake() {
   const stake = useStake();
   const unstake = useUnstake();
 
+  // Network-fee estimates — called unconditionally (Rules of Hooks).
+  // Mirrors deposit.tsx:189-190 pattern.
+  const { feeEth: stakeFeeEth } = useNetworkFeeEstimate("stake");
+  const { feeEth: unstakeFeeEth } = useNetworkFeeEstimate("unstake");
+
   // ── Local state ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"stake" | "unstake">("stake");
   const [amountInput, setAmountInput] = useState("");
 
   // ── Derived state — per-tab ───────────────────────────────────────────
   const isStakeTab = activeTab === "stake";
+
+  // Active-tab fee estimate (ETH-denominated, undefined while loading/disconnected).
+  const networkFee = isStakeTab ? stakeFeeEth : unstakeFeeEth;
 
   // Active-tab token resolution.
   const inputToken = isStakeTab ? plusdToken : splusdToken;
@@ -351,7 +360,7 @@ function Stake() {
               value={previewOutputValue}
             />
             <InfoRow label="Exchange rate" value={exchangeRateText} />
-            <InfoRow label="Network fee" value="—" />
+            <InfoRow label="Network fee" value={networkFee ?? "—"} />
           </div>
         </Card>
 
