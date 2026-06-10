@@ -4,6 +4,61 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-10 — Epic #498 (Deposit/withdraw page) — final QA pass (re-run) via `qa` issue #499
+
+- **Scope:** Re-run of the final QA pass after the only first-pass failure (#547) was fixed and merged to `main` (`ca5e34d`). Targeted the previously-failing doc `501-deposit-header-mobile` (incl. its new Story 4 #547 regression guard) plus the `CoinIcon` surfaces the fix touches; the other 6 docs were first-pass green with no intervening merged changes to their surfaces. All 8 non-`qa` sub-issues (#501–#507, #520, #547) closed.
+- **Environment:** `http://localhost:3000` served from `/Users/dima/git/pipeline`, fast-forwarded `a79ac6f → origin/main ca5e34d` so the running app actually contains the #547 fix (the prior served code did not). Chrome DevTools MCP, mobile (~500px floor, `matchMedia('(min-width:768px)')`=false) + desktop (1280). Connected state via `connected-allowance-zero` mock scenario.
+- **Docs re-verified:** `501` (4 stories). **Carried-forward green** (first pass 2026-06-10, surfaces unchanged): `502` (4), `503` (4), `504` (2), `505` (3), `507` (2), `520` (4).
+- **Cumulative coverage:** 7 docs / 22 stories — **22 PASS / 0 FAIL / 0 blocked.**
+- **Bugs filed:** none.
+- **Figma frames compared:** 1993:7701 (mobile init — header now matches, no coin icon above heading), 1498:100130 (desktop init — coin icon centered above heading, matches).
+- **Score: 9/10**
+  - The #547 regression is fixed and verified live: at mobile width the header `CoinIcon` (`className="block hidden md:block"`, inline `flex-shrink: 0;` only, no inline `display`) computes `display: none` and is not visible; the left-aligned "1:1 Conversion" heading (Besley 400, 28/36, left edge 8px) and single `<h2>` match the mobile Figma. At desktop ≥768px the same icon computes `display: block` and is visible/centered above the centered heading. In-card USDC/PLUSD `CoinIcon`s keep `display: block` on mobile — fix did not regress non-responsive usages. `CoinIcon.test.tsx` 16/16 pass incl. the Issue-#547 group.
+  - Network-fee row remains ETH-only (no `($1.20)` USD) — #506, closed working-as-intended (no price source); not a defect.
+  - One benign pre-existing 404 console entry; zero deposit-behavior error-level messages.
+  - Held 1 point back from 10 only because this was a targeted re-run (one doc fully re-executed live; the other 6 carried forward from the prior green pass rather than re-run end-to-end). No outstanding defects. `qa` #499 and epic #498 closed.
+
+### 2026-06-10 — Epic #498 (Deposit/withdraw page) — QA pass via `qa` issue #499 (final-pass attempt)
+
+- **Scope:** First pass on `qa` issue #499. All 7 user-stories docs under `docs/user-stories/epic-498/` (#501, #502, #503, #504, #505, #507, #520) executed against `main`-equivalent code at http://localhost:3000 (branch `chore/qa-epic-463`, which contains all 8 merged epic-498 fixes #501–#507, #520). Desktop (1280/1440) + mobile (Chrome non-headless ~500px floor; `matchMedia('(min-width:768px)')` = false confirms the mobile/`md` layout was exercised). Mock states seeded via the `/test` scenario keys (`connected-allowance-zero`, `connected-below-min`, `connected-allowance-ok`, disconnected).
+- **Docs run:** 7
+- **Stories executed:** 22
+- **Passes:** 21
+- **Failures:** 1 (#501 Story 1 — mobile coin icon)
+- **Blocked:** 0
+- **Bugs filed:** #547 (medium, `trivial`) — sub-issue of #498
+- **Figma frames compared:** 1993:7701 (mobile init, heading node 1993:7911), 1498:100130 (desktop init)
+- **Score: 8/10**
+  - #502 fully verified: Min chip `$1,000 (Min)` / `$250 (Min)` / `$1,000.50 (Min)` (whole-dollar drops `.00`, cents retained when fractional); all four chips fit the mobile viewport without overflow; Min chip fills input `1000.00`.
+  - #503 verified: below-min banner title is Graphik LC 16px (not Besley serif/20px); subtitle "Minimum amount — 1,000 USDC" (no `$`, comma separator); Copy Address is `white-space:nowrap` single line; banner ~98px (vs doc's ~92px, within tolerance); Copy Address writes the full wallet address to clipboard.
+  - #504 verified: input card is full opacity (no `.opacity-30`) in the below-min state; correctly carries `opacity:0.3` only in the approved/step-2-live state.
+  - #505 verified: step labels wrap with no ellipsis (`white-space:normal`, no `truncate`); action buttons render 88×32 (`!h-8 w-22`); StepRow root is `flex items-start` so badge + button top-align with a wrapping label.
+  - #507 verified: mobile `<main>` padding = 8px (content flush at x=8); desktop padding = 16px.
+  - #520 verified: disconnected deposit + withdraw both show the "Connect your wallet first" yellow banner with a "Connect" button and no step buttons; clicking Connect opens the "Before you continue" terms gate (then AppKit, per #385); connecting + sufficient balance hides the banner and renders the 3-step card.
+  - **#547 (medium, FAIL #501 Story 1):** mobile /deposit still renders the PLUSD coin icon above the "1:1 Conversion" heading; Figma mobile frame 1993:7701 has no coin icon there. Root cause: `CoinIcon` hard-codes inline `style={{display:"block"}}`, which beats `DepositHeader`'s `className="hidden md:block"` so the responsive hide never applies (confirmed: clearing the inline display lets the class resolve to `display:none`). Desktop is correct (icon should be visible there). Mechanical fix → labeled `trivial`.
+  - **Network-fee USD conversion (not a defect):** Figma 1993:7701 shows `~$0.00053 ETH ($1.20)`; the app shows ETH-only. #506 was closed working-as-intended — no ETH→USD price source exists and the human decision was to show only the ETH amount. Accepted deviation, no bug filed.
+  - Zero error-level console messages across all states/viewports.
+  - **Outcome:** not green — #547 is an open Figma-fidelity regression on the primary mobile surface. `qa` issue #499 returned to `blocked`; epic #498 cannot close until #547 is fixed and a follow-up pass is green. Deducted 2 points for the one medium mobile-fidelity regression; everything else (4 fixes × multiple stories, plus the disconnected and below-min flows) passes functionally and visually.
+
+### 2026-06-10 — Epic #463 (Home page) — FINAL QA pass via `qa` issue #464 (epic closed)
+
+- **Scope:** Final QA pass for Epic #463. Second pass on `qa` issue #464, focused on the two bugs that blocked the 2026-06-05 pass — **#508** (mobile Portfolio period-tabs placement) and **#509** (StartHereCard "$X USDC" sub-line) — both now CLOSED/merged with their own user-stories docs. Tested against `main` served at http://localhost:3000/ (from `/Users/dima/git/pipeline/packages/frontend`). Surrounding mobile states (A/B/C, disconnected, desktop) re-exercised for regression; the rest of the docs were green on 2026-06-05 against unchanged code.
+- **Docs run this pass:** 4 directly driven (`508`, `509`, plus `466` and `476` regression spot-checks)
+- **Stories executed:** 9 — #508 ×2, #509 ×5, #466 State A/B/C re-verify, #476 Story 2 re-verify
+- **Passes:** 9
+- **Failures:** 0
+- **Blocked:** 0
+- **Bugs filed:** none
+- **Figma frames compared:** 1987:7990 (mobile period-tabs), 1984:6501 (State B), 1886:46777 (State C)
+- **Score: 10/10**
+  - **#508 verified:** mobile Portfolio header row computes `flex-direction: column`; balance block (`Total Balance / value / earning / CTA`) at `y=182..278, x=33`, tablist (`7D 1M 3M 1Y All`) at `y=294, x=33` — stacked below and left-aligned. Desktop (1440px) header row is `flex-direction: row` with the tablist top-right (`x=599` vs balance `x=210`, both `y=299`) — no regression. Matches Figma 1987:7990.
+  - **#509 verified:** State B `[data-testid="plusd-in-usdc"]` present, `"$1,000.00 USDC"`, muted ink `rgba(56,55,53,0.6)`, 12px caption. State C zero-PLUSD shows `"$0.00 USDC"` (not hidden). Disconnected / State A / desktop show no subline. Eyebrow "PLUSD Balance", PLUSD coin icon + value, Buy/Sell enabled in B/C.
+  - **State C totals:** visible mobile Portfolio Total Balance `$2,042.80` (1000 PLUSD + 1042.80 sPLUSD-in-PLUSD @ convertToAssets 1.0428), earning caption `—`, no CTA link — per spec. (A transient `$0.00` reading was traced to the hidden desktop-duplicate card instance, not a regression.)
+  - **#476 regression intact:** State A Sell button `disabled` + `opacity 0.32`; Buy enabled.
+  - Zero error-level console messages across all states/viewports.
+  - **Outcome:** fully green; both blocking bugs fixed and verified; no new defects; all sibling sub-issues closed. `qa` issue #464 closed, then Epic #463 closed per ISSUE_PROTOCOL §2/§5.3.
+  - Seeding-doc gap from the prior pass still applies (#466/#509 State B/C omit the `.decimals` mock key needed for `formattedBalance`); worked around by seeding `.decimals="18"`. Worth a doc fix but not an app bug.
+
 ### 2026-06-05 — Epic #463 (Home page) — QA pass via `qa` issue #464
 
 - **Scope:** Full QA pass for Epic #463 (home page). 8 user-stories docs under `docs/user-stories/epic-463/` executed against `main` @ ff8840d (http://localhost:3000/). First pass on this `qa` issue.
