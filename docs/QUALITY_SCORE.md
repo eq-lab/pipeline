@@ -4,6 +4,7 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+<<<<<<< Updated upstream
 ### 2026-06-10 — Epic #498 (Deposit/withdraw page) — QA pass via `qa` issue #499 (final-pass attempt)
 
 - **Scope:** First pass on `qa` issue #499. All 7 user-stories docs under `docs/user-stories/epic-498/` (#501, #502, #503, #504, #505, #507, #520) executed against `main`-equivalent code at http://localhost:3000 (branch `chore/qa-epic-463`, which contains all 8 merged epic-498 fixes #501–#507, #520). Desktop (1280/1440) + mobile (Chrome non-headless ~500px floor; `matchMedia('(min-width:768px)')` = false confirms the mobile/`md` layout was exercised). Mock states seeded via the `/test` scenario keys (`connected-allowance-zero`, `connected-below-min`, `connected-allowance-ok`, disconnected).
@@ -44,6 +45,21 @@ MVP quality bars. All targets must be met before mainnet launch.
   - Zero error-level console messages across all states/viewports.
   - **Outcome:** fully green; both blocking bugs fixed and verified; no new defects; all sibling sub-issues closed. `qa` issue #464 closed, then Epic #463 closed per ISSUE_PROTOCOL §2/§5.3.
   - Seeding-doc gap from the prior pass still applies (#466/#509 State B/C omit the `.decimals` mock key needed for `formattedBalance`); worked around by seeding `.decimals="18"`. Worth a doc fix but not an app bug.
+=======
+### 2026-06-10 — Epic #498 (Deposit/withdraw page) — final QA pass (re-run) via `qa` issue #499
+
+- **Scope:** Re-run of the final QA pass after the only first-pass failure (#547) was fixed and merged to `main` (`ca5e34d`). Targeted the previously-failing doc `501-deposit-header-mobile` (incl. its new Story 4 #547 regression guard) plus the `CoinIcon` surfaces the fix touches; the other 6 docs were first-pass green with no intervening merged changes to their surfaces. All 8 non-`qa` sub-issues (#501–#507, #520, #547) closed.
+- **Environment:** `http://localhost:3000` served from `/Users/dima/git/pipeline`, fast-forwarded `a79ac6f → origin/main ca5e34d` so the running app actually contains the #547 fix (the prior served code did not). Chrome DevTools MCP, mobile (~500px floor, `matchMedia('(min-width:768px)')`=false) + desktop (1280). Connected state via `connected-allowance-zero` mock scenario.
+- **Docs re-verified:** `501` (4 stories). **Carried-forward green** (first pass 2026-06-10, surfaces unchanged): `502` (4), `503` (4), `504` (2), `505` (3), `507` (2), `520` (4).
+- **Cumulative coverage:** 7 docs / 22 stories — **22 PASS / 0 FAIL / 0 blocked.**
+- **Bugs filed:** none.
+- **Figma frames compared:** 1993:7701 (mobile init — header now matches, no coin icon above heading), 1498:100130 (desktop init — coin icon centered above heading, matches).
+- **Score: 9/10**
+  - The #547 regression is fixed and verified live: at mobile width the header `CoinIcon` (`className="block hidden md:block"`, inline `flex-shrink: 0;` only, no inline `display`) computes `display: none` and is not visible; the left-aligned "1:1 Conversion" heading (Besley 400, 28/36, left edge 8px) and single `<h2>` match the mobile Figma. At desktop ≥768px the same icon computes `display: block` and is visible/centered above the centered heading. In-card USDC/PLUSD `CoinIcon`s keep `display: block` on mobile — fix did not regress non-responsive usages. `CoinIcon.test.tsx` 16/16 pass incl. the Issue-#547 group.
+  - Network-fee row remains ETH-only (no `($1.20)` USD) — #506, closed working-as-intended (no price source); not a defect.
+  - One benign pre-existing 404 console entry; zero deposit-behavior error-level messages.
+  - Held 1 point back from 10 only because this was a targeted re-run (one doc fully re-executed live; the other 6 carried forward from the prior green pass rather than re-run end-to-end). No outstanding defects. `qa` #499 and epic #498 closed.
+>>>>>>> Stashed changes
 
 ### 2026-06-05 — Epic #463 (Home page) — QA pass via `qa` issue #464
 
