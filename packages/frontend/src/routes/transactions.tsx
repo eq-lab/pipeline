@@ -42,9 +42,19 @@ import { useEvmWallet } from "@/wallet";
  * pixel sizes. All values flow through `@pipeline/ui` component props or
  * Tailwind utilities that resolve design tokens.
  *
+ * Empty-state layout:
+ *   - Mobile (< 768 px) — Figma node 1993-9958: illustration (240×240) and
+ *     caption are top-anchored just below the tab bar with natural spacing;
+ *     no tall centering wrapper.
+ *   - Desktop (≥ 768 px) — Figma node 1497-94912: illustration is
+ *     vertically centred inside a `min-h-[400px]` wrapper.
+ *   The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`)
+ *   to gate the desktop centering treatment without affecting mobile.
+ *
  * Figma references:
  *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev
- *   Mobile:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev
+ *   Mobile (with data): https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev
+ *   Mobile (empty):     https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9958&m=dev
  */
 
 /** Ordered tab definitions for the filter bar — "All" tab is intentionally absent. */
@@ -112,7 +122,7 @@ function Transactions() {
           )}
 
           {shouldRenderEmpty && (
-            <div className="flex min-h-[400px] flex-col items-center justify-center">
+            <div className="flex flex-col items-center pt-8 md:min-h-[400px] md:justify-center md:pt-0">
               <EmptyState
                 illustration={
                   <ActivityEmptyIllustration tone="muted" width={240} />
