@@ -48,8 +48,8 @@ import { parseUsdc, formatUsdc } from "@/lib/usdc";
  * Wallet-disconnected state:
  *   When the wallet is not connected, a yellow "Connect your wallet first"
  *   banner with a dark "Connect" button is shown in place of the StepsCard
- *   for both the Stake and Unstake tabs. The input card and output card
- *   remain visible above the banner.
+ *   for both the Stake and Unstake tabs. The combined conversion card
+ *   remains visible above the banner.
  *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
  *   identical to the deposit page and home-page CTA.
  *   Figma: node 1994-7280.
@@ -296,53 +296,63 @@ function Stake() {
         {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
         <StakeHeader title="Earn 8.42% p.a." />
 
-        {/* Input card: tab switcher + token amount input */}
-        <Card variant="white" className="flex flex-col gap-4">
-          <SegmentedTabs
-            tabs={[
-              { id: "stake", label: "Stake" },
-              { id: "unstake", label: "Unstake" },
-            ]}
-            activeId={activeTab}
-            onSelect={onSelectTab}
-          />
+        {/* Combined conversion card: tab switcher + input + output/rates.
+            Figma node 1498-101158 / input section 1500-102009: the two
+            sub-sections (input-sum-inline) share the same white card with
+            zero gap between them, creating one seamless conversion card. */}
+        <Card
+          variant="white"
+          padding="none"
+          className="flex flex-col gap-0 overflow-hidden"
+        >
+          {/* Input sub-section: tabs + token amount input */}
+          <div className="flex flex-col gap-4 p-4">
+            <SegmentedTabs
+              tabs={[
+                { id: "stake", label: "Stake" },
+                { id: "unstake", label: "Unstake" },
+              ]}
+              activeId={activeTab}
+              onSelect={onSelectTab}
+            />
 
-          <TokenInput
-            token={isStakeTab ? "plusd" : "splusd"}
-            tokenLabel={isStakeTab ? "PLUSD" : "sPLUSD"}
-            balanceLabel={
-              formattedInputBalance
-                ? formattedInputBalance.replace(/^\$/, "")
-                : "—"
-            }
-            placeholderValue="0"
-            value={amountInput}
-            onValueChange={setAmountInput}
-            disabled={!isConnected || !isReady}
-            quickAmounts={[
-              { label: "25%" },
-              { label: "50%" },
-              { label: "75%" },
-              { label: "Max" },
-            ]}
-            onQuickAmountClick={onQuickAmount}
-          />
-        </Card>
+            <TokenInput
+              token={isStakeTab ? "plusd" : "splusd"}
+              tokenLabel={isStakeTab ? "PLUSD" : "sPLUSD"}
+              balanceLabel={
+                formattedInputBalance
+                  ? formattedInputBalance.replace(/^\$/, "")
+                  : "—"
+              }
+              placeholderValue="0"
+              value={amountInput}
+              onValueChange={setAmountInput}
+              disabled={!isConnected || !isReady}
+              quickAmounts={[
+                { label: "25%" },
+                { label: "50%" },
+                { label: "75%" },
+                { label: "Max" },
+              ]}
+              onQuickAmountClick={onQuickAmount}
+            />
+          </div>
 
-        {/* Output card: preview amount + exchange rate + network fee */}
-        <Card variant="white" className="flex flex-col gap-4">
-          <TokenAmountDisplay
-            token={isStakeTab ? "splusd" : "plusd"}
-            tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
-            balanceLabel={
-              formattedOutputBalance
-                ? formattedOutputBalance.replace(/^\$/, "")
-                : "—"
-            }
-            value={previewOutputValue}
-          />
-          <InfoRow label="Exchange rate" value={exchangeRateText} />
-          <InfoRow label="Network fee" value="—" />
+          {/* Output sub-section: preview amount + exchange rate + network fee */}
+          <div className="flex flex-col gap-4 p-4">
+            <TokenAmountDisplay
+              token={isStakeTab ? "splusd" : "plusd"}
+              tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
+              balanceLabel={
+                formattedOutputBalance
+                  ? formattedOutputBalance.replace(/^\$/, "")
+                  : "—"
+              }
+              value={previewOutputValue}
+            />
+            <InfoRow label="Exchange rate" value={exchangeRateText} />
+            <InfoRow label="Network fee" value="—" />
+          </div>
         </Card>
 
         {/* Steps card — conditional on wallet connection and activeTab */}

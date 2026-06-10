@@ -35,6 +35,9 @@ import React from "react";
  * in `baseClasses`; it is injected from the `paddingClasses` map so there is
  * no same-specificity competitor that a caller className could lose to.
  *
+ *   - `"none"` — 0px (`p-0`). Used when the caller manages all internal
+ *               padding via child elements (e.g. multi-section cards where
+ *               each section has its own padding).
  *   - `"sm"` — 8px  (`p-2`). Used by mobile home small cards (StartHere,
  *               Earned, Stake) per Figma frame `1989:8292`.
  *   - `"md"` — 16px (`p-4`). Used by mobile home promo card
@@ -48,11 +51,12 @@ export type CardVariant = "white" | "yellow" | "muted" | "danger";
 /**
  * Controls interior padding as a first-class variant (avoids Tailwind v4
  * equal-specificity hazard documented in Issue #357).
+ * - `"none"` = 0px  (`p-0`) — caller owns all internal padding
  * - `"sm"` = 8px  (`p-2`)
  * - `"md"` = 16px (`p-4`)
  * - `"lg"` = 24px (`p-6`) — default; preserves all existing consumer behavior
  */
-export type CardPadding = "sm" | "md" | "lg";
+export type CardPadding = "none" | "sm" | "md" | "lg";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: CardVariant;
@@ -76,9 +80,10 @@ const baseClasses = [
 // value. Using a map (like variantClasses) ensures there is exactly one padding
 // utility per card instance — no competing same-specificity rule.
 const paddingClasses: Record<CardPadding, string> = {
-  sm: "p-2",  // 8px  — mobile home small cards
-  md: "p-4",  // 16px — mobile home promo card
-  lg: "p-6",  // 24px — desktop default (all existing consumers)
+  none: "p-0", // 0px  — caller owns all internal padding (multi-section cards)
+  sm: "p-2", // 8px  — mobile home small cards
+  md: "p-4", // 16px — mobile home promo card
+  lg: "p-6", // 24px — desktop default (all existing consumers)
 };
 
 const variantClasses: Record<CardVariant, string> = {
