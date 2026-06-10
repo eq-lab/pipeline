@@ -4,6 +4,28 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-10 — Epic #498 (Deposit/withdraw page) — QA pass via `qa` issue #499 (final-pass attempt)
+
+- **Scope:** First pass on `qa` issue #499. All 7 user-stories docs under `docs/user-stories/epic-498/` (#501, #502, #503, #504, #505, #507, #520) executed against `main`-equivalent code at http://localhost:3000 (branch `chore/qa-epic-463`, which contains all 8 merged epic-498 fixes #501–#507, #520). Desktop (1280/1440) + mobile (Chrome non-headless ~500px floor; `matchMedia('(min-width:768px)')` = false confirms the mobile/`md` layout was exercised). Mock states seeded via the `/test` scenario keys (`connected-allowance-zero`, `connected-below-min`, `connected-allowance-ok`, disconnected).
+- **Docs run:** 7
+- **Stories executed:** 22
+- **Passes:** 21
+- **Failures:** 1 (#501 Story 1 — mobile coin icon)
+- **Blocked:** 0
+- **Bugs filed:** #547 (medium, `trivial`) — sub-issue of #498
+- **Figma frames compared:** 1993:7701 (mobile init, heading node 1993:7911), 1498:100130 (desktop init)
+- **Score: 8/10**
+  - #502 fully verified: Min chip `$1,000 (Min)` / `$250 (Min)` / `$1,000.50 (Min)` (whole-dollar drops `.00`, cents retained when fractional); all four chips fit the mobile viewport without overflow; Min chip fills input `1000.00`.
+  - #503 verified: below-min banner title is Graphik LC 16px (not Besley serif/20px); subtitle "Minimum amount — 1,000 USDC" (no `$`, comma separator); Copy Address is `white-space:nowrap` single line; banner ~98px (vs doc's ~92px, within tolerance); Copy Address writes the full wallet address to clipboard.
+  - #504 verified: input card is full opacity (no `.opacity-30`) in the below-min state; correctly carries `opacity:0.3` only in the approved/step-2-live state.
+  - #505 verified: step labels wrap with no ellipsis (`white-space:normal`, no `truncate`); action buttons render 88×32 (`!h-8 w-22`); StepRow root is `flex items-start` so badge + button top-align with a wrapping label.
+  - #507 verified: mobile `<main>` padding = 8px (content flush at x=8); desktop padding = 16px.
+  - #520 verified: disconnected deposit + withdraw both show the "Connect your wallet first" yellow banner with a "Connect" button and no step buttons; clicking Connect opens the "Before you continue" terms gate (then AppKit, per #385); connecting + sufficient balance hides the banner and renders the 3-step card.
+  - **#547 (medium, FAIL #501 Story 1):** mobile /deposit still renders the PLUSD coin icon above the "1:1 Conversion" heading; Figma mobile frame 1993:7701 has no coin icon there. Root cause: `CoinIcon` hard-codes inline `style={{display:"block"}}`, which beats `DepositHeader`'s `className="hidden md:block"` so the responsive hide never applies (confirmed: clearing the inline display lets the class resolve to `display:none`). Desktop is correct (icon should be visible there). Mechanical fix → labeled `trivial`.
+  - **Network-fee USD conversion (not a defect):** Figma 1993:7701 shows `~$0.00053 ETH ($1.20)`; the app shows ETH-only. #506 was closed working-as-intended — no ETH→USD price source exists and the human decision was to show only the ETH amount. Accepted deviation, no bug filed.
+  - Zero error-level console messages across all states/viewports.
+  - **Outcome:** not green — #547 is an open Figma-fidelity regression on the primary mobile surface. `qa` issue #499 returned to `blocked`; epic #498 cannot close until #547 is fixed and a follow-up pass is green. Deducted 2 points for the one medium mobile-fidelity regression; everything else (4 fixes × multiple stories, plus the disconnected and below-min flows) passes functionally and visually.
+
 ### 2026-06-10 — Epic #463 (Home page) — FINAL QA pass via `qa` issue #464 (epic closed)
 
 - **Scope:** Final QA pass for Epic #463. Second pass on `qa` issue #464, focused on the two bugs that blocked the 2026-06-05 pass — **#508** (mobile Portfolio period-tabs placement) and **#509** (StartHereCard "$X USDC" sub-line) — both now CLOSED/merged with their own user-stories docs. Tested against `main` served at http://localhost:3000/ (from `/Users/dima/git/pipeline/packages/frontend`). Surrounding mobile states (A/B/C, disconnected, desktop) re-exercised for regression; the rest of the docs were green on 2026-06-05 against unchanged code.
