@@ -96,6 +96,11 @@ vi.mock("@reown/appkit/react", () => ({
   useAppKit: vi.fn(() => ({ open: vi.fn() })),
 }));
 
+// The stake-route tests mock useQuery (from @tanstack/react-query) to return
+// undefined, which causes useNetworkFeeEstimate to fall back to "—" via the
+// `networkFee ?? "—"` expression in stake.tsx. Tests that need a real fee value
+// should set the localStorage mock-key instead — the hook's mock-key path
+// short-circuits before useQuery is called.
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-query")>();
@@ -107,6 +112,11 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       children: React.ReactNode;
       client: unknown;
     }) => <>{children}</>,
+    useQuery: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      error: null,
+    })),
   };
 });
 

@@ -1,10 +1,12 @@
 /**
- * Network-fee estimate hook for the /deposit page.
+ * Network-fee estimate hook for the /deposit and /stake pages.
  *
  * Returns a live ETH-denominated gas-cost estimate for the representative
  * call associated with the given direction:
  *   - "deposit"  → `requestDeposit(max(1000 USDC, minDeposit))`
  *   - "withdraw" → `requestWithdrawal(1000 PLUSD)`
+ *   - "stake"    → `sPLUSD.deposit(1000 PLUSD, receiver=address)`
+ *   - "unstake"  → `sPLUSD.redeem(1000 sPLUSD, receiver=address, owner=address)`
  *
  * The estimate is:
  *   1. Computed via `publicClient.estimateContractGas` (without `stateOverride`
@@ -18,12 +20,16 @@
  * balance), the hook falls back to curated-constant gas numbers:
  *   - deposit:  250 000 gas
  *   - withdraw: 180 000 gas
+ *   - stake:    200 000 gas
+ *   - unstake:  200 000 gas
  * These constants are multiplied by live `gasPrice` to give a representative
  * cost estimate even when the simulation path is unavailable.
  *
  * Mock-key support (localStorage):
  *   `pipeline.mock.wallet.networkFeeEstimate.deposit`  — raw numeric string or
  *   `pipeline.mock.wallet.networkFeeEstimate.withdraw`   `"~0.00053 ETH"` string.
+ *   `pipeline.mock.wallet.networkFeeEstimate.stake`    — same format.
+ *   `pipeline.mock.wallet.networkFeeEstimate.unstake`  — same format.
  *   When set, the hook short-circuits without any RPC call.
  *
  * Not configured / disconnected: returns `{ feeEth: undefined }` so callers
@@ -36,6 +42,10 @@
  *   was considered but requires knowing ERC-20 storage slot indices per token —
  *   too fragile for a display-only feature. The manager confirmed this approach
  *   is acceptable (open-question resolution in the Issue comments).
+ *
+ *   The fee is denominated in ETH (not USD). Issue #506 was closed with the
+ *   decision "we do not have usd price, show only eth amount." The stake/unstake
+ *   directions follow the same precedent — see issue #542 for the resolution.
  */
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
@@ -46,6 +56,7 @@ import { useEvmWallet } from "./useEvmWallet";
 import { useDepositManagerMinDeposit } from "./useDepositManager";
 import { depositManagerAbi } from "./abis/depositManager";
 import { withdrawalQueueAbi } from "./abis/withdrawalQueue";
+import { stakedPlusdAbi } from "./abis/stakedPlusd";
 import { applyGasBuffer } from "./gas";
 import { parseUnits } from "./units";
 
@@ -57,10 +68,15 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const FALLBACK_GAS_DEPOSIT = 250_000n;
 /** Curated fallback gas for `requestWithdrawal` when simulation reverts. */
 const FALLBACK_GAS_WITHDRAW = 180_000n;
+/** Curated fallback gas for `sPLUSD.deposit` (stake) when simulation reverts. */
+const FALLBACK_GAS_STAKE = 200_000n;
+/** Curated fallback gas for `sPLUSD.redeem` (unstake) when simulation reverts. */
+const FALLBACK_GAS_UNSTAKE = 200_000n;
 
 /** Representative fixed amounts (token-decimals applied at call time). */
 const REPRESENTATIVE_USDC = "1000"; // 1000 USDC
 const REPRESENTATIVE_PLUSD = "1000"; // 1000 PLUSD
+const REPRESENTATIVE_SPLUSD = "1000"; // 1000 sPLUSD (for unstake/redeem)
 
 /**
  * USDC uses 6 decimals (stable across all deployments).
@@ -80,11 +96,13 @@ const DEFAULT_DECIMALS = 6;
 const MOCK_KEYS = {
   deposit: "pipeline.mock.wallet.networkFeeEstimate.deposit",
   withdraw: "pipeline.mock.wallet.networkFeeEstimate.withdraw",
+  stake: "pipeline.mock.wallet.networkFeeEstimate.stake",
+  unstake: "pipeline.mock.wallet.networkFeeEstimate.unstake",
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type NetworkFeeDirection = "deposit" | "withdraw";
+export type NetworkFeeDirection = "deposit" | "withdraw" | "stake" | "unstake";
 
 export interface UseNetworkFeeEstimateResult {
   /** ETH-denominated fee string, e.g. `"~0.00053 ETH"`. `undefined` when not configured, loading, or disconnected. */
@@ -136,15 +154,20 @@ export function useNetworkFeeEstimate(
 
   const DM_ADDRESS = ENV.DEPOSIT_MANAGER_ADDRESS;
   const WQ_ADDRESS = ENV.WITHDRAWAL_QUEUE_ADDRESS;
+  const SP_ADDRESS = ENV.STAKED_PLUSD_ADDRESS;
 
-  const contractAddress = direction === "deposit" ? DM_ADDRESS : WQ_ADDRESS;
+  const contractAddress =
+    direction === "deposit"
+      ? DM_ADDRESS
+      : direction === "withdraw"
+        ? WQ_ADDRESS
+        : SP_ADDRESS;
   const isZeroAddress = contractAddress === ZERO_ADDRESS;
 
   // ── Mock-key check (reactive) ─────────────────────────────────────────────
   // Mock values are JSON-encoded strings, e.g. `"0.00053"` or `"~0.00053 ETH"`.
   // parseJson<string> decodes them to a plain string.
-  const mockKey =
-    direction === "deposit" ? MOCK_KEYS.deposit : MOCK_KEYS.withdraw;
+  const mockKey = MOCK_KEYS[direction];
   const mockRaw = useMock(mockKey, parseJson<string>);
 
   // ── Query function ────────────────────────────────────────────────────────
@@ -180,7 +203,7 @@ export function useNetworkFeeEstimate(
         // Simulation reverted (no allowance / balance) — use curated constant.
         gas = applyGasBuffer(FALLBACK_GAS_DEPOSIT);
       }
-    } else {
+    } else if (direction === "withdraw") {
       const decimals = DEFAULT_DECIMALS;
       const representativeAmount = parseUnits(REPRESENTATIVE_PLUSD, decimals);
 
@@ -195,6 +218,39 @@ export function useNetworkFeeEstimate(
         gas = applyGasBuffer(estimated);
       } catch {
         gas = applyGasBuffer(FALLBACK_GAS_WITHDRAW);
+      }
+    } else if (direction === "stake") {
+      const decimals = DEFAULT_DECIMALS;
+      const representativeAmount = parseUnits(REPRESENTATIVE_PLUSD, decimals);
+
+      try {
+        const estimated = await publicClient.estimateContractGas({
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "deposit",
+          args: [representativeAmount, address],
+        });
+        gas = applyGasBuffer(estimated);
+      } catch {
+        gas = applyGasBuffer(FALLBACK_GAS_STAKE);
+      }
+    } else {
+      // direction === "unstake"
+      const decimals = DEFAULT_DECIMALS;
+      const representativeAmount = parseUnits(REPRESENTATIVE_SPLUSD, decimals);
+
+      try {
+        const estimated = await publicClient.estimateContractGas({
+          account: address,
+          abi: stakedPlusdAbi,
+          address: SP_ADDRESS,
+          functionName: "redeem",
+          args: [representativeAmount, address, address],
+        });
+        gas = applyGasBuffer(estimated);
+      } catch {
+        gas = applyGasBuffer(FALLBACK_GAS_UNSTAKE);
       }
     }
 
@@ -217,6 +273,7 @@ export function useNetworkFeeEstimate(
       address,
       DM_ADDRESS,
       WQ_ADDRESS,
+      SP_ADDRESS,
       String(minDeposit),
     ],
     queryFn,

@@ -93,6 +93,8 @@ const DM_ADDRESS =
   "0x3333000000000000000000000000000000000003" as `0x${string}`;
 const WQ_ADDRESS =
   "0x4444000000000000000000000000000000000004" as `0x${string}`;
+const SP_ADDRESS =
+  "0x5555000000000000000000000000000000000005" as `0x${string}`;
 
 const mockEnv = vi.hoisted(() => ({
   EVM_CHAIN_ID: 560048,
@@ -102,6 +104,8 @@ const mockEnv = vi.hoisted(() => ({
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   WITHDRAWAL_QUEUE_ADDRESS:
     "0x4444000000000000000000000000000000000004" as `0x${string}`,
+  STAKED_PLUSD_ADDRESS:
+    "0x5555000000000000000000000000000000000005" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -172,9 +176,10 @@ describe("formatFeeEth", () => {
 describe("useNetworkFeeEstimate — zero-address short-circuit", () => {
   beforeEach(() => {
     localStorage.clear();
-    // Set both addresses to zero
+    // Set all addresses to zero
     mockEnv.DEPOSIT_MANAGER_ADDRESS = ZERO_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = ZERO_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = ZERO_ADDRESS as `0x${string}`;
     mockEstimateContractGas.mockClear();
     mockGetGasPrice.mockClear();
   });
@@ -183,6 +188,7 @@ describe("useNetworkFeeEstimate — zero-address short-circuit", () => {
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
   });
 
   it("returns feeEth: undefined for deposit when DM is zero address", () => {
@@ -203,6 +209,26 @@ describe("useNetworkFeeEstimate — zero-address short-circuit", () => {
     expect(result.current.isLoading).toBe(false);
     expect(mockEstimateContractGas).not.toHaveBeenCalled();
   });
+
+  it("returns feeEth: undefined for stake when SP is zero address", () => {
+    const { result } = renderHook(() => useNetworkFeeEstimate("stake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+    expect(result.current.feeEth).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+
+  it("returns feeEth: undefined for unstake when SP is zero address", () => {
+    const { result } = renderHook(() => useNetworkFeeEstimate("unstake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+    expect(result.current.feeEth).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
 });
 
 describe("useNetworkFeeEstimate — disconnected wallet", () => {
@@ -210,6 +236,7 @@ describe("useNetworkFeeEstimate — disconnected wallet", () => {
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
     // Disconnect wallet
     mockUseAccount.mockReturnValue({
       address: undefined as unknown as `0x${string}`,
@@ -242,6 +269,7 @@ describe("useNetworkFeeEstimate — mock-key path (deposit)", () => {
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
     mockEstimateContractGas.mockClear();
     mockGetGasPrice.mockClear();
   });
@@ -286,6 +314,7 @@ describe("useNetworkFeeEstimate — mock-key path (withdraw)", () => {
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
     mockEstimateContractGas.mockClear();
     mockGetGasPrice.mockClear();
   });
@@ -325,6 +354,7 @@ describe("useNetworkFeeEstimate — real RPC path (estimation succeeds)", () => 
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
     mockUseAccount.mockReturnValue({
       address: "0xabc0000000000000000000000000000000000001",
       isConnected: true,
@@ -343,6 +373,7 @@ describe("useNetworkFeeEstimate — real RPC path (estimation succeeds)", () => 
     localStorage.clear();
     mockEstimateContractGas.mockResolvedValue(200_000n);
     mockGetGasPrice.mockResolvedValue(2_000_000_000n);
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
   });
 
   it("returns formatted ETH fee when estimation succeeds (deposit)", async () => {
@@ -391,6 +422,7 @@ describe("useNetworkFeeEstimate — fallback to constant gas on revert", () => {
     localStorage.clear();
     mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
     mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
     mockUseAccount.mockReturnValue({
       address: "0xabc0000000000000000000000000000000000001",
       isConnected: true,
@@ -411,6 +443,7 @@ describe("useNetworkFeeEstimate — fallback to constant gas on revert", () => {
     localStorage.clear();
     mockEstimateContractGas.mockResolvedValue(200_000n);
     mockGetGasPrice.mockResolvedValue(2_000_000_000n);
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
   });
 
   it("falls back to curated constant gas for deposit on revert", async () => {
@@ -447,6 +480,184 @@ describe("useNetworkFeeEstimate — fallback to constant gas on revert", () => {
     // 180_000 * 1.2 = 216_000; * 2_000_000_000 = 432_000_000_000_000 wei
     // formatEther → "0.000432"
     expect(result.current.feeEth).toBe("~0.00043 ETH");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("falls back to curated constant gas for stake on revert", async () => {
+    const { result } = renderHook(() => useNetworkFeeEstimate("stake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(
+      () => {
+        expect(result.current.feeEth).toBeDefined();
+      },
+      { timeout: 3000 },
+    );
+
+    // 200_000 * 1.2 = 240_000; * 2_000_000_000 = 480_000_000_000_000 wei
+    // formatEther → "0.00048"
+    expect(result.current.feeEth).toBe("~0.00048 ETH");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("falls back to curated constant gas for unstake on revert", async () => {
+    const { result } = renderHook(() => useNetworkFeeEstimate("unstake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(
+      () => {
+        expect(result.current.feeEth).toBeDefined();
+      },
+      { timeout: 3000 },
+    );
+
+    // 200_000 * 1.2 = 240_000; * 2_000_000_000 = 480_000_000_000_000 wei
+    // formatEther → "0.00048"
+    expect(result.current.feeEth).toBe("~0.00048 ETH");
+    expect(result.current.error).toBeNull();
+  });
+});
+
+// ── Tests: stake / unstake mock-key path ──────────────────────────────────────
+
+describe("useNetworkFeeEstimate — mock-key path (stake)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
+    mockEstimateContractGas.mockClear();
+    mockGetGasPrice.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
+  });
+
+  it("returns pinned fee from stake mock key (raw number string)", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.networkFeeEstimate.stake",
+      '"0.00042"',
+    );
+
+    const { result } = renderHook(() => useNetworkFeeEstimate("stake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    expect(result.current.feeEth).toBe("~0.00042 ETH");
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+
+  it("returns pinned fee from unstake mock key (pre-formatted string)", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.networkFeeEstimate.unstake",
+      '"~0.00039 ETH"',
+    );
+
+    const { result } = renderHook(() => useNetworkFeeEstimate("unstake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    expect(result.current.feeEth).toBe("~0.00039 ETH");
+    expect(result.current.isLoading).toBe(false);
+    expect(mockEstimateContractGas).not.toHaveBeenCalled();
+  });
+
+  it("stake mock key does not bleed into unstake direction", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.networkFeeEstimate.stake",
+      '"0.00042"',
+    );
+
+    const { result: unstakeResult } = renderHook(
+      () => useNetworkFeeEstimate("unstake"),
+      { wrapper: makeWrapper().wrapper },
+    );
+
+    // unstake key is absent — should not pick up stake's value
+    expect(unstakeResult.current.feeEth).toBeUndefined();
+  });
+});
+
+// ── Tests: stake / unstake real RPC path ─────────────────────────────────────
+
+describe("useNetworkFeeEstimate — real RPC path (stake/unstake)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockEnv.DEPOSIT_MANAGER_ADDRESS = DM_ADDRESS as `0x${string}`;
+    mockEnv.WITHDRAWAL_QUEUE_ADDRESS = WQ_ADDRESS as `0x${string}`;
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
+    mockUseAccount.mockReturnValue({
+      address: "0xabc0000000000000000000000000000000000001",
+      isConnected: true,
+    });
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+      "1000000",
+    );
+    // 200_000 gas * 1.2 buffer = 240_000; * 2 gwei = 480_000_000_000_000 wei
+    mockEstimateContractGas.mockResolvedValue(200_000n);
+    mockGetGasPrice.mockResolvedValue(2_000_000_000n); // 2 gwei
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockEstimateContractGas.mockResolvedValue(200_000n);
+    mockGetGasPrice.mockResolvedValue(2_000_000_000n);
+    mockEnv.STAKED_PLUSD_ADDRESS = SP_ADDRESS as `0x${string}`;
+  });
+
+  it("calls estimateContractGas for stake direction against SP_ADDRESS with deposit function", async () => {
+    mockEstimateContractGas.mockClear();
+
+    const { result } = renderHook(() => useNetworkFeeEstimate("stake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(
+      () => {
+        expect(result.current.feeEth).toBeDefined();
+      },
+      { timeout: 3000 },
+    );
+
+    expect(mockEstimateContractGas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: SP_ADDRESS,
+        functionName: "deposit",
+      }),
+    );
+    // 240_000 gas * 2 gwei = 480_000_000_000_000 wei → "~0.00048 ETH"
+    expect(result.current.feeEth).toBe("~0.00048 ETH");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("calls estimateContractGas for unstake direction against SP_ADDRESS with redeem function", async () => {
+    mockEstimateContractGas.mockClear();
+
+    const { result } = renderHook(() => useNetworkFeeEstimate("unstake"), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(
+      () => {
+        expect(result.current.feeEth).toBeDefined();
+      },
+      { timeout: 3000 },
+    );
+
+    expect(mockEstimateContractGas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: SP_ADDRESS,
+        functionName: "redeem",
+      }),
+    );
+    expect(result.current.feeEth).toBe("~0.00048 ETH");
     expect(result.current.error).toBeNull();
   });
 });
