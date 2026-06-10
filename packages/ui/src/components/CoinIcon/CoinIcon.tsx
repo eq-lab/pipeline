@@ -47,6 +47,7 @@ export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
     {
       token,
       size = "md",
+      className,
       "aria-label": ariaLabel,
       "aria-hidden": ariaHidden,
       ...rest
@@ -64,6 +65,14 @@ export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
     // Decorative by default; becomes meaningful when caller supplies aria-label.
     const isHidden = ariaLabel == null ? true : (ariaHidden ?? false);
 
+    // "block" is the default display; callers can override it with responsive
+    // Tailwind utilities (e.g. className="hidden md:block") because class-based
+    // rules share the same specificity and the caller's classes appear later in
+    // the stylesheet.  We deliberately do NOT put display in the inline style —
+    // inline styles have higher specificity than utility classes, which would
+    // prevent responsive hiding from working (Issue #547).
+    const composedClassName = ["block", className].filter(Boolean).join(" ");
+
     return (
       <img
         ref={ref}
@@ -74,7 +83,8 @@ export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
         aria-hidden={isHidden || undefined}
         aria-label={ariaLabel}
         role={ariaLabel != null ? "img" : undefined}
-        style={{ display: "block", flexShrink: 0 }}
+        className={composedClassName}
+        style={{ flexShrink: 0 }}
         {...rest}
       />
     );
