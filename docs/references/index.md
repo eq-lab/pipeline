@@ -23,3 +23,4 @@ Links to be added as vendor selections are finalised:
 
 - [Soroban RPC documentation](https://developers.stellar.org/docs/data/apis/rpc) — `getEvents`, `getLatestLedger`, and pagination
 - [pipeline-stellar-contracts](https://github.com/eq-lab/pipeline-stellar-contracts) — DepositManager, WithdrawalQueue, StakedPipelineUSD contracts; testnet IDs in `deployments/testnet.json`
+- [Stellar Protocol Contracts — Generated Reference](../generated/stellar-protocol-contracts.md) — verified testnet addresses, manager interfaces, SAC facts (7 decimals, issuer), and on-chain verification snapshot (2026-06-10)

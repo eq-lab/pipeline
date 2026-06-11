@@ -38,35 +38,35 @@ _None._ The body edit comment resolved the env-vs-derived split (managers in env
 
 ## Implementation Steps
 
-1. **Env additions** — `packages/frontend/src/lib/env.ts`:
+1. ✅ **Env additions** — `packages/frontend/src/lib/env.ts`:
    - Add `STELLAR_DEPOSIT_MANAGER_ID: readString("VITE_STELLAR_DEPOSIT_MANAGER_ID", "")` and `STELLAR_WITHDRAWAL_QUEUE_ID: readString("VITE_STELLAR_WITHDRAWAL_QUEUE_ID", "")`.
    - Use an empty-string default (Soroban contract IDs have no natural "zero" sentinel like EVM's zero address); document that empty = "unconfigured → short-circuit hooks return `undefined` without an RPC call" (mirroring the EVM zero-address short-circuit semantics).
    - Do NOT add `access_manager`, `staked_pl_usd`, USDC, or PLUSD env vars.
    - Mirror the doc-comment style of the existing EVM/Stellar entries.
 
-2. **Update `.env.example`** — add the two `VITE_STELLAR_DEPOSIT_MANAGER_ID` / `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` frontend vars (the `CHAIN_99000001_STELLAR_*` indexer block already lists the addresses; add the `VITE_`-prefixed frontend equivalents with the verified testnet values as commented examples). Leave `.env` for the human to fill if they wish — note it in the PR.
+2. ✅ **Update `.env.example`** — add the two `VITE_STELLAR_DEPOSIT_MANAGER_ID` / `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` frontend vars (the `CHAIN_99000001_STELLAR_*` indexer block already lists the addresses; add the `VITE_`-prefixed frontend equivalents with the verified testnet values as commented examples). Leave `.env` for the human to fill if they wish — note it in the PR.
 
-3. **Expose IDs in `chain.ts`** — `packages/frontend/src/wallet/stellar/chain.ts`:
+3. ✅ **Expose IDs in `chain.ts`** — `packages/frontend/src/wallet/stellar/chain.ts`:
    - Add `export const depositManagerId: string = ENV.STELLAR_DEPOSIT_MANAGER_ID;` and `export const withdrawalQueueId: string = ENV.STELLAR_WITHDRAWAL_QUEUE_ID;` alongside the existing Soroban constants. Keep `sorobanRpcUrl` / `networkPassphrase` reuse.
 
-4. **Generate & check in bindings** — create `packages/frontend/src/wallet/stellar/contracts/`:
+4. ✅ **Generate & check in bindings** — create `packages/frontend/src/wallet/stellar/contracts/`:
    - Run `stellar contract bindings typescript --id <deposit_manager> --network testnet --output-dir …` (and same for `withdrawal_queue`), OR hand-write minimal typed clients from the spec in the issue comments. Place the generated/authored client modules here (e.g. `depositManager.ts`, `withdrawalQueue.ts`, plus any shared spec XDR / types).
    - Each client must wrap a `@stellar/stellar-sdk` contract `Client` constructed from `{ contractId, rpcUrl: sorobanRpcUrl, networkPassphrase }`, and expose the verified subset: read views `asset()`, `share()`, `paused()`, `verifier()`, `get_request(id)`, `digest(...)`; write builders `request_deposit(sender, amount)` / `request_withdrawal(sender, amount)` and `claim_request(request_id, verifier_signature)`. Types: `Request { amount: i128; claimed: bool; timestamp: u64; user: Address }`.
    - Add a short header comment noting the source (testnet WASM, fetched 2026-06-10) and the testnet-reset caveat.
 
-5. **Address-derivation hook** — `packages/frontend/src/wallet/stellar/useStellarDepositManagerAddresses.ts` (mirror EVM `useDepositManagerAddresses` in `src/wallet/evm/useDepositManager.ts`):
+5. ✅ **Address-derivation hook** — `packages/frontend/src/wallet/stellar/useStellarDepositManagerAddresses.ts` (mirror EVM `useDepositManagerAddresses` in `src/wallet/evm/useDepositManager.ts`):
    - Returns `{ usdc, plusd, usdcAsset, plusdAsset, isLoading, error }` where `usdc`/`plusd` are the SAC contract IDs from `asset()`/`share()`, and `usdcAsset`/`plusdAsset` carry the classic `{ code, issuer }` (from SAC metadata, needed for trustline checks).
    - Short-circuit to `undefined` data (no RPC) when `depositManagerId` is empty.
    - Support the established mock-key pattern (`pipeline.mock.wallet.stellar.contract.*`) consistent with `useMock`/`readMock` and `STELLAR_MOCK_KEYS` in `src/wallet/stellar/mock.ts`. Use `@tanstack/react-query` with long/forever cache (addresses are static per deployment), matching the EVM `CACHE_FOREVER` approach.
 
-6. **SAC token layer** — extend Stellar token support to the protocol SACs without breaking the existing Circle-issuer `useStellarToken`:
+6. ✅ **SAC token layer** — extend Stellar token support to the protocol SACs without breaking the existing Circle-issuer `useStellarToken`:
    - Add a parameterized read (e.g. `useStellarSacToken({ assetCode, assetIssuer, contractId })`) or generalize the existing hook so callers pass the asset identity instead of hardcoding `usdcIssuer` from `chain.ts`. Keep the existing `useStellarToken` (Circle USDC, Blend) untouched in behavior.
    - Balance + trustline: reuse the Horizon `loadAccount().balances` scan pattern from `useStellarToken`, matching on the SAC's classic `code:issuer` (the protocol issuer `GC5SUAXM…`, derived, NOT `usdcIssuer`). No trustline → `"0"`, 404 → `"0"`, both non-errors. Expose a `hasTrustline: boolean` flag.
    - Decimals: surface **7** for these SACs (read via the SAC `decimals()` view or the contract client; do not hardcode 6). Provide a raw↔display scaling helper keyed on the SAC decimals.
 
-7. **Docs (`docs/generated/`)** — add `docs/generated/stellar-protocol-contracts.md` capturing: the verified testnet addresses table, the `deposit_manager` / `withdrawal_queue` interface subset (signatures + `Request` struct), the SAC facts (7 decimals, classic `code:issuer`, trustline requirement), and the on-chain verification snapshot (`asset()==usdc`, `share()==plusd`, unpaused, verifier key). Link it from `docs/references/index.md` if appropriate. Note `docs/generated/` is currently empty, so this is the first artifact there.
+7. ✅ **Docs (`docs/generated/`)** — add `docs/generated/stellar-protocol-contracts.md` capturing: the verified testnet addresses table, the `deposit_manager` / `withdrawal_queue` interface subset (signatures + `Request` struct), the SAC facts (7 decimals, classic `code:issuer`, trustline requirement), and the on-chain verification snapshot (`asset()==usdc`, `share()==plusd`, unpaused, verifier key). Link it from `docs/references/index.md` if appropriate. Note `docs/generated/` is currently empty, so this is the first artifact there.
 
-8. **Lint** — run `npx tsx scripts/lint-docs.ts` (docs structure) and the frontend lint/typecheck (`npm run lint` / `tsc`) from `packages/frontend`. Ensure no `import.meta.env` access leaks outside `env.ts` (ESLint `no-restricted-syntax`).
+8. ✅ **Lint** — run `npx tsx scripts/lint-docs.ts` (docs structure) and the frontend lint/typecheck (`npm run lint` / `tsc`) from `packages/frontend`. Ensure no `import.meta.env` access leaks outside `env.ts` (ESLint `no-restricted-syntax`).
 
 ## Test Strategy
 

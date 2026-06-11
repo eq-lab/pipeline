@@ -58,6 +58,34 @@ export const STELLAR_MOCK_KEYS = {
    * The hook scales this by 1e7 to produce the display string.
    */
   blendPosition: "pipeline.mock.wallet.stellar.blend.position",
+
+  // ── Protocol contract mock keys ────────────────────────────────────────────
+
+  /**
+   * Mock USDC SAC contract ID for `useStellarDepositManagerAddresses`.
+   * Must be a valid Soroban contract ID string (starts with "C", 56 chars).
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.contract.usdc", "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7")`
+   */
+  contractUsdc: "pipeline.mock.wallet.stellar.contract.usdc",
+
+  /**
+   * Mock PLUSD SAC contract ID for `useStellarDepositManagerAddresses`.
+   * Must be a valid Soroban contract ID string (starts with "C", 56 chars).
+   */
+  contractPlusd: "pipeline.mock.wallet.stellar.contract.plusd",
+
+  /**
+   * Mock USDC SAC balance for `useStellarSacToken` (protocol USDC).
+   * Raw bigint string in 7-decimal fixed-point (e.g. `"10000000"` = 1 USDC).
+   * The hook returns this raw value; callers scale with `sacRawToDisplay`.
+   */
+  balanceSacUsdc: "pipeline.mock.wallet.stellar.balance.sac.usdc",
+
+  /**
+   * Mock PLUSD SAC balance for `useStellarSacToken` (protocol PLUSD).
+   * Raw bigint string in 7-decimal fixed-point (e.g. `"10000000"` = 1 PLUSD).
+   */
+  balanceSacPlusd: "pipeline.mock.wallet.stellar.balance.sac.plusd",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -75,6 +103,20 @@ export function parseStellarAddress(raw: string): string {
   if (!raw.startsWith("G") || raw.length !== 56) {
     throw new Error(
       `Not a Stellar public key: "${raw}" (expected a 56-char G… strkey)`,
+    );
+  }
+  return raw;
+}
+
+/**
+ * Parse a Stellar Soroban contract ID strkey (`C…` 56-char base-32).
+ * Throws on values that don't look like a Soroban contract ID so that
+ * `readMock`/`useMock` returns `undefined` for clearly-wrong values.
+ */
+export function parseStellarContractId(raw: string): string {
+  if (!raw.startsWith("C") || raw.length !== 56) {
+    throw new Error(
+      `Not a Soroban contract ID: "${raw}" (expected a 56-char C… strkey)`,
     );
   }
   return raw;

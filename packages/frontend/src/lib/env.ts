@@ -160,6 +160,30 @@ export const ENV = Object.freeze({
     "VITE_STELLAR_BLEND_XLM_ID",
     "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   ),
+
+  /**
+   * Pipeline protocol DepositManager Soroban contract ID on the configured
+   * Stellar network.
+   * Defaults to the empty string (no sentinel address exists for Soroban).
+   * When empty, all DepositManager hooks short-circuit and return `undefined`
+   * without making any RPC call — mirrors the EVM zero-address short-circuit
+   * semantics.
+   */
+  STELLAR_DEPOSIT_MANAGER_ID: readString(
+    "VITE_STELLAR_DEPOSIT_MANAGER_ID",
+    "",
+  ),
+
+  /**
+   * Pipeline protocol WithdrawalQueue Soroban contract ID on the configured
+   * Stellar network.
+   * Defaults to the empty string — same short-circuit semantics as
+   * `STELLAR_DEPOSIT_MANAGER_ID` above.
+   */
+  STELLAR_WITHDRAWAL_QUEUE_ID: readString(
+    "VITE_STELLAR_WITHDRAWAL_QUEUE_ID",
+    "",
+  ),
 });
 
 /**
