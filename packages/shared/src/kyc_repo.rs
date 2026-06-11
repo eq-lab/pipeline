@@ -631,6 +631,9 @@ impl KycRepo {
     }
 
     /// Get a deposit request by chain_id, request_id and wallet.
+    ///
+    /// The wallet comparison is case-insensitive (EVM — addresses are lowercased
+    /// both in the DB and in the bound parameter).
     pub async fn get_deposit_request(
         &self,
         chain_id: i64,
@@ -658,7 +661,42 @@ impl KycRepo {
         Ok(row)
     }
 
+    /// Get a deposit request by chain_id, request_id and wallet — case-sensitive comparison.
+    ///
+    /// Used for Stellar chains where wallet addresses are Strkey `G…` strings
+    /// stored verbatim (uppercase) by the indexer. Lowercasing would silently
+    /// return zero rows.
+    pub async fn get_deposit_request_case_sensitive(
+        &self,
+        chain_id: i64,
+        request_id: &str,
+        wallet: &str,
+    ) -> anyhow::Result<Option<RequestInfo>> {
+        let row = sqlx::query_as::<_, RequestInfo>(
+            "SELECT (params->>'request_id')::numeric AS request_id,
+                    params->>'user' AS sender,
+                    (params->>'amount')::numeric AS amount,
+                    crystal_kyt_status,
+                    block_timestamp
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'DepositRequested'
+               AND params->>'request_id' = $2
+               AND params->>'user' = $3
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(request_id)
+        .bind(wallet)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
     /// Get a withdrawal request by chain_id, request_id and wallet.
+    ///
+    /// The wallet comparison is case-insensitive (EVM — addresses are lowercased
+    /// both in the DB and in the bound parameter).
     pub async fn get_withdrawal_request(
         &self,
         chain_id: i64,
@@ -676,6 +714,37 @@ impl KycRepo {
                AND event_name = 'WithdrawalRequested'
                AND params->>'request_id' = $2
                AND LOWER(params->>'withdrawer') = $3
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(request_id)
+        .bind(wallet)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Get a withdrawal request by chain_id, request_id and wallet — case-sensitive comparison.
+    ///
+    /// Used for Stellar chains where wallet addresses are Strkey `G…` strings
+    /// stored verbatim (uppercase) by the indexer.
+    pub async fn get_withdrawal_request_case_sensitive(
+        &self,
+        chain_id: i64,
+        request_id: &str,
+        wallet: &str,
+    ) -> anyhow::Result<Option<RequestInfo>> {
+        let row = sqlx::query_as::<_, RequestInfo>(
+            "SELECT (params->>'request_id')::numeric AS request_id,
+                    params->>'withdrawer' AS sender,
+                    (params->>'amount')::numeric AS amount,
+                    crystal_kyt_status,
+                    block_timestamp
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'WithdrawalRequested'
+               AND params->>'request_id' = $2
+               AND params->>'withdrawer' = $3
              LIMIT 1",
         )
         .bind(chain_id)

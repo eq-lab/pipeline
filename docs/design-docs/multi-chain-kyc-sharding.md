@@ -66,3 +66,35 @@ The `99_000_000+` range was chosen because it is:
 3. Does **not** collide with BIP-44 coin type 148 (Stellar's registered coin type), which would place the number in the low-hundreds and risk silent collision with future Coinbase-derivative EVM chains.
 
 The `BIGINT` column in `contract_logs` / `log_collector_state` / `lp_profiles` / `kyc_outbox` accommodates these values without DDL changes. `contract_address` on Stellar rows stores the Strkey C… format as-is (uppercase, CRC-16 checksum intact); EVM rows continue to use EIP-55 checksum encoding.
+
+## Stellar Voucher Signing (Issue #555)
+
+The voucher endpoints (`GET /v1/deposits/{id}/voucher`, `GET /v1/withdrawals/{id}/voucher`) dispatch on chain kind. For Stellar chains they produce a Soroban-compatible ed25519 signature instead of an EVM EIP-712 secp256k1 signature.
+
+### On-chain digest scheme
+
+The `request-queue` Soroban contract (`pipeline-stellar-contracts/contracts/request-queue/src/crypto.rs`) computes:
+
+```
+domain_separator = sha256( XDR(Domain { contract_separator: <dm_or_wq_address>, network_id: sha256(passphrase) }) )
+voucher_hash     = sha256( XDR(Voucher { request_id: u128, sender: Address, amount: i128 }) )
+digest           = sha256( domain_separator || voucher_hash )
+```
+
+The XDR encoding mirrors `soroban-sdk`'s `#[contracttype]` `to_xdr(e)` output: a `ScVal::Map` of alphabetically-sorted `(ScSymbol, ScVal)` entries (see `packages/shared/src/stellar_voucher.rs`).
+
+### XDR parity
+
+The `stellar-xdr` crate (v25) is used to reproduce the `to_xdr` output without pulling `soroban-sdk` into the API server (which targets `x86_64-unknown-linux-gnu`, not `wasm32-unknown-unknown`). The parity is validated by determinism and collision-resistance unit tests. A live golden-fixture test requiring a deployed testnet Soroban RPC call is documented in the source but requires manual execution (see `stellar_voucher::tests` in `packages/shared/src/stellar_voucher.rs`).
+
+### Wallet normalisation
+
+EVM wallets are lowercased (existing behaviour). Stellar Strkey `G…` addresses are passed verbatim — the CRC-16 checksum embedded in the Strkey makes the address case-sensitive and the indexer stores them uppercase. The `kyc_repo` lookup uses case-sensitive SQL (`params->>'user' = $3`) for Stellar chains via `get_deposit_request_case_sensitive` / `get_withdrawal_request_case_sensitive`.
+
+### Crystal KYT for Stellar
+
+Crystal does not provide KYT for Stellar addresses in the current integration. Stellar voucher requests fall through the `crystal_enabled` gate as "screened-as-clean" (same as EVM with Crystal disabled). A dedicated Issue can wire Crystal Stellar support when Crystal adds Stellar coverage.
+
+### `is_on_chain_allowed` for Stellar
+
+The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher requests return HTTP 403 until an `lp_profiles` row exists for the wallet on the Stellar chain. Populating those rows is an ops/separate-Issue concern (see TD-16 in `tech-debt-tracker.md`).

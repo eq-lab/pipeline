@@ -15,6 +15,8 @@ use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 
+use crate::config::StellarVoucherChainConfig;
+
 pub struct AppState {
     pub pool: sqlx::PgPool,
     pub kyc_repo: KycRepo,
@@ -24,11 +26,13 @@ pub struct AppState {
     pub default_chain_id: i64,
     pub sumsub_client: Option<SumsubClient>,
     pub sumsub_settings: Option<SumsubSettings>,
-    /// Voucher signers keyed by chain_id. Only chains with a configured signer appear here.
+    /// EVM voucher signers keyed by chain_id. Only chains with a configured signer appear here.
     pub voucher_signers: HashMap<i64, PrivateKeySigner>,
     /// EIP-712 domains for DepositManager contracts, keyed by chain_id.
     pub dm_domains: HashMap<i64, Eip712Domain>,
     /// EIP-712 domains for WithdrawalQueue contracts, keyed by chain_id.
     pub wq_domains: HashMap<i64, Eip712Domain>,
+    /// Stellar voucher signing config keyed by chain_id.
+    pub stellar_voucher_signers: HashMap<i64, StellarVoucherChainConfig>,
     pub crystal_enabled: bool,
 }

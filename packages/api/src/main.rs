@@ -49,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
         None => (None, None),
     };
 
-    // Decompose per-chain voucher config into separate maps for AppState.
+    // Decompose per-chain EVM voucher config into separate maps for AppState.
     let mut voucher_signers = HashMap::new();
     let mut dm_domains = HashMap::new();
     let mut wq_domains = HashMap::new();
@@ -58,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
         dm_domains.insert(chain_id, vcfg.dm_domain);
         wq_domains.insert(chain_id, vcfg.wq_domain);
     }
+    // Stellar voucher config maps directly — one entry per configured Stellar chain.
+    let stellar_voucher_signers = chains_config.stellar_voucher;
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -74,6 +76,7 @@ async fn main() -> anyhow::Result<()> {
         voucher_signers,
         dm_domains,
         wq_domains,
+        stellar_voucher_signers,
         crystal_enabled,
     });
 

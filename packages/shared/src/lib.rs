@@ -13,5 +13,6 @@ pub mod log_mapper;
 pub mod metadata_fetcher;
 pub mod position_repo;
 pub mod signature;
+pub mod stellar_voucher;
 pub mod sumsub;
 pub mod yield_mint_outbox_repo;
