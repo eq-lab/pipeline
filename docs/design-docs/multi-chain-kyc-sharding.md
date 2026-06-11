@@ -50,3 +50,19 @@ In effect, a wallet is auto-onboarded for whitelisting only on chains that exist
 
 - **Cross-chain admin promote path** (Q4 option C): allowing an operator to copy `on_chain_allowed = true` (or, more usefully, the Sumsub status fields) from chain A to chain B for a wallet. This is the proper fix for the "second-chain KYC propagation" gap above. File as a separate Issue **before** the second chain is launched in production — without it, new-chain users will need operator intervention.
 - **UX migration**: explaining per-chain KYC to users when a second chain is enabled. Out of scope for Issue #439; file separately before second chain is launched.
+
+## Stellar `chain_id` convention
+
+Stellar chains use sentinel values outside the EIP-155 ID space:
+
+| Sentinel | Network |
+|---|---|
+| `99000001` | Stellar testnet |
+| `99000002` | Stellar mainnet (reserved, not yet deployed) |
+
+The `99_000_000+` range was chosen because it is:
+1. Well outside the realistic EVM EIP-155 range (which currently extends to ~9-digit integers but is globally unique across all EVM chains).
+2. Obvious on sight — any engineer querying `contract_logs WHERE chain_id > 90000000` will immediately recognise these as non-EVM rows.
+3. Does **not** collide with BIP-44 coin type 148 (Stellar's registered coin type), which would place the number in the low-hundreds and risk silent collision with future Coinbase-derivative EVM chains.
+
+The `BIGINT` column in `contract_logs` / `log_collector_state` / `lp_profiles` / `kyc_outbox` accommodates these values without DDL changes. `contract_address` on Stellar rows stores the Strkey C… format as-is (uppercase, CRC-16 checksum intact); EVM rows continue to use EIP-55 checksum encoding.

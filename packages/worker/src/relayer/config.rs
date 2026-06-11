@@ -3,7 +3,7 @@ use std::env;
 use alloy::primitives::Address;
 use anyhow::{Context, Result};
 
-use crate::indexer::config::parse_chains_env;
+use crate::indexer::config::{parse_chain_type, parse_chains_env, ChainType};
 
 pub struct RelayerJobSettings {
     // Shared
@@ -54,11 +54,28 @@ impl RelayerJobSettings {
 
     /// Parse relayer settings for every chain in `CHAINS`.
     /// Returns one `RelayerJobSettings` per configured chain.
+    #[deprecated(note = "use all_evm_from_env to skip non-EVM chains")]
     pub fn all_from_env() -> Result<Vec<Self>> {
+        Self::all_evm_from_env()
+    }
+
+    /// Parse relayer settings for every EVM chain in `CHAINS`.
+    /// Stellar chains are skipped (the relayer handles EVM whitelist/voucher flows only).
+    pub fn all_evm_from_env() -> Result<Vec<Self>> {
         let chain_ids = parse_chains_env()?;
         chain_ids
             .into_iter()
-            .map(RelayerJobSettings::from_chain_env)
+            .filter_map(|id| match parse_chain_type(id) {
+                Ok(ChainType::Stellar) => {
+                    tracing::info!(
+                        chain_id = id,
+                        "relayer skipped on Stellar chain: EVM voucher flow not applicable"
+                    );
+                    None
+                }
+                Ok(ChainType::Evm) => Some(RelayerJobSettings::from_chain_env(id)),
+                Err(e) => Some(Err(e)),
+            })
             .collect()
     }
 }

@@ -7,6 +7,7 @@ pub mod loan_registry_reader;
 pub mod mappers;
 pub mod parsers;
 pub mod poller;
+pub mod stellar;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -136,7 +137,7 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
     Ok(())
 }
 
-async fn index_loop<P: ChainEventPoller>(
+pub(crate) async fn index_loop<P: ChainEventPoller>(
     job_name: &str,
     chain_id: i64,
     block_range: u64,

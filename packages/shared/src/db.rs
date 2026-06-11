@@ -1,6 +1,6 @@
 use sqlx::{PgConnection, PgPool};
 
-use crate::events::ContractLog;
+use crate::events::{ContractLog, EventRow};
 
 pub struct EventRepo {
     pub pool: PgPool,
@@ -78,6 +78,57 @@ impl EventRepo {
         event: &ContractLog,
         chain_id: i64,
     ) -> anyhow::Result<()> {
+        self.insert_log_raw(
+            conn,
+            chain_id,
+            &event.contract_address.to_checksum(None),
+            &event.event_name,
+            event.block_number,
+            &format!("{:?}", event.tx_hash),
+            event.log_index,
+            event.block_timestamp,
+            &event.params,
+        )
+        .await
+    }
+
+    /// Chain-agnostic insert — accepts a pre-formatted `contract_address` string
+    /// (Strkey for Stellar, EVM checksum for EVM). Used by the Stellar indexer.
+    pub async fn insert_row(
+        &self,
+        conn: &mut PgConnection,
+        row: &EventRow,
+        chain_id: i64,
+    ) -> anyhow::Result<()> {
+        self.insert_log_raw(
+            conn,
+            chain_id,
+            &row.contract_address,
+            &row.event_name,
+            row.block_number,
+            &row.tx_hash,
+            row.log_index,
+            row.block_timestamp,
+            &row.params,
+        )
+        .await
+    }
+
+    /// Private primitive that both `insert_log` and `insert_row` delegate to.
+    /// All fields arrive as primitives; no alloy or chain-specific types here.
+    #[allow(clippy::too_many_arguments)]
+    async fn insert_log_raw(
+        &self,
+        conn: &mut PgConnection,
+        chain_id: i64,
+        contract_address: &str,
+        event_name: &str,
+        block_number: u64,
+        tx_hash: &str,
+        log_index: u64,
+        block_timestamp: u64,
+        params: &serde_json::Value,
+    ) -> anyhow::Result<()> {
         sqlx::query(
             "INSERT INTO contract_logs
                (chain_id, contract_address, event_name,
@@ -86,13 +137,13 @@ impl EventRepo {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(chain_id)
-        .bind(event.contract_address.to_checksum(None))
-        .bind(&event.event_name)
-        .bind(event.block_number as i64)
-        .bind(format!("{:?}", event.tx_hash))
-        .bind(event.log_index as i32)
-        .bind(event.block_timestamp as i64)
-        .bind(sqlx::types::Json(&event.params))
+        .bind(contract_address)
+        .bind(event_name)
+        .bind(block_number as i64)
+        .bind(tx_hash)
+        .bind(log_index as i32)
+        .bind(block_timestamp as i64)
+        .bind(sqlx::types::Json(params))
         .execute(conn)
         .await?;
 
