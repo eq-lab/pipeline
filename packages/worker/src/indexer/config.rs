@@ -2,26 +2,10 @@ use std::env;
 
 use anyhow::{Context, Result};
 
-pub use shared::chains::parse_chains_env;
+pub use shared::chains::{parse_chain_type, parse_chains_env, ChainKind};
 
-/// Discriminator for per-chain indexer type.
-/// EVM is the implicit default when `CHAIN_<id>_TYPE` is unset or set to `"evm"`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChainType {
-    Evm,
-    Stellar,
-}
-
-/// Read `CHAIN_<id>_TYPE` and return the discriminator.
-/// Defaults to `Evm` when unset. Returns `Err` for unknown values.
-pub fn parse_chain_type(chain_id: i64) -> Result<ChainType> {
-    let key = format!("CHAIN_{chain_id}_TYPE");
-    match env::var(&key).as_deref() {
-        Ok("stellar") => Ok(ChainType::Stellar),
-        Ok("evm") | Err(_) => Ok(ChainType::Evm),
-        Ok(v) => anyhow::bail!("{key} must be 'evm' or 'stellar', got '{v}'"),
-    }
-}
+/// Type alias so existing call sites in the worker that use `ChainType` still compile.
+pub type ChainType = ChainKind;
 
 /// Settings for the Stellar Soroban event indexer.
 /// Configured via `CHAIN_<id>_STELLAR_*` env vars.

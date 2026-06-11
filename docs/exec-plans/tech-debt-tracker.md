@@ -108,6 +108,27 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** The local lint gate is permanently red, so agents cannot use `lint` exit status as a pass/fail signal for their own changes; per-file checks are needed instead. New drift accumulates silently.
 - **Suggested fix:** One-shot `prettier --write` pass over the workspace in a dedicated chore PR, then make CI run the same lint script so drift fails fast.
 
+### TD-14: Replace `STELLAR_VERIFIER_SECRET` with KMS/BitGo provisioning
+- **Date:** 2026-06-11
+- **Location:** `packages/api/src/config.rs`, `.env.example`
+- **Gap:** The Stellar ed25519 signing key is provisioned via a flat `STELLAR_VERIFIER_SECRET` env var (Strkey `S…` seed in plaintext). For production this should be backed by KMS or BitGo key management, mirroring the EVM `SIGNER_KEY` path.
+- **Impact:** The seed is exposed in environment configuration; key rotation requires a restart. Acceptable for the initial iteration (Issue #555), not for mainnet production use.
+- **Suggested fix:** Introduce a per-chain `CHAIN_<id>_STELLAR_VERIFIER_SECRET` var alongside a KMS/BitGo integration path (matches the future per-chain naming scheme for mainnet).
+
+### TD-15: `STELLAR_VERIFIER_SECRET` is chain-agnostic (flat)
+- **Date:** 2026-06-11
+- **Location:** `packages/api/src/config.rs`
+- **Gap:** A single `STELLAR_VERIFIER_SECRET` is shared across all Stellar chains. If testnet and mainnet ever need different signing keys (e.g., after a `set_verifier` rotation on one but not the other), the config cannot express that.
+- **Impact:** On-chain verifier rotations must be applied atomically to all chains simultaneously if the flat var is used.
+- **Suggested fix:** Rename to `CHAIN_<id>_API_STELLAR_VERIFIER_SECRET` per chain. Track against TD-14 above.
+
+### TD-16: Stellar `lp_profiles` whitelist path not seeded
+- **Date:** 2026-06-11
+- **Location:** `packages/shared/src/kyc_repo.rs`, `is_on_chain_allowed`
+- **Gap:** `is_on_chain_allowed` runs identical SQL for Stellar and EVM (Decision #4 in exec plan #555). Stellar voucher requests will 403 until `lp_profiles` rows exist for the wallet on the Stellar chain. No tooling or migration seeds those rows.
+- **Impact:** Stellar voucher signing is technically implemented but operationally inert until an ops process or separate Issue populates `lp_profiles` for Stellar wallets.
+- **Suggested fix:** Either extend `populate_profiles_from_deposits` to handle Stellar rows (case-sensitive Strkey) or provide an ops runbook for seeding Stellar LP profiles.
+
 ### TD-13: CI does not run the frontend unit test suite (vitest)
 - **Date:** 2026-06-04
 - **Location:** `.github/workflows/` — Lint workflow runs docs lint, Rust clippy, TS typecheck; Tests workflow runs Rust unit tests only

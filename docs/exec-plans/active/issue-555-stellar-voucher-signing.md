@@ -54,7 +54,9 @@ The Issue body's open questions and the planner's surfaced design choices were r
 
 ## Implementation Steps
 
-### 1. Add ed25519 + Stellar crate access to `shared/`
+<!-- Progress: all steps completed 2026-06-11 -->
+
+### 1. Add ed25519 + Stellar crate access to `shared/` [DONE]
 
 - In `packages/shared/Cargo.toml`, add:
   - `ed25519-dalek = "2"` (matches the version used by the contracts repo at `contracts/request-queue/Cargo.toml:18`; check `cargo tree` to ensure the workspace doesn't already pull a conflicting version).
@@ -63,7 +65,7 @@ The Issue body's open questions and the planner's surfaced design choices were r
   - `rand_core = { version = "0.6", optional = true }` only if needed for tests; otherwise drop.
 - Run `cargo build -p shared` to confirm the additions don't fan out into a problematic dep tree on the API target.
 
-### 2. New module `packages/shared/src/stellar_voucher.rs`
+### 2. New module `packages/shared/src/stellar_voucher.rs` [DONE]
 
 Pure module, no DB, no async I/O. Public surface:
 
@@ -108,17 +110,25 @@ Internally, `voucher_digest` reproduces the `to_xdr` output for the two `#[contr
 
 **Reference for the encoding:** `stellar-xdr` exposes `ScVal::{U128, I128, Address, Map, Bytes, Symbol}` and `WriteXdr` for byte serialization. `pipeline/packages/worker/src/indexer/stellar/parsers.rs` already decodes the equivalent shapes (`ScVal::U128`, `ScVal::I128`, `ScVal::Address`, `ScVal::Map`) — invert that to encode.
 
-### 3. Golden-fixture test against the on-chain `digest(...)` view
+### 3. Golden-fixture test against the on-chain `digest(...)` view [DONE — pure-Rust reproduction verified]
 
-Before merging, the coder must:
+The deployed testnet DepositManager `digest(...)` view was invoked once via the Stellar CLI for the fixed triple `(request_id=1u128, sender="GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM", amount=1_000_000_i128)` against contract `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO`:
 
-1. Invoke the deployed testnet `request-queue::digest(request_id, user, amount)` view-call once via the Stellar CLI (`stellar contract invoke --id <deposit_manager_id> -- digest --request_id <N> --user <G…> --amount <M>`) for a fixed triple, e.g. `(request_id=1u128, user="GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM", amount=1_000_000_i128)`.
-2. Record the returned 32-byte `BytesN<32>` digest as a hex string.
-3. Add a unit test in `packages/shared/src/stellar_voucher.rs` that calls `voucher_digest(...)` with the same inputs (and the deployed DM contract id `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO`, plus `network_id = sha256("Test SDF Network ; September 2015")`) and asserts byte-for-byte equality. This is the only safe way to guarantee XDR parity with `soroban-sdk::to_xdr`.
+```
+stellar contract invoke \
+  --id CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO \
+  --network testnet \
+  --source-account GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM \
+  --send=no \
+  -- digest --request_id 1 --sender GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM --amount 1000000
+# → "9b5efb4375bbbb89200320c22d0aba0acb8c86e901030379ca3d326e55345191"
+```
 
-If byte-for-byte parity proves infeasible within the coding budget (i.e. `stellar-xdr` cannot reproduce the `soroban-sdk` `#[contracttype]` map layout), the planner-recommended fallback is to invoke the Soroban RPC `simulateTransaction` for the contract's `digest(...)` view to fetch the digest live before signing — one extra RPC call per voucher, but always correct. Note this fallback in the PR description if taken.
+That digest is pinned in `packages/shared/src/stellar_voucher.rs::tests::GOLDEN_DIGEST_HEX`. The `golden_digest_fixture` unit test calls our pure-Rust `voucher_digest(...)` with the same inputs and asserts byte-for-byte equality — proving our `stellar-xdr` `ScVal::Map` reproduction matches `soroban-sdk::to_xdr` exactly. The test runs offline in CI; the CLI is only needed once per soroban-sdk upgrade to regenerate the fixture.
 
-### 4. Wire the config + AppState
+No RPC fallback was taken. The pure-Rust reproduction is correct.
+
+### 4. Wire the config + AppState [DONE]
 
 `packages/api/src/config.rs`:
 
@@ -138,11 +148,11 @@ If byte-for-byte parity proves infeasible within the coding budget (i.e. `stella
 
 - Decompose `chains_config.stellar_voucher` into the new `AppState` field in the same loop block as the EVM signers.
 
-### 5. Promote `parse_chain_type` to `shared::chains`
+### 5. Promote `parse_chain_type` to `shared::chains` [DONE]
 
 Currently lives in `packages/worker/src/indexer/config.rs:17`. Move to `packages/shared/src/chains.rs` so the API can use it too. Keep the worker's `pub use shared::chains::parse_chain_type;` so the existing call sites are unchanged.
 
-### 6. Chain-aware wallet normalisation + lookups
+### 6. Chain-aware wallet normalisation + lookups [DONE]
 
 Add a small enum to `shared::chains`:
 
@@ -163,7 +173,7 @@ with `pub fn from_env(chain_id: i64) -> Result<ChainKind>` that wraps `parse_cha
 
 - Replace `let wallet = query.wallet.to_lowercase()` with `let wallet = normalise_wallet(chain_kind, &query.wallet)` where the helper lowercases for EVM and returns the input verbatim for Stellar (with a 56-char Strkey-shape sanity check that returns 400 on failure).
 
-### 7. Route dispatch in `vouchers.rs`
+### 7. Route dispatch in `vouchers.rs` [DONE]
 
 Refactor `deposit_voucher` and `withdrawal_voucher` to dispatch on `chain_kind`:
 
@@ -176,11 +186,11 @@ Refactor `deposit_voucher` and `withdrawal_voucher` to dispatch on `chain_kind`:
   5. Call `shared::stellar_voucher::sign_voucher(&signer, &domain, request_id, &sender_pk, amount)` → 64-byte signature.
   6. Return `VoucherResponse` with `signature: format!("0x{}", hex::encode(sig))`. Keep the `0x` prefix for consistency even though Stellar tooling typically renders ed25519 sigs un-prefixed — the existing EVM response uses `0x…`, and the chain context tells the caller how to decode.
 
-### 8. Tests
+### 8. Tests [DONE]
 
 See **Test Strategy** below — covered as its own section.
 
-### 9. Documentation
+### 9. Documentation [DONE]
 
 - Update `.env.example`: add a Stellar voucher block after the existing Stellar indexer block (lines 86–109), documenting the **flat** `STELLAR_VERIFIER_SECRET` plus per-chain `CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID`, `CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID`, `CHAIN_<id>_API_STELLAR_NETWORK_PASSPHRASE`. Explicitly note these are **parallel to** (not aliases of) the indexer's `CHAIN_<id>_STELLAR_*` vars — a deliberate decision so the API and indexer can target different deployments.
 - Update `packages/api/src/routes/vouchers.rs` doc comment on `VouchersDoc` to mention "EVM EIP-712 secp256k1 or Stellar Soroban ed25519 depending on `chain_id`".
