@@ -1,7 +1,7 @@
 /**
- * ConnectWalletModal — full wallet-selection modal (Issue #558).
+ * ConnectWalletModal — full wallet-selection modal (Issues #558, #563).
  *
- * Renders a two-column layout (desktop) or single-column (mobile):
+ * Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
  *   Left:  "Connect Wallet" heading, EVM / Soroban tab control, per-wallet
  *          rows with brand icons and direct connect actions.
  *   Right: background photo + Pipeline logo + marketing headline.
@@ -19,7 +19,7 @@
  * Entry point: called from TopBar (replaces ConnectChooserModal).
  *
  * Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss,
- * body-scroll lock.
+ * body-scroll lock. Dismissal is via the × button and Escape only (no scrim click).
  *
  * Figma: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
  */
@@ -513,39 +513,28 @@ export function ConnectWalletModal({ open, onDismiss }: ConnectWalletModalProps)
     });
   }
 
-  const handleScrimClick = useCallback(() => {
-    onDismiss();
-  }, [onDismiss]);
-
   if (!open) return null;
   if (typeof document === "undefined") return null;
 
   const modal = (
-    // Fixed overlay (scrim)
+    // Full-viewport overlay — no scrim/backdrop; panel fills the screen
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(56,55,53,0.6)" }}
-      onClick={handleScrimClick}
-      data-testid="connect-wallet-modal-scrim"
+      className="fixed inset-0 z-[9999] flex"
+      data-testid="connect-wallet-modal-overlay"
     >
-      {/* Modal panel */}
+      {/* Modal panel — full viewport, two equal panes on desktop */}
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        onClick={(e) => e.stopPropagation()}
         className={[
-          "relative flex overflow-hidden",
-          // Desktop: two-column layout, 800px wide; mobile: single column, full width minus margin
-          "w-full max-w-[calc(100vw-32px)] lg:max-w-[800px]",
-          "max-h-[90vh] lg:max-h-[600px]",
-          "rounded-[32px]",
+          "relative flex h-full w-full overflow-hidden",
           "bg-[var(--color-pipeline-paper)]",
         ].join(" ")}
         data-testid="connect-wallet-modal"
       >
-        {/* Left: Connect content */}
+        {/* Left: Connect content — equal half on desktop, full width on mobile */}
         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 lg:px-8 lg:py-12">
           <div className="flex w-full max-w-[400px] flex-col gap-6">
             {/* Heading: Besley Regular 48/56, ink primary */}
