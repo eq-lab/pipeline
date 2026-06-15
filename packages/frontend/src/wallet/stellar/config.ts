@@ -25,3 +25,13 @@ StellarWalletsKit.init({
 
 // Re-export the singleton class so the hook imports it from here (boundary).
 export { StellarWalletsKit } from "@creit.tech/stellar-wallets-kit";
+
+// Re-export wallet module ID constants — consumed by useStellarWallet and the
+// Connect modal wallet catalogue.  Import from this boundary file, never from
+// the kit sub-paths directly (enforced by ESLint no-restricted-imports).
+export { LOBSTR_ID } from "@creit.tech/stellar-wallets-kit/modules/lobstr";
+export { FREIGHTER_ID } from "@creit.tech/stellar-wallets-kit/modules/freighter";
+export { XBULL_ID } from "@creit.tech/stellar-wallets-kit/modules/xbull";
+export { HANA_ID } from "@creit.tech/stellar-wallets-kit/modules/hana";
+export { ALBEDO_ID } from "@creit.tech/stellar-wallets-kit/modules/albedo";
+export { RABET_ID } from "@creit.tech/stellar-wallets-kit/modules/rabet";

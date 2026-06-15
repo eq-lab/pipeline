@@ -14,11 +14,13 @@ export { WalletGateProvider } from "./WalletGateProvider";
 
 // ── EVM namespace ─────────────────────────────────────────────────────────────
 export { EvmWalletProvider } from "./evm/EvmWalletProvider";
-export { useEvmWallet, useContractRead } from "./evm/useEvmWallet";
+export { useEvmWallet, useContractRead, useEvmConnectors } from "./evm/useEvmWallet";
 export type {
   WalletState,
   UseContractReadArgs,
   ContractReadResult,
+  UseEvmConnectorsResult,
+  EvmWalletConnectorId,
 } from "./evm/useEvmWallet";
 export {
   useDepositManagerAddresses,
@@ -81,8 +83,12 @@ export type {
 
 // ── Stellar namespace ─────────────────────────────────────────────────────────
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
-export { useStellarWallet } from "./stellar/useStellarWallet";
-export type { StellarWalletState } from "./stellar/useStellarWallet";
+export { useStellarWallet, useStellarConnectors } from "./stellar/useStellarWallet";
+export type {
+  StellarWalletState,
+  UseStellarConnectorsResult,
+  SorobanWalletId,
+} from "./stellar/useStellarWallet";
 export { useStellarToken } from "./stellar/useStellarToken";
 export type { UseStellarTokenResult } from "./stellar/useStellarToken";
 export { useBlendDeposit } from "./stellar/useBlendDeposit";

@@ -7,7 +7,7 @@
  *
  * Also covers:
  *   - Neither wallet connected → "Connect Wallet" present; clicking opens
- *     ConnectChooserModal with "Connect EVM" / "Connect Stellar" buttons.
+ *     ConnectWalletModal with EVM/Soroban tabs.
  *   - EVM connected → pill shows EVM balance.
  *   - Both connected → pill shows active namespace's balance.
  *
@@ -57,6 +57,9 @@ vi.mock("@/wallet/stellar/useStellarWallet", () => ({
     ...mockStellarWalletState,
     connect: mockStellarConnect,
     disconnect: mockStellarDisconnect2,
+  }),
+  useStellarConnectors: () => ({
+    connectWallet: vi.fn(),
   }),
 }));
 
@@ -112,6 +115,8 @@ vi.mock("wagmi", async (importOriginal) => {
       isError: false,
       error: null,
     })),
+    useConnect: vi.fn(() => ({ connect: vi.fn() })),
+    useConnectors: vi.fn(() => []),
   };
 });
 
@@ -431,16 +436,17 @@ describe("TopBar — wallet state", () => {
   });
 });
 
-// ── Tests: ConnectChooserModal integration ────────────────────────────────────
+// ── Tests: ConnectWalletModal integration ────────────────────────────────────
 
-describe("TopBar — ConnectChooserModal", () => {
+describe("TopBar — ConnectWalletModal", () => {
   afterEach(() => {
     clearMocks();
     localStorage.clear();
     vi.clearAllMocks();
+    document.body.style.overflow = "";
   });
 
-  it("clicking Connect Wallet opens ConnectChooserModal", async () => {
+  it("clicking Connect Wallet opens ConnectWalletModal", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
 
@@ -451,52 +457,48 @@ describe("TopBar — ConnectChooserModal", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog", { name: "Connect a wallet" }),
+        screen.getByRole("dialog", { name: "Connect Wallet" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Connect EVM" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Connect Stellar" }),
-    ).toBeInTheDocument();
+    // New modal has EVM and Soroban tabs
+    expect(screen.getByRole("tab", { name: "EVM" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Soroban" })).toBeInTheDocument();
   });
 
-  it("clicking Connect EVM in the chooser modal dismisses it", async () => {
+  it("clicking Close (×) in the ConnectWalletModal dismisses it", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
 
     await user.click(
       await screen.findByRole("button", { name: "Connect Wallet" }),
     );
-    await screen.findByRole("dialog", { name: "Connect a wallet" });
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    await user.click(screen.getByRole("button", { name: "Connect EVM" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: "Connect a wallet" }),
+        screen.queryByRole("dialog", { name: "Connect Wallet" }),
       ).not.toBeInTheDocument();
     });
   });
 
-  it("clicking Connect Stellar in the chooser modal calls stellar.connect and dismisses", async () => {
+  it("Escape key dismisses the ConnectWalletModal", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
 
     await user.click(
       await screen.findByRole("button", { name: "Connect Wallet" }),
     );
-    await screen.findByRole("dialog", { name: "Connect a wallet" });
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
 
-    await user.click(screen.getByRole("button", { name: "Connect Stellar" }));
+    await user.keyboard("{Escape}");
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: "Connect a wallet" }),
+        screen.queryByRole("dialog", { name: "Connect Wallet" }),
       ).not.toBeInTheDocument();
     });
-    expect(mockStellarConnect).toHaveBeenCalledOnce();
   });
 });
 

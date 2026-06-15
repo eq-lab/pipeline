@@ -12,7 +12,15 @@
  * When the user has already acknowledged (any chain), `authModal()` is called directly.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StellarWalletsKit } from "./config";
+import {
+  StellarWalletsKit,
+  LOBSTR_ID,
+  FREIGHTER_ID,
+  XBULL_ID,
+  HANA_ID,
+  ALBEDO_ID,
+  RABET_ID,
+} from "./config";
 import { networkPassphrase } from "./chain";
 import { useMockStellarAddress, useMockStellarIsConnected } from "./mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
@@ -175,4 +183,80 @@ export function useStellarWallet(): StellarWalletState {
   );
 
   return { address, isConnected, connect, disconnect, signTransaction };
+}
+
+// ── Per-wallet Soroban connect hook ───────────────────────────────────────────
+
+/**
+ * Well-known Soroban wallet IDs (the subset the app exposes in the Connect modal).
+ */
+export type SorobanWalletId =
+  | typeof LOBSTR_ID
+  | typeof FREIGHTER_ID
+  | typeof XBULL_ID
+  | typeof HANA_ID
+  | typeof ALBEDO_ID
+  | typeof RABET_ID;
+
+export interface UseStellarConnectorsResult {
+  /**
+   * Connect to a specific Soroban wallet by its kit module id.
+   *
+   * - When a mock address is set: no-op (dev affordance).
+   * - When terms are not yet acknowledged: opens the terms gate first.
+   * - Otherwise: calls `StellarWalletsKit.setWallet(id)` then
+   *   `StellarWalletsKit.fetchAddress()` and stores the returned address.
+   *
+   * If the wallet is not installed/available, the kit will throw; callers
+   * should handle errors (e.g. open the wallet's website in a new tab).
+   */
+  connectWallet(
+    walletId: string,
+    onUnavailable?: () => void,
+  ): Promise<void>;
+}
+
+export function useStellarConnectors(): UseStellarConnectorsResult {
+  const [, setRealAddress] = useState<string | undefined>(undefined);
+  const unmountedRef = useRef(false);
+  const mockAddress = useMockStellarAddress();
+  const { openGate } = useWalletGate();
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
+  const connectWallet = useCallback(
+    async (walletId: string, onUnavailable?: () => void): Promise<void> => {
+      if (mockAddress !== undefined) {
+        return;
+      }
+
+      const doConnect = async () => {
+        try {
+          StellarWalletsKit.setWallet(walletId);
+          const { address: newAddress } = await StellarWalletsKit.fetchAddress();
+          if (!unmountedRef.current) {
+            setRealAddress(newAddress);
+          }
+        } catch {
+          // Wallet unavailable — invoke callback so the caller can redirect.
+          onUnavailable?.();
+        }
+      };
+
+      if (!readTermsAcknowledged()) {
+        openGate(() => void doConnect());
+        return;
+      }
+
+      await doConnect();
+    },
+    [mockAddress, openGate],
+  );
+
+  return { connectWallet };
 }
