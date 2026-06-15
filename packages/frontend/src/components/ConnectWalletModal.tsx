@@ -30,9 +30,10 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { SegmentedTabs } from "@pipeline/ui";
+import { Logo, SegmentedTabs } from "@pipeline/ui";
 import { useEvmConnectors, useStellarConnectors } from "@/wallet";
 import type { EvmWalletConnectorId } from "@/wallet";
+import heroUrl from "@/assets/connect-hero-ship.webp?url";
 
 // ── Focus trap ────────────────────────────────────────────────────────────────
 
@@ -352,46 +353,28 @@ function RightImagePanel() {
       className="relative hidden h-full flex-1 overflow-hidden lg:flex lg:flex-col lg:gap-6 lg:p-12"
       aria-hidden="true"
     >
-      {/* Background photo — using a pipeline-themed deep-blue/teal gradient
-          since the Figma uses a proprietary aerial photo asset. */}
+      {/* Hero photo — full-bleed aerial container-ship photograph. */}
+      <img
+        src={heroUrl}
+        alt=""
+        className="absolute inset-0 size-full object-cover"
+        loading="lazy"
+      />
+      {/* Dark scrim — matches Figma node 2858:57637 upper-left gradient so the
+          white wordmark and headline stay legible over the lighter sky/sea. */}
       <div
         className="absolute inset-0"
         style={{
-          background: "linear-gradient(135deg, #0a1628 0%, #0d3f6e 50%, #0a4d4d 100%)",
-        }}
-      />
-      {/* Texture overlay */}
-      <div
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px)",
+          background:
+            "linear-gradient(160deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.10) 55%, rgba(0,0,0,0.0) 100%)",
         }}
       />
 
       {/* Content — Pipeline logo and headline */}
       <div className="relative z-10 flex h-full flex-col justify-between">
-        {/* Logo — inline SVG replica of the Pipeline wordmark in white */}
-        <div className="h-8 w-[116px] shrink-0">
-          <svg
-            viewBox="0 0 116 32"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            width={116}
-            height={32}
-            aria-label="Pipeline"
-          >
-            <text
-              x="0"
-              y="24"
-              fontFamily="Besley, serif"
-              fontSize="24"
-              fill="white"
-              fontWeight="400"
-            >
-              Pipeline
-            </text>
-          </svg>
+        {/* Real Pipeline wordmark, white via currentColor override */}
+        <div className="shrink-0">
+          <Logo width={116} className="text-white" />
         </div>
 
         {/* Headline */}
