@@ -63,3 +63,19 @@ export const blendNetwork = {
   rpc: ENV.STELLAR_RPC_URL,
   passphrase: kitNetwork as string,
 } as const;
+
+// ── Pipeline protocol contract IDs ─────────────────────────────────────────────
+
+/**
+ * Pipeline DepositManager Soroban contract ID.
+ * Empty string means "unconfigured" — hooks short-circuit to `undefined`
+ * without making any RPC call.
+ */
+export const depositManagerId: string = ENV.STELLAR_DEPOSIT_MANAGER_ID;
+
+/**
+ * Pipeline WithdrawalQueue Soroban contract ID.
+ * Empty string means "unconfigured" — hooks short-circuit to `undefined`
+ * without making any RPC call.
+ */
+export const withdrawalQueueId: string = ENV.STELLAR_WITHDRAWAL_QUEUE_ID;
