@@ -10,7 +10,7 @@ import {
   useWalletView,
 } from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
-import { ConnectChooserModal } from "./ConnectChooserModal";
+import { ConnectWalletModal } from "./ConnectWalletModal";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
 
@@ -27,7 +27,8 @@ import { useMobileNavMenu } from "./useMobileNavMenu";
  *     USDC balance, namespace toggle, disconnect).
  *
  * Disconnected state (neither namespace connected):
- *   - Renders a "Connect Wallet" `<Button>` that opens `ConnectChooserModal`.
+ *   - Renders a "Connect Wallet" `<Button>` that opens `ConnectWalletModal`
+ *     (Issue #558 — per-wallet selection with EVM / Soroban tabs).
  *
  * Figma references:
  *   - Frame: `1497:94715` (TopBar frame)
@@ -276,11 +277,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           }}
         />
 
-        {/* ConnectChooserModal — shared between desktop and mobile. */}
-        <ConnectChooserModal
+        {/* ConnectWalletModal — shared between desktop and mobile.
+            Replaces the old ConnectChooserModal with per-wallet selection. */}
+        <ConnectWalletModal
           open={chooserOpen}
-          onConnectEvm={evm.connect}
-          onConnectStellar={stellar.connect}
           onDismiss={() => setChooserOpen(false)}
         />
       </header>

@@ -5,7 +5,14 @@
  * When a mock key is present the real wagmi/viem call is skipped entirely
  * (no network request).
  */
-import { useAccount, useChainId, useDisconnect, useReadContract } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  useDisconnect,
+  useReadContract,
+  useConnect,
+  useConnectors,
+} from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import type { Abi } from "viem";
 import {
@@ -89,6 +96,71 @@ export function useEvmWallet(): WalletState {
   }
 
   return { address, isConnected, chainId, connect, disconnect };
+}
+
+// ── Per-wallet EVM connect hook ───────────────────────────────────────────────
+
+/**
+ * A well-known EVM connector id (the subset the app exposes in the Connect modal).
+ *
+ * These are the ids that wagmi / Reown AppKit registers for the bundled wallets:
+ *   - "injected"        — MetaMask (and other injected providers)
+ *   - "coinbaseWallet"  — Coinbase Wallet SDK
+ *   - "walletConnect"   — WalletConnect v2 (covers Trust and other mobile wallets)
+ *
+ * Trust Wallet does not have a dedicated AppKit adapter in the current config;
+ * it is accessible via WalletConnect or the injected provider path.
+ */
+export type EvmWalletConnectorId =
+  | "injected"
+  | "coinbaseWallet"
+  | "walletConnect";
+
+export interface UseEvmConnectorsResult {
+  /**
+   * Connect to a specific EVM wallet by its connector id.
+   *
+   * - When a mock address is set: no-op (dev affordance).
+   * - When terms are not yet acknowledged: opens the terms gate first.
+   * - Otherwise: calls wagmi `connect({ connector })` for the matching connector.
+   * - When no matching connector is found: falls back to the generic AppKit modal.
+   */
+  connectWallet(connectorId: EvmWalletConnectorId): void;
+}
+
+export function useEvmConnectors(): UseEvmConnectorsResult {
+  const connectors = useConnectors();
+  const { connect } = useConnect();
+  const { open } = useAppKit();
+  const { openGate } = useWalletGate();
+
+  const mockAddress = useMock(KEYS.address, parseAddress);
+
+  function connectWallet(connectorId: EvmWalletConnectorId) {
+    // Mock short-circuit.
+    if (mockAddress !== undefined) {
+      return;
+    }
+
+    const doConnect = () => {
+      const connector = connectors.find((c) => c.id === connectorId);
+      if (connector) {
+        connect({ connector });
+      } else {
+        // No matching connector — fall back to the generic AppKit modal.
+        void open();
+      }
+    };
+
+    if (!readTermsAcknowledged()) {
+      openGate(doConnect);
+      return;
+    }
+
+    doConnect();
+  }
+
+  return { connectWallet };
 }
 
 // ── Contract read hook ────────────────────────────────────────────────────────
