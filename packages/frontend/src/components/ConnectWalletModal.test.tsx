@@ -356,6 +356,59 @@ describe("ConnectWalletModal — dismissal", () => {
   });
 });
 
+// ── Right image panel ─────────────────────────────────────────────────────────
+
+describe("ConnectWalletModal — right image panel", () => {
+  it("renders the real Pipeline Logo SVG (aria-label='Pipeline') inside the right panel", async () => {
+    renderModal();
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
+
+    // The modal renders via createPortal to document.body, so the right panel
+    // is not a descendant of `container`. Query document.body directly.
+    // The right panel is a div[aria-hidden="true"] (desktop-only decoration).
+    const rightPanel = document.body.querySelector('div[aria-hidden="true"]');
+    expect(rightPanel).not.toBeNull();
+    const logo = rightPanel!.querySelector('svg[aria-label="Pipeline"]');
+    expect(logo).not.toBeNull();
+    expect(logo!.tagName.toLowerCase()).toBe("svg");
+  });
+
+  it("does not contain an inline <text>Pipeline</text> SVG replica", async () => {
+    renderModal();
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
+
+    // The old placeholder used a <text> element inside SVG; the real Logo
+    // uses only <path> elements — no <text> nodes expected.
+    const textEls = document.body.querySelectorAll("svg text");
+    expect(textEls).toHaveLength(0);
+  });
+
+  it("renders the hero <img> with object-cover class inside the right panel", async () => {
+    renderModal();
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
+
+    // The modal renders via createPortal to document.body, so the right panel
+    // is not a descendant of `container`. Query document.body directly.
+    const rightPanel = document.body.querySelector('div[aria-hidden="true"]');
+    expect(rightPanel).not.toBeNull();
+    const heroImg = rightPanel!.querySelector('img[alt=""]');
+    expect(heroImg).not.toBeNull();
+    expect(heroImg!.className).toContain("object-cover");
+  });
+
+  it("hero ?url import resolves to a non-empty string", async () => {
+    // Mirror the asset-import-integrity pattern from HeroIcon.test.tsx.
+    // Vitest resolves ?url imports to data-URIs in jsdom — a non-empty,
+    // data:-prefixed string confirms the asset file exists and was processed.
+    const mod = await import("@/assets/connect-hero-ship.webp?url");
+    const url: string = mod.default;
+    expect(typeof url).toBe("string");
+    expect(url).not.toBe("");
+    expect(url).not.toBe("undefined");
+    expect(url).toMatch(/^(data:|\/|https?:\/\/)/);
+  });
+});
+
 // ── Body scroll lock ──────────────────────────────────────────────────────────
 
 describe("ConnectWalletModal — scroll lock", () => {
