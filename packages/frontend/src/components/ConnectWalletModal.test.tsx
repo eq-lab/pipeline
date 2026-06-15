@@ -1,5 +1,5 @@
 /**
- * ConnectWalletModal — unit tests (Issue #558).
+ * ConnectWalletModal — unit tests (Issues #558, #563).
  *
  * Covers:
  *   - Does not render when `open` is false.
@@ -10,14 +10,15 @@
  *   - Clicking Show More reveals the remaining wallets.
  *   - Clicking a wallet row calls the connect function and dismisses the modal.
  *   - Clicking a Trust Wallet row opens website (no connector) and dismisses.
- *   - Scrim click calls `onDismiss`.
  *   - Escape key calls `onDismiss`.
  *   - Close (×) button calls `onDismiss`.
  *   - Body scroll is locked while open; restored on close.
+ *   - Full-viewport layout: overlay covers the viewport (inset-0), no rounded card,
+ *     no scrim background.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 
@@ -304,20 +305,38 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
   });
 });
 
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+describe("ConnectWalletModal — full-viewport layout", () => {
+  it("overlay has inset-0 class (covers the full viewport)", async () => {
+    renderModal();
+    const overlay = await screen.findByTestId("connect-wallet-modal-overlay");
+    expect(overlay.className).toMatch(/\binset-0\b/);
+  });
+
+  it("panel has h-full and w-full (fills the overlay)", async () => {
+    renderModal();
+    const panel = await screen.findByTestId("connect-wallet-modal");
+    expect(panel.className).toMatch(/\bh-full\b/);
+    expect(panel.className).toMatch(/\bw-full\b/);
+  });
+
+  it("panel has no rounded-[32px] class", async () => {
+    renderModal();
+    const panel = await screen.findByTestId("connect-wallet-modal");
+    expect(panel.className).not.toMatch(/rounded-\[32px\]/);
+  });
+
+  it("overlay has no inline scrim background color", async () => {
+    renderModal();
+    const overlay = await screen.findByTestId("connect-wallet-modal-overlay");
+    expect(overlay).not.toHaveStyle({ backgroundColor: "rgba(56,55,53,0.6)" });
+  });
+});
+
 // ── Dismissal ─────────────────────────────────────────────────────────────────
 
 describe("ConnectWalletModal — dismissal", () => {
-  it("scrim click calls onDismiss", async () => {
-    const { onDismiss } = renderModal();
-    const scrim = await screen.findByTestId("connect-wallet-modal-scrim");
-
-    await act(async () => {
-      scrim.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    await waitFor(() => expect(onDismiss).toHaveBeenCalledOnce());
-  });
-
   it("Escape key calls onDismiss", async () => {
     const user = userEvent.setup();
     const { onDismiss } = renderModal();
