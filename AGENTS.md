@@ -58,7 +58,7 @@ When uncertain about frontend vs. backend, label it `backend`. Per-flow specific
 - NEVER commit or push directly to `main`. All changes reach `main` only through a PR from a feature branch.
 - Create a feature branch for every task: `feat/`, `fix/`, `docs/`, `chore/` prefixes.
 - Push the branch, open a PR, and wait for review before merging.
-- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. Trivial-frontend (Flow C) PRs are the single exception: the `manager` skill is authorized to admin-merge its own Flow C PRs (`gh pr merge --admin --squash --delete-branch`) — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside Flow C, never admin-merge or otherwise bypass branch protection without explicit human direction.
+- **Merge policy.** Backend (Flow A) and frontend (Flow B) PRs are human-merge only. The `manager` skill is authorized to admin-merge in two cases: its own trivial-frontend (Flow C) PRs, and the docs-only QA PR raised at the end of the QA flow. In both, it uses `gh pr merge --admin --squash --delete-branch` — the repo's branch protection requires an approval review, and `--admin` bypasses that gate. CI/CD checks are NOT bypassed; the manager polls until every check is green before merging (see [`manager/SKILL.md`](./.claude/skills/manager/SKILL.md) for the procedure). Outside those two cases, never admin-merge or otherwise bypass branch protection without explicit human direction.
 
 ### Worktrees
 
