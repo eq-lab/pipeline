@@ -26,7 +26,6 @@ import type { Account } from "@stellar/stellar-sdk";
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
 const {
-  mockGetAccount: _mockGetAccount, // eslint-disable-line @typescript-eslint/no-unused-vars
   mockSimulateTransaction,
   mockAssembleTransaction,
   mockIsSimulationError,
