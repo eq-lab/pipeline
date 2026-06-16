@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-16 — Epic #531 (Stake/unstake page) — FINAL QA pass (re-run) via `qa` issue #532 (epic closed)
+
+- **Scope:** Final-pass re-run on `qa` #532. All 6 non-`qa` sub-issues (#533/#534/#535/#540/#541/#542) closed; `qa` #532 claimed from `blocked` (human-invoked directly). All 6 user-stories docs under `docs/user-stories/epic-531/` re-executed against `origin/main`-equivalent code — branch `fix/579-hero-asset` has **zero diff vs origin/main** for the `/stake` surface (epic-531 work fully merged). `http://localhost:3000/stake`, Vite dev. Desktop 1280×800 + 1728-wide for Figma alignment. Chrome DevTools MCP. States: disconnected (cleared mock keys) and connected via `/test` "Connected, ready to stake (approved)" + "Connected, ready to unstake" fixtures; network-fee mock keys JSON-encoded.
+- **Docs run:** 6
+- **Stories executed:** 17
+- **Passes:** 16
+- **Failures:** 0
+- **Blocked:** 1 (#541 Story 4 — unstake output preview; env/fixture address mismatch, not an app defect)
+- **Bugs filed:** none
+- **Figma frames compared:** 1498-101158 (desktop Stake/approved, 1728×916), section-by-section at matched viewport
+- **Score: 9/10**
+  - Confirms the prior 2026-06-16 first pass — no regressions, no new defects. #533 (disconnected banner, tab-agnostic, Connect→terms gate, post-connect StepsCard), #534/#535 (distinct vector PLUSD/sPLUSD icons), #540 (single combined conversion card 480×386 containing tabs→input→output→rate→fee, with a separate steps card below), #541 (rate "1 PLUSD = 0.9596 sPLUSD" / "1 sPLUSD = 1.0421 PLUSD", Stake preview 10→9.60), #542 (Stake "~0.00042 ETH", Unstake "~0.00038 ETH", default ~0.00023 ETH, disconnected "—") all verified.
+  - **#541 Story 4 BLOCKED (not a defect):** sPLUSD balance reads 0.00 even under the "Connected, ready to unstake" fixture — mock seeds balance at placeholder `0x5555…0005` while `splusdToken` (`useEvmToken({ token: ENV.STAKED_PLUSD_ADDRESS })`) reads the real Hoodi ENV address via RPC, so `amountBig` parses to `0n` and the preview stays 0.00. Same caveat as #310/#322. The unstake preview path is identical to the verified Stake-tab Story 3 (10→9.60), and the unstake rate row (1.0421) proves the conversion math.
+  - **Figma:** Frame 1498-101158 matches structurally and in order (TopBar, hero, single conversion card, separate steps card) with no absences. Accepted deviations (not filed): network fee "~$1.20" (Figma USD) vs "~0.00042 ETH" (app, no USD price source per #506/#542); steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app convention).
+  - Zero error-level console messages across all states.
+  - **Outcome:** green; all sibling sub-issues closed; one env-only block with no bug. `qa` #532 closed, then epic #531 closed per ISSUE_PROTOCOL §2/§5.3. Held 1 point only for the single story not exercisable end-to-end locally (env/fixture, not a code gap).
+
 ### 2026-06-16 — Epic #556 (Connect Wallet modal) — QA pass via `qa` issue #557
 
 - **Scope:** First pass on `qa` issue #557 (final-pass scenario — all three non-`qa` sub-issues #558/#563/#564 closed; human-invoked directly). All three user-stories docs under `docs/user-stories/epic-556/` executed against the local Vite dev server at `http://localhost:5173/`, disconnected wallet state (set `pipeline.mock.wallet.isConnected=false`, removed `.address`). Desktop 1440 + mobile (Chrome ~500px floor, below the lg=1024 breakpoint). Driven with Chrome DevTools MCP.
