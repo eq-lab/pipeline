@@ -21,6 +21,39 @@ MVP quality bars. All targets must be met before mainnet launch.
   - **#580 (medium, 564 S3 FAIL):** the overlay headline `<p>` renders at 16px and is bottom-anchored (flex `justify-between`), vs Figma Heading-L (48px Besley) near the top below the wordmark. Currently masked by the baked-in headline in the asset (#579); surfaces once the asset is replaced.
   - Deducted 3 points: the desktop right-pane visual composition (the headline deliverable of #564) is wrong on the primary surface — duplicated/illegible wordmark and mis-sized/mis-positioned headline. Everything functional and the mobile/dismissal/terms behavior passes. `qa` #557 returned to `blocked`; epic #556 cannot close until #579/#580 are fixed and a follow-up pass is green.
 
+### 2026-06-16 — Epic #531 (Stake/unstake page) — QA pass via `qa` issue #532
+
+- **Scope:** First pass on `qa` issue #532. All 6 user-stories docs under `docs/user-stories/epic-531/` (#533, #534, #535, #540, #541, #542) executed against `main`-equivalent code (HEAD `d770c8d`, contains all 6 epic-531 merges) at `http://localhost:3000/stake`. Desktop 1280×800. Chrome DevTools MCP. Mock states via `/test` scenario loader + direct localStorage seeding (network-fee mock keys must be JSON-encoded per `useNetworkFeeEstimate`'s `parseJson<string>`).
+- **Docs run:** 6
+- **Stories executed:** 17
+- **Passes:** 16
+- **Failures:** 0
+- **Blocked:** 1 (#541 Story 4 — unstake output preview, env/fixture address mismatch; not an app defect)
+- **Bugs filed:** none
+- **Figma frames compared:** 1498-101158 (desktop Stake/approved combined card), 1994-7280 (disconnected, via story #533)
+- **Score: 9/10**
+  - **#533 verified (4 stories):** disconnected /stake shows the lime/warning banner "Connect your wallet first" + dark "Connect" button on both Stake and Unstake tabs (tab-agnostic), no step buttons, input + output cards still rendered; clicking "Connect" opens the "Before you continue" terms gate (gated AppKit flow, same as home CTA); the post-connect StepsCard render verified via the mock-connected approved scenario.
+  - **#534 verified:** PLUSD = dark-navy circle/white glyph, sPLUSD = light-gray circle/navy glyph, both `data:image/svg+xml` vectors, visually distinct, flip correctly on tab switch.
+  - **#535 verified:** PLUSD icon is vector SVG (no base64 PNG), crisp at 40px, consistent with USDC/sPLUSD.
+  - **#540 verified (4 stories):** single white conversion card (tabs → PLUSD input → sPLUSD output → exchange rate → network fee); steps card is a separate container below; no layout shift on tab switch; confirmed against Figma 1498-101158.
+  - **#541 verified (Stories 1–3):** Stake rate "1 PLUSD = 0.9596 sPLUSD", Unstake rate "1 sPLUSD = 1.0421 PLUSD" (both exact, no 1e12 inflation); typing 10 PLUSD → 9.60 sPLUSD output preview. **Story 4 BLOCKED:** unstake output preview cannot be exercised locally — `splusdToken` reads balance/decimals from the configured Hoodi `STAKED_PLUSD_ADDRESS` via real RPC, but the fixture seeds sPLUSD balance under the placeholder `0x5555…0005`, so the balance reads 0 and `amountBig` parses to `0n` (preview disabled). Same fixture/address caveat as #310/#322 — not a regression: the unstake preview path is identical to the verified Stake-tab preview, and the unstake rate row proves the conversion math. No bug filed.
+  - **#542 verified (3 stories):** Stake fee "~0.00042 ETH" and Unstake fee "~0.00038 ETH" render from JSON-encoded mock keys (not "—"); a default computed ETH estimate (~0.00024 ETH) renders when no mock key is set; disconnected shows "—".
+  - **Figma:** Frame 1498-101158 matches structurally (header, hero, combined card, separate steps card) and in copy/values, except: (a) network fee Figma shows "−$1.20" USD vs app "~0.00042 ETH" — accepted #506/#542 product deviation (no USD price source); (b) steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app) — minor wording variance, app-wide convention. Neither filed.
+  - Zero error-level console messages across disconnected, connected/approved, and unstake states.
+  - **Outcome:** 16/17 green; the single blocked story is an env/fixture limitation, not a defect, with no bug to file. All 6 sibling sub-issues closed. `qa` #532 returned to `blocked` pending the maintainer's call on the env-only block — the epic is closeable if the env block is accepted. Deducted 1 point only for the one story not exercisable end-to-end locally; everything else passes functionally and visually.
+
+### 2026-06-16 — Epic #522 (Activity page) — first QA pass via `qa` issue #525
+
+- **Scope:** First QA pass on `qa` #525. All 3 user-stories docs under `docs/user-stories/epic-522/` executed: `523` (mobile with-data, 5 stories), `524` (mobile empty state, 3 stories), `530` (header icon centering, 1 story). Human-invoked directly; `qa` #525 claimed from `blocked`.
+- **Environment:** `http://localhost:5173/transactions` (yarn front:dev, vite). Chrome DevTools MCP, mobile (`matchMedia('(min-width:768px)')`=false; Chrome ~500px window floor) + desktop 1440. State seeded via `pipeline.mock.wallet.*` + `pipeline.mock.api.GET./v1/requests` localStorage keys (mirrors `/test` scenarios history-mixed / single-Buy / disconnected). Zero error-level console messages.
+- **Coverage:** 3 docs / 9 stories — **8 PASS / 1 FAIL / 0 blocked.**
+- **Figma frames compared:** `1993-9592` (mobile with-data) + child `1993-9808` (heading) → header mismatch; `1497-94912` (desktop) → matches; `1993-9958` (mobile empty) → matches.
+- **Bugs filed:** **#576** (medium, `trivial`, sub-issue of #522) — mobile arrow-clock hero circle renders when it should be hidden.
+- **Score: 8/10**
+  - Strong functional + visual coverage: all four request types (Deposit/Withdraw/Stake/Unstake) render correct icons, labels, timestamps, and amount formatting (`+100.00 USDC`, `+999.50 sPLUSD`, two-line stake/unstake) with no horizontal overflow at mobile width; Buy default, no "All" tab (accepted deviation from Figma per doc). Empty state correct for all three causes (disconnected, connected-zero, tab-filter-empty) — single consistent illustration + caption, top-anchored on mobile, vertically centered on desktop. Single semantic `<h2>` at all viewports. #530 verified: arrow-clock glyph optically centered (offset 0/0, mask-size contain).
+  - **#576 (FAIL — #523 Story 1):** at mobile width the 72×72 arrow-clock hero circle still renders above the "Activity" heading (`display:flex`, 72×72) — the `inline-flex` base on `HeroIcon` beats the `hidden md:block` override passed by `ActivityHeader`, so the responsive mobile hide never applies. Mobile Figma `1993-9592` has no hero circle there. Same class of regression as the closed #547. Desktop header is correct.
+  - **Outcome:** not green. `qa` #525 returned to `blocked`; epic #522 cannot close until #576 is fixed and a follow-up pass is green. Deducted 2 points for the one medium mobile-fidelity defect on the primary new surface; everything else passes.
+
 ### 2026-06-10 — Epic #498 (Deposit/withdraw page) — final QA pass (re-run) via `qa` issue #499
 
 - **Scope:** Re-run of the final QA pass after the only first-pass failure (#547) was fixed and merged to `main` (`ca5e34d`). Targeted the previously-failing doc `501-deposit-header-mobile` (incl. its new Story 4 #547 regression guard) plus the `CoinIcon` surfaces the fix touches; the other 6 docs were first-pass green with no intervening merged changes to their surfaces. All 8 non-`qa` sub-issues (#501–#507, #520, #547) closed.
