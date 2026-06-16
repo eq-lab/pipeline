@@ -4,6 +4,27 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-16 — Epic #531 (Stake/unstake page) — QA pass via `qa` issue #532
+
+- **Scope:** First pass on `qa` issue #532. All 6 user-stories docs under `docs/user-stories/epic-531/` (#533, #534, #535, #540, #541, #542) executed against `main`-equivalent code (HEAD `d770c8d`, contains all 6 epic-531 merges) at `http://localhost:3000/stake`. Desktop 1280×800. Chrome DevTools MCP. Mock states via `/test` scenario loader + direct localStorage seeding (network-fee mock keys must be JSON-encoded per `useNetworkFeeEstimate`'s `parseJson<string>`).
+- **Docs run:** 6
+- **Stories executed:** 17
+- **Passes:** 16
+- **Failures:** 0
+- **Blocked:** 1 (#541 Story 4 — unstake output preview, env/fixture address mismatch; not an app defect)
+- **Bugs filed:** none
+- **Figma frames compared:** 1498-101158 (desktop Stake/approved combined card), 1994-7280 (disconnected, via story #533)
+- **Score: 9/10**
+  - **#533 verified (4 stories):** disconnected /stake shows the lime/warning banner "Connect your wallet first" + dark "Connect" button on both Stake and Unstake tabs (tab-agnostic), no step buttons, input + output cards still rendered; clicking "Connect" opens the "Before you continue" terms gate (gated AppKit flow, same as home CTA); the post-connect StepsCard render verified via the mock-connected approved scenario.
+  - **#534 verified:** PLUSD = dark-navy circle/white glyph, sPLUSD = light-gray circle/navy glyph, both `data:image/svg+xml` vectors, visually distinct, flip correctly on tab switch.
+  - **#535 verified:** PLUSD icon is vector SVG (no base64 PNG), crisp at 40px, consistent with USDC/sPLUSD.
+  - **#540 verified (4 stories):** single white conversion card (tabs → PLUSD input → sPLUSD output → exchange rate → network fee); steps card is a separate container below; no layout shift on tab switch; confirmed against Figma 1498-101158.
+  - **#541 verified (Stories 1–3):** Stake rate "1 PLUSD = 0.9596 sPLUSD", Unstake rate "1 sPLUSD = 1.0421 PLUSD" (both exact, no 1e12 inflation); typing 10 PLUSD → 9.60 sPLUSD output preview. **Story 4 BLOCKED:** unstake output preview cannot be exercised locally — `splusdToken` reads balance/decimals from the configured Hoodi `STAKED_PLUSD_ADDRESS` via real RPC, but the fixture seeds sPLUSD balance under the placeholder `0x5555…0005`, so the balance reads 0 and `amountBig` parses to `0n` (preview disabled). Same fixture/address caveat as #310/#322 — not a regression: the unstake preview path is identical to the verified Stake-tab preview, and the unstake rate row proves the conversion math. No bug filed.
+  - **#542 verified (3 stories):** Stake fee "~0.00042 ETH" and Unstake fee "~0.00038 ETH" render from JSON-encoded mock keys (not "—"); a default computed ETH estimate (~0.00024 ETH) renders when no mock key is set; disconnected shows "—".
+  - **Figma:** Frame 1498-101158 matches structurally (header, hero, combined card, separate steps card) and in copy/values, except: (a) network fee Figma shows "−$1.20" USD vs app "~0.00042 ETH" — accepted #506/#542 product deviation (no USD price source); (b) steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app) — minor wording variance, app-wide convention. Neither filed.
+  - Zero error-level console messages across disconnected, connected/approved, and unstake states.
+  - **Outcome:** 16/17 green; the single blocked story is an env/fixture limitation, not a defect, with no bug to file. All 6 sibling sub-issues closed. `qa` #532 returned to `blocked` pending the maintainer's call on the env-only block — the epic is closeable if the env block is accepted. Deducted 1 point only for the one story not exercisable end-to-end locally; everything else passes functionally and visually.
+
 ### 2026-06-10 — Epic #498 (Deposit/withdraw page) — final QA pass (re-run) via `qa` issue #499
 
 - **Scope:** Re-run of the final QA pass after the only first-pass failure (#547) was fixed and merged to `main` (`ca5e34d`). Targeted the previously-failing doc `501-deposit-header-mobile` (incl. its new Story 4 #547 regression guard) plus the `CoinIcon` surfaces the fix touches; the other 6 docs were first-pass green with no intervening merged changes to their surfaces. All 8 non-`qa` sub-issues (#501–#507, #520, #547) closed.
