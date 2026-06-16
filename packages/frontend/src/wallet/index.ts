@@ -31,7 +31,7 @@ export {
 export type {
   DepositManagerAddressesResult,
   DepositManagerMinDepositResult,
-  RequestDepositResult,
+  RequestDepositResult as EvmRequestDepositResult,
   ClaimResult,
 } from "./evm/useDepositManager";
 export {
@@ -96,6 +96,23 @@ export { useBlendWithdraw } from "./stellar/useBlendWithdraw";
 export { useBlendPosition } from "./stellar/useBlendPosition";
 export type { BlendWriteResult } from "./stellar/useBlendDeposit";
 export type { UseBlendPositionResult } from "./stellar/useBlendPosition";
+
+export {
+  useStellarRequestDeposit,
+  useStellarClaim,
+  useStellarDepositRequest,
+  useChangeTrust,
+  readInflightDeposit,
+  writeInflightDeposit,
+  clearInflightDeposit,
+} from "./stellar/useStellarDepositManager";
+export type {
+  RequestDepositResult,
+  StellarClaimResult,
+  UseStellarDepositRequestResult,
+  UseChangeTrustResult,
+  InflightDeposit,
+} from "./stellar/useStellarDepositManager";
 
 // ── View selection ────────────────────────────────────────────────────────────
 export { WalletViewProvider, useWalletView } from "./WalletViewContext";
