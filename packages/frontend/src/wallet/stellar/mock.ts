@@ -86,6 +86,30 @@ export const STELLAR_MOCK_KEYS = {
    * Raw bigint string in 7-decimal fixed-point (e.g. `"10000000"` = 1 PLUSD).
    */
   balanceSacPlusd: "pipeline.mock.wallet.stellar.balance.sac.plusd",
+
+  // ── DepositManager mock keys ───────────────────────────────────────────────
+
+  /**
+   * Mock result for `useStellarRequestDeposit`.
+   * JSON-encoded `{ hash: "...", requestId?: "123" }` — when set, `write()` resolves
+   * with that object immediately (no RPC, no signing).
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.depositManager.requestDeposit", '{"hash":"abc123","requestId":"42"}')`
+   */
+  depositManagerRequestDeposit: "pipeline.mock.wallet.stellar.depositManager.requestDeposit",
+
+  /**
+   * Mock result for `useStellarClaim`.
+   * JSON-encoded `{ hash: "..." }` — when set, `write()` resolves with that
+   * object immediately (no RPC, no signing).
+   */
+  depositManagerClaim: "pipeline.mock.wallet.stellar.depositManager.claim",
+
+  /**
+   * Mock result for `useChangeTrust`.
+   * JSON-encoded `{ hash: "..." }` — when set, `submit()` resolves with that
+   * object immediately (no Horizon, no signing).
+   */
+  changeTrust: "pipeline.mock.wallet.stellar.changeTrust",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -170,4 +194,41 @@ export function readMockBlendWithdraw(): { hash: string } | undefined {
  */
 export function readMockBlendPosition(): bigint | undefined {
   return readMock(STELLAR_MOCK_KEYS.blendPosition, parseBigInt);
+}
+
+// ── DepositManager non-reactive readers ───────────────────────────────────────
+
+/**
+ * Read the mock `useStellarRequestDeposit` result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash, requestId? }` or `undefined`.
+ */
+export function readMockStellarRequestDeposit():
+  | { hash: string; requestId?: string }
+  | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.depositManagerRequestDeposit,
+    parseJson<{ hash: string; requestId?: string }>,
+  );
+}
+
+/**
+ * Read the mock `useStellarClaim` result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash }` or `undefined`.
+ */
+export function readMockStellarClaim(): { hash: string } | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.depositManagerClaim,
+    parseJson<{ hash: string }>,
+  );
+}
+
+/**
+ * Read the mock `useChangeTrust` result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash }` or `undefined`.
+ */
+export function readMockStellarChangeTrust(): { hash: string } | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.changeTrust,
+    parseJson<{ hash: string }>,
+  );
 }

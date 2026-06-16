@@ -24,6 +24,9 @@ function resolveKitNetwork(network: string): Networks {
 /** Kit `Networks` enum value for the configured network. */
 export const kitNetwork: Networks = resolveKitNetwork(ENV.STELLAR_NETWORK);
 
+/** Backend chain id used by API routes that dispatch EVM vs Stellar behavior. */
+export const stellarChainId: number = ENV.STELLAR_CHAIN_ID;
+
 /**
  * Network passphrase string. In v2.x the kit `Networks` enum values ARE the
  * passphrases, so this is just an alias of `kitNetwork` exposed as a string for
