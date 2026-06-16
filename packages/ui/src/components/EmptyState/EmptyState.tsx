@@ -57,8 +57,9 @@ const rootClasses = [
 ].join(" ");
 
 // Caption row — body size, muted ink, centred. Matches Figma node 1497:94665
-// (`leading-[var(--font/line-height/body,22px)]`,
-//  `text-[color:var(--content-test/secondary,…)]`).
+// (Figma tokens "font/line-height/body" 22px and "content-test/secondary").
+// NB: don't write Tailwind class syntax in comments — the v4 scanner picks it
+// up and emits invalid CSS for slash-containing var() names.
 const captionClasses = [
   "text-[length:var(--text-pipeline-body)]",
   "leading-[var(--text-pipeline-body--line-height)]",
