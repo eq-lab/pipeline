@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-16 — Epic #556 (Connect Wallet modal) — QA pass via `qa` issue #557
+
+- **Scope:** First pass on `qa` issue #557 (final-pass scenario — all three non-`qa` sub-issues #558/#563/#564 closed; human-invoked directly). All three user-stories docs under `docs/user-stories/epic-556/` executed against the local Vite dev server at `http://localhost:5173/`, disconnected wallet state (set `pipeline.mock.wallet.isConnected=false`, removed `.address`). Desktop 1440 + mobile (Chrome ~500px floor, below the lg=1024 breakpoint). Driven with Chrome DevTools MCP.
+- **Docs run:** 3 (`558-connect-wallet-modal`, `563-connect-modal-fullscreen`, `564-connect-modal-hero-image`)
+- **Stories executed:** 29 total — 558 (17), 563 (8), 564 (4)
+- **Passes:** 22 (558: 11 PASS + 1 partial-pass; 563: 8 PASS; 564: 2 PASS)
+- **Failures:** 2 (564 S1 wordmark, 564 S3 headline)
+- **Blocked:** 5 (558 Stories 6/7/8/9/10 — real wallet connector dispatch not reproducible without installed wallet extensions; terms-gate intercept verified instead via Story 17)
+- **Bugs filed:** #579 (high), #580 (medium, `trivial`) — both sub-issues of #556
+- **Figma frames compared:** `2858-57637` (Connect Wallet modal, 1728×916, two 864px panes)
+- **Score: 7/10**
+  - Functional behavior is solid: EVM tab shows exactly MetaMask / Coinbase Wallet / WalletConnect / Trust Wallet (no Phantom, no Show More); Soroban tab shows 5 wallets + Show More, expands to 6 (adds Rabet), and resets on tab switch; modal dismisses via Escape and × but NOT on right-pane/outside click (per the #563 fullscreen decision); mobile renders single-column full-viewport with the right pane `display:none` + `aria-hidden`; clicking any wallet routes through the "Before you continue" terms gate first (Story 17).
+  - Intentional deviations (not bugs): Figma still labels tabs All/Ethereum/Stellar and lists Phantom; the epic body explicitly redefined this to EVM/Soroban with no Phantom. Left pane (heading "Connect Wallet" Besley, tabs, 56px wallet rows) matches Figma.
+  - **#579 (high, 564 S1/S2 FAIL):** the hero asset `packages/frontend/src/assets/connect-hero-ship.webp` is a full export of the Figma right pane — it has the white "Pipeline" wordmark AND the "Access real-world / yield on-chain" headline baked into the photo. The component overlays its own wordmark SVG (rendering navy `rgb(0,0,128)`, illegible on the dark photo) and its own headline `<p>`, producing a duplicated wordmark and duplicated headline. The asset should be the bare photograph only.
+  - **#580 (medium, 564 S3 FAIL):** the overlay headline `<p>` renders at 16px and is bottom-anchored (flex `justify-between`), vs Figma Heading-L (48px Besley) near the top below the wordmark. Currently masked by the baked-in headline in the asset (#579); surfaces once the asset is replaced.
+  - Deducted 3 points: the desktop right-pane visual composition (the headline deliverable of #564) is wrong on the primary surface — duplicated/illegible wordmark and mis-sized/mis-positioned headline. Everything functional and the mobile/dismissal/terms behavior passes. `qa` #557 returned to `blocked`; epic #556 cannot close until #579/#580 are fixed and a follow-up pass is green.
+
 ### 2026-06-10 — Epic #498 (Deposit/withdraw page) — final QA pass (re-run) via `qa` issue #499
 
 - **Scope:** Re-run of the final QA pass after the only first-pass failure (#547) was fixed and merged to `main` (`ca5e34d`). Targeted the previously-failing doc `501-deposit-header-mobile` (incl. its new Story 4 #547 regression guard) plus the `CoinIcon` surfaces the fix touches; the other 6 docs were first-pass green with no intervening merged changes to their surfaces. All 8 non-`qa` sub-issues (#501–#507, #520, #547) closed.
