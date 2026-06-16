@@ -130,9 +130,9 @@ fn load_evm_voucher_config(
         return Ok(());
     };
 
-    let signer: PrivateKeySigner = signer_key.parse().with_context(|| {
-        format!("CHAIN_{chain_id}_SIGNER_KEY must be a valid private key")
-    })?;
+    let signer: PrivateKeySigner = signer_key
+        .parse()
+        .with_context(|| format!("CHAIN_{chain_id}_SIGNER_KEY must be a valid private key"))?;
     tracing::info!(chain_id, address = %signer.address(), "EVM voucher signer loaded");
 
     let chain_id_u64 = chain_id as u64;
@@ -164,7 +164,14 @@ fn load_evm_voucher_config(
         verifying_contract: wq_addr,
     };
 
-    voucher.insert(chain_id, VoucherChainConfig { signer, dm_domain, wq_domain });
+    voucher.insert(
+        chain_id,
+        VoucherChainConfig {
+            signer,
+            dm_domain,
+            wq_domain,
+        },
+    );
     Ok(())
 }
 
@@ -212,19 +219,13 @@ fn load_stellar_voucher_config(
     };
     let passphrase = env::var(&pp_key).unwrap_or(default_passphrase);
     if passphrase.is_empty() {
-        anyhow::bail!(
-            "{pp_key} is required for non-testnet Stellar chains (chain_id={chain_id})"
-        );
+        anyhow::bail!("{pp_key} is required for non-testnet Stellar chains (chain_id={chain_id})");
     }
 
-    let dm_contract =
-        stellar_strkey::Contract::from_string(&dm_str).with_context(|| {
-            format!("{dm_key} must be a valid C… Strkey, got '{dm_str}'")
-        })?;
-    let wq_contract =
-        stellar_strkey::Contract::from_string(&wq_str).with_context(|| {
-            format!("{wq_key} must be a valid C… Strkey, got '{wq_str}'")
-        })?;
+    let dm_contract = stellar_strkey::Contract::from_string(&dm_str)
+        .with_context(|| format!("{dm_key} must be a valid C… Strkey, got '{dm_str}'"))?;
+    let wq_contract = stellar_strkey::Contract::from_string(&wq_str)
+        .with_context(|| format!("{wq_key} must be a valid C… Strkey, got '{wq_str}'"))?;
 
     let domain_dm = StellarVoucherDomain::from_passphrase(&dm_contract, &passphrase);
     let domain_wq = StellarVoucherDomain::from_passphrase(&wq_contract, &passphrase);
@@ -239,6 +240,13 @@ fn load_stellar_voucher_config(
         "Stellar voucher config loaded"
     );
 
-    stellar_voucher.insert(chain_id, StellarVoucherChainConfig { signer, domain_dm, domain_wq });
+    stellar_voucher.insert(
+        chain_id,
+        StellarVoucherChainConfig {
+            signer,
+            domain_dm,
+            domain_wq,
+        },
+    );
     Ok(())
 }

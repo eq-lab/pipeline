@@ -136,8 +136,10 @@ fn stellar_wallet_passthrough_valid() {
 
 #[test]
 fn stellar_wallet_lowercase_rejected() {
-    let result =
-        normalise_wallet(ChainKind::Stellar, "gc5suaxmrok67lie3ddmjg3ahhevsfdaz55a4ws655xyskin46rg7acm");
+    let result = normalise_wallet(
+        ChainKind::Stellar,
+        "gc5suaxmrok67lie3ddmjg3ahhevsfdaz55a4ws655xyskin46rg7acm",
+    );
     assert!(result.is_err());
 }
 
