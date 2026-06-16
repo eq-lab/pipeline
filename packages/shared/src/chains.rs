@@ -53,6 +53,28 @@ pub fn parse_chains_env() -> Result<Vec<i64>> {
     Ok(ids)
 }
 
+/// Normalize and validate a Stellar contract-id env var (a `C…` Strkey).
+pub fn validate_contract_id(key: &str, mut raw: String) -> Result<String> {
+    raw.make_ascii_uppercase();
+    let upper = raw;
+    if upper.len() != 56 {
+        anyhow::bail!(
+            "{key} must be a 56-char Stellar Strkey, got {} chars",
+            upper.len()
+        );
+    }
+    if !upper.starts_with('C') {
+        anyhow::bail!("{key} must be a Stellar contract Strkey (starts with 'C')");
+    }
+    if !upper
+        .bytes()
+        .all(|b| matches!(b, b'A'..=b'Z' | b'2'..=b'7'))
+    {
+        anyhow::bail!("{key} contains characters outside the Strkey base32 alphabet (A-Z, 2-7)");
+    }
+    Ok(upper)
+}
+
 /// Parse `DEFAULT_CHAIN_ID` and verify it is a member of `chains`.
 /// `chains` is typically the result of `parse_chains_env()`.
 pub fn parse_default_chain_id(chains: &[i64]) -> Result<i64> {

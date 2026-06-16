@@ -122,12 +122,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** On-chain verifier rotations must be applied atomically to all chains simultaneously if the flat var is used.
 - **Suggested fix:** Rename to `CHAIN_<id>_API_STELLAR_VERIFIER_SECRET` per chain. Track against TD-14 above.
 
-### TD-16: Stellar `lp_profiles` whitelist path not seeded
+### TD-16: Stellar `lp_profiles` whitelist path not seeded [RESOLVED 2026-06-15 / #562]
 - **Date:** 2026-06-11
 - **Location:** `packages/shared/src/kyc_repo.rs`, `is_on_chain_allowed`
 - **Gap:** `is_on_chain_allowed` runs identical SQL for Stellar and EVM (Decision #4 in exec plan #555). Stellar voucher requests will 403 until `lp_profiles` rows exist for the wallet on the Stellar chain. No tooling or migration seeds those rows.
 - **Impact:** Stellar voucher signing is technically implemented but operationally inert until an ops process or separate Issue populates `lp_profiles` for Stellar wallets.
-- **Suggested fix:** Either extend `populate_profiles_from_deposits` to handle Stellar rows (case-sensitive Strkey) or provide an ops runbook for seeding Stellar LP profiles.
+- **Resolved by #562:** Issue #562 added `KycRepo::populate_profiles_from_deposits_stellar` (case-sensitive Strkey insert) and `fetch_profiles_to_allow_stellar` (case-sensitive lookup, no Crystal gate). The Stellar relayer job calls them every cycle so `lp_profiles` is now seeded the same way the EVM path seeds itself.
+
+### TD-17: Stellar relayer signer is a plaintext `S…` seed
+- **Date:** 2026-06-15
+- **Location:** `packages/worker/src/relayer/config.rs::StellarRelayerSettings`, `.env.example::CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET`
+- **Gap:** The Stellar relayer's ed25519 signing key is provisioned via a flat `CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET` env var (Strkey `S…` seed in plaintext). Parallel to TD-14 (the API voucher key). For production this should be backed by KMS or BitGo key management, mirroring the EVM `SIGNER_KEY` path.
+- **Impact:** The seed is exposed in environment configuration; key rotation requires a restart. Acceptable for the initial iteration (Issue #562), not for mainnet production use. The relayer signer also holds the `executor` role on the access-manager, so a leak lets an attacker whitelist arbitrary addresses.
+- **Suggested fix:** Introduce a KMS-backed signer behind the `StellarRelayerSettings.signing_key` field (e.g. fetch the seed from AWS KMS at startup). Pair with TD-14 in a single migration if possible.
 
 ### TD-13: CI does not run the frontend unit test suite (vitest)
 - **Date:** 2026-06-04

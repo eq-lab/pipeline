@@ -97,4 +97,26 @@ Crystal does not provide KYT for Stellar addresses in the current integration. S
 
 ### `is_on_chain_allowed` for Stellar
 
-The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher requests return HTTP 403 until an `lp_profiles` row exists for the wallet on the Stellar chain. Populating those rows is an ops/separate-Issue concern (see TD-16 in `tech-debt-tracker.md`).
+The same SQL runs for Stellar as for EVM — no short-circuit. Stellar voucher requests return HTTP 403 until an `lp_profiles` row exists for the wallet on the Stellar chain. Populating those rows is handled by the Stellar relayer (see "Stellar Relayer Whitelist" below).
+
+## Stellar Relayer Whitelist (Issue #562)
+
+The relayer's Phase 0 (profile population) and Phase 3 (whitelist sync) run for Stellar chains in parallel to the EVM path. `RelayerSettings::all_from_env` dispatches on `CHAIN_<id>_TYPE`; Stellar chains run `run_stellar_relayer_job` instead of `run_relayer_job`. Phases 1 (Sumsub) and 4 (yield-mint) are skipped.
+
+### On-chain mechanism
+
+Where EVM calls `WhitelistRegistry.allow(address)`, Stellar invokes `access_manager.execute(operation, caller)` where `operation = { target: PLUSD_SAC, function: "set_authorized", args: [Address(user), Bool(true)], predecessor: 0x00…, salt: <random 32 bytes> }`. The access-manager's `#[only_role(caller, "executor")]` macro requires the caller (the relayer's `G…` account, which doubles as the tx source) to hold the `executor` role — granted out-of-band via `just grant-executor <G-address>` in `pipeline-stellar-contracts/deployments`.
+
+The `Operation` struct is encoded as `ScVal::Map` with entries alphabetically sorted by field name (`args`, `function`, `predecessor`, `salt`, `target`) — matches `soroban-sdk`'s `to_xdr(e)` for `#[contracttype]` structs, the same convention reused by `shared::stellar_voucher` for the voucher digest. A fresh random salt per submit makes `hash_operation(...)` unique, so the access-manager's dedup never collides across cycles.
+
+### Idempotency
+
+Phase 3 calls the SAC's `authorized(user) -> bool` view via `simulateTransaction` (no signing or submit) before each `set_authorized` call. On `true`, it skips the submit and flips `lp_profiles.on_chain_allowed` to keep the DB in sync. On error (e.g., the SAC view is unavailable), it falls through to submit — the salt-based on-chain dedup means a duplicate submit is just a wasted fee, not a correctness bug.
+
+### Case sensitivity
+
+`KycRepo::populate_profiles_from_deposits_stellar` and `fetch_profiles_to_allow_stellar` preserve the Strkey `G…` case (no `LOWER(...)` wrap). Lowercasing would corrupt the Strkey CRC-16 checksum and break `stellar_strkey::ed25519::PublicKey::from_string`. Mirrors the `get_deposit_request_case_sensitive` pattern from #555.
+
+### Crystal force-disabled
+
+`StellarRelayerSettings::from_chain_env` hard-codes `crystal_enabled = false` regardless of the global `CRYSTAL_ENABLED`. Crystal does not return KYT for Stellar addresses; gating on `crystal_kyt_status = 1` would block every Stellar profile forever. Sumsub remains under the global toggle — Sumsub identity is wallet-scoped, so EVM-side reviews propagate to Stellar `lp_profiles` rows via the existing webhook handler.

@@ -12,8 +12,9 @@ use shared::crystal::config::CrystalSettings;
 use shared::kyc_repo::KycRepo;
 use shared::yield_mint_outbox_repo::YieldMintOutboxRepo;
 
-use crate::relayer::config::RelayerJobSettings;
+use crate::relayer::config::{EvmRelayerSettings, RelayerSettings};
 use crate::relayer::crystal_check::phase_check_crystal;
+use crate::relayer::stellar::job::run_stellar_relayer_inner;
 use crate::relayer::sumsub_check::phase_check_sumsub;
 use crate::relayer::whitelist::{phase_sync_whitelist, WhitelistRegistry};
 use crate::relayer::yield_mint::{
@@ -21,7 +22,14 @@ use crate::relayer::yield_mint::{
     HttpProvider, Phase4Settings,
 };
 
-pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo>) -> Result<()> {
+pub async fn run_relayer_job(settings: RelayerSettings, kyc_repo: Arc<KycRepo>) -> Result<()> {
+    match settings {
+        RelayerSettings::Evm(s) => run_evm_relayer_inner(*s, kyc_repo).await,
+        RelayerSettings::Stellar(s) => run_stellar_relayer_inner(*s, kyc_repo).await,
+    }
+}
+
+async fn run_evm_relayer_inner(settings: EvmRelayerSettings, kyc_repo: Arc<KycRepo>) -> Result<()> {
     let signer: PrivateKeySigner = settings
         .signer_key
         .parse()
@@ -51,7 +59,7 @@ pub async fn run_relayer_job(settings: RelayerJobSettings, kyc_repo: Arc<KycRepo
     };
 
     // Phase 4: Yield-Minter relayer setup (always enabled — required env vars
-    // are validated at `RelayerJobSettings::from_env` time).
+    // are validated at `EvmRelayerSettings::from_chain_env` time).
     let bitgo_settings =
         BitgoSettings::from_env().context("BitGo settings are required for Phase 4")?;
     let bitgo = Arc::new(BitgoClient::new(bitgo_settings));

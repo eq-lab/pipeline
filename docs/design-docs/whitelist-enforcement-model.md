@@ -32,3 +32,7 @@ sPLUSD has **no transfer restriction** — the vault is open to any PLUSD holder
 - PLUSD cannot be used as a general-purpose stablecoin in the MVP — it is restricted to the allowlisted set.
 - 90-day re-screening means PLUSD holders may find transfers reverting if their screen has expired. The LP dashboard surfaces the days-remaining indicator.
 - Adding new DeFi venues to the allowlist requires a foundation multisig transaction — legal and technical review is gated by governance.
+
+## Stellar / Soroban path (Issue #562)
+
+The same allowlist semantics apply on Stellar/Soroban, but the on-chain primitive differs. PLUSD is deployed as a Stellar Asset Contract (SAC); the SAC's standard `authorized(id) -> bool` view replaces `WhitelistRegistry.isAllowed`, and the SAC's `set_authorized(id, authorize)` admin-only mutation replaces `WhitelistRegistry.allow`. The SAC admin is the access-manager contract, so the relayer authorizes addresses by calling `access_manager.execute(set_authorized(addr, true))` — gated by the access-manager's `executor` role on the relayer's `G…` account. See `multi-chain-kyc-sharding.md::Stellar Relayer Whitelist` for the full call shape.
