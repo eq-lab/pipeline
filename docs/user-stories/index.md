@@ -57,6 +57,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#558 Connect page: network tabs (EVM / Soroban) with styled wallet lists, desktop + mobile](https://github.com/eq-lab/pipeline/issues/558) | [558-connect-wallet-modal.md](./epic-556/558-connect-wallet-modal.md) | Initial |
 | [#563 Connect Wallet modal: full-viewport two-pane layout](https://github.com/eq-lab/pipeline/issues/563) | [563-connect-modal-fullscreen.md](./epic-556/563-connect-modal-fullscreen.md) | Initial |
 | [#564 Connect Wallet modal: right pane uses real wordmark and hero photo](https://github.com/eq-lab/pipeline/issues/564) | [564-connect-modal-hero-image.md](./epic-556/564-connect-modal-hero-image.md) | Initial |
+| [#580 Connect modal right pane: overlay headline size and position](https://github.com/eq-lab/pipeline/issues/580) | [580-connect-modal-headline.md](./epic-556/580-connect-modal-headline.md) | Initial |
 
 ---
 

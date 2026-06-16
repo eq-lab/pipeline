@@ -26,7 +26,6 @@ import type { Account } from "@stellar/stellar-sdk";
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
 const {
-  mockGetAccount: _mockGetAccount,
   mockSimulateTransaction,
   mockAssembleTransaction,
   mockIsSimulationError,
