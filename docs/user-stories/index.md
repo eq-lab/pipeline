@@ -34,6 +34,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#523 Mobile Activity page: with-data state (responsive layout + rows)](https://github.com/eq-lab/pipeline/issues/523) | [523-mobile-activity-with-data.md](./epic-522/523-mobile-activity-with-data.md) | Initial |
 | [#524 Mobile Activity page: empty state](https://github.com/eq-lab/pipeline/issues/524) | [524-mobile-activity-empty-state.md](./epic-522/524-mobile-activity-empty-state.md) | Initial |
 | [#530 Activity header icon: arrow-clock glyph not centered within its HeroIcon circle](https://github.com/eq-lab/pipeline/issues/530) | [530-activity-header-icon-centering.md](./epic-522/530-activity-header-icon-centering.md) | Initial |
+| [#576 Mobile Activity header: arrow-clock hero circle hidden at mobile width](https://github.com/eq-lab/pipeline/issues/576) | [576-activity-mobile-hero-icon.md](./epic-522/576-activity-mobile-hero-icon.md) | Initial |
 
 ---
 
