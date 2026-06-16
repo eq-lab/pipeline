@@ -5,7 +5,7 @@ use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
 use pipeline_worker::price_poller::config::PricePollerSettings;
 use pipeline_worker::price_poller::run_price_poller_job;
-use pipeline_worker::relayer::config::RelayerJobSettings;
+use pipeline_worker::relayer::config::RelayerSettings;
 use pipeline_worker::relayer::relayer_job::run_relayer_job;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
@@ -86,11 +86,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if env_bool("JOB_RELAYER_ENABLED") {
-        let settings_per_chain = RelayerJobSettings::all_evm_from_env()?;
+        let settings_per_chain = RelayerSettings::all_from_env()?;
 
         for s in settings_per_chain {
-            tracing::info!(chain_id = s.chain_id, "relayer job started");
             let kyc_repo = Arc::new(KycRepo::new(pool.clone()));
+            tracing::info!(chain_id = s.chain_id(), "relayer job started");
             tokio::spawn(async move {
                 if let Err(e) = run_relayer_job(s, kyc_repo).await {
                     tracing::error!("relayer job exited with error: {e:?}");

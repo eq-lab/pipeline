@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use pipeline_worker::indexer::config::{parse_chains_env, IndexerJobSettings};
 use pipeline_worker::price_poller::config::PricePollerSettings;
-use pipeline_worker::relayer::config::RelayerJobSettings;
+use pipeline_worker::relayer::config::EvmRelayerSettings;
 
 /// Mutex used to serialize env-var mutations across tests in this binary.
 /// `cargo test` runs tests in parallel within a binary, and `CHAINS` /
@@ -79,7 +79,7 @@ fn price_poller_from_chain_env_missing_rpc_url_is_error() {
     assert!(PricePollerSettings::from_chain_env(88888).is_err());
 }
 
-// ── RelayerJobSettings ───────────────────────────────────────────────────────
+// ── EvmRelayerSettings ───────────────────────────────────────────────────────
 
 #[test]
 fn relayer_from_chain_env_missing_signer_key_is_error() {
@@ -91,5 +91,5 @@ fn relayer_from_chain_env_missing_signer_key_is_error() {
         std::env::remove_var("CHAIN_66666_RELAYER_ETH_RPC_URL");
         std::env::remove_var("CHAIN_66666_ETH_RPC_URL");
     }
-    assert!(RelayerJobSettings::from_chain_env(66666).is_err());
+    assert!(EvmRelayerSettings::from_chain_env(66666).is_err());
 }

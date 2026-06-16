@@ -20,8 +20,8 @@
 use ed25519_dalek::{Signature, Signer, SigningKey};
 use sha2::{Digest, Sha256};
 use stellar_xdr::curr::{
-    AccountId, BytesM, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScBytes,
-    ScMap, ScMapEntry, ScSymbol, ScVal, StringM, UInt128Parts, Uint256, VecM, WriteXdr,
+    AccountId, BytesM, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScBytes, ScMap,
+    ScMapEntry, ScSymbol, ScVal, StringM, UInt128Parts, Uint256, VecM, WriteXdr,
 };
 
 /// A loaded ed25519 signing key for Stellar voucher signing.
@@ -183,8 +183,7 @@ pub fn voucher_digest(
     amount: i128,
 ) -> [u8; 32] {
     let domain_sep: [u8; 32] = Sha256::digest(domain_xdr(domain)).into();
-    let voucher_hash: [u8; 32] =
-        Sha256::digest(voucher_xdr(request_id, sender, amount)).into();
+    let voucher_hash: [u8; 32] = Sha256::digest(voucher_xdr(request_id, sender, amount)).into();
 
     let mut combined = [0u8; 64];
     combined[..32].copy_from_slice(&domain_sep);
@@ -236,8 +235,7 @@ mod tests {
     }
 
     fn testnet_sender() -> stellar_strkey::ed25519::PublicKey {
-        stellar_strkey::ed25519::PublicKey::from_string(TESTNET_VERIFIER)
-            .expect("valid G… strkey")
+        stellar_strkey::ed25519::PublicKey::from_string(TESTNET_VERIFIER).expect("valid G… strkey")
     }
 
     // ── Golden-fixture test ───────────────────────────────────────────────────

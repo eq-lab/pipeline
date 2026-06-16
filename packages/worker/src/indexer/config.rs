@@ -2,7 +2,7 @@ use std::env;
 
 use anyhow::{Context, Result};
 
-pub use shared::chains::{parse_chain_type, parse_chains_env, ChainKind};
+pub use shared::chains::{parse_chain_type, parse_chains_env, validate_contract_id, ChainKind};
 
 /// Type alias so existing call sites in the worker that use `ChainType` still compile.
 pub type ChainType = ChainKind;
@@ -89,33 +89,6 @@ impl StellarIndexerSettings {
             polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
         })
     }
-}
-
-/// Normalize and validate a Stellar contract-id env var.
-///
-/// Soroban RPC returns Strkey verbatim and `dispatch_parser` compares with `==`,
-/// so a `.env` value with the wrong case would silently drop events. We uppercase
-/// here so both sides land in the same case, and reject malformed input loudly
-/// at config load rather than silently at poll time.
-fn validate_contract_id(key: &str, mut raw: String) -> Result<String> {
-    raw.make_ascii_uppercase();
-    let upper = raw;
-    if upper.len() != 56 {
-        anyhow::bail!(
-            "{key} must be a 56-char Stellar Strkey, got {} chars",
-            upper.len()
-        );
-    }
-    if !upper.starts_with('C') {
-        anyhow::bail!("{key} must be a Stellar contract Strkey (starts with 'C')");
-    }
-    if !upper
-        .bytes()
-        .all(|b| matches!(b, b'A'..=b'Z' | b'2'..=b'7'))
-    {
-        anyhow::bail!("{key} contains characters outside the Strkey base32 alphabet (A-Z, 2-7)");
-    }
-    Ok(upper)
 }
 
 /// Unified per-chain indexer settings returned by `IndexerSettings::all_from_env`.

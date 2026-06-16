@@ -2,6 +2,7 @@ pub mod config;
 pub mod crystal_check;
 pub mod custodian;
 pub mod relayer_job;
+pub mod stellar;
 pub mod sumsub_check;
 pub mod whitelist;
 pub mod yield_mint;

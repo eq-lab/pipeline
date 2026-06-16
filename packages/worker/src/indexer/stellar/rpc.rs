@@ -142,6 +142,185 @@ impl StellarRpc {
         Ok((out, latest_ledger))
     }
 
+    /// Fetch the current sequence number of a Stellar account.
+    ///
+    /// Uses Soroban RPC's `getLedgerEntries` with a `LedgerKey::Account` key.
+    /// Returns `Ok(None)` if the account doesn't exist (response has no entries),
+    /// or `Ok(Some(seq))` with the current sequence (caller must increment by 1
+    /// before submitting a new transaction).
+    pub async fn get_account_sequence(&self, account_pubkey: &[u8; 32]) -> Result<Option<i64>> {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        use stellar_xdr::curr::{
+            AccountId, LedgerKey, LedgerKeyAccount, Limits, PublicKey as XdrPublicKey, ReadXdr,
+            Uint256, WriteXdr,
+        };
+
+        let key = LedgerKey::Account(LedgerKeyAccount {
+            account_id: AccountId(XdrPublicKey::PublicKeyTypeEd25519(Uint256(*account_pubkey))),
+        });
+        let key_bytes = key
+            .to_xdr(Limits::none())
+            .context("encode LedgerKey::Account")?;
+        let key_b64 = STANDARD.encode(key_bytes);
+
+        let resp: Value = self
+            .call("getLedgerEntries", json!({ "keys": [key_b64] }))
+            .await?;
+        let entries = resp
+            .get("entries")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let Some(first) = entries.first() else {
+            return Ok(None);
+        };
+        let xdr_b64 = first
+            .get("xdr")
+            .and_then(Value::as_str)
+            .context("getLedgerEntries: entry missing 'xdr'")?;
+        let bytes = STANDARD
+            .decode(xdr_b64)
+            .context("decode LedgerEntryData base64")?;
+        let entry = stellar_xdr::curr::LedgerEntryData::from_xdr(bytes.as_slice(), Limits::none())
+            .context("decode LedgerEntryData XDR")?;
+        match entry {
+            stellar_xdr::curr::LedgerEntryData::Account(a) => Ok(Some(a.seq_num.0)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Simulate a Soroban transaction.
+    ///
+    /// Used both as a view-call (for the `is_authorized` pre-check, no signing
+    /// or submit) and as the prelude to a real submit (returns the
+    /// `SorobanTransactionData` and auth entries the envelope must carry).
+    ///
+    /// `envelope_xdr_base64` is a base64-encoded `TransactionEnvelope::Tx(...)`.
+    pub async fn simulate_transaction(
+        &self,
+        envelope_xdr_base64: &str,
+    ) -> Result<SimulateResponse> {
+        let resp: Value = self
+            .call(
+                "simulateTransaction",
+                json!({ "transaction": envelope_xdr_base64 }),
+            )
+            .await?;
+
+        let latest_ledger = resp
+            .get("latestLedger")
+            .and_then(Value::as_u64)
+            .context("simulateTransaction: missing latestLedger")?;
+
+        let error = resp.get("error").and_then(Value::as_str).map(str::to_owned);
+
+        let transaction_data_b64 = resp
+            .get("transactionData")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+
+        let min_resource_fee = resp
+            .get("minResourceFee")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let results: Vec<SimulateResult> = resp
+            .get("results")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| {
+                        let xdr = r.get("xdr").and_then(Value::as_str).map(str::to_owned)?;
+                        let auth: Vec<String> = r
+                            .get("auth")
+                            .and_then(Value::as_array)
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|v| v.as_str().map(str::to_owned))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        Some(SimulateResult {
+                            return_value_xdr_base64: xdr,
+                            auth_xdr_base64: auth,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(SimulateResponse {
+            latest_ledger,
+            transaction_data_xdr_base64: transaction_data_b64,
+            min_resource_fee,
+            results,
+            error,
+        })
+    }
+
+    /// Submit a signed Stellar transaction (`sendTransaction` JSON-RPC method).
+    pub async fn send_transaction(&self, envelope_xdr_base64: &str) -> Result<SendResponse> {
+        let resp: Value = self
+            .call(
+                "sendTransaction",
+                json!({ "transaction": envelope_xdr_base64 }),
+            )
+            .await?;
+        let status = resp
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("UNKNOWN")
+            .to_owned();
+        let hash = resp
+            .get("hash")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let error_result_xdr = resp
+            .get("errorResultXdr")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let diagnostic_events_xdr: Vec<String> = resp
+            .get("diagnosticEventsXdr")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(SendResponse {
+            status,
+            hash,
+            error_result_xdr,
+            diagnostic_events_xdr,
+        })
+    }
+
+    /// Poll a Stellar transaction by hash (`getTransaction` JSON-RPC method).
+    pub async fn get_transaction(&self, hash: &str) -> Result<GetTransactionResponse> {
+        let resp: Value = self.call("getTransaction", json!({ "hash": hash })).await?;
+        let status = resp
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("UNKNOWN")
+            .to_owned();
+        let return_value_xdr_base64 = resp
+            .get("returnValue")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let result_xdr_base64 = resp
+            .get("resultXdr")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        Ok(GetTransactionResponse {
+            status,
+            return_value_xdr_base64,
+            result_xdr_base64,
+        })
+    }
+
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
         let body = json!({
             "jsonrpc": "2.0",
@@ -175,6 +354,52 @@ impl StellarRpc {
             .result
             .context("Soroban RPC response has no 'result' field")
     }
+}
+
+/// Response from `simulateTransaction`.
+#[derive(Debug, Clone)]
+pub struct SimulateResponse {
+    pub latest_ledger: u64,
+    /// Base64-encoded `SorobanTransactionData`. Absent when simulate errored.
+    pub transaction_data_xdr_base64: Option<String>,
+    /// Recommended minimum `resourceFee`; absent when simulate errored.
+    pub min_resource_fee: Option<i64>,
+    /// One entry per top-level host-function invocation.
+    pub results: Vec<SimulateResult>,
+    /// Error message returned by simulate (e.g., unsupported function, contract trap).
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SimulateResult {
+    /// Base64-encoded `ScVal` — the function's return value.
+    pub return_value_xdr_base64: String,
+    /// Base64-encoded `SorobanAuthorizationEntry` records the envelope must carry.
+    pub auth_xdr_base64: Vec<String>,
+}
+
+/// Response from `sendTransaction`.
+#[derive(Debug, Clone)]
+pub struct SendResponse {
+    /// One of `PENDING`, `DUPLICATE`, `TRY_AGAIN_LATER`, `ERROR`.
+    pub status: String,
+    /// 64-hex transaction hash.
+    pub hash: String,
+    /// Base64-encoded `TransactionResult` when `status = "ERROR"`.
+    pub error_result_xdr: Option<String>,
+    /// Base64-encoded diagnostic events for debugging.
+    pub diagnostic_events_xdr: Vec<String>,
+}
+
+/// Response from `getTransaction`.
+#[derive(Debug, Clone)]
+pub struct GetTransactionResponse {
+    /// One of `NOT_FOUND`, `SUCCESS`, `FAILED`.
+    pub status: String,
+    /// Base64-encoded `ScVal` — return value on `SUCCESS`.
+    pub return_value_xdr_base64: Option<String>,
+    /// Base64-encoded `TransactionResult` — useful diagnostic on `FAILED`.
+    pub result_xdr_base64: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -402,6 +402,49 @@ impl KycRepo {
         Ok(rows)
     }
 
+    /// Stellar variant of `fetch_profiles_to_allow` — case-sensitive match, no Crystal gate.
+    pub async fn fetch_profiles_to_allow_stellar(
+        &self,
+        chain_id: i64,
+        sumsub_enabled: bool,
+    ) -> anyhow::Result<Vec<WhitelistCandidate>> {
+        let rows = if sumsub_enabled {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT p.wallet_address FROM lp_profiles p
+                 WHERE p.chain_id = $1
+                   AND p.on_chain_allowed = FALSE
+                   AND p.sumsub_kyc_status = 2
+                   AND p.sumsub_review_status = 2
+                   AND p.sumsub_aml_status = 2
+                   AND EXISTS (
+                       SELECT 1 FROM contract_logs c
+                       WHERE c.chain_id = $1
+                         AND c.event_name = 'DepositRequested'
+                         AND c.params->>'user' = p.wallet_address
+                   )",
+            )
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, WhitelistCandidate>(
+                "SELECT p.wallet_address FROM lp_profiles p
+                 WHERE p.chain_id = $1
+                   AND p.on_chain_allowed = FALSE
+                   AND EXISTS (
+                       SELECT 1 FROM contract_logs c
+                       WHERE c.chain_id = $1
+                         AND c.event_name = 'DepositRequested'
+                         AND c.params->>'user' = p.wallet_address
+                   )",
+            )
+            .bind(chain_id)
+            .fetch_all(&self.pool)
+            .await?
+        };
+        Ok(rows)
+    }
+
     pub async fn fetch_profiles_to_disallow(
         &self,
         chain_id: i64,
@@ -479,6 +522,25 @@ impl KycRepo {
         let result = sqlx::query(
             "INSERT INTO lp_profiles (chain_id, wallet_address)
              SELECT DISTINCT chain_id, LOWER(params->>'user') FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'DepositRequested'
+               AND params->>'user' IS NOT NULL
+             ON CONFLICT (chain_id, wallet_address) DO NOTHING",
+        )
+        .bind(chain_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Stellar variant of `populate_profiles_from_deposits` — preserves Strkey case.
+    pub async fn populate_profiles_from_deposits_stellar(
+        &self,
+        chain_id: i64,
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "INSERT INTO lp_profiles (chain_id, wallet_address)
+             SELECT DISTINCT chain_id, params->>'user' FROM contract_logs
              WHERE chain_id = $1
                AND event_name = 'DepositRequested'
                AND params->>'user' IS NOT NULL

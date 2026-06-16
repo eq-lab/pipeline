@@ -111,16 +111,14 @@ pub fn normalise_wallet(
 ) -> Result<String, (StatusCode, String)> {
     match chain_kind {
         ChainKind::Evm => Ok(wallet.to_lowercase()),
-        ChainKind::Stellar => {
-            stellar_strkey::ed25519::PublicKey::from_string(wallet)
-                .map(|_| wallet.to_owned())
-                .map_err(|e| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        format!("invalid Stellar wallet address: {e}"),
-                    )
-                })
-        }
+        ChainKind::Stellar => stellar_strkey::ed25519::PublicKey::from_string(wallet)
+            .map(|_| wallet.to_owned())
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("invalid Stellar wallet address: {e}"),
+                )
+            }),
     }
 }
 
@@ -186,12 +184,8 @@ async fn deposit_voucher(
     };
 
     match chain_kind {
-        ChainKind::Evm => {
-            deposit_voucher_evm(&state, chain_id, &request_id, &wallet).await
-        }
-        ChainKind::Stellar => {
-            deposit_voucher_stellar(&state, chain_id, &request_id, &wallet).await
-        }
+        ChainKind::Evm => deposit_voucher_evm(&state, chain_id, &request_id, &wallet).await,
+        ChainKind::Stellar => deposit_voucher_stellar(&state, chain_id, &request_id, &wallet).await,
     }
 }
 
@@ -235,9 +229,7 @@ async fn withdrawal_voucher(
     };
 
     match chain_kind {
-        ChainKind::Evm => {
-            withdrawal_voucher_evm(&state, chain_id, &request_id, &wallet).await
-        }
+        ChainKind::Evm => withdrawal_voucher_evm(&state, chain_id, &request_id, &wallet).await,
         ChainKind::Stellar => {
             withdrawal_voucher_stellar(&state, chain_id, &request_id, &wallet).await
         }
@@ -664,8 +656,13 @@ fn sign_and_respond_stellar(
         }
     };
 
-    let domain = if use_dm { &cfg.domain_dm } else { &cfg.domain_wq };
-    let sig_bytes = shared::stellar_voucher::sign_voucher(&cfg.signer, domain, rid, &sender_pk, amount);
+    let domain = if use_dm {
+        &cfg.domain_dm
+    } else {
+        &cfg.domain_wq
+    };
+    let sig_bytes =
+        shared::stellar_voucher::sign_voucher(&cfg.signer, domain, rid, &sender_pk, amount);
 
     Json(VoucherResponse {
         request_id: rid_str,
@@ -711,7 +708,10 @@ mod tests {
     #[test]
     fn stellar_wallet_lowercase_rejected() {
         // lowercase g… is not a valid G… Strkey
-        let result = normalise_wallet(ChainKind::Stellar, "gc5suaxmrok67lie3ddmjg3ahhevsfdaz55a4ws655xyskin46rg7acm");
+        let result = normalise_wallet(
+            ChainKind::Stellar,
+            "gc5suaxmrok67lie3ddmjg3ahhevsfdaz55a4ws655xyskin46rg7acm",
+        );
         assert!(result.is_err());
         let (status, _) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
