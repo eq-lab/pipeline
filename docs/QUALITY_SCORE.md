@@ -42,6 +42,20 @@ MVP quality bars. All targets must be met before mainnet launch.
   - Zero error-level console messages across disconnected, connected/approved, and unstake states.
   - **Outcome:** 16/17 green; the single blocked story is an env/fixture limitation, not a defect, with no bug to file. All 6 sibling sub-issues closed. `qa` #532 returned to `blocked` pending the maintainer's call on the env-only block — the epic is closeable if the env block is accepted. Deducted 1 point only for the one story not exercisable end-to-end locally; everything else passes functionally and visually.
 
+### 2026-06-16 — Epic #522 (Activity page) — final QA pass (re-run) via `qa` issue #525
+
+- **Scope:** Final pass. All non-`qa` sub-issues of #522 closed (#523, #524, #530, #576). Re-verified the one prior FAIL (523 Story 1, blocked on #576) now that #576 is merged, and re-ran the full suite. All 3 docs under `docs/user-stories/epic-522/` (#523, #524, #530) executed.
+- **Environment:** `http://localhost:3333/transactions` served from `/Users/dima/git/pipeline` (main worktree; PR #582 = `278442c` for #576 is an ancestor of HEAD, so the running app contains the fix). Chrome DevTools MCP, mobile (~500px Chrome floor, `matchMedia('(min-width:768px)')`=false → mobile layout) + desktop 1440. State seeded via `pipeline.mock.wallet.*` + `pipeline.mock.api.GET./v1/requests`.
+- **Coverage:** 3 docs / 9 stories — **9 PASS / 0 FAIL / 0 blocked.**
+- **Bugs filed:** none. Prior #576 (only open defect) fixed and verified.
+- **Figma frames compared:** `1993-9592` (mobile with-data — now matches, no hero circle at mobile), `1497-94912` (desktop — icon centered above centered heading), `1993-9958` (mobile empty — illustration + caption).
+- **Score: 9/10**
+  - #576 verified fixed live: at mobile width no 72×72 arrow-clock hero circle renders (`circles72=[]`); "Activity" heading is left-aligned (Besley 400, 28/36), single `<h2>`, 8px page margin, max-w-480 column. At desktop ≥768px the hero circle is visible with the glyph optically centered (offsetX/Y=0, mask-size:contain, mask-position 50% 50% — #530 regression intact).
+  - Rows render without overflow at mobile: Buy Completed `+100.00 USDC`, Buy PendingClaim `+25.00 USDC`/"Pending", Stake two-line `−1,000.00 PLUSD`/`+999.50 sPLUSD`. Tabs Buy/Sell/Stake/Unstake, Buy default, no "All" tab (accepted deviation per doc).
+  - Empty state verified for all three causes (disconnected, zero rows, filter-empty) — identical illustration + "You will see all transactions here" caption; top-anchored at mobile (`padding-top:32px`), vertically centered at desktop (`min-height:400px`/`justify-content:center`).
+  - Zero error-level console messages across all states/viewports.
+  - Held 1 point from 10 because this was a targeted final re-run (the previously-failing surface re-executed live; the rest of the suite re-run end-to-end this pass with no intervening surface changes). No outstanding defects. `qa` #525 and epic #522 closed.
+
 ### 2026-06-16 — Epic #522 (Activity page) — first QA pass via `qa` issue #525
 
 - **Scope:** First QA pass on `qa` #525. All 3 user-stories docs under `docs/user-stories/epic-522/` executed: `523` (mobile with-data, 5 stories), `524` (mobile empty state, 3 stories), `530` (header icon centering, 1 story). Human-invoked directly; `qa` #525 claimed from `blocked`.
