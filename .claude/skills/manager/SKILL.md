@@ -182,7 +182,7 @@ Steps:
 
 1. Launch `ux-tester` (prompt above — `model: "opus"`, `EFFORT: medium`, argument is the **epic** number). The ux-tester owns the `qa` issue end-to-end: it claims it (`in-progress`), executes the user-stories docs under `docs/user-stories/epic-<N>/`, verifies against the epic's Figma references, files defects as `bug` sub-issues of the epic, posts the results comment, and finishes with the `qa` issue back to `blocked` — or closed (together with the epic) when all siblings are closed and the pass is green. The manager does **not** touch the `qa` issue's labels.
 2. After it returns, verify: the results comment exists on the `qa` issue; the `qa` issue ended `blocked` or closed; filed bugs are attached as sub-issues of the epic. Repair any gap (e.g. attach a missed bug via `POST .../issues/<epic>/sub_issues`).
-3. If the pass updated docs (e.g. `docs/QUALITY_SCORE.md`): branch, commit `QA pass for epic #<N>`, push, PR ready. Human-merge only.
+3. If the pass updated docs (e.g. `docs/QUALITY_SCORE.md`): branch, commit `QA pass for epic #<N>`, push, PR ready, then **admin-merge** it using the same procedure as the trivial-frontend flow (Flow C, step 2): wait 3 minutes, poll `gh pr view <pr> --json state,mergeable,mergeStateStatus,statusCheckRollup` every 3 minutes (cap 20 minutes); all checks `SUCCESS` → `gh pr merge <pr> --admin --squash --delete-branch`, then sync local `main`. Any check failed / `DIRTY` / cap exceeded → comment on the `qa` issue, leave the PR open for human merge, next task. (QA PRs are docs-only and carry no `Closes #`, so the merge never closes an Issue.)
 4. Loop mode: bugs the pass filed are new `backlog` candidates — continue the loop as usual.
 
 ---
@@ -202,7 +202,7 @@ Steps:
 - The manager is the only label mutator; it claims before acting and verifies the status label after every subagent returns. Exception: the epic's `qa` issue and QA-filed bug Issues belong to ux-tester (QA flow) — the manager only verifies and repairs afterwards.
 - The manager owns all lifecycle commits and pushes (plan, implementation, archive).
 - Never close Issues manually — `Closes #<n>` in the PR body does it on merge. The `qa` issue and its epic are closed by ux-tester when the final pass is green (no PR carries them); the manager closes them only when repairing a gap ux-tester left.
-- Merge policy per `AGENTS.md`: trivial-frontend admin-merge after explicit green checks is the single exception; everything else is human-merge.
+- Merge policy per `AGENTS.md`: the manager admin-merges after explicit green checks in two cases — trivial-frontend PRs (Flow C) and the QA docs PR (QA flow, step 3); everything else is human-merge.
 - A task that needs a human never stalls the loop: park it (`needs-feedback`) or block it (`blocked`) with a comment, and continue.
 
 ## Output

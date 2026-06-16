@@ -1,7 +1,7 @@
 /**
  * Typed Soroban client for the Pipeline WithdrawalQueue contract.
  *
- * Contract ID (testnet):  CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL
+ * Contract ID (testnet):  CC3TWGFXP2XUZJXGLVTM2G4K2PF2YTC6BKDRPZIUPSVETNYAO57GU3Q7
  * Interface captured:     2026-06-10  (extracted from testnet WASM via
  *                         `stellar contract info interface --id <C...> --network testnet`)
  *
