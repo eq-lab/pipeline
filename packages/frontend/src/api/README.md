@@ -82,6 +82,19 @@ Disabled when `requestId` is `undefined` or the wallet is disconnected. Polls
 every 3 s until the signature is present; retries up to 20 times on retriable
 errors (404/403). Reactive to `pipeline.mock.api.*` localStorage key changes.
 
+### `useStellarDepositVoucher(requestId?)`
+
+Stellar variant of `useDepositVoucher`. It uses the connected Stellar wallet
+address and includes `VITE_STELLAR_CHAIN_ID` so the API dispatches to the
+Stellar ed25519 voucher signer:
+`GET /v1/deposits/{request_id}/voucher?wallet=<G...>&chain_id=<id>`.
+
+```ts
+const { data, signatureBytes, status, error, refetch } =
+  useStellarDepositVoucher(requestId);
+// signatureBytes — 64-byte ed25519 signature for useStellarClaim.write()
+```
+
 ---
 
 ### `useWithdrawalVoucher(requestId?)`
@@ -160,6 +173,13 @@ this event and issues a refetch — no page reload needed.
 | ---------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
 | `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher`               | JSON `{ signature: "0x…", request_id, amount, user }` | Bypasses the real fetch for any wallet                            |
 | `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>` | JSON `{ signature: "0x…", request_id, amount, user }` | Per-wallet override; takes priority over the un-keyed alias above |
+
+### `useStellarDepositVoucher` mock keys
+
+| Key                                                                                  | Type                                                  | Purpose                                                               |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher`                             | JSON `{ signature: "...", request_id, amount, user }` | Bypasses the real fetch for any wallet                                |
+| `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>&chain_id=<id>` | JSON `{ signature: "...", request_id, amount, user }` | Per-wallet/per-chain override; takes priority over the un-keyed alias |
 
 ### `useWithdrawalVoucher` mock keys
 
