@@ -1,7 +1,7 @@
 /**
  * Typed Soroban client for the Pipeline DepositManager contract.
  *
- * Contract ID (testnet):  CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO
+ * Contract ID (testnet):  CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI
  * Interface captured:     2026-06-10  (extracted from testnet WASM via
  *                         `stellar contract info interface --id <C...> --network testnet`)
  *
