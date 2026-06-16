@@ -875,6 +875,11 @@ holds the RPC URL and network passphrase that the Blend SDK consumes.
 | `pipeline.mock.wallet.stellar.blend.deposit`  | JSON `{ hash: "..." }`       | Mocks `useBlendDeposit`. `write()` resolves immediately with this hash; no RPC/signing.       |
 | `pipeline.mock.wallet.stellar.blend.withdraw` | JSON `{ hash: "..." }`       | Mocks `useBlendWithdraw`. Same semantics as deposit mock.                                     |
 | `pipeline.mock.wallet.stellar.blend.position` | decimal bigint string        | Mocks `useBlendPosition`. E.g. `"10000000"` = 1 XLM. `loadBlendCollateral` is never called.   |
+| `pipeline.mock.wallet.stellar.depositManager.requestDeposit` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestDeposit`. `write()` resolves immediately; no RPC/signing. |
+| `pipeline.mock.wallet.stellar.depositManager.claim`          | JSON `{ hash: "..." }`                    | Mocks `useStellarClaim`. `write()` resolves immediately; no RPC/signing.          |
+| `pipeline.mock.wallet.stellar.changeTrust`                   | JSON `{ hash: "..." }`                    | Mocks `useChangeTrust` (PLUSD) and `useStellarChangeTrustUsdc` (USDC). Shared.    |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestWithdrawal`. `write()` resolves immediately; no RPC/signing. |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "..." }`                    | Mocks `useStellarClaimWithdrawal`. `write()` resolves immediately; no RPC/signing.  |
 
 **DevTools snippet:**
 
@@ -909,6 +914,11 @@ To reset Stellar mocks:
   "pipeline.mock.wallet.stellar.blend.deposit",
   "pipeline.mock.wallet.stellar.blend.withdraw",
   "pipeline.mock.wallet.stellar.blend.position",
+  "pipeline.mock.wallet.stellar.depositManager.requestDeposit",
+  "pipeline.mock.wallet.stellar.depositManager.claim",
+  "pipeline.mock.wallet.stellar.changeTrust",
+  "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
+  "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
 ].forEach((k) => localStorage.removeItem(k));
 ```
 

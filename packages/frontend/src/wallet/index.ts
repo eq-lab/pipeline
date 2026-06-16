@@ -114,6 +114,23 @@ export type {
   InflightDeposit,
 } from "./stellar/useStellarDepositManager";
 
+export {
+  useStellarRequestWithdrawal,
+  useStellarClaimWithdrawal,
+  useStellarWithdrawalRequest,
+  useStellarChangeTrustUsdc,
+  readInflightWithdrawal,
+  writeInflightWithdrawal,
+  clearInflightWithdrawal,
+} from "./stellar/useStellarWithdrawalQueue";
+export type {
+  RequestWithdrawalResult as StellarRequestWithdrawalResult,
+  StellarClaimWithdrawalResult,
+  UseStellarWithdrawalRequestResult,
+  UseStellarChangeTrustUsdcResult,
+  InflightWithdrawal,
+} from "./stellar/useStellarWithdrawalQueue";
+
 // ── View selection ────────────────────────────────────────────────────────────
 export { WalletViewProvider, useWalletView } from "./WalletViewContext";
 export type {
