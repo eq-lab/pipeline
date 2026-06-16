@@ -69,12 +69,24 @@ export const ActivityHeader = React.forwardRef<
 
   return (
     <div ref={ref} className={composed} {...rest}>
-      {/* HeroIcon with arrow-clock glyph — decorative, hidden on mobile, shown at md+ */}
-      <HeroIcon
-        icon="arrow-clock"
-        aria-hidden="true"
-        className="hidden md:block"
-      />
+      {/*
+       * Wrapper div controls mobile visibility.  HeroIcon applies its own
+       * `inline-flex` Tailwind utility, which shares the `display` CSS property
+       * with `hidden`.  Because Tailwind compiles `.inline-flex` after `.hidden`
+       * in the stylesheet, passing `className="hidden md:block"` directly to
+       * HeroIcon lets `inline-flex` win and the circle stays visible on mobile
+       * (same CSS-precedence class as Issue #547 / CoinIcon).
+       *
+       * The fix: own the `hidden md:block` toggle on a plain wrapper <div> that
+       * carries no conflicting display utility.  HeroIcon's `inline-flex` is
+       * contained inside and has no effect when the wrapper is `display:none`.
+       */}
+      <div className="hidden md:block">
+        <HeroIcon
+          icon="arrow-clock"
+          aria-hidden="true"
+        />
+      </div>
 
       {/* Display-serif heading */}
       <h2 className={headingClasses}>{title}</h2>
