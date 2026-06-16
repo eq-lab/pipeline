@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-16 — Epic #556 (Connect Wallet modal) — QA pass via `qa` issue #557
+
+- **Scope:** First pass on `qa` issue #557 (final-pass scenario — all three non-`qa` sub-issues #558/#563/#564 closed; human-invoked directly). All three user-stories docs under `docs/user-stories/epic-556/` executed against the local Vite dev server at `http://localhost:5173/`, disconnected wallet state (set `pipeline.mock.wallet.isConnected=false`, removed `.address`). Desktop 1440 + mobile (Chrome ~500px floor, below the lg=1024 breakpoint). Driven with Chrome DevTools MCP.
+- **Docs run:** 3 (`558-connect-wallet-modal`, `563-connect-modal-fullscreen`, `564-connect-modal-hero-image`)
+- **Stories executed:** 29 total — 558 (17), 563 (8), 564 (4)
+- **Passes:** 22 (558: 11 PASS + 1 partial-pass; 563: 8 PASS; 564: 2 PASS)
+- **Failures:** 2 (564 S1 wordmark, 564 S3 headline)
+- **Blocked:** 5 (558 Stories 6/7/8/9/10 — real wallet connector dispatch not reproducible without installed wallet extensions; terms-gate intercept verified instead via Story 17)
+- **Bugs filed:** #579 (high), #580 (medium, `trivial`) — both sub-issues of #556
+- **Figma frames compared:** `2858-57637` (Connect Wallet modal, 1728×916, two 864px panes)
+- **Score: 7/10**
+  - Functional behavior is solid: EVM tab shows exactly MetaMask / Coinbase Wallet / WalletConnect / Trust Wallet (no Phantom, no Show More); Soroban tab shows 5 wallets + Show More, expands to 6 (adds Rabet), and resets on tab switch; modal dismisses via Escape and × but NOT on right-pane/outside click (per the #563 fullscreen decision); mobile renders single-column full-viewport with the right pane `display:none` + `aria-hidden`; clicking any wallet routes through the "Before you continue" terms gate first (Story 17).
+  - Intentional deviations (not bugs): Figma still labels tabs All/Ethereum/Stellar and lists Phantom; the epic body explicitly redefined this to EVM/Soroban with no Phantom. Left pane (heading "Connect Wallet" Besley, tabs, 56px wallet rows) matches Figma.
+  - **#579 (high, 564 S1/S2 FAIL):** the hero asset `packages/frontend/src/assets/connect-hero-ship.webp` is a full export of the Figma right pane — it has the white "Pipeline" wordmark AND the "Access real-world / yield on-chain" headline baked into the photo. The component overlays its own wordmark SVG (rendering navy `rgb(0,0,128)`, illegible on the dark photo) and its own headline `<p>`, producing a duplicated wordmark and duplicated headline. The asset should be the bare photograph only.
+  - **#580 (medium, 564 S3 FAIL):** the overlay headline `<p>` renders at 16px and is bottom-anchored (flex `justify-between`), vs Figma Heading-L (48px Besley) near the top below the wordmark. Currently masked by the baked-in headline in the asset (#579); surfaces once the asset is replaced.
+  - Deducted 3 points: the desktop right-pane visual composition (the headline deliverable of #564) is wrong on the primary surface — duplicated/illegible wordmark and mis-sized/mis-positioned headline. Everything functional and the mobile/dismissal/terms behavior passes. `qa` #557 returned to `blocked`; epic #556 cannot close until #579/#580 are fixed and a follow-up pass is green.
+
 ### 2026-06-16 — Epic #531 (Stake/unstake page) — QA pass via `qa` issue #532
 
 - **Scope:** First pass on `qa` issue #532. All 6 user-stories docs under `docs/user-stories/epic-531/` (#533, #534, #535, #540, #541, #542) executed against `main`-equivalent code (HEAD `d770c8d`, contains all 6 epic-531 merges) at `http://localhost:3000/stake`. Desktop 1280×800. Chrome DevTools MCP. Mock states via `/test` scenario loader + direct localStorage seeding (network-fee mock keys must be JSON-encoded per `useNetworkFeeEstimate`'s `parseJson<string>`).
@@ -24,6 +41,7 @@ MVP quality bars. All targets must be met before mainnet launch.
   - **Figma:** Frame 1498-101158 matches structurally (header, hero, combined card, separate steps card) and in copy/values, except: (a) network fee Figma shows "−$1.20" USD vs app "~0.00042 ETH" — accepted #506/#542 product deviation (no USD price source); (b) steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app) — minor wording variance, app-wide convention. Neither filed.
   - Zero error-level console messages across disconnected, connected/approved, and unstake states.
   - **Outcome:** 16/17 green; the single blocked story is an env/fixture limitation, not a defect, with no bug to file. All 6 sibling sub-issues closed. `qa` #532 returned to `blocked` pending the maintainer's call on the env-only block — the epic is closeable if the env block is accepted. Deducted 1 point only for the one story not exercisable end-to-end locally; everything else passes functionally and visually.
+
 ### 2026-06-16 — Epic #522 (Activity page) — first QA pass via `qa` issue #525
 
 - **Scope:** First QA pass on `qa` #525. All 3 user-stories docs under `docs/user-stories/epic-522/` executed: `523` (mobile with-data, 5 stories), `524` (mobile empty state, 3 stories), `530` (header icon centering, 1 story). Human-invoked directly; `qa` #525 claimed from `blocked`.
