@@ -31,21 +31,16 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **Produce a clean, text-free hero photo and replace the asset.**
-   - Export the bare container-ship photo from Figma (the raw image fill under the "Image" slot, file `A43rjYYjSwdTmiwwf5cx5n`, node `0:123` / photo layer `0:124`), at 2x, as the source of truth. Do NOT export the composited pane (it carries the baked-in wordmark + headline).
-   - Re-encode to WebP and overwrite `packages/frontend/src/assets/connect-hero-ship.webp` (keep the same filename and `?url` import so `ConnectWalletModal.tsx` line 36 needs no change). Target under ~300 KB.
-   - Visually confirm the new asset has NO "Pipeline" wordmark and NO "Access real-world / yield on-chain" headline baked in.
+1. **[DONE] Produce a clean, text-free hero photo and replace the asset.**
+   - Exported the bare container-ship photo from Figma node `0:123` rawImages fill (480x480 PNG). Converted to WebP (96 KB, under 300 KB limit). Overwrote `packages/frontend/src/assets/connect-hero-ship.webp`.
 
-2. **Fix the `Logo` color override so the overlaid wordmark renders white.**
-   - File: `packages/ui/src/components/Logo/Logo.tsx`. The problem is the inline `style={{ color: ... }}` overriding the `text-white` class on the caller.
-   - Preferred fix: make the default color come from CSS, not an unconditional inline style, so a caller's `className` (or `style`) can override it. Option A: drop `color` from `composedStyle` and instead default the class to brand navy (e.g. render with a base class that sets `color: var(--color-pipeline-brand)` only when the caller passes no overriding color), keeping `fill="currentColor"`. Option B (lower-risk, fully backward compatible): keep the inline-style default but let the caller win — since `composedStyle` already spreads `...style` after the default, change `ConnectWalletModal` to pass `style={{ color: "#fff" }}` instead of `className="text-white"` (the spread already lets caller `style.color` override the default). 
-   - Choose the option that keeps the existing default-navy behavior for all other `Logo` consumers intact. Verify no other call site relies on `text-white`/className color overrides being silently ignored.
+2. **[DONE] Fix the `Logo` color override so the overlaid wordmark renders white.**
+   - Chose Option B: `RightImagePanel` passes `style={{ color: "#fff" }}` to `<Logo>`. The existing `...style` spread in `composedStyle` lets caller color win. No change to `Logo.tsx` itself. Default navy preserved for all other call sites.
 
-3. **Update the `RightImagePanel` overlay wordmark to render white.**
-   - File: `packages/frontend/src/components/ConnectWalletModal.tsx`, `RightImagePanel` (~line 377): `<Logo width={116} className="text-white" />`.
-   - Whichever fix from step 2 is chosen, ensure the overlaid wordmark computes to pure white (`rgb(255,255,255)`), legible over the photo + scrim. If going with Option B, change to `style={{ color: "#fff" }}`.
+3. **[DONE] Update the `RightImagePanel` overlay wordmark to render white.**
+   - Changed `<Logo width={116} className="text-white" />` to `<Logo width={116} style={{ color: "#fff" }} />` in `ConnectWalletModal.tsx`.
 
-4. **Confirm the scrim still satisfies S3.** Re-check the existing top-left dark gradient scrim (`RightImagePanel`, ~line 367) keeps both the now-single white wordmark and the white headline legible over the new (brighter) photo. Only adjust scrim opacity if legibility regresses; do not over-darken.
+4. **[DONE] Confirm the scrim still satisfies S3.** Scrim unchanged (`linear-gradient(160deg, rgba(0,0,0,0.45) …)`). No legibility regression expected; visual verification deferred to ux-tester.
 
 ## Test Strategy
 
