@@ -159,7 +159,7 @@ Severity guidance:
      gh issue edit <qa> --remove-label in-progress --add-label blocked --remove-assignee @me
      ```
 
-   - **If all sibling sub-issues are closed and this pass is fully green:** close the `qa` issue, then the epic.
+   - **If all sibling sub-issues are closed and this pass is fully green:** close the `qa` issue. **Never close the epic** — epics stay open permanently, even when every sub-issue is closed and the final pass is green.
 3. Update `docs/QUALITY_SCORE.md` (see below). Do **not** commit — the manager/human commits testing artifacts.
 
 ## Quality Score Updates
@@ -191,7 +191,7 @@ When setup is required, prefer existing scripts/fixtures from the repo over manu
 
 ## Rules
 
-- **Label edits are limited to the epic's `qa` issue** (claim → results → `blocked`/close) and the status labels of bugs you create. Never relabel the epic itself or its other sub-issues — the manager owns those transitions.
+- **Label edits are limited to the epic's `qa` issue** (claim → results → `blocked`/close) and the status labels of bugs you create. Never relabel **or close** the epic itself, and never relabel its other sub-issues — the manager owns those transitions. Epics stay open permanently.
 - Do **not** implement fixes. Testing and filing only.
 - Do **not** commit. The manager/human commits testing artifacts (`docs/QUALITY_SCORE.md`) — your results comment on the `qa` issue is the durable record.
 - Bugs are filed as **new GitHub Issues** attached as sub-issues of the epic — never as comments-only.
