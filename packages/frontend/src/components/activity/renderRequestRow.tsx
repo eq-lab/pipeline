@@ -81,8 +81,17 @@ export function TwoLineAmount({
   );
 }
 
-/** Renders a single `RequestItem` as an `<ActivityRow>`. */
-export function renderRequestRow(item: RequestItem): React.ReactNode {
+/**
+ * Renders a single `RequestItem` as an `<ActivityRow>`.
+ *
+ * @param testId optional `data-testid` applied to the rendered row, so list
+ *   call sites can give each row a stable, indexed handle
+ *   (e.g. `transactions-row-0`, `home-activity-row-0`).
+ */
+export function renderRequestRow(
+  item: RequestItem,
+  testId?: string,
+): React.ReactNode {
   const timestamp = formatActivityTime(item.created_at);
 
   if (item.type === "Deposit") {
@@ -90,6 +99,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
     if (item.status === "Completed") {
       return (
         <ActivityRow
+          data-testid={testId}
           icon="check-circle"
           tone="success"
           title="Buy"
@@ -102,6 +112,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
       item.status === "VerificationFailed" ? "Verification failed" : "Pending";
     return (
       <ActivityRow
+        data-testid={testId}
         icon="clock-pending"
         tone="warning"
         title="Buy"
@@ -122,6 +133,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
     if (item.status === "Completed") {
       return (
         <ActivityRow
+          data-testid={testId}
           icon="check-circle"
           tone="success"
           title="Sell"
@@ -134,6 +146,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
       item.status === "VerificationFailed" ? "Verification failed" : "Pending";
     return (
       <ActivityRow
+        data-testid={testId}
         icon="clock-pending"
         tone="warning"
         title="Sell"
@@ -159,6 +172,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
       item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
     return (
       <ActivityRow
+        data-testid={testId}
         icon="arrow-down-circle"
         title="Stake"
         timestamp={timestamp}
@@ -179,6 +193,7 @@ export function renderRequestRow(item: RequestItem): React.ReactNode {
     item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
   return (
     <ActivityRow
+      data-testid={testId}
       icon="arrow-up-circle"
       title="Unstake"
       timestamp={timestamp}

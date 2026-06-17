@@ -71,7 +71,7 @@ export function WelcomeHeader({
           Mobile: "Welcome back" when connected, "Welcome" otherwise.
           Desktop (md+): always "Welcome" (connected desktop states out of
           scope for issue #466 — only the mobile greeting changes). */}
-      <h1 className={headingClasses}>
+      <h1 className={headingClasses} data-testid="home-welcome-heading">
         {/* Mobile-only connected greeting — hidden at md+ via sr-only wrapper.
             We render both variants and show/hide with Tailwind so the DOM
             diff is purely class-driven and screen readers pick up the right

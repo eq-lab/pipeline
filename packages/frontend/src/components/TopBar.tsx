@@ -155,6 +155,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
       <header
         ref={ref}
         className={composed}
+        data-testid="app-topbar"
         {...rest}
         data-node-id="1497:94715"
       >
@@ -163,6 +164,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           mirrors Figma node 1497:94716. */}
         <div
           className="flex w-40 shrink-0 items-center"
+          data-testid="topbar-logo-slot"
           data-node-id="1497:94716"
         >
           <Logo />
@@ -172,6 +174,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         <nav
           aria-label="Primary"
           className="hidden max-w-[1200px] min-w-0 flex-1 items-center gap-8 md:flex"
+          data-testid="topbar-primary-nav"
           data-node-id="1497:94718"
         >
           {NAV_ITEMS.map((item) => (
@@ -180,6 +183,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
               label={item.label}
               active={derivedActive === item.key}
               icon={<NavIcon name={item.key} />}
+              data-testid={`topbar-nav-${item.key}`}
               onClick={
                 item.to
                   ? () => void navigate({ to: item.to as string })
@@ -192,6 +196,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         {/* Right slot — desktop wallet controls (md and above). */}
         <div
           className="relative hidden w-40 shrink-0 items-center justify-end md:flex"
+          data-testid="topbar-wallet-slot"
           data-node-id="1497:94724"
         >
           {anyConnected ? (
@@ -207,6 +212,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
                   "focus-visible:outline-[var(--color-pipeline-ink)]",
                   "rounded-[var(--radius-pipeline-pill)]",
                 ].join(" ")}
+                data-testid="topbar-wallet-pill-trigger"
                 data-node-id="1498:100168"
               >
                 <WalletPill token="usdc" balance={pillBalance} />
@@ -232,6 +238,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             <Button
               variant="primary-dark"
               onClick={() => setChooserOpen(true)}
+              data-testid="topbar-connect-button"
               data-node-id="1497:94725"
             >
               Connect Wallet
@@ -240,7 +247,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         </div>
 
         {/* Mobile right slot — hamburger button (below md). */}
-        <div className="flex shrink-0 items-center justify-end md:hidden">
+        <div
+          className="flex shrink-0 items-center justify-end md:hidden"
+          data-testid="topbar-mobile-slot"
+        >
           <button
             type="button"
             aria-label="Open menu"

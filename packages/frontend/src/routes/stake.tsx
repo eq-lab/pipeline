@@ -296,14 +296,20 @@ function Stake() {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
+    <div
+      data-testid="stake-page-root"
+      className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]"
+    >
       {/* Centred narrow column — mirrors Figma's centred single-column layout
           for the stake screen. py-12 gives breathing room under the TopBar;
           gap-6 (24px) matches the vertical spacing between sections. */}
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12">
+      <main
+        data-testid="stake-main"
+        className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12"
+      >
         {/* Section header: chart hero icon + yield rate */}
         {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
-        <StakeHeader title="Earn 8.42% p.a." />
+        <StakeHeader data-testid="stake-header" title="Earn 8.42% p.a." />
 
         {/* Combined conversion card: tab switcher + input + output/rates.
             Figma node 1498-101158 / input section 1500-102009: the two
@@ -312,11 +318,16 @@ function Stake() {
         <Card
           variant="white"
           padding="none"
+          data-testid="stake-conversion-card"
           className="flex flex-col gap-0 overflow-hidden"
         >
           {/* Input sub-section: tabs + token amount input */}
-          <div className="flex flex-col gap-4 p-4">
+          <div
+            data-testid="stake-input-section"
+            className="flex flex-col gap-4 p-4"
+          >
             <SegmentedTabs
+              data-testid="stake-tabs"
               tabs={[
                 { id: "stake", label: "Stake" },
                 { id: "unstake", label: "Unstake" },
@@ -348,7 +359,10 @@ function Stake() {
           </div>
 
           {/* Output sub-section: preview amount + exchange rate + network fee */}
-          <div className="flex flex-col gap-4 p-4">
+          <div
+            data-testid="stake-output-section"
+            className="flex flex-col gap-4 p-4"
+          >
             <TokenAmountDisplay
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
@@ -372,11 +386,15 @@ function Stake() {
             data-testid="connect-wallet-banner"
             className="flex flex-row items-center justify-between gap-4"
           >
-            <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
+            <p
+              data-testid="stake-connect-message"
+              className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+            >
               Connect your wallet first
             </p>
             <Button
               variant="primary-dark"
+              data-testid="stake-connect-button"
               className="whitespace-nowrap"
               onClick={connect}
             >
@@ -385,6 +403,7 @@ function Stake() {
           </Card>
         ) : isStakeTab ? (
           <StepsCard
+            data-testid="stake-steps-card"
             steps={[
               {
                 label: "Allow Pipeline to use PLUSD",
@@ -406,6 +425,7 @@ function Stake() {
           />
         ) : (
           <StepsCard
+            data-testid="stake-unstake-steps"
             steps={[
               {
                 label: "Confirm and unstake sPLUSD",

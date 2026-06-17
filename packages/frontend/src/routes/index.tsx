@@ -155,43 +155,62 @@ function Home() {
   const onStake = () => navigate({ to: "/stake" });
 
   return (
-    <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
+    <div
+      className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]"
+      data-testid="home-page-root"
+    >
       {/* Centred main column. `py-12` (48px) gives the welcome heading air
           under the TopBar; horizontal padding lets the column breathe at
           narrower widths without ever exceeding the 1200px design cap. */}
-      <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-2 py-12 md:gap-12 md:px-8">
+      <main
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-2 py-12 md:gap-12 md:px-8"
+        data-testid="home-main"
+      >
         {/* WelcomeHeader: on mobile, pass isConnected so the greeting says
             "Welcome back" for connected users and "Welcome" otherwise.
             The prop is ignored on desktop (the desktop block renders at md+). */}
-        <WelcomeHeader isConnected={isConnected} />
+        <WelcomeHeader
+          isConnected={isConnected}
+          data-testid="home-welcome-header"
+        />
 
         {/* ── Mobile layout (below md): single-column stack ────────────────
             On desktop (md+) this div is hidden and the grid Card below
             takes over. On mobile we render the stacked layout directly here
             without an outer white Card wrapper (Figma frame 1989:8292 uses
             the page background, not a white card). */}
-        <div className="flex flex-col gap-2 md:hidden">
+        <div
+          className="flex flex-col gap-2 md:hidden"
+          data-testid="home-mobile-layout"
+        >
           {/* Top card: promo (disconnected) or portfolio (connected) — 256px */}
           {isConnected ? (
             <PortfolioPlaceholderCard
               className="min-h-[256px] md:min-h-[274px]"
               mobileHomeState={mobileHomeState}
               mobileTotalBalance={totalBalanceFormatted}
+              data-testid="home-portfolio-placeholder"
             />
           ) : (
             <ConnectWalletPromoCard
               className="min-h-[256px] md:min-h-[274px]"
               padding="md"
               onConnect={connect}
+              data-testid="home-connect-wallet-card"
             />
           )}
 
           {/* Balances + Stake row */}
-          <div className="flex w-full gap-2" data-node-id="1989:9006">
+          <div
+            className="flex w-full gap-2"
+            data-node-id="1989:9006"
+            data-testid="home-mobile-balances-stake-row"
+          >
             {/* Left: Balances stack (StartHereCard + EarnedCard) */}
             <div
               className="flex min-w-0 flex-1 flex-col gap-2"
               data-node-id="1989:9007"
+              data-testid="home-mobile-balances-stack"
             >
               <StartHereCard
                 className="flex-1"
@@ -200,10 +219,12 @@ function Home() {
                 onSell={onSell}
                 mobileHomeState={isConnected ? mobileHomeState : "empty"}
                 mobilePlusdBalance={plusdFormatted}
+                data-testid="home-start-here-card"
               />
               <EarnedCard
                 padding="sm"
                 mobileHomeState={isConnected ? mobileHomeState : undefined}
+                data-testid="home-earned-card"
               />
             </div>
 
@@ -217,17 +238,23 @@ function Home() {
               mobileHomeState={isConnected ? mobileHomeState : undefined}
               mobileSplusdShares={splusdBalance}
               mobileSplusdInPlusd={splusdInPlusd}
+              data-testid="home-stake-card"
             />
           </div>
 
           {/* RecentActivityCard — shown on mobile only in States B and C
               (connected with any balance). Per issue #466 answer Q6: if
               there is no activity the entire block is hidden on mobile. */}
-          {isConnected && mobileHomeState !== "empty" && <RecentActivityCard />}
+          {isConnected && mobileHomeState !== "empty" && (
+            <RecentActivityCard data-testid="home-recent-activity-card" />
+          )}
 
           {/* Bottom stats strip — horizontally scrollable on mobile.
               Replaces the WelcomeHeader stats strip which is hidden on mobile. */}
-          <div className="overflow-x-auto py-6">
+          <div
+            className="overflow-x-auto py-6"
+            data-testid="home-mobile-stats-wrapper"
+          >
             <HomeStatsStrip />
           </div>
         </div>
@@ -238,36 +265,53 @@ function Home() {
           variant="white"
           className="hidden p-8 md:block"
           data-node-id="1497:94565"
+          data-testid="home-dashboard-card"
         >
           {/* Seven-column grid mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`.
               16px gap matches the design's `gap-x-16 / gap-y-16`. */}
-          <div className="grid w-full grid-cols-7 gap-4">
+          <div
+            className="grid w-full grid-cols-7 gap-4"
+            data-testid="home-dashboard-grid"
+          >
             {/* Row 1, columns 1–4: Connect Wallet promo (disconnected) or
                 Portfolio placeholder (connected). Both cards use
                 `Card variant="yellow"` + `min-h-[274px]` so the grid does
                 not reflow when the wallet state changes. */}
             {isConnected ? (
-              <PortfolioPlaceholderCard className="col-span-4 row-start-1" />
+              <PortfolioPlaceholderCard
+                className="col-span-4 row-start-1"
+                data-testid="home-portfolio-placeholder"
+              />
             ) : (
               <ConnectWalletPromoCard
                 className="col-span-4 row-start-1"
                 onConnect={connect}
+                data-testid="home-connect-wallet-card"
               />
             )}
 
             {/* Rows 1–2, columns 5–7: Recent activity (full-height right
                 column). `row-span-2` lets the card stretch across both rows so
                 it sits flush with the bottom of the StakeCard. */}
-            <RecentActivityCard className="col-span-3 col-start-5 row-span-2 row-start-1" />
+            <RecentActivityCard
+              className="col-span-3 col-start-5 row-span-2 row-start-1"
+              data-testid="home-recent-activity-card"
+            />
 
             {/* Row 2, columns 1–2: stacked StartHereCard + EarnedCard
                 (Figma "Balances" frame `1497:94675`). */}
             <div
               className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
               data-node-id="1497:94675"
+              data-testid="home-balances-stack"
             >
-              <StartHereCard className="flex-1" onBuy={onBuy} onSell={onSell} />
-              <EarnedCard />
+              <StartHereCard
+                className="flex-1"
+                onBuy={onBuy}
+                onSell={onSell}
+                data-testid="home-start-here-card"
+              />
+              <EarnedCard data-testid="home-earned-card" />
             </div>
 
             {/* Row 2, columns 3–4: Stake CTA card. */}
@@ -275,10 +319,14 @@ function Home() {
               className="col-span-2 col-start-3 row-start-2"
               onStake={onStake}
               stakeDisabled={stakeDisabled}
+              data-testid="home-stake-card"
             />
 
             {/* Row 3, columns 1–7: Questions & Answers strip. */}
-            <div className="col-span-7 col-start-1 row-start-3">
+            <div
+              className="col-span-7 col-start-1 row-start-3"
+              data-testid="home-qna-wrapper"
+            >
               <QnaSection />
             </div>
           </div>

@@ -57,7 +57,9 @@ export const StakeHeader = React.forwardRef<HTMLDivElement, StakeHeaderProps>(
         <HeroIcon icon="chart" aria-hidden="true" />
 
         {/* Display-serif heading */}
-        <h2 className={headingClasses}>{title}</h2>
+        <h2 data-testid="stake-header-title" className={headingClasses}>
+          {title}
+        </h2>
       </div>
     );
   },

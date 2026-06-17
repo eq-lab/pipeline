@@ -159,7 +159,11 @@ export const StartHereCard = React.forwardRef<
     >
       {isConnectedVariant ? (
         /* ── Connected variant (States B & C): "PLUSD Balance" ──────────── */
-        <header className="flex flex-col gap-1" data-node-id="1497:94678">
+        <header
+          className="flex flex-col gap-1"
+          data-node-id="1497:94678"
+          data-testid="home-start-here-header"
+        >
           {/* Eyebrow "PLUSD Balance" */}
           <p
             className={[
@@ -221,7 +225,11 @@ export const StartHereCard = React.forwardRef<
         </header>
       ) : (
         /* ── Disconnected / State A variant: "Start here / Get PLUSD" ───── */
-        <header className="flex flex-col gap-1" data-node-id="1497:94678">
+        <header
+          className="flex flex-col gap-1"
+          data-node-id="1497:94678"
+          data-testid="home-start-here-header"
+        >
           {/* Eyebrow "Start here" — Body token in Graphik LC, ink colour. */}
           <p
             className={[
@@ -261,6 +269,7 @@ export const StartHereCard = React.forwardRef<
                 "m-0",
               ].join(" ")}
               data-node-id="1497:94685"
+              data-testid="home-start-here-heading"
             >
               Get PLUSD
             </h2>
@@ -290,12 +299,14 @@ export const StartHereCard = React.forwardRef<
       <div
         className="flex items-center gap-2 self-start"
         data-node-id="1497:94688"
+        data-testid="home-start-here-buttons"
       >
         <Button
           variant="primary-blue"
           onClick={onBuy}
           className="h-10 md:h-12"
           data-node-id="1497:94689"
+          data-testid="home-buy-button"
         >
           Buy
         </Button>
@@ -305,6 +316,7 @@ export const StartHereCard = React.forwardRef<
           disabled={mobileHomeState === "empty"}
           className="h-10 md:h-12"
           data-node-id="1497:94690"
+          data-testid="home-sell-button"
         >
           Sell
         </Button>

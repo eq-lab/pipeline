@@ -82,14 +82,16 @@ export const ActivityHeader = React.forwardRef<
        * contained inside and has no effect when the wrapper is `display:none`.
        */}
       <div className="hidden md:block">
-        <HeroIcon
-          icon="arrow-clock"
-          aria-hidden="true"
-        />
+        <HeroIcon icon="arrow-clock" aria-hidden="true" />
       </div>
 
       {/* Display-serif heading */}
-      <h2 className={headingClasses}>{title}</h2>
+      <h2
+        data-testid="transactions-activity-header-title"
+        className={headingClasses}
+      >
+        {title}
+      </h2>
     </div>
   );
 });

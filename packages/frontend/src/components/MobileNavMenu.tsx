@@ -210,6 +210,7 @@ interface NavItemRowProps {
   label: string;
   active?: boolean;
   onClick?: () => void;
+  testId?: string;
 }
 
 function NavItemRow({
@@ -217,11 +218,13 @@ function NavItemRow({
   label,
   active = false,
   onClick,
+  testId,
 }: NavItemRowProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={testId}
       className={[
         "flex w-full items-center gap-3",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
@@ -431,7 +434,11 @@ export function MobileNavMenu({
         </button>
 
         {/* Logo */}
-        <div className="flex items-center" aria-hidden="true">
+        <div
+          className="flex items-center"
+          aria-hidden="true"
+          data-testid="mobile-nav-logo"
+        >
           <Logo />
         </div>
 
@@ -446,6 +453,7 @@ export function MobileNavMenu({
           <nav
             aria-label="Primary"
             className="flex w-full flex-col gap-4"
+            data-testid="mobile-primary-nav"
             data-node-id="1993:6945"
           >
             {MENU_NAV_ITEMS.map((item) => (
@@ -454,6 +462,7 @@ export function MobileNavMenu({
                 iconName={item.key}
                 label={item.label}
                 active={activeKey === item.key}
+                testId={`mobile-nav-${item.key}`}
                 onClick={
                   item.to ? () => handleNavClick(item.to as string) : undefined
                 }
@@ -476,6 +485,7 @@ export function MobileNavMenu({
               "focus-visible:ring-offset-[var(--color-pipeline-paper)]",
               "rounded-[var(--radius-pipeline-button)]",
             ].join(" ")}
+            data-testid="mobile-overview-button"
             data-node-id="1989:9444"
           >
             <div
@@ -509,6 +519,7 @@ export function MobileNavMenu({
               {address && (
                 <div
                   className="flex w-full items-center gap-3 rounded-[var(--radius-pipeline-button)] p-2"
+                  data-testid="mobile-wallet-address"
                   data-node-id="1993:6627"
                 >
                   <div
@@ -563,6 +574,7 @@ export function MobileNavMenu({
               {formattedBalance && (
                 <div
                   className="flex w-full items-center gap-3 rounded-[var(--radius-pipeline-button)] p-2"
+                  data-testid="mobile-usdc-balance"
                   data-node-id="1993:6744"
                 >
                   <div
@@ -620,6 +632,7 @@ export function MobileNavMenu({
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
                   "focus-visible:ring-[var(--color-pipeline-brand)]",
                 ].join(" ")}
+                data-testid="mobile-disconnect-button"
                 data-node-id="1993:6920"
               >
                 Disconnect
@@ -644,6 +657,7 @@ export function MobileNavMenu({
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
                 "focus-visible:ring-[var(--color-pipeline-brand)]",
               ].join(" ")}
+              data-testid="mobile-connect-button"
               data-node-id="1993:6600"
             >
               Connect Wallet
