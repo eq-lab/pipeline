@@ -159,10 +159,11 @@ export interface FlowState {
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 /**
  * Frontend minimum deposit for Stellar in tokens at 7 decimals.
- * $1,000 at 7 dp = 1_000 × 10^7 = 10_000_000_000n.
- * Soroban enforces no on-chain minimum; we keep the $1,000 frontend rule.
+ * $1 at 7 dp = 1 × 10^7 = 10_000_000n.
+ * Soroban enforces no on-chain minimum; we use $1 as the product-approved
+ * temporary minimum until the contract exposes a min_deposit getter.
  */
-const STELLAR_MIN_DEPOSIT = 1_000n * 10n ** BigInt(SAC_DECIMALS);
+const STELLAR_MIN_DEPOSIT = 1n * 10n ** BigInt(SAC_DECIMALS);
 
 // ── Format helper ─────────────────────────────────────────────────────────────
 
