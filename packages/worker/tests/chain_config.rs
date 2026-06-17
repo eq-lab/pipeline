@@ -8,7 +8,7 @@
 use std::sync::Mutex;
 
 use pipeline_worker::indexer::config::{parse_chains_env, IndexerJobSettings};
-use pipeline_worker::price_poller::config::PricePollerSettings;
+use pipeline_worker::price_poller::config::EvmPricePollerSettings;
 use pipeline_worker::relayer::config::EvmRelayerSettings;
 
 /// Mutex used to serialize env-var mutations across tests in this binary.
@@ -76,7 +76,7 @@ fn price_poller_from_chain_env_missing_rpc_url_is_error() {
     unsafe {
         std::env::remove_var("CHAIN_88888_ETH_RPC_URL");
     }
-    assert!(PricePollerSettings::from_chain_env(88888).is_err());
+    assert!(EvmPricePollerSettings::from_chain_env(88888).is_err());
 }
 
 // ── EvmRelayerSettings ───────────────────────────────────────────────────────

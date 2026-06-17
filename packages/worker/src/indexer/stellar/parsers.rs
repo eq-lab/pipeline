@@ -7,8 +7,14 @@
 /// - `topics[0]` = `ScVal::Symbol(snake_case_event_name)` — the canonical discriminator.
 /// - `topics[1..n]` = `#[topic]`-annotated fields in declaration order.
 /// - `value` = `ScVal::Map(...)` with non-topic fields (sorted alphabetically by field name).
+///
+/// Note: `extract_i128` was promoted to `crate::stellar::scval` (Issue #568) and is
+/// re-exported from here for backward compatibility. New callers should import from
+/// `crate::stellar::scval` directly.
 use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
+
+pub use crate::stellar::scval::extract_i128;
 
 use crate::indexer::stellar::rpc::RawEvent;
 
@@ -204,15 +210,6 @@ pub fn extract_u128(b64: &str) -> Option<u128> {
     let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
     match val {
         ScVal::U128(parts) => Some(u128_from_parts(parts.hi, parts.lo)),
-        _ => None,
-    }
-}
-
-/// Decode a base64-encoded XDR `ScVal::I128` into an `i128`.
-pub fn extract_i128(b64: &str) -> Option<i128> {
-    let val = ScVal::from_xdr_base64(b64, Limits::none()).ok()?;
-    match val {
-        ScVal::I128(parts) => Some(i128_from_parts(parts.hi, parts.lo)),
         _ => None,
     }
 }

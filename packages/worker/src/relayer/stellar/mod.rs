@@ -4,9 +4,12 @@
 //! runs Phase 0 (profile population) and Phase 3 (whitelist sync via the
 //! access-manager's `execute(set_authorized)` entrypoint). See
 //! `docs/exec-plans/active/issue-562-stellar-soroban-whitelist.md`.
+//!
+//! Note: tx helpers were promoted to `crate::stellar::tx` (Issue #568) and are
+//! re-exported from there. `pub mod tx` is removed; existing call sites in this
+//! module use `crate::stellar::tx::*` directly.
 
 pub mod job;
-pub mod tx;
 pub mod whitelist;
 
 pub use whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
