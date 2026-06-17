@@ -45,6 +45,7 @@ import {
   useStellarWallet,
   useStellarDepositManagerAddresses,
   useStellarSacToken,
+  useStellarToken,
   SAC_DECIMALS,
   sacDisplayToRaw,
   useStellarRequestDeposit,
@@ -261,12 +262,12 @@ export function useDepositFlow(
   const { addresses: stellarAddresses, isLoading: stellarManagerLoading } =
     useStellarDepositManagerAddresses();
 
-  // USDC SAC — deposit input on Stellar
-  const usdcSac = useStellarSacToken({
-    assetCode: "USDC",
-    assetIssuer: stellarAddresses?.usdcAsset.issuer ?? "",
-    contractId: stellarAddresses?.usdc ?? "",
-  });
+  // USDC balance — deposit input on Stellar.
+  // Use the same source as the TopBar wallet pill (`useStellarToken`) so the
+  // deposit page's balance check can never disagree with the balance shown in
+  // the header. (The SAC hook reads a separate mock key / issuer and would
+  // diverge — surfacing a false "Add funds" banner when the user holds USDC.)
+  const usdcToken = useStellarToken();
   // PLUSD SAC — withdraw input on Stellar
   const plusdSac = useStellarSacToken({
     assetCode: "PLUSD",
@@ -489,8 +490,8 @@ export function useDepositFlow(
   // ── Stellar derived state ──────────────────────────────────────────────────
   // Balance: convert Horizon decimal string to bigint at 7 dp
   const stellarUsdcBalanceRaw: bigint | undefined =
-    isStellarConnected && usdcSac.balance !== undefined
-      ? sacDisplayToRaw(usdcSac.balance)
+    isStellarConnected && usdcToken.balance !== undefined
+      ? sacDisplayToRaw(usdcToken.balance)
       : undefined;
   const stellarPlusdBalanceRaw: bigint | undefined =
     isStellarConnected && plusdSac.balance !== undefined
@@ -1132,7 +1133,7 @@ export function useDepositFlow(
     isManagerUnreachable: false,
     isManagerLoading: stellarManagerLoading,
     refetchBalance: isDeposit
-      ? usdcSac.refetchBalance
+      ? usdcToken.refetchBalance
       : plusdSac.refetchBalance,
     onQuickAmount: onStellarQuickAmount,
   };
