@@ -22,7 +22,7 @@ use stellar_xdr::curr::{
 };
 
 use crate::indexer::stellar::rpc::{SendResponse, StellarRpc};
-use crate::relayer::stellar::tx::{
+use crate::stellar::tx::{
     address_account, build_invoke_envelope, build_set_authorized_operation_scval,
     envelope_to_base64, sign_envelope,
 };

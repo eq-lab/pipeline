@@ -143,6 +143,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Already happened: #476 (PR #488) merged green CI but broke `src/routes/-index.test.tsx` ("clicking Sell navigates…") — tracked as Issue #492. Regressions surface only when someone runs the suite locally.
 - **Suggested fix:** Add a frontend-tests job (`yarn workspace @pipeline/frontend test --run`) to the Tests workflow and make it a required check.
 
+### TD-18: Stellar price-poller uses Utc::now() instead of canonical ledger close-time
+- **Date:** 2026-06-16
+- **Location:** `packages/worker/src/price_poller/stellar/poller.rs` — `StellarPricePoller::fetch_share_price`
+- **Gap:** `simulateTransaction` returns the `latestLedger` sequence but not its close-time. The current implementation uses `Utc::now()` at sample time, introducing at most `poll_interval_secs` (≤60s) skew relative to the actual ledger close-time.
+- **Impact:** The `block_timestamp` column for Stellar rows in `share_prices` is wall-clock sample time rather than ledger close-time. The skew is well below the API's hour/day bucketing granularity — no user-visible impact at current polling cadences. Exact timestamps matter if sub-minute granularity is ever needed.
+- **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
+
 ---
 
 ## Post-MVP
