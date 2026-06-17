@@ -114,7 +114,15 @@ function WalletGlyph() {
       height={20}
       aria-hidden="true"
     >
-      <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <rect
+        x="2"
+        y="5"
+        width="20"
+        height="14"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
       <path d="M2 10h20" stroke="currentColor" strokeWidth="1.5" />
       <circle cx="17" cy="15" r="1.5" fill="currentColor" />
     </svg>
@@ -132,7 +140,15 @@ function CopyGlyph() {
       height={18}
       aria-hidden="true"
     >
-      <rect x="8" y="8" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <rect
+        x="8"
+        y="8"
+        width="11"
+        height="11"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
       <path
         d="M6 14H4.5C3.67 14 3 13.33 3 12.5V4.5C3 3.67 3.67 3 4.5 3H12.5C13.33 3 14 3.67 14 4.5V6"
         stroke="currentColor"
@@ -196,7 +212,12 @@ interface NavItemRowProps {
   onClick?: () => void;
 }
 
-function NavItemRow({ iconName, label, active = false, onClick }: NavItemRowProps) {
+function NavItemRow({
+  iconName,
+  label,
+  active = false,
+  onClick,
+}: NavItemRowProps) {
   return (
     <button
       type="button"
@@ -396,7 +417,7 @@ export function MobileNavMenu({
           aria-label="Close menu"
           onClick={onClose}
           className={[
-            "absolute right-4 top-4",
+            "absolute top-4 right-4",
             "flex size-6 items-center justify-center",
             "rounded-[var(--radius-pipeline-button)]",
             "text-[color:var(--color-pipeline-ink)]",
@@ -415,10 +436,7 @@ export function MobileNavMenu({
         </div>
 
         {/* Screen-reader heading (visually hidden — logo acts as heading) */}
-        <h2
-          id={headingId}
-          className="sr-only"
-        >
+        <h2 id={headingId} className="sr-only">
           Navigation
         </h2>
 
@@ -461,7 +479,7 @@ export function MobileNavMenu({
             data-node-id="1989:9444"
           >
             <div
-              className="flex shrink-0 items-center justify-center size-10 rounded-full bg-[var(--color-pipeline-ink)] text-white"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
               aria-hidden="true"
             >
               <PieChartGlyph />
@@ -494,7 +512,7 @@ export function MobileNavMenu({
                   data-node-id="1993:6627"
                 >
                   <div
-                    className="flex shrink-0 items-center justify-center size-10 rounded-[var(--radius-pipeline-button)] bg-[var(--color-pipeline-ink)] text-white"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-pipeline-button)] bg-[var(--color-pipeline-ink)] text-white"
                     aria-hidden="true"
                   >
                     <WalletGlyph />
@@ -528,7 +546,7 @@ export function MobileNavMenu({
                     aria-label="Copy address"
                     onClick={handleCopyAddress}
                     className={[
-                      "flex shrink-0 items-center justify-center size-8",
+                      "flex size-8 shrink-0 items-center justify-center",
                       "rounded-[var(--radius-pipeline-button)]",
                       "text-[color:var(--color-pipeline-ink-muted)]",
                       "transition-colors hover:bg-[rgba(56,55,53,0.08)]",
@@ -548,7 +566,7 @@ export function MobileNavMenu({
                   data-node-id="1993:6744"
                 >
                   <div
-                    className="flex shrink-0 items-center justify-center size-10"
+                    className="flex size-10 shrink-0 items-center justify-center"
                     aria-hidden="true"
                   >
                     <CoinIcon token="usdc" size="lg" />

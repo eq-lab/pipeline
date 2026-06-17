@@ -14,7 +14,11 @@ export { WalletGateProvider } from "./WalletGateProvider";
 
 // ── EVM namespace ─────────────────────────────────────────────────────────────
 export { EvmWalletProvider } from "./evm/EvmWalletProvider";
-export { useEvmWallet, useContractRead, useEvmConnectors } from "./evm/useEvmWallet";
+export {
+  useEvmWallet,
+  useContractRead,
+  useEvmConnectors,
+} from "./evm/useEvmWallet";
 export type {
   WalletState,
   UseContractReadArgs,
@@ -83,7 +87,10 @@ export type {
 
 // ── Stellar namespace ─────────────────────────────────────────────────────────
 export { StellarWalletProvider } from "./stellar/StellarWalletProvider";
-export { useStellarWallet, useStellarConnectors } from "./stellar/useStellarWallet";
+export {
+  useStellarWallet,
+  useStellarConnectors,
+} from "./stellar/useStellarWallet";
 export type {
   StellarWalletState,
   UseStellarConnectorsResult,
@@ -91,6 +98,29 @@ export type {
 } from "./stellar/useStellarWallet";
 export { useStellarToken } from "./stellar/useStellarToken";
 export type { UseStellarTokenResult } from "./stellar/useStellarToken";
+export {
+  useStellarSacToken,
+  SAC_DECIMALS,
+  sacRawToDisplay,
+  sacDisplayToRaw,
+} from "./stellar/useStellarSacToken";
+export type {
+  UseStellarSacTokenParams,
+  UseStellarSacTokenResult,
+} from "./stellar/useStellarSacToken";
+export { useStellarDepositManagerAddresses } from "./stellar/useStellarDepositManagerAddresses";
+export type {
+  StellarDepositManagerAddresses,
+  UseStellarDepositManagerAddressesResult,
+} from "./stellar/useStellarDepositManagerAddresses";
+export {
+  useStellarNetworkFeeEstimate,
+  formatFeeXlm,
+} from "./stellar/useStellarNetworkFeeEstimate";
+export type {
+  UseStellarNetworkFeeEstimateResult,
+  StellarFeeDirection,
+} from "./stellar/useStellarNetworkFeeEstimate";
 export { useBlendDeposit } from "./stellar/useBlendDeposit";
 export { useBlendWithdraw } from "./stellar/useBlendWithdraw";
 export { useBlendPosition } from "./stellar/useBlendPosition";
@@ -137,3 +167,13 @@ export type {
   WalletViewKind,
   WalletViewContextValue,
 } from "./WalletViewContext";
+
+// ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
+export { useDepositFlow } from "./useDepositFlow";
+export type {
+  FlowState,
+  Direction as FlowDirection,
+  StepState as FlowStepState,
+  StepInfo,
+  StepTxState,
+} from "./useDepositFlow";

@@ -17,7 +17,9 @@ import { MobileNavMenu } from "./MobileNavMenu";
 
 const noop = () => undefined;
 
-function renderMenu(overrides: Partial<React.ComponentProps<typeof MobileNavMenu>> = {}) {
+function renderMenu(
+  overrides: Partial<React.ComponentProps<typeof MobileNavMenu>> = {},
+) {
   const defaults: React.ComponentProps<typeof MobileNavMenu> = {
     open: true,
     onClose: noop,
@@ -261,9 +263,7 @@ describe("MobileNavMenu — active nav derivation", () => {
     // The active item text should have the brand color class.
     // We verify the active derivation is wired by checking that the
     // component renders without error for each pathname.
-    await waitFor(() =>
-      expect(screen.getByText("Home")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Home")).toBeInTheDocument());
   });
 
   it("marks Convert as active on pathname=/deposit", async () => {
@@ -282,8 +282,6 @@ describe("MobileNavMenu — active nav derivation", () => {
 
   it("marks Earn as active on pathname=/stake", async () => {
     renderMenu({ open: true, pathname: "/stake" });
-    await waitFor(() =>
-      expect(screen.getByText("Earn")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Earn")).toBeInTheDocument());
   });
 });

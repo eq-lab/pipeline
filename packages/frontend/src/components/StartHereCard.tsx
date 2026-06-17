@@ -122,14 +122,10 @@ const HEADING_ID_BASE = "start-here-card-title";
 export const StartHereCard = React.forwardRef<
   HTMLDivElement,
   StartHereCardProps
->(function StartHereCard({
-  onBuy,
-  onSell,
-  className,
-  mobileHomeState,
-  mobilePlusdBalance,
-  ...rest
-}, ref) {
+>(function StartHereCard(
+  { onBuy, onSell, className, mobileHomeState, mobilePlusdBalance, ...rest },
+  ref,
+) {
   // Use a unique id per instance to avoid duplicate id attributes when both
   // the mobile and desktop blocks render this card in the same DOM.
   const instanceId = React.useId();

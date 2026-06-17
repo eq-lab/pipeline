@@ -127,15 +127,18 @@ function formatBigintNumber(value: bigint | undefined): string {
 }
 
 export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
-  function StakeCard({
-    onStake,
-    stakeDisabled,
-    className,
-    mobileHomeState,
-    mobileSplusdShares,
-    mobileSplusdInPlusd,
-    ...rest
-  }, ref) {
+  function StakeCard(
+    {
+      onStake,
+      stakeDisabled,
+      className,
+      mobileHomeState,
+      mobileSplusdShares,
+      mobileSplusdInPlusd,
+      ...rest
+    },
+    ref,
+  ) {
     // Use a unique id per instance to avoid duplicate id attributes when both
     // the mobile and desktop blocks render this card in the same DOM.
     const instanceId = React.useId();
@@ -238,7 +241,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
                 "font-[var(--font-weight-regular)]",
                 "text-[color:var(--color-pipeline-ink-muted)]",
                 "underline-offset-2 hover:underline",
-                "bg-transparent border-0 cursor-pointer p-0",
+                "cursor-pointer border-0 bg-transparent p-0",
               ].join(" ")}
               data-testid="unstake-link"
             >

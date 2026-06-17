@@ -35,7 +35,9 @@ const mockLoadAccount = vi.hoisted(() => vi.fn());
 
 vi.mock("@stellar/stellar-sdk", () => {
   class MockServer {
-    loadAccount(address: string) { return mockLoadAccount(address); }
+    loadAccount(address: string) {
+      return mockLoadAccount(address);
+    }
   }
   return { Horizon: { Server: MockServer } };
 });
@@ -63,9 +65,11 @@ vi.mock("./chain", () => ({
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const PROTOCOL_ISSUER = "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
+const PROTOCOL_ISSUER =
+  "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
 const FAKE_ISSUER = "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGYWDOUALPFD9TLVMQSRJV";
-const USDC_CONTRACT = "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
+const USDC_CONTRACT =
+  "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
 const STELLAR_ADDR = "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUV";
 
 const SAC_PARAMS = {
@@ -152,13 +156,17 @@ describe("useStellarSacToken — balance present", () => {
       balances: makeBalances("1234.5678900"),
     });
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("returns balance string and hasTrustline true", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
-    await waitFor(() => { expect(result.current.balance).toBeDefined(); });
+    await waitFor(() => {
+      expect(result.current.balance).toBeDefined();
+    });
     expect(result.current.balance).toBe("1234.5678900");
     expect(result.current.hasTrustline).toBe(true);
     expect(result.current.decimals).toBe(7);
@@ -178,13 +186,17 @@ describe("useStellarSacToken — issuer mismatch", () => {
       balances: makeBalances("100.0000000", FAKE_ISSUER),
     });
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("ignores balance from wrong issuer → '0', hasTrustline false", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
-    await waitFor(() => { expect(result.current.balance).toBeDefined(); });
+    await waitFor(() => {
+      expect(result.current.balance).toBeDefined();
+    });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
     expect(result.current.error).toBeNull();
@@ -203,13 +215,17 @@ describe("useStellarSacToken — no trustline", () => {
       balances: [{ asset_type: "native", balance: "10.0000000" }],
     });
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("returns '0', hasTrustline false, no error", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
-    await waitFor(() => { expect(result.current.balance).toBeDefined(); });
+    await waitFor(() => {
+      expect(result.current.balance).toBeDefined();
+    });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
     expect(result.current.error).toBeNull();
@@ -224,16 +240,22 @@ describe("useStellarSacToken — unfunded (404)", () => {
     mockStellarWallet.address = STELLAR_ADDR;
     mockStellarWallet.isConnected = true;
     mockLoadAccount.mockClear();
-    const err = Object.assign(new Error("Not Found"), { response: { status: 404 } });
+    const err = Object.assign(new Error("Not Found"), {
+      response: { status: 404 },
+    });
     mockLoadAccount.mockRejectedValue(err);
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("treats 404 as zero balance, not an error", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
-    await waitFor(() => { expect(result.current.balance).toBeDefined(); });
+    await waitFor(() => {
+      expect(result.current.balance).toBeDefined();
+    });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
     expect(result.current.error).toBeNull();
@@ -250,13 +272,17 @@ describe("useStellarSacToken — hard error", () => {
     mockLoadAccount.mockClear();
     mockLoadAccount.mockRejectedValue(new Error("network timeout"));
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("surfaces a non-404 error", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
-    await waitFor(() => { expect(result.current.error).not.toBeNull(); });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
     expect(result.current.balance).toBeUndefined();
     expect(result.current.hasTrustline).toBe(false);
     expect(result.current.error?.message).toBe("network timeout");
@@ -299,11 +325,16 @@ describe("useStellarSacToken — mock key", () => {
     mockStellarWallet.isConnected = true;
     mockLoadAccount.mockClear();
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("returns scaled mock balance; loadAccount never called", () => {
     // 10_000_000n = 1 USDC at 7 decimals
-    localStorage.setItem("pipeline.mock.wallet.stellar.balance.sac.usdc", "10000000");
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.balance.sac.usdc",
+      "10000000",
+    );
 
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,

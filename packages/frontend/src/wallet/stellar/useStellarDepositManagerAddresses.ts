@@ -102,9 +102,7 @@ async function callView(
   }
 
   if (!result.result) {
-    throw new Error(
-      `${contractId}.${method}(): simulation returned no result`,
-    );
+    throw new Error(`${contractId}.${method}(): simulation returned no result`);
   }
 
   return scValToNative(result.result.retval);
@@ -123,12 +121,28 @@ async function fetchAddresses(
   });
 
   // `asset()` → USDC SAC contract ID; `share()` → PLUSD SAC contract ID.
-  const usdcContractId = (await callView(server, contractId, "asset")) as string;
-  const plusdContractId = (await callView(server, contractId, "share")) as string;
+  const usdcContractId = (await callView(
+    server,
+    contractId,
+    "asset",
+  )) as string;
+  const plusdContractId = (await callView(
+    server,
+    contractId,
+    "share",
+  )) as string;
 
   // Each SAC's `asset()` view returns the classic asset string: `"CODE:ISSUER"`.
-  const usdcSacAssetStr = (await callView(server, usdcContractId, "asset")) as string;
-  const plusdSacAssetStr = (await callView(server, plusdContractId, "asset")) as string;
+  const usdcSacAssetStr = (await callView(
+    server,
+    usdcContractId,
+    "asset",
+  )) as string;
+  const plusdSacAssetStr = (await callView(
+    server,
+    plusdContractId,
+    "asset",
+  )) as string;
 
   return {
     usdc: usdcContractId,

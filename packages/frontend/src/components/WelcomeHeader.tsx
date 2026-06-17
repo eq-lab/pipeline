@@ -76,7 +76,9 @@ export function WelcomeHeader({
             We render both variants and show/hide with Tailwind so the DOM
             diff is purely class-driven and screen readers pick up the right
             string at each breakpoint. */}
-        <span className="md:hidden">{isConnected ? "Welcome back" : "Welcome"}</span>
+        <span className="md:hidden">
+          {isConnected ? "Welcome back" : "Welcome"}
+        </span>
         <span className="hidden md:inline">Welcome</span>
       </h1>
 

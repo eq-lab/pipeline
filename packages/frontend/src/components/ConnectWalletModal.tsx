@@ -23,12 +23,7 @@
  *
  * Figma: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
  */
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Logo, SegmentedTabs } from "@pipeline/ui";
 import { useEvmConnectors, useStellarConnectors } from "@/wallet";
@@ -86,97 +81,250 @@ interface WalletEntry {
 
 function MetaMaskIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M20.982 2L13.14 7.743l1.459-3.44L20.982 2z" fill="#E2761B" stroke="#E2761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M3.01 2l7.778 5.8-1.388-3.497L3.01 2z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M18.153 16.09l-2.089 3.198 4.471 1.23 1.284-4.36-3.666-.068z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M2.19 16.158l1.276 4.36 4.47-1.23-2.087-3.198-3.66.068z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M7.7 10.565l-1.25 1.887 4.452.198-.148-4.787L7.7 10.565z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M16.291 10.565l-3.084-2.758-.099 4.843 4.443-.198-1.26-1.887z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M7.936 19.288l2.674-1.302-2.306-1.8-.368 3.102z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M13.382 17.986l2.683 1.302-.377-3.102-2.306 1.8z" fill="#E4761B" stroke="#E4761B" strokeWidth="0.1" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M20.982 2L13.14 7.743l1.459-3.44L20.982 2z"
+        fill="#E2761B"
+        stroke="#E2761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3.01 2l7.778 5.8-1.388-3.497L3.01 2z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18.153 16.09l-2.089 3.198 4.471 1.23 1.284-4.36-3.666-.068z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.19 16.158l1.276 4.36 4.47-1.23-2.087-3.198-3.66.068z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.7 10.565l-1.25 1.887 4.452.198-.148-4.787L7.7 10.565z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16.291 10.565l-3.084-2.758-.099 4.843 4.443-.198-1.26-1.887z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.936 19.288l2.674-1.302-2.306-1.8-.368 3.102z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M13.382 17.986l2.683 1.302-.377-3.102-2.306 1.8z"
+        fill="#E4761B"
+        stroke="#E4761B"
+        strokeWidth="0.1"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function CoinbaseIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="#0052FF"/>
-      <path d="M12 7a5 5 0 100 10A5 5 0 0012 7zm0 7.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" fill="white"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" fill="#0052FF" />
+      <path
+        d="M12 7a5 5 0 100 10A5 5 0 0012 7zm0 7.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"
+        fill="white"
+      />
     </svg>
   );
 }
 
 function WalletConnectIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M6.095 8.26C9.368 4.986 14.632 4.986 17.905 8.26l.395.394a.405.405 0 010 .573l-1.35 1.351a.213.213 0 01-.198.007l-.546-.546c-2.251-2.251-5.902-2.251-8.153 0l-.585.585a.213.213 0 01-.197.007l-1.351-1.35a.405.405 0 010-.573l.175-.448zM20.562 10.917l1.201 1.201a.405.405 0 010 .573l-5.412 5.412c-.158.158-.415.158-.573 0l-3.84-3.84a.107.107 0 00-.098.003l-3.84 3.84c-.158.158-.415.158-.573 0L2.015 12.69a.405.405 0 010-.573l1.2-1.2c.159-.158.416-.158.574 0l3.84 3.84a.107.107 0 00.098-.003l3.84-3.84c.158-.158.415-.158.573 0l3.84 3.84a.107.107 0 00.098.003l3.84-3.84c.158-.158.415-.158.573 0z" fill="#3B99FC"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M6.095 8.26C9.368 4.986 14.632 4.986 17.905 8.26l.395.394a.405.405 0 010 .573l-1.35 1.351a.213.213 0 01-.198.007l-.546-.546c-2.251-2.251-5.902-2.251-8.153 0l-.585.585a.213.213 0 01-.197.007l-1.351-1.35a.405.405 0 010-.573l.175-.448zM20.562 10.917l1.201 1.201a.405.405 0 010 .573l-5.412 5.412c-.158.158-.415.158-.573 0l-3.84-3.84a.107.107 0 00-.098.003l-3.84 3.84c-.158.158-.415.158-.573 0L2.015 12.69a.405.405 0 010-.573l1.2-1.2c.159-.158.416-.158.574 0l3.84 3.84a.107.107 0 00.098-.003l3.84-3.84c.158-.158.415-.158.573 0l3.84 3.84a.107.107 0 00.098.003l3.84-3.84c.158-.158.415-.158.573 0z"
+        fill="#3B99FC"
+      />
     </svg>
   );
 }
 
 function TrustWalletIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M12 2L4 5.5v6.1C4 16.1 7.4 20.4 12 22c4.6-1.6 8-5.9 8-10.4V5.5L12 2z" fill="#3375BB"/>
-      <path d="M12 5l-5 2.2v3.9C7 14.5 9.2 17.6 12 18.8c2.8-1.2 5-4.3 5-7.7V7.2L12 5z" fill="white"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 2L4 5.5v6.1C4 16.1 7.4 20.4 12 22c4.6-1.6 8-5.9 8-10.4V5.5L12 2z"
+        fill="#3375BB"
+      />
+      <path
+        d="M12 5l-5 2.2v3.9C7 14.5 9.2 17.6 12 18.8c2.8-1.2 5-4.3 5-7.7V7.2L12 5z"
+        fill="white"
+      />
     </svg>
   );
 }
 
 function FreighterIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="24" height="24" rx="6" fill="#5F2BE2"/>
-      <path d="M6 8h12M6 12h8M6 16h10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="6" fill="#5F2BE2" />
+      <path
+        d="M6 8h12M6 12h8M6 16h10"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 function LobstrIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <circle cx="12" cy="12" r="11" fill="#000033"/>
-      <path d="M7 12a5 5 0 1110 0 5 5 0 01-10 0z" fill="#00C2C2"/>
-      <path d="M10 12a2 2 0 114 0 2 2 0 01-4 0z" fill="white"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="11" fill="#000033" />
+      <path d="M7 12a5 5 0 1110 0 5 5 0 01-10 0z" fill="#00C2C2" />
+      <path d="M10 12a2 2 0 114 0 2 2 0 01-4 0z" fill="white" />
     </svg>
   );
 }
 
 function XbullIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="24" height="24" rx="6" fill="#1B1B2F"/>
-      <path d="M7 7l10 10M17 7L7 17" stroke="#FCD34D" strokeWidth="2" strokeLinecap="round"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="6" fill="#1B1B2F" />
+      <path
+        d="M7 7l10 10M17 7L7 17"
+        stroke="#FCD34D"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 function HanaIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="24" height="24" rx="12" fill="#E91E8C"/>
-      <path d="M7 12h10M12 7v10" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="12" fill="#E91E8C" />
+      <path
+        d="M7 12h10M12 7v10"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 function AlbedoIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="24" height="24" rx="6" fill="#191919"/>
-      <circle cx="12" cy="12" r="5" stroke="#F6C90E" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="2" fill="#F6C90E"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="6" fill="#191919" />
+      <circle cx="12" cy="12" r="5" stroke="#F6C90E" strokeWidth="2" />
+      <circle cx="12" cy="12" r="2" fill="#F6C90E" />
     </svg>
   );
 }
 
 function RabetIcon() {
   return (
-    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="24" height="24" rx="6" fill="#271D3C"/>
-      <path d="M7 8h5a3 3 0 010 6H7V8zm0 6h7l3 4H7v-4z" fill="#8B5CF6"/>
+    <svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <rect width="24" height="24" rx="6" fill="#271D3C" />
+      <path d="M7 8h5a3 3 0 010 6H7V8zm0 6h7l3 4H7v-4z" fill="#8B5CF6" />
     </svg>
   );
 }
@@ -408,7 +556,10 @@ export interface ConnectWalletModalProps {
 
 // ── Modal component ───────────────────────────────────────────────────────────
 
-export function ConnectWalletModal({ open, onDismiss }: ConnectWalletModalProps) {
+export function ConnectWalletModal({
+  open,
+  onDismiss,
+}: ConnectWalletModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "connect-wallet-modal-heading";
 
@@ -475,9 +626,10 @@ export function ConnectWalletModal({ open, onDismiss }: ConnectWalletModalProps)
   // Wallet list for the active tab
   const walletEntries = activeTab === "evm" ? EVM_WALLETS : SOROBAN_WALLETS;
   const needsShowMore = walletEntries.length > SHOW_MORE_THRESHOLD;
-  const visibleWallets = needsShowMore && !showMore
-    ? walletEntries.slice(0, SHOW_MORE_THRESHOLD)
-    : walletEntries;
+  const visibleWallets =
+    needsShowMore && !showMore
+      ? walletEntries.slice(0, SHOW_MORE_THRESHOLD)
+      : walletEntries;
 
   function handleEvmWalletClick(entry: (typeof EVM_WALLETS)[number]) {
     onDismiss();
@@ -558,8 +710,14 @@ export function ConnectWalletModal({ open, onDismiss }: ConnectWalletModalProps)
                       icon={entry.icon}
                       onClick={
                         activeTab === "evm"
-                          ? () => handleEvmWalletClick(entry as (typeof EVM_WALLETS)[number])
-                          : () => handleSorobanWalletClick(entry as (typeof SOROBAN_WALLETS)[number])
+                          ? () =>
+                              handleEvmWalletClick(
+                                entry as (typeof EVM_WALLETS)[number],
+                              )
+                          : () =>
+                              handleSorobanWalletClick(
+                                entry as (typeof SOROBAN_WALLETS)[number],
+                              )
                       }
                     />
                   </div>
@@ -600,7 +758,7 @@ export function ConnectWalletModal({ open, onDismiss }: ConnectWalletModalProps)
           aria-label="Close"
           onClick={onDismiss}
           className={[
-            "absolute right-4 top-4 z-10",
+            "absolute top-4 right-4 z-10",
             "flex h-8 w-8 items-center justify-center",
             "rounded-[var(--radius-pipeline-card)]",
             "text-[color:var(--color-pipeline-ink)]",

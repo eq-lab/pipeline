@@ -7,25 +7,8 @@ import {
   StepsCard,
   Button,
 } from "@pipeline/ui";
-import {
-  useEvmWallet,
-  useDepositManagerAddresses,
-  useDepositManagerMinDeposit,
-  useRequestDeposit,
-  useEvmToken,
-  useClaim,
-  useRequestWithdrawal,
-  useClaimWithdrawal,
-  useNetworkFeeEstimate,
-} from "@/wallet";
-import { useRequests, useDepositVoucher, useWithdrawalVoucher } from "@/api";
-import { ENV } from "@/lib/env";
-import {
-  parseUsdc,
-  formatUsdc,
-  formatUsdcWhole,
-  formatUsdcCurrencyCompact,
-} from "@/lib/usdc";
+import { useDepositFlow, useWalletView } from "@/wallet";
+import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
 /**
@@ -41,68 +24,43 @@ import { useToast } from "@/lib/toast";
  *   /deposit?direction=<anything>  → falls back to "deposit"
  *   /withdraw                      → redirected here with direction=withdraw
  *
- * Drives three steps from on-chain reads and API polling:
+ * Chain-aware wiring (issue #552)
+ * --------------------------------
+ * The page reacts to `useWalletView().kind` (EVM vs Stellar). When Stellar is
+ * active, the `useDepositFlow` adapter switches all data and actions to the
+ * Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.).
+ * Flipping back to EVM restores the original behavior.
  *
- * --- Deposit direction ---
- * 1. **Allow Pipeline to use USDC** (Approve):
- *    Enabled when `needsApproval && meetsMin`. Done when allowance covers amount.
- *    Figma: node 1498-99874
+ * Drives three steps:
  *
- * 2. **Confirm USDC transfer** (Confirm):
- *    Enabled when `!needsApproval && meetsMin && requestId === undefined`.
- *    While status is `PendingVerification`, shows loading affordance.
- *    Figma: node 1497-95272
+ * --- EVM Deposit ---
+ * 1. Allow Pipeline to use USDC (Approve)
+ * 2. Confirm USDC transfer (Confirm)
+ * 3. Claim your PLUSD (Claim)
  *
- * 3. **Claim your PLUSD** (Claim):
- *    Enabled when the request status is "PendingClaim" and a voucher signature
- *    is available from `GET /v1/deposits/{requestId}/voucher`.
- *    Figma: node 1498-100812
+ * --- EVM Withdraw ---
+ * 1. Allow Pipeline to use PLUSD (Approve)
+ * 2. Confirm PLUSD burn (Confirm)
+ * 3. Claim your USDC (Claim)
  *
- * --- Withdraw direction ---
- * 1. **Allow Pipeline to use PLUSD** (Approve):
- *    Enabled when `needsApproval && canDeposit` (no min-withdrawal gate).
+ * --- Stellar Deposit ---
+ * 1. Enable PLUSD (changeTrust, shown complete when trustline exists)
+ * 2. Confirm USDC transfer (request_deposit)
+ * 3. Claim your PLUSD (claim_request + verifier signature)
  *
- * 2. **Confirm PLUSD burn** (Confirm):
- *    Enabled when `hasSufficientAllowance && canDeposit && !requestIsConfirmed`.
+ * --- Stellar Withdraw ---
+ * 1. Enable USDC (changeTrust, shown complete when trustline exists)
+ * 2. Confirm PLUSD burn (request_withdrawal)
+ * 3. Claim your USDC (claim_request + verifier signature)
  *
- * 3. **Claim your USDC** (Claim):
- *    Enabled when status is "PendingClaim" and voucher is ready.
- *
- * Tx/toast state on swap: direction swap does NOT reset wagmi write state or
- * toast trackers. Only the amount input is cleared. Swapping back to the prior
- * direction recovers the in-flight view. Toast ids are scoped per direction
- * (deposit: approve-tx / deposit-tx / claim-tx; withdraw: withdraw-approve-tx /
- * withdraw-tx / withdraw-claim-tx) so a stale toast from one direction does not
- * collide with a new one after swap.
+ * Toast ids are scoped per chain+direction so a stale toast from one
+ * direction/chain does not collide with a new one:
+ *   EVM deposit:   approve-tx / deposit-tx / claim-tx
+ *   EVM withdraw:  withdraw-approve-tx / withdraw-tx / withdraw-claim-tx
+ *   Stellar deposit:  stellar-deposit-trust-tx / stellar-deposit-tx / stellar-deposit-claim-tx
+ *   Stellar withdraw: stellar-withdraw-trust-tx / stellar-withdraw-tx / stellar-withdraw-claim-tx
  *
  * All hooks are called unconditionally per React's Rules of Hooks.
- * Behaviour branches on `direction`. Inactive-direction data is ignored.
- *
- * State sources (all via `@/wallet` or `@/api` — no direct wagmi/viem imports):
- *   Deposit:
- *     - `useDepositManagerAddresses()` — usdc/plusd addresses
- *     - `useDepositManagerMinDeposit()` — minimum deposit amount
- *     - `useToken({ token: usdc, spender: DEPOSIT_MANAGER_ADDRESS })`
- *     - `useRequestDeposit()` — write + state
- *     - `useClaim()` — write + state
- *   Withdraw:
- *     - `useDepositManagerAddresses()` — plusd/usdc addresses (reused; same source as deposit)
- *     - `useToken({ token: plusd, spender: WITHDRAWAL_QUEUE_ADDRESS })`
- *     - `useRequestWithdrawal()` — write + state
- *     - `useClaimWithdrawal()` — write + state
- *   Shared:
- *     - `useWallet()` — address, isConnected
- *     - `useRequests({ refetchInterval: 60_000 })` — polls active requests
- *     - `useDepositVoucher(requestId)` — deposit voucher
- *     - `useWithdrawalVoucher(requestId)` — withdrawal voucher
- *
- * Wallet-disconnected state:
- *   When the wallet is not connected, a yellow "Connect your wallet first"
- *   banner with a dark "Connect" button is shown in place of the StepsCard
- *   (and in place of the low-balance banner) for both directions.
- *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
- *   identical to the home-page CTA.
- *   Figma: node 1994-6885 (desktop / mobile identical per node 1993-8916).
  *
  * Figma references:
  *   Deposit page: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812
@@ -124,615 +82,223 @@ export const Route = createFileRoute("/deposit")({
   component: Deposit,
 });
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function Deposit() {
   // ── Direction ─────────────────────────────────────────────────────────
   const { direction } = Route.useSearch();
+  const isDeposit = direction === "deposit";
 
   // ── Toast + navigation ────────────────────────────────────────────────
   const toast = useToast();
   const navigate = useNavigate();
 
-  // ── State sources ─────────────────────────────────────────────────────
-  const { address, isConnected, connect } = useEvmWallet();
-
-  // ── Deposit-direction hooks (called unconditionally) ──────────────────
-  const {
-    plusd: plusdFromManager,
-    usdc,
-    isLoading: isManagerLoading,
-  } = useDepositManagerAddresses();
-  const { minDeposit } = useDepositManagerMinDeposit();
-
-  const usdcAddr = (usdc ?? ZERO_ADDRESS) as `0x${string}`;
-  const {
-    decimals: depositDecimals,
-    balance: depositBalance,
-    formattedBalance: depositFormattedBalance,
-    allowance: depositAllowance,
-    approve: depositApprove,
-    isApprovePending: isDepositApprovePending,
-    isApproveSuccess: isDepositApproveSuccess,
-    refetchBalance: refetchDepositBalance,
-  } = useEvmToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
-
-  const requestDeposit = useRequestDeposit();
-  const claim = useClaim();
-
-  // ── Withdraw-direction hooks (called unconditionally) ─────────────────
-  // plusd and usdc addresses are sourced from DepositManager (same as deposit
-  // direction) — the deployed WithdrawalQueue does not expose token getters.
-  const plusdAddr = (plusdFromManager ?? ZERO_ADDRESS) as `0x${string}`;
-  const {
-    decimals: withdrawDecimals,
-    balance: withdrawBalance,
-    formattedBalance: withdrawFormattedBalance,
-    allowance: withdrawAllowance,
-    approve: withdrawApprove,
-    isApprovePending: isWithdrawApprovePending,
-    isApproveSuccess: isWithdrawApproveSuccess,
-    refetchBalance: refetchWithdrawBalance,
-  } = useEvmToken({ token: plusdAddr, spender: ENV.WITHDRAWAL_QUEUE_ADDRESS });
-
-  const requestWithdrawal = useRequestWithdrawal();
-  const claimWithdrawal = useClaimWithdrawal();
-
-  // ── Network fee estimate (both directions, called unconditionally) ────────
-  // Hook is called twice — once per direction — so both estimates are always
-  // live regardless of which direction is active.  Rules of Hooks require
-  // unconditional calls; direction is passed as a stable string literal.
-  const { feeEth: depositFeeEth } = useNetworkFeeEstimate("deposit");
-  const { feeEth: withdrawFeeEth } = useNetworkFeeEstimate("withdraw");
-
-  // ── Shared: requests poll + vouchers (both called unconditionally) ────
-  const { data: requestsData } = useRequests({ refetchInterval: 60_000 });
+  // ── Chain view ────────────────────────────────────────────────────────
+  const { kind } = useWalletView();
+  const isStellar = kind === "stellar";
 
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
   const [copied, setCopied] = useState(false);
 
-  // ── Active-direction derived state ────────────────────────────────────
-  const isDeposit = direction === "deposit";
+  // ── Parse amount (needs decimals — use 6 as default until flow loads) ──
+  // The flow's decimals are used for proper parsing, but we need amountBig
+  // to pass INTO the flow. We'll use a two-pass approach: compute amountBig
+  // with the decimals from a previous render. This is safe — if decimals
+  // change (chain switch), the amount input resets anyway.
+  const [lastDecimals, setLastDecimals] = useState<number | undefined>(
+    undefined,
+  );
+  const amountBig = parseUsdc(amountInput, lastDecimals);
 
-  // Active network fee — selects the already-live estimate for the current direction.
-  const networkFee = isDeposit ? depositFeeEth : withdrawFeeEth;
+  // ── Flow adapter ──────────────────────────────────────────────────────
+  const flow = useDepositFlow(direction, amountBig, setAmountInput);
 
-  // Active token state (used in render and per-direction logic)
-  const decimals = isDeposit ? depositDecimals : withdrawDecimals;
-  const formattedBalance = isDeposit
-    ? depositFormattedBalance
-    : withdrawFormattedBalance;
-  const approve = isDeposit ? depositApprove : withdrawApprove;
-  const isApprovePending = isDeposit
-    ? isDepositApprovePending
-    : isWithdrawApprovePending;
-
-  // ── Contract reachability ─────────────────────────────────────────────
-  const isManagerUnreachable =
-    isConnected &&
-    !isManagerLoading &&
-    plusdFromManager === undefined &&
-    usdc === undefined;
-
-  // ── Shared amount parsing ─────────────────────────────────────────────
-  const amountBig = parseUsdc(amountInput, decimals);
-
-  // ── Deposit-specific derived state ───────────────────────────────────
-  const isDepositReady =
-    depositDecimals !== undefined &&
-    depositBalance !== undefined &&
-    minDeposit !== undefined;
-
-  const hasBalance = isDepositReady
-    ? (depositBalance as bigint) >= (minDeposit as bigint)
-    : undefined;
-
-  const depositNeedsApproval =
-    depositAllowance !== undefined &&
-    amountBig > 0n &&
-    depositAllowance < amountBig;
-
-  const depositMeetsMin =
-    minDeposit !== undefined && amountBig > 0n && amountBig >= minDeposit;
-
-  // ── Withdraw-specific derived state ──────────────────────────────────
-  const isWithdrawReady =
-    withdrawDecimals !== undefined && withdrawBalance !== undefined;
-
-  const canWithdraw =
-    isWithdrawReady &&
-    amountBig > 0n &&
-    amountBig <= ((withdrawBalance as bigint) ?? 0n);
-
-  const withdrawNeedsApproval =
-    withdrawAllowance !== undefined &&
-    amountBig > 0n &&
-    withdrawAllowance < amountBig;
-
-  const hasSufficientWithdrawAllowance =
-    withdrawAllowance !== undefined &&
-    amountBig > 0n &&
-    withdrawAllowance >= amountBig;
-
-  // ── Unified derived state (active direction) ──────────────────────────
-  const isReady = isDeposit ? isDepositReady : isWithdrawReady;
-
-  // ── Request state machines (both directions, called unconditionally) ──
-  const depositActiveRequest =
-    requestsData?.requests
-      .filter(
-        (r) =>
-          r.type === "Deposit" &&
-          (r.status === "PendingVerification" || r.status === "PendingClaim"),
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )[0] ?? null;
-
-  const withdrawActiveRequest =
-    requestsData?.requests
-      .filter(
-        (r) =>
-          r.type === "Withdraw" &&
-          (r.status === "PendingVerification" || r.status === "PendingClaim"),
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )[0] ?? null;
-
-  // Active-direction request state
-  const activeRequest = isDeposit
-    ? depositActiveRequest
-    : withdrawActiveRequest;
-
-  // Request IDs
-  const depositRequestId: string | undefined =
-    depositActiveRequest?.request_id ?? requestDeposit.data?.requestId;
-  const withdrawRequestId: string | undefined =
-    withdrawActiveRequest?.request_id ?? requestWithdrawal.data?.requestId;
-  const requestId = isDeposit ? depositRequestId : withdrawRequestId;
-
-  // Confirmed state
-  const depositRequestIsConfirmed =
-    depositActiveRequest !== null ||
-    (requestDeposit.isSuccess && depositRequestId !== undefined);
-  const withdrawRequestIsConfirmed =
-    withdrawActiveRequest !== null ||
-    (requestWithdrawal.isSuccess && withdrawRequestId !== undefined);
-  const requestIsConfirmed = isDeposit
-    ? depositRequestIsConfirmed
-    : withdrawRequestIsConfirmed;
-
-  // Pending states
-  const depositIsPendingClaim = depositActiveRequest?.status === "PendingClaim";
-  const depositIsPendingVerification =
-    depositActiveRequest?.status === "PendingVerification";
-  const withdrawIsPendingClaim =
-    withdrawActiveRequest?.status === "PendingClaim";
-  const withdrawIsPendingVerification =
-    withdrawActiveRequest?.status === "PendingVerification";
-
-  const isPendingVerification = isDeposit
-    ? depositIsPendingVerification
-    : withdrawIsPendingVerification;
-
-  // Voucher request IDs: only pass to active-direction voucher; pass undefined
-  // to inactive voucher hook to disable it.
-  const depositVoucherRequestId = depositIsPendingClaim
-    ? depositRequestId
-    : undefined;
-  const withdrawVoucherRequestId = withdrawIsPendingClaim
-    ? withdrawRequestId
-    : undefined;
-
-  // Both voucher hooks called unconditionally; inactive one gets undefined.
-  const depositVoucher = useDepositVoucher(depositVoucherRequestId);
-  const withdrawVoucher = useWithdrawalVoucher(withdrawVoucherRequestId);
-  const voucher = isDeposit ? depositVoucher : withdrawVoucher;
-
-  // Amount lock
-  const isAmountLocked = activeRequest !== null;
-
-  // ── Step gate derivations ─────────────────────────────────────────────
-  // Deposit step gates
-  const canDepositApprove =
-    isConnected &&
-    hasBalance === true &&
-    depositMeetsMin &&
-    depositNeedsApproval &&
-    !isDepositApprovePending &&
-    !depositRequestIsConfirmed;
-
-  const canDepositConfirm =
-    isConnected &&
-    hasBalance === true &&
-    depositMeetsMin &&
-    !depositNeedsApproval &&
-    !requestDeposit.isPending &&
-    !depositRequestIsConfirmed;
-
-  const canDepositClaim =
-    isConnected &&
-    depositRequestId !== undefined &&
-    depositVoucher.status === "ready" &&
-    !claim.isPending &&
-    !claim.isSuccess;
-
-  // Withdraw step gates
-  const canWithdrawApprove =
-    isConnected &&
-    canWithdraw &&
-    withdrawNeedsApproval &&
-    !isWithdrawApprovePending &&
-    !withdrawRequestIsConfirmed;
-
-  const canWithdrawConfirm =
-    isConnected &&
-    canWithdraw &&
-    hasSufficientWithdrawAllowance &&
-    !requestWithdrawal.isPending &&
-    !withdrawRequestIsConfirmed;
-
-  const canWithdrawClaim =
-    isConnected &&
-    withdrawRequestId !== undefined &&
-    withdrawVoucher.status === "ready" &&
-    !claimWithdrawal.isPending &&
-    !claimWithdrawal.isSuccess;
-
-  // Active-direction gate
-  const canApprove = isDeposit ? canDepositApprove : canWithdrawApprove;
-  const canConfirm = isDeposit ? canDepositConfirm : canWithdrawConfirm;
-  const canClaim = isDeposit ? canDepositClaim : canWithdrawClaim;
-
-  // ── Swap button disabled: any in-flight wallet action ─────────────────
-  const isAnyTxInFlight =
-    isDepositApprovePending ||
-    requestDeposit.isPending ||
-    claim.isPending ||
-    isWithdrawApprovePending ||
-    requestWithdrawal.isPending ||
-    claimWithdrawal.isPending;
-
-  // ── Step state derivations ────────────────────────────────────────────
-  // Deposit
-  const depositStep1State =
-    (!depositNeedsApproval && amountBig > 0n && isConnected) ||
-    depositRequestIsConfirmed
-      ? "success"
-      : "idle";
-  const depositStep2State =
-    depositIsPendingClaim || claim.isSuccess ? "success" : ("idle" as const);
-  const depositStep3State = claim.isSuccess ? "success" : ("idle" as const);
-
-  // Withdraw
-  const withdrawStep1State =
-    (hasSufficientWithdrawAllowance && isConnected) ||
-    withdrawRequestIsConfirmed
-      ? "success"
-      : "idle";
-  const withdrawStep2State =
-    withdrawIsPendingClaim || claimWithdrawal.isSuccess
-      ? "success"
-      : ("idle" as const);
-  const withdrawStep3State = claimWithdrawal.isSuccess
-    ? "success"
-    : ("idle" as const);
-
-  // Active-direction step states
-  const step1State = isDeposit ? depositStep1State : withdrawStep1State;
-  const step2State = isDeposit ? depositStep2State : withdrawStep2State;
-  const step3State = isDeposit ? depositStep3State : withdrawStep3State;
-
-  // Faded state (deposit-only: approved step 2 live)
-  const isDepositInputFaded =
-    isConnected &&
-    !depositNeedsApproval &&
-    amountBig > 0n &&
-    !depositRequestIsConfirmed;
-
-  // Withdraw fade: allowance is known-sufficient and step 2 is live
-  const isWithdrawInputFaded =
-    isConnected &&
-    hasSufficientWithdrawAllowance &&
-    !withdrawRequestIsConfirmed;
-
-  const isInputFaded = isDeposit ? isDepositInputFaded : isWithdrawInputFaded;
-
-  // ── Effects: refetch balance after success ────────────────────────────
+  // Update lastDecimals whenever flow.decimals changes
   useEffect(() => {
-    if (direction !== "deposit") return;
-    if (claim.isSuccess) refetchDepositBalance();
-  }, [claim.isSuccess, refetchDepositBalance, direction]);
+    if (flow.decimals !== undefined) {
+      setLastDecimals(flow.decimals);
+    }
+  }, [flow.decimals]);
 
+  // ── Reset amount on chain switch ─────────────────────────────────────
+  const prevKindRef = useRef(kind);
   useEffect(() => {
-    if (direction !== "deposit") return;
-    if (requestDeposit.isSuccess) refetchDepositBalance();
-  }, [requestDeposit.isSuccess, refetchDepositBalance, direction]);
-
-  useEffect(() => {
-    if (direction !== "withdraw") return;
-    if (claimWithdrawal.isSuccess) refetchWithdrawBalance();
-  }, [claimWithdrawal.isSuccess, refetchWithdrawBalance, direction]);
-
-  useEffect(() => {
-    if (direction !== "withdraw") return;
-    if (requestWithdrawal.isSuccess) refetchWithdrawBalance();
-  }, [requestWithdrawal.isSuccess, refetchWithdrawBalance, direction]);
-
-  // ── Toast emission: Deposit Approve ──────────────────────────────────
-  const prevIsDepositApprovePending = useRef(false);
-  const prevIsDepositApproveSuccess = useRef(false);
-  useEffect(() => {
-    if (direction !== "deposit") return;
-    if (isDepositApprovePending && !prevIsDepositApprovePending.current) {
-      toast.show({
-        id: "approve-tx",
-        tone: "pending",
-        title: "Approving USDC…",
-      });
+    if (prevKindRef.current !== kind) {
+      setAmountInput("");
+      prevKindRef.current = kind;
     }
-    if (isDepositApproveSuccess && !prevIsDepositApproveSuccess.current) {
-      toast.update("approve-tx", {
-        tone: "success",
-        title: "Approval confirmed",
-      });
-    }
-    prevIsDepositApprovePending.current = isDepositApprovePending;
-    prevIsDepositApproveSuccess.current = isDepositApproveSuccess;
-  }, [isDepositApprovePending, isDepositApproveSuccess, toast, direction]);
-
-  // ── Toast emission: Deposit ───────────────────────────────────────────
-  const prevDepositIsPending = useRef(false);
-  const prevDepositIsSuccess = useRef(false);
-  const prevDepositError = useRef<Error | null>(null);
-  useEffect(() => {
-    if (direction !== "deposit") return;
-    if (requestDeposit.isPending && !prevDepositIsPending.current) {
-      toast.show({ id: "deposit-tx", tone: "pending", title: "Sending…" });
-    }
-    if (requestDeposit.isSuccess && !prevDepositIsSuccess.current) {
-      toast.update("deposit-tx", {
-        tone: "success",
-        title: "Deposit submitted",
-        action: {
-          label: "View",
-          onClick: () => void navigate({ to: "/transactions" }),
-        },
-      });
-    }
-    if (
-      requestDeposit.error &&
-      requestDeposit.error !== prevDepositError.current
-    ) {
-      console.error("Deposit failed:", requestDeposit.error);
-      toast.update("deposit-tx", {
-        tone: "danger",
-        title: "Deposit failed",
-        action: undefined,
-      });
-    }
-    prevDepositIsPending.current = requestDeposit.isPending;
-    prevDepositIsSuccess.current = requestDeposit.isSuccess;
-    prevDepositError.current = requestDeposit.error;
-  }, [
-    requestDeposit.isPending,
-    requestDeposit.isSuccess,
-    requestDeposit.error,
-    toast,
-    navigate,
-    direction,
-  ]);
-
-  // ── Toast emission: Deposit Claim ─────────────────────────────────────
-  const prevClaimIsPending = useRef(false);
-  const prevClaimIsSuccess = useRef(false);
-  const prevClaimError = useRef<Error | null>(null);
-  useEffect(() => {
-    if (direction !== "deposit") return;
-    if (claim.isPending && !prevClaimIsPending.current) {
-      toast.show({ id: "claim-tx", tone: "pending", title: "Claiming…" });
-    }
-    if (claim.isSuccess && !prevClaimIsSuccess.current) {
-      toast.update("claim-tx", { tone: "success", title: "PLUSD claimed" });
-    }
-    if (claim.error && claim.error !== prevClaimError.current) {
-      console.error("Claim failed:", claim.error);
-      toast.update("claim-tx", { tone: "danger", title: "Claim failed" });
-    }
-    prevClaimIsPending.current = claim.isPending;
-    prevClaimIsSuccess.current = claim.isSuccess;
-    prevClaimError.current = claim.error;
-  }, [claim.isPending, claim.isSuccess, claim.error, toast, direction]);
-
-  // ── Toast emission: Withdraw Approve ─────────────────────────────────
-  const prevIsWithdrawApprovePending = useRef(false);
-  const prevIsWithdrawApproveSuccess = useRef(false);
-  useEffect(() => {
-    if (direction !== "withdraw") return;
-    if (isWithdrawApprovePending && !prevIsWithdrawApprovePending.current) {
-      toast.show({
-        id: "withdraw-approve-tx",
-        tone: "pending",
-        title: "Approving PLUSD…",
-      });
-    }
-    if (isWithdrawApproveSuccess && !prevIsWithdrawApproveSuccess.current) {
-      toast.update("withdraw-approve-tx", {
-        tone: "success",
-        title: "Approval confirmed",
-      });
-    }
-    prevIsWithdrawApprovePending.current = isWithdrawApprovePending;
-    prevIsWithdrawApproveSuccess.current = isWithdrawApproveSuccess;
-  }, [isWithdrawApprovePending, isWithdrawApproveSuccess, toast, direction]);
-
-  // ── Toast emission: RequestWithdrawal ────────────────────────────────
-  const prevWithdrawalIsPending = useRef(false);
-  const prevWithdrawalIsSuccess = useRef(false);
-  const prevWithdrawalError = useRef<Error | null>(null);
-  useEffect(() => {
-    if (direction !== "withdraw") return;
-    if (requestWithdrawal.isPending && !prevWithdrawalIsPending.current) {
-      toast.show({ id: "withdraw-tx", tone: "pending", title: "Sending…" });
-    }
-    if (requestWithdrawal.isSuccess && !prevWithdrawalIsSuccess.current) {
-      toast.update("withdraw-tx", {
-        tone: "success",
-        title: "Withdrawal submitted",
-        action: {
-          label: "View",
-          onClick: () => void navigate({ to: "/transactions" }),
-        },
-      });
-    }
-    if (
-      requestWithdrawal.error &&
-      requestWithdrawal.error !== prevWithdrawalError.current
-    ) {
-      console.error("Withdrawal failed:", requestWithdrawal.error);
-      toast.update("withdraw-tx", {
-        tone: "danger",
-        title: "Withdrawal failed",
-        action: undefined,
-      });
-    }
-    prevWithdrawalIsPending.current = requestWithdrawal.isPending;
-    prevWithdrawalIsSuccess.current = requestWithdrawal.isSuccess;
-    prevWithdrawalError.current = requestWithdrawal.error;
-  }, [
-    requestWithdrawal.isPending,
-    requestWithdrawal.isSuccess,
-    requestWithdrawal.error,
-    toast,
-    navigate,
-    direction,
-  ]);
-
-  // ── Toast emission: Withdraw Claim ────────────────────────────────────
-  const prevWithdrawClaimIsPending = useRef(false);
-  const prevWithdrawClaimIsSuccess = useRef(false);
-  const prevWithdrawClaimError = useRef<Error | null>(null);
-  useEffect(() => {
-    if (direction !== "withdraw") return;
-    if (claimWithdrawal.isPending && !prevWithdrawClaimIsPending.current) {
-      toast.show({
-        id: "withdraw-claim-tx",
-        tone: "pending",
-        title: "Claiming…",
-      });
-    }
-    if (claimWithdrawal.isSuccess && !prevWithdrawClaimIsSuccess.current) {
-      toast.update("withdraw-claim-tx", {
-        tone: "success",
-        title: "USDC claimed",
-      });
-    }
-    if (
-      claimWithdrawal.error &&
-      claimWithdrawal.error !== prevWithdrawClaimError.current
-    ) {
-      console.error("Withdrawal claim failed:", claimWithdrawal.error);
-      toast.update("withdraw-claim-tx", {
-        tone: "danger",
-        title: "Claim failed",
-      });
-    }
-    prevWithdrawClaimIsPending.current = claimWithdrawal.isPending;
-    prevWithdrawClaimIsSuccess.current = claimWithdrawal.isSuccess;
-    prevWithdrawClaimError.current = claimWithdrawal.error;
-  }, [
-    claimWithdrawal.isPending,
-    claimWithdrawal.isSuccess,
-    claimWithdrawal.error,
-    toast,
-    direction,
-  ]);
+  }, [kind]);
 
   // ── Amount sync: lock input to active request amount ─────────────────
   useEffect(() => {
-    if (!isAmountLocked) return;
-    if (decimals === undefined) return;
-    if (!activeRequest) return;
-    const formatted = formatUsdc(
-      BigInt(activeRequest.amount),
-      decimals,
-    ).replace(/,/g, "");
+    if (!flow.isAmountLocked) return;
+    if (flow.decimals === undefined) return;
+    if (!flow.lockedAmountRaw) return;
+    const formatted = formatUsdc(flow.lockedAmountRaw, flow.decimals).replace(
+      /,/g,
+      "",
+    );
     setAmountInput(formatted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.isAmountLocked, flow.lockedAmountRaw, flow.decimals]);
+
+  // ── Refetch balance after success ─────────────────────────────────────
+  const { refetchBalance } = flow;
+  const step2TxIsSuccess = flow.step2Tx.isSuccess;
+  const step3TxIsSuccess = flow.step3Tx.isSuccess;
+  useEffect(() => {
+    if (step3TxIsSuccess) refetchBalance();
+  }, [step3TxIsSuccess, refetchBalance]);
+
+  useEffect(() => {
+    if (step2TxIsSuccess) refetchBalance();
+  }, [step2TxIsSuccess, refetchBalance]);
+
+  // ── Toast: step 1 (approve / trustline) ──────────────────────────────
+  const prevStep1IsPending = useRef(false);
+  const prevStep1IsSuccess = useRef(false);
+  useEffect(() => {
+    const toastId = isStellar
+      ? isDeposit
+        ? "stellar-deposit-trust-tx"
+        : "stellar-withdraw-trust-tx"
+      : isDeposit
+        ? "approve-tx"
+        : "withdraw-approve-tx";
+
+    const pendingTitle = isStellar
+      ? isDeposit
+        ? "Enabling PLUSD trustline…"
+        : "Enabling USDC trustline…"
+      : isDeposit
+        ? "Approving USDC…"
+        : "Approving PLUSD…";
+
+    if (flow.step1Tx.isPending && !prevStep1IsPending.current) {
+      toast.show({ id: toastId, tone: "pending", title: pendingTitle });
+    }
+    if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: isStellar ? "Trustline enabled" : "Approval confirmed",
+      });
+    }
+    prevStep1IsPending.current = flow.step1Tx.isPending;
+    prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
   }, [
-    isAmountLocked,
-    activeRequest?.request_id,
-    activeRequest?.amount,
-    decimals,
+    flow.step1Tx.isPending,
+    flow.step1Tx.isSuccess,
+    toast,
+    direction,
+    isStellar,
+    isDeposit,
   ]);
 
-  // ── Copy address handler (1.5s "Copied" affordance) ───────────────────
+  // ── Toast: step 2 (request) ───────────────────────────────────────────
+  const prevStep2IsPending = useRef(false);
+  const prevStep2IsSuccess = useRef(false);
+  const prevStep2Error = useRef<Error | null>(null);
+  useEffect(() => {
+    const toastId = isStellar
+      ? isDeposit
+        ? "stellar-deposit-tx"
+        : "stellar-withdraw-tx"
+      : isDeposit
+        ? "deposit-tx"
+        : "withdraw-tx";
+
+    if (flow.step2Tx.isPending && !prevStep2IsPending.current) {
+      toast.show({ id: toastId, tone: "pending", title: "Sending…" });
+    }
+    if (flow.step2Tx.isSuccess && !prevStep2IsSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: isDeposit ? "Deposit submitted" : "Withdrawal submitted",
+        action: {
+          label: "View",
+          onClick: () => void navigate({ to: "/transactions" }),
+        },
+      });
+    }
+    if (flow.step2Tx.error && flow.step2Tx.error !== prevStep2Error.current) {
+      console.error(
+        isDeposit ? "Deposit failed:" : "Withdrawal failed:",
+        flow.step2Tx.error,
+      );
+      toast.update(toastId, {
+        tone: "danger",
+        title: isDeposit ? "Deposit failed" : "Withdrawal failed",
+        action: undefined,
+      });
+    }
+    prevStep2IsPending.current = flow.step2Tx.isPending;
+    prevStep2IsSuccess.current = flow.step2Tx.isSuccess;
+    prevStep2Error.current = flow.step2Tx.error;
+  }, [
+    flow.step2Tx.isPending,
+    flow.step2Tx.isSuccess,
+    flow.step2Tx.error,
+    toast,
+    navigate,
+    direction,
+    isStellar,
+    isDeposit,
+  ]);
+
+  // ── Toast: step 3 (claim) ─────────────────────────────────────────────
+  const prevStep3IsPending = useRef(false);
+  const prevStep3IsSuccess = useRef(false);
+  const prevStep3Error = useRef<Error | null>(null);
+  useEffect(() => {
+    const toastId = isStellar
+      ? isDeposit
+        ? "stellar-deposit-claim-tx"
+        : "stellar-withdraw-claim-tx"
+      : isDeposit
+        ? "claim-tx"
+        : "withdraw-claim-tx";
+
+    if (flow.step3Tx.isPending && !prevStep3IsPending.current) {
+      toast.show({ id: toastId, tone: "pending", title: "Claiming…" });
+    }
+    if (flow.step3Tx.isSuccess && !prevStep3IsSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: isDeposit ? "PLUSD claimed" : "USDC claimed",
+      });
+    }
+    if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
+      console.error("Claim failed:", flow.step3Tx.error);
+      toast.update(toastId, { tone: "danger", title: "Claim failed" });
+    }
+    prevStep3IsPending.current = flow.step3Tx.isPending;
+    prevStep3IsSuccess.current = flow.step3Tx.isSuccess;
+    prevStep3Error.current = flow.step3Tx.error;
+  }, [
+    flow.step3Tx.isPending,
+    flow.step3Tx.isSuccess,
+    flow.step3Tx.error,
+    toast,
+    direction,
+    isStellar,
+    isDeposit,
+  ]);
+
+  // ── Copy address handler ──────────────────────────────────────────────
   const copyAddress = useCallback(() => {
-    if (!address || typeof navigator === "undefined" || !navigator.clipboard)
+    const addr = flow.address;
+    if (!addr || typeof navigator === "undefined" || !navigator.clipboard)
       return;
-    navigator.clipboard.writeText(address).then(
+    navigator.clipboard.writeText(addr).then(
       () => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       },
       () => {
-        /* Silently no-op when clipboard write fails (e.g. non-secure context). */
+        /* Silently no-op when clipboard write fails. */
       },
     );
-  }, [address]);
-
-  // ── Quick-amount handlers ─────────────────────────────────────────────
-  const onDepositQuickAmount = useCallback(
-    (idx: number) => {
-      if (isAmountLocked) return;
-      if (depositDecimals === undefined) return;
-      if (idx === 0 && minDeposit !== undefined) {
-        setAmountInput(
-          formatUsdc(minDeposit, depositDecimals).replace(/,/g, ""),
-        );
-        return;
-      }
-      if (idx === 1) setAmountInput("5000");
-      else if (idx === 2) setAmountInput("10000");
-      else if (idx === 3 && depositBalance !== undefined) {
-        setAmountInput(
-          formatUsdc(depositBalance as bigint, depositDecimals).replace(
-            /,/g,
-            "",
-          ),
-        );
-      }
-    },
-    [depositDecimals, minDeposit, depositBalance, isAmountLocked],
-  );
-
-  const onWithdrawQuickAmount = useCallback(
-    (idx: number) => {
-      if (isAmountLocked) return;
-      if (withdrawDecimals === undefined || withdrawBalance === undefined)
-        return;
-      let next: bigint;
-      if (idx === 0) next = ((withdrawBalance as bigint) * 25n) / 100n;
-      else if (idx === 1) next = (withdrawBalance as bigint) / 2n;
-      else if (idx === 2) next = ((withdrawBalance as bigint) * 75n) / 100n;
-      else if (idx === 3) next = withdrawBalance as bigint;
-      else return;
-      setAmountInput(formatUsdc(next, withdrawDecimals).replace(/,/g, ""));
-    },
-    [withdrawDecimals, withdrawBalance, isAmountLocked],
-  );
-
-  const onQuickAmount = isDeposit
-    ? onDepositQuickAmount
-    : onWithdrawQuickAmount;
+  }, [flow.address]);
 
   // ── Swap handler ──────────────────────────────────────────────────────
   const onSwap = useCallback(() => {
@@ -763,51 +329,50 @@ function Deposit() {
                   token: "usdc",
                   tokenLabel: "USDC",
                   inputTestId: "deposit-amount-input",
-                  balanceLabel: formattedBalance
-                    ? formattedBalance.replace(/^\$/, "")
+                  balanceLabel: flow.formattedBalance
+                    ? flow.formattedBalance.replace(/^\$/, "")
                     : "—",
                   placeholderValue: "0",
                   value: amountInput,
                   onValueChange: setAmountInput,
-                  disabled: !isConnected || !isReady || isAmountLocked,
-                  className: isInputFaded
+                  disabled:
+                    !flow.isConnected || !flow.isReady || flow.isAmountLocked,
+                  className: flow.isInputFaded
                     ? "opacity-30 transition-opacity"
                     : "transition-opacity",
                   quickAmounts: [
                     {
-                      label:
-                        minDeposit !== undefined && decimals !== undefined
-                          ? `${formatUsdcCurrencyCompact(minDeposit, decimals)} (Min)`
-                          : "Min",
-                      disabled: isAmountLocked,
+                      label: flow.minChipLabel,
+                      disabled: flow.isAmountLocked,
                     },
-                    { label: "$5,000", disabled: isAmountLocked },
-                    { label: "$10,000", disabled: isAmountLocked },
-                    { label: "Max", disabled: isAmountLocked },
+                    { label: "$5,000", disabled: flow.isAmountLocked },
+                    { label: "$10,000", disabled: flow.isAmountLocked },
+                    { label: "Max", disabled: flow.isAmountLocked },
                   ],
-                  onQuickAmountClick: onQuickAmount,
+                  onQuickAmountClick: flow.onQuickAmount,
                 }
               : {
                   token: "plusd",
                   tokenLabel: "PLUSD",
                   inputTestId: "withdraw-amount-input",
-                  balanceLabel: formattedBalance
-                    ? formattedBalance.replace(/^\$/, "")
+                  balanceLabel: flow.formattedBalance
+                    ? flow.formattedBalance.replace(/^\$/, "")
                     : "—",
                   placeholderValue: "0",
                   value: amountInput,
                   onValueChange: setAmountInput,
-                  disabled: !isConnected || !isReady || isAmountLocked,
-                  className: isInputFaded
+                  disabled:
+                    !flow.isConnected || !flow.isReady || flow.isAmountLocked,
+                  className: flow.isInputFaded
                     ? "opacity-30 transition-opacity"
                     : "transition-opacity",
                   quickAmounts: [
-                    { label: "25%", disabled: isAmountLocked },
-                    { label: "50%", disabled: isAmountLocked },
-                    { label: "75%", disabled: isAmountLocked },
-                    { label: "Max", disabled: isAmountLocked },
+                    { label: "25%", disabled: flow.isAmountLocked },
+                    { label: "50%", disabled: flow.isAmountLocked },
+                    { label: "75%", disabled: flow.isAmountLocked },
+                    { label: "Max", disabled: flow.isAmountLocked },
                   ],
-                  onQuickAmountClick: onQuickAmount,
+                  onQuickAmountClick: flow.onQuickAmount,
                 }
           }
           output={
@@ -826,12 +391,12 @@ function Deposit() {
                 }
           }
           exchangeRate={isDeposit ? "1 USDC = 1 PLUSD" : "1 PLUSD = 1 USDC"}
-          networkFee={networkFee ?? "—"}
-          onSwap={isAnyTxInFlight ? undefined : onSwap}
+          networkFee={flow.networkFee ?? "—"}
+          onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
         />
 
         {/* Conditional: disconnected banner, unreachable-contract banner, low-balance banner, OR three-step card */}
-        {!isConnected ? (
+        {!flow.isConnected ? (
           /* Wallet-not-connected banner. Figma: node 1994-6885. */
           <Card
             variant="yellow"
@@ -848,12 +413,12 @@ function Deposit() {
               data-testid="connect-wallet-banner-action"
               variant="primary-dark"
               className="whitespace-nowrap"
-              onClick={connect}
+              onClick={flow.connect}
             >
               Connect
             </Button>
           </Card>
-        ) : isManagerUnreachable ? (
+        ) : flow.isManagerUnreachable ? (
           <Card variant="danger" data-testid="dm-unreachable-banner">
             <p
               data-testid="dm-unreachable-banner-title"
@@ -872,7 +437,7 @@ function Deposit() {
               and RPC connectivity.
             </p>
           </Card>
-        ) : isDeposit && hasBalance === false ? (
+        ) : isDeposit && flow.hasBalance === false ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card
             variant="yellow"
@@ -894,8 +459,8 @@ function Deposit() {
                 className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
               >
                 Minimum amount —{" "}
-                {minDeposit !== undefined && decimals !== undefined
-                  ? `${formatUsdcWhole(minDeposit, decimals)} USDC`
+                {flow.minDeposit !== undefined && flow.decimals !== undefined
+                  ? `${formatUsdcWhole(flow.minDeposit, flow.decimals)} USDC`
                   : "—"}
               </p>
             </div>
@@ -904,95 +469,41 @@ function Deposit() {
               variant="primary-dark"
               className="whitespace-nowrap"
               onClick={copyAddress}
-              disabled={!address}
+              disabled={!flow.address}
             >
               {copied ? "Copied" : "Copy Address"}
             </Button>
           </Card>
-        ) : isDeposit ? (
-          /* Deposit three-step card */
-          <StepsCard
-            data-testid="deposit-steps-card"
-            steps={[
-              {
-                label: "Allow Pipeline to use USDC",
-                actionLabel: "Approve",
-                disabled: !canApprove,
-                loading: isApprovePending,
-                state: step1State,
-                onAction: () => approve?.(amountBig),
-              },
-              {
-                label: "Confirm USDC transfer",
-                actionLabel: "Confirm",
-                disabled: !canConfirm,
-                loading:
-                  requestDeposit.isPending ||
-                  isPendingVerification ||
-                  (requestDeposit.isSuccess &&
-                    !requestIsConfirmed &&
-                    activeRequest === null),
-                state: step2State,
-                onAction: () => requestDeposit.write(amountBig),
-              },
-              {
-                label: "Claim your PLUSD",
-                actionLabel: "Claim",
-                disabled: !canClaim,
-                loading: voucher.status === "pending" || claim.isPending,
-                state: step3State,
-                onAction: () => {
-                  if (requestId === undefined || !voucher.data?.signature)
-                    return;
-                  claim.write(
-                    BigInt(requestId),
-                    voucher.data.signature as `0x${string}`,
-                  );
-                },
-              },
-            ]}
-          />
         ) : (
-          /* Withdraw three-step card */
+          /* Three-step card — shared between deposit and withdraw, EVM and Stellar */
           <StepsCard
-            data-testid="withdraw-steps-card"
+            data-testid={
+              isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
+            }
             steps={[
               {
-                label: "Allow Pipeline to use PLUSD",
-                actionLabel: "Approve",
-                disabled: !canApprove,
-                loading: isApprovePending,
-                state: step1State,
-                onAction: () => approve?.(amountBig),
+                label: flow.step1.label,
+                actionLabel: flow.step1.actionLabel,
+                disabled: flow.step1.disabled,
+                loading: flow.step1.loading,
+                state: flow.step1.state,
+                onAction: flow.step1.onAction,
               },
               {
-                label: "Confirm PLUSD burn",
-                actionLabel: "Confirm",
-                disabled: !canConfirm,
-                loading:
-                  requestWithdrawal.isPending ||
-                  isPendingVerification ||
-                  (requestWithdrawal.isSuccess &&
-                    !requestIsConfirmed &&
-                    activeRequest === null),
-                state: step2State,
-                onAction: () => requestWithdrawal.write(amountBig),
+                label: flow.step2.label,
+                actionLabel: flow.step2.actionLabel,
+                disabled: flow.step2.disabled,
+                loading: flow.step2.loading,
+                state: flow.step2.state,
+                onAction: flow.step2.onAction,
               },
               {
-                label: "Claim your USDC",
-                actionLabel: "Claim",
-                disabled: !canClaim,
-                loading:
-                  voucher.status === "pending" || claimWithdrawal.isPending,
-                state: step3State,
-                onAction: () => {
-                  if (requestId === undefined || !voucher.data?.signature)
-                    return;
-                  claimWithdrawal.write(
-                    BigInt(requestId),
-                    voucher.data.signature as `0x${string}`,
-                  );
-                },
+                label: flow.step3.label,
+                actionLabel: flow.step3.actionLabel,
+                disabled: flow.step3.disabled,
+                loading: flow.step3.loading,
+                state: flow.step3.state,
+                onAction: flow.step3.onAction,
               },
             ]}
           />

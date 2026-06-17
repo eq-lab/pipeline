@@ -51,8 +51,10 @@ import type { CardPadding } from "@pipeline/ui";
 /** Mobile home balance state — drives the earned value display. */
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
-export interface EarnedCardProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+export interface EarnedCardProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   /**
    * Mobile-only: connected balance state.
    * When `"splusd"` (State C), renders "—" as a placeholder earned value

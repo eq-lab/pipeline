@@ -168,6 +168,20 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  useStellarDepositVoucher: (_requestId: string | undefined) => ({
+    data: undefined,
+    status: "idle" as const,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  useStellarWithdrawalVoucher: (_requestId: string | undefined) => ({
+    data: undefined,
+    status: "idle" as const,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 // ── TanStack Router mock ──────────────────────────────────────────────────────

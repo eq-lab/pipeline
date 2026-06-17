@@ -12,7 +12,9 @@ import { Logo } from "@pipeline/ui";
 describe("Logo — color override", () => {
   it("renders with default brand-navy CSS variable as inline style color", () => {
     const { container } = render(<Logo />);
-    const svg = container.querySelector('svg[aria-label="Pipeline"]') as SVGSVGElement | null;
+    const svg = container.querySelector(
+      'svg[aria-label="Pipeline"]',
+    ) as SVGSVGElement | null;
     expect(svg).not.toBeNull();
     // Default: inline style color is the CSS variable token (navy).
     // jsdom does not resolve CSS variables, so we assert the raw style value.
@@ -21,7 +23,9 @@ describe("Logo — color override", () => {
 
   it("caller style prop overrides the default navy — white wins", () => {
     const { container } = render(<Logo style={{ color: "#fff" }} />);
-    const svg = container.querySelector('svg[aria-label="Pipeline"]') as SVGSVGElement | null;
+    const svg = container.querySelector(
+      'svg[aria-label="Pipeline"]',
+    ) as SVGSVGElement | null;
     expect(svg).not.toBeNull();
     // The ...style spread in composedStyle lets caller color take precedence.
     // jsdom normalizes #fff to rgb(255, 255, 255).

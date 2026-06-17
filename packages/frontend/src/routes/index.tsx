@@ -201,7 +201,10 @@ function Home() {
                 mobileHomeState={isConnected ? mobileHomeState : "empty"}
                 mobilePlusdBalance={plusdFormatted}
               />
-              <EarnedCard padding="sm" mobileHomeState={isConnected ? mobileHomeState : undefined} />
+              <EarnedCard
+                padding="sm"
+                mobileHomeState={isConnected ? mobileHomeState : undefined}
+              />
             </div>
 
             {/* Right: StakeCard — fixed 189px wide, 224px tall */}
@@ -220,9 +223,7 @@ function Home() {
           {/* RecentActivityCard — shown on mobile only in States B and C
               (connected with any balance). Per issue #466 answer Q6: if
               there is no activity the entire block is hidden on mobile. */}
-          {isConnected && mobileHomeState !== "empty" && (
-            <RecentActivityCard />
-          )}
+          {isConnected && mobileHomeState !== "empty" && <RecentActivityCard />}
 
           {/* Bottom stats strip — horizontally scrollable on mobile.
               Replaces the WelcomeHeader stats strip which is hidden on mobile. */}

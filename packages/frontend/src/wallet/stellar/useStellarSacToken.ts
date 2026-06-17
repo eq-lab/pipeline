@@ -173,7 +173,10 @@ export function useStellarSacToken({
 
   // ── Query function ────────────────────────────────────────────────────────
 
-  const queryFn = async (): Promise<{ balance: string; hasTrustline: boolean }> => {
+  const queryFn = async (): Promise<{
+    balance: string;
+    hasTrustline: boolean;
+  }> => {
     // Re-read mock at query time.
     const mockVal = readMock(resolvedMockKey, parseBigInt);
     if (mockVal !== undefined) {

@@ -402,7 +402,9 @@ describe("ConnectWalletModal — right image panel", () => {
 
     const rightPanel = document.body.querySelector('div[aria-hidden="true"]');
     expect(rightPanel).not.toBeNull();
-    const logo = rightPanel!.querySelector('svg[aria-label="Pipeline"]') as HTMLElement | null;
+    const logo = rightPanel!.querySelector(
+      'svg[aria-label="Pipeline"]',
+    ) as HTMLElement | null;
     expect(logo).not.toBeNull();
     // The Logo must be white via inline style — jsdom doesn't resolve CSS vars,
     // so we assert the style attribute. jsdom normalizes #fff to rgb(255,255,255).
