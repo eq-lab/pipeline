@@ -81,6 +81,13 @@ export interface TokenInputProps extends Omit<
    * back via `onValueChange`. Only shown when `value` is non-empty and not "0".
    */
   signPrefix?: string;
+  /**
+   * Optional `data-testid` applied directly to the inner numeric `<input>`
+   * element (not the wrapper). The component's own `...rest` spread targets
+   * the wrapper `<div>`, so this prop is the supported way to give tests a
+   * stable handle on the field itself.
+   */
+  inputTestId?: string;
 }
 
 // Outer panel — subtle gray fill, 1px hairline border, 8px radius, uniform 8px padding.
@@ -161,6 +168,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
       onValueChange,
       disabled,
       signPrefix,
+      inputTestId,
       className,
       ...rest
     },
@@ -197,6 +205,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               className={inputClasses}
               placeholder={placeholderValue}
               aria-label={`${tokenLabel} amount`}
+              data-testid={inputTestId}
               // Sizing: wide enough for typical amounts, collapses naturally
               size={8}
               // Controlled mode: when `value` is provided the input is
