@@ -2,6 +2,16 @@
  * React Query hook — fetches the connected wallet's request history from the
  * Pipeline API (`GET /v1/requests?wallet=<address>`).
  *
+ * Chain awareness (OQ1 resolution)
+ * ---------------------------------
+ * The hook switches the wallet address based on the active wallet view
+ * (`useWalletView().kind`):
+ *   - EVM view  → uses the EVM wallet address (`0x…`)
+ *   - Stellar view → uses the Stellar wallet address (`G…`)
+ * No `chain_id` query parameter is added; the backend dispatches by wallet
+ * address format. React Query keys differ per address, so switching the view
+ * automatically invalidates the prior chain's data.
+ *
  * Mock layer
  * ----------
  * The hook is reactive to changes in `pipeline.mock.api.GET./v1/requests*`
@@ -13,7 +23,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
-import { useEvmWallet } from "@/wallet";
+import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { apiFetch } from "./client";
 
@@ -87,7 +97,8 @@ export interface UseRequestsResult {
 /**
  * Returns the connected wallet's request history.
  *
- * - Disabled when the wallet is disconnected (`enabled: false`).
+ * - Switches between EVM and Stellar wallet addresses based on `useWalletView().kind`.
+ * - Disabled when the active chain's wallet is disconnected (`enabled: false`).
  * - Refetches automatically when any `pipeline.mock.*` key changes (same-tab
  *   mock bridge) — keeps the DevTools console experience seamless.
  * - Pass `refetchInterval` to enable background polling (e.g. 60_000 for the
@@ -96,7 +107,19 @@ export interface UseRequestsResult {
 export function useRequests(
   options: UseRequestsOptions = {},
 ): UseRequestsResult {
-  const { address, isConnected } = useEvmWallet();
+  const { kind } = useWalletView();
+  const {
+    address: evmAddress,
+    isConnected: isEvmConnected,
+  } = useEvmWallet();
+  const {
+    address: stellarAddress,
+    isConnected: isStellarConnected,
+  } = useStellarWallet();
+
+  // Select address and connection state based on the active wallet view.
+  const address = kind === "stellar" ? stellarAddress : evmAddress;
+  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
   // Subscribe to mock-key changes — version is included in queryKey to force
   // React Query to issue a fresh fetch when mock data is written.

@@ -56,6 +56,12 @@ const { data, isLoading, error, refetch } = useRequests();
 Disabled when the wallet is disconnected. Automatically refetches when any
 `pipeline.mock.*` key changes (same-tab DevTools writes).
 
+**Chain-aware (issue #552).** When `useWalletView().kind === "stellar"`, the hook
+selects the Stellar G… address (`useStellarWallet().address`) instead of the EVM
+`0x…` address. The query key changes with the address so EVM and Stellar histories
+never mix in the React Query cache. No `chain_id` parameter is added — the backend
+dispatch is handled by the voucher hooks.
+
 ### Types
 
 | Type               | Description                                                                      |
@@ -302,3 +308,18 @@ localStorage.removeItem("pipeline.mock.api.GET./v1/withdrawals/77/voucher");
 
 For wallet mock keys (`pipeline.mock.wallet.*`) see
 [`src/wallet/README.md`](../wallet/README.md).
+
+### Stellar network fee mock keys
+
+The Stellar network fee hook (`useStellarNetworkFeeEstimate`) lives in the wallet
+module but its mock keys are documented here for completeness:
+
+| Key                                                               | Type              | Purpose                                                                                              |
+| ----------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.networkFeeEstimate.deposit`         | JSON string       | Pre-formatted (`"~0.0052 XLM"`) or raw decimal (`"0.0052"`) — bypasses the Soroban RPC simulation   |
+| `pipeline.mock.wallet.stellar.networkFeeEstimate.withdraw`        | JSON string       | Same format as deposit key; used when `direction === "withdraw"`                                     |
+
+When a raw numeric string is stored (e.g. `"0.0052"`), the hook prepends `~` and appends ` XLM`
+automatically. When the key is absent, the hook simulates a representative transaction via the
+Soroban RPC server; if simulation fails or the wallet is disconnected, `feeXlm` is `undefined`
+and the page renders `—`.
