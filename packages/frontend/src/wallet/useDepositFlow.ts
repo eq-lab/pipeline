@@ -175,6 +175,15 @@ function formatStellarBalance(raw: bigint, decimals: number): string {
   }).format(Number(raw) / 10 ** decimals);
 }
 
+function parseRequestId(value: string | undefined): bigint | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return BigInt(value);
+  } catch {
+    return undefined;
+  }
+}
+
 // ── useDepositFlow ────────────────────────────────────────────────────────────
 
 /**
@@ -304,8 +313,7 @@ export function useDepositFlow(
       )[0] ?? null;
 
   const evmDepositRequestId: string | undefined =
-    evmDepositActiveRequest?.request_id ??
-    evmRequestDeposit.data?.requestId;
+    evmDepositActiveRequest?.request_id ?? evmRequestDeposit.data?.requestId;
   const evmWithdrawRequestId: string | undefined =
     evmWithdrawActiveRequest?.request_id ??
     evmRequestWithdrawal.data?.requestId;
@@ -326,12 +334,10 @@ export function useDepositFlow(
   const evmWithdrawIsPendingVerification =
     evmWithdrawActiveRequest?.status === "PendingVerification";
 
-  const evmDepositVoucherRequestId = evmDepositIsPendingClaim
-    ? evmDepositRequestId
-    : undefined;
-  const evmWithdrawVoucherRequestId = evmWithdrawIsPendingClaim
-    ? evmWithdrawRequestId
-    : undefined;
+  const evmDepositVoucherRequestId =
+    !isStellar && evmDepositIsPendingClaim ? evmDepositRequestId : undefined;
+  const evmWithdrawVoucherRequestId =
+    !isStellar && evmWithdrawIsPendingClaim ? evmWithdrawRequestId : undefined;
 
   const evmDepositVoucher = useDepositVoucher(evmDepositVoucherRequestId);
   const evmWithdrawVoucher = useWithdrawalVoucher(evmWithdrawVoucherRequestId);
@@ -367,28 +373,36 @@ export function useDepositFlow(
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )[0] ?? null;
 
-  // Stellar request IDs — from write result or inflight localStorage
+  // Stellar request IDs — keep one canonical id source so voucher fetch,
+  // on-chain polling, and claim submission cannot drift apart.
+  const stellarDepositApiRequestIdBigInt = parseRequestId(
+    stellarDepositActiveRequest?.request_id,
+  );
+  const stellarWithdrawApiRequestIdBigInt = parseRequestId(
+    stellarWithdrawActiveRequest?.request_id,
+  );
+
   const stellarDepositRequestIdBigInt: bigint | undefined =
+    stellarDepositApiRequestIdBigInt ??
     stellarRequestDeposit.data?.requestId ??
     (stellarDepositInflight?.requestId !== undefined
-      ? BigInt(stellarDepositInflight.requestId)
+      ? parseRequestId(stellarDepositInflight.requestId)
       : undefined);
   const stellarWithdrawRequestIdBigInt: bigint | undefined =
+    stellarWithdrawApiRequestIdBigInt ??
     stellarRequestWithdrawal.data?.requestId ??
     (stellarWithdrawInflight?.requestId !== undefined
-      ? BigInt(stellarWithdrawInflight.requestId)
+      ? parseRequestId(stellarWithdrawInflight.requestId)
       : undefined);
 
   const stellarDepositRequestIdStr: string | undefined =
-    stellarDepositActiveRequest?.request_id ??
-    (stellarDepositRequestIdBigInt !== undefined
+    stellarDepositRequestIdBigInt !== undefined
       ? stellarDepositRequestIdBigInt.toString()
-      : undefined);
+      : undefined;
   const stellarWithdrawRequestIdStr: string | undefined =
-    stellarWithdrawActiveRequest?.request_id ??
-    (stellarWithdrawRequestIdBigInt !== undefined
+    stellarWithdrawRequestIdBigInt !== undefined
       ? stellarWithdrawRequestIdBigInt.toString()
-      : undefined);
+      : undefined;
 
   // On-chain request reads — polls for claimed state
   const stellarDepositOnChainReq = useStellarDepositRequest(
@@ -427,12 +441,14 @@ export function useDepositFlow(
       stellarWithdrawOnChainReq.request === undefined);
 
   // Stellar vouchers
-  const stellarDepositVoucherRequestId = stellarDepositIsPendingClaim
-    ? stellarDepositRequestIdStr
-    : undefined;
-  const stellarWithdrawVoucherRequestId = stellarWithdrawIsPendingClaim
-    ? stellarWithdrawRequestIdStr
-    : undefined;
+  const stellarDepositVoucherRequestId =
+    isStellar && stellarDepositIsPendingClaim
+      ? stellarDepositRequestIdStr
+      : undefined;
+  const stellarWithdrawVoucherRequestId =
+    isStellar && stellarWithdrawIsPendingClaim
+      ? stellarWithdrawRequestIdStr
+      : undefined;
 
   const stellarDepositVoucher = useStellarDepositVoucher(
     stellarDepositVoucherRequestId,
@@ -447,9 +463,7 @@ export function useDepositFlow(
     amountBig > 0n &&
     depositAllowance < amountBig;
   const evmDepositMeetsMin =
-    evmMinDeposit !== undefined &&
-    amountBig > 0n &&
-    amountBig >= evmMinDeposit;
+    evmMinDeposit !== undefined && amountBig > 0n && amountBig >= evmMinDeposit;
   const evmCanWithdraw =
     evmWithdrawDecimals !== undefined &&
     evmWithdrawBalance !== undefined &&
@@ -521,12 +535,16 @@ export function useDepositFlow(
           );
         }
       } else {
-        if (evmWithdrawDecimals === undefined || evmWithdrawBalance === undefined)
+        if (
+          evmWithdrawDecimals === undefined ||
+          evmWithdrawBalance === undefined
+        )
           return;
         let next: bigint;
         if (idx === 0) next = ((evmWithdrawBalance as bigint) * 25n) / 100n;
         else if (idx === 1) next = (evmWithdrawBalance as bigint) / 2n;
-        else if (idx === 2) next = ((evmWithdrawBalance as bigint) * 75n) / 100n;
+        else if (idx === 2)
+          next = ((evmWithdrawBalance as bigint) * 75n) / 100n;
         else if (idx === 3) next = evmWithdrawBalance as bigint;
         else return;
         setAmountInput(formatUsdc(next, evmWithdrawDecimals).replace(/,/g, ""));
@@ -570,12 +588,7 @@ export function useDepositFlow(
         setAmountInput(formatUsdc(next, SAC_DECIMALS).replace(/,/g, ""));
       }
     },
-    [
-      isDeposit,
-      stellarUsdcBalanceRaw,
-      stellarPlusdBalanceRaw,
-      setAmountInput,
-    ],
+    [isDeposit, stellarUsdcBalanceRaw, stellarPlusdBalanceRaw, setAmountInput],
   );
 
   // ── Select the active state by chain ──────────────────────────────────────
@@ -605,7 +618,9 @@ export function useDepositFlow(
         ? true
         : undefined;
 
-    const evmMeetsMin = isDeposit ? evmDepositMeetsMin : (evmCanWithdraw ?? false);
+    const evmMeetsMin = isDeposit
+      ? evmDepositMeetsMin
+      : (evmCanWithdraw ?? false);
 
     const evmActiveRequest = isDeposit
       ? evmDepositActiveRequest
@@ -660,8 +675,12 @@ export function useDepositFlow(
       !evmClaimWithdrawal.isPending &&
       !evmClaimWithdrawal.isSuccess;
 
-    const canEvmApprove = isDeposit ? canEvmApproveDeposit : canEvmApproveWithdraw;
-    const canEvmConfirm = isDeposit ? canEvmConfirmDeposit : canEvmConfirmWithdraw;
+    const canEvmApprove = isDeposit
+      ? canEvmApproveDeposit
+      : canEvmApproveWithdraw;
+    const canEvmConfirm = isDeposit
+      ? canEvmConfirmDeposit
+      : canEvmConfirmWithdraw;
     const canEvmClaim = isDeposit ? canEvmClaimDeposit : canEvmClaimWithdraw;
 
     // Step states
@@ -689,9 +708,15 @@ export function useDepositFlow(
       ? "success"
       : "idle";
 
-    const evmStep1State = isDeposit ? evmDepositStep1State : evmWithdrawStep1State;
-    const evmStep2State = isDeposit ? evmDepositStep2State : evmWithdrawStep2State;
-    const evmStep3State = isDeposit ? evmDepositStep3State : evmWithdrawStep3State;
+    const evmStep1State = isDeposit
+      ? evmDepositStep1State
+      : evmWithdrawStep1State;
+    const evmStep2State = isDeposit
+      ? evmDepositStep2State
+      : evmWithdrawStep2State;
+    const evmStep3State = isDeposit
+      ? evmDepositStep3State
+      : evmWithdrawStep3State;
 
     const evmIsDepositInputFaded =
       isEvmConnected &&
@@ -799,8 +824,12 @@ export function useDepositFlow(
         },
       },
       step1Tx: {
-        isPending: isDeposit ? isDepositApprovePending : isWithdrawApprovePending,
-        isSuccess: isDeposit ? isDepositApproveSuccess : isWithdrawApproveSuccess,
+        isPending: isDeposit
+          ? isDepositApprovePending
+          : isWithdrawApprovePending,
+        isSuccess: isDeposit
+          ? isDepositApproveSuccess
+          : isWithdrawApproveSuccess,
         error: null,
       },
       step2Tx: {
@@ -813,8 +842,12 @@ export function useDepositFlow(
         error: isDeposit ? evmRequestDeposit.error : evmRequestWithdrawal.error,
       },
       step3Tx: {
-        isPending: isDeposit ? evmClaim.isPending : evmClaimWithdrawal.isPending,
-        isSuccess: isDeposit ? evmClaim.isSuccess : evmClaimWithdrawal.isSuccess,
+        isPending: isDeposit
+          ? evmClaim.isPending
+          : evmClaimWithdrawal.isPending,
+        isSuccess: isDeposit
+          ? evmClaim.isSuccess
+          : evmClaimWithdrawal.isSuccess,
         error: isDeposit ? evmClaim.error : evmClaimWithdrawal.error,
       },
       isAnyTxInFlight: evmIsAnyTxInFlight,
@@ -822,7 +855,9 @@ export function useDepositFlow(
       networkFee: evmNetworkFee,
       isManagerUnreachable: isEvmManagerUnreachable,
       isManagerLoading,
-      refetchBalance: isDeposit ? refetchDepositBalance : refetchWithdrawBalance,
+      refetchBalance: isDeposit
+        ? refetchDepositBalance
+        : refetchWithdrawBalance,
       onQuickAmount: onEvmDepositQuickAmount,
     };
   }
@@ -866,7 +901,9 @@ export function useDepositFlow(
   const stellarIsPendingVerification = isDeposit
     ? stellarDepositIsPendingVerification
     : stellarWithdrawIsPendingVerification;
-  const stellarVoucher = isDeposit ? stellarDepositVoucher : stellarWithdrawVoucher;
+  const stellarVoucher = isDeposit
+    ? stellarDepositVoucher
+    : stellarWithdrawVoucher;
 
   // Step 1 state (trustline)
   const stellarDepositStep1State: StepState =
@@ -876,7 +913,8 @@ export function useDepositFlow(
       : "idle";
   const stellarWithdrawStep1State: StepState =
     !withdrawNeedsTrustline &&
-    (stellarWithdrawRequestIsConfirmed || (amountBig > 0n && isStellarConnected))
+    (stellarWithdrawRequestIsConfirmed ||
+      (amountBig > 0n && isStellarConnected))
       ? "success"
       : "idle";
   const stellarStep1State = isDeposit
@@ -1010,9 +1048,10 @@ export function useDepositFlow(
     hasBalance: stellarHasBalance,
     meetsMin: stellarMeetsMin,
     isAmountLocked: stellarRequestIsConfirmed,
-    lockedAmountRaw: stellarInflight?.amount !== undefined
-      ? BigInt(stellarInflight.amount)
-      : undefined,
+    lockedAmountRaw:
+      stellarInflight?.amount !== undefined
+        ? BigInt(stellarInflight.amount)
+        : undefined,
     requestId: stellarRequestId,
     requestIsConfirmed: stellarRequestIsConfirmed,
     isPendingVerification: stellarIsPendingVerification,
@@ -1044,13 +1083,15 @@ export function useDepositFlow(
       state: stellarStep3State,
       loading: isDeposit
         ? stellarVoucher.status === "pending" || stellarClaim.isPending
-        : stellarVoucher.status === "pending" || stellarClaimWithdrawal.isPending,
+        : stellarVoucher.status === "pending" ||
+          stellarClaimWithdrawal.isPending,
       disabled: !canStellarStep3,
       onAction: () => {
         if (stellarRequestIdBigInt === undefined) return;
-        const sig = stellarVoucher.status === "ready"
-          ? (stellarVoucher as { signatureBytes?: Uint8Array }).signatureBytes
-          : undefined;
+        const sig =
+          stellarVoucher.status === "ready"
+            ? (stellarVoucher as { signatureBytes?: Uint8Array }).signatureBytes
+            : undefined;
         if (!sig) return;
         if (isDeposit) {
           stellarClaim.write(stellarRequestIdBigInt, sig);
@@ -1076,8 +1117,12 @@ export function useDepositFlow(
         : stellarRequestWithdrawal.error,
     },
     step3Tx: {
-      isPending: isDeposit ? stellarClaim.isPending : stellarClaimWithdrawal.isPending,
-      isSuccess: isDeposit ? stellarClaim.isSuccess : stellarClaimWithdrawal.isSuccess,
+      isPending: isDeposit
+        ? stellarClaim.isPending
+        : stellarClaimWithdrawal.isPending,
+      isSuccess: isDeposit
+        ? stellarClaim.isSuccess
+        : stellarClaimWithdrawal.isSuccess,
       error: isDeposit ? stellarClaim.error : stellarClaimWithdrawal.error,
     },
     isAnyTxInFlight: stellarIsAnyTxInFlight,
@@ -1085,7 +1130,9 @@ export function useDepositFlow(
     networkFee: stellarNetworkFee,
     isManagerUnreachable: false,
     isManagerLoading: stellarManagerLoading,
-    refetchBalance: isDeposit ? usdcSac.refetchBalance : plusdSac.refetchBalance,
+    refetchBalance: isDeposit
+      ? usdcSac.refetchBalance
+      : plusdSac.refetchBalance,
     onQuickAmount: onStellarQuickAmount,
   };
 }

@@ -73,7 +73,7 @@ The manager works **only on sub-issues of an epic** (`epic`-labelled Issue, nati
    - no `blocked` label;
    - unassigned or assigned to `@me`;
    - matches the session filter (`frontend` / `backend` / `trivial`); `qa` and `docs` sub-issues are picked only by `all` (no filter).
-   **Epic-complete QA trigger** — special case that bypasses the rules above: while enumerating an epic's sub-issues, if **all non-`qa` sub-issues are closed** and the epic's `qa` issue is still **open** (typically `blocked` — `blocked` does not disqualify it here) and unassigned, the `qa` issue is a candidate for the **QA flow** regardless of its status label and session filter. This is the final QA pass that lets the epic close.
+   **Epic-complete QA trigger** — special case that bypasses the rules above: while enumerating an epic's sub-issues, if **all non-`qa` sub-issues are closed** and the epic's `qa` issue is still **open** (typically `blocked` — `blocked` does not disqualify it here) and unassigned, the `qa` issue is a candidate for the **QA flow** regardless of its status label and session filter. This is the epic's final QA pass.
 3. Order: `priority` first, then by issue number ascending.
 4. Proceed with the chosen Issue immediately — no confirmation pause.
 5. No candidates and nothing to resume → the loop is done. Report and stop.
@@ -176,11 +176,11 @@ No planning, no gates, no testing. Quality bar: lint clean, build clean, tests g
 Entry — either of:
 
 - **Human-requested**: a `qa` sub-issue in `backlog` (ISSUE_PROTOCOL §5.3). The manager never flips a `qa` issue to `backlog` itself.
-- **Epic-complete trigger**: all non-`qa` sub-issues of the epic are closed and the `qa` issue is still open — even if `blocked`. The epic cannot close without a green final pass, so the manager runs it without waiting for a human.
+- **Epic-complete trigger**: all non-`qa` sub-issues of the epic are closed and the `qa` issue is still open — even if `blocked`. This is the epic's final QA pass, so the manager runs it without waiting for a human. (The epic itself is never closed — see Rules.)
 
 Steps:
 
-1. Launch `ux-tester` (prompt above — `model: "opus"`, `EFFORT: medium`, argument is the **epic** number). The ux-tester owns the `qa` issue end-to-end: it claims it (`in-progress`), executes the user-stories docs under `docs/user-stories/epic-<N>/`, verifies against the epic's Figma references, files defects as `bug` sub-issues of the epic, posts the results comment, and finishes with the `qa` issue back to `blocked` — or closed (together with the epic) when all siblings are closed and the pass is green. The manager does **not** touch the `qa` issue's labels.
+1. Launch `ux-tester` (prompt above — `model: "opus"`, `EFFORT: medium`, argument is the **epic** number). The ux-tester owns the `qa` issue end-to-end: it claims it (`in-progress`), executes the user-stories docs under `docs/user-stories/epic-<N>/`, verifies against the epic's Figma references, files defects as `bug` sub-issues of the epic, posts the results comment, and finishes with the `qa` issue back to `blocked` — or closed (the epic stays open) when all siblings are closed and the pass is green. The manager does **not** touch the `qa` issue's labels.
 2. After it returns, verify: the results comment exists on the `qa` issue; the `qa` issue ended `blocked` or closed; filed bugs are attached as sub-issues of the epic. Repair any gap (e.g. attach a missed bug via `POST .../issues/<epic>/sub_issues`).
 3. **Commit and admin-merge the QA PR — mandatory, not conditional.** The ux-tester **never commits**: it updates `docs/QUALITY_SCORE.md` (and the results history) in the working tree and leaves committing to the manager (ux-tester SKILL §"Do not commit"). So a QA pass almost always leaves an **uncommitted change** — confirm with `git status --short`. Whenever any file changed, you **must** carry it through to a merged PR before this task ends:
    - branch (`chore/qa-epic-<N>`), `git add -A`, commit `QA pass for epic #<N>`, push, `gh pr create` then `gh pr ready` (no `Closes #` — QA PRs are docs-only and close no Issue);
@@ -206,7 +206,7 @@ Steps:
 - The manager does **not** write code, tests, plans, specs, or reviews itself — it delegates.
 - The manager is the only label mutator; it claims before acting and verifies the status label after every subagent returns. Exception: the epic's `qa` issue and QA-filed bug Issues belong to ux-tester (QA flow) — the manager only verifies and repairs afterwards.
 - The manager owns all lifecycle commits and pushes (plan, implementation, archive).
-- Never close Issues manually — `Closes #<n>` in the PR body does it on merge. The `qa` issue and its epic are closed by ux-tester when the final pass is green (no PR carries them); the manager closes them only when repairing a gap ux-tester left.
+- Never close Issues manually — `Closes #<n>` in the PR body does it on merge. The `qa` issue is closed by ux-tester when the final pass is green (no PR carries it); the manager only repairs a gap ux-tester left. **Epics are never closed by any agent — they stay open permanently, even once every sub-issue is closed and the final pass is green.**
 - Merge policy per `AGENTS.md`: the manager admin-merges after explicit green checks in two cases — trivial-frontend PRs (Flow C) and the QA docs PR (QA flow, step 3); everything else is human-merge. The QA docs PR merge is **mandatory**: a QA pass leaves uncommitted artifacts (the ux-tester never commits), and the manager must commit, push, and admin-merge them. Never finish a QA task — or, in loop mode, advance to the next candidate — with a QA working-tree change left uncommitted; the only allowed non-merge outcome is a PR parked on a failing check.
 - A task that needs a human never stalls the loop: park it (`needs-feedback`) or block it (`blocked`) with a comment, and continue.
 

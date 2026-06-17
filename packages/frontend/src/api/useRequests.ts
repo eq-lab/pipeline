@@ -108,14 +108,9 @@ export function useRequests(
   options: UseRequestsOptions = {},
 ): UseRequestsResult {
   const { kind } = useWalletView();
-  const {
-    address: evmAddress,
-    isConnected: isEvmConnected,
-  } = useEvmWallet();
-  const {
-    address: stellarAddress,
-    isConnected: isStellarConnected,
-  } = useStellarWallet();
+  const { address: evmAddress, isConnected: isEvmConnected } = useEvmWallet();
+  const { address: stellarAddress, isConnected: isStellarConnected } =
+    useStellarWallet();
 
   // Select address and connection state based on the active wallet view.
   const address = kind === "stellar" ? stellarAddress : evmAddress;

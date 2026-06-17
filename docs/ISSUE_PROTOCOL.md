@@ -21,7 +21,7 @@ All dev work is grouped under an epic. An epic describes one business feature.
 - **Structure:** all work issues (`implementation`, `bug`, `docs`, `qa`) are attached as **native GitHub sub-issues** of the epic. GitHub renders the progress automatically.
 - **A `qa` sub-issue is created together with the epic** (see `qa` below).
 - Epics carry no status label — their state is the aggregate of their sub-issues.
-- **Done when:** all sub-issues are closed and the final QA pass is green. The `qa` sub-issue closes last, then the epic.
+- **Done when:** all sub-issues are closed and the final QA pass is green; the `qa` sub-issue closes last. **The epic itself is never closed — it stays open permanently as the feature's record, even once every sub-issue is closed.**
 
 ### `implementation` — code work
 
@@ -43,7 +43,7 @@ All dev work is grouped under an epic. An epic describes one business feature.
 
 ### `qa` — testing pass
 
-One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — a **human requests a pass** by flipping the `qa` issue to `backlog`, and it happens when an agent picks the issue up. Exception: the **final pass** — when all non-`qa` sibling sub-issues are closed and the `qa` issue is still open (even `blocked`), an agent may run the pass without a human request, since the epic cannot close without it (§5.3).
+One `qa` issue per epic, created together with the epic as its sub-issue. Manual testing does **not** happen after each task — a **human requests a pass** by flipping the `qa` issue to `backlog`, and it happens when an agent picks the issue up. Exception: the **final pass** — when all non-`qa` sibling sub-issues are closed and the `qa` issue is still open (even `blocked`), an agent may run the pass without a human request, since it is the epic's final QA pass (§5.3).
 
 - **Body:** points to the epic's user-stories directory (`docs/user-stories/epic-<N>/`, see §6). The QA agent discovers the stories to run from that directory; verification history lives in the results comments.
 - **Lifecycle:**
@@ -51,7 +51,7 @@ One `qa` issue per epic, created together with the epic as its sub-issue. Manual
   2. A human flips it to `backlog` when they want a testing pass. Agents never make this transition (§5.3).
   3. A QA agent claims it (`in-progress`), executes every user-stories doc in the epic's directory (at minimum those not yet verified per the latest results comment), files found defects as `bug` sub-issues of the same epic, and posts a results comment (stories run, pass/fail per story, bugs filed).
   4. After posting results → back to `blocked` (the next pass is again human-requested).
-  5. When all sibling sub-issues are closed and the latest pass is green → close the `qa` issue, then the epic.
+  5. When all sibling sub-issues are closed and the latest pass is green → close the `qa` issue. The epic is **never** closed — it stays open permanently.
 
 ## 3. Labels
 
@@ -131,7 +131,7 @@ gh issue edit <number> --add-assignee @me --remove-label backlog --add-label in-
 
 Mid-epic QA passes are **requested by humans**, not triggered by agents. Implementing agents only commit user-stories docs in their PRs (§6) — they never edit, comment on, or relabel the epic's `qa` issue. When a human wants a testing pass, they flip the `qa` issue `blocked` → `backlog`; the QA agent that claims it discovers the stories to run from `docs/user-stories/epic-<N>/`.
 
-**Final-pass exception:** when **all non-`qa` sub-issues of an epic are closed** and the `qa` issue is still open, an orchestrating agent may start the pass directly — claiming the `qa` issue from `blocked` or `backlog` — because the epic can only close after a green final pass.
+**Final-pass exception:** when **all non-`qa` sub-issues of an epic are closed** and the `qa` issue is still open, an orchestrating agent may start the pass directly — claiming the `qa` issue from `blocked` or `backlog` — because it is the epic's final QA pass.
 
 ### 5.4 Discovering work
 

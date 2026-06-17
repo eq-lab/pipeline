@@ -77,7 +77,10 @@ vi.mock("@creit.tech/stellar-wallets-kit", () => ({
     init: vi.fn(),
   }),
   WalletNetwork: { TESTNET: "TESTNET" },
-  Networks: { TESTNET: "Test SDF Network ; September 2015", PUBLIC: "Public Global Stellar Network ; September 2015" },
+  Networks: {
+    TESTNET: "Test SDF Network ; September 2015",
+    PUBLIC: "Public Global Stellar Network ; September 2015",
+  },
 }));
 
 vi.mock("@creit.tech/stellar-wallets-kit/modules/utils", () => ({
@@ -174,7 +177,10 @@ function setConnectedWallet() {
     isConnected: true,
   });
   mockUseWalletView.mockReturnValue({ kind: "evm", setKind: vi.fn() });
-  mockUseStellarWallet.mockReturnValue({ address: undefined, isConnected: false });
+  mockUseStellarWallet.mockReturnValue({
+    address: undefined,
+    isConnected: false,
+  });
   localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
   localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
 }
@@ -182,7 +188,10 @@ function setConnectedWallet() {
 function setDisconnectedWallet() {
   mockUseAccount.mockReturnValue({ address: undefined, isConnected: false });
   mockUseWalletView.mockReturnValue({ kind: "evm", setKind: vi.fn() });
-  mockUseStellarWallet.mockReturnValue({ address: undefined, isConnected: false });
+  mockUseStellarWallet.mockReturnValue({
+    address: undefined,
+    isConnected: false,
+  });
 }
 
 function setConnectedStellarWallet() {

@@ -571,9 +571,7 @@ describe("TopBar — mobile responsive classes", () => {
     renderTopBar("/");
 
     // The <header> element is the landmark with role="banner".
-    await waitFor(() =>
-      expect(screen.getByRole("banner")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("banner")).toBeInTheDocument());
     const header = screen.getByRole("banner");
     // Mobile: 8px padding (Figma 1989:9052 — 56px total = 8+40+8).
     expect(header.className).toContain("p-2");
@@ -587,7 +585,9 @@ describe("TopBar — mobile responsive classes", () => {
     // The nav element rendered for desktop has `hidden md:flex` on its parent wrapper.
     // We target the nav itself — its parent div carries the responsive classes.
     await waitFor(() =>
-      expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("navigation", { name: "Primary" }),
+      ).toBeInTheDocument(),
     );
     const nav = screen.getByRole("navigation", { name: "Primary" });
     // The nav element itself carries `hidden md:flex` per the implementation.
@@ -599,9 +599,7 @@ describe("TopBar — mobile responsive classes", () => {
     renderTopBar("/");
 
     await waitFor(() =>
-      expect(
-        screen.getByTestId("mobile-hamburger"),
-      ).toBeInTheDocument(),
+      expect(screen.getByTestId("mobile-hamburger")).toBeInTheDocument(),
     );
     const hamburger = screen.getByTestId("mobile-hamburger");
     // The parent container carries `md:hidden`; the hamburger is inside it.

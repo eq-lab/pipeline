@@ -35,13 +35,23 @@ vi.mock("@stellar/stellar-sdk", () => {
     }
   }
   class MockServer {
-    getAccount(id: string) { return mockGetAccount(id); }
-    simulateTransaction(tx: unknown) { return mockSimulateTransaction(tx); }
+    getAccount(id: string) {
+      return mockGetAccount(id);
+    }
+    simulateTransaction(tx: unknown) {
+      return mockSimulateTransaction(tx);
+    }
   }
   class MockTransactionBuilder {
-    addOperation() { return this; }
-    setTimeout() { return this; }
-    build() { return {}; }
+    addOperation() {
+      return this;
+    }
+    setTimeout() {
+      return this;
+    }
+    build() {
+      return {};
+    }
   }
 
   return {
@@ -56,7 +66,9 @@ vi.mock("@stellar/stellar-sdk", () => {
     nativeToScVal: vi.fn((val) => val),
     Address: class {
       constructor(public addr: string) {}
-      toScVal() { return {}; }
+      toScVal() {
+        return {};
+      }
     },
     xdr: { ScVal: { scvBytes: vi.fn().mockReturnValue({}) } },
   };
@@ -67,7 +79,9 @@ vi.mock("@stellar/stellar-sdk", () => {
 const mockDepositManagerId = { value: "" };
 
 vi.mock("./chain", () => ({
-  get depositManagerId() { return mockDepositManagerId.value; },
+  get depositManagerId() {
+    return mockDepositManagerId.value;
+  },
   sorobanRpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: "Test SDF Network ; September 2015",
 }));
@@ -77,7 +91,8 @@ vi.mock("./chain", () => ({
 const DM_ID = "CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI";
 const USDC_ID = "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
 const PLUSD_ID = "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN";
-const PROTOCOL_ISSUER = "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
+const PROTOCOL_ISSUER =
+  "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
 
 const MOCK_USDC_KEY = "pipeline.mock.wallet.stellar.contract.usdc";
 const MOCK_PLUSD_KEY = "pipeline.mock.wallet.stellar.contract.plusd";
@@ -98,7 +113,9 @@ describe("useStellarDepositManagerAddresses — empty env", () => {
     localStorage.clear();
     mockDepositManagerId.value = "";
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("returns undefined addresses without making an RPC call", () => {
     const { result } = renderHook(() => useStellarDepositManagerAddresses(), {
@@ -120,7 +137,9 @@ describe("useStellarDepositManagerAddresses — mock keys", () => {
     localStorage.setItem(MOCK_USDC_KEY, USDC_ID);
     localStorage.setItem(MOCK_PLUSD_KEY, PLUSD_ID);
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("returns mock addresses; no RPC call", () => {
     const { result } = renderHook(() => useStellarDepositManagerAddresses(), {
@@ -143,9 +162,13 @@ describe("useStellarDepositManagerAddresses — partial mock (one key)", () => {
     mockDepositManagerId.value = DM_ID;
     // Only USDC mock set — PLUSD missing → mock path inactive
     localStorage.setItem(MOCK_USDC_KEY, USDC_ID);
-    mockGetAccount.mockRejectedValue(new Error("dummy — query won't run in test"));
+    mockGetAccount.mockRejectedValue(
+      new Error("dummy — query won't run in test"),
+    );
   });
-  afterEach(() => { localStorage.clear(); });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("does not use mock path when only one key is set", () => {
     const { result } = renderHook(() => useStellarDepositManagerAddresses(), {

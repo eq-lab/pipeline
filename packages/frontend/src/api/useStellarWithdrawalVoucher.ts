@@ -161,8 +161,9 @@ export function useStellarWithdrawalVoucher(
   }
 
   // Decode signatureBytes from hex.
-  const signatureBytes =
-    query.data?.signature ? hexToBytes(query.data.signature) : undefined;
+  const signatureBytes = query.data?.signature
+    ? hexToBytes(query.data.signature)
+    : undefined;
 
   return {
     data: query.data,

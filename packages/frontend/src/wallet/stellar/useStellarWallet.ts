@@ -210,10 +210,7 @@ export interface UseStellarConnectorsResult {
    * If the wallet is not installed/available, the kit will throw; callers
    * should handle errors (e.g. open the wallet's website in a new tab).
    */
-  connectWallet(
-    walletId: string,
-    onUnavailable?: () => void,
-  ): Promise<void>;
+  connectWallet(walletId: string, onUnavailable?: () => void): Promise<void>;
 }
 
 export function useStellarConnectors(): UseStellarConnectorsResult {
@@ -238,7 +235,8 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
       const doConnect = async () => {
         try {
           StellarWalletsKit.setWallet(walletId);
-          const { address: newAddress } = await StellarWalletsKit.fetchAddress();
+          const { address: newAddress } =
+            await StellarWalletsKit.fetchAddress();
           if (!unmountedRef.current) {
             setRealAddress(newAddress);
           }

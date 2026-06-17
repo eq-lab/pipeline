@@ -165,7 +165,9 @@ describe("Home page — disconnected state", () => {
     // disconnected; check that at least one heading is present.
     renderHome();
     await waitFor(() => {
-      const headings = screen.getAllByRole("heading", { name: "Connect Wallet" });
+      const headings = screen.getAllByRole("heading", {
+        name: "Connect Wallet",
+      });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -187,7 +189,9 @@ describe("Home page — disconnected state", () => {
     renderHome();
 
     // Both mobile and desktop blocks render a "Connect" button; click the first.
-    const connectBtns = await screen.findAllByRole("button", { name: "Connect" });
+    const connectBtns = await screen.findAllByRole("button", {
+      name: "Connect",
+    });
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(connectBtns[0]!);
 

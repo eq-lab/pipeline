@@ -74,9 +74,7 @@ export class DepositManagerClient {
    * Uses a dummy zero-sequence account for read-only simulations that don't
    * require auth.
    */
-  private async simulateReadCall(
-    operation: xdr.Operation,
-  ): Promise<xdr.ScVal> {
+  private async simulateReadCall(operation: xdr.Operation): Promise<xdr.ScVal> {
     // Use a dummy Account (zero sequence) as source for the simulation envelope.
     // Soroban RPC accepts this for read-only (view) calls.
     const dummyAccount = new Account(this.contractId, "0");
@@ -92,9 +90,7 @@ export class DepositManagerClient {
     const result = await this.server.simulateTransaction(tx);
 
     if (SorobanRpc.Api.isSimulationError(result)) {
-      throw new Error(
-        `DepositManagerClient simulation error: ${result.error}`,
-      );
+      throw new Error(`DepositManagerClient simulation error: ${result.error}`);
     }
 
     if (!result.result) {

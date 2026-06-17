@@ -100,9 +100,8 @@ export const ConversionCard = React.forwardRef<
 ) {
   // Prefix the PLUSD output value with "+" when non-zero (purely visual).
   // Zero values stay un-prefixed to match the Figma "0" placeholder state.
-  const outputValue = output.value && output.value !== "0"
-    ? `+${output.value}`
-    : output.value;
+  const outputValue =
+    output.value && output.value !== "0" ? `+${output.value}` : output.value;
 
   return (
     /* Outer wrapper: two cards stacked with a 2px gap.
@@ -126,7 +125,8 @@ export const ConversionCard = React.forwardRef<
           signPrefix="−" shows the minus sign (outflow) when a non-zero value
           is present; the underlying input value stays positive. */}
       <div
-        className="relative pt-4 pr-4 pb-6 pl-4 bg-[var(--color-pipeline-surface)] rounded-[var(--radius-pipeline-card-lg)]"
+        data-testid="conversion-input-card"
+        className="relative rounded-[var(--radius-pipeline-card-lg)] bg-[var(--color-pipeline-surface)] pt-4 pr-4 pb-6 pl-4"
       >
         <TokenInput {...input} signPrefix="−" />
 
@@ -157,7 +157,11 @@ export const ConversionCard = React.forwardRef<
           nested within the PLUSD card, matching Figma node 1498-100135.
           TokenAmountDisplay's self-styling (border, bg, radius, padding) is
           suppressed via inline styles so it renders flush inside Card B. */}
-      <Card variant="white" className="flex flex-col gap-2">
+      <Card
+        variant="white"
+        data-testid="conversion-output-card"
+        className="flex flex-col gap-2"
+      >
         {/* PLUSD token row — card chrome stripped via inline styles so it
             sits flush inside the Card B wrapper without a nested border. */}
         <TokenAmountDisplay
@@ -172,7 +176,10 @@ export const ConversionCard = React.forwardRef<
         />
 
         {/* Details: Exchange rate + Network fee — nested inside Card B */}
-        <div className="flex flex-col gap-2 pb-2">
+        <div
+          data-testid="conversion-details"
+          className="flex flex-col gap-2 pb-2"
+        >
           <InfoRow label="Exchange rate" value={exchangeRate} />
           <InfoRow label="Network fee" value={networkFee} />
         </div>

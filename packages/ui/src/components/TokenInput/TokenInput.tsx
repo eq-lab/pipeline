@@ -81,6 +81,13 @@ export interface TokenInputProps extends Omit<
    * back via `onValueChange`. Only shown when `value` is non-empty and not "0".
    */
   signPrefix?: string;
+  /**
+   * Optional `data-testid` applied directly to the inner numeric `<input>`
+   * element (not the wrapper). The component's own `...rest` spread targets
+   * the wrapper `<div>`, so this prop is the supported way to give tests a
+   * stable handle on the field itself.
+   */
+  inputTestId?: string;
 }
 
 // Outer panel — subtle gray fill, 1px hairline border, 8px radius, uniform 8px padding.
@@ -161,6 +168,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
       onValueChange,
       disabled,
       signPrefix,
+      inputTestId,
       className,
       ...rest
     },
@@ -172,9 +180,12 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
     const showSign = signPrefix !== undefined && !!value && value !== "0";
 
     return (
-      <div ref={ref} className={composed} {...rest}>
+      <div ref={ref} data-testid="token-input" className={composed} {...rest}>
         {/* Top row: identity (icon + label + balance) + numeric input */}
-        <div className="flex items-center justify-between pr-2">
+        <div
+          data-testid="token-input-row"
+          className="flex items-center justify-between pr-2"
+        >
           {/* Left: coin icon + labels */}
           <div className={identityClasses}>
             <CoinIcon token={token} size="lg" aria-hidden />
@@ -197,6 +208,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               className={inputClasses}
               placeholder={placeholderValue}
               aria-label={`${tokenLabel} amount`}
+              data-testid={inputTestId}
               // Sizing: wide enough for typical amounts, collapses naturally
               size={8}
               // Controlled mode: when `value` is provided the input is
@@ -211,7 +223,10 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
         </div>
 
         {/* Bottom row: quick-amount chips */}
-        <div className="flex w-full items-center gap-1">
+        <div
+          data-testid="token-input-chips"
+          className="flex w-full items-center gap-1"
+        >
           {quickAmounts.map((item, idx) => (
             <QuickAmountChip
               key={idx}

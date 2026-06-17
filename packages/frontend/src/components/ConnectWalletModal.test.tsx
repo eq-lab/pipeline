@@ -396,6 +396,21 @@ describe("ConnectWalletModal — right image panel", () => {
     expect(heroImg!.className).toContain("object-cover");
   });
 
+  it("overlaid Logo SVG has explicit white color (guards against navy regression)", async () => {
+    renderModal();
+    await screen.findByRole("dialog", { name: "Connect Wallet" });
+
+    const rightPanel = document.body.querySelector('div[aria-hidden="true"]');
+    expect(rightPanel).not.toBeNull();
+    const logo = rightPanel!.querySelector(
+      'svg[aria-label="Pipeline"]',
+    ) as HTMLElement | null;
+    expect(logo).not.toBeNull();
+    // The Logo must be white via inline style — jsdom doesn't resolve CSS vars,
+    // so we assert the style attribute. jsdom normalizes #fff to rgb(255,255,255).
+    expect(logo!.style.color).toBe("rgb(255, 255, 255)");
+  });
+
   it("hero ?url import resolves to a non-empty string", async () => {
     // Mirror the asset-import-integrity pattern from HeroIcon.test.tsx.
     // Vitest resolves ?url imports to data-URIs in jsdom — a non-empty,

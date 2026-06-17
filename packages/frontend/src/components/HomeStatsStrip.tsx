@@ -70,11 +70,7 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const { data: statsData } = useStats();
   const apyValue = formatApy(statsData?.vaults[0]?.apy);
 
-  const composed = [
-    "flex items-center gap-4",
-    "shrink-0",
-    className,
-  ]
+  const composed = ["flex items-center gap-4", "shrink-0", className]
     .filter(Boolean)
     .join(" ");
 

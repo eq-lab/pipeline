@@ -65,9 +65,7 @@ export class WithdrawalQueueClient {
 
   // ── Internal simulate helper ───────────────────────────────────────────────
 
-  private async simulateReadCall(
-    operation: xdr.Operation,
-  ): Promise<xdr.ScVal> {
+  private async simulateReadCall(operation: xdr.Operation): Promise<xdr.ScVal> {
     const dummyAccount = new Account(this.contractId, "0");
 
     const tx = new TransactionBuilder(dummyAccount, {

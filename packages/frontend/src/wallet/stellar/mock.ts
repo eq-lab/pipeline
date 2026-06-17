@@ -95,7 +95,8 @@ export const STELLAR_MOCK_KEYS = {
    * with that object immediately (no RPC, no signing).
    * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.depositManager.requestDeposit", '{"hash":"abc123","requestId":"42"}')`
    */
-  depositManagerRequestDeposit: "pipeline.mock.wallet.stellar.depositManager.requestDeposit",
+  depositManagerRequestDeposit:
+    "pipeline.mock.wallet.stellar.depositManager.requestDeposit",
 
   /**
    * Mock result for `useStellarClaim`.
@@ -120,7 +121,8 @@ export const STELLAR_MOCK_KEYS = {
    * with that object immediately (no RPC, no signing).
    * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal", '{"hash":"abc123","requestId":"42"}')`
    */
-  withdrawalQueueRequestWithdrawal: "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
+  withdrawalQueueRequestWithdrawal:
+    "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
 
   /**
    * Mock result for `useStellarClaimWithdrawal`.
@@ -128,7 +130,8 @@ export const STELLAR_MOCK_KEYS = {
    * object immediately (no RPC, no signing).
    * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal", '{"hash":"abc123"}')`
    */
-  withdrawalQueueClaimWithdrawal: "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
+  withdrawalQueueClaimWithdrawal:
+    "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -247,10 +250,7 @@ export function readMockStellarClaim(): { hash: string } | undefined {
  * Shared by both the deposit (PLUSD) and withdraw (USDC) changeTrust hooks.
  */
 export function readMockStellarChangeTrust(): { hash: string } | undefined {
-  return readMock(
-    STELLAR_MOCK_KEYS.changeTrust,
-    parseJson<{ hash: string }>,
-  );
+  return readMock(STELLAR_MOCK_KEYS.changeTrust, parseJson<{ hash: string }>);
 }
 
 // ── WithdrawalQueue non-reactive readers ───────────────────────────────────────

@@ -136,9 +136,9 @@ export const ConnectWalletPromoCard = React.forwardRef<
           // y=117px, height=150px → centre at 117+75=192px ≈ 70% of 274px).
           // -translate-y-1/2 positions by centre, so we supply the centre
           // value directly rather than the top-edge value.
-          "w-[235px] top-[192px] right-[-48px]",
+          "top-[192px] right-[-48px] w-[235px]",
           // Desktop: restore original 314px width and percentage-based top.
-          "md:w-[314px] md:top-[70%]",
+          "md:top-[70%] md:w-[314px]",
         ].join(" ")}
       >
         <WalletIllustration

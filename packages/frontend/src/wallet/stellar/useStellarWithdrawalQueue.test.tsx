@@ -62,8 +62,14 @@ vi.mock("./useStellarDepositManagerAddresses", () => ({
     addresses: {
       usdc: "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
       plusd: "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN",
-      usdcAsset: { code: "USDC", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
-      plusdAsset: { code: "PLUSD", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
+      usdcAsset: {
+        code: "USDC",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
+      plusdAsset: {
+        code: "PLUSD",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
     },
     isLoading: false,
     error: null,
@@ -111,13 +117,24 @@ const mockLoadAccount = vi.fn();
 const mockSubmitTransaction = vi.fn();
 
 vi.mock("@stellar/stellar-sdk", async () => {
-  const actual = await vi.importActual<typeof import("@stellar/stellar-sdk")>("@stellar/stellar-sdk");
+  const actual = await vi.importActual<typeof import("@stellar/stellar-sdk")>(
+    "@stellar/stellar-sdk",
+  );
 
   class MockTransactionBuilder {
-    static fromXDR = vi.fn(() => ({ toXDR: () => "signed-xdr", hash: "txhash" }));
-    addOperation() { return this; }
-    setTimeout() { return this; }
-    build() { return { toXDR: () => "unsigned-xdr", hash: "txhash" }; }
+    static fromXDR = vi.fn(() => ({
+      toXDR: () => "signed-xdr",
+      hash: "txhash",
+    }));
+    addOperation() {
+      return this;
+    }
+    setTimeout() {
+      return this;
+    }
+    build() {
+      return { toXDR: () => "unsigned-xdr", hash: "txhash" };
+    }
   }
 
   class MockRpcServer {
@@ -134,7 +151,7 @@ vi.mock("@stellar/stellar-sdk", async () => {
   return {
     ...actual,
     rpc: {
-      ...(actual as Record<string, unknown>)["rpc"] as object,
+      ...((actual as Record<string, unknown>)["rpc"] as object),
       Server: MockRpcServer,
       Api: {
         isSimulationError: vi.fn(() => false),
@@ -145,7 +162,9 @@ vi.mock("@stellar/stellar-sdk", async () => {
       Server: MockHorizonServer,
     },
     TransactionBuilder: MockTransactionBuilder,
-    Asset: vi.fn().mockImplementation(function (this: object) { return this; }),
+    Asset: vi.fn().mockImplementation(function (this: object) {
+      return this;
+    }),
     Operation: {
       changeTrust: vi.fn(() => ({})),
     },
@@ -159,9 +178,15 @@ const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
     getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 })();
 
@@ -182,7 +207,10 @@ describe("useStellarRequestWithdrawal", () => {
     mockGetAccount.mockResolvedValue({ id: TEST_ADDRESS, sequence: "1" });
     mockBuildRequestWithdrawal.mockResolvedValue("assembled-xdr");
     mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
-    mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "txhash123" });
+    mockSendTransaction.mockResolvedValue({
+      status: "PENDING",
+      hash: "txhash123",
+    });
     mockPollTransaction.mockResolvedValue({
       status: "SUCCESS",
       returnValue: 42n,
@@ -190,10 +218,9 @@ describe("useStellarRequestWithdrawal", () => {
   });
 
   it("initial state is idle", () => {
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     expect(result.current.isPending).toBe(false);
     expect(result.current.isSuccess).toBe(false);
@@ -207,10 +234,9 @@ describe("useStellarRequestWithdrawal", () => {
       requestId: "42",
     });
 
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -230,10 +256,9 @@ describe("useStellarRequestWithdrawal", () => {
       requestId: "99",
     });
 
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(5_000_000n);
@@ -249,29 +274,33 @@ describe("useStellarRequestWithdrawal", () => {
   it("unconfigured contract returns error", async () => {
     const chainModule = await import("./chain");
     vi.spyOn(chainModule, "withdrawalQueueId", "get").mockReturnValue("");
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
     });
 
-    expect(result.current.error?.message).toMatch(/WithdrawalQueue not configured/);
+    expect(result.current.error?.message).toMatch(
+      /WithdrawalQueue not configured/,
+    );
   });
 
   it("real path: decodes requestId from returnValue bigint", async () => {
     const { scValToNative } = await import("@stellar/stellar-sdk");
     vi.mocked(scValToNative).mockReturnValue(77n);
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -288,12 +317,13 @@ describe("useStellarRequestWithdrawal", () => {
       status: "SUCCESS",
       returnValue: undefined,
     });
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -307,13 +337,17 @@ describe("useStellarRequestWithdrawal", () => {
   });
 
   it("sendTransaction ERROR sets error", async () => {
-    mockSendTransaction.mockResolvedValue({ status: "ERROR", hash: "txhash-err" });
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
+    mockSendTransaction.mockResolvedValue({
+      status: "ERROR",
+      hash: "txhash-err",
+    });
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -327,12 +361,13 @@ describe("useStellarRequestWithdrawal", () => {
 
   it("signTransaction rejection sets error", async () => {
     mockSignTransaction.mockRejectedValue(new Error("User rejected"));
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -347,14 +382,17 @@ describe("useStellarRequestWithdrawal", () => {
   it("re-entrant write() is ignored while isPending", async () => {
     let resolve!: () => void;
     mockBuildRequestWithdrawal.mockReturnValue(
-      new Promise<string>((res) => { resolve = () => res("assembled-xdr"); }),
+      new Promise<string>((res) => {
+        resolve = () => res("assembled-xdr");
+      }),
     );
-    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarRequestWithdrawal").mockReturnValue(
+      undefined,
+    );
 
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(10_000_000n);
@@ -379,15 +417,18 @@ describe("useStellarRequestWithdrawal", () => {
       requestId: "1",
     });
 
-    const { result } = renderHook(
-      () => useStellarRequestWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarRequestWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
-    act(() => { result.current.write(10_000_000n); });
+    act(() => {
+      result.current.write(10_000_000n);
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    act(() => { result.current.reset(); });
+    act(() => {
+      result.current.reset();
+    });
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isSuccess).toBe(false);
@@ -408,17 +449,21 @@ describe("useStellarClaimWithdrawal", () => {
     mockGetAccount.mockResolvedValue({ id: TEST_ADDRESS, sequence: "1" });
     mockBuildClaimRequest.mockResolvedValue("assembled-xdr");
     mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
-    mockSendTransaction.mockResolvedValue({ status: "PENDING", hash: "claim-hash" });
+    mockSendTransaction.mockResolvedValue({
+      status: "PENDING",
+      hash: "claim-hash",
+    });
     mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
   });
 
   it("mock-key happy path", async () => {
-    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue({ hash: "claim-mock-hash" });
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue({
+      hash: "claim-mock-hash",
+    });
 
-    const { result } = renderHook(
-      () => useStellarClaimWithdrawal(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, validSig);
@@ -430,12 +475,13 @@ describe("useStellarClaimWithdrawal", () => {
   });
 
   it("rejects non-64-byte signature", () => {
-    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarClaimWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, new Uint8Array(32));
@@ -448,28 +494,32 @@ describe("useStellarClaimWithdrawal", () => {
   it("unconfigured contract returns error", async () => {
     const chainModule = await import("./chain");
     vi.spyOn(chainModule, "withdrawalQueueId", "get").mockReturnValue("");
-    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarClaimWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, validSig);
     });
 
-    expect(result.current.error?.message).toMatch(/WithdrawalQueue not configured/);
+    expect(result.current.error?.message).toMatch(
+      /WithdrawalQueue not configured/,
+    );
   });
 
   it("declined signature sets error", async () => {
     mockSignTransaction.mockRejectedValue(new Error("User cancelled"));
-    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarClaimWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, validSig);
@@ -486,12 +536,13 @@ describe("useStellarClaimWithdrawal", () => {
       createdAt: Date.now(),
     });
 
-    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarClaimWithdrawal(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, validSig);
@@ -521,12 +572,13 @@ describe("useStellarChangeTrustUsdc", () => {
   });
 
   it("mock-key happy path for USDC trustline", async () => {
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({ hash: "trust-mock-hash" });
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({
+      hash: "trust-mock-hash",
+    });
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustUsdc(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustUsdc(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();
@@ -540,12 +592,13 @@ describe("useStellarChangeTrustUsdc", () => {
 
   it("declined signature sets error", async () => {
     mockSignTransaction.mockRejectedValue(new Error("Declined"));
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(undefined);
-
-    const { result } = renderHook(
-      () => useStellarChangeTrustUsdc(),
-      { wrapper: makeWrapper() },
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(
+      undefined,
     );
+
+    const { result } = renderHook(() => useStellarChangeTrustUsdc(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();
@@ -556,17 +609,22 @@ describe("useStellarChangeTrustUsdc", () => {
   });
 
   it("reset clears state", async () => {
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({ hash: "h" });
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({
+      hash: "h",
+    });
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustUsdc(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustUsdc(), {
+      wrapper: makeWrapper(),
+    });
 
-    act(() => { result.current.submit(); });
+    act(() => {
+      result.current.submit();
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    act(() => { result.current.reset(); });
+    act(() => {
+      result.current.reset();
+    });
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isSuccess).toBe(false);
@@ -623,11 +681,14 @@ describe("in-flight recovery helpers", () => {
   });
 
   it("does not read another account's entry", () => {
-    writeInflightWithdrawal("GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB1", {
-      requestId: "99",
-      amount: "1",
-      createdAt: 1,
-    });
+    writeInflightWithdrawal(
+      "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB1",
+      {
+        requestId: "99",
+        amount: "1",
+        createdAt: 1,
+      },
+    );
     expect(readInflightWithdrawal(TEST_ADDRESS)).toBeUndefined();
   });
 });

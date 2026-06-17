@@ -208,10 +208,10 @@ so the existing per-wallet and un-keyed alias keys work for both EVM and Stellar
 EVM 65-byte `0x…` sig). `useStellarWithdrawalVoucher` exposes the decoded bytes as
 `signatureBytes: Uint8Array` for direct use in `useStellarClaimWithdrawal.write()`.
 
-| Key                                                                                          | Type                                                                  | Purpose                                                              |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`                                  | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Bypasses the real fetch for any wallet (Stellar or EVM)              |
-| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<G…>&chain_id=99000001`   | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Per-Stellar-wallet override (most specific wins)                     |
+| Key                                                                                       | Type                                                        | Purpose                                                 |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`                               | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Bypasses the real fetch for any wallet (Stellar or EVM) |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<G…>&chain_id=99000001` | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Per-Stellar-wallet override (most specific wins)        |
 
 ### DevTools console snippet — seed example data
 
@@ -314,10 +314,10 @@ For wallet mock keys (`pipeline.mock.wallet.*`) see
 The Stellar network fee hook (`useStellarNetworkFeeEstimate`) lives in the wallet
 module but its mock keys are documented here for completeness:
 
-| Key                                                               | Type              | Purpose                                                                                              |
-| ----------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `pipeline.mock.wallet.stellar.networkFeeEstimate.deposit`         | JSON string       | Pre-formatted (`"~0.0052 XLM"`) or raw decimal (`"0.0052"`) — bypasses the Soroban RPC simulation   |
-| `pipeline.mock.wallet.stellar.networkFeeEstimate.withdraw`        | JSON string       | Same format as deposit key; used when `direction === "withdraw"`                                     |
+| Key                                                        | Type        | Purpose                                                                                           |
+| ---------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.networkFeeEstimate.deposit`  | JSON string | Pre-formatted (`"~0.0052 XLM"`) or raw decimal (`"0.0052"`) — bypasses the Soroban RPC simulation |
+| `pipeline.mock.wallet.stellar.networkFeeEstimate.withdraw` | JSON string | Same format as deposit key; used when `direction === "withdraw"`                                  |
 
 When a raw numeric string is stored (e.g. `"0.0052"`), the hook prepends `~` and appends ` XLM`
 automatically. When the key is absent, the hook simulates a representative transaction via the

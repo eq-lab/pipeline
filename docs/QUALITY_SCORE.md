@@ -4,6 +4,23 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-16 — Epic #531 (Stake/unstake page) — FINAL QA pass (re-run) via `qa` issue #532 (epic closed)
+
+- **Scope:** Final-pass re-run on `qa` #532. All 6 non-`qa` sub-issues (#533/#534/#535/#540/#541/#542) closed; `qa` #532 claimed from `blocked` (human-invoked directly). All 6 user-stories docs under `docs/user-stories/epic-531/` re-executed against `origin/main`-equivalent code — branch `fix/579-hero-asset` has **zero diff vs origin/main** for the `/stake` surface (epic-531 work fully merged). `http://localhost:3000/stake`, Vite dev. Desktop 1280×800 + 1728-wide for Figma alignment. Chrome DevTools MCP. States: disconnected (cleared mock keys) and connected via `/test` "Connected, ready to stake (approved)" + "Connected, ready to unstake" fixtures; network-fee mock keys JSON-encoded.
+- **Docs run:** 6
+- **Stories executed:** 17
+- **Passes:** 16
+- **Failures:** 0
+- **Blocked:** 1 (#541 Story 4 — unstake output preview; env/fixture address mismatch, not an app defect)
+- **Bugs filed:** none
+- **Figma frames compared:** 1498-101158 (desktop Stake/approved, 1728×916), section-by-section at matched viewport
+- **Score: 9/10**
+  - Confirms the prior 2026-06-16 first pass — no regressions, no new defects. #533 (disconnected banner, tab-agnostic, Connect→terms gate, post-connect StepsCard), #534/#535 (distinct vector PLUSD/sPLUSD icons), #540 (single combined conversion card 480×386 containing tabs→input→output→rate→fee, with a separate steps card below), #541 (rate "1 PLUSD = 0.9596 sPLUSD" / "1 sPLUSD = 1.0421 PLUSD", Stake preview 10→9.60), #542 (Stake "~0.00042 ETH", Unstake "~0.00038 ETH", default ~0.00023 ETH, disconnected "—") all verified.
+  - **#541 Story 4 BLOCKED (not a defect):** sPLUSD balance reads 0.00 even under the "Connected, ready to unstake" fixture — mock seeds balance at placeholder `0x5555…0005` while `splusdToken` (`useEvmToken({ token: ENV.STAKED_PLUSD_ADDRESS })`) reads the real Hoodi ENV address via RPC, so `amountBig` parses to `0n` and the preview stays 0.00. Same caveat as #310/#322. The unstake preview path is identical to the verified Stake-tab Story 3 (10→9.60), and the unstake rate row (1.0421) proves the conversion math.
+  - **Figma:** Frame 1498-101158 matches structurally and in order (TopBar, hero, single conversion card, separate steps card) with no absences. Accepted deviations (not filed): network fee "~$1.20" (Figma USD) vs "~0.00042 ETH" (app, no USD price source per #506/#542); steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app convention).
+  - Zero error-level console messages across all states.
+  - **Outcome:** green; all sibling sub-issues closed; one env-only block with no bug. `qa` #532 closed, then epic #531 closed per ISSUE_PROTOCOL §2/§5.3. Held 1 point only for the single story not exercisable end-to-end locally (env/fixture, not a code gap).
+
 ### 2026-06-16 — Epic #556 (Connect Wallet modal) — QA pass via `qa` issue #557
 
 - **Scope:** First pass on `qa` issue #557 (final-pass scenario — all three non-`qa` sub-issues #558/#563/#564 closed; human-invoked directly). All three user-stories docs under `docs/user-stories/epic-556/` executed against the local Vite dev server at `http://localhost:5173/`, disconnected wallet state (set `pipeline.mock.wallet.isConnected=false`, removed `.address`). Desktop 1440 + mobile (Chrome ~500px floor, below the lg=1024 breakpoint). Driven with Chrome DevTools MCP.
@@ -41,6 +58,20 @@ MVP quality bars. All targets must be met before mainnet launch.
   - **Figma:** Frame 1498-101158 matches structurally (header, hero, combined card, separate steps card) and in copy/values, except: (a) network fee Figma shows "−$1.20" USD vs app "~0.00042 ETH" — accepted #506/#542 product deviation (no USD price source); (b) steps copy "Allow contract to use PLUSD" (Figma) vs "Allow Pipeline to use PLUSD" (app) — minor wording variance, app-wide convention. Neither filed.
   - Zero error-level console messages across disconnected, connected/approved, and unstake states.
   - **Outcome:** 16/17 green; the single blocked story is an env/fixture limitation, not a defect, with no bug to file. All 6 sibling sub-issues closed. `qa` #532 returned to `blocked` pending the maintainer's call on the env-only block — the epic is closeable if the env block is accepted. Deducted 1 point only for the one story not exercisable end-to-end locally; everything else passes functionally and visually.
+
+### 2026-06-16 — Epic #522 (Activity page) — final QA pass (re-run) via `qa` issue #525
+
+- **Scope:** Final pass. All non-`qa` sub-issues of #522 closed (#523, #524, #530, #576). Re-verified the one prior FAIL (523 Story 1, blocked on #576) now that #576 is merged, and re-ran the full suite. All 3 docs under `docs/user-stories/epic-522/` (#523, #524, #530) executed.
+- **Environment:** `http://localhost:3333/transactions` served from `/Users/dima/git/pipeline` (main worktree; PR #582 = `278442c` for #576 is an ancestor of HEAD, so the running app contains the fix). Chrome DevTools MCP, mobile (~500px Chrome floor, `matchMedia('(min-width:768px)')`=false → mobile layout) + desktop 1440. State seeded via `pipeline.mock.wallet.*` + `pipeline.mock.api.GET./v1/requests`.
+- **Coverage:** 3 docs / 9 stories — **9 PASS / 0 FAIL / 0 blocked.**
+- **Bugs filed:** none. Prior #576 (only open defect) fixed and verified.
+- **Figma frames compared:** `1993-9592` (mobile with-data — now matches, no hero circle at mobile), `1497-94912` (desktop — icon centered above centered heading), `1993-9958` (mobile empty — illustration + caption).
+- **Score: 9/10**
+  - #576 verified fixed live: at mobile width no 72×72 arrow-clock hero circle renders (`circles72=[]`); "Activity" heading is left-aligned (Besley 400, 28/36), single `<h2>`, 8px page margin, max-w-480 column. At desktop ≥768px the hero circle is visible with the glyph optically centered (offsetX/Y=0, mask-size:contain, mask-position 50% 50% — #530 regression intact).
+  - Rows render without overflow at mobile: Buy Completed `+100.00 USDC`, Buy PendingClaim `+25.00 USDC`/"Pending", Stake two-line `−1,000.00 PLUSD`/`+999.50 sPLUSD`. Tabs Buy/Sell/Stake/Unstake, Buy default, no "All" tab (accepted deviation per doc).
+  - Empty state verified for all three causes (disconnected, zero rows, filter-empty) — identical illustration + "You will see all transactions here" caption; top-anchored at mobile (`padding-top:32px`), vertically centered at desktop (`min-height:400px`/`justify-content:center`).
+  - Zero error-level console messages across all states/viewports.
+  - Held 1 point from 10 because this was a targeted final re-run (the previously-failing surface re-executed live; the rest of the suite re-run end-to-end this pass with no intervening surface changes). No outstanding defects. `qa` #525 and epic #522 closed.
 
 ### 2026-06-16 — Epic #522 (Activity page) — first QA pass via `qa` issue #525
 

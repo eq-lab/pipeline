@@ -175,12 +175,7 @@ export function useStellarNetworkFeeEstimate(
     mockRaw === undefined && isConfigured && isConnected && !!address;
 
   const query = useQuery({
-    queryKey: [
-      "stellarNetworkFeeEstimate",
-      direction,
-      address,
-      contractId,
-    ],
+    queryKey: ["stellarNetworkFeeEstimate", direction, address, contractId],
     queryFn,
     enabled: shouldRunQuery,
     refetchInterval: 60_000,

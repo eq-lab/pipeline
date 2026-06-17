@@ -112,7 +112,9 @@ export interface InflightWithdrawal {
  * Reads the in-flight withdrawal entry for a given Stellar address.
  * Returns `undefined` when no entry is stored or the stored JSON is malformed.
  */
-export function readInflightWithdrawal(address: string): InflightWithdrawal | undefined {
+export function readInflightWithdrawal(
+  address: string,
+): InflightWithdrawal | undefined {
   try {
     const raw = localStorage.getItem(`${INFLIGHT_KEY_PREFIX}${address}`);
     if (!raw) return undefined;
@@ -133,7 +135,10 @@ export function readInflightWithdrawal(address: string): InflightWithdrawal | un
 /**
  * Writes an in-flight withdrawal entry for a given Stellar address.
  */
-export function writeInflightWithdrawal(address: string, entry: InflightWithdrawal): void {
+export function writeInflightWithdrawal(
+  address: string,
+  entry: InflightWithdrawal,
+): void {
   try {
     localStorage.setItem(
       `${INFLIGHT_KEY_PREFIX}${address}`,
@@ -168,7 +173,9 @@ export function clearInflightWithdrawal(address: string): void {
  * ```
  */
 export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
-  const [data, setData] = useState<{ hash: string; requestId?: bigint } | undefined>(undefined);
+  const [data, setData] = useState<
+    { hash: string; requestId?: bigint } | undefined
+  >(undefined);
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -195,9 +202,10 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
         Promise.resolve().then(() => {
           const result = {
             hash: mockResult.hash,
-            requestId: mockResult.requestId !== undefined
-              ? BigInt(mockResult.requestId)
-              : undefined,
+            requestId:
+              mockResult.requestId !== undefined
+                ? BigInt(mockResult.requestId)
+                : undefined,
           };
           setData(result);
           setIsPending(false);
@@ -245,7 +253,11 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
           const sourceAccount = await server.getAccount(address);
 
           // 2. Build assembled (unsigned) transaction XDR.
-          const assembledXdr = await client.buildRequestWithdrawal(address, amountRaw, sourceAccount);
+          const assembledXdr = await client.buildRequestWithdrawal(
+            address,
+            amountRaw,
+            sourceAccount,
+          );
 
           // 3. Sign via wallet.
           const { signedTxXdr } = await signTransaction(assembledXdr, {
@@ -259,7 +271,9 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
             networkPassphrase as string,
           );
 
-          const sendResult = await server.sendTransaction(signedTx as Transaction);
+          const sendResult = await server.sendTransaction(
+            signedTx as Transaction,
+          );
 
           if (sendResult.status === "ERROR") {
             throw new Error(
@@ -432,7 +446,9 @@ export function useStellarClaimWithdrawal(): StellarClaimWithdrawalResult {
             networkPassphrase as string,
           );
 
-          const sendResult = await server.sendTransaction(signedTx as Transaction);
+          const sendResult = await server.sendTransaction(
+            signedTx as Transaction,
+          );
 
           if (sendResult.status === "ERROR") {
             throw new Error(

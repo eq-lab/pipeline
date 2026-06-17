@@ -64,10 +64,9 @@ describe("useStellarWithdrawalVoucher", () => {
       isConnected: false,
     } as ReturnType<typeof useStellarWallet>);
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher("42"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
 
     expect(result.current.status).toBe("idle");
     expect(mockApiFetch).not.toHaveBeenCalled();
@@ -88,10 +87,9 @@ describe("useStellarWithdrawalVoucher", () => {
       signature: hexSig,
     });
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher("42"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
@@ -115,10 +113,9 @@ describe("useStellarWithdrawalVoucher", () => {
       signature: "ab".repeat(64),
     });
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher("42"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
@@ -143,10 +140,9 @@ describe("useStellarWithdrawalVoucher", () => {
       signature: knownHex,
     });
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher("42"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
@@ -167,10 +163,9 @@ describe("useStellarWithdrawalVoucher", () => {
 
     mockApiFetch.mockRejectedValue(new Error("Internal Server Error"));
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher("42"),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(result.current.status).toBe("failed"));
 
@@ -193,10 +188,9 @@ describe("useStellarWithdrawalVoucher", () => {
       signature: hexSig,
     });
 
-    const { result } = renderHook(
-      () => useStellarWithdrawalVoucher(99n),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarWithdrawalVoucher(99n), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
 

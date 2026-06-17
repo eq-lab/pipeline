@@ -1,7 +1,7 @@
 # User story: #552 — Stellar deposit/withdraw page wiring
 
-**Epic:** #498 — Stellar deposit/withdraw flow  
-**Issue:** https://github.com/eq-lab/pipeline/issues/552  
+**Epic:** #498 — Stellar deposit/withdraw flow
+**Issue:** https://github.com/eq-lab/pipeline/issues/552
 **Status:** Initial
 
 ---
@@ -33,6 +33,7 @@ wallet is connected
 **When** they navigate to `/deposit?direction=deposit`
 
 **Then:**
+
 - The yellow "Connect your wallet first" banner is visible
 - The banner's **Connect** button is enabled
 - No StepsCard (Approve/Confirm/Claim buttons) is visible
@@ -52,6 +53,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.plusd", "500");
 **When** they navigate to `/deposit?direction=deposit`
 
 **Then:**
+
 - The "Add funds to your USDC balance" low-balance banner is visible
 - The banner subtitle references "1,000 USDC" (minimum deposit)
 - No StepsCard is rendered
@@ -71,6 +73,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.usdc", "5000");
 **When** they navigate to `/deposit?direction=deposit`
 
 **Then:**
+
 - Step 1 label reads **"Enable PLUSD"**
 - Step 1 action button reads **"Approve"** and is enabled (amount > 0 entered) or disabled (no amount)
 - Step 2 label reads **"Confirm USDC transfer"** and is disabled
@@ -79,6 +82,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.usdc", "5000");
 **When** the user enters an amount ≥ $1,000 and clicks **Approve**
 
 **Then:**
+
 - Step 1 transitions to loading, then success (green check badge)
 - Step 2 becomes the active step
 
@@ -101,6 +105,7 @@ localStorage.setItem(
 **When** they navigate to `/deposit?direction=deposit`
 
 **Then:**
+
 - Step 1 shows the success badge ("Approve complete") immediately
 - Step 2 (**Confirm**) is the active enabled step when an amount ≥ $1,000 is entered
 
@@ -120,6 +125,7 @@ localStorage.setItem(
 **When** they enter an amount and click **Confirm**
 
 **Then:**
+
 - Step 2 transitions to loading spinner (aria-busy), then disabled
 - A "Deposit submitted" toast appears
 - The amount input is locked to the submitted amount
@@ -160,6 +166,7 @@ localStorage.setItem(
 **When** the user views the page
 
 **Then:**
+
 - Step 2 shows the success badge ("Confirm complete")
 - Step 3 **Claim** button is enabled
 - Clicking **Claim** triggers the Stellar claim transaction and shows a "Deposit complete" toast
@@ -179,6 +186,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.plusd", "200");
 **When** they navigate to `/deposit?direction=withdraw`
 
 **Then:**
+
 - Step 1 label reads **"Enable USDC"**
 - Step 2 label reads **"Confirm PLUSD burn"**
 - Step 3 label reads **"Claim your USDC"**
@@ -200,6 +208,7 @@ localStorage.setItem(
 **When** the user enters `10` and clicks **Confirm**
 
 **Then:**
+
 - A withdrawal request is submitted
 - The amount input locks to `10.0000000`
 - Step 2 transitions to loading (spinner)
@@ -221,6 +230,7 @@ localStorage.setItem(
 **When** the user views the deposit page with Stellar selected
 
 **Then:**
+
 - The network fee row shows `~0.0052 XLM`
 - No USD conversion is shown
 
@@ -233,6 +243,7 @@ localStorage.setItem(
 **When** they switch to the Stellar tab in the account dropdown
 
 **Then:**
+
 - The amount input is cleared to `""`
 - The Stellar balance / step labels are shown immediately
 - No stale EVM data remains visible
@@ -247,6 +258,7 @@ localStorage.setItem(
 approve → confirm → claim flow using EVM mock keys
 
 **Then:**
+
 - All three step labels read "Allow Pipeline to use USDC" / "Confirm USDC transfer" / "Claim your PLUSD"
 - The approve mock key (`pipeline.mock.wallet.allowance.*`) and request mock key
   (`pipeline.mock.wallet.contract.depositManager.requestDeposit`) behave identically to
@@ -262,5 +274,6 @@ approve → confirm → claim flow using EVM mock keys
 **When** they navigate to `/deposit?direction=withdraw` with PLUSD allowance set
 
 **Then:**
+
 - Step labels read "Allow Pipeline to use PLUSD" / "Confirm PLUSD burn" / "Claim your USDC"
 - Quick-amount chips 25% / 50% / 75% / Max work as before
