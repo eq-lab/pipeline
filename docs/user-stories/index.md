@@ -80,3 +80,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#552 [FE] [Stellar] Deposit/withdraw page: chain-aware wiring (steps, trustline, XLM fee, all states)](https://github.com/eq-lab/pipeline/issues/552) | [552-stellar-deposit-withdraw-wiring.md](./epic-498/552-stellar-deposit-withdraw-wiring.md) | Initial |
 | [#595 Styling fixes for deposit/withdraw page](https://github.com/eq-lab/pipeline/issues/595) | [595-styling-fixes-deposit-withdraw.md](./epic-498/595-styling-fixes-deposit-withdraw.md) | Initial |
 | [#598 [FE] Set Stellar deposit minimum to 1 USDC](https://github.com/eq-lab/pipeline/issues/598) | [598-stellar-min-deposit-one.md](./epic-498/598-stellar-min-deposit-one.md) | Initial |
+| [#606 Fix connect-wallet banner background color to #F8FCE9](https://github.com/eq-lab/pipeline/issues/606) | [606-connect-wallet-banner-background.md](./epic-498/606-connect-wallet-banner-background.md) | Initial |
