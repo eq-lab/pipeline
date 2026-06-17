@@ -878,6 +878,8 @@ holds the RPC URL and network passphrase that the Blend SDK consumes.
 | `pipeline.mock.wallet.stellar.depositManager.requestDeposit` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestDeposit`.                                                                  |
 | `pipeline.mock.wallet.stellar.depositManager.claim`          | JSON `{ hash: "..." }`                    | Mocks `useStellarClaim`.                                                                           |
 | `pipeline.mock.wallet.stellar.changeTrust`                   | JSON `{ hash: "..." }`                    | Mocks `useChangeTrust`; the hook also exposes `needsTrustline` from the PLUSD SAC trustline check. |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestWithdrawal`.                                                               |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "..." }`                    | Mocks `useStellarClaimWithdrawal`.                                                                 |
 
 **DevTools snippet:**
 
@@ -912,6 +914,11 @@ To reset Stellar mocks:
   "pipeline.mock.wallet.stellar.blend.deposit",
   "pipeline.mock.wallet.stellar.blend.withdraw",
   "pipeline.mock.wallet.stellar.blend.position",
+  "pipeline.mock.wallet.stellar.depositManager.requestDeposit",
+  "pipeline.mock.wallet.stellar.depositManager.claim",
+  "pipeline.mock.wallet.stellar.changeTrust",
+  "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
+  "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
 ].forEach((k) => localStorage.removeItem(k));
 ```
 

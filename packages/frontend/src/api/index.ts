@@ -36,3 +36,9 @@ export type {
   UseStellarDepositVoucherResult,
   StellarVoucherResponse,
 } from "./useStellarDepositVoucher";
+export { useStellarWithdrawalVoucher } from "./useStellarWithdrawalVoucher";
+export type {
+  UseStellarWithdrawalVoucherResult,
+  StellarWithdrawalVoucherResponse,
+  StellarWithdrawalVoucherStatus,
+} from "./useStellarWithdrawalVoucher";

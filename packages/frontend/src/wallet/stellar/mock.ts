@@ -105,11 +105,30 @@ export const STELLAR_MOCK_KEYS = {
   depositManagerClaim: "pipeline.mock.wallet.stellar.depositManager.claim",
 
   /**
-   * Mock result for `useChangeTrust`.
+   * Mock result for `useChangeTrust` / `useStellarChangeTrustUsdc`.
    * JSON-encoded `{ hash: "..." }` — when set, `submit()` resolves with that
    * object immediately (no Horizon, no signing).
+   * Shared between the deposit (PLUSD) and withdraw (USDC) changeTrust hooks.
    */
   changeTrust: "pipeline.mock.wallet.stellar.changeTrust",
+
+  // ── WithdrawalQueue mock keys ──────────────────────────────────────────────
+
+  /**
+   * Mock result for `useStellarRequestWithdrawal`.
+   * JSON-encoded `{ hash: "...", requestId?: "123" }` — when set, `write()` resolves
+   * with that object immediately (no RPC, no signing).
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal", '{"hash":"abc123","requestId":"42"}')`
+   */
+  withdrawalQueueRequestWithdrawal: "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
+
+  /**
+   * Mock result for `useStellarClaimWithdrawal`.
+   * JSON-encoded `{ hash: "..." }` — when set, `write()` resolves with that
+   * object immediately (no RPC, no signing).
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal", '{"hash":"abc123"}')`
+   */
+  withdrawalQueueClaimWithdrawal: "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -223,12 +242,39 @@ export function readMockStellarClaim(): { hash: string } | undefined {
 }
 
 /**
- * Read the mock `useChangeTrust` result (non-reactive, for write-hook callbacks).
+ * Read the mock `useChangeTrust` / `useStellarChangeTrustUsdc` result (non-reactive).
  * Returns parsed `{ hash }` or `undefined`.
+ * Shared by both the deposit (PLUSD) and withdraw (USDC) changeTrust hooks.
  */
 export function readMockStellarChangeTrust(): { hash: string } | undefined {
   return readMock(
     STELLAR_MOCK_KEYS.changeTrust,
+    parseJson<{ hash: string }>,
+  );
+}
+
+// ── WithdrawalQueue non-reactive readers ───────────────────────────────────────
+
+/**
+ * Read the mock `useStellarRequestWithdrawal` result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash, requestId? }` or `undefined`.
+ */
+export function readMockStellarRequestWithdrawal():
+  | { hash: string; requestId?: string }
+  | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.withdrawalQueueRequestWithdrawal,
+    parseJson<{ hash: string; requestId?: string }>,
+  );
+}
+
+/**
+ * Read the mock `useStellarClaimWithdrawal` result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash }` or `undefined`.
+ */
+export function readMockStellarClaimWithdrawal(): { hash: string } | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.withdrawalQueueClaimWithdrawal,
     parseJson<{ hash: string }>,
   );
 }

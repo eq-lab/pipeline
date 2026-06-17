@@ -190,6 +190,23 @@ this event and issues a refetch — no page reload needed.
 
 **Lookup order:** with-query-string key → without-query-string key → real fetch.
 
+### `useStellarWithdrawalVoucher` mock keys
+
+`useStellarWithdrawalVoucher` uses the **same mock keys as `useWithdrawalVoucher`** — it
+hits the same `/v1/withdrawals/{request_id}/voucher` endpoint. The only difference is the
+real HTTP request appends `&chain_id=99000001` (Stellar synthetic chain id) so the API
+dispatches to the ed25519 verifier path. The mock layer does not filter on `chain_id`,
+so the existing per-wallet and un-keyed alias keys work for both EVM and Stellar mocks.
+
+`signature` in the Stellar response is a **128-char hex string** (64-byte ed25519, not an
+EVM 65-byte `0x…` sig). `useStellarWithdrawalVoucher` exposes the decoded bytes as
+`signatureBytes: Uint8Array` for direct use in `useStellarClaimWithdrawal.write()`.
+
+| Key                                                                                          | Type                                                                  | Purpose                                                              |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher`                                  | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Bypasses the real fetch for any wallet (Stellar or EVM)              |
+| `pipeline.mock.api.GET./v1/withdrawals/<requestId>/voucher?wallet=<G…>&chain_id=99000001`   | JSON `{ signature: "<128-hex>", request_id, amount, user }` | Per-Stellar-wallet override (most specific wins)                     |
+
 ### DevTools console snippet — seed example data
 
 Open the browser DevTools console and paste:
