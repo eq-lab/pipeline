@@ -121,6 +121,14 @@ describe("CoinIcon — PLUSD and sPLUSD still render (non-regression)", () => {
     expect(img?.getAttribute("width")).toBe("24");
     expect(img?.getAttribute("height")).toBe("24");
   });
+
+  it("plusd xl (72 px) renders <img> with width/height=72 (Issue #595)", () => {
+    const { container } = render(<CoinIcon token="plusd" size="xl" />);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("width")).toBe("72");
+    expect(img?.getAttribute("height")).toBe("72");
+  });
 });
 
 // ── Group 4: Accessibility ────────────────────────────────────────────────────

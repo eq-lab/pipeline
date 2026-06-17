@@ -4,10 +4,13 @@ import React from "react";
  * InfoRow — label-on-left, value-on-right row.
  *
  * Used for `Exchange rate` and `Network fee` lines at the bottom of the
- * conversion card (Figma node 1498-100130).
+ * conversion card (Figma node 1498-100130 / 1498-99897).
  *
  * Layout: horizontal flex row, label in muted ink on the left, value in
  * primary ink on the right, filling the full width.
+ *
+ * Font: body size (16px/22px) per Figma node 1498-99897, applied to all
+ * InfoRow instances (Issue #595 fix 7).
  */
 
 export interface InfoRowProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -25,15 +28,15 @@ const rootClasses = [
 ].join(" ");
 
 const labelClasses = [
-  "text-[length:var(--text-pipeline-caption)]",
-  "leading-[var(--text-pipeline-caption--line-height)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink-muted)]",
   "whitespace-nowrap",
 ].join(" ");
 
 const valueClasses = [
-  "text-[length:var(--text-pipeline-caption)]",
-  "leading-[var(--text-pipeline-caption--line-height)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink)]",
   "text-right",
   "whitespace-nowrap",

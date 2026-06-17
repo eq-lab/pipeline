@@ -15,16 +15,18 @@ import plusdSrc from "../../assets/icons/coin-plusd.svg?url";
  * Sizes map to the contexts defined in the Figma spec:
  *   - sm (20 px) — wallet pill / conversion-card row
  *   - md (24 px) — default / general use
- *   - lg (40 px) — DepositHeader hero slot
+ *   - lg (40 px) — TokenInput / TokenAmountDisplay row icon
+ *   - xl (72 px) — DepositHeader hero slot (Issue #595)
  *
  * Accessibility: decorative by default (`aria-hidden="true"`).  Pass an
  * explicit `aria-label` to make the icon meaningful to assistive tech.
  */
 
-const SIZE_MAP: Record<"sm" | "md" | "lg", number> = {
+const SIZE_MAP: Record<"sm" | "md" | "lg" | "xl", number> = {
   sm: 20,
   md: 24,
   lg: 40,
+  xl: 72,
 };
 
 export interface CoinIconProps extends Omit<
@@ -37,9 +39,10 @@ export interface CoinIconProps extends Omit<
    * Rendered size.
    * - sm (20 px) — wallet pill / conversion-card row
    * - md (24 px) — default
-   * - lg (40 px) — DepositHeader
+   * - lg (40 px) — TokenInput / TokenAmountDisplay row icon
+   * - xl (72 px) — DepositHeader hero slot
    */
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
 export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(

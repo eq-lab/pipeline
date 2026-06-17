@@ -37,14 +37,15 @@ export interface TokenAmountDisplayProps extends React.HTMLAttributes<HTMLDivEle
 }
 
 // Outer card — white fill, subtle border, card radius.
-// Matches TokenInput card layout: same padding so they stack cleanly.
+// No horizontal padding (px-2 removed, Issue #595 fix 6).
+// pb-8 provides 32px bottom spacing (Issue #595 fix 6).
 const cardClasses = [
   "bg-[var(--color-pipeline-surface)]",
   "border border-[var(--color-pipeline-line)]",
   "rounded-[var(--radius-pipeline-card)]",
   "flex flex-col",
   "w-full",
-  "pt-4 px-2 pb-6",
+  "pt-4 pb-8",
 ].join(" ");
 
 // Left identity section (icon + labels stacked)

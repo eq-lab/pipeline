@@ -39,8 +39,7 @@ import swapVerticalSrc from "../../assets/icons/swap-vertical.svg";
  *   - `--color-pipeline-line`      — card border
  *   - `--color-pipeline-ink-muted` — InfoRow label colour (via InfoRow)
  *   - `--color-pipeline-ink`       — InfoRow value colour (via InfoRow)
- *   - `--radius-pipeline-card`     — card corner radius (via Card, used for Card B)
- *   - `--radius-pipeline-card-lg`  — 16px outer card radius for Card A (USDC input section; Figma 1498:100136)
+ *   - `--radius-pipeline-card`     — 4px card corner radius (via Card, used for Card A and Card B; Issue #595)
  *
  * Figma reference: node 1498-100130 (input section, file A43rjYYjSwdTmiwwf5cx5n).
  * Swap button: Figma node 1498-100157.
@@ -117,7 +116,7 @@ export const ConversionCard = React.forwardRef<
       {/* Card A (top): TokenInput — sell side (USDC).
           White outer card matching Figma node 1498:100136 ("input-sum-inline"):
             - background: --color-pipeline-surface (white)
-            - corner radius: --radius-pipeline-card-lg (16px)
+            - corner radius: --radius-pipeline-card (4px; Issue #595 changed from 16px)
             - padding: 16/16/24/16 (pt-4 pr-4 pb-6 pl-4)
             - no border (Figma shows none)
           `relative` enables the absolutely-positioned swap button to anchor
@@ -126,7 +125,7 @@ export const ConversionCard = React.forwardRef<
           is present; the underlying input value stays positive. */}
       <div
         data-testid="conversion-input-card"
-        className="relative rounded-[var(--radius-pipeline-card-lg)] bg-[var(--color-pipeline-surface)] pt-4 pr-4 pb-6 pl-4"
+        className="relative rounded-[var(--radius-pipeline-card)] bg-[var(--color-pipeline-surface)] pt-4 pr-4 pb-6 pl-4"
       >
         <TokenInput {...input} signPrefix="−" />
 
@@ -156,14 +155,17 @@ export const ConversionCard = React.forwardRef<
           Both live inside a single white Card so the Details block is visually
           nested within the PLUSD card, matching Figma node 1498-100135.
           TokenAmountDisplay's self-styling (border, bg, radius, padding) is
-          suppressed via inline styles so it renders flush inside Card B. */}
+          suppressed via inline styles so it renders flush inside Card B.
+          border-0 removes the white Card's default hairline border (fix 8, Issue #595). */}
       <Card
         variant="white"
         data-testid="conversion-output-card"
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-2 border-0"
       >
         {/* PLUSD token row — card chrome stripped via inline styles so it
-            sits flush inside the Card B wrapper without a nested border. */}
+            sits flush inside the Card B wrapper without a nested border.
+            padding uses "16px 0 0" — no left/right padding (Issue #595 fix 6);
+            bottom padding is handled by TokenAmountDisplay's own pb-8 default. */}
         <TokenAmountDisplay
           {...output}
           value={outputValue}
@@ -171,7 +173,7 @@ export const ConversionCard = React.forwardRef<
             border: "none",
             background: "transparent",
             borderRadius: 0,
-            padding: "16px 8px 0",
+            padding: "16px 0 0",
           }}
         />
 
