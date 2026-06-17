@@ -64,7 +64,7 @@ _None_
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/wallet/useDepositFlow.ts`, in the Stellar branch
+1. [x] In `packages/frontend/src/wallet/useDepositFlow.ts`, in the Stellar branch
    (before the final `return` near line 1040), compute:
    ```ts
    const isStellarManagerUnreachable =
@@ -75,34 +75,30 @@ _None_
    `stellarAddresses` and `stellarManagerLoading` are already destructured at
    `useDepositFlow.ts:262`. The mock fast-path returns defined `addresses`, so a
    seeded mock will not set this true.
-2. Replace the hardcoded `isManagerUnreachable: false` at
+2. [x] Replace the hardcoded `isManagerUnreachable: false` at
    `useDepositFlow.ts:1133` with `isManagerUnreachable: isStellarManagerUnreachable`.
-3. In `packages/frontend/src/routes/deposit.tsx`, make the
+3. [x] In `packages/frontend/src/routes/deposit.tsx`, make the
    `dm-unreachable-banner` env-var code element (currently `VITE_DEPOSIT_MANAGER_ADDRESS`
    at `:435`) chain-aware: render `VITE_STELLAR_DEPOSIT_MANAGER_ID` on the Stellar
    view and `VITE_DEPOSIT_MANAGER_ADDRESS` on EVM. Use the page's existing
    chain/`view` signal; keep the `dm-unreachable-banner-env` test id intact.
-4. Verify no other consumer of `FlowState.isManagerUnreachable` assumes EVM-only
-   semantics (`grep isManagerUnreachable packages/frontend/src`).
+4. [x] Verify no other consumer of `FlowState.isManagerUnreachable` assumes EVM-only
+   semantics (`grep isManagerUnreachable packages/frontend/src`) — only `deposit.tsx`
+   consumes it, and it now renders chain-aware env var text.
 
 ## Test Strategy
 
-- Add a focused unit test for the Stellar branch of `useDepositFlow`
-  (new file `packages/frontend/src/wallet/useDepositFlow.test.tsx`, following the
-  mocking style of `wallet/stellar/useStellarDepositManager.test.tsx`):
+- [x] Add a focused unit test for the Stellar branch of `useDepositFlow`
+  (new file `packages/frontend/src/wallet/useDepositFlow.test.tsx`):
   - With a Stellar wallet connected, `useStellarDepositManagerAddresses` mocked to
-    `{ addresses: undefined, isLoading: false }` → `flow.isManagerUnreachable === true`.
-  - Same but `isLoading: true` → `isManagerUnreachable === false` (no flash during load).
-  - With `addresses` defined (mock fast-path / configured) → `isManagerUnreachable === false`.
-  - Disconnected Stellar wallet → `isManagerUnreachable === false`.
-  - If wiring a full `useDepositFlow` render proves too heavy (many hook
-    dependencies), fall back to extracting the boolean into a tiny pure helper and
-    unit-testing that, plus asserting the Stellar return wires it through.
-- Optional component-level assertion in `deposit.tsx` test (if one exists) that the
-  `dm-unreachable-banner-env` code shows `VITE_STELLAR_DEPOSIT_MANAGER_ID` on the
-  Stellar view.
-- Run `yarn workspace @pipeline/frontend test` (or the repo's fast test skill) and
-  `npx tsx scripts/lint-docs.ts` per AGENTS.md.
+    `{ addresses: undefined, isLoading: false }` → `flow.isManagerUnreachable === true`. ✓
+  - Same but `isLoading: true` → `isManagerUnreachable === false` (no flash during load). ✓
+  - With `addresses` defined (mock fast-path / configured) → `isManagerUnreachable === false`. ✓
+  - Disconnected Stellar wallet → `isManagerUnreachable === false`. ✓
+  - Full `useDepositFlow` render via `renderHook` with mocked sub-hooks; no pure-helper
+    extraction needed — the mocking approach proved tractable.
+- Optional component-level env-var assertion: skipped (unit tests are sufficient for the regression).
+- [x] Run `yarn workspace @pipeline/frontend test` and `npx tsx scripts/lint-docs.ts` — both pass (pre-existing failures in AccountDropdown.test.tsx and useStellarWithdrawalQueue.test.tsx are unrelated to this issue).
 
 ## Docs to Update
 
