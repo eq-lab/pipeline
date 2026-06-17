@@ -397,11 +397,11 @@ function Deposit() {
 
         {/* Conditional: disconnected banner, unreachable-contract banner, low-balance banner, OR three-step card */}
         {!flow.isConnected ? (
-          /* Wallet-not-connected banner. Figma: node 1994-6885. */
+          /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
-            className="flex flex-row items-center justify-between gap-4"
+            className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l"
           >
             <p
               data-testid="connect-wallet-banner-text"
