@@ -52,6 +52,7 @@ import {
   horizonUrl,
 } from "./chain";
 import { useStellarDepositManagerAddresses } from "./useStellarDepositManagerAddresses";
+import { useStellarSacToken } from "./useStellarSacToken";
 import {
   readMockStellarRequestWithdrawal,
   readMockStellarClaimWithdrawal,
@@ -88,6 +89,8 @@ export interface UseStellarWithdrawalRequestResult {
 
 export interface UseStellarChangeTrustUsdcResult {
   submit: () => void;
+  /** `true` when the connected account is missing the USDC classic trustline. */
+  needsTrustline: boolean;
   data: { hash: string } | undefined;
   isPending: boolean;
   isSuccess: boolean;
@@ -273,28 +276,38 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
             );
           }
 
-          // 6. Decode requestId from returnValue (best-effort).
-          let requestId: bigint | undefined;
+          // 6. Decode requestId from returnValue. Without it, the user cannot
+          // fetch a voucher, claim, or recover the withdrawal after reload.
+          if (!finalResult.returnValue) {
+            throw new Error(
+              `[requestWithdrawal] Transaction ${sendResult.hash} succeeded but returned no request_id`,
+            );
+          }
+
+          let requestId: bigint;
           try {
-            if (finalResult.returnValue) {
-              const native = scValToNative(finalResult.returnValue);
-              requestId = typeof native === "bigint" ? native : BigInt(String(native));
-            }
-          } catch {
-            // returnValue decode failed — surface undefined requestId
+            const native = scValToNative(finalResult.returnValue);
+            requestId =
+              typeof native === "bigint" ? native : BigInt(String(native));
+          } catch (decodeErr) {
+            const detail =
+              decodeErr instanceof Error
+                ? decodeErr.message
+                : String(decodeErr);
+            throw new Error(
+              `[requestWithdrawal] Could not decode request_id from transaction ${sendResult.hash}: ${detail}`,
+            );
           }
 
           const result = { hash: sendResult.hash, requestId };
           setData(result);
           setIsSuccess(true);
 
-          if (requestId !== undefined) {
-            writeInflightWithdrawal(address, {
-              requestId: requestId.toString(),
-              amount: amountRaw.toString(),
-              createdAt: Date.now(),
-            });
-          }
+          writeInflightWithdrawal(address, {
+            requestId: requestId.toString(),
+            amount: amountRaw.toString(),
+            createdAt: Date.now(),
+          });
         } catch (err) {
           setError(err instanceof Error ? err : new Error(String(err)));
         } finally {
@@ -522,6 +535,16 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
 
   const { address, isConnected, signTransaction } = useStellarWallet();
   const { addresses } = useStellarDepositManagerAddresses();
+  const usdcTrustline = useStellarSacToken({
+    assetCode: "USDC",
+    assetIssuer: addresses?.usdcAsset.issuer ?? "",
+    contractId: addresses?.usdc ?? "",
+  });
+  const needsTrustline =
+    isConnected &&
+    !!addresses?.usdcAsset &&
+    !usdcTrustline.isLoading &&
+    !usdcTrustline.hasTrustline;
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -604,7 +627,9 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
           networkPassphrase as string,
         );
 
-        const submitResult = await horizon.submitTransaction(signedTx as Transaction);
+        const submitResult = await horizon.submitTransaction(
+          signedTx as Transaction,
+        );
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
@@ -617,5 +642,5 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
     })();
   }, [address, addresses, isConnected, isInFlight, signTransaction]);
 
-  return { submit, data, isPending, isSuccess, error, reset };
+  return { submit, needsTrustline, data, isPending, isSuccess, error, reset };
 }

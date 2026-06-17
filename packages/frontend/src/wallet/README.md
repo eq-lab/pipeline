@@ -867,19 +867,19 @@ holds the RPC URL and network passphrase that the Blend SDK consumes.
 
 ### Stellar mock keys
 
-| Key                                           | Type                         | Notes                                                                                         |
-| --------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `pipeline.mock.wallet.stellar.address`        | `string` (G… 56-char strkey) | Sets the mock Stellar address                                                                 |
-| `pipeline.mock.wallet.stellar.isConnected`    | `"true"` or `"false"`        | Defaults to `"true"` when address is set                                                      |
-| `pipeline.mock.wallet.stellar.balance.usdc`   | human-scaled decimal string  | USDC balance as returned by Horizon (e.g. `"1.5"` = 1.5 USDC). Consumed by `useStellarToken`. |
-| `pipeline.mock.wallet.stellar.blend.deposit`  | JSON `{ hash: "..." }`       | Mocks `useBlendDeposit`. `write()` resolves immediately with this hash; no RPC/signing.       |
-| `pipeline.mock.wallet.stellar.blend.withdraw` | JSON `{ hash: "..." }`       | Mocks `useBlendWithdraw`. Same semantics as deposit mock.                                     |
-| `pipeline.mock.wallet.stellar.blend.position` | decimal bigint string        | Mocks `useBlendPosition`. E.g. `"10000000"` = 1 XLM. `loadBlendCollateral` is never called.   |
-| `pipeline.mock.wallet.stellar.depositManager.requestDeposit` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestDeposit`. `write()` resolves immediately; no RPC/signing. |
-| `pipeline.mock.wallet.stellar.depositManager.claim`          | JSON `{ hash: "..." }`                    | Mocks `useStellarClaim`. `write()` resolves immediately; no RPC/signing.          |
-| `pipeline.mock.wallet.stellar.changeTrust`                   | JSON `{ hash: "..." }`                    | Mocks `useChangeTrust` (PLUSD) and `useStellarChangeTrustUsdc` (USDC). Shared.    |
-| `pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestWithdrawal`. `write()` resolves immediately; no RPC/signing. |
-| `pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "..." }`                    | Mocks `useStellarClaimWithdrawal`. `write()` resolves immediately; no RPC/signing.  |
+| Key                                                          | Type                                      | Notes                                                                                              |
+| ------------------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pipeline.mock.wallet.stellar.address`                       | `string` (G… 56-char strkey)              | Sets the mock Stellar address                                                                      |
+| `pipeline.mock.wallet.stellar.isConnected`                   | `"true"` or `"false"`                     | Defaults to `"true"` when address is set                                                           |
+| `pipeline.mock.wallet.stellar.balance.usdc`                  | human-scaled decimal string               | USDC balance as returned by Horizon (e.g. `"1.5"` = 1.5 USDC). Consumed by `useStellarToken`.      |
+| `pipeline.mock.wallet.stellar.blend.deposit`                 | JSON `{ hash: "..." }`                    | Mocks `useBlendDeposit`. `write()` resolves immediately with this hash; no RPC/signing.            |
+| `pipeline.mock.wallet.stellar.blend.withdraw`                | JSON `{ hash: "..." }`                    | Mocks `useBlendWithdraw`. Same semantics as deposit mock.                                          |
+| `pipeline.mock.wallet.stellar.blend.position`                | decimal bigint string                     | Mocks `useBlendPosition`. E.g. `"10000000"` = 1 XLM. `loadBlendCollateral` is never called.        |
+| `pipeline.mock.wallet.stellar.depositManager.requestDeposit` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestDeposit`.                                                                  |
+| `pipeline.mock.wallet.stellar.depositManager.claim`          | JSON `{ hash: "..." }`                    | Mocks `useStellarClaim`.                                                                           |
+| `pipeline.mock.wallet.stellar.changeTrust`                   | JSON `{ hash: "..." }`                    | Mocks `useChangeTrust`; the hook also exposes `needsTrustline` from the PLUSD SAC trustline check. |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestWithdrawal`.                                                               |
+| `pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "..." }`                    | Mocks `useStellarClaimWithdrawal`.                                                                 |
 
 **DevTools snippet:**
 

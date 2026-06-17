@@ -4,15 +4,16 @@
  *
  * Mirrors `useDepositVoucher.ts` but uses `useStellarWallet()` for the wallet
  * query parameter (Stellar address `G…`) and adds `signatureBytes` derived by
- * hex-decoding the `signature` field (ed25519, 64 bytes → 128 hex chars).
+ * hex-decoding the `signature` field (ed25519, 64 bytes → 0x-prefixed hex).
  *
- * The hook polls `GET /v1/deposits/{request_id}/voucher?wallet=<G…>` every 3 s
- * until the verifier signature is available.
+ * The hook polls
+ * `GET /v1/deposits/{request_id}/voucher?wallet=<G…>&chain_id=<stellarChainId>`
+ * every 3 s until the verifier signature is available.
  *
  * Mock layer
  * ----------
  * Two mock keys are checked (most-specific first):
- *   1. `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>`
+ *   1. `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>&chain_id=<id>`
  *   2. `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher`
  *
  * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
@@ -22,15 +23,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useStellarWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
+import { ENV } from "@/lib/env";
 import { apiFetch } from "./client";
 import type { VoucherResponse, VoucherStatus } from "./useDepositVoucher";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Extends `VoucherResponse` — signature is hex-encoded ed25519 (64 bytes → 128 hex chars). */
-export interface StellarVoucherResponse extends VoucherResponse {
-  // signature is inherited from VoucherResponse (hex string)
-}
+/** Signature is hex-encoded ed25519 (64 bytes → 0x-prefixed hex). */
+export type StellarVoucherResponse = VoucherResponse;
 
 export interface UseStellarDepositVoucherResult {
   data: StellarVoucherResponse | undefined;
@@ -63,10 +63,11 @@ function subscribeMockVersion(listener: () => void) {
  * Returns `undefined` for non-hex or odd-length strings.
  */
 function hexToBytes(hex: string): Uint8Array | undefined {
-  if (hex.length % 2 !== 0) return undefined;
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    const byte = parseInt(hex.slice(i, i + 2), 16);
+  const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (normalized.length % 2 !== 0) return undefined;
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    const byte = parseInt(normalized.slice(i, i + 2), 16);
     if (isNaN(byte)) return undefined;
     bytes[i / 2] = byte;
   }
@@ -100,12 +101,19 @@ export function useStellarDepositVoucher(
 
   const requestIdStr = requestId !== undefined ? String(requestId) : undefined;
   const enabled = !!requestIdStr && isConnected && !!address;
+  const chainId = ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<StellarVoucherResponse, Error>({
-    queryKey: ["stellar-deposit-voucher", requestIdStr, address, mockVer],
+    queryKey: [
+      "stellar-deposit-voucher",
+      requestIdStr,
+      address,
+      chainId,
+      mockVer,
+    ],
     queryFn: () =>
       apiFetch<StellarVoucherResponse>(
-        `/v1/deposits/${requestIdStr}/voucher?wallet=${address ?? ""}`,
+        `/v1/deposits/${requestIdStr}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
     // Poll every 3 seconds while no signature yet.
@@ -140,8 +148,9 @@ export function useStellarDepositVoucher(
   }
 
   // Decode signatureBytes from hex.
-  const signatureBytes =
-    query.data?.signature ? hexToBytes(query.data.signature) : undefined;
+  const signatureBytes = query.data?.signature
+    ? hexToBytes(query.data.signature)
+    : undefined;
 
   return {
     data: query.data,

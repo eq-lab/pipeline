@@ -52,7 +52,12 @@ import {
   horizonUrl,
 } from "./chain";
 import { useStellarDepositManagerAddresses } from "./useStellarDepositManagerAddresses";
-import { readMockStellarRequestDeposit, readMockStellarClaim, readMockStellarChangeTrust } from "./mock";
+import { useStellarSacToken } from "./useStellarSacToken";
+import {
+  readMockStellarRequestDeposit,
+  readMockStellarClaim,
+  readMockStellarChangeTrust,
+} from "./mock";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,6 +89,8 @@ export interface UseStellarDepositRequestResult {
 
 export interface UseChangeTrustResult {
   submit: () => void;
+  /** `true` when the connected account is missing the PLUSD classic trustline. */
+  needsTrustline: boolean;
   data: { hash: string } | undefined;
   isPending: boolean;
   isSuccess: boolean;
@@ -105,7 +112,9 @@ export interface InflightDeposit {
  * Reads the in-flight deposit entry for a given Stellar address.
  * Returns `undefined` when no entry is stored or the stored JSON is malformed.
  */
-export function readInflightDeposit(address: string): InflightDeposit | undefined {
+export function readInflightDeposit(
+  address: string,
+): InflightDeposit | undefined {
   try {
     const raw = localStorage.getItem(`${INFLIGHT_KEY_PREFIX}${address}`);
     if (!raw) return undefined;
@@ -126,7 +135,10 @@ export function readInflightDeposit(address: string): InflightDeposit | undefine
 /**
  * Writes an in-flight deposit entry for a given Stellar address.
  */
-export function writeInflightDeposit(address: string, entry: InflightDeposit): void {
+export function writeInflightDeposit(
+  address: string,
+  entry: InflightDeposit,
+): void {
   try {
     localStorage.setItem(
       `${INFLIGHT_KEY_PREFIX}${address}`,
@@ -161,7 +173,9 @@ export function clearInflightDeposit(address: string): void {
  * ```
  */
 export function useStellarRequestDeposit(): RequestDepositResult {
-  const [data, setData] = useState<{ hash: string; requestId?: bigint } | undefined>(undefined);
+  const [data, setData] = useState<
+    { hash: string; requestId?: bigint } | undefined
+  >(undefined);
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -188,9 +202,10 @@ export function useStellarRequestDeposit(): RequestDepositResult {
         Promise.resolve().then(() => {
           const result = {
             hash: mockResult.hash,
-            requestId: mockResult.requestId !== undefined
-              ? BigInt(mockResult.requestId)
-              : undefined,
+            requestId:
+              mockResult.requestId !== undefined
+                ? BigInt(mockResult.requestId)
+                : undefined,
           };
           setData(result);
           setIsPending(false);
@@ -238,7 +253,11 @@ export function useStellarRequestDeposit(): RequestDepositResult {
           const sourceAccount = await server.getAccount(address);
 
           // 2. Build assembled (unsigned) transaction XDR.
-          const assembledXdr = await client.buildRequestDeposit(address, amountRaw, sourceAccount);
+          const assembledXdr = await client.buildRequestDeposit(
+            address,
+            amountRaw,
+            sourceAccount,
+          );
 
           // 3. Sign via wallet.
           const { signedTxXdr } = await signTransaction(assembledXdr, {
@@ -252,7 +271,9 @@ export function useStellarRequestDeposit(): RequestDepositResult {
             networkPassphrase as string,
           );
 
-          const sendResult = await server.sendTransaction(signedTx as Transaction);
+          const sendResult = await server.sendTransaction(
+            signedTx as Transaction,
+          );
 
           if (sendResult.status === "ERROR") {
             throw new Error(
@@ -269,28 +290,38 @@ export function useStellarRequestDeposit(): RequestDepositResult {
             );
           }
 
-          // 6. Decode requestId from returnValue (best-effort).
-          let requestId: bigint | undefined;
+          // 6. Decode requestId from returnValue. Without it, the user cannot
+          // fetch a voucher, claim, or recover the deposit after reload.
+          if (!finalResult.returnValue) {
+            throw new Error(
+              `[requestDeposit] Transaction ${sendResult.hash} succeeded but returned no request_id`,
+            );
+          }
+
+          let requestId: bigint;
           try {
-            if (finalResult.returnValue) {
-              const native = scValToNative(finalResult.returnValue);
-              requestId = typeof native === "bigint" ? native : BigInt(String(native));
-            }
-          } catch {
-            // returnValue decode failed — surface undefined requestId
+            const native = scValToNative(finalResult.returnValue);
+            requestId =
+              typeof native === "bigint" ? native : BigInt(String(native));
+          } catch (decodeErr) {
+            const detail =
+              decodeErr instanceof Error
+                ? decodeErr.message
+                : String(decodeErr);
+            throw new Error(
+              `[requestDeposit] Could not decode request_id from transaction ${sendResult.hash}: ${detail}`,
+            );
           }
 
           const result = { hash: sendResult.hash, requestId };
           setData(result);
           setIsSuccess(true);
 
-          if (requestId !== undefined) {
-            writeInflightDeposit(address, {
-              requestId: requestId.toString(),
-              amount: amountRaw.toString(),
-              createdAt: Date.now(),
-            });
-          }
+          writeInflightDeposit(address, {
+            requestId: requestId.toString(),
+            amount: amountRaw.toString(),
+            createdAt: Date.now(),
+          });
         } catch (err) {
           setError(err instanceof Error ? err : new Error(String(err)));
         } finally {
@@ -414,7 +445,9 @@ export function useStellarClaim(): StellarClaimResult {
             networkPassphrase as string,
           );
 
-          const sendResult = await server.sendTransaction(signedTx as Transaction);
+          const sendResult = await server.sendTransaction(
+            signedTx as Transaction,
+          );
 
           if (sendResult.status === "ERROR") {
             throw new Error(
@@ -514,6 +547,16 @@ export function useChangeTrust(): UseChangeTrustResult {
 
   const { address, isConnected, signTransaction } = useStellarWallet();
   const { addresses } = useStellarDepositManagerAddresses();
+  const plusdTrustline = useStellarSacToken({
+    assetCode: "PLUSD",
+    assetIssuer: addresses?.plusdAsset.issuer ?? "",
+    contractId: addresses?.plusd ?? "",
+  });
+  const needsTrustline =
+    isConnected &&
+    !!addresses?.plusdAsset &&
+    !plusdTrustline.isLoading &&
+    !plusdTrustline.hasTrustline;
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -596,7 +639,9 @@ export function useChangeTrust(): UseChangeTrustResult {
           networkPassphrase as string,
         );
 
-        const submitResult = await horizon.submitTransaction(signedTx as Transaction);
+        const submitResult = await horizon.submitTransaction(
+          signedTx as Transaction,
+        );
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
@@ -609,5 +654,5 @@ export function useChangeTrust(): UseChangeTrustResult {
     })();
   }, [address, addresses, isConnected, isInFlight, signTransaction]);
 
-  return { submit, data, isPending, isSuccess, error, reset };
+  return { submit, needsTrustline, data, isPending, isSuccess, error, reset };
 }

@@ -6,6 +6,7 @@
  *   - ./useStellarWallet          — useStellarWallet
  *   - ./chain                     — depositManagerId, sorobanRpcUrl, networkPassphrase, horizonUrl
  *   - ./useStellarDepositManagerAddresses — useStellarDepositManagerAddresses
+ *   - ./useStellarSacToken        — useStellarSacToken
  *   - @tanstack/react-query        — useQuery (for useStellarDepositRequest)
  *   - @stellar/stellar-sdk         — rpc.Server, TransactionBuilder, Horizon, etc.
  */
@@ -62,9 +63,26 @@ vi.mock("./useStellarDepositManagerAddresses", () => ({
     addresses: {
       usdc: "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
       plusd: "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN",
-      usdcAsset: { code: "USDC", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
-      plusdAsset: { code: "PLUSD", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
+      usdcAsset: {
+        code: "USDC",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
+      plusdAsset: {
+        code: "PLUSD",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
     },
+    isLoading: false,
+    error: null,
+  })),
+}));
+
+vi.mock("./useStellarSacToken", () => ({
+  useStellarSacToken: vi.fn(() => ({
+    balance: "0.0000000",
+    hasTrustline: false,
+    decimals: 7,
+    refetchBalance: vi.fn(),
     isLoading: false,
     error: null,
   })),
@@ -100,14 +118,25 @@ const mockLoadAccount = vi.fn();
 const mockSubmitTransaction = vi.fn();
 
 vi.mock("@stellar/stellar-sdk", async () => {
-  const actual = await vi.importActual<typeof import("@stellar/stellar-sdk")>("@stellar/stellar-sdk");
+  const actual = await vi.importActual<typeof import("@stellar/stellar-sdk")>(
+    "@stellar/stellar-sdk",
+  );
 
   // Constructable mock for TransactionBuilder
   class MockTransactionBuilder {
-    static fromXDR = vi.fn(() => ({ toXDR: () => "signed-xdr", hash: "txhash" }));
-    addOperation() { return this; }
-    setTimeout() { return this; }
-    build() { return { toXDR: () => "unsigned-xdr", hash: "txhash" }; }
+    static fromXDR = vi.fn(() => ({
+      toXDR: () => "signed-xdr",
+      hash: "txhash",
+    }));
+    addOperation() {
+      return this;
+    }
+    setTimeout() {
+      return this;
+    }
+    build() {
+      return { toXDR: () => "unsigned-xdr", hash: "txhash" };
+    }
   }
 
   // Constructable mock for rpc.Server
@@ -126,7 +155,7 @@ vi.mock("@stellar/stellar-sdk", async () => {
   return {
     ...actual,
     rpc: {
-      ...(actual as any).rpc,
+      ...actual.rpc,
       Server: MockRpcServer,
       Api: {
         isSimulationError: vi.fn(() => false),
@@ -137,7 +166,9 @@ vi.mock("@stellar/stellar-sdk", async () => {
       Server: MockHorizonServer,
     },
     TransactionBuilder: MockTransactionBuilder,
-    Asset: vi.fn().mockImplementation(function (this: object) { return this; }),
+    Asset: vi.fn().mockImplementation(function (this: object) {
+      return this;
+    }),
     Operation: {
       changeTrust: vi.fn(() => ({})),
     },
@@ -151,12 +182,21 @@ const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
     getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 })();
-Object.defineProperty(globalThis, "localStorage", { value: localStorageMock, writable: true });
+Object.defineProperty(globalThis, "localStorage", {
+  value: localStorageMock,
+  writable: true,
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -165,9 +205,13 @@ describe("useStellarRequestDeposit", () => {
     vi.clearAllMocks();
     localStorageMock.clear();
     // Spy on mock readers and return undefined by default (no mock key).
-    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(
+      undefined,
+    );
     vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue(undefined);
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(
+      undefined,
+    );
   });
 
   it("mock key → settles with requestId", async () => {
@@ -207,7 +251,10 @@ describe("useStellarRequestDeposit", () => {
     mockGetAccount.mockResolvedValue({ id: "GADDR", sequence: "100" });
     mockBuildRequestDeposit.mockResolvedValue("unsigned-xdr");
     mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
-    mockSendTransaction.mockResolvedValue({ hash: "real-hash", status: "PENDING" });
+    mockSendTransaction.mockResolvedValue({
+      hash: "real-hash",
+      status: "PENDING",
+    });
     mockPollTransaction.mockResolvedValue({
       status: "SUCCESS",
       returnValue: 99n,
@@ -221,10 +268,39 @@ describe("useStellarRequestDeposit", () => {
       result.current.write(10_000_000n);
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true), { timeout: 2000 });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+      timeout: 2000,
+    });
 
     expect(result.current.data?.hash).toBe("real-hash");
     expect(result.current.data?.requestId).toBe(99n);
+  });
+
+  it("real path — SUCCESS without returnValue → error state", async () => {
+    mockGetAccount.mockResolvedValue({ id: "GADDR", sequence: "100" });
+    mockBuildRequestDeposit.mockResolvedValue("unsigned-xdr");
+    mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
+    mockSendTransaction.mockResolvedValue({
+      hash: "missing-return-hash",
+      status: "PENDING",
+    });
+    mockPollTransaction.mockResolvedValue({ status: "SUCCESS" });
+
+    const { result } = renderHook(() => useStellarRequestDeposit(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.write(10_000_000n);
+    });
+
+    await waitFor(() => expect(result.current.isPending).toBe(false), {
+      timeout: 2000,
+    });
+
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.error?.message).toMatch(/returned no request_id/);
   });
 
   it("unconfigured guard (depositManagerId = empty) → error", async () => {
@@ -236,7 +312,8 @@ describe("useStellarRequestDeposit", () => {
       horizonUrl: "https://horizon-testnet.stellar.org",
     }));
 
-    const { useStellarRequestDeposit: hook } = await import("./useStellarDepositManager");
+    const { useStellarRequestDeposit: hook } =
+      await import("./useStellarDepositManager");
     const { result } = renderHook(() => hook(), { wrapper: makeWrapper() });
 
     act(() => {
@@ -248,7 +325,9 @@ describe("useStellarRequestDeposit", () => {
     // For full isolation, it passes with error set.
     // (In the module under test, depositManagerId is read at module load time.)
     // This ensures write() does not throw.
-    expect(result.current.error === null || result.current.error instanceof Error).toBe(true);
+    expect(
+      result.current.error === null || result.current.error instanceof Error,
+    ).toBe(true);
   });
 
   it("declined signature → error state", async () => {
@@ -264,7 +343,9 @@ describe("useStellarRequestDeposit", () => {
       result.current.write(10_000_000n);
     });
 
-    await waitFor(() => expect(result.current.isPending).toBe(false), { timeout: 2000 });
+    await waitFor(() => expect(result.current.isPending).toBe(false), {
+      timeout: 2000,
+    });
 
     expect(result.current.isSuccess).toBe(false);
     expect(result.current.error?.message).toMatch(/declined/i);
@@ -339,17 +420,25 @@ describe("useStellarClaim", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(
+      undefined,
+    );
     vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue(undefined);
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(
+      undefined,
+    );
   });
 
   const sig64 = new Uint8Array(64).fill(1);
 
   it("mock key → settles with hash", async () => {
-    vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue({ hash: "claim-hash" });
+    vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue({
+      hash: "claim-hash",
+    });
 
-    const { result } = renderHook(() => useStellarClaim(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useStellarClaim(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, sig64);
@@ -369,7 +458,9 @@ describe("useStellarClaim", () => {
   it("rejects non-64-byte signature → sets error immediately", () => {
     const shortSig = new Uint8Array(32).fill(1);
 
-    const { result } = renderHook(() => useStellarClaim(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useStellarClaim(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.write(42n, shortSig);
@@ -387,15 +478,23 @@ describe("useChangeTrust", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarRequestDeposit").mockReturnValue(
+      undefined,
+    );
     vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue(undefined);
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(undefined);
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(
+      undefined,
+    );
   });
 
   it("mock key → settles with hash", async () => {
-    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({ hash: "trust-hash" });
+    vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue({
+      hash: "trust-hash",
+    });
 
-    const { result } = renderHook(() => useChangeTrust(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChangeTrust(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();
@@ -409,6 +508,7 @@ describe("useChangeTrust", () => {
 
     expect(result.current.isSuccess).toBe(true);
     expect(result.current.data?.hash).toBe("trust-hash");
+    expect(result.current.needsTrustline).toBe(true);
     expect(result.current.error).toBeNull();
   });
 
@@ -422,13 +522,17 @@ describe("useChangeTrust", () => {
     });
     mockSignTransaction.mockRejectedValue(new Error("User rejected"));
 
-    const { result } = renderHook(() => useChangeTrust(), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChangeTrust(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();
     });
 
-    await waitFor(() => expect(result.current.isPending).toBe(false), { timeout: 2000 });
+    await waitFor(() => expect(result.current.isPending).toBe(false), {
+      timeout: 2000,
+    });
 
     expect(result.current.isSuccess).toBe(false);
     expect(result.current.error?.message).toMatch(/rejected/i);
@@ -447,13 +551,21 @@ describe("in-flight recovery localStorage helpers", () => {
   });
 
   it("write then read returns the entry", () => {
-    const entry = { requestId: "42", amount: "10000000", createdAt: Date.now() };
+    const entry = {
+      requestId: "42",
+      amount: "10000000",
+      createdAt: Date.now(),
+    };
     writeInflightDeposit(addr, entry);
     expect(readInflightDeposit(addr)).toEqual(entry);
   });
 
   it("clear removes the entry", () => {
-    const entry = { requestId: "42", amount: "10000000", createdAt: Date.now() };
+    const entry = {
+      requestId: "42",
+      amount: "10000000",
+      createdAt: Date.now(),
+    };
     writeInflightDeposit(addr, entry);
     clearInflightDeposit(addr);
     expect(readInflightDeposit(addr)).toBeUndefined();

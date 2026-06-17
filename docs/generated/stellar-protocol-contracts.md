@@ -1,7 +1,11 @@
 # Stellar Protocol Contracts — Generated Reference
 
-Source: testnet WASM, fetched 2026-06-10 via
+Source: testnet WASM, originally fetched 2026-06-10 via
 `stellar contract info interface --id <C...> --network testnet`.
+
+`deposit_manager` and `withdrawal_queue` addresses updated 2026-06-16 after a
+testnet redeployment, to match the live backend config in the ArgoCD repo
+(`pipeline/test.yaml`, chain `99000001`). The WASM interface below is unchanged.
 
 WARNING: Stellar testnet is periodically reset. If contract calls fail with
 "contract not found", the contracts must be re-deployed. The ABI/interface
@@ -14,8 +18,8 @@ below remains valid for the same WASM version. Update the addresses in
 
 | Contract          | Soroban Contract ID (C…)                             |
 | ----------------- | ---------------------------------------------------- |
-| `deposit_manager` | `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO` |
-| `withdrawal_queue`| `CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL` |
+| `deposit_manager` | `CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI` |
+| `withdrawal_queue`| `CC3TWGFXP2XUZJXGLVTM2G4K2PF2YTC6BKDRPZIUPSVETNYAO57GU3Q7` |
 | USDC SAC          | `CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7` |
 | PLUSD SAC         | `CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN` |
 
@@ -41,7 +45,7 @@ Both USDC and PLUSD are Stellar Asset Contracts (SEP-41 standard interface):
 
 ## `deposit_manager` Interface Subset
 
-Contract: `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO`
+Contract: `CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI`
 
 ```
 struct Request { amount: i128, claimed: bool, timestamp: u64, user: Address }
@@ -67,7 +71,7 @@ fn upgrade(new_wasm_hash: BytesN<32>, caller: Address);
 
 ## `withdrawal_queue` Interface Subset
 
-Contract: `CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL`
+Contract: `CC3TWGFXP2XUZJXGLVTM2G4K2PF2YTC6BKDRPZIUPSVETNYAO57GU3Q7`
 
 ```
 struct Request { amount: i128, claimed: bool, timestamp: u64, user: Address }

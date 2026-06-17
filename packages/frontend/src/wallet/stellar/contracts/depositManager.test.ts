@@ -26,7 +26,6 @@ import type { Account } from "@stellar/stellar-sdk";
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
 const {
-  mockGetAccount: _mockGetAccount,
   mockSimulateTransaction,
   mockAssembleTransaction,
   mockIsSimulationError,
@@ -36,12 +35,15 @@ const {
   mockBuild,
   mockAddOperation,
 } = vi.hoisted(() => {
-  const mockBuild = vi.fn().mockReturnValue({ toXDR: vi.fn().mockReturnValue("assembled-xdr") });
+  const mockBuild = vi
+    .fn()
+    .mockReturnValue({ toXDR: vi.fn().mockReturnValue("assembled-xdr") });
   const mockSetTimeout = vi.fn().mockReturnValue({ build: mockBuild });
-  const mockAddOperation = vi.fn().mockReturnValue({ setTimeout: mockSetTimeout });
+  const mockAddOperation = vi
+    .fn()
+    .mockReturnValue({ setTimeout: mockSetTimeout });
 
   return {
-    mockGetAccount: vi.fn(),
     mockSimulateTransaction: vi.fn(),
     mockAssembleTransaction: vi.fn(),
     mockIsSimulationError: vi.fn().mockReturnValue(false),
@@ -69,8 +71,12 @@ vi.mock("@stellar/stellar-sdk", () => {
       public _id: string,
       public _seq: string,
     ) {}
-    accountId() { return this._id; }
-    sequenceNumber() { return this._seq; }
+    accountId() {
+      return this._id;
+    }
+    sequenceNumber() {
+      return this._seq;
+    }
     incrementSequenceNumber() {}
   }
   class MockTransactionBuilder {
@@ -101,7 +107,9 @@ vi.mock("@stellar/stellar-sdk", () => {
     },
     Address: class {
       constructor(public addr: string) {}
-      toScVal() { return {}; }
+      toScVal() {
+        return {};
+      }
     },
     nativeToScVal: mockNativeToScVal,
     scValToNative: mockScValToNative,
@@ -115,7 +123,7 @@ vi.mock("../chain", () => ({
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CONTRACT_ID = "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO";
+const CONTRACT_ID = "CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI";
 const USDC_ID = "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
 const PLUSD_ID = "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN";
 
@@ -264,7 +272,11 @@ describe("DepositManagerClient.buildRequestDeposit()", () => {
 
   it("returns assembled XDR string", async () => {
     const client = new DepositManagerClient(CONTRACT_ID);
-    const mockAccount = { accountId: () => CONTRACT_ID, sequenceNumber: () => "1", incrementSequenceNumber: () => {} };
+    const mockAccount = {
+      accountId: () => CONTRACT_ID,
+      sequenceNumber: () => "1",
+      incrementSequenceNumber: () => {},
+    };
     const xdrResult = await client.buildRequestDeposit(
       "GABCDE" + "X".repeat(50),
       10_000_000n,
@@ -283,7 +295,11 @@ describe("DepositManagerClient.buildRequestDeposit()", () => {
     mockSimulateTransaction.mockResolvedValue({ error: "auth error" });
 
     const client = new DepositManagerClient(CONTRACT_ID);
-    const mockAccount = { accountId: () => CONTRACT_ID, sequenceNumber: () => "1", incrementSequenceNumber: () => {} };
+    const mockAccount = {
+      accountId: () => CONTRACT_ID,
+      sequenceNumber: () => "1",
+      incrementSequenceNumber: () => {},
+    };
     await expect(
       client.buildRequestDeposit(
         "GABCDE" + "X".repeat(50),
@@ -303,7 +319,11 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
 
   it("throws when verifier signature is not 64 bytes", async () => {
     const client = new DepositManagerClient(CONTRACT_ID);
-    const mockAccount = { accountId: () => CONTRACT_ID, sequenceNumber: () => "1", incrementSequenceNumber: () => {} };
+    const mockAccount = {
+      accountId: () => CONTRACT_ID,
+      sequenceNumber: () => "1",
+      incrementSequenceNumber: () => {},
+    };
     await expect(
       client.buildClaimRequest(
         1n,
@@ -315,7 +335,11 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
 
   it("returns assembled XDR for a valid 64-byte signature", async () => {
     const client = new DepositManagerClient(CONTRACT_ID);
-    const mockAccount = { accountId: () => CONTRACT_ID, sequenceNumber: () => "1", incrementSequenceNumber: () => {} };
+    const mockAccount = {
+      accountId: () => CONTRACT_ID,
+      sequenceNumber: () => "1",
+      incrementSequenceNumber: () => {},
+    };
     const xdrResult = await client.buildClaimRequest(
       1n,
       new Uint8Array(64).fill(0x01),

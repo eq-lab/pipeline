@@ -6,6 +6,7 @@
  *   - ./useStellarWallet             — useStellarWallet
  *   - ./chain                        — withdrawalQueueId, sorobanRpcUrl, networkPassphrase, horizonUrl
  *   - ./useStellarDepositManagerAddresses — useStellarDepositManagerAddresses
+ *   - ./useStellarSacToken           — useStellarSacToken
  *   - @stellar/stellar-sdk           — rpc.Server, TransactionBuilder, Horizon, etc.
  */
 
@@ -64,6 +65,17 @@ vi.mock("./useStellarDepositManagerAddresses", () => ({
       usdcAsset: { code: "USDC", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
       plusdAsset: { code: "PLUSD", issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM" },
     },
+    isLoading: false,
+    error: null,
+  })),
+}));
+
+vi.mock("./useStellarSacToken", () => ({
+  useStellarSacToken: vi.fn(() => ({
+    balance: "0.0000000",
+    hasTrustline: false,
+    decimals: 7,
+    refetchBalance: vi.fn(),
     isLoading: false,
     error: null,
   })),
@@ -271,7 +283,7 @@ describe("useStellarRequestWithdrawal", () => {
     expect(result.current.data?.hash).toBe("txhash123");
   });
 
-  it("real path: handles missing returnValue gracefully", async () => {
+  it("real path: errors when returnValue is missing", async () => {
     mockPollTransaction.mockResolvedValue({
       status: "SUCCESS",
       returnValue: undefined,
@@ -287,9 +299,11 @@ describe("useStellarRequestWithdrawal", () => {
       result.current.write(10_000_000n);
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.error).not.toBeNull());
 
-    expect(result.current.data?.requestId).toBeUndefined();
+    expect(result.current.error?.message).toMatch(/returned no request_id/);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 
   it("sendTransaction ERROR sets error", async () => {
@@ -521,6 +535,7 @@ describe("useStellarChangeTrustUsdc", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data?.hash).toBe("trust-mock-hash");
+    expect(result.current.needsTrustline).toBe(true);
   });
 
   it("declined signature sets error", async () => {
