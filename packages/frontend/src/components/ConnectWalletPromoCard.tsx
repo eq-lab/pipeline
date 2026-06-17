@@ -153,6 +153,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
       <header
         className="relative flex flex-col gap-1"
         data-node-id="I1497:94566;1360:49019"
+        data-testid="home-connect-header"
       >
         <h2
           id={HEADING_ID}
@@ -169,6 +170,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
             "m-0",
           ].join(" ")}
           data-node-id="I1497:94566;1360:49019;6539:2329"
+          data-testid="home-connect-heading"
         >
           Connect Wallet
         </h2>
@@ -195,6 +197,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
         onClick={onConnect}
         className="relative self-start"
         data-node-id="I1497:94566;1360:49021"
+        data-testid="home-connect-cta"
       >
         Connect
       </Button>

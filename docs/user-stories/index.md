@@ -79,3 +79,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#551 [FE] [Stellar] Withdraw flow: request_withdrawal → voucher → claim_request hooks](https://github.com/eq-lab/pipeline/issues/551) | [551-stellar-withdraw-hooks.md](./epic-498/551-stellar-withdraw-hooks.md) | Initial |
 | [#552 [FE] [Stellar] Deposit/withdraw page: chain-aware wiring (steps, trustline, XLM fee, all states)](https://github.com/eq-lab/pipeline/issues/552) | [552-stellar-deposit-withdraw-wiring.md](./epic-498/552-stellar-deposit-withdraw-wiring.md) | Initial |
 | [#595 Styling fixes for deposit/withdraw page](https://github.com/eq-lab/pipeline/issues/595) | [595-styling-fixes-deposit-withdraw.md](./epic-498/595-styling-fixes-deposit-withdraw.md) | Initial |
+| [#598 [FE] Set Stellar deposit minimum to 1 USDC](https://github.com/eq-lab/pipeline/issues/598) | [598-stellar-min-deposit-one.md](./epic-498/598-stellar-min-deposit-one.md) | Initial |

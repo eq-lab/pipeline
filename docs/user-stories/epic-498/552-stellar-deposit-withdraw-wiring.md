@@ -46,8 +46,8 @@ wallet is connected
 **Given** the user is on the Stellar tab with a connected wallet and mock keys:
 
 ```js
-localStorage.setItem("pipeline.mock.wallet.stellar.balance.plusd", "500");
-// 500 PLUSD — below the $1,000 minimum
+localStorage.setItem("pipeline.mock.wallet.stellar.balance.usdc", "0.5");
+// 0.5 USDC — below the 1 USDC Stellar minimum
 ```
 
 **When** they navigate to `/deposit?direction=deposit`
@@ -55,7 +55,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.plusd", "500");
 **Then:**
 
 - The "Add funds to your USDC balance" low-balance banner is visible
-- The banner subtitle references "1,000 USDC" (minimum deposit)
+- The banner subtitle references "1 USDC" (minimum deposit)
 - No StepsCard is rendered
 - The amount input is visible but the step buttons are absent
 
@@ -79,7 +79,7 @@ localStorage.setItem("pipeline.mock.wallet.stellar.balance.usdc", "5000");
 - Step 2 label reads **"Confirm USDC transfer"** and is disabled
 - Step 3 label reads **"Claim your PLUSD"** and is disabled
 
-**When** the user enters an amount ≥ $1,000 and clicks **Approve**
+**When** the user enters an amount ≥ 1 USDC and clicks **Approve**
 
 **Then:**
 
@@ -107,7 +107,7 @@ localStorage.setItem(
 **Then:**
 
 - Step 1 shows the success badge ("Approve complete") immediately
-- Step 2 (**Confirm**) is the active enabled step when an amount ≥ $1,000 is entered
+- Step 2 (**Confirm**) is the active enabled step when an amount ≥ 1 USDC is entered
 
 ---
 
