@@ -36,10 +36,11 @@
  *  24. Clicking swap clears the amount input.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import React from "react";
+import React, { useEffect } from "react";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
+import { WalletViewProvider, useWalletView } from "@/wallet";
 import { ToastProvider } from "@/lib/toast";
 import { Route } from "./deposit";
 
@@ -412,6 +413,33 @@ function renderDeposit() {
       <ToastProvider>
         <DepositPage />
       </ToastProvider>
+    </EvmWalletProvider>,
+  );
+}
+
+/**
+ * Helper that switches the WalletViewContext to "stellar" before rendering
+ * the Deposit page. Uses WalletViewProvider so the context is real — no spying.
+ */
+function StellarViewSwitcher({ children }: { children: React.ReactNode }) {
+  const { setKind } = useWalletView();
+  useEffect(() => {
+    setKind("stellar");
+  }, [setKind]);
+  return <>{children}</>;
+}
+
+function renderDepositStellar() {
+  const DepositPage = Route.options.component as React.ComponentType;
+  return render(
+    <EvmWalletProvider>
+      <WalletViewProvider>
+        <StellarViewSwitcher>
+          <ToastProvider>
+            <DepositPage />
+          </ToastProvider>
+        </StellarViewSwitcher>
+      </WalletViewProvider>
     </EvmWalletProvider>,
   );
 }
@@ -2064,5 +2092,327 @@ describe("Deposit page — network fee row", () => {
 
     // There should be no ETH fee string visible (no RPC call in test).
     expect(screen.queryByText(/ETH/)).not.toBeInTheDocument();
+  });
+});
+
+// ── Stellar trustline tests ────────────────────────────────────────────────────
+//
+// These tests use renderDepositStellar() which wraps the page in WalletViewProvider
+// and switches to "stellar" via StellarViewSwitcher.
+// Stellar mock keys:
+//   pipeline.mock.wallet.stellar.address   — activates the Stellar wallet mock
+//   pipeline.mock.wallet.stellar.isConnected — true = connected
+//   pipeline.mock.wallet.stellar.balance.sac.plusd — PLUSD SAC balance (hasTrustline = balance > 0)
+//   pipeline.mock.wallet.stellar.balance.sac.usdc  — USDC SAC balance (hasTrustline = balance > 0)
+//   pipeline.mock.wallet.stellar.balance.usdc      — USDC token balance (deposit input)
+//   pipeline.mock.wallet.stellar.changeTrust       — JSON { hash } for mock enable tx
+
+const STELLAR_ADDRESS = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+// 56-char C… Soroban contract IDs — placeholder values for tests.
+// Format: starts with 'C', exactly 56 chars (parseStellarContractId check).
+const STELLAR_USDC_CONTRACT =
+  "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
+const STELLAR_PLUSD_CONTRACT =
+  "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C8";
+
+// Raw SAC balance = 1000 PLUSD / USDC at 7 decimals (10^10 raw).
+// Use large values so "amount <= balance" checks pass easily in withdraw tests.
+const SAC_1000_PLUS = "10000000000";
+
+/** Seeds the minimum Stellar wallet mock keys (including contract addresses). */
+function seedStellarMocks({
+  connected = true,
+  usdcBalance = "5000", // USDC token balance (deposit input)
+  sacPlusdBalance = "0", // SAC PLUSD balance raw at 7 dp — hasTrustline = > 0
+  sacUsdcBalance = "0",  // SAC USDC balance raw at 7 dp — hasTrustline = > 0
+} = {}) {
+  if (connected) {
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.address",
+      STELLAR_ADDRESS,
+    );
+    localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+  }
+  // Contract addresses are required so needsTrustline works correctly.
+  localStorage.setItem(
+    "pipeline.mock.wallet.stellar.contract.usdc",
+    STELLAR_USDC_CONTRACT,
+  );
+  localStorage.setItem(
+    "pipeline.mock.wallet.stellar.contract.plusd",
+    STELLAR_PLUSD_CONTRACT,
+  );
+  localStorage.setItem(
+    "pipeline.mock.wallet.stellar.balance.usdc",
+    usdcBalance,
+  );
+  // For SAC balances, always set the key (value "0" means no trustline).
+  // The hook derives hasTrustline = mockVal > 0n, so "0" → false, ">0" → true.
+  localStorage.setItem(
+    "pipeline.mock.wallet.stellar.balance.sac.plusd",
+    sacPlusdBalance,
+  );
+  localStorage.setItem(
+    "pipeline.mock.wallet.stellar.balance.sac.usdc",
+    sacUsdcBalance,
+  );
+}
+
+describe("Deposit page — Stellar trustline dual-enable (deposit direction)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders without throwing when both trustlines are missing", () => {
+    seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: "0" });
+    expect(() => renderDepositStellar()).not.toThrow();
+  });
+
+  it("shows 'Enable PLUSD' and 'Enable USDC' step labels when both trustlines missing", async () => {
+    seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: "0" });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByText("Enable PLUSD")).toBeInTheDocument();
+      expect(screen.getByText("Enable USDC")).toBeInTheDocument();
+    });
+  });
+
+  it("shows both Enable buttons when both trustlines missing", async () => {
+    seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: "0" });
+    renderDepositStellar();
+    await waitFor(() => {
+      const enableBtns = screen.getAllByRole("button", { name: "Enable" });
+      expect(enableBtns.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("Confirm button is disabled when both trustlines are missing", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+
+  it("PLUSD row shows 'Enable complete' badge when PLUSD trustline exists; USDC row still shows Enable button", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS, // PLUSD hasTrustline = true
+      sacUsdcBalance: "0",            // USDC hasTrustline = false
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      // PLUSD row: success state → aria-label "Enable complete"
+      expect(screen.queryByLabelText("Enable complete")).toBeInTheDocument();
+      // USDC row: still has an Enable button
+      expect(
+        screen.getByRole("button", { name: "Enable" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("USDC row shows 'Enable complete' badge when USDC trustline exists; PLUSD row still shows Enable button", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: "0",           // PLUSD hasTrustline = false
+      sacUsdcBalance: SAC_1000_PLUS,  // USDC hasTrustline = true
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Enable complete")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Enable" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("both rows show 'Enable complete' badges and Confirm is reachable when both trustlines exist", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2");
+
+    await waitFor(
+      () => {
+        // Both step rows should show success badges
+        const successBadges = screen.queryAllByLabelText("Enable complete");
+        expect(successBadges.length).toBe(2);
+        // Confirm should be enabled
+        expect(
+          screen.getByRole("button", { name: "Confirm" }),
+        ).not.toBeDisabled();
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("Confirm button is blocked until BOTH trustlines exist (only PLUSD present)", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: "0",
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+
+  it("Confirm button is blocked until BOTH trustlines exist (only USDC present)", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await user.type(input, "2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+
+  it("clicking Enable for PLUSD calls changeTrust.submit (mock key present)", async () => {
+    seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: "0" });
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.changeTrust",
+      JSON.stringify({ hash: "0xtrusthash" }),
+    );
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const enableBtns = await screen.findAllByRole("button", { name: "Enable" });
+    // First Enable button is PLUSD (step 1)
+    const plusdBtn = enableBtns[0]!;
+    await waitFor(() => expect(plusdBtn).not.toBeDisabled());
+    await user.click(plusdBtn);
+
+    // After click, mock settles — page should still be mounted
+    await waitFor(
+      () => {
+        expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("EVM regression: no trustline block rendered when kind=evm (default)", async () => {
+    seedBaseMocks({ allowance: "10000000000" });
+    // renderDeposit() uses default EVM view (no WalletViewProvider)
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.queryByText("Enable PLUSD")).not.toBeInTheDocument();
+      expect(screen.queryByText("Enable USDC")).not.toBeInTheDocument();
+      // EVM step 1 is still "Approve"
+      expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows both Enable buttons on withdraw when both trustlines missing", async () => {
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByText("Enable PLUSD")).toBeInTheDocument();
+      expect(screen.getByText("Enable USDC")).toBeInTheDocument();
+    });
+  });
+
+  it("Confirm blocked on withdraw when USDC trustline missing (PLUSD present)", async () => {
+    // In mock mode, hasTrustline = sacBalance > 0. To test "PLUSD available but
+    // no USDC trustline", set sacPlusdBalance > 0 and sacUsdcBalance = 0.
+    // Use SAC_1000_PLUS so that amount "10" (= 100_000_000 raw) fits in balance.
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: SAC_1000_PLUS, // PLUSD trustline = true; balance usable for withdraw
+      sacUsdcBalance: "0",            // USDC trustline = false → blocks Confirm
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    });
+  });
+
+  it("both trustlines present on withdraw — Confirm reachable", async () => {
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: SAC_1000_PLUS, // 1000 PLUSD raw — enough to withdraw 10
+      sacUsdcBalance: SAC_1000_PLUS,  // USDC trustline also present
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /PLUSD amount/i });
+    await user.type(input, "10");
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("button", { name: "Confirm" }),
+        ).not.toBeDisabled();
+      },
+      { timeout: 3000 },
+    );
   });
 });

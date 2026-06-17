@@ -105,6 +105,8 @@ direction.
 
 ## Implementation Steps
 
+<!-- Steps 1–8 completed in feat/604-stellar-trustline-dual-enable -->
+
 1. **Extend `FlowState` with a direction-independent trustline model.** In
    `packages/frontend/src/wallet/useDepositFlow.ts`, add an array (or a
    `{ plusd, usdc }` object) of per-asset trustline descriptors to the returned
