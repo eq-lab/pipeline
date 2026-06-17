@@ -90,9 +90,17 @@ export const TokenAmountDisplay = React.forwardRef<
   const composed = [cardClasses, className].filter(Boolean).join(" ");
 
   return (
-    <div ref={ref} className={composed} {...rest}>
+    <div
+      ref={ref}
+      data-testid="token-amount-display"
+      className={composed}
+      {...rest}
+    >
       {/* Row: identity (icon + label + balance) + numeric value */}
-      <div className="flex items-center justify-between pr-2">
+      <div
+        data-testid="token-amount-display-row"
+        className="flex items-center justify-between pr-2"
+      >
         {/* Left: coin icon + labels */}
         <div className={identityClasses}>
           <CoinIcon token={token} size="lg" aria-hidden />

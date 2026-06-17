@@ -42,9 +42,16 @@ const valueClasses = [
 export const InfoRow = React.forwardRef<HTMLDivElement, InfoRowProps>(
   function InfoRow({ label, value, className, ...rest }, ref) {
     const composed = [rootClasses, className].filter(Boolean).join(" ");
+    // Derive a stable test id from the label so the two rows rendered inside a
+    // ConversionCard ("Exchange rate" / "Network fee") stay individually
+    // addressable. A caller-supplied data-testid (via ...rest) still wins.
+    const derivedTestId = `info-row-${label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
 
     return (
-      <div ref={ref} className={composed} {...rest}>
+      <div ref={ref} data-testid={derivedTestId} className={composed} {...rest}>
         <span className={labelClasses}>{label}</span>
         <span className={valueClasses}>{value}</span>
       </div>
