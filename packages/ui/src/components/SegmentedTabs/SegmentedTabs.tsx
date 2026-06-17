@@ -42,7 +42,10 @@ export interface SegmentedTabsTab {
   label: string;
 }
 
-export interface SegmentedTabsProps {
+export interface SegmentedTabsProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "onSelect"
+> {
   /** Ordered list of tabs to render. */
   tabs: SegmentedTabsTab[];
   /** The `id` of the currently active tab. */
@@ -63,7 +66,7 @@ export const SegmentedTabs = React.forwardRef<
   HTMLDivElement,
   SegmentedTabsProps
 >(function SegmentedTabs(
-  { tabs, activeId, onSelect, className, variant = "track" },
+  { tabs, activeId, onSelect, className, variant = "track", ...rest },
   ref,
 ) {
   const isFloating = variant === "floating";
@@ -89,7 +92,7 @@ export const SegmentedTabs = React.forwardRef<
         .join(" ");
 
   return (
-    <div ref={ref} role="tablist" className={containerClasses}>
+    <div ref={ref} role="tablist" className={containerClasses} {...rest}>
       {tabs.map((tab) => {
         const isActive = tab.id === activeId;
 
@@ -135,7 +138,9 @@ export const SegmentedTabs = React.forwardRef<
               "px-1.5", // 6 px horizontal padding (Figma size-6)
               "rounded-[var(--radius-pipeline-button)]", // 4 px radius-s
               // Background
-              isActive ? "bg-[var(--color-pipeline-surface)]" : "bg-transparent",
+              isActive
+                ? "bg-[var(--color-pipeline-surface)]"
+                : "bg-transparent",
               // Typography — Caption Emphasized: Graphik LC Medium 12/16
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",
@@ -162,6 +167,7 @@ export const SegmentedTabs = React.forwardRef<
             key={tab.id}
             type="button"
             role="tab"
+            data-testid={`tab-${tab.id}`}
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             className={tabClasses}

@@ -123,6 +123,7 @@ export const RecentActivityCard = React.forwardRef<
           "m-0",
         ].join(" ")}
         data-node-id="1497:94568"
+        data-testid="home-recent-activity-heading"
       >
         Recent activity
       </h2>
@@ -131,12 +132,15 @@ export const RecentActivityCard = React.forwardRef<
       <div
         className="flex min-h-0 flex-1 flex-col gap-4"
         data-node-id="1497:94569"
+        data-testid="home-recent-activity-body"
       >
         {showList ? (
           <>
-            <ul className="flex flex-col">
+            <ul className="flex flex-col" data-testid="home-activity-list">
               {requests.slice(0, MAX_ROWS).map((item, i) => (
-                <li key={i}>{renderRequestRow(item)}</li>
+                <li key={i} data-testid={`home-activity-row-${i}`}>
+                  {renderRequestRow(item)}
+                </li>
               ))}
             </ul>
             <Link
@@ -154,6 +158,7 @@ export const RecentActivityCard = React.forwardRef<
                 "hover:text-[color:var(--color-pipeline-ink)]",
               ].join(" ")}
               data-node-id="1497:95216"
+              data-testid="home-view-all-activity"
             >
               <span>View All </span>
               <span className="inline-flex size-6 items-center justify-center">

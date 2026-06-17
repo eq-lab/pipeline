@@ -81,21 +81,25 @@ const QUESTIONS: ReadonlyArray<{
   label: string;
   href: string;
   nodeId: string;
+  testId: string;
 }> = [
   {
     label: "How it works?",
     href: "https://docs.pipeline.one/how-it-works/",
     nodeId: "1497:94669",
+    testId: "home-qna-how-it-works",
   },
   {
     label: "What is PLUSD?",
     href: "https://docs.pipeline.one/start-here/faqs/",
     nodeId: "1497:94671",
+    testId: "home-qna-what-is-plusd",
   },
   {
     label: "What is sPLUSD?",
     href: "https://docs.pipeline.one/start-here/faqs/",
     nodeId: "1497:94673",
+    testId: "home-qna-what-is-splusd",
   },
 ];
 
@@ -116,6 +120,7 @@ export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
         aria-labelledby={HEADING_ID}
         className={composed}
         data-node-id="1497:94666"
+        data-testid="home-qna-section"
         {...rest}
       >
         {/* Eyebrow — all-caps micro-label. Caption type token in Graphik LC,
@@ -134,6 +139,7 @@ export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
             "m-0",
           ].join(" ")}
           data-node-id="I1497:94667;6539:2336"
+          data-testid="home-qna-heading"
         >
           Questions &amp; Answers
         </h2>
@@ -142,8 +148,12 @@ export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
             the strip fills the available section width — matches the Figma
             `Cell` frame `1497:94668` which uses three flex-1 cells with a
             16px gap. */}
-        <div className="flex w-full gap-4" data-node-id="1497:94668">
-          {QUESTIONS.map(({ label, href, nodeId }) => (
+        <div
+          className="flex w-full gap-4"
+          data-node-id="1497:94668"
+          data-testid="home-qna-cards-row"
+        >
+          {QUESTIONS.map(({ label, href, nodeId, testId }) => (
             <LinkCard
               key={label}
               href={href}
@@ -152,6 +162,7 @@ export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
               rel="noopener noreferrer"
               className="flex-1"
               data-node-id={nodeId}
+              data-testid={testId}
             />
           ))}
         </div>

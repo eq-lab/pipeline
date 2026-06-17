@@ -229,7 +229,10 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           </header>
 
           {/* Bottom section: "Stake More" CTA + "Unstake" text link */}
-          <div className="flex w-full flex-col items-end gap-2">
+          <div
+            className="flex w-full flex-col items-end gap-2"
+            data-testid="home-stake-actions"
+          >
             {/* "Unstake" text link */}
             <button
               type="button"
@@ -256,6 +259,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
               aria-label="Stake More PLUSD"
               className="size-[88px] md:size-32"
               data-node-id="1497:94713"
+              data-testid="home-stake-more-button"
             >
               Stake More
             </Button>
@@ -282,6 +286,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         <header
           className="flex w-full flex-col items-start gap-1 self-start"
           data-node-id="1497:94703"
+          data-testid="home-stake-header"
         >
           {/* Top-line label — "Stake PLUSD". Body token in Graphik LC. */}
           <p
@@ -313,6 +318,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
               "m-0",
             ].join(" ")}
             data-node-id="1497:94709"
+            data-testid="home-stake-heading"
           >
             {apyLabel}
           </p>
@@ -352,6 +358,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           }
           className="size-[88px] md:size-32"
           data-node-id="1497:94713"
+          data-testid="home-stake-button"
         >
           {mobileHomeState === "empty" ? "Nothing to Stake" : "Stake"}
         </Button>

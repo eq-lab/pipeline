@@ -198,6 +198,7 @@ function SegmentedControl({ kind, onKindChange }: SegmentedControlProps) {
       role="tablist"
       aria-label="Wallet namespace"
       className="mx-5 mt-3 mb-1 flex rounded-[var(--radius-pipeline-card)] bg-white/10 p-0.5"
+      data-testid="topbar-namespace-tabs"
     >
       <button
         type="button"
@@ -205,6 +206,7 @@ function SegmentedControl({ kind, onKindChange }: SegmentedControlProps) {
         aria-selected={kind === "evm"}
         onClick={() => onKindChange("evm")}
         className={tabClasses(kind === "evm")}
+        data-testid="topbar-namespace-evm"
       >
         EVM
       </button>
@@ -214,6 +216,7 @@ function SegmentedControl({ kind, onKindChange }: SegmentedControlProps) {
         aria-selected={kind === "stellar"}
         onClick={() => onKindChange("stellar")}
         className={tabClasses(kind === "stellar")}
+        data-testid="topbar-namespace-stellar"
       >
         Stellar
       </button>
@@ -239,6 +242,7 @@ function NotConnectedRow({ kind, onConnect }: NotConnectedRowProps) {
         <button
           type="button"
           onClick={onConnect}
+          data-testid="topbar-connect-namespace-button"
           className={[
             "self-start",
             "font-[family-name:var(--font-body)]",
@@ -316,6 +320,7 @@ export function AccountDropdown({
       aria-label="Account"
       tabIndex={-1}
       className={panelClasses}
+      data-testid="topbar-account-dropdown"
       data-node-id="1506:104728"
     >
       {/* Heading row */}
@@ -333,6 +338,7 @@ export function AccountDropdown({
             className={walletRowClasses}
             role="group"
             aria-label="Wallet address"
+            data-testid="topbar-wallet-address-row"
           >
             {/* 40×40 wallet avatar tile */}
             <div
@@ -343,6 +349,7 @@ export function AccountDropdown({
                 "text-[color:var(--color-pipeline-on-dark)]",
               ].join(" ")}
               aria-hidden="true"
+              data-testid="topbar-wallet-avatar"
             >
               <WalletGlyph />
             </div>
@@ -362,6 +369,7 @@ export function AccountDropdown({
               role="menuitem"
               aria-label="Copy wallet address"
               onClick={copy}
+              data-testid="topbar-wallet-copy-button"
               className={[
                 "flex h-8 w-8 shrink-0 items-center justify-center",
                 "rounded-[var(--radius-pipeline-card)]",
@@ -382,6 +390,7 @@ export function AccountDropdown({
             className={[walletRowClasses].join(" ")}
             role="group"
             aria-label="USDC balance"
+            data-testid="topbar-usdc-balance-row"
           >
             <CoinIcon token="usdc" size="lg" aria-hidden />
 
@@ -399,6 +408,7 @@ export function AccountDropdown({
             role="menuitem"
             onClick={onDisconnect}
             className={disconnectClasses}
+            data-testid="topbar-disconnect-button"
           >
             Disconnect
           </button>

@@ -166,11 +166,24 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
         {/* Inner stack — label on top, value below. The two rows align with
             Figma node `1497:94692` "Earned Balance" which is a flex column
             with no gap (each row owns its own line-height). */}
-        <div className="flex flex-col" data-node-id="1497:94692">
-          <p id={LABEL_ID} className={labelClasses} data-node-id="1497:94693">
+        <div
+          className="flex flex-col"
+          data-node-id="1497:94692"
+          data-testid="home-earned-content"
+        >
+          <p
+            id={LABEL_ID}
+            className={labelClasses}
+            data-node-id="1497:94693"
+            data-testid="home-earned-label"
+          >
             Earned
           </p>
-          <p className={stateValueClasses} data-node-id="1497:94698">
+          <p
+            className={stateValueClasses}
+            data-node-id="1497:94698"
+            data-testid="home-earned-value"
+          >
             {earnedValue}
           </p>
           {valueExtra !== undefined && (

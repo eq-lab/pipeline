@@ -86,33 +86,50 @@ function Transactions() {
     !isLoading && !error && (!isConnected || filtered.length === 0);
 
   return (
-    <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
+    <div
+      data-testid="transactions-page-root"
+      className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]"
+    >
       {/* Centred content column: max-w-[480px], px-2 mobile side margins (8 px), py-8 vertical padding */}
-      <main className="mx-auto flex w-full max-w-[480px] flex-col gap-6 px-2 py-8">
+      <main
+        data-testid="transactions-main"
+        className="mx-auto flex w-full max-w-[480px] flex-col gap-6 px-2 py-8"
+      >
         {/* Activity header: clock icon + "Activity" heading */}
-        <ActivityHeader />
+        <ActivityHeader data-testid="transactions-activity-header" />
 
         {/* Segmented filter bar */}
         <SegmentedTabs
+          data-testid="transactions-filter-tabs"
           tabs={TABS}
           activeId={activeTab}
           onSelect={setActiveTab}
         />
 
         {/* Activity rows */}
-        <div className="flex flex-col">
+        <div
+          data-testid="transactions-rows-container"
+          className="flex flex-col"
+        >
           {isLoading && !data && (
-            <div className="text-[color:var(--color-pipeline-ink-muted)]">
+            <div
+              data-testid="transactions-loading-state"
+              className="text-[color:var(--color-pipeline-ink-muted)]"
+            >
               Loading…
             </div>
           )}
 
           {error && !data && (
-            <div className="flex flex-col gap-2">
+            <div
+              data-testid="transactions-error-state"
+              className="flex flex-col gap-2"
+            >
               <span className="text-[color:var(--color-pipeline-ink-muted)]">
                 Couldn&apos;t load activity
               </span>
               <button
+                data-testid="transactions-retry-button"
                 onClick={refetch}
                 className="self-start text-[color:var(--color-pipeline-ink-muted)] underline"
               >
@@ -122,8 +139,12 @@ function Transactions() {
           )}
 
           {shouldRenderEmpty && (
-            <div className="flex flex-col items-center pt-8 md:min-h-[400px] md:justify-center md:pt-0">
+            <div
+              data-testid="transactions-empty-state-wrapper"
+              className="flex flex-col items-center pt-8 md:min-h-[400px] md:justify-center md:pt-0"
+            >
               <EmptyState
+                data-testid="transactions-empty-state"
                 illustration={
                   <ActivityEmptyIllustration tone="muted" width={240} />
                 }
@@ -134,7 +155,9 @@ function Transactions() {
 
           {filtered.length > 0 &&
             filtered.map((item, i) => (
-              <React.Fragment key={i}>{renderRequestRow(item)}</React.Fragment>
+              <React.Fragment key={i}>
+                {renderRequestRow(item, `transactions-row-${i}`)}
+              </React.Fragment>
             ))}
         </div>
       </main>
