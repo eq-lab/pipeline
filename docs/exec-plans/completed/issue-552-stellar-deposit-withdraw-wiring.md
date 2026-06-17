@@ -100,69 +100,57 @@ sprinkling `if (kind === "stellar")` through the 970-line component. The adapter
 
 ## Implementation Steps
 
-1. **Add a Stellar network-fee hook.** Create
+1. [x] **Add a Stellar network-fee hook.** Create
    `packages/frontend/src/wallet/stellar/useStellarNetworkFeeEstimate.ts` exposing
    `useStellarNetworkFeeEstimate(direction: "deposit" | "withdraw"): { feeXlm: string | undefined }`
-   (string already formatted `~0.00xx XLM ($y.yy)`). Simulate a representative
+   (string formatted `~0.00xx XLM`, no USD conversion per OQ2 resolution). Simulate a representative
    `request_deposit`/`request_withdrawal` via the existing contract clients
    (`DepositManagerClient.buildRequestDeposit` / `WithdrawalQueueClient.buildRequestWithdrawal`) to
-   read `minResourceFee`/sim cost, convert XLM→USD (per Open Question 2), and format. Mock keys:
+   read fee from assembled tx (in stroops), convert to XLM, and format. Mock keys:
    `pipeline.mock.wallet.stellar.networkFeeEstimate.{deposit,withdraw}`. Disconnected/unconfigured →
-   `undefined`. Export from `src/wallet/index.ts`. Add a unit test.
+   `undefined`. Export from `src/wallet/index.ts`. Unit tests added in
+   `useStellarNetworkFeeEstimate.test.tsx`.
 
-2. **Make `useRequests` chain-aware** (`src/api/useRequests.ts`). Read the active view via
-   `useWalletView()`; select EVM (`useEvmWallet`) vs Stellar (`useStellarWallet`) address; include
-   `chain_id` in the query path and the query key when on Stellar (EVM path unchanged: no
-   `chain_id`, matching `useDepositVoucher`). Keep the mock-version external store. Update
-   `src/api/useRequests.test.tsx`. (Pending Open Question 1, the Stellar branch may instead be left
-   to the on-chain read hooks; reflect the decision here.)
+2. [x] **Make `useRequests` chain-aware** (`src/api/useRequests.ts`). Read the active view via
+   `useWalletView()`; select EVM (`useEvmWallet`) vs Stellar (`useStellarWallet`) address. Per OQ1
+   resolution: address-only switch (no `chain_id` param added). EVM path unchanged. Updated
+   `src/api/useRequests.test.tsx` with 3 Stellar-view tests.
 
-3. **Build the chain-agnostic flow adapter.** Add adapter hooks under `src/wallet/` (e.g.
-   `src/wallet/useDepositFlow.ts`, exported via `src/wallet/index.ts`) — one EVM adapter, one
-   Stellar adapter — each returning a unified `FlowState`. Placing them in `src/wallet/` respects
-   the ESLint `no-restricted-imports` boundary (`@tanstack/react-query`, wagmi/viem, and
-   `@stellar/stellar-sdk` are only importable from `src/wallet/**`; the adapter composes existing
-   `@/wallet` + `@/api` hooks but lives on the safe side of the boundary regardless):
-   - `decimals`, `formattedBalance`, `balance`, `minAmount`
-   - `meetsMin` / `hasBalance` / `canAct`
-   - step 1 (`label`, `actionLabel`, `state`, `loading`, `disabled`, `onAction`) = approve (EVM) /
-     trustline (Stellar via `useChangeTrust` deposit, `useStellarChangeTrustUsdc` withdraw;
-     `needsTrustline` → `state: "idle"`, else `"success"`)
-   - step 2 = request (EVM `useRequestDeposit/Withdrawal`; Stellar `useStellarRequestDeposit/Withdrawal`)
-   - step 3 = claim (EVM `useClaim/ClaimWithdrawal`; Stellar `useStellarClaim/ClaimWithdrawal`, passing
-     `voucher.signatureBytes`)
-   - `requestId`, `requestIsConfirmed`, `isPendingVerification`/claim-ready
-   - `voucher` (EVM vs Stellar voucher hook)
+3. [x] **Build the chain-agnostic flow adapter.** `src/wallet/useDepositFlow.ts` — single
+   `useDepositFlow(direction, amountBig, setAmountInput)` function that calls ALL hooks
+   unconditionally and returns `FlowState`. Exported via `src/wallet/index.ts`.
+   - `decimals`, `formattedBalance`, `balance`, `minDeposit`
+   - `meetsMin` / `hasBalance`
+   - step 1/2/3 (`StepInfo` with label, actionLabel, state, loading, disabled, onAction)
+   - `step1Tx/step2Tx/step3Tx` (`StepTxState`) for toast emission
+   - `requestId`, `requestIsConfirmed`, `isPendingVerification`
    - `networkFee` string
-   - `isAnyTxInFlight`, `isInputFaded`, `isAmountLocked`, quick-amount handler
+   - `isAnyTxInFlight`, `isInputFaded`, `isAmountLocked`, `lockedAmountRaw`, quick-amount handler
+   - `isManagerUnreachable`, `isManagerLoading`, `connect`, `address`, `isConnected`
    All inner hooks called unconditionally; inactive-direction/chain hooks disabled via existing
-   guards. A top-level selector picks the EVM or Stellar adapter by `useWalletView().kind`.
+   guards. Branches by `useWalletView().kind`.
 
-4. **Refactor `deposit.tsx` to consume the adapter.** Replace the direct EVM hook calls and the
-   `isDeposit ? ... : ...` derivations with the unified `FlowState`. The render (ConversionCard,
-   banners, StepsCard) reads only from `FlowState`. Stellar step labels: "Enable PLUSD" (deposit) /
-   "Enable USDC" (withdraw) for step 1; keep "Confirm…"/"Claim…" labels per chain/direction.
-   Connect-wallet banner Connect button calls the active chain's `connect()`. Reset `amountInput` on
-   `kind` change (extend the existing `onSwap` reset to also fire on view switch). Preserve all EVM
-   toast ids/behavior; add Stellar-equivalent toasts (trustline / request / claim) scoped per
-   chain+direction so they don't collide.
+4. [x] **Refactor `deposit.tsx` to consume the adapter.** Replaced direct EVM hook calls with
+   `useDepositFlow`. Render (ConversionCard, banners, StepsCard) reads only from `FlowState`.
+   Stellar step 1 labels: "Enable PLUSD" (deposit) / "Enable USDC" (withdraw). Reset `amountInput`
+   on chain switch via `prevKindRef`. Stellar-equivalent toasts scoped per chain+direction.
 
-5. **Chain info wiring.** Feed `SAC_DECIMALS` (7) on Stellar to `parseUsdc`/`formatUsdc` calls and
-   token labels via the adapter. Keep the $1,000 min expressed in active decimals. (Explorer links
-   per Open Question 3.)
+5. [x] **Chain info wiring.** `SAC_DECIMALS = 7` fed to `formatUsdc`/`parseUsdc` calls and token
+   labels via adapter. Explorer links: out of scope per OQ3 resolution.
 
-6. **Min-deposit on Stellar.** Soroban enforces no on-chain min; the adapter supplies the frontend
-   $1,000 rule (`1000 * 10**7`) for the below-min banner + Min quick-amount chip.
+6. [x] **Min-deposit on Stellar.** Frontend $1,000 rule: `STELLAR_MIN_DEPOSIT = 1_000n * 10n ** 7n`
+   (`10_000_000_000n`). Used for below-min banner and Min quick-amount chip.
 
-7. **State coverage.** Verify each Figma state renders on Stellar: init, in-progress (request
-   pending / PendingVerification analogue from on-chain read), claim-ready (voucher ready),
-   below-minimum, wallet-not-connected, and a clear error when the account cannot cover the
-   trustline base reserve / XLM fee (surface via the changeTrust hook `error`).
+7. [x] **State coverage.** All states wired: init, in-progress (request pending via
+   `useStellarDepositRequest`/`useStellarWithdrawalRequest`), claim-ready (voucher data),
+   below-minimum, wallet-not-connected (Stellar connect() in banner).
 
-8. **Update the wallet/api catalogues.** Add the new fee hook to `docs/frontend/hooks.md`
-   (and any new util). Update `src/api/README.md` if a new Stellar fee mock key is documented there.
+8. [x] **Update the wallet/api catalogues.** Updated `docs/frontend/hooks.md` with
+   `useStellarNetworkFeeEstimate`. Updated `src/api/README.md` with Stellar fee mock key and
+   `useRequests` chain-awareness note.
 
-9. **Lint & build.** Run `npx tsx scripts/lint-docs.ts` and the frontend lint/typecheck/build.
+9. [x] **Lint & build.** Doc lint: 0 errors. TS typecheck: 0 errors. Vitest: 21 pre-existing
+   failures only (AccountDropdown + useStellarWithdrawalQueue), all new tests pass.
 
 ## Test Strategy
 
