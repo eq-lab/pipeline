@@ -754,11 +754,15 @@ function Deposit() {
 
         {/* Conversion card */}
         <ConversionCard
+          data-testid={
+            isDeposit ? "deposit-conversion-card" : "withdraw-conversion-card"
+          }
           input={
             isDeposit
               ? {
                   token: "usdc",
                   tokenLabel: "USDC",
+                  inputTestId: "deposit-amount-input",
                   balanceLabel: formattedBalance
                     ? formattedBalance.replace(/^\$/, "")
                     : "—",
@@ -786,6 +790,7 @@ function Deposit() {
               : {
                   token: "plusd",
                   tokenLabel: "PLUSD",
+                  inputTestId: "withdraw-amount-input",
                   balanceLabel: formattedBalance
                     ? formattedBalance.replace(/^\$/, "")
                     : "—",
@@ -883,6 +888,7 @@ function Deposit() {
         ) : isDeposit ? (
           /* Deposit three-step card */
           <StepsCard
+            data-testid="deposit-steps-card"
             steps={[
               {
                 label: "Allow Pipeline to use USDC",
@@ -925,6 +931,7 @@ function Deposit() {
         ) : (
           /* Withdraw three-step card */
           <StepsCard
+            data-testid="withdraw-steps-card"
             steps={[
               {
                 label: "Allow Pipeline to use PLUSD",
