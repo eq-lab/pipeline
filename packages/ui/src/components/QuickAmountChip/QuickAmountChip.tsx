@@ -3,24 +3,22 @@ import React from "react";
 /**
  * QuickAmountChip — selectable amount pill used in the conversion card.
  *
- * Renders as a `<button type="button">` white rounded-rectangle chip with a
- * 1px hairline border. Matches Figma node 1498-99888 ("suggestion bar chip")
- * in file A43rjYYjSwdTmiwwf5cx5n.
+ * Renders as a `<button type="button">` pill-shaped chip without a border.
+ * Matches Figma node 1498-99888 ("suggestion bar chip") in file
+ * A43rjYYjSwdTmiwwf5cx5n (Issue #595 styling corrections).
  *
  * Variants:
- *   - Default: unselected state with muted ink label
+ *   - Default: unselected state with primary ink label (no border)
  *   - Selected: filled with surface and primary ink
  *   - Special label: "Max" (same visual, semantic distinction in label only)
  *
  * Design tokens used:
  *   - `--color-pipeline-surface`      — chip fill (white on gray container)
- *   - `--color-pipeline-line`         — 1px hairline border around each chip
- *   - `--radius-pipeline-button`      — corner radius (~4px rounded rectangle)
+ *   - `--radius-pipeline-pill`        — full-round pill radius
  *   - `--color-pipeline-paper`        — paper background (focus ring offset)
- *   - `--color-pipeline-ink`          — selected label colour
- *   - `--color-pipeline-ink-muted`    — unselected label colour
+ *   - `--color-pipeline-ink`          — label colour (selected and unselected)
  *   - `--color-pipeline-brand`        — focus-visible ring
- *   - `--font-body`, `--text-pipeline-body`, `--font-weight-emphasized`
+ *   - `--font-body`, `--text-pipeline-caption`, `--font-weight-regular`
  */
 
 export interface QuickAmountChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -41,26 +39,20 @@ export const QuickAmountChip = React.forwardRef<
     // Layout — flex so flex-1 from parent works correctly
     "flex items-center justify-center",
     "h-8 px-2 whitespace-nowrap",
-    "rounded-[var(--radius-pipeline-button)]",
-    // Background — white chip with hairline border on gray container
+    // Pill radius per Figma node 1498-99888 (Issue #595)
+    "rounded-[var(--radius-pipeline-pill)]",
+    // Background — white chip, no border (Issue #595)
     "bg-[var(--color-pipeline-surface)]",
-    "border border-[var(--color-pipeline-line)]",
-    // Typography
+    // Typography — caption size (12px), regular weight (Issue #595)
     "font-[family-name:var(--font-body)]",
-    "text-[length:var(--text-pipeline-body)]",
-    "leading-[var(--text-pipeline-body--line-height)]",
-    "font-[var(--font-weight-emphasized)]",
-    // Text colour
-    selected
-      ? "text-[color:var(--color-pipeline-ink)]"
-      : "text-[color:var(--color-pipeline-ink-muted)]",
+    "text-[length:var(--text-pipeline-caption)]",
+    "leading-[var(--text-pipeline-caption--line-height)]",
+    "font-[var(--font-weight-regular)]",
+    // Text colour — primary ink for both selected and unselected (Issue #595)
+    "text-[color:var(--color-pipeline-ink)]",
     // Interaction
     "cursor-pointer select-none",
     "transition-[color,box-shadow] duration-150 ease-out",
-    // Hover — intensify text when unselected
-    !selected && !disabled
-      ? "hover:text-[color:var(--color-pipeline-ink)]"
-      : "",
     // Focus-visible ring
     "focus:outline-none focus-visible:outline-none",
     "focus-visible:ring-2 focus-visible:ring-offset-2",

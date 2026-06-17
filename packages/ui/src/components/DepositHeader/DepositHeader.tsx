@@ -13,7 +13,7 @@ import { CoinIcon } from "../CoinIcon/CoinIcon";
  *
  * Desktop (≥ 768 px) — Figma node 1498:100130:
  *   - Centered flex column (`items-center`).
- *   - Large PLUSD coin icon (CoinIcon `lg` = 40 px) above the heading.
+ *   - Large PLUSD coin icon (CoinIcon `xl` = 72 px) above the heading.
  *   - Heading: `heading-m` 28 px / 36 px, Besley Regular (400).
  *
  * Design tokens used:
@@ -40,10 +40,12 @@ export interface DepositHeaderProps extends React.HTMLAttributes<HTMLDivElement>
 
 // Root container — left-aligned on mobile, centred on desktop (md+).
 // w-full ensures left-alignment fills the row on mobile.
+// mb-8 (32 px) provides the required bottom spacing (fix 2, Issue #595).
 const rootClasses = [
   "flex flex-col items-start md:items-center",
   "w-full",
   "gap-3",
+  "mb-8",
 ].join(" ");
 
 // Heading — display-serif at heading-m scale, regular weight (400), primary ink.
@@ -71,10 +73,10 @@ export const DepositHeader = React.forwardRef<
 
   return (
     <div ref={ref} className={composed} {...rest}>
-      {/* Large PLUSD coin icon — decorative, hidden on mobile, shown at md+ */}
+      {/* PLUSD coin icon — decorative, hidden on mobile, shown at md+ at xl (72 px) */}
       <CoinIcon
         token="plusd"
-        size="lg"
+        size="xl"
         aria-hidden="true"
         className="hidden md:block"
       />

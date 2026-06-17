@@ -179,17 +179,39 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
     // Only show the sign prefix when there is a non-empty, non-zero value.
     const showSign = signPrefix !== undefined && !!value && value !== "0";
 
+    // Ref to the inner <input> for click-to-focus (fix 3b, Issue #595).
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    // Clicking anywhere on the row focuses the numeric input (fix 3b).
+    // Guard: do not focus if the input is disabled.
+    const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (disabled) return;
+      // Don't double-focus if the click was directly on the input itself.
+      if (inputRef.current && e.target !== inputRef.current) {
+        inputRef.current.focus();
+      }
+    };
+
     return (
       <div ref={ref} data-testid="token-input" className={composed} {...rest}>
         {/* Top row: identity (icon + label + balance) + numeric input */}
         <div
           data-testid="token-input-row"
           className="flex items-center justify-between pr-2"
+          onClick={handleRowClick}
         >
-          {/* Left: coin icon + labels */}
+          {/* Left: coin icon + labels.
+              When sign is shown, keep items-start to align with the sign/number.
+              When sign is hidden (value=0 or no signPrefix), switch to
+              items-center to vertically center the USDC identity (fix 3a, Issue #595). */}
           <div className={identityClasses}>
             <CoinIcon token={token} size="lg" aria-hidden />
-            <div className="flex min-w-0 flex-col items-start justify-center">
+            <div
+              className={[
+                "flex min-w-0 flex-col items-start",
+                showSign ? "justify-start" : "justify-center",
+              ].join(" ")}
+            >
               <span className={tokenLabelClasses}>{tokenLabel}</span>
               <span className={balanceLabelClasses}>{balanceLabel}</span>
             </div>
@@ -203,6 +225,7 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               </span>
             )}
             <input
+              ref={inputRef}
               type="text"
               inputMode="decimal"
               className={inputClasses}
