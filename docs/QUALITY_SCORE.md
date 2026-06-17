@@ -4,6 +4,24 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-06-17 — Epic #556 (Connect Wallet modal) — QA pass (re-run) via `qa` issue #557
+
+- **Scope:** Second pass on `qa` #557 after the right-pane fixes (#579, #580) merged and two new story docs (`579-connect-hero-asset`, `580-connect-modal-headline`) were added. All five user-stories docs under `docs/user-stories/epic-556/` executed against the local Pipeline frontend at `http://localhost:3000/`, disconnected wallet (`pipeline.mock.wallet.isConnected=false`). Desktop 1440×727 + mobile 402/500 (below lg=1024). Chrome DevTools MCP. `qa` #557 claimed from `blocked` (human-invoked directly).
+- **Docs run:** 5 (`558`, `563`, `564`, `579`, `580`)
+- **Stories executed:** 34 — 558 (17), 563 (8), 564 (4), 579 (3), 580 (1), plus regression checks on open bugs #572/#573/#575
+- **Passes:** 29
+- **Failures:** 0
+- **Blocked:** 5 (558 Stories 6/7/8/9/10/11 wallet-connection — no extensions; terms gate intercepts before connector/new-tab behavior; environment limitation, verified via Story 17)
+- **Bugs filed:** none
+- **Figma frames compared:** `2858-57637` (Connect Wallet modal, 1728×916)
+- **Score: 9/10**
+  - Prior pass's two right-pane defects are resolved and verified live: right-pane headline = 48px Besley white anchored near the top below the wordmark (y=104, logo y=48); overlaid Logo SVG = pure white (`rgb(255,255,255)`); hero asset = bare text-free aerial container-ship photo (`connect-hero-ship.webp`, 98KB <300KB, `absolute inset-0 size-full object-cover`).
+  - The three still-open epic sub-issues all **appear fixed** in the rendered app: **#572** (modal heading 48px Besley, `--text-pipeline-heading-l` resolves to 48px), **#573** (no vertical jump on tab switch — heading/tablist/first-row top positions identical across EVM/Soroban, deltas all 0), **#575** (headline top-anchored under wordmark). Recommended the manager verify and close #572/#573/#575.
+  - Functional behavior solid: EVM tab = MetaMask/Coinbase/WalletConnect/Trust (no Phantom, no Show More); Soroban = 5 + Show More → 6 (adds Rabet) → resets on tab switch; dismiss via Escape and × but NOT outside/right-pane click (per #563 fullscreen design); full-viewport on desktop (dialog 1440×727, parent position:fixed, border-radius 0) and mobile (single column, right pane display:none + aria-hidden); terms gate intercepts on wallet click.
+  - Intentional deviations (not bugs): Figma labels tabs All/Ethereum/Stellar and lists Phantom; epic body redefined to EVM/Soroban with no Phantom. Photo asset is a different aerial-container-ship crop than the Figma export — acceptable, same design intent.
+  - Only benign console warnings (Lit dev-mode, Reown font preload). No errors.
+  - **Outcome:** all testable stories pass; no new defects. Wallet-connection stories (6–11) remain BLOCKED by the environment, not by app defects. The three remaining open epic sub-issues are still open Issues (the manager owns closing them), so this pass does not close `qa` #557 — returned to `blocked`. Held 1 point only for the connection stories not exercisable end-to-end locally and the still-open (though verified-fixed) sub-issues; the modal itself is green functionally and visually.
+
 ### 2026-06-16 — Epic #531 (Stake/unstake page) — FINAL QA pass (re-run) via `qa` issue #532 (epic closed)
 
 - **Scope:** Final-pass re-run on `qa` #532. All 6 non-`qa` sub-issues (#533/#534/#535/#540/#541/#542) closed; `qa` #532 claimed from `blocked` (human-invoked directly). All 6 user-stories docs under `docs/user-stories/epic-531/` re-executed against `origin/main`-equivalent code — branch `fix/579-hero-asset` has **zero diff vs origin/main** for the `/stake` surface (epic-531 work fully merged). `http://localhost:3000/stake`, Vite dev. Desktop 1280×800 + 1728-wide for Figma alignment. Chrome DevTools MCP. States: disconnected (cleared mock keys) and connected via `/test` "Connected, ready to stake (approved)" + "Connected, ready to unstake" fixtures; network-fee mock keys JSON-encoded.
