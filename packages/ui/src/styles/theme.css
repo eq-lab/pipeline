@@ -99,6 +99,8 @@
   /* Type ramp */
   --text-pipeline-title: 64px;
   --text-pipeline-title--line-height: 64px;
+  --text-pipeline-heading-l: 48px;
+  --text-pipeline-heading-l--line-height: 56px;
   --text-pipeline-heading-m: 28px;
   --text-pipeline-heading-m--line-height: 36px;
   --text-pipeline-heading-m-mobile: 20px;
@@ -180,6 +182,8 @@
 
   --text-pipeline-title: 64px; /* font/font-size/title — Welcome heading */
   --text-pipeline-title--line-height: 64px; /* font/line-height/title */
+  --text-pipeline-heading-l: 48px; /* font/font-size/heading-l — Connect modal right-pane headline */
+  --text-pipeline-heading-l--line-height: 56px; /* font/line-height/heading-l */
   --text-pipeline-heading-m: 28px; /* font/font-size/heading-m — Connect Wallet (desktop) */
   --text-pipeline-heading-m--line-height: 36px; /* font/line-height/heading-m (desktop) */
   --text-pipeline-heading-m-mobile: 20px; /* font/font-size/heading-m — Connect Wallet (mobile, below md) */

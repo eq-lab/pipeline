@@ -34,6 +34,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#523 Mobile Activity page: with-data state (responsive layout + rows)](https://github.com/eq-lab/pipeline/issues/523) | [523-mobile-activity-with-data.md](./epic-522/523-mobile-activity-with-data.md) | Initial |
 | [#524 Mobile Activity page: empty state](https://github.com/eq-lab/pipeline/issues/524) | [524-mobile-activity-empty-state.md](./epic-522/524-mobile-activity-empty-state.md) | Initial |
 | [#530 Activity header icon: arrow-clock glyph not centered within its HeroIcon circle](https://github.com/eq-lab/pipeline/issues/530) | [530-activity-header-icon-centering.md](./epic-522/530-activity-header-icon-centering.md) | Initial |
+| [#576 Mobile Activity header: arrow-clock hero circle hidden at mobile width](https://github.com/eq-lab/pipeline/issues/576) | [576-activity-mobile-hero-icon.md](./epic-522/576-activity-mobile-hero-icon.md) | Initial |
 
 ---
 
@@ -58,6 +59,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#563 Connect Wallet modal: full-viewport two-pane layout](https://github.com/eq-lab/pipeline/issues/563) | [563-connect-modal-fullscreen.md](./epic-556/563-connect-modal-fullscreen.md) | Initial |
 | [#564 Connect Wallet modal: right pane uses real wordmark and hero photo](https://github.com/eq-lab/pipeline/issues/564) | [564-connect-modal-hero-image.md](./epic-556/564-connect-modal-hero-image.md) | Initial |
 | [#579 Connect hero asset fix: text-free photo and white wordmark](https://github.com/eq-lab/pipeline/issues/579) | [579-connect-hero-asset.md](./epic-556/579-connect-hero-asset.md) | Initial |
+| [#580 Connect modal right pane: overlay headline size and position](https://github.com/eq-lab/pipeline/issues/580) | [580-connect-modal-headline.md](./epic-556/580-connect-modal-headline.md) | Initial |
 
 ---
 

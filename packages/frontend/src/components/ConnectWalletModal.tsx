@@ -371,7 +371,7 @@ function RightImagePanel() {
       />
 
       {/* Content — Pipeline logo and headline */}
-      <div className="relative z-10 flex h-full flex-col justify-between">
+      <div className="relative z-10 flex flex-col gap-6">
         {/* Real Pipeline wordmark, white via currentColor override */}
         <div className="shrink-0">
           <Logo width={116} style={{ color: "#fff" }} />

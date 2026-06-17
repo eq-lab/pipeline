@@ -80,7 +80,7 @@ describe("useStellarWithdrawalVoucher", () => {
       isConnected: true,
     } as ReturnType<typeof useStellarWallet>);
 
-    const hexSig = "ab".repeat(64); // 128-char hex = 64 bytes
+    const hexSig = `0x${"ab".repeat(64)}`; // 0x + 128-char hex = 64 bytes
     mockApiFetch.mockResolvedValue({
       request_id: "42",
       amount: "10000000",
@@ -135,7 +135,7 @@ describe("useStellarWithdrawalVoucher", () => {
     } as ReturnType<typeof useStellarWallet>);
 
     // Known hex: 0xdeadbeef + padding to 64 bytes
-    const knownHex = "deadbeef" + "00".repeat(60);
+    const knownHex = "0xdeadbeef" + "00".repeat(60);
     mockApiFetch.mockResolvedValue({
       request_id: "42",
       amount: "10000000",

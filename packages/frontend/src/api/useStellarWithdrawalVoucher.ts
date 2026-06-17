@@ -3,11 +3,11 @@
  * Pipeline API for a Stellar withdrawal request.
  *
  * Mirrors `useWithdrawalVoucher.ts` but uses `useStellarWallet()` for the wallet
- * query parameter (Stellar address `G…`), appends `&chain_id=99000001` so the
- * API dispatches to the ed25519 Stellar verifier path, and adds `signatureBytes`
- * derived by hex-decoding the `signature` field (ed25519, 64 bytes → 128 hex chars).
+ * query parameter (Stellar address `G…`) and adds `signatureBytes` derived by
+ * hex-decoding the `signature` field (ed25519, 64 bytes → 0x-prefixed hex).
  *
- * The hook polls `GET /v1/withdrawals/{request_id}/voucher?wallet=<G…>&chain_id=99000001`
+ * The hook polls
+ * `GET /v1/withdrawals/{request_id}/voucher?wallet=<G…>&chain_id=<stellarChainId>`
  * every 3 s until the verifier signature is available.
  *
  * Mock layer
@@ -23,25 +23,27 @@ import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useStellarWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
+import { ENV } from "@/lib/env";
 import { apiFetch } from "./client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-/** Stellar chain_id used for the voucher `chain_id` query param. */
-const STELLAR_CHAIN_ID = "99000001";
 
 export interface StellarWithdrawalVoucherResponse {
   request_id: string;
   amount: string;
   user: string;
   /**
-   * Verifier signature — hex-encoded ed25519 (64 bytes → 128 hex chars).
+   * Verifier signature — hex-encoded ed25519 (64 bytes → 0x-prefixed hex).
    * Pass the decoded `signatureBytes` to `useStellarClaimWithdrawal.write()`.
    */
   signature: string;
 }
 
-export type StellarWithdrawalVoucherStatus = "idle" | "pending" | "ready" | "failed";
+export type StellarWithdrawalVoucherStatus =
+  | "idle"
+  | "pending"
+  | "ready"
+  | "failed";
 
 export interface UseStellarWithdrawalVoucherResult {
   data: StellarWithdrawalVoucherResponse | undefined;
@@ -74,10 +76,11 @@ function subscribeMockVersion(listener: () => void) {
  * Returns `undefined` for non-hex or odd-length strings.
  */
 function hexToBytes(hex: string): Uint8Array | undefined {
-  if (hex.length % 2 !== 0) return undefined;
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    const byte = parseInt(hex.slice(i, i + 2), 16);
+  const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (normalized.length % 2 !== 0) return undefined;
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    const byte = parseInt(normalized.slice(i, i + 2), 16);
     if (isNaN(byte)) return undefined;
     bytes[i / 2] = byte;
   }
@@ -92,8 +95,6 @@ function hexToBytes(hex: string): Uint8Array | undefined {
  * - Disabled when `requestId` is `undefined` or the Stellar wallet is disconnected.
  * - Polls until the voucher is ready (verifier may have latency).
  * - `signatureBytes` is a hex-decoded `Uint8Array` of `data.signature` (64 bytes).
- * - Appends `&chain_id=99000001` to the API URL so the verifier dispatches to
- *   the Stellar ed25519 signing path.
  *
  * @param requestId  The withdrawal request ID (bigint or string). Pass `undefined`
  *                   to keep the hook in the idle/disabled state.
@@ -113,12 +114,19 @@ export function useStellarWithdrawalVoucher(
 
   const requestIdStr = requestId !== undefined ? String(requestId) : undefined;
   const enabled = !!requestIdStr && isConnected && !!address;
+  const chainId = ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<StellarWithdrawalVoucherResponse, Error>({
-    queryKey: ["stellar-withdrawal-voucher", requestIdStr, address, mockVer],
+    queryKey: [
+      "stellar-withdrawal-voucher",
+      requestIdStr,
+      address,
+      chainId,
+      mockVer,
+    ],
     queryFn: () =>
       apiFetch<StellarWithdrawalVoucherResponse>(
-        `/v1/withdrawals/${requestIdStr}/voucher?wallet=${address ?? ""}&chain_id=${STELLAR_CHAIN_ID}`,
+        `/v1/withdrawals/${requestIdStr}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
     // Poll every 3 seconds while no signature yet.

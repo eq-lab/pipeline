@@ -101,6 +101,12 @@ export const ENV = Object.freeze({
   STELLAR_NETWORK: readString("VITE_STELLAR_NETWORK", "testnet"),
 
   /**
+   * Backend chain id for Stellar API calls. Defaults to the repo's Stellar
+   * testnet sentinel; must match the API/worker CHAIN_<id> configuration.
+   */
+  STELLAR_CHAIN_ID: readNumber("VITE_STELLAR_CHAIN_ID", 99_000_001),
+
+  /**
    * Stellar Horizon server URL used for balance and account queries (sub-issue 2).
    * Defaults to the public Stellar testnet Horizon instance.
    */
@@ -169,10 +175,7 @@ export const ENV = Object.freeze({
    * without making any RPC call — mirrors the EVM zero-address short-circuit
    * semantics.
    */
-  STELLAR_DEPOSIT_MANAGER_ID: readString(
-    "VITE_STELLAR_DEPOSIT_MANAGER_ID",
-    "",
-  ),
+  STELLAR_DEPOSIT_MANAGER_ID: readString("VITE_STELLAR_DEPOSIT_MANAGER_ID", ""),
 
   /**
    * Pipeline protocol WithdrawalQueue Soroban contract ID on the configured
