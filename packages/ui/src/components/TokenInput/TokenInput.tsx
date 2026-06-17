@@ -180,9 +180,12 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
     const showSign = signPrefix !== undefined && !!value && value !== "0";
 
     return (
-      <div ref={ref} className={composed} {...rest}>
+      <div ref={ref} data-testid="token-input" className={composed} {...rest}>
         {/* Top row: identity (icon + label + balance) + numeric input */}
-        <div className="flex items-center justify-between pr-2">
+        <div
+          data-testid="token-input-row"
+          className="flex items-center justify-between pr-2"
+        >
           {/* Left: coin icon + labels */}
           <div className={identityClasses}>
             <CoinIcon token={token} size="lg" aria-hidden />
@@ -220,7 +223,10 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
         </div>
 
         {/* Bottom row: quick-amount chips */}
-        <div className="flex w-full items-center gap-1">
+        <div
+          data-testid="token-input-chips"
+          className="flex w-full items-center gap-1"
+        >
           {quickAmounts.map((item, idx) => (
             <QuickAmountChip
               key={idx}

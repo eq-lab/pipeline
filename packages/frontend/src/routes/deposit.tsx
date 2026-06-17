@@ -750,7 +750,7 @@ function Deposit() {
     <div className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]">
       <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-2 py-12 md:px-4">
         {/* Section header */}
-        <DepositHeader title="1:1 Conversion" />
+        <DepositHeader data-testid="deposit-header" title="1:1 Conversion" />
 
         {/* Conversion card */}
         <ConversionCard
@@ -838,10 +838,14 @@ function Deposit() {
             data-testid="connect-wallet-banner"
             className="flex flex-row items-center justify-between gap-4"
           >
-            <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
+            <p
+              data-testid="connect-wallet-banner-text"
+              className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+            >
               Connect your wallet first
             </p>
             <Button
+              data-testid="connect-wallet-banner-action"
               variant="primary-dark"
               className="whitespace-nowrap"
               onClick={connect}
@@ -851,25 +855,44 @@ function Deposit() {
           </Card>
         ) : isManagerUnreachable ? (
           <Card variant="danger" data-testid="dm-unreachable-banner">
-            <p className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]">
+            <p
+              data-testid="dm-unreachable-banner-title"
+              className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]"
+            >
               DepositManager not reachable
             </p>
-            <p className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]">
-              Check <code>VITE_DEPOSIT_MANAGER_ADDRESS</code> and RPC
-              connectivity.
+            <p
+              data-testid="dm-unreachable-banner-detail"
+              className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]"
+            >
+              Check{" "}
+              <code data-testid="dm-unreachable-banner-env">
+                VITE_DEPOSIT_MANAGER_ADDRESS
+              </code>{" "}
+              and RPC connectivity.
             </p>
           </Card>
         ) : isDeposit && hasBalance === false ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card
             variant="yellow"
+            data-testid="low-balance-banner"
             className="flex flex-row items-center justify-between gap-4"
           >
-            <div className="flex flex-col items-start gap-1">
-              <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]">
+            <div
+              data-testid="low-balance-banner-text"
+              className="flex flex-col items-start gap-1"
+            >
+              <p
+                data-testid="low-balance-banner-title"
+                className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+              >
                 Add funds to your USDC balance
               </p>
-              <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]">
+              <p
+                data-testid="low-balance-banner-minimum"
+                className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
+              >
                 Minimum amount —{" "}
                 {minDeposit !== undefined && decimals !== undefined
                   ? `${formatUsdcWhole(minDeposit, decimals)} USDC`
@@ -877,6 +900,7 @@ function Deposit() {
               </p>
             </div>
             <Button
+              data-testid="low-balance-banner-action"
               variant="primary-dark"
               className="whitespace-nowrap"
               onClick={copyAddress}

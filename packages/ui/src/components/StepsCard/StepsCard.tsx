@@ -74,7 +74,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
           .join(" ")}
         {...rest}
       >
-        <div className="flex flex-col gap-2">
+        <div data-testid="steps-list" className="flex flex-col gap-2">
           {steps.map(
             (
               { label, actionLabel, disabled, onAction, loading, state },

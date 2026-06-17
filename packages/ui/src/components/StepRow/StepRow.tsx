@@ -113,9 +113,18 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
       .join(" ");
 
     return (
-      <div ref={ref} className={composed} {...rest}>
+      <div
+        ref={ref}
+        data-testid={`step-row-${step}`}
+        className={composed}
+        {...rest}
+      >
         {/* Numbered square — always visible, including in success state */}
-        <div className={stepCircleClasses} aria-hidden="true">
+        <div
+          data-testid={`step-row-${step}-badge`}
+          className={stepCircleClasses}
+          aria-hidden="true"
+        >
           <span className={stepNumberClasses}>{step}</span>
         </div>
 
@@ -123,7 +132,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
         <span className={labelClasses}>{label}</span>
 
         {/* Action button / loading spinner wrapper — matches Figma `ButtonCont` */}
-        <div className="shrink-0 p-1">
+        <div data-testid={`step-row-${step}-action`} className="shrink-0 p-1">
           {isSuccess ? (
             /* Success state: wide green pill with check icon — matches Figma node 1497-95272 */
             <div
