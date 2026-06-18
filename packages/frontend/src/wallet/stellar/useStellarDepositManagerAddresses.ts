@@ -25,7 +25,7 @@
  * Caching: results are cached forever (addresses are static per deployment).
  *
  * IMPORTANT: The protocol USDC issuer (`GC5SUAXM…`) is derived from the SAC's
- * `asset()` return value — it is NOT the Circle issuer in `chain.ts`
+ * `name()` return value — it is NOT the Circle issuer in `chain.ts`
  * (`usdcIssuer`). Do not substitute one for the other.
  */
 
@@ -40,7 +40,12 @@ import {
 } from "@stellar/stellar-sdk";
 import { readMock, useMock } from "../evm/mock";
 import { STELLAR_MOCK_KEYS, parseStellarContractId } from "./mock";
-import { depositManagerId, sorobanRpcUrl, networkPassphrase } from "./chain";
+import {
+  depositManagerId,
+  sorobanRpcUrl,
+  networkPassphrase,
+  READ_SIMULATION_SOURCE,
+} from "./chain";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,8 +87,9 @@ async function callView(
 ): Promise<unknown> {
   const contract = new Contract(contractId);
   const op = contract.call(method);
-  // Use a dummy Account (zero sequence) for read-only simulation envelopes.
-  const dummyAccount = new Account(contractId, "0");
+  // Read-only simulations need a structurally valid classic source account
+  // (`G…`) on the envelope — NOT the contract ID. See READ_SIMULATION_SOURCE.
+  const dummyAccount = new Account(READ_SIMULATION_SOURCE, "0");
 
   const tx = new TransactionBuilder(dummyAccount, {
     fee: BASE_FEE,
@@ -110,7 +116,7 @@ async function callView(
 
 /**
  * Fetches the SAC metadata (`asset()` and `share()`) from the DepositManager
- * contract and then reads each SAC's `asset()` to get the classic
+ * contract and then reads each SAC's `name()` to get the classic
  * `"CODE:ISSUER"` string.
  */
 async function fetchAddresses(
@@ -132,16 +138,18 @@ async function fetchAddresses(
     "share",
   )) as string;
 
-  // Each SAC's `asset()` view returns the classic asset string: `"CODE:ISSUER"`.
+  // Each SAC's `name()` view returns the classic asset string: `"CODE:ISSUER"`.
+  // (Stellar Asset Contracts expose the classic identity via `name()`; they
+  // have no `asset()` view — calling it errors with `Error(Value, InvalidInput)`.)
   const usdcSacAssetStr = (await callView(
     server,
     usdcContractId,
-    "asset",
+    "name",
   )) as string;
   const plusdSacAssetStr = (await callView(
     server,
     plusdContractId,
-    "asset",
+    "name",
   )) as string;
 
   return {

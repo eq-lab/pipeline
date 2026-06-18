@@ -119,6 +119,8 @@ vi.mock("@stellar/stellar-sdk", () => {
 vi.mock("../chain", () => ({
   sorobanRpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: "Test SDF Network ; September 2015",
+  READ_SIMULATION_SOURCE:
+    "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
 }));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
