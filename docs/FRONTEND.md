@@ -41,6 +41,13 @@ Each Phase-3 component issue ships a `.stories.tsx` file alongside the component
 
 TBD — evaluate Shadcn/ui (headless, Tailwind-based) or Radix UI primitives. Decision to be made before frontend sprint begins. Add a tech-debt entry if not resolved before Phase 1 implementation.
 
+### Button (`packages/ui/src/components/Button/Button.tsx`)
+
+Five variants (`primary-dark`, `primary-blue`, `secondary`, `circular-blue`, `toast-action`). Rectangular variants (`primary-dark`, `primary-blue`, `secondary`) additionally accept a `size` prop:
+
+- `"default"` (omitted) — 48px tall, as per the standard Figma spec.
+- `"compact"` — 32px tall with tighter horizontal padding (6px box + 4px inner label). Used for inline banner CTAs (Figma node 1994-7226). Radius and colours are unchanged.
+
 ## Code structure rules
 
 These rules apply to everything under `packages/frontend/` and `packages/ui/`. They exist so a reader can find the logic, the view, or the shared utility without spelunking — and so reused code earns the testing it deserves.

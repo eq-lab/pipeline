@@ -168,6 +168,11 @@ export type {
   WalletViewContextValue,
 } from "./WalletViewContext";
 
+// ── Connect-modal (shared single instance) ────────────────────────────────────
+export { ConnectModalProvider } from "./ConnectModalProvider";
+export { useConnectModal } from "./ConnectModalContext";
+export type { ConnectModalContextValue } from "./ConnectModalContext";
+
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";
 export type {
@@ -176,4 +181,5 @@ export type {
   StepState as FlowStepState,
   StepInfo,
   StepTxState,
+  TrustlineInfo,
 } from "./useDepositFlow";

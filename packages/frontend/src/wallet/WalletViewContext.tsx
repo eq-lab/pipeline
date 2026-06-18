@@ -10,7 +10,7 @@
  *   pattern of `useWalletGate` so isolated tests don't need to wrap a new
  *   provider.
  */
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import React from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,6 +32,24 @@ const DEFAULT_VALUE: WalletViewContextValue = {
   setKind: () => {},
 };
 
+// ── Storage ───────────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "pipeline.wallet.view.kind";
+const VALID_KINDS: WalletViewKind[] = ["evm", "stellar"];
+const DEFAULT_KIND: WalletViewKind = "evm";
+
+function readStoredKind(): WalletViewKind {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && (VALID_KINDS as string[]).includes(stored)) {
+      return stored as WalletViewKind;
+    }
+  } catch {
+    // localStorage unavailable (e.g. SSR or privacy mode)
+  }
+  return DEFAULT_KIND;
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function WalletViewProvider({
@@ -39,7 +57,26 @@ export function WalletViewProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [kind, setKind] = useState<WalletViewKind>("evm");
+  const [kind, setKindState] = useState<WalletViewKind>(readStoredKind);
+
+  const setKind = (k: WalletViewKind) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, k);
+    } catch {
+      // localStorage unavailable — still update in-memory state
+    }
+    setKindState(k);
+  };
+
+  // Sync on mount in case localStorage changed in another tab
+  useEffect(() => {
+    const stored = readStoredKind();
+    if (stored !== kind) {
+      setKindState(stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <WalletViewContext.Provider value={{ kind, setKind }}>
       {children}

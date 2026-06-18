@@ -116,16 +116,6 @@ export const ENV = Object.freeze({
   ),
 
   /**
-   * Stellar USDC issuer address. Defaults to Circle's official testnet issuer.
-   * The mainnet issuer (`GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`)
-   * must be set via env when `VITE_STELLAR_NETWORK=mainnet`.
-   */
-  STELLAR_USDC_ISSUER: readString(
-    "VITE_STELLAR_USDC_ISSUER",
-    "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-  ),
-
-  /**
    * Soroban RPC URL — distinct from Horizon. Contract invocations (Blend
    * deposit/withdraw) go through the Soroban RPC (simulate → assemble → send),
    * NOT Horizon. Defaults to the public Stellar testnet Soroban RPC.
@@ -148,8 +138,8 @@ export const ENV = Object.freeze({
   ),
 
   /**
-   * Blend testnet USDC reserve — a Soroban token contract (NOT the classic
-   * USDC asset that `STELLAR_USDC_ISSUER` refers to). This is the `address`
+   * Blend testnet USDC reserve — a Soroban token contract (NOT the protocol
+   * USDC asset derived on-chain from the DepositManager). This is the `address`
    * passed in a Blend supply/withdraw request when depositing USDC.
    */
   STELLAR_BLEND_USDC_ID: readString(
@@ -187,6 +177,16 @@ export const ENV = Object.freeze({
     "VITE_STELLAR_WITHDRAWAL_QUEUE_ID",
     "",
   ),
+
+  /**
+   * Pipeline protocol StakedPLUSD (sPLUSD) FungibleVault Soroban contract ID
+   * on the configured Stellar network.
+   * Defaults to the empty string — same short-circuit semantics as
+   * `STELLAR_DEPOSIT_MANAGER_ID` above.
+   * When empty, all StakedPLUSD hooks short-circuit and return `undefined`
+   * without making any RPC call.
+   */
+  STELLAR_STAKED_PLUSD_ID: readString("VITE_STELLAR_STAKED_PLUSD_ID", ""),
 });
 
 /**

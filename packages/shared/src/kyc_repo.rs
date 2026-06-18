@@ -877,7 +877,7 @@ impl KycRepo {
                            COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
                     FROM contract_logs r
                     LEFT JOIN lp_profiles p ON p.chain_id = r.chain_id
-                        AND p.wallet_address = LOWER(
+                        AND LOWER(p.wallet_address) = LOWER(
                             COALESCE(r.params->>'user', r.params->>'withdrawer', r.params->>'owner')
                         )
                     WHERE LOWER(

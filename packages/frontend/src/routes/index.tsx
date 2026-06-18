@@ -4,6 +4,7 @@ import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
 
 import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
+import { useConnectModal } from "@/wallet";
 import {
   useStakedPlusdAsset,
   useStakedPlusdConvertToAssets,
@@ -108,7 +109,8 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  const { isConnected, connect } = useEvmWallet();
+  const { isConnected } = useEvmWallet();
+  const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
 
   // Read the connected wallet's PLUSD balance to gate the Stake CTA.
@@ -195,7 +197,7 @@ function Home() {
             <ConnectWalletPromoCard
               className="min-h-[256px] md:min-h-[274px]"
               padding="md"
-              onConnect={connect}
+              onConnect={openConnectModal}
               data-testid="home-connect-wallet-card"
             />
           )}
@@ -285,7 +287,7 @@ function Home() {
             ) : (
               <ConnectWalletPromoCard
                 className="col-span-4 row-start-1"
-                onConnect={connect}
+                onConnect={openConnectModal}
                 data-testid="home-connect-wallet-card"
               />
             )}

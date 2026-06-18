@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useStellarWallet } from "./useStellarWallet";
+import { useStellarWallet, useStellarConnectors } from "./useStellarWallet";
 import { WalletGateProvider } from "../WalletGateProvider";
 
 // ── Mock the Stellar kit singleton (./config) ─────────────────────────────────
@@ -13,11 +13,15 @@ const {
   mockGetAddress,
   mockDisconnect,
   mockSignTransactionKit,
+  mockSetWallet,
+  mockFetchAddress,
 } = vi.hoisted(() => ({
   mockAuthModal: vi.fn(),
   mockGetAddress: vi.fn(),
   mockDisconnect: vi.fn(),
   mockSignTransactionKit: vi.fn(),
+  mockSetWallet: vi.fn(),
+  mockFetchAddress: vi.fn(),
 }));
 
 vi.mock("./config", () => ({
@@ -26,6 +30,8 @@ vi.mock("./config", () => ({
     getAddress: mockGetAddress,
     disconnect: mockDisconnect,
     signTransaction: mockSignTransactionKit,
+    setWallet: mockSetWallet,
+    fetchAddress: mockFetchAddress,
   },
 }));
 
@@ -353,5 +359,83 @@ describe("useStellarWallet — signTransaction()", () => {
 
     // Kit.signTransaction should NOT be called on mock path.
     expect(mockSignTransactionKit).not.toHaveBeenCalled();
+  });
+});
+
+// ── Tests: useStellarConnectors — no gate (issue #639) ───────────────────────
+
+describe("useStellarConnectors — connectWallet calls kit directly (no gate)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockGetAddress.mockClear();
+    mockSetWallet.mockClear();
+    mockFetchAddress.mockClear();
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+    mockFetchAddress.mockResolvedValue({ address: STELLAR_ADDR });
+    capturedModalProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("calls setWallet + fetchAddress directly when terms NOT acknowledged (no gate)", async () => {
+    // Terms absent — gate should NOT appear; kit should be called directly.
+    const { result } = renderHook(() => useStellarConnectors(), { wrapper });
+
+    await act(async () => {
+      await result.current.connectWallet("freighter");
+    });
+
+    // Gate NOT opened.
+    expect(capturedModalProps.open).toBe(false);
+    // Kit called directly.
+    expect(mockSetWallet).toHaveBeenCalledWith("freighter");
+    expect(mockFetchAddress).toHaveBeenCalledOnce();
+  });
+
+  it("calls setWallet + fetchAddress when terms ARE acknowledged", async () => {
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+
+    const { result } = renderHook(() => useStellarConnectors(), { wrapper });
+
+    await act(async () => {
+      await result.current.connectWallet("lobstr");
+    });
+
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockSetWallet).toHaveBeenCalledWith("lobstr");
+    expect(mockFetchAddress).toHaveBeenCalledOnce();
+  });
+
+  it("mock short-circuit: connectWallet is a no-op when mock address is set", async () => {
+    localStorage.setItem("pipeline.mock.wallet.stellar.address", STELLAR_ADDR);
+
+    const { result } = renderHook(() => useStellarConnectors(), { wrapper });
+
+    await act(async () => {
+      await result.current.connectWallet("freighter");
+    });
+
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockSetWallet).not.toHaveBeenCalled();
+    expect(mockFetchAddress).not.toHaveBeenCalled();
+  });
+
+  it("invokes onUnavailable callback when kit throws", async () => {
+    mockFetchAddress.mockRejectedValueOnce(new Error("wallet unavailable"));
+    const onUnavailable = vi.fn();
+
+    const { result } = renderHook(() => useStellarConnectors(), { wrapper });
+
+    await act(async () => {
+      await result.current.connectWallet("freighter", onUnavailable);
+    });
+
+    expect(onUnavailable).toHaveBeenCalledOnce();
   });
 });

@@ -9,10 +9,12 @@ import { HeroIcon } from "../HeroIcon/HeroIcon";
  *   - `HeroIcon` with `icon="chart"` (72×72 px muted-fill circle) above
  *     the heading with a small gap.
  *   - Display-serif heading at `heading-m` scale (28 px / 36 px line-height).
+ *   - `mb-8` (32 px) bottom margin keeps the header → card gap consistent
+ *     with the Deposit page (Issue #612).
  *
  * Design tokens used:
  *   - `--font-display`                         — Besley serif typeface
- *   - `--font-weight-bold`                     — 700
+ *   - `--font-weight-regular`                  — 400 (Besley Regular, per Figma node 1497-95313)
  *   - `--text-pipeline-heading-m`              — 28 px
  *   - `--text-pipeline-heading-m--line-height` — 36 px
  *   - `--color-pipeline-ink`                   — primary ink colour
@@ -33,15 +35,17 @@ export interface StakeHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 // Root container — centred column, no fixed width so it fills its parent.
-const rootClasses = ["flex flex-col items-center", "gap-3"].join(" ");
+// mb-8 (32 px) matches DepositHeader bottom spacing so header → card gap is
+// consistent across Stake and Deposit pages (Issue #612).
+const rootClasses = ["flex flex-col items-center", "gap-3", "mb-8"].join(" ");
 
-// Heading — display-serif at heading-m scale, bold weight, primary ink.
-// Matches Figma text style for the StakeHeader label (node 1497-95313).
+// Heading — display-serif at heading-m scale, regular weight, primary ink.
+// Figma node 1497-95313 specifies Besley Regular (font-weight 400), not Bold.
 const headingClasses = [
   "font-[family-name:var(--font-display)]",
   "text-[length:var(--text-pipeline-heading-m)]",
   "leading-[var(--text-pipeline-heading-m--line-height)]",
-  "font-[var(--font-weight-bold)]",
+  "font-[var(--font-weight-regular)]",
   "text-[color:var(--color-pipeline-ink)]",
   "text-center",
   "select-none",

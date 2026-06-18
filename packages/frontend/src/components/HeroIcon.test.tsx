@@ -144,12 +144,22 @@ describe("HeroIcon — structural rendering", () => {
     expect(span?.style.maskSize).toBe("contain");
   });
 
-  it("inner span background-color is the ink token for arrow-clock", () => {
+  it("inner span background-color is full ink for arrow-clock (SVG bakes opacity)", () => {
     const { container } = render(<HeroIcon icon="arrow-clock" />);
     const span = container.querySelector(
       "span[aria-hidden='true']",
     ) as HTMLSpanElement | null;
     expect(span?.style.backgroundColor).toBe("var(--color-pipeline-ink)");
+  });
+
+  it("inner span background-color is ink-subtle for chart (no baked opacity)", () => {
+    const { container } = render(<HeroIcon icon="chart" />);
+    const span = container.querySelector(
+      "span[aria-hidden='true']",
+    ) as HTMLSpanElement | null;
+    expect(span?.style.backgroundColor).toBe(
+      "var(--color-pipeline-ink-subtle)",
+    );
   });
 
   it("outer div is decorative (aria-hidden) when no aria-label is passed", () => {

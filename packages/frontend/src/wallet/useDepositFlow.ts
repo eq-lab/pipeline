@@ -26,6 +26,9 @@
  *   disabled via their own `enabled`/`requestId === undefined` guards.
  * - Stellar balance arrives as a Horizon human-decimal string (e.g. `"1.5"`);
  *   we convert to bigint at 7 dp (`sacDisplayToRaw`) for amount comparisons.
+ * - On Stellar, `trustlines` always contains two entries: PLUSD (index 0) and
+ *   USDC (index 1). Both are shown in the StepsCard as steps 1 and 2 regardless
+ *   of direction. On EVM, `trustlines` is always empty.
  */
 
 import { useCallback } from "react";
@@ -93,6 +96,30 @@ export interface StepTxState {
 }
 
 /**
+ * Per-asset Stellar trustline descriptor.
+ *
+ * On Stellar, `FlowState.trustlines` always contains two entries:
+ *   [0] PLUSD, [1] USDC — regardless of direction.
+ * On EVM, `FlowState.trustlines` is always empty ([]).
+ */
+export interface TrustlineInfo {
+  /** Protocol asset code. */
+  asset: "PLUSD" | "USDC";
+  /** True when the trustline is absent (must be enabled). */
+  needsTrustline: boolean;
+  /** True when the trustline is present (!needsTrustline and status is known). */
+  isEnabled: boolean;
+  /** True while the enable transaction is in-flight. */
+  enabling: boolean;
+  /** Non-null when the most recent enable attempt failed. */
+  error: Error | null;
+  /** Call to submit the enable (changeTrust) transaction. */
+  onEnable: () => void;
+  /** Transaction lifecycle for per-asset toast emission. */
+  tx: StepTxState;
+}
+
+/**
  * Unified state shape consumed by the deposit/withdraw route component.
  */
 export interface FlowState {
@@ -144,15 +171,18 @@ export interface FlowState {
   isInputFaded: boolean;
   networkFee: string | undefined;
 
-  // ── Manager reachability (EVM only; always false for Stellar) ─────────
-  isManagerUnreachable: boolean;
-  isManagerLoading: boolean;
-
   // ── Refetch helpers ───────────────────────────────────────────────────
   refetchBalance: () => void;
 
   // ── Quick-amount handler ───────────────────────────────────────────────
   onQuickAmount: (idx: number) => void;
+
+  // ── Stellar trustline statuses (direction-independent) ────────────────
+  /**
+   * On Stellar: always [PLUSD, USDC] — both rendered inside the StepsCard.
+   * On EVM: always [] — no trustline UI rendered.
+   */
+  trustlines: TrustlineInfo[];
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -160,11 +190,12 @@ export interface FlowState {
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 /**
  * Frontend minimum deposit for Stellar in tokens at 7 decimals.
- * $1 at 7 dp = 1 × 10^7 = 10_000_000n.
+ * $1,000 at 7 dp = 1000 × 10^7 = 10_000_000_000n.
  * Soroban exposes no on-chain minimum getter; keep this Stellar-specific
  * frontend rule until the contract or API provides a network value.
+ * Reverts #598 (which lowered this to $1); restored to $1,000 by #641.
  */
-const STELLAR_MIN_DEPOSIT = 1n * 10n ** BigInt(SAC_DECIMALS);
+const STELLAR_MIN_DEPOSIT = 1000n * 10n ** BigInt(SAC_DECIMALS);
 
 // ── Format helper ─────────────────────────────────────────────────────────────
 
@@ -212,11 +243,7 @@ export function useDepositFlow(
     connect: evmConnect,
   } = useEvmWallet();
 
-  const {
-    plusd: plusdFromManager,
-    usdc,
-    isLoading: isManagerLoading,
-  } = useDepositManagerAddresses();
+  const { plusd: plusdFromManager, usdc } = useDepositManagerAddresses();
   const { minDeposit: evmMinDeposit } = useDepositManagerMinDeposit();
 
   const usdcAddr = (usdc ?? ZERO_ADDRESS) as `0x${string}`;
@@ -259,8 +286,7 @@ export function useDepositFlow(
     connect: stellarConnect,
   } = useStellarWallet();
 
-  const { addresses: stellarAddresses, isLoading: stellarManagerLoading } =
-    useStellarDepositManagerAddresses();
+  const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
 
   // USDC balance — deposit input on Stellar.
   // Use the same source as the TopBar wallet pill (`useStellarToken`) so the
@@ -500,6 +526,8 @@ export function useDepositFlow(
 
   const depositNeedsTrustline = changeTrust.needsTrustline;
   const withdrawNeedsTrustline = changeTrustUsdc.needsTrustline;
+  // Both trustlines must be present before Confirm can proceed (per issue #604 Q3 answer).
+  const bothTrustlinesReady = !depositNeedsTrustline && !withdrawNeedsTrustline;
 
   const stellarDepositMeetsMin =
     amountBig > 0n && amountBig >= STELLAR_MIN_DEPOSIT;
@@ -604,12 +632,6 @@ export function useDepositFlow(
     const evmFormattedBalance = isDeposit
       ? evmDepositFormattedBalance
       : evmWithdrawFormattedBalance;
-
-    const isEvmManagerUnreachable =
-      isEvmConnected &&
-      !isManagerLoading &&
-      plusdFromManager === undefined &&
-      usdc === undefined;
 
     const isEvmReady = isDeposit ? isEvmDepositReady : isEvmWithdrawReady;
     const evmHasBalance: boolean | undefined = isDeposit
@@ -790,12 +812,14 @@ export function useDepositFlow(
             evmDepositIsPendingVerification ||
             (evmRequestDeposit.isSuccess &&
               !evmDepositRequestIsConfirmed &&
-              evmDepositActiveRequest === null)
+              evmDepositActiveRequest === null) ||
+            evmVoucher.status === "pending"
           : evmRequestWithdrawal.isPending ||
             evmWithdrawIsPendingVerification ||
             (evmRequestWithdrawal.isSuccess &&
               !evmWithdrawRequestIsConfirmed &&
-              evmWithdrawActiveRequest === null),
+              evmWithdrawActiveRequest === null) ||
+            evmVoucher.status === "pending",
         disabled: !canEvmConfirm,
         onAction: () => {
           if (isDeposit) evmRequestDeposit.write(amountBig);
@@ -806,9 +830,7 @@ export function useDepositFlow(
         label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
         actionLabel: "Claim",
         state: evmStep3State,
-        loading: isDeposit
-          ? evmVoucher.status === "pending" || evmClaim.isPending
-          : evmVoucher.status === "pending" || evmClaimWithdrawal.isPending,
+        loading: isDeposit ? evmClaim.isPending : evmClaimWithdrawal.isPending,
         disabled: !canEvmClaim,
         onAction: () => {
           if (evmRequestId === undefined || !evmVoucher.data?.signature) return;
@@ -855,12 +877,11 @@ export function useDepositFlow(
       isAnyTxInFlight: evmIsAnyTxInFlight,
       isInputFaded: evmIsInputFaded,
       networkFee: evmNetworkFee,
-      isManagerUnreachable: isEvmManagerUnreachable,
-      isManagerLoading,
       refetchBalance: isDeposit
         ? refetchDepositBalance
         : refetchWithdrawBalance,
       onQuickAmount: onEvmDepositQuickAmount,
+      trustlines: [],
     };
   }
 
@@ -965,13 +986,13 @@ export function useDepositFlow(
     isStellarConnected &&
     stellarDepositMeetsMin &&
     stellarHasBalance === true &&
-    !depositNeedsTrustline &&
+    bothTrustlinesReady &&
     !stellarRequestDeposit.isPending &&
     !stellarDepositRequestIsConfirmed;
   const canStellarStep2Withdraw =
     isStellarConnected &&
     stellarCanWithdraw &&
-    !withdrawNeedsTrustline &&
+    bothTrustlinesReady &&
     !stellarRequestWithdrawal.isPending &&
     !stellarWithdrawRequestIsConfirmed;
   const canStellarStep2 = isDeposit
@@ -1028,12 +1049,14 @@ export function useDepositFlow(
       stellarDepositIsPendingVerification ||
       (stellarRequestDeposit.isSuccess &&
         !stellarDepositRequestIsConfirmed &&
-        stellarDepositActiveRequest === null)
+        stellarDepositActiveRequest === null) ||
+      stellarVoucher.status === "pending"
     : stellarRequestWithdrawal.isPending ||
       stellarWithdrawIsPendingVerification ||
       (stellarRequestWithdrawal.isSuccess &&
         !stellarWithdrawRequestIsConfirmed &&
-        stellarWithdrawActiveRequest === null);
+        stellarWithdrawActiveRequest === null) ||
+      stellarVoucher.status === "pending";
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
@@ -1083,10 +1106,7 @@ export function useDepositFlow(
       label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
       actionLabel: "Claim",
       state: stellarStep3State,
-      loading: isDeposit
-        ? stellarVoucher.status === "pending" || stellarClaim.isPending
-        : stellarVoucher.status === "pending" ||
-          stellarClaimWithdrawal.isPending,
+      loading: isDeposit ? stellarClaim.isPending : stellarClaimWithdrawal.isPending,
       disabled: !canStellarStep3,
       onAction: () => {
         if (stellarRequestIdBigInt === undefined) return;
@@ -1130,11 +1150,37 @@ export function useDepositFlow(
     isAnyTxInFlight: stellarIsAnyTxInFlight,
     isInputFaded: stellarIsInputFaded,
     networkFee: stellarNetworkFee,
-    isManagerUnreachable: false,
-    isManagerLoading: stellarManagerLoading,
     refetchBalance: isDeposit
       ? usdcToken.refetchBalance
       : plusdSac.refetchBalance,
     onQuickAmount: onStellarQuickAmount,
+    trustlines: [
+      {
+        asset: "PLUSD" as const,
+        needsTrustline: depositNeedsTrustline,
+        isEnabled: !depositNeedsTrustline,
+        enabling: changeTrust.isPending,
+        error: changeTrust.error,
+        onEnable: () => changeTrust.submit(),
+        tx: {
+          isPending: changeTrust.isPending,
+          isSuccess: changeTrust.isSuccess,
+          error: changeTrust.error,
+        },
+      },
+      {
+        asset: "USDC" as const,
+        needsTrustline: withdrawNeedsTrustline,
+        isEnabled: !withdrawNeedsTrustline,
+        enabling: changeTrustUsdc.isPending,
+        error: changeTrustUsdc.error,
+        onEnable: () => changeTrustUsdc.submit(),
+        tx: {
+          isPending: changeTrustUsdc.isPending,
+          isSuccess: changeTrustUsdc.isSuccess,
+          error: changeTrustUsdc.error,
+        },
+      },
+    ],
   };
 }

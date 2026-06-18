@@ -984,6 +984,14 @@ describe("Stake page — disconnected wallet", () => {
       expect(connectBtn).not.toBeDisabled();
     });
   });
+
+  it("Connect button in the banner uses compact size (Figma node 1994-7226)", async () => {
+    renderStake();
+    const connectBtn = await screen.findByTestId("stake-connect-button");
+    // Compact size sets data-size="compact" and !h-8 class on the button element.
+    expect(connectBtn).toHaveAttribute("data-size", "compact");
+    expect(connectBtn.className).toContain("!h-8");
+  });
 });
 
 // ── Tests — zero balance ──────────────────────────────────────────────────────
@@ -1085,6 +1093,39 @@ describe("Stake page — amount exceeds balance", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "Stake" })).toBeDisabled();
+    });
+  });
+});
+
+// ── Tests — Issue #615: token-amount-display no stray border ─────────────────
+
+describe("Stake page — no nested border on token-amount-display (Issue #615)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("token-amount-display has border:none inline style (no nested border inside output section)", async () => {
+    renderStake();
+
+    await waitFor(() => {
+      const display = screen.getByTestId("token-amount-display");
+      // The inline style must explicitly unset the border so the component
+      // renders flush inside the output section card (Issue #615).
+      expect(display.style.border).toBe("none");
+    });
+  });
+
+  it("token-amount-display has no padding inline style (zero padding, section provides spacing)", async () => {
+    renderStake();
+
+    await waitFor(() => {
+      const display = screen.getByTestId("token-amount-display");
+      expect(display.style.padding).toBe("0px");
     });
   });
 });

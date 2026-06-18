@@ -20,6 +20,7 @@ import {
   useStake,
   useUnstake,
   useNetworkFeeEstimate,
+  useConnectModal,
 } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { parseUsdc, formatUsdc } from "@/lib/usdc";
@@ -53,7 +54,7 @@ import { parseUsdc, formatUsdc } from "@/lib/usdc";
  *   remains visible above the banner.
  *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
  *   identical to the deposit page and home-page CTA.
- *   Figma: node 1994-7280.
+ *   Figma: node 1994-7226.
  *
  * Token discipline: no raw colors, fonts, sizes, or radii. Everything goes
  * through design tokens or component primitives from `@pipeline/ui`.
@@ -89,7 +90,10 @@ function formatUnits4(value: bigint, decimals: number): string {
 
 function Stake() {
   // ── State sources ─────────────────────────────────────────────────────
-  const { isConnected, connect } = useEvmWallet();
+  const { isConnected } = useEvmWallet();
+
+  // ── Connect modal (shared single instance via ConnectModalProvider) ───
+  const { open: openConnectModal } = useConnectModal();
 
   // Derive PLUSD address from the sPLUSD vault's `asset()` call.
   // Fall back to zero-address while loading so downstream hooks are always
@@ -324,7 +328,7 @@ function Stake() {
           {/* Input sub-section: tabs + token amount input */}
           <div
             data-testid="stake-input-section"
-            className="flex flex-col gap-4 p-4"
+            className="flex flex-col gap-0.5 p-4"
           >
             <SegmentedTabs
               data-testid="stake-tabs"
@@ -363,6 +367,10 @@ function Stake() {
             data-testid="stake-output-section"
             className="flex flex-col gap-4 p-4"
           >
+            {/* Strip the card chrome (border / background / radius / padding)
+                so the component renders flush inside the output section.
+                The section's p-4 provides all necessary padding.
+                Matches ConversionCard.tsx approach (Issue #595 fix 6). */}
             <TokenAmountDisplay
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
@@ -372,6 +380,12 @@ function Stake() {
                   : "—"
               }
               value={previewOutputValue}
+              style={{
+                border: "none",
+                background: "transparent",
+                borderRadius: 0,
+                padding: 0,
+              }}
             />
             <InfoRow label="Exchange rate" value={exchangeRateText} />
             <InfoRow label="Network fee" value={networkFee ?? "—"} />
@@ -380,7 +394,7 @@ function Stake() {
 
         {/* Steps card — conditional on wallet connection and activeTab */}
         {!isConnected ? (
-          /* Wallet-not-connected banner. Figma: node 1994-7280. */
+          /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
@@ -394,9 +408,10 @@ function Stake() {
             </p>
             <Button
               variant="primary-dark"
+              size="compact"
               data-testid="stake-connect-button"
               className="whitespace-nowrap"
-              onClick={connect}
+              onClick={openConnectModal}
             >
               Connect
             </Button>
