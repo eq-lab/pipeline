@@ -324,7 +324,7 @@ function Stake() {
           {/* Input sub-section: tabs + token amount input */}
           <div
             data-testid="stake-input-section"
-            className="flex flex-col gap-4 p-4"
+            className="flex flex-col gap-0.5 p-4"
           >
             <SegmentedTabs
               data-testid="stake-tabs"
