@@ -467,29 +467,6 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : flow.isManagerUnreachable ? (
-          <Card variant="danger" data-testid="dm-unreachable-banner">
-            <p
-              data-testid="dm-unreachable-banner-title"
-              className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-s)]"
-            >
-              DepositManager not reachable
-            </p>
-            <p
-              data-testid="dm-unreachable-banner-detail"
-              className="mt-1 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]"
-            >
-              Check{" "}
-              <code data-testid="dm-unreachable-banner-env">
-                {isStellar
-                  ? isDeposit
-                    ? "VITE_STELLAR_DEPOSIT_MANAGER_ID"
-                    : "VITE_STELLAR_WITHDRAWAL_QUEUE_ID"
-                  : "VITE_DEPOSIT_MANAGER_ADDRESS"}
-              </code>{" "}
-              and RPC connectivity.
-            </p>
-          </Card>
         ) : isDeposit && flow.hasBalance === false ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card

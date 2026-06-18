@@ -1487,63 +1487,6 @@ describe("Deposit page — toast emissions", () => {
   });
 });
 
-describe("Deposit page — DepositManager unreachable banner", () => {
-  beforeEach(() => {
-    mockDirection = "deposit";
-    localStorage.clear();
-    mockWriteContract.mockClear();
-    mockRefetch.mockClear();
-    mockRequestsData = undefined;
-    mockVoucherData = undefined;
-    mockVoucherStatus = "idle";
-    mockWithdrawVoucherData = undefined;
-    mockWithdrawVoucherStatus = "idle";
-    // Seed wallet as connected but do NOT seed the DepositManager named aliases.
-    // Without the named aliases and without a matching generic key, the hook
-    // hits the real wagmi path (useReadContract returns { data: undefined, isLoading: false })
-    // → both plusd and usdc remain undefined → isManagerUnreachable = true.
-    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
-    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
-    // No depositManager mock keys — both addresses remain undefined.
-  });
-
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  it("renders the DepositManager unreachable banner when both addresses are undefined", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(screen.getByTestId("dm-unreachable-banner")).toBeInTheDocument();
-    });
-  });
-
-  it("does not render StepsCard or low-balance banner when unreachable banner is shown", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(screen.getByTestId("dm-unreachable-banner")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Approve" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("Add funds to your USDC balance"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("banner copy references VITE_DEPOSIT_MANAGER_ADDRESS", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(
-        screen.getByText("DepositManager not reachable"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/VITE_DEPOSIT_MANAGER_ADDRESS/),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 // ── Withdraw-direction tests ───────────────────────────────────────────────────
 
 describe("Deposit page — direction=withdraw — approve needed state", () => {
