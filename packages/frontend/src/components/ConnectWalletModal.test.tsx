@@ -332,6 +332,16 @@ describe("ConnectWalletModal — full-viewport layout", () => {
     const overlay = await screen.findByTestId("connect-wallet-modal-overlay");
     expect(overlay).not.toHaveStyle({ backgroundColor: "rgba(56,55,53,0.6)" });
   });
+
+  it("left-pane wrapper is top-anchored (justify-start), not vertically centered (justify-center)", async () => {
+    renderModal();
+    const heading = await screen.findByRole("heading", { name: "Connect Wallet" });
+    // Walk up to the flex wrapper that directly wraps the content column
+    const contentColumn = heading.parentElement!;
+    const leftPane = contentColumn.parentElement!;
+    expect(leftPane.className).toMatch(/\bjustify-start\b/);
+    expect(leftPane.className).not.toMatch(/\bjustify-center\b/);
+  });
 });
 
 // ── Dismissal ─────────────────────────────────────────────────────────────────
