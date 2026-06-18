@@ -66,6 +66,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#564 Connect Wallet modal: right pane uses real wordmark and hero photo](https://github.com/eq-lab/pipeline/issues/564)                    | [564-connect-modal-hero-image.md](./epic-556/564-connect-modal-hero-image.md) | Initial |
 | [#579 Connect hero asset fix: text-free photo and white wordmark](https://github.com/eq-lab/pipeline/issues/579)                            | [579-connect-hero-asset.md](./epic-556/579-connect-hero-asset.md)             | Initial |
 | [#580 Connect modal right pane: overlay headline size and position](https://github.com/eq-lab/pipeline/issues/580)                          | [580-connect-modal-headline.md](./epic-556/580-connect-modal-headline.md)     | Initial |
+| [#638 Connect Wallet modal: every "Connect Wallet" button opens the same modal](https://github.com/eq-lab/pipeline/issues/638)              | [638-connect-wallet-modal-everywhere.md](./epic-556/638-connect-wallet-modal-everywhere.md) | Initial |
 
 ---
 

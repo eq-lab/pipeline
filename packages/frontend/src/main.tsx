@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import {
+  ConnectModalProvider,
   EvmWalletProvider,
   StellarWalletProvider,
   WalletGateProvider,
@@ -27,11 +28,13 @@ createRoot(rootElement).render(
     <WalletGateProvider>
       <EvmWalletProvider>
         <StellarWalletProvider>
-          <WalletViewProvider>
-            <ToastProvider>
-              <RouterProvider router={router} />
-            </ToastProvider>
-          </WalletViewProvider>
+          <ConnectModalProvider>
+            <WalletViewProvider>
+              <ToastProvider>
+                <RouterProvider router={router} />
+              </ToastProvider>
+            </WalletViewProvider>
+          </ConnectModalProvider>
         </StellarWalletProvider>
       </EvmWalletProvider>
     </WalletGateProvider>

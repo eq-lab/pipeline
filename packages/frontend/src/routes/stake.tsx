@@ -20,6 +20,7 @@ import {
   useStake,
   useUnstake,
   useNetworkFeeEstimate,
+  useConnectModal,
 } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { parseUsdc, formatUsdc } from "@/lib/usdc";
@@ -89,7 +90,10 @@ function formatUnits4(value: bigint, decimals: number): string {
 
 function Stake() {
   // ── State sources ─────────────────────────────────────────────────────
-  const { isConnected, connect } = useEvmWallet();
+  const { isConnected } = useEvmWallet();
+
+  // ── Connect modal (shared single instance via ConnectModalProvider) ───
+  const { open: openConnectModal } = useConnectModal();
 
   // Derive PLUSD address from the sPLUSD vault's `asset()` call.
   // Fall back to zero-address while loading so downstream hooks are always
@@ -407,7 +411,7 @@ function Stake() {
               size="compact"
               data-testid="stake-connect-button"
               className="whitespace-nowrap"
-              onClick={connect}
+              onClick={openConnectModal}
             >
               Connect
             </Button>

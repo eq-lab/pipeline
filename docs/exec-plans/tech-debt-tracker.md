@@ -161,6 +161,20 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
   the `Button` prop; adjust any test assertions that relied on the className value directly.
 
+### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal`
+- **Date:** 2026-06-18
+- **Location:** `packages/frontend/src/components/ConnectChooserModal.tsx` (and its test)
+- **Gap:** `ConnectChooserModal` is no longer imported from any non-test production file since `ConnectWalletModal` replaced it (Issue #558). Its own test file exercises it in isolation only.
+- **Impact:** Dead code accumulates maintenance overhead; any future token or style changes must be applied in two places.
+- **Suggested fix:** Delete `ConnectChooserModal.tsx` and `ConnectChooserModal.test.tsx` after confirming via `grep -rn ConnectChooserModal` that no production import exists. Update the `ConnectWalletModal.tsx` JSDoc comment that still references it.
+
+### TD-21: `packages/frontend/src/wallet/evm/WalletGateContext.ts` is dead code — legacy no-arg `openGate()` variant
+- **Date:** 2026-06-18
+- **Location:** `packages/frontend/src/wallet/evm/WalletGateContext.ts`
+- **Gap:** This file defines a different `WalletGateContextValue` interface (no `onProceed` callback) from the live one at `packages/frontend/src/wallet/WalletGateContext.ts`. `useEvmWallet.ts` imports from `../WalletGateContext` (the correct live path). The `evm/WalletGateContext.ts` file is not imported by anything except itself.
+- **Impact:** Confusing dual-file situation; the dead file could mislead future contributors.
+- **Suggested fix:** Confirm with `grep -rn "evm/WalletGateContext"` that no import exists, then delete the file.
+
 ---
 
 ## Post-MVP
