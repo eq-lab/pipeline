@@ -10,8 +10,12 @@
  *   5. Unfunded account (404) — loadAccount rejects with NotFoundError → "0".
  *   6. Hard error — loadAccount rejects with generic error → surfaces on `error`.
  *   7. Disconnected — query disabled; balance undefined; loadAccount never called.
- *   8. Mock key — hook returns mock value; loadAccount never called.
- *   9. refetchBalance is a function.
+ *   8. Issuer not resolved — query idle until the on-chain USDC issuer loads.
+ *   9. Mock key — hook returns mock value; loadAccount never called.
+ *  10. refetchBalance is a function.
+ *
+ * The protocol USDC issuer is derived on-chain via
+ * `useStellarDepositManagerAddresses` (mocked here), not from env.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -63,7 +67,34 @@ const { USDC_ISSUER, HORIZON_URL } = vi.hoisted(() => ({
 
 vi.mock("./chain", () => ({
   horizonUrl: HORIZON_URL,
-  usdcIssuer: USDC_ISSUER,
+}));
+
+// ── Mock ./useStellarDepositManagerAddresses ──────────────────────────────────
+// The protocol USDC issuer is now derived on-chain. `mockAddresses.value` is
+// the resolver's `addresses` — set to `undefined` to simulate the not-yet-
+// resolved state (query stays idle).
+
+const mockAddresses = vi.hoisted(() => ({
+  value: {
+    usdc: "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
+    plusd: "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN",
+    usdcAsset: {
+      code: "USDC",
+      issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    },
+    plusdAsset: {
+      code: "PLUSD",
+      issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    },
+  } as object | undefined,
+}));
+
+vi.mock("./useStellarDepositManagerAddresses", () => ({
+  useStellarDepositManagerAddresses: () => ({
+    addresses: mockAddresses.value,
+    isLoading: false,
+    error: null,
+  }),
 }));
 
 // ── Mock ./mock ───────────────────────────────────────────────────────────────
@@ -311,6 +342,37 @@ describe("useStellarToken — disconnected", () => {
     expect(result.current.formattedBalance).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
+    expect(mockLoadAccount).not.toHaveBeenCalled();
+  });
+});
+
+// ── Tests: protocol issuer not yet resolved ───────────────────────────────────
+
+describe("useStellarToken — issuer not resolved", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockStellarWallet.address = STELLAR_ADDR;
+    mockStellarWallet.isConnected = true;
+    mockLoadAccount.mockClear();
+    mockAddresses.value = undefined; // resolver still loading
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockAddresses.value = {
+      usdc: "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
+      plusd: "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN",
+      usdcAsset: { code: "USDC", issuer: USDC_ISSUER },
+      plusdAsset: { code: "PLUSD", issuer: USDC_ISSUER },
+    };
+  });
+
+  it("stays idle (no Horizon call) until the protocol USDC issuer resolves", () => {
+    const { result } = renderHook(() => useStellarToken(), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    expect(result.current.balance).toBeUndefined();
     expect(mockLoadAccount).not.toHaveBeenCalled();
   });
 });

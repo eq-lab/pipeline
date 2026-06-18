@@ -19,6 +19,14 @@ import React from "react";
  * dark/blue rectangles and `--color-pipeline-ink` for the circular, secondary,
  * and toast-action variants (which sit on light/dark cards), so the ring always
  * has sufficient contrast.
+ *
+ * Size variants (applies to rectangular variants only — `primary-dark`,
+ * `primary-blue`, `secondary`):
+ *   - `default` (omitted) — 48px tall, as described above.
+ *   - `compact`           — 32px tall with tighter horizontal padding (6px
+ *                           box + 4px inner label). Used for inline CTAs such
+ *                           as the wallet banner "Connect" button (Figma node
+ *                           1994-7226). Radius and colours are unchanged.
  */
 
 export type ButtonVariant =
@@ -28,8 +36,13 @@ export type ButtonVariant =
   | "circular-blue"
   | "toast-action";
 
+export type ButtonSize = "default" | "compact";
+
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  /** Size variant for rectangular button shapes. Defaults to `"default"` (48px).
+   *  Use `"compact"` for 32px inline CTAs (Figma node 1994-7226). */
+  size?: ButtonSize;
 }
 
 // Shared style applied across all variants. Kept terse intentionally — most
@@ -128,12 +141,28 @@ const variantClasses: Record<ButtonVariant, string> = {
   ].join(" "),
 };
 
+// Rectangular variants that support the `compact` size override.
+const RECTANGULAR_VARIANTS: ReadonlySet<ButtonVariant> = new Set([
+  "primary-dark",
+  "primary-blue",
+  "secondary",
+]);
+
+// Size-override classes applied on top of the variant block for `compact`.
+// Matches Figma node 1994-7226: 32px height, 6px box padding (px-1.5).
+const compactSizeClasses = "!h-8 !min-w-8 !px-1.5";
+
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
-    { variant = "primary-blue", className, type, children, ...rest },
+    { variant = "primary-blue", size, className, type, children, ...rest },
     ref,
   ) {
-    const composed = [baseClasses, variantClasses[variant], className]
+    const sizeOverride =
+      size === "compact" && RECTANGULAR_VARIANTS.has(variant)
+        ? compactSizeClasses
+        : undefined;
+
+    const composed = [baseClasses, variantClasses[variant], sizeOverride, className]
       .filter(Boolean)
       .join(" ");
 
@@ -143,12 +172,14 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         type={type ?? "button"}
         className={composed}
         data-variant={variant}
+        data-size={size ?? "default"}
         {...rest}
       >
-        {/* Inner label wrapper mirrors the Figma "Label" inset (px-2). Keeps
-            text optically centered for rectangular variants and provides a
-            consistent hit target for the circular variant. */}
-        <span className="inline-flex items-center justify-center px-2">
+        {/* Inner label wrapper mirrors the Figma "Label" inset (px-2 for
+            default; px-1 for compact to match Figma's 4px inner padding). */}
+        <span
+          className={`inline-flex items-center justify-center ${size === "compact" ? "px-1" : "px-2"}`}
+        >
           {children}
         </span>
       </button>

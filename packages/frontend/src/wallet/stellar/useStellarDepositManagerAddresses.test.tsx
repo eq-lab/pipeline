@@ -8,30 +8,35 @@
  *   2. Mock keys both set → returns mock values; no RPC call.
  *   3. Only one mock key set → falls through to real query path (disabled
  *      in these tests because RPC is mocked away).
- *   4. Happy path: simulated asset()+share() return SAC IDs; SAC asset()
+ *   4. Happy path: simulated asset()+share() return SAC IDs; SAC name()
  *      calls return "CODE:ISSUER" strings; hook returns full addresses.
  *   5. Simulation error → surfaces on `error`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useStellarDepositManagerAddresses } from "./useStellarDepositManagerAddresses";
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
-const { mockSimulateTransaction, mockGetAccount, mockIsSimulationError } =
-  vi.hoisted(() => ({
-    mockSimulateTransaction: vi.fn(),
-    mockGetAccount: vi.fn(),
-    mockIsSimulationError: vi.fn().mockReturnValue(false),
-  }));
+const {
+  mockSimulateTransaction,
+  mockGetAccount,
+  mockIsSimulationError,
+  mockContractCall,
+} = vi.hoisted(() => ({
+  mockSimulateTransaction: vi.fn(),
+  mockGetAccount: vi.fn(),
+  mockIsSimulationError: vi.fn().mockReturnValue(false),
+  mockContractCall: vi.fn((method: string) => ({ _method: method })),
+}));
 
 vi.mock("@stellar/stellar-sdk", () => {
   class MockContract {
     call(method: string) {
-      return { _method: method };
+      return mockContractCall(method);
     }
   }
   class MockServer {
@@ -41,6 +46,12 @@ vi.mock("@stellar/stellar-sdk", () => {
     simulateTransaction(tx: unknown) {
       return mockSimulateTransaction(tx);
     }
+  }
+  class MockAccount {
+    constructor(
+      public _id: string,
+      public _seq: string,
+    ) {}
   }
   class MockTransactionBuilder {
     addOperation() {
@@ -56,6 +67,7 @@ vi.mock("@stellar/stellar-sdk", () => {
 
   return {
     Contract: MockContract,
+    Account: MockAccount,
     rpc: {
       Server: MockServer,
       Api: { isSimulationError: mockIsSimulationError },
@@ -84,6 +96,8 @@ vi.mock("./chain", () => ({
   },
   sorobanRpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: "Test SDF Network ; September 2015",
+  READ_SIMULATION_SOURCE:
+    "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
 }));
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -177,5 +191,69 @@ describe("useStellarDepositManagerAddresses — partial mock (one key)", () => {
     // Not in mock-path (hasMock = false); query disabled because mockGetAccount
     // would reject — but we just verify we're not in the mock fast-path.
     expect(result.current.isLoading).toBeDefined();
+  });
+});
+
+// ── Tests: real RPC path ──────────────────────────────────────────────────────
+
+describe("useStellarDepositManagerAddresses — real RPC path", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockDepositManagerId.value = DM_ID;
+    mockSimulateTransaction.mockReset();
+    mockContractCall.mockClear();
+    mockIsSimulationError.mockReturnValue(false);
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("resolves SAC ids and classic assets via DepositManager asset()/share() + SAC name()", async () => {
+    // Four sequential view calls: DM.asset(), DM.share(), USDC.name(), PLUSD.name().
+    // The SAC classic identity comes from name() ("CODE:ISSUER"), not asset().
+    mockSimulateTransaction
+      .mockReturnValueOnce({ result: { retval: { _value: USDC_ID } } })
+      .mockReturnValueOnce({ result: { retval: { _value: PLUSD_ID } } })
+      .mockReturnValueOnce({
+        result: { retval: { _value: `USDC:${PROTOCOL_ISSUER}` } },
+      })
+      .mockReturnValueOnce({
+        result: { retval: { _value: `PLUSD:${PROTOCOL_ISSUER}` } },
+      });
+
+    const { result } = renderHook(() => useStellarDepositManagerAddresses(), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(() => expect(result.current.addresses).toBeDefined());
+
+    expect(result.current.addresses?.usdc).toBe(USDC_ID);
+    expect(result.current.addresses?.plusd).toBe(PLUSD_ID);
+    expect(result.current.addresses?.usdcAsset).toEqual({
+      code: "USDC",
+      issuer: PROTOCOL_ISSUER,
+    });
+    expect(result.current.addresses?.plusdAsset).toEqual({
+      code: "PLUSD",
+      issuer: PROTOCOL_ISSUER,
+    });
+    expect(result.current.error).toBeNull();
+    // DepositManager exposes the SAC ids via asset()/share()...
+    expect(mockContractCall).toHaveBeenCalledWith("asset");
+    expect(mockContractCall).toHaveBeenCalledWith("share");
+    // ...while each SAC's classic "CODE:ISSUER" identity comes from name().
+    expect(mockContractCall).toHaveBeenCalledWith("name");
+  });
+
+  it("surfaces a simulation error on `error`", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockReturnValue({ error: "boom" });
+
+    const { result } = renderHook(() => useStellarDepositManagerAddresses(), {
+      wrapper: makeWrapper().wrapper,
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.addresses).toBeUndefined();
   });
 });

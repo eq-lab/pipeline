@@ -37,9 +37,6 @@ export const networkPassphrase: string = kitNetwork;
 /** Stellar Horizon base URL for the configured network. */
 export const horizonUrl: string = ENV.STELLAR_HORIZON_URL;
 
-/** Circle USDC issuer address on the configured Stellar network. */
-export const usdcIssuer: string = ENV.STELLAR_USDC_ISSUER;
-
 // ── Soroban / Blend constants ──────────────────────────────────────────────────
 
 /**
@@ -66,6 +63,21 @@ export const blendNetwork = {
   rpc: ENV.STELLAR_RPC_URL,
   passphrase: kitNetwork as string,
 } as const;
+
+/**
+ * Source account for read-only contract simulations.
+ *
+ * Soroban `simulateTransaction` needs a structurally valid source account on
+ * the envelope, but for read-only (view) calls it is never charged or
+ * authenticated, so any valid account works. This is the canonical "null"
+ * account — the all-zero ed25519 public key.
+ *
+ * IMPORTANT: do NOT pass a contract ID (`C…`) here. `new Account()` only
+ * accepts a classic ed25519 public key (`G…`) and throws `accountId is
+ * invalid` for a contract address.
+ */
+export const READ_SIMULATION_SOURCE =
+  "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
 // ── Pipeline protocol contract IDs ─────────────────────────────────────────────
 

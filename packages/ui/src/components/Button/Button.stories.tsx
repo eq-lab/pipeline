@@ -14,7 +14,10 @@ const meta = {
           "opacity-32 when disabled), `circular-blue` (round brand CTA used for " +
           "the Stake action), and `toast-action` (compact white pill for right-aligned " +
           "actions inside Toast notifications — Figma node 1497:95109). All variants " +
-          "consume design tokens from `@pipeline/ui/styles/theme.css`.",
+          "consume design tokens from `@pipeline/ui/styles/theme.css`. " +
+          "Rectangular variants (`primary-dark`, `primary-blue`, `secondary`) additionally " +
+          "accept a `size` prop: `\"default\"` (48px, default) or `\"compact\"` (32px with " +
+          "tighter padding — Figma node 1994-7226).",
       },
     },
   },
@@ -28,6 +31,10 @@ const meta = {
         "circular-blue",
         "toast-action",
       ],
+    },
+    size: {
+      control: "inline-radio",
+      options: ["default", "compact"],
     },
     disabled: { control: "boolean" },
     children: { control: "text" },
@@ -51,6 +58,25 @@ export const PrimaryDark: Story = {
   args: {
     variant: "primary-dark",
     children: "Connect Wallet",
+  },
+};
+
+export const PrimaryDarkCompact: Story = {
+  name: "primary-dark (compact)",
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Compact 32px variant of `primary-dark` — used for inline CTAs such as the " +
+          "wallet-not-connected banner Connect button (Figma node 1994-7226). " +
+          "Same colours and radius as the default; only height and padding differ.",
+      },
+    },
+  },
+  args: {
+    variant: "primary-dark",
+    size: "compact",
+    children: "Connect",
   },
 };
 

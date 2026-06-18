@@ -27,7 +27,11 @@ import {
   scValToNative,
   rpc as SorobanRpc,
 } from "@stellar/stellar-sdk";
-import { sorobanRpcUrl, networkPassphrase } from "../chain";
+import {
+  sorobanRpcUrl,
+  networkPassphrase,
+  READ_SIMULATION_SOURCE,
+} from "../chain";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,7 +51,6 @@ export interface WithdrawalRequest {
 export class WithdrawalQueueClient {
   private readonly contract: Contract;
   private readonly server: SorobanRpc.Server;
-  private readonly contractId: string;
 
   constructor(contractId: string) {
     if (!contractId) {
@@ -56,7 +59,6 @@ export class WithdrawalQueueClient {
           "Set VITE_STELLAR_WITHDRAWAL_QUEUE_ID in your .env.",
       );
     }
-    this.contractId = contractId;
     this.contract = new Contract(contractId);
     this.server = new SorobanRpc.Server(sorobanRpcUrl, {
       allowHttp: sorobanRpcUrl.startsWith("http://"),
@@ -66,7 +68,9 @@ export class WithdrawalQueueClient {
   // ── Internal simulate helper ───────────────────────────────────────────────
 
   private async simulateReadCall(operation: xdr.Operation): Promise<xdr.ScVal> {
-    const dummyAccount = new Account(this.contractId, "0");
+    // Read-only simulations require a structurally valid classic source
+    // account (`G…`) on the envelope — NOT the contract ID.
+    const dummyAccount = new Account(READ_SIMULATION_SOURCE, "0");
 
     const tx = new TransactionBuilder(dummyAccount, {
       fee: BASE_FEE,

@@ -233,6 +233,8 @@ const mockEnv = vi.hoisted(() => ({
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   WITHDRAWAL_QUEUE_ADDRESS:
     "0x4444000000000000000000000000000000000004" as `0x${string}`,
+  STELLAR_WITHDRAWAL_QUEUE_ID:
+    "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -838,6 +840,16 @@ describe("Deposit page — disconnected wallet", () => {
     expect(connectBtn).toBeEnabled();
     // Click must not throw (connect() calls AppKit open() internally)
     await user.click(connectBtn);
+  });
+
+  it("Connect button in the banner uses compact size (Figma node 1994-7226)", async () => {
+    renderDeposit();
+    const connectBtn = await screen.findByTestId(
+      "connect-wallet-banner-action",
+    );
+    // Compact size sets data-size="compact" and !h-8 class on the button element.
+    expect(connectBtn).toHaveAttribute("data-size", "compact");
+    expect(connectBtn.className).toContain("!h-8");
   });
 });
 
@@ -1485,63 +1497,6 @@ describe("Deposit page — toast emissions", () => {
   });
 });
 
-describe("Deposit page — DepositManager unreachable banner", () => {
-  beforeEach(() => {
-    mockDirection = "deposit";
-    localStorage.clear();
-    mockWriteContract.mockClear();
-    mockRefetch.mockClear();
-    mockRequestsData = undefined;
-    mockVoucherData = undefined;
-    mockVoucherStatus = "idle";
-    mockWithdrawVoucherData = undefined;
-    mockWithdrawVoucherStatus = "idle";
-    // Seed wallet as connected but do NOT seed the DepositManager named aliases.
-    // Without the named aliases and without a matching generic key, the hook
-    // hits the real wagmi path (useReadContract returns { data: undefined, isLoading: false })
-    // → both plusd and usdc remain undefined → isManagerUnreachable = true.
-    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
-    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
-    // No depositManager mock keys — both addresses remain undefined.
-  });
-
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  it("renders the DepositManager unreachable banner when both addresses are undefined", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(screen.getByTestId("dm-unreachable-banner")).toBeInTheDocument();
-    });
-  });
-
-  it("does not render StepsCard or low-balance banner when unreachable banner is shown", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(screen.getByTestId("dm-unreachable-banner")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Approve" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText("Add funds to your USDC balance"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("banner copy references VITE_DEPOSIT_MANAGER_ADDRESS", async () => {
-    renderDeposit();
-    await waitFor(() => {
-      expect(
-        screen.getByText("DepositManager not reachable"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/VITE_DEPOSIT_MANAGER_ADDRESS/),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 // ── Withdraw-direction tests ───────────────────────────────────────────────────
 
 describe("Deposit page — direction=withdraw — approve needed state", () => {
@@ -2107,7 +2062,8 @@ describe("Deposit page — network fee row", () => {
 //   pipeline.mock.wallet.stellar.balance.usdc      — USDC token balance (deposit input)
 //   pipeline.mock.wallet.stellar.changeTrust       — JSON { hash } for mock enable tx
 
-const STELLAR_ADDRESS = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const STELLAR_ADDRESS =
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 // 56-char C… Soroban contract IDs — placeholder values for tests.
 // Format: starts with 'C', exactly 56 chars (parseStellarContractId check).
 const STELLAR_USDC_CONTRACT =
@@ -2124,7 +2080,7 @@ function seedStellarMocks({
   connected = true,
   usdcBalance = "5000", // USDC token balance (deposit input)
   sacPlusdBalance = "0", // SAC PLUSD balance raw at 7 dp — hasTrustline = > 0
-  sacUsdcBalance = "0",  // SAC USDC balance raw at 7 dp — hasTrustline = > 0
+  sacUsdcBalance = "0", // SAC USDC balance raw at 7 dp — hasTrustline = > 0
 } = {}) {
   if (connected) {
     localStorage.setItem(
@@ -2219,7 +2175,7 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     seedStellarMocks({
       usdcBalance: "5000",
       sacPlusdBalance: SAC_1000_PLUS, // PLUSD hasTrustline = true
-      sacUsdcBalance: "0",            // USDC hasTrustline = false
+      sacUsdcBalance: "0", // USDC hasTrustline = false
     });
     renderDepositStellar();
     await waitFor(() => {
@@ -2235,8 +2191,8 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
   it("USDC row shows 'Enable complete' badge when USDC trustline exists; PLUSD row still shows Enable button", async () => {
     seedStellarMocks({
       usdcBalance: "5000",
-      sacPlusdBalance: "0",           // PLUSD hasTrustline = false
-      sacUsdcBalance: SAC_1000_PLUS,  // USDC hasTrustline = true
+      sacPlusdBalance: "0", // PLUSD hasTrustline = false
+      sacUsdcBalance: SAC_1000_PLUS, // USDC hasTrustline = true
     });
     renderDepositStellar();
     await waitFor(() => {
@@ -2339,7 +2295,9 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
       expect(screen.queryByText("Enable PLUSD")).not.toBeInTheDocument();
       expect(screen.queryByText("Enable USDC")).not.toBeInTheDocument();
       // EVM step 1 is still "Approve"
-      expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Approve" }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -2381,7 +2339,7 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
     seedStellarMocks({
       usdcBalance: "0",
       sacPlusdBalance: SAC_1000_PLUS, // PLUSD trustline = true; balance usable for withdraw
-      sacUsdcBalance: "0",            // USDC trustline = false → blocks Confirm
+      sacUsdcBalance: "0", // USDC trustline = false → blocks Confirm
     });
     const user = userEvent.setup();
     renderDepositStellar();
@@ -2398,7 +2356,7 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
     seedStellarMocks({
       usdcBalance: "0",
       sacPlusdBalance: SAC_1000_PLUS, // 1000 PLUSD raw — enough to withdraw 10
-      sacUsdcBalance: SAC_1000_PLUS,  // USDC trustline also present
+      sacUsdcBalance: SAC_1000_PLUS, // USDC trustline also present
     });
     const user = userEvent.setup();
     renderDepositStellar();
