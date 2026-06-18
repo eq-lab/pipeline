@@ -48,6 +48,9 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#540 Stake page: merge input and output/rates into one conversion card](https://github.com/eq-lab/pipeline/issues/540) | [540-stake-combined-conversion-card.md](./epic-531/540-stake-combined-conversion-card.md) | Initial |
 | [#541 Stake page exchange-rate decimals fix — 1e12 inflation in rate and output preview](https://github.com/eq-lab/pipeline/issues/541) | [541-stake-exchange-rate-decimals.md](./epic-531/541-stake-exchange-rate-decimals.md) | Initial |
 | [#542 Stake page: network fee row always renders "—"; Figma shows "~$1.20"](https://github.com/eq-lab/pipeline/issues/542) | [542-stake-network-fee-estimate.md](./epic-531/542-stake-network-fee-estimate.md) | Initial |
+| [#610 Stake header icon differs from Figma](https://github.com/eq-lab/pipeline/issues/610) | [610-stake-header-icon.md](./epic-531/610-stake-header-icon.md) | Initial |
+| [#611 Stake header heading renders bold; Figma uses regular weight](https://github.com/eq-lab/pipeline/issues/611) | [611-stake-header-font-weight.md](./epic-531/611-stake-header-font-weight.md) | Initial |
+| [#612 Stake header bottom spacing too small vs deposit page](https://github.com/eq-lab/pipeline/issues/612) | [612-stake-header-bottom-spacing.md](./epic-531/612-stake-header-bottom-spacing.md) | Initial |
 
 ---
 
