@@ -255,9 +255,9 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               key={idx}
               label={item.label}
               selected={item.selected}
-              disabled={item.disabled}
+              disabled={disabled || item.disabled}
               onClick={
-                onQuickAmountClick
+                !disabled && onQuickAmountClick
                   ? () => onQuickAmountClick(idx, item)
                   : undefined
               }
