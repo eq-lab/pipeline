@@ -299,7 +299,7 @@ export interface MobileNavMenuProps {
   formattedBalance?: string;
   /**
    * Called when the user clicks "Connect Wallet" (disconnected state).
-   * Should open the ConnectChooserModal.
+   * Opens the shared ConnectWalletModal via ConnectModalProvider.
    */
   onConnect?: () => void;
   /**

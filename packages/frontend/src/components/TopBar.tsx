@@ -8,9 +8,9 @@ import {
   useStellarWallet,
   useStellarToken,
   useWalletView,
+  useConnectModal,
 } from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
-import { ConnectWalletModal } from "./ConnectWalletModal";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
 
@@ -116,8 +116,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     // ── Dropdown state ────────────────────────────────────────────────────
     const [dropdownOpen, setDropdownOpen] = useState(false);
 
-    // ── Chooser modal state ───────────────────────────────────────────────
-    const [chooserOpen, setChooserOpen] = useState(false);
+    // ── Connect modal (shared single instance via ConnectModalProvider) ───
+    const { open: openConnectModal } = useConnectModal();
 
     // ── Mobile nav menu state ─────────────────────────────────────────────
     const mobileMenu = useMobileNavMenu();
@@ -237,7 +237,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ) : (
             <Button
               variant="primary-dark"
-              onClick={() => setChooserOpen(true)}
+              onClick={openConnectModal}
               data-testid="topbar-connect-button"
               data-node-id="1497:94725"
             >
@@ -281,18 +281,12 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           anyConnected={anyConnected}
           address={activeAddress}
           formattedBalance={activeFormattedBalance}
-          onConnect={() => setChooserOpen(true)}
+          onConnect={openConnectModal}
           onDisconnect={() => {
             activeDisconnect();
           }}
         />
 
-        {/* ConnectWalletModal — shared between desktop and mobile.
-            Replaces the old ConnectChooserModal with per-wallet selection. */}
-        <ConnectWalletModal
-          open={chooserOpen}
-          onDismiss={() => setChooserOpen(false)}
-        />
       </header>
     );
   },

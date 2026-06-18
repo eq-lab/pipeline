@@ -27,6 +27,7 @@ import {
 } from "@tanstack/react-router";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider } from "@/wallet/WalletViewContext";
+import { ConnectModalProvider } from "@/wallet/ConnectModalProvider";
 import { TopBar } from "./TopBar";
 
 // ── Stellar hook mocks ────────────────────────────────────────────────────────
@@ -198,9 +199,11 @@ function renderTopBar(initialPath = "/") {
   const router = buildRouter(initialPath);
   return render(
     <EvmWalletProvider>
-      <WalletViewProvider>
-        <RouterProvider router={router} />
-      </WalletViewProvider>
+      <ConnectModalProvider>
+        <WalletViewProvider>
+          <RouterProvider router={router} />
+        </WalletViewProvider>
+      </ConnectModalProvider>
     </EvmWalletProvider>,
   );
 }

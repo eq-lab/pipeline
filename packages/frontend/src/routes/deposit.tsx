@@ -7,7 +7,7 @@ import {
   StepsCard,
   Button,
 } from "@pipeline/ui";
-import { useDepositFlow, useWalletView } from "@/wallet";
+import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
@@ -113,6 +113,9 @@ function Deposit() {
 
   // ── Flow adapter ──────────────────────────────────────────────────────
   const flow = useDepositFlow(direction, amountBig, setAmountInput);
+
+  // ── Connect modal (shared single instance via ConnectModalProvider) ───
+  const { open: openConnectModal } = useConnectModal();
 
   // Update lastDecimals whenever flow.decimals changes
   useEffect(() => {
@@ -463,7 +466,7 @@ function Deposit() {
               variant="primary-dark"
               size="compact"
               className="whitespace-nowrap"
-              onClick={flow.connect}
+              onClick={openConnectModal}
             >
               Connect
             </Button>
