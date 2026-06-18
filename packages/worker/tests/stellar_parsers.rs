@@ -254,7 +254,12 @@ fn vault_deposit_decodes_fixture() {
 
     let log = parse_vault_deposit(&raw).expect("should decode StakingDeposit");
     assert_eq!(log.event_name, "StakingDeposit");
-    assert_eq!(log.params["operator"], OPERATOR_G);
+    // EVM-parity shape: `sender` (Soroban operator) and `owner` (Soroban receiver).
+    assert_eq!(log.params["sender"], OPERATOR_G);
+    assert_eq!(log.params["owner"], USER_G);
+    assert!(log.params.get("operator").is_none(), "legacy field dropped");
+    assert!(log.params.get("from").is_none(), "legacy field dropped");
+    assert!(log.params.get("receiver").is_none(), "legacy field dropped");
     assert_eq!(log.params["assets"], assets.to_string());
     assert_eq!(log.params["shares"], shares.to_string());
 }
@@ -311,7 +316,9 @@ fn vault_withdraw_decodes_fixture() {
 
     let log = parse_vault_withdraw(&raw).expect("should decode StakingWithdrawal");
     assert_eq!(log.event_name, "StakingWithdrawal");
-    assert_eq!(log.params["operator"], OPERATOR_G);
+    // EVM-parity shape: `sender` (renamed from Soroban `operator`).
+    assert_eq!(log.params["sender"], OPERATOR_G);
+    assert!(log.params.get("operator").is_none(), "legacy field dropped");
     assert_eq!(log.params["assets"], assets.to_string());
     assert_eq!(log.params["shares"], shares.to_string());
 }

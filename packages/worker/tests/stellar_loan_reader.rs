@@ -81,7 +81,8 @@ fn decode_immutable_loan_data_happy_path() {
             u128_val(2_000_000_000_000_000_000),
         ),
         ("original_offtaker_price", u128_val(500_000_000_000)),
-        ("senior_interest_rate", u32_val(500)),
+        // Soroban-units (fraction of ONE=1_000_000). 100_000 = 10%.
+        ("senior_interest_rate", u32_val(100_000)),
         ("origination_date", u64_val(1_700_000_000)),
         ("original_maturity_date", u64_val(1_731_600_000)),
     ]);
@@ -96,7 +97,9 @@ fn decode_immutable_loan_data_happy_path() {
         view.original_facility_size,
         U256::from(10_000_000_000_000_000_000_u128)
     );
-    assert_eq!(view.senior_interest_rate_bps, 500);
+    // Decoder converts Soroban-units → bps (1 bp = 1/10_000).
+    // 100_000 / 100 = 1_000 bps = 10%.
+    assert_eq!(view.senior_interest_rate_bps, 1_000);
     assert_eq!(view.origination_date, 1_700_000_000);
     assert_eq!(view.original_maturity_date, 1_731_600_000);
 }

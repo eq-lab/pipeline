@@ -143,6 +143,13 @@ pub fn parse_request_claimed(raw: &RawEvent) -> Option<StellarLog> {
 /// Remapped to `event_name = "StakingDeposit"` for EVM analytics parity.
 /// topics: [deposit, operator: Address, from: Address, receiver: Address]
 /// value:  Map { assets: i128, shares: i128 }
+///
+/// `params` is normalized to the ERC-4626 shape so downstream consumers
+/// (`/v1/requests` analytics, the position-fields mapper) can key on `owner`:
+/// `sender` = Soroban `operator` (the caller), `owner` = Soroban `receiver`
+/// (the share holder). The `from` topic is decoded for event-shape validation
+/// but not persisted — it's redundant with `sender`/`owner` in the normal
+/// end-user deposit flow.
 pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "deposit" {
         return None;
@@ -152,7 +159,7 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
     }
 
     let operator = extract_address(&raw.topics_base64[1])?;
-    let from = extract_address(&raw.topics_base64[2])?;
+    let _from = extract_address(&raw.topics_base64[2])?;
     let receiver = extract_address(&raw.topics_base64[3])?;
     let assets = extract_i128_from_map(&raw.value_base64, "assets")?;
     let shares = extract_i128_from_map(&raw.value_base64, "shares")?;
@@ -165,9 +172,8 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
         log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
-            "operator": operator,
-            "from": from,
-            "receiver": receiver,
+            "sender": operator,
+            "owner": receiver,
             "assets": assets.to_string(),
             "shares": shares.to_string(),
         }),
@@ -178,6 +184,11 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
 /// Remapped to `event_name = "StakingWithdrawal"` for EVM analytics parity.
 /// topics: [withdraw, operator: Address, receiver: Address, owner: Address]
 /// value:  Map { assets: i128, shares: i128 }
+///
+/// `params` matches the EVM ERC-4626 shape: `sender` (= Soroban `operator`,
+/// the caller), `receiver` (assets destination), `owner` (share holder being
+/// burned). The Stellar topic naming `operator` is renamed to `sender` so
+/// downstream code can read a single field name across chains.
 pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "withdraw" {
         return None;
@@ -200,7 +211,7 @@ pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
         log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
-            "operator": operator,
+            "sender": operator,
             "receiver": receiver,
             "owner": owner,
             "assets": assets.to_string(),

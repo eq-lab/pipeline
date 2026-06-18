@@ -380,7 +380,9 @@ fn loan_defaulted_decodes_fixture() {
     let log = parse_loan_defaulted(&raw).expect("should decode LoanDefaulted");
     assert_eq!(log.event_name, "LoanDefaulted");
     assert_eq!(log.params["loan_id"], "99");
-    assert_eq!(log.params["ccr"], 500);
+    // EVM-parity shape: renamed from on-chain `ccr` to `ccr_bps`.
+    assert_eq!(log.params["ccr_bps"], 500);
+    assert!(log.params.get("ccr").is_none(), "renamed to ccr_bps");
 }
 
 #[test]

@@ -503,6 +503,13 @@ impl<A: LoanAddress, Id: LoanId> LogMapper for LoanEventMapper<A, Id> {
     }
 
     fn set_block_timestamp(&mut self, ts: u64) {
-        self.event.block_timestamp = ts;
+        // Preserve a non-zero value pre-populated by the parser. Stellar parsers
+        // set this from `raw.ledger_closed_at_unix` because the Stellar poller has
+        // no separate block-metadata fetch and would pass `0` here, clobbering the
+        // only real timestamp we have. EVM parsers set the field to `0` and rely
+        // on the poller calling this method to fill it in from `eth_getBlockByNumber`.
+        if self.event.block_timestamp == 0 {
+            self.event.block_timestamp = ts;
+        }
     }
 }

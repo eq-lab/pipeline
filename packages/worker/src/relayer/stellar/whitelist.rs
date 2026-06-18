@@ -6,25 +6,24 @@
 //!
 //! Idempotency: tries `is_authorized(addr)` on the PLUSD SAC as a view-call first;
 //! on `true`, skips submit and just flips the DB flag. If the SAC happens not to
-//! expose `is_authorized`, the view-call errors and we fall through to submit (the
-//! access-manager's salt-based dedup makes a duplicate submit just a wasted fee).
+//! expose `is_authorized`, the view-call errors and we fall through to submit; the
+//! `set_authorized(addr, true)` call is itself idempotent on the SAC.
 
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
-use rand::RngCore;
 use shared::kyc_repo::KycRepo;
 use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrkey};
 use stellar_xdr::curr::{
-    Limits, ReadXdr, ScVal, SorobanAuthorizationEntry, SorobanTransactionData,
+    Limits, ReadXdr, ScVal, ScVec, SorobanAuthorizationEntry, SorobanTransactionData, VecM,
 };
 
 use crate::indexer::stellar::rpc::{SendResponse, StellarRpc};
 use crate::stellar::tx::{
-    address_account, build_invoke_envelope, build_set_authorized_operation_scval,
-    envelope_to_base64, sign_envelope,
+    address_account, address_contract, build_invoke_envelope, envelope_to_base64, sign_envelope,
+    symbol,
 };
 
 /// Per-submit polling cap for `getTransaction`.
@@ -107,14 +106,21 @@ impl StellarWhitelister {
         Ok(matches!(val, ScVal::Bool(true)))
     }
 
-    /// Submit `access_manager.execute(set_authorized(user, true))` and poll until terminal.
+    /// Submit `access_manager.execute(target=plusd_sac, function=set_authorized,
+    /// args=[user, true], caller=signer)` and poll until terminal.
     pub async fn submit_set_authorized(&self, user: &Ed25519Pub) -> Result<()> {
-        let mut salt = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut salt);
+        // Inner args forwarded to `target.set_authorized(...)`: [Address(user), Bool(true)].
+        let inner_args: VecM<ScVal> = vec![address_account(user), ScVal::Bool(true)]
+            .try_into()
+            .expect("two args fit in VecM");
 
-        let op_scval = build_set_authorized_operation_scval(&self.plusd_sac_id, user, salt);
-        let caller_scval = address_account(&self.signer_pubkey);
-        let args = vec![op_scval, caller_scval];
+        // access_manager.execute signature: (target, function, args, caller).
+        let args = vec![
+            address_contract(&self.plusd_sac_id),
+            symbol("set_authorized"),
+            ScVal::Vec(Some(ScVec(inner_args))),
+            address_account(&self.signer_pubkey),
+        ];
 
         // Step 1: simulate (no real seq required — simulate doesn't validate it).
         let probe_envelope = build_invoke_envelope(

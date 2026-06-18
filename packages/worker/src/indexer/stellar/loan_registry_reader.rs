@@ -184,7 +184,13 @@ pub fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView
         "original_offtaker_price",
         "ImmutableLoanData",
     )?);
-    let senior_interest_rate_bps = map_u32(&map, "senior_interest_rate", "ImmutableLoanData")?;
+    // Soroban contract stores the senior interest rate as a fraction of
+    // `ONE = 1_000_000` (e.g. 10% → 100_000). The shared snapshot field is
+    // basis points (1 bp = 1/10_000), and `compute_series` in the portfolio
+    // route divides by 10_000 assuming bps. Convert here so the rest of the
+    // pipeline can stay chain-agnostic.
+    let senior_interest_rate_raw = map_u32(&map, "senior_interest_rate", "ImmutableLoanData")?;
+    let senior_interest_rate_bps = senior_interest_rate_raw / 100;
     let origination_date = map_u64(&map, "origination_date", "ImmutableLoanData")?;
     let original_maturity_date = map_u64(&map, "original_maturity_date", "ImmutableLoanData")?;
 

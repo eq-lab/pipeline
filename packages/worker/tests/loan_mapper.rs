@@ -1005,7 +1005,11 @@ async fn maybe_fetch_refreshed_json_propagates_fetcher_error() {
 // Stellar mapper tests (Step 5b)
 // ---------------------------------------------------------------------------
 
-/// Stellar LoanDrawn: block_number() and set_block_timestamp() work with StellarAddress.
+/// Stellar LoanDrawn: block_number() works with StellarAddress, and
+/// set_block_timestamp() preserves the parser's pre-populated value. The Stellar
+/// poller has no separate block-metadata fetch and would call this method with
+/// `0`; preserving prevents the parser's real `ledger_closed_at_unix` from being
+/// clobbered (which would leave `block_timestamp = 0` in `contract_logs`).
 #[tokio::test]
 async fn stellar_loan_drawn_mapper_block_number_and_timestamp() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
@@ -1013,11 +1017,21 @@ async fn stellar_loan_drawn_mapper_block_number_and_timestamp() {
 
     let mut mapper = make_loan_event_mapper_stellar(loan_drawn_event_stellar(42, 1_234_567), pool);
     assert_eq!(mapper.block_number(), 1_234_567);
+    let preserved = mapper.event.block_timestamp;
+    assert_ne!(preserved, 0, "fixture should pre-populate block_timestamp");
+    mapper.set_block_timestamp(0);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "set_block_timestamp(0) must not clobber the parser's pre-populated value"
+    );
     mapper.set_block_timestamp(9_999_999);
-    assert_eq!(mapper.event.block_timestamp, 9_999_999);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "set_block_timestamp must not overwrite a non-zero pre-populated value"
+    );
 }
 
-/// Stellar lifecycle event: block_number and block_timestamp accessors.
+/// Stellar lifecycle event: same preserve-when-non-zero semantics.
 #[tokio::test]
 async fn stellar_lifecycle_event_mapper_block_number_and_timestamp() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
@@ -1028,8 +1042,27 @@ async fn stellar_lifecycle_event_mapper_block_number_and_timestamp() {
         pool,
     );
     assert_eq!(mapper.block_number(), 2_000_000);
+    let preserved = mapper.event.block_timestamp;
+    assert_ne!(preserved, 0);
     mapper.set_block_timestamp(10_000_000);
-    assert_eq!(mapper.event.block_timestamp, 10_000_000);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "Stellar mapper must preserve parser-supplied block_timestamp"
+    );
+}
+
+/// EVM convention: when the parser leaves block_timestamp = 0 (it has no block
+/// metadata at parse time), set_block_timestamp must fill it.
+#[tokio::test]
+async fn evm_set_block_timestamp_fills_zero_value() {
+    let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
+        .expect("connect_lazy should not fail");
+
+    let mut event = loan_drawn_event_evm(1, 500);
+    event.block_timestamp = 0;
+    let mut mapper = make_loan_event_mapper_evm(event, 500, pool);
+    mapper.set_block_timestamp(123_456);
+    assert_eq!(mapper.event.block_timestamp, 123_456);
 }
 
 /// Stellar loan_id is serialised as a decimal string (u32 = 42 → "42").

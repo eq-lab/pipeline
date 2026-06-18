@@ -4,9 +4,6 @@
 //! so the price-poller and future Stellar jobs can reuse these helpers without
 //! cross-importing from the relayer's job-namespaced module.
 //!
-//! - Encode `stellar_governance::timelock::storage::Operation` as `ScVal` exactly the way
-//!   `soroban-sdk`'s `to_xdr(e)` does for `#[contracttype]` structs: an `ScVal::Map`
-//!   of alphabetically-sorted `(ScSymbol, ScVal)` entries.
 //! - Assemble the `TransactionEnvelope::Tx(...)` carrying one `InvokeHostFunction`
 //!   operation, the `SorobanTransactionData` from a simulate response, and any
 //!   auth entries returned by simulate.
@@ -23,62 +20,11 @@ use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrke
 use stellar_xdr::curr::{
     AccountId, BytesM, ContractId, DecoratedSignature, Hash, HostFunction, InvokeContractArgs,
     InvokeHostFunctionOp, Limits, Memo, MuxedAccount, Operation, OperationBody, Preconditions,
-    PublicKey as XdrPublicKey, ScAddress, ScBytes, ScMap, ScMapEntry, ScSymbol, ScVal,
-    SequenceNumber, Signature, SignatureHint, SorobanAuthorizationEntry, SorobanTransactionData,
-    StringM, Transaction, TransactionEnvelope, TransactionExt, TransactionSignaturePayload,
+    PublicKey as XdrPublicKey, ScAddress, ScSymbol, ScVal, SequenceNumber, Signature,
+    SignatureHint, SorobanAuthorizationEntry, SorobanTransactionData, StringM, Transaction,
+    TransactionEnvelope, TransactionExt, TransactionSignaturePayload,
     TransactionSignaturePayloadTaggedTransaction, TransactionV1Envelope, Uint256, VecM, WriteXdr,
 };
-
-// ─── Operation ScVal builder (parity with soroban-sdk `to_xdr` on `#[contracttype]`) ──
-
-/// Build the `ScVal` representation of the `stellar_governance::timelock::storage::Operation`
-/// struct:
-///
-/// ```text
-/// pub struct Operation {
-///     pub target: Address,        // alphabetical: 5th
-///     pub function: Symbol,       // alphabetical: 2nd
-///     pub args: Vec<Val>,         // alphabetical: 1st
-///     pub predecessor: BytesN<32>,// alphabetical: 3rd
-///     pub salt: BytesN<32>,       // alphabetical: 4th
-/// }
-/// ```
-///
-/// `soroban-sdk`'s `to_xdr(e)` produces an `ScVal::Map` whose entries are sorted
-/// alphabetically by field-name symbol. We must match byte-for-byte; otherwise
-/// `access_manager::hash_operation` computes a different ID and the salt-based
-/// dedup is wrong.
-pub fn build_set_authorized_operation_scval(
-    plusd_sac: &ContractStrkey,
-    user: &Ed25519Pub,
-    salt: [u8; 32],
-) -> ScVal {
-    let target_val = address_contract(plusd_sac);
-    let function_val = symbol("set_authorized");
-
-    // args = [Address(user), Bool(true)]
-    let user_val = address_account(user);
-    let args_inner: VecM<ScVal> = vec![user_val, ScVal::Bool(true)]
-        .try_into()
-        .expect("two args fit in VecM");
-    let args_val = ScVal::Vec(Some(stellar_xdr::curr::ScVec(args_inner)));
-
-    let predecessor_val = bytes_32([0u8; 32]);
-    let salt_val = bytes_32(salt);
-
-    // Alphabetical: args, function, predecessor, salt, target.
-    let entries: VecM<ScMapEntry> = vec![
-        map_entry("args", args_val),
-        map_entry("function", function_val),
-        map_entry("predecessor", predecessor_val),
-        map_entry("salt", salt_val),
-        map_entry("target", target_val),
-    ]
-    .try_into()
-    .expect("five entries fit in VecM");
-
-    ScVal::Map(Some(ScMap(entries)))
-}
 
 // ─── Envelope assembly ───────────────────────────────────────────────────────
 
@@ -224,24 +170,4 @@ pub fn symbol(s: &str) -> ScVal {
         .try_into()
         .expect("symbol fits in StringM<32>");
     ScVal::Symbol(ScSymbol(inner))
-}
-
-pub fn bytes_32(b: [u8; 32]) -> ScVal {
-    let m: BytesM = b
-        .to_vec()
-        .try_into()
-        .expect("32 bytes fits in BytesM<u32::MAX>");
-    ScVal::Bytes(ScBytes(m))
-}
-
-pub fn map_entry(key: &str, val: ScVal) -> ScMapEntry {
-    let sym_inner: StringM<32> = key
-        .as_bytes()
-        .to_vec()
-        .try_into()
-        .expect("field name fits in StringM<32>");
-    ScMapEntry {
-        key: ScVal::Symbol(ScSymbol(sym_inner)),
-        val,
-    }
 }
