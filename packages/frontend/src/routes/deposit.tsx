@@ -43,22 +43,22 @@ import { useToast } from "@/lib/toast";
  * 2. Confirm PLUSD burn (Confirm)
  * 3. Claim your USDC (Claim)
  *
- * --- Stellar Deposit ---
- * 1. Enable PLUSD (changeTrust, shown complete when trustline exists)
- * 2. Confirm USDC transfer (request_deposit)
- * 3. Claim your PLUSD (claim_request + verifier signature)
+ * --- Stellar Deposit AND Withdraw ---
+ * 1. Enable PLUSD (changeTrust — shown complete when PLUSD trustline exists)
+ * 2. Enable USDC  (changeTrustUsdc — shown complete when USDC trustline exists)
+ * 3. Confirm USDC transfer / PLUSD burn (request_deposit / request_withdrawal)
+ * 4. Claim your PLUSD / USDC (claim_request + verifier signature)
  *
- * --- Stellar Withdraw ---
- * 1. Enable USDC (changeTrust, shown complete when trustline exists)
- * 2. Confirm PLUSD burn (request_withdrawal)
- * 3. Claim your USDC (claim_request + verifier signature)
+ * Both trustline rows are always shown in both directions (issue #604). Confirm
+ * is gated until BOTH trustlines exist.
  *
  * Toast ids are scoped per chain+direction so a stale toast from one
  * direction/chain does not collide with a new one:
  *   EVM deposit:   approve-tx / deposit-tx / claim-tx
  *   EVM withdraw:  withdraw-approve-tx / withdraw-tx / withdraw-claim-tx
- *   Stellar deposit:  stellar-deposit-trust-tx / stellar-deposit-tx / stellar-deposit-claim-tx
- *   Stellar withdraw: stellar-withdraw-trust-tx / stellar-withdraw-tx / stellar-withdraw-claim-tx
+ *   Stellar trustlines: stellar-trust-plusd-tx / stellar-trust-usdc-tx (direction-independent)
+ *   Stellar deposit:  stellar-deposit-tx / stellar-deposit-claim-tx
+ *   Stellar withdraw: stellar-withdraw-tx / stellar-withdraw-claim-tx
  *
  * All hooks are called unconditionally per React's Rules of Hooks.
  *
@@ -154,34 +154,21 @@ function Deposit() {
     if (step2TxIsSuccess) refetchBalance();
   }, [step2TxIsSuccess, refetchBalance]);
 
-  // ── Toast: step 1 (approve / trustline) ──────────────────────────────
+  // ── Toast: step 1 (EVM approve only) ─────────────────────────────────
   const prevStep1IsPending = useRef(false);
   const prevStep1IsSuccess = useRef(false);
   useEffect(() => {
-    const toastId = isStellar
-      ? isDeposit
-        ? "stellar-deposit-trust-tx"
-        : "stellar-withdraw-trust-tx"
-      : isDeposit
-        ? "approve-tx"
-        : "withdraw-approve-tx";
+    // On Stellar, trustline toasts are emitted per-asset below.
+    if (isStellar) return;
 
-    const pendingTitle = isStellar
-      ? isDeposit
-        ? "Enabling PLUSD trustline…"
-        : "Enabling USDC trustline…"
-      : isDeposit
-        ? "Approving USDC…"
-        : "Approving PLUSD…";
+    const toastId = isDeposit ? "approve-tx" : "withdraw-approve-tx";
+    const pendingTitle = isDeposit ? "Approving USDC…" : "Approving PLUSD…";
 
     if (flow.step1Tx.isPending && !prevStep1IsPending.current) {
       toast.show({ id: toastId, tone: "pending", title: pendingTitle });
     }
     if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
-      toast.update(toastId, {
-        tone: "success",
-        title: isStellar ? "Trustline enabled" : "Approval confirmed",
-      });
+      toast.update(toastId, { tone: "success", title: "Approval confirmed" });
     }
     prevStep1IsPending.current = flow.step1Tx.isPending;
     prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
@@ -192,6 +179,66 @@ function Deposit() {
     direction,
     isStellar,
     isDeposit,
+  ]);
+
+  // ── Toast: Stellar PLUSD trustline ────────────────────────────────────
+  const prevPlusdTrustPending = useRef(false);
+  const prevPlusdTrustSuccess = useRef(false);
+  const plusdTrustline = flow.trustlines[0];
+  useEffect(() => {
+    if (!isStellar || !plusdTrustline) return;
+    const toastId = "stellar-trust-plusd-tx";
+    if (plusdTrustline.tx.isPending && !prevPlusdTrustPending.current) {
+      toast.show({
+        id: toastId,
+        tone: "pending",
+        title: "Enabling PLUSD trustline…",
+      });
+    }
+    if (plusdTrustline.tx.isSuccess && !prevPlusdTrustSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: "PLUSD trustline enabled",
+      });
+    }
+    prevPlusdTrustPending.current = plusdTrustline.tx.isPending;
+    prevPlusdTrustSuccess.current = plusdTrustline.tx.isSuccess;
+  }, [
+    plusdTrustline?.tx.isPending,
+    plusdTrustline?.tx.isSuccess,
+    toast,
+    isStellar,
+    plusdTrustline,
+  ]);
+
+  // ── Toast: Stellar USDC trustline ─────────────────────────────────────
+  const prevUsdcTrustPending = useRef(false);
+  const prevUsdcTrustSuccess = useRef(false);
+  const usdcTrustline = flow.trustlines[1];
+  useEffect(() => {
+    if (!isStellar || !usdcTrustline) return;
+    const toastId = "stellar-trust-usdc-tx";
+    if (usdcTrustline.tx.isPending && !prevUsdcTrustPending.current) {
+      toast.show({
+        id: toastId,
+        tone: "pending",
+        title: "Enabling USDC trustline…",
+      });
+    }
+    if (usdcTrustline.tx.isSuccess && !prevUsdcTrustSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: "USDC trustline enabled",
+      });
+    }
+    prevUsdcTrustPending.current = usdcTrustline.tx.isPending;
+    prevUsdcTrustSuccess.current = usdcTrustline.tx.isSuccess;
+  }, [
+    usdcTrustline?.tx.isPending,
+    usdcTrustline?.tx.isSuccess,
+    toast,
+    isStellar,
+    usdcTrustline,
   ]);
 
   // ── Toast: step 2 (request) ───────────────────────────────────────────
@@ -310,6 +357,8 @@ function Deposit() {
       replace: true,
     });
   }, [direction, navigate]);
+
+  // plusdTrustline / usdcTrustline are already declared above for toast logic.
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -474,8 +523,55 @@ function Deposit() {
               {copied ? "Copied" : "Copy Address"}
             </Button>
           </Card>
+        ) : isStellar && flow.trustlines.length === 2 ? (
+          /* Four-step card for Stellar: PLUSD trustline, USDC trustline, Confirm, Claim */
+          <StepsCard
+            data-testid={
+              isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
+            }
+            steps={[
+              {
+                label: "Enable PLUSD",
+                actionLabel: "Enable",
+                state: plusdTrustline?.isEnabled ? "success" : "idle",
+                loading: plusdTrustline?.enabling ?? false,
+                disabled:
+                  (plusdTrustline?.isEnabled ?? false) ||
+                  (plusdTrustline?.enabling ?? false) ||
+                  !flow.isConnected,
+                onAction: plusdTrustline?.onEnable,
+              },
+              {
+                label: "Enable USDC",
+                actionLabel: "Enable",
+                state: usdcTrustline?.isEnabled ? "success" : "idle",
+                loading: usdcTrustline?.enabling ?? false,
+                disabled:
+                  (usdcTrustline?.isEnabled ?? false) ||
+                  (usdcTrustline?.enabling ?? false) ||
+                  !flow.isConnected,
+                onAction: usdcTrustline?.onEnable,
+              },
+              {
+                label: flow.step2.label,
+                actionLabel: flow.step2.actionLabel,
+                disabled: flow.step2.disabled,
+                loading: flow.step2.loading,
+                state: flow.step2.state,
+                onAction: flow.step2.onAction,
+              },
+              {
+                label: flow.step3.label,
+                actionLabel: flow.step3.actionLabel,
+                disabled: flow.step3.disabled,
+                loading: flow.step3.loading,
+                state: flow.step3.state,
+                onAction: flow.step3.onAction,
+              },
+            ]}
+          />
         ) : (
-          /* Three-step card — shared between deposit and withdraw, EVM and Stellar */
+          /* Three-step card for EVM (deposit and withdraw) */
           <StepsCard
             data-testid={
               isDeposit ? "deposit-steps-card" : "withdraw-steps-card"

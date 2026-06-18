@@ -26,6 +26,9 @@
  *   disabled via their own `enabled`/`requestId === undefined` guards.
  * - Stellar balance arrives as a Horizon human-decimal string (e.g. `"1.5"`);
  *   we convert to bigint at 7 dp (`sacDisplayToRaw`) for amount comparisons.
+ * - On Stellar, `trustlines` always contains two entries: PLUSD (index 0) and
+ *   USDC (index 1). Both are shown in the StepsCard as steps 1 and 2 regardless
+ *   of direction. On EVM, `trustlines` is always empty.
  */
 
 import { useCallback } from "react";
@@ -93,6 +96,30 @@ export interface StepTxState {
 }
 
 /**
+ * Per-asset Stellar trustline descriptor.
+ *
+ * On Stellar, `FlowState.trustlines` always contains two entries:
+ *   [0] PLUSD, [1] USDC — regardless of direction.
+ * On EVM, `FlowState.trustlines` is always empty ([]).
+ */
+export interface TrustlineInfo {
+  /** Protocol asset code. */
+  asset: "PLUSD" | "USDC";
+  /** True when the trustline is absent (must be enabled). */
+  needsTrustline: boolean;
+  /** True when the trustline is present (!needsTrustline and status is known). */
+  isEnabled: boolean;
+  /** True while the enable transaction is in-flight. */
+  enabling: boolean;
+  /** Non-null when the most recent enable attempt failed. */
+  error: Error | null;
+  /** Call to submit the enable (changeTrust) transaction. */
+  onEnable: () => void;
+  /** Transaction lifecycle for per-asset toast emission. */
+  tx: StepTxState;
+}
+
+/**
  * Unified state shape consumed by the deposit/withdraw route component.
  */
 export interface FlowState {
@@ -153,6 +180,13 @@ export interface FlowState {
 
   // ── Quick-amount handler ───────────────────────────────────────────────
   onQuickAmount: (idx: number) => void;
+
+  // ── Stellar trustline statuses (direction-independent) ────────────────
+  /**
+   * On Stellar: always [PLUSD, USDC] — both rendered inside the StepsCard.
+   * On EVM: always [] — no trustline UI rendered.
+   */
+  trustlines: TrustlineInfo[];
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -500,6 +534,8 @@ export function useDepositFlow(
 
   const depositNeedsTrustline = changeTrust.needsTrustline;
   const withdrawNeedsTrustline = changeTrustUsdc.needsTrustline;
+  // Both trustlines must be present before Confirm can proceed (per issue #604 Q3 answer).
+  const bothTrustlinesReady = !depositNeedsTrustline && !withdrawNeedsTrustline;
 
   const stellarDepositMeetsMin =
     amountBig > 0n && amountBig >= STELLAR_MIN_DEPOSIT;
@@ -861,6 +897,7 @@ export function useDepositFlow(
         ? refetchDepositBalance
         : refetchWithdrawBalance,
       onQuickAmount: onEvmDepositQuickAmount,
+      trustlines: [],
     };
   }
 
@@ -965,13 +1002,13 @@ export function useDepositFlow(
     isStellarConnected &&
     stellarDepositMeetsMin &&
     stellarHasBalance === true &&
-    !depositNeedsTrustline &&
+    bothTrustlinesReady &&
     !stellarRequestDeposit.isPending &&
     !stellarDepositRequestIsConfirmed;
   const canStellarStep2Withdraw =
     isStellarConnected &&
     stellarCanWithdraw &&
-    !withdrawNeedsTrustline &&
+    bothTrustlinesReady &&
     !stellarRequestWithdrawal.isPending &&
     !stellarWithdrawRequestIsConfirmed;
   const canStellarStep2 = isDeposit
@@ -1136,5 +1173,33 @@ export function useDepositFlow(
       ? usdcToken.refetchBalance
       : plusdSac.refetchBalance,
     onQuickAmount: onStellarQuickAmount,
+    trustlines: [
+      {
+        asset: "PLUSD" as const,
+        needsTrustline: depositNeedsTrustline,
+        isEnabled: !depositNeedsTrustline,
+        enabling: changeTrust.isPending,
+        error: changeTrust.error,
+        onEnable: () => changeTrust.submit(),
+        tx: {
+          isPending: changeTrust.isPending,
+          isSuccess: changeTrust.isSuccess,
+          error: changeTrust.error,
+        },
+      },
+      {
+        asset: "USDC" as const,
+        needsTrustline: withdrawNeedsTrustline,
+        isEnabled: !withdrawNeedsTrustline,
+        enabling: changeTrustUsdc.isPending,
+        error: changeTrustUsdc.error,
+        onEnable: () => changeTrustUsdc.submit(),
+        tx: {
+          isPending: changeTrustUsdc.isPending,
+          isSuccess: changeTrustUsdc.isSuccess,
+          error: changeTrustUsdc.error,
+        },
+      },
+    ],
   };
 }
