@@ -34,15 +34,16 @@ _None_
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/wallet/useDepositFlow.ts`:
-   - Change line 197 from `const STELLAR_MIN_DEPOSIT = 1n * 10n ** BigInt(SAC_DECIMALS);` to `const STELLAR_MIN_DEPOSIT = 1000n * 10n ** BigInt(SAC_DECIMALS);`.
-   - Update the JSDoc block at lines 191-196 to describe the 1,000 USDC value (e.g. "$1,000 at 7 dp = 1000 × 10^7 = 10_000_000_000n") and keep the note that Soroban exposes no on-chain minimum getter so this stays a frontend constant.
-2. In `packages/frontend/src/routes/-deposit.test.tsx`:
-   - In the Stellar test "both rows show 'Enable complete' badges and Confirm is reachable when both trustlines exist" (~line 2206), change the typed amount from `"2"` to a value ≥ 1,000 (e.g. `"2000"`) so `stellarDepositMeetsMin` is satisfied and the Confirm-enabled assertion holds. Verify the seeded balance still covers it.
-   - Grep the file for any remaining Stellar-context assertion of a "1 USDC" minimum (Min chip `1.00`, below-min banner `1 USDC`); update any found to `1,000` / `1000.00` as appropriate. (None expected beyond the one above based on planner research, but confirm.)
-3. In `docs/user-stories/epic-498/598-stellar-min-deposit-one.md`:
-   - Update the title, overview, and Stories 1-2 to state the Stellar minimum is **1,000 USDC** (reverted by #641). Story 1 Min chip should read `$1,000 (Min)` and fill `1000.00`; Story 2 below-min text should read `1,000 USDC` and the example "below" balance should be a sub-1,000 amount (e.g. `500` USDC). Add a one-line note that #641 reverses #598. Story 3 (EVM contract-driven) is unchanged.
-   - Confirm `docs/user-stories/epic-498/503-below-min-banner.md` already states "Minimum amount — 1,000 USDC" (it does); no change needed there, but it now correctly applies to the Stellar rail too.
+1. [x] In `packages/frontend/src/wallet/useDepositFlow.ts`:
+   - [x] Change line 197 from `const STELLAR_MIN_DEPOSIT = 1n * 10n ** BigInt(SAC_DECIMALS);` to `const STELLAR_MIN_DEPOSIT = 1000n * 10n ** BigInt(SAC_DECIMALS);`.
+   - [x] Update the JSDoc block at lines 191-196 to describe the 1,000 USDC value and keep the note that Soroban exposes no on-chain minimum getter.
+2. [x] In `packages/frontend/src/routes/-deposit.test.tsx`:
+   - [x] Changed typed amount from `"2"` to `"2000"` in "both trustlines exist" Confirm-enabled test.
+   - [x] Grepped for remaining Stellar "1 USDC" assertions — none found.
+3. [x] In `docs/user-stories/epic-498/598-stellar-min-deposit-one.md`:
+   - [x] Updated title, overview, Stories 1-2 to state 1,000 USDC minimum; added revert note.
+   - [x] Confirmed `docs/user-stories/epic-498/503-below-min-banner.md` already states "1,000 USDC" — no edit needed.
+4. [x] Created `docs/user-stories/epic-498/641-stellar-deposit-min-1000.md` and linked from `docs/user-stories/index.md`.
 
 ## Test Strategy
 
