@@ -811,12 +811,14 @@ export function useDepositFlow(
             evmDepositIsPendingVerification ||
             (evmRequestDeposit.isSuccess &&
               !evmDepositRequestIsConfirmed &&
-              evmDepositActiveRequest === null)
+              evmDepositActiveRequest === null) ||
+            evmVoucher.status === "pending"
           : evmRequestWithdrawal.isPending ||
             evmWithdrawIsPendingVerification ||
             (evmRequestWithdrawal.isSuccess &&
               !evmWithdrawRequestIsConfirmed &&
-              evmWithdrawActiveRequest === null),
+              evmWithdrawActiveRequest === null) ||
+            evmVoucher.status === "pending",
         disabled: !canEvmConfirm,
         onAction: () => {
           if (isDeposit) evmRequestDeposit.write(amountBig);
@@ -827,9 +829,7 @@ export function useDepositFlow(
         label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
         actionLabel: "Claim",
         state: evmStep3State,
-        loading: isDeposit
-          ? evmVoucher.status === "pending" || evmClaim.isPending
-          : evmVoucher.status === "pending" || evmClaimWithdrawal.isPending,
+        loading: isDeposit ? evmClaim.isPending : evmClaimWithdrawal.isPending,
         disabled: !canEvmClaim,
         onAction: () => {
           if (evmRequestId === undefined || !evmVoucher.data?.signature) return;
@@ -1048,12 +1048,14 @@ export function useDepositFlow(
       stellarDepositIsPendingVerification ||
       (stellarRequestDeposit.isSuccess &&
         !stellarDepositRequestIsConfirmed &&
-        stellarDepositActiveRequest === null)
+        stellarDepositActiveRequest === null) ||
+      stellarVoucher.status === "pending"
     : stellarRequestWithdrawal.isPending ||
       stellarWithdrawIsPendingVerification ||
       (stellarRequestWithdrawal.isSuccess &&
         !stellarWithdrawRequestIsConfirmed &&
-        stellarWithdrawActiveRequest === null);
+        stellarWithdrawActiveRequest === null) ||
+      stellarVoucher.status === "pending";
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
@@ -1103,10 +1105,7 @@ export function useDepositFlow(
       label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
       actionLabel: "Claim",
       state: stellarStep3State,
-      loading: isDeposit
-        ? stellarVoucher.status === "pending" || stellarClaim.isPending
-        : stellarVoucher.status === "pending" ||
-          stellarClaimWithdrawal.isPending,
+      loading: isDeposit ? stellarClaim.isPending : stellarClaimWithdrawal.isPending,
       disabled: !canStellarStep3,
       onAction: () => {
         if (stellarRequestIdBigInt === undefined) return;
