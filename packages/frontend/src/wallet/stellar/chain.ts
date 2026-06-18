@@ -67,6 +67,21 @@ export const blendNetwork = {
   passphrase: kitNetwork as string,
 } as const;
 
+/**
+ * Source account for read-only contract simulations.
+ *
+ * Soroban `simulateTransaction` needs a structurally valid source account on
+ * the envelope, but for read-only (view) calls it is never charged or
+ * authenticated, so any valid account works. This is the canonical "null"
+ * account — the all-zero ed25519 public key.
+ *
+ * IMPORTANT: do NOT pass a contract ID (`C…`) here. `new Account()` only
+ * accepts a classic ed25519 public key (`G…`) and throws `accountId is
+ * invalid` for a contract address.
+ */
+export const READ_SIMULATION_SOURCE =
+  "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
 // ── Pipeline protocol contract IDs ─────────────────────────────────────────────
 
 /**
