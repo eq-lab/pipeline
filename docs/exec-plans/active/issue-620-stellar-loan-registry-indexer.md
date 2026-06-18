@@ -37,27 +37,33 @@ read paths are chain-agnostic with **zero SQL change**.
   file under `stellar/` — keeps the existing `parsers.rs` small) covering all 9 events plus
   the `LoanStatus` / `ClosureReason` enum topic decoders and the `RepaymentData` ScVal::Map
   decoder. The dispatcher in `parsers.rs::dispatch_parser` grows one new branch.
-- New `Strkey`-typed resolver traits + concrete Stellar reader at
-  `packages/worker/src/indexer/stellar/loan_registry_reader.rs` that issues
-  `simulateTransaction` view calls against `immutable_loan_data`, `mutable_loan_data`, and
-  `cumulative_repayment_data`. Returns the existing plain-Rust
-  `ImmutableLoanDataView` / `MutableLoanDataView` / `RepaymentDataView` projections from
-  `packages/worker/src/indexer/loan_metadata.rs` (these are already alloy-free — see
-  decision Q1 below).
-- New `StellarLoanEventMapper` in `packages/worker/src/indexer/stellar/loan_mapper.rs` —
-  mirrors `LoanEventMapper`'s composer pipeline 1:1 but on a `StellarLog` and with
-  Strkey-keyed resolver traits. Reuses the alloy-free composer helpers
+- **Genericisation of the existing EVM `LoanEventMapper`** in
+  `packages/worker/src/indexer/loan_mapper.rs`: lift the mapper struct (line 260), its
+  `new()` (line 271), and the `impl LogMapper` block (line 474) to be generic over
+  `<A: LoanAddress, Id: LoanId>`. The two resolver traits in
+  `packages/worker/src/indexer/loan_metadata.rs` (lines 119, 133) gain the same generics
+  plus a chain-agnostic `BlockHint`. Existing EVM call sites in `evm_parsers.rs`,
+  `mod.rs`, `loan_registry_reader.rs`, and `tests/loan_mapper.rs` adopt the EVM concrete
+  parameters (`Address, U256`). The four composer helpers
   (`compose_drawn_snapshot`, `compose_lifecycle_snapshot`, `maybe_fetch_refreshed_json`,
-  `loan_status_name`, `closure_reason_name`) from the EVM mapper unchanged — they only
-  touch the alloy-free view projections.
-- A small refactor in `packages/worker/src/indexer/loan_mapper.rs` to lift the four pure
-  helpers out of the `impl LoanEventMapper` block so the Stellar mapper can import them
-  directly. They are already free functions; the refactor is just making sure they live
-  next to the views and not behind alloy-typed glue.
-- Dispatch in `packages/worker/src/indexer/stellar/poller.rs::StellarEventPoller`:
-  conditional contract id + the new mapper plumb-through. The poller now constructs the
-  Stellar loan reader + fetcher once per spawn and wraps each `LoanDrawn` / lifecycle
-  raw event in a `StellarLoanEventMapper` instead of a plain `StellarLogMapper`.
+  `loan_status_name`, `closure_reason_name` at lines 80, 141, 220, 29, 39) are unchanged
+  — they were already alloy-free free functions. See Q1 below.
+- **Stellar-side resolver impls** in `packages/worker/src/indexer/stellar/loan_registry_reader.rs`:
+  `impl ImmutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader` and
+  `impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader`. Concrete
+  reader issues `simulateTransaction` view calls against `immutable_loan_data`,
+  `mutable_loan_data`, and `cumulative_repayment_data`, returning the existing plain-Rust
+  `ImmutableLoanDataView` / `MutableLoanDataView` / `RepaymentDataView` projections from
+  `packages/worker/src/indexer/loan_metadata.rs`. **No parallel mapper struct.**
+- **Stellar wiring of the generic mapper** in `packages/worker/src/indexer/stellar/poller.rs`:
+  the loan-event branch constructs `LoanEventMapper::<StellarAddress, u32>::new(...)`
+  with the Stellar resolver impls and a `StellarAddress(raw_event.contract_id)` value.
+  Non-loan Stellar events continue using `StellarLogMapper`.
+- Introduce a thin worker-local `LoanEvent<A>` struct so the genericised mapper can hold
+  the chain-typed contract address without genericising the `shared` crate's `ContractLog`.
+  EVM `evm_parsers.rs` converts `ContractLog → LoanEvent<Address>` at the parser boundary;
+  Stellar `loan_registry_parsers.rs` builds `LoanEvent<StellarAddress>` directly from
+  `StellarLog`. See Q1 sub-decision (ii).
 - `.env.example` extension documenting `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`.
 - Unit tests for all 9 parsers (fabricated base64 XDR fixtures via `stellar-xdr`),
   plus tests for the enum-topic decoder, the `RepaymentData` Map decoder, and the
@@ -71,7 +77,6 @@ read paths are chain-agnostic with **zero SQL change**.
 - Yield-mint relayer Stellar parity (Phase 4 analogue).
 - `mark_minted` indexing — the contract method exists but emits no event; would need
   a contract change. Out of scope here.
-- Touching the EVM `LoanEventMapper`'s alloy-typed write path or its tests.
 
 ## Assumptions and Risks
 
@@ -115,8 +120,11 @@ read paths are chain-agnostic with **zero SQL change**.
   `u128`, which fits inside `BigDecimal` losslessly via `BigDecimal::from(u128_value)`.
 - **Mapper dispatch.** `StellarEventPoller::poll` already iterates raw events and routes
   via `dispatch_parser`. The new path needs to *branch on the parsed log's `event_name`*
-  to pick `StellarLoanEventMapper` for the 9 loan events and keep `StellarLogMapper` for
-  the existing 5. Cleanest implementation: the poller checks `event_name.starts_with("Loan")
+  to pick `LoanEventMapper::<StellarAddress, u32>` for the 9 loan events and keep
+  `StellarLogMapper` for the existing 5. Only **one** mapper class handles loan events
+  across both chains — the branch only selects between the chain-agnostic loan mapper
+  and the existing non-loan Stellar mapper, **not** between two loan-mapper classes.
+  Cleanest implementation: the poller checks `event_name.starts_with("Loan")
   || event_name == "PaymentRecorded" || event_name == "EconomicsAmended"` and constructs
   the appropriate mapper. Documented inline with a table of the 9 names.
 - **Test policy: pure unit tests only.** The MEMORY rule forbids env-gated DB or live-RPC
@@ -139,47 +147,232 @@ read paths are chain-agnostic with **zero SQL change**.
 
 All six Open Questions from the Issue body are resolved here, with file/line evidence.
 
-### Q1. Chain-agnostic mapper shape — **Resolved: option (b)+(c) hybrid — Stellar-specific mapper class, but reuse the alloy-free composer helpers in place**
+### Q1. Chain-agnostic mapper shape — **Resolved: option (a) — one generic `LoanEventMapper<A, Id>` that handles both EVM and Stellar**
 
-After reading the actual EVM `LoanEventMapper` (`packages/worker/src/indexer/loan_mapper.rs`),
-two facts pin the answer:
+User directive: same flow for Stellar as for EVM — one mapper class, not a parallel.
+After reading the actual EVM `LoanEventMapper` and grepping the call sites, the
+genericisation ripples through **exactly 6 files** — the Issue body's estimate matches the
+codebase verbatim:
 
-1. **The composer helpers are already alloy-free.** `compose_drawn_snapshot`,
-   `compose_lifecycle_snapshot`, `maybe_fetch_refreshed_json`, `loan_status_name`,
-   `closure_reason_name` (lines 29-236) take only the plain-Rust view structs from
-   `loan_metadata.rs` (`ImmutableLoanDataView`, `MutableLoanDataView`, `RepaymentDataView`,
-   `LoanMetadataJson`) — no alloy types. They can be reused **as-is** by a Stellar mapper.
-2. **The trait surface is already chain-agnostic, except for two method signatures.**
-   `ImmutableDataResolver::immutable_loan_data` and `MutableDataResolver::mutable_loan_data`
-   take `contract: alloy::primitives::Address` and `loan_id: alloy::primitives::U256`.
-   Making them generic-over-address (option a) ripples generics through 6 files plus the
-   alloy-specific reader implementation. Extracting to a shared crate (option c) duplicates
-   the view structs and is high-blast-radius.
+1. `packages/worker/src/indexer/loan_metadata.rs` — defines the two resolver traits
+   (`ImmutableDataResolver` at line 119, `MutableDataResolver` at line 133); both gain
+   address/id generic parameters.
+2. `packages/worker/src/indexer/loan_mapper.rs` — `pub struct LoanEventMapper` at line 260
+   holds the two resolvers as trait objects; the struct, its `new()` (line 271), and the
+   `impl LogMapper for LoanEventMapper` at line 474 all gain the same generics.
+3. `packages/worker/src/indexer/loan_registry_reader.rs` — `impl ImmutableDataResolver for
+   LoanRegistryReader` at line 111 and `impl MutableDataResolver for LoanRegistryReader`
+   at line 147; both adopt the EVM concrete `Address` / `U256` type parameters.
+4. `packages/worker/src/indexer/evm_parsers.rs` — `EvmLoanDeps` at line 37 holds the two
+   trait objects; `LoanEventMapper::new(...)` at line 105 becomes
+   `LoanEventMapper::<Address, U256>::new(...)`.
+5. `packages/worker/src/indexer/mod.rs` — constructs the two trait-object resolvers from
+   `LoanRegistryReader` at lines 93-94 with explicit `Arc<dyn ImmutableDataResolver<Address, U256>>`
+   type ascriptions.
+6. `packages/worker/tests/loan_mapper.rs` — mock impls of both traits (lines 65, 124) and
+   `LoanEventMapper::new(...)` call at line 234; all adopt the EVM concrete generics.
 
-**Chosen shape (b+c hybrid):**
+Genericisation is acceptable because (a) every existing call site is mechanical (add two
+turbofish parameters, no logic change), (b) the EVM tests in `tests/loan_mapper.rs` stay
+the regression net for the EVM hot path — they pin the alloy-typed instantiation — and
+(c) it avoids duplicating ~250 lines of `do_insert` / `snapshot_for_drawn` /
+`snapshot_for_lifecycle` orchestration in a parallel `StellarLoanEventMapper`.
 
-- **Keep** the EVM `LoanEventMapper` exactly as it is — alloy-typed, EVM-only. Tests under
-  `packages/worker/tests/loan_mapper.rs` keep passing untouched.
-- **Add** a parallel Stellar `StellarLoanEventMapper` in `indexer/stellar/loan_mapper.rs`.
-  Its struct holds Strkey-typed contract address (`String`), Stellar-typed loan id (`u32`),
-  the same alloy-free `LoanMetadataFetcher` trait (no chain leakage), and **new
-  Strkey-typed resolver traits** `StellarImmutableDataResolver` /
-  `StellarMutableDataResolver` whose methods take `contract: &str, loan_id: u32` and
-  return the same `ImmutableLoanDataView` / `MutableLoanDataView` / `RepaymentDataView`
-  the EVM path uses.
-- **Reuse** the four composer helpers from `loan_mapper.rs` verbatim (import them as
-  `use super::super::loan_mapper::{compose_drawn_snapshot, compose_lifecycle_snapshot,
-  maybe_fetch_refreshed_json, loan_status_name, closure_reason_name};`). Move them out
-  of `impl LoanEventMapper` only if they're currently `impl` methods (they're already
-  free functions — verified at lines 80, 141, 220, 29, 39).
-- **Reuse** `ContractLogsRepo::get_latest_loan_snapshot` unchanged — it already takes
-  `contract_address: &str` and `loan_id: &BigDecimal` (`contract_logs_repo.rs:232-237`),
-  so Strkey + `u32→BigDecimal` slot in directly.
+#### The `LoanAddress` abstraction
 
-**Code reuse delta:** ~150 lines for the new mapper struct (mostly the new resolver-trait
-bodies and the `do_insert` orchestration); ~0 lines duplicated from the composer helpers.
-A future third chain family (e.g. Solana) revisits the generic-over-address (option a)
-refactor with two concrete impls to inform the API.
+The DB write path needs the contract address as a `&str`: `EventRepo::is_duplicate` takes
+`&str` (`packages/shared/src/db.rs:48`), `ContractLogsRepo::get_latest_loan_snapshot`
+takes `&str` (`packages/shared/src/contract_logs_repo.rs:236`), and the
+`shared::events::EventRow.contract_address` field is `String`
+(`packages/shared/src/events.rs:21`). The EVM side currently produces the string via
+`self.event.contract_address.to_checksum(None)` at `loan_mapper.rs:356, 480`.
+
+Introduce a small trait in `loan_metadata.rs`:
+
+```rust
+pub trait LoanAddress: Copy + Send + Sync + 'static {
+    /// Render the address in the form stored in `contract_logs.contract_address`.
+    /// EVM emits EIP-55 checksum hex; Stellar emits the Strkey C… form verbatim.
+    fn as_db_string(&self) -> String;
+}
+
+impl LoanAddress for alloy::primitives::Address {
+    fn as_db_string(&self) -> String { self.to_checksum(None) }
+}
+
+// Stellar uses the strkey-encoded contract ID; the string form is the canonical one,
+// not a typed wrapper. To stay `Copy` we wrap it in a `Symbol`-like newtype that holds
+// a small interned slice; the simplest workable shape is to store the strkey string
+// directly and drop the `Copy` bound from the trait.
+```
+
+Since `String` is not `Copy`, drop the `Copy` bound and require `Clone + Send + Sync + 'static`
+instead. The mapper takes `&A` everywhere it currently takes `Address` by value, so the
+clone cost is only at construction time. Concrete Stellar impl:
+
+```rust
+#[derive(Clone, Debug)]
+pub struct StellarAddress(pub String);  // wraps the strkey C… form
+
+impl LoanAddress for StellarAddress {
+    fn as_db_string(&self) -> String { self.0.clone() }
+}
+```
+
+(`StellarAddress` lives in `indexer/stellar/loan_registry_reader.rs` next to the Stellar
+resolver impls so the EVM build doesn't pull in any new module.)
+
+#### Loan-id normalisation
+
+EVM uses `U256`; Stellar uses `u32`. **Recommendation: keep the resolver traits generic
+over `Id` and let the mapper carry both.** Justification: the value already round-trips
+through a `BigDecimal` string in `params.loan_id` (`parsers.rs:190` / `loan_mapper.rs:50-62`),
+and the resolver-call path needs the native type (`U256` for the EVM `abi_encode`, `u32`
+for the Stellar `ScVal::U32(loan_id)` argument). Squashing both into a shared `BigDecimal`
+or `String` would force the EVM `LoanRegistryReader` to do a needless `U256::from_str`
+round-trip per call.
+
+The mapper's `extract_loan_id` helper (`loan_mapper.rs:50-62`) returns `BigDecimal`
+already and is reused as the canonical "loan_id in params" shape. The mapper then needs
+to convert `BigDecimal → Id` per chain. Introduce a small trait:
+
+```rust
+pub trait LoanId: Send + Sync + Clone + std::fmt::Display + 'static {
+    fn from_bigdecimal(bd: &BigDecimal) -> anyhow::Result<Self>;
+}
+
+impl LoanId for alloy::primitives::U256 {
+    fn from_bigdecimal(bd: &BigDecimal) -> anyhow::Result<Self> {
+        U256::from_str(&bd.to_string())
+            .map_err(|e| anyhow::anyhow!("loan_id `{bd}` is not a valid U256: {e}"))
+    }
+}
+
+impl LoanId for u32 {
+    fn from_bigdecimal(bd: &BigDecimal) -> anyhow::Result<Self> {
+        let s = bd.to_string();
+        s.parse::<u32>()
+            .map_err(|e| anyhow::anyhow!("loan_id `{bd}` is not a valid u32: {e}"))
+    }
+}
+```
+
+Existing `loan_id_to_u256` at `loan_mapper.rs:64` is replaced by `Id::from_bigdecimal(&loan_id)`.
+
+#### Generic resolver-trait shape
+
+```rust
+#[async_trait]
+pub trait ImmutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
+    async fn immutable_loan_data(&self, contract: &A, loan_id: Id)
+        -> anyhow::Result<ImmutableLoanDataView>;
+}
+
+#[async_trait]
+pub trait MutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
+    async fn mutable_loan_data(&self, contract: &A, loan_id: Id, block: BlockHint)
+        -> anyhow::Result<MutableLoanDataView>;
+    async fn cumulative_repayment_data(&self, contract: &A, loan_id: Id, block: BlockHint)
+        -> anyhow::Result<RepaymentDataView>;
+}
+```
+
+`BlockHint` replaces the EVM-specific `alloy::eips::BlockId`. Define it in `loan_metadata.rs`:
+
+```rust
+/// Chain-agnostic "what to read at" hint. EVM uses the wrapped block number to build
+/// `BlockId::Number(...)`; Stellar ignores it (Soroban `simulateTransaction` is
+/// current-state-only — Open Q7 / TD-19).
+#[derive(Debug, Clone, Copy)]
+pub struct BlockHint(pub u64);
+
+impl BlockHint {
+    pub fn from_event(block_number: u64) -> Self { Self(block_number) }
+    pub fn to_evm_block_id(self) -> alloy::eips::BlockId {
+        alloy::eips::BlockId::Number(alloy::eips::BlockNumberOrTag::Number(self.0))
+    }
+}
+```
+
+The EVM `LoanRegistryReader` impl unwraps via `to_evm_block_id()`. The Stellar impl ignores
+it. **No alloy types leak into the trait signature.**
+
+#### Concrete EVM impl after genericisation (minimal-change)
+
+```rust
+// loan_registry_reader.rs (EVM)
+#[async_trait]
+impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
+    async fn immutable_loan_data(&self, contract: &Address, loan_id: U256)
+        -> Result<ImmutableLoanDataView>
+    {
+        let call_data = ILoanRegistry::immutableLoanDataCall { loanId: loan_id }.abi_encode();
+        // ...existing body, with `*contract` where `contract` was used by value...
+    }
+}
+
+#[async_trait]
+impl MutableDataResolver<Address, U256> for LoanRegistryReader {
+    async fn mutable_loan_data(&self, contract: &Address, loan_id: U256, block: BlockHint)
+        -> Result<MutableLoanDataView>
+    {
+        // body unchanged except: .block(block.to_evm_block_id())
+    }
+    async fn cumulative_repayment_data(/* same shape */) { /* ... */ }
+}
+```
+
+Only three lines change per method: dereference `*contract`, swap `block: BlockId` for
+`block: BlockHint`, convert via `.to_evm_block_id()` at the alloy call site.
+
+#### Concrete Stellar impl
+
+A new `StellarLoanRegistryReader` in `indexer/stellar/loan_registry_reader.rs`
+implements `ImmutableDataResolver<StellarAddress, u32>` and
+`MutableDataResolver<StellarAddress, u32>`, ignores the `BlockHint`, decodes
+`u128 → U256` via `U256::from(value)` for the view structs.
+
+#### Mapper struct after genericisation
+
+```rust
+pub struct LoanEventMapper<A: LoanAddress, Id: LoanId> {
+    pub event: ContractLog<A>,                 // ContractLog is itself genericised — see below
+    chain_id: i64,
+    event_repo: Arc<EventRepo>,
+    contract_logs_repo: Arc<ContractLogsRepo>,
+    fetcher: Arc<dyn LoanMetadataFetcher>,
+    immutable_resolver: Arc<dyn ImmutableDataResolver<A, Id>>,
+    mutable_resolver: Arc<dyn MutableDataResolver<A, Id>>,
+}
+```
+
+**Issue: `ContractLog` is alloy-typed (`packages/shared/src/events.rs:3-14`).** The
+shared crate already provides `EventRow` (`events.rs:20-28`) as the alloy-free row shape.
+The mapper has two reasonable options:
+
+- **(i) genericise `ContractLog<A>` in the shared crate** — touches every caller of
+  `ContractLog` (every parser + every `ContractLogMapper`). Large ripple.
+- **(ii) introduce a thin worker-local `LoanEvent<A>` struct** that the mapper holds in
+  place of `ContractLog`, with fields `{ contract_address: A, event_name, block_number,
+  tx_hash: String, log_index, block_timestamp, params }`. EVM parsers convert
+  `ContractLog → LoanEvent<Address>` at the `evm_parsers.rs` boundary; Stellar parsers
+  build `LoanEvent<StellarAddress>` directly from `StellarLog`. The conversion is one
+  function in `evm_parsers.rs` and one in `stellar/loan_registry_parsers.rs`.
+
+**Choose (ii).** Justification: keeps the genericisation contained to the worker crate
+— the `shared` crate stays alloy-coupled only via the existing `ContractLog`, and
+`EventRow` still serves the Stellar write path for the non-loan events. The conversion
+is trivial (struct-literal copy with one field type swap).
+
+#### Tests live in the same file
+
+`packages/worker/tests/loan_mapper.rs` becomes the canonical mapper test file with both
+EVM and Stellar coverage. The existing mocks `MockImmutableResolver` /
+`MockMutableResolver` (lines 65, 124) adopt the EVM concrete type parameters
+(`impl ImmutableDataResolver<Address, U256> for MockImmutableResolver`). New mocks for
+Stellar (`MockStellarImmutableResolver` impl `ImmutableDataResolver<StellarAddress, u32>`)
+sit next to them. The composer helpers exercise both instantiations through the same
+`LoanEventMapper<A, Id>::do_insert` code path.
 
 ### Q2. `loan_id` shape mismatch (EVM `U256` vs Stellar `u32`) — **Resolved: serialise both as decimal strings in `params.loan_id`**
 
@@ -386,7 +579,190 @@ pub fn dispatch_parser(
 }
 ```
 
+### `packages/worker/src/indexer/loan_metadata.rs` (modify)
+
+Add the two new abstractions and genericise the two existing resolver traits.
+
+```rust
+// NEW
+pub trait LoanAddress: Clone + Send + Sync + 'static {
+    fn as_db_string(&self) -> String;
+}
+
+impl LoanAddress for alloy::primitives::Address {
+    fn as_db_string(&self) -> String { self.to_checksum(None) }
+}
+
+// NEW
+pub trait LoanId: Send + Sync + Clone + std::fmt::Display + 'static {
+    fn from_bigdecimal(bd: &bigdecimal::BigDecimal) -> anyhow::Result<Self>;
+}
+
+impl LoanId for alloy::primitives::U256 { /* parses via U256::from_str */ }
+impl LoanId for u32                       { /* parses via str::parse::<u32> */ }
+
+// NEW
+#[derive(Debug, Clone, Copy)]
+pub struct BlockHint(pub u64);
+impl BlockHint {
+    pub fn from_event(block_number: u64) -> Self { Self(block_number) }
+    pub fn to_evm_block_id(self) -> alloy::eips::BlockId { /* ... */ }
+}
+
+// MODIFIED — both traits gain <A, Id> generics + take &A and use BlockHint
+#[async_trait]
+pub trait ImmutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
+    async fn immutable_loan_data(&self, contract: &A, loan_id: Id)
+        -> anyhow::Result<ImmutableLoanDataView>;
+}
+
+#[async_trait]
+pub trait MutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
+    async fn mutable_loan_data(&self, contract: &A, loan_id: Id, block: BlockHint)
+        -> anyhow::Result<MutableLoanDataView>;
+    async fn cumulative_repayment_data(&self, contract: &A, loan_id: Id, block: BlockHint)
+        -> anyhow::Result<RepaymentDataView>;
+}
+```
+
+The `ImmutableLoanDataView` / `MutableLoanDataView` / `RepaymentDataView` /
+`LocationUpdateView` / `LocationType` / `LoanMetadataJson` / `LoanMetadataFetcher` types
+are unchanged. The alloy `Address` / `U256` field types inside the view structs stay
+(`U256::from(u128_val)` works for the Stellar side).
+
+### `packages/worker/src/indexer/loan_mapper.rs` (modify)
+
+Genericise the struct and lift it to `<A: LoanAddress, Id: LoanId>`. Replace the
+alloy-typed `ContractLog` field with a thin worker-local `LoanEvent<A>` (defined in
+this same file, next to the mapper):
+
+```rust
+// NEW — worker-local, alloy-free in field type
+pub struct LoanEvent<A: LoanAddress> {
+    pub contract_address: A,
+    pub event_name: String,
+    pub block_number: u64,
+    pub tx_hash: String,             // hex with 0x prefix for EVM; tx hash for Stellar
+    pub log_index: u64,
+    pub block_timestamp: u64,
+    pub params: serde_json::Value,
+}
+
+// MODIFIED
+pub struct LoanEventMapper<A: LoanAddress, Id: LoanId> {
+    pub event: LoanEvent<A>,
+    chain_id: i64,
+    event_repo: Arc<EventRepo>,
+    contract_logs_repo: Arc<ContractLogsRepo>,
+    fetcher: Arc<dyn LoanMetadataFetcher>,
+    immutable_resolver: Arc<dyn ImmutableDataResolver<A, Id>>,
+    mutable_resolver: Arc<dyn MutableDataResolver<A, Id>>,
+    _id: std::marker::PhantomData<Id>,
+}
+
+impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
+    pub fn new(/* same arg list, lifted to &A and Arc<dyn …<A, Id>> */) -> Self { /* ... */ }
+}
+
+// Inside the existing methods (lines 292-470):
+// - `loan_id_to_u256(loan_id)?` → `Id::from_bigdecimal(loan_id)?`
+// - `let addr = self.event.contract_address;` → `let addr = &self.event.contract_address;`
+// - `let block = block_id_for(self.event.block_number);` → `let block = BlockHint::from_event(self.event.block_number);`
+// - `self.event.contract_address.to_checksum(None)` (lines 356, 480) → `self.event.contract_address.as_db_string()`
+// - Insert path: build an `EventRow` (alloy-free row struct) with
+//   `contract_address: self.event.contract_address.as_db_string()` and call
+//   `EventRepo::insert_row(...)`. Both EVM and Stellar take the same write path
+//   — the EVM ContractLog → EventRow conversion happens here.
+```
+
+The four pure composer helpers (`compose_drawn_snapshot` line 80,
+`compose_lifecycle_snapshot` line 141, `maybe_fetch_refreshed_json` line 220,
+`loan_status_name` line 29, `closure_reason_name` line 39) are unchanged — they were
+already alloy-free.
+
+`extract_loan_id` (line 50) is unchanged. `loan_id_to_u256` (line 64) is **deleted** —
+the `Id::from_bigdecimal` trait method replaces it. `block_id_for` (line 69) is
+**deleted** — folded into `BlockHint::to_evm_block_id()` in `loan_metadata.rs`.
+
+### `packages/worker/src/indexer/loan_registry_reader.rs` (modify)
+
+Only the two `impl` blocks change — body logic is identical except for three lines per
+method.
+
+```rust
+// MODIFIED — line 111 area
+#[async_trait]
+impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
+    async fn immutable_loan_data(&self, contract: &Address, loan_id: U256)
+        -> Result<ImmutableLoanDataView>
+    {
+        // body unchanged except: use `*contract` (deref) where it was `contract` by value
+    }
+}
+
+// MODIFIED — line 147 area
+#[async_trait]
+impl MutableDataResolver<Address, U256> for LoanRegistryReader {
+    async fn mutable_loan_data(&self, contract: &Address, loan_id: U256, block: BlockHint)
+        -> Result<MutableLoanDataView>
+    {
+        // body unchanged except: .block(block.to_evm_block_id()) and `*contract`
+    }
+    async fn cumulative_repayment_data(/* same pattern */) { /* ... */ }
+}
+```
+
+Imports gain `use super::loan_metadata::BlockHint;` and drop `use alloy::eips::BlockId;`.
+
+### `packages/worker/src/indexer/evm_parsers.rs` (modify)
+
+```rust
+// MODIFIED — EvmLoanDeps gains the EVM concrete generics
+pub struct EvmLoanDeps {
+    pub fetcher: Arc<dyn LoanMetadataFetcher>,
+    pub immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>>,
+    pub mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>>,
+}
+
+// MODIFIED — line 105 call site
+LoanEventMapper::<Address, U256>::new(
+    LoanEvent {
+        contract_address: ev.contract_address,
+        event_name: ev.event_name,
+        block_number: ev.block_number,
+        tx_hash: format!("{:#x}", ev.tx_hash),
+        log_index: ev.log_index,
+        block_timestamp: ev.block_timestamp,
+        params: ev.params,
+    },
+    chain_id,
+    loan_event_repo.clone(),
+    contract_logs_repo.clone(),
+    fetcher.clone(),
+    immutable_resolver.clone(),
+    mutable_resolver.clone(),
+)
+```
+
+The `ContractLog → LoanEvent<Address>` conversion is the only logic added — a struct-literal
+copy with `tx_hash` formatted to hex (Stellar's `LoanEvent<StellarAddress>` carries its
+tx hash as a plain string already).
+
+### `packages/worker/src/indexer/mod.rs` (modify)
+
+```rust
+// MODIFIED — lines 93-94 with explicit turbofish-style type ascriptions
+let immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>> = reader.clone();
+let mutable_resolver:   Arc<dyn MutableDataResolver<Address, U256>>   = reader.clone();
+```
+
+No structural change. The `Address` / `U256` types are already in scope via the
+`loan_registry_reader` import (`alloy::primitives`).
+
 ### `packages/worker/src/indexer/stellar/loan_registry_reader.rs` (new file)
+
+Holds only the Stellar-side **resolver impls** and the `StellarAddress` newtype — no
+mapper class.
 
 ```rust
 use std::sync::Arc;
@@ -395,21 +771,16 @@ use async_trait::async_trait;
 use crate::stellar::tx::build_invoke_envelope;          // promoted in #568
 use crate::indexer::stellar::rpc::StellarRpc;
 use crate::indexer::loan_metadata::{
-    ImmutableLoanDataView, MutableLoanDataView, RepaymentDataView, LocationUpdateView, LocationType,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LocationType,
+    LocationUpdateView, MutableDataResolver, MutableLoanDataView, RepaymentDataView,
 };
 
-#[async_trait]
-pub trait StellarImmutableDataResolver: Send + Sync {
-    async fn immutable_loan_data(&self, contract: &str, loan_id: u32)
-        -> Result<ImmutableLoanDataView>;
-}
+// NEW — Strkey-encoded Stellar contract id
+#[derive(Clone, Debug)]
+pub struct StellarAddress(pub String);
 
-#[async_trait]
-pub trait StellarMutableDataResolver: Send + Sync {
-    async fn mutable_loan_data(&self, contract: &str, loan_id: u32)
-        -> Result<MutableLoanDataView>;
-    async fn cumulative_repayment_data(&self, contract: &str, loan_id: u32)
-        -> Result<RepaymentDataView>;
+impl LoanAddress for StellarAddress {
+    fn as_db_string(&self) -> String { self.0.clone() }
 }
 
 pub struct StellarLoanRegistryReader {
@@ -419,26 +790,38 @@ pub struct StellarLoanRegistryReader {
 
 impl StellarLoanRegistryReader {
     pub fn new(rpc: Arc<StellarRpc>, network_passphrase: String) -> Self { /* ... */ }
-
     // Private: build the simulate envelope, call simulate, decode the return ScVal.
     async fn call_view(&self, contract: &str, fn_name: &str, loan_id: u32) -> Result<ScVal>;
 }
 
 #[async_trait]
-impl StellarImmutableDataResolver for StellarLoanRegistryReader {
-    async fn immutable_loan_data(&self, contract: &str, loan_id: u32) -> Result<ImmutableLoanDataView> {
-        let scval = self.call_view(contract, "immutable_loan_data", loan_id).await?;
+impl ImmutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader {
+    async fn immutable_loan_data(&self, contract: &StellarAddress, loan_id: u32)
+        -> Result<ImmutableLoanDataView>
+    {
+        let scval = self.call_view(&contract.0, "immutable_loan_data", loan_id).await?;
         decode_immutable_loan_data(&scval)
     }
 }
 
 #[async_trait]
-impl StellarMutableDataResolver for StellarLoanRegistryReader {
-    async fn mutable_loan_data(&self, contract: &str, loan_id: u32) -> Result<MutableLoanDataView> { /* ... */ }
-    async fn cumulative_repayment_data(&self, contract: &str, loan_id: u32) -> Result<RepaymentDataView> { /* ... */ }
+impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader {
+    async fn mutable_loan_data(&self, contract: &StellarAddress, loan_id: u32, _block: BlockHint)
+        -> Result<MutableLoanDataView>
+    {
+        // `_block` ignored — Soroban simulate is current-state-only (TD-19).
+        let scval = self.call_view(&contract.0, "mutable_loan_data", loan_id).await?;
+        decode_mutable_loan_data(&scval)
+    }
+    async fn cumulative_repayment_data(&self, contract: &StellarAddress, loan_id: u32, _block: BlockHint)
+        -> Result<RepaymentDataView>
+    {
+        let scval = self.call_view(&contract.0, "cumulative_repayment_data", loan_id).await?;
+        decode_cumulative_repayment_data(&scval)
+    }
 }
 
-// Pure decoders (pub for unit tests):
+// Pure decoders (pub(crate) for unit tests):
 fn decode_immutable_loan_data(scval: &ScVal) -> Result<ImmutableLoanDataView>;
 fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView>;
 fn decode_cumulative_repayment_data(scval: &ScVal) -> Result<RepaymentDataView>;
@@ -458,87 +841,30 @@ The three decoders translate the on-wire `ScVal::Map({ original_facility_size: U
 into the existing alloy-free views. For `u128 → U256`, use `U256::from(u128_value)` to keep
 the view-struct field type unchanged.
 
-### `packages/worker/src/indexer/stellar/loan_mapper.rs` (new file)
-
-Parallel of `loan_mapper.rs::LoanEventMapper` with Strkey-typed deps. The pure composer
-helpers (`compose_drawn_snapshot`, `compose_lifecycle_snapshot`, `maybe_fetch_refreshed_json`,
-`loan_status_name`, `closure_reason_name`) are imported from `super::super::loan_mapper`
-and reused **unchanged**.
-
-```rust
-use std::str::FromStr;
-use std::sync::Arc;
-use bigdecimal::BigDecimal;
-use sqlx::PgConnection;
-use shared::{
-    contract_logs_repo::ContractLogsRepo,
-    db::EventRepo,
-    events::EventRow,
-    log_mapper::LogMapper,
-};
-use crate::indexer::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
-use crate::indexer::loan_mapper::{
-    closure_reason_name, compose_drawn_snapshot, compose_lifecycle_snapshot,
-    loan_status_name, maybe_fetch_refreshed_json,
-};
-use crate::indexer::stellar::loan_registry_reader::{
-    StellarImmutableDataResolver, StellarMutableDataResolver,
-};
-use crate::indexer::stellar::parsers::StellarLog;
-
-pub struct StellarLoanEventMapper {
-    pub log: StellarLog,
-    chain_id: i64,
-    event_repo: Arc<EventRepo>,
-    contract_logs_repo: Arc<ContractLogsRepo>,
-    fetcher: Arc<dyn LoanMetadataFetcher>,
-    immutable_resolver: Arc<dyn StellarImmutableDataResolver>,
-    mutable_resolver: Arc<dyn StellarMutableDataResolver>,
-}
-
-impl StellarLoanEventMapper {
-    // snapshot_for_drawn — parallels EVM mapper at lines 292-341
-    // snapshot_for_lifecycle — parallels EVM mapper at lines 351-421
-    // do_insert — calls EventRepo::insert_row (not insert_log)
-}
-
-#[async_trait]
-impl LogMapper for StellarLoanEventMapper {
-    async fn is_duplicate(&self, conn: &mut PgConnection) -> Result<bool> {
-        self.event_repo.is_duplicate(
-            conn, self.chain_id, &self.log.contract_address,
-            self.log.block_number, self.log.log_index,
-        ).await
-    }
-    async fn insert(&self, conn: &mut PgConnection) -> Result<()> { self.do_insert(conn).await }
-    fn block_number(&self) -> u64 { self.log.block_number }
-    fn set_block_timestamp(&mut self, _ts: u64) {} // pre-populated; no-op
-}
-```
-
-The `do_insert` flow assembles the enriched `params = { loan_id, event, snapshot }` JSON
-just like the EVM mapper (`loan_mapper.rs:425-470`) and then builds an `EventRow` for
-`insert_row`. The Stellar mapper writes to `contract_logs` via the chain-agnostic write
-path (`EventRepo::insert_row`), so the row carries the Strkey contract address verbatim
-— the read-side query `WHERE contract_address = $2` in `get_latest_loan_snapshot` then
-matches byte-for-byte.
+**No `packages/worker/src/indexer/stellar/loan_mapper.rs` file.** The genericised
+`LoanEventMapper<StellarAddress, u32>` is the mapper for Stellar; it's constructed
+directly at the poller wiring site.
 
 ### `packages/worker/src/indexer/stellar/poller.rs` (modify)
 
 ```rust
+use crate::indexer::loan_mapper::{LoanEvent, LoanEventMapper};
+use crate::indexer::loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver};
+use crate::indexer::stellar::loan_registry_reader::StellarAddress;
+
 pub struct StellarEventPoller {
     rpc: StellarRpc,
     chain_id: i64,
     repo: Arc<EventRepo>,
-    contract_logs_repo: Arc<ContractLogsRepo>,                     // NEW
+    contract_logs_repo: Arc<ContractLogsRepo>,                                         // NEW
     deposit_manager_id: String,
     withdrawal_queue_id: String,
     staked_plusd_id: String,
-    loan_registry_id: Option<String>,                              // NEW
+    loan_registry_id: Option<String>,                                                  // NEW
     // Loan-mapper deps; None when loan_registry_id is None.
-    loan_fetcher: Option<Arc<dyn LoanMetadataFetcher>>,            // NEW
-    loan_immutable: Option<Arc<dyn StellarImmutableDataResolver>>, // NEW
-    loan_mutable: Option<Arc<dyn StellarMutableDataResolver>>,     // NEW
+    loan_fetcher:   Option<Arc<dyn LoanMetadataFetcher>>,                              // NEW
+    loan_immutable: Option<Arc<dyn ImmutableDataResolver<StellarAddress, u32>>>,       // NEW
+    loan_mutable:   Option<Arc<dyn MutableDataResolver<StellarAddress, u32>>>,         // NEW
 }
 
 #[async_trait]
@@ -563,16 +889,24 @@ impl ChainEventPoller for StellarEventPoller {
                 self.loan_registry_id.as_deref(),
             ) {
                 if is_loan_event(&log.event_name) {
-                    // Construct StellarLoanEventMapper — unwrap the loan deps which
-                    // must exist when loan_registry_id is Some (panicking is fine here
-                    // since it's a wiring invariant, not an input bug).
-                    mappers.push(Box::new(StellarLoanEventMapper::new(
-                        log, self.chain_id,
+                    // ONE mapper class — instantiate the generic with Stellar concrete types.
+                    let loan_event = LoanEvent {
+                        contract_address: StellarAddress(log.contract_address.clone()),
+                        event_name: log.event_name,
+                        block_number: log.block_number,
+                        tx_hash: log.tx_hash,
+                        log_index: log.log_index,
+                        block_timestamp: log.block_timestamp,
+                        params: log.params,
+                    };
+                    mappers.push(Box::new(LoanEventMapper::<StellarAddress, u32>::new(
+                        loan_event,
+                        self.chain_id,
                         self.repo.clone(),
                         self.contract_logs_repo.clone(),
                         self.loan_fetcher.clone().expect("loan_fetcher set with loan_registry_id"),
-                        self.loan_immutable.clone().expect("…"),
-                        self.loan_mutable.clone().expect("…"),
+                        self.loan_immutable.clone().expect("loan_immutable set with loan_registry_id"),
+                        self.loan_mutable.clone().expect("loan_mutable set with loan_registry_id"),
                     )));
                 } else {
                     mappers.push(Box::new(StellarLogMapper::new(log, self.chain_id, self.repo.clone())));
@@ -594,7 +928,8 @@ fn is_loan_event(name: &str) -> bool {
 ```
 
 `run_stellar_indexer_job` then constructs the loan-mapper deps once at job start,
-mirroring the EVM `run_indexer_job` at `packages/worker/src/indexer/mod.rs:85-95`:
+mirroring the EVM `run_indexer_job` at `packages/worker/src/indexer/mod.rs:85-95` but
+with the **same** generic mapper, just different concrete impls:
 
 ```rust
 let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool.clone()));
@@ -604,8 +939,11 @@ let (loan_fetcher, loan_immutable, loan_mutable) = if settings.loan_registry_id.
     ));
     let rpc_arc = Arc::new(StellarRpc::new(&settings.rpc_url));
     let reader = Arc::new(StellarLoanRegistryReader::new(rpc_arc, settings.network_passphrase.clone()));
-    (Some(fetcher), Some(reader.clone() as Arc<dyn StellarImmutableDataResolver>),
-                    Some(reader as Arc<dyn StellarMutableDataResolver>))
+    (
+        Some(fetcher),
+        Some(reader.clone() as Arc<dyn ImmutableDataResolver<StellarAddress, u32>>),
+        Some(reader        as Arc<dyn MutableDataResolver<StellarAddress, u32>>),
+    )
 } else { (None, None, None) };
 ```
 
@@ -616,9 +954,8 @@ field on `StellarIndexerSettings` (a small follow-up addition in `config.rs`).
 ### `packages/worker/src/indexer/stellar/mod.rs`
 
 ```rust
-pub mod loan_mapper;             // NEW
 pub mod loan_registry_parsers;   // NEW
-pub mod loan_registry_reader;    // NEW
+pub mod loan_registry_reader;    // NEW (Stellar-side resolver impls + StellarAddress)
 pub mod mappers;
 pub mod parsers;
 pub mod poller;
@@ -660,9 +997,12 @@ Execute in this order; each step is independently lint-clean and unit-tested.
    with a `loan_registry_branch_routes_to_parsers` case and an
    `unconfigured_loan_registry_id_skips_branch` (i.e. `loan_registry_id = None`).
 
-4. **Stellar loan reader.** Create `packages/worker/src/indexer/stellar/loan_registry_reader.rs`
-   with the two resolver traits, the concrete `StellarLoanRegistryReader`, and three pure
-   decoder helpers. Tests in `packages/worker/tests/stellar_loan_reader.rs`:
+4. **Stellar loan reader (resolver impls only).** Create
+   `packages/worker/src/indexer/stellar/loan_registry_reader.rs` with the `StellarAddress`
+   newtype, the concrete `StellarLoanRegistryReader`, and three pure decoder helpers.
+   The `impl ImmutableDataResolver<StellarAddress, u32>` / `impl MutableDataResolver<StellarAddress, u32>`
+   blocks come in Step 5b — they depend on the trait genericisation. Tests in
+   `packages/worker/tests/stellar_loan_reader.rs`:
    - `decode_immutable_loan_data_decodes_fabricated_scval`
    - `decode_mutable_loan_data_decodes_fabricated_scval`
    - `decode_cumulative_repayment_data_decodes_fabricated_scval`
@@ -671,22 +1011,67 @@ Execute in this order; each step is independently lint-clean and unit-tested.
      wrap the envelope-build logic into a pure helper if needed to test it without
      spinning up a fake server).
 
-5. **Stellar loan mapper.** Create `packages/worker/src/indexer/stellar/loan_mapper.rs`
-   with `StellarLoanEventMapper` and the `LogMapper` impl. Lift the four composer helpers
-   to public scope in `loan_mapper.rs` if any are currently private (none are — verified).
-   Tests in `packages/worker/tests/stellar_loan_mapper.rs`:
-   - `loan_drawn_writes_snapshot_with_fetched_metadata` (mocks all three deps)
-   - `lifecycle_event_carries_prior_snapshot_forward`
-   - `lifecycle_event_refetches_metadata_when_uri_changed`
-   - `loan_id_serialised_as_decimal_string` — asserts `params.loan_id == "42"` for a
-     `u32 = 42` event, matching the EVM convention.
+5. **Genericise the EVM mapper + resolvers — single shared `LoanEventMapper<A, Id>`.**
+   This is the only step that touches the EVM hot path, so it lands as a self-contained
+   refactor with the EVM tests as the regression gate.
 
-6. **Poller wiring.** Modify `StellarEventPoller` to carry the new optional fields and
-   branch on `is_loan_event` inside `poll`. Modify `run_stellar_indexer_job` to construct
-   the loan-mapper deps when `loan_registry_id.is_some()`. No new test file — the existing
-   `stellar_indexer_integration.rs` (if present) gains a case that constructs a poller
-   with a `None` `loan_registry_id` and verifies it ignores any loan events fed through
-   the dispatcher.
+   **5a. Genericisation:**
+   - In `packages/worker/src/indexer/loan_metadata.rs`: add `LoanAddress`, `LoanId`,
+     `BlockHint`; lift `ImmutableDataResolver` and `MutableDataResolver` to
+     `<A: LoanAddress, Id: LoanId>`; replace alloy `BlockId` in trait signatures with
+     `BlockHint`. Add `impl LoanAddress for Address` and `impl LoanId for U256` /
+     `impl LoanId for u32` in the same file.
+   - In `packages/worker/src/indexer/loan_mapper.rs`: introduce the worker-local
+     `LoanEvent<A>` struct. Lift `LoanEventMapper` to `<A: LoanAddress, Id: LoanId>`.
+     Swap the alloy-typed field accessors inside `snapshot_for_drawn` (line 292),
+     `snapshot_for_lifecycle` (line 351), and `do_insert` (line 425) per the diff
+     sketch in the file-by-file section. Delete `loan_id_to_u256` (line 64) and
+     `block_id_for` (line 69) — folded into trait methods. The four pure composer
+     helpers are unchanged. Insert path moves to `EventRepo::insert_row` via
+     `LoanAddress::as_db_string()`.
+   - In `packages/worker/src/indexer/loan_registry_reader.rs`: adopt the new trait
+     signatures with `<Address, U256>`. Body unchanged except `*contract` deref and
+     `block.to_evm_block_id()` calls.
+   - In `packages/worker/src/indexer/evm_parsers.rs`: `EvmLoanDeps` adopts the EVM
+     concrete generics; `LoanEventMapper::new(...)` call site (line 105) becomes
+     `LoanEventMapper::<Address, U256>::new(...)` and constructs `LoanEvent<Address>`
+     from the parsed `ContractLog`.
+   - In `packages/worker/src/indexer/mod.rs`: type-ascribe the two `Arc<dyn …>` locals
+     (lines 93-94) with `<Address, U256>`.
+   - In `packages/worker/tests/loan_mapper.rs`: update the two mock impls (lines 65, 124)
+     to `impl ImmutableDataResolver<Address, U256> for MockImmutableResolver` etc., and
+     the `LoanEventMapper::new(...)` call (line 234) to the turbofish form. Convert the
+     test fixture's `ContractLog` to `LoanEvent<Address>`. **All existing EVM tests stay
+     green.** This is the load-bearing regression check that the refactor preserves
+     EVM behaviour.
+   - Lint + EVM tests must be green before moving to 5b.
+
+   **5b. Stellar resolver impls + Stellar mapper tests.**
+   - In `packages/worker/src/indexer/stellar/loan_registry_reader.rs`: add
+     `impl ImmutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader` and
+     `impl MutableDataResolver<StellarAddress, u32> for StellarLoanRegistryReader`
+     (these were planned in Step 4 but deferred until the traits became generic).
+   - In `packages/worker/tests/loan_mapper.rs`: add Stellar mock impls
+     (`MockStellarImmutableResolver` impl `ImmutableDataResolver<StellarAddress, u32>`,
+     same for mutable) next to the existing EVM mocks. Add four new test cases against
+     `LoanEventMapper::<StellarAddress, u32>`:
+     - `stellar_loan_drawn_writes_snapshot_with_fetched_metadata`
+     - `stellar_lifecycle_event_carries_prior_snapshot_forward`
+     - `stellar_lifecycle_event_refetches_metadata_when_uri_changed`
+     - `stellar_loan_id_serialised_as_decimal_string` (asserts `params.loan_id == "42"`
+       for `u32 = 42`, matching EVM).
+
+   Tests for both EVM and Stellar live in the **same file** so the generic mapper has a
+   single coverage surface — easier to keep parity. No new mapper test file.
+
+6. **Poller wiring.** Modify `StellarEventPoller` to carry the three new optional loan
+   fields (`loan_fetcher`, `loan_immutable: Arc<dyn ImmutableDataResolver<StellarAddress, u32>>`,
+   `loan_mutable`). Inside `poll`, branch on `is_loan_event` and instantiate
+   `LoanEventMapper::<StellarAddress, u32>::new(...)`. Modify `run_stellar_indexer_job`
+   to construct the loan-mapper deps when `loan_registry_id.is_some()`. No new test
+   file — the existing `stellar_indexer_integration.rs` (if present) gains a case that
+   constructs a poller with `None` `loan_registry_id` and verifies it ignores any loan
+   events fed through the dispatcher.
 
 7. **`.env.example`** — append the optional `CHAIN_99000001_STELLAR_LOAN_REGISTRY_ID` line.
 
@@ -705,7 +1090,7 @@ All tests are **pure unit tests** — no live network, no DB, no env-gated `DATA
 |---|---|
 | `packages/worker/tests/stellar_loan_parsers.rs` | 9 parsers × 2 cases (happy + topic mismatch) = 18 tests; 10 ScVal helpers × 1 happy-path each = 10 tests. Total ≈ 28 tests. |
 | `packages/worker/tests/stellar_loan_reader.rs` | 3 decoders × 1 happy-path = 3 tests; 1 envelope-shape test = 1 test. Total = 4 tests. |
-| `packages/worker/tests/stellar_loan_mapper.rs` | 4 mapper flows (LoanDrawn + 3 lifecycle variants). Reuses the trait-mock pattern from `packages/worker/tests/loan_mapper.rs`. Total = 4 tests. |
+| `packages/worker/tests/loan_mapper.rs` (extend) | Existing EVM mapper tests adopt the new turbofish + `LoanEvent<Address>` fixture (no logic change — regression gate for the genericisation). Adds 4 new Stellar mapper cases (`stellar_loan_drawn_writes_snapshot_with_fetched_metadata` / `stellar_lifecycle_event_carries_prior_snapshot_forward` / `stellar_lifecycle_event_refetches_metadata_when_uri_changed` / `stellar_loan_id_serialised_as_decimal_string`) against `LoanEventMapper::<StellarAddress, u32>`. Both EVM and Stellar exercise the same generic struct. |
 | `packages/worker/tests/stellar_indexer_config.rs` | Extend with 2 new cases for the new field. |
 
 ### Fixture construction policy
@@ -721,9 +1106,17 @@ the authoritative end-to-end check anyway.
 
 ### Regression gates
 
-- EVM `LoanEventMapper` tests under `packages/worker/tests/loan_mapper.rs` continue
-  to pass untouched (chain-agnostic composer helpers are unmodified; the alloy-typed
-  wrapper is unchanged).
+- EVM `LoanEventMapper` tests under `packages/worker/tests/loan_mapper.rs` are now
+  **load-bearing**: they are the only regression net pinning the EVM hot-path behaviour
+  through the genericisation. Every existing assertion must still pass after Step 5a;
+  the only diffs in the test file are mechanical (turbofish on `LoanEventMapper::new`,
+  `LoanEvent<Address>` fixture in place of the raw `ContractLog` fixture, and
+  `impl …Resolver<Address, U256> for Mock…` on the two mocks). No logic test bodies
+  change — if a body does change, that is a red flag the refactor altered behaviour.
+- The four composer helpers (`compose_drawn_snapshot`, `compose_lifecycle_snapshot`,
+  `maybe_fetch_refreshed_json`, `loan_status_name`, `closure_reason_name`) are
+  unchanged across the refactor; their unit-test coverage in `tests/loan_mapper.rs`
+  acts as the pure-function regression sanity check.
 - `packages/worker/tests/stellar_parsers.rs` — extend the existing dispatcher tests
   to include a `loan_registry_id` parameter; cases that didn't supply one still pass
   by passing `None`.
@@ -784,29 +1177,44 @@ identical to EVM.
   (`loan_metadata.rs:54-65`) by reverse-lookup of the symbol to the ordinal. Add an
   `as_ordinal` helper if it doesn't exist — verified at planning time, `as_str` does the
   forward direction; add the reverse.
-- **`U256` from `u128`** — the view structs hold `alloy::primitives::U256`. Use
-  `U256::from(value: u128)` (alloy's `From` impl) — this is the same coupling the EVM
-  reader already has and does **not** force the Stellar reader to import alloy beyond
-  the U256 type alias. If we want truly-zero alloy in the Stellar reader, swap the view
-  field types to `BigDecimal`-or-similar; that's a larger refactor for a future Issue
-  and out of scope here. Documented as **TD-20**.
+- **View structs still hold alloy `U256`.** Genericising the mapper does not change the
+  fact that `ImmutableLoanDataView`, `MutableLoanDataView`, and `RepaymentDataView` store
+  their numeric fields as `alloy::primitives::U256` (`loan_metadata.rs:35-42, 88-95,
+  102-104`). The Stellar reader still uses `U256::from(value: u128)` (alloy's infallible
+  `From<u128>` impl) when projecting `ScVal::U128` into the views. Stellar code only
+  needs the `U256` type — not the broader alloy stack. Truly-zero-alloy view structs
+  (e.g. swapping to `BigDecimal`) are tracked as **TD-20** and out of scope here.
+- **EVM hot-path regression coverage is load-bearing.** Step 5a genericises the existing
+  `LoanEventMapper` and its two resolver traits — touching the EVM hot path. The
+  pre-existing tests in `packages/worker/tests/loan_mapper.rs` are now the only
+  regression net pinning EVM behaviour through the refactor. Mitigation: the refactor
+  is fully mechanical (turbofish + deref + `BlockHint::to_evm_block_id()`), and Step 5a
+  lands as a self-contained refactor with **no new logic** — Stellar resolver impls and
+  Stellar mapper test cases come only after the EVM tests are green again. If any
+  existing EVM test body needs editing beyond mechanical type-signature changes, that
+  is a strong signal to stop and re-review the refactor.
 
 ## Rollout / deploy gate notes
 
-- **Merge dark.** The Issue ships before the contract is deployed to testnet. With
-  `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID` unset, the new branch in `dispatch_parser` is
-  inert and the new mapper code is never constructed.
+- **Merge dark for Stellar.** The Issue ships before the contract is deployed to testnet.
+  With `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID` unset, the new branch in `dispatch_parser`
+  is inert and the Stellar resolver impls are never constructed.
 - **Post-merge follow-up** (file as a separate Issue, blocked-by #620):
   1. Deploy `loan_registry` to Stellar testnet via the contracts repo's `justfile`.
   2. Add `loan_registry: "C…"` to `pipeline-stellar-contracts/deployments/testnet.json`.
   3. Set `CHAIN_99000001_STELLAR_LOAN_REGISTRY_ID=<deployed-id>` in the stage/prod env.
   4. Run the smoke recipe above; paste the resulting `contract_logs` row into the
      follow-up Issue as evidence.
-- **No production impact.** Stellar mainnet (`99_000_002`) is not exercised. EVM chains
-  are not touched. The migration set is unchanged.
+- **EVM impact.** The genericisation in Step 5a touches the EVM mapper's struct shape and
+  the two resolver-trait signatures, but **not** any of the EVM logic bodies (composer
+  helpers, snapshot composition, params-restructuring on insert). The migration set is
+  unchanged. Production EVM chains continue to ingest LoanRegistry events through the
+  same path, now via `LoanEventMapper::<Address, U256>` instead of `LoanEventMapper`.
 - **EVM regression check.** A local smoke against chain 99999 (existing fixture chain)
-  confirms the EVM `LoanRegistryReader` + `LoanEventMapper` path still works byte-for-byte —
-  no shared code path was modified, but ship-time confidence costs nothing.
+  confirms the EVM `LoanRegistryReader` + `LoanEventMapper::<Address, U256>` path still
+  produces byte-identical `contract_logs` rows for the same input event. Paired with
+  `cargo test -p pipeline_worker loan_mapper` green, this gives full pre-merge confidence
+  in the refactor.
 
 ## Acceptance criteria
 
@@ -832,9 +1240,13 @@ Lifted from the Issue body, refined where planning surfaced additional precision
 5. New unit tests cover all 9 Stellar event decodings, the 10 ScVal helpers, the 3 reader
    view projections, and the 4 mapper flows (LoanDrawn + 3 lifecycle variants including
    metadata-URI re-fetch).
-6. EVM LoanRegistry indexer behaviour unchanged on a smoke run against the existing local
-   fixture (chain 99999) — verified by `cargo test -p pipeline_worker loan_mapper` passing
-   against the unmodified EVM tests.
+6. The genericised `LoanEventMapper<A, Id>` instantiated with EVM types
+   (`LoanEventMapper<Address, U256>`) passes all existing EVM tests in
+   `packages/worker/tests/loan_mapper.rs` after the Step 5a refactor — verified by
+   `cargo test -p pipeline_worker loan_mapper` green. The only diffs in the EVM test
+   bodies are mechanical type-signature changes (turbofish on `::new`, `LoanEvent<Address>`
+   in place of the raw `ContractLog`, `<Address, U256>` on the mock-resolver impl blocks)
+   — no test logic body is modified.
 
 ## Docs to Update
 
