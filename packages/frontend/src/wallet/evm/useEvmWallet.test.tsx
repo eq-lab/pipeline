@@ -3,9 +3,11 @@ import React from "react";
 import { renderHook, act } from "@testing-library/react";
 import { EvmWalletProvider } from "./EvmWalletProvider";
 import { WalletGateProvider } from "../WalletGateProvider";
-import { useEvmWallet } from "./useEvmWallet";
+import { useEvmWallet, useEvmConnectors } from "./useEvmWallet";
 
 // ── Mock wagmi ────────────────────────────────────────────────────────────────
+
+const mockWagmiConnect = vi.fn();
 
 vi.mock("wagmi", async (importOriginal) => {
   const original = await importOriginal<typeof import("wagmi")>();
@@ -25,6 +27,12 @@ vi.mock("wagmi", async (importOriginal) => {
       isLoading: false,
       error: null,
     })),
+    useConnect: vi.fn(() => ({ connect: mockWagmiConnect })),
+    useConnectors: vi.fn(() => [
+      { id: "injected" },
+      { id: "coinbaseWallet" },
+      { id: "walletConnect" },
+    ]),
   };
 });
 
@@ -256,5 +264,78 @@ describe("useEvmWallet — connect() with terms gate", () => {
     expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe(
       "true",
     );
+  });
+});
+
+// ── Tests: useEvmConnectors — no gate (issue #639) ────────────────────────────
+
+describe("useEvmConnectors — connectWallet calls wagmi connect directly (no gate)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockWagmiConnect.mockClear();
+    mockOpen.mockClear();
+    capturedModalProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
+  });
+
+  it("calls wagmi connect with matching connector when terms NOT acknowledged (no gate)", () => {
+    // Terms NOT set — gate should NOT appear; wagmi connect should be called directly.
+    const { result } = renderHook(() => useEvmConnectors(), { wrapper });
+
+    act(() => result.current.connectWallet("injected"));
+
+    // Gate NOT opened.
+    expect(capturedModalProps.open).toBe(false);
+    // wagmi connect called directly.
+    expect(mockWagmiConnect).toHaveBeenCalledOnce();
+    expect(mockWagmiConnect).toHaveBeenCalledWith({
+      connector: { id: "injected" },
+    });
+  });
+
+  it("calls wagmi connect when terms ARE acknowledged", () => {
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+
+    const { result } = renderHook(() => useEvmConnectors(), { wrapper });
+
+    act(() => result.current.connectWallet("coinbaseWallet"));
+
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockWagmiConnect).toHaveBeenCalledOnce();
+    expect(mockWagmiConnect).toHaveBeenCalledWith({
+      connector: { id: "coinbaseWallet" },
+    });
+  });
+
+  it("mock short-circuit: connectWallet is a no-op when mock address is set", () => {
+    localStorage.setItem(
+      "pipeline.mock.wallet.address",
+      "0x1234000000000000000000000000000000000000",
+    );
+
+    const { result } = renderHook(() => useEvmConnectors(), { wrapper });
+
+    act(() => result.current.connectWallet("injected"));
+
+    expect(capturedModalProps.open).toBe(false);
+    expect(mockWagmiConnect).not.toHaveBeenCalled();
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it("falls back to AppKit open() when connector id not registered", async () => {
+    // Override the useConnectors mock to return an empty list for this test.
+    const wagmi = await import("wagmi");
+    vi.mocked(wagmi.useConnectors).mockReturnValueOnce([]);
+
+    const { result } = renderHook(() => useEvmConnectors(), { wrapper });
+
+    act(() => result.current.connectWallet("injected"));
+
+    // Falls back to AppKit (no wagmi connect).
+    expect(mockWagmiConnect).not.toHaveBeenCalled();
+    expect(mockOpen).toHaveBeenCalledOnce();
   });
 });

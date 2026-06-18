@@ -28,6 +28,7 @@ import {
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider } from "@/wallet/WalletViewContext";
 import { ConnectModalProvider } from "@/wallet/ConnectModalProvider";
+import { WalletGateProvider } from "@/wallet/WalletGateProvider";
 import { TopBar } from "./TopBar";
 
 // ── Stellar hook mocks ────────────────────────────────────────────────────────
@@ -145,6 +146,14 @@ vi.mock("@/wallet/config", () => ({
   wagmiAdapter: {},
 }));
 
+// ── Mock FirstConnectionModal ─────────────────────────────────────────────────
+// WalletGateProvider renders FirstConnectionModal; mock it to avoid portal/DOM
+// issues. The TopBar modal tests pre-acknowledge terms so the gate is skipped.
+
+vi.mock("../components/FirstConnectionModal", () => ({
+  FirstConnectionModal: () => null,
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const USDC_ADDRESS = "0x2222000000000000000000000000000000000002";
@@ -198,13 +207,15 @@ function buildRouter(initialPath: string) {
 function renderTopBar(initialPath = "/") {
   const router = buildRouter(initialPath);
   return render(
-    <EvmWalletProvider>
-      <ConnectModalProvider>
-        <WalletViewProvider>
-          <RouterProvider router={router} />
-        </WalletViewProvider>
-      </ConnectModalProvider>
-    </EvmWalletProvider>,
+    <WalletGateProvider>
+      <EvmWalletProvider>
+        <ConnectModalProvider>
+          <WalletViewProvider>
+            <RouterProvider router={router} />
+          </WalletViewProvider>
+        </ConnectModalProvider>
+      </EvmWalletProvider>
+    </WalletGateProvider>,
   );
 }
 
@@ -442,6 +453,12 @@ describe("TopBar — wallet state", () => {
 // ── Tests: ConnectWalletModal integration ────────────────────────────────────
 
 describe("TopBar — ConnectWalletModal", () => {
+  beforeEach(() => {
+    // Pre-acknowledge terms so the gate is skipped and ConnectWalletModal
+    // opens immediately. The gate ordering is tested in ConnectModalProvider.test.tsx.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+  });
+
   afterEach(() => {
     clearMocks();
     localStorage.clear();

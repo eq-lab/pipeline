@@ -6,20 +6,26 @@
  * mobile nav menu) opens the same styled modal instead of triggering a
  * chain-specific connect() directly.
  *
+ * Gate ordering (issue #639): `open()` in `ConnectModalProvider` routes
+ * through the first-connection terms gate before opening `ConnectWalletModal`.
+ * The gate fires only when `pipeline.wallet.termsAcknowledged` is absent; it
+ * is skipped when terms have already been acknowledged. This ensures the
+ * "Before you continue" attestation always precedes the wallet picker,
+ * regardless of which CTA calls `open()`.
+ *
  * Design mirrors `WalletGateContext.ts`:
  *   - A `createContext` with a `null` default.
  *   - A `useConnectModal()` hook that falls back to a no-op when called
  *     outside the provider (safe for isolated tests that don't need the
  *     full provider tree).
- *
- * Note: Issue #639 will later interpose the first-connection terms gate in
- * front of `open()`. Keep the API gate-agnostic — the gate is currently still
- * triggered inside the per-wallet `connectWallet()` hooks; #639 will move it.
  */
 import { createContext, useContext } from "react";
 
 export interface ConnectModalContextValue {
-  /** Opens the ConnectWalletModal. Gate-agnostic: #639 will wrap this. */
+  /**
+   * Opens the ConnectWalletModal, routing through the first-connection terms
+   * gate first when terms have not yet been acknowledged (issue #639).
+   */
   open(): void;
   /** Closes the ConnectWalletModal. */
   close(): void;

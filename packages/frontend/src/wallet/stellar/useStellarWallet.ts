@@ -203,12 +203,15 @@ export interface UseStellarConnectorsResult {
    * Connect to a specific Soroban wallet by its kit module id.
    *
    * - When a mock address is set: no-op (dev affordance).
-   * - When terms are not yet acknowledged: opens the terms gate first.
    * - Otherwise: calls `StellarWalletsKit.setWallet(id)` then
    *   `StellarWalletsKit.fetchAddress()` and stores the returned address.
    *
    * If the wallet is not installed/available, the kit will throw; callers
    * should handle errors (e.g. open the wallet's website in a new tab).
+   *
+   * The terms gate is no longer triggered here. It is interposed by
+   * `ConnectModalProvider.open()` before `ConnectWalletModal` opens, so the
+   * gate always precedes the wallet picker (issue #639).
    */
   connectWallet(walletId: string, onUnavailable?: () => void): Promise<void>;
 }
@@ -217,7 +220,6 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
   const [, setRealAddress] = useState<string | undefined>(undefined);
   const unmountedRef = useRef(false);
   const mockAddress = useMockStellarAddress();
-  const { openGate } = useWalletGate();
 
   useEffect(() => {
     unmountedRef.current = false;
@@ -232,28 +234,18 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
         return;
       }
 
-      const doConnect = async () => {
-        try {
-          StellarWalletsKit.setWallet(walletId);
-          const { address: newAddress } =
-            await StellarWalletsKit.fetchAddress();
-          if (!unmountedRef.current) {
-            setRealAddress(newAddress);
-          }
-        } catch {
-          // Wallet unavailable — invoke callback so the caller can redirect.
-          onUnavailable?.();
+      try {
+        StellarWalletsKit.setWallet(walletId);
+        const { address: newAddress } = await StellarWalletsKit.fetchAddress();
+        if (!unmountedRef.current) {
+          setRealAddress(newAddress);
         }
-      };
-
-      if (!readTermsAcknowledged()) {
-        openGate(() => void doConnect());
-        return;
+      } catch {
+        // Wallet unavailable — invoke callback so the caller can redirect.
+        onUnavailable?.();
       }
-
-      await doConnect();
     },
-    [mockAddress, openGate],
+    [mockAddress],
   );
 
   return { connectWallet };

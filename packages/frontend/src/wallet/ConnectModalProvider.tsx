@@ -9,10 +9,12 @@
  * Exposes `{ open, close }` via `ConnectModalContext` so any descendant can
  * open the modal without importing or rendering it directly.
  *
- * Note: Issue #639 will later interpose the first-connection terms gate in
- * front of `open()`. The `open()` API is intentionally gate-agnostic here;
- * the gate is currently still triggered inside the per-wallet `connectWallet()`
- * hooks and #639 will move it upstream to this provider.
+ * Gate ordering (issue #639): `open()` routes through the first-connection
+ * terms gate (`WalletGateProvider.openGate`) when terms have not yet been
+ * acknowledged. After the user continues, `ConnectWalletModal` opens. When
+ * terms are already acknowledged, `ConnectWalletModal` opens immediately.
+ * This ensures the gate always precedes the wallet-picker, regardless of
+ * which CTA triggered the open.
  *
  * Mirrors the structure of `WalletGateProvider.tsx`:
  *   - Imports a modal component from `../components/`.
@@ -22,6 +24,8 @@
 import React, { useCallback, useState } from "react";
 import { ConnectModalContext } from "./ConnectModalContext";
 import { ConnectWalletModal } from "../components/ConnectWalletModal";
+import { useWalletGate } from "./WalletGateContext";
+import { readTermsAcknowledged } from "./useTermsAcknowledgement";
 
 export function ConnectModalProvider({
   children,
@@ -29,8 +33,21 @@ export function ConnectModalProvider({
   children: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { openGate } = useWalletGate();
 
-  const open = useCallback(() => setIsOpen(true), []);
+  // Private: open the modal unconditionally (used as the onProceed callback
+  // passed to the gate, and directly when terms are already acknowledged).
+  const openModal = useCallback(() => setIsOpen(true), []);
+
+  // Public: route through the gate first when terms have not been acknowledged.
+  const open = useCallback(() => {
+    if (readTermsAcknowledged()) {
+      openModal();
+    } else {
+      openGate(openModal);
+    }
+  }, [openGate, openModal]);
+
   const close = useCallback(() => setIsOpen(false), []);
 
   return (
