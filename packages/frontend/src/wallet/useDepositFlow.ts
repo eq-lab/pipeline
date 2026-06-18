@@ -1074,6 +1074,12 @@ export function useDepositFlow(
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
+  const isStellarManagerUnreachable =
+    isStellarConnected &&
+    !stellarManagerLoading &&
+    (stellarAddresses === undefined ||
+      (!isDeposit && !ENV.STELLAR_WITHDRAWAL_QUEUE_ID));
+
   return {
     isConnected: isStellarConnected,
     connect: stellarConnect,
@@ -1167,7 +1173,7 @@ export function useDepositFlow(
     isAnyTxInFlight: stellarIsAnyTxInFlight,
     isInputFaded: stellarIsInputFaded,
     networkFee: stellarNetworkFee,
-    isManagerUnreachable: false,
+    isManagerUnreachable: isStellarManagerUnreachable,
     isManagerLoading: stellarManagerLoading,
     refetchBalance: isDeposit
       ? usdcToken.refetchBalance

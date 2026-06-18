@@ -233,6 +233,8 @@ const mockEnv = vi.hoisted(() => ({
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   WITHDRAWAL_QUEUE_ADDRESS:
     "0x4444000000000000000000000000000000000004" as `0x${string}`,
+  STELLAR_WITHDRAWAL_QUEUE_ID:
+    "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -2107,7 +2109,8 @@ describe("Deposit page — network fee row", () => {
 //   pipeline.mock.wallet.stellar.balance.usdc      — USDC token balance (deposit input)
 //   pipeline.mock.wallet.stellar.changeTrust       — JSON { hash } for mock enable tx
 
-const STELLAR_ADDRESS = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+const STELLAR_ADDRESS =
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 // 56-char C… Soroban contract IDs — placeholder values for tests.
 // Format: starts with 'C', exactly 56 chars (parseStellarContractId check).
 const STELLAR_USDC_CONTRACT =
@@ -2124,7 +2127,7 @@ function seedStellarMocks({
   connected = true,
   usdcBalance = "5000", // USDC token balance (deposit input)
   sacPlusdBalance = "0", // SAC PLUSD balance raw at 7 dp — hasTrustline = > 0
-  sacUsdcBalance = "0",  // SAC USDC balance raw at 7 dp — hasTrustline = > 0
+  sacUsdcBalance = "0", // SAC USDC balance raw at 7 dp — hasTrustline = > 0
 } = {}) {
   if (connected) {
     localStorage.setItem(
@@ -2219,7 +2222,7 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     seedStellarMocks({
       usdcBalance: "5000",
       sacPlusdBalance: SAC_1000_PLUS, // PLUSD hasTrustline = true
-      sacUsdcBalance: "0",            // USDC hasTrustline = false
+      sacUsdcBalance: "0", // USDC hasTrustline = false
     });
     renderDepositStellar();
     await waitFor(() => {
@@ -2235,8 +2238,8 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
   it("USDC row shows 'Enable complete' badge when USDC trustline exists; PLUSD row still shows Enable button", async () => {
     seedStellarMocks({
       usdcBalance: "5000",
-      sacPlusdBalance: "0",           // PLUSD hasTrustline = false
-      sacUsdcBalance: SAC_1000_PLUS,  // USDC hasTrustline = true
+      sacPlusdBalance: "0", // PLUSD hasTrustline = false
+      sacUsdcBalance: SAC_1000_PLUS, // USDC hasTrustline = true
     });
     renderDepositStellar();
     await waitFor(() => {
@@ -2339,7 +2342,9 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
       expect(screen.queryByText("Enable PLUSD")).not.toBeInTheDocument();
       expect(screen.queryByText("Enable USDC")).not.toBeInTheDocument();
       // EVM step 1 is still "Approve"
-      expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Approve" }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -2381,7 +2386,7 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
     seedStellarMocks({
       usdcBalance: "0",
       sacPlusdBalance: SAC_1000_PLUS, // PLUSD trustline = true; balance usable for withdraw
-      sacUsdcBalance: "0",            // USDC trustline = false → blocks Confirm
+      sacUsdcBalance: "0", // USDC trustline = false → blocks Confirm
     });
     const user = userEvent.setup();
     renderDepositStellar();
@@ -2398,7 +2403,7 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
     seedStellarMocks({
       usdcBalance: "0",
       sacPlusdBalance: SAC_1000_PLUS, // 1000 PLUSD raw — enough to withdraw 10
-      sacUsdcBalance: SAC_1000_PLUS,  // USDC trustline also present
+      sacUsdcBalance: SAC_1000_PLUS, // USDC trustline also present
     });
     const user = userEvent.setup();
     renderDepositStellar();
