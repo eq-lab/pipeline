@@ -1088,3 +1088,36 @@ describe("Stake page — amount exceeds balance", () => {
     });
   });
 });
+
+// ── Tests — Issue #615: token-amount-display no stray border ─────────────────
+
+describe("Stake page — no nested border on token-amount-display (Issue #615)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("token-amount-display has border:none inline style (no nested border inside output section)", async () => {
+    renderStake();
+
+    await waitFor(() => {
+      const display = screen.getByTestId("token-amount-display");
+      // The inline style must explicitly unset the border so the component
+      // renders flush inside the output section card (Issue #615).
+      expect(display.style.border).toBe("none");
+    });
+  });
+
+  it("token-amount-display has no padding inline style (zero padding, section provides spacing)", async () => {
+    renderStake();
+
+    await waitFor(() => {
+      const display = screen.getByTestId("token-amount-display");
+      expect(display.style.padding).toBe("0px");
+    });
+  });
+});

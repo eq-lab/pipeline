@@ -363,6 +363,10 @@ function Stake() {
             data-testid="stake-output-section"
             className="flex flex-col gap-4 p-4"
           >
+            {/* Strip the card chrome (border / background / radius / padding)
+                so the component renders flush inside the output section.
+                The section's p-4 provides all necessary padding.
+                Matches ConversionCard.tsx approach (Issue #595 fix 6). */}
             <TokenAmountDisplay
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
@@ -372,6 +376,12 @@ function Stake() {
                   : "—"
               }
               value={previewOutputValue}
+              style={{
+                border: "none",
+                background: "transparent",
+                borderRadius: 0,
+                padding: 0,
+              }}
             />
             <InfoRow label="Exchange rate" value={exchangeRateText} />
             <InfoRow label="Network fee" value={networkFee ?? "—"} />
