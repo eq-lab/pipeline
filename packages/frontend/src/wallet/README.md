@@ -865,6 +865,80 @@ holds the RPC URL and network passphrase that the Blend SDK consumes.
 6. Click **Withdraw** with the same amount to reverse. Position should return to 0.
 7. Confirm on [stellar.expert/testnet](https://stellar.expert/explorer/testnet).
 
+### `useStellarStake()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useStellarStake();
+write(10_000_000n); // stake 1 PLUSD (7-decimal; 10_000_000 = 1 PLUSD)
+```
+
+Write hook for `deposit(assets, receiver, from, operator) → shares` on the
+StakedPLUSD FungibleVault. The sender acts as both `from` and `operator`; a
+single Soroban auth entry is sufficient — no separate `approve()` needed.
+
+| Field       | Type                                             | Description                                               |
+| ----------- | ------------------------------------------------ | --------------------------------------------------------- |
+| `write`     | `(assetsRaw: bigint) => void`                    | Trigger stake; amount in raw 7-decimal PLUSD              |
+| `data`      | `{ hash: string; shares?: string } \| undefined` | Hash + optional raw sPLUSD shares received (mock-path only) |
+| `isPending` | `boolean`                                        | `true` from `write()` until terminal SUCCESS/error        |
+| `isSuccess` | `boolean`                                        | `true` once the Soroban tx reaches SUCCESS                |
+| `error`     | `Error \| null`                                  | Error from simulation, signing, or submission             |
+| `reset`     | `() => void`                                     | Clear all state                                           |
+
+### `useStellarUnstake()`
+
+```ts
+const { write, data, isPending, isSuccess, error, reset } = useStellarUnstake();
+write(9_600_000n); // unstake 0.96 sPLUSD (7-decimal)
+```
+
+Write hook for `redeem(shares, receiver, owner, operator) → assets` on the vault.
+The sender acts as both `owner` and `operator`.
+
+### `useStellarStakedPlusdAsset()`
+
+```ts
+const { plusdContractId, isLoading, error } = useStellarStakedPlusdAsset();
+```
+
+Reads `query_asset()` from the StakedPLUSD vault. Returns the underlying PLUSD
+SAC Soroban contract ID. Cached forever — the underlying asset is immutable.
+
+### `useStellarStakeConvertToShares(assets)` / `useStellarUnstakeConvertToAssets(shares)`
+
+```ts
+const { data, isLoading, error } = useStellarStakeConvertToShares(10_000_000n);
+const { data: assets } = useStellarUnstakeConvertToAssets(9_600_000n);
+```
+
+Read-only conversion previews. Both accept `undefined` to skip the query.
+Results are raw bigints at 7-decimal SAC scale.
+
+**Mock-rate convention (SAC 1e7, NOT EVM 1e18):** the mock keys hold a rate
+at `1e7` scale. Given rate `r` and input `n`, output = `(n * r) / 1e7`.
+Example: rate `"9600000"` (= 0.96) → `convertToShares(10_000_000n)` = `9_600_000n`.
+Do NOT copy EVM mock values — those use `1e18` and would produce ~0 output.
+
+### `useStellarStakedPlusdBalance()`
+
+```ts
+const { balance, isLoading, error, refetch } = useStellarStakedPlusdBalance();
+```
+
+Reads `balance(account)` from the StakedPLUSD vault (which IS the share token).
+Returns the LP's raw sPLUSD share balance at 7-decimal scale.
+
+### `useStellarChangeTrustStakedPlusd()`
+
+```ts
+const { submit, needsTrustline, data, isPending, isSuccess, error, reset } =
+  useStellarChangeTrustStakedPlusd();
+```
+
+Builds and submits a classic Horizon `changeTrust` op for the sPLUSD share asset.
+`needsTrustline: true` when the connected account has no sPLUSD trustline and the
+share asset identity has been resolved from the vault's `name()` view.
+
 ### Stellar mock keys
 
 | Key                                                              | Type                                      | Notes                                                                                              |
@@ -880,6 +954,12 @@ holds the RPC URL and network passphrase that the Blend SDK consumes.
 | `pipeline.mock.wallet.stellar.changeTrust`                       | JSON `{ hash: "..." }`                    | Mocks `useChangeTrust`; the hook also exposes `needsTrustline` from the PLUSD SAC trustline check. |
 | `pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal` | JSON `{ hash: "...", requestId?: "123" }` | Mocks `useStellarRequestWithdrawal`.                                                               |
 | `pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal`   | JSON `{ hash: "..." }`                    | Mocks `useStellarClaimWithdrawal`.                                                                 |
+| `pipeline.mock.wallet.stellar.stakedPlusd.stake`                 | JSON `{ hash: "...", shares?: "9600000" }` | Mocks `useStellarStake`. `write()` resolves immediately; `shares` is optional raw 7-dec sPLUSD.   |
+| `pipeline.mock.wallet.stellar.stakedPlusd.unstake`               | JSON `{ hash: "...", assets?: "10400000" }` | Mocks `useStellarUnstake`. `write()` resolves immediately; `assets` is optional raw 7-dec PLUSD.  |
+| `pipeline.mock.wallet.stellar.stakedPlusd.changeTrust`           | JSON `{ hash: "..." }`                    | Mocks `useStellarChangeTrustStakedPlusd`. Falls back to shared `changeTrust` key if not set.      |
+| `pipeline.mock.wallet.stellar.stakedPlusd.convertToShares`       | decimal bigint at SAC 1e7 scale (rate)    | Rate mock for `useStellarStakeConvertToShares`. Output = `(assets * rate) / 1e7`. Example: `"9600000"` = 0.96 sPLUSD per PLUSD. **Uses 1e7 (SAC), not 1e18 (EVM).** |
+| `pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets`       | decimal bigint at SAC 1e7 scale (rate)    | Rate mock for `useStellarUnstakeConvertToAssets`. Output = `(shares * rate) / 1e7`. Example: `"10400000"` = 1.04 PLUSD per sPLUSD. |
+| `pipeline.mock.wallet.stellar.stakedPlusd.shareBalance`          | decimal bigint string (7-dec raw)         | Mocks `useStellarStakedPlusdBalance` and sPLUSD trustline check. E.g. `"10000000"` = 1 sPLUSD.   |
 
 **DevTools snippet:**
 
@@ -919,6 +999,12 @@ To reset Stellar mocks:
   "pipeline.mock.wallet.stellar.changeTrust",
   "pipeline.mock.wallet.stellar.withdrawalQueue.requestWithdrawal",
   "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
+  "pipeline.mock.wallet.stellar.stakedPlusd.stake",
+  "pipeline.mock.wallet.stellar.stakedPlusd.unstake",
+  "pipeline.mock.wallet.stellar.stakedPlusd.changeTrust",
+  "pipeline.mock.wallet.stellar.stakedPlusd.convertToShares",
+  "pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets",
+  "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
 ].forEach((k) => localStorage.removeItem(k));
 ```
 
