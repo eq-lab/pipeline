@@ -121,9 +121,12 @@ export interface UseEvmConnectorsResult {
    * Connect to a specific EVM wallet by its connector id.
    *
    * - When a mock address is set: no-op (dev affordance).
-   * - When terms are not yet acknowledged: opens the terms gate first.
    * - Otherwise: calls wagmi `connect({ connector })` for the matching connector.
    * - When no matching connector is found: falls back to the generic AppKit modal.
+   *
+   * The terms gate is no longer triggered here. It is interposed by
+   * `ConnectModalProvider.open()` before `ConnectWalletModal` opens, so the
+   * gate always precedes the wallet picker (issue #639).
    */
   connectWallet(connectorId: EvmWalletConnectorId): void;
 }
@@ -132,7 +135,6 @@ export function useEvmConnectors(): UseEvmConnectorsResult {
   const connectors = useConnectors();
   const { connect } = useConnect();
   const { open } = useAppKit();
-  const { openGate } = useWalletGate();
 
   const mockAddress = useMock(KEYS.address, parseAddress);
 
@@ -142,22 +144,13 @@ export function useEvmConnectors(): UseEvmConnectorsResult {
       return;
     }
 
-    const doConnect = () => {
-      const connector = connectors.find((c) => c.id === connectorId);
-      if (connector) {
-        connect({ connector });
-      } else {
-        // No matching connector — fall back to the generic AppKit modal.
-        void open();
-      }
-    };
-
-    if (!readTermsAcknowledged()) {
-      openGate(doConnect);
-      return;
+    const connector = connectors.find((c) => c.id === connectorId);
+    if (connector) {
+      connect({ connector });
+    } else {
+      // No matching connector — fall back to the generic AppKit modal.
+      void open();
     }
-
-    doConnect();
   }
 
   return { connectWallet };

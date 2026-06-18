@@ -6,14 +6,17 @@
  *   - `open()` renders the ConnectWalletModal (testid `connect-wallet-modal`).
  *   - `close()` / `onDismiss` removes the modal.
  *   - Multiple call sites share the single modal instance (no duplicates).
+ *   - Gate ordering (issue #639): gate fires first when terms are absent;
+ *     skipped when already acknowledged; dismissing gate does not open modal.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderHook, act } from "@testing-library/react";
 import { ConnectModalProvider } from "./ConnectModalProvider";
 import { useConnectModal } from "./ConnectModalContext";
+import { WalletGateProvider } from "./WalletGateProvider";
 
 // ── Mock ConnectWalletModal ──────────────────────────────────────────────────
 // Avoid pulling in the full ConnectWalletModal rendering machinery (wagmi, appkit,
@@ -35,6 +38,32 @@ vi.mock("../components/ConnectWalletModal", () => ({
         <button onClick={onDismiss}>Close</button>
       </div>
     ) : null,
+}));
+
+// ── Mock FirstConnectionModal ─────────────────────────────────────────────────
+// Capture gate props so tests can trigger Continue / Dismiss without rendering
+// the real modal UI (which has portal / DOM setup issues in unit tests).
+
+let capturedGateProps: {
+  open: boolean;
+  onContinue: () => void;
+  onDismiss: () => void;
+} = { open: false, onContinue: () => {}, onDismiss: () => {} };
+
+const mockGateContinue = vi.fn();
+const mockGateDismiss = vi.fn();
+
+vi.mock("../components/FirstConnectionModal", () => ({
+  FirstConnectionModal: (props: {
+    open: boolean;
+    onContinue: () => void;
+    onDismiss: () => void;
+  }) => {
+    capturedGateProps = props;
+    mockGateContinue.mockImplementation(props.onContinue);
+    mockGateDismiss.mockImplementation(props.onDismiss);
+    return null;
+  },
 }));
 
 // ── Tests: no-op outside provider ────────────────────────────────────────────
@@ -65,12 +94,30 @@ function CloseButton() {
   return <button onClick={close}>Close Modal Via Context</button>;
 }
 
-describe("ConnectModalProvider — open / close", () => {
+/** Wrapper that includes WalletGateProvider so ConnectModalProvider can call useWalletGate(). */
+function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <WalletGateProvider>
+      <ConnectModalProvider>{children}</ConnectModalProvider>
+    </WalletGateProvider>
+  );
+}
+
+describe("ConnectModalProvider — open / close (terms pre-acknowledged)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    // Pre-acknowledge terms so gate is skipped — these tests exercise open/close only.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    capturedGateProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+    mockGateContinue.mockClear();
+    mockGateDismiss.mockClear();
+  });
+
   it("modal is absent initially", () => {
     render(
-      <ConnectModalProvider>
+      <Providers>
         <ConsumerButton />
-      </ConnectModalProvider>,
+      </Providers>,
     );
     expect(
       screen.queryByTestId("connect-wallet-modal"),
@@ -80,9 +127,9 @@ describe("ConnectModalProvider — open / close", () => {
   it("open() renders ConnectWalletModal (testid connect-wallet-modal)", async () => {
     const user = userEvent.setup();
     render(
-      <ConnectModalProvider>
+      <Providers>
         <ConsumerButton />
-      </ConnectModalProvider>,
+      </Providers>,
     );
 
     await user.click(screen.getByRole("button", { name: "Open Modal" }));
@@ -95,9 +142,9 @@ describe("ConnectModalProvider — open / close", () => {
   it("onDismiss (Close button inside modal) removes the modal", async () => {
     const user = userEvent.setup();
     render(
-      <ConnectModalProvider>
+      <Providers>
         <ConsumerButton />
-      </ConnectModalProvider>,
+      </Providers>,
     );
 
     await user.click(screen.getByRole("button", { name: "Open Modal" }));
@@ -115,10 +162,10 @@ describe("ConnectModalProvider — open / close", () => {
   it("close() via context removes the modal", async () => {
     const user = userEvent.setup();
     render(
-      <ConnectModalProvider>
+      <Providers>
         <ConsumerButton />
         <CloseButton />
-      </ConnectModalProvider>,
+      </Providers>,
     );
 
     await user.click(screen.getByRole("button", { name: "Open Modal" }));
@@ -149,9 +196,9 @@ describe("ConnectModalProvider — open / close", () => {
     }
 
     render(
-      <ConnectModalProvider>
+      <Providers>
         <TwoButtons />
-      </ConnectModalProvider>,
+      </Providers>,
     );
 
     await user.click(screen.getByRole("button", { name: "Open A" }));
@@ -167,11 +214,111 @@ describe("ConnectModalProvider — open / close", () => {
   });
 });
 
+// ── Tests: gate ordering (issue #639) ─────────────────────────────────────────
+
+describe("ConnectModalProvider — gate ordering (issue #639)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    capturedGateProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+    mockGateContinue.mockClear();
+    mockGateDismiss.mockClear();
+  });
+
+  it("gate fires first when terms not acknowledged: modal does not open", async () => {
+    const user = userEvent.setup();
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+
+    // Gate opened; ConnectWalletModal not yet visible.
+    expect(capturedGateProps.open).toBe(true);
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("after Continue on gate, ConnectWalletModal opens", async () => {
+    const user = userEvent.setup();
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+    expect(capturedGateProps.open).toBe(true);
+
+    // Simulate user clicking Continue on the gate.
+    act(() => mockGateContinue());
+
+    await waitFor(() => {
+      expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
+    });
+    // Gate is now closed.
+    expect(capturedGateProps.open).toBe(false);
+    // Ack flag has been written.
+    expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe("true");
+  });
+
+  it("dismissing gate does NOT open ConnectWalletModal", async () => {
+    const user = userEvent.setup();
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+    expect(capturedGateProps.open).toBe(true);
+
+    // Simulate user dismissing the gate.
+    act(() => mockGateDismiss());
+
+    // Gate closed; modal still not rendered.
+    expect(capturedGateProps.open).toBe(false);
+    expect(
+      screen.queryByTestId("connect-wallet-modal"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gate skipped when terms already acknowledged: modal opens immediately", async () => {
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    const user = userEvent.setup();
+    render(
+      <Providers>
+        <ConsumerButton />
+      </Providers>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open Modal" }));
+
+    // Gate was never opened; modal appeared directly.
+    expect(capturedGateProps.open).toBe(false);
+    await waitFor(() => {
+      expect(screen.getByTestId("connect-wallet-modal")).toBeInTheDocument();
+    });
+  });
+});
+
 // ── Tests: renderHook inside provider ─────────────────────────────────────────
 
 describe("ConnectModalProvider — renderHook integration", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    // Pre-acknowledge so open() call in stability test doesn't open the gate.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+  });
+
   function wrapper({ children }: { children: React.ReactNode }) {
-    return <ConnectModalProvider>{children}</ConnectModalProvider>;
+    return (
+      <WalletGateProvider>
+        <ConnectModalProvider>{children}</ConnectModalProvider>
+      </WalletGateProvider>
+    );
   }
 
   it("open() and close() are stable references (useCallback)", () => {

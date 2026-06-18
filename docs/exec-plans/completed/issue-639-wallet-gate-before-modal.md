@@ -41,7 +41,7 @@ Out of scope:
 
 ## Implementation Steps
 
-1. **Wrap the modal open path with the gate — `packages/frontend/src/wallet/ConnectModalProvider.tsx`:**
+1. **[DONE] Wrap the modal open path with the gate — `packages/frontend/src/wallet/ConnectModalProvider.tsx`:**
    - Import `useWalletGate` from `./WalletGateContext` and `readTermsAcknowledged` from `./useTermsAcknowledgement`.
    - Keep the internal `setIsOpen(true)` as a private `openModal` callback.
    - Change the public `open` callback so that:
@@ -50,17 +50,17 @@ Out of scope:
    - `close` is unchanged.
    - Update the file's header comment: the gate is now interposed here (remove the "#639 will move it" TODO note and describe the actual behavior).
 
-2. **Remove the now-redundant per-wallet gate triggers — `packages/frontend/src/wallet/evm/useEvmWallet.ts`:**
+2. **[DONE] Remove the now-redundant per-wallet gate triggers — `packages/frontend/src/wallet/evm/useEvmWallet.ts`:**
    - In `useEvmConnectors().connectWallet` (around lines 135–161): remove the `useWalletGate()` import usage and the `if (!readTermsAcknowledged()) { openGate(doConnect); return; }` block so it calls `doConnect()` directly (still keeping the mock short-circuit at the top). Remove the now-unused `openGate`/`useWalletGate` references in this hook if no longer used.
    - Decide on `useEvmWallet().connect()` (lines 53/79): per the Open Question, if no production caller uses it for disconnected-connect, leave its gate logic as-is (harmless, used by tests/mock) OR simplify — do **not** change its external behavior. Default: leave `connect()` untouched to minimize risk; only remove the gate from the per-wallet `connectWallet` path that runs inside the modal.
 
-3. **Remove the now-redundant per-wallet gate trigger — `packages/frontend/src/wallet/stellar/useStellarWallet.ts`:**
+3. **[DONE] Remove the now-redundant per-wallet gate trigger — `packages/frontend/src/wallet/stellar/useStellarWallet.ts`:**
    - In `useStellarConnectors().connectWallet` (around lines 220–256): remove the `if (!readTermsAcknowledged()) { openGate(() => void doConnect()); return; }` block so it `await doConnect()` directly (keeping the mock short-circuit). Drop the now-unused `useWalletGate()`/`openGate` from this hook if unused.
    - Leave `useStellarWallet().connect()` (lines 85/139) untouched for the same reason as EVM (see Open Question), unless implementation reveals a production caller.
 
-4. **Verify provider tree — `packages/frontend/src/main.tsx`:** No change expected. Confirm `ConnectModalProvider` remains inside `WalletGateProvider` so `useWalletGate()` resolves to the real provider (not the no-op fallback). Add no new providers.
+4. **[DONE] Verify provider tree — `packages/frontend/src/main.tsx`:** No change expected. Confirmed `ConnectModalProvider` remains inside `WalletGateProvider` so `useWalletGate()` resolves to the real provider (not the no-op fallback). No new providers added.
 
-5. **Update header comments** in `packages/frontend/src/wallet/ConnectModalContext.ts` and `ConnectModalProvider.tsx` to reflect that the gate now precedes `open()` (the existing comments say "#639 will move it" — update them to the implemented state).
+5. **[DONE] Update header comments** in `packages/frontend/src/wallet/ConnectModalContext.ts` and `ConnectModalProvider.tsx` to reflect that the gate now precedes `open()` (the existing comments say "#639 will move it" — updated to the implemented state).
 
 ## Test Strategy
 
