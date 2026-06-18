@@ -3,9 +3,9 @@ import React from "react";
 /**
  * QuickAmountChip — selectable amount pill used in the conversion card.
  *
- * Renders as a `<button type="button">` pill-shaped chip without a border.
- * Matches Figma node 1498-99888 ("suggestion bar chip") in file
- * A43rjYYjSwdTmiwwf5cx5n (Issue #595 styling corrections).
+ * Renders as a `<button type="button">` slightly-rounded rectangle chip
+ * without a border. Matches Figma node 1497-95326 ("suggestion bar chip") in
+ * file A43rjYYjSwdTmiwwf5cx5n which uses `radius-s` = 4px (Issue #614).
  *
  * Variants:
  *   - Default: unselected state with primary ink label (no border)
@@ -14,7 +14,7 @@ import React from "react";
  *
  * Design tokens used:
  *   - `--color-pipeline-surface`      — chip fill (white on gray container)
- *   - `--radius-pipeline-pill`        — full-round pill radius
+ *   - `--radius-pipeline-card`        — 4px radius (radius-s per Figma)
  *   - `--color-pipeline-paper`        — paper background (focus ring offset)
  *   - `--color-pipeline-ink`          — label colour (selected and unselected)
  *   - `--color-pipeline-brand`        — focus-visible ring
@@ -39,8 +39,8 @@ export const QuickAmountChip = React.forwardRef<
     // Layout — flex so flex-1 from parent works correctly
     "flex items-center justify-center",
     "h-8 px-2 whitespace-nowrap",
-    // Pill radius per Figma node 1498-99888 (Issue #595)
-    "rounded-[var(--radius-pipeline-pill)]",
+    // 4px radius (radius-s) per Figma node 1497-95326 (Issue #614)
+    "rounded-[var(--radius-pipeline-card)]",
     // Background — white chip, no border (Issue #595)
     "bg-[var(--color-pipeline-surface)]",
     // Typography — caption size (12px), regular weight (Issue #595)

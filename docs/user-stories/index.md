@@ -52,6 +52,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#611 Stake header heading renders bold; Figma uses regular weight](https://github.com/eq-lab/pipeline/issues/611)                      | [611-stake-header-font-weight.md](./epic-531/611-stake-header-font-weight.md)                 | Initial |
 | [#612 Stake header bottom spacing too small vs deposit page](https://github.com/eq-lab/pipeline/issues/612)                             | [612-stake-header-bottom-spacing.md](./epic-531/612-stake-header-bottom-spacing.md)           | Initial |
 | [#613 Stake input section: gap between tabs and input should be 2px](https://github.com/eq-lab/pipeline/issues/613)                     | [613-stake-input-gap.md](./epic-531/613-stake-input-gap.md)                                   | Initial |
+| [#614 Token input chips use pill radius; Figma uses 4px (shared with deposit)](https://github.com/eq-lab/pipeline/issues/614)           | [614-token-input-chip-radius.md](./epic-531/614-token-input-chip-radius.md)                   | Initial |
 | [#615 token-amount-display has stray border and asymmetric padding](https://github.com/eq-lab/pipeline/issues/615)                      | [615-stake-output-no-nested-border.md](./epic-531/615-stake-output-no-nested-border.md)       | Initial |
 
 ---
