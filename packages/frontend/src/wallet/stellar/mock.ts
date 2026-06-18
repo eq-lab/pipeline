@@ -132,6 +132,62 @@ export const STELLAR_MOCK_KEYS = {
    */
   withdrawalQueueClaimWithdrawal:
     "pipeline.mock.wallet.stellar.withdrawalQueue.claimWithdrawal",
+
+  // ── StakedPLUSD mock keys ──────────────────────────────────────────────────
+
+  /**
+   * Mock result for `useStellarStake` (deposit to FungibleVault).
+   * JSON-encoded `{ hash: "...", shares?: "10000000" }` — when set, `write()`
+   * resolves with that object immediately (no RPC, no signing).
+   * `shares` is optional; if present it is the raw 7-decimal sPLUSD amount returned.
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.stakedPlusd.stake", '{"hash":"abc123","shares":"9600000"}')`
+   */
+  stakedPlusdStake: "pipeline.mock.wallet.stellar.stakedPlusd.stake",
+
+  /**
+   * Mock result for `useStellarUnstake` (redeem from FungibleVault).
+   * JSON-encoded `{ hash: "...", assets?: "10400000" }` — when set, `write()`
+   * resolves with that object immediately (no RPC, no signing).
+   * `assets` is optional; if present it is the raw 7-decimal PLUSD amount returned.
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.stakedPlusd.unstake", '{"hash":"abc123","assets":"10400000"}')`
+   */
+  stakedPlusdUnstake: "pipeline.mock.wallet.stellar.stakedPlusd.unstake",
+
+  /**
+   * Mock result for `useStellarChangeTrustStakedPlusd` (sPLUSD trustline).
+   * JSON-encoded `{ hash: "..." }` — when set, `submit()` resolves with that
+   * object immediately (no Horizon, no signing).
+   * Note: the shared `changeTrust` key also works for this hook.
+   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.stakedPlusd.changeTrust", '{"hash":"abc123"}')`
+   */
+  stakedPlusdChangeTrust:
+    "pipeline.mock.wallet.stellar.stakedPlusd.changeTrust",
+
+  /**
+   * Mock rate for `useStellarStakeConvertToShares`.
+   * Raw bigint string at 7-decimal SAC scale representing a rate applied to
+   * the input: output = (input * rate) / 1e7.
+   * Example: `"9600000"` means 0.96 sPLUSD per PLUSD (96% exchange rate).
+   * Convention: uses 1e7 (SAC scale), NOT 1e18 (EVM scale) — do NOT copy from
+   * the EVM mock to avoid the #541 off-by-powers-of-ten class of bug.
+   */
+  stakedPlusdConvertToShares:
+    "pipeline.mock.wallet.stellar.stakedPlusd.convertToShares",
+
+  /**
+   * Mock rate for `useStellarUnstakeConvertToAssets`.
+   * Raw bigint string at 7-decimal SAC scale: output = (input * rate) / 1e7.
+   * Example: `"10400000"` means 1.04 PLUSD per sPLUSD.
+   */
+  stakedPlusdConvertToAssets:
+    "pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets",
+
+  /**
+   * Mock sPLUSD share balance for `useStellarStakedPlusdBalance`.
+   * Raw bigint string in 7-decimal fixed-point (e.g. `"10000000"` = 1 sPLUSD).
+   */
+  stakedPlusdShareBalance:
+    "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -277,4 +333,78 @@ export function readMockStellarClaimWithdrawal(): { hash: string } | undefined {
     STELLAR_MOCK_KEYS.withdrawalQueueClaimWithdrawal,
     parseJson<{ hash: string }>,
   );
+}
+
+// ── StakedPLUSD non-reactive readers ──────────────────────────────────────────
+
+/**
+ * Read the mock `useStellarStake` (deposit) result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash, shares? }` or `undefined`.
+ */
+export function readMockStellarStake():
+  | { hash: string; shares?: string }
+  | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.stakedPlusdStake,
+    parseJson<{ hash: string; shares?: string }>,
+  );
+}
+
+/**
+ * Read the mock `useStellarUnstake` (redeem) result (non-reactive, for write-hook callbacks).
+ * Returns parsed `{ hash, assets? }` or `undefined`.
+ */
+export function readMockStellarUnstake():
+  | { hash: string; assets?: string }
+  | undefined {
+  return readMock(
+    STELLAR_MOCK_KEYS.stakedPlusdUnstake,
+    parseJson<{ hash: string; assets?: string }>,
+  );
+}
+
+/**
+ * Read the mock `useStellarChangeTrustStakedPlusd` result (non-reactive).
+ * Falls back to the shared `changeTrust` key if the specific key is not set.
+ * Returns parsed `{ hash }` or `undefined`.
+ */
+export function readMockStellarChangeTrustStakedPlusd():
+  | { hash: string }
+  | undefined {
+  return (
+    readMock(
+      STELLAR_MOCK_KEYS.stakedPlusdChangeTrust,
+      parseJson<{ hash: string }>,
+    ) ?? readMockStellarChangeTrust()
+  );
+}
+
+/**
+ * Read the mock convertToShares rate (non-reactive).
+ * Returns a raw bigint rate at 7-decimal SAC scale, or `undefined`.
+ */
+export function readMockStellarStakedPlusdConvertToShares():
+  | bigint
+  | undefined {
+  return readMock(STELLAR_MOCK_KEYS.stakedPlusdConvertToShares, parseBigInt);
+}
+
+/**
+ * Read the mock convertToAssets rate (non-reactive).
+ * Returns a raw bigint rate at 7-decimal SAC scale, or `undefined`.
+ */
+export function readMockStellarStakedPlusdConvertToAssets():
+  | bigint
+  | undefined {
+  return readMock(STELLAR_MOCK_KEYS.stakedPlusdConvertToAssets, parseBigInt);
+}
+
+/**
+ * Read the mock sPLUSD share balance (non-reactive).
+ * Returns a raw bigint at 7-decimal scale, or `undefined`.
+ */
+export function readMockStellarStakedPlusdShareBalance():
+  | bigint
+  | undefined {
+  return readMock(STELLAR_MOCK_KEYS.stakedPlusdShareBalance, parseBigInt);
 }

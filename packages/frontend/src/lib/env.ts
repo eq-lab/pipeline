@@ -177,6 +177,16 @@ export const ENV = Object.freeze({
     "VITE_STELLAR_WITHDRAWAL_QUEUE_ID",
     "",
   ),
+
+  /**
+   * Pipeline protocol StakedPLUSD (sPLUSD) FungibleVault Soroban contract ID
+   * on the configured Stellar network.
+   * Defaults to the empty string — same short-circuit semantics as
+   * `STELLAR_DEPOSIT_MANAGER_ID` above.
+   * When empty, all StakedPLUSD hooks short-circuit and return `undefined`
+   * without making any RPC call.
+   */
+  STELLAR_STAKED_PLUSD_ID: readString("VITE_STELLAR_STAKED_PLUSD_ID", ""),
 });
 
 /**
