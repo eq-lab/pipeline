@@ -10,11 +10,12 @@
 
 When the Stellar DepositManager or WithdrawalQueue contract is unconfigured or
 unreachable (i.e. `VITE_STELLAR_DEPOSIT_MANAGER_ID` is empty or the Soroban RPC
-cannot resolve the contract addresses), the deposit/withdraw page shows the
-existing "DepositManager not reachable" danger banner up front — mirroring the
-EVM behavior. The three-step action card is not shown until the manager is
-reachable. The banner copy correctly references
-`VITE_STELLAR_DEPOSIT_MANAGER_ID` when the user is on the Stellar tab.
+cannot resolve the contract addresses, or `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` is
+empty on the withdraw path), the deposit/withdraw page shows the existing
+"DepositManager not reachable" danger banner up front — mirroring the EVM
+behavior. The three-step action card is not shown until the relevant manager is
+reachable. The banner copy correctly references the relevant Stellar env var for
+the active direction.
 
 ---
 
@@ -91,3 +92,21 @@ cannot be resolved)
 
 - The banner detail reads: `Check VITE_DEPOSIT_MANAGER_ADDRESS and RPC connectivity.`
 - The Stellar env var `VITE_STELLAR_DEPOSIT_MANAGER_ID` does NOT appear
+
+---
+
+## Story 6 — Stellar withdraw: banner appears when WithdrawalQueue is unconfigured
+
+**Given** the user has a Stellar wallet connected
+
+**And** `VITE_STELLAR_DEPOSIT_MANAGER_ID` resolves to valid contract addresses
+
+**And** `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` is empty
+
+**When** they navigate to `/deposit?direction=withdraw`
+
+**Then:**
+
+- A danger banner with the title "DepositManager not reachable" is visible
+- The banner detail line reads: `Check VITE_STELLAR_WITHDRAWAL_QUEUE_ID and RPC connectivity.`
+- No three-step action card is rendered

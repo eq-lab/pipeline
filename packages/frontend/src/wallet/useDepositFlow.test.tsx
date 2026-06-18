@@ -5,14 +5,15 @@
  * Regression for: https://github.com/eq-lab/pipeline/issues/603
  *
  * The Stellar branch previously hardcoded `isManagerUnreachable: false`.
- * After the fix it computes:
- *   `isStellarConnected && !stellarManagerLoading && stellarAddresses === undefined`
+ * After the fix it computes manager reachability from the DepositManager
+ * address resolver, and checks WithdrawalQueue configuration for withdrawals.
  *
  * Scenarios:
  *   1. Connected + addresses undefined + not loading → isManagerUnreachable = true
  *   2. Connected + addresses undefined + loading      → isManagerUnreachable = false (no flash)
  *   3. Connected + addresses defined (mock fast-path) → isManagerUnreachable = false
- *   4. Disconnected                                    → isManagerUnreachable = false
+ *   4. Connected + withdraw queue unconfigured        → isManagerUnreachable = true
+ *   5. Disconnected                                    → isManagerUnreachable = false
  */
 
 import { renderHook } from "@testing-library/react";
@@ -29,6 +30,7 @@ const mockState = vi.hoisted(() => ({
   stellarConnected: true,
   stellarAddresses: undefined as object | undefined,
   stellarLoading: false,
+  stellarWithdrawalQueueId: "",
 }));
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -208,6 +210,9 @@ vi.mock("@/lib/env", () => ({
       "0x0000000000000000000000000000000000000002" as `0x${string}`,
     WALLETCONNECT_PROJECT_ID: "test",
     STELLAR_DEPOSIT_MANAGER_ID: "",
+    get STELLAR_WITHDRAWAL_QUEUE_ID() {
+      return mockState.stellarWithdrawalQueueId;
+    },
   },
 }));
 
@@ -229,6 +234,7 @@ describe("useDepositFlow — Stellar isManagerUnreachable", () => {
     mockState.stellarConnected = true;
     mockState.stellarAddresses = undefined;
     mockState.stellarLoading = false;
+    mockState.stellarWithdrawalQueueId = "";
   });
 
   it("returns isManagerUnreachable=true when connected, addresses undefined, not loading", () => {
@@ -279,6 +285,31 @@ describe("useDepositFlow — Stellar isManagerUnreachable", () => {
     );
 
     expect(result.current.isManagerUnreachable).toBe(false);
+  });
+
+  it("returns isManagerUnreachable=true for withdrawals when WithdrawalQueue is unconfigured", () => {
+    mockState.stellarConnected = true;
+    mockState.stellarAddresses = {
+      usdc: "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7",
+      plusd: "CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN",
+      usdcAsset: {
+        code: "USDC",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
+      plusdAsset: {
+        code: "PLUSD",
+        issuer: "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      },
+    };
+    mockState.stellarLoading = false;
+    mockState.stellarWithdrawalQueueId = "";
+
+    const { result } = renderHook(
+      () => useDepositFlow("withdraw", 0n, () => {}),
+      { wrapper: makeWrapper() },
+    );
+
+    expect(result.current.isManagerUnreachable).toBe(true);
   });
 
   it("returns isManagerUnreachable=false when wallet is disconnected", () => {

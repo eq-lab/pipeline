@@ -16,7 +16,9 @@ so a Stellar user reaches step 2 ("Confirm") and only then gets a generic
 In scope:
 
 - Compute a real `isManagerUnreachable` for the Stellar branch in `useDepositFlow.ts`
-  and return it instead of the hardcoded `false`.
+  and return it instead of the hardcoded `false`. The Stellar withdraw path also
+  treats an empty `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` as unreachable so it does
+  not fall through to the action-time `WithdrawalQueue not configured` guard.
 - Ensure the seeded-mock fast-path does NOT trip the banner.
 - Fix the banner copy so the referenced env var is chain-correct (the banner in
   `deposit.tsx` hardcodes the EVM var `VITE_DEPOSIT_MANAGER_ADDRESS`; on Stellar it
@@ -43,7 +45,7 @@ Out of scope:
   `depositManagerId` env, which would NOT account for the mock fast-path.
 - Risk: the banner must only appear once we know the manager is genuinely
   unreachable — gate on `isStellarConnected && !stellarManagerLoading &&
-  stellarAddresses === undefined` so it does not flash during the initial load or
+stellarAddresses === undefined` so it does not flash during the initial load or
   when disconnected (the disconnected case is already handled by the earlier
   "Connect your wallet" branch in `deposit.tsx`). This mirrors the EVM guard at
   `useDepositFlow.ts:608`.
@@ -65,7 +67,7 @@ _None_
 ## Implementation Steps
 
 1. [x] In `packages/frontend/src/wallet/useDepositFlow.ts`, in the Stellar branch
-   (before the final `return` near line 1040), compute:
+       (before the final `return` near line 1040), compute:
    ```ts
    const isStellarManagerUnreachable =
      isStellarConnected &&
@@ -76,24 +78,27 @@ _None_
    `useDepositFlow.ts:262`. The mock fast-path returns defined `addresses`, so a
    seeded mock will not set this true.
 2. [x] Replace the hardcoded `isManagerUnreachable: false` at
-   `useDepositFlow.ts:1133` with `isManagerUnreachable: isStellarManagerUnreachable`.
+       `useDepositFlow.ts:1133` with `isManagerUnreachable: isStellarManagerUnreachable`.
 3. [x] In `packages/frontend/src/routes/deposit.tsx`, make the
-   `dm-unreachable-banner` env-var code element (currently `VITE_DEPOSIT_MANAGER_ADDRESS`
-   at `:435`) chain-aware: render `VITE_STELLAR_DEPOSIT_MANAGER_ID` on the Stellar
-   view and `VITE_DEPOSIT_MANAGER_ADDRESS` on EVM. Use the page's existing
-   chain/`view` signal; keep the `dm-unreachable-banner-env` test id intact.
+       `dm-unreachable-banner` env-var code element (currently `VITE_DEPOSIT_MANAGER_ADDRESS`
+       at `:435`) chain-aware: render `VITE_STELLAR_DEPOSIT_MANAGER_ID` on the Stellar
+       deposit view, `VITE_STELLAR_WITHDRAWAL_QUEUE_ID` on the Stellar withdraw view,
+       and `VITE_DEPOSIT_MANAGER_ADDRESS` on EVM. Use the page's existing
+       chain/`view` and direction signals; keep the `dm-unreachable-banner-env` test id intact.
 4. [x] Verify no other consumer of `FlowState.isManagerUnreachable` assumes EVM-only
-   semantics (`grep isManagerUnreachable packages/frontend/src`) — only `deposit.tsx`
-   consumes it, and it now renders chain-aware env var text.
+       semantics (`grep isManagerUnreachable packages/frontend/src`) — only `deposit.tsx`
+       consumes it, and it now renders chain-aware env var text.
 
 ## Test Strategy
 
 - [x] Add a focused unit test for the Stellar branch of `useDepositFlow`
-  (new file `packages/frontend/src/wallet/useDepositFlow.test.tsx`):
+      (new file `packages/frontend/src/wallet/useDepositFlow.test.tsx`):
   - With a Stellar wallet connected, `useStellarDepositManagerAddresses` mocked to
     `{ addresses: undefined, isLoading: false }` → `flow.isManagerUnreachable === true`. ✓
   - Same but `isLoading: true` → `isManagerUnreachable === false` (no flash during load). ✓
   - With `addresses` defined (mock fast-path / configured) → `isManagerUnreachable === false`. ✓
+  - Stellar withdraw with DepositManager addresses defined but `VITE_STELLAR_WITHDRAWAL_QUEUE_ID`
+    empty → `isManagerUnreachable === true`. ✓
   - Disconnected Stellar wallet → `isManagerUnreachable === false`. ✓
   - Full `useDepositFlow` render via `renderHook` with mocked sub-hooks; no pure-helper
     extraction needed — the mocking approach proved tractable.

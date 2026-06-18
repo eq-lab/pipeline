@@ -1040,7 +1040,8 @@ export function useDepositFlow(
   const isStellarManagerUnreachable =
     isStellarConnected &&
     !stellarManagerLoading &&
-    stellarAddresses === undefined;
+    (stellarAddresses === undefined ||
+      (!isDeposit && !ENV.STELLAR_WITHDRAWAL_QUEUE_ID));
 
   return {
     isConnected: isStellarConnected,

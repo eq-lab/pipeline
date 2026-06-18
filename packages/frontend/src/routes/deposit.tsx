@@ -433,7 +433,9 @@ function Deposit() {
               Check{" "}
               <code data-testid="dm-unreachable-banner-env">
                 {isStellar
-                  ? "VITE_STELLAR_DEPOSIT_MANAGER_ID"
+                  ? isDeposit
+                    ? "VITE_STELLAR_DEPOSIT_MANAGER_ID"
+                    : "VITE_STELLAR_WITHDRAWAL_QUEUE_ID"
                   : "VITE_DEPOSIT_MANAGER_ADDRESS"}
               </code>{" "}
               and RPC connectivity.
