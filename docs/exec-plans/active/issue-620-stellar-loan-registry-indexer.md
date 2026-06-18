@@ -978,7 +978,7 @@ Append next to the existing `CHAIN_99000001_STELLAR_STAKED_PLUSD_ID` line:
 
 Execute in this order; each step is independently lint-clean and unit-tested.
 
-1. **Config field.** Add `loan_registry_id: Option<String>` to `StellarIndexerSettings`,
+1. [x] **Config field.** Add `loan_registry_id: Option<String>` to `StellarIndexerSettings`,
    read from `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`. Extend the distinctness loop. Add
    `ipfs_gateway_url: String` (default `https://ipfs.io/ipfs/`) for the metadata fetcher.
    Tests: extend `packages/worker/tests/stellar_indexer_config.rs` (or wherever the existing
@@ -986,18 +986,18 @@ Execute in this order; each step is independently lint-clean and unit-tested.
    - `loan_registry_id_unset_yields_none`
    - `loan_registry_id_rejects_duplicate_of_dm`
 
-2. **New parsers.** Create `packages/worker/src/indexer/stellar/loan_registry_parsers.rs`
+2. [x] **New parsers.** Create `packages/worker/src/indexer/stellar/loan_registry_parsers.rs`
    with the 9 parsers and the 10 ScVal helpers listed above. Each parser tested in
    `packages/worker/tests/stellar_loan_parsers.rs` against a fabricated base64 XDR
    (constructed in-test via `stellar_xdr::curr::WriteXdr` + `base64::encode`). Cover the
    happy path plus a topic-mismatch `None` case per parser.
 
-3. **Dispatch ladder.** Add the new branch to `dispatch_parser` in
+3. [x] **Dispatch ladder.** Add the new branch to `dispatch_parser` in
    `packages/worker/src/indexer/stellar/parsers.rs`. Extend the existing dispatcher tests
    with a `loan_registry_branch_routes_to_parsers` case and an
    `unconfigured_loan_registry_id_skips_branch` (i.e. `loan_registry_id = None`).
 
-4. **Stellar loan reader (resolver impls only).** Create
+4. [x] **Stellar loan reader (resolver impls only).** Create
    `packages/worker/src/indexer/stellar/loan_registry_reader.rs` with the `StellarAddress`
    newtype, the concrete `StellarLoanRegistryReader`, and three pure decoder helpers.
    The `impl ImmutableDataResolver<StellarAddress, u32>` / `impl MutableDataResolver<StellarAddress, u32>`
@@ -1011,7 +1011,7 @@ Execute in this order; each step is independently lint-clean and unit-tested.
      wrap the envelope-build logic into a pure helper if needed to test it without
      spinning up a fake server).
 
-5. **Genericise the EVM mapper + resolvers — single shared `LoanEventMapper<A, Id>`.**
+5. [x] **Genericise the EVM mapper + resolvers — single shared `LoanEventMapper<A, Id>`.**
    This is the only step that touches the EVM hot path, so it lands as a self-contained
    refactor with the EVM tests as the regression gate.
 
@@ -1064,7 +1064,7 @@ Execute in this order; each step is independently lint-clean and unit-tested.
    Tests for both EVM and Stellar live in the **same file** so the generic mapper has a
    single coverage surface — easier to keep parity. No new mapper test file.
 
-6. **Poller wiring.** Modify `StellarEventPoller` to carry the three new optional loan
+6. [x] **Poller wiring.** Modify `StellarEventPoller` to carry the three new optional loan
    fields (`loan_fetcher`, `loan_immutable: Arc<dyn ImmutableDataResolver<StellarAddress, u32>>`,
    `loan_mutable`). Inside `poll`, branch on `is_loan_event` and instantiate
    `LoanEventMapper::<StellarAddress, u32>::new(...)`. Modify `run_stellar_indexer_job`
@@ -1073,9 +1073,9 @@ Execute in this order; each step is independently lint-clean and unit-tested.
    constructs a poller with `None` `loan_registry_id` and verifies it ignores any loan
    events fed through the dispatcher.
 
-7. **`.env.example`** — append the optional `CHAIN_99000001_STELLAR_LOAN_REGISTRY_ID` line.
+7. [x] **`.env.example`** — append the optional `CHAIN_99000001_STELLAR_LOAN_REGISTRY_ID` line.
 
-8. **Lint gates.** `cargo clippy --workspace --all-targets -- -D warnings` clean.
+8. [x] **Lint gates.** `cargo clippy --workspace --all-targets -- -D warnings` clean.
    `cargo nextest run --workspace` green. `npx tsx scripts/lint-docs.ts` green
    (since `.env.example` is touched).
 

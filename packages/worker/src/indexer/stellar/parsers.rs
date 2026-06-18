@@ -14,6 +14,12 @@
 use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
+use crate::indexer::stellar::loan_registry_parsers::{
+    parse_ccr_updated, parse_economics_amended, parse_loan_closed, parse_loan_defaulted,
+    parse_loan_drawn, parse_loan_rolled_over, parse_location_updated, parse_payment_recorded,
+    parse_status_updated,
+};
+
 pub use crate::stellar::scval::extract_i128;
 
 use crate::indexer::stellar::rpc::RawEvent;
@@ -294,15 +300,19 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `evm_parsers.rs`: each parser group only runs for events from the contract
 /// whose role it represents. The Soroban RPC `contractIds` filter is the first
 /// line of defense; this is the second — fail closed for any contract id that
-/// is not one of the three configured roles.
+/// is not one of the configured roles.
 ///
 /// `request_claimed` is intentionally shared between DepositManager and
 /// WithdrawalQueue (`request_queue::claim_request` emits it from both).
+///
+/// `loan_registry_id` is `None` when the contract has not yet been deployed
+/// (ships dark — the new branch is a no-op until the env var is set).
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,
     withdrawal_queue_id: &str,
     staked_plusd_id: &str,
+    loan_registry_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
@@ -310,6 +320,18 @@ pub fn dispatch_parser(
         parse_withdrawal_requested(raw).or_else(|| parse_request_claimed(raw))
     } else if raw.contract_id == staked_plusd_id {
         parse_vault_deposit(raw).or_else(|| parse_vault_withdraw(raw))
+    } else if loan_registry_id == Some(raw.contract_id.as_str()) {
+        // LoanRegistry events — all 9 events, tried in order.
+        // Returns None for any event not emitted by the LoanRegistry contract.
+        parse_loan_drawn(raw)
+            .or_else(|| parse_status_updated(raw))
+            .or_else(|| parse_ccr_updated(raw))
+            .or_else(|| parse_location_updated(raw))
+            .or_else(|| parse_loan_defaulted(raw))
+            .or_else(|| parse_loan_closed(raw))
+            .or_else(|| parse_payment_recorded(raw))
+            .or_else(|| parse_loan_rolled_over(raw))
+            .or_else(|| parse_economics_amended(raw))
     } else {
         // The RPC `contractIds` filter should make this branch unreachable.
         // If we ever hit it, either config has drifted from what the RPC was

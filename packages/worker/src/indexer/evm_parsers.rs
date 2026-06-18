@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use alloy::primitives::Address;
+use alloy::primitives::{Address, U256};
 
 use shared::{contract_logs_repo::ContractLogsRepo, db::EventRepo};
 
 use super::{
-    loan_mapper::LoanEventMapper,
+    loan_mapper::{LoanEvent, LoanEventMapper},
     loan_metadata::{ImmutableDataResolver, LoanMetadataFetcher, MutableDataResolver},
     mappers::ContractLogMapper,
     parsers::{
@@ -36,8 +36,8 @@ pub struct EvmRepos {
 /// Dependencies for loan event mappers.
 pub struct EvmLoanDeps {
     pub fetcher: Arc<dyn LoanMetadataFetcher>,
-    pub immutable_resolver: Arc<dyn ImmutableDataResolver>,
-    pub mutable_resolver: Arc<dyn MutableDataResolver>,
+    pub immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>>,
+    pub mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>>,
 }
 
 /// Register all EVM event handlers for a single chain onto the given builder.
@@ -102,8 +102,16 @@ pub fn register_evm_handlers(
                 .or_else(|| parse_loan_rolled_over(log))
                 .or_else(|| parse_economics_amended(log))
                 .map(|ev| -> Box<dyn shared::log_mapper::LogMapper> {
-                    Box::new(LoanEventMapper::new(
-                        ev,
+                    Box::new(LoanEventMapper::<Address, U256>::new(
+                        LoanEvent {
+                            contract_address: ev.contract_address,
+                            event_name: ev.event_name,
+                            block_number: ev.block_number,
+                            tx_hash: format!("{:#x}", ev.tx_hash),
+                            log_index: ev.log_index,
+                            block_timestamp: ev.block_timestamp,
+                            params: ev.params,
+                        },
                         chain_id,
                         loan_event_repo.clone(),
                         contract_logs_repo.clone(),
