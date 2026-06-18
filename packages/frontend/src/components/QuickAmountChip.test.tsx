@@ -1,8 +1,8 @@
 /**
- * Unit tests for QuickAmountChip — Issue #595 styling fixes.
+ * Unit tests for QuickAmountChip — Issue #595 styling fixes, updated Issue #614.
  *
- * Asserts the corrected visual classes after fix 5:
- *   - Pill radius (`--radius-pipeline-pill`) instead of button radius
+ * Asserts the corrected visual classes after fix 5 (Issue #595) and bug fix (Issue #614):
+ *   - 4px card radius (`--radius-pipeline-card`) instead of full pill radius
  *   - No border class
  *   - Caption font size (`--text-pipeline-caption`) instead of body
  *   - Regular weight (`--font-weight-regular`) instead of emphasized
@@ -13,11 +13,11 @@ import { render } from "@testing-library/react";
 import { QuickAmountChip } from "@pipeline/ui";
 
 describe("QuickAmountChip — styling (fix 5, Issue #595)", () => {
-  it("uses pill radius class (--radius-pipeline-pill)", () => {
+  it("uses 4px card radius class (--radius-pipeline-card) per Issue #614", () => {
     const { container } = render(<QuickAmountChip label="Max" />);
     const btn = container.querySelector("button");
-    expect(btn?.className).toContain("--radius-pipeline-pill");
-    expect(btn?.className).not.toContain("--radius-pipeline-button");
+    expect(btn?.className).toContain("--radius-pipeline-card");
+    expect(btn?.className).not.toContain("--radius-pipeline-pill");
   });
 
   it("has no border class", () => {
