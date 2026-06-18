@@ -8,8 +8,9 @@ import React from "react";
  *                Get PLUSD, Stake, Earned, Recent activity, QnA cards, and the
  *                outer container that wraps the dashboard.
  *                (Figma frame 1497-94556)
- *   - `yellow` — pale yellow promo surface used for the Connect Wallet card on
- *                the left of the dashboard.
+ *   - `yellow` — pale yellow promo surface (#F8FCE9) used for the Connect
+ *                Wallet banner on the deposit/stake pages and the home
+ *                dashboard. Matches the solid Figma value (issue #606).
  *                (Figma frame 1497-94556)
  *   - `muted`  — slightly-grey surface used for step rows in the deposit/
  *                conversion flow. Background is `--color-pipeline-paper`
@@ -96,9 +97,9 @@ const variantClasses: Record<CardVariant, string> = {
     "text-[color:var(--color-pipeline-ink)]",
   ].join(" "),
 
-  // yellow — pale yellow promo surface. The background token already includes
-  // the 16% alpha used in Figma; the border is the same hairline so the card
-  // sits visually alongside the white surfaces.
+  // yellow — pale yellow promo surface. Background is --color-pipeline-promo
+  // (#F8FCE9 — the solid Figma value from issue #606); border is the same
+  // hairline so the card sits visually alongside the white surfaces.
   // Matches the Connect Wallet promo card (node 1497:94688).
   yellow: [
     "bg-[var(--color-pipeline-promo)]",

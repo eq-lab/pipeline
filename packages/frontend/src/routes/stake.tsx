@@ -324,7 +324,7 @@ function Stake() {
           {/* Input sub-section: tabs + token amount input */}
           <div
             data-testid="stake-input-section"
-            className="flex flex-col gap-4 p-4"
+            className="flex flex-col gap-0.5 p-4"
           >
             <SegmentedTabs
               data-testid="stake-tabs"
@@ -384,7 +384,7 @@ function Stake() {
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
-            className="flex flex-row items-center justify-between gap-4"
+            className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l"
           >
             <p
               data-testid="stake-connect-message"

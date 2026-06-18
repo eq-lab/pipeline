@@ -176,4 +176,5 @@ export type {
   StepState as FlowStepState,
   StepInfo,
   StepTxState,
+  TrustlineInfo,
 } from "./useDepositFlow";

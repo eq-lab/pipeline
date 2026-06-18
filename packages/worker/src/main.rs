@@ -3,8 +3,9 @@ use pipeline_worker::indexer::run_indexer_job;
 use pipeline_worker::indexer::stellar::run_stellar_indexer_job;
 use pipeline_worker::kyc::config::KycOutboxJobSettings;
 use pipeline_worker::kyc::kyc_outbox::run_kyc_outbox_job;
-use pipeline_worker::price_poller::config::PricePollerSettings;
-use pipeline_worker::price_poller::run_price_poller_job;
+use pipeline_worker::price_poller::{
+    run_price_poller_job, run_stellar_price_poller_job, PricePollerSettings,
+};
 use pipeline_worker::relayer::config::RelayerSettings;
 use pipeline_worker::relayer::relayer_job::run_relayer_job;
 use shared::kyc_repo::KycRepo;
@@ -73,14 +74,21 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if env_bool("JOB_PRICE_POLLER_ENABLED") {
-        let settings_per_chain = PricePollerSettings::all_evm_from_env()?;
+        let settings_per_chain = PricePollerSettings::all_from_env()?;
         let position_repo = Arc::new(PositionRepo::new(pool.clone()));
 
         for s in settings_per_chain {
-            tracing::info!(chain_id = s.chain_id, "price poller job started");
+            let chain_id = s.chain_id();
             let repo = position_repo.clone();
+            tracing::info!(chain_id, "price poller job started");
             tokio::spawn(async move {
-                run_price_poller_job(s, repo).await;
+                let result = match s {
+                    PricePollerSettings::Evm(s) => run_price_poller_job(s, repo).await,
+                    PricePollerSettings::Stellar(s) => run_stellar_price_poller_job(s, repo).await,
+                };
+                if let Err(e) = result {
+                    tracing::error!(chain_id, "price poller exited with error: {e:?}");
+                }
             });
         }
     }
