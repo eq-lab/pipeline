@@ -461,6 +461,7 @@ function Deposit() {
             <Button
               data-testid="connect-wallet-banner-action"
               variant="primary-dark"
+              size="compact"
               className="whitespace-nowrap"
               onClick={flow.connect}
             >

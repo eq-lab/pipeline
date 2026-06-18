@@ -841,6 +841,16 @@ describe("Deposit page — disconnected wallet", () => {
     // Click must not throw (connect() calls AppKit open() internally)
     await user.click(connectBtn);
   });
+
+  it("Connect button in the banner uses compact size (Figma node 1994-7226)", async () => {
+    renderDeposit();
+    const connectBtn = await screen.findByTestId(
+      "connect-wallet-banner-action",
+    );
+    // Compact size sets data-size="compact" and !h-8 class on the button element.
+    expect(connectBtn).toHaveAttribute("data-size", "compact");
+    expect(connectBtn.className).toContain("!h-8");
+  });
 });
 
 describe("Deposit page — minDeposit gating", () => {
