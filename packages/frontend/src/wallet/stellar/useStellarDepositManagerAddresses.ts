@@ -25,8 +25,8 @@
  * Caching: results are cached forever (addresses are static per deployment).
  *
  * IMPORTANT: The protocol USDC issuer (`GC5SUAXM…`) is derived from the SAC's
- * `name()` return value — it is NOT the Circle issuer in `chain.ts`
- * (`usdcIssuer`). Do not substitute one for the other.
+ * `name()` return value. This is the single source of truth for the USDC asset
+ * across the app — balance reads, trustline checks, and transfers all use it.
  */
 
 import { useQuery } from "@tanstack/react-query";

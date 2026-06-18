@@ -25,15 +25,19 @@
  * Unfunded account (404 from Horizon): treated the same as no-trustline →
  * `balance === "0"`, `error === null`. The account simply holds nothing yet.
  *
- * USDC is matched by BOTH `asset_code === "USDC"` AND
- * `asset_issuer === usdcIssuer` to avoid picking up a same-code asset from a
- * different (fake) issuer.
+ * USDC is matched by BOTH `asset_code === "USDC"` AND `asset_issuer ===` the
+ * protocol issuer. That issuer is the single on-chain source of truth derived
+ * from the DepositManager (`useStellarDepositManagerAddresses().usdcAsset`) —
+ * the same USDC the deposit/withdraw flow transfers and checks trustlines
+ * against. The query stays idle until that issuer resolves, so the balance can
+ * never reflect a different (e.g. Circle) USDC than the protocol uses.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Horizon } from "@stellar/stellar-sdk";
-import { horizonUrl, usdcIssuer } from "./chain";
+import { horizonUrl } from "./chain";
 import { useMock, readMock } from "../evm/mock";
 import { useStellarWallet } from "./useStellarWallet";
+import { useStellarDepositManagerAddresses } from "./useStellarDepositManagerAddresses";
 import { STELLAR_MOCK_KEYS } from "./mock";
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -94,6 +98,11 @@ export interface UseStellarTokenResult {
 export function useStellarToken(): UseStellarTokenResult {
   const { address, isConnected } = useStellarWallet();
 
+  // Protocol USDC issuer — single source of truth, derived on-chain from the
+  // DepositManager. Undefined until the resolver loads.
+  const { addresses } = useStellarDepositManagerAddresses();
+  const usdcIssuer = addresses?.usdcAsset.issuer;
+
   // ── Mock read (reactive) ──────────────────────────────────────────────────
   const mockBalance = useMock(STELLAR_MOCK_KEYS.balanceUsdc, parseString);
 
@@ -138,8 +147,11 @@ export function useStellarToken(): UseStellarTokenResult {
   };
 
   // ── useQuery ──────────────────────────────────────────────────────────────
-  // Disabled when mock is present, wallet is disconnected, or address missing.
-  const shouldRunQuery = mockBalance === undefined && isConnected && !!address;
+  // Disabled when mock is present, wallet is disconnected, address missing, or
+  // the protocol USDC issuer has not resolved yet (avoids a premature $0.00
+  // flash and matching against an undefined issuer).
+  const shouldRunQuery =
+    mockBalance === undefined && isConnected && !!address && !!usdcIssuer;
 
   const query = useQuery({
     queryKey: ["stellarUsdcBalance", address, usdcIssuer, horizonUrl],
