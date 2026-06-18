@@ -1,4 +1,5 @@
 pub mod config;
+pub mod stellar;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -15,7 +16,8 @@ use reqwest::Client;
 
 use shared::position_repo::{PositionRepo, Vault};
 
-use config::PricePollerSettings;
+pub use config::{EvmPricePollerSettings, PricePollerSettings, StellarPricePollerSettings};
+pub use stellar::run_stellar_price_poller_job;
 
 sol! {
     #[sol(rpc)]
@@ -26,7 +28,10 @@ sol! {
 
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 
-pub async fn run_price_poller_job(settings: PricePollerSettings, repo: Arc<PositionRepo>) {
+pub async fn run_price_poller_job(
+    settings: EvmPricePollerSettings,
+    repo: Arc<PositionRepo>,
+) -> anyhow::Result<()> {
     let provider: HttpProvider =
         ProviderBuilder::new().on_http(settings.eth_rpc_url.parse().expect("valid RPC URL"));
 
@@ -55,6 +60,8 @@ pub async fn run_price_poller_job(settings: PricePollerSettings, repo: Arc<Posit
 
         tokio::time::sleep(interval).await;
     }
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 /// Walk from cursor to head in `block_interval` steps, fetching share price at each block.
@@ -62,7 +69,7 @@ pub async fn run_price_poller_job(settings: PricePollerSettings, repo: Arc<Posit
 async fn collect_prices(
     provider: &HttpProvider,
     repo: &PositionRepo,
-    settings: &PricePollerSettings,
+    settings: &EvmPricePollerSettings,
     addr: Address,
     vault: &Vault,
 ) -> anyhow::Result<()> {

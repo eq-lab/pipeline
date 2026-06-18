@@ -81,3 +81,5 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#595 Styling fixes for deposit/withdraw page](https://github.com/eq-lab/pipeline/issues/595) | [595-styling-fixes-deposit-withdraw.md](./epic-498/595-styling-fixes-deposit-withdraw.md) | Initial |
 | [#598 [FE] Set Stellar deposit minimum to 1 USDC](https://github.com/eq-lab/pipeline/issues/598) | [598-stellar-min-deposit-one.md](./epic-498/598-stellar-min-deposit-one.md) | Initial |
 | [#604 [FE] [Stellar] Show PLUSD + USDC trustline status with per-asset 'Enable' button](https://github.com/eq-lab/pipeline/issues/604) | [604-stellar-trustline-dual-enable.md](./epic-498/604-stellar-trustline-dual-enable.md) | Initial |
+| [#606 Fix connect-wallet banner background color to #F8FCE9](https://github.com/eq-lab/pipeline/issues/606) | [606-connect-wallet-banner-background.md](./epic-498/606-connect-wallet-banner-background.md) | Initial |
+| [#607 Add card shadow to connect-wallet banner](https://github.com/eq-lab/pipeline/issues/607) | [607-connect-wallet-banner-shadow.md](./epic-498/607-connect-wallet-banner-shadow.md) | Initial |

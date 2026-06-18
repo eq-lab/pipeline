@@ -117,6 +117,14 @@ The sPLUSD vault holds no custom on-chain state beyond the standard ERC-4626 / E
 | `asset` | PLUSD contract address | Underlying ERC-20 |
 | Dead-shares seed | Small PLUSD amount (TBD at deployment) | Minted to vault, shares sent to `address(0)` to seed `totalAssets` and prevent inflation attack |
 
+### Share-price sampling — Stellar/Soroban
+
+On the Stellar chain, share prices are sampled from the `staked_pipeline_usd` (`FungibleVault`) contract at the **current** Soroban ledger every `JOB_PRICE_POLLER_POLL_INTERVAL_SECS` seconds (default 60s) by calling `convert_to_assets(10^decimals)` via `simulateTransaction`. The result is normalized and written to the same `share_prices` table the EVM price-poller uses, partitioned by `chain_id`.
+
+Historical backfill is **not possible** on Soroban: the RPC exposes no historical-state replay. Downtime gaps appear as missing rows in `share_prices`; the existing `get_avg_prices` time-bucket aggregation tolerates sparse rows gracefully.
+
+Vault discovery is DB-driven via the `vaults` table (same pattern as EVM). No `…_VAULT_ID` env var is needed; the Stellar section in `.env.example` only configures RPC connectivity and polling cadence.
+
 ---
 
 ## Security Considerations
