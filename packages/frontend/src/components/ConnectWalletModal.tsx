@@ -670,7 +670,7 @@ export function ConnectWalletModal({
         data-testid="connect-wallet-modal"
       >
         {/* Left: Connect content — equal half on desktop, full width on mobile */}
-        <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 lg:px-8 lg:py-12">
+        <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-6 py-10 lg:px-8 lg:py-12">
           <div className="flex w-full max-w-[400px] flex-col gap-6">
             {/* Heading: Besley Regular 48/56, ink primary */}
             <h2
