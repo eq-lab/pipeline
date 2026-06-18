@@ -222,6 +222,11 @@ impl PositionRepo {
         owner_address: &str,
     ) -> anyhow::Result<Vec<PositionSummary>> {
         let owner = owner_address.to_lowercase();
+        // `vault_address` is returned to the API client. EVM addresses are
+        // case-insensitive, so lowering them is the canonical normalisation.
+        // Stellar Strkeys (C…) carry a CRC16 checksum — lowering corrupts them
+        // into an invalid form that downstream clients can't parse, so preserve
+        // case for Stellar chain IDs (sentinel 99000001 / 99000002).
         let rows = sqlx::query_as::<_, PositionSummary>(
             "SELECT
                  latest.vault_address,
@@ -230,7 +235,7 @@ impl PositionRepo {
                  COALESCE(agg.total_realized_pnl, 0) AS total_realized_pnl
              FROM (
                  SELECT DISTINCT ON (LOWER(contract_address))
-                     LOWER(contract_address) AS vault_address,
+                     (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
                      (params->>'shares_balance')::numeric AS shares_balance,
                      (params->>'avg_buy_share_price')::numeric AS avg_buy_share_price
                  FROM contract_logs
@@ -242,14 +247,14 @@ impl PositionRepo {
                  ORDER BY LOWER(contract_address), block_number DESC, log_index DESC
              ) latest
              LEFT JOIN (
-                 SELECT LOWER(contract_address) AS vault_address,
+                 SELECT (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
                         SUM((params->>'realized_pnl')::numeric) AS total_realized_pnl
                  FROM contract_logs
                  WHERE chain_id = $1
                    AND LOWER(params->>'owner') = $2
                    AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
                    AND params ? 'realized_pnl'
-                 GROUP BY LOWER(contract_address)
+                 GROUP BY (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END)
              ) agg ON agg.vault_address = latest.vault_address",
         )
         .bind(chain_id)
