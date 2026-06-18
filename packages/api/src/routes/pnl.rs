@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use crate::routes::common::resolve_chain;
+use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
+use shared::chains::parse_chain_type;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/pnl", get(get_pnl))
@@ -75,8 +77,26 @@ async fn get_pnl(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PnlQuery>,
 ) -> impl IntoResponse {
-    let wallet = query.wallet.to_lowercase();
     let chain_id = resolve_chain(&state, query.chain_id);
+
+    let chain_kind = match parse_chain_type(chain_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::error!(error = %e, chain_id, "failed to determine chain type");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "invalid chain type configuration"})),
+            )
+                .into_response();
+        }
+    };
+
+    let wallet = match normalise_wallet(chain_kind, &query.wallet) {
+        Ok(w) => w,
+        Err((status, msg)) => {
+            return (status, Json(serde_json::json!({ "error": msg }))).into_response();
+        }
+    };
 
     match compute_pnl(&state, &wallet, chain_id).await {
         Ok(response) => Json(response).into_response(),

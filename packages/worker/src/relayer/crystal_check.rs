@@ -153,6 +153,8 @@ async fn screen_single_event(
             transfer.id
         )
     })?;
+    // lp_profiles stores EVM addresses lowercased; the raw event field may not be.
+    let sender_lower = sender.to_lowercase();
 
     if transfer.event_name == "DepositRequested" {
         // Deposit: Crystal deposit-type transaction screening
@@ -193,7 +195,10 @@ async fn screen_single_event(
                 tx_risk = tx_risk,
                 "Crystal deposit screening failed — marking sender profile"
             );
-            if let Err(e) = kyc_repo.set_profile_kyt_failed(chain_id, sender).await {
+            if let Err(e) = kyc_repo
+                .set_profile_kyt_failed(chain_id, &sender_lower)
+                .await
+            {
                 tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }
@@ -231,7 +236,10 @@ async fn screen_single_event(
                 sender = sender,
                 "Crystal withdrawal address screening failed — marking profile"
             );
-            if let Err(e) = kyc_repo.set_profile_kyt_failed(chain_id, sender).await {
+            if let Err(e) = kyc_repo
+                .set_profile_kyt_failed(chain_id, &sender_lower)
+                .await
+            {
                 tracing::error!(sender = sender, error = %e, "failed to set profile crystal_kyt_status");
             }
         }

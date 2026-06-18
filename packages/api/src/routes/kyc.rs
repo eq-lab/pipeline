@@ -10,7 +10,9 @@ use utoipa::{OpenApi, ToSchema};
 
 use crate::middleware::webhook_auth::validate_webhook;
 use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
+use shared::chains::parse_chain_type;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -84,11 +86,26 @@ async fn create_applicant(
 ) -> impl IntoResponse {
     let chain_id = resolve_chain(&state, query.chain_id);
 
-    let profile = match state
-        .kyc_repo
-        .get_lp_profile(chain_id, &req.wallet_address)
-        .await
-    {
+    let chain_kind = match parse_chain_type(chain_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::error!(error = %e, chain_id, "failed to determine chain type");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "invalid chain type configuration"})),
+            )
+                .into_response();
+        }
+    };
+
+    let wallet = match normalise_wallet(chain_kind, &req.wallet_address) {
+        Ok(w) => w,
+        Err((status, msg)) => {
+            return (status, Json(serde_json::json!({ "error": msg }))).into_response();
+        }
+    };
+
+    let profile = match state.kyc_repo.get_lp_profile(chain_id, &wallet).await {
         Ok(Some(p)) => p,
         Ok(None) => {
             return (
@@ -122,11 +139,11 @@ async fn create_applicant(
             .into_response();
     };
 
-    match sumsub_client.create_applicant(&req.wallet_address).await {
+    match sumsub_client.create_applicant(&wallet).await {
         Ok(resp) => {
             if let Err(e) = state
                 .kyc_repo
-                .set_applicant_id(chain_id, &req.wallet_address, &resp.id)
+                .set_applicant_id(chain_id, &wallet, &resp.id)
                 .await
             {
                 tracing::error!("failed to store applicant_id: {e:?}");
@@ -167,6 +184,25 @@ async fn create_token(
 ) -> impl IntoResponse {
     let chain_id = resolve_chain(&state, query.chain_id);
 
+    let chain_kind = match parse_chain_type(chain_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::error!(error = %e, chain_id, "failed to determine chain type");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "invalid chain type configuration"})),
+            )
+                .into_response();
+        }
+    };
+
+    let wallet = match normalise_wallet(chain_kind, &req.wallet_address) {
+        Ok(w) => w,
+        Err((status, msg)) => {
+            return (status, Json(serde_json::json!({ "error": msg }))).into_response();
+        }
+    };
+
     let Some(ref sumsub_client) = state.sumsub_client else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -182,11 +218,7 @@ async fn create_token(
             .into_response();
     };
 
-    match state
-        .kyc_repo
-        .get_lp_profile(chain_id, &req.wallet_address)
-        .await
-    {
+    match state.kyc_repo.get_lp_profile(chain_id, &wallet).await {
         Ok(Some(_)) => {}
         Ok(None) => {
             return (
@@ -205,10 +237,7 @@ async fn create_token(
         }
     }
 
-    match sumsub_client
-        .generate_access_token(&req.wallet_address)
-        .await
-    {
+    match sumsub_client.generate_access_token(&wallet).await {
         Ok(resp) => {
             let expires_at = chrono::Utc::now()
                 + chrono::Duration::seconds(sumsub_settings.token_ttl_secs as i64);
@@ -257,11 +286,26 @@ async fn get_status(
 ) -> impl IntoResponse {
     let chain_id = resolve_chain(&state, query.chain_id);
 
-    match state
-        .kyc_repo
-        .get_lp_profile(chain_id, &wallet_address)
-        .await
-    {
+    let chain_kind = match parse_chain_type(chain_id) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::error!(error = %e, chain_id, "failed to determine chain type");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "invalid chain type configuration"})),
+            )
+                .into_response();
+        }
+    };
+
+    let wallet = match normalise_wallet(chain_kind, &wallet_address) {
+        Ok(w) => w,
+        Err((status, msg)) => {
+            return (status, Json(serde_json::json!({ "error": msg }))).into_response();
+        }
+    };
+
+    match state.kyc_repo.get_lp_profile(chain_id, &wallet).await {
         Ok(Some(profile)) => Json(KycStatusResponse {
             sumsub_kyc_status: profile.sumsub_kyc_status,
             sumsub_review_status: profile.sumsub_review_status,
@@ -324,8 +368,17 @@ async fn webhook_callback(
         return (StatusCode::BAD_REQUEST, "sandbox mode mismatch").into_response();
     }
 
+    // Normalise to match how lp_profiles stores wallets: EVM rows are lowercased
+    // by populate_profiles_from_deposits, Stellar rows keep Strkey case verbatim.
+    // The webhook has no chain context, so detect by prefix.
     let wallet_address = match &payload.external_user_id {
-        Some(id) if !id.is_empty() => id.clone(),
+        Some(id) if !id.is_empty() => {
+            if id.starts_with("0x") {
+                id.to_lowercase()
+            } else {
+                id.clone()
+            }
+        }
         _ => {
             tracing::warn!("webhook missing external_user_id");
             return (StatusCode::BAD_REQUEST, "missing external_user_id").into_response();
