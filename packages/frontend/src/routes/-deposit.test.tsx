@@ -2213,7 +2213,9 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     renderDepositStellar();
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
-    await user.type(input, "2");
+    // Amount must be ≥ 1,000 USDC (STELLAR_MIN_DEPOSIT) for Confirm to be enabled.
+    // usdcBalance "5000" covers this amount.
+    await user.type(input, "2000");
 
     await waitFor(
       () => {
