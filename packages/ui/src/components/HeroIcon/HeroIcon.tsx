@@ -10,9 +10,10 @@ import navStatsSrc from "../../assets/icons/nav-stats.svg?url";
  * Built as a generic primitive so future page heroes can reuse it by extending
  * the `icon` string-literal union.
  *
- * Visual spec (Figma node 1497-94912):
- *   - 72×72 px circle — `--color-pipeline-surface-muted` background
- *   - 36×36 px icon slot — `--color-pipeline-ink` fill via CSS mask
+ * Visual spec (Figma nodes 1497-94912, 1497-95313):
+ *   - 72×72 px circle — `--color-pipeline-fill-muted` background
+ *   - 36×36 px icon slot — ink token via CSS mask; chart uses ink-subtle (no
+ *     baked opacity), arrow-clock keeps full ink (SVG bakes fill-opacity="0.3")
  *
  * The icon asset uses `fill="currentColor"` so it is tinted by applying a CSS
  * mask and setting `background-color` to the ink token, matching the pattern
@@ -30,17 +31,24 @@ const ICON_SRC_MAP: Record<HeroIconName, string> = {
   chart: navStatsSrc,
 };
 
+// arrow-clock SVG bakes fill-opacity="0.3"; use full ink so composed opacity
+// stays ~0.3. chart has no baked opacity, so use ink-subtle directly.
+const ICON_TINT_MAP: Record<HeroIconName, string> = {
+  "arrow-clock": "var(--color-pipeline-ink)",
+  chart: "var(--color-pipeline-ink-subtle)",
+};
+
 export interface HeroIconProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which icon glyph to render inside the hero circle. */
   icon: HeroIconName;
 }
 
-// Outer circle — 72×72 px, muted surface fill, fully rounded.
+// Outer circle — 72×72 px, muted fill, fully rounded.
 const circleClasses = [
   "inline-flex items-center justify-center",
   "shrink-0",
   "rounded-[var(--radius-pipeline-pill)]",
-  "bg-[color:var(--color-pipeline-surface-muted)]",
+  "bg-[color:var(--color-pipeline-fill-muted)]",
 ].join(" ");
 
 export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
@@ -56,6 +64,7 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
     ref,
   ) {
     const src = ICON_SRC_MAP[icon];
+    const tint = ICON_TINT_MAP[icon];
     const maskImage = `url(${JSON.stringify(src)})`;
 
     // Decorative by default; becomes meaningful when caller supplies aria-label.
@@ -84,7 +93,7 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
             display: "inline-block",
             width: 36,
             height: 36,
-            backgroundColor: "var(--color-pipeline-ink)",
+            backgroundColor: tint,
             WebkitMaskImage: maskImage,
             WebkitMaskRepeat: "no-repeat",
             WebkitMaskPosition: "center",
