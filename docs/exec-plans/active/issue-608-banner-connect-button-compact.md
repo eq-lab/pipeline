@@ -78,33 +78,24 @@ Net: the fix is a **height reduction to 32px** (and optional padding tightening)
 
 ## Implementation Steps
 
-1. Decide the approach per Open Questions (default to the className override unless design
-   directs otherwise).
+1. [x] Decided approach per Open Questions: **option (b)** — `size` prop on `Button`
+   (design directed this in issue comment).
 
-2. **If option (a) — className override (default):**
-   - In `packages/frontend/src/routes/deposit.tsx` (button at ~line 412–419, testid
-     `connect-wallet-banner-action`), add a compact-height override to the existing
-     `className`, mirroring StepRow: change `className="whitespace-nowrap"` to
-     `className="!h-8 whitespace-nowrap"`. Optionally tighten horizontal padding to match the
-     Figma 6px box padding (e.g. `!px-1.5`) — keep this minimal; the dominant delta is height.
-   - In `packages/frontend/src/routes/stake.tsx` (button at ~line 395–402, testid
-     `stake-connect-button`), apply the identical override.
-   - Keep `variant="primary-dark"` on both (colours already correct).
-   - Do **not** touch the radius.
+2. ~~If option (a) — className override (default)~~ (not chosen)
 
-3. **If option (b) — Button `size` prop (only if design asks for a shared primitive):**
-   - Extend `packages/ui/src/components/Button/Button.tsx`: add a `size?: "default" | "compact"`
-     prop. `compact` overrides height to `h-8` and reduces horizontal padding for the
-     rectangular variants (`primary-dark`, `primary-blue`, `secondary`), leaving radius and
-     colours unchanged. Keep the inner-label padding consistent with Figma where practical.
-   - Update the JSDoc block at the top of `Button.tsx` and add/extend a Storybook story in
-     `packages/ui/src/components/Button/Button.stories.tsx` to cover the compact size.
-   - Apply `size="compact"` to both banner buttons in `deposit.tsx` and `stake.tsx`.
-   - Consider migrating the StepRow override to the new prop for consistency (optional; note as
-     follow-up tech-debt if deferred).
+3. [x] **Option (b) — Button `size` prop implemented:**
+   - Extended `packages/ui/src/components/Button/Button.tsx`: added `ButtonSize` type
+     (`"default" | "compact"`), `size?: ButtonSize` prop. `compact` applies `!h-8 !min-w-8 !px-1.5`
+     override plus tighter inner-label padding (`px-1`) for rectangular variants. Sets
+     `data-size` attribute. Radius and colours unchanged.
+   - Updated JSDoc block and Storybook story in
+     `packages/ui/src/components/Button/Button.stories.tsx` (new `PrimaryDarkCompact` story).
+   - Applied `size="compact"` to both banner buttons in `deposit.tsx` and `stake.tsx`.
+   - StepRow migration noted as tech-debt (not addressed here — see tech-debt-tracker).
+   - Exported `ButtonSize` from `packages/ui/src/components/Button/index.ts`.
 
-4. Reconcile the Figma node comment(s) in `deposit.tsx` (~line 400) and `stake.tsx` (~line 383)
-   to the canonical node confirmed in Open Questions.
+4. [x] Reconciled Figma node comments to canonical `1994-7226` in both `deposit.tsx` and
+   `stake.tsx` (inline comment + file-level docblock).
 
 ## Test Strategy
 

@@ -984,6 +984,14 @@ describe("Stake page — disconnected wallet", () => {
       expect(connectBtn).not.toBeDisabled();
     });
   });
+
+  it("Connect button in the banner uses compact size (Figma node 1994-7226)", async () => {
+    renderStake();
+    const connectBtn = await screen.findByTestId("stake-connect-button");
+    // Compact size sets data-size="compact" and !h-8 class on the button element.
+    expect(connectBtn).toHaveAttribute("data-size", "compact");
+    expect(connectBtn.className).toContain("!h-8");
+  });
 });
 
 // ── Tests — zero balance ──────────────────────────────────────────────────────

@@ -150,6 +150,17 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** The `block_timestamp` column for Stellar rows in `share_prices` is wall-clock sample time rather than ledger close-time. The skew is well below the API's hour/day bucketing granularity — no user-visible impact at current polling cadences. Exact timestamps matter if sub-minute granularity is ever needed.
 - **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
 
+### TD-19: StepRow still uses raw className override instead of Button size="compact"
+- **Date:** 2026-06-18
+- **Location:** `packages/ui/src/components/StepRow/StepRow.tsx` (~lines 170–178)
+- **Gap:** `StepRow` uses `className="!h-8 ..."` to override the `primary-dark` button height.
+  Issue #608 introduced a first-class `size="compact"` prop on `Button` — `StepRow` should
+  migrate to that prop for consistency and to remove the raw `!important` override.
+- **Impact:** No user-visible regression; purely a code-quality inconsistency between two call
+  sites of the same component.
+- **Suggested fix:** Replace `className="!h-8 ..."` in `StepRow.tsx` with `size="compact"` on
+  the `Button` prop; adjust any test assertions that relied on the className value directly.
+
 ---
 
 ## Post-MVP

@@ -53,7 +53,7 @@ import { parseUsdc, formatUsdc } from "@/lib/usdc";
  *   remains visible above the banner.
  *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
  *   identical to the deposit page and home-page CTA.
- *   Figma: node 1994-7280.
+ *   Figma: node 1994-7226.
  *
  * Token discipline: no raw colors, fonts, sizes, or radii. Everything goes
  * through design tokens or component primitives from `@pipeline/ui`.
@@ -390,7 +390,7 @@ function Stake() {
 
         {/* Steps card — conditional on wallet connection and activeTab */}
         {!isConnected ? (
-          /* Wallet-not-connected banner. Figma: node 1994-7280. */
+          /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
@@ -404,6 +404,7 @@ function Stake() {
             </p>
             <Button
               variant="primary-dark"
+              size="compact"
               data-testid="stake-connect-button"
               className="whitespace-nowrap"
               onClick={connect}
