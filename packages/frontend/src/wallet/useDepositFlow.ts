@@ -171,10 +171,6 @@ export interface FlowState {
   isInputFaded: boolean;
   networkFee: string | undefined;
 
-  // ── Manager reachability (EVM only; always false for Stellar) ─────────
-  isManagerUnreachable: boolean;
-  isManagerLoading: boolean;
-
   // ── Refetch helpers ───────────────────────────────────────────────────
   refetchBalance: () => void;
 
@@ -246,11 +242,7 @@ export function useDepositFlow(
     connect: evmConnect,
   } = useEvmWallet();
 
-  const {
-    plusd: plusdFromManager,
-    usdc,
-    isLoading: isManagerLoading,
-  } = useDepositManagerAddresses();
+  const { plusd: plusdFromManager, usdc } = useDepositManagerAddresses();
   const { minDeposit: evmMinDeposit } = useDepositManagerMinDeposit();
 
   const usdcAddr = (usdc ?? ZERO_ADDRESS) as `0x${string}`;
@@ -293,8 +285,7 @@ export function useDepositFlow(
     connect: stellarConnect,
   } = useStellarWallet();
 
-  const { addresses: stellarAddresses, isLoading: stellarManagerLoading } =
-    useStellarDepositManagerAddresses();
+  const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
 
   // USDC balance — deposit input on Stellar.
   // Use the same source as the TopBar wallet pill (`useStellarToken`) so the
@@ -641,12 +632,6 @@ export function useDepositFlow(
       ? evmDepositFormattedBalance
       : evmWithdrawFormattedBalance;
 
-    const isEvmManagerUnreachable =
-      isEvmConnected &&
-      !isManagerLoading &&
-      plusdFromManager === undefined &&
-      usdc === undefined;
-
     const isEvmReady = isDeposit ? isEvmDepositReady : isEvmWithdrawReady;
     const evmHasBalance: boolean | undefined = isDeposit
       ? isEvmDepositReady
@@ -891,8 +876,6 @@ export function useDepositFlow(
       isAnyTxInFlight: evmIsAnyTxInFlight,
       isInputFaded: evmIsInputFaded,
       networkFee: evmNetworkFee,
-      isManagerUnreachable: isEvmManagerUnreachable,
-      isManagerLoading,
       refetchBalance: isDeposit
         ? refetchDepositBalance
         : refetchWithdrawBalance,
@@ -1074,12 +1057,6 @@ export function useDepositFlow(
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
-  const isStellarManagerUnreachable =
-    isStellarConnected &&
-    !stellarManagerLoading &&
-    (stellarAddresses === undefined ||
-      (!isDeposit && !ENV.STELLAR_WITHDRAWAL_QUEUE_ID));
-
   return {
     isConnected: isStellarConnected,
     connect: stellarConnect,
@@ -1173,8 +1150,6 @@ export function useDepositFlow(
     isAnyTxInFlight: stellarIsAnyTxInFlight,
     isInputFaded: stellarIsInputFaded,
     networkFee: stellarNetworkFee,
-    isManagerUnreachable: isStellarManagerUnreachable,
-    isManagerLoading: stellarManagerLoading,
     refetchBalance: isDeposit
       ? usdcToken.refetchBalance
       : plusdSac.refetchBalance,
