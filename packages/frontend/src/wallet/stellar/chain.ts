@@ -37,9 +37,6 @@ export const networkPassphrase: string = kitNetwork;
 /** Stellar Horizon base URL for the configured network. */
 export const horizonUrl: string = ENV.STELLAR_HORIZON_URL;
 
-/** Circle USDC issuer address on the configured Stellar network. */
-export const usdcIssuer: string = ENV.STELLAR_USDC_ISSUER;
-
 // ── Soroban / Blend constants ──────────────────────────────────────────────────
 
 /**
