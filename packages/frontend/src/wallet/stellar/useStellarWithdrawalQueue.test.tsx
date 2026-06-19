@@ -76,12 +76,15 @@ vi.mock("./useStellarDepositManagerAddresses", () => ({
   })),
 }));
 
+const { mockRefetchBalance } = vi.hoisted(() => ({
+  mockRefetchBalance: vi.fn(),
+}));
 vi.mock("./useStellarSacToken", () => ({
   useStellarSacToken: vi.fn(() => ({
     balance: "0.0000000",
     hasTrustline: false,
     decimals: 7,
-    refetchBalance: vi.fn(),
+    refetchBalance: mockRefetchBalance,
     isLoading: false,
     error: null,
   })),
@@ -588,6 +591,10 @@ describe("useStellarChangeTrustUsdc", () => {
 
     expect(result.current.data?.hash).toBe("trust-mock-hash");
     expect(result.current.needsTrustline).toBe(true);
+    // #662: trustline status is refetched on success so the UI flips promptly.
+    // (The real-path success refetch is covered by the PLUSD changeTrust suite;
+    // this file's real-path Horizon harness has pre-existing timing failures.)
+    expect(mockRefetchBalance).toHaveBeenCalled();
   });
 
   it("declined signature sets error", async () => {

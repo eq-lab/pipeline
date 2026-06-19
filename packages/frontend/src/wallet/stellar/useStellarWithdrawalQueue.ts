@@ -561,6 +561,9 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
     !!addresses?.usdcAsset &&
     !usdcTrustline.isLoading &&
     !usdcTrustline.hasTrustline;
+  // Refetch the trustline status immediately after a successful changeTrust so
+  // the UI flips without waiting for the 30s SAC-token poll (see #662).
+  const { refetchBalance: refetchUsdcTrustline } = usdcTrustline;
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -581,6 +584,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
         setData(mockResult);
         setIsPending(false);
         setIsSuccess(true);
+        refetchUsdcTrustline();
       });
       return;
     }
@@ -649,6 +653,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
+        refetchUsdcTrustline();
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
@@ -656,7 +661,14 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
         setIsInFlight(false);
       }
     })();
-  }, [address, addresses, isConnected, isInFlight, signTransaction]);
+  }, [
+    address,
+    addresses,
+    isConnected,
+    isInFlight,
+    signTransaction,
+    refetchUsdcTrustline,
+  ]);
 
   return { submit, needsTrustline, data, isPending, isSuccess, error, reset };
 }
