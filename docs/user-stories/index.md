@@ -37,6 +37,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#576 Mobile Activity header: arrow-clock hero circle hidden at mobile width](https://github.com/eq-lab/pipeline/issues/576)          | [576-activity-mobile-hero-icon.md](./epic-522/576-activity-mobile-hero-icon.md)           | Initial |
 | [#644 Activity page + home: chain-aware empty state (Stellar/EVM gating)](https://github.com/eq-lab/pipeline/issues/644)              | [644-activity-active-chain-gating.md](./epic-522/644-activity-active-chain-gating.md)     | Initial |
 | [#674 [FE] [Stellar] Activity amounts formatted with wrong decimals (EVM 6/18 hardcoded; Stellar SAC is 7)](https://github.com/eq-lab/pipeline/issues/674) | [674-stellar-activity-decimals.md](./epic-522/674-stellar-activity-decimals.md) | Initial |
+| [#676 Deposit activity row labels received amount as PLUSD](https://github.com/eq-lab/pipeline/issues/676)                            | [676-deposit-activity-plusd-label.md](./epic-522/676-deposit-activity-plusd-label.md)     | Initial |
 
 ---
 

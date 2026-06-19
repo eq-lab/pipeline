@@ -123,7 +123,7 @@ export function renderRequestRow(
           tone="success"
           title="Buy"
           timestamp={timestamp}
-          amount={<AmountPill>+{amount} USDC</AmountPill>}
+          amount={<AmountPill>+{amount} PLUSD</AmountPill>}
         />
       );
     }
@@ -138,7 +138,7 @@ export function renderRequestRow(
         timestamp={timestamp}
         amount={
           <TwoLineAmount
-            primary={`+${amount} USDC`}
+            primary={`+${amount} PLUSD`}
             secondary={secondary}
             tone="muted"
           />

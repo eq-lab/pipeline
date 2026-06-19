@@ -222,16 +222,16 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
   it("renders the Deposit (Buy) amount string", () => {
     renderCard();
-    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(
-      1,
-    );
+    // Deposit receives PLUSD (1:1 mint from USDC); label is PLUSD, not USDC
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("renders the Withdraw (Sell) pending amount string", () => {
     renderCard();
-    // The pending Withdraw row renders a TwoLineAmount with the amount on the top line
-    // Both Deposit and Sell rows show +1,000.00 USDC (same fixture amount)
-    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(2);
+    // Withdraw returns USDC; only the Withdraw row (not Deposit) shows USDC
+    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
+    // Deposit row shows PLUSD
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("renders the Stake row amounts", () => {
@@ -288,8 +288,8 @@ describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
 
   it("does not render the 6th fixture amount", () => {
     renderCard();
-    // 6th row is +4,000.00 USDC — must not appear when MAX_ROWS=5
-    expect(screen.queryByText("+4,000.00 USDC")).not.toBeInTheDocument();
+    // 6th row is a Deposit — renders PLUSD; must not appear when MAX_ROWS=5
+    expect(screen.queryByText("+4,000.00 PLUSD")).not.toBeInTheDocument();
   });
 });
 
@@ -449,7 +449,8 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
 
     // List must render
     expect(screen.getByRole("list")).toBeInTheDocument();
-    expect(screen.getByText("+3,000.00 USDC")).toBeInTheDocument();
+    // Stellar fixture is a Deposit row — receives PLUSD
+    expect(screen.getByText("+3,000.00 PLUSD")).toBeInTheDocument();
     // Empty-state must be absent
     expect(
       screen.queryByText("You will see all transactions here"),
@@ -508,7 +509,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
-        amount: "10000000", // 1.0 USDC at 7 decimals
+        amount: "10000000", // 1.0 PLUSD at 7 decimals
         request_id: "s674-1",
         status: "Completed",
         created_at: "2026-06-01T10:00:00Z",
@@ -524,7 +525,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     ],
   };
 
-  it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 USDC', not '+10.00 USDC' (the bug)", () => {
+  it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 PLUSD', not '+10.00 PLUSD' (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
     mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
@@ -537,8 +538,8 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
     renderCard();
 
-    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
-    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+    expect(screen.getByText("+1.00 PLUSD")).toBeInTheDocument();
+    expect(screen.queryByText("+10.00 PLUSD")).not.toBeInTheDocument();
   });
 
   it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD (the bug)", () => {

@@ -219,14 +219,18 @@ describe("Transactions page — default Buy tab", () => {
 
   it("shows the Deposit (Buy) row's formatted amount under the default Buy tab", () => {
     renderTransactions();
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    // Deposit receives PLUSD (1:1 mint); Buy tab shows PLUSD, not USDC
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("does not show Withdraw amount under the Buy tab", () => {
     renderTransactions();
 
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
-    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
+    // Deposit row shows PLUSD; exactly one such row on the Buy tab
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getAllByText("+1,000.00 PLUSD")).toHaveLength(1);
+    // Withdraw USDC row must not appear on the Buy tab
+    expect(screen.queryByText("+1,000.00 USDC")).not.toBeInTheDocument();
   });
 });
 
@@ -486,10 +490,11 @@ describe("Transactions page — formatting assertions", () => {
     vi.clearAllMocks();
   });
 
-  it("formats Deposit amount as '+1,000.00 USDC'", () => {
+  it("formats Deposit amount as '+1,000.00 PLUSD'", () => {
     renderTransactions();
 
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    // Deposit mints PLUSD 1:1 from USDC; the label on the Buy tab is PLUSD
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("formats Withdraw amount as '+1,000.00 USDC' on Sell tab", async () => {
@@ -542,8 +547,8 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
 
     renderTransactions();
 
-    // Rows must render
-    expect(screen.getByText("+2,000.00 USDC")).toBeInTheDocument();
+    // Rows must render — Stellar fixture is a Deposit, so label is PLUSD
+    expect(screen.getByText("+2,000.00 PLUSD")).toBeInTheDocument();
     // Empty-state caption must NOT render simultaneously (mutual exclusivity)
     expect(
       screen.queryByText("You will see all transactions here"),
@@ -566,7 +571,8 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     expect(
       screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("+2,000.00 USDC")).not.toBeInTheDocument();
+    // Stellar fixture is a Deposit row (PLUSD label); must not appear when disconnected
+    expect(screen.queryByText("+2,000.00 PLUSD")).not.toBeInTheDocument();
   });
 
   it("EVM view + EVM disconnected + Stellar connected with data → empty state (active chain is EVM, disconnected)", () => {
@@ -730,6 +736,49 @@ describe("Shared renderRequestRow helper — contract", () => {
     expect(text).toContain("+— sPLUSD");
     expect(text).not.toContain("+0.00 sPLUSD");
   });
+
+  // Regression guard for #676: Deposit shows PLUSD, Withdraw stays USDC
+  it("Completed Deposit row shows PLUSD label (not USDC)", () => {
+    const deposit: RequestItem = {
+      type: "Deposit",
+      amount: "1000000000",
+      request_id: "676-dep",
+      status: "Completed",
+      created_at: "2026-05-08T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
+    const text = container.textContent ?? "";
+    expect(text).toContain("PLUSD");
+    expect(text).not.toContain("USDC");
+  });
+
+  it("Pending Deposit row shows PLUSD label (not USDC)", () => {
+    const deposit: RequestItem = {
+      type: "Deposit",
+      amount: "1000000000",
+      request_id: "676-dep-pending",
+      status: "PendingVerification",
+      created_at: "2026-05-08T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
+    const text = container.textContent ?? "";
+    expect(text).toContain("PLUSD");
+    expect(text).not.toContain("USDC");
+  });
+
+  it("Completed Withdraw row shows USDC label (not PLUSD)", () => {
+    const withdraw: RequestItem = {
+      type: "Withdraw",
+      amount: "1000000000",
+      request_id: "676-wdw",
+      status: "Completed",
+      created_at: "2026-05-08T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(withdraw, "evm")}</>);
+    const text = container.textContent ?? "";
+    expect(text).toContain("USDC");
+    expect(text).not.toContain("PLUSD");
+  });
 });
 
 describe("Transactions page — Stellar decimals (Issue #674)", () => {
@@ -743,7 +792,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
-        amount: "10000000", // 1.0 USDC at 7 decimals
+        amount: "10000000", // 1.0 PLUSD at 7 decimals
         request_id: "s1",
         status: "Completed",
         created_at: "2026-06-01T10:00:00Z",
@@ -759,7 +808,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     ],
   };
 
-  it("Stellar Deposit: 10000000 at 7 dp renders '1.00 USDC', not '10.00 USDC' (the bug)", () => {
+  it("Stellar Deposit: 10000000 at 7 dp renders '1.00 PLUSD', not '10.00 PLUSD' (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({ isConnected: true });
     mockUseWallet.mockReturnValue({ isConnected: false });
@@ -772,9 +821,9 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
 
     renderTransactions();
 
-    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1.00 PLUSD")).toBeInTheDocument();
     // Ensure the old bug value does NOT appear
-    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+    expect(screen.queryByText("+10.00 PLUSD")).not.toBeInTheDocument();
   });
 
   it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD amounts (the bug)", async () => {
@@ -813,7 +862,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
 
     renderTransactions();
 
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("EVM regression: EVM Stake at 18 dp still renders correctly after the fix", async () => {
@@ -837,7 +886,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
   });
 
-  it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 USDC'", () => {
+  it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 PLUSD'", () => {
     const deposit: RequestItem = {
       type: "Deposit",
       amount: "10000000",
@@ -846,7 +895,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
       created_at: "2026-06-01T10:00:00Z",
     };
     const { container } = render(<>{renderRequestRow(deposit, "stellar")}</>);
-    expect(container.textContent).toContain("+1.00 USDC");
+    expect(container.textContent).toContain("+1.00 PLUSD");
   });
 
   it("renderRequestRow — Stellar chainKind: 10000000/9900000 Stake renders non-zero PLUSD/sPLUSD", () => {
