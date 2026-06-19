@@ -149,7 +149,7 @@ export const RecentActivityCard = React.forwardRef<
             <ul className="flex flex-col" data-testid="home-activity-list">
               {requests.slice(0, MAX_ROWS).map((item, i) => (
                 <li key={i} data-testid={`home-activity-row-${i}`}>
-                  {renderRequestRow(item)}
+                  {renderRequestRow(item, kind)}
                 </li>
               ))}
             </ul>

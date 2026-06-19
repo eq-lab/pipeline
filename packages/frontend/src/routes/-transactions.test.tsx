@@ -90,11 +90,12 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 // Stellar-specific fixture — a single Deposit row returned by useRequests when
 // the Stellar wallet is active and connected.
+// Amount encoded at 7 decimals (SAC_DECIMALS): 20000000000 = 2,000 USDC.
 const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
-      amount: "2000000000", // 2,000 USDC at 6 decimals
+      amount: "20000000000", // 2,000 USDC at 7 decimals (SAC_DECIMALS)
       request_id: "stellar-1",
       status: "Completed",
       created_at: "2026-05-16T10:00:00Z",
@@ -621,7 +622,7 @@ describe("Shared renderRequestRow helper — contract", () => {
 
   it("returns a non-null React element for each FIXTURE row", () => {
     FIXTURE.requests.forEach((item: RequestItem) => {
-      const node = renderRequestRow(item);
+      const node = renderRequestRow(item, "evm");
       expect(node).not.toBeNull();
       expect(React.isValidElement(node)).toBe(true);
     });
@@ -635,7 +636,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "PendingVerification",
       created_at: "2026-05-01T10:00:00Z",
     };
-    const node = renderRequestRow(pendingDeposit);
+    const node = renderRequestRow(pendingDeposit, "evm");
     expect(node).not.toBeNull();
     expect(React.isValidElement(node)).toBe(true);
   });
@@ -650,7 +651,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-02T10:00:00Z",
     };
-    const node = renderRequestRow(unstake);
+    const node = renderRequestRow(unstake, "evm");
     expect(node).not.toBeNull();
     expect(React.isValidElement(node)).toBe(true);
   });
@@ -664,7 +665,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-03T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake)}</>);
+    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
     expect(container.textContent).toContain("−1,000.00 PLUSD");
     expect(container.textContent).toContain("+999.50 sPLUSD");
   });
@@ -678,7 +679,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-04T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(unstake)}</>);
+    const { container } = render(<>{renderRequestRow(unstake, "evm")}</>);
     expect(container.textContent).toContain("+500.00 PLUSD");
     expect(container.textContent).toContain("−499.75 sPLUSD");
   });
@@ -691,7 +692,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-05T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake)}</>);
+    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
     // Both lines should show em-dash, not zero
     const text = container.textContent ?? "";
     expect(text).toContain("−— PLUSD");
@@ -707,7 +708,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-06T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(unstake)}</>);
+    const { container } = render(<>{renderRequestRow(unstake, "evm")}</>);
     const text = container.textContent ?? "";
     expect(text).toContain("+— PLUSD");
     expect(text).toContain("−— sPLUSD");
@@ -723,10 +724,142 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-07T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(stake)}</>);
+    const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
     const text = container.textContent ?? "";
     expect(text).toContain("−1,000.00 PLUSD");
     expect(text).toContain("+— sPLUSD");
     expect(text).not.toContain("+0.00 sPLUSD");
+  });
+});
+
+describe("Transactions page — Stellar decimals (Issue #674)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Stellar fixture: amounts encoded at 7 decimals (SAC_DECIMALS).
+  // 10_000_000 = 1.0 at 7 dp; 9_900_000 = 0.99 at 7 dp.
+  const STELLAR_7DP: RequestsResponse = {
+    requests: [
+      {
+        type: "Deposit",
+        amount: "10000000", // 1.0 USDC at 7 decimals
+        request_id: "s1",
+        status: "Completed",
+        created_at: "2026-06-01T10:00:00Z",
+      },
+      {
+        type: "Stake",
+        amount: "10000000",
+        assets: "10000000", // 1.0 PLUSD at 7 decimals
+        shares: "9900000",  // 0.99 sPLUSD at 7 decimals
+        status: "Completed",
+        created_at: "2026-06-01T11:00:00Z",
+      },
+    ],
+  };
+
+  it("Stellar Deposit: 10000000 at 7 dp renders '1.00 USDC', not '10.00 USDC' (the bug)", () => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true });
+    mockUseWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_7DP,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
+    // Ensure the old bug value does NOT appear
+    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+  });
+
+  it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD amounts (the bug)", async () => {
+    const user = userEvent.setup();
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true });
+    mockUseWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_7DP,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    const stakeTab = screen.getByRole("tab", { name: "Stake" });
+    await user.click(stakeTab);
+
+    expect(screen.getByText("−1.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("+0.99 sPLUSD")).toBeInTheDocument();
+    // Ensure the old bug value (18-dp scale → effectively 0) does NOT appear
+    expect(screen.queryByText("−0.00 PLUSD")).not.toBeInTheDocument();
+  });
+
+  it("EVM regression: EVM Deposit at 6 dp still renders correctly after the fix", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+  });
+
+  it("EVM regression: EVM Stake at 18 dp still renders correctly after the fix", async () => {
+    const user = userEvent.setup();
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    const stakeTab = screen.getByRole("tab", { name: "Stake" });
+    await user.click(stakeTab);
+
+    expect(screen.getByText("−1,000.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
+  });
+
+  it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 USDC'", () => {
+    const deposit: RequestItem = {
+      type: "Deposit",
+      amount: "10000000",
+      request_id: "s-d1",
+      status: "Completed",
+      created_at: "2026-06-01T10:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(deposit, "stellar")}</>);
+    expect(container.textContent).toContain("+1.00 USDC");
+  });
+
+  it("renderRequestRow — Stellar chainKind: 10000000/9900000 Stake renders non-zero PLUSD/sPLUSD", () => {
+    const stake: RequestItem = {
+      type: "Stake",
+      amount: "10000000",
+      assets: "10000000",
+      shares: "9900000",
+      status: "Completed",
+      created_at: "2026-06-01T11:00:00Z",
+    };
+    const { container } = render(<>{renderRequestRow(stake, "stellar")}</>);
+    expect(container.textContent).toContain("−1.00 PLUSD");
+    expect(container.textContent).toContain("+0.99 sPLUSD");
   });
 });
