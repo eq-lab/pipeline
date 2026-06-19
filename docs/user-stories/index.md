@@ -58,6 +58,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#615 token-amount-display has stray border and asymmetric padding](https://github.com/eq-lab/pipeline/issues/615)                      | [615-stake-output-no-nested-border.md](./epic-531/615-stake-output-no-nested-border.md)       | Initial |
 | [#633 [FE] [Stellar] Stake/unstake flow: deposit → redeem vault hooks](https://github.com/eq-lab/pipeline/issues/633)                   | [633-stellar-stake-unstake-hooks.md](./epic-531/633-stellar-stake-unstake-hooks.md)           | Initial |
 | [#634 [FE] [Stellar] Stake page: chain-aware wiring (steps, trustline, XLM fee, all states)](https://github.com/eq-lab/pipeline/issues/634) | [634-stellar-stake-chain-aware-wiring.md](./epic-531/634-stellar-stake-chain-aware-wiring.md) | Initial |
+| [#677 [FE] [Stellar] Stake page reads PLUSD balance as 0 — assetIssuer hardcoded to ""](https://github.com/eq-lab/pipeline/issues/677) | [677-stellar-stake-plusd-issuer.md](./epic-531/677-stellar-stake-plusd-issuer.md) | Initial |
 
 ---
 

@@ -46,7 +46,7 @@ import {
   useStellarWallet,
   useStellarSacToken,
   useStellarToken,
-  useStellarStakedPlusdAsset,
+  useStellarDepositManagerAddresses,
   useStellarStake,
   useStellarUnstake,
   useStellarStakeConvertToShares,
@@ -237,17 +237,19 @@ export function useStakeFlow(
     connect: stellarConnect,
   } = useStellarWallet();
 
-  // Resolve PLUSD SAC addresses from the Stellar vault.
-  const { plusdContractId: stellarPlusdContractId } =
-    useStellarStakedPlusdAsset();
+  // Resolve PLUSD classic-asset issuer and SAC contract address from the
+  // deposit-manager addresses (same source the deposit/withdraw flow uses).
+  const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
 
   // PLUSD SAC balance — Stake tab input (uses useStellarSacToken for balance,
   // but we need the balance as a raw bigint via sacDisplayToRaw).
-  // For PLUSD balance, use the SAC token (same as deposit flow).
+  // Mirror the deposit flow: pass the resolved issuer so Horizon matching works
+  // on the real (non-mock) path. An empty issuer only matches on the mock path
+  // and causes balance to read as 0 in production.
   const stellarPlusdSac = useStellarSacToken({
     assetCode: "PLUSD",
-    assetIssuer: "", // asset issuer not needed for mock path
-    contractId: stellarPlusdContractId ?? "",
+    assetIssuer: stellarAddresses?.plusdAsset.issuer ?? "",
+    contractId: stellarAddresses?.plusd ?? "",
   });
   // Also get PLUSD balance via useStellarToken for consistency with TopBar.
   const stellarUsdcToken = useStellarToken();
