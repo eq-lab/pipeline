@@ -126,45 +126,14 @@ export const ENV = Object.freeze({
   ),
 
   /**
-   * Soroban RPC URL — distinct from Horizon. Contract invocations (Blend
-   * deposit/withdraw) go through the Soroban RPC (simulate → assemble → send),
-   * NOT Horizon. Defaults to the public Stellar testnet Soroban RPC.
+   * Soroban RPC URL — distinct from Horizon. Contract invocations (Pipeline
+   * DepositManager / WithdrawalQueue / sPLUSD) go through the Soroban RPC
+   * (simulate → assemble → send), NOT Horizon. Defaults to the public Stellar
+   * testnet Soroban RPC.
    */
   STELLAR_RPC_URL: readString(
     "VITE_STELLAR_RPC_URL",
     "https://soroban-testnet.stellar.org",
-  ),
-
-  /**
-   * Blend lending-pool contract ID used as the testnet deposit/withdraw target.
-   * Defaults to Blend's "TestnetV2" pool (reserves: XLM, USDC, wETH, wBTC).
-   * Source: github.com/blend-capital/blend-utils → testnet.contracts.json.
-   * NOTE: Stellar testnet is periodically reset; if calls start failing with
-   * "contract not found", re-pull the current ID from blend-utils.
-   */
-  STELLAR_BLEND_POOL_ID: readString(
-    "VITE_STELLAR_BLEND_POOL_ID",
-    "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
-  ),
-
-  /**
-   * Blend testnet USDC reserve — a Soroban token contract (NOT the protocol
-   * USDC asset derived on-chain from the DepositManager). This is the `address`
-   * passed in a Blend supply/withdraw request when depositing USDC.
-   */
-  STELLAR_BLEND_USDC_ID: readString(
-    "VITE_STELLAR_BLEND_USDC_ID",
-    "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
-  ),
-
-  /**
-   * Blend testnet XLM reserve (the native-asset Stellar Asset Contract).
-   * Easiest asset to test a deposit with: fund the account from Friendbot
-   * (https://friendbot.stellar.org/?addr=…) — no token faucet required.
-   */
-  STELLAR_BLEND_XLM_ID: readString(
-    "VITE_STELLAR_BLEND_XLM_ID",
-    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   ),
 
   /**

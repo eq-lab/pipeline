@@ -36,29 +36,6 @@ export const STELLAR_MOCK_KEYS = {
    */
   balanceUsdc: "pipeline.mock.wallet.stellar.balance.usdc",
 
-  // ── Blend mock keys ────────────────────────────────────────────────────────
-
-  /**
-   * Mock result for `useBlendDeposit`.
-   * JSON-encoded `{ hash: "..." }` — when set, `write()` resolves with that
-   * object immediately (no RPC, no signing).
-   * Example: `localStorage.setItem("pipeline.mock.wallet.stellar.blend.deposit", '{"hash":"abc123"}')`
-   */
-  blendDeposit: "pipeline.mock.wallet.stellar.blend.deposit",
-
-  /**
-   * Mock result for `useBlendWithdraw`.
-   * JSON-encoded `{ hash: "..." }` — same semantics as `blendDeposit`.
-   */
-  blendWithdraw: "pipeline.mock.wallet.stellar.blend.withdraw",
-
-  /**
-   * Mock result for `useBlendPosition`.
-   * Raw bigint string (7-decimal fixed-point): e.g. `"10000000"` = 1 XLM.
-   * The hook scales this by 1e7 to produce the display string.
-   */
-  blendPosition: "pipeline.mock.wallet.stellar.blend.position",
-
   // ── Protocol contract mock keys ────────────────────────────────────────────
 
   /**
@@ -248,32 +225,6 @@ export function useMockStellarIsConnected(): boolean | undefined {
   return useMock(STELLAR_MOCK_KEYS.isConnected, parseBoolean);
 }
 
-// ── Blend non-reactive readers ─────────────────────────────────────────────────
-
-/**
- * Read the mock Blend deposit result (non-reactive, for write-hook callbacks).
- * Returns parsed `{ hash }` or `undefined`.
- */
-export function readMockBlendDeposit(): { hash: string } | undefined {
-  return readMock(STELLAR_MOCK_KEYS.blendDeposit, parseJson<{ hash: string }>);
-}
-
-/**
- * Read the mock Blend withdraw result (non-reactive, for write-hook callbacks).
- * Returns parsed `{ hash }` or `undefined`.
- */
-export function readMockBlendWithdraw(): { hash: string } | undefined {
-  return readMock(STELLAR_MOCK_KEYS.blendWithdraw, parseJson<{ hash: string }>);
-}
-
-/**
- * Read the mock Blend position as a raw bigint string (non-reactive).
- * Returns `bigint` or `undefined`.
- */
-export function readMockBlendPosition(): bigint | undefined {
-  return readMock(STELLAR_MOCK_KEYS.blendPosition, parseBigInt);
-}
-
 // ── DepositManager non-reactive readers ───────────────────────────────────────
 
 /**
@@ -403,8 +354,6 @@ export function readMockStellarStakedPlusdConvertToAssets():
  * Read the mock sPLUSD share balance (non-reactive).
  * Returns a raw bigint at 7-decimal scale, or `undefined`.
  */
-export function readMockStellarStakedPlusdShareBalance():
-  | bigint
-  | undefined {
+export function readMockStellarStakedPlusdShareBalance(): bigint | undefined {
   return readMock(STELLAR_MOCK_KEYS.stakedPlusdShareBalance, parseBigInt);
 }

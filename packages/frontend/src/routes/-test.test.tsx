@@ -117,6 +117,13 @@ const mockEnv = vi.hoisted(() => ({
   DEPOSIT_MANAGER_ADDRESS:
     "0x0000000000000000000000000000000000000000" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+  STELLAR_CHAIN_ID: 99_000_001,
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org",
+  STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
+  STELLAR_DEPOSIT_MANAGER_ID: "",
+  STELLAR_WITHDRAWAL_QUEUE_ID: "",
+  STELLAR_STAKED_PLUSD_ID: "",
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -189,6 +196,19 @@ describe("TestPage — default Status tab", () => {
     expect(screen.getByText("Environment")).toBeInTheDocument();
   });
 
+  it("renders the Stellar Environment section with its values on the Status tab", () => {
+    renderTestPage("status");
+    expect(screen.getByText("Environment (Stellar)")).toBeInTheDocument();
+    expect(screen.getByText("STELLAR_NETWORK_PASSPHRASE")).toBeInTheDocument();
+    expect(
+      screen.getByText("Test SDF Network ; September 2015"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("STELLAR_HORIZON_URL")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://horizon-testnet.stellar.org"),
+    ).toBeInTheDocument();
+  });
+
   it("renders all expected section headings on the Status tab", () => {
     renderTestPage("status");
     expect(screen.getByText("Environment")).toBeInTheDocument();
@@ -206,12 +226,12 @@ describe("TestPage — default Status tab", () => {
 
   it("Status tab has no content buttons (read-only — regression for #252)", () => {
     const { container } = renderTestPage("status");
-    // The SegmentedTabs renders three tab buttons (Status + Mocks + Blend);
-    // only those should be present on the Status tab.
-    // No action buttons (Clear mocks / Enable / Deposit / Withdraw) should appear.
+    // The SegmentedTabs renders two tab buttons (Status + Mocks); only those
+    // should be present on the Status tab. No action buttons (Clear mocks /
+    // Enable) should appear.
     const buttons = container.querySelectorAll("button");
-    // The SegmentedTabs always renders exactly 3 buttons (Status + Mocks + Blend).
-    expect(buttons.length).toBe(3);
+    // The SegmentedTabs always renders exactly 2 buttons (Status + Mocks).
+    expect(buttons.length).toBe(2);
   });
 
   it("does not render the Write hooks section", () => {
