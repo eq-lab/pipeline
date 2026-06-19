@@ -133,6 +133,29 @@ vi.mock("@/wallet/config", () => ({
   wagmiAdapter: {},
 }));
 
+// ── useStellarSacToken override ───────────────────────────────────────────────
+// Controls whether the PLUSD SAC trustline reports as authorized.
+// When null the real localStorage-backed mock path runs (default for most tests).
+// Set to a partial UseStellarSacTokenResult to override for unauthorized tests.
+let mockPlusdSacOverride: { isAuthorized: boolean } | null = null;
+
+vi.mock("@/wallet/stellar/useStellarSacToken", async (importOriginal) => {
+  const original =
+    await importOriginal<
+      typeof import("@/wallet/stellar/useStellarSacToken")
+    >();
+  return {
+    ...original,
+    useStellarSacToken: (
+      params: import("@/wallet/stellar/useStellarSacToken").UseStellarSacTokenParams,
+    ) => {
+      const real = original.useStellarSacToken(params);
+      if (mockPlusdSacOverride === null) return real;
+      return { ...real, isAuthorized: mockPlusdSacOverride.isAuthorized };
+    },
+  };
+});
+
 // ── API module mock ───────────────────────────────────────────────────────────
 // The deposit page uses useRequests and useDepositVoucher from @/api.
 // We mock them here so tests control what the API "returns" without needing
@@ -148,6 +171,10 @@ let mockVoucherData: VoucherResponse | undefined = undefined;
 let mockVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
 let mockWithdrawVoucherData: WithdrawalVoucherResponse | undefined = undefined;
 let mockWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
+let mockStellarDepositVoucherStatus: "idle" | "pending" | "ready" | "failed" =
+  "idle";
+let mockStellarWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" =
+  "idle";
 
 vi.mock("@/api", () => ({
   useRequests: () => ({
@@ -172,15 +199,21 @@ vi.mock("@/api", () => ({
   }),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useStellarDepositVoucher: (_requestId: string | undefined) => ({
-    data: undefined,
-    status: "idle" as const,
+    data:
+      mockStellarDepositVoucherStatus === "ready"
+        ? { signatureBytes: new Uint8Array([1, 2, 3]) }
+        : undefined,
+    status: mockStellarDepositVoucherStatus,
     error: null,
     refetch: vi.fn(),
   }),
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useStellarWithdrawalVoucher: (_requestId: string | undefined) => ({
-    data: undefined,
-    status: "idle" as const,
+    data:
+      mockStellarWithdrawVoucherStatus === "ready"
+        ? { signatureBytes: new Uint8Array([4, 5, 6]) }
+        : undefined,
+    status: mockStellarWithdrawVoucherStatus,
     error: null,
     refetch: vi.fn(),
   }),
@@ -2795,5 +2828,145 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
       },
       { timeout: 3000 },
     );
+  });
+});
+
+// ── Stellar PLUSD trustline unauthorized guard ────────────────────────────────
+// Tests that the Claim button (step 4 on the Stellar StepsCard) is disabled and
+// the "awaiting authorization" label is shown when the PLUSD trustline exists but
+// is not yet authorized by the issuer.
+//
+// The existing localStorage mock layer cannot represent "trustline exists but
+// isAuthorized=false" (it ties isAuthorized to hasTrustline = mockRaw > 0).
+// We use the mockPlusdSacOverride variable above to override isAuthorized.
+
+describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    mockStellarDepositVoucherStatus = "idle";
+    mockStellarWithdrawVoucherStatus = "idle";
+    mockPlusdSacOverride = null;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockStellarDepositVoucherStatus = "idle";
+    mockStellarWithdrawVoucherStatus = "idle";
+    mockPlusdSacOverride = null;
+  });
+
+  it("Claim button is disabled and shows 'awaiting authorization' label when PLUSD trustline is unauthorized", async () => {
+    // Both trustlines present + balance + voucher ready, but PLUSD is unauthorized.
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    // Seed a PendingClaim request + voucher so Claim would otherwise be enabled.
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "99",
+          amount: "10000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockStellarDepositVoucherStatus = "ready";
+    // Force isAuthorized = false (trustline exists but not authorized by issuer).
+    mockPlusdSacOverride = { isAuthorized: false };
+
+    renderDepositStellar();
+
+    // The step 4 Claim button must be disabled.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Claim" })).toBeDisabled();
+    });
+    // The awaiting-authorization label must be visible.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Claim your PLUSD — awaiting authorization"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("Claim button becomes enabled when PLUSD trustline is authorized", async () => {
+    // Same setup as above but isAuthorized = true (mockPlusdSacOverride = null → real mock path).
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "100",
+          amount: "10000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockStellarDepositVoucherStatus = "ready";
+    // mockPlusdSacOverride = null → real mock path used, isAuthorized = true (mockRaw > 0).
+
+    renderDepositStellar();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Claim" }),
+      ).not.toBeDisabled();
+    });
+    // Normal label shown.
+    await waitFor(() => {
+      expect(screen.getByText("Claim your PLUSD")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Claim your PLUSD — awaiting authorization"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("withdraw Claim is unaffected by PLUSD isAuthorized (deposit-only guard)", async () => {
+    mockDirection = "withdraw";
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Withdraw",
+          request_id: "101",
+          amount: "10000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockStellarWithdrawVoucherStatus = "ready";
+    // Force isAuthorized = false — should NOT block the withdraw Claim.
+    mockPlusdSacOverride = { isAuthorized: false };
+
+    renderDepositStellar();
+
+    // The withdraw Claim button must NOT be disabled due to PLUSD auth state.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Claim" }),
+      ).not.toBeDisabled();
+    });
   });
 });

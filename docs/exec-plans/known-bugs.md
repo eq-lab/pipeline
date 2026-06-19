@@ -31,6 +31,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Asset was originally extracted as a rasterised PNG and placed into an SVG wrapper (same historical pattern as `coin-usdc.svg`). Not caught by #246 scope, which was USDC-only.
 - **Workaround:** None applied. Replace with a proper vector SVG export from Figma (same procedure as #246 Step 1–2).
 
+### BUG-4: `-deposit.test.tsx` — "step 2 shows loading affordance" test fails
+- **Date:** 2026-06-19
+- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` > "Deposit page — three-step flow" > "step 2 shows loading affordance (not greyed) when request status is PendingVerification"
+- **Symptom:** `npx vitest run src/routes/-deposit.test.tsx` reports 1 failure for the PendingVerification spinner affordance test. Reproduces on a clean checkout of `main` before any 672 changes, confirming it is pre-existing.
+- **Root cause:** Not investigated. The test expects `null` not to be null (i.e., a spinner element to be present), but the element is not found in the rendered output.
+- **Workaround:** None applied.
+
 ### BUG-3: `useStellarWithdrawalQueue.test.tsx` — 8 failing tests
 - **Date:** 2026-06-17
 - **Location:** `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx`

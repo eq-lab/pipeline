@@ -13,6 +13,7 @@
  *   - Parameterized: accepts `{ assetCode, assetIssuer, contractId }`.
  *   - Decimals: **7** (read from the SAC `decimals()` view or well-known constant).
  *   - Exposes `hasTrustline: boolean` alongside balance.
+ *   - Exposes `isAuthorized: boolean` — whether the issuer has authorized the trustline.
  *   - Exposes `decimals: number` so callers can scale correctly.
  *
  * ## Amount convention
@@ -132,6 +133,12 @@ export interface UseStellarSacTokenResult {
    */
   hasTrustline: boolean;
   /**
+   * Whether the trustline is authorized by the issuer (Horizon `is_authorized`).
+   * `false` when disconnected, loading, no trustline, or the issuer has not yet
+   * authorized (PLUSD issuer has `auth_required=true`).
+   */
+  isAuthorized: boolean;
+  /**
    * Decimal count for this SAC (always 7 for protocol USDC/PLUSD).
    */
   decimals: number;
@@ -176,6 +183,7 @@ export function useStellarSacToken({
   const queryFn = async (): Promise<{
     balance: string;
     hasTrustline: boolean;
+    isAuthorized: boolean;
   }> => {
     // Re-read mock at query time.
     const mockVal = readMock(resolvedMockKey, parseBigInt);
@@ -183,10 +191,13 @@ export function useStellarSacToken({
       return {
         balance: sacRawToDisplay(mockVal),
         hasTrustline: mockVal > 0n,
+        // Mock flows have no authorization concept — default to trustline presence
+        // so dev/test mock paths are not newly blocked.
+        isAuthorized: mockVal > 0n,
       };
     }
 
-    if (!address) return { balance: "0", hasTrustline: false };
+    if (!address) return { balance: "0", hasTrustline: false, isAuthorized: false };
 
     let balances: Horizon.HorizonApi.BalanceLine[];
     try {
@@ -195,7 +206,7 @@ export function useStellarSacToken({
       balances = account.balances;
     } catch (err) {
       if (isNotFoundError(err)) {
-        return { balance: "0", hasTrustline: false };
+        return { balance: "0", hasTrustline: false, isAuthorized: false };
       }
       throw err;
     }
@@ -211,12 +222,13 @@ export function useStellarSacToken({
         return {
           balance: (b as Horizon.HorizonApi.BalanceLineAsset).balance,
           hasTrustline: true,
+          isAuthorized: (b as Horizon.HorizonApi.BalanceLineAsset).is_authorized,
         };
       }
     }
 
     // No trustline → zero, not an error.
-    return { balance: "0", hasTrustline: false };
+    return { balance: "0", hasTrustline: false, isAuthorized: false };
   };
 
   // ── useQuery ──────────────────────────────────────────────────────────────
@@ -243,6 +255,9 @@ export function useStellarSacToken({
     return {
       balance: sacRawToDisplay(mockRaw),
       hasTrustline: mockRaw > 0n,
+      // Mock flows have no authorization concept — default to trustline presence
+      // so dev/test mock paths are not newly blocked.
+      isAuthorized: mockRaw > 0n,
       decimals: SAC_DECIMALS,
       refetchBalance: () => {},
       isLoading: false,
@@ -255,6 +270,7 @@ export function useStellarSacToken({
     return {
       balance: undefined,
       hasTrustline: false,
+      isAuthorized: false,
       decimals: SAC_DECIMALS,
       refetchBalance: query.refetch as () => void,
       isLoading: false,
@@ -266,6 +282,7 @@ export function useStellarSacToken({
   return {
     balance: query.data?.balance,
     hasTrustline: query.data?.hasTrustline ?? false,
+    isAuthorized: query.data?.isAuthorized ?? false,
     decimals: SAC_DECIMALS,
     refetchBalance: query.refetch as () => void,
     isLoading: query.isLoading,

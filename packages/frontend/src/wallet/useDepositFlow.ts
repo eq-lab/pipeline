@@ -1014,12 +1014,18 @@ export function useDepositFlow(
     ? canStellarStep2Deposit
     : canStellarStep2Withdraw;
 
+  // True when the PLUSD trustline exists but the issuer has not yet authorized it.
+  // In this window Claim would fail with "balance is deauthorized" (contract error #11).
+  const plusdTrustlineUnauthorized =
+    isStellarConnected && !depositNeedsTrustline && !plusdSac.isAuthorized;
+
   const canStellarStep3Deposit =
     isStellarConnected &&
     stellarDepositRequestIdStr !== undefined &&
     stellarVoucher.status === "ready" &&
     !stellarClaim.isPending &&
-    !stellarClaim.isSuccess;
+    !stellarClaim.isSuccess &&
+    !plusdTrustlineUnauthorized;
   const canStellarStep3Withdraw =
     isStellarConnected &&
     stellarWithdrawRequestIdStr !== undefined &&
@@ -1138,7 +1144,11 @@ export function useDepositFlow(
       },
     },
     step3: {
-      label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
+      label: isDeposit
+        ? plusdTrustlineUnauthorized
+          ? "Claim your PLUSD — awaiting authorization"
+          : "Claim your PLUSD"
+        : "Claim your USDC",
       actionLabel: "Claim",
       state: stellarStep3State,
       loading: isDeposit
