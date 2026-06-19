@@ -557,6 +557,9 @@ export function useChangeTrust(): UseChangeTrustResult {
     !!addresses?.plusdAsset &&
     !plusdTrustline.isLoading &&
     !plusdTrustline.hasTrustline;
+  // Refetch the trustline status immediately after a successful changeTrust so
+  // the UI flips without waiting for the 30s SAC-token poll (see #662).
+  const { refetchBalance: refetchPlusdTrustline } = plusdTrustline;
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -577,6 +580,7 @@ export function useChangeTrust(): UseChangeTrustResult {
         setData(mockResult);
         setIsPending(false);
         setIsSuccess(true);
+        refetchPlusdTrustline();
       });
       return;
     }
@@ -645,6 +649,7 @@ export function useChangeTrust(): UseChangeTrustResult {
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
+        refetchPlusdTrustline();
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
@@ -652,7 +657,14 @@ export function useChangeTrust(): UseChangeTrustResult {
         setIsInFlight(false);
       }
     })();
-  }, [address, addresses, isConnected, isInFlight, signTransaction]);
+  }, [
+    address,
+    addresses,
+    isConnected,
+    isInFlight,
+    signTransaction,
+    refetchPlusdTrustline,
+  ]);
 
   return { submit, needsTrustline, data, isPending, isSuccess, error, reset };
 }
