@@ -471,9 +471,46 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : flow.isDataPending ? (
-          /* Chain data / requests API still loading — render nothing until resolved. */
-          null
+        ) : flow.isDataPending /* Chain data / requests API still loading — render nothing until resolved. */ ? null : isStellar &&
+          isDeposit &&
+          usdcTrustline?.needsTrustline &&
+          flow.hasBalance === false ? (
+          /* No USDC trustline (Stellar deposit, no USDC balance) — must be
+             established before the account can hold or deposit USDC. Takes the
+             place of the low-balance banner; same layout, but the action adds
+             the USDC trustline instead of prompting to add funds. */
+          <Card
+            variant="yellow"
+            data-testid="usdc-trustline-banner"
+            className="flex flex-row items-center justify-between gap-4"
+          >
+            <div
+              data-testid="usdc-trustline-banner-text"
+              className="flex flex-col items-start gap-1"
+            >
+              <p
+                data-testid="usdc-trustline-banner-title"
+                className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]"
+              >
+                Add USDC trustline
+              </p>
+              <p
+                data-testid="usdc-trustline-banner-subtitle"
+                className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] text-[color:var(--color-pipeline-ink-muted)]"
+              >
+                Required to hold and deposit USDC on Stellar
+              </p>
+            </div>
+            <Button
+              data-testid="usdc-trustline-banner-action"
+              variant="primary-dark"
+              className="whitespace-nowrap"
+              onClick={() => usdcTrustline?.onEnable()}
+              disabled={usdcTrustline?.enabling}
+            >
+              {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
+            </Button>
+          </Card>
         ) : isDeposit && flow.hasBalance === false ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card

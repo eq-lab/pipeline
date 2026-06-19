@@ -12,20 +12,14 @@ import { Networks } from "@creit.tech/stellar-wallets-kit";
 import { ENV } from "@/lib/env";
 
 /**
- * Map the human-readable `VITE_STELLAR_NETWORK` value to the kit's `Networks`
- * enum. Falls back to `TESTNET` for any unrecognised value so the app stays
- * functional during development without requiring an explicit env override.
+ * Network passphrase for the configured Stellar network, taken directly from
+ * `VITE_STELLAR_NETWORK_PASSPHRASE`. The StellarWalletsKit `Networks` enum
+ * values ARE the passphrase strings (e.g. `TESTNET = "Test SDF Network ;
+ * September 2015"`), so the env passphrase doubles as the kit network value —
+ * no hardcoded network-name mapping required, which lets any network (testnet,
+ * futurenet, mainnet, standalone) be configured purely via env.
  */
-function resolveKitNetwork(network: string): Networks {
-  if (network === "mainnet") return Networks.PUBLIC;
-  return Networks.TESTNET;
-}
-
-/** Kit `Networks` enum value for the configured network. */
-export const kitNetwork: Networks = resolveKitNetwork(ENV.STELLAR_NETWORK);
-
-/** Backend chain id used by API routes that dispatch EVM vs Stellar behavior. */
-export const stellarChainId: number = ENV.STELLAR_CHAIN_ID;
+export const kitNetwork: Networks = ENV.STELLAR_NETWORK_PASSPHRASE as Networks;
 
 /**
  * Network passphrase string. In v2.x the kit `Networks` enum values ARE the

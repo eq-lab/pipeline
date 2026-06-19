@@ -319,7 +319,9 @@ export function useDepositFlow(
   const { feeXlm: withdrawFeeXlm } = useStellarNetworkFeeEstimate("withdraw");
 
   // ── Shared: useRequests (chain-aware — picks wallet address by view) ───────
-  const { data: requestsData, isLoading: requestsLoading } = useRequests({ refetchInterval: 60_000 });
+  const { data: requestsData, isLoading: requestsLoading } = useRequests({
+    refetchInterval: 60_000,
+  });
 
   // ── EVM request state machines ─────────────────────────────────────────────
   const evmDepositActiveRequest =
@@ -1073,7 +1075,9 @@ export function useDepositFlow(
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
-  const stellarActiveBalance = isDeposit ? stellarUsdcBalanceRaw : stellarPlusdBalanceRaw;
+  const stellarActiveBalance = isDeposit
+    ? stellarUsdcBalanceRaw
+    : stellarPlusdBalanceRaw;
   const stellarIsDataPending =
     (isDeposit ? usdcToken.isLoading : plusdSac.isLoading) ||
     requestsLoading ||
@@ -1126,7 +1130,9 @@ export function useDepositFlow(
       label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
       actionLabel: "Claim",
       state: stellarStep3State,
-      loading: isDeposit ? stellarClaim.isPending : stellarClaimWithdrawal.isPending,
+      loading: isDeposit
+        ? stellarClaim.isPending
+        : stellarClaimWithdrawal.isPending,
       disabled: !canStellarStep3,
       onAction: () => {
         if (stellarRequestIdBigInt === undefined) return;

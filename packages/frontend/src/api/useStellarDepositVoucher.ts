@@ -7,7 +7,7 @@
  * hex-decoding the `signature` field (ed25519, 64 bytes → 0x-prefixed hex).
  *
  * The hook polls
- * `GET /v1/deposits/{request_id}/voucher?wallet=<G…>&chain_id=<stellarChainId>`
+ * `GET /v1/deposits/{request_id}/voucher?wallet=<G…>&chain_id=<chain_id>`
  * every 3 s until the verifier signature is available.
  *
  * Mock layer
