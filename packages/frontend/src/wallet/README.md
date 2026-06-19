@@ -758,6 +758,17 @@ const { address, isConnected, connect, disconnect, signTransaction } =
 | `disconnect()`                | `() => void`          | Disconnects the Stellar wallet and clears state               |
 | `signTransaction(xdr, opts?)` | async function        | Signs a transaction XDR with the connected wallet (see below) |
 
+**Shared connection state.** The real Stellar address is held in a single
+module-level external store (`stellar/connectionStore.ts`) backed by
+`useSyncExternalStore`. Every `useStellarWallet()` consumer reads from the
+same store, so connecting or disconnecting in any component immediately
+propagates to all others without a page reload. This mirrors how EVM wallet
+state is shared via wagmi's store. The store also subscribes to the kit's
+`addressUpdatedEvent` and `disconnectEvent` subjects so extension-initiated
+address changes and disconnects propagate automatically. The mock path
+(`useMockStellarAddress`) continues to override the real address, preserving
+mock precedence.
+
 **Terms gate:** `connect()` checks the shared chain-agnostic
 `pipeline.wallet.termsAcknowledged` flag. If absent, the `FirstConnectionModal`
 is shown before the kit auth modal opens.

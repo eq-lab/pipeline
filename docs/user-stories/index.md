@@ -81,6 +81,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#639 Connect Wallet modal: 'Before you continue' gate should precede the modal](https://github.com/eq-lab/pipeline/issues/639)              | [639-wallet-gate-before-modal.md](./epic-556/639-wallet-gate-before-modal.md)               | Initial |
 | [#573 Connect Wallet modal: content jumps vertically when switching EVM/Soroban tabs](https://github.com/eq-lab/pipeline/issues/573)         | [573-connect-modal-tab-jump.md](./epic-556/573-connect-modal-tab-jump.md)                   | Initial |
 | [#675 Stellar header: show PLUSD and sPLUSD balances in AccountDropdown](https://github.com/eq-lab/pipeline/issues/675)                     | [675-stellar-header-balances.md](./epic-556/675-stellar-header-balances.md)                 | Initial |
+| [#692 [FE] [Stellar] Connecting a Stellar wallet doesn't update the UI — connect buttons persist (no shared connection state)](https://github.com/eq-lab/pipeline/issues/692) | [692-stellar-connection-updates-ui.md](./epic-556/692-stellar-connection-updates-ui.md) | Initial |
 
 ---
 

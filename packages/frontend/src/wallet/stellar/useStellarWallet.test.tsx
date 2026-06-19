@@ -3,6 +3,7 @@ import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useStellarWallet, useStellarConnectors } from "./useStellarWallet";
 import { WalletGateProvider } from "../WalletGateProvider";
+import { _resetStellarConnectionStoreForTests } from "./connectionStore";
 
 // ── Mock the Stellar kit singleton (./config) ─────────────────────────────────
 // vi.hoisted ensures the mock functions are available when vi.mock factory runs,
@@ -33,6 +34,16 @@ vi.mock("./config", () => ({
     setWallet: mockSetWallet,
     fetchAddress: mockFetchAddress,
   },
+}));
+
+// ── Mock @creit.tech/stellar-wallets-kit events ───────────────────────────────
+// connectionStore.ts subscribes to addressUpdatedEvent and disconnectEvent at
+// module load. Provide no-op stub subjects so those subscriptions don't
+// interfere with tests (kit events are tested separately via the store).
+
+vi.mock("@creit.tech/stellar-wallets-kit", () => ({
+  addressUpdatedEvent: { subscribe: vi.fn() },
+  disconnectEvent: { subscribe: vi.fn() },
 }));
 
 // ── Mock FirstConnectionModal ─────────────────────────────────────────────────
@@ -76,6 +87,7 @@ const STELLAR_ADDR2 =
 describe("useStellarWallet — no mocks, no real wallet", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockAuthModal.mockClear();
     mockDisconnect.mockClear();
@@ -89,6 +101,7 @@ describe("useStellarWallet — no mocks, no real wallet", () => {
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("reports disconnected by default (getAddress rejects)", async () => {
@@ -104,6 +117,7 @@ describe("useStellarWallet — no mocks, no real wallet", () => {
 describe("useStellarWallet — localStorage mock", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockAuthModal.mockClear();
     mockDisconnect.mockClear();
@@ -117,6 +131,7 @@ describe("useStellarWallet — localStorage mock", () => {
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("reports connected when address + isConnected mocks are set", () => {
@@ -164,6 +179,7 @@ describe("useStellarWallet — localStorage mock", () => {
 describe("useStellarWallet — connect() with terms gate", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockAuthModal.mockClear();
     mockDisconnect.mockClear();
@@ -181,6 +197,7 @@ describe("useStellarWallet — connect() with terms gate", () => {
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("Gated path: opens the gate when terms are NOT acknowledged", async () => {
@@ -256,6 +273,7 @@ describe("useStellarWallet — connect() with terms gate", () => {
 describe("useStellarWallet — disconnect()", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockAuthModal.mockClear();
     mockDisconnect.mockClear();
@@ -271,6 +289,7 @@ describe("useStellarWallet — disconnect()", () => {
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("calls StellarWalletsKit.disconnect() and clears address on real path", async () => {
@@ -305,6 +324,7 @@ describe("useStellarWallet — disconnect()", () => {
 describe("useStellarWallet — signTransaction()", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockAuthModal.mockClear();
     mockDisconnect.mockClear();
@@ -314,6 +334,7 @@ describe("useStellarWallet — signTransaction()", () => {
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("real path: delegates to StellarWalletsKit.signTransaction with correct passphrase and address", async () => {
@@ -367,6 +388,7 @@ describe("useStellarWallet — signTransaction()", () => {
 describe("useStellarConnectors — connectWallet calls kit directly (no gate)", () => {
   beforeEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
     mockGetAddress.mockClear();
     mockSetWallet.mockClear();
     mockFetchAddress.mockClear();
@@ -381,6 +403,7 @@ describe("useStellarConnectors — connectWallet calls kit directly (no gate)", 
 
   afterEach(() => {
     localStorage.clear();
+    _resetStellarConnectionStoreForTests();
   });
 
   it("calls setWallet + fetchAddress directly when terms NOT acknowledged (no gate)", async () => {
@@ -437,5 +460,100 @@ describe("useStellarConnectors — connectWallet calls kit directly (no gate)", 
     });
 
     expect(onUnavailable).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Cross-instance propagation tests (regression guard for issue #692) ────────
+
+describe("useStellarWallet — shared store cross-instance propagation", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+    mockGetAddress.mockClear();
+    mockAuthModal.mockClear();
+    mockDisconnect.mockClear();
+    mockSetWallet.mockClear();
+    mockFetchAddress.mockClear();
+    mockGetAddress.mockRejectedValue(new Error("no prior connection"));
+    mockDisconnect.mockResolvedValue(undefined);
+    capturedModalProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    _resetStellarConnectionStoreForTests();
+  });
+
+  it("connect() on one instance propagates to a second independent instance (regression for #692)", async () => {
+    // Pre-acknowledge terms so connect() calls authModal directly.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    mockAuthModal.mockResolvedValue({ address: STELLAR_ADDR });
+
+    // Render two independent hook instances.
+    const { result: result1 } = renderHook(() => useStellarWallet(), {
+      wrapper,
+    });
+    const { result: result2 } = renderHook(() => useStellarWallet(), {
+      wrapper,
+    });
+
+    // Trigger connect on the first instance only.
+    act(() => result1.current.connect());
+
+    // Both instances must reflect the new address without re-mounting.
+    await waitFor(() => {
+      expect(result1.current.address).toBe(STELLAR_ADDR);
+    });
+    expect(result2.current.address).toBe(STELLAR_ADDR);
+    expect(result2.current.isConnected).toBe(true);
+  });
+
+  it("connectWallet() via useStellarConnectors propagates to a useStellarWallet instance", async () => {
+    mockFetchAddress.mockResolvedValue({ address: STELLAR_ADDR });
+
+    const { result: connectors } = renderHook(() => useStellarConnectors(), {
+      wrapper,
+    });
+    const { result: wallet } = renderHook(() => useStellarWallet(), {
+      wrapper,
+    });
+
+    // Connect via the connectors hook (the actual path used by ConnectWalletModal).
+    await act(async () => {
+      await connectors.current.connectWallet("freighter");
+    });
+
+    // The useStellarWallet instance (e.g. TopBar) must see the new address.
+    expect(wallet.current.address).toBe(STELLAR_ADDR);
+    expect(wallet.current.isConnected).toBe(true);
+  });
+
+  it("disconnect() on one instance propagates to a second instance", async () => {
+    // Pre-acknowledge terms and connect first.
+    localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
+    mockAuthModal.mockResolvedValue({ address: STELLAR_ADDR });
+
+    const { result: result1 } = renderHook(() => useStellarWallet(), {
+      wrapper,
+    });
+    const { result: result2 } = renderHook(() => useStellarWallet(), {
+      wrapper,
+    });
+
+    act(() => result1.current.connect());
+    await waitFor(() => expect(result1.current.address).toBe(STELLAR_ADDR));
+    expect(result2.current.address).toBe(STELLAR_ADDR);
+
+    // Disconnect on the first instance.
+    act(() => result1.current.disconnect());
+
+    // Both instances must reflect disconnected state.
+    await waitFor(() => expect(result1.current.address).toBeUndefined());
+    expect(result2.current.address).toBeUndefined();
+    expect(result2.current.isConnected).toBe(false);
   });
 });
