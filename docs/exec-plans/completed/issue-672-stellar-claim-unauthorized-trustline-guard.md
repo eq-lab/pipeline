@@ -74,7 +74,7 @@ Out of scope (per issue):
 
 ## Implementation Steps
 
-1. **`useStellarSacToken.ts` — expose `isAuthorized`.**
+1. **[DONE] `useStellarSacToken.ts` — expose `isAuthorized`.**
    - Extend the `queryFn` return type from `{ balance; hasTrustline }` to
      `{ balance; hasTrustline; isAuthorized }`.
    - In the asset-match branch (lines ~211-214) return
@@ -91,7 +91,7 @@ Out of scope (per issue):
    - Real-path return (lines ~266-273): `isAuthorized: query.data?.isAuthorized ?? false`.
    - Update the file-header JSDoc bullet list ("Exposes …") to mention `isAuthorized`.
 
-2. **`useDepositFlow.ts` — gate the deposit Claim on PLUSD authorization.**
+2. **[DONE] `useDepositFlow.ts` — gate the deposit Claim on PLUSD authorization.**
    - The PLUSD SAC read is already available as `plusdSac` (line ~304). Derive a guard:
      `const plusdTrustlineUnauthorized = isStellarConnected && !depositNeedsTrustline &&
      plusdSac.isAuthorized === false;` (i.e. trustline exists but not yet authorized).
@@ -104,7 +104,7 @@ Out of scope (per issue):
      dedicated prop is chosen per Open Questions, thread it through `StepInfo` instead.)
    - Confirm withdraw path (`canStellarStep3Withdraw`) is untouched.
 
-3. **`deposit.tsx` — render the affordance.**
+3. **[DONE] `deposit.tsx` — render the affordance.**
    - The Stellar 4-step `StepsCard` already maps `flow.step3.label` into the Claim row
      (lines ~588-595). If the awaiting label is produced in `useDepositFlow`
      (step 2 above), `deposit.tsx` needs **no** change beyond what already renders
@@ -112,7 +112,7 @@ Out of scope (per issue):
    - If, per Open Questions, a tooltip prop is chosen instead, add the prop pass-through on
      the Claim `StepItem` here.
 
-4. **Lint.** Run `npx tsx scripts/lint-docs.ts` (TS change) and the frontend typecheck/lint
+4. **[DONE] Lint.** Run `npx tsx scripts/lint-docs.ts` (TS change) and the frontend typecheck/lint
    per the package's scripts.
 
 ## Test Strategy

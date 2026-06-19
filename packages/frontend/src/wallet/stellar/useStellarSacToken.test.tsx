@@ -5,15 +5,17 @@
  *
  * Scenarios:
  *   1. sacRawToDisplay / sacDisplayToRaw — scaling math at 7 decimals.
- *   2. Balance present (7-decimal) — correct raw-to-display scaling.
- *   3. Issuer mismatch → balance "0", hasTrustline false.
- *   4. No trustline → "0", hasTrustline false, no error.
- *   5. Unfunded account (404) → "0", hasTrustline false, no error.
+ *   2. Balance present (7-decimal) — correct raw-to-display scaling; isAuthorized true.
+ *   3. Issuer mismatch → balance "0", hasTrustline false, isAuthorized false.
+ *   4. No trustline → "0", hasTrustline false, isAuthorized false, no error.
+ *   5. Unfunded account (404) → "0", hasTrustline false, isAuthorized false, no error.
  *   6. Hard error → surfaced on `error`.
- *   7. Disconnected → balance undefined.
- *   8. Mock key (bigint string) → returns scaled mock balance; no Horizon call.
+ *   7. Disconnected → balance undefined, isAuthorized false.
+ *   8. Mock key (bigint string) → returns scaled mock balance; no Horizon call; isAuthorized true when > 0.
  *   9. SAC_DECIMALS constant = 7.
  *  10. decimals field on result = SAC_DECIMALS.
+ *  11. Trustline present + is_authorized false → hasTrustline true, isAuthorized false.
+ *  12. Trustline present + is_authorized true → hasTrustline true, isAuthorized true.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -87,7 +89,11 @@ function makeWrapper() {
   };
 }
 
-function makeBalances(balance: string, issuer = PROTOCOL_ISSUER): object[] {
+function makeBalances(
+  balance: string,
+  issuer = PROTOCOL_ISSUER,
+  isAuthorized = true,
+): object[] {
   return [
     { asset_type: "native", balance: "1.0000000" },
     {
@@ -95,6 +101,7 @@ function makeBalances(balance: string, issuer = PROTOCOL_ISSUER): object[] {
       asset_code: "USDC",
       asset_issuer: issuer,
       balance,
+      is_authorized: isAuthorized,
     },
   ];
 }
@@ -169,6 +176,7 @@ describe("useStellarSacToken — balance present", () => {
     });
     expect(result.current.balance).toBe("1234.5678900");
     expect(result.current.hasTrustline).toBe(true);
+    expect(result.current.isAuthorized).toBe(true);
     expect(result.current.decimals).toBe(7);
     expect(result.current.error).toBeNull();
   });
@@ -190,7 +198,7 @@ describe("useStellarSacToken — issuer mismatch", () => {
     localStorage.clear();
   });
 
-  it("ignores balance from wrong issuer → '0', hasTrustline false", async () => {
+  it("ignores balance from wrong issuer → '0', hasTrustline false, isAuthorized false", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
@@ -199,6 +207,7 @@ describe("useStellarSacToken — issuer mismatch", () => {
     });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
+    expect(result.current.isAuthorized).toBe(false);
     expect(result.current.error).toBeNull();
   });
 });
@@ -219,7 +228,7 @@ describe("useStellarSacToken — no trustline", () => {
     localStorage.clear();
   });
 
-  it("returns '0', hasTrustline false, no error", async () => {
+  it("returns '0', hasTrustline false, isAuthorized false, no error", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
@@ -228,6 +237,7 @@ describe("useStellarSacToken — no trustline", () => {
     });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
+    expect(result.current.isAuthorized).toBe(false);
     expect(result.current.error).toBeNull();
   });
 });
@@ -249,7 +259,7 @@ describe("useStellarSacToken — unfunded (404)", () => {
     localStorage.clear();
   });
 
-  it("treats 404 as zero balance, not an error", async () => {
+  it("treats 404 as zero balance, not an error; isAuthorized false", async () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
@@ -258,6 +268,7 @@ describe("useStellarSacToken — unfunded (404)", () => {
     });
     expect(result.current.balance).toBe("0");
     expect(result.current.hasTrustline).toBe(false);
+    expect(result.current.isAuthorized).toBe(false);
     expect(result.current.error).toBeNull();
   });
 });
@@ -304,12 +315,13 @@ describe("useStellarSacToken — disconnected", () => {
     mockStellarWallet.isConnected = true;
   });
 
-  it("returns undefined balance; loadAccount is never called", () => {
+  it("returns undefined balance; loadAccount is never called; isAuthorized false", () => {
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
       wrapper: makeWrapper().wrapper,
     });
     expect(result.current.balance).toBeUndefined();
     expect(result.current.hasTrustline).toBe(false);
+    expect(result.current.isAuthorized).toBe(false);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(mockLoadAccount).not.toHaveBeenCalled();
@@ -329,7 +341,7 @@ describe("useStellarSacToken — mock key", () => {
     localStorage.clear();
   });
 
-  it("returns scaled mock balance; loadAccount never called", () => {
+  it("returns scaled mock balance; loadAccount never called; isAuthorized true", () => {
     // 10_000_000n = 1 USDC at 7 decimals
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.usdc",
@@ -343,12 +355,13 @@ describe("useStellarSacToken — mock key", () => {
     // sacRawToDisplay(10_000_000n) = "1.0000000"
     expect(result.current.balance).toBe("1.0000000");
     expect(result.current.hasTrustline).toBe(true);
+    expect(result.current.isAuthorized).toBe(true);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(mockLoadAccount).not.toHaveBeenCalled();
   });
 
-  it("hasTrustline is false for zero mock balance", () => {
+  it("hasTrustline and isAuthorized are false for zero mock balance", () => {
     localStorage.setItem("pipeline.mock.wallet.stellar.balance.sac.usdc", "0");
 
     const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
@@ -357,5 +370,64 @@ describe("useStellarSacToken — mock key", () => {
 
     expect(result.current.balance).toBe("0.0000000");
     expect(result.current.hasTrustline).toBe(false);
+    expect(result.current.isAuthorized).toBe(false);
+  });
+});
+
+// ── Tests: isAuthorized flag from Horizon ─────────────────────────────────────
+
+describe("useStellarSacToken — trustline present, is_authorized: false", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockStellarWallet.address = STELLAR_ADDR;
+    mockStellarWallet.isConnected = true;
+    mockLoadAccount.mockClear();
+    // Trustline exists but issuer has not yet authorized it.
+    mockLoadAccount.mockResolvedValue({
+      balances: makeBalances("0.0000000", PROTOCOL_ISSUER, false),
+    });
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("hasTrustline is true but isAuthorized is false when is_authorized=false", async () => {
+    const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
+      wrapper: makeWrapper().wrapper,
+    });
+    // Wait for the query to resolve: balance becomes defined once Horizon responds.
+    await waitFor(() => {
+      expect(result.current.balance).toBe("0.0000000");
+    });
+    expect(result.current.hasTrustline).toBe(true);
+    expect(result.current.isAuthorized).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+});
+
+describe("useStellarSacToken — trustline present, is_authorized: true", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockStellarWallet.address = STELLAR_ADDR;
+    mockStellarWallet.isConnected = true;
+    mockLoadAccount.mockClear();
+    mockLoadAccount.mockResolvedValue({
+      balances: makeBalances("500.0000000", PROTOCOL_ISSUER, true),
+    });
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("hasTrustline true and isAuthorized true when is_authorized=true", async () => {
+    const { result } = renderHook(() => useStellarSacToken(SAC_PARAMS), {
+      wrapper: makeWrapper().wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.hasTrustline).toBe(true);
+    });
+    expect(result.current.isAuthorized).toBe(true);
+    expect(result.current.balance).toBe("500.0000000");
+    expect(result.current.error).toBeNull();
   });
 });
