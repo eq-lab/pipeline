@@ -68,9 +68,9 @@ export default tseslint.config(
     },
   },
   {
-    // Enforce that @creit.tech/stellar-wallets-kit, @stellar/stellar-sdk, and
-    // @blend-capital/blend-sdk are only imported from within the Stellar wallet
-    // module (src/wallet/stellar/**) or the env accessor (src/lib/env.ts).
+    // Enforce that @creit.tech/stellar-wallets-kit and @stellar/stellar-sdk are
+    // only imported from within the Stellar wallet module
+    // (src/wallet/stellar/**) or the env accessor (src/lib/env.ts).
     // All other source files must go through @/wallet.
     files: ["**/*.{ts,tsx}"],
     ignores: ["src/wallet/stellar/**", "src/lib/env.ts"],
@@ -83,8 +83,6 @@ export default tseslint.config(
             "@creit.tech/stellar-wallets-kit/*",
             "@stellar/stellar-sdk",
             "@stellar/stellar-sdk/*",
-            "@blend-capital/blend-sdk",
-            "@blend-capital/blend-sdk/*",
           ],
         },
       ],

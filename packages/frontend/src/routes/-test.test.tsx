@@ -121,12 +121,6 @@ const mockEnv = vi.hoisted(() => ({
   STELLAR_CHAIN_ID: 99_000_001,
   STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org",
   STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
-  STELLAR_BLEND_POOL_ID:
-    "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
-  STELLAR_BLEND_USDC_ID:
-    "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
-  STELLAR_BLEND_XLM_ID:
-    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
   STELLAR_DEPOSIT_MANAGER_ID: "",
   STELLAR_WITHDRAWAL_QUEUE_ID: "",
   STELLAR_STAKED_PLUSD_ID: "",
@@ -232,12 +226,12 @@ describe("TestPage — default Status tab", () => {
 
   it("Status tab has no content buttons (read-only — regression for #252)", () => {
     const { container } = renderTestPage("status");
-    // The SegmentedTabs renders three tab buttons (Status + Mocks + Blend);
-    // only those should be present on the Status tab.
-    // No action buttons (Clear mocks / Enable / Deposit / Withdraw) should appear.
+    // The SegmentedTabs renders two tab buttons (Status + Mocks); only those
+    // should be present on the Status tab. No action buttons (Clear mocks /
+    // Enable) should appear.
     const buttons = container.querySelectorAll("button");
-    // The SegmentedTabs always renders exactly 3 buttons (Status + Mocks + Blend).
-    expect(buttons.length).toBe(3);
+    // The SegmentedTabs always renders exactly 2 buttons (Status + Mocks).
+    expect(buttons.length).toBe(2);
   });
 
   it("does not render the Write hooks section", () => {

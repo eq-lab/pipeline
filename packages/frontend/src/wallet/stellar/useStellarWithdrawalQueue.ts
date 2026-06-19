@@ -9,7 +9,7 @@
  *   - `useStellarWithdrawalRequest()` — read hook for `get_request` (polling)
  *   - `useStellarChangeTrustUsdc()`   — builds and submits a `changeTrust` op for USDC
  *
- * All write hooks follow the same state shape as `-useBlendSubmit.ts`:
+ * All write hooks expose the same state shape:
  *   `{ write, data, isPending, isSuccess, error, reset }`
  *
  * In-flight recovery

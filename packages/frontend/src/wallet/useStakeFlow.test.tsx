@@ -32,7 +32,8 @@ import { useStakeFlow } from "./useStakeFlow";
 const mockLoadAccount = vi.hoisted(() => vi.fn());
 
 vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@stellar/stellar-sdk")>();
+  const original =
+    await importOriginal<typeof import("@stellar/stellar-sdk")>();
   class MockHorizonServer {
     loadAccount(address: string) {
       return mockLoadAccount(address);
@@ -54,13 +55,6 @@ vi.mock("./stellar/chain", () => ({
   networkPassphrase: "Test SDF Network ; September 2015",
   horizonUrl: "https://horizon-testnet.stellar.org",
   sorobanRpcUrl: "https://soroban-testnet.stellar.org",
-  blendPoolId: "",
-  blendUsdcId: "",
-  blendXlmId: "",
-  blendNetwork: {
-    rpc: "https://soroban-testnet.stellar.org",
-    passphrase: "Test SDF Network ; September 2015",
-  },
   READ_SIMULATION_SOURCE:
     "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
   depositManagerId: "CARFA2QETOZVKHSG4BCEEXMJHTYR2Z75VR7WQNX4MWZ33RQMKRKATIVI",
@@ -158,7 +152,10 @@ vi.mock("./WalletViewContext", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./WalletViewContext")>();
   return {
     ...actual,
-    useWalletView: vi.fn(() => ({ kind: "stellar" as const, setKind: vi.fn() })),
+    useWalletView: vi.fn(() => ({
+      kind: "stellar" as const,
+      setKind: vi.fn(),
+    })),
   };
 });
 
@@ -166,10 +163,8 @@ vi.mock("./WalletViewContext", async (importOriginal) => {
 
 const PROTOCOL_ISSUER =
   "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
-const FAKE_ISSUER =
-  "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGYWDOUALPFD9TLVMQSRJV";
-const STELLAR_ADDR =
-  "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW";
+const FAKE_ISSUER = "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGYWDOUALPFD9TLVMQSRJV";
+const STELLAR_ADDR = "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW";
 
 const USDC_CONTRACT_ID =
   "CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7";
@@ -199,10 +194,7 @@ function makeWrapper() {
  * `useWalletView` is mocked to return `"stellar"` at the module level.
  */
 function seedStellarWalletKeys() {
-  localStorage.setItem(
-    "pipeline.mock.wallet.stellar.address",
-    STELLAR_ADDR,
-  );
+  localStorage.setItem("pipeline.mock.wallet.stellar.address", STELLAR_ADDR);
   localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
 }
 

@@ -18,7 +18,7 @@
  *   - `useStellarChangeTrustStakedPlusd()` — builds + submits a classic `changeTrust`
  *     op for the sPLUSD share asset; exposes `needsTrustline` + `submit()`.
  *
- * All write hooks follow the same state shape as `-useBlendSubmit.ts`:
+ * All write hooks expose the same state shape:
  *   `{ write, data, isPending, isSuccess, error, reset }`
  *
  * Interface notes

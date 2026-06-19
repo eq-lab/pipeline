@@ -2,8 +2,9 @@
  * Parameterized SAC (Stellar Asset Contract) token hook for the protocol's
  * own USDC and PLUSD assets.
  *
- * This hook is DISTINCT from `useStellarToken` (which reads Circle USDC via
- * the Blend lending pool). It is designed for the protocol's SAC tokens:
+ * This hook is DISTINCT from `useStellarToken` (which reads the connected
+ * account's USDC balance from Horizon). It is designed for the protocol's SAC
+ * tokens:
  *   - USDC:  `CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7`
  *   - PLUSD: `CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN`
  * Both are issued by `GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM`
@@ -197,7 +198,8 @@ export function useStellarSacToken({
       };
     }
 
-    if (!address) return { balance: "0", hasTrustline: false, isAuthorized: false };
+    if (!address)
+      return { balance: "0", hasTrustline: false, isAuthorized: false };
 
     let balances: Horizon.HorizonApi.BalanceLine[];
     try {
@@ -222,7 +224,8 @@ export function useStellarSacToken({
         return {
           balance: (b as Horizon.HorizonApi.BalanceLineAsset).balance,
           hasTrustline: true,
-          isAuthorized: (b as Horizon.HorizonApi.BalanceLineAsset).is_authorized,
+          isAuthorized: (b as Horizon.HorizonApi.BalanceLineAsset)
+            .is_authorized,
         };
       }
     }

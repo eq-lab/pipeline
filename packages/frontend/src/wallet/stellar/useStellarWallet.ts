@@ -60,7 +60,7 @@ export interface StellarWalletState {
    *
    * Mock path: when `pipeline.mock.wallet.stellar.address` is set in
    * localStorage, `signTransaction` **rejects** with a clear error message —
-   * real Soroban signing is not mockable at the kit layer. The Blend write
+   * real Soroban signing is not mockable at the kit layer. The Stellar write
    * hooks mock at their own result-level keys instead, so `signTransaction`
    * is never called on the mock path.
    *
@@ -162,12 +162,13 @@ export function useStellarWallet(): StellarWalletState {
       opts?: { networkPassphrase?: string; address?: string },
     ): Promise<{ signedTxXdr: string; signerAddress?: string }> => {
       // Mock path: signing a real Soroban tx is not mockable at the kit layer.
-      // The Blend hooks mock at their own result-level keys — signTransaction
-      // should never be reached on the mock path, but guard clearly anyway.
+      // The Stellar write hooks mock at their own result-level keys —
+      // signTransaction should never be reached on the mock path, but guard
+      // clearly anyway.
       if (mockAddress !== undefined) {
         return Promise.reject(
           new Error(
-            "[stellar mock] signTransaction is not mockable; use the Blend hook mock keys instead",
+            "[stellar mock] signTransaction is not mockable; use the write-hook result mock keys instead",
           ),
         );
       }

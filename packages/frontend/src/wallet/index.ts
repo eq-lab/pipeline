@@ -121,11 +121,6 @@ export type {
   UseStellarNetworkFeeEstimateResult,
   StellarFeeDirection,
 } from "./stellar/useStellarNetworkFeeEstimate";
-export { useBlendDeposit } from "./stellar/useBlendDeposit";
-export { useBlendWithdraw } from "./stellar/useBlendWithdraw";
-export { useBlendPosition } from "./stellar/useBlendPosition";
-export type { BlendWriteResult } from "./stellar/useBlendDeposit";
-export type { UseBlendPositionResult } from "./stellar/useBlendPosition";
 
 export {
   useStellarRequestDeposit,

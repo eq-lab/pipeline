@@ -31,32 +31,14 @@ export const networkPassphrase: string = kitNetwork;
 /** Stellar Horizon base URL for the configured network. */
 export const horizonUrl: string = ENV.STELLAR_HORIZON_URL;
 
-// ── Soroban / Blend constants ──────────────────────────────────────────────────
+// ── Soroban constants ───────────────────────────────────────────────────────────
 
 /**
  * Soroban RPC URL for contract simulation and submission.
- * Distinct from the Horizon REST API — Blend calls go here, not to Horizon.
+ * Distinct from the Horizon REST API — Soroban contract calls go here, not to
+ * Horizon.
  */
 export const sorobanRpcUrl: string = ENV.STELLAR_RPC_URL;
-
-/** Blend V2 pool contract address on the configured network. */
-export const blendPoolId: string = ENV.STELLAR_BLEND_POOL_ID;
-
-/** Blend USDC reserve asset address. */
-export const blendUsdcId: string = ENV.STELLAR_BLEND_USDC_ID;
-
-/** Blend XLM reserve asset address. */
-export const blendXlmId: string = ENV.STELLAR_BLEND_XLM_ID;
-
-/**
- * Network object the Blend SDK consumes.
- * `passphrase` reuses `networkPassphrase` (the kit Networks enum value IS
- * the passphrase string in v2.x).
- */
-export const blendNetwork = {
-  rpc: ENV.STELLAR_RPC_URL,
-  passphrase: kitNetwork as string,
-} as const;
 
 /**
  * Source account for read-only contract simulations.

@@ -9,7 +9,7 @@
  *   - `useStellarDepositRequest()` — read hook for `get_request` (polling)
  *   - `useChangeTrust()`           — builds and submits a `changeTrust` op for PLUSD
  *
- * All write hooks follow the same state shape as `-useBlendSubmit.ts`:
+ * All write hooks expose the same state shape:
  *   `{ write, data, isPending, isSuccess, error, reset }`
  *
  * In-flight recovery
