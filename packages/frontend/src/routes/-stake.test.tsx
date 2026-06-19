@@ -36,6 +36,7 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
+import { ToastProvider } from "@/lib/toast";
 import { Route } from "./stake";
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
@@ -283,7 +284,9 @@ function renderStake() {
   const StakePage = Route.options.component as React.ComponentType;
   return render(
     <EvmWalletProvider>
-      <StakePage />
+      <ToastProvider>
+        <StakePage />
+      </ToastProvider>
     </EvmWalletProvider>,
   );
 }
@@ -1115,8 +1118,10 @@ describe("Stake page — no nested border on token-amount-display (Issue #615)",
     await waitFor(() => {
       const display = screen.getByTestId("token-amount-display");
       // The inline style must explicitly unset the border so the component
-      // renders flush inside the output section card (Issue #615).
-      expect(display.style.border).toBe("none");
+      // renders flush inside the output section card (Issue #615). Assert the
+      // border-style longhand: the `border` shorthand getter round-trips
+      // `border: none` to "medium none currentcolor", returning the width.
+      expect(display.style.borderStyle).toBe("none");
     });
   });
 

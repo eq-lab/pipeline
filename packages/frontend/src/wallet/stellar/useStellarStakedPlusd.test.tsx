@@ -34,7 +34,7 @@
  */
 
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import {
@@ -45,6 +45,7 @@ import {
   useStellarStakedPlusdBalance,
   useStellarChangeTrustStakedPlusd,
 } from "./useStellarStakedPlusd";
+import { useStellarWallet } from "./useStellarWallet";
 import * as mockModule from "./mock";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -212,6 +213,30 @@ Object.defineProperty(global, "localStorage", { value: localStorageMock });
 // ── Test constants ────────────────────────────────────────────────────────────
 
 const TEST_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+// Reset cross-test mock leakage. `vi.clearAllMocks()` (used in the per-describe
+// beforeEach hooks) only clears call history — it undoes neither `vi.spyOn`
+// spies nor `mockReturnValue` implementations. Two such leaks would otherwise
+// propagate between tests in this file:
+//   1. The "unconfigured guard" tests install a getter spy forcing
+//      `stakedPlusdId` to "" (→ spurious "StakedPLUSD not configured").
+//   2. The disconnected-balance test sets `useStellarWallet` to a disconnected
+//      value via `mockReturnValue` (→ spurious "Stellar wallet not connected").
+// Restore spies after each test, and re-establish the connected wallet default
+// before each, so every test starts from the factory baseline.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.mocked(useStellarWallet).mockImplementation(() => ({
+    address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    isConnected: true,
+    signTransaction: mockSignTransaction,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+});
 
 // ── Tests: useStellarStake ────────────────────────────────────────────────────
 
@@ -596,6 +621,10 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       () => useStellarChangeTrustStakedPlusd(),
       { wrapper: makeWrapper() },
     );
+
+    // submit() requires the share asset, resolved asynchronously via name();
+    // wait for it to load (needsTrustline flips true) before submitting.
+    await waitFor(() => expect(result.current.needsTrustline).toBe(true));
 
     act(() => {
       result.current.submit();

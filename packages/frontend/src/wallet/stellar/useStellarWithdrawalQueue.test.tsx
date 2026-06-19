@@ -199,6 +199,15 @@ Object.defineProperty(global, "localStorage", { value: localStorageMock });
 
 const TEST_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
+// Restore `vi.spyOn` spies between tests. The per-describe `vi.clearAllMocks()`
+// only clears call history — it does not undo spies. The "unconfigured guard"
+// tests install a getter spy forcing `withdrawalQueueId` to "", which would
+// otherwise leak into every subsequent test (→ spurious
+// "WithdrawalQueue not configured").
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 // ── Tests: useStellarRequestWithdrawal ────────────────────────────────────────
 
 describe("useStellarRequestWithdrawal", () => {
