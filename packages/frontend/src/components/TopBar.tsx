@@ -7,6 +7,11 @@ import {
   useDepositManagerAddresses,
   useStellarWallet,
   useStellarToken,
+  useStellarSacToken,
+  useStellarDepositManagerAddresses,
+  useStellarStakedPlusdBalance,
+  sacRawToDisplay,
+  formatUsdcDisplay,
   useWalletView,
   useConnectModal,
 } from "@/wallet";
@@ -25,6 +30,8 @@ import { useMobileNavMenu } from "./useMobileNavMenu";
  *   - Renders a `WalletPill` wrapped in a trigger button.
  *   - Clicking the pill opens the `AccountDropdown` panel (address copy,
  *     USDC balance, namespace toggle, disconnect).
+ *   - When the active namespace is Stellar, the dropdown additionally shows
+ *     non-zero PLUSD and sPLUSD balances (Issue #675).
  *
  * Disconnected state (neither namespace connected):
  *   - Renders a "Connect Wallet" `<Button>` that opens `ConnectWalletModal`
@@ -61,6 +68,21 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "history", label: "Activity", to: "/transactions" }, // 1497:94722
 ];
 
+/**
+ * Format an sPLUSD balance bigint (raw, 7-decimal scale) as a locale token
+ * count string, e.g. `"1,234.56"`.  Returns `undefined` when the balance is
+ * undefined or zero (zero-balance rows are hidden per Issue #675 resolution).
+ */
+function formatSplusdDisplay(raw: bigint | undefined): string | undefined {
+  if (raw === undefined || raw === 0n) return undefined;
+  const decimalStr = sacRawToDisplay(raw);
+  const num = Number(decimalStr);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
 export type TopBarProps = React.HTMLAttributes<HTMLElement>;
 
 export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
@@ -68,7 +90,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-    // ── Wallet state — all four hooks called unconditionally ──────────────
+    // ── Wallet state — all hooks called unconditionally ───────────────────
     const evm = useEvmWallet();
     const { usdc: usdcAddress } = useDepositManagerAddresses();
     const evmToken = useEvmToken({
@@ -78,6 +100,32 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     });
     const stellar = useStellarWallet();
     const stellarToken = useStellarToken();
+
+    // ── Stellar PLUSD + sPLUSD (Issue #675) ──────────────────────────────
+    // Hooks are called unconditionally (rules-of-hooks); results are gated
+    // behind stellar.isConnected in the render section.
+    const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
+    const stellarPlusd = useStellarSacToken({
+      assetCode: "PLUSD",
+      assetIssuer: stellarAddresses?.plusdAsset.issuer ?? "",
+      contractId: stellarAddresses?.plusd ?? "",
+    });
+    const stellarSplusd = useStellarStakedPlusdBalance();
+
+    // Derive formatted display strings for the dropdown.
+    // PLUSD: formatted as "$X.XX" (1:1 with USD); hidden when no trustline or zero.
+    const plusdFormatted: string | undefined =
+      stellarPlusd.hasTrustline && stellarPlusd.balance != null
+        ? formatUsdcDisplay(stellarPlusd.balance)
+        : undefined;
+    // Zero-balance PLUSD rows are hidden per the Issue #675 resolution.
+    const plusdDisplay: string | undefined =
+      plusdFormatted === "$0.00" ? undefined : plusdFormatted;
+
+    // sPLUSD: formatted as "X.XX" token count; hidden when zero or undefined.
+    const splusdDisplay: string | undefined = formatSplusdDisplay(
+      stellarSplusd.balance,
+    );
 
     // ── View selection ────────────────────────────────────────────────────
     const { kind, setKind } = useWalletView();
@@ -225,6 +273,16 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
                   onKindChange={setKind}
                   address={activeAddress}
                   formattedBalance={activeFormattedBalance}
+                  stellarPlusdBalance={
+                    kind === "stellar" && stellar.isConnected
+                      ? plusdDisplay
+                      : undefined
+                  }
+                  stellarSplusdBalance={
+                    kind === "stellar" && stellar.isConnected
+                      ? splusdDisplay
+                      : undefined
+                  }
                   onConnect={kind === "evm" ? evm.connect : stellar.connect}
                   onClose={() => setDropdownOpen(false)}
                   onDisconnect={() => {

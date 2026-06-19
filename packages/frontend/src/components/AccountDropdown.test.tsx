@@ -60,6 +60,40 @@ vi.mock("@/wallet/stellar/useStellarWallet", () => ({
 
 vi.mock("@/wallet/stellar/useStellarToken", () => ({
   useStellarToken: () => ({ ...mockStellarTokenState }),
+  formatUsdcDisplay: (s: string) => `$${s}`,
+}));
+
+// Mock the new Stellar balance hooks added in Issue #675.
+vi.mock("@/wallet/stellar/useStellarDepositManagerAddresses", () => ({
+  useStellarDepositManagerAddresses: () => ({
+    addresses: undefined,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/wallet/stellar/useStellarSacToken", () => ({
+  useStellarSacToken: () => ({
+    balance: undefined,
+    hasTrustline: false,
+    isAuthorized: false,
+    decimals: 7,
+    refetchBalance: vi.fn(),
+    isLoading: false,
+    error: null,
+  }),
+  sacRawToDisplay: (raw: bigint) => String(Number(raw) / 1e7),
+  SAC_DECIMALS: 7,
+  sacDisplayToRaw: (s: string) => BigInt(Math.round(Number(s) * 1e7)),
+}));
+
+vi.mock("@/wallet/stellar/useStellarStakedPlusd", () => ({
+  useStellarStakedPlusdBalance: () => ({
+    balance: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 // StellarWalletProvider uses ./config, mock that too.

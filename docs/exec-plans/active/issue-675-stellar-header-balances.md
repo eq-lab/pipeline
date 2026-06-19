@@ -112,50 +112,30 @@ Out of scope (unless the Open Questions resolution says otherwise):
 > `AccountDropdown.tsx` instead of the header right slot (the data wiring in step 2 is
 > unchanged either way).
 
-1. **Widen `WalletPill` to accept `splusd`.**
-   - `packages/ui/src/components/WalletPill/WalletPill.tsx`: change the `token` prop type
-     from `"usdc" | "plusd"` to `"usdc" | "plusd" | "splusd"`. The component already
-     forwards `token` straight to `CoinIcon`, which already handles `splusd`, so no other
-     change is needed inside the component.
-   - Update the doc comment to mention the third token.
+1. [x] **Widen `WalletPill` to accept `splusd`.**
+   - `packages/ui/src/components/WalletPill/WalletPill.tsx`: changed `token` prop from `"usdc" | "plusd"` to `"usdc" | "plusd" | "splusd"`.
+   - Updated doc comment to list all three tokens.
 
-2. **Wire the PLUSD + sPLUSD reads in `TopBar.tsx`.**
-   - `packages/frontend/src/components/TopBar.tsx`: add unconditional hook calls near the
-     existing wallet hooks (after `const stellarToken = useStellarToken();`):
-     - `const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();`
-       (import from `@/wallet`).
-     - `const stellarPlusd = useStellarSacToken({ assetCode: "PLUSD", assetIssuer: stellarAddresses?.plusdAsset.issuer ?? "", contractId: stellarAddresses?.plusd ?? "" });`
-     - `const stellarSplusd = useStellarStakedPlusdBalance();`
-   - Derive formatted display strings (import `formatUsdcDisplay` from
-     `@/wallet`/`useStellarToken` and `sacRawToDisplay` from `@/wallet`/`useStellarSacToken`,
-     plus the `formatBigintNumber` helper used by `StakeCard`):
-     - `plusdFormatted = stellarPlusd.balance != null ? formatUsdcDisplay(stellarPlusd.balance) : "—"`
-     - `splusdFormatted = stellarSplusd.balance != null ? \`${formatBigintNumber(sacRawToDisplay-derived value)} sPLUSD\` : "—"`
-       (decide the exact helper: `sacRawToDisplay` yields a decimal string; format it for
-       grouping/precision consistent with `StakeCard`).
-   - Confirm `useStellarSacToken`, `useStellarStakedPlusdBalance`,
-     `useStellarDepositManagerAddresses`, `sacRawToDisplay`, and `formatUsdcDisplay` are all
-     exported from `@/wallet` (`packages/frontend/src/wallet/index.ts` — they are, per
-     current exports) and add any missing import.
+2. [x] **Wire the PLUSD + sPLUSD reads in `TopBar.tsx`.**
+   - Added `useStellarDepositManagerAddresses`, `useStellarSacToken`, `useStellarStakedPlusdBalance` unconditional hook calls.
+   - Added `formatUsdcDisplay` export to `packages/frontend/src/wallet/index.ts` (was missing).
+   - Derive `plusdDisplay` (formatted as `$X.XX`, hidden when `$0.00` or no trustline) and `splusdDisplay` (token count `X.XX`, hidden when zero).
 
-3. **Render the Stellar balances (header path — per resolved layout).**
-   - In the connected (`anyConnected`) desktop right slot, when the active namespace is
-     Stellar (`kind === "stellar"` and `stellar.isConnected`), render the additional
-     PLUSD and sPLUSD pills/rows alongside the existing USDC pill, using
-     `<WalletPill token="plusd" balance={plusdFormatted} />` and
-     `<WalletPill token="splusd" balance={splusdFormatted} />`.
-   - The EVM path is unchanged (single USDC pill).
-   - Adjust the right-slot container width/layout per the resolved design (the current
-     `w-40` fixed width will need to change for a side-by-side three-pill layout).
+3. [x] **Render the Stellar balances (dropdown path — per resolved layout Q1).**
+   - Layout decision: PLUSD + sPLUSD go in `AccountDropdown`, not the header. Single USDC pill stays in the header (unchanged).
+   - Added `stellarPlusdBalance?: string` and `stellarSplusdBalance?: string` props to `AccountDropdownProps`.
+   - Rendered conditional rows for PLUSD (`topbar-plusd-balance-row`) and sPLUSD (`topbar-splusd-balance-row`) using `CoinIcon` at `lg` size.
+   - Rows are hidden when props are `undefined` (zero balance / no trustline).
 
-4. **Mobile treatment.**
-   - Apply the resolved layout to the mobile surface (`MobileNavMenu.tsx`, which already
-     receives `formattedBalance` and renders connected wallet info). Pass the PLUSD/sPLUSD
-     formatted strings through and render them per the design decision.
+4. [x] **Mobile treatment.**
+   - No mobile change needed: PLUSD/sPLUSD show in `AccountDropdown` which is desktop-only; the `MobileNavMenu` is unchanged. This is consistent with the design (dropdown is the natural Stellar-specific extension).
 
-5. **Lint & typecheck.**
-   - Run the frontend typecheck/lint and `npx tsx scripts/lint-docs.ts` (per AGENTS.md
-     TypeScript rule). Fix all errors before completion.
+5. [x] **Lint & typecheck.**
+   - `npx tsx scripts/lint-docs.ts` — 0 errors.
+   - `npx tsc --noEmit` — 0 errors.
+   - `cargo clippy --all -- -D warnings` — clean.
+   - Frontend build (`npx vite build`) — succeeded.
+   - Unit tests — same 55 pre-existing failures, 1013 passing (no regressions).
 
 ## Test Strategy
 

@@ -38,6 +38,8 @@ const {
   mockStellarDisconnect2,
   mockStellarWalletState,
   mockStellarTokenState,
+  mockStellarPlusdState,
+  mockStellarSplusdState,
 } = vi.hoisted(() => ({
   mockStellarConnect: vi.fn(),
   mockStellarDisconnect2: vi.fn(),
@@ -51,6 +53,21 @@ const {
     refetchBalance: vi.fn(),
     isLoading: false,
     error: null,
+  },
+  mockStellarPlusdState: {
+    balance: undefined as string | undefined,
+    hasTrustline: false,
+    isAuthorized: false,
+    decimals: 7,
+    refetchBalance: vi.fn(),
+    isLoading: false,
+    error: null as Error | null,
+  },
+  mockStellarSplusdState: {
+    balance: undefined as bigint | undefined,
+    isLoading: false,
+    error: null as Error | null,
+    refetch: vi.fn(),
   },
 }));
 
@@ -67,6 +84,39 @@ vi.mock("@/wallet/stellar/useStellarWallet", () => ({
 
 vi.mock("@/wallet/stellar/useStellarToken", () => ({
   useStellarToken: () => ({ ...mockStellarTokenState }),
+  formatUsdcDisplay: (s: string) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(s)),
+}));
+
+// Mock the new Stellar balance hooks added in Issue #675.
+vi.mock("@/wallet/stellar/useStellarDepositManagerAddresses", () => ({
+  useStellarDepositManagerAddresses: () => ({
+    addresses: undefined,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/wallet/stellar/useStellarSacToken", () => ({
+  useStellarSacToken: () => ({ ...mockStellarPlusdState }),
+  sacRawToDisplay: (raw: bigint) => {
+    const factor = BigInt(10 ** 7);
+    const whole = raw / factor;
+    const frac = raw % factor;
+    const fracStr = String(frac).padStart(7, "0");
+    return `${whole}.${fracStr}`;
+  },
+  SAC_DECIMALS: 7,
+  sacDisplayToRaw: (s: string) => BigInt(Math.round(Number(s) * 1e7)),
+}));
+
+vi.mock("@/wallet/stellar/useStellarStakedPlusd", () => ({
+  useStellarStakedPlusdBalance: () => ({ ...mockStellarSplusdState }),
 }));
 
 vi.mock("@/wallet/stellar/config", () => ({
@@ -249,6 +299,16 @@ function setStellarConnected() {
   mockStellarTokenState.formattedBalance = "$2,000.00";
 }
 
+function setStellarPlusdBalance(balance: string) {
+  mockStellarPlusdState.balance = balance;
+  mockStellarPlusdState.hasTrustline = true;
+  mockStellarPlusdState.isAuthorized = true;
+}
+
+function setStellarSplusdBalance(rawBigint: bigint) {
+  mockStellarSplusdState.balance = rawBigint;
+}
+
 function clearMocks() {
   [
     "pipeline.mock.wallet.address",
@@ -262,6 +322,10 @@ function clearMocks() {
   mockStellarWalletState.isConnected = false;
   mockStellarTokenState.balance = undefined;
   mockStellarTokenState.formattedBalance = undefined;
+  mockStellarPlusdState.balance = undefined;
+  mockStellarPlusdState.hasTrustline = false;
+  mockStellarPlusdState.isAuthorized = false;
+  mockStellarSplusdState.balance = undefined;
 }
 
 // ── Tests: route-driven active nav ────────────────────────────────────────────
@@ -694,5 +758,150 @@ describe("TopBar — mobile responsive classes", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("mobile-nav-menu")).not.toBeInTheDocument(),
     );
+  });
+});
+
+// ── Tests: Stellar PLUSD + sPLUSD balance rows in AccountDropdown (Issue #675) ─
+
+describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("PLUSD balance row is NOT rendered when Stellar is disconnected", async () => {
+    const user = userEvent.setup();
+    setConnectedMock(); // EVM connected, Stellar disconnected
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$1,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    expect(
+      screen.queryByTestId("topbar-plusd-balance-row"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("topbar-splusd-balance-row"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("PLUSD balance row is NOT rendered when hasTrustline is false", async () => {
+    const user = userEvent.setup();
+    setStellarConnected();
+    // mockStellarPlusdState stays hasTrustline: false (default).
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    // Default namespace is EVM; switch to Stellar to see Stellar balances.
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("topbar-plusd-balance-row"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("PLUSD balance row renders when Stellar active and hasTrustline is true with non-zero balance", async () => {
+    const user = userEvent.setup();
+    setStellarConnected();
+    setStellarPlusdBalance("5000.0000000"); // ~$5,000.00
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    // Switch to Stellar namespace tab.
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("topbar-plusd-balance-row"),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("sPLUSD balance row renders when Stellar active and balance is non-zero", async () => {
+    const user = userEvent.setup();
+    setStellarConnected();
+    setStellarSplusdBalance(12345678900n); // 1234.5678900 sPLUSD at 7dp
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    // Switch to Stellar namespace tab.
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("topbar-splusd-balance-row"),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("sPLUSD balance row is NOT rendered when sPLUSD balance is zero", async () => {
+    const user = userEvent.setup();
+    setStellarConnected();
+    setStellarSplusdBalance(0n);
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Stellar" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("topbar-splusd-balance-row"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("EVM namespace shows no PLUSD or sPLUSD rows even when Stellar has non-zero balances", async () => {
+    const user = userEvent.setup();
+    setConnectedMock(); // EVM connected
+    setStellarConnected();
+    setStellarPlusdBalance("5000.0000000");
+    setStellarSplusdBalance(12345678900n);
+    renderTopBar("/");
+
+    const trigger = await screen.findByRole("button", { name: /\$1,000\.00|—/ });
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument(),
+    );
+
+    // EVM tab is active by default — no Stellar balance rows.
+    expect(
+      screen.queryByTestId("topbar-plusd-balance-row"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("topbar-splusd-balance-row"),
+    ).not.toBeInTheDocument();
   });
 });
