@@ -97,15 +97,22 @@ export interface StakeCardProps extends Omit<
    */
   mobileHomeState?: MobileHomeState;
   /**
-   * Mobile-only: sPLUSD share balance (raw bigint, 18 decimals).
+   * Mobile-only: sPLUSD share balance (raw bigint at `splusdDecimals` scale).
    * Displayed as the top number ("shares") in State C.
    */
   mobileSplusdShares?: bigint;
   /**
-   * Mobile-only: sPLUSD shares converted to PLUSD-equivalent (raw bigint, 18 dec).
-   * Displayed as the sub-line ("X.XX sPLUSD") in State C.
+   * Mobile-only: sPLUSD shares converted to PLUSD-equivalent (raw bigint at
+   * `splusdDecimals` scale). Displayed as the sub-line ("X.XX sPLUSD") in
+   * State C.
    */
   mobileSplusdInPlusd?: bigint;
+  /**
+   * Decimal precision of `mobileSplusdShares` and `mobileSplusdInPlusd`.
+   * Defaults to `18` (EVM). Pass `7` for Stellar SAC balances to avoid a
+   * ~1e11× scale error when formatting. (#688)
+   */
+  splusdDecimals?: number;
   /**
    * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
    * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
@@ -116,10 +123,16 @@ export interface StakeCardProps extends Omit<
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */
 const HEADING_ID_BASE = "stake-card-title";
 
-/** Format a bigint at 18 decimals to a locale number string (e.g. "1,000.00"). */
-function formatBigintNumber(value: bigint | undefined): string {
+/**
+ * Format a bigint to a locale number string (e.g. "1,000.00").
+ *
+ * @param value    - Raw bigint balance.
+ * @param decimals - Decimal precision of `value`. Defaults to `18` (EVM).
+ *                   Pass `7` for Stellar SAC balances (#688).
+ */
+function formatBigintNumber(value: bigint | undefined, decimals = 18): string {
   if (value === undefined) return "0.00";
-  const asFloat = parseFloat(formatUnits(value, 18));
+  const asFloat = parseFloat(formatUnits(value, decimals));
   return new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -135,6 +148,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       mobileHomeState,
       mobileSplusdShares,
       mobileSplusdInPlusd,
+      splusdDecimals = 18,
       ...rest
     },
     ref,
@@ -163,8 +177,14 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
 
     // State C: "Staked PLUSD" display with shares and PLUSD-equivalent.
     if (mobileHomeState === "splusd") {
-      const sharesFormatted = formatBigintNumber(mobileSplusdShares);
-      const inPlusdFormatted = formatBigintNumber(mobileSplusdInPlusd);
+      const sharesFormatted = formatBigintNumber(
+        mobileSplusdShares,
+        splusdDecimals,
+      );
+      const inPlusdFormatted = formatBigintNumber(
+        mobileSplusdInPlusd,
+        splusdDecimals,
+      );
 
       return (
         <Card

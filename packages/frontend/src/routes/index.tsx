@@ -8,6 +8,13 @@ import {
   useStellarWallet,
   useWalletView,
   useConnectModal,
+  useStellarDepositManagerAddresses,
+  useStellarSacToken,
+  useStellarStakedPlusdBalance,
+  useStellarUnstakeConvertToAssets,
+  SAC_DECIMALS,
+  sacDisplayToRaw,
+  formatUsdcDisplay,
 } from "@/wallet";
 import {
   useStakedPlusdAsset,
@@ -67,12 +74,11 @@ import { QnaSection } from "@/components/QnaSection";
  *   When `isConnected === false`, renders `ConnectWalletPromoCard` with an
  *   `onConnect` prop wired to `useWallet().connect()` so the home CTA opens
  *   the same AppKit modal as the header (see #224, #250).
- *   When `isConnected === true`, renders `PortfolioPlaceholderCard` — a static
- *   connected-state placeholder ($0.00, segmented tabs, chart silhouette)
- *   that keeps the grid from reflowing while real data wiring is deferred.
- *   Note: a Stellar-only session will see the connected layout with $0.00
- *   Total Balance — balance hooks remain EVM-sourced in this issue. Stellar
- *   balance wiring is deferred to a follow-up sub-issue of epic #463.
+ *   When `isConnected === true`, renders `PortfolioPlaceholderCard` — a
+ *   portfolio summary card sourcing balances from the active chain (EVM via
+ *   `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`)
+ *   so a Stellar-only session sees real PLUSD/sPLUSD totals. Fixed in #688.
+ *   Chart history remains a placeholder pending further wiring.
  *
  * Token discipline: this composer adds no raw colors, fonts, sizes or radii.
  * Every value comes from `@pipeline/ui/styles/theme.css` via component
@@ -84,12 +90,16 @@ import { QnaSection } from "@/components/QnaSection";
  */
 
 /**
- * Derives a human-readable USD string from a bigint balance at 18-decimal
- * precision. Returns `"$0.00"` when the value is `undefined` or `0n`.
+ * Derives a human-readable USD string from a bigint balance.
+ *
+ * @param value   - Raw bigint balance. Returns `"$0.00"` when `undefined` or `0n`.
+ * @param decimals - Decimal precision of `value`. Defaults to `18` (EVM) to
+ *                   preserve all existing call sites unchanged. Pass `SAC_DECIMALS`
+ *                   (7) for Stellar balances to avoid the 18-decimal mis-scale.
  */
-function formatBigintUSD(value: bigint | undefined): string {
+function formatBigintUSD(value: bigint | undefined, decimals = 18): string {
   if (value === undefined || value === 0n) return "$0.00";
-  const asFloat = parseFloat(formatUnits(value, 18));
+  const asFloat = parseFloat(formatUnits(value, decimals));
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -127,51 +137,109 @@ function Home() {
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
-  const isConnected = kind === "stellar" ? stellar.isConnected : evm.isConnected;
+  const isConnected =
+    kind === "stellar" ? stellar.isConnected : evm.isConnected;
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
 
-  // Read the connected wallet's PLUSD balance to gate the Stake CTA.
-  // NOTE: These balance hooks are EVM-sourced only. A Stellar-only session will
-  // see $0.00 Total Balance and a disabled Stake CTA — this is intentional for
-  // this issue (fixes #684). Stellar balance wiring is deferred to a follow-up
-  // sub-issue of epic #463.
+  // ── EVM balance reads — called unconditionally (Rules of Hooks) ────────────
+  // Balances are sourced from the active chain; EVM values are selected when
+  // kind !== "stellar". These calls mirror the pattern in useStakeFlow.ts
+  // and useDepositFlow.ts (hooks always mounted, result gated in derivation).
+  // Fixed in #688: balance hooks are now chain-aware. (#684 fixed isConnected.)
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-  const { balance: plusdBalance, formattedBalance: plusdFormatted } =
+  const { balance: evmPlusdBalance, formattedBalance: evmPlusdFormatted } =
     useEvmToken({
       token: plusdAddress ?? ZERO_ADDRESS,
     });
 
   // Read the sPLUSD ERC-20 share balance for the mobile home state.
   // The sPLUSD vault IS the ERC-20 token for shares; use its address directly.
-  const { balance: splusdBalance } = useEvmToken({
+  const { balance: evmSplusdBalance } = useEvmToken({
     token: ENV.STAKED_PLUSD_ADDRESS,
   });
 
-  // Convert sPLUSD shares → PLUSD-equivalent for Total Balance (State C).
-  const { data: splusdInPlusd } = useStakedPlusdConvertToAssets(splusdBalance);
+  // Convert EVM sPLUSD shares → PLUSD-equivalent for Total Balance (State C).
+  const { data: evmSplusdInPlusd } =
+    useStakedPlusdConvertToAssets(evmSplusdBalance);
 
-  // Total Balance = PLUSD balance + sPLUSD converted to PLUSD.
+  // ── Stellar balance reads — called unconditionally (Rules of Hooks) ────────
+  // Mirrors TopBar.tsx lines 104-128 and useStakeFlow.ts lines 242-258.
+  const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
+  const stellarPlusd = useStellarSacToken({
+    assetCode: "PLUSD",
+    assetIssuer: stellarAddresses?.plusdAsset.issuer ?? "",
+    contractId: stellarAddresses?.plusd ?? "",
+  });
+  const stellarSplusd = useStellarStakedPlusdBalance();
+
+  // sPLUSD raw share balance (7-decimal bigint or undefined).
+  const stellarSplusdShares = stellarSplusd.balance;
+
+  // Convert Stellar sPLUSD shares → PLUSD-equivalent (7-decimal bigint).
+  const { data: stellarSplusdInPlusd } =
+    useStellarUnstakeConvertToAssets(stellarSplusdShares);
+
+  // Stellar PLUSD raw balance: convert the Horizon decimal string to a
+  // 7-decimal bigint, guarded by try/catch (mirrors useStakeFlow.ts lines 382-391).
+  // No trustline → treat as undefined (same as zero / not held).
+  let stellarPlusdBalance: bigint | undefined;
+  if (stellarPlusd.hasTrustline && stellarPlusd.balance != null) {
+    try {
+      stellarPlusdBalance = sacDisplayToRaw(stellarPlusd.balance);
+    } catch {
+      stellarPlusdBalance = undefined;
+    }
+  }
+
+  // ── Active-chain selection (after all hooks, before JSX) ──────────────────
+  // Select the active chain's balance values and decimal scale.
+  const isStellar = kind === "stellar";
+
+  // Raw bigints at the active chain's scale.
+  const plusdBalanceActive = isStellar ? stellarPlusdBalance : evmPlusdBalance;
+  const splusdSharesActive = isStellar ? stellarSplusdShares : evmSplusdBalance;
+  const splusdInPlusdActive = isStellar
+    ? stellarSplusdInPlusd
+    : evmSplusdInPlusd;
+
+  // Decimal count for the active chain (used by formatBigintUSD and StakeCard).
+  const activeDecimals = isStellar ? SAC_DECIMALS : 18;
+
+  // Formatted PLUSD display string passed to StartHereCard's `mobilePlusdBalance`
+  // prop. EVM: use the `formattedBalance` from useEvmToken (already "$X.XX").
+  // Stellar: format the Horizon decimal string through formatUsdcDisplay
+  //   (returns "$X.XX" — same shape as the EVM formatted string).
+  const plusdFormattedActive: string | undefined = isStellar
+    ? stellarPlusd.hasTrustline && stellarPlusd.balance != null
+      ? formatUsdcDisplay(stellarPlusd.balance)
+      : undefined
+    : evmPlusdFormatted;
+
+  // ── Total Balance ──────────────────────────────────────────────────────────
+  // Total Balance = PLUSD balance + sPLUSD converted to PLUSD, at active scale.
   const totalBalanceBigint: bigint | undefined =
-    plusdBalance !== undefined || splusdInPlusd !== undefined
-      ? (plusdBalance ?? 0n) + (splusdInPlusd ?? 0n)
+    plusdBalanceActive !== undefined || splusdInPlusdActive !== undefined
+      ? (plusdBalanceActive ?? 0n) + (splusdInPlusdActive ?? 0n)
       : undefined;
 
   const totalBalanceFormatted = isConnected
-    ? formatBigintUSD(totalBalanceBigint)
+    ? formatBigintUSD(totalBalanceBigint, activeDecimals)
     : "$0.00";
 
-  // Derive mobile home state (only when connected).
+  // ── Mobile home state ──────────────────────────────────────────────────────
+  // deriveMobileHomeState only compares > 0n so it is scale-agnostic.
   const mobileHomeState: MobileHomeState = isConnected
-    ? deriveMobileHomeState(plusdBalance, splusdBalance)
+    ? deriveMobileHomeState(plusdBalanceActive, splusdSharesActive)
     : "empty";
 
   // Disable Stake only when connected with zero or undefined PLUSD balance.
   // When disconnected the CTA stays enabled so the user can navigate to /stake.
   const stakeDisabled =
-    isConnected && (plusdBalance === undefined || plusdBalance === 0n);
+    isConnected &&
+    (plusdBalanceActive === undefined || plusdBalanceActive === 0n);
 
   const onBuy = () =>
     navigate({ to: "/deposit", search: { direction: "deposit" } });
@@ -243,7 +311,7 @@ function Home() {
                 onBuy={onBuy}
                 onSell={onSell}
                 mobileHomeState={isConnected ? mobileHomeState : "empty"}
-                mobilePlusdBalance={plusdFormatted}
+                mobilePlusdBalance={plusdFormattedActive}
                 data-testid="home-start-here-card"
               />
               <EarnedCard
@@ -261,8 +329,9 @@ function Home() {
               onStake={onStake}
               stakeDisabled={stakeDisabled}
               mobileHomeState={isConnected ? mobileHomeState : undefined}
-              mobileSplusdShares={splusdBalance}
-              mobileSplusdInPlusd={splusdInPlusd}
+              mobileSplusdShares={splusdSharesActive}
+              mobileSplusdInPlusd={splusdInPlusdActive}
+              splusdDecimals={activeDecimals}
               data-testid="home-stake-card"
             />
           </div>
