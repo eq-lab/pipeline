@@ -62,19 +62,18 @@ Out of scope:
 
 ## Open Questions
 
-- During the brief window where the protocol-addresses resolver is still loading
-  (so the token balance query is disabled and `isLoading` is `false` while
-  `balance` is still `undefined`), should the bottom block also be hidden? The
-  issue scopes the fix to "balance query pending OR requests/API query pending";
-  this plan implements exactly that. If the product wants the block hidden until
-  `balance !== undefined` as well, the guard should additionally OR in
-  `flow.balance === undefined && flow.isConnected`. Defaulting to the issue's
-  literal wording (balance/requests `isLoading` only) unless told otherwise.
-- Visual treatment of the pending state: the issue says "Render nothing (or a
-  neutral skeleton/loader)". This plan renders a minimal neutral placeholder
-  (an empty `data-testid="deposit-loading"` container) rather than a designed
-  skeleton, since no Figma node is referenced for a loading state. Confirm whether
-  a designed skeleton is required.
+_Resolved by the issue owner ([comment](https://github.com/eq-lab/pipeline/issues/656#issuecomment-4750332237))._
+
+- **Addresses-resolver window — RESOLVED: yes, cover it.** `isDataPending` must
+  ALSO be `true` while the wallet is connected but the balance is still unknown,
+  i.e. OR in `isConnected && balance === undefined` in addition to the
+  balance/requests `isLoading` signals. This hides the block during the brief
+  window where the token balance query is disabled (addresses resolver still
+  loading) so `isLoading` is `false` while `balance` is `undefined`. See updated
+  steps 5 and 6.
+- **Visual treatment — RESOLVED: render nothing.** The pending state renders
+  nothing — the guard returns `null` (no visible placeholder, no designed
+  skeleton). See updated step 7.
 
 ## Implementation Steps
 
@@ -99,24 +98,31 @@ Out of scope:
    `isDataPending: boolean;`
 
 5. **Compute and return `isDataPending` on the EVM path** (the `if (!isStellar)`
-   return object, ~line 773). Select the balance-loading flag by direction:
-   `const evmIsDataPending = (isDeposit ? isEvmDepositBalanceLoading : isEvmWithdrawBalanceLoading) || requestsLoading;`
-   and add `isDataPending: evmIsDataPending,` to the returned object.
+   return object, ~line 773). Select the balance-loading flag by direction and
+   ALSO treat a connected-but-unknown balance as pending (resolved Open Question 1):
+   `const evmActiveBalance = isDeposit ? evmDepositBalance : evmWithdrawBalance;`
+   `const evmIsDataPending = (isDeposit ? isEvmDepositBalanceLoading : isEvmWithdrawBalanceLoading) || requestsLoading || (isConnected && evmActiveBalance === undefined);`
+   and add `isDataPending: evmIsDataPending,` to the returned object. (Use the
+   actual active-balance variable already selected on this path — match the
+   existing names; the point is the `isConnected && balance === undefined` OR-in.)
 
 6. **Compute and return `isDataPending` on the Stellar path** (the final return,
    ~line 1063):
-   `const stellarIsDataPending = (isDeposit ? usdcToken.isLoading : plusdSac.isLoading) || requestsLoading;`
-   and add `isDataPending: stellarIsDataPending,` to the returned object.
+   `const stellarActiveBalance = isDeposit ? stellarUsdcBalanceRaw : stellarPlusdBalanceRaw;`
+   `const stellarIsDataPending = (isDeposit ? usdcToken.isLoading : plusdSac.isLoading) || requestsLoading || (isConnected && stellarActiveBalance === undefined);`
+   and add `isDataPending: stellarIsDataPending,` to the returned object. (Match
+   the existing active-balance variable names on this path.)
 
 7. **`packages/frontend/src/routes/deposit.tsx` — add the leading guard.** In the
    bottom conditional that begins at line 451 (`{!flow.isConnected ? (...)`),
    insert a new branch immediately after the `!flow.isConnected` branch and before
-   the `isDeposit && flow.hasBalance === false` branch:
+   the `isDeposit && flow.hasBalance === false` branch. Per resolved Open Question
+   2, the pending state renders **nothing** (`null`):
 
    ```tsx
    ) : flow.isDataPending ? (
-     /* Chain data / requests API still loading — hide actions, render neutral placeholder. */
-     <div data-testid="deposit-loading" aria-busy="true" />
+     /* Chain data / requests API still loading — render nothing until resolved. */
+     null
    ) : isDeposit && flow.hasBalance === false ? (
    ```
 
@@ -135,14 +141,18 @@ Extend `packages/frontend/src/routes/-deposit.test.tsx`:
   Refactor it to read from a mutable `let mockRequestsLoading = false;` so a test
   can flip it to `true`.
 - The wagmi `mockUseReadContract` already defaults `isLoading: false`; add a test
-  that overrides the balance read to `isLoading: true` (or flips `mockRequestsLoading`)
-  and asserts:
-  - `deposit-loading` placeholder is present.
+  that overrides the balance read to `isLoading: true` (or flips `mockRequestsLoading`,
+  or leaves the connected balance `undefined`) and asserts — since the pending
+  state renders **nothing** (`null`), assert on absence only:
   - `deposit-steps-card` / `withdraw-steps-card` is NOT in the document.
   - `low-balance-banner` is NOT in the document.
+  - `connect-wallet-banner` is NOT in the document (wallet is connected).
+- Add a connected-but-unknown-balance case (resolved Open Question 1): balance read
+  `isLoading: false` but the balance value `undefined` while connected → still
+  hidden (none of the above blocks render).
 - Add the symmetric "data resolved" assertion: with `isLoading: false` and seeded
-  balance/requests mocks, the StepsCard renders and `deposit-loading` is absent
-  (guards against regression / over-hiding).
+  balance/requests mocks, the StepsCard renders again (guards against regression /
+  over-hiding).
 - Cover both directions (set `mockDirection`) and both chains (EVM via mock keys;
   Stellar via the `pipeline.mock.wallet.stellar.*` keys + `useWalletView` kind),
   at least: EVM deposit pending, EVM withdraw pending, Stellar deposit pending.
