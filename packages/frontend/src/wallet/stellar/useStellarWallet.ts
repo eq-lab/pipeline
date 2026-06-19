@@ -4,6 +4,12 @@
  * Returns `{ address, isConnected, connect, disconnect }` backed by the
  * @creit.tech/stellar-wallets-kit v2.x singleton SDK API.
  *
+ * Connection state is shared across all `useStellarWallet()` consumers via a
+ * module-level external store (`connectionStore.ts`). Connecting or
+ * disconnecting in any component immediately propagates to every other consumer
+ * without a page reload. This mirrors how wagmi maintains a single shared store
+ * for EVM wallet state.
+ *
  * Mock layer: when `pipeline.mock.wallet.stellar.address` is set in localStorage,
  * `connect()` and `disconnect()` are no-ops (dev affordance, gate is bypassed).
  *
@@ -11,7 +17,7 @@
  * `FirstConnectionModal` instance as EVM) before calling `StellarWalletsKit.authModal()`.
  * When the user has already acknowledged (any chain), `authModal()` is called directly.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect } from "react";
 import {
   StellarWalletsKit,
   LOBSTR_ID,
@@ -25,6 +31,12 @@ import { networkPassphrase } from "./chain";
 import { useMockStellarAddress, useMockStellarIsConnected } from "./mock";
 import { readTermsAcknowledged } from "../useTermsAcknowledgement";
 import { useWalletGate } from "../WalletGateContext";
+import {
+  useStellarConnectionAddress,
+  setStellarConnectionAddress,
+  isStellarConnectionHydrated,
+  markStellarConnectionHydrated,
+} from "./connectionStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -77,31 +89,31 @@ export interface StellarWalletState {
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useStellarWallet(): StellarWalletState {
-  const [realAddress, setRealAddress] = useState<string | undefined>(undefined);
-  const unmountedRef = useRef(false);
+  // Read from the shared module-level store — reactive across all consumers.
+  const realAddress = useStellarConnectionAddress();
 
   const mockAddress = useMockStellarAddress();
   const mockIsConnected = useMockStellarIsConnected();
   const { openGate } = useWalletGate();
 
   // On mount, try to read the last-known address from kit memory.
-  // The kit persists the last connected wallet/address, so on page reload a
-  // returning user can skip the picker if they are still connected.
+  // Guarded by a module-level `hydrated` flag so only one instance fires
+  // `getAddress()` per page lifetime (the store is shared; subsequent mounts
+  // already have the address in the store).
   useEffect(() => {
-    unmountedRef.current = false;
+    if (isStellarConnectionHydrated()) return;
+    markStellarConnectionHydrated();
+
     void (async () => {
       try {
         const { address } = await StellarWalletsKit.getAddress();
-        if (!unmountedRef.current && address) {
-          setRealAddress(address);
+        if (address) {
+          setStellarConnectionAddress(address);
         }
       } catch {
         // No prior connection — leave address undefined.
       }
     })();
-    return () => {
-      unmountedRef.current = true;
-    };
   }, []);
 
   // Resolved values — mock wins over real (same precedence as EVM).
@@ -115,14 +127,12 @@ export function useStellarWallet(): StellarWalletState {
 
   /**
    * The actual kit connect flow. Opens the picker modal, waits for the user to
-   * select a wallet, and stores the returned public key.
+   * select a wallet, and stores the returned public key in the shared store.
    */
   const runConnect = useCallback(async () => {
     try {
       const { address: newAddress } = await StellarWalletsKit.authModal();
-      if (!unmountedRef.current) {
-        setRealAddress(newAddress);
-      }
+      setStellarConnectionAddress(newAddress);
     } catch {
       // User dismissed the picker or the kit rejected — leave state unchanged.
     }
@@ -152,7 +162,7 @@ export function useStellarWallet(): StellarWalletState {
       );
       return;
     }
-    setRealAddress(undefined);
+    setStellarConnectionAddress(undefined);
     void StellarWalletsKit.disconnect();
   }, [mockAddress]);
 
@@ -204,7 +214,8 @@ export interface UseStellarConnectorsResult {
    *
    * - When a mock address is set: no-op (dev affordance).
    * - Otherwise: calls `StellarWalletsKit.setWallet(id)` then
-   *   `StellarWalletsKit.fetchAddress()` and stores the returned address.
+   *   `StellarWalletsKit.fetchAddress()` and stores the returned address in the
+   *   shared connection store so ALL `useStellarWallet()` consumers update.
    *
    * If the wallet is not installed/available, the kit will throw; callers
    * should handle errors (e.g. open the wallet's website in a new tab).
@@ -217,16 +228,7 @@ export interface UseStellarConnectorsResult {
 }
 
 export function useStellarConnectors(): UseStellarConnectorsResult {
-  const [, setRealAddress] = useState<string | undefined>(undefined);
-  const unmountedRef = useRef(false);
   const mockAddress = useMockStellarAddress();
-
-  useEffect(() => {
-    unmountedRef.current = false;
-    return () => {
-      unmountedRef.current = true;
-    };
-  }, []);
 
   const connectWallet = useCallback(
     async (walletId: string, onUnavailable?: () => void): Promise<void> => {
@@ -237,9 +239,8 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
       try {
         StellarWalletsKit.setWallet(walletId);
         const { address: newAddress } = await StellarWalletsKit.fetchAddress();
-        if (!unmountedRef.current) {
-          setRealAddress(newAddress);
-        }
+        // Update the shared store so ALL consumers see the new address.
+        setStellarConnectionAddress(newAddress);
       } catch {
         // Wallet unavailable — invoke callback so the caller can redirect.
         onUnavailable?.();
