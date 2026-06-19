@@ -11,6 +11,12 @@
  *   - `address`           — connected wallet address (or `undefined` when the
  *                           active namespace is not connected).
  *   - `formattedBalance`  — pre-formatted USDC balance string, e.g. `"$1,000.00"`.
+ *   - `stellarPlusdBalance` — pre-formatted PLUSD balance string (e.g. `"$5,000.00"`),
+ *                             only passed when Stellar is the active namespace and the
+ *                             balance is non-zero. Omit/`undefined` to hide the row.
+ *   - `stellarSplusdBalance` — sPLUSD token count string (e.g. `"1,234.56"`),
+ *                              only passed when Stellar is the active namespace and the
+ *                              balance is non-zero. Omit/`undefined` to hide the row.
  *   - `onConnect`         — called when the user clicks the "Connect {namespace}"
  *                           affordance in the not-connected state.
  *   - `onClose`           — called when the panel should be dismissed.
@@ -281,6 +287,18 @@ export interface AccountDropdownProps {
    */
   formattedBalance: string | undefined;
   /**
+   * Pre-formatted PLUSD balance string (e.g. `"$5,000.00"`).
+   * Only provided when Stellar is active and balance is non-zero.
+   * `undefined` hides the PLUSD row (Issue #675: zero/no-trustline rows hidden).
+   */
+  stellarPlusdBalance?: string;
+  /**
+   * sPLUSD token count string (e.g. `"1,234.56"`).
+   * Only provided when Stellar is active and balance is non-zero.
+   * `undefined` hides the sPLUSD row (Issue #675: zero/no-trustline rows hidden).
+   */
+  stellarSplusdBalance?: string;
+  /**
    * Called when the user clicks the "Connect {namespace}" affordance in the
    * not-connected state.
    */
@@ -294,6 +312,8 @@ export function AccountDropdown({
   onKindChange,
   address,
   formattedBalance,
+  stellarPlusdBalance,
+  stellarSplusdBalance,
   onConnect,
   onClose,
   onDisconnect,
@@ -399,6 +419,46 @@ export function AccountDropdown({
               <span className={bodyClasses}>{formattedBalance ?? "—"}</span>
             </div>
           </div>
+
+          {/* PLUSD balance row — Stellar only, hidden when zero or no trustline */}
+          {stellarPlusdBalance !== undefined && (
+            <>
+              <div className={dividerClasses} />
+              <div
+                className={walletRowClasses}
+                role="group"
+                aria-label="PLUSD balance"
+                data-testid="topbar-plusd-balance-row"
+              >
+                <CoinIcon token="plusd" size="lg" aria-hidden />
+
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className={captionClasses}>PLUSD balance</span>
+                  <span className={bodyClasses}>{stellarPlusdBalance}</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* sPLUSD balance row — Stellar only, hidden when zero */}
+          {stellarSplusdBalance !== undefined && (
+            <>
+              <div className={dividerClasses} />
+              <div
+                className={walletRowClasses}
+                role="group"
+                aria-label="sPLUSD balance"
+                data-testid="topbar-splusd-balance-row"
+              >
+                <CoinIcon token="splusd" size="lg" aria-hidden />
+
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className={captionClasses}>sPLUSD balance</span>
+                  <span className={bodyClasses}>{stellarSplusdBalance}</span>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className={dividerClasses} />
 

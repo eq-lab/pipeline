@@ -96,7 +96,7 @@ export type {
   UseStellarConnectorsResult,
   SorobanWalletId,
 } from "./stellar/useStellarWallet";
-export { useStellarToken } from "./stellar/useStellarToken";
+export { useStellarToken, formatUsdcDisplay } from "./stellar/useStellarToken";
 export type { UseStellarTokenResult } from "./stellar/useStellarToken";
 export {
   useStellarSacToken,

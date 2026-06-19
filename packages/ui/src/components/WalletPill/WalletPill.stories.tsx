@@ -16,7 +16,7 @@ const meta = {
     },
   },
   argTypes: {
-    token: { control: "select", options: ["usdc", "plusd"] },
+    token: { control: "select", options: ["usdc", "plusd", "splusd"] },
     balance: { control: "text" },
   },
   args: {
@@ -43,6 +43,15 @@ export const Default: Story = {
 export const PLUSD: Story = {
   name: "PLUS-D token",
   args: { token: "plusd", balance: "$10,000.00" },
+};
+
+/* -------------------------------------------------------------------------- */
+/*  sPLUSD token (Issue #675)                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const SPLUSD: Story = {
+  name: "sPLUSD token",
+  args: { token: "splusd", balance: "1,234.56" },
 };
 
 /* -------------------------------------------------------------------------- */

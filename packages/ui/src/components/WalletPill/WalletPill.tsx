@@ -17,11 +17,13 @@ import { CoinIcon } from "../CoinIcon/CoinIcon";
  *   - `--radius-pipeline-pill`     — full-round ends
  *   - Border: `rgba(56 55 53 / 0.18)` (border-test/secondary)
  *   - Height 48 px / px-3 — same bar height as other header buttons
+ *
+ * Supported tokens: `"usdc"`, `"plusd"`, `"splusd"`.
  */
 
 export interface WalletPillProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which coin token to display the icon for. */
-  token: "usdc" | "plusd";
+  token: "usdc" | "plusd" | "splusd";
   /**
    * Pre-formatted balance string shown next to the coin icon,
    * e.g. `"$10,000.00"`.
