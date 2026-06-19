@@ -447,7 +447,7 @@ function Deposit() {
           onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
         />
 
-        {/* Conditional: disconnected banner, unreachable-contract banner, low-balance banner, OR three-step card */}
+        {/* Conditional: disconnected banner, data-pending (null), low-balance banner, OR three-step card */}
         {!flow.isConnected ? (
           /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
@@ -471,7 +471,7 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : isStellar &&
+        ) : flow.isDataPending /* Chain data / requests API still loading — render nothing until resolved. */ ? null : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
           flow.hasBalance === false ? (
