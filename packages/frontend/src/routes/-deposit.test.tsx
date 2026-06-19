@@ -2304,6 +2304,32 @@ describe("Deposit page — isDataPending: EVM deposit pending (requestsLoading)"
       expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
     });
   });
+
+  it("StepsCard stays mounted on a background refetch after first load (no re-hide flicker)", async () => {
+    // First load: resolve data so the bottom section (steps card) appears.
+    mockRequestsLoading = false;
+    mockRequestsData = { requests: [] };
+    const { rerender } = renderDeposit();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
+    });
+
+    // Simulate a background refetch — chain data / requests go pending again.
+    mockRequestsLoading = true;
+    const DepositPage = Route.options.component as React.ComponentType;
+    rerender(
+      <EvmWalletProvider>
+        <ToastProvider>
+          <DepositPage />
+        </ToastProvider>
+      </EvmWalletProvider>,
+    );
+
+    // The section must NOT be re-hidden: the loading gate only applies to the
+    // first page load, so the steps card stays mounted (no flicker).
+    expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
+  });
 });
 
 describe("Deposit page — isDataPending: EVM withdraw pending (requestsLoading)", () => {

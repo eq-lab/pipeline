@@ -124,6 +124,17 @@ function Deposit() {
     dismissedDepositId,
   );
 
+  // Latch the first successful data load. The bottom section is hidden while
+  // chain/API data is still pending — but only on the *first* page load. Once
+  // data has resolved while connected, keep the section mounted through later
+  // background refetches; otherwise it re-hides on every refetch and flickers.
+  const hasLoadedDataRef = useRef(false);
+  if (flow.isConnected && !flow.isDataPending) {
+    hasLoadedDataRef.current = true;
+  }
+  // Render nothing only during the initial load, before data first resolves.
+  const isInitialDataLoad = flow.isDataPending && !hasLoadedDataRef.current;
+
   // ── "Make another deposit" — dismiss the completed deposit, reset the form ─
   const onMakeAnotherDeposit = useCallback(() => {
     setDismissedDepositId(flow.depositCompletedRequestId);
@@ -487,7 +498,7 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : flow.isDataPending /* Chain data / requests API still loading — render nothing until resolved. */ ? null : isStellar &&
+        ) : isInitialDataLoad /* First load only: chain data / requests API still loading — render nothing until first resolved (avoids re-hide flicker on background refetches). */ ? null : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
           flow.hasBalance === false &&
@@ -652,7 +663,7 @@ function Deposit() {
         {/* "Make another deposit" — shown once the latest deposit is claimed
             (Completed). Resets the form so a fresh deposit can be started. */}
         {flow.isConnected &&
-          !flow.isDataPending &&
+          !isInitialDataLoad &&
           flow.isDepositCompleted && (
             <Button
               data-testid="make-another-deposit"

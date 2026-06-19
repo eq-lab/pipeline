@@ -10,6 +10,13 @@ default step states before chain balance data and the requests API had resolved.
 This story covers the fix that hides the entire bottom actions block during this
 loading window.
 
+**Refinement (no-flicker):** the loading gate applies **only on the first page
+load**. Once chain/API data has resolved while connected, the bottom block stays
+mounted through later background refetches (React Query refetch on focus/interval,
+balance polling). Re-hiding on every refetch made the block flicker. Stories S1–S6
+describe the initial-load window (before data has ever resolved); S7 covers the
+post-first-load behavior.
+
 ## Actors
 
 - **Connected EVM user** — wallet connected, token balance query in-flight or just resolved.
@@ -68,3 +75,16 @@ token query is not yet enabled)
 **And** the StepsCard is absent (expected — disconnected)
 
 This ensures the disconnected branch evaluates before the `isDataPending` guard.
+
+### S7 — Bottom block stays mounted on a background refetch after first load
+
+**Given** the wallet is connected on EVM
+**And** chain/API data has already resolved once so the StepsCard
+(`data-testid="deposit-steps-card"`) is rendered
+**When** a background refetch puts chain data / the requests API back into a
+pending state (`isDataPending` becomes `true` again)
+**Then** the StepsCard remains rendered — it is **not** re-hidden
+**And** the bottom block does not flicker
+
+The loading gate is latched to the first successful data load, so it fires at most
+once per page visit.
