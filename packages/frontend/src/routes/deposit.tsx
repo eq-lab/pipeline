@@ -390,7 +390,7 @@ function Deposit() {
                   disabled:
                     !flow.isConnected || !flow.isReady || flow.isAmountLocked,
                   className: flow.isInputFaded
-                    ? "opacity-30 transition-opacity"
+                    ? "opacity-30 focus-within:opacity-100 transition-opacity"
                     : "transition-opacity",
                   quickAmounts: [
                     {
@@ -416,7 +416,7 @@ function Deposit() {
                   disabled:
                     !flow.isConnected || !flow.isReady || flow.isAmountLocked,
                   className: flow.isInputFaded
-                    ? "opacity-30 transition-opacity"
+                    ? "opacity-30 focus-within:opacity-100 transition-opacity"
                     : "transition-opacity",
                   quickAmounts: [
                     { label: "25%", disabled: flow.isAmountLocked },
