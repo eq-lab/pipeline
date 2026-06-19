@@ -240,6 +240,12 @@ function StatusTab(): React.JSX.Element {
       "0x0000000000000000000000000000000000000000";
   const isReplaceMe = ENV.WALLETCONNECT_PROJECT_ID === "replace-me";
 
+  // Stellar contract IDs default to the empty string, which short-circuits
+  // their respective hooks (mirrors the EVM zero-address semantics).
+  const stellarDmEmpty = ENV.STELLAR_DEPOSIT_MANAGER_ID === "";
+  const stellarWqEmpty = ENV.STELLAR_WITHDRAWAL_QUEUE_ID === "";
+  const stellarSplusdEmpty = ENV.STELLAR_STAKED_PLUSD_ID === "";
+
   return (
     <>
       {/* ── 1. Environment ────────────────────────────────────────────── */}
@@ -267,6 +273,71 @@ function StatusTab(): React.JSX.Element {
               {isReplaceMe && (
                 <span className="ml-2 text-[color:var(--color-pipeline-ink-muted)] opacity-60">
                   (replace-me placeholder)
+                </span>
+              )}
+            </>
+          }
+        />
+      </Section>
+
+      {/* ── 1b. Environment (Stellar) ─────────────────────────────────── */}
+      <Section title="Environment (Stellar)">
+        <KeyValueRow
+          label="STELLAR_NETWORK_PASSPHRASE"
+          value={ENV.STELLAR_NETWORK_PASSPHRASE}
+        />
+        <KeyValueRow label="STELLAR_CHAIN_ID" value={ENV.STELLAR_CHAIN_ID} />
+        <KeyValueRow
+          label="STELLAR_HORIZON_URL"
+          value={ENV.STELLAR_HORIZON_URL}
+        />
+        <KeyValueRow label="STELLAR_RPC_URL" value={ENV.STELLAR_RPC_URL} />
+        <KeyValueRow
+          label="STELLAR_BLEND_POOL_ID"
+          value={ENV.STELLAR_BLEND_POOL_ID}
+        />
+        <KeyValueRow
+          label="STELLAR_BLEND_USDC_ID"
+          value={ENV.STELLAR_BLEND_USDC_ID}
+        />
+        <KeyValueRow
+          label="STELLAR_BLEND_XLM_ID"
+          value={ENV.STELLAR_BLEND_XLM_ID}
+        />
+        <KeyValueRow
+          label="STELLAR_DEPOSIT_MANAGER_ID"
+          value={
+            <>
+              {ENV.STELLAR_DEPOSIT_MANAGER_ID}
+              {stellarDmEmpty && (
+                <span className="ml-2 text-[color:var(--color-pipeline-ink-muted)] opacity-60">
+                  (empty — Stellar DM hooks short-circuit)
+                </span>
+              )}
+            </>
+          }
+        />
+        <KeyValueRow
+          label="STELLAR_WITHDRAWAL_QUEUE_ID"
+          value={
+            <>
+              {ENV.STELLAR_WITHDRAWAL_QUEUE_ID}
+              {stellarWqEmpty && (
+                <span className="ml-2 text-[color:var(--color-pipeline-ink-muted)] opacity-60">
+                  (empty — Stellar WQ hooks short-circuit)
+                </span>
+              )}
+            </>
+          }
+        />
+        <KeyValueRow
+          label="STELLAR_STAKED_PLUSD_ID"
+          value={
+            <>
+              {ENV.STELLAR_STAKED_PLUSD_ID}
+              {stellarSplusdEmpty && (
+                <span className="ml-2 text-[color:var(--color-pipeline-ink-muted)] opacity-60">
+                  (empty — Stellar sPLUSD hooks short-circuit)
                 </span>
               )}
             </>

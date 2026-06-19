@@ -117,6 +117,19 @@ const mockEnv = vi.hoisted(() => ({
   DEPOSIT_MANAGER_ADDRESS:
     "0x0000000000000000000000000000000000000000" as `0x${string}`,
   WALLETCONNECT_PROJECT_ID: "replace-me",
+  STELLAR_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
+  STELLAR_CHAIN_ID: 99_000_001,
+  STELLAR_HORIZON_URL: "https://horizon-testnet.stellar.org",
+  STELLAR_RPC_URL: "https://soroban-testnet.stellar.org",
+  STELLAR_BLEND_POOL_ID:
+    "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+  STELLAR_BLEND_USDC_ID:
+    "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+  STELLAR_BLEND_XLM_ID:
+    "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  STELLAR_DEPOSIT_MANAGER_ID: "",
+  STELLAR_WITHDRAWAL_QUEUE_ID: "",
+  STELLAR_STAKED_PLUSD_ID: "",
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -187,6 +200,19 @@ describe("TestPage — default Status tab", () => {
   it("renders the Environment section heading on the Status tab", () => {
     renderTestPage("status");
     expect(screen.getByText("Environment")).toBeInTheDocument();
+  });
+
+  it("renders the Stellar Environment section with its values on the Status tab", () => {
+    renderTestPage("status");
+    expect(screen.getByText("Environment (Stellar)")).toBeInTheDocument();
+    expect(screen.getByText("STELLAR_NETWORK_PASSPHRASE")).toBeInTheDocument();
+    expect(
+      screen.getByText("Test SDF Network ; September 2015"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("STELLAR_HORIZON_URL")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://horizon-testnet.stellar.org"),
+    ).toBeInTheDocument();
   });
 
   it("renders all expected section headings on the Status tab", () => {
