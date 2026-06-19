@@ -48,9 +48,10 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const rootClasses = [
-  // items-start so the step badge and action button align to the top of the
-  // label when it wraps to two lines on mobile (402px viewport).
-  "flex items-start gap-3",
+  // items-center vertically centers the step badge, label, and action button
+  // within the row. When the label wraps to two lines the badge and button
+  // align to the mid-point of the label block, which matches the Figma intent.
+  "flex items-center gap-3",
   "w-full",
   "transition-opacity duration-150",
 ].join(" ");
