@@ -77,12 +77,15 @@ vi.mock("./useStellarDepositManagerAddresses", () => ({
   })),
 }));
 
+const { mockRefetchBalance } = vi.hoisted(() => ({
+  mockRefetchBalance: vi.fn(),
+}));
 vi.mock("./useStellarSacToken", () => ({
   useStellarSacToken: vi.fn(() => ({
     balance: "0.0000000",
     hasTrustline: false,
     decimals: 7,
-    refetchBalance: vi.fn(),
+    refetchBalance: mockRefetchBalance,
     isLoading: false,
     error: null,
   })),
@@ -510,6 +513,34 @@ describe("useChangeTrust", () => {
     expect(result.current.data?.hash).toBe("trust-hash");
     expect(result.current.needsTrustline).toBe(true);
     expect(result.current.error).toBeNull();
+    // #662: trustline status is refetched on success so the UI flips promptly.
+    expect(mockRefetchBalance).toHaveBeenCalled();
+  });
+
+  it("real path — SUCCESS refetches the trustline status (#662)", async () => {
+    mockLoadAccount.mockResolvedValue({
+      id: "GADDR",
+      sequence: "100",
+      accountId: () => "GADDR",
+      sequenceNumber: () => "100",
+      incrementSequenceNumber: vi.fn(),
+    });
+    mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
+    mockSubmitTransaction.mockResolvedValue({ hash: "real-trust-hash" });
+
+    const { result } = renderHook(() => useChangeTrust(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.submit();
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+      timeout: 2000,
+    });
+    expect(result.current.data?.hash).toBe("real-trust-hash");
+    expect(mockRefetchBalance).toHaveBeenCalled();
   });
 
   it("declined signature → error state", async () => {
