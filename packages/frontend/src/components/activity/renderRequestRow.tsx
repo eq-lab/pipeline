@@ -2,6 +2,8 @@ import React from "react";
 import { ActivityRow, AmountPill } from "@pipeline/ui";
 import type { RequestItem } from "@/api";
 import { formatTokenAmount, formatActivityTime } from "@/lib/format";
+import { SAC_DECIMALS } from "@/wallet";
+import type { WalletViewKind } from "@/wallet";
 
 /**
  * renderRequestRow — shared row renderer for `RequestItem` data.
@@ -15,6 +17,17 @@ import { formatTokenAmount, formatActivityTime } from "@/lib/format";
  * `/transactions`. Any change to row appearance belongs here, not in the
  * individual consumers.
  *
+ * Chain-aware decimal scaling (Issue #674):
+ *   The renderer accepts the active chain kind and derives decimal scales from
+ *   it rather than hardcoding EVM values. Stellar SAC tokens are all 7 decimals
+ *   (`SAC_DECIMALS`), while EVM uses 6 for payment tokens (USDC) and 18 for
+ *   stake tokens (PLUSD / sPLUSD).
+ *
+ *   | Chain   | Deposit / Withdraw | Stake / Unstake (assets / shares) |
+ *   |---------|--------------------|------------------------------------|
+ *   | EVM     | 6                  | 18                                 |
+ *   | Stellar | 7 (SAC_DECIMALS)   | 7 (SAC_DECIMALS)                   |
+ *
  * Fail-loud contract for Stake / Unstake fields:
  *   Both `assets` and `shares` are required by the `/v1/requests` API contract
  *   for Stake/Unstake items. If either field is absent from the API response,
@@ -22,7 +35,9 @@ import { formatTokenAmount, formatActivityTime } from "@/lib/format";
  *   back to a zero or approximate value. This makes data regressions immediately
  *   visible rather than silently zeroing out amounts.
  *
- * @param item - A single `RequestItem` returned by `GET /v1/requests`.
+ * @param item      - A single `RequestItem` returned by `GET /v1/requests`.
+ * @param chainKind - The active chain kind (`"evm"` or `"stellar"`), used to
+ *                    select the correct decimal scale for amount formatting.
  * @returns A React element representing the activity row, ready to be embedded
  *          in a list or container by the caller.
  */
@@ -90,12 +105,16 @@ export function TwoLineAmount({
  */
 export function renderRequestRow(
   item: RequestItem,
+  chainKind: WalletViewKind,
   testId?: string,
 ): React.ReactNode {
   const timestamp = formatActivityTime(item.created_at);
+  // Derive decimal scales from the active chain (Issue #674).
+  const paymentDecimals = chainKind === "stellar" ? SAC_DECIMALS : 6;
+  const stakeDecimals = chainKind === "stellar" ? SAC_DECIMALS : 18;
 
   if (item.type === "Deposit") {
-    const amount = formatTokenAmount(item.amount, 6);
+    const amount = formatTokenAmount(item.amount, paymentDecimals);
     if (item.status === "Completed") {
       return (
         <ActivityRow
@@ -129,7 +148,7 @@ export function renderRequestRow(
   }
 
   if (item.type === "Withdraw") {
-    const amount = formatTokenAmount(item.amount, 6);
+    const amount = formatTokenAmount(item.amount, paymentDecimals);
     if (item.status === "Completed") {
       return (
         <ActivityRow
@@ -167,9 +186,9 @@ export function renderRequestRow(
     // response. Falling back to item.amount or "0" would silently zero out
     // the row and hide data regressions.
     const assets =
-      item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+      item.assets !== undefined ? formatTokenAmount(item.assets, stakeDecimals) : "—";
     const shares =
-      item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
+      item.shares !== undefined ? formatTokenAmount(item.shares, stakeDecimals) : "—";
     return (
       <ActivityRow
         data-testid={testId}
@@ -188,9 +207,9 @@ export function renderRequestRow(
 
   // Unstake — fail-loud: see Stake branch above for rationale.
   const assets =
-    item.assets !== undefined ? formatTokenAmount(item.assets, 18) : "—";
+    item.assets !== undefined ? formatTokenAmount(item.assets, stakeDecimals) : "—";
   const shares =
-    item.shares !== undefined ? formatTokenAmount(item.shares, 18) : "—";
+    item.shares !== undefined ? formatTokenAmount(item.shares, stakeDecimals) : "—";
   return (
     <ActivityRow
       data-testid={testId}

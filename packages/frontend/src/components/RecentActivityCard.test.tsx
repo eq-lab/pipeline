@@ -414,11 +414,12 @@ describe("RecentActivityCard — connected + error", () => {
 // ── Active-chain gating (Issue #644) ──────────────────────────────────────────
 
 // Stellar fixture: one Deposit row returned by useRequests for the Stellar wallet.
+// Amount encoded at 7 decimals (SAC_DECIMALS): 30000000000 = 3,000 USDC.
 const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
-      amount: "3000000000", // 3,000 USDC at 6 decimals
+      amount: "30000000000", // 3,000 USDC at 7 decimals (SAC_DECIMALS)
       request_id: "stellar-1",
       status: "Completed",
       created_at: "2026-05-16T10:00:00Z",
@@ -492,5 +493,103 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     expect(
       screen.queryByText("You will see all transactions here"),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ── Stellar decimal fix (Issue #674) ─────────────────────────────────────────
+
+describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Stellar amounts at 7 dp (SAC_DECIMALS): 10_000_000 = 1.0; 9_900_000 = 0.99.
+  const STELLAR_7DP: RequestsResponse = {
+    requests: [
+      {
+        type: "Deposit",
+        amount: "10000000", // 1.0 USDC at 7 decimals
+        request_id: "s674-1",
+        status: "Completed",
+        created_at: "2026-06-01T10:00:00Z",
+      },
+      {
+        type: "Stake",
+        amount: "10000000",
+        assets: "10000000", // 1.0 PLUSD at 7 decimals
+        shares: "9900000",  // 0.99 sPLUSD at 7 decimals
+        status: "Completed",
+        created_at: "2026-06-01T11:00:00Z",
+      },
+    ],
+  };
+
+  it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 USDC', not '+10.00 USDC' (the bug)", () => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
+    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_7DP,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
+    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+  });
+
+  it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD (the bug)", () => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
+    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_7DP,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    expect(screen.getByText("−1.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("+0.99 sPLUSD")).toBeInTheDocument();
+    // Old bug: formatted at 18 dp → effectively 0.00
+    expect(screen.queryByText("−0.00 PLUSD")).not.toBeInTheDocument();
+  });
+
+  it("EVM regression: EVM Deposit at 6 dp still renders correctly after the fix", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE_3,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("EVM regression: EVM Stake at 18 dp still renders correctly after the fix", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE_3,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    expect(screen.getByText("−1,000.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
   });
 });

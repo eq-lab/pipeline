@@ -36,7 +36,7 @@ _None_
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/components/activity/renderRequestRow.tsx`:
+1. [x] In `packages/frontend/src/components/activity/renderRequestRow.tsx`:
    - Change the `renderRequestRow` signature to accept the active chain. Recommended: add a required `chainKind: WalletViewKind` (import the type from `@/wallet`) as a parameter so the function can derive decimals internally and callers cannot drift. Proposed signature: `renderRequestRow(item: RequestItem, chainKind: WalletViewKind, testId?: string)`.
    - Derive decimals from `chainKind`:
      - `paymentDecimals = chainKind === "stellar" ? SAC_DECIMALS : 6` (Deposit/Withdraw `item.amount`).
@@ -45,11 +45,11 @@ _None_
    - Replace the four hardcoded calls: `formatTokenAmount(item.amount, 6)` → `formatTokenAmount(item.amount, paymentDecimals)` (Deposit ~98, Withdraw ~132); `formatTokenAmount(item.{assets,shares}, 18)` → `...stakeDecimals` (Stake ~170-172, Unstake ~191-193). Preserve the fail-loud `—` guards.
    - Update the JSDoc header block (lines ~5–28) to state the renderer is chain-aware and document the EVM 6/18 vs Stellar 7/7 mapping.
 
-2. In `packages/frontend/src/routes/transactions.tsx` (line ~173): pass the active chain to the renderer — `renderRequestRow(item, kind, `transactions-row-${i}`)`. `kind` is already in scope (line 89).
+2. [x] In `packages/frontend/src/routes/transactions.tsx` (line ~173): pass the active chain to the renderer — `renderRequestRow(item, kind, `transactions-row-${i}`)`. `kind` is already in scope (line 89).
 
-3. In `packages/frontend/src/components/RecentActivityCard.tsx` (line ~152): pass the active chain — `renderRequestRow(item, kind)`. `kind` is already in scope (line 89).
+3. [x] In `packages/frontend/src/components/RecentActivityCard.tsx` (line ~152): pass the active chain — `renderRequestRow(item, kind)`. `kind` is already in scope (line 89).
 
-4. Run TypeScript/lint to confirm the new required parameter is supplied at both call sites and any other callers (only the two above + tests exist).
+4. [x] Run TypeScript/lint to confirm the new required parameter is supplied at both call sites and any other callers (only the two above + tests exist).
 
 ## Test Strategy
 
@@ -63,7 +63,7 @@ Both test files already mock `useWalletView` with `{ kind: "evm" | "stellar" }` 
 - `packages/frontend/src/components/RecentActivityCard.test.tsx`:
   - Mirror the same Stellar-active case asserting `1.00 USDC` and non-zero Stake/Unstake amounts.
 
-- Run the frontend unit suite (`/test-fast` or the package's vitest) and `npx tsx scripts/lint-docs.ts` per AGENTS.md.
+- [x] Run the frontend unit suite (`/test-fast` or the package's vitest) and `npx tsx scripts/lint-docs.ts` per AGENTS.md.
 
 ## Docs to Update
 
