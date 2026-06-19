@@ -14,6 +14,9 @@
  *   4. Connected + empty list → empty state renders; no "View All" link.
  *   5. Connected + loading → empty state renders; no "View All" link.
  *   6. Connected + error → empty state renders; no "View All" link.
+ *   7. Active-chain gating (Issue #644): Stellar view + Stellar connected + data
+ *      → list renders, empty state absent. EVM connection state no longer drives
+ *      the card when Stellar is active.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -37,6 +40,10 @@ vi.mock("@/api", () => ({
 }));
 
 // ── Mock @/wallet ─────────────────────────────────────────────────────────────
+// All three hooks required for active-chain gating (Issue #644) are mocked:
+//   - useEvmWallet (mockUseWallet) — defaults disconnected
+//   - useStellarWallet (mockUseStellarWallet) — defaults disconnected
+//   - useWalletView (mockUseWalletView) — defaults { kind: "evm" }
 
 const mockUseWallet = vi.fn(() => ({
   isConnected: false,
@@ -44,12 +51,19 @@ const mockUseWallet = vi.fn(() => ({
   disconnect: vi.fn(),
   openConnectModal: vi.fn(),
 }));
+const mockUseStellarWallet = vi.fn(() => ({
+  isConnected: false,
+  address: undefined as string | undefined,
+}));
+const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
 vi.mock("@/wallet", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/wallet")>();
   return {
     ...original,
     useEvmWallet: () => mockUseWallet(),
+    useStellarWallet: () => mockUseStellarWallet(),
+    useWalletView: () => mockUseWalletView(),
   };
 });
 
@@ -141,12 +155,14 @@ function renderCard() {
 
 describe("RecentActivityCard — disconnected wallet", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: false,
       address: undefined,
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -179,12 +195,14 @@ describe("RecentActivityCard — disconnected wallet", () => {
 
 describe("RecentActivityCard — connected + 3 rows", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: true,
       address: "0x1234",
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_3,
       isLoading: false,
@@ -243,12 +261,14 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
 describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: true,
       address: "0x1234",
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_6,
       isLoading: false,
@@ -275,12 +295,14 @@ describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
 
 describe("RecentActivityCard — connected + empty list", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: true,
       address: "0x1234",
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: { requests: [] },
       isLoading: false,
@@ -308,12 +330,14 @@ describe("RecentActivityCard — connected + empty list", () => {
 
 describe("RecentActivityCard — connected + loading", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: true,
       address: "0x1234",
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -345,12 +369,14 @@ describe("RecentActivityCard — connected + loading", () => {
 
 describe("RecentActivityCard — connected + error", () => {
   beforeEach(() => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseWallet.mockReturnValue({
       isConnected: true,
       address: "0x1234",
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -382,5 +408,89 @@ describe("RecentActivityCard — connected + error", () => {
   it("does not leak error text into the DOM", () => {
     renderCard();
     expect(screen.queryByText("boom")).not.toBeInTheDocument();
+  });
+});
+
+// ── Active-chain gating (Issue #644) ──────────────────────────────────────────
+
+// Stellar fixture: one Deposit row returned by useRequests for the Stellar wallet.
+const STELLAR_FIXTURE: RequestsResponse = {
+  requests: [
+    {
+      type: "Deposit",
+      amount: "3000000000", // 3,000 USDC at 6 decimals
+      request_id: "stellar-1",
+      status: "Completed",
+      created_at: "2026-05-16T10:00:00Z",
+    },
+  ],
+};
+
+describe("RecentActivityCard — active chain gating (Issue #644)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("Stellar view + Stellar connected + data → list renders, empty-state caption absent", () => {
+    // The card previously keyed off EVM isConnected. With EVM disconnected and
+    // Stellar active + connected, the list should render.
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
+    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    // List must render
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    expect(screen.getByText("+3,000.00 USDC")).toBeInTheDocument();
+    // Empty-state must be absent
+    expect(
+      screen.queryByText("You will see all transactions here"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Stellar view + Stellar disconnected → empty state renders, list absent", () => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseRequests.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    expect(
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("EVM view + EVM connected drives the card, Stellar connection state is ignored", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE_3,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderCard();
+
+    // EVM active + EVM connected + data → list
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(
+      screen.queryByText("You will see all transactions here"),
+    ).not.toBeInTheDocument();
   });
 });

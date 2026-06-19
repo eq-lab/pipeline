@@ -168,6 +168,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Dead code accumulates maintenance overhead; any future token or style changes must be applied in two places.
 - **Suggested fix:** Delete `ConnectChooserModal.tsx` and `ConnectChooserModal.test.tsx` after confirming via `grep -rn ConnectChooserModal` that no production import exists. Update the `ConnectWalletModal.tsx` JSDoc comment that still references it.
 
+### TD-22: Active-chain `isConnected` derivation is duplicated across three files
+- **Date:** 2026-06-19
+- **Location:** `packages/frontend/src/api/useRequests.ts`, `packages/frontend/src/routes/transactions.tsx`, `packages/frontend/src/components/RecentActivityCard.tsx`
+- **Gap:** The three-line active-chain `isConnected` derivation (`kind === "stellar" ? isStellarConnected : isEvmConnected`) was intentionally inlined at the two render sites (Issue #644 Option A) to keep the bug fix minimal and low-risk. It now exists in three places.
+- **Impact:** Any future change to chain-selection logic (e.g. a third chain) must be applied in three places.
+- **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
+
 ### TD-21: `packages/frontend/src/wallet/evm/WalletGateContext.ts` is dead code — legacy no-arg `openGate()` variant
 - **Date:** 2026-06-18
 - **Location:** `packages/frontend/src/wallet/evm/WalletGateContext.ts`

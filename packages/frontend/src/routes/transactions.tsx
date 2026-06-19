@@ -10,7 +10,7 @@ import {
 import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
-import { useEvmWallet } from "@/wallet";
+import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 
 /**
  * Transactions / Activity page — wired to `GET /v1/requests`.
@@ -37,6 +37,13 @@ import { useEvmWallet } from "@/wallet";
  * the API returned zero rows, or the active tab filter yields zero rows. The
  * intent is a single consistent visual rather than a different treatment per
  * cause (a deliberate reversal of part of #257).
+ *
+ * Active-chain gating (Issue #644): connection is keyed off the active chain's
+ * wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the
+ * `useRequests` hook. With Stellar active, `isStellarConnected` drives the
+ * empty-state gate; with EVM active, `isEvmConnected` does. The empty state
+ * and rows list are mutually exclusive: at most one of {loading, error,
+ * empty-state, rows} is visible at a time.
  *
  * Token discipline: this file adds no raw colors, font names, or hardcoded
  * pixel sizes. All values flow through `@pipeline/ui` component props or
@@ -76,7 +83,13 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 function Transactions() {
   const [activeTab, setActiveTab] = useState("buy");
   const { data, isLoading, error, refetch } = useRequests();
-  const { isConnected } = useEvmWallet();
+  // Active-chain gating (Issue #644): mirror useRequests' chain-selection logic.
+  // Tech-debt: this derivation is duplicated in useRequests and RecentActivityCard;
+  // extract to a shared hook in a follow-up (see tech-debt-tracker.md).
+  const { kind } = useWalletView();
+  const { isConnected: isEvmConnected } = useEvmWallet();
+  const { isConnected: isStellarConnected } = useStellarWallet();
+  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
   const items = data?.requests ?? [];
   const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
@@ -153,7 +166,8 @@ function Transactions() {
             </div>
           )}
 
-          {filtered.length > 0 &&
+          {!shouldRenderEmpty &&
+            filtered.length > 0 &&
             filtered.map((item, i) => (
               <React.Fragment key={i}>
                 {renderRequestRow(item, `transactions-row-${i}`)}

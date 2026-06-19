@@ -20,6 +20,8 @@
  *   8. Loading state renders "Loading…".
  *   9. Formatting assertions — amount strings appear in the rendered output.
  *  10. Timestamp shape assertion.
+ *  11. Active-chain gating (Issue #644): Stellar view keys off Stellar connection;
+ *      EVM view keys off EVM connection; empty state and rows are mutually exclusive.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -50,14 +52,23 @@ vi.mock("@/api", () => ({
 // We mock useWallet so the component can import it without pulling in
 // wagmi/AppKit. We preserve all other exports (e.g. formatUnits) via
 // importOriginal so format helpers still work in tests.
+//
+// All three hooks required for active-chain gating (Issue #644) are mocked:
+//   - useEvmWallet (mockUseWallet) — defaults connected
+//   - useStellarWallet (mockUseStellarWallet) — defaults disconnected
+//   - useWalletView (mockUseWalletView) — defaults { kind: "evm" }
 
 const mockUseWallet = vi.fn(() => ({ isConnected: true }));
+const mockUseStellarWallet = vi.fn(() => ({ isConnected: false }));
+const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
   return {
     ...actual,
     useEvmWallet: () => mockUseWallet(),
+    useStellarWallet: () => mockUseStellarWallet(),
+    useWalletView: () => mockUseWalletView(),
   };
 });
 
@@ -76,6 +87,20 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+// Stellar-specific fixture — a single Deposit row returned by useRequests when
+// the Stellar wallet is active and connected.
+const STELLAR_FIXTURE: RequestsResponse = {
+  requests: [
+    {
+      type: "Deposit",
+      amount: "2000000000", // 2,000 USDC at 6 decimals
+      request_id: "stellar-1",
+      status: "Completed",
+      created_at: "2026-05-16T10:00:00Z",
+    },
+  ],
+};
 
 const FIXTURE: RequestsResponse = {
   requests: [
@@ -116,6 +141,9 @@ function renderTransactions() {
 describe("Transactions page — responsive layout (Issue #523)", () => {
   beforeEach(() => {
     mockRefetch.mockClear();
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: FIXTURE,
       isLoading: false,
@@ -139,6 +167,8 @@ describe("Transactions page — responsive layout (Issue #523)", () => {
 describe("Transactions page — mobile empty-state layout (Issue #524)", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: { requests: [] },
       isLoading: false,
@@ -167,6 +197,9 @@ describe("Transactions page — mobile empty-state layout (Issue #524)", () => {
 describe("Transactions page — default Buy tab", () => {
   beforeEach(() => {
     mockRefetch.mockClear();
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: FIXTURE,
       isLoading: false,
@@ -198,6 +231,9 @@ describe("Transactions page — default Buy tab", () => {
 
 describe("Transactions page — tab switching", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: FIXTURE,
       isLoading: false,
@@ -233,6 +269,9 @@ describe("Transactions page — tab switching", () => {
 
 describe("Transactions page — All tab is absent", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: FIXTURE,
       isLoading: false,
@@ -255,6 +294,8 @@ describe("Transactions page — All tab is absent", () => {
 describe("Transactions page — wallet-level empty state (zero rows)", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: { requests: [] },
       isLoading: false,
@@ -285,6 +326,8 @@ describe("Transactions page — wallet-level empty state (zero rows)", () => {
 describe("Transactions page — tab-level empty state", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     // Data has one Deposit row (maps to Buy tab). Sell tab will yield zero rows.
     mockUseRequests.mockReturnValue({
       data: {
@@ -333,6 +376,9 @@ describe("Transactions page — tab-level empty state", () => {
 
 describe("Transactions page — loading state", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -354,6 +400,9 @@ describe("Transactions page — loading state", () => {
 
 describe("Transactions page — error state", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -387,6 +436,8 @@ describe("Transactions page — error state", () => {
 describe("Transactions page — disconnected wallet (no data)", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: false });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -419,6 +470,9 @@ describe("Transactions page — disconnected wallet (no data)", () => {
 
 describe("Transactions page — formatting assertions", () => {
   beforeEach(() => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
     mockUseRequests.mockReturnValue({
       data: FIXTURE,
       isLoading: false,
@@ -463,6 +517,100 @@ describe("Transactions page — formatting assertions", () => {
 
     const container = document.body.textContent ?? "";
     expect(container).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM)/);
+  });
+});
+
+describe("Transactions page — active chain gating (Issue #644)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("Stellar view + Stellar connected + Stellar rows → rows render and empty-state caption is absent (the bug)", () => {
+    // Repro: with Stellar active and connected and EVM disconnected,
+    // the old code would show BOTH rows AND the empty state. After the fix,
+    // only rows should be visible.
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: true });
+    mockUseWallet.mockReturnValue({ isConnected: false }); // EVM disconnected
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    // Rows must render
+    expect(screen.getByText("+2,000.00 USDC")).toBeInTheDocument();
+    // Empty-state caption must NOT render simultaneously (mutual exclusivity)
+    expect(
+      screen.queryByText("You will see all transactions here"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("Stellar view + Stellar disconnected + no data → empty state renders, no rows", () => {
+    mockUseWalletView.mockReturnValue({ kind: "stellar" });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseWallet.mockReturnValue({ isConnected: true }); // EVM connected but not active
+    mockUseRequests.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    expect(
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("+2,000.00 USDC")).not.toBeInTheDocument();
+  });
+
+  it("EVM view + EVM disconnected + Stellar connected with data → empty state (active chain is EVM, disconnected)", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: false }); // EVM disconnected
+    mockUseStellarWallet.mockReturnValue({ isConnected: true }); // Stellar connected but not active
+    mockUseRequests.mockReturnValue({
+      data: STELLAR_FIXTURE, // useRequests is mocked; gate keys off EVM here
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    // EVM view is active but EVM is disconnected → empty state
+    expect(
+      screen.getByText("You will see all transactions here"),
+    ).toBeInTheDocument();
+  });
+
+  it("mutual exclusivity: rows and empty-state never render simultaneously (EVM connected with data)", () => {
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: FIXTURE,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderTransactions();
+
+    const emptyCaption = screen.queryByText(
+      "You will see all transactions here",
+    );
+    const rows = screen.queryAllByTestId(/^transactions-row-/);
+
+    // Either rows render and empty-state does not, or vice versa — never both
+    if (rows.length > 0) {
+      expect(emptyCaption).not.toBeInTheDocument();
+    } else {
+      expect(emptyCaption).toBeInTheDocument();
+    }
   });
 });
 
