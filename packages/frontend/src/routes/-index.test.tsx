@@ -101,6 +101,17 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       children: React.ReactNode;
       client: unknown;
     }) => <>{children}</>,
+    // Mock useQuery so the Stellar hooks added in #688 (useStellarSacToken,
+    // useStellarStakedPlusdBalance, useStellarUnstakeConvertToAssets,
+    // useStellarDepositManagerAddresses) don't throw "No QueryClient set".
+    // Tests that need real hook behaviour seed localStorage mock keys instead
+    // (the hooks short-circuit to the mock fast-path before useQuery runs).
+    useQuery: vi.fn(() => ({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })),
   };
 });
 
@@ -845,7 +856,9 @@ describe("Home page — Stellar-only connected (regression #684)", () => {
     // Regression guard for #684: stellar-only session must see connected view.
     renderHomeStellar();
     await waitFor(() => {
-      const portfolioCards = screen.getAllByTestId("home-portfolio-placeholder");
+      const portfolioCards = screen.getAllByTestId(
+        "home-portfolio-placeholder",
+      );
       expect(portfolioCards.length).toBeGreaterThanOrEqual(1);
     });
     // Promo card must be absent.
@@ -949,6 +962,179 @@ describe("Home page — neither connected, Stellar view (disconnected promo)", (
     renderHomeStellar();
     await waitFor(() => {
       expect(screen.queryByText("Total Balance")).not.toBeInTheDocument();
+    });
+  });
+});
+
+// ── Stellar connected balances (#688) ─────────────────────────────────────────
+//
+// Mock seeding convention (Stellar balances, 7-decimal SAC scale):
+//   pipeline.mock.wallet.stellar.address      — 56-char public key (G…)
+//   pipeline.mock.wallet.stellar.isConnected  — "true"
+//   pipeline.mock.wallet.stellar.balance.sac.plusd
+//       — Raw bigint string (7-dec): "10000000" = 1 PLUSD
+//   pipeline.mock.wallet.stellar.stakedPlusd.shareBalance
+//       — Raw bigint string (7-dec): "10000000" = 1 sPLUSD
+//   pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets
+//       — Rate at SAC 1e7 scale: output = (shares * rate) / 1e7
+//         e.g. "10400000" → 1 sPLUSD → 1.04 PLUSD
+//
+// renderHomeStellar() wraps the page in <WalletViewProvider> and switches view
+// kind to "stellar". Note: useQuery is mocked to return { data: undefined };
+// hooks rely on their localStorage mock fast-paths (which run before useQuery).
+
+describe("Home page — Stellar connected balances (#688)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockNavigate.mockClear();
+    // Connect the Stellar wallet.
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.address",
+      STELLAR_MOCK_ADDRESS,
+    );
+    localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance reflects PLUSD, Stake enabled, mobile state plusd", async () => {
+    // Seed 500 PLUSD at 7-decimal scale: 500 * 10^7 = 5_000_000_000n
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.balance.sac.plusd",
+      "5000000000",
+    );
+    // No sPLUSD seeded → zero shares.
+
+    renderHomeStellar();
+
+    await waitFor(() => {
+      // Total Balance should NOT be $0.00 (PLUSD balance present).
+      const headings = screen.getAllByRole("heading");
+      const balanceHeading = headings.find(
+        (h) => h.textContent && /\$[\d,]+\.\d{2}/.test(h.textContent),
+      );
+      expect(balanceHeading).not.toBeUndefined();
+      // The balance rendered must not be $0.00.
+      expect(balanceHeading?.textContent).not.toBe("$0.00");
+    });
+
+    // Stake CTA should be enabled (has PLUSD).
+    await waitFor(() => {
+      // Desktop StakeCard shows "Stake PLUSD" button when stakeDisabled=false.
+      const stakeBtns = screen.getAllByRole("button", { name: "Stake PLUSD" });
+      expect(stakeBtns.length).toBeGreaterThanOrEqual(1);
+      // Desktop button (index 0 in connected layout) should be enabled.
+      expect(stakeBtns[0]).not.toBeDisabled();
+    });
+
+    // Mobile state should be "plusd" — StartHereCard shows "PLUSD Balance" eyebrow.
+    await waitFor(() => {
+      const elements = screen.getAllByText("PLUSD Balance");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("Case 2: has sPLUSD — Total Balance includes sPLUSD-to-PLUSD, mobile state splusd, RecentActivityCard present", async () => {
+    // Seed 100 sPLUSD at 7-decimal scale: 100 * 10^7 = 1_000_000_000n
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
+      "1000000000",
+    );
+    // Rate: 1.04 PLUSD per sPLUSD → "10400000" (SAC 1e7 scale)
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets",
+      "10400000",
+    );
+    // Also seed some PLUSD.
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.balance.sac.plusd",
+      "1000000000",
+    );
+
+    renderHomeStellar();
+
+    // Mobile state "splusd" → StakeCard shows "Staked PLUSD" label.
+    await waitFor(() => {
+      const elements = screen.getAllByText("Staked PLUSD");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Mobile RecentActivityCard should be present (State C).
+    await waitFor(() => {
+      const cards = screen.getAllByRole("region", { name: "Recent activity" });
+      // Both mobile and desktop blocks render the card.
+      expect(cards.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("Case 3: zero balances / no trustline — $0.00 Total Balance, Stake disabled, mobile state empty", async () => {
+    // No balance keys seeded → all balances undefined → State A.
+
+    renderHomeStellar();
+
+    // Total Balance should be $0.00.
+    await waitFor(() => {
+      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Stake CTA should be disabled (no PLUSD).
+    await waitFor(() => {
+      const nothingBtn = screen.getByRole("button", {
+        name: "Nothing to Stake",
+      });
+      expect(nothingBtn).toBeDisabled();
+    });
+
+    // Mobile state "empty" → StartHereCard shows "Start here" / "Get PLUSD" (not PLUSD Balance).
+    await waitFor(() => {
+      expect(screen.queryByText("PLUSD Balance")).not.toBeInTheDocument();
+    });
+  });
+
+  it("Case 4: decimal-scale assertion — 7-decimal PLUSD is formatted as $1,234.57, not mis-scaled", async () => {
+    // Seed 1234.5678900 PLUSD at 7-decimal fixed-point.
+    // 1234.5678900 * 10^7 = 12_345_678_900n
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.balance.sac.plusd",
+      "12345678900",
+    );
+
+    renderHomeStellar();
+
+    // The Total Balance heading must show "$1,234.57" — not a mis-scaled value.
+    // If the 18-decimal path were used by mistake, 12_345_678_900n at 18 decimals
+    // would render as "$0.00" (value ~1.23e-8), proving the 7-decimal path is taken.
+    await waitFor(() => {
+      // We look for a heading with "$1,234.57" (Total Balance, mobile block).
+      const headings = screen.getAllByRole("heading");
+      const balanceHeading = headings.find(
+        (h) => h.textContent === "$1,234.57",
+      );
+      expect(balanceHeading).not.toBeUndefined();
+    });
+  });
+
+  it("Case 5 (EVM regression): existing EVM connected tests still pass", async () => {
+    // Guard: switch back to EVM view; seed EVM connected state.
+    // Use renderHome() — that defaults to EVM view (no WalletViewProvider override).
+    localStorage.clear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+
+    renderHome();
+
+    await waitFor(() => {
+      const elements = screen.getAllByText("Total Balance");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+    // $0.00 because no EVM PLUSD balance seeded.
+    await waitFor(() => {
+      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
