@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { parseUnits, formatUnits } from "@/wallet";
+import { parseUsdc } from "@/lib/usdc";
 import {
   Button,
   Card,
@@ -12,291 +12,202 @@ import {
   TokenInput,
 } from "@pipeline/ui";
 import {
-  useEvmWallet,
-  useEvmToken,
-  useStakedPlusdAsset,
-  useStakedPlusdConvertToShares,
-  useStakedPlusdConvertToAssets,
-  useStake,
-  useUnstake,
-  useNetworkFeeEstimate,
+  useWalletView,
   useConnectModal,
 } from "@/wallet";
-import { ENV } from "@/lib/env";
-import { parseUsdc, formatUsdc } from "@/lib/usdc";
+import { useToast } from "@/lib/toast";
+import { useStakeFlow } from "@/wallet/useStakeFlow";
 
 /**
- * Stake route — full page composition.
+ * Stake route — chain-aware stake/unstake page.
  *
- * Drives two flows from on-chain reads:
+ * Drives two flows via the `useStakeFlow` adapter, which selects between the
+ * EVM and Stellar/Soroban stacks based on `useWalletView().kind`.
  *
- * **Stake tab** — two steps: Approve PLUSD spend on the sPLUSD vault, then
- * Stake (`sPLUSD.deposit(assets, receiver=connectedWallet)`).
+ * EVM Stake tab:
+ *   1. Allow Pipeline to use PLUSD (Approve)
+ *   2. Confirm and stake PLUSD (Stake)
  *
- * **Unstake tab** — single step: Unstake (`sPLUSD.redeem(shares, receiver,
- * owner)` where both receiver and owner are the connected wallet). No approval
- * gate because the caller is the share owner.
+ * EVM Unstake tab:
+ *   1. Confirm and unstake sPLUSD (Unstake)
  *
- * State sources:
- *   - `useStakedPlusdAsset()` — PLUSD token address from the vault's `asset()`
- *   - `useToken({ token: plusdAddr, spender: splusdAddr })` — PLUSD balance + allowance
- *   - `useToken({ token: splusdAddr })` — sPLUSD balance (no spender = no approval)
- *   - `useStake()` / `useUnstake()` — write surfaces
- *   - `useStakedPlusdConvertToShares()` / `useStakedPlusdConvertToAssets()` — preview
+ * Stellar Stake tab:
+ *   1. Enable sPLUSD (changeTrust for share asset)
+ *   2. Confirm and stake PLUSD (vault deposit)
  *
- * Tab switching clears the amount input and resets write surfaces so no stale
- * Done badge from a previous tab can bleed into the new tab.
+ * Stellar Unstake tab:
+ *   1. Enable PLUSD (changeTrust — receiver needs PLUSD trustline)
+ *   2. Confirm and unstake sPLUSD (vault redeem)
  *
- * Wallet-disconnected state:
- *   When the wallet is not connected, a yellow "Connect your wallet first"
- *   banner with a dark "Connect" button is shown in place of the StepsCard
- *   for both the Stake and Unstake tabs. The combined conversion card
- *   remains visible above the banner.
- *   The banner's Connect button calls `connect()` from `useEvmWallet()`,
- *   identical to the deposit page and home-page CTA.
- *   Figma: node 1994-7226.
+ * Chain-aware wiring
+ * ------------------
+ * The page reacts to `useWalletView().kind` (EVM vs Stellar). When Stellar is
+ * active, the `useStakeFlow` adapter switches all data and actions to the
+ * Stellar/Soroban stack (trustline steps, SAC balances, XLM fee, etc.).
+ * Flipping back to EVM restores the original behavior. Amount is reset on
+ * chain switch via the `prevKindRef` pattern (mirror of deposit.tsx).
  *
- * Token discipline: no raw colors, fonts, sizes, or radii. Everything goes
- * through design tokens or component primitives from `@pipeline/ui`.
+ * Toast ids are scoped per chain+tab:
+ *   EVM stake tab:    stake-approve-tx / stake-tx
+ *   EVM unstake tab:  unstake-tx
+ *   Stellar stake:    stellar-splusd-trust-tx / stellar-stake-tx
+ *   Stellar unstake:  stellar-plusd-trust-tx / stellar-unstake-tx
  *
- * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158&m=dev
+ * Figma references:
+ *   Disconnected: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-7280
+ *   Init: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95311
+ *   Approved: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158
  */
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
-
-/**
- * convertToShares / convertToAssets return values scaled to 18 decimal places
- * regardless of the sPLUSD contract address configured in ENV, because the
- * convert-mock convention in useStakedPlusd.ts (RATE_SCALE = 1e18) is address-
- * independent. Hard-coding this here avoids depending on a live `decimals()`
- * RPC read that can resolve to a different value (e.g. 6) when the env address
- * doesn't match the fixture address used by the mock layer.
- *
- * If sPLUSD or PLUSD ever become non-18-decimal tokens, update this constant
- * and the convert-mock convention together.
- */
-const CONVERT_DECIMALS = 18;
-
-/**
- * Formats a bigint to exactly 4 decimal places (truncated, not rounded).
- * Used for exchange-rate display rows.
- */
-function formatUnits4(value: bigint, decimals: number): string {
-  const full = formatUnits(value, decimals);
-  const [integer, fraction = ""] = full.split(".");
-  const truncated = (fraction + "0000").slice(0, 4);
-  return `${integer}.${truncated}`;
-}
 
 function Stake() {
-  // ── State sources ─────────────────────────────────────────────────────
-  const { isConnected } = useEvmWallet();
+  // ── Chain view ────────────────────────────────────────────────────────
+  const { kind } = useWalletView();
+  const isStellar = kind === "stellar";
 
-  // ── Connect modal (shared single instance via ConnectModalProvider) ───
+  // ── Toast ─────────────────────────────────────────────────────────────
+  const toast = useToast();
+
+  // ── Connect modal ────────────────────────────────────────────────────
   const { open: openConnectModal } = useConnectModal();
-
-  // Derive PLUSD address from the sPLUSD vault's `asset()` call.
-  // Fall back to zero-address while loading so downstream hooks are always
-  // called with a valid `0x${string}`.
-  const { plusd: plusdFromVault } = useStakedPlusdAsset();
-  const plusdAddr = (plusdFromVault ?? ZERO_ADDRESS) as `0x${string}`;
-  const splusdAddr = ENV.STAKED_PLUSD_ADDRESS as `0x${string}`;
-
-  // Both token surfaces always mounted (React hook rules).
-  // Stake-tab input is PLUSD → spender = sPLUSD vault (approval required).
-  // Unstake-tab input is sPLUSD → no spender (caller owns shares, no approval).
-  const plusdToken = useEvmToken({ token: plusdAddr, spender: splusdAddr });
-  const splusdToken = useEvmToken({ token: splusdAddr });
-
-  // Write surfaces — always mounted.
-  const stake = useStake();
-  const unstake = useUnstake();
-
-  // Network-fee estimates — called unconditionally (Rules of Hooks).
-  // Mirrors deposit.tsx:189-190 pattern.
-  const { feeEth: stakeFeeEth } = useNetworkFeeEstimate("stake");
-  const { feeEth: unstakeFeeEth } = useNetworkFeeEstimate("unstake");
 
   // ── Local state ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"stake" | "unstake">("stake");
   const [amountInput, setAmountInput] = useState("");
 
-  // ── Derived state — per-tab ───────────────────────────────────────────
   const isStakeTab = activeTab === "stake";
 
-  // Active-tab fee estimate (ETH-denominated, undefined while loading/disconnected).
-  const networkFee = isStakeTab ? stakeFeeEth : unstakeFeeEth;
-
-  // Active-tab token resolution.
-  const inputToken = isStakeTab ? plusdToken : splusdToken;
-  const outputToken = isStakeTab ? splusdToken : plusdToken;
-
-  const decimals = inputToken.decimals;
-  const balance = inputToken.balance;
-  const formattedInputBalance = inputToken.formattedBalance;
-  const formattedOutputBalance = outputToken.formattedBalance;
-
-  // amountBig — parsed against the active input token's decimals.
-  const amountBig = parseUsdc(amountInput, decimals);
-
-  // hasBalance gate — amount must be positive and within balance.
-  const isReady = decimals !== undefined && balance !== undefined;
-  const hasBalance =
-    isReady && amountBig > 0n && amountBig <= (balance as bigint);
-
-  // Stake-tab only — approval gate.
-  // Using hasSufficientAllowance (not !needsApproval) avoids acting while
-  // allowance is undefined (loading). Mirrors withdraw.tsx:207 derivation.
-  const allowance = isStakeTab ? plusdToken.allowance : undefined;
-  const needsApproval =
-    isStakeTab &&
-    allowance !== undefined &&
-    amountBig > 0n &&
-    allowance < amountBig;
-  const hasSufficientAllowance =
-    isStakeTab &&
-    allowance !== undefined &&
-    amountBig > 0n &&
-    allowance >= amountBig;
-
-  // ── Preview hooks — always called (hook rules); disabled when input is 0 ──
-  // Active-tab: pass amountBig when on the right tab; undefined disables.
-  // Note: preview is sourced from convertTo* — not from write hook `data`.
-  // On the real wagmi path write hooks only resolve to { hash }, not decoded
-  // shares/assets. See useStakedPlusd.ts comment on mock-path-only fields.
-  const sharesPreview = useStakedPlusdConvertToShares(
-    isStakeTab ? amountBig : undefined,
+  // ── Parse amount (two-pass lastDecimals pattern from deposit.tsx) ─────
+  const [lastDecimals, setLastDecimals] = useState<number | undefined>(
+    undefined,
   );
-  const assetsPreview = useStakedPlusdConvertToAssets(
-    !isStakeTab ? amountBig : undefined,
-  );
+  const amountBig = parseUsdc(amountInput, lastDecimals);
 
-  // Exchange-rate hooks — called with a fixed "1 unit" to show the rate row.
-  // Use CONVERT_DECIMALS (18) rather than the live token decimals read so the
-  // input scale matches the convert-mock convention regardless of which sPLUSD
-  // contract address is configured in ENV. (The mock convention is address-
-  // independent; a live decimals() RPC may return 6 for a different address.)
-  const oneStake = isStakeTab ? parseUnits("1", CONVERT_DECIMALS) : undefined;
-  const oneUnstake = !isStakeTab
-    ? parseUnits("1", CONVERT_DECIMALS)
-    : undefined;
-  const rateSharesPerPlusd = useStakedPlusdConvertToShares(oneStake);
-  const rateAssetsPerSplusd = useStakedPlusdConvertToAssets(oneUnstake);
+  // ── Flow adapter ──────────────────────────────────────────────────────
+  const flow = useStakeFlow(activeTab, amountBig, setAmountInput);
 
-  // ── Step gates ────────────────────────────────────────────────────────
-  const canApprove =
-    isStakeTab &&
-    isConnected &&
-    hasBalance &&
-    needsApproval &&
-    !plusdToken.isApprovePending &&
-    !stake.isSuccess;
+  // Update lastDecimals whenever flow.decimals changes.
+  useEffect(() => {
+    if (flow.decimals !== undefined) {
+      setLastDecimals(flow.decimals);
+    }
+  }, [flow.decimals]);
 
-  const canStake =
-    isStakeTab &&
-    isConnected &&
-    hasBalance &&
-    hasSufficientAllowance &&
-    !stake.isPending &&
-    !stake.isSuccess;
+  // ── Reset amount on chain switch ─────────────────────────────────────
+  const prevKindRef = useRef(kind);
+  useEffect(() => {
+    if (prevKindRef.current !== kind) {
+      setAmountInput("");
+      prevKindRef.current = kind;
+    }
+  }, [kind]);
 
-  const canUnstake =
-    !isStakeTab &&
-    isConnected &&
-    hasBalance &&
-    !unstake.isPending &&
-    !unstake.isSuccess;
+  // ── Balance refetch after write success ───────────────────────────────
+  const { refetchBalances } = flow;
+  const step2TxIsSuccess = flow.step2Tx.isSuccess;
+  useEffect(() => {
+    if (step2TxIsSuccess) refetchBalances();
+  }, [step2TxIsSuccess, refetchBalances]);
 
-  // ── Step state derivations ────────────────────────────────────────────
-  // Step 1 "Done" when allowance covers amount (drives Done badge without
-  // explicit approve.reset — see exec plan §Allowance reset risk).
-  const step1State =
-    isStakeTab && (hasSufficientAllowance || stake.isSuccess) && isConnected
-      ? ("success" as const)
-      : ("idle" as const);
+  // ── Toast: step 1 (EVM approve / Stellar trustline) ───────────────────
+  const prevStep1IsPending = useRef(false);
+  const prevStep1IsSuccess = useRef(false);
+  useEffect(() => {
+    const toastId = isStellar
+      ? isStakeTab
+        ? "stellar-splusd-trust-tx"
+        : "stellar-plusd-trust-tx"
+      : isStakeTab
+        ? "stake-approve-tx"
+        : ""; // EVM unstake has no step 1
 
-  const step2State = stake.isSuccess ? ("success" as const) : ("idle" as const);
+    if (!toastId) return;
 
-  const unstakeStepState = unstake.isSuccess
-    ? ("success" as const)
-    : ("idle" as const);
+    const pendingTitle = isStellar
+      ? isStakeTab
+        ? "Enabling sPLUSD trustline…"
+        : "Enabling PLUSD trustline…"
+      : "Approving PLUSD…";
+    const successTitle = isStellar
+      ? isStakeTab
+        ? "sPLUSD trustline enabled"
+        : "PLUSD trustline enabled"
+      : "Approval confirmed";
+
+    if (flow.step1Tx.isPending && !prevStep1IsPending.current) {
+      toast.show({ id: toastId, tone: "pending", title: pendingTitle });
+    }
+    if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
+      toast.update(toastId, { tone: "success", title: successTitle });
+    }
+    prevStep1IsPending.current = flow.step1Tx.isPending;
+    prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
+  }, [
+    flow.step1Tx.isPending,
+    flow.step1Tx.isSuccess,
+    toast,
+    isStellar,
+    isStakeTab,
+  ]);
+
+  // ── Toast: step 2 (stake/unstake) ─────────────────────────────────────
+  const prevStep2IsPending = useRef(false);
+  const prevStep2IsSuccess = useRef(false);
+  const prevStep2Error = useRef<Error | null>(null);
+  useEffect(() => {
+    const toastId = isStellar
+      ? isStakeTab
+        ? "stellar-stake-tx"
+        : "stellar-unstake-tx"
+      : isStakeTab
+        ? "stake-tx"
+        : "unstake-tx";
+
+    if (flow.step2Tx.isPending && !prevStep2IsPending.current) {
+      toast.show({
+        id: toastId,
+        tone: "pending",
+        title: isStakeTab ? "Staking…" : "Unstaking…",
+      });
+    }
+    if (flow.step2Tx.isSuccess && !prevStep2IsSuccess.current) {
+      toast.update(toastId, {
+        tone: "success",
+        title: isStakeTab ? "Staked successfully" : "Unstaked successfully",
+      });
+    }
+    if (
+      flow.step2Tx.error &&
+      flow.step2Tx.error !== prevStep2Error.current
+    ) {
+      console.error(
+        isStakeTab ? "Stake failed:" : "Unstake failed:",
+        flow.step2Tx.error,
+      );
+      toast.update(toastId, {
+        tone: "danger",
+        title: isStakeTab ? "Stake failed" : "Unstake failed",
+      });
+    }
+    prevStep2IsPending.current = flow.step2Tx.isPending;
+    prevStep2IsSuccess.current = flow.step2Tx.isSuccess;
+    prevStep2Error.current = flow.step2Tx.error;
+  }, [
+    flow.step2Tx.isPending,
+    flow.step2Tx.isSuccess,
+    flow.step2Tx.error,
+    toast,
+    isStellar,
+    isStakeTab,
+  ]);
 
   // ── Tab-switch handler ─────────────────────────────────────────────────
-  // Reset write surfaces and amount input on tab switch so no stale Done badge
-  // bleeds across tabs (cross-tab regression guard per exec plan).
-  // No explicit approve reset needed — step1State derives from allowance read,
-  // not from isApproveSuccess, so it disappears naturally when tab unmounts.
   const onSelectTab = useCallback(
     (next: string) => {
       setActiveTab(next as "stake" | "unstake");
       setAmountInput("");
-      stake.reset();
-      unstake.reset();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stake.reset, unstake.reset],
+    [],
   );
-
-  // ── Balance refetch after write success ───────────────────────────────
-  useEffect(() => {
-    if (stake.isSuccess) {
-      plusdToken.refetchBalance();
-      splusdToken.refetchBalance();
-      plusdToken.refetchAllowance?.();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stake.isSuccess]);
-
-  useEffect(() => {
-    if (unstake.isSuccess) {
-      plusdToken.refetchBalance();
-      splusdToken.refetchBalance();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unstake.isSuccess]);
-
-  // ── Quick-amount handler ───────────────────────────────────────────────
-  // Chips operate on the active tab's input balance: PLUSD on Stake, sPLUSD on Unstake.
-  const onQuickAmount = useCallback(
-    (idx: number) => {
-      if (decimals === undefined || balance === undefined) return;
-      let next: bigint;
-      if (idx === 0) next = ((balance as bigint) * 25n) / 100n;
-      else if (idx === 1) next = (balance as bigint) / 2n;
-      else if (idx === 2) next = ((balance as bigint) * 75n) / 100n;
-      else if (idx === 3) next = balance as bigint;
-      else return;
-      setAmountInput(formatUsdc(next, decimals).replace(/,/g, ""));
-    },
-    [balance, decimals],
-  );
-
-  // ── Preview render values ──────────────────────────────────────────────
-  // Format convert-hook outputs against CONVERT_DECIMALS (18) — not the live
-  // token decimals read — because convertToShares / convertToAssets return
-  // values in 18-decimal base units per the convert-mock convention.
-  const previewOutputValue = isStakeTab
-    ? sharesPreview.data !== undefined
-      ? formatUsdc(sharesPreview.data, CONVERT_DECIMALS).replace(/,/g, "")
-      : "0"
-    : assetsPreview.data !== undefined
-      ? formatUsdc(assetsPreview.data, CONVERT_DECIMALS).replace(/,/g, "")
-      : "0";
-
-  // Exchange-rate row text (truncated to 4 dp, not rounded).
-  // Format against CONVERT_DECIMALS (18) — not the live token decimals read —
-  // because convertToShares / convertToAssets return 18-decimal values per the
-  // convert-mock convention.
-  const exchangeRateText = (() => {
-    if (isStakeTab) {
-      if (rateSharesPerPlusd.data === undefined) return "—";
-      const n = formatUnits4(rateSharesPerPlusd.data, CONVERT_DECIMALS);
-      return `1 PLUSD = ${n} sPLUSD`;
-    }
-    if (rateAssetsPerSplusd.data === undefined) return "—";
-    const n = formatUnits4(rateAssetsPerSplusd.data, CONVERT_DECIMALS);
-    return `1 sPLUSD = ${n} PLUSD`;
-  })();
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -304,28 +215,23 @@ function Stake() {
       data-testid="stake-page-root"
       className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]"
     >
-      {/* Centred narrow column — mirrors Figma's centred single-column layout
-          for the stake screen. py-12 gives breathing room under the TopBar;
-          gap-6 (24px) matches the vertical spacing between sections. */}
+      {/* Centred narrow column */}
       <main
         data-testid="stake-main"
         className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12"
       >
-        {/* Section header: chart hero icon + yield rate */}
+        {/* Section header */}
         {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}
         <StakeHeader data-testid="stake-header" title="Earn 8.42% p.a." />
 
-        {/* Combined conversion card: tab switcher + input + output/rates.
-            Figma node 1498-101158 / input section 1500-102009: the two
-            sub-sections (input-sum-inline) share the same white card with
-            zero gap between them, creating one seamless conversion card. */}
+        {/* Combined conversion card: tab switcher + input + output/rates */}
         <Card
           variant="white"
           padding="none"
           data-testid="stake-conversion-card"
           className="flex flex-col gap-0 overflow-hidden"
         >
-          {/* Input sub-section: tabs + token amount input */}
+          {/* Input sub-section */}
           <div
             data-testid="stake-input-section"
             className="flex flex-col gap-0.5 p-4"
@@ -344,42 +250,39 @@ function Stake() {
               token={isStakeTab ? "plusd" : "splusd"}
               tokenLabel={isStakeTab ? "PLUSD" : "sPLUSD"}
               balanceLabel={
-                formattedInputBalance
-                  ? formattedInputBalance.replace(/^\$/, "")
+                flow.formattedInputBalance
+                  ? flow.formattedInputBalance
                   : "—"
               }
               placeholderValue="0"
               value={amountInput}
               onValueChange={setAmountInput}
-              disabled={!isConnected || !isReady}
+              disabled={flow.isInputDisabled}
               quickAmounts={[
                 { label: "25%" },
                 { label: "50%" },
                 { label: "75%" },
                 { label: "Max" },
               ]}
-              onQuickAmountClick={onQuickAmount}
+              onQuickAmountClick={flow.onQuickAmount}
             />
           </div>
 
-          {/* Output sub-section: preview amount + exchange rate + network fee */}
+          {/* Output sub-section */}
           <div
             data-testid="stake-output-section"
             className="flex flex-col gap-4 p-4"
           >
-            {/* Strip the card chrome (border / background / radius / padding)
-                so the component renders flush inside the output section.
-                The section's p-4 provides all necessary padding.
-                Matches ConversionCard.tsx approach (Issue #595 fix 6). */}
+            {/* Strip card chrome so the component renders flush. */}
             <TokenAmountDisplay
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
               balanceLabel={
-                formattedOutputBalance
-                  ? formattedOutputBalance.replace(/^\$/, "")
+                flow.formattedOutputBalance
+                  ? flow.formattedOutputBalance
                   : "—"
               }
-              value={previewOutputValue}
+              value={flow.previewOutputValue}
               style={{
                 border: "none",
                 background: "transparent",
@@ -387,13 +290,13 @@ function Stake() {
                 padding: 0,
               }}
             />
-            <InfoRow label="Exchange rate" value={exchangeRateText} />
-            <InfoRow label="Network fee" value={networkFee ?? "—"} />
+            <InfoRow label="Exchange rate" value={flow.exchangeRateText} />
+            <InfoRow label="Network fee" value={flow.networkFee ?? "—"} />
           </div>
         </Card>
 
-        {/* Steps card — conditional on wallet connection and activeTab */}
-        {!isConnected ? (
+        {/* Steps card — conditional on wallet connection */}
+        {!flow.isConnected ? (
           /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
@@ -416,41 +319,10 @@ function Stake() {
               Connect
             </Button>
           </Card>
-        ) : isStakeTab ? (
-          <StepsCard
-            data-testid="stake-steps-card"
-            steps={[
-              {
-                label: "Allow Pipeline to use PLUSD",
-                actionLabel: "Approve",
-                disabled: !canApprove,
-                loading: plusdToken.isApprovePending,
-                state: step1State,
-                onAction: () => plusdToken.approve?.(amountBig),
-              },
-              {
-                label: "Confirm and stake PLUSD",
-                actionLabel: "Stake",
-                disabled: !canStake,
-                loading: stake.isPending,
-                state: step2State,
-                onAction: () => stake.write(amountBig),
-              },
-            ]}
-          />
         ) : (
           <StepsCard
-            data-testid="stake-unstake-steps"
-            steps={[
-              {
-                label: "Confirm and unstake sPLUSD",
-                actionLabel: "Unstake",
-                disabled: !canUnstake,
-                loading: unstake.isPending,
-                state: unstakeStepState,
-                onAction: () => unstake.write(amountBig),
-              },
-            ]}
+            data-testid={isStakeTab ? "stake-steps-card" : "stake-unstake-steps"}
+            steps={flow.steps}
           />
         )}
       </main>
