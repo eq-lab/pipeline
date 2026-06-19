@@ -2289,6 +2289,66 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     );
   });
 
+  it("shows the 'Add USDC trustline' banner (not the steps card) when the USDC trustline is missing and there is no USDC balance", async () => {
+    // No USDC trustline (sacUsdcBalance "0") AND no USDC balance (usdcBalance "0").
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByText("Add USDC trustline")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Add trustline" }),
+      ).toBeInTheDocument();
+    });
+    // The trustline banner takes the place of the steps card / low-balance banner.
+    expect(screen.queryByText("Enable PLUSD")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Add funds to your USDC balance"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does NOT show the 'Add USDC trustline' banner when a USDC balance exists (steps card instead)", async () => {
+    // No USDC trustline but a non-zero deposit balance → not the user's scenario.
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByText("Enable USDC")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Add USDC trustline")).not.toBeInTheDocument();
+  });
+
+  it("clicking 'Add trustline' submits the USDC changeTrust and keeps the page mounted", async () => {
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+    });
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.changeTrust",
+      JSON.stringify({ hash: "0xtrusthash" }),
+    );
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const addBtn = await screen.findByRole("button", { name: "Add trustline" });
+    await user.click(addBtn);
+
+    // Mock settles without throwing; the conversion card remains rendered.
+    await waitFor(
+      () => {
+        expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
   it("EVM regression: no trustline block rendered when kind=evm (default)", async () => {
     seedBaseMocks({ allowance: "10000000000" });
     // renderDeposit() uses default EVM view (no WalletViewProvider)
