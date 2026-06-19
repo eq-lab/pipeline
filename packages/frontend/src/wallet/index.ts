@@ -173,6 +173,25 @@ export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";
 export type { ConnectModalContextValue } from "./ConnectModalContext";
 
+// ── Stellar StakedPLUSD vault hooks (#633) ─────────────────────────────────────
+export {
+  useStellarStake,
+  useStellarUnstake,
+  useStellarStakedPlusdAsset,
+  useStellarStakeConvertToShares,
+  useStellarUnstakeConvertToAssets,
+  useStellarStakedPlusdBalance,
+  useStellarChangeTrustStakedPlusd,
+} from "./stellar/useStellarStakedPlusd";
+export type {
+  StellarStakeResult,
+  StellarUnstakeResult,
+  UseStellarStakedPlusdAssetResult,
+  UseStellarConvertResult,
+  UseStellarStakedPlusdBalanceResult,
+  UseStellarChangeTrustStakedPlusdResult,
+} from "./stellar/useStellarStakedPlusd";
+
 // ── Flow adapter (chain-agnostic deposit/withdraw) ────────────────────────────
 export { useDepositFlow } from "./useDepositFlow";
 export type {
@@ -183,3 +202,12 @@ export type {
   StepTxState,
   TrustlineInfo,
 } from "./useDepositFlow";
+
+// ── Flow adapter (chain-agnostic stake/unstake) ───────────────────────────────
+export { useStakeFlow } from "./useStakeFlow";
+export type {
+  StakeFlowState,
+  StakeTab,
+  StakeStepState,
+  StakeStepInfo,
+} from "./useStakeFlow";

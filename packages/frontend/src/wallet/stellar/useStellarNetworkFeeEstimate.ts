@@ -1,16 +1,16 @@
 /**
- * Stellar/Soroban network-fee estimate hook for the deposit/withdraw page.
+ * Stellar/Soroban network-fee estimate hook for the deposit/withdraw/stake/unstake pages.
  *
  * Returns the simulated Soroban resource fee (in XLM) for a representative
- * `request_deposit` or `request_withdrawal` call. No USD conversion — format
- * is `~0.00xx XLM` per the OQ2 resolution.
+ * `request_deposit`, `request_withdrawal`, vault `deposit` (stake), or vault
+ * `redeem` (unstake) call. No USD conversion — format is `~0.00xx XLM` per
+ * the OQ2 resolution.
  *
  * Implementation notes
  * --------------------
- * The fee is extracted from the assembled transaction returned by
- * `buildRequestDeposit` / `buildRequestWithdrawal`. The Soroban RPC assembles
- * the tx with the full resource fee embedded; parsing that fee (in stroops)
- * gives an accurate estimate.
+ * The fee is extracted from the assembled transaction returned by the relevant
+ * client builder. The Soroban RPC assembles the tx with the full resource fee
+ * embedded; parsing that fee (in stroops) gives an accurate estimate.
  *
  * When disconnected, unconfigured, or when the simulation fails, the hook
  * returns `{ feeXlm: undefined }` (callers render "—").
@@ -19,6 +19,8 @@
  *   `pipeline.mock.wallet.stellar.networkFeeEstimate.deposit`  — raw string
  *     e.g. `"~0.0052 XLM"` or numeric `"0.0052"`.  When set, no RPC is made.
  *   `pipeline.mock.wallet.stellar.networkFeeEstimate.withdraw` — same format.
+ *   `pipeline.mock.wallet.stellar.networkFeeEstimate.stake`    — same format.
+ *   `pipeline.mock.wallet.stellar.networkFeeEstimate.unstake`  — same format.
  *
  * The hook re-fetches every 60 s (same cadence as the EVM fee hook).
  *
@@ -32,12 +34,14 @@ import { useStellarWallet } from "./useStellarWallet";
 import {
   depositManagerId,
   withdrawalQueueId,
+  stakedPlusdId,
   sorobanRpcUrl,
   networkPassphrase,
 } from "./chain";
 import { readMock, useMock, parseJson } from "../evm/mock";
 import { DepositManagerClient } from "./contracts/depositManager";
 import { WithdrawalQueueClient } from "./contracts/withdrawalQueue";
+import { StakedPlusdClient } from "./contracts/stakedPlusd";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -45,17 +49,19 @@ import { WithdrawalQueueClient } from "./contracts/withdrawalQueue";
 const STELLAR_FEE_MOCK_KEYS = {
   deposit: "pipeline.mock.wallet.stellar.networkFeeEstimate.deposit",
   withdraw: "pipeline.mock.wallet.stellar.networkFeeEstimate.withdraw",
+  stake: "pipeline.mock.wallet.stellar.networkFeeEstimate.stake",
+  unstake: "pipeline.mock.wallet.stellar.networkFeeEstimate.unstake",
 } as const;
 
 /**
- * Representative deposit/withdraw amounts for the fee simulation (7 decimals).
- * 1000 tokens at 7 dp = 10_000_000_000n.
+ * Representative deposit/withdraw/stake/unstake amounts for the fee simulation
+ * (7 decimals). 1000 tokens at 7 dp = 10_000_000_000n.
  */
 const REPRESENTATIVE_AMOUNT = 10_000_000_000n;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type StellarFeeDirection = "deposit" | "withdraw";
+export type StellarFeeDirection = "deposit" | "withdraw" | "stake" | "unstake";
 
 export interface UseStellarNetworkFeeEstimateResult {
   /**
@@ -115,7 +121,11 @@ export function useStellarNetworkFeeEstimate(
   const mockRaw = useMock(mockKey, parseJson<string>);
 
   const contractId =
-    direction === "deposit" ? depositManagerId : withdrawalQueueId;
+    direction === "deposit"
+      ? depositManagerId
+      : direction === "withdraw"
+        ? withdrawalQueueId
+        : stakedPlusdId;
   const isConfigured = !!contractId;
 
   // ── Query function ────────────────────────────────────────────────────────
@@ -147,11 +157,28 @@ export function useStellarNetworkFeeEstimate(
           REPRESENTATIVE_AMOUNT,
           sourceAccount,
         );
-      } else {
+      } else if (direction === "withdraw") {
         const client = new WithdrawalQueueClient(contractId);
         assembledXdr = await client.buildRequestWithdrawal(
           address,
           REPRESENTATIVE_AMOUNT,
+          sourceAccount,
+        );
+      } else if (direction === "stake") {
+        const client = new StakedPlusdClient(contractId);
+        assembledXdr = await client.buildDeposit(
+          address,
+          REPRESENTATIVE_AMOUNT,
+          address, // receiver = sender
+          sourceAccount,
+        );
+      } else {
+        // unstake
+        const client = new StakedPlusdClient(contractId);
+        assembledXdr = await client.buildRedeem(
+          address,
+          REPRESENTATIVE_AMOUNT,
+          address, // receiver = sender
           sourceAccount,
         );
       }

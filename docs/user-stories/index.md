@@ -55,6 +55,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#614 Token input chips use pill radius; Figma uses 4px (shared with deposit)](https://github.com/eq-lab/pipeline/issues/614)           | [614-token-input-chip-radius.md](./epic-531/614-token-input-chip-radius.md)                   | Initial |
 | [#615 token-amount-display has stray border and asymmetric padding](https://github.com/eq-lab/pipeline/issues/615)                      | [615-stake-output-no-nested-border.md](./epic-531/615-stake-output-no-nested-border.md)       | Initial |
 | [#633 [FE] [Stellar] Stake/unstake flow: deposit → redeem vault hooks](https://github.com/eq-lab/pipeline/issues/633)                   | [633-stellar-stake-unstake-hooks.md](./epic-531/633-stellar-stake-unstake-hooks.md)           | Initial |
+| [#634 [FE] [Stellar] Stake page: chain-aware wiring (steps, trustline, XLM fee, all states)](https://github.com/eq-lab/pipeline/issues/634) | [634-stellar-stake-chain-aware-wiring.md](./epic-531/634-stellar-stake-chain-aware-wiring.md) | Initial |
 
 ---
 
