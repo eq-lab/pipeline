@@ -75,26 +75,19 @@ cosmetic swap, not a blocker.)
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/wallet/stellar/useStellarNetworkFeeEstimate.ts`:
-   - Change `queryFn`'s return type to `Promise<string>` (no `undefined`).
-   - Mock fast-path inside `queryFn` already returns a string — keep.
-   - Replace the `if (!isConnected || !address || !isConfigured) return undefined;`
-     guard: since `enabled: shouldRunQuery` already prevents this path, either
-     remove it or `throw new Error("stellar fee: not connected/configured")`.
-     Prefer throwing so the type stays `Promise<string>` and the invariant is
-     explicit.
-   - Replace the `catch { return undefined; }` with a `catch (e) { throw e instanceof Error ? e : new Error(String(e)); }`
-     so a failed simulation surfaces as a query error rather than an
-     undefined-rejection.
-2. Verify the `useQuery` options keep `staleTime: 60_000`, `refetchInterval: 60_000`,
+1. [x] In `packages/frontend/src/wallet/stellar/useStellarNetworkFeeEstimate.ts`:
+   - Changed `queryFn`'s return type to `Promise<string>` (no `undefined`).
+   - Mock fast-path inside `queryFn` already returns a string — kept.
+   - Replaced the `if (!isConnected || !address || !isConfigured) return undefined;`
+     guard with `throw new Error("stellar fee: not connected or configured")`.
+   - Removed the `try/catch` wrapper; errors propagate directly as query errors.
+2. [x] Verified `useQuery` options keep `staleTime: 60_000`, `refetchInterval: 60_000`,
    and `retry: false`. With `retry: false`, a thrown error is recorded once and
    not retried until the next 60s interval, eliminating the console spam.
-3. Confirm the final return mapping still yields `feeXlm: query.data ?? undefined`
-   and `error: query.error`. No caller changes needed (`useDepositFlow.ts`,
-   `useStakeFlow.ts` only read `feeXlm`).
-4. Update the file header doc comment: replace "the simulation fails, the hook
-   returns `{ feeXlm: undefined }`" with the new behavior (failure → query error;
-   `feeXlm` still undefined so callers render "—").
+3. [x] Confirmed the final return mapping still yields `feeXlm: query.data ?? undefined`
+   and `error: query.error`. No caller changes needed.
+4. [x] Updated the file header doc comment to reflect the new behavior (failure →
+   query error; `feeXlm` still undefined so callers render "—").
 
 ## Test Strategy
 

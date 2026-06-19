@@ -12,8 +12,11 @@
  * client builder. The Soroban RPC assembles the tx with the full resource fee
  * embedded; parsing that fee (in stroops) gives an accurate estimate.
  *
- * When disconnected, unconfigured, or when the simulation fails, the hook
- * returns `{ feeXlm: undefined }` (callers render "—").
+ * When disconnected or unconfigured, the hook returns `{ feeXlm: undefined }`.
+ * When the simulation fails, `queryFn` throws so the error is recorded in
+ * `query.error`; `feeXlm` remains undefined so callers render "—". With
+ * `retry: false` and `staleTime: 60_000` the error is not retried until the
+ * next 60 s interval, preventing console spam.
  *
  * Mock-key support (localStorage — dev only):
  *   `pipeline.mock.wallet.stellar.networkFeeEstimate.deposit`  — raw string
@@ -108,7 +111,7 @@ export function formatFeeXlm(stroops: bigint): string {
  * Returns `{ feeXlm: undefined }` when:
  *   - The relevant contract ID is empty (not configured).
  *   - The wallet is disconnected.
- *   - The simulation fails.
+ *   - The simulation fails (error is surfaced in `result.error`; callers render "—").
  */
 export function useStellarNetworkFeeEstimate(
   direction: StellarFeeDirection,
@@ -130,7 +133,7 @@ export function useStellarNetworkFeeEstimate(
 
   // ── Query function ────────────────────────────────────────────────────────
 
-  const queryFn = async (): Promise<string | undefined> => {
+  const queryFn = async (): Promise<string> => {
     // Re-read mock at query time (covers non-reactive re-runs).
     const mockVal = readMock(mockKey, parseJson<string>);
     if (mockVal !== undefined) {
@@ -138,63 +141,62 @@ export function useStellarNetworkFeeEstimate(
       return `~${mockVal} XLM`;
     }
 
-    if (!isConnected || !address || !isConfigured) return undefined;
-
-    try {
-      const server = new rpc.Server(sorobanRpcUrl, {
-        allowHttp: sorobanRpcUrl.startsWith("http://"),
-      });
-
-      // Load a real source account (needed for sequence number in simulation).
-      const sourceAccount = await server.getAccount(address);
-
-      let assembledXdr: string;
-
-      if (direction === "deposit") {
-        const client = new DepositManagerClient(contractId);
-        assembledXdr = await client.buildRequestDeposit(
-          address,
-          REPRESENTATIVE_AMOUNT,
-          sourceAccount,
-        );
-      } else if (direction === "withdraw") {
-        const client = new WithdrawalQueueClient(contractId);
-        assembledXdr = await client.buildRequestWithdrawal(
-          address,
-          REPRESENTATIVE_AMOUNT,
-          sourceAccount,
-        );
-      } else if (direction === "stake") {
-        const client = new StakedPlusdClient(contractId);
-        assembledXdr = await client.buildDeposit(
-          address,
-          REPRESENTATIVE_AMOUNT,
-          address, // receiver = sender
-          sourceAccount,
-        );
-      } else {
-        // unstake
-        const client = new StakedPlusdClient(contractId);
-        assembledXdr = await client.buildRedeem(
-          address,
-          REPRESENTATIVE_AMOUNT,
-          address, // receiver = sender
-          sourceAccount,
-        );
-      }
-
-      // Parse the assembled XDR to extract the Soroban resource fee (in stroops).
-      // `buildRequestDeposit`/`buildRequestWithdrawal` returns the assembled tx
-      // with the total fee (base + resource) embedded.
-      const tx = TransactionBuilder.fromXDR(assembledXdr, networkPassphrase);
-      const feeStroops = BigInt(tx.fee);
-
-      return formatFeeXlm(feeStroops);
-    } catch {
-      // Simulation failed (unconfigured contract, bad account, etc.) — return
-      // undefined so callers render "—"
-      return undefined;
+    // `enabled: shouldRunQuery` prevents this path when disconnected or
+    // unconfigured, but throw explicitly to keep the return type `Promise<string>`.
+    if (!isConnected || !address || !isConfigured) {
+      throw new Error("stellar fee: not connected or configured");
     }
+
+    // Any error here propagates as a query error (not an undefined-rejection).
+    const server = new rpc.Server(sorobanRpcUrl, {
+      allowHttp: sorobanRpcUrl.startsWith("http://"),
+    });
+
+    // Load a real source account (needed for sequence number in simulation).
+    const sourceAccount = await server.getAccount(address);
+
+    let assembledXdr: string;
+
+    if (direction === "deposit") {
+      const client = new DepositManagerClient(contractId);
+      assembledXdr = await client.buildRequestDeposit(
+        address,
+        REPRESENTATIVE_AMOUNT,
+        sourceAccount,
+      );
+    } else if (direction === "withdraw") {
+      const client = new WithdrawalQueueClient(contractId);
+      assembledXdr = await client.buildRequestWithdrawal(
+        address,
+        REPRESENTATIVE_AMOUNT,
+        sourceAccount,
+      );
+    } else if (direction === "stake") {
+      const client = new StakedPlusdClient(contractId);
+      assembledXdr = await client.buildDeposit(
+        address,
+        REPRESENTATIVE_AMOUNT,
+        address, // receiver = sender
+        sourceAccount,
+      );
+    } else {
+      // unstake
+      const client = new StakedPlusdClient(contractId);
+      assembledXdr = await client.buildRedeem(
+        address,
+        REPRESENTATIVE_AMOUNT,
+        address, // receiver = sender
+        sourceAccount,
+      );
+    }
+
+    // Parse the assembled XDR to extract the Soroban resource fee (in stroops).
+    // `buildRequestDeposit`/`buildRequestWithdrawal` returns the assembled tx
+    // with the total fee (base + resource) embedded.
+    const tx = TransactionBuilder.fromXDR(assembledXdr, networkPassphrase);
+    const feeStroops = BigInt(tx.fee);
+
+    return formatFeeXlm(feeStroops);
   };
 
   // ── useQuery ──────────────────────────────────────────────────────────────
