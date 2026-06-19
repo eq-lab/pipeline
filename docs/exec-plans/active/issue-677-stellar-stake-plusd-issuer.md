@@ -55,11 +55,11 @@ _None_
 
 ## Implementation Steps
 
-1. In `packages/frontend/src/wallet/useStakeFlow.ts`, import `useStellarDepositManagerAddresses` from
+1. [x] In `packages/frontend/src/wallet/useStakeFlow.ts`, import `useStellarDepositManagerAddresses` from
    `@/wallet` (add to the existing Stellar import block, ~lines 48-59).
-2. Inside `useStakeFlow`, near the other Stellar hooks (~line 240), call it unconditionally:
+2. [x] Inside `useStakeFlow`, near the other Stellar hooks (~line 240), call it unconditionally:
    `const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();`
-3. Replace the Stake-tab SAC call (`useStakeFlow.ts:247-251`) so it mirrors the deposit flow
+3. [x] Replace the Stake-tab SAC call (`useStakeFlow.ts:247-251`) so it mirrors the deposit flow
    (`useDepositFlow.ts:319-323`):
    ```ts
    const stellarPlusdSac = useStellarSacToken({
@@ -68,11 +68,10 @@ _None_
      contractId: stellarAddresses?.plusd ?? "",
    });
    ```
-4. If `useStellarStakedPlusdAsset()` / `stellarPlusdContractId` (lines 241-242) is no longer used after
-   step 3, remove the binding and the now-unused import to keep the type-check clean. If it is still
-   referenced elsewhere in the file, leave it.
-5. Run the TypeScript build / type-check for the frontend package and fix any unused-symbol or type
-   errors introduced.
+4. [x] `useStellarStakedPlusdAsset()` / `stellarPlusdContractId` (lines 241-242) was no longer used after
+   step 3; removed the binding and the now-unused import (`useStellarStakedPlusdAsset`). TypeScript
+   type-check passes cleanly.
+5. [x] TypeScript build / type-check for the frontend package passes with no errors.
 
 ## Test Strategy
 
