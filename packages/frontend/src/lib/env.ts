@@ -95,10 +95,20 @@ export const ENV = Object.freeze({
   ),
 
   /**
-   * Stellar network identifier. Accepts `"testnet"` (default) or `"mainnet"`.
-   * Maps to the StellarWalletsKit `Networks` enum value at runtime.
+   * Stellar network passphrase — identifies the network for wallet signing and
+   * Horizon/Soroban calls. The StellarWalletsKit `Networks` enum values ARE the
+   * passphrase strings, so this value is consumed directly as the kit network.
+   * Defaults to the Stellar testnet passphrase.
+   *
+   * Examples:
+   *   - testnet:   "Test SDF Network ; September 2015"
+   *   - futurenet: "Test SDF Future Network ; October 2022"
+   *   - mainnet:   "Public Global Stellar Network ; September 2015"
    */
-  STELLAR_NETWORK: readString("VITE_STELLAR_NETWORK", "testnet"),
+  STELLAR_NETWORK_PASSPHRASE: readString(
+    "VITE_STELLAR_NETWORK_PASSPHRASE",
+    "Test SDF Network ; September 2015",
+  ),
 
   /**
    * Backend chain id for Stellar API calls. Defaults to the repo's Stellar
