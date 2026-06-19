@@ -85,6 +85,7 @@ vi.mock("./useStellarSacToken", () => ({
   useStellarSacToken: vi.fn(() => ({
     balance: "0.0000000",
     hasTrustline: false,
+    isAuthorized: false,
     decimals: 7,
     refetchBalance: vi.fn(),
     isLoading: false,
@@ -241,9 +242,19 @@ beforeEach(() => {
 // ── Tests: useStellarStake ────────────────────────────────────────────────────
 
 describe("useStellarStake", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorageMock.clear();
+
+    // The "unconfigured guard" test spies `stakedPlusdId` as a getter and
+    // mocks it to "". That getter spy is not restored by vi.clearAllMocks(),
+    // so it leaks into every later test in this (and the following) describe.
+    // Re-spy it to the valid id before each test; the unconfigured-guard test
+    // overrides it back to "" locally.
+    const chainModule = await import("./chain");
+    vi.spyOn(chainModule, "stakedPlusdId", "get").mockReturnValue(
+      "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+    );
 
     mockGetAccount.mockResolvedValue({ id: TEST_ADDRESS, sequence: "1" });
     mockBuildDeposit.mockResolvedValue("assembled-xdr");
@@ -376,9 +387,16 @@ describe("useStellarStake", () => {
 // ── Tests: useStellarUnstake ──────────────────────────────────────────────────
 
 describe("useStellarUnstake", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorageMock.clear();
+
+    // See useStellarStake beforeEach: re-spy `stakedPlusdId` to the valid id so
+    // the leaked "" from an earlier unconfigured-guard test does not bleed in.
+    const chainModule = await import("./chain");
+    vi.spyOn(chainModule, "stakedPlusdId", "get").mockReturnValue(
+      "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+    );
 
     mockGetAccount.mockResolvedValue({ id: TEST_ADDRESS, sequence: "1" });
     mockBuildRedeem.mockResolvedValue("assembled-xdr");
@@ -563,10 +581,37 @@ describe("useStellarStakedPlusdBalance", () => {
 // ── Tests: useStellarChangeTrustStakedPlusd ───────────────────────────────────
 
 describe("useStellarChangeTrustStakedPlusd", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorageMock.clear();
 
+    // Earlier tests spy on `stakedPlusdId` as a getter and mock it to "".
+    // vi.restoreAllMocks() does NOT restore it because the original property
+    // on a vi.mock() factory module is a plain value, not a getter. We must
+    // explicitly re-spy it to the correct value so that `enabled: !!stakedPlusdId`
+    // stays true and the shareAssetQuery actually runs.
+    const chainModule = await import("./chain");
+    vi.spyOn(chainModule, "stakedPlusdId", "get").mockReturnValue(
+      "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+    );
+
+    // Reset useStellarWallet to the default connected state. The
+    // "returns undefined when disconnected" test in useStellarStakedPlusdBalance
+    // uses mockReturnValue (permanent) to set isConnected: false, which persists
+    // into this describe block. Without this reset, `if (!isConnected)` in
+    // trustlineStatus returns "loading" immediately.
+    const walletModule = await import("./useStellarWallet");
+    vi.mocked(walletModule.useStellarWallet).mockReturnValue({
+      address: TEST_ADDRESS,
+      isConnected: true,
+      signTransaction: mockSignTransaction,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    });
+
+    // Explicitly reset mockName: mockReset() clears the implementation set by
+    // the "loading" test's mockReturnValue(new Promise(() => {})).
+    mockName.mockReset();
     mockName.mockResolvedValue(
       "sPLUSD:GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
     );
@@ -600,14 +645,112 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     expect(result.current.data?.hash).toBe("trust-mock-hash");
   });
 
-  it("needsTrustline is true when connected with no trustline", () => {
+  // Regression test for #685: while the share asset is still loading
+  // (name() call not yet resolved), the step must NOT be "satisfied" —
+  // trustlineStatus must be "loading" and needsTrustline must be false
+  // (not "needed" — not yet known).
+  it("trustlineStatus is loading while share asset has not resolved", () => {
+    // mockName is set up in beforeEach to resolve, but here we make it
+    // hang so the query stays in isLoading state. We test the synchronous
+    // initial state before the promise settles.
+    mockName.mockReturnValue(new Promise(() => {})); // never resolves
+
     const { result } = renderHook(
       () => useStellarChangeTrustStakedPlusd(),
       { wrapper: makeWrapper() },
     );
 
-    // useStellarSacToken mocked to return hasTrustline: false
-    expect(result.current.needsTrustline).toBe(false); // shareAsset not yet loaded
+    // Immediately after mount the query is still loading.
+    expect(result.current.trustlineStatus).toBe("loading");
+    // needsTrustline must be false — "not yet known" is not "needed"
+    expect(result.current.needsTrustline).toBe(false);
+  });
+
+  // Share asset resolved, no trustline → "needed"
+  it("trustlineStatus is 'needed' when share asset resolved and trustline missing", async () => {
+    // mockName resolves in beforeEach to a valid "CODE:ISSUER" string.
+    // useStellarSacToken is mocked to hasTrustline: false (the default mock).
+
+    const { result } = renderHook(
+      () => useStellarChangeTrustStakedPlusd(),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(result.current.trustlineStatus).toBe("needed"),
+    );
+    expect(result.current.needsTrustline).toBe(true);
+  });
+
+  // Share asset resolved, trustline present → "satisfied"
+  it("trustlineStatus is 'satisfied' when share asset resolved and trustline present", async () => {
+    // Override useStellarSacToken to return hasTrustline: true for all calls
+    // in this test. Use mockReturnValue (not Once) because the hook calls
+    // useStellarSacToken on every render — once with assetCode:"" (before
+    // name() resolves) and again with assetCode:"sPLUSD" (after). mockReturnValue
+    // ensures hasTrustline:true for every call including the second render.
+    // We restore the default after this test to avoid polluting later tests.
+    const sacModule = await import("./useStellarSacToken");
+    const defaultSacReturn = {
+      balance: "0.0000000",
+      hasTrustline: false,
+      isAuthorized: false,
+      decimals: 7,
+      refetchBalance: vi.fn(),
+      isLoading: false,
+      error: null,
+    };
+    vi.mocked(sacModule.useStellarSacToken).mockReturnValue({
+      ...defaultSacReturn,
+      balance: "1.0000000",
+      hasTrustline: true,
+      isAuthorized: true,
+    });
+
+    const { result } = renderHook(
+      () => useStellarChangeTrustStakedPlusd(),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(result.current.trustlineStatus).toBe("satisfied"),
+    );
+    expect(result.current.needsTrustline).toBe(false);
+
+    // Restore default so subsequent tests are not affected.
+    vi.mocked(sacModule.useStellarSacToken).mockReturnValue(defaultSacReturn);
+  });
+
+  // Regression: name() returns non-"CODE:ISSUER" format → "error", staking blocked
+  it("trustlineStatus is 'error' when name() returns unexpected format", async () => {
+    // Override mockName to return a non-"CODE:ISSUER" string.
+    mockName.mockResolvedValue("not-a-valid-asset-string");
+
+    const { result } = renderHook(
+      () => useStellarChangeTrustStakedPlusd(),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(result.current.trustlineStatus).toBe("error"),
+    );
+    // needsTrustline must be false — we don't know enough to assert "needed"
+    expect(result.current.needsTrustline).toBe(false);
+  });
+
+  // Regression: name() rejects → "error", staking blocked
+  it("trustlineStatus is 'error' when name() rejects", async () => {
+    mockName.mockRejectedValue(new Error("RPC connection refused"));
+
+    const { result } = renderHook(
+      () => useStellarChangeTrustStakedPlusd(),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() =>
+      expect(result.current.trustlineStatus).toBe("error"),
+    );
+    expect(result.current.needsTrustline).toBe(false);
   });
 
   it("declined signature sets error", async () => {
@@ -622,9 +765,11 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       { wrapper: makeWrapper() },
     );
 
-    // submit() requires the share asset, resolved asynchronously via name();
-    // wait for it to load (needsTrustline flips true) before submitting.
-    await waitFor(() => expect(result.current.needsTrustline).toBe(true));
+    // Wait for name() to resolve so shareAsset is loaded before submit()
+    // (otherwise the "share asset not loaded" guard fires first).
+    await waitFor(() =>
+      expect(result.current.trustlineStatus).not.toBe("loading"),
+    );
 
     act(() => {
       result.current.submit();

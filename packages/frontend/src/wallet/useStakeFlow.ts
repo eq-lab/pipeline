@@ -417,6 +417,11 @@ export function useStakeFlow(
     stellarIsReady && amountBig > 0n && amountBig <= (stellarInputBalance ?? 0n);
 
   // Trustline states.
+  //
+  // sPLUSD: use the fail-safe `trustlineStatus` discriminator so that
+  // "success" is shown ONLY when the trustline is confirmed present, never
+  // when the share asset is still loading or errored.
+  const stellarSplusdTrustlineStatus = splusdTrustline.trustlineStatus;
   const stellarSplusdNeedsTrustline = splusdTrustline.needsTrustline;
   const stellarPlusdNeedsTrustline = plusdTrustline.needsTrustline;
 
@@ -437,11 +442,15 @@ export function useStakeFlow(
     !plusdTrustline.isPending;
 
   // Step 2 (stake/unstake) — gated on trustline being present.
+  //
+  // canStellarStake: permit staking ONLY when trustlineStatus is "satisfied".
+  // Loading or error states block staking — the mint cannot land on a
+  // non-existent trustline (this is the core safety fix for #685).
   const canStellarStake =
     isStake &&
     isStellarConnected &&
     stellarHasBalance &&
-    !stellarSplusdNeedsTrustline &&
+    stellarSplusdTrustlineStatus === "satisfied" &&
     !stellarStake.isPending &&
     !stellarStake.isSuccess;
 
@@ -454,8 +463,14 @@ export function useStakeFlow(
     !stellarUnstake.isSuccess;
 
   // Step states.
+  //
+  // stellarSplusdTrustlineState: "success" ONLY when trustlineStatus is
+  // "satisfied" (and connected). Loading/needed/error all stay "idle" so the
+  // actionable "Enable" button is always shown while resolution is pending.
   const stellarSplusdTrustlineState: StakeStepState =
-    !stellarSplusdNeedsTrustline && isStellarConnected ? "success" : "idle";
+    stellarSplusdTrustlineStatus === "satisfied" && isStellarConnected
+      ? "success"
+      : "idle";
   const stellarPlusdTrustlineState: StakeStepState =
     !stellarPlusdNeedsTrustline && isStellarConnected ? "success" : "idle";
   const stellarStakeStepState: StakeStepState = stellarStake.isSuccess

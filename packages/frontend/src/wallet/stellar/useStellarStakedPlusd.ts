@@ -134,9 +134,37 @@ export interface UseStellarStakedPlusdBalanceResult {
   refetch: () => void;
 }
 
+/**
+ * Fail-safe trustline status for the sPLUSD share asset.
+ *
+ * - `"loading"`   — share asset or trustline check is still in flight.
+ * - `"error"`     — `name()` call failed or returned an unexpected format.
+ * - `"needed"`    — share asset resolved, trustline is missing.
+ * - `"satisfied"` — share asset resolved AND trustline exists.
+ *
+ * The step must be marked "success" and staking may proceed ONLY when
+ * `trustlineStatus === "satisfied"`.
+ */
+export type StellarSplusdTrustlineStatus =
+  | "loading"
+  | "error"
+  | "needed"
+  | "satisfied";
+
 export interface UseStellarChangeTrustStakedPlusdResult {
   submit: () => void;
-  /** `true` when the connected account is missing the sPLUSD classic trustline. */
+  /**
+   * Fail-safe discriminated status for the sPLUSD trustline step.
+   * The step shows "success" and staking is allowed ONLY when this is
+   * `"satisfied"`. While `"loading"` or `"error"` the step remains actionable
+   * (never silently OK) and staking is blocked.
+   */
+  trustlineStatus: StellarSplusdTrustlineStatus;
+  /**
+   * `true` only when the trustline is confirmed missing (`trustlineStatus ===
+   * "needed"`). Used to enable the "Enable" submit button. Kept for
+   * backward-compat; prefer `trustlineStatus` for gate decisions.
+   */
   needsTrustline: boolean;
   data: { hash: string } | undefined;
   isPending: boolean;
@@ -682,10 +710,35 @@ export function useStellarStakedPlusdBalance(): UseStellarStakedPlusdBalanceResu
  *
  * Staking mints sPLUSD shares to the receiver — without an sPLUSD trustline
  * the deposit fails. This hook derives the share asset's `{ code, issuer }`
- * from the vault's `name()` view (which returns `"sPLUSD:GISSUER"` style), then
- * drives `useStellarSacToken` for `hasTrustline` detection.
+ * from the vault's `name()` view (which returns `"sPLUSD:GISSUER"` style,
+ * matching the `"CODE:ISSUER"` convention used for PLUSD/USDC in
+ * `useStellarDepositManagerAddresses.ts`), then drives `useStellarSacToken`
+ * for `hasTrustline` detection.
+ *
+ * Fail-safe status (`trustlineStatus`)
+ * --------------------------------------
+ * The hook exposes a discriminated status instead of a simple boolean so that
+ * consumers can distinguish between "trustline confirmed present" and any
+ * loading/error/missing state. This prevents the step from silently showing
+ * "success" while the share asset is still resolving:
+ *
+ *   - `"loading"` — share asset or token check is still in flight.
+ *   - `"error"`   — `name()` call failed or returned an unexpected format.
+ *   - `"needed"`  — share asset resolved, but the trustline is missing.
+ *   - `"satisfied"` — share asset resolved AND the trustline exists.
+ *
+ * The step must only be marked "success" and staking may only proceed when
+ * `trustlineStatus === "satisfied"`. Any other status (including loading)
+ * keeps the step actionable ("Enable" button) and blocks the stake action.
+ *
+ * `needsTrustline` is kept for backward-compat and is `true` only for the
+ * "needed" case (enables the submit button when there is a real missing trustline
+ * to act on).
  *
  * Uses Horizon (not Soroban RPC) for submission — classic ops go to Horizon.
+ * The `shareAssetQuery` does not retry (`retry: false`) so a transient RPC
+ * failure surfaces immediately as `trustlineStatus: "error"`. The user
+ * recovers by reconnecting (which re-triggers the query) or by refreshing.
  */
 export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedPlusdResult {
   const [data, setData] = useState<{ hash: string } | undefined>(undefined);
@@ -697,17 +750,30 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
   const { address, isConnected, signTransaction } = useStellarWallet();
 
   // ── Resolve share asset { code, issuer } from vault name() ─────────────────
+  //
+  // The vault's SAC name() returns "CODE:ISSUER" style (e.g. "sPLUSD:GISSUER"),
+  // matching the convention used for PLUSD/USDC in
+  // useStellarDepositManagerAddresses.ts (parseClassicAsset). On an unexpected
+  // format we throw (fail-safe) rather than fabricating an issuer, because
+  // building a changeTrust against a wrong asset is worse than blocking.
+  // retry:1 allows one self-heal on a transient RPC error.
   const shareAssetQuery = useQuery<{ code: string; issuer: string }, Error>({
     queryKey: ["stellarStakedPlusdShareAsset", stakedPlusdId],
     queryFn: async () => {
       const client = createStakedPlusdClient(stakedPlusdId);
       if (!client) throw new Error("StakedPLUSD not configured");
       const nameStr = await client.name();
-      // The vault's SAC name() returns "CODE:ISSUER" style (e.g. "sPLUSD:GISSUER")
+      // Parse "CODE:ISSUER" — same pattern as parseClassicAsset in
+      // useStellarDepositManagerAddresses.ts.
       const parts = nameStr.split(":");
       if (parts.length === 2 && parts[0] && parts[1]) {
         return { code: parts[0], issuer: parts[1] };
       }
+      // Fail-safe: treat unexpected format as an error so trustlineStatus
+      // becomes "error" and staking is blocked (not silently allowed).
+      console.warn(
+        `useStellarChangeTrustStakedPlusd: unexpected name() result "${nameStr}", expected "CODE:ISSUER"`,
+      );
       throw new Error(
         `StakedPLUSD: unexpected name() result "${nameStr}" — expected "CODE:ISSUER"`,
       );
@@ -717,6 +783,9 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
     gcTime: Infinity,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
+    // retry:false — fail fast so trustlineStatus flips to "error" immediately
+    // on an RPC hiccup. The user recovers by reconnecting (which triggers a
+    // new render and re-enables the query) or by refreshing the page.
     retry: false,
   });
 
@@ -730,11 +799,37 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
     mockKey: STELLAR_MOCK_KEYS.stakedPlusdShareBalance,
   });
 
-  const needsTrustline =
-    isConnected &&
-    !!shareAsset &&
-    !sPlusdToken.isLoading &&
-    !sPlusdToken.hasTrustline;
+  // ── Fail-safe trustline status ─────────────────────────────────────────────
+  //
+  // "satisfied" is the ONLY state that allows staking to proceed and the step
+  // to be marked "success". All other states keep the step actionable.
+  const trustlineStatus: StellarSplusdTrustlineStatus = (() => {
+    if (!isConnected) {
+      // Disconnected: no trustline to verify — keep as loading so the step
+      // is never shown as satisfied for a disconnected user.
+      return "loading";
+    }
+    if (shareAssetQuery.isLoading || sPlusdToken.isLoading) {
+      return "loading";
+    }
+    if (shareAssetQuery.error !== null) {
+      return "error";
+    }
+    if (!shareAsset) {
+      // Query finished but no data (e.g. unconfigured) — treat as loading
+      // rather than silently OK.
+      return "loading";
+    }
+    if (sPlusdToken.hasTrustline) {
+      return "satisfied";
+    }
+    return "needed";
+  })();
+
+  // needsTrustline kept for backward-compat: true only for the actionable
+  // "I need to add a trustline" case. Loading/error do NOT set this true so
+  // the button is disabled while resolution is pending.
+  const needsTrustline = trustlineStatus === "needed";
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -830,5 +925,14 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
     })();
   }, [address, isConnected, isInFlight, shareAsset, signTransaction]);
 
-  return { submit, needsTrustline, data, isPending, isSuccess, error, reset };
+  return {
+    submit,
+    trustlineStatus,
+    needsTrustline,
+    data,
+    isPending,
+    isSuccess,
+    error,
+    reset,
+  };
 }
