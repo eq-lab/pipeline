@@ -1059,6 +1059,15 @@ export function useDepositFlow(
     ? stellarDepositInflight
     : stellarWithdrawInflight;
 
+  // Active request from the API (raw on-chain i128 at 7 decimals, same units as
+  // the inflight amount). Preferred source for the locked amount so the input
+  // keeps showing the deposited value once the request is confirmed/claimable
+  // and the client-side inflight record has been cleared (mirrors EVM, #664-era
+  // locked-amount behavior).
+  const stellarActiveRequest = isDeposit
+    ? stellarDepositActiveRequest
+    : stellarWithdrawActiveRequest;
+
   const stellarStep2Loading = isDeposit
     ? stellarRequestDeposit.isPending ||
       stellarDepositIsPendingVerification ||
@@ -1098,9 +1107,11 @@ export function useDepositFlow(
     isDataPending: stellarIsDataPending,
     isAmountLocked: stellarRequestIsConfirmed,
     lockedAmountRaw:
-      stellarInflight?.amount !== undefined
-        ? BigInt(stellarInflight.amount)
-        : undefined,
+      stellarActiveRequest?.amount !== undefined
+        ? BigInt(stellarActiveRequest.amount)
+        : stellarInflight?.amount !== undefined
+          ? BigInt(stellarInflight.amount)
+          : undefined,
     requestId: stellarRequestId,
     requestIsConfirmed: stellarRequestIsConfirmed,
     isPendingVerification: stellarIsPendingVerification,
