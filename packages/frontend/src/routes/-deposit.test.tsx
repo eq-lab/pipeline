@@ -597,26 +597,41 @@ describe("Deposit page — approved state (allowance ≥ amount)", () => {
     });
   });
 
-  it("input card IS dimmed (opacity-30) in the approved/step-2-live state", async () => {
+  it("input card IS dimmed (opacity-30) in the approved/step-2-live state, but NOT while focused", async () => {
     const user = userEvent.setup();
     renderDeposit();
 
     const input = await screen.findByRole("textbox", { name: /USDC amount/i });
     await user.type(input, "2000");
 
-    // Once approved with an amount entered, step 2 is live → TokenInput root should fade.
-    // Walk up until we find an ancestor that contains "transition-opacity" in its class
-    // (that is the TokenInput root div which receives the isInputFaded className).
-    await waitFor(() => {
+    // Helper: walk up from <input> to find the TokenInput root div (the one
+    // that carries "transition-opacity" in its className).
+    const findTokenInputRoot = (): Element | null => {
       let el: Element | null = input;
-      let tokenInputRoot: Element | null = null;
       while (el) {
         if (el.className?.includes?.("transition-opacity")) {
-          tokenInputRoot = el;
-          break;
+          return el;
         }
         el = el.parentElement;
       }
+      return null;
+    };
+
+    // While the input is focused (user just typed), the card carries both
+    // opacity-30 AND focus-within:opacity-100 so CSS keeps it fully visible.
+    await waitFor(() => {
+      const tokenInputRoot = findTokenInputRoot();
+      expect(tokenInputRoot).not.toBeNull();
+      expect(tokenInputRoot?.className).toContain("opacity-30");
+      // focus-within:opacity-100 must also be present so CSS overrides the
+      // dimming while the user is actively typing (fix for #663).
+      expect(tokenInputRoot?.className).toContain("focus-within:opacity-100");
+    });
+
+    // After blurring (user leaves the field), opacity-30 is fully in effect.
+    await user.tab();
+    await waitFor(() => {
+      const tokenInputRoot = findTokenInputRoot();
       expect(tokenInputRoot).not.toBeNull();
       expect(tokenInputRoot?.className).toContain("opacity-30");
     });

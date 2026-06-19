@@ -32,7 +32,7 @@ Viewport: 402×874 (mobile) and 1440×900 (desktop). Mock scenario: `connected-b
 
 ---
 
-## Story 2: Input card IS dimmed in the approved/step-2-live state
+## Story 2: Input card IS dimmed in the approved/step-2-live state (but NOT while the input is focused)
 
 **Persona:** A connected LP who has already approved an allowance and entered a deposit amount, viewing the deposit page while step 2 (Confirm) is live.
 
@@ -47,10 +47,11 @@ Viewport: 402×874 (mobile) and 1440×900 (desktop). Mock scenario: `connected-b
 **Steps:**
 
 1. Navigate to `/deposit`.
-2. Enter a deposit amount (e.g. 2000 USDC).
+2. Enter a deposit amount (e.g. 2000 USDC) and then click elsewhere to blur the input.
 3. Observe the USDC input card after the allowance check resolves.
 
 **Expected result:**
 
-- The USDC input card renders at 30% opacity (the `opacity-30` class is applied).
+- The USDC input card renders at 30% opacity (the `opacity-30` class is applied, and `focus-within:opacity-100` is also present to restore full opacity while typing).
 - This signals to the user that step 1 is complete and step 2 (Confirm) is now the active action.
+- While the input is actively focused (user is typing), the card appears at full opacity — it must NOT dim while the user is entering a value (fix #663).
