@@ -746,7 +746,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(deposit)}</>);
+    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
     const text = container.textContent ?? "";
     expect(text).toContain("PLUSD");
     expect(text).not.toContain("USDC");
@@ -760,7 +760,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "PendingVerification",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(deposit)}</>);
+    const { container } = render(<>{renderRequestRow(deposit, "evm")}</>);
     const text = container.textContent ?? "";
     expect(text).toContain("PLUSD");
     expect(text).not.toContain("USDC");
@@ -774,7 +774,7 @@ describe("Shared renderRequestRow helper — contract", () => {
       status: "Completed",
       created_at: "2026-05-08T10:00:00Z",
     };
-    const { container } = render(<>{renderRequestRow(withdraw)}</>);
+    const { container } = render(<>{renderRequestRow(withdraw, "evm")}</>);
     const text = container.textContent ?? "";
     expect(text).toContain("USDC");
     expect(text).not.toContain("PLUSD");
@@ -792,7 +792,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
-        amount: "10000000", // 1.0 USDC at 7 decimals
+        amount: "10000000", // 1.0 PLUSD at 7 decimals
         request_id: "s1",
         status: "Completed",
         created_at: "2026-06-01T10:00:00Z",
@@ -808,7 +808,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     ],
   };
 
-  it("Stellar Deposit: 10000000 at 7 dp renders '1.00 USDC', not '10.00 USDC' (the bug)", () => {
+  it("Stellar Deposit: 10000000 at 7 dp renders '1.00 PLUSD', not '10.00 PLUSD' (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({ isConnected: true });
     mockUseWallet.mockReturnValue({ isConnected: false });
@@ -821,9 +821,9 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
 
     renderTransactions();
 
-    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1.00 PLUSD")).toBeInTheDocument();
     // Ensure the old bug value does NOT appear
-    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+    expect(screen.queryByText("+10.00 PLUSD")).not.toBeInTheDocument();
   });
 
   it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD amounts (the bug)", async () => {
@@ -862,7 +862,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
 
     renderTransactions();
 
-    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("EVM regression: EVM Stake at 18 dp still renders correctly after the fix", async () => {
@@ -886,7 +886,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     expect(screen.getByText("+999.50 sPLUSD")).toBeInTheDocument();
   });
 
-  it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 USDC'", () => {
+  it("renderRequestRow — Stellar chainKind: 10000000 Deposit renders '+1.00 PLUSD'", () => {
     const deposit: RequestItem = {
       type: "Deposit",
       amount: "10000000",
@@ -895,7 +895,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
       created_at: "2026-06-01T10:00:00Z",
     };
     const { container } = render(<>{renderRequestRow(deposit, "stellar")}</>);
-    expect(container.textContent).toContain("+1.00 USDC");
+    expect(container.textContent).toContain("+1.00 PLUSD");
   });
 
   it("renderRequestRow — Stellar chainKind: 10000000/9900000 Stake renders non-zero PLUSD/sPLUSD", () => {

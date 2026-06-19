@@ -509,7 +509,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     requests: [
       {
         type: "Deposit",
-        amount: "10000000", // 1.0 USDC at 7 decimals
+        amount: "10000000", // 1.0 PLUSD at 7 decimals
         request_id: "s674-1",
         status: "Completed",
         created_at: "2026-06-01T10:00:00Z",
@@ -525,7 +525,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
     ],
   };
 
-  it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 USDC', not '+10.00 USDC' (the bug)", () => {
+  it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 PLUSD', not '+10.00 PLUSD' (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
     mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
@@ -538,8 +538,8 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
     renderCard();
 
-    expect(screen.getByText("+1.00 USDC")).toBeInTheDocument();
-    expect(screen.queryByText("+10.00 USDC")).not.toBeInTheDocument();
+    expect(screen.getByText("+1.00 PLUSD")).toBeInTheDocument();
+    expect(screen.queryByText("+10.00 PLUSD")).not.toBeInTheDocument();
   });
 
   it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD (the bug)", () => {
