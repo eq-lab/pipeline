@@ -60,7 +60,7 @@ Out of scope:
 
 ## Implementation Steps
 
-1. `packages/frontend/src/routes/transactions.tsx`
+1. [x] `packages/frontend/src/routes/transactions.tsx`
    - Replace the import `import { useEvmWallet } from "@/wallet";` with the
      active-chain trio: `import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";`.
    - Replace `const { isConnected } = useEvmWallet();` (line 79) with the
@@ -87,7 +87,7 @@ Out of scope:
      (`useWalletView().kind`), not EVM unconditionally, and that empty-state and
      rows are mutually exclusive.
 
-2. `packages/frontend/src/components/RecentActivityCard.tsx`
+2. [x] `packages/frontend/src/components/RecentActivityCard.tsx`
    - Replace `import { useEvmWallet } from "@/wallet";` with
      `import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";`.
    - Replace `const { isConnected } = useEvmWallet();` (line 82) with the same
@@ -98,7 +98,7 @@ Out of scope:
    - Update the component doc comment ("**Everything else** … disconnected")
      to reflect active-chain gating.
 
-3. Tests — `packages/frontend/src/routes/-transactions.test.tsx`
+3. [x] Tests — `packages/frontend/src/routes/-transactions.test.tsx`
    - Extend the `vi.mock("@/wallet", …)` block to also mock `useStellarWallet`
      and `useWalletView` with configurable mock fns (default `useWalletView` →
      `{ kind: "evm" }`, `useStellarWallet` → `{ isConnected: false }`), keeping
@@ -119,13 +119,13 @@ Out of scope:
        so its `enabled` gating is not exercised here — verify the gate keys off
        EVM, the active view).
 
-4. Tests — `packages/frontend/src/components/RecentActivityCard.test.tsx`
+4. [x] Tests — `packages/frontend/src/components/RecentActivityCard.test.tsx`
    - Mirror step 3: extend `vi.mock("@/wallet", …)` to mock `useStellarWallet`
      and `useWalletView`. Add a describe block asserting that in Stellar view
      with Stellar connected + data, the list renders (and the empty illustration
      caption is absent), and that EVM connection state no longer drives the card.
 
-5. Lint/build per AGENTS.md TypeScript rule (run during the coder phase):
+5. [x] Lint/build per AGENTS.md TypeScript rule (run during the coder phase):
    `npx tsx scripts/lint-docs.ts` for docs, plus the frontend lint/test/build
    commands the coder normally runs.
 

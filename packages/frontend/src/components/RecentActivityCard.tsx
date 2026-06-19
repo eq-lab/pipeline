@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
 import { ActivityEmptyIllustration, Card, EmptyState } from "@pipeline/ui";
-import { useEvmWallet } from "@/wallet";
+import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 import { useRequests } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 
@@ -19,10 +19,14 @@ import { renderRequestRow } from "@/components/activity/renderRequestRow";
  *   rendering is delegated to the shared `renderRequestRow` helper so the home
  *   card and the transactions page always render rows from the same code path.
  *
- * **Everything else** (disconnected, loading, error, connected but no rows):
+ * **Everything else** (active chain disconnected, loading, error, connected but no rows):
  *   Shows the existing `ActivityEmptyIllustration` + caption empty state
  *   (Figma node `1497:94567`). No "View All" button is shown — there is
  *   nothing to navigate to.
+ *
+ * Active-chain gating (Issue #644): `isConnected` is keyed off the active
+ * chain (`useWalletView().kind`) rather than EVM unconditionally, mirroring
+ * `useRequests`. The empty state and list are mutually exclusive via `showList`.
  *
  * Layout:
  *   - The Card is the positioning context. Inner content is a vertical flex
@@ -79,7 +83,13 @@ export const RecentActivityCard = React.forwardRef<
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-  const { isConnected } = useEvmWallet();
+  // Active-chain gating (Issue #644): mirror useRequests' chain-selection logic.
+  // Tech-debt: this derivation is duplicated in useRequests and transactions.tsx;
+  // extract to a shared hook in a follow-up (see tech-debt-tracker.md).
+  const { kind } = useWalletView();
+  const { isConnected: isEvmConnected } = useEvmWallet();
+  const { isConnected: isStellarConnected } = useStellarWallet();
+  const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
   const { data, isLoading, error } = useRequests();
   const requests = data?.requests ?? [];
   const showList = isConnected && !isLoading && !error && requests.length > 0;
