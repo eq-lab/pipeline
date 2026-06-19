@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
+use serde_json::Value;
 use sqlx::PgConnection;
 
 use shared::{db::EventRepo, events::ContractLog, log_mapper::LogMapper};
@@ -46,9 +47,17 @@ impl LogMapper for ContractLogMapper {
 
     async fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
         let mut event_copy;
-        let event_ref = if self.track_position && is_staking_event(&self.event) {
+        let event_ref = if self.track_position && is_staking_event_name(&self.event.event_name) {
             event_copy = clone_contract_log(&self.event);
-            compute_position_fields(conn, self.chain_id, &mut event_copy).await?;
+            let vault_address = event_copy.contract_address.to_checksum(None);
+            compute_position_fields(
+                conn,
+                self.chain_id,
+                &vault_address,
+                &event_copy.event_name,
+                &mut event_copy.params,
+            )
+            .await?;
             &event_copy
         } else {
             &self.event
@@ -66,8 +75,9 @@ impl LogMapper for ContractLogMapper {
     }
 }
 
-fn is_staking_event(event: &ContractLog) -> bool {
-    event.event_name == "StakingDeposit" || event.event_name == "StakingWithdrawal"
+/// Shared by EVM `ContractLogMapper` and Stellar `StellarLogMapper`.
+pub fn is_staking_event_name(event_name: &str) -> bool {
+    event_name == "StakingDeposit" || event_name == "StakingWithdrawal"
 }
 
 fn clone_contract_log(e: &ContractLog) -> ContractLog {
@@ -84,33 +94,46 @@ fn clone_contract_log(e: &ContractLog) -> ContractLog {
 
 /// Query previous position from contract_logs within the same transaction,
 /// then compute shares_balance, avg_buy_share_price, and realized_pnl.
-/// Results are written back into event.params.
-async fn compute_position_fields(
+/// Results are written back into `params`.
+///
+/// `vault_address` and `event_name` are passed by reference so this function
+/// is chain-agnostic: EVM callers stringify the `Address` (checksummed hex),
+/// Stellar callers pass the Strkey `C…` directly. The SQL self-join uses
+/// `LOWER(...)` symmetrically, so case-insensitive equality works for both.
+pub async fn compute_position_fields(
     conn: &mut PgConnection,
     chain_id: i64,
-    event: &mut ContractLog,
+    vault_address: &str,
+    event_name: &str,
+    params: &mut Value,
 ) -> anyhow::Result<()> {
-    let vault_address = event.contract_address.to_checksum(None);
-
-    // StakingDeposit uses "owner" as the position holder; StakingWithdrawal uses "owner" too.
-    let owner_address = event
-        .params
+    // StakingDeposit / StakingWithdrawal both use `owner` as the position holder.
+    // Legacy Stellar `StakingDeposit` rows (pre EVM-parity normalization in the
+    // parser) lack `owner` and expose the share holder under `from`. Fall back
+    // only for `StakingDeposit` — withdrawals' `receiver`/`from` aren't safe
+    // proxies for `owner`.
+    let owner_address = params
         .get("owner")
+        .or_else(|| {
+            if event_name == "StakingDeposit" {
+                params.get("from")
+            } else {
+                None
+            }
+        })
         .and_then(|v| v.as_str())
         .unwrap_or_default()
         .to_lowercase();
 
     let zero = BigDecimal::from(0i64);
 
-    let assets_raw = event
-        .params
+    let assets_raw = params
         .get("assets")
         .and_then(|v| v.as_str())
         .and_then(|s| BigDecimal::from_str(s).ok())
         .unwrap_or_else(|| zero.clone());
 
-    let shares_raw = event
-        .params
+    let shares_raw = params
         .get("shares")
         .and_then(|v| v.as_str())
         .and_then(|s| BigDecimal::from_str(s).ok())
@@ -122,19 +145,24 @@ async fn compute_position_fields(
 
     // Query through the transaction connection so uncommitted inserts are visible.
     // Read shares_balance and avg_buy_share_price from the JSONB params column.
+    // The CASE branch matches legacy Stellar `StakingDeposit` rows that lack
+    // `owner` and store the share holder under `from` instead (see comment above).
     let prev: Option<(String, String)> = sqlx::query_as(
         "SELECT params->>'shares_balance', params->>'avg_buy_share_price'
          FROM contract_logs
          WHERE chain_id = $1
            AND LOWER(contract_address) = LOWER($2)
-           AND LOWER(params->>'owner') = $3
+           AND LOWER(COALESCE(
+               params->>'owner',
+               CASE WHEN event_name = 'StakingDeposit' THEN params->>'from' END
+           )) = $3
            AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
            AND params ? 'shares_balance'
          ORDER BY block_number DESC, log_index DESC
          LIMIT 1",
     )
     .bind(chain_id)
-    .bind(&vault_address)
+    .bind(vault_address)
     .bind(&owner_address)
     .fetch_optional(&mut *conn)
     .await?;
@@ -147,7 +175,7 @@ async fn compute_position_fields(
         None => (zero.clone(), zero.clone()),
     };
 
-    let is_stake = event.event_name == "StakingDeposit";
+    let is_stake = event_name == "StakingDeposit";
 
     let (new_shares, new_avg_price, realized_pnl) = if is_stake {
         let new_shares = &prev_shares + &shares_raw;
@@ -161,7 +189,7 @@ async fn compute_position_fields(
         let new_shares = &prev_shares - &shares_raw;
         if new_shares < zero {
             tracing::warn!(
-                vault = %vault_address,
+                vault = vault_address,
                 owner = %owner_address,
                 prev_shares = %prev_shares,
                 withdrawn = %shares_raw,
@@ -177,7 +205,7 @@ async fn compute_position_fields(
     };
 
     // Write computed position fields back into params.
-    if let Some(obj) = event.params.as_object_mut() {
+    if let Some(obj) = params.as_object_mut() {
         obj.insert(
             "shares_balance".to_owned(),
             serde_json::Value::String(new_shares.to_string()),

@@ -1,8 +1,7 @@
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use alloy::eips::BlockId;
-use alloy::primitives::U256;
 use anyhow::Context;
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
@@ -11,15 +10,16 @@ use sqlx::PgConnection;
 use shared::{
     contract_logs_repo::ContractLogsRepo,
     db::EventRepo,
-    events::ContractLog,
+    events::EventRow,
     json_numeric::u256_to_bigdecimal,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
 };
 
 use super::loan_metadata::{
-    ImmutableDataResolver, ImmutableLoanDataView, LoanMetadataFetcher, LoanMetadataJson,
-    MutableDataResolver, MutableLoanDataView, RepaymentDataView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LoanId,
+    LoanMetadataFetcher, LoanMetadataJson, MutableDataResolver, MutableLoanDataView,
+    RepaymentDataView,
 };
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ pub fn closure_reason_name(ordinal: u8) -> &'static str {
     }
 }
 
-fn extract_loan_id(event: &ContractLog) -> anyhow::Result<BigDecimal> {
+fn extract_loan_id<A: LoanAddress>(event: &LoanEvent<A>) -> anyhow::Result<BigDecimal> {
     event
         .params
         .get("loan_id")
@@ -61,13 +61,26 @@ fn extract_loan_id(event: &ContractLog) -> anyhow::Result<BigDecimal> {
         })
 }
 
-fn loan_id_to_u256(loan_id: &BigDecimal) -> anyhow::Result<U256> {
-    U256::from_str(&loan_id.to_string())
-        .map_err(|e| anyhow::anyhow!("loan_id `{loan_id}` is not a valid U256: {e}"))
-}
+// ---------------------------------------------------------------------------
+// Worker-local alloy-free event type
+// ---------------------------------------------------------------------------
 
-fn block_id_for(block_number: u64) -> BlockId {
-    BlockId::Number(alloy::eips::BlockNumberOrTag::Number(block_number))
+/// A worker-local alloy-free version of `ContractLog` that is generic over the
+/// contract address type.
+///
+/// EVM parsers convert `ContractLog → LoanEvent<Address>` at the `evm_parsers.rs`
+/// boundary; Stellar parsers build `LoanEvent<StellarAddress>` directly from
+/// `StellarLog`. This avoids genericising the shared `ContractLog` struct (which
+/// would ripple across every parser + mapper in the workspace).
+pub struct LoanEvent<A: LoanAddress> {
+    pub contract_address: A,
+    pub event_name: String,
+    pub block_number: u64,
+    /// Hex with `0x` prefix for EVM; transaction hash string for Stellar.
+    pub tx_hash: String,
+    pub log_index: u64,
+    pub block_timestamp: u64,
+    pub params: serde_json::Value,
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +249,9 @@ pub async fn maybe_fetch_refreshed_json(
 }
 
 // ---------------------------------------------------------------------------
-// LoanEventMapper — single mapper for all 4 emitted loan event types
+// LoanEventMapper — single mapper for all 9 emitted loan event types
+// Generic over <A: LoanAddress, Id: LoanId> so the same struct handles both
+// EVM (Address, U256) and Stellar (StellarAddress, u32).
 // ---------------------------------------------------------------------------
 
 /// Unified mapper for all loan-registry events:
@@ -247,35 +262,32 @@ pub async fn maybe_fetch_refreshed_json(
 ///   `LoanStatusUpdated`, `LoanCCRUpdated`, `LoanLocationUpdated`,
 ///   `LoanRolledOver`, `EconomicsAmended`): fetch the most recent prior snapshot from
 ///   `contract_logs`, carry forward IPFS + immutable fields, overwrite mutable fields
-///   from block-pinned eth_calls, then insert.
-///
-/// All 9 emitted events are surfaced: LoanDrawn, StatusUpdated (via LoanStatusUpdated),
-/// CCRUpdated (via LoanCCRUpdated), LocationUpdated (via LoanLocationUpdated),
-/// LoanDefaulted, LoanClosed, PaymentRecorded, LoanRolledOver, EconomicsAmended.
-/// The on-chain `metadataURI` field is mutable — on lifecycle events, the indexer
-/// compares the on-chain URI against the prior snapshot's `metadata_uri_onchain` and
-/// re-fetches IPFS if it changed.
+///   from block-pinned calls, then insert.
 ///
 /// All reads/writes occur inside the indexer's outer transaction.
-pub struct LoanEventMapper {
-    pub event: ContractLog,
+///
+/// Soroban note: `simulateTransaction` is current-ledger-only — `BlockHint` is accepted
+/// but ignored on the Stellar path. See TD-19 for the ledger-pinned follow-up.
+pub struct LoanEventMapper<A: LoanAddress, Id: LoanId> {
+    pub event: LoanEvent<A>,
     chain_id: i64,
     event_repo: Arc<EventRepo>,
     contract_logs_repo: Arc<ContractLogsRepo>,
     fetcher: Arc<dyn LoanMetadataFetcher>,
-    immutable_resolver: Arc<dyn ImmutableDataResolver>,
-    mutable_resolver: Arc<dyn MutableDataResolver>,
+    immutable_resolver: Arc<dyn ImmutableDataResolver<A, Id>>,
+    mutable_resolver: Arc<dyn MutableDataResolver<A, Id>>,
+    _id: PhantomData<Id>,
 }
 
-impl LoanEventMapper {
+impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
     pub fn new(
-        event: ContractLog,
+        event: LoanEvent<A>,
         chain_id: i64,
         event_repo: Arc<EventRepo>,
         contract_logs_repo: Arc<ContractLogsRepo>,
         fetcher: Arc<dyn LoanMetadataFetcher>,
-        immutable_resolver: Arc<dyn ImmutableDataResolver>,
-        mutable_resolver: Arc<dyn MutableDataResolver>,
+        immutable_resolver: Arc<dyn ImmutableDataResolver<A, Id>>,
+        mutable_resolver: Arc<dyn MutableDataResolver<A, Id>>,
     ) -> Self {
         Self {
             event,
@@ -285,26 +297,27 @@ impl LoanEventMapper {
             fetcher,
             immutable_resolver,
             mutable_resolver,
+            _id: PhantomData,
         }
     }
 
     /// Resolve the full `LoanSnapshot` for a `LoanDrawn` event.
     async fn snapshot_for_drawn(&self, loan_id: &BigDecimal) -> anyhow::Result<LoanSnapshot> {
-        let loan_id_u256 = loan_id_to_u256(loan_id)?;
-        let addr = self.event.contract_address;
-        let block = block_id_for(self.event.block_number);
+        let loan_id_native = Id::from_bigdecimal(loan_id)?;
+        let addr = &self.event.contract_address;
+        let block = BlockHint::from_event(self.event.block_number);
 
         // 1. Read on-chain immutable struct (block: latest; immutable by construction)
         let immutable = self
             .immutable_resolver
-            .immutable_loan_data(addr, loan_id_u256)
+            .immutable_loan_data(addr, loan_id_native.clone())
             .await
             .with_context(|| format!("LoanDrawn: immutableLoanData(loan_id={loan_id}) failed"))?;
 
         // 2. Read on-chain mutable struct pinned to event block
         let mutable = self
             .mutable_resolver
-            .mutable_loan_data(addr, loan_id_u256, block)
+            .mutable_loan_data(addr, loan_id_native.clone(), block)
             .await
             .with_context(|| {
                 format!("LoanDrawn: mutableLoanData(loan_id={loan_id}) at block {block:?} failed")
@@ -313,7 +326,7 @@ impl LoanEventMapper {
         // 3. Read cumulative repayment data (authoritative source for repayment fields)
         let cumulative = self
             .mutable_resolver
-            .cumulative_repayment_data(addr, loan_id_u256, block)
+            .cumulative_repayment_data(addr, loan_id_native, block)
             .await
             .with_context(|| {
                 format!(
@@ -321,7 +334,7 @@ impl LoanEventMapper {
                 )
             })?;
 
-        // URI is block-pinned via the mutable read (metadataURI lives in MutableLoanData)
+        // URI is from the mutable read (metadataURI lives in MutableLoanData)
         let uri = mutable.metadata_uri.clone();
 
         // 4. Fetch off-chain IPFS JSON
@@ -342,10 +355,9 @@ impl LoanEventMapper {
 
     /// Resolve the `LoanSnapshot` for a lifecycle event by carrying forward IPFS +
     /// immutable fields from the most recent prior snapshot and reading fresh mutable
-    /// fields via block-pinned eth_calls.
+    /// fields via block-pinned calls.
     ///
-    /// IPFS re-fetch semantics: the on-chain `metadataURI` is now mutable (set by
-    /// `_updateMutable`, which emits no event). On each lifecycle event we compare
+    /// IPFS re-fetch semantics: on each lifecycle event we compare
     /// `mutable.metadata_uri` against `prior.metadata_uri_onchain`. If they differ,
     /// re-fetch IPFS and update the IPFS-sourced fields. If the same, carry forward.
     async fn snapshot_for_lifecycle(
@@ -353,7 +365,7 @@ impl LoanEventMapper {
         conn: &mut PgConnection,
         loan_id: &BigDecimal,
     ) -> anyhow::Result<LoanSnapshot> {
-        let contract_address = self.event.contract_address.to_checksum(None);
+        let contract_address = self.event.contract_address.as_db_string();
 
         // Fetch the most recent prior snapshot — must exist (LoanDrawn must precede
         // any lifecycle event). Missing snapshot is an indexer bug.
@@ -370,14 +382,14 @@ impl LoanEventMapper {
                 )
             })?;
 
-        let loan_id_u256 = loan_id_to_u256(loan_id)?;
-        let addr = self.event.contract_address;
-        let block = block_id_for(self.event.block_number);
+        let loan_id_native = Id::from_bigdecimal(loan_id)?;
+        let addr = &self.event.contract_address;
+        let block = BlockHint::from_event(self.event.block_number);
 
         // Read fresh mutable state pinned to event block
         let mutable = self
             .mutable_resolver
-            .mutable_loan_data(addr, loan_id_u256, block)
+            .mutable_loan_data(addr, loan_id_native.clone(), block)
             .await
             .with_context(|| {
                 format!(
@@ -389,7 +401,7 @@ impl LoanEventMapper {
         // Read cumulative repayment data pinned to event block
         let cumulative = self
             .mutable_resolver
-            .cumulative_repayment_data(addr, loan_id_u256, block)
+            .cumulative_repayment_data(addr, loan_id_native, block)
             .await
             .with_context(|| {
                 format!(
@@ -453,31 +465,29 @@ impl LoanEventMapper {
             "snapshot": snapshot,
         });
 
-        // Build an enriched ContractLog with the restructured params
-        let enriched_event = ContractLog {
-            contract_address: self.event.contract_address,
+        // Write to contract_logs via the alloy-free EventRow path.
+        let row = EventRow {
+            contract_address: self.event.contract_address.as_db_string(),
             event_name: self.event.event_name.clone(),
             block_number: self.event.block_number,
-            tx_hash: self.event.tx_hash,
+            tx_hash: self.event.tx_hash.clone(),
             log_index: self.event.log_index,
             block_timestamp: self.event.block_timestamp,
             params: enriched_params,
         };
 
-        self.event_repo
-            .insert_log(conn, &enriched_event, self.chain_id)
-            .await
+        self.event_repo.insert_row(conn, &row, self.chain_id).await
     }
 }
 
 #[async_trait]
-impl LogMapper for LoanEventMapper {
+impl<A: LoanAddress, Id: LoanId> LogMapper for LoanEventMapper<A, Id> {
     async fn is_duplicate(&self, conn: &mut PgConnection) -> anyhow::Result<bool> {
         self.event_repo
             .is_duplicate(
                 conn,
                 self.chain_id,
-                &self.event.contract_address.to_checksum(None),
+                &self.event.contract_address.as_db_string(),
                 self.event.block_number,
                 self.event.log_index,
             )
@@ -493,6 +503,13 @@ impl LogMapper for LoanEventMapper {
     }
 
     fn set_block_timestamp(&mut self, ts: u64) {
-        self.event.block_timestamp = ts;
+        // Preserve a non-zero value pre-populated by the parser. Stellar parsers
+        // set this from `raw.ledger_closed_at_unix` because the Stellar poller has
+        // no separate block-metadata fetch and would pass `0` here, clobbering the
+        // only real timestamp we have. EVM parsers set the field to `0` and rely
+        // on the poller calling this method to fill it in from `eth_getBlockByNumber`.
+        if self.event.block_timestamp == 0 {
+            self.event.block_timestamp = ts;
+        }
     }
 }

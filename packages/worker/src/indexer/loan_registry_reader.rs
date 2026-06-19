@@ -1,4 +1,3 @@
-use alloy::eips::BlockId;
 use alloy::primitives::{Address, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::sol;
@@ -9,7 +8,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 
 use super::loan_metadata::{
-    ImmutableDataResolver, ImmutableLoanDataView, LocationType, LocationUpdateView,
+    BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LocationType, LocationUpdateView,
     MutableDataResolver, MutableLoanDataView, RepaymentDataView,
 };
 
@@ -85,8 +84,8 @@ sol! {
 type HttpProvider = alloy::providers::RootProvider<Http<Client>>;
 
 /// Reads on-chain LoanRegistry data via eth_call. Implements two resolver traits:
-/// - `ImmutableDataResolver`: `immutableLoanData(loanId)` — reads the immutable struct.
-/// - `MutableDataResolver`: `mutableLoanData(loanId)` — reads the mutable struct.
+/// - `ImmutableDataResolver<Address, U256>`: `immutableLoanData(loanId)` — reads the immutable struct.
+/// - `MutableDataResolver<Address, U256>`: `mutableLoanData(loanId)` — reads the mutable struct.
 ///
 /// No in-process cache: each `LoanDrawn` event is processed exactly once (the
 /// `is_duplicate(contract_logs)` gate short-circuits any re-process), so a cache would
@@ -108,10 +107,10 @@ impl LoanRegistryReader {
 }
 
 #[async_trait]
-impl ImmutableDataResolver for LoanRegistryReader {
+impl ImmutableDataResolver<Address, U256> for LoanRegistryReader {
     async fn immutable_loan_data(
         &self,
-        contract: Address,
+        contract: &Address,
         loan_id: U256,
     ) -> Result<ImmutableLoanDataView> {
         let call_data = ILoanRegistry::immutableLoanDataCall { loanId: loan_id }.abi_encode();
@@ -120,7 +119,7 @@ impl ImmutableDataResolver for LoanRegistryReader {
             .provider
             .call(
                 &alloy::rpc::types::TransactionRequest::default()
-                    .to(contract)
+                    .to(*contract)
                     .input(call_data.into()),
             )
             .await
@@ -144,12 +143,12 @@ impl ImmutableDataResolver for LoanRegistryReader {
 }
 
 #[async_trait]
-impl MutableDataResolver for LoanRegistryReader {
+impl MutableDataResolver<Address, U256> for LoanRegistryReader {
     async fn mutable_loan_data(
         &self,
-        contract: Address,
+        contract: &Address,
         loan_id: U256,
-        block: BlockId,
+        block: BlockHint,
     ) -> Result<MutableLoanDataView> {
         let call_data = ILoanRegistry::mutableLoanDataCall { loanId: loan_id }.abi_encode();
 
@@ -157,13 +156,15 @@ impl MutableDataResolver for LoanRegistryReader {
             .provider
             .call(
                 &alloy::rpc::types::TransactionRequest::default()
-                    .to(contract)
+                    .to(*contract)
                     .input(call_data.into()),
             )
-            .block(block)
+            .block(block.to_evm_block_id())
             .await
             .with_context(|| {
-                format!("eth_call mutableLoanData({loan_id}) on {contract} at {block:?} failed")
+                format!(
+                    "eth_call mutableLoanData({loan_id}) on {contract} at block {block:?} failed"
+                )
             })?;
 
         let decoded = ILoanRegistry::mutableLoanDataCall::abi_decode_returns(&result, true)
@@ -190,9 +191,9 @@ impl MutableDataResolver for LoanRegistryReader {
 
     async fn cumulative_repayment_data(
         &self,
-        contract: Address,
+        contract: &Address,
         loan_id: U256,
-        block: BlockId,
+        block: BlockHint,
     ) -> Result<RepaymentDataView> {
         let call_data = ILoanRegistry::cumulativeRepaymentDataCall { loanId: loan_id }.abi_encode();
 
@@ -200,14 +201,14 @@ impl MutableDataResolver for LoanRegistryReader {
             .provider
             .call(
                 &alloy::rpc::types::TransactionRequest::default()
-                    .to(contract)
+                    .to(*contract)
                     .input(call_data.into()),
             )
-            .block(block)
+            .block(block.to_evm_block_id())
             .await
             .with_context(|| {
                 format!(
-                    "eth_call cumulativeRepaymentData({loan_id}) on {contract} at {block:?} failed"
+                    "eth_call cumulativeRepaymentData({loan_id}) on {contract} at block {block:?} failed"
                 )
             })?;
 

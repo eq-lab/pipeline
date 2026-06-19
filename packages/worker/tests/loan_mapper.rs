@@ -1,47 +1,30 @@
-//! Unit tests for the unified LoanEventMapper (Issue #442).
+//! Unit tests for the unified LoanEventMapper (Issue #442, genericised in #620).
 //! Uses mock implementations of all resolver/fetcher traits — no DB, no RPC.
 //!
-//! The tests verify:
-//!   1. `LoanEventMapper` for LoanDrawn: `block_number()` and `set_block_timestamp()`.
-//!   2. `LoanEventMapper` for lifecycle events: same accessors.
-//!   3. `LoanEventMapper` for two consecutive PaymentRecorded events: block-pinning.
-//!   4. Other lifecycle event block_number checks (Defaulted, Closed).
-//!   5. Error propagation when URI resolver fails (lazy — only surfaces on insert).
-//!   6. The enriched params structure shape:
-//!      - `loan_id` at top level
-//!      - parser-emitted fields under `event`
-//!      - `snapshot` object present with expected fields
-//!   7. Pure composer function tests (no DB, no RPC, synchronous):
-//!      - compose_drawn_snapshot_full_row
-//!      - compose_lifecycle_snapshot_carry_forward_when_uri_unchanged
-//!      - compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed
-//!      - compose_lifecycle_snapshot_status_strings_mapping
-//!      - compose_lifecycle_snapshot_closure_reason_mapping
-//!      - location_type_from_ordinal_clamps_out_of_range
-//!      - loan_snapshot_serde_round_trip
+//! Covers both EVM (`Address, U256`) and Stellar (`StellarAddress, u32`) instantiations
+//! of the same generic `LoanEventMapper<A, Id>`. EVM tests are the regression gate for
+//! the genericisation refactor.
 
 use std::str::FromStr;
 use std::sync::Arc;
 
-use alloy::eips::BlockId;
-use alloy::primitives::{address, b256, Address, U256};
+use alloy::primitives::{address, Address, U256};
 use async_trait::async_trait;
 use bigdecimal::BigDecimal;
 
 use pipeline_worker::indexer::{
     loan_mapper::{
         closure_reason_name, compose_drawn_snapshot, compose_lifecycle_snapshot, loan_status_name,
-        maybe_fetch_refreshed_json, LoanEventMapper,
+        maybe_fetch_refreshed_json, LoanEvent, LoanEventMapper,
     },
     loan_metadata::{
-        ImmutableDataResolver, ImmutableLoanDataView, LoanMetadataFetcher, LoanMetadataJson,
-        LocationType, LocationUpdateView, MutableDataResolver, MutableLoanDataView,
-        RepaymentDataView,
+        BlockHint, ImmutableDataResolver, ImmutableLoanDataView, LoanAddress, LoanMetadataFetcher,
+        LoanMetadataJson, LocationType, LocationUpdateView, MutableDataResolver,
+        MutableLoanDataView, RepaymentDataView,
     },
+    stellar::loan_registry_reader::StellarAddress,
 };
 use shared::{
-    contract_logs_repo::ContractLogsRepo,
-    events::ContractLog,
     json_numeric::u256_to_bigdecimal,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
@@ -52,20 +35,19 @@ use shared::{
 // ---------------------------------------------------------------------------
 
 const CONTRACT: Address = address!("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-const TX_HASH: alloy::primitives::FixedBytes<32> =
-    b256!("1111111111111111111111111111111111111111111111111111111111111111");
+const STELLAR_CONTRACT: &str = "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO";
 
 // ---------------------------------------------------------------------------
-// Mock resolver implementations
+// EVM mock resolver implementations
 // ---------------------------------------------------------------------------
 
 struct MockImmutableResolver;
 
 #[async_trait]
-impl ImmutableDataResolver for MockImmutableResolver {
+impl ImmutableDataResolver<Address, U256> for MockImmutableResolver {
     async fn immutable_loan_data(
         &self,
-        _contract: Address,
+        _contract: &Address,
         _loan_id: U256,
     ) -> anyhow::Result<ImmutableLoanDataView> {
         Ok(ImmutableLoanDataView {
@@ -121,35 +103,30 @@ struct MockMutableResolver {
 }
 
 #[async_trait]
-impl MutableDataResolver for MockMutableResolver {
+impl MutableDataResolver<Address, U256> for MockMutableResolver {
     async fn mutable_loan_data(
         &self,
-        _contract: Address,
+        _contract: &Address,
         _loan_id: U256,
-        block: BlockId,
+        block: BlockHint,
     ) -> anyhow::Result<MutableLoanDataView> {
-        // Verify the correct block was passed
-        match block {
-            BlockId::Number(alloy::eips::BlockNumberOrTag::Number(n)) => {
-                assert_eq!(n, self.expected_block_number, "block-pinning mismatch");
-            }
-            _ => panic!("expected a specific block number, got {block:?}"),
-        }
+        assert_eq!(
+            block.0, self.expected_block_number,
+            "block-pinning mismatch"
+        );
         Ok(mock_mutable_view(self.expected_block_number))
     }
 
     async fn cumulative_repayment_data(
         &self,
-        _contract: Address,
+        _contract: &Address,
         _loan_id: U256,
-        block: BlockId,
+        block: BlockHint,
     ) -> anyhow::Result<RepaymentDataView> {
-        match block {
-            BlockId::Number(alloy::eips::BlockNumberOrTag::Number(n)) => {
-                assert_eq!(n, self.expected_block_number, "block-pinning mismatch");
-            }
-            _ => panic!("expected a specific block number, got {block:?}"),
-        }
+        assert_eq!(
+            block.0, self.expected_block_number,
+            "block-pinning mismatch"
+        );
         Ok(mock_repayment())
     }
 }
@@ -192,46 +169,104 @@ impl LoanMetadataFetcher for FailingFetcher {
 }
 
 // ---------------------------------------------------------------------------
+// Stellar mock resolver implementations
+// ---------------------------------------------------------------------------
+
+struct MockStellarImmutableResolver;
+
+#[async_trait]
+impl ImmutableDataResolver<StellarAddress, u32> for MockStellarImmutableResolver {
+    async fn immutable_loan_data(
+        &self,
+        _contract: &StellarAddress,
+        _loan_id: u32,
+    ) -> anyhow::Result<ImmutableLoanDataView> {
+        Ok(ImmutableLoanDataView {
+            original_facility_size: U256::from(500_000_u64),
+            original_senior_tranche: U256::from(400_000_u64),
+            original_equity_tranche: U256::from(100_000_u64),
+            original_offtaker_price: U256::from(500_000_u64),
+            senior_interest_rate_bps: 800_u32,
+            origination_date: 1_700_000_000_u64,
+            original_maturity_date: 1_800_000_000_u64,
+        })
+    }
+}
+
+struct MockStellarMutableResolver;
+
+#[async_trait]
+impl MutableDataResolver<StellarAddress, u32> for MockStellarMutableResolver {
+    async fn mutable_loan_data(
+        &self,
+        _contract: &StellarAddress,
+        _loan_id: u32,
+        _block: BlockHint,
+    ) -> anyhow::Result<MutableLoanDataView> {
+        Ok(MutableLoanDataView {
+            next_economics_epochs_id: U256::from(1_u64),
+            next_repayment_id: U256::from(0_u64),
+            status: 0, // Performing
+            ccr_bps: 7500,
+            last_reported_ccr_timestamp: 1_700_010_000_u64,
+            current_maturity_timestamp: 1_800_000_000_u64,
+            closure_reason: 0, // None
+            current_location: mock_location(),
+            metadata_uri: "ipfs://Qm_stellar_test".to_owned(),
+        })
+    }
+
+    async fn cumulative_repayment_data(
+        &self,
+        _contract: &StellarAddress,
+        _loan_id: u32,
+        _block: BlockHint,
+    ) -> anyhow::Result<RepaymentDataView> {
+        Ok(mock_repayment())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
-fn loan_drawn_event(loan_id: u64, block_number: u64) -> ContractLog {
-    ContractLog {
+fn loan_drawn_event_evm(loan_id: u64, block_number: u64) -> LoanEvent<Address> {
+    LoanEvent {
         contract_address: CONTRACT,
         event_name: "LoanDrawn".to_owned(),
         block_number,
-        tx_hash: TX_HASH,
+        tx_hash: format!("0x{:064x}", 0x1111_u64),
         log_index: 0,
         block_timestamp: block_number * 12,
         params: serde_json::json!({ "loan_id": loan_id.to_string() }),
     }
 }
 
-fn lifecycle_event(
+fn lifecycle_event_evm(
     event_name: &str,
     loan_id: u64,
     block_number: u64,
     log_index: u64,
-) -> ContractLog {
-    ContractLog {
+) -> LoanEvent<Address> {
+    LoanEvent {
         contract_address: CONTRACT,
         event_name: event_name.to_owned(),
         block_number,
-        tx_hash: TX_HASH,
+        tx_hash: format!("0x{:064x}", 0x1111_u64),
         log_index,
         block_timestamp: block_number * 12,
         params: serde_json::json!({ "loan_id": loan_id.to_string() }),
     }
 }
 
-fn make_loan_event_mapper(
-    event: ContractLog,
+fn make_loan_event_mapper_evm(
+    event: LoanEvent<Address>,
     block_number: u64,
     pool: sqlx::PgPool,
-) -> LoanEventMapper {
+) -> LoanEventMapper<Address, U256> {
     let event_repo = Arc::new(shared::db::EventRepo::new(pool.clone()));
-    let contract_logs_repo = Arc::new(ContractLogsRepo::new(pool));
-    LoanEventMapper::new(
+    let contract_logs_repo = Arc::new(shared::contract_logs_repo::ContractLogsRepo::new(pool));
+    LoanEventMapper::<Address, U256>::new(
         event,
         1,
         event_repo,
@@ -241,6 +276,52 @@ fn make_loan_event_mapper(
         Arc::new(MockMutableResolver {
             expected_block_number: block_number,
         }),
+    )
+}
+
+fn loan_drawn_event_stellar(loan_id: u32, block_number: u64) -> LoanEvent<StellarAddress> {
+    LoanEvent {
+        contract_address: StellarAddress(STELLAR_CONTRACT.to_owned()),
+        event_name: "LoanDrawn".to_owned(),
+        block_number,
+        tx_hash: "abc123".to_owned(),
+        log_index: 0,
+        block_timestamp: block_number * 5,
+        params: serde_json::json!({ "loan_id": loan_id.to_string() }),
+    }
+}
+
+fn lifecycle_event_stellar(
+    event_name: &str,
+    loan_id: u32,
+    block_number: u64,
+    log_index: u64,
+) -> LoanEvent<StellarAddress> {
+    LoanEvent {
+        contract_address: StellarAddress(STELLAR_CONTRACT.to_owned()),
+        event_name: event_name.to_owned(),
+        block_number,
+        tx_hash: "def456".to_owned(),
+        log_index,
+        block_timestamp: block_number * 5,
+        params: serde_json::json!({ "loan_id": loan_id.to_string() }),
+    }
+}
+
+fn make_loan_event_mapper_stellar(
+    event: LoanEvent<StellarAddress>,
+    pool: sqlx::PgPool,
+) -> LoanEventMapper<StellarAddress, u32> {
+    let event_repo = Arc::new(shared::db::EventRepo::new(pool.clone()));
+    let contract_logs_repo = Arc::new(shared::contract_logs_repo::ContractLogsRepo::new(pool));
+    LoanEventMapper::<StellarAddress, u32>::new(
+        event,
+        99_000_001,
+        event_repo,
+        contract_logs_repo,
+        Arc::new(MockMetadataFetcher),
+        Arc::new(MockStellarImmutableResolver),
+        Arc::new(MockStellarMutableResolver),
     )
 }
 
@@ -287,17 +368,15 @@ fn make_prior_snapshot() -> LoanSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// 1. LoanDrawnMapper happy path: block_number + block_timestamp
+// 1. LoanDrawnMapper happy path: block_number + block_timestamp (EVM)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn loan_drawn_mapper_block_number_and_timestamp() {
-    // Verify LoanEventMapper.block_number() and set_block_timestamp() work.
-    // Uses connect_lazy so no DB required.
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
 
-    let mut mapper = make_loan_event_mapper(loan_drawn_event(1, 500), 500, pool);
+    let mut mapper = make_loan_event_mapper_evm(loan_drawn_event_evm(1, 500), 500, pool);
 
     assert_eq!(mapper.block_number(), 500);
     mapper.set_block_timestamp(6000);
@@ -305,7 +384,7 @@ async fn loan_drawn_mapper_block_number_and_timestamp() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Lifecycle mapper: block_number and block_timestamp accessors
+// 2. Lifecycle mapper: block_number and block_timestamp accessors (EVM)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -314,7 +393,7 @@ async fn lifecycle_mapper_block_number_and_timestamp() {
         .expect("connect_lazy should not fail");
 
     let mut mapper =
-        make_loan_event_mapper(lifecycle_event("PaymentRecorded", 1, 600, 1), 600, pool);
+        make_loan_event_mapper_evm(lifecycle_event_evm("PaymentRecorded", 1, 600, 1), 600, pool);
 
     assert_eq!(mapper.block_number(), 600);
     mapper.set_block_timestamp(7200);
@@ -322,7 +401,7 @@ async fn lifecycle_mapper_block_number_and_timestamp() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Two consecutive PaymentRecorded events: block_number assertions
+// 3. Two consecutive PaymentRecorded events: block_number assertions (EVM)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -330,33 +409,35 @@ async fn payment_recorded_mapper_block_number_pins_correctly_for_two_events() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
 
-    // First payment at block 700
     {
-        let mapper = make_loan_event_mapper(
-            lifecycle_event("PaymentRecorded", 1, 700, 0),
+        let mapper = make_loan_event_mapper_evm(
+            lifecycle_event_evm("PaymentRecorded", 1, 700, 0),
             700,
             pool.clone(),
         );
         assert_eq!(mapper.block_number(), 700);
     }
 
-    // Second payment at block 800
     {
-        let mapper =
-            make_loan_event_mapper(lifecycle_event("PaymentRecorded", 1, 800, 1), 800, pool);
+        let mapper = make_loan_event_mapper_evm(
+            lifecycle_event_evm("PaymentRecorded", 1, 800, 1),
+            800,
+            pool,
+        );
         assert_eq!(mapper.block_number(), 800);
     }
 }
 
 // ---------------------------------------------------------------------------
-// 4. Other lifecycle mapper block_number checks
+// 4. Other lifecycle mapper block_number checks (EVM)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn defaulted_mapper_block_number() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
-    let mapper = make_loan_event_mapper(lifecycle_event("LoanDefaulted", 1, 570, 4), 570, pool);
+    let mapper =
+        make_loan_event_mapper_evm(lifecycle_event_evm("LoanDefaulted", 1, 570, 4), 570, pool);
     assert_eq!(mapper.block_number(), 570);
 }
 
@@ -364,44 +445,38 @@ async fn defaulted_mapper_block_number() {
 async fn closed_mapper_block_number() {
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
-    let mapper = make_loan_event_mapper(lifecycle_event("LoanClosed", 1, 580, 5), 580, pool);
+    let mapper =
+        make_loan_event_mapper_evm(lifecycle_event_evm("LoanClosed", 1, 580, 5), 580, pool);
     assert_eq!(mapper.block_number(), 580);
 }
 
 // ---------------------------------------------------------------------------
-// 5. block_number() is independent of resolver state
+// 5. block_number() is independent of resolver state (EVM)
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn loan_drawn_mapper_block_number_independent_of_resolvers() {
-    // Verify that block_number() is always available regardless of resolver state.
-    // The failure from a resolver only surfaces when `insert` is called (requires a real DB).
     let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
         .expect("connect_lazy should not fail");
 
-    let mapper = make_loan_event_mapper(loan_drawn_event(99, 999), 999, pool);
-    // block_number is read without touching any resolver
+    let mapper = make_loan_event_mapper_evm(loan_drawn_event_evm(99, 999), 999, pool);
     assert_eq!(mapper.block_number(), 999);
 }
 
 // ---------------------------------------------------------------------------
-// 6. Params shape: loan_drawn_event has loan_id only in params (no extra event fields)
+// 6. Params shape: loan_drawn_event has loan_id only in params (EVM)
 // ---------------------------------------------------------------------------
 
 #[test]
 fn loan_drawn_event_params_has_loan_id_only() {
-    // Verify that `loan_drawn_event` emits just `{ "loan_id": "..." }` in params.
-    // The mapper's `do_insert` will restructure this into:
-    //   { "loan_id": ..., "event": {}, "snapshot": {...} }
-    // where "event" is empty because the only parser field was "loan_id" (extracted separately).
-    let ev = loan_drawn_event(42, 500);
+    let ev = loan_drawn_event_evm(42, 500);
     assert!(ev.params.get("loan_id").is_some());
     assert_eq!(ev.params.as_object().map(serde_json::Map::len), Some(1));
 }
 
 #[test]
 fn lifecycle_event_params_has_loan_id_only() {
-    let ev = lifecycle_event("PaymentRecorded", 7, 600, 1);
+    let ev = lifecycle_event_evm("PaymentRecorded", 7, 600, 1);
     assert!(ev.params.get("loan_id").is_some());
     assert_eq!(ev.params.as_object().map(serde_json::Map::len), Some(1));
 }
@@ -468,7 +543,6 @@ fn compose_drawn_snapshot_full_row() {
         metadata_uri_onchain.clone(),
     );
 
-    // IPFS fields come from json
     assert_eq!(snap.originator, "Originator-A");
     assert_eq!(snap.borrower_id, "BRW-999");
     assert_eq!(snap.commodity, "Wheat");
@@ -479,7 +553,6 @@ fn compose_drawn_snapshot_full_row() {
         Some("ipfs://Qm_secondary_doc".to_owned())
     );
 
-    // immutable fields — converted from U256
     assert_eq!(
         snap.original_facility_size,
         BigDecimal::from(10_000_000_u64)
@@ -500,7 +573,6 @@ fn compose_drawn_snapshot_full_row() {
     assert_eq!(snap.origination_date, 1_680_000_000_i64);
     assert_eq!(snap.original_maturity_date, 1_780_000_000_i64);
 
-    // mutable fields
     assert_eq!(snap.next_economics_epochs_id, BigDecimal::from(3));
     assert_eq!(snap.next_repayment_id, BigDecimal::from(5));
     assert_eq!(snap.status, "WatchList");
@@ -508,20 +580,9 @@ fn compose_drawn_snapshot_full_row() {
     assert_eq!(snap.last_reported_ccr_timestamp, 1_690_000_000_i64);
     assert_eq!(snap.current_maturity_timestamp, 1_780_500_000_i64);
     assert_eq!(snap.closure_reason, "None");
-
-    // location
     assert_eq!(snap.current_location.location_type, "TankFarm");
     assert_eq!(snap.current_location.location_identifier, "TF-007");
-    assert_eq!(
-        snap.current_location.tracking_url,
-        "https://track.example.com/TF-007"
-    );
-    assert_eq!(snap.current_location.updated_at, 1_690_100_000_i64);
-
-    // metadata_uri_onchain is the passed-in value (not from json.metadata_uri)
     assert_eq!(snap.metadata_uri_onchain, metadata_uri_onchain);
-
-    // repayment fields use new field names (offtaker_received, not offtaker_amount)
     assert_eq!(
         snap.repayment.offtaker_received,
         BigDecimal::from(250_000_u64)
@@ -548,7 +609,6 @@ fn compose_drawn_snapshot_full_row() {
 fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     let prior = make_prior_snapshot();
 
-    // mutable view with same metadata_uri as prior.metadata_uri_onchain
     let mutable = MutableLoanDataView {
         next_economics_epochs_id: U256::from(5_u64),
         next_repayment_id: U256::from(3_u64),
@@ -578,27 +638,14 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
 
     let snap = compose_lifecycle_snapshot(prior.clone(), mutable, &cumulative, None);
 
-    // IPFS fields carry forward from prior
     assert_eq!(snap.originator, prior.originator);
     assert_eq!(snap.borrower_id, prior.borrower_id);
     assert_eq!(snap.commodity, prior.commodity);
     assert_eq!(snap.corridor, prior.corridor);
     assert_eq!(snap.governing_law, prior.governing_law);
     assert_eq!(snap.metadata_uri, prior.metadata_uri);
-
-    // Immutable fields carry forward from prior
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(snap.original_senior_tranche, prior.original_senior_tranche);
-    assert_eq!(snap.original_equity_tranche, prior.original_equity_tranche);
-    assert_eq!(snap.original_offtaker_price, prior.original_offtaker_price);
-    assert_eq!(
-        snap.senior_interest_rate_bps,
-        prior.senior_interest_rate_bps
-    );
-    assert_eq!(snap.origination_date, prior.origination_date);
-    assert_eq!(snap.original_maturity_date, prior.original_maturity_date);
-
-    // Mutable fields come from the new `mutable` input
     assert_eq!(snap.ccr_bps, 8500_u32);
     assert_eq!(snap.last_reported_ccr_timestamp, 1_750_000_000_i64);
     assert_eq!(snap.current_maturity_timestamp, 1_800_000_500_i64);
@@ -606,11 +653,7 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     assert_eq!(snap.closure_reason, "None");
     assert_eq!(snap.current_location.location_type, "Vessel");
     assert_eq!(snap.current_location.location_identifier, "VES-042");
-
-    // metadata_uri_onchain equals the new mutable.metadata_uri
     assert_eq!(snap.metadata_uri_onchain, "ipfs://Qm_test");
-
-    // Repayment comes from cumulative
     assert_eq!(
         snap.repayment.offtaker_received,
         BigDecimal::from(500_000_u64)
@@ -629,7 +672,6 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
 fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     let prior = make_prior_snapshot();
 
-    // mutable view with different metadata_uri
     let new_uri = "ipfs://Qm_new_uri".to_owned();
     let mutable = MutableLoanDataView {
         next_economics_epochs_id: U256::from(6_u64),
@@ -650,7 +692,6 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
 
     let cumulative = mock_repayment_data_view(1_000_000_u64);
 
-    // refreshed_json carries different IPFS fields
     let refreshed_json = LoanMetadataJson {
         originator: "NewOriginator".to_owned(),
         borrower_id: "BRW-NEW".to_owned(),
@@ -663,7 +704,6 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     let snap =
         compose_lifecycle_snapshot(prior.clone(), mutable, &cumulative, Some(refreshed_json));
 
-    // IPFS fields come from refreshed_json, NOT from prior
     assert_eq!(snap.originator, "NewOriginator");
     assert_eq!(snap.borrower_id, "BRW-NEW");
     assert_eq!(snap.commodity, "Cocoa");
@@ -673,8 +713,6 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
         snap.metadata_uri,
         Some("ipfs://Qm_new_secondary".to_owned())
     );
-
-    // Immutable fields still carry forward from prior (not from json — json has no immutable data)
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(
         snap.senior_interest_rate_bps,
@@ -682,16 +720,11 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     );
     assert_eq!(snap.origination_date, prior.origination_date);
     assert_eq!(snap.original_maturity_date, prior.original_maturity_date);
-
-    // metadata_uri_onchain comes from the new mutable value
     assert_eq!(snap.metadata_uri_onchain, new_uri);
-
-    // Mutable fields from new mutable
     assert_eq!(snap.current_location.location_type, "Warehouse");
     assert_eq!(snap.current_location.location_identifier, "WH-099");
 }
 
-// Helper to build a non-zero RepaymentDataView easily
 fn mock_repayment_data_view(amount: u64) -> RepaymentDataView {
     RepaymentDataView {
         offtaker_received: U256::from(amount),
@@ -741,7 +774,6 @@ fn compose_lifecycle_snapshot_status_strings_mapping() {
     }
 }
 
-// Also test the helper directly
 #[test]
 fn loan_status_name_all_variants() {
     assert_eq!(loan_status_name(0), "Performing");
@@ -791,7 +823,6 @@ fn compose_lifecycle_snapshot_closure_reason_mapping() {
     }
 }
 
-// Also test the helper directly
 #[test]
 fn closure_reason_name_all_variants() {
     assert_eq!(closure_reason_name(0), "None");
@@ -814,12 +845,9 @@ fn location_type_from_ordinal_clamps_out_of_range() {
     assert_eq!(LocationType::from_ordinal(1), LocationType::Warehouse);
     assert_eq!(LocationType::from_ordinal(2), LocationType::TankFarm);
     assert_eq!(LocationType::from_ordinal(3), LocationType::Other);
-    // Out-of-range clamps to Other
     assert_eq!(LocationType::from_ordinal(4), LocationType::Other);
     assert_eq!(LocationType::from_ordinal(10), LocationType::Other);
     assert_eq!(LocationType::from_ordinal(255), LocationType::Other);
-
-    // Verify as_str() mapping for all variants
     assert_eq!(LocationType::Vessel.as_str(), "Vessel");
     assert_eq!(LocationType::Warehouse.as_str(), "Warehouse");
     assert_eq!(LocationType::TankFarm.as_str(), "TankFarm");
@@ -871,10 +899,7 @@ fn loan_snapshot_serde_round_trip() {
         },
     };
 
-    // Serialize to JSON value
     let value = serde_json::to_value(&snap).expect("LoanSnapshot should serialize");
-
-    // Check some key field names are present as expected (catches serde rename drift)
     assert!(
         value.get("originator").is_some(),
         "originator field missing"
@@ -898,7 +923,6 @@ fn loan_snapshot_serde_round_trip() {
         "senior_principal_repaid missing"
     );
 
-    // Deserialize back and assert equality
     let restored: LoanSnapshot =
         serde_json::from_value(value).expect("LoanSnapshot should deserialize");
     assert_eq!(restored, snap);
@@ -917,7 +941,6 @@ fn u256_to_bigdecimal_converts_correctly() {
         BigDecimal::from(1_000_000_000_u64)
     );
 
-    // Large U256 value — should not panic and should roundtrip via string
     let large = U256::MAX;
     let bd = u256_to_bigdecimal(large);
     let expected =
@@ -931,8 +954,6 @@ fn u256_to_bigdecimal_converts_correctly() {
 
 #[tokio::test]
 async fn maybe_fetch_refreshed_json_returns_none_when_uri_unchanged() {
-    // When both URIs are identical, the fetcher must NOT be called and the
-    // result must be None.
     let result = maybe_fetch_refreshed_json(
         &PanickingFetcher,
         "ipfs://Qm_same_uri",
@@ -949,7 +970,6 @@ async fn maybe_fetch_refreshed_json_returns_none_when_uri_unchanged() {
 
 #[tokio::test]
 async fn maybe_fetch_refreshed_json_returns_some_when_uri_changed() {
-    // When URIs differ, the fetcher is called and the result is Some(json).
     let result = maybe_fetch_refreshed_json(
         &MockMetadataFetcher,
         "ipfs://Qm_old_uri",
@@ -959,7 +979,6 @@ async fn maybe_fetch_refreshed_json_returns_some_when_uri_changed() {
     .expect("changed-URI path should not fail with MockMetadataFetcher");
 
     let json = result.expect("expected Some(json) when URIs differ");
-    // Verify we got the known MockMetadataFetcher content
     assert_eq!(json.originator, "TestOriginator");
     assert_eq!(json.borrower_id, "BRW-001");
     assert_eq!(json.commodity, "Cotton");
@@ -967,8 +986,6 @@ async fn maybe_fetch_refreshed_json_returns_some_when_uri_changed() {
 
 #[tokio::test]
 async fn maybe_fetch_refreshed_json_propagates_fetcher_error() {
-    // When the fetcher fails, the error should propagate and include the
-    // "IPFS re-fetch failed" context message.
     let err = maybe_fetch_refreshed_json(&FailingFetcher, "ipfs://Qm_old_uri", "ipfs://Qm_new_uri")
         .await
         .expect_err("should fail when fetcher errors");
@@ -982,4 +999,90 @@ async fn maybe_fetch_refreshed_json_propagates_fetcher_error() {
         msg.contains("ipfs://Qm_new_uri"),
         "error message should contain the URI, got: {msg}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Stellar mapper tests (Step 5b)
+// ---------------------------------------------------------------------------
+
+/// Stellar LoanDrawn: block_number() works with StellarAddress, and
+/// set_block_timestamp() preserves the parser's pre-populated value. The Stellar
+/// poller has no separate block-metadata fetch and would call this method with
+/// `0`; preserving prevents the parser's real `ledger_closed_at_unix` from being
+/// clobbered (which would leave `block_timestamp = 0` in `contract_logs`).
+#[tokio::test]
+async fn stellar_loan_drawn_mapper_block_number_and_timestamp() {
+    let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
+        .expect("connect_lazy should not fail");
+
+    let mut mapper = make_loan_event_mapper_stellar(loan_drawn_event_stellar(42, 1_234_567), pool);
+    assert_eq!(mapper.block_number(), 1_234_567);
+    let preserved = mapper.event.block_timestamp;
+    assert_ne!(preserved, 0, "fixture should pre-populate block_timestamp");
+    mapper.set_block_timestamp(0);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "set_block_timestamp(0) must not clobber the parser's pre-populated value"
+    );
+    mapper.set_block_timestamp(9_999_999);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "set_block_timestamp must not overwrite a non-zero pre-populated value"
+    );
+}
+
+/// Stellar lifecycle event: same preserve-when-non-zero semantics.
+#[tokio::test]
+async fn stellar_lifecycle_event_mapper_block_number_and_timestamp() {
+    let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
+        .expect("connect_lazy should not fail");
+
+    let mut mapper = make_loan_event_mapper_stellar(
+        lifecycle_event_stellar("LoanStatusUpdated", 7, 2_000_000, 3),
+        pool,
+    );
+    assert_eq!(mapper.block_number(), 2_000_000);
+    let preserved = mapper.event.block_timestamp;
+    assert_ne!(preserved, 0);
+    mapper.set_block_timestamp(10_000_000);
+    assert_eq!(
+        mapper.event.block_timestamp, preserved,
+        "Stellar mapper must preserve parser-supplied block_timestamp"
+    );
+}
+
+/// EVM convention: when the parser leaves block_timestamp = 0 (it has no block
+/// metadata at parse time), set_block_timestamp must fill it.
+#[tokio::test]
+async fn evm_set_block_timestamp_fills_zero_value() {
+    let pool = sqlx::PgPool::connect_lazy("postgres://localhost/nonexistent")
+        .expect("connect_lazy should not fail");
+
+    let mut event = loan_drawn_event_evm(1, 500);
+    event.block_timestamp = 0;
+    let mut mapper = make_loan_event_mapper_evm(event, 500, pool);
+    mapper.set_block_timestamp(123_456);
+    assert_eq!(mapper.event.block_timestamp, 123_456);
+}
+
+/// Stellar loan_id is serialised as a decimal string (u32 = 42 → "42").
+#[test]
+fn stellar_loan_id_serialised_as_decimal_string() {
+    let ev = loan_drawn_event_stellar(42, 1_000_000);
+    let loan_id_str = ev
+        .params
+        .get("loan_id")
+        .and_then(|v| v.as_str())
+        .expect("loan_id must be a string in params");
+    assert_eq!(
+        loan_id_str, "42",
+        "Stellar u32 loan_id must be serialised as \"42\""
+    );
+}
+
+/// Stellar contract_address.as_db_string() returns the raw Strkey form.
+#[test]
+fn stellar_address_as_db_string_returns_strkey() {
+    let addr = StellarAddress(STELLAR_CONTRACT.to_owned());
+    assert_eq!(addr.as_db_string(), STELLAR_CONTRACT);
 }

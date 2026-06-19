@@ -14,6 +14,12 @@
 use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
+use crate::indexer::stellar::loan_registry_parsers::{
+    parse_ccr_updated, parse_economics_amended, parse_loan_closed, parse_loan_defaulted,
+    parse_loan_drawn, parse_loan_rolled_over, parse_location_updated, parse_payment_recorded,
+    parse_status_updated,
+};
+
 pub use crate::stellar::scval::extract_i128;
 
 use crate::indexer::stellar::rpc::RawEvent;
@@ -137,6 +143,13 @@ pub fn parse_request_claimed(raw: &RawEvent) -> Option<StellarLog> {
 /// Remapped to `event_name = "StakingDeposit"` for EVM analytics parity.
 /// topics: [deposit, operator: Address, from: Address, receiver: Address]
 /// value:  Map { assets: i128, shares: i128 }
+///
+/// `params` is normalized to the ERC-4626 shape so downstream consumers
+/// (`/v1/requests` analytics, the position-fields mapper) can key on `owner`:
+/// `sender` = Soroban `operator` (the caller), `owner` = Soroban `receiver`
+/// (the share holder). The `from` topic is decoded for event-shape validation
+/// but not persisted — it's redundant with `sender`/`owner` in the normal
+/// end-user deposit flow.
 pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "deposit" {
         return None;
@@ -146,7 +159,7 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
     }
 
     let operator = extract_address(&raw.topics_base64[1])?;
-    let from = extract_address(&raw.topics_base64[2])?;
+    let _from = extract_address(&raw.topics_base64[2])?;
     let receiver = extract_address(&raw.topics_base64[3])?;
     let assets = extract_i128_from_map(&raw.value_base64, "assets")?;
     let shares = extract_i128_from_map(&raw.value_base64, "shares")?;
@@ -159,9 +172,8 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
         log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
-            "operator": operator,
-            "from": from,
-            "receiver": receiver,
+            "sender": operator,
+            "owner": receiver,
             "assets": assets.to_string(),
             "shares": shares.to_string(),
         }),
@@ -172,6 +184,11 @@ pub fn parse_vault_deposit(raw: &RawEvent) -> Option<StellarLog> {
 /// Remapped to `event_name = "StakingWithdrawal"` for EVM analytics parity.
 /// topics: [withdraw, operator: Address, receiver: Address, owner: Address]
 /// value:  Map { assets: i128, shares: i128 }
+///
+/// `params` matches the EVM ERC-4626 shape: `sender` (= Soroban `operator`,
+/// the caller), `receiver` (assets destination), `owner` (share holder being
+/// burned). The Stellar topic naming `operator` is renamed to `sender` so
+/// downstream code can read a single field name across chains.
 pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "withdraw" {
         return None;
@@ -194,7 +211,7 @@ pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
         log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
         block_timestamp: raw.ledger_closed_at_unix,
         params: json!({
-            "operator": operator,
+            "sender": operator,
             "receiver": receiver,
             "owner": owner,
             "assets": assets.to_string(),
@@ -294,15 +311,19 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `evm_parsers.rs`: each parser group only runs for events from the contract
 /// whose role it represents. The Soroban RPC `contractIds` filter is the first
 /// line of defense; this is the second — fail closed for any contract id that
-/// is not one of the three configured roles.
+/// is not one of the configured roles.
 ///
 /// `request_claimed` is intentionally shared between DepositManager and
 /// WithdrawalQueue (`request_queue::claim_request` emits it from both).
+///
+/// `loan_registry_id` is `None` when the contract has not yet been deployed
+/// (ships dark — the new branch is a no-op until the env var is set).
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,
     withdrawal_queue_id: &str,
     staked_plusd_id: &str,
+    loan_registry_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
@@ -310,6 +331,18 @@ pub fn dispatch_parser(
         parse_withdrawal_requested(raw).or_else(|| parse_request_claimed(raw))
     } else if raw.contract_id == staked_plusd_id {
         parse_vault_deposit(raw).or_else(|| parse_vault_withdraw(raw))
+    } else if loan_registry_id == Some(raw.contract_id.as_str()) {
+        // LoanRegistry events — all 9 events, tried in order.
+        // Returns None for any event not emitted by the LoanRegistry contract.
+        parse_loan_drawn(raw)
+            .or_else(|| parse_status_updated(raw))
+            .or_else(|| parse_ccr_updated(raw))
+            .or_else(|| parse_location_updated(raw))
+            .or_else(|| parse_loan_defaulted(raw))
+            .or_else(|| parse_loan_closed(raw))
+            .or_else(|| parse_payment_recorded(raw))
+            .or_else(|| parse_loan_rolled_over(raw))
+            .or_else(|| parse_economics_amended(raw))
     } else {
         // The RPC `contractIds` filter should make this branch unreachable.
         // If we ever hit it, either config has drifted from what the RPC was

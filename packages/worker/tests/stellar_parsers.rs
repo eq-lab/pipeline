@@ -254,7 +254,12 @@ fn vault_deposit_decodes_fixture() {
 
     let log = parse_vault_deposit(&raw).expect("should decode StakingDeposit");
     assert_eq!(log.event_name, "StakingDeposit");
-    assert_eq!(log.params["operator"], OPERATOR_G);
+    // EVM-parity shape: `sender` (Soroban operator) and `owner` (Soroban receiver).
+    assert_eq!(log.params["sender"], OPERATOR_G);
+    assert_eq!(log.params["owner"], USER_G);
+    assert!(log.params.get("operator").is_none(), "legacy field dropped");
+    assert!(log.params.get("from").is_none(), "legacy field dropped");
+    assert!(log.params.get("receiver").is_none(), "legacy field dropped");
     assert_eq!(log.params["assets"], assets.to_string());
     assert_eq!(log.params["shares"], shares.to_string());
 }
@@ -311,7 +316,9 @@ fn vault_withdraw_decodes_fixture() {
 
     let log = parse_vault_withdraw(&raw).expect("should decode StakingWithdrawal");
     assert_eq!(log.event_name, "StakingWithdrawal");
-    assert_eq!(log.params["operator"], OPERATOR_G);
+    // EVM-parity shape: `sender` (renamed from Soroban `operator`).
+    assert_eq!(log.params["sender"], OPERATOR_G);
+    assert!(log.params.get("operator").is_none(), "legacy field dropped");
     assert_eq!(log.params["assets"], assets.to_string());
     assert_eq!(log.params["shares"], shares.to_string());
 }
@@ -391,7 +398,7 @@ fn make_vault_withdraw(contract_id: &str) -> RawEvent {
 #[test]
 fn dispatch_deposit_requested_from_dm_succeeds() {
     let raw = make_deposit_requested(DM_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT)
+    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None)
         .expect("DM-emitted deposit_requested should decode");
     assert_eq!(log.event_name, "DepositRequested");
 }
@@ -402,13 +409,13 @@ fn dispatch_deposit_requested_from_wq_rejected() {
     // decode as DepositRequested. The RPC filter shouldn't deliver it, but if
     // it ever did (config typo, future overlapping contracts), we fail closed.
     let raw = make_deposit_requested(WQ_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 #[test]
 fn dispatch_withdrawal_requested_from_wq_succeeds() {
     let raw = make_withdrawal_requested(WQ_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT)
+    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None)
         .expect("WQ-emitted withdrawal_requested should decode");
     assert_eq!(log.event_name, "WithdrawalRequested");
 }
@@ -416,7 +423,7 @@ fn dispatch_withdrawal_requested_from_wq_succeeds() {
 #[test]
 fn dispatch_request_claimed_from_dm_succeeds() {
     let raw = make_request_claimed(DM_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT)
+    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None)
         .expect("DM-emitted request_claimed should decode");
     assert_eq!(log.event_name, "RequestClaimed");
 }
@@ -426,7 +433,7 @@ fn dispatch_request_claimed_from_wq_succeeds() {
     // request_queue::claim_request is intentionally shared — must work for both
     // DM and WQ origins.
     let raw = make_request_claimed(WQ_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT)
+    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None)
         .expect("WQ-emitted request_claimed should decode");
     assert_eq!(log.event_name, "RequestClaimed");
 }
@@ -434,7 +441,7 @@ fn dispatch_request_claimed_from_wq_succeeds() {
 #[test]
 fn dispatch_vault_deposit_from_splusd_succeeds() {
     let raw = make_vault_deposit(SPLUSD_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT)
+    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None)
         .expect("splusd-emitted vault deposit should decode");
     assert_eq!(log.event_name, "StakingDeposit");
 }
@@ -445,13 +452,13 @@ fn dispatch_vault_deposit_from_dm_rejected() {
     // contract must NOT decode as StakingDeposit — the most likely real-world
     // name collision if RPC filtering ever loosens.
     let raw = make_vault_deposit(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 #[test]
 fn dispatch_unknown_contract_returns_none() {
     let raw = make_deposit_requested(UNKNOWN_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 #[test]
@@ -459,7 +466,7 @@ fn dispatch_withdrawal_requested_from_dm_rejected() {
     // Symmetric to dispatch_deposit_requested_from_wq_rejected: a WQ event
     // coming from the DM contract must not decode as WithdrawalRequested.
     let raw = make_withdrawal_requested(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 #[test]
@@ -468,7 +475,7 @@ fn dispatch_request_claimed_from_splusd_rejected() {
     // library), but the splusd vault never emits it. From splusd, the
     // dispatch tries only vault parsers, both of which reject by event_name.
     let raw = make_request_claimed(SPLUSD_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 #[test]
@@ -476,7 +483,7 @@ fn dispatch_vault_withdraw_from_dm_rejected() {
     // Symmetric to dispatch_vault_deposit_from_dm_rejected: a vault `withdraw`
     // event from the DM contract must not decode as StakingWithdrawal.
     let raw = make_vault_withdraw(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT).is_none());
+    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none());
 }
 
 // ── i128 boundary values ──────────────────────────────────────────────────────
@@ -517,6 +524,74 @@ fn i128_zero() {
     );
     let log = parse_deposit_requested(&raw).expect("should decode with 0 amount");
     assert_eq!(log.params["amount"], "0");
+}
+
+// ── dispatch_parser: loan_registry_id routing ────────────────────────────────
+
+const LR_CONTRACT: &str = "CDWGDGLKZRGYPZYVXELOWBHIVRPAHGK3DM6AF4M4J3QKQB47QPNKM2LB";
+
+fn encode_u32(v: u32) -> String {
+    ScVal::U32(v).to_xdr_base64(Limits::none()).unwrap()
+}
+
+fn make_loan_drawn_event(contract_id: &str) -> RawEvent {
+    make_raw_event(
+        contract_id,
+        "loan_drawn",
+        vec![encode_u32(1), encode_account(USER_G)],
+        encode_map_string(&[("metadata_uri", "ipfs://QmTest")]),
+    )
+}
+
+fn encode_map_string(pairs: &[(&str, &str)]) -> String {
+    let mut sorted = pairs.to_vec();
+    sorted.sort_by_key(|(k, _)| *k);
+
+    let entries: Vec<ScMapEntry> = sorted
+        .iter()
+        .map(|(k, v)| {
+            let key_sym: StringM<32> = (*k).try_into().unwrap();
+            let val_str: StringM<{ u32::MAX }> = (*v).try_into().unwrap();
+            ScMapEntry {
+                key: ScVal::Symbol(ScSymbol(key_sym)),
+                val: ScVal::String(stellar_xdr::curr::ScString(val_str)),
+            }
+        })
+        .collect();
+
+    let map: VecM<ScMapEntry> = entries.try_into().unwrap();
+    ScVal::Map(Some(ScMap(map)))
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
+#[test]
+fn loan_registry_branch_routes_to_parsers() {
+    // When loan_registry_id is Some and the event comes from that contract,
+    // dispatch should decode a LoanDrawn event successfully.
+    let raw = make_loan_drawn_event(LR_CONTRACT);
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        Some(LR_CONTRACT),
+    )
+    .expect("loan_drawn from LR contract should decode");
+    assert_eq!(log.event_name, "LoanDrawn");
+    assert_eq!(log.contract_address, LR_CONTRACT);
+    assert_eq!(log.params["loan_id"], "1");
+}
+
+#[test]
+fn unconfigured_loan_registry_id_skips_branch() {
+    // When loan_registry_id is None, a loan_drawn event from the LR contract
+    // falls into the unexpected-contract warn+None path.
+    let raw = make_loan_drawn_event(LR_CONTRACT);
+    assert!(
+        dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None).is_none(),
+        "loan_drawn with no loan_registry_id configured should return None"
+    );
 }
 
 // ── log_index synthesis ───────────────────────────────────────────────────────

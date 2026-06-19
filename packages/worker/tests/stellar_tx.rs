@@ -1,17 +1,16 @@
 //! Encode/sign tests for the shared `worker::stellar::tx` helpers.
-//!
-//! Moved out of the inline `#[cfg(test)] mod tests` block in `src/stellar/tx.rs`
-//! (originally inherited from #562's `relayer/stellar/tx.rs`) per the project
-//! convention of keeping tests in external files under `tests/`.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
-use sha2::{Digest, Sha256};
 use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrkey};
-use stellar_xdr::curr::{Limits, ReadXdr, ScMap, ScVal, TransactionEnvelope, WriteXdr};
+use stellar_xdr::curr::{
+    HostFunction, Limits, OperationBody, ReadXdr, ScAddress, ScSymbol, ScVal, ScVec,
+    TransactionEnvelope, VecM,
+};
 
 use pipeline_worker::stellar::tx::{
-    build_invoke_envelope, build_set_authorized_operation_scval, envelope_to_base64, sign_envelope,
+    address_account, address_contract, build_invoke_envelope, envelope_to_base64, sign_envelope,
+    symbol,
 };
 
 fn fixture_user() -> Ed25519Pub {
@@ -24,47 +23,91 @@ fn fixture_plusd() -> ContractStrkey {
         .expect("valid C… strkey")
 }
 
-#[test]
-fn operation_scval_alphabetical_order() {
-    let salt = [7u8; 32];
-    let val = build_set_authorized_operation_scval(&fixture_plusd(), &fixture_user(), salt);
-    let ScVal::Map(Some(ScMap(entries))) = val else {
-        panic!("expected ScVal::Map");
-    };
-    let keys: Vec<String> = entries
-        .iter()
-        .map(|e| match &e.key {
-            ScVal::Symbol(s) => s.0.to_utf8_string_lossy(),
-            _ => panic!("non-symbol key"),
-        })
-        .collect();
-    assert_eq!(
-        keys,
-        vec!["args", "function", "predecessor", "salt", "target"]
-    );
+fn fixture_access_manager() -> ContractStrkey {
+    ContractStrkey::from_string("CCP6CHNZHUWOG7GGPMHOY55EKRVX2R352UAYBSPB5VH5P3HVCW7BFKJ6")
+        .expect("valid C… strkey")
 }
 
+/// `access_manager.execute(target, function, args, caller)` must encode as a
+/// 4-element `InvokeContractArgs.args` — matches the on-chain signature at
+/// `pipeline-stellar-contracts/contracts/access-manager/src/lib.rs::execute`.
 #[test]
-fn operation_scval_deterministic() {
-    let salt = [1u8; 32];
-    let a = build_set_authorized_operation_scval(&fixture_plusd(), &fixture_user(), salt);
-    let b = build_set_authorized_operation_scval(&fixture_plusd(), &fixture_user(), salt);
-    let a_bytes = a.to_xdr(Limits::none()).expect("xdr");
-    let b_bytes = b.to_xdr(Limits::none()).expect("xdr");
-    assert_eq!(a_bytes, b_bytes);
-}
-
-#[test]
-fn operation_hash_changes_with_salt() {
+fn access_manager_execute_args_have_4_elements() {
     let user = fixture_user();
-    let sac = fixture_plusd();
-    let op_a = build_set_authorized_operation_scval(&sac, &user, [1u8; 32]);
-    let op_b = build_set_authorized_operation_scval(&sac, &user, [2u8; 32]);
-    let a_hash: [u8; 32] =
-        Sha256::digest(op_a.to_xdr(Limits::none()).expect("xdr").as_slice()).into();
-    let b_hash: [u8; 32] =
-        Sha256::digest(op_b.to_xdr(Limits::none()).expect("xdr").as_slice()).into();
-    assert_ne!(a_hash, b_hash);
+    let signer = fixture_user(); // any G… works as the caller fixture
+    let plusd = fixture_plusd();
+    let am = fixture_access_manager();
+
+    let inner_args: VecM<ScVal> = vec![address_account(&user), ScVal::Bool(true)]
+        .try_into()
+        .expect("two args fit in VecM");
+    let args = vec![
+        address_contract(&plusd),
+        symbol("set_authorized"),
+        ScVal::Vec(Some(ScVec(inner_args))),
+        address_account(&signer),
+    ];
+
+    let envelope = build_invoke_envelope(&signer, 1, 10_000, &am, "execute", args, vec![], None);
+
+    let TransactionEnvelope::Tx(env) = envelope else {
+        panic!("expected Tx variant");
+    };
+    let op = env.tx.operations.first().expect("one op");
+    let OperationBody::InvokeHostFunction(host_op) = &op.body else {
+        panic!("expected InvokeHostFunction");
+    };
+    let HostFunction::InvokeContract(invoke) = &host_op.host_function else {
+        panic!("expected InvokeContract");
+    };
+
+    // Contract target = access_manager
+    let ScAddress::Contract(stellar_xdr::curr::ContractId(stellar_xdr::curr::Hash(addr_bytes))) =
+        invoke.contract_address
+    else {
+        panic!("expected contract address");
+    };
+    assert_eq!(addr_bytes, am.0);
+
+    // Function = "execute"
+    let ScSymbol(name) = &invoke.function_name;
+    assert_eq!(name.to_utf8_string_lossy(), "execute");
+
+    // 4 args at the access-manager boundary.
+    assert_eq!(
+        invoke.args.len(),
+        4,
+        "execute requires (target, function, args, caller)"
+    );
+
+    // First arg = target contract address.
+    let ScVal::Address(ScAddress::Contract(stellar_xdr::curr::ContractId(
+        stellar_xdr::curr::Hash(target_bytes),
+    ))) = &invoke.args[0]
+    else {
+        panic!("arg[0] must be contract Address");
+    };
+    assert_eq!(*target_bytes, plusd.0);
+
+    // Second arg = function symbol "set_authorized".
+    let ScVal::Symbol(ScSymbol(fn_name)) = &invoke.args[1] else {
+        panic!("arg[1] must be Symbol");
+    };
+    assert_eq!(fn_name.to_utf8_string_lossy(), "set_authorized");
+
+    // Third arg = Vec<Val> of length 2: [Address(user), Bool(true)].
+    let ScVal::Vec(Some(ScVec(inner))) = &invoke.args[2] else {
+        panic!("arg[2] must be Vec");
+    };
+    assert_eq!(inner.len(), 2);
+    assert!(matches!(inner[0], ScVal::Address(ScAddress::Account(_))));
+    assert!(matches!(inner[1], ScVal::Bool(true)));
+
+    // Fourth arg = caller address (account).
+    assert!(matches!(
+        invoke.args[3],
+        ScVal::Address(ScAddress::Account(_))
+    ));
 }
 
 #[test]
@@ -75,14 +118,15 @@ fn signature_round_trip() {
 
     let user = fixture_user();
     let sac = fixture_plusd();
-    let op = build_set_authorized_operation_scval(&sac, &user, [42u8; 32]);
+
+    // One-arg call (the simulate-time `is_authorized(user)` view-call shape).
     let mut envelope = build_invoke_envelope(
         &source,
         42,
         10_000,
         &sac,
-        "is_authorized",
-        vec![op],
+        "authorized",
+        vec![address_account(&user)],
         vec![],
         None,
     );

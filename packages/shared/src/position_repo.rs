@@ -179,6 +179,10 @@ impl PositionRepo {
     }
 
     /// Get the earliest stake timestamp for a wallet (unix seconds).
+    ///
+    /// The COALESCE-over-`from` clause catches legacy Stellar `StakingDeposit`
+    /// rows that predate the parser's EVM-parity normalization (they stored the
+    /// share holder under `from` instead of `owner`).
     pub async fn get_first_stake_timestamp(
         &self,
         chain_id: i64,
@@ -188,7 +192,7 @@ impl PositionRepo {
         let row: Option<(Option<i64>,)> = sqlx::query_as(
             "SELECT MIN(block_timestamp) FROM contract_logs
              WHERE chain_id = $1
-               AND LOWER(params->>'owner') = $2
+               AND LOWER(COALESCE(params->>'owner', params->>'from')) = $2
                AND event_name = 'StakingDeposit'",
         )
         .bind(chain_id)
@@ -227,6 +231,10 @@ impl PositionRepo {
         // Stellar Strkeys (C…) carry a CRC16 checksum — lowering corrupts them
         // into an invalid form that downstream clients can't parse, so preserve
         // case for Stellar chain IDs (sentinel 99000001 / 99000002).
+        // `COALESCE(owner, CASE WHEN event_name='StakingDeposit' THEN from END)`
+        // catches legacy Stellar `StakingDeposit` rows that lack `owner` and
+        // store the share holder under `from`. The CASE scope keeps the fallback
+        // safe: Stellar `StakingWithdrawal` rows always emit `owner` correctly.
         let rows = sqlx::query_as::<_, PositionSummary>(
             "SELECT
                  latest.vault_address,
@@ -240,7 +248,10 @@ impl PositionRepo {
                      (params->>'avg_buy_share_price')::numeric AS avg_buy_share_price
                  FROM contract_logs
                  WHERE chain_id = $1
-                   AND LOWER(params->>'owner') = $2
+                   AND LOWER(COALESCE(
+                       params->>'owner',
+                       CASE WHEN event_name = 'StakingDeposit' THEN params->>'from' END
+                   )) = $2
                    AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
                    AND params ? 'shares_balance'
                    AND (params->>'shares_balance')::numeric > 0
@@ -251,7 +262,10 @@ impl PositionRepo {
                         SUM((params->>'realized_pnl')::numeric) AS total_realized_pnl
                  FROM contract_logs
                  WHERE chain_id = $1
-                   AND LOWER(params->>'owner') = $2
+                   AND LOWER(COALESCE(
+                       params->>'owner',
+                       CASE WHEN event_name = 'StakingDeposit' THEN params->>'from' END
+                   )) = $2
                    AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
                    AND params ? 'realized_pnl'
                  GROUP BY (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END)

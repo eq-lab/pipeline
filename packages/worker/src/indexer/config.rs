@@ -20,6 +20,13 @@ pub struct StellarIndexerSettings {
     pub withdrawal_queue_id: String,
     /// StakedPLUSD vault contract — emits Vault Deposit/Withdraw (remapped to StakingDeposit/StakingWithdrawal)
     pub staked_plusd_id: String,
+    /// LoanRegistry contract — optional; set only after the contract is deployed to the target chain.
+    /// When `None`, the loan-registry indexer branch is a no-op.
+    /// Read from `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`.
+    pub loan_registry_id: Option<String>,
+    /// IPFS gateway URL used by the loan-metadata fetcher (mirrors `JOB_INDEXER_IPFS_GATEWAY_URL`
+    /// on the EVM side). Defaults to `https://ipfs.io/ipfs/` when unset.
+    pub ipfs_gateway_url: String,
     /// Polling interval in milliseconds (shared with EVM via JOB_INDEXER_POLLING_INTERVAL_MS).
     pub polling_interval_ms: u64,
     /// How many ledgers to fetch per poll cycle (semantics like EVM polling_block_range).
@@ -56,19 +63,30 @@ impl StellarIndexerSettings {
         let dm_key = format!("{p}DEPOSIT_MANAGER_ID");
         let wq_key = format!("{p}WITHDRAWAL_QUEUE_ID");
         let splusd_key = format!("{p}STAKED_PLUSD_ID");
+        let lr_key = format!("{p}LOAN_REGISTRY_ID");
         let deposit_manager_id = validate_contract_id(&dm_key, env_require(&dm_key)?)?;
         let withdrawal_queue_id = validate_contract_id(&wq_key, env_require(&wq_key)?)?;
         let staked_plusd_id = validate_contract_id(&splusd_key, env_require(&splusd_key)?)?;
 
-        // The three roles must be distinct contracts. `dispatch_parser`'s if/else
-        // if ladder commits to the first matching branch, so a duplicate would
-        // silently misroute one role's events to another role's parser group.
+        let loan_registry_id = match env::var(&lr_key) {
+            Ok(raw) if !raw.trim().is_empty() => Some(validate_contract_id(&lr_key, raw)?),
+            _ => None,
+        };
+
+        // All configured roles must be distinct contracts. `dispatch_parser`'s if/else
+        // ladder commits to the first matching branch, so a duplicate would silently
+        // misroute one role's events to another role's parser group.
         let mut seen = std::collections::HashSet::new();
-        for (label, id) in [
+        let mut roles: Vec<(&str, &String)> = vec![
             ("DEPOSIT_MANAGER_ID", &deposit_manager_id),
             ("WITHDRAWAL_QUEUE_ID", &withdrawal_queue_id),
             ("STAKED_PLUSD_ID", &staked_plusd_id),
-        ] {
+        ];
+        // Include loan_registry_id in the distinctness check when configured.
+        if let Some(id) = &loan_registry_id {
+            roles.push(("LOAN_REGISTRY_ID", id));
+        }
+        for (label, id) in roles {
             if !seen.insert(id.as_str()) {
                 anyhow::bail!(
                     "CHAIN_{chain_id}_STELLAR_{label} ({id}) duplicates another \
@@ -76,6 +94,9 @@ impl StellarIndexerSettings {
                 );
             }
         }
+
+        let ipfs_gateway_url = env::var("JOB_INDEXER_IPFS_GATEWAY_URL")
+            .unwrap_or_else(|_| "https://ipfs.io/ipfs/".to_owned());
 
         Ok(Self {
             chain_id,
@@ -85,6 +106,8 @@ impl StellarIndexerSettings {
             deposit_manager_id,
             withdrawal_queue_id,
             staked_plusd_id,
+            loan_registry_id,
+            ipfs_gateway_url,
             polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
             polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
         })

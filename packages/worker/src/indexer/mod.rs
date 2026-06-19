@@ -20,6 +20,7 @@ use shared::{
     contract_logs_repo::ContractLogsRepo, db::EventRepo, metadata_fetcher::MetadataFetcher,
 };
 
+use alloy::primitives::{Address, U256};
 use chain_poller::ChainEventPoller;
 use config::IndexerJobSettings;
 use evm_parsers::register_evm_handlers;
@@ -90,8 +91,8 @@ pub async fn run_indexer_job(settings: IndexerJobSettings, pool: PgPool) -> Resu
         LoanRegistryReader::new(&settings.eth_rpc_url)
             .expect("LoanRegistryReader: valid eth_rpc_url"),
     );
-    let immutable_resolver: Arc<dyn ImmutableDataResolver> = reader.clone();
-    let mutable_resolver: Arc<dyn MutableDataResolver> = reader.clone();
+    let immutable_resolver: Arc<dyn ImmutableDataResolver<Address, U256>> = reader.clone();
+    let mutable_resolver: Arc<dyn MutableDataResolver<Address, U256>> = reader.clone();
 
     let base_builder = EvmEventPollerBuilder::new(
         &settings.eth_rpc_url,

@@ -389,3 +389,98 @@ fn stellar_settings_from_env_non_testnet_requires_passphrase() {
         std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
     }
 }
+
+// ── loan_registry_id field (Issue #620) ──────────────────────────────────────
+
+#[test]
+fn loan_registry_id_unset_yields_none() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_020_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}DEPOSIT_MANAGER_ID"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        // Ensure LOAN_REGISTRY_ID is not set
+        std::env::remove_var(format!("{p}LOAN_REGISTRY_ID"));
+    }
+
+    let s = StellarIndexerSettings::from_chain_env(id)
+        .expect("should succeed when loan_registry_id is unset");
+    assert!(
+        s.loan_registry_id.is_none(),
+        "loan_registry_id should be None when env var is absent"
+    );
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+    }
+}
+
+#[test]
+fn loan_registry_id_rejects_duplicate_of_dm() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_021_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+
+    let dm = "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO";
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(format!("{p}DEPOSIT_MANAGER_ID"), dm);
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        // LOAN_REGISTRY_ID set to same value as DEPOSIT_MANAGER_ID
+        std::env::set_var(format!("{p}LOAN_REGISTRY_ID"), dm);
+    }
+
+    let err = StellarIndexerSettings::from_chain_env(id);
+    assert!(
+        err.is_err(),
+        "should fail when LOAN_REGISTRY_ID duplicates DEPOSIT_MANAGER_ID"
+    );
+    let msg = format!("{}", err.err().unwrap());
+    assert!(
+        msg.contains("duplicates") && msg.contains("LOAN_REGISTRY_ID"),
+        "error should mention LOAN_REGISTRY_ID duplicate: {msg}"
+    );
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}LOAN_REGISTRY_ID"));
+    }
+}

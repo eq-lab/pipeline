@@ -1,8 +1,66 @@
-use alloy::eips::BlockId;
-use alloy::primitives::{Address, U256};
+use std::str::FromStr;
+
 use async_trait::async_trait;
 
 use shared::metadata_fetcher::MetadataFetcher;
+
+// ── Chain-agnostic address/id/block abstractions ──────────────────────────────
+
+/// Trait that both EVM `Address` and Stellar `StellarAddress` implement so that
+/// `LoanEventMapper<A, Id>` can call `as_db_string()` without knowing the concrete type.
+pub trait LoanAddress: Clone + Send + Sync + 'static {
+    /// Render the address in the form stored in `contract_logs.contract_address`.
+    /// EVM emits EIP-55 checksum hex; Stellar emits the Strkey `C…` form verbatim.
+    fn as_db_string(&self) -> String;
+}
+
+impl LoanAddress for alloy::primitives::Address {
+    fn as_db_string(&self) -> String {
+        self.to_checksum(None)
+    }
+}
+
+/// Trait that both EVM `U256` and Stellar `u32` implement so that the mapper can
+/// convert from the `BigDecimal` loan-id extracted from `params.loan_id` back to
+/// the native type needed for the on-chain resolver calls.
+pub trait LoanId: Send + Sync + Clone + std::fmt::Display + 'static {
+    fn from_bigdecimal(bd: &bigdecimal::BigDecimal) -> anyhow::Result<Self>;
+}
+
+impl LoanId for alloy::primitives::U256 {
+    fn from_bigdecimal(bd: &bigdecimal::BigDecimal) -> anyhow::Result<Self> {
+        alloy::primitives::U256::from_str(&bd.to_string())
+            .map_err(|e| anyhow::anyhow!("loan_id `{bd}` is not a valid U256: {e}"))
+    }
+}
+
+impl LoanId for u32 {
+    fn from_bigdecimal(bd: &bigdecimal::BigDecimal) -> anyhow::Result<Self> {
+        let s = bd.to_string();
+        s.parse::<u32>()
+            .map_err(|e| anyhow::anyhow!("loan_id `{bd}` is not a valid u32: {e}"))
+    }
+}
+
+/// Chain-agnostic "what to read at" hint passed to resolver methods.
+///
+/// EVM uses the wrapped block number to build `BlockId::Number(...)`.
+/// Stellar ignores it — Soroban `simulateTransaction` is current-state-only (TD-19).
+#[derive(Debug, Clone, Copy)]
+pub struct BlockHint(pub u64);
+
+impl BlockHint {
+    pub fn from_event(block_number: u64) -> Self {
+        Self(block_number)
+    }
+
+    /// Convert to an alloy `BlockId` for EVM eth_call.
+    pub fn to_evm_block_id(self) -> alloy::eips::BlockId {
+        alloy::eips::BlockId::Number(alloy::eips::BlockNumberOrTag::Number(self.0))
+    }
+}
+
+// ── View structs (unchanged) ──────────────────────────────────────────────────
 
 /// Off-chain JSON document pointed at by `tokenURI(loanId)`.
 /// Contains only the six fields that live off-chain; all other loan data
@@ -114,40 +172,47 @@ pub struct MutableLoanDataView {
     pub metadata_uri: String,
 }
 
+// ── Generic resolver traits ───────────────────────────────────────────────────
+
 /// Abstraction over the on-chain `immutableLoanData(loanId)` reader.
+///
+/// Generic over `<A: LoanAddress, Id: LoanId>` so the same trait serves both
+/// EVM (`Address, U256`) and Stellar (`StellarAddress, u32`) callers.
 #[async_trait]
-pub trait ImmutableDataResolver: Send + Sync {
+pub trait ImmutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
     async fn immutable_loan_data(
         &self,
-        contract: Address,
-        loan_id: U256,
+        contract: &A,
+        loan_id: Id,
     ) -> anyhow::Result<ImmutableLoanDataView>;
 }
 
 /// Abstraction over the on-chain `mutableLoanData(loanId)` and
 /// `cumulativeRepaymentData(loanId)` readers.
 ///
-/// `block` pins every call to a specific block so the indexer always reads canonical
-/// state at the event's block, even during historical re-sync.
+/// `block` is a chain-agnostic `BlockHint` — EVM builds `BlockId::Number(...)` from it;
+/// Stellar ignores it (current-ledger-only simulate, TD-19).
 #[async_trait]
-pub trait MutableDataResolver: Send + Sync {
+pub trait MutableDataResolver<A: LoanAddress, Id: LoanId>: Send + Sync {
     async fn mutable_loan_data(
         &self,
-        contract: Address,
-        loan_id: U256,
-        block: BlockId,
+        contract: &A,
+        loan_id: Id,
+        block: BlockHint,
     ) -> anyhow::Result<MutableLoanDataView>;
 
-    /// Read `cumulativeRepaymentData(loanId)` pinned to `block`. This is the
-    /// authoritative source for the 7 repayment fields — `MutableLoanData` carries
-    /// no cumulative repayment data in the new contract.
+    /// Read `cumulativeRepaymentData(loanId)` at `block`. This is the authoritative
+    /// source for the 7 repayment fields — `MutableLoanData` carries no cumulative
+    /// repayment data.
     async fn cumulative_repayment_data(
         &self,
-        contract: Address,
-        loan_id: U256,
-        block: BlockId,
+        contract: &A,
+        loan_id: Id,
+        block: BlockHint,
     ) -> anyhow::Result<RepaymentDataView>;
 }
+
+// ── Metadata fetcher ──────────────────────────────────────────────────────────
 
 /// Abstraction over the metadata fetch so tests can substitute a mock without spinning
 /// up an HTTP server. The production implementation delegates to the shared

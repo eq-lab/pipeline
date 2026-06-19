@@ -858,7 +858,20 @@ impl KycRepo {
         // DepositRequested / RequestClaimed  -> params->>'user'
         // WithdrawalRequested               -> params->>'withdrawer'
         // StakingDeposit / StakingWithdrawal -> params->>'owner'
-        let base = "SELECT r.event_name,
+        //
+        // Legacy Stellar `StakingDeposit` rows (pre EVM-parity normalization in the
+        // parser) lack `owner` and instead expose the share holder under `from`. The
+        // CASE branch below keeps those rows queryable without a one-off backfill.
+        // Scoped to `StakingDeposit` so withdrawals — where `from`/`receiver` would
+        // be semantically wrong (receiver may differ from owner) — are unaffected.
+        let sender_expr = "COALESCE(
+            r.params->>'user',
+            r.params->>'withdrawer',
+            r.params->>'owner',
+            CASE WHEN r.event_name = 'StakingDeposit' THEN r.params->>'from' END
+        )";
+        let base = format!(
+            "SELECT r.event_name,
                            (r.params->>'request_id')::numeric AS request_id,
                            COALESCE(
                                (r.params->>'assets')::numeric,
@@ -877,13 +890,10 @@ impl KycRepo {
                            COALESCE(p.on_chain_allowed, FALSE) AS on_chain_allowed
                     FROM contract_logs r
                     LEFT JOIN lp_profiles p ON p.chain_id = r.chain_id
-                        AND LOWER(p.wallet_address) = LOWER(
-                            COALESCE(r.params->>'user', r.params->>'withdrawer', r.params->>'owner')
-                        )
-                    WHERE LOWER(
-                        COALESCE(r.params->>'user', r.params->>'withdrawer', r.params->>'owner')
-                    ) = $1
-                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')";
+                        AND LOWER(p.wallet_address) = LOWER({sender_expr})
+                    WHERE LOWER({sender_expr}) = $1
+                      AND r.event_name IN ('DepositRequested', 'WithdrawalRequested', 'StakingDeposit', 'StakingWithdrawal')"
+        );
 
         let query = if pending_only {
             format!(
