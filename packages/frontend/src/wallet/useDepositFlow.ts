@@ -146,6 +146,10 @@ export interface FlowState {
   /** Deposit: balance >= minDeposit.  Withdraw: true when balance loaded. */
   hasBalance: boolean | undefined;
   meetsMin: boolean;
+  /** True while the active-direction balance query OR the requests API query is still loading,
+   *  or while the wallet is connected but the active balance is still undefined
+   *  (e.g. during the addresses-resolver window before the token query becomes enabled). */
+  isDataPending: boolean;
 
   // ── Amount lock (in-flight request locks the input) ───────────────────
   isAmountLocked: boolean;
@@ -256,6 +260,7 @@ export function useDepositFlow(
     isApprovePending: isDepositApprovePending,
     isApproveSuccess: isDepositApproveSuccess,
     refetchBalance: refetchDepositBalance,
+    isLoading: isEvmDepositBalanceLoading,
   } = useEvmToken({ token: usdcAddr, spender: ENV.DEPOSIT_MANAGER_ADDRESS });
 
   const evmRequestDeposit = useRequestDeposit();
@@ -271,6 +276,7 @@ export function useDepositFlow(
     isApprovePending: isWithdrawApprovePending,
     isApproveSuccess: isWithdrawApproveSuccess,
     refetchBalance: refetchWithdrawBalance,
+    isLoading: isEvmWithdrawBalanceLoading,
   } = useEvmToken({ token: plusdAddr, spender: ENV.WITHDRAWAL_QUEUE_ADDRESS });
 
   const evmRequestWithdrawal = useRequestWithdrawal();
@@ -313,7 +319,7 @@ export function useDepositFlow(
   const { feeXlm: withdrawFeeXlm } = useStellarNetworkFeeEstimate("withdraw");
 
   // ── Shared: useRequests (chain-aware — picks wallet address by view) ───────
-  const { data: requestsData } = useRequests({ refetchInterval: 60_000 });
+  const { data: requestsData, isLoading: requestsLoading } = useRequests({ refetchInterval: 60_000 });
 
   // ── EVM request state machines ─────────────────────────────────────────────
   const evmDepositActiveRequest =
@@ -770,6 +776,12 @@ export function useDepositFlow(
         ? `${formatUsdcCurrencyCompact(evmMinDeposit, evmDecimals)} (Min)`
         : "Min";
 
+    const evmActiveBalance = isDeposit ? evmDepositBalance : evmWithdrawBalance;
+    const evmIsDataPending =
+      (isDeposit ? isEvmDepositBalanceLoading : isEvmWithdrawBalanceLoading) ||
+      requestsLoading ||
+      (isEvmConnected && evmActiveBalance === undefined);
+
     return {
       isConnected: isEvmConnected,
       connect: evmConnect,
@@ -782,6 +794,7 @@ export function useDepositFlow(
       isReady: isEvmReady,
       hasBalance: evmHasBalance,
       meetsMin: evmMeetsMin,
+      isDataPending: evmIsDataPending,
       isAmountLocked: evmActiveRequest !== null,
       lockedAmountRaw:
         evmActiveRequest !== null && evmDecimals !== undefined
@@ -1060,6 +1073,12 @@ export function useDepositFlow(
 
   const stellarMinChipLabel = `${formatUsdcCurrencyCompact(STELLAR_MIN_DEPOSIT, SAC_DECIMALS)} (Min)`;
 
+  const stellarActiveBalance = isDeposit ? stellarUsdcBalanceRaw : stellarPlusdBalanceRaw;
+  const stellarIsDataPending =
+    (isDeposit ? usdcToken.isLoading : plusdSac.isLoading) ||
+    requestsLoading ||
+    (isStellarConnected && stellarActiveBalance === undefined);
+
   return {
     isConnected: isStellarConnected,
     connect: stellarConnect,
@@ -1072,6 +1091,7 @@ export function useDepositFlow(
     isReady: isStellarReady,
     hasBalance: stellarHasBalance,
     meetsMin: stellarMeetsMin,
+    isDataPending: stellarIsDataPending,
     isAmountLocked: stellarRequestIsConfirmed,
     lockedAmountRaw:
       stellarInflight?.amount !== undefined

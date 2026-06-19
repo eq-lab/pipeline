@@ -143,6 +143,7 @@ import type { VoucherResponse, WithdrawalVoucherResponse } from "@/api";
 
 // Mutable store for test control.
 let mockRequestsData: { requests: RequestItem[] } | undefined = undefined;
+let mockRequestsLoading = false;
 let mockVoucherData: VoucherResponse | undefined = undefined;
 let mockVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
 let mockWithdrawVoucherData: WithdrawalVoucherResponse | undefined = undefined;
@@ -151,7 +152,7 @@ let mockWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" = "idle";
 vi.mock("@/api", () => ({
   useRequests: () => ({
     data: mockRequestsData,
-    isLoading: false,
+    isLoading: mockRequestsLoading,
     error: null,
     refetch: vi.fn(),
   }),
@@ -456,6 +457,7 @@ describe("Deposit page — approve needed state", () => {
     mockRefetch.mockClear();
     mockWriteText.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -544,6 +546,7 @@ describe("Deposit page — approved state (allowance ≥ amount)", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -644,6 +647,7 @@ describe("Deposit page — insufficient balance banner", () => {
     localStorage.clear();
     mockWriteText.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -753,6 +757,7 @@ describe("Deposit page — quick-amount chips", () => {
     mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -794,6 +799,7 @@ describe("Deposit page — disconnected wallet", () => {
     mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -860,6 +866,7 @@ describe("Deposit page — minDeposit gating", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -979,6 +986,7 @@ describe("Deposit page — Min chip label reflects live minDeposit", () => {
     mockDirection = "deposit";
     localStorage.clear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1012,6 +1020,7 @@ describe("Deposit page — three-step flow", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1223,6 +1232,7 @@ describe("Deposit page — locked amount on active request", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1392,6 +1402,7 @@ describe("Deposit page — toast emissions", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1506,6 +1517,7 @@ describe("Deposit page — direction=withdraw — approve needed state", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1562,6 +1574,7 @@ describe("Deposit page — direction=withdraw — approved state (allowance ≥ 
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1742,6 +1755,7 @@ describe("Deposit page — direction=withdraw — disconnected wallet", () => {
     mockDirection = "withdraw";
     localStorage.clear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1780,6 +1794,7 @@ describe("Deposit page — direction=withdraw — quick-amount chips", () => {
     mockDirection = "withdraw";
     localStorage.clear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1843,6 +1858,7 @@ describe("Deposit page — direction=withdraw — three-step flow labels", () =>
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1875,6 +1891,7 @@ describe("Deposit page — direction=withdraw — no wq-unreachable-banner (regr
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1917,6 +1934,7 @@ describe("Deposit page — swap button", () => {
     mockRefetch.mockClear();
     mockNavigateFn.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -1988,6 +2006,7 @@ describe("Deposit page — network fee row", () => {
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -2047,6 +2066,247 @@ describe("Deposit page — network fee row", () => {
 
     // There should be no ETH fee string visible (no RPC call in test).
     expect(screen.queryByText(/ETH/)).not.toBeInTheDocument();
+  });
+});
+
+// ── isDataPending gating tests ────────────────────────────────────────────────
+//
+// These tests verify that the bottom actions block (StepsCard + banners) is hidden
+// while chain data / requests API are still loading (isDataPending === true).
+// Absence of the steps card and banners is asserted directly since the pending
+// state renders null.
+
+describe("Deposit page — isDataPending: EVM deposit pending (requestsLoading)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = true; // requests still loading
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedBaseMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("StepsCard is absent while requests are loading (deposit direction)", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      // Page renders without crash
+      expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      // Steps card must be absent
+      expect(
+        screen.queryByTestId("deposit-steps-card"),
+      ).not.toBeInTheDocument();
+      // Low-balance banner must be absent
+      expect(screen.queryByTestId("low-balance-banner")).not.toBeInTheDocument();
+      // Connect-wallet banner must be absent (wallet IS connected)
+      expect(
+        screen.queryByTestId("connect-wallet-banner"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("StepsCard reappears once requests resolve (regression guard)", async () => {
+    // Start with loading=true, then switch to false to simulate data arriving.
+    const { rerender } = renderDeposit();
+
+    // While loading: no StepsCard
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("deposit-steps-card"),
+      ).not.toBeInTheDocument();
+    });
+
+    // Simulate data arriving
+    mockRequestsLoading = false;
+    mockRequestsData = { requests: [] };
+
+    // Force re-render by re-rendering the same component
+    const DepositPage = Route.options.component as React.ComponentType;
+    rerender(
+      <EvmWalletProvider>
+        <ToastProvider>
+          <DepositPage />
+        </ToastProvider>
+      </EvmWalletProvider>,
+    );
+
+    // After data resolves, StepsCard must appear
+    await waitFor(() => {
+      expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Deposit page — isDataPending: EVM withdraw pending (requestsLoading)", () => {
+  beforeEach(() => {
+    mockDirection = "withdraw";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = true; // requests still loading
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedWithdrawMocks({ allowance: "0" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("StepsCard is absent while requests are loading (withdraw direction)", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("withdraw-steps-card"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("low-balance-banner")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("connect-wallet-banner"),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("Deposit page — isDataPending: connected but balance undefined (EVM deposit)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = { requests: [] };
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    // Connected wallet but NO balance mock key → balance is undefined while addresses
+    // resolver may still be loading.
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    // Seed DepositManager addresses and minDeposit but deliberately omit the
+    // USDC balance key so evmDepositBalance === undefined.
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.usdc",
+      USDC_ADDRESS,
+    );
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.plusd",
+      PLUSD_ADDRESS,
+    );
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.depositManager.minDeposit",
+      MIN_DEPOSIT_RAW,
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.decimals`,
+      "6",
+    );
+    localStorage.setItem(
+      `pipeline.mock.wallet.contract.${USDC_ADDRESS.toLowerCase()}.symbol`,
+      "USDC",
+    );
+    // NOTE: balance key intentionally omitted — evmDepositBalance is undefined.
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("StepsCard is absent when connected but active balance is undefined", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      // Balance is undefined while connected → isDataPending=true → no steps card
+      expect(
+        screen.queryByTestId("deposit-steps-card"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("low-balance-banner")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("connect-wallet-banner"),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("Deposit page — isDataPending: Stellar deposit pending (requestsLoading)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = true; // requests still loading
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("StepsCard is absent while requests are loading on Stellar (deposit)", async () => {
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByText("1:1 Conversion")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("deposit-steps-card"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("low-balance-banner")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("connect-wallet-banner"),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("Deposit page — isDataPending: disconnected + loading → connect-wallet-banner still shown", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = true; // requests loading, but wallet is disconnected
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    seedBaseMocks({ connected: false });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows connect-wallet-banner even when requests are loading (disconnected takes priority)", async () => {
+    renderDeposit();
+    await waitFor(() => {
+      // Disconnected branch evaluates FIRST — connect banner must show
+      expect(screen.getByTestId("connect-wallet-banner")).toBeInTheDocument();
+      // No steps card (disconnected)
+      expect(
+        screen.queryByTestId("deposit-steps-card"),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 
@@ -2121,6 +2381,7 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
@@ -2311,6 +2572,7 @@ describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", 
     mockWriteContract.mockClear();
     mockRefetch.mockClear();
     mockRequestsData = undefined;
+    mockRequestsLoading = false;
     mockVoucherData = undefined;
     mockVoucherStatus = "idle";
     mockWithdrawVoucherData = undefined;
