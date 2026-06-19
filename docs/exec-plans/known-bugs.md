@@ -38,6 +38,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Not investigated. The test expects `null` not to be null (i.e., a spinner element to be present), but the element is not found in the rendered output.
 - **Workaround:** None applied.
 
+### BUG-5: `-index.test.tsx` — "clicking Connect calls useWallet().connect()" test fails
+- **Date:** 2026-06-19
+- **Location:** `packages/frontend/src/routes/-index.test.tsx` > "Home page — disconnected state" > "clicking Connect calls useWallet().connect() → opens AppKit modal (when ack flag is pre-set)"
+- **Symptom:** `npx vitest run src/routes/-index.test.tsx` reports 1 failure for the Connect button test. The test expects `mockOpen` (from `useAppKit`) to be called once, but it is called 0 times. Reproduces on `main` before any #684 changes, confirming it is pre-existing.
+- **Root cause:** The `ConnectWalletPromoCard.onConnect` is wired to `useConnectModal().open` which is a no-op in the test context (no `ConnectModalProvider` in the wrapper). The `mockOpen` from `useAppKit` is never called. The test was written assuming the Connect button invokes `useAppKit().open` directly, but the indirection through `ConnectModalProvider` was introduced later.
+- **Workaround:** None applied. Fix: wrap `renderHome()` with `ConnectModalProvider` (backed by a mocked `WalletGateProvider`) so `useConnectModal().open` delegates to `useAppKit().open`.
+
 ### BUG-3: `useStellarWithdrawalQueue.test.tsx` — 8 failing tests
 - **Date:** 2026-06-17
 - **Location:** `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx`

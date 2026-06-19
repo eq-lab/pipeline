@@ -3,8 +3,12 @@ import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
 
-import { useEvmWallet } from "@/wallet/evm/useEvmWallet";
-import { useConnectModal } from "@/wallet";
+import {
+  useEvmWallet,
+  useStellarWallet,
+  useWalletView,
+  useConnectModal,
+} from "@/wallet";
 import {
   useStakedPlusdAsset,
   useStakedPlusdConvertToAssets,
@@ -56,12 +60,19 @@ import { QnaSection } from "@/components/QnaSection";
  *   6. `QnaSection` and desktop `RecentActivityCard` column — hidden on mobile.
  *
  * ## Top-left card branching:
+ *   Connection state is derived from the *active wallet view namespace* (via
+ *   `useWalletView().kind`), mirroring the deposit/stake convention:
+ *     - kind === "stellar" → uses `useStellarWallet().isConnected`
+ *     - kind === "evm" (default) → uses `useEvmWallet().isConnected`
  *   When `isConnected === false`, renders `ConnectWalletPromoCard` with an
  *   `onConnect` prop wired to `useWallet().connect()` so the home CTA opens
  *   the same AppKit modal as the header (see #224, #250).
  *   When `isConnected === true`, renders `PortfolioPlaceholderCard` — a static
  *   connected-state placeholder ($0.00, segmented tabs, chart silhouette)
  *   that keeps the grid from reflowing while real data wiring is deferred.
+ *   Note: a Stellar-only session will see the connected layout with $0.00
+ *   Total Balance — balance hooks remain EVM-sourced in this issue. Stellar
+ *   balance wiring is deferred to a follow-up sub-issue of epic #463.
  *
  * Token discipline: this composer adds no raw colors, fonts, sizes or radii.
  * Every value comes from `@pipeline/ui/styles/theme.css` via component
@@ -109,11 +120,23 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  const { isConnected } = useEvmWallet();
+  // Derive connection state from the active wallet view namespace, mirroring
+  // the deposit/stake convention (see useDepositFlow, useStakeFlow).
+  // This fixes #684: a Stellar-only session was incorrectly reading EVM
+  // isConnected (false) and showing the "Connect wallet" screen.
+  const evm = useEvmWallet();
+  const stellar = useStellarWallet();
+  const { kind } = useWalletView();
+  const isConnected = kind === "stellar" ? stellar.isConnected : evm.isConnected;
+
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
 
   // Read the connected wallet's PLUSD balance to gate the Stake CTA.
+  // NOTE: These balance hooks are EVM-sourced only. A Stellar-only session will
+  // see $0.00 Total Balance and a disabled Stake CTA — this is intentional for
+  // this issue (fixes #684). Stellar balance wiring is deferred to a follow-up
+  // sub-issue of epic #463.
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
   const { balance: plusdBalance, formattedBalance: plusdFormatted } =

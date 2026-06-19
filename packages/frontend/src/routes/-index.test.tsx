@@ -14,10 +14,11 @@
  *   4. Card height parity: both cards carry the `min-h-[274px]` utility class.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import React from "react";
+import React, { useEffect } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
+import { WalletViewProvider, useWalletView } from "@/wallet";
 import { Route } from "./index";
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
@@ -61,6 +62,22 @@ vi.mock("wagmi", async (importOriginal) => {
 vi.mock("@reown/appkit/react", () => ({
   createAppKit: vi.fn(),
   useAppKit: vi.fn(() => ({ open: mockOpen })),
+}));
+
+// ── Stellar kit mock ──────────────────────────────────────────────────────────
+// Mock the Stellar wallet kit singleton so tests don't try to initialise the
+// real kit (which requires DOM extension points from the browser wallet
+// extensions). The mock exposes only the methods useStellarWallet calls.
+vi.mock("@/wallet/stellar/config", () => ({
+  StellarWalletsKit: {
+    init: vi.fn(),
+    getAddress: vi.fn(async () => ({ address: undefined })),
+    authModal: vi.fn(async () => ({ address: undefined })),
+    disconnect: vi.fn(async () => {}),
+    signTransaction: vi.fn(async () => ({ signedTxXdr: "" })),
+    setWallet: vi.fn(),
+    fetchAddress: vi.fn(async () => ({ address: undefined })),
+  },
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -139,6 +156,31 @@ function renderHome() {
   return render(
     <EvmWalletProvider>
       <HomePage />
+    </EvmWalletProvider>,
+  );
+}
+
+/**
+ * Helper that switches the WalletViewContext to "stellar" before rendering the
+ * Home page. Uses a real WalletViewProvider — same pattern as deposit tests.
+ */
+function StellarViewSwitcher({ children }: { children: React.ReactNode }) {
+  const { setKind } = useWalletView();
+  useEffect(() => {
+    setKind("stellar");
+  }, [setKind]);
+  return <>{children}</>;
+}
+
+function renderHomeStellar() {
+  const HomePage = Route.options.component as React.ComponentType;
+  return render(
+    <EvmWalletProvider>
+      <WalletViewProvider>
+        <StellarViewSwitcher>
+          <HomePage />
+        </StellarViewSwitcher>
+      </WalletViewProvider>
     </EvmWalletProvider>,
   );
 }
@@ -754,6 +796,151 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
       expect(sharesEl).toBeInTheDocument();
       // 1000 sPLUSD shares at 18 decimals.
       expect(sharesEl.textContent).toContain("1,000.00");
+    });
+  });
+});
+
+// ── Stellar connection gate regression tests (#684) ───────────────────────────
+//
+// These tests guard the fix for #684: when view kind is "stellar" the home page
+// must use stellar.isConnected (not evm.isConnected) to decide which card to
+// render in the top-left slot.
+//
+// Mock seeding convention (Stellar):
+//   pipeline.mock.wallet.stellar.address   — 56-char Stellar public key (G…)
+//   pipeline.mock.wallet.stellar.isConnected — "true" / "false"
+//
+// renderHomeStellar() wraps the page in <WalletViewProvider> and switches view
+// kind to "stellar" before the component renders, exactly mirroring the deposit-
+// page Stellar test pattern.
+
+const STELLAR_MOCK_ADDRESS =
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+
+describe("Home page — Stellar-only connected (regression #684)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    // Seed a connected Stellar wallet; EVM wallet remains disconnected (default).
+    localStorage.setItem(
+      "pipeline.mock.wallet.stellar.address",
+      STELLAR_MOCK_ADDRESS,
+    );
+    localStorage.setItem("pipeline.mock.wallet.stellar.isConnected", "true");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("renders connected layout (PortfolioPlaceholderCard) — not the promo card", async () => {
+    // Regression guard for #684: stellar-only session must see connected view.
+    renderHomeStellar();
+    await waitFor(() => {
+      const portfolioCards = screen.getAllByTestId("home-portfolio-placeholder");
+      expect(portfolioCards.length).toBeGreaterThanOrEqual(1);
+    });
+    // Promo card must be absent.
+    expect(
+      screen.queryByTestId("home-connect-wallet-card"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ConnectWalletPromoCard is absent when Stellar is connected", async () => {
+    renderHomeStellar();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Connect Wallet" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows 'Total Balance' heading (connected layout)", async () => {
+    renderHomeStellar();
+    await waitFor(() => {
+      const elements = screen.getAllByText("Total Balance");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
+
+describe("Home page — EVM-only connected, Stellar view (view-kind semantics)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    // EVM wallet connected, Stellar wallet disconnected.
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    // Stellar is NOT seeded → stellar.isConnected === false.
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows disconnected promo card when Stellar view active but Stellar not connected", async () => {
+    // Documents the view-kind semantics: active view (stellar) is disconnected
+    // even though EVM is connected. The home page shows the promo card.
+    renderHomeStellar();
+    await waitFor(() => {
+      const headings = screen.getAllByRole("heading", {
+        name: "Connect Wallet",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByTestId("home-portfolio-placeholder"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Home page — EVM-only connected, EVM view (no regression)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("still shows connected layout when EVM is connected and view kind is EVM", async () => {
+    // renderHome() uses the default EVM view (no WalletViewProvider override).
+    renderHome();
+    await waitFor(() => {
+      const elements = screen.getAllByText("Total Balance");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
+
+describe("Home page — neither connected, Stellar view (disconnected promo)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    // Neither EVM nor Stellar seeded → both disconnected.
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows disconnected promo card when neither chain is connected (Stellar view)", async () => {
+    renderHomeStellar();
+    await waitFor(() => {
+      const headings = screen.getAllByRole("heading", {
+        name: "Connect Wallet",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("PortfolioPlaceholderCard absent when disconnected (Stellar view)", async () => {
+    renderHomeStellar();
+    await waitFor(() => {
+      expect(screen.queryByText("Total Balance")).not.toBeInTheDocument();
     });
   });
 });
