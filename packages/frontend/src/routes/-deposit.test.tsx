@@ -1200,7 +1200,7 @@ describe("Deposit page — three-step flow", () => {
         .find((b) => b.getAttribute("aria-busy") === "true");
       // Walk up to the StepRow root div (the container that gets opacity-30).
       // StepRow structure: div.rootClasses > ... > div.shrink-0 > Button
-      const rowRoot = busyBtn?.closest(".flex.items-start.gap-3");
+      const rowRoot = busyBtn?.closest(".flex.items-center.gap-3");
       expect(rowRoot).not.toBeNull();
       expect(rowRoot?.className).not.toContain("opacity-30");
     });
@@ -1270,6 +1270,117 @@ describe("Deposit page — three-step flow", () => {
       },
       { timeout: 2000 },
     );
+  });
+});
+
+describe("Deposit page — completed (claimed) deposit terminal state", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    // High allowance + balance so that, absent an active request, Confirm would
+    // be enabled — this is what makes the regression observable.
+    seedBaseMocks({ allowance: "10000000000" });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const COMPLETED_DEPOSIT = {
+    type: "Deposit" as const,
+    request_id: "42",
+    amount: "2000000000",
+    status: "Completed" as const,
+    created_at: new Date().toISOString(),
+  };
+
+  // Regression: a deposit that has settled to `Completed` (e.g. on reload after
+  // claiming) must NOT collapse the flow back to its initial form. Previously
+  // the active-request filter kept only Pending* statuses, so a Completed
+  // request dropped out and Confirm re-enabled (and Claim flickered during the
+  // API's PendingClaim lag). The Completed request must drive a terminal done
+  // state instead.
+  it("renders the done state (no active Confirm/Claim) when the latest deposit is Completed", async () => {
+    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
+
+    renderDeposit();
+
+    await waitFor(() => {
+      // Steps render as success pills — no actionable Confirm/Claim buttons.
+      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Claim" })).toBeNull();
+      expect(screen.getByLabelText("Confirm complete")).toHaveAttribute(
+        "data-state",
+        "success",
+      );
+      expect(screen.getByLabelText("Claim complete")).toHaveAttribute(
+        "data-state",
+        "success",
+      );
+    });
+    // Reset affordance is offered.
+    expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
+  });
+
+  it("locks the amount input to the completed deposit amount", async () => {
+    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
+
+    renderDeposit();
+
+    await waitFor(() => {
+      const input = screen.getByRole("textbox", {
+        name: /USDC amount/i,
+      }) as HTMLInputElement;
+      // 2000000000 raw at 6 dp = 2000.00.
+      expect(input.value).toBe("2000.00");
+      expect(input).toBeDisabled();
+    });
+  });
+
+  it("'Make another deposit' resets the form and restores an actionable flow", async () => {
+    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
+
+    const user = userEvent.setup();
+    renderDeposit();
+
+    const resetBtn = await screen.findByTestId("make-another-deposit");
+    await user.click(resetBtn);
+
+    await waitFor(() => {
+      // Done state dismissed — reset button gone, Confirm available again.
+      expect(screen.queryByTestId("make-another-deposit")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Confirm" }),
+      ).toBeInTheDocument();
+      // Input cleared so the user can enter a fresh amount.
+      const input = screen.getByRole("textbox", {
+        name: /USDC amount/i,
+      }) as HTMLInputElement;
+      expect(input.value).toBe("");
+      expect(input).not.toBeDisabled();
+    });
+  });
+
+  it("still shows the done state even when the post-deposit balance is below the minimum", async () => {
+    // After depositing, the USDC balance can drop below the minimum. The done
+    // state must take precedence over the low-balance banner.
+    seedBaseMocks({ balance: BALANCE_500_RAW, allowance: "10000000000" });
+    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
+
+    renderDeposit();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("low-balance-banner")).toBeNull();
   });
 });
 
@@ -2967,6 +3078,56 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
       expect(
         screen.getByRole("button", { name: "Claim" }),
       ).not.toBeDisabled();
+    });
+  });
+});
+
+describe("Deposit page — Stellar completed (claimed) deposit terminal state", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  // Regression for the reported bug: on Stellar, after claiming a deposit the
+  // request settles to `Completed`. The flow must show the done state rather
+  // than re-enabling Confirm (or, during the API's PendingClaim lag, Claim).
+  it("shows the done state with a reset affordance when the latest deposit is Completed", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS, // PLUSD trustline present
+      sacUsdcBalance: SAC_1000_PLUS, // USDC trustline present
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "42",
+          amount: "20000000000", // 2000 USDC at 7 dp
+          status: "Completed",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+
+    renderDepositStellar();
+
+    await waitFor(() => {
+      // No actionable Confirm/Claim — the steps are success pills.
+      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Claim" })).toBeNull();
+      expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
     });
   });
 });

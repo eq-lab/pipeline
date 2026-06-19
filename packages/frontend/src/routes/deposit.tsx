@@ -100,6 +100,11 @@ function Deposit() {
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
   const [copied, setCopied] = useState(false);
+  // `request_id` of a completed deposit the user dismissed via "Make another
+  // deposit". Suppresses the done state so a fresh deposit can be entered.
+  const [dismissedDepositId, setDismissedDepositId] = useState<
+    string | undefined
+  >(undefined);
 
   // ── Parse amount (needs decimals — use 6 as default until flow loads) ──
   // The flow's decimals are used for proper parsing, but we need amountBig
@@ -112,7 +117,18 @@ function Deposit() {
   const amountBig = parseUsdc(amountInput, lastDecimals);
 
   // ── Flow adapter ──────────────────────────────────────────────────────
-  const flow = useDepositFlow(direction, amountBig, setAmountInput);
+  const flow = useDepositFlow(
+    direction,
+    amountBig,
+    setAmountInput,
+    dismissedDepositId,
+  );
+
+  // ── "Make another deposit" — dismiss the completed deposit, reset the form ─
+  const onMakeAnotherDeposit = useCallback(() => {
+    setDismissedDepositId(flow.depositCompletedRequestId);
+    setAmountInput("");
+  }, [flow.depositCompletedRequestId]);
 
   // ── Connect modal (shared single instance via ConnectModalProvider) ───
   const { open: openConnectModal } = useConnectModal();
@@ -474,7 +490,8 @@ function Deposit() {
         ) : flow.isDataPending /* Chain data / requests API still loading — render nothing until resolved. */ ? null : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
-          flow.hasBalance === false ? (
+          flow.hasBalance === false &&
+          !flow.isDepositCompleted ? (
           /* No USDC trustline (Stellar deposit, no USDC balance) — must be
              established before the account can hold or deposit USDC. Takes the
              place of the low-balance banner; same layout, but the action adds
@@ -511,7 +528,9 @@ function Deposit() {
               {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
             </Button>
           </Card>
-        ) : isDeposit && flow.hasBalance === false ? (
+        ) : isDeposit &&
+          flow.hasBalance === false &&
+          !flow.isDepositCompleted ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card
             variant="yellow"
@@ -629,6 +648,21 @@ function Deposit() {
             ]}
           />
         )}
+
+        {/* "Make another deposit" — shown once the latest deposit is claimed
+            (Completed). Resets the form so a fresh deposit can be started. */}
+        {flow.isConnected &&
+          !flow.isDataPending &&
+          flow.isDepositCompleted && (
+            <Button
+              data-testid="make-another-deposit"
+              variant="primary-dark"
+              className="w-full"
+              onClick={onMakeAnotherDeposit}
+            >
+              Make another deposit
+            </Button>
+          )}
       </main>
     </div>
   );
