@@ -2633,6 +2633,82 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
   });
 });
 
+describe("Deposit page — Stellar locked amount on active request", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("PendingClaim — input is synced to the API request amount (raw 7 dp) and disabled", async () => {
+    // Both trustlines present + balance so the steps card (with Claim) renders.
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    // Stellar amounts are raw i128 at 7 decimals: 2000 USDC = 2000 * 1e7.
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "77",
+          amount: "20000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await waitFor(() => {
+      // formatUsdc(20_000_000_000n, 7) → "2,000.00"; commas stripped → "2000.00"
+      expect((input as HTMLInputElement).value).toBe("2000.00");
+      expect((input as HTMLInputElement).disabled).toBe(true);
+    });
+  });
+
+  it("PendingClaim — input shows the API amount even with no client-side inflight record", async () => {
+    // No localStorage inflight entry is seeded — the regression: the locked
+    // amount must come from the API request, not the (now-cleared) inflight.
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "78",
+          amount: "10000000000", // 1000 USDC at 7 dp
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    renderDepositStellar();
+
+    const input = await screen.findByRole("textbox", { name: /USDC amount/i });
+    await waitFor(() => {
+      expect((input as HTMLInputElement).value).toBe("1000.00");
+      expect((input as HTMLInputElement).value).not.toBe("0");
+    });
+  });
+});
+
 describe("Deposit page — Stellar trustline dual-enable (withdraw direction)", () => {
   beforeEach(() => {
     mockDirection = "withdraw";
