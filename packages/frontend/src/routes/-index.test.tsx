@@ -80,6 +80,16 @@ vi.mock("@/wallet/stellar/config", () => ({
   },
 }));
 
+// Disconnected CTAs open the shared ConnectWalletModal via useConnectModal()
+// (issues #638/#645) rather than calling AppKit directly. The gate/modal
+// behavior is covered by ConnectModalProvider.test.tsx; here we only assert the
+// Home CTA is wired to useConnectModal().open().
+const mockConnectModalOpen = vi.fn();
+vi.mock("@/wallet", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/wallet")>()),
+  useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
+}));
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-query")>();
@@ -191,6 +201,7 @@ describe("Home page — disconnected state", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
     mockNavigate.mockClear();
   });
 
@@ -221,12 +232,7 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("clicking Connect calls useWallet().connect() → opens AppKit modal (when ack flag is pre-set)", async () => {
-    // Pre-seed the terms acknowledgement so the gate is skipped and AppKit
-    // is called directly. The gate modal itself is tested in FirstConnectionModal.test.tsx
-    // and useWallet.test.tsx.
-    localStorage.setItem("pipeline.wallet.termsAcknowledged.pending", "true");
-
+  it("clicking Connect opens the shared ConnectWalletModal via useConnectModal().open()", async () => {
     const user = userEvent.setup();
     renderHome();
 
@@ -237,9 +243,11 @@ describe("Home page — disconnected state", () => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(connectBtns[0]!);
 
-    // useWallet().connect() delegates to useAppKit().open()
+    // The Home CTA's onConnect is wired to useConnectModal().open(), which
+    // routes through the terms gate and opens ConnectWalletModal (issues
+    // #638/#645). It no longer calls AppKit's open() directly.
     await waitFor(() => {
-      expect(mockOpen).toHaveBeenCalledTimes(1);
+      expect(mockConnectModalOpen).toHaveBeenCalledTimes(1);
     });
   });
 
