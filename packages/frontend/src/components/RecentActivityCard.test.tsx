@@ -222,16 +222,16 @@ describe("RecentActivityCard — connected + 3 rows", () => {
 
   it("renders the Deposit (Buy) amount string", () => {
     renderCard();
-    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(
-      1,
-    );
+    // Deposit receives PLUSD (1:1 mint from USDC); label is PLUSD, not USDC
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("renders the Withdraw (Sell) pending amount string", () => {
     renderCard();
-    // The pending Withdraw row renders a TwoLineAmount with the amount on the top line
-    // Both Deposit and Sell rows show +1,000.00 USDC (same fixture amount)
-    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(2);
+    // Withdraw returns USDC; only the Withdraw row (not Deposit) shows USDC
+    expect(screen.getAllByText("+1,000.00 USDC")).toHaveLength(1);
+    // Deposit row shows PLUSD
+    expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
   it("renders the Stake row amounts", () => {
@@ -288,8 +288,8 @@ describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
 
   it("does not render the 6th fixture amount", () => {
     renderCard();
-    // 6th row is +4,000.00 USDC — must not appear when MAX_ROWS=5
-    expect(screen.queryByText("+4,000.00 USDC")).not.toBeInTheDocument();
+    // 6th row is a Deposit — renders PLUSD; must not appear when MAX_ROWS=5
+    expect(screen.queryByText("+4,000.00 PLUSD")).not.toBeInTheDocument();
   });
 });
 
@@ -449,7 +449,8 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
 
     // List must render
     expect(screen.getByRole("list")).toBeInTheDocument();
-    expect(screen.getByText("+3,000.00 USDC")).toBeInTheDocument();
+    // Stellar fixture is a Deposit row — receives PLUSD
+    expect(screen.getByText("+3,000.00 PLUSD")).toBeInTheDocument();
     // Empty-state must be absent
     expect(
       screen.queryByText("You will see all transactions here"),
