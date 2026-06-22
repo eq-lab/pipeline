@@ -8,7 +8,7 @@
  *   4. "Get PLUSD to start" link is present and points to /deposit.
  *   5. "7D" tab is the default active tab (aria-selected="true").
  *   6. Other tabs start inactive (aria-selected="false").
- *   7. Switching tabs updates active state and the earning caption.
+ *   7. Switching tabs updates active state while PnL captions stay data-driven.
  *   8. Chart wrapper has role="img" and a descriptive aria-label.
  *   9. Chart renders 100 bar slots (100 <g data-bar-slot> elements).
  *  10. Hover shows tooltip; mouse leave hides it.
@@ -64,10 +64,33 @@ describe("PortfolioPlaceholderCard — smoke tests", () => {
     expect(link).toHaveAttribute("href", "/deposit");
   });
 
-  it("shows '+$42.80 earning' caption by default (7D period)", () => {
+  it("shows '$0.00 unrealized' caption by default", () => {
     renderCard();
     const caption = screen.getByTestId("earning-caption");
-    expect(caption).toHaveTextContent("+$42.80 earning");
+    expect(caption).toHaveTextContent("$0.00 unrealized");
+  });
+
+  it("shows the sPLUSD balance caption by default", () => {
+    renderCard();
+    expect(screen.getByTestId("splusd-balance-caption")).toHaveTextContent(
+      "0.00 sPLUSD",
+    );
+  });
+
+  it("renders provided sPLUSD and unrealized PnL labels", () => {
+    render(
+      <PortfolioPlaceholderCard
+        splusdBalanceLabel="1,000.00 sPLUSD"
+        unrealizedPnlLabel="+$42.80 unrealized"
+      />,
+    );
+
+    expect(screen.getByTestId("splusd-balance-caption")).toHaveTextContent(
+      "1,000.00 sPLUSD",
+    );
+    expect(screen.getByTestId("earning-caption")).toHaveTextContent(
+      "+$42.80 unrealized",
+    );
   });
 });
 
@@ -105,7 +128,7 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
     });
   });
 
-  it("clicking '1M' updates the earning caption to '+$92.80 earning'", async () => {
+  it("clicking '1M' leaves the unrealized PnL caption unchanged", async () => {
     const user = userEvent.setup();
     renderCard();
 
@@ -113,12 +136,12 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("earning-caption")).toHaveTextContent(
-        "+$92.80 earning",
+        "$0.00 unrealized",
       );
     });
   });
 
-  it("clicking 'All' updates the earning caption to '+$842.80 earning'", async () => {
+  it("clicking 'All' leaves the unrealized PnL caption unchanged", async () => {
     const user = userEvent.setup();
     renderCard();
 
@@ -126,7 +149,7 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("earning-caption")).toHaveTextContent(
-        "+$842.80 earning",
+        "$0.00 unrealized",
       );
     });
   });
@@ -151,7 +174,8 @@ describe("PortfolioPlaceholderCard — chart structure", () => {
     const label = chart.getAttribute("aria-label") ?? "";
     expect(label).toContain("Total balance");
     expect(label).toContain("$0.00");
-    expect(label).toContain("earning");
+    expect(label).toContain("0.00 sPLUSD");
+    expect(label).toContain("$0.00 unrealized");
   });
 
   it("chart renders 100 bar slots (100 <g data-bar-slot> elements)", () => {

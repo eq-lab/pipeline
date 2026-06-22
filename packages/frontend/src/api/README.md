@@ -145,6 +145,21 @@ formatApy(null); // → "—"
 formatApy(undefined); // → "—"
 ```
 
+### `usePnl()`
+
+React Query hook that fetches staking PnL for the connected wallet from
+`GET /v1/pnl`.
+
+```ts
+const { data, isLoading, error } = usePnl();
+// data?.avg_apy — APY as a decimal fraction string, or null
+// data?.total_unrealized_pnl — raw asset-unit decimal string
+```
+
+The hook follows `useWalletView().kind`, uses the active wallet address, and
+passes the matching `chain_id` (`ENV.EVM_CHAIN_ID` or `ENV.STELLAR_CHAIN_ID`).
+It is disabled until the active wallet is connected.
+
 ---
 
 ## localStorage mock key schema
@@ -163,6 +178,13 @@ this event and issues a refetch — no page reload needed.
 | Key                               | Type                     | Purpose                                           |
 | --------------------------------- | ------------------------ | ------------------------------------------------- |
 | `pipeline.mock.api.GET./v1/stats` | JSON `{ vaults: [...] }` | Bypasses the real fetch — `useStats` returns this |
+
+### `usePnl` mock keys
+
+| Key                                                 | Type               | Purpose                                        |
+| --------------------------------------------------- | ------------------ | ---------------------------------------------- |
+| `pipeline.mock.api.GET./v1/pnl`                     | JSON `PnlResponse` | Bypasses the real fetch for any wallet         |
+| `pipeline.mock.api.GET./v1/pnl?wallet=…&chain_id=…` | JSON `PnlResponse` | Per-wallet/per-chain override when exact match |
 
 ### `useRequests` mock keys
 

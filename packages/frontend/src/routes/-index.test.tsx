@@ -90,6 +90,15 @@ vi.mock("@/wallet", async (importOriginal) => ({
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
 }));
 
+const mockPnlData = vi.hoisted(() => ({
+  current: undefined as
+    | {
+        total_unrealized_pnl: string;
+        avg_apy?: string | null;
+      }
+    | undefined,
+}));
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-query")>();
@@ -146,6 +155,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 const mockEnv = vi.hoisted(() => ({
   EVM_CHAIN_ID: 560048,
+  STELLAR_CHAIN_ID: 99000001,
   EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
@@ -165,7 +175,17 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/api", () => ({
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
-  formatApy: () => "—",
+  usePnl: () => ({
+    data: mockPnlData.current,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  formatApy: (apy: string | null | undefined) => {
+    if (apy == null) return "—";
+    const num = Number(apy);
+    return Number.isFinite(num) ? `${(num * 100).toFixed(2)}%` : "—";
+  },
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -206,6 +226,10 @@ function renderHomeStellar() {
   );
 }
 
+beforeEach(() => {
+  mockPnlData.current = undefined;
+});
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("Home page — disconnected state", () => {
@@ -214,6 +238,7 @@ describe("Home page — disconnected state", () => {
     mockOpen.mockClear();
     mockConnectModalOpen.mockClear();
     mockNavigate.mockClear();
+    mockPnlData.current = undefined;
   });
 
   afterEach(() => {
@@ -251,7 +276,6 @@ describe("Home page — disconnected state", () => {
     const connectBtns = await screen.findAllByRole("button", {
       name: "Connect",
     });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(connectBtns[0]!);
 
     // The Home CTA's onConnect is wired to useConnectModal().open(), which
@@ -268,7 +292,6 @@ describe("Home page — disconnected state", () => {
 
     // Both mobile and desktop blocks render StartHereCard; click the first Buy.
     const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(buyBtns[0]!);
 
     await waitFor(() => {
@@ -293,7 +316,6 @@ describe("Home page — disconnected state", () => {
     expect(sellBtns[0]).toBeDisabled();
     // Desktop instance must be enabled.
     expect(sellBtns[1]).not.toBeDisabled();
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(sellBtns[1]!);
 
     await waitFor(() => {
@@ -326,7 +348,6 @@ describe("Home page — disconnected state", () => {
     const stakeBtns = await screen.findAllByRole("button", {
       name: "Stake PLUSD",
     });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
@@ -355,7 +376,6 @@ describe("Home page — disconnected state", () => {
       name: "Stake PLUSD",
     });
     expect(stakeBtns[0]).not.toBeDisabled();
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
@@ -464,7 +484,6 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
 
     // Click the first "1M" tab found.
     const tabs1m = await screen.findAllByRole("tab", { name: "1M" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(tabs1m[0]!);
 
     await waitFor(() => {
@@ -482,7 +501,6 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     renderHome();
 
     const tabs3m = await screen.findAllByRole("tab", { name: "3M" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(tabs3m[0]!);
 
     // open() was not called (tab switch is purely visual, no wallet action)
@@ -791,12 +809,43 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile EarnedCard shows '—' placeholder (State C)", async () => {
+  it("mobile EarnedCard shows tracking placeholder when State C has no PnL APY yet", async () => {
     renderHome();
     await waitFor(() => {
-      // "—" is the placeholder earned value for State C.
-      const elements = screen.getAllByText("—");
+      const elements = screen.getAllByText("Tracked once you stake");
       expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("mobile EarnedCard shows avg APY from PnL when available", async () => {
+    mockPnlData.current = {
+      total_unrealized_pnl: "42800000000000000000",
+      avg_apy: "0.0842",
+    };
+
+    renderHome();
+
+    await waitFor(() => {
+      const elements = screen.getAllByText("8.42% p.a.");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("mobile portfolio chart summary shows unrealized PnL and sPLUSD amount", async () => {
+    mockPnlData.current = {
+      total_unrealized_pnl: "42800000000000000000",
+      avg_apy: "0.0842",
+    };
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("earning-caption")[0]).toHaveTextContent(
+        "+$42.80 unrealized",
+      );
+      expect(
+        screen.getAllByTestId("splusd-balance-caption")[0],
+      ).toHaveTextContent("1,000.00 sPLUSD");
     });
   });
 

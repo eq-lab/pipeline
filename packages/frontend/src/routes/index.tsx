@@ -30,6 +30,7 @@ import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
+import { usePnl, formatApy } from "@/api";
 
 /**
  * Home page — full composition (Figma `1497:94556` desktop, `1989:8292` mobile).
@@ -108,6 +109,37 @@ function formatBigintUSD(value: bigint | undefined, decimals = 18): string {
   }).format(asFloat);
 }
 
+function formatBigintTokenAmount(
+  value: bigint | undefined,
+  decimals: number,
+  symbol: string,
+): string {
+  if (value === undefined || value === 0n) return `0.00 ${symbol}`;
+  const asFloat = parseFloat(formatUnits(value, decimals));
+  const formatted = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(asFloat);
+  return `${formatted} ${symbol}`;
+}
+
+function formatRawDecimalUSD(
+  value: string | null | undefined,
+  decimals: number,
+  options: { signed?: boolean; suffix?: string } = {},
+): string {
+  const raw = value === undefined || value === null ? 0 : Number(value);
+  const amount = Number.isFinite(raw) ? raw / 10 ** decimals : 0;
+  const absFormatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amount));
+  const sign = options.signed && amount > 0 ? "+" : amount < 0 ? "-" : "";
+  return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
+}
+
 /**
  * Connected-wallet balance state selector for the mobile home page.
  *
@@ -139,6 +171,7 @@ function Home() {
   const { kind } = useWalletView();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
+  const pnl = usePnl();
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
@@ -228,6 +261,21 @@ function Home() {
   const totalBalanceFormatted = isConnected
     ? formatBigintUSD(totalBalanceBigint, activeDecimals)
     : "$0.00";
+  const splusdBalanceFormatted = formatBigintTokenAmount(
+    splusdSharesActive,
+    activeDecimals,
+    "sPLUSD",
+  );
+  const unrealizedPnlFormatted = formatRawDecimalUSD(
+    pnl.data?.total_unrealized_pnl,
+    activeDecimals,
+    { signed: true, suffix: "unrealized" },
+  );
+  const avgApyFormatted = formatApy(pnl.data?.avg_apy);
+  const earnedApyLabel =
+    isConnected && avgApyFormatted !== "—"
+      ? `${avgApyFormatted} p.a.`
+      : undefined;
 
   // ── Mobile home state ──────────────────────────────────────────────────────
   // deriveMobileHomeState only compares > 0n so it is scale-agnostic.
@@ -282,6 +330,8 @@ function Home() {
               className="min-h-[256px] md:min-h-[274px]"
               mobileHomeState={mobileHomeState}
               mobileTotalBalance={totalBalanceFormatted}
+              splusdBalanceLabel={splusdBalanceFormatted}
+              unrealizedPnlLabel={unrealizedPnlFormatted}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -317,6 +367,7 @@ function Home() {
               <EarnedCard
                 padding="sm"
                 mobileHomeState={isConnected ? mobileHomeState : undefined}
+                avgApyLabel={earnedApyLabel}
                 data-testid="home-earned-card"
               />
             </div>
@@ -374,6 +425,10 @@ function Home() {
             {isConnected ? (
               <PortfolioPlaceholderCard
                 className="col-span-4 row-start-1"
+                mobileHomeState={mobileHomeState}
+                mobileTotalBalance={totalBalanceFormatted}
+                splusdBalanceLabel={splusdBalanceFormatted}
+                unrealizedPnlLabel={unrealizedPnlFormatted}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (
@@ -405,7 +460,10 @@ function Home() {
                 onSell={onSell}
                 data-testid="home-start-here-card"
               />
-              <EarnedCard data-testid="home-earned-card" />
+              <EarnedCard
+                avgApyLabel={earnedApyLabel}
+                data-testid="home-earned-card"
+              />
             </div>
 
             {/* Row 2, columns 3–4: Stake CTA card. */}

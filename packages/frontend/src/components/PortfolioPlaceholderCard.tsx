@@ -20,7 +20,8 @@ import {
  *   ┌────────────────────────────────────────────────────────────────────┐
  *   │  Total Balance                    [ 7D | 1M | 3M | 1Y | All ]     │
  *   │  $0.00                                                             │
- *   │  +$42.80 earning  ← updates with selected period                  │
+ *   │  0.00 sPLUSD                                                       │
+ *   │  $0.00 unrealized                                                  │
  *   │  Get PLUSD to start →                                              │
  *   ├────────────────────────────────────────────────────────────────────┤
  *   │  ████████████████████████████████████████████████████████████      │
@@ -47,20 +48,19 @@ import {
  *   - Mouse only — touch support deferred (logged in tech-debt-tracker.md).
  *
  * Accessibility:
- *   - Chart wrap: `role="img"` + descriptive `aria-label` (period + earning).
+ *   - Chart wrap: `role="img"` + descriptive `aria-label` (period + unrealized PnL).
  *   - Individual bar `<rect>` elements are decorative — no aria attributes.
  *   - The card `<region>` is labelled by the `$0.00` heading.
  *
  * Placeholder rule:
  *   - `$0.00` is a string literal — replace when the aggregation endpoint is ready.
- *   - Earning caption uses the prototype's per-period synthetic value — replace
- *     when real per-period earnings are available.
+ *   - Unrealized PnL caption is supplied by `/v1/pnl`; defaults to `$0.00 unrealized`.
  *   - "Get PLUSD to start" link is always shown — revisit when user holds PLUSD.
  *
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
  */
 
-/** Mobile home balance state — drives CTA copy and earning caption. */
+/** Mobile home balance state — drives CTA copy and connected balance state. */
 export type MobileHomeState = "empty" | "plusd" | "splusd";
 
 export interface PortfolioPlaceholderCardProps extends Omit<
@@ -72,7 +72,7 @@ export interface PortfolioPlaceholderCardProps extends Omit<
    * When provided, overrides the static `$0.00` heading and CTA link:
    *   - "empty"  → `$0.00` + "Get PLUSD to start" → /deposit (State A)
    *   - "plusd"  → totalBalance + "Stake PLUSD to start earning" → /stake (B)
-   *   - "splusd" → totalBalance (no link, earning caption) (C)
+   *   - "splusd" → totalBalance (no link, PnL caption) (C)
    * When `undefined` the desktop behaviour ($0.00 + "Get PLUSD to start") is
    * preserved byte-for-byte.
    */
@@ -83,6 +83,10 @@ export interface PortfolioPlaceholderCardProps extends Omit<
    * Defaults to `"$0.00"` when not provided.
    */
   mobileTotalBalance?: string;
+  /** Formatted sPLUSD share balance displayed below Total Balance. */
+  splusdBalanceLabel?: string;
+  /** Formatted unrealized PnL displayed below the sPLUSD balance. */
+  unrealizedPnlLabel?: string;
 }
 
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */
@@ -116,7 +120,14 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   HTMLDivElement,
   PortfolioPlaceholderCardProps
 >(function PortfolioPlaceholderCard(
-  { className, mobileHomeState, mobileTotalBalance = "$0.00", ...rest },
+  {
+    className,
+    mobileHomeState,
+    mobileTotalBalance = "$0.00",
+    splusdBalanceLabel = "0.00 sPLUSD",
+    unrealizedPnlLabel = "$0.00 unrealized",
+    ...rest
+  },
   ref,
 ) {
   // Use a unique id per instance to avoid duplicate id attributes when both
@@ -133,7 +144,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     tooltip,
     onPointerMove,
     onPointerLeave,
-    earning,
   } = usePortfolioChart();
 
   /** Ref to the chart wrapper div for getBoundingClientRect on pointer move. */
@@ -164,7 +174,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
-  const earningStr = formatMoney(earning);
 
   const composed = [
     "relative flex flex-col gap-6",
@@ -224,9 +233,20 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               : "$0.00"}
           </h2>
 
-          {/* Earning caption — updates with selected period.
-              Mobile State C: show "—" placeholder (no real earned data yet).
-              All other states: show the synthetic period-based earning. */}
+          <span
+            data-testid="splusd-balance-caption"
+            className={[
+              "font-[family-name:var(--font-body)]",
+              "text-[length:var(--text-pipeline-caption)]",
+              "leading-[var(--text-pipeline-caption--line-height)]",
+              "font-[var(--font-weight-regular)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
+            ].join(" ")}
+          >
+            {splusdBalanceLabel}
+          </span>
+
+          {/* Unrealized PnL caption from `/v1/pnl`. */}
           <span
             data-testid="earning-caption"
             className={[
@@ -234,19 +254,15 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
               "font-[var(--font-weight-regular)]",
-              // State C shows "—" as a placeholder; other states use muted
-              // ink with synthetic earning value.
-              mobileHomeState === "splusd"
-                ? "text-[color:var(--color-pipeline-ink-muted)]"
-                : "text-[color:var(--color-pipeline-ink-muted)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
-            {mobileHomeState === "splusd" ? "—" : `+${earningStr} earning`}
+            {unrealizedPnlLabel}
           </span>
 
           {/* State A: "Get PLUSD to start" link to /deposit.
               State B: "Stake PLUSD to start earning" link to /stake.
-              State C: no link (earning caption is sufficient context).
+              State C: no link (PnL caption is sufficient context).
               Desktop (no mobileHomeState): "Get PLUSD to start" as before. */}
           {mobileHomeState === "splusd" ? null : (
             <Link
@@ -290,7 +306,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         ref={wrapRef}
         className="relative flex-1"
         role="img"
-        aria-label={`Total balance for ${periodLabel}: ${mobileHomeState !== undefined && mobileHomeState !== "empty" ? mobileTotalBalance : "$0.00"} (+${earningStr} earning)`}
+        aria-label={`Total balance for ${periodLabel}: ${mobileHomeState !== undefined && mobileHomeState !== "empty" ? mobileTotalBalance : "$0.00"} (${splusdBalanceLabel}, ${unrealizedPnlLabel})`}
         data-node-id="1497:95048-chart"
         onPointerMove={handlePointerMove}
         onPointerLeave={onPointerLeave}
