@@ -256,7 +256,11 @@ export class DepositManagerClient {
     const op = this.contract.call(
       "claim_request",
       nativeToScVal(requestId, { type: "u128" }),
-      xdr.ScVal.scvBytes(Buffer.from(verifierSignature)),
+      xdr.ScVal.scvBytes(
+        Uint8Array.from(verifierSignature) as Parameters<
+          typeof xdr.ScVal.scvBytes
+        >[0],
+      ),
     );
 
     const tx = new TransactionBuilder(sourceAccount, {

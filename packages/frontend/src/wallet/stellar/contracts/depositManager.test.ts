@@ -32,6 +32,7 @@ const {
   mockScValToNative,
   mockNativeToScVal,
   mockContractCall,
+  mockScvBytes,
   mockBuild,
   mockAddOperation,
 } = vi.hoisted(() => {
@@ -50,6 +51,7 @@ const {
     mockScValToNative: vi.fn(),
     mockNativeToScVal: vi.fn().mockReturnValue({}),
     mockContractCall: vi.fn().mockReturnValue("op"),
+    mockScvBytes: vi.fn().mockReturnValue({}),
     mockBuild,
     mockAddOperation,
   };
@@ -102,7 +104,7 @@ vi.mock("@stellar/stellar-sdk", () => {
     BASE_FEE: "100",
     xdr: {
       ScVal: {
-        scvBytes: vi.fn().mockReturnValue({}),
+        scvBytes: mockScvBytes,
       },
     },
     Address: class {
@@ -270,6 +272,7 @@ describe("DepositManagerClient.buildRequestDeposit()", () => {
     mockIsSimulationError.mockReturnValue(false);
     mockSimulateTransaction.mockResolvedValue({ result: { retval: {} } });
     mockAssembleTransaction.mockReturnValue({ build: mockBuild });
+    mockScvBytes.mockClear();
   });
 
   it("returns assembled XDR string", async () => {
@@ -348,5 +351,37 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
       mockAccount as unknown as Account,
     );
     expect(typeof xdrResult).toBe("string");
+  });
+
+  it("does not require a global Buffer when building claim bytes", async () => {
+    const originalBuffer = Reflect.get(globalThis, "Buffer");
+    vi.stubGlobal("Buffer", undefined);
+
+    try {
+      const client = new DepositManagerClient(CONTRACT_ID);
+      const mockAccount = {
+        accountId: () => CONTRACT_ID,
+        sequenceNumber: () => "1",
+        incrementSequenceNumber: () => {},
+      };
+
+      await expect(
+        client.buildClaimRequest(
+          1n,
+          new Uint8Array(64).fill(0x02),
+          mockAccount as unknown as Account,
+        ),
+      ).resolves.toBe("assembled-xdr");
+
+      expect(mockScvBytes).toHaveBeenCalledWith(expect.any(Uint8Array));
+      expect((mockScvBytes.mock.calls.at(-1)?.[0] as Uint8Array).length).toBe(
+        64,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalBuffer !== undefined) {
+        Reflect.set(globalThis, "Buffer", originalBuffer);
+      }
+    }
   });
 });
