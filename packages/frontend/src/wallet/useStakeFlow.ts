@@ -262,7 +262,7 @@ export function useStakeFlow(
   const stellarUnstake = useStellarUnstake();
 
   // Trustline hooks — always mounted.
-  // Stake: needs sPLUSD trustline.
+  // Stake: only classic-asset share deployments need an sPLUSD trustline.
   const splusdTrustline = useStellarChangeTrustStakedPlusd();
   // Unstake: needs PLUSD trustline (same as deposit flow).
   const plusdTrustline = useChangeTrust();
@@ -280,9 +280,7 @@ export function useStakeFlow(
   const stellarAssetsPreview = useStellarUnstakeConvertToAssets(
     !isStake ? amountBig : undefined,
   );
-  const stellarOneStake = isStake
-    ? parseUnits("1", SAC_DECIMALS)
-    : undefined;
+  const stellarOneStake = isStake ? parseUnits("1", SAC_DECIMALS) : undefined;
   const stellarOneUnstake = !isStake
     ? parseUnits("1", SAC_DECIMALS)
     : undefined;
@@ -341,7 +339,9 @@ export function useStakeFlow(
     !evmUnstake.isSuccess;
 
   const evmStep1State: StakeStepState =
-    isStake && (evmHasSufficientAllowance || evmStake.isSuccess) && isEvmConnected
+    isStake &&
+    (evmHasSufficientAllowance || evmStake.isSuccess) &&
+    isEvmConnected
       ? "success"
       : "idle";
   const evmStep2State: StakeStepState = evmStake.isSuccess ? "success" : "idle";
@@ -414,7 +414,9 @@ export function useStakeFlow(
   const stellarIsReady =
     isStellarConnected && stellarInputBalance !== undefined;
   const stellarHasBalance =
-    stellarIsReady && amountBig > 0n && amountBig <= (stellarInputBalance ?? 0n);
+    stellarIsReady &&
+    amountBig > 0n &&
+    amountBig <= (stellarInputBalance ?? 0n);
 
   // Trustline states.
   //
@@ -422,6 +424,9 @@ export function useStakeFlow(
   // "success" is shown ONLY when the trustline is confirmed present, never
   // when the share asset is still loading or errored.
   const stellarSplusdTrustlineStatus = splusdTrustline.trustlineStatus;
+  const stellarSplusdTrustlineSatisfied =
+    stellarSplusdTrustlineStatus === "satisfied" ||
+    stellarSplusdTrustlineStatus === "not_required";
   const stellarSplusdNeedsTrustline = splusdTrustline.needsTrustline;
   const stellarPlusdNeedsTrustline = plusdTrustline.needsTrustline;
 
@@ -443,14 +448,14 @@ export function useStakeFlow(
 
   // Step 2 (stake/unstake) — gated on trustline being present.
   //
-  // canStellarStake: permit staking ONLY when trustlineStatus is "satisfied".
-  // Loading or error states block staking — the mint cannot land on a
-  // non-existent trustline (this is the core safety fix for #685).
+  // canStellarStake: permit staking only when the classic trustline is
+  // satisfied or the vault reports Soroban-native shares that need no trustline.
+  // Loading/error/needed states block staking.
   const canStellarStake =
     isStake &&
     isStellarConnected &&
     stellarHasBalance &&
-    stellarSplusdTrustlineStatus === "satisfied" &&
+    stellarSplusdTrustlineSatisfied &&
     !stellarStake.isPending &&
     !stellarStake.isSuccess;
 
@@ -464,13 +469,11 @@ export function useStakeFlow(
 
   // Step states.
   //
-  // stellarSplusdTrustlineState: "success" ONLY when trustlineStatus is
-  // "satisfied" (and connected). Loading/needed/error all stay "idle" so the
-  // actionable "Enable" button is always shown while resolution is pending.
+  // stellarSplusdTrustlineState: "success" only when the classic trustline is
+  // satisfied or no classic trustline is required. Loading/needed/error all
+  // stay "idle".
   const stellarSplusdTrustlineState: StakeStepState =
-    stellarSplusdTrustlineStatus === "satisfied" && isStellarConnected
-      ? "success"
-      : "idle";
+    stellarSplusdTrustlineSatisfied && isStellarConnected ? "success" : "idle";
   const stellarPlusdTrustlineState: StakeStepState =
     !stellarPlusdNeedsTrustline && isStellarConnected ? "success" : "idle";
   const stellarStakeStepState: StakeStepState = stellarStake.isSuccess

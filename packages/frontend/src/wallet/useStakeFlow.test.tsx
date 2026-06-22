@@ -30,6 +30,9 @@ import { useStakeFlow } from "./useStakeFlow";
 // Intercept Horizon.Server.loadAccount so we control balance lines.
 
 const mockLoadAccount = vi.hoisted(() => vi.fn());
+const mockStakedPlusdName = vi.hoisted(() => vi.fn());
+const mockStakedPlusdConvertToShares = vi.hoisted(() => vi.fn());
+const mockStakedPlusdConvertToAssets = vi.hoisted(() => vi.fn());
 
 vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
   const original =
@@ -45,6 +48,19 @@ vi.mock("@stellar/stellar-sdk", async (importOriginal) => {
     Horizon: { Server: MockHorizonServer },
   };
 });
+
+vi.mock("./stellar/contracts/stakedPlusd", () => ({
+  StakedPlusdClient: vi.fn(),
+  createStakedPlusdClient: vi.fn(() => ({
+    name: mockStakedPlusdName,
+    convertToShares: mockStakedPlusdConvertToShares,
+    convertToAssets: mockStakedPlusdConvertToAssets,
+    queryAsset: vi.fn(),
+    balance: vi.fn(),
+    buildDeposit: vi.fn(),
+    buildRedeem: vi.fn(),
+  })),
+}));
 
 // ── Stellar chain mock ────────────────────────────────────────────────────────
 // Provide all chain constants explicitly so StellarWalletsKit.init() and
@@ -73,6 +89,8 @@ vi.mock("@creit.tech/stellar-wallets-kit", () => ({
     authModal: vi.fn().mockRejectedValue(new Error("no modal in tests")),
     signTransaction: vi.fn().mockRejectedValue(new Error("no sign in tests")),
   },
+  addressUpdatedEvent: { subscribe: vi.fn() },
+  disconnectEvent: { subscribe: vi.fn() },
   LOBSTR_ID: "lobstr",
   FREIGHTER_ID: "freighter",
   XBULL_ID: "xbull",
@@ -240,6 +258,12 @@ describe("useStakeFlow — Stellar PLUSD balance (Horizon path, issuer-sensitive
   beforeEach(() => {
     localStorage.clear();
     mockLoadAccount.mockClear();
+    mockStakedPlusdName.mockReset();
+    mockStakedPlusdConvertToShares.mockReset();
+    mockStakedPlusdConvertToAssets.mockReset();
+    mockStakedPlusdName.mockResolvedValue("Staked Pipeline USD");
+    mockStakedPlusdConvertToShares.mockResolvedValue(9_600_000n);
+    mockStakedPlusdConvertToAssets.mockResolvedValue(10_400_000n);
     seedStellarWalletKeys();
     seedDepositManagerMockKeys();
   });
@@ -279,6 +303,25 @@ describe("useStakeFlow — Stellar PLUSD balance (Horizon path, issuer-sensitive
     expect(resultWithAmount.current.hasBalance).toBe(true);
   });
 
+  it("Stake step is enabled when the vault name is Soroban-native and no sPLUSD trustline is required", async () => {
+    mockLoadAccount.mockResolvedValue({
+      balances: makeBalances(PLUSD_BALANCE_50, PROTOCOL_ISSUER),
+    });
+
+    const { result } = renderHook(
+      () => useStakeFlow("stake", 100_000_000n, () => {}),
+      { wrapper: makeWrapper().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.balance).toBe(PLUSD_BALANCE_50_RAW);
+      expect(result.current.hasBalance).toBe(true);
+      expect(result.current.steps[0]?.state).toBe("success");
+      expect(result.current.steps[1]?.actionLabel).toBe("Stake");
+      expect(result.current.steps[1]?.disabled).toBe(false);
+    });
+  });
+
   it("balance is 0n and hasBalance is false when Horizon PLUSD line has a different issuer", async () => {
     // Arrange: Horizon returns PLUSD from a *different* issuer — issuer mismatch.
     mockLoadAccount.mockResolvedValue({
@@ -311,6 +354,12 @@ describe("useStakeFlow — Stellar sPLUSD balance (Unstake tab, not issuer-sensi
   beforeEach(() => {
     localStorage.clear();
     mockLoadAccount.mockClear();
+    mockStakedPlusdName.mockReset();
+    mockStakedPlusdConvertToShares.mockReset();
+    mockStakedPlusdConvertToAssets.mockReset();
+    mockStakedPlusdName.mockResolvedValue("Staked Pipeline USD");
+    mockStakedPlusdConvertToShares.mockResolvedValue(9_600_000n);
+    mockStakedPlusdConvertToAssets.mockResolvedValue(10_400_000n);
     seedStellarWalletKeys();
     seedDepositManagerMockKeys();
     // sPLUSD balance comes from the vault contract mock key, not Horizon.
