@@ -9,8 +9,8 @@
  *   1. Disconnected → ConnectWalletPromoCard renders; click invokes connect().
  *   2. Connected (via mock) → PortfolioPlaceholderCard renders; $0.00 visible;
  *      "Get PLUSD to start" link is present; ConnectWallet promo is absent.
- *   3. SegmentedTabs default + click: default tab is "7D"; clicking "1M" makes
- *      it the active tab; no data fetch occurs.
+ *   3. SegmentedTabs default + click: default tab is "All"; clicking "1M"
+ *      makes it the active tab; no wallet action occurs.
  *   4. Card height parity: both cards carry the `min-h-[274px]` utility class.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -90,6 +90,15 @@ vi.mock("@/wallet", async (importOriginal) => ({
   useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
 }));
 
+const mockPnlData = vi.hoisted(() => ({
+  current: undefined as
+    | {
+        total_unrealized_pnl: string;
+        avg_apy?: string | null;
+      }
+    | undefined,
+}));
+
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-query")>();
@@ -146,11 +155,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 const mockEnv = vi.hoisted(() => ({
   EVM_CHAIN_ID: 560048,
+  STELLAR_CHAIN_ID: 99000001,
   EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
   DEPOSIT_MANAGER_ADDRESS:
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   STAKED_PLUSD_ADDRESS:
     "0x0000000000000000000000000000000000000000" as `0x${string}`,
+  STELLAR_STAKED_PLUSD_ID: "",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -165,7 +176,23 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/api", () => ({
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
-  formatApy: () => "—",
+  usePnl: () => ({
+    data: mockPnlData.current,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useStatsPrices: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  formatApy: (apy: string | null | undefined) => {
+    if (apy == null) return "—";
+    const num = Number(apy);
+    return Number.isFinite(num) ? `${(num * 100).toFixed(2)}%` : "—";
+  },
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -206,6 +233,10 @@ function renderHomeStellar() {
   );
 }
 
+beforeEach(() => {
+  mockPnlData.current = undefined;
+});
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("Home page — disconnected state", () => {
@@ -214,6 +245,7 @@ describe("Home page — disconnected state", () => {
     mockOpen.mockClear();
     mockConnectModalOpen.mockClear();
     mockNavigate.mockClear();
+    mockPnlData.current = undefined;
   });
 
   afterEach(() => {
@@ -251,7 +283,6 @@ describe("Home page — disconnected state", () => {
     const connectBtns = await screen.findAllByRole("button", {
       name: "Connect",
     });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(connectBtns[0]!);
 
     // The Home CTA's onConnect is wired to useConnectModal().open(), which
@@ -268,7 +299,6 @@ describe("Home page — disconnected state", () => {
 
     // Both mobile and desktop blocks render StartHereCard; click the first Buy.
     const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(buyBtns[0]!);
 
     await waitFor(() => {
@@ -293,7 +323,6 @@ describe("Home page — disconnected state", () => {
     expect(sellBtns[0]).toBeDisabled();
     // Desktop instance must be enabled.
     expect(sellBtns[1]).not.toBeDisabled();
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(sellBtns[1]!);
 
     await waitFor(() => {
@@ -326,7 +355,6 @@ describe("Home page — disconnected state", () => {
     const stakeBtns = await screen.findAllByRole("button", {
       name: "Stake PLUSD",
     });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
@@ -355,7 +383,6 @@ describe("Home page — disconnected state", () => {
       name: "Stake PLUSD",
     });
     expect(stakeBtns[0]).not.toBeDisabled();
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
@@ -387,11 +414,13 @@ describe("Home page — connected state (mock)", () => {
     });
   });
 
-  it("shows '$0.00' balance literal", async () => {
-    // Both mobile (State A) and desktop render $0.00; at least one must appear.
+  it("shows '$0.00' sPLUSD balance literal", async () => {
+    // Both mobile (State A) and desktop render the sPLUSD balance in currency format.
     renderHome();
     await waitFor(() => {
-      const headings = screen.getAllByRole("heading", { name: "$0.00" });
+      const headings = screen.getAllByRole("heading", {
+        name: "$0.00",
+      });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -438,12 +467,12 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     localStorage.clear();
   });
 
-  it("default active tab is '7D'", async () => {
+  it("default active tab is 'All'", async () => {
     // Both mobile and desktop blocks render PortfolioPlaceholderCard in
-    // the connected state; check the first "7D" tab found.
+    // the connected state; check the first "All" tab found.
     renderHome();
     await waitFor(() => {
-      const tabs = screen.getAllByRole("tab", { name: "7D" });
+      const tabs = screen.getAllByRole("tab", { name: "All" });
       expect(tabs.length).toBeGreaterThanOrEqual(1);
       expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     });
@@ -458,22 +487,21 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     });
   });
 
-  it("clicking '1M' makes it the active tab and deactivates '7D'", async () => {
+  it("clicking '1M' makes it the active tab and deactivates 'All'", async () => {
     const user = userEvent.setup();
     renderHome();
 
     // Click the first "1M" tab found.
     const tabs1m = await screen.findAllByRole("tab", { name: "1M" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(tabs1m[0]!);
 
     await waitFor(() => {
       // At least one "1M" tab should now be active.
       const active1mTabs = screen.getAllByRole("tab", { name: "1M" });
       expect(active1mTabs[0]).toHaveAttribute("aria-selected", "true");
-      // The corresponding "7D" tab (in the same tablist) should be inactive.
-      const tabs7d = screen.getAllByRole("tab", { name: "7D" });
-      expect(tabs7d[0]).toHaveAttribute("aria-selected", "false");
+      // The corresponding "All" tab (in the same tablist) should be inactive.
+      const tabsAll = screen.getAllByRole("tab", { name: "All" });
+      expect(tabsAll[0]).toHaveAttribute("aria-selected", "false");
     });
   });
 
@@ -482,7 +510,6 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     renderHome();
 
     const tabs3m = await screen.findAllByRole("tab", { name: "3M" });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await user.click(tabs3m[0]!);
 
     // open() was not called (tab switch is purely visual, no wallet action)
@@ -791,12 +818,46 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile EarnedCard shows '—' placeholder (State C)", async () => {
+  it("mobile EarnedCard shows tracking placeholder when State C has no PnL APY yet", async () => {
     renderHome();
     await waitFor(() => {
-      // "—" is the placeholder earned value for State C.
-      const elements = screen.getAllByText("—");
+      const elements = screen.getAllByText("Tracked once you stake");
       expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("mobile EarnedCard shows avg APY from PnL when available", async () => {
+    mockPnlData.current = {
+      total_unrealized_pnl: "42800000000000000000",
+      avg_apy: "0.0842",
+    };
+
+    renderHome();
+
+    await waitFor(() => {
+      const elements = screen.getAllByText("8.42% p.a.");
+      expect(elements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("mobile portfolio chart summary shows sPLUSD balance in currency format and unrealized PnL below it", async () => {
+    mockPnlData.current = {
+      total_unrealized_pnl: "42800000000000000000",
+      avg_apy: "0.0842",
+    };
+
+    renderHome();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "$1,000.00" })[0],
+      ).toBeInTheDocument();
+      expect(screen.getAllByTestId("earning-caption")[0]).toHaveTextContent(
+        "+$42.80 unrealized",
+      );
+      expect(
+        screen.queryByTestId("splusd-balance-caption"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1000,7 +1061,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     localStorage.clear();
   });
 
-  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance reflects PLUSD, Stake enabled, mobile state plusd", async () => {
+  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows sPLUSD only, Stake enabled, mobile state plusd", async () => {
     // Seed 500 PLUSD at 7-decimal scale: 500 * 10^7 = 5_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
@@ -1011,14 +1072,18 @@ describe("Home page — Stellar connected balances (#688)", () => {
     renderHomeStellar();
 
     await waitFor(() => {
-      // Total Balance should NOT be $0.00 (PLUSD balance present).
-      const headings = screen.getAllByRole("heading");
-      const balanceHeading = headings.find(
-        (h) => h.textContent && /\$[\d,]+\.\d{2}/.test(h.textContent),
-      );
-      expect(balanceHeading).not.toBeUndefined();
-      // The balance rendered must not be $0.00.
-      expect(balanceHeading?.textContent).not.toBe("$0.00");
+      const headings = screen.getAllByRole("heading", {
+        name: "$0.00",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.queryByTestId("splusd-balance-caption"),
+      ).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toHaveTextContent(/\$500\.00 USDC/);
     });
 
     // Stake CTA should be enabled (has PLUSD).
@@ -1037,7 +1102,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 2: has sPLUSD — Total Balance includes sPLUSD-to-PLUSD, mobile state splusd, RecentActivityCard present", async () => {
+  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares in currency format, mobile state splusd, RecentActivityCard present", async () => {
     // Seed 100 sPLUSD at 7-decimal scale: 100 * 10^7 = 1_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
@@ -1062,6 +1127,13 @@ describe("Home page — Stellar connected balances (#688)", () => {
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
 
+    await waitFor(() => {
+      const headings = screen.getAllByRole("heading", {
+        name: "$100.00",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+
     // Mobile RecentActivityCard should be present (State C).
     await waitFor(() => {
       const cards = screen.getAllByRole("region", { name: "Recent activity" });
@@ -1070,14 +1142,16 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 3: zero balances / no trustline — $0.00 Total Balance, Stake disabled, mobile state empty", async () => {
+  it("Case 3: zero balances / no trustline — $0.00 sPLUSD Total Balance, Stake disabled, mobile state empty", async () => {
     // No balance keys seeded → all balances undefined → State A.
 
     renderHomeStellar();
 
-    // Total Balance should be $0.00.
+    // Total Balance should show sPLUSD shares only.
     await waitFor(() => {
-      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      const zeroHeadings = screen.getAllByRole("heading", {
+        name: "$0.00",
+      });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -1095,7 +1169,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 4: decimal-scale assertion — 7-decimal PLUSD is formatted as $1,234.57, not mis-scaled", async () => {
+  it("Case 4: decimal-scale assertion — 7-decimal PLUSD StartHere balance is formatted as $1,234.57, not mis-scaled", async () => {
     // Seed 1234.5678900 PLUSD at 7-decimal fixed-point.
     // 1234.5678900 * 10^7 = 12_345_678_900n
     localStorage.setItem(
@@ -1105,16 +1179,12 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     renderHomeStellar();
 
-    // The Total Balance heading must show "$1,234.57" — not a mis-scaled value.
+    // The StartHere PLUSD sub-line must show "$1,234.57" — not a mis-scaled value.
     // If the 18-decimal path were used by mistake, 12_345_678_900n at 18 decimals
     // would render as "$0.00" (value ~1.23e-8), proving the 7-decimal path is taken.
     await waitFor(() => {
-      // We look for a heading with "$1,234.57" (Total Balance, mobile block).
-      const headings = screen.getAllByRole("heading");
-      const balanceHeading = headings.find(
-        (h) => h.textContent === "$1,234.57",
-      );
-      expect(balanceHeading).not.toBeUndefined();
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toHaveTextContent("$1,234.57 USDC");
     });
   });
 
@@ -1131,9 +1201,11 @@ describe("Home page — Stellar connected balances (#688)", () => {
       const elements = screen.getAllByText("Total Balance");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
-    // $0.00 because no EVM PLUSD balance seeded.
+    // $0.00 because no EVM sPLUSD balance seeded.
     await waitFor(() => {
-      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      const zeroHeadings = screen.getAllByRole("heading", {
+        name: "$0.00",
+      });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
   });

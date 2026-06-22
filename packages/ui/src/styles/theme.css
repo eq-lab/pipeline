@@ -92,7 +92,9 @@
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
   --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
-  --color-pipeline-positive-secondary: rgb(32 128 0 / 0.16); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
+  --color-pipeline-positive-secondary: rgb(
+    32 128 0 / 0.16
+  ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
   --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
@@ -165,7 +167,9 @@
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
   --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
-  --color-pipeline-positive-secondary: rgb(32 128 0 / 0.16); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
+  --color-pipeline-positive-secondary: rgb(
+    32 128 0 / 0.16
+  ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
   --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
@@ -188,7 +192,7 @@
   --text-pipeline-heading-m-mobile--line-height: 28px; /* font/line-height/heading-m (mobile) */
   --text-pipeline-heading-s: 20px; /* Heading 20 — Get PLUSD card titles (desktop) */
   --text-pipeline-heading-s--line-height: 28px; /* Heading 20 line-height (desktop) */
-  --text-pipeline-heading-s-mobile: 18px; /* Heading 18 — Get PLUSD / Earn / Coming soon (mobile, below md) */
+  --text-pipeline-heading-s-mobile: 18px; /* Heading 18 — Get PLUSD / Earn / Tracked once you stake (mobile, below md) */
   --text-pipeline-heading-s-mobile--line-height: 28px; /* Heading 18 line-height (mobile) */
   --text-pipeline-body: 16px; /* font/font-size/body */
   --text-pipeline-body--line-height: 22px; /* font/line-height/body */

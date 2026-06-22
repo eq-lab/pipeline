@@ -162,7 +162,10 @@ describe("RecentActivityCard — disconnected wallet", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -202,7 +205,10 @@ describe("RecentActivityCard — connected + 3 rows", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_3,
       isLoading: false,
@@ -218,6 +224,11 @@ describe("RecentActivityCard — connected + 3 rows", () => {
   it("renders three list items", () => {
     renderCard();
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("adds 16px internal space above row separators", () => {
+    renderCard();
+    expect(screen.getByTestId("home-activity-row-inner-0")).toHaveClass("pb-4");
   });
 
   it("renders the Deposit (Buy) amount string", () => {
@@ -268,7 +279,10 @@ describe("RecentActivityCard — connected + 6 rows (MAX_ROWS cap)", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_6,
       isLoading: false,
@@ -302,7 +316,10 @@ describe("RecentActivityCard — connected + empty list", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: { requests: [] },
       isLoading: false,
@@ -337,7 +354,10 @@ describe("RecentActivityCard — connected + loading", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -376,7 +396,10 @@ describe("RecentActivityCard — connected + error", () => {
       disconnect: vi.fn(),
       openConnectModal: vi.fn(),
     });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -436,8 +459,16 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     // The card previously keyed off EVM isConnected. With EVM disconnected and
     // Stellar active + connected, the list should render.
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
-    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
-    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GSTELLAR1",
+    });
+    mockUseWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
     mockUseRequests.mockReturnValue({
       data: STELLAR_FIXTURE,
       isLoading: false,
@@ -459,8 +490,16 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
 
   it("Stellar view + Stellar disconnected → empty state renders, list absent", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
-    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "0xEVM",
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
     mockUseRequests.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -478,8 +517,16 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
 
   it("EVM view + EVM connected drives the card, Stellar connection state is ignored", () => {
     mockUseWalletView.mockReturnValue({ kind: "evm" });
-    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "0xEVM",
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_3,
       isLoading: false,
@@ -518,7 +565,7 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
         type: "Stake",
         amount: "10000000",
         assets: "10000000", // 1.0 PLUSD at 7 decimals
-        shares: "9900000",  // 0.99 sPLUSD at 7 decimals
+        shares: "9900000", // 0.99 sPLUSD at 7 decimals
         status: "Completed",
         created_at: "2026-06-01T11:00:00Z",
       },
@@ -527,8 +574,16 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
   it("Stellar Deposit: 10000000 at 7 dp renders '+1.00 PLUSD', not '+10.00 PLUSD' (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
-    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
-    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GSTELLAR1",
+    });
+    mockUseWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
     mockUseRequests.mockReturnValue({
       data: STELLAR_7DP,
       isLoading: false,
@@ -544,8 +599,16 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
   it("Stellar Stake: 10000000/9900000 at 7 dp renders non-zero PLUSD/sPLUSD (the bug)", () => {
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
-    mockUseStellarWallet.mockReturnValue({ isConnected: true, address: "GSTELLAR1" });
-    mockUseWallet.mockReturnValue({ isConnected: false, address: undefined, disconnect: vi.fn(), openConnectModal: vi.fn() });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: true,
+      address: "GSTELLAR1",
+    });
+    mockUseWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
     mockUseRequests.mockReturnValue({
       data: STELLAR_7DP,
       isLoading: false,
@@ -563,8 +626,16 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
   it("EVM regression: EVM Deposit at 6 dp still renders correctly after the fix", () => {
     mockUseWalletView.mockReturnValue({ kind: "evm" });
-    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "0xEVM",
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_3,
       isLoading: false,
@@ -574,13 +645,23 @@ describe("RecentActivityCard — Stellar decimals (Issue #674)", () => {
 
     renderCard();
 
-    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("+1,000.00 USDC").length).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 
   it("EVM regression: EVM Stake at 18 dp still renders correctly after the fix", () => {
     mockUseWalletView.mockReturnValue({ kind: "evm" });
-    mockUseWallet.mockReturnValue({ isConnected: true, address: "0xEVM", disconnect: vi.fn(), openConnectModal: vi.fn() });
-    mockUseStellarWallet.mockReturnValue({ isConnected: false, address: undefined });
+    mockUseWallet.mockReturnValue({
+      isConnected: true,
+      address: "0xEVM",
+      disconnect: vi.fn(),
+      openConnectModal: vi.fn(),
+    });
+    mockUseStellarWallet.mockReturnValue({
+      isConnected: false,
+      address: undefined,
+    });
     mockUseRequests.mockReturnValue({
       data: FIXTURE_3,
       isLoading: false,

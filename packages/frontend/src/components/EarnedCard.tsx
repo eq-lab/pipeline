@@ -12,7 +12,7 @@ import type { CardPadding } from "@pipeline/ui";
  *
  *   ┌─────────────────────────┐
  *   │  Earned                 │
- *   │  Coming soon            │
+ *   │  Tracked once you stake │
  *   └─────────────────────────┘
  *
  * Composition:
@@ -23,7 +23,7 @@ import type { CardPadding } from "@pipeline/ui";
  * Typography:
  *   - Label "Earned" — Body token (16 / 22) in Graphik LC, primary ink
  *     (`--color-pipeline-ink`). Mirrors Figma node `1497:94693`.
- *   - Value placeholder "Coming soon" — Besley display at 20 / 28 ("Heading
+ *   - Value placeholder "Tracked once you stake" — Besley display at 20 / 28 ("Heading
  *     20" in the Figma type styles, see node `1497:94698`). It uses the
  *     `--color-pipeline-ink-subtle` (content-test/tertiary, 30% alpha) token
  *     to read as muted/disabled, signalling the surface is reserved.
@@ -37,7 +37,7 @@ import type { CardPadding } from "@pipeline/ui";
  *   - The Card renders a `<div>`; we promote it to a region with
  *     `role="region"` + `aria-labelledby` referencing the "Earned" label so
  *     assistive tech announces "Earned, region".
- *   - The "Coming soon" value carries `aria-live="off"` semantics implicitly
+ *   - The placeholder value carries `aria-live="off"` semantics implicitly
  *     (it never changes). It is announced as part of the region's contents.
  *
  * Reuse: this composite belongs to the Disconnected home view alongside
@@ -57,13 +57,17 @@ export interface EarnedCardProps extends Omit<
 > {
   /**
    * Mobile-only: connected balance state.
-   * When `"splusd"` (State C), renders "—" as a placeholder earned value
-   * (no real earned-balance API exists yet — #389 tracks the live data).
+   * When `"splusd"` (State C), renders the tracking placeholder until PnL APY
+   * exists.
    * When `"empty"` or `"plusd"` (States A/B), renders "Nothing yet".
-   * When `undefined`, renders the previous "Coming soon" text (desktop
-   * and disconnected — no change to existing behaviour).
+   * When `undefined`, renders "Tracked once you stake".
    */
   mobileHomeState?: MobileHomeState;
+  /**
+   * Formatted PnL APY label, e.g. `"8.42% p.a."`. When present, this replaces
+   * the placeholder value.
+   */
+  avgApyLabel?: string;
   /**
    * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
    * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
@@ -88,7 +92,7 @@ const labelClasses = [
 // Value row — Besley display, tertiary ink to read as muted/disabled.
 // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1989:9030).
 // Desktop (md+): heading-s = 20px / 28px.
-// Mirrors Figma node `1497:94698` "Coming soon".
+// Mirrors Figma node `1497:94698` placeholder value.
 const valueClasses = [
   "font-[family-name:var(--font-display)]",
   "text-[length:var(--text-pipeline-heading-s-mobile)]",
@@ -101,7 +105,10 @@ const valueClasses = [
 ].join(" ");
 
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
-  function EarnedCard({ className, mobileHomeState, ...rest }, ref) {
+  function EarnedCard(
+    { className, mobileHomeState, avgApyLabel, ...rest },
+    ref,
+  ) {
     // Use a unique id per instance to avoid duplicate id attributes when both
     // the mobile and desktop blocks render this card in the same DOM.
     const instanceId = React.useId();
@@ -116,31 +123,29 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
       .join(" ");
 
     // Determine the display value based on state.
-    // State C (splusd): placeholder "—" (no real earned API yet, #389).
+    // PnL APY, when available, wins over placeholders.
     // States A/B (empty/plusd) when connected: "Nothing yet".
-    // Disconnected / desktop (undefined): original "Coming soon".
+    // Disconnected / desktop / State C without APY: tracking placeholder.
     let earnedValue: string;
     let valueExtra: string | undefined;
 
-    if (mobileHomeState === "splusd") {
-      // State C: earned placeholder — no real source yet.
-      earnedValue = "—";
+    if (avgApyLabel !== undefined) {
+      earnedValue = avgApyLabel;
       valueExtra = undefined;
     } else if (mobileHomeState === "empty" || mobileHomeState === "plusd") {
       // States A/B: "Nothing yet" per Figma frames 1988:7074 / 1984:6501.
       earnedValue = "Nothing yet";
       valueExtra = undefined;
     } else {
-      // Desktop / disconnected: original "Coming soon".
-      earnedValue = "Coming soon";
+      earnedValue = "Tracked once you stake";
       valueExtra = undefined;
     }
 
-    // State C value classes: use green positive token for the earned value.
+    // PnL APY value classes: use green positive token for the earned value.
     // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1886:46777).
     // Desktop (md+): heading-s = 20px / 28px.
     const stateValueClasses =
-      mobileHomeState === "splusd"
+      avgApyLabel !== undefined
         ? [
             "font-[family-name:var(--font-display)]",
             "text-[length:var(--text-pipeline-heading-s-mobile)]",

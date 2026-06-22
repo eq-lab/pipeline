@@ -107,6 +107,7 @@ export function renderRequestRow(
   item: RequestItem,
   chainKind: WalletViewKind,
   testId?: string,
+  className?: string,
 ): React.ReactNode {
   const timestamp = formatActivityTime(item.created_at);
   // Derive decimal scales from the active chain (Issue #674).
@@ -119,6 +120,7 @@ export function renderRequestRow(
       return (
         <ActivityRow
           data-testid={testId}
+          className={className}
           icon="check-circle"
           tone="success"
           title="Buy"
@@ -132,6 +134,7 @@ export function renderRequestRow(
     return (
       <ActivityRow
         data-testid={testId}
+        className={className}
         icon="clock-pending"
         tone="warning"
         title="Buy"
@@ -153,6 +156,7 @@ export function renderRequestRow(
       return (
         <ActivityRow
           data-testid={testId}
+          className={className}
           icon="check-circle"
           tone="success"
           title="Sell"
@@ -166,6 +170,7 @@ export function renderRequestRow(
     return (
       <ActivityRow
         data-testid={testId}
+        className={className}
         icon="clock-pending"
         tone="warning"
         title="Sell"
@@ -186,12 +191,17 @@ export function renderRequestRow(
     // response. Falling back to item.amount or "0" would silently zero out
     // the row and hide data regressions.
     const assets =
-      item.assets !== undefined ? formatTokenAmount(item.assets, stakeDecimals) : "—";
+      item.assets !== undefined
+        ? formatTokenAmount(item.assets, stakeDecimals)
+        : "—";
     const shares =
-      item.shares !== undefined ? formatTokenAmount(item.shares, stakeDecimals) : "—";
+      item.shares !== undefined
+        ? formatTokenAmount(item.shares, stakeDecimals)
+        : "—";
     return (
       <ActivityRow
         data-testid={testId}
+        className={className}
         icon="arrow-down-circle"
         title="Stake"
         timestamp={timestamp}
@@ -207,12 +217,17 @@ export function renderRequestRow(
 
   // Unstake — fail-loud: see Stake branch above for rationale.
   const assets =
-    item.assets !== undefined ? formatTokenAmount(item.assets, stakeDecimals) : "—";
+    item.assets !== undefined
+      ? formatTokenAmount(item.assets, stakeDecimals)
+      : "—";
   const shares =
-    item.shares !== undefined ? formatTokenAmount(item.shares, stakeDecimals) : "—";
+    item.shares !== undefined
+      ? formatTokenAmount(item.shares, stakeDecimals)
+      : "—";
   return (
     <ActivityRow
       data-testid={testId}
+      className={className}
       icon="arrow-up-circle"
       title="Unstake"
       timestamp={timestamp}

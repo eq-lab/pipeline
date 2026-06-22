@@ -3,24 +3,26 @@ import { Link } from "@tanstack/react-router";
 import { Card, SegmentedTabs } from "@pipeline/ui";
 import {
   N,
+  DEFAULT_PERIOD_ID,
   formatMoney,
   formatTime,
   usePortfolioChart,
 } from "./usePortfolioChart";
+import type { StatsPriceItem } from "@/api";
 
 /**
  * PortfolioPlaceholderCard — Connected-state replacement for ConnectWalletPromoCard.
  *
  * Renders in the top-left slot of the home dashboard when `isConnected === true`
- * (Figma node `1497:95048`). This is a **placeholder** — the balance stays `$0.00`
- * and the chart data is procedurally generated (no API calls). Replace the
- * synthetic generator with a real aggregation endpoint when one ships.
+ * (Figma node `1497:95048`). The balance and PnL labels are supplied by the
+ * home route. Chart bars use `/v1/stats/prices` data when available and fall
+ * back to the synthetic placeholder curve when the endpoint has no data.
  *
  * Layout:
  *   ┌────────────────────────────────────────────────────────────────────┐
  *   │  Total Balance                    [ 7D | 1M | 3M | 1Y | All ]     │
  *   │  $0.00                                                             │
- *   │  +$42.80 earning  ← updates with selected period                  │
+ *   │  $0.00 unrealized                                                  │
  *   │  Get PLUSD to start →                                              │
  *   ├────────────────────────────────────────────────────────────────────┤
  *   │  ████████████████████████████████████████████████████████████      │
@@ -32,10 +34,10 @@ import {
  *   - 100 bar slots. Each slot has 3 nested rectangles (widths 3/2/1 px wide
  *     in SVG-coordinate terms, centred on the slot) at heights 30%/60%/100% of
  *     the slot's balance height, giving a "soft glow" stacked appearance.
- *   - Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) — the prototype
- *     colour, introduced as a dedicated chart token.
- *   - Curve is deterministic per period (seeded LCG). Heights are monotonically
- *     non-decreasing. Curve is anchored to `Date.now()` at mount time.
+ *   - Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) for real price
+ *     data, `#D5D8C8` for the synthetic fallback.
+ *   - Fallback curve is deterministic per period (seeded LCG). Heights are
+ *     monotonically non-decreasing and anchored to `Date.now()` at mount time.
  *
  * Hover interaction:
  *   - Pointer move over the chart wrapper snaps to the nearest slot index.
@@ -47,20 +49,19 @@ import {
  *   - Mouse only — touch support deferred (logged in tech-debt-tracker.md).
  *
  * Accessibility:
- *   - Chart wrap: `role="img"` + descriptive `aria-label` (period + earning).
+ *   - Chart wrap: `role="img"` + descriptive `aria-label` (period + unrealized PnL).
  *   - Individual bar `<rect>` elements are decorative — no aria attributes.
  *   - The card `<region>` is labelled by the `$0.00` heading.
  *
- * Placeholder rule:
- *   - `$0.00` is a string literal — replace when the aggregation endpoint is ready.
- *   - Earning caption uses the prototype's per-period synthetic value — replace
- *     when real per-period earnings are available.
- *   - "Get PLUSD to start" link is always shown — revisit when user holds PLUSD.
+ * Data rule:
+ *   - Chart `priceItems` come from `/v1/stats/prices`.
+ *   - Empty/invalid price data keeps the fallback curve visible.
+ *   - Unrealized PnL caption is supplied by `/v1/pnl`; defaults to `$0.00 unrealized`.
  *
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
  */
 
-/** Mobile home balance state — drives CTA copy and earning caption. */
+/** Mobile home balance state — drives CTA copy and connected balance state. */
 export type MobileHomeState = "empty" | "plusd" | "splusd";
 
 export interface PortfolioPlaceholderCardProps extends Omit<
@@ -69,20 +70,25 @@ export interface PortfolioPlaceholderCardProps extends Omit<
 > {
   /**
    * Mobile-only: the connected balance state (empty / plusd / splusd).
-   * When provided, overrides the static `$0.00` heading and CTA link:
-   *   - "empty"  → `$0.00` + "Get PLUSD to start" → /deposit (State A)
-   *   - "plusd"  → totalBalance + "Stake PLUSD to start earning" → /stake (B)
-   *   - "splusd" → totalBalance (no link, earning caption) (C)
-   * When `undefined` the desktop behaviour ($0.00 + "Get PLUSD to start") is
-   * preserved byte-for-byte.
+   * When provided, controls CTA copy and link state:
+   *   - "empty"  → "Get PLUSD to start" → /deposit (State A)
+   *   - "plusd"  → "Stake PLUSD to start earning" → /stake (B)
+   *   - "splusd" → no link, PnL caption (C)
    */
   mobileHomeState?: MobileHomeState;
   /**
-   * Mobile-only: formatted total balance string to display in States B and C
-   * (e.g. `"$1,042.80"`). Ignored when `mobileHomeState` is `undefined`.
-   * Defaults to `"$0.00"` when not provided.
+   * Formatted balance string shown under "Total Balance". Connected home passes
+   * the active total balance here.
    */
-  mobileTotalBalance?: string;
+  balanceLabel?: string;
+  /** Formatted unrealized PnL displayed below the sPLUSD balance. */
+  unrealizedPnlLabel?: string;
+  /** Active chart period id. Defaults to "all". */
+  activePeriodId?: string;
+  /** Period change callback for tab selection. */
+  onActivePeriodChange?: (id: string) => void;
+  /** Price samples from `/v1/stats/prices`; empty/invalid data uses fallback. */
+  priceItems?: StatsPriceItem[];
 }
 
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */
@@ -116,7 +122,16 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   HTMLDivElement,
   PortfolioPlaceholderCardProps
 >(function PortfolioPlaceholderCard(
-  { className, mobileHomeState, mobileTotalBalance = "$0.00", ...rest },
+  {
+    className,
+    mobileHomeState,
+    balanceLabel = "$0.00",
+    unrealizedPnlLabel = "$0.00 unrealized",
+    activePeriodId,
+    onActivePeriodChange,
+    priceItems,
+    ...rest
+  },
   ref,
 ) {
   // Use a unique id per instance to avoid duplicate id attributes when both
@@ -124,17 +139,25 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-  const {
+  const [uncontrolledActiveId, setUncontrolledActiveId] =
+    React.useState(DEFAULT_PERIOD_ID);
+  const activeId = activePeriodId ?? uncontrolledActiveId;
+  const setActiveId = onActivePeriodChange ?? setUncontrolledActiveId;
+
+  const chart = usePortfolioChart({
     activeId,
     setActiveId,
+    prices: priceItems,
+  });
+  const {
     period,
     curve,
     hoveredIdx,
     tooltip,
     onPointerMove,
     onPointerLeave,
-    earning,
-  } = usePortfolioChart();
+    hasPriceData,
+  } = chart;
 
   /** Ref to the chart wrapper div for getBoundingClientRect on pointer move. */
   const wrapRef = React.useRef<HTMLDivElement>(null);
@@ -164,7 +187,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
-  const earningStr = formatMoney(earning);
+  const barFill = hasPriceData
+    ? "var(--color-pipeline-chart-positive)"
+    : "#D5D8C8";
 
   const composed = [
     "relative flex flex-col gap-6",
@@ -205,9 +230,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             Total Balance
           </span>
 
-          {/* Balance display — Heading M token, display serif.
-              Mobile connected states show the derived total balance;
-              desktop (and disconnected) always shows the static $0.00. */}
+          {/* Balance display — Heading M token, display serif. */}
           <h2
             id={HEADING_ID}
             className={[
@@ -219,14 +242,10 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "m-0",
             ].join(" ")}
           >
-            {mobileHomeState !== undefined && mobileHomeState !== "empty"
-              ? mobileTotalBalance
-              : "$0.00"}
+            {balanceLabel}
           </h2>
 
-          {/* Earning caption — updates with selected period.
-              Mobile State C: show "—" placeholder (no real earned data yet).
-              All other states: show the synthetic period-based earning. */}
+          {/* Unrealized PnL caption from `/v1/pnl`. */}
           <span
             data-testid="earning-caption"
             className={[
@@ -234,19 +253,15 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
               "font-[var(--font-weight-regular)]",
-              // State C shows "—" as a placeholder; other states use muted
-              // ink with synthetic earning value.
-              mobileHomeState === "splusd"
-                ? "text-[color:var(--color-pipeline-ink-muted)]"
-                : "text-[color:var(--color-pipeline-ink-muted)]",
+              "text-[color:var(--color-pipeline-ink-muted)]",
             ].join(" ")}
           >
-            {mobileHomeState === "splusd" ? "—" : `+${earningStr} earning`}
+            {unrealizedPnlLabel}
           </span>
 
           {/* State A: "Get PLUSD to start" link to /deposit.
               State B: "Stake PLUSD to start earning" link to /stake.
-              State C: no link (earning caption is sufficient context).
+              State C: no link (PnL caption is sufficient context).
               Desktop (no mobileHomeState): "Get PLUSD to start" as before. */}
           {mobileHomeState === "splusd" ? null : (
             <Link
@@ -290,7 +305,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         ref={wrapRef}
         className="relative flex-1"
         role="img"
-        aria-label={`Total balance for ${periodLabel}: ${mobileHomeState !== undefined && mobileHomeState !== "empty" ? mobileTotalBalance : "$0.00"} (+${earningStr} earning)`}
+        aria-label={`Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`}
         data-node-id="1497:95048-chart"
         onPointerMove={handlePointerMove}
         onPointerLeave={onPointerLeave}
@@ -314,7 +329,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0}
                   width={3}
                   height={barH}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={0.35}
                 />
                 {/* Mid rect (60% height) */}
@@ -323,7 +338,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.4}
                   width={2}
                   height={barH * 0.6}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={0.65}
                 />
                 {/* Core rect (30% height, full opacity) */}
@@ -332,7 +347,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.7}
                   width={1}
                   height={barH * 0.3}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={1}
                 />
               </g>

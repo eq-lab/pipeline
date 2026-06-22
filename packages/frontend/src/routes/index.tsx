@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -30,6 +31,7 @@ import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
+import { usePnl, formatApy, useStatsPrices } from "@/api";
 
 /**
  * Home page — full composition (Figma `1497:94556` desktop, `1989:8292` mobile).
@@ -89,15 +91,10 @@ import { QnaSection } from "@/components/QnaSection";
  * preserved at md+ via `md:grid` and `md:grid-cols-7`.
  */
 
-/**
- * Derives a human-readable USD string from a bigint balance.
- *
- * @param value   - Raw bigint balance. Returns `"$0.00"` when `undefined` or `0n`.
- * @param decimals - Decimal precision of `value`. Defaults to `18` (EVM) to
- *                   preserve all existing call sites unchanged. Pass `SAC_DECIMALS`
- *                   (7) for Stellar balances to avoid the 18-decimal mis-scale.
- */
-function formatBigintUSD(value: bigint | undefined, decimals = 18): string {
+function formatBigintCurrency(
+  value: bigint | undefined,
+  decimals: number,
+): string {
   if (value === undefined || value === 0n) return "$0.00";
   const asFloat = parseFloat(formatUnits(value, decimals));
   return new Intl.NumberFormat("en-US", {
@@ -106,6 +103,23 @@ function formatBigintUSD(value: bigint | undefined, decimals = 18): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(asFloat);
+}
+
+function formatRawDecimalUSD(
+  value: string | null | undefined,
+  decimals: number,
+  options: { signed?: boolean; suffix?: string } = {},
+): string {
+  const raw = value === undefined || value === null ? 0 : Number(value);
+  const amount = Number.isFinite(raw) ? raw / 10 ** decimals : 0;
+  const absFormatted = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amount));
+  const sign = options.signed && amount > 0 ? "+" : amount < 0 ? "-" : "";
+  return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
 }
 
 /**
@@ -139,6 +153,8 @@ function Home() {
   const { kind } = useWalletView();
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
+  const pnl = usePnl();
+  const [chartPeriodId, setChartPeriodId] = useState("all");
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
@@ -161,7 +177,7 @@ function Home() {
     token: ENV.STAKED_PLUSD_ADDRESS,
   });
 
-  // Convert EVM sPLUSD shares → PLUSD-equivalent for Total Balance (State C).
+  // Convert EVM sPLUSD shares → PLUSD-equivalent for StakeCard State C.
   const { data: evmSplusdInPlusd } =
     useStakedPlusdConvertToAssets(evmSplusdBalance);
 
@@ -205,7 +221,7 @@ function Home() {
     ? stellarSplusdInPlusd
     : evmSplusdInPlusd;
 
-  // Decimal count for the active chain (used by formatBigintUSD and StakeCard).
+  // Decimal count for the active chain (used by home balance labels and StakeCard).
   const activeDecimals = isStellar ? SAC_DECIMALS : 18;
 
   // Formatted PLUSD display string passed to StartHereCard's `mobilePlusdBalance`
@@ -218,16 +234,30 @@ function Home() {
       : undefined
     : evmPlusdFormatted;
 
-  // ── Total Balance ──────────────────────────────────────────────────────────
-  // Total Balance = PLUSD balance + sPLUSD converted to PLUSD, at active scale.
-  const totalBalanceBigint: bigint | undefined =
-    plusdBalanceActive !== undefined || splusdInPlusdActive !== undefined
-      ? (plusdBalanceActive ?? 0n) + (splusdInPlusdActive ?? 0n)
+  const splusdBalanceFormatted = formatBigintCurrency(
+    splusdSharesActive,
+    activeDecimals,
+  );
+  const unrealizedPnlFormatted = formatRawDecimalUSD(
+    pnl.data?.total_unrealized_pnl,
+    activeDecimals,
+    { signed: true, suffix: "unrealized" },
+  );
+  const avgApyFormatted = formatApy(pnl.data?.avg_apy);
+  const earnedApyLabel =
+    isConnected && avgApyFormatted !== "—"
+      ? `${avgApyFormatted} p.a.`
       : undefined;
-
-  const totalBalanceFormatted = isConnected
-    ? formatBigintUSD(totalBalanceBigint, activeDecimals)
-    : "$0.00";
+  const activeSplusdVaultAddress = isStellar
+    ? ENV.STELLAR_STAKED_PLUSD_ID
+    : ENV.STAKED_PLUSD_ADDRESS;
+  const activeChainId = isStellar ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
+  const prices = useStatsPrices({
+    vaultAddress: activeSplusdVaultAddress,
+    chainId: activeChainId,
+    periodId: chartPeriodId,
+    enabled: isConnected && activeSplusdVaultAddress.length > 0,
+  });
 
   // ── Mobile home state ──────────────────────────────────────────────────────
   // deriveMobileHomeState only compares > 0n so it is scale-agnostic.
@@ -281,7 +311,11 @@ function Home() {
             <PortfolioPlaceholderCard
               className="min-h-[256px] md:min-h-[274px]"
               mobileHomeState={mobileHomeState}
-              mobileTotalBalance={totalBalanceFormatted}
+              balanceLabel={splusdBalanceFormatted}
+              unrealizedPnlLabel={unrealizedPnlFormatted}
+              activePeriodId={chartPeriodId}
+              onActivePeriodChange={setChartPeriodId}
+              priceItems={prices.data?.prices}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -317,6 +351,7 @@ function Home() {
               <EarnedCard
                 padding="sm"
                 mobileHomeState={isConnected ? mobileHomeState : undefined}
+                avgApyLabel={earnedApyLabel}
                 data-testid="home-earned-card"
               />
             </div>
@@ -374,6 +409,12 @@ function Home() {
             {isConnected ? (
               <PortfolioPlaceholderCard
                 className="col-span-4 row-start-1"
+                mobileHomeState={mobileHomeState}
+                balanceLabel={splusdBalanceFormatted}
+                unrealizedPnlLabel={unrealizedPnlFormatted}
+                activePeriodId={chartPeriodId}
+                onActivePeriodChange={setChartPeriodId}
+                priceItems={prices.data?.prices}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (
@@ -405,7 +446,10 @@ function Home() {
                 onSell={onSell}
                 data-testid="home-start-here-card"
               />
-              <EarnedCard data-testid="home-earned-card" />
+              <EarnedCard
+                avgApyLabel={earnedApyLabel}
+                data-testid="home-earned-card"
+              />
             </div>
 
             {/* Row 2, columns 3–4: Stake CTA card. */}
