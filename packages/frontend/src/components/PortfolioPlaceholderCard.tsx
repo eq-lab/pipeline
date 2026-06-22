@@ -19,7 +19,6 @@ import {
  * Layout:
  *   ┌────────────────────────────────────────────────────────────────────┐
  *   │  Total Balance                    [ 7D | 1M | 3M | 1Y | All ]     │
- *   │  $0.00                                                             │
  *   │  0.00 sPLUSD                                                       │
  *   │  $0.00 unrealized                                                  │
  *   │  Get PLUSD to start →                                              │
@@ -69,22 +68,18 @@ export interface PortfolioPlaceholderCardProps extends Omit<
 > {
   /**
    * Mobile-only: the connected balance state (empty / plusd / splusd).
-   * When provided, overrides the static `$0.00` heading and CTA link:
-   *   - "empty"  → `$0.00` + "Get PLUSD to start" → /deposit (State A)
-   *   - "plusd"  → totalBalance + "Stake PLUSD to start earning" → /stake (B)
-   *   - "splusd" → totalBalance (no link, PnL caption) (C)
-   * When `undefined` the desktop behaviour ($0.00 + "Get PLUSD to start") is
-   * preserved byte-for-byte.
+   * When provided, controls CTA copy and link state:
+   *   - "empty"  → "Get PLUSD to start" → /deposit (State A)
+   *   - "plusd"  → "Stake PLUSD to start earning" → /stake (B)
+   *   - "splusd" → no link, PnL caption (C)
    */
   mobileHomeState?: MobileHomeState;
   /**
-   * Mobile-only: formatted total balance string to display in States B and C
-   * (e.g. `"$1,042.80"`). Ignored when `mobileHomeState` is `undefined`.
-   * Defaults to `"$0.00"` when not provided.
+   * Formatted balance string shown under "Total Balance". Connected home passes
+   * the active sPLUSD share amount here; the card no longer displays real total
+   * portfolio value.
    */
-  mobileTotalBalance?: string;
-  /** Formatted sPLUSD share balance displayed below Total Balance. */
-  splusdBalanceLabel?: string;
+  balanceLabel?: string;
   /** Formatted unrealized PnL displayed below the sPLUSD balance. */
   unrealizedPnlLabel?: string;
 }
@@ -123,8 +118,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   {
     className,
     mobileHomeState,
-    mobileTotalBalance = "$0.00",
-    splusdBalanceLabel = "0.00 sPLUSD",
+    balanceLabel = "$0.00",
     unrealizedPnlLabel = "$0.00 unrealized",
     ...rest
   },
@@ -214,9 +208,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             Total Balance
           </span>
 
-          {/* Balance display — Heading M token, display serif.
-              Mobile connected states show the derived total balance;
-              desktop (and disconnected) always shows the static $0.00. */}
+          {/* Balance display — Heading M token, display serif. */}
           <h2
             id={HEADING_ID}
             className={[
@@ -228,23 +220,8 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               "m-0",
             ].join(" ")}
           >
-            {mobileHomeState !== undefined && mobileHomeState !== "empty"
-              ? mobileTotalBalance
-              : "$0.00"}
+            {balanceLabel}
           </h2>
-
-          <span
-            data-testid="splusd-balance-caption"
-            className={[
-              "font-[family-name:var(--font-body)]",
-              "text-[length:var(--text-pipeline-caption)]",
-              "leading-[var(--text-pipeline-caption--line-height)]",
-              "font-[var(--font-weight-regular)]",
-              "text-[color:var(--color-pipeline-ink-muted)]",
-            ].join(" ")}
-          >
-            {splusdBalanceLabel}
-          </span>
 
           {/* Unrealized PnL caption from `/v1/pnl`. */}
           <span
@@ -306,7 +283,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         ref={wrapRef}
         className="relative flex-1"
         role="img"
-        aria-label={`Total balance for ${periodLabel}: ${mobileHomeState !== undefined && mobileHomeState !== "empty" ? mobileTotalBalance : "$0.00"} (${splusdBalanceLabel}, ${unrealizedPnlLabel})`}
+        aria-label={`Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`}
         data-node-id="1497:95048-chart"
         onPointerMove={handlePointerMove}
         onPointerLeave={onPointerLeave}

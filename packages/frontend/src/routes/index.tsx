@@ -90,25 +90,6 @@ import { usePnl, formatApy } from "@/api";
  * preserved at md+ via `md:grid` and `md:grid-cols-7`.
  */
 
-/**
- * Derives a human-readable USD string from a bigint balance.
- *
- * @param value   - Raw bigint balance. Returns `"$0.00"` when `undefined` or `0n`.
- * @param decimals - Decimal precision of `value`. Defaults to `18` (EVM) to
- *                   preserve all existing call sites unchanged. Pass `SAC_DECIMALS`
- *                   (7) for Stellar balances to avoid the 18-decimal mis-scale.
- */
-function formatBigintUSD(value: bigint | undefined, decimals = 18): string {
-  if (value === undefined || value === 0n) return "$0.00";
-  const asFloat = parseFloat(formatUnits(value, decimals));
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(asFloat);
-}
-
 function formatBigintTokenAmount(
   value: bigint | undefined,
   decimals: number,
@@ -194,7 +175,7 @@ function Home() {
     token: ENV.STAKED_PLUSD_ADDRESS,
   });
 
-  // Convert EVM sPLUSD shares → PLUSD-equivalent for Total Balance (State C).
+  // Convert EVM sPLUSD shares → PLUSD-equivalent for StakeCard State C.
   const { data: evmSplusdInPlusd } =
     useStakedPlusdConvertToAssets(evmSplusdBalance);
 
@@ -238,7 +219,7 @@ function Home() {
     ? stellarSplusdInPlusd
     : evmSplusdInPlusd;
 
-  // Decimal count for the active chain (used by formatBigintUSD and StakeCard).
+  // Decimal count for the active chain (used by home balance labels and StakeCard).
   const activeDecimals = isStellar ? SAC_DECIMALS : 18;
 
   // Formatted PLUSD display string passed to StartHereCard's `mobilePlusdBalance`
@@ -251,16 +232,6 @@ function Home() {
       : undefined
     : evmPlusdFormatted;
 
-  // ── Total Balance ──────────────────────────────────────────────────────────
-  // Total Balance = PLUSD balance + sPLUSD converted to PLUSD, at active scale.
-  const totalBalanceBigint: bigint | undefined =
-    plusdBalanceActive !== undefined || splusdInPlusdActive !== undefined
-      ? (plusdBalanceActive ?? 0n) + (splusdInPlusdActive ?? 0n)
-      : undefined;
-
-  const totalBalanceFormatted = isConnected
-    ? formatBigintUSD(totalBalanceBigint, activeDecimals)
-    : "$0.00";
   const splusdBalanceFormatted = formatBigintTokenAmount(
     splusdSharesActive,
     activeDecimals,
@@ -329,8 +300,7 @@ function Home() {
             <PortfolioPlaceholderCard
               className="min-h-[256px] md:min-h-[274px]"
               mobileHomeState={mobileHomeState}
-              mobileTotalBalance={totalBalanceFormatted}
-              splusdBalanceLabel={splusdBalanceFormatted}
+              balanceLabel={splusdBalanceFormatted}
               unrealizedPnlLabel={unrealizedPnlFormatted}
               data-testid="home-portfolio-placeholder"
             />
@@ -426,8 +396,7 @@ function Home() {
               <PortfolioPlaceholderCard
                 className="col-span-4 row-start-1"
                 mobileHomeState={mobileHomeState}
-                mobileTotalBalance={totalBalanceFormatted}
-                splusdBalanceLabel={splusdBalanceFormatted}
+                balanceLabel={splusdBalanceFormatted}
                 unrealizedPnlLabel={unrealizedPnlFormatted}
                 data-testid="home-portfolio-placeholder"
               />

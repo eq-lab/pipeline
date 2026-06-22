@@ -70,24 +70,20 @@ describe("PortfolioPlaceholderCard — smoke tests", () => {
     expect(caption).toHaveTextContent("$0.00 unrealized");
   });
 
-  it("shows the sPLUSD balance caption by default", () => {
-    renderCard();
-    expect(screen.getByTestId("splusd-balance-caption")).toHaveTextContent(
-      "0.00 sPLUSD",
-    );
-  });
-
-  it("renders provided sPLUSD and unrealized PnL labels", () => {
+  it("renders provided sPLUSD balance as the main heading and no duplicate sublabel", () => {
     render(
       <PortfolioPlaceholderCard
-        splusdBalanceLabel="1,000.00 sPLUSD"
+        balanceLabel="1,000.00 sPLUSD"
         unrealizedPnlLabel="+$42.80 unrealized"
       />,
     );
 
-    expect(screen.getByTestId("splusd-balance-caption")).toHaveTextContent(
-      "1,000.00 sPLUSD",
-    );
+    expect(
+      screen.getByRole("heading", { name: "1,000.00 sPLUSD" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("splusd-balance-caption"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("earning-caption")).toHaveTextContent(
       "+$42.80 unrealized",
     );
@@ -174,7 +170,6 @@ describe("PortfolioPlaceholderCard — chart structure", () => {
     const label = chart.getAttribute("aria-label") ?? "";
     expect(label).toContain("Total balance");
     expect(label).toContain("$0.00");
-    expect(label).toContain("0.00 sPLUSD");
     expect(label).toContain("$0.00 unrealized");
   });
 

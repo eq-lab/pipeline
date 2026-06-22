@@ -407,11 +407,13 @@ describe("Home page — connected state (mock)", () => {
     });
   });
 
-  it("shows '$0.00' balance literal", async () => {
-    // Both mobile (State A) and desktop render $0.00; at least one must appear.
+  it("shows '0.00 sPLUSD' balance literal", async () => {
+    // Both mobile (State A) and desktop render sPLUSD shares; at least one must appear.
     renderHome();
     await waitFor(() => {
-      const headings = screen.getAllByRole("heading", { name: "$0.00" });
+      const headings = screen.getAllByRole("heading", {
+        name: "0.00 sPLUSD",
+      });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -548,7 +550,7 @@ describe("Home page — card height parity (connected)", () => {
     renderHome();
 
     await waitFor(() => {
-      const cards = screen.getAllByRole("region", { name: "$0.00" });
+      const cards = screen.getAllByRole("region", { name: "0.00 sPLUSD" });
       expect(cards.some((c) => c.className.includes("min-h-[274px]"))).toBe(
         true,
       );
@@ -831,7 +833,7 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile portfolio chart summary shows unrealized PnL and sPLUSD amount", async () => {
+  it("mobile portfolio chart summary shows sPLUSD as the main balance and unrealized PnL below it", async () => {
     mockPnlData.current = {
       total_unrealized_pnl: "42800000000000000000",
       avg_apy: "0.0842",
@@ -840,12 +842,15 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     renderHome();
 
     await waitFor(() => {
+      expect(
+        screen.getAllByRole("heading", { name: "1,000.00 sPLUSD" })[0],
+      ).toBeInTheDocument();
       expect(screen.getAllByTestId("earning-caption")[0]).toHaveTextContent(
         "+$42.80 unrealized",
       );
       expect(
-        screen.getAllByTestId("splusd-balance-caption")[0],
-      ).toHaveTextContent("1,000.00 sPLUSD");
+        screen.queryByTestId("splusd-balance-caption"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1049,7 +1054,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     localStorage.clear();
   });
 
-  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance reflects PLUSD, Stake enabled, mobile state plusd", async () => {
+  it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows sPLUSD only, Stake enabled, mobile state plusd", async () => {
     // Seed 500 PLUSD at 7-decimal scale: 500 * 10^7 = 5_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
@@ -1060,14 +1065,18 @@ describe("Home page — Stellar connected balances (#688)", () => {
     renderHomeStellar();
 
     await waitFor(() => {
-      // Total Balance should NOT be $0.00 (PLUSD balance present).
-      const headings = screen.getAllByRole("heading");
-      const balanceHeading = headings.find(
-        (h) => h.textContent && /\$[\d,]+\.\d{2}/.test(h.textContent),
-      );
-      expect(balanceHeading).not.toBeUndefined();
-      // The balance rendered must not be $0.00.
-      expect(balanceHeading?.textContent).not.toBe("$0.00");
+      const headings = screen.getAllByRole("heading", {
+        name: "0.00 sPLUSD",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.queryByTestId("splusd-balance-caption"),
+      ).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toHaveTextContent(/\$500\.00 USDC/);
     });
 
     // Stake CTA should be enabled (has PLUSD).
@@ -1086,7 +1095,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 2: has sPLUSD — Total Balance includes sPLUSD-to-PLUSD, mobile state splusd, RecentActivityCard present", async () => {
+  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares, mobile state splusd, RecentActivityCard present", async () => {
     // Seed 100 sPLUSD at 7-decimal scale: 100 * 10^7 = 1_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
@@ -1111,6 +1120,13 @@ describe("Home page — Stellar connected balances (#688)", () => {
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
 
+    await waitFor(() => {
+      const headings = screen.getAllByRole("heading", {
+        name: "100.00 sPLUSD",
+      });
+      expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+
     // Mobile RecentActivityCard should be present (State C).
     await waitFor(() => {
       const cards = screen.getAllByRole("region", { name: "Recent activity" });
@@ -1119,14 +1135,16 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 3: zero balances / no trustline — $0.00 Total Balance, Stake disabled, mobile state empty", async () => {
+  it("Case 3: zero balances / no trustline — 0.00 sPLUSD Total Balance, Stake disabled, mobile state empty", async () => {
     // No balance keys seeded → all balances undefined → State A.
 
     renderHomeStellar();
 
-    // Total Balance should be $0.00.
+    // Total Balance should show sPLUSD shares only.
     await waitFor(() => {
-      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      const zeroHeadings = screen.getAllByRole("heading", {
+        name: "0.00 sPLUSD",
+      });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -1144,7 +1162,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 4: decimal-scale assertion — 7-decimal PLUSD is formatted as $1,234.57, not mis-scaled", async () => {
+  it("Case 4: decimal-scale assertion — 7-decimal PLUSD StartHere balance is formatted as $1,234.57, not mis-scaled", async () => {
     // Seed 1234.5678900 PLUSD at 7-decimal fixed-point.
     // 1234.5678900 * 10^7 = 12_345_678_900n
     localStorage.setItem(
@@ -1154,16 +1172,12 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     renderHomeStellar();
 
-    // The Total Balance heading must show "$1,234.57" — not a mis-scaled value.
+    // The StartHere PLUSD sub-line must show "$1,234.57" — not a mis-scaled value.
     // If the 18-decimal path were used by mistake, 12_345_678_900n at 18 decimals
     // would render as "$0.00" (value ~1.23e-8), proving the 7-decimal path is taken.
     await waitFor(() => {
-      // We look for a heading with "$1,234.57" (Total Balance, mobile block).
-      const headings = screen.getAllByRole("heading");
-      const balanceHeading = headings.find(
-        (h) => h.textContent === "$1,234.57",
-      );
-      expect(balanceHeading).not.toBeUndefined();
+      const subLine = screen.getByTestId("plusd-in-usdc");
+      expect(subLine).toHaveTextContent("$1,234.57 USDC");
     });
   });
 
@@ -1180,9 +1194,11 @@ describe("Home page — Stellar connected balances (#688)", () => {
       const elements = screen.getAllByText("Total Balance");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
-    // $0.00 because no EVM PLUSD balance seeded.
+    // 0.00 sPLUSD because no EVM sPLUSD balance seeded.
     await waitFor(() => {
-      const zeroHeadings = screen.getAllByRole("heading", { name: "$0.00" });
+      const zeroHeadings = screen.getAllByRole("heading", {
+        name: "0.00 sPLUSD",
+      });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
   });
