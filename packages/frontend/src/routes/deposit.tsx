@@ -214,6 +214,7 @@ function Deposit() {
   // ── Toast: Stellar PLUSD trustline ────────────────────────────────────
   const prevPlusdTrustPending = useRef(false);
   const prevPlusdTrustSuccess = useRef(false);
+  const prevPlusdTrustError = useRef<Error | null>(null);
   const plusdTrustline = flow.trustlines[0];
   useEffect(() => {
     if (!isStellar || !plusdTrustline) return;
@@ -231,11 +232,23 @@ function Deposit() {
         title: "PLUSD trustline enabled",
       });
     }
+    if (
+      plusdTrustline.tx.error &&
+      plusdTrustline.tx.error !== prevPlusdTrustError.current
+    ) {
+      console.error("PLUSD trustline failed:", plusdTrustline.tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: plusdTrustline.tx.error.message,
+      });
+    }
     prevPlusdTrustPending.current = plusdTrustline.tx.isPending;
     prevPlusdTrustSuccess.current = plusdTrustline.tx.isSuccess;
+    prevPlusdTrustError.current = plusdTrustline.tx.error;
   }, [
     plusdTrustline?.tx.isPending,
     plusdTrustline?.tx.isSuccess,
+    plusdTrustline?.tx.error,
     toast,
     isStellar,
     plusdTrustline,
@@ -244,6 +257,7 @@ function Deposit() {
   // ── Toast: Stellar USDC trustline ─────────────────────────────────────
   const prevUsdcTrustPending = useRef(false);
   const prevUsdcTrustSuccess = useRef(false);
+  const prevUsdcTrustError = useRef<Error | null>(null);
   const usdcTrustline = flow.trustlines[1];
   useEffect(() => {
     if (!isStellar || !usdcTrustline) return;
@@ -261,11 +275,23 @@ function Deposit() {
         title: "USDC trustline enabled",
       });
     }
+    if (
+      usdcTrustline.tx.error &&
+      usdcTrustline.tx.error !== prevUsdcTrustError.current
+    ) {
+      console.error("USDC trustline failed:", usdcTrustline.tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: usdcTrustline.tx.error.message,
+      });
+    }
     prevUsdcTrustPending.current = usdcTrustline.tx.isPending;
     prevUsdcTrustSuccess.current = usdcTrustline.tx.isSuccess;
+    prevUsdcTrustError.current = usdcTrustline.tx.error;
   }, [
     usdcTrustline?.tx.isPending,
     usdcTrustline?.tx.isSuccess,
+    usdcTrustline?.tx.error,
     toast,
     isStellar,
     usdcTrustline,
@@ -304,7 +330,11 @@ function Deposit() {
       );
       toast.update(toastId, {
         tone: "danger",
-        title: isDeposit ? "Deposit failed" : "Withdrawal failed",
+        title: isStellar
+          ? flow.step2Tx.error.message
+          : isDeposit
+            ? "Deposit failed"
+            : "Withdrawal failed",
         action: undefined,
       });
     }
@@ -346,7 +376,10 @@ function Deposit() {
     }
     if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
       console.error("Claim failed:", flow.step3Tx.error);
-      toast.update(toastId, { tone: "danger", title: "Claim failed" });
+      toast.update(toastId, {
+        tone: "danger",
+        title: isStellar ? flow.step3Tx.error.message : "Claim failed",
+      });
     }
     prevStep3IsPending.current = flow.step3Tx.isPending;
     prevStep3IsSuccess.current = flow.step3Tx.isSuccess;
@@ -662,18 +695,16 @@ function Deposit() {
 
         {/* "Make another deposit" — shown once the latest deposit is claimed
             (Completed). Resets the form so a fresh deposit can be started. */}
-        {flow.isConnected &&
-          !isInitialDataLoad &&
-          flow.isDepositCompleted && (
-            <Button
-              data-testid="make-another-deposit"
-              variant="primary-dark"
-              className="w-full"
-              onClick={onMakeAnotherDeposit}
-            >
-              Make another deposit
-            </Button>
-          )}
+        {flow.isConnected && !isInitialDataLoad && flow.isDepositCompleted && (
+          <Button
+            data-testid="make-another-deposit"
+            variant="primary-dark"
+            className="w-full"
+            onClick={onMakeAnotherDeposit}
+          >
+            Make another deposit
+          </Button>
+        )}
       </main>
     </div>
   );

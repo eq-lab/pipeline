@@ -11,10 +11,7 @@ import {
   TokenAmountDisplay,
   TokenInput,
 } from "@pipeline/ui";
-import {
-  useWalletView,
-  useConnectModal,
-} from "@/wallet";
+import { useWalletView, useConnectModal } from "@/wallet";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
 
@@ -111,6 +108,7 @@ function Stake() {
   // ── Toast: step 1 (EVM approve / Stellar trustline) ───────────────────
   const prevStep1IsPending = useRef(false);
   const prevStep1IsSuccess = useRef(false);
+  const prevStep1Error = useRef<Error | null>(null);
   useEffect(() => {
     const toastId = isStellar
       ? isStakeTab
@@ -139,11 +137,20 @@ function Stake() {
     if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
       toast.update(toastId, { tone: "success", title: successTitle });
     }
+    if (flow.step1Tx.error && flow.step1Tx.error !== prevStep1Error.current) {
+      console.error("Trustline failed:", flow.step1Tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: isStellar ? flow.step1Tx.error.message : "Approval failed",
+      });
+    }
     prevStep1IsPending.current = flow.step1Tx.isPending;
     prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
+    prevStep1Error.current = flow.step1Tx.error;
   }, [
     flow.step1Tx.isPending,
     flow.step1Tx.isSuccess,
+    flow.step1Tx.error,
     toast,
     isStellar,
     isStakeTab,
@@ -175,17 +182,18 @@ function Stake() {
         title: isStakeTab ? "Staked successfully" : "Unstaked successfully",
       });
     }
-    if (
-      flow.step2Tx.error &&
-      flow.step2Tx.error !== prevStep2Error.current
-    ) {
+    if (flow.step2Tx.error && flow.step2Tx.error !== prevStep2Error.current) {
       console.error(
         isStakeTab ? "Stake failed:" : "Unstake failed:",
         flow.step2Tx.error,
       );
       toast.update(toastId, {
         tone: "danger",
-        title: isStakeTab ? "Stake failed" : "Unstake failed",
+        title: isStellar
+          ? flow.step2Tx.error.message
+          : isStakeTab
+            ? "Stake failed"
+            : "Unstake failed",
       });
     }
     prevStep2IsPending.current = flow.step2Tx.isPending;
@@ -201,13 +209,10 @@ function Stake() {
   ]);
 
   // ── Tab-switch handler ─────────────────────────────────────────────────
-  const onSelectTab = useCallback(
-    (next: string) => {
-      setActiveTab(next as "stake" | "unstake");
-      setAmountInput("");
-    },
-    [],
-  );
+  const onSelectTab = useCallback((next: string) => {
+    setActiveTab(next as "stake" | "unstake");
+    setAmountInput("");
+  }, []);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -250,9 +255,7 @@ function Stake() {
               token={isStakeTab ? "plusd" : "splusd"}
               tokenLabel={isStakeTab ? "PLUSD" : "sPLUSD"}
               balanceLabel={
-                flow.formattedInputBalance
-                  ? flow.formattedInputBalance
-                  : "—"
+                flow.formattedInputBalance ? flow.formattedInputBalance : "—"
               }
               placeholderValue="0"
               value={amountInput}
@@ -278,9 +281,7 @@ function Stake() {
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
               balanceLabel={
-                flow.formattedOutputBalance
-                  ? flow.formattedOutputBalance
-                  : "—"
+                flow.formattedOutputBalance ? flow.formattedOutputBalance : "—"
               }
               value={flow.previewOutputValue}
               style={{
@@ -321,7 +322,9 @@ function Stake() {
           </Card>
         ) : (
           <StepsCard
-            data-testid={isStakeTab ? "stake-steps-card" : "stake-unstake-steps"}
+            data-testid={
+              isStakeTab ? "stake-steps-card" : "stake-unstake-steps"
+            }
             steps={flow.steps}
           />
         )}

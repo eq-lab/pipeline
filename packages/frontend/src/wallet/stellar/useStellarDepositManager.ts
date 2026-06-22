@@ -58,6 +58,7 @@ import {
   readMockStellarClaim,
   readMockStellarChangeTrust,
 } from "./mock";
+import { normalizeStellarActionError } from "./errors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ export function useStellarRequestDeposit(): RequestDepositResult {
             createdAt: Date.now(),
           });
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -468,7 +469,7 @@ export function useStellarClaim(): StellarClaimResult {
           setIsSuccess(true);
           clearInflightDeposit(address);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -651,7 +652,7 @@ export function useChangeTrust(): UseChangeTrustResult {
         setIsSuccess(true);
         refetchPlusdTrustline();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(normalizeStellarActionError(err, address));
       } finally {
         setIsPending(false);
         setIsInFlight(false);

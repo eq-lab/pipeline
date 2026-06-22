@@ -84,6 +84,7 @@ import {
   readMockStellarStakedPlusdShareBalance,
   STELLAR_MOCK_KEYS,
 } from "./mock";
+import { normalizeStellarActionError } from "./errors";
 import { useMock, parseBigInt } from "../evm/mock";
 
 // ── Scale factor for rate-based convert mock arithmetic (SAC 1e7, NOT EVM 1e18) ──
@@ -316,7 +317,7 @@ export function useStellarStake(): StellarStakeResult {
           setData({ hash: sendResult.hash, shares: sharesStr });
           setIsSuccess(true);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -465,7 +466,7 @@ export function useStellarUnstake(): StellarUnstakeResult {
           setData({ hash: sendResult.hash, assets: assetsStr });
           setIsSuccess(true);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -925,7 +926,7 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(normalizeStellarActionError(err, address));
       } finally {
         setIsPending(false);
         setIsInFlight(false);

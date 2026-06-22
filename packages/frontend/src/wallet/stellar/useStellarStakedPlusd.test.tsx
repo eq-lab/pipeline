@@ -361,6 +361,27 @@ describe("useStellarStake", () => {
     expect(result.current.error?.message).toMatch(/simulation error/);
   });
 
+  it("account-not-found stake errors explain that the Stellar account needs funding", async () => {
+    mockGetAccount.mockRejectedValue(
+      new Error(`Account not found: ${TEST_ADDRESS}`),
+    );
+    vi.spyOn(mockModule, "readMockStellarStake").mockReturnValue(undefined);
+
+    const { result } = renderHook(() => useStellarStake(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.write(10_000_000n);
+    });
+
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.error?.message).toContain(
+      "Stellar account is not funded",
+    );
+    expect(mockBuildDeposit).not.toHaveBeenCalled();
+  });
+
   it("reset clears state", async () => {
     vi.spyOn(mockModule, "readMockStellarStake").mockReturnValue({
       hash: "h",

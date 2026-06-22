@@ -58,6 +58,7 @@ import {
   readMockStellarClaimWithdrawal,
   readMockStellarChangeTrust,
 } from "./mock";
+import { normalizeStellarActionError } from "./errors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
             createdAt: Date.now(),
           });
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -469,7 +470,7 @@ export function useStellarClaimWithdrawal(): StellarClaimWithdrawalResult {
           setIsSuccess(true);
           clearInflightWithdrawal(address);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(normalizeStellarActionError(err, address));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -655,7 +656,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
         setIsSuccess(true);
         refetchUsdcTrustline();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(normalizeStellarActionError(err, address));
       } finally {
         setIsPending(false);
         setIsInFlight(false);
