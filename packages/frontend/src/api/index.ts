@@ -31,6 +31,14 @@ export type {
 } from "./useWithdrawalVoucher";
 export { useStats, formatApy } from "./useStats";
 export type { VaultStatsItem, StatsResponse, UseStatsResult } from "./useStats";
+export { useStatsPrices } from "./useStatsPrices";
+export type {
+  StatsPriceItem,
+  StatsPricesInterval,
+  StatsPricesResponse,
+  UseStatsPricesParams,
+  UseStatsPricesResult,
+} from "./useStatsPrices";
 export { usePnl } from "./usePnl";
 export type { PnlResponse, UsePnlResult, VaultPnl } from "./usePnl";
 export { useStellarDepositVoucher } from "./useStellarDepositVoucher";

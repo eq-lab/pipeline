@@ -9,8 +9,8 @@
  *   1. Disconnected → ConnectWalletPromoCard renders; click invokes connect().
  *   2. Connected (via mock) → PortfolioPlaceholderCard renders; $0.00 visible;
  *      "Get PLUSD to start" link is present; ConnectWallet promo is absent.
- *   3. SegmentedTabs default + click: default tab is "7D"; clicking "1M" makes
- *      it the active tab; no data fetch occurs.
+ *   3. SegmentedTabs default + click: default tab is "All"; clicking "1M"
+ *      makes it the active tab; no wallet action occurs.
  *   4. Card height parity: both cards carry the `min-h-[274px]` utility class.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -161,6 +161,7 @@ const mockEnv = vi.hoisted(() => ({
     "0x3333000000000000000000000000000000000003" as `0x${string}`,
   STAKED_PLUSD_ADDRESS:
     "0x0000000000000000000000000000000000000000" as `0x${string}`,
+  STELLAR_STAKED_PLUSD_ID: "",
   WALLETCONNECT_PROJECT_ID: "replace-me",
 }));
 
@@ -177,6 +178,12 @@ vi.mock("@/api", () => ({
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
   usePnl: () => ({
     data: mockPnlData.current,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useStatsPrices: () => ({
+    data: undefined,
     isLoading: false,
     error: null,
     refetch: vi.fn(),
@@ -407,12 +414,12 @@ describe("Home page — connected state (mock)", () => {
     });
   });
 
-  it("shows '0.00 sPLUSD' balance literal", async () => {
-    // Both mobile (State A) and desktop render sPLUSD shares; at least one must appear.
+  it("shows '$0.00' sPLUSD balance literal", async () => {
+    // Both mobile (State A) and desktop render the sPLUSD balance in currency format.
     renderHome();
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "0.00 sPLUSD",
+        name: "$0.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
@@ -460,12 +467,12 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     localStorage.clear();
   });
 
-  it("default active tab is '7D'", async () => {
+  it("default active tab is 'All'", async () => {
     // Both mobile and desktop blocks render PortfolioPlaceholderCard in
-    // the connected state; check the first "7D" tab found.
+    // the connected state; check the first "All" tab found.
     renderHome();
     await waitFor(() => {
-      const tabs = screen.getAllByRole("tab", { name: "7D" });
+      const tabs = screen.getAllByRole("tab", { name: "All" });
       expect(tabs.length).toBeGreaterThanOrEqual(1);
       expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     });
@@ -480,7 +487,7 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     });
   });
 
-  it("clicking '1M' makes it the active tab and deactivates '7D'", async () => {
+  it("clicking '1M' makes it the active tab and deactivates 'All'", async () => {
     const user = userEvent.setup();
     renderHome();
 
@@ -492,9 +499,9 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
       // At least one "1M" tab should now be active.
       const active1mTabs = screen.getAllByRole("tab", { name: "1M" });
       expect(active1mTabs[0]).toHaveAttribute("aria-selected", "true");
-      // The corresponding "7D" tab (in the same tablist) should be inactive.
-      const tabs7d = screen.getAllByRole("tab", { name: "7D" });
-      expect(tabs7d[0]).toHaveAttribute("aria-selected", "false");
+      // The corresponding "All" tab (in the same tablist) should be inactive.
+      const tabsAll = screen.getAllByRole("tab", { name: "All" });
+      expect(tabsAll[0]).toHaveAttribute("aria-selected", "false");
     });
   });
 
@@ -550,7 +557,7 @@ describe("Home page — card height parity (connected)", () => {
     renderHome();
 
     await waitFor(() => {
-      const cards = screen.getAllByRole("region", { name: "0.00 sPLUSD" });
+      const cards = screen.getAllByRole("region", { name: "$0.00" });
       expect(cards.some((c) => c.className.includes("min-h-[274px]"))).toBe(
         true,
       );
@@ -833,7 +840,7 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile portfolio chart summary shows sPLUSD as the main balance and unrealized PnL below it", async () => {
+  it("mobile portfolio chart summary shows sPLUSD balance in currency format and unrealized PnL below it", async () => {
     mockPnlData.current = {
       total_unrealized_pnl: "42800000000000000000",
       avg_apy: "0.0842",
@@ -843,7 +850,7 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByRole("heading", { name: "1,000.00 sPLUSD" })[0],
+        screen.getAllByRole("heading", { name: "$1,000.00" })[0],
       ).toBeInTheDocument();
       expect(screen.getAllByTestId("earning-caption")[0]).toHaveTextContent(
         "+$42.80 unrealized",
@@ -1066,7 +1073,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "0.00 sPLUSD",
+        name: "$0.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
       expect(
@@ -1095,7 +1102,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares, mobile state splusd, RecentActivityCard present", async () => {
+  it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares in currency format, mobile state splusd, RecentActivityCard present", async () => {
     // Seed 100 sPLUSD at 7-decimal scale: 100 * 10^7 = 1_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
@@ -1122,7 +1129,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
-        name: "100.00 sPLUSD",
+        name: "$100.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
@@ -1135,7 +1142,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     });
   });
 
-  it("Case 3: zero balances / no trustline — 0.00 sPLUSD Total Balance, Stake disabled, mobile state empty", async () => {
+  it("Case 3: zero balances / no trustline — $0.00 sPLUSD Total Balance, Stake disabled, mobile state empty", async () => {
     // No balance keys seeded → all balances undefined → State A.
 
     renderHomeStellar();
@@ -1143,7 +1150,7 @@ describe("Home page — Stellar connected balances (#688)", () => {
     // Total Balance should show sPLUSD shares only.
     await waitFor(() => {
       const zeroHeadings = screen.getAllByRole("heading", {
-        name: "0.00 sPLUSD",
+        name: "$0.00",
       });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
@@ -1194,10 +1201,10 @@ describe("Home page — Stellar connected balances (#688)", () => {
       const elements = screen.getAllByText("Total Balance");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
-    // 0.00 sPLUSD because no EVM sPLUSD balance seeded.
+    // $0.00 because no EVM sPLUSD balance seeded.
     await waitFor(() => {
       const zeroHeadings = screen.getAllByRole("heading", {
-        name: "0.00 sPLUSD",
+        name: "$0.00",
       });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });

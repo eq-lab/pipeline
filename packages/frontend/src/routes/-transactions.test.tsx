@@ -223,6 +223,11 @@ describe("Transactions page — default Buy tab", () => {
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
+  it("adds 16px internal space above each row separator", () => {
+    renderTransactions();
+    expect(screen.getByTestId("transactions-row-0")).toHaveClass("pb-4");
+  });
+
   it("does not show Withdraw amount under the Buy tab", () => {
     renderTransactions();
 
@@ -634,6 +639,12 @@ describe("Shared renderRequestRow helper — contract", () => {
     });
   });
 
+  it("forwards optional className to ActivityRow", () => {
+    const node = renderRequestRow(FIXTURE.requests[0]!, "evm", "row", "pb-4");
+    const { container } = render(<>{node}</>);
+    expect(container.firstElementChild).toHaveClass("pb-4");
+  });
+
   it("returns a non-null element for a pending Deposit row", () => {
     const pendingDeposit: RequestItem = {
       type: "Deposit",
@@ -801,7 +812,7 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
         type: "Stake",
         amount: "10000000",
         assets: "10000000", // 1.0 PLUSD at 7 decimals
-        shares: "9900000",  // 0.99 sPLUSD at 7 decimals
+        shares: "9900000", // 0.99 sPLUSD at 7 decimals
         status: "Completed",
         created_at: "2026-06-01T11:00:00Z",
       },

@@ -170,7 +170,7 @@ function Transactions() {
             filtered.length > 0 &&
             filtered.map((item, i) => (
               <React.Fragment key={i}>
-                {renderRequestRow(item, kind, `transactions-row-${i}`)}
+                {renderRequestRow(item, kind, `transactions-row-${i}`, "pb-4")}
               </React.Fragment>
             ))}
         </div>

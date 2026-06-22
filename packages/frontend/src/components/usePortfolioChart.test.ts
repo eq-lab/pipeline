@@ -14,6 +14,7 @@ import {
   generateCurve,
   formatMoney,
   formatTime,
+  pricesToCurve,
 } from "./usePortfolioChart";
 
 // Stable anchor time so tests are deterministic regardless of when they run.
@@ -140,11 +141,29 @@ describe("formatTime", () => {
 // ── Edge cases ────────────────────────────────────────────────────────────────
 
 describe("Edge cases", () => {
-  it("generateCurve with unknown periodId falls back to 7d config", () => {
-    const curve7d = generateCurve("7d", FIXED_NOW);
+  it("generateCurve with unknown periodId falls back to all config", () => {
+    const curveAll = generateCurve("all", FIXED_NOW);
     const curveUnknown = generateCurve("invalid", FIXED_NOW);
     expect(curveUnknown).toHaveLength(N);
-    // Falls back to PERIODS["7d"] config — same earning so same end balance
-    expect(curveUnknown[N - 1]!.balance).toBe(curve7d[N - 1]!.balance);
+    // Falls back to PERIODS["all"] config — same earning so same end balance.
+    expect(curveUnknown[N - 1]!.balance).toBe(curveAll[N - 1]!.balance);
+  });
+});
+
+describe("pricesToCurve", () => {
+  it("returns null for missing or empty API data", () => {
+    expect(pricesToCurve(undefined)).toBeNull();
+    expect(pricesToCurve([])).toBeNull();
+  });
+
+  it("maps valid API prices into 100 chart points", () => {
+    const curve = pricesToCurve([
+      { timestamp: "2026-01-01T00:00:00Z", avg_price: "1.00" },
+      { timestamp: "2026-01-02T00:00:00Z", avg_price: "1.02" },
+    ]);
+
+    expect(curve).toHaveLength(N);
+    expect(curve?.[0]?.balance).toBe(1);
+    expect(curve?.[N - 1]?.balance).toBe(1.02);
   });
 });

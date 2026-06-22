@@ -3,12 +3,13 @@
  *
  * Owns:
  *  - Active time-range period (7d / 1m / 3m / 1y / all).
- *  - Deterministic balance-history curve generated per period.
+ *  - Price-history curve from `/v1/stats/prices` when available.
+ *  - Deterministic balance-history curve generated per period as a fallback.
  *  - Hover state (nearest slot index, tooltip content).
  *
- * Data is entirely synthetic (placeholder) — no API calls, no React Query.
- * Replace `generateCurve` with a real data fetch when the aggregation endpoint
- * ships. See Issue #389 for the graduation plan.
+ * The hook does not fetch by itself. Callers pass optional price samples from
+ * `/v1/stats/prices`; when samples are absent or invalid, `generateCurve`
+ * keeps the existing placeholder chart visible.
  *
  * Algorithm:
  *   The curve mirrors the prototype in
@@ -21,6 +22,7 @@
  */
 
 import { useCallback, useRef, useState } from "react";
+import type { StatsPriceItem } from "@/api";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -51,11 +53,13 @@ export const PERIODS: Record<string, PeriodConfig> = {
   all: { days: 730, earning: 842.8, fmt: "month" },
 };
 
+export const DEFAULT_PERIOD_ID = "all";
+
 /** Default period used as a fallback when an unknown id is requested. */
 const DEFAULT_PERIOD: PeriodConfig = {
-  days: 7,
-  earning: 42.8,
-  fmt: "datetime",
+  days: PERIODS[DEFAULT_PERIOD_ID]!.days,
+  earning: PERIODS[DEFAULT_PERIOD_ID]!.earning,
+  fmt: PERIODS[DEFAULT_PERIOD_ID]!.fmt,
 };
 
 /** Safely look up a period, falling back to DEFAULT_PERIOD. */
@@ -135,6 +139,53 @@ export function generateCurve(
     height: (balance / END_BALANCE) * 100,
     timestamp: now - periodMs + i * stepMs,
   }));
+}
+
+function parsePricePoint(point: StatsPriceItem): CurvePoint | null {
+  const balance = Number(point.avg_price);
+  const timestamp = new Date(point.timestamp).getTime();
+  if (!Number.isFinite(balance) || balance <= 0) return null;
+  if (!Number.isFinite(timestamp)) return null;
+  return {
+    balance,
+    height: 0,
+    timestamp,
+  };
+}
+
+function pickPoint(points: CurvePoint[], index: number): CurvePoint {
+  if (points.length === 1) return points[0]!;
+  const sourceIndex = Math.round((index / (N - 1)) * (points.length - 1));
+  return points[Math.min(points.length - 1, sourceIndex)]!;
+}
+
+/**
+ * Converts API share-price samples into the 100-slot chart shape.
+ *
+ * Returns `null` when the API response is empty or invalid so callers can keep
+ * the synthetic placeholder curve.
+ */
+export function pricesToCurve(
+  prices: StatsPriceItem[] | undefined,
+): CurvePoint[] | null {
+  const points = (prices ?? [])
+    .map(parsePricePoint)
+    .filter((point): point is CurvePoint => point !== null)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (points.length === 0) return null;
+
+  const maxBalance = Math.max(...points.map((point) => point.balance));
+  if (!Number.isFinite(maxBalance) || maxBalance <= 0) return null;
+
+  return Array.from({ length: N }, (_, index) => {
+    const source = pickPoint(points, index);
+    return {
+      balance: source.balance,
+      height: Math.max(2, (source.balance / maxBalance) * 100),
+      timestamp: source.timestamp,
+    };
+  });
 }
 
 /**
@@ -217,11 +268,26 @@ export interface PortfolioChartState {
   onPointerLeave: () => void;
   /** Earning amount for the active period */
   earning: number;
+  /** True when the curve is backed by `/v1/stats/prices` data. */
+  hasPriceData: boolean;
 }
 
-export function usePortfolioChart(): PortfolioChartState {
-  const [activeId, setActiveId] = useState("7d");
+export interface UsePortfolioChartOptions {
+  activeId?: string;
+  setActiveId?: (id: string) => void;
+  prices?: StatsPriceItem[];
+}
+
+export function usePortfolioChart({
+  activeId: controlledActiveId,
+  setActiveId: controlledSetActiveId,
+  prices,
+}: UsePortfolioChartOptions = {}): PortfolioChartState {
+  const [uncontrolledActiveId, setUncontrolledActiveId] =
+    useState(DEFAULT_PERIOD_ID);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const activeId = controlledActiveId ?? uncontrolledActiveId;
+  const setActiveId = controlledSetActiveId ?? setUncontrolledActiveId;
 
   // Stable anchor time — generated once per mount so the chart doesn't
   // re-render with a different curve on every hover event.
@@ -230,13 +296,15 @@ export function usePortfolioChart(): PortfolioChartState {
   // Recompute the curve only when the period changes (not on hover).
   // We use a ref + derived value pattern to keep it cheap.
   const curveRef = useRef<{ id: string; curve: CurvePoint[] } | null>(null);
+  const priceCurve = pricesToCurve(prices);
+
   if (curveRef.current === null || curveRef.current.id !== activeId) {
     curveRef.current = {
       id: activeId,
       curve: generateCurve(activeId, nowRef.current),
     };
   }
-  const curve = curveRef.current.curve;
+  const curve = priceCurve ?? curveRef.current.curve;
 
   const period = getPeriod(activeId);
 
@@ -269,5 +337,6 @@ export function usePortfolioChart(): PortfolioChartState {
     onPointerMove,
     onPointerLeave,
     earning: period.earning,
+    hasPriceData: priceCurve !== null,
   };
 }

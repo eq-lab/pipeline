@@ -6,7 +6,7 @@
  *   2. "Total Balance" eyebrow is present.
  *   3. "$0.00" balance heading is present.
  *   4. "Get PLUSD to start" link is present and points to /deposit.
- *   5. "7D" tab is the default active tab (aria-selected="true").
+ *   5. "All" tab is the default active tab (aria-selected="true").
  *   6. Other tabs start inactive (aria-selected="false").
  *   7. Switching tabs updates active state while PnL captions stay data-driven.
  *   8. Chart wrapper has role="img" and a descriptive aria-label.
@@ -91,15 +91,15 @@ describe("PortfolioPlaceholderCard — smoke tests", () => {
 });
 
 describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
-  it("default active tab is '7D' (aria-selected='true')", () => {
+  it("default active tab is 'All' (aria-selected='true')", () => {
     renderCard();
-    const tab7d = screen.getByRole("tab", { name: "7D" });
-    expect(tab7d).toHaveAttribute("aria-selected", "true");
+    const tabAll = screen.getByRole("tab", { name: "All" });
+    expect(tabAll).toHaveAttribute("aria-selected", "true");
   });
 
   it("other tabs default to inactive (aria-selected='false')", () => {
     renderCard();
-    const inactiveTabs = ["1M", "3M", "1Y", "All"];
+    const inactiveTabs = ["7D", "1M", "3M", "1Y"];
     for (const label of inactiveTabs) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-selected",
@@ -108,7 +108,7 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
     }
   });
 
-  it("clicking '1M' makes it active and deactivates '7D'", async () => {
+  it("clicking '1M' makes it active and deactivates 'All'", async () => {
     const user = userEvent.setup();
     renderCard();
 
@@ -117,7 +117,7 @@ describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
 
     await waitFor(() => {
       expect(tab1m).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByRole("tab", { name: "7D" })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
         "aria-selected",
         "false",
       );
@@ -177,6 +177,28 @@ describe("PortfolioPlaceholderCard — chart structure", () => {
     const { container } = renderCard();
     const barSlots = container.querySelectorAll("[data-bar-slot]");
     expect(barSlots).toHaveLength(100);
+  });
+
+  it("uses grey fallback bars when no price data is provided", () => {
+    const { container } = renderCard();
+    const firstBar = container.querySelector("[data-bar-slot] rect");
+    expect(firstBar).toHaveAttribute("fill", "#D5D8C8");
+  });
+
+  it("uses chart-positive bars when price data is provided", () => {
+    const { container } = render(
+      <PortfolioPlaceholderCard
+        priceItems={[
+          { timestamp: "2026-01-01T00:00:00Z", avg_price: "1.00" },
+          { timestamp: "2026-01-02T00:00:00Z", avg_price: "1.02" },
+        ]}
+      />,
+    );
+    const firstBar = container.querySelector("[data-bar-slot] rect");
+    expect(firstBar).toHaveAttribute(
+      "fill",
+      "var(--color-pipeline-chart-positive)",
+    );
   });
 
   it("card region is labelled by the '$0.00' heading", () => {

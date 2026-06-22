@@ -3,23 +3,25 @@ import { Link } from "@tanstack/react-router";
 import { Card, SegmentedTabs } from "@pipeline/ui";
 import {
   N,
+  DEFAULT_PERIOD_ID,
   formatMoney,
   formatTime,
   usePortfolioChart,
 } from "./usePortfolioChart";
+import type { StatsPriceItem } from "@/api";
 
 /**
  * PortfolioPlaceholderCard — Connected-state replacement for ConnectWalletPromoCard.
  *
  * Renders in the top-left slot of the home dashboard when `isConnected === true`
- * (Figma node `1497:95048`). This is a **placeholder** — the balance stays `$0.00`
- * and the chart data is procedurally generated (no API calls). Replace the
- * synthetic generator with a real aggregation endpoint when one ships.
+ * (Figma node `1497:95048`). The balance and PnL labels are supplied by the
+ * home route. Chart bars use `/v1/stats/prices` data when available and fall
+ * back to the synthetic placeholder curve when the endpoint has no data.
  *
  * Layout:
  *   ┌────────────────────────────────────────────────────────────────────┐
  *   │  Total Balance                    [ 7D | 1M | 3M | 1Y | All ]     │
- *   │  0.00 sPLUSD                                                       │
+ *   │  $0.00                                                             │
  *   │  $0.00 unrealized                                                  │
  *   │  Get PLUSD to start →                                              │
  *   ├────────────────────────────────────────────────────────────────────┤
@@ -32,10 +34,10 @@ import {
  *   - 100 bar slots. Each slot has 3 nested rectangles (widths 3/2/1 px wide
  *     in SVG-coordinate terms, centred on the slot) at heights 30%/60%/100% of
  *     the slot's balance height, giving a "soft glow" stacked appearance.
- *   - Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) — the prototype
- *     colour, introduced as a dedicated chart token.
- *   - Curve is deterministic per period (seeded LCG). Heights are monotonically
- *     non-decreasing. Curve is anchored to `Date.now()` at mount time.
+ *   - Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) for real price
+ *     data, `#D5D8C8` for the synthetic fallback.
+ *   - Fallback curve is deterministic per period (seeded LCG). Heights are
+ *     monotonically non-decreasing and anchored to `Date.now()` at mount time.
  *
  * Hover interaction:
  *   - Pointer move over the chart wrapper snaps to the nearest slot index.
@@ -51,10 +53,10 @@ import {
  *   - Individual bar `<rect>` elements are decorative — no aria attributes.
  *   - The card `<region>` is labelled by the `$0.00` heading.
  *
- * Placeholder rule:
- *   - `$0.00` is a string literal — replace when the aggregation endpoint is ready.
+ * Data rule:
+ *   - Chart `priceItems` come from `/v1/stats/prices`.
+ *   - Empty/invalid price data keeps the fallback curve visible.
  *   - Unrealized PnL caption is supplied by `/v1/pnl`; defaults to `$0.00 unrealized`.
- *   - "Get PLUSD to start" link is always shown — revisit when user holds PLUSD.
  *
  * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
  */
@@ -76,12 +78,17 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   mobileHomeState?: MobileHomeState;
   /**
    * Formatted balance string shown under "Total Balance". Connected home passes
-   * the active sPLUSD share amount here; the card no longer displays real total
-   * portfolio value.
+   * the active total balance here.
    */
   balanceLabel?: string;
   /** Formatted unrealized PnL displayed below the sPLUSD balance. */
   unrealizedPnlLabel?: string;
+  /** Active chart period id. Defaults to "all". */
+  activePeriodId?: string;
+  /** Period change callback for tab selection. */
+  onActivePeriodChange?: (id: string) => void;
+  /** Price samples from `/v1/stats/prices`; empty/invalid data uses fallback. */
+  priceItems?: StatsPriceItem[];
 }
 
 /** Base heading id prefix — each instance gets a unique suffix from useId(). */
@@ -120,6 +127,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     mobileHomeState,
     balanceLabel = "$0.00",
     unrealizedPnlLabel = "$0.00 unrealized",
+    activePeriodId,
+    onActivePeriodChange,
+    priceItems,
     ...rest
   },
   ref,
@@ -129,16 +139,25 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
-  const {
+  const [uncontrolledActiveId, setUncontrolledActiveId] =
+    React.useState(DEFAULT_PERIOD_ID);
+  const activeId = activePeriodId ?? uncontrolledActiveId;
+  const setActiveId = onActivePeriodChange ?? setUncontrolledActiveId;
+
+  const chart = usePortfolioChart({
     activeId,
     setActiveId,
+    prices: priceItems,
+  });
+  const {
     period,
     curve,
     hoveredIdx,
     tooltip,
     onPointerMove,
     onPointerLeave,
-  } = usePortfolioChart();
+    hasPriceData,
+  } = chart;
 
   /** Ref to the chart wrapper div for getBoundingClientRect on pointer move. */
   const wrapRef = React.useRef<HTMLDivElement>(null);
@@ -168,6 +187,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
+  const barFill = hasPriceData
+    ? "var(--color-pipeline-chart-positive)"
+    : "#D5D8C8";
 
   const composed = [
     "relative flex flex-col gap-6",
@@ -307,7 +329,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0}
                   width={3}
                   height={barH}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={0.35}
                 />
                 {/* Mid rect (60% height) */}
@@ -316,7 +338,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.4}
                   width={2}
                   height={barH * 0.6}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={0.65}
                 />
                 {/* Core rect (30% height, full opacity) */}
@@ -325,7 +347,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.7}
                   width={1}
                   height={barH * 0.3}
-                  fill="var(--color-pipeline-chart-positive)"
+                  fill={barFill}
                   opacity={1}
                 />
               </g>

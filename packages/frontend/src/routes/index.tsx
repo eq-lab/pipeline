@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
@@ -30,7 +31,7 @@ import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
-import { usePnl, formatApy } from "@/api";
+import { usePnl, formatApy, useStatsPrices } from "@/api";
 
 /**
  * Home page — full composition (Figma `1497:94556` desktop, `1989:8292` mobile).
@@ -90,18 +91,18 @@ import { usePnl, formatApy } from "@/api";
  * preserved at md+ via `md:grid` and `md:grid-cols-7`.
  */
 
-function formatBigintTokenAmount(
+function formatBigintCurrency(
   value: bigint | undefined,
   decimals: number,
-  symbol: string,
 ): string {
-  if (value === undefined || value === 0n) return `0.00 ${symbol}`;
+  if (value === undefined || value === 0n) return "$0.00";
   const asFloat = parseFloat(formatUnits(value, decimals));
-  const formatted = new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(asFloat);
-  return `${formatted} ${symbol}`;
 }
 
 function formatRawDecimalUSD(
@@ -153,6 +154,7 @@ function Home() {
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
   const pnl = usePnl();
+  const [chartPeriodId, setChartPeriodId] = useState("all");
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
@@ -232,10 +234,9 @@ function Home() {
       : undefined
     : evmPlusdFormatted;
 
-  const splusdBalanceFormatted = formatBigintTokenAmount(
+  const splusdBalanceFormatted = formatBigintCurrency(
     splusdSharesActive,
     activeDecimals,
-    "sPLUSD",
   );
   const unrealizedPnlFormatted = formatRawDecimalUSD(
     pnl.data?.total_unrealized_pnl,
@@ -247,6 +248,16 @@ function Home() {
     isConnected && avgApyFormatted !== "—"
       ? `${avgApyFormatted} p.a.`
       : undefined;
+  const activeSplusdVaultAddress = isStellar
+    ? ENV.STELLAR_STAKED_PLUSD_ID
+    : ENV.STAKED_PLUSD_ADDRESS;
+  const activeChainId = isStellar ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
+  const prices = useStatsPrices({
+    vaultAddress: activeSplusdVaultAddress,
+    chainId: activeChainId,
+    periodId: chartPeriodId,
+    enabled: isConnected && activeSplusdVaultAddress.length > 0,
+  });
 
   // ── Mobile home state ──────────────────────────────────────────────────────
   // deriveMobileHomeState only compares > 0n so it is scale-agnostic.
@@ -302,6 +313,9 @@ function Home() {
               mobileHomeState={mobileHomeState}
               balanceLabel={splusdBalanceFormatted}
               unrealizedPnlLabel={unrealizedPnlFormatted}
+              activePeriodId={chartPeriodId}
+              onActivePeriodChange={setChartPeriodId}
+              priceItems={prices.data?.prices}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -398,6 +412,9 @@ function Home() {
                 mobileHomeState={mobileHomeState}
                 balanceLabel={splusdBalanceFormatted}
                 unrealizedPnlLabel={unrealizedPnlFormatted}
+                activePeriodId={chartPeriodId}
+                onActivePeriodChange={setChartPeriodId}
+                priceItems={prices.data?.prices}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (
