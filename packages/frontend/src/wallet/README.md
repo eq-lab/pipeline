@@ -880,9 +880,13 @@ const { submit, needsTrustline, data, isPending, isSuccess, error, reset } =
   useStellarChangeTrustStakedPlusd();
 ```
 
-Builds and submits a classic Horizon `changeTrust` op for the sPLUSD share asset.
-`needsTrustline: true` when the connected account has no sPLUSD trustline and the
-share asset identity has been resolved from the vault's `name()` view.
+Builds and submits a classic Horizon `changeTrust` op only when the sPLUSD share
+token is backed by a classic asset. Classic deployments encode the share asset
+in the vault `name()` as `CODE:ISSUER`; Soroban-native vaults return a plain
+token name and require no classic trustline before staking.
+
+`needsTrustline: true` only when a classic share asset is resolved and the
+connected account has no sPLUSD trustline.
 
 ### Stellar mock keys
 

@@ -631,10 +631,9 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       "readMockStellarChangeTrustStakedPlusd",
     ).mockReturnValue({ hash: "trust-mock-hash" });
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();
@@ -655,10 +654,9 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     // initial state before the promise settles.
     mockName.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     // Immediately after mount the query is still loading.
     expect(result.current.trustlineStatus).toBe("loading");
@@ -671,14 +669,11 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     // mockName resolves in beforeEach to a valid "CODE:ISSUER" string.
     // useStellarSacToken is mocked to hasTrustline: false (the default mock).
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
-    await waitFor(() =>
-      expect(result.current.trustlineStatus).toBe("needed"),
-    );
+    await waitFor(() => expect(result.current.trustlineStatus).toBe("needed"));
     expect(result.current.needsTrustline).toBe(true);
   });
 
@@ -707,10 +702,9 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       isAuthorized: true,
     });
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() =>
       expect(result.current.trustlineStatus).toBe("satisfied"),
@@ -721,19 +715,27 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     vi.mocked(sacModule.useStellarSacToken).mockReturnValue(defaultSacReturn);
   });
 
-  // Regression: name() returns non-"CODE:ISSUER" format → "error", staking blocked
-  it("trustlineStatus is 'error' when name() returns unexpected format", async () => {
-    // Override mockName to return a non-"CODE:ISSUER" string.
-    mockName.mockResolvedValue("not-a-valid-asset-string");
+  it("trustlineStatus is 'not_required' when name() returns a Soroban token name", async () => {
+    mockName.mockResolvedValue("Staked Pipeline USD");
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     await waitFor(() =>
-      expect(result.current.trustlineStatus).toBe("error"),
+      expect(result.current.trustlineStatus).toBe("not_required"),
     );
+    expect(result.current.needsTrustline).toBe(false);
+  });
+
+  it("trustlineStatus is 'error' when name() returns malformed classic format", async () => {
+    mockName.mockResolvedValue("sPLUSD:");
+
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.trustlineStatus).toBe("error"));
     // needsTrustline must be false — we don't know enough to assert "needed"
     expect(result.current.needsTrustline).toBe(false);
   });
@@ -742,14 +744,11 @@ describe("useStellarChangeTrustStakedPlusd", () => {
   it("trustlineStatus is 'error' when name() rejects", async () => {
     mockName.mockRejectedValue(new Error("RPC connection refused"));
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
-    await waitFor(() =>
-      expect(result.current.trustlineStatus).toBe("error"),
-    );
+    await waitFor(() => expect(result.current.trustlineStatus).toBe("error"));
     expect(result.current.needsTrustline).toBe(false);
   });
 
@@ -760,10 +759,9 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       "readMockStellarChangeTrustStakedPlusd",
     ).mockReturnValue(undefined);
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     // Wait for name() to resolve so shareAsset is loaded before submit()
     // (otherwise the "share asset not loaded" guard fires first).
@@ -785,10 +783,9 @@ describe("useStellarChangeTrustStakedPlusd", () => {
       "readMockStellarChangeTrustStakedPlusd",
     ).mockReturnValue({ hash: "h" });
 
-    const { result } = renderHook(
-      () => useStellarChangeTrustStakedPlusd(),
-      { wrapper: makeWrapper() },
-    );
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => {
       result.current.submit();

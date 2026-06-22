@@ -235,7 +235,12 @@ export function useStellarSacToken({
   };
 
   // ── useQuery ──────────────────────────────────────────────────────────────
-  const shouldRunQuery = mockRaw === undefined && isConnected && !!address;
+  const shouldRunQuery =
+    mockRaw === undefined &&
+    isConnected &&
+    !!address &&
+    assetCode !== "" &&
+    assetIssuer !== "";
 
   const query = useQuery({
     queryKey: [

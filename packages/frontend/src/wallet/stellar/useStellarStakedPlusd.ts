@@ -16,7 +16,7 @@
  *
  * Trustline hook:
  *   - `useStellarChangeTrustStakedPlusd()` — builds + submits a classic `changeTrust`
- *     op for the sPLUSD share asset; exposes `needsTrustline` + `submit()`.
+ *     op only when the sPLUSD share token is backed by a classic asset.
  *
  * All write hooks expose the same state shape:
  *   `{ write, data, isPending, isSuccess, error, reset }`
@@ -138,26 +138,32 @@ export interface UseStellarStakedPlusdBalanceResult {
  * Fail-safe trustline status for the sPLUSD share asset.
  *
  * - `"loading"`   — share asset or trustline check is still in flight.
- * - `"error"`     — `name()` call failed or returned an unexpected format.
+ * - `"error"`     — `name()` call failed or returned a malformed classic format.
  * - `"needed"`    — share asset resolved, trustline is missing.
  * - `"satisfied"` — share asset resolved AND trustline exists.
+ * - `"not_required"` — deployed vault exposes Soroban shares, so no classic
+ *   trustline is required before staking.
  *
  * The step must be marked "success" and staking may proceed ONLY when
- * `trustlineStatus === "satisfied"`.
+ * `trustlineStatus === "satisfied"` or `"not_required"`.
  */
 export type StellarSplusdTrustlineStatus =
   | "loading"
   | "error"
   | "needed"
-  | "satisfied";
+  | "satisfied"
+  | "not_required";
+
+type StellarShareAsset =
+  | { kind: "classic"; code: string; issuer: string }
+  | { kind: "soroban"; name: string };
 
 export interface UseStellarChangeTrustStakedPlusdResult {
   submit: () => void;
   /**
    * Fail-safe discriminated status for the sPLUSD trustline step.
-   * The step shows "success" and staking is allowed ONLY when this is
-   * `"satisfied"`. While `"loading"` or `"error"` the step remains actionable
-   * (never silently OK) and staking is blocked.
+   * The step shows "success" and staking is allowed when this is `"satisfied"`
+   * or `"not_required"`. While `"loading"` or `"error"` staking is blocked.
    */
   trustlineStatus: StellarSplusdTrustlineStatus;
   /**
@@ -706,14 +712,14 @@ export function useStellarStakedPlusdBalance(): UseStellarStakedPlusdBalanceResu
 // ── useStellarChangeTrustStakedPlusd ──────────────────────────────────────────
 
 /**
- * Hook that builds and submits a classic `changeTrust` op for the sPLUSD asset.
+ * Hook that builds and submits a classic `changeTrust` op for the sPLUSD asset
+ * when the deployed vault exposes one.
  *
- * Staking mints sPLUSD shares to the receiver — without an sPLUSD trustline
- * the deposit fails. This hook derives the share asset's `{ code, issuer }`
- * from the vault's `name()` view (which returns `"sPLUSD:GISSUER"` style,
- * matching the `"CODE:ISSUER"` convention used for PLUSD/USDC in
- * `useStellarDepositManagerAddresses.ts`), then drives `useStellarSacToken`
- * for `hasTrustline` detection.
+ * Older/classic deployments encode the share asset in `name()` as
+ * `"sPLUSD:GISSUER"` and require a Horizon `changeTrust` op before staking.
+ * The current Futurenet vault returns a plain Soroban token name such as
+ * `"Staked Pipeline USD"`; those shares are held by the vault contract itself,
+ * so no classic trustline step is required.
  *
  * Fail-safe status (`trustlineStatus`)
  * --------------------------------------
@@ -723,13 +729,14 @@ export function useStellarStakedPlusdBalance(): UseStellarStakedPlusdBalanceResu
  * "success" while the share asset is still resolving:
  *
  *   - `"loading"` — share asset or token check is still in flight.
- *   - `"error"`   — `name()` call failed or returned an unexpected format.
+ *   - `"error"`   — `name()` call failed or returned a malformed classic format.
  *   - `"needed"`  — share asset resolved, but the trustline is missing.
  *   - `"satisfied"` — share asset resolved AND the trustline exists.
+ *   - `"not_required"` — vault shares are Soroban-native; no classic trustline.
  *
- * The step must only be marked "success" and staking may only proceed when
- * `trustlineStatus === "satisfied"`. Any other status (including loading)
- * keeps the step actionable ("Enable" button) and blocks the stake action.
+ * The step is marked "success" and staking may proceed when
+ * `trustlineStatus === "satisfied"` or `"not_required"`. Any other status
+ * blocks the stake action.
  *
  * `needsTrustline` is kept for backward-compat and is `true` only for the
  * "needed" case (enables the submit button when there is a real missing trustline
@@ -749,33 +756,28 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
 
   const { address, isConnected, signTransaction } = useStellarWallet();
 
-  // ── Resolve share asset { code, issuer } from vault name() ─────────────────
+  // ── Resolve share asset mode from vault name() ─────────────────────────────
   //
-  // The vault's SAC name() returns "CODE:ISSUER" style (e.g. "sPLUSD:GISSUER"),
-  // matching the convention used for PLUSD/USDC in
-  // useStellarDepositManagerAddresses.ts (parseClassicAsset). On an unexpected
-  // format we throw (fail-safe) rather than fabricating an issuer, because
-  // building a changeTrust against a wrong asset is worse than blocking.
-  // retry:1 allows one self-heal on a transient RPC error.
-  const shareAssetQuery = useQuery<{ code: string; issuer: string }, Error>({
+  // "CODE:ISSUER" means a classic trustline is required. A plain token name
+  // means Soroban-native vault shares and no changeTrust step.
+  const shareAssetQuery = useQuery<StellarShareAsset, Error>({
     queryKey: ["stellarStakedPlusdShareAsset", stakedPlusdId],
     queryFn: async () => {
       const client = createStakedPlusdClient(stakedPlusdId);
       if (!client) throw new Error("StakedPLUSD not configured");
       const nameStr = await client.name();
-      // Parse "CODE:ISSUER" — same pattern as parseClassicAsset in
-      // useStellarDepositManagerAddresses.ts.
       const parts = nameStr.split(":");
       if (parts.length === 2 && parts[0] && parts[1]) {
-        return { code: parts[0], issuer: parts[1] };
+        return { kind: "classic", code: parts[0], issuer: parts[1] };
       }
-      // Fail-safe: treat unexpected format as an error so trustlineStatus
-      // becomes "error" and staking is blocked (not silently allowed).
+      if (parts.length === 1 && nameStr.trim() !== "") {
+        return { kind: "soroban", name: nameStr };
+      }
       console.warn(
-        `useStellarChangeTrustStakedPlusd: unexpected name() result "${nameStr}", expected "CODE:ISSUER"`,
+        `useStellarChangeTrustStakedPlusd: malformed name() result "${nameStr}", expected "CODE:ISSUER" or a Soroban token name`,
       );
       throw new Error(
-        `StakedPLUSD: unexpected name() result "${nameStr}" — expected "CODE:ISSUER"`,
+        `StakedPLUSD: malformed name() result "${nameStr}" — expected "CODE:ISSUER" or a Soroban token name`,
       );
     },
     enabled: !!stakedPlusdId,
@@ -793,8 +795,8 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
 
   // ── Trustline check via useStellarSacToken ─────────────────────────────────
   const sPlusdToken = useStellarSacToken({
-    assetCode: shareAsset?.code ?? "",
-    assetIssuer: shareAsset?.issuer ?? "",
+    assetCode: shareAsset?.kind === "classic" ? shareAsset.code : "",
+    assetIssuer: shareAsset?.kind === "classic" ? shareAsset.issuer : "",
     contractId: stakedPlusdId, // vault IS the share token
     mockKey: STELLAR_MOCK_KEYS.stakedPlusdShareBalance,
   });
@@ -819,6 +821,12 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
       // Query finished but no data (e.g. unconfigured) — treat as loading
       // rather than silently OK.
       return "loading";
+    }
+    if (shareAsset.kind === "soroban") {
+      return "not_required";
+    }
+    if (sPlusdToken.error !== null) {
+      return "error";
     }
     if (sPlusdToken.hasTrustline) {
       return "satisfied";
@@ -866,8 +874,8 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
       return;
     }
 
-    // ── Share asset not loaded yet ────────────────────────────────────────
-    if (!shareAsset) {
+    // ── Share asset not loaded / not classic yet ──────────────────────────
+    if (!shareAsset || shareAsset.kind !== "classic") {
       setError(new Error("sPLUSD share asset not loaded"));
       return;
     }
