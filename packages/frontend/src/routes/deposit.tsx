@@ -376,9 +376,8 @@ function Deposit() {
         action: isDeposit
           ? {
               label: "Stake",
-              // `search: {}` is required to satisfy the typed-router signature
-              // for the (search-less) /stake route under strict type resolution.
-              onClick: () => void navigate({ to: "/stake", search: {} }),
+              onClick: () =>
+                void navigate({ to: "/stake", search: { tab: "stake" } }),
             }
           : undefined,
       });
