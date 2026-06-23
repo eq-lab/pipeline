@@ -160,16 +160,25 @@ export interface FlowState {
   requestIsConfirmed: boolean;
   isPendingVerification: boolean;
 
-  // ── Completed (claimed) deposit terminal state ────────────────────────
+  // ── Completed (claimed) deposit reset signal ──────────────────────────
   /**
    * True (deposit direction only) when the latest deposit request has settled
-   * to `Completed` and has not been dismissed. Drives the "done" layout: all
-   * steps success, no active Confirm/Claim, input locked to the completed
-   * amount, and a "Make another deposit" reset affordance.
+   * to `Completed` and has not been dismissed. The page reacts by resetting the
+   * form back to its initial state (clears the input, resets the request/claim
+   * mutations) so a fresh deposit can start — there is no terminal "done"
+   * layout. Gated by `depositCompletedRequestId` to fire once per completed
+   * deposit.
    */
   isDepositCompleted: boolean;
-  /** `request_id` of the completed deposit currently shown as done (for dismissal). */
+  /** `request_id` of the completed deposit that triggered the reset (for dismissal). */
   depositCompletedRequestId: string | undefined;
+
+  /**
+   * Resets the active-direction request/claim mutations to their initial state.
+   * Called (with an input clear) when a deposit settles to `Completed` so the
+   * form returns to its initial state instead of staying pinned on success.
+   */
+  reset: () => void;
 
   // ── Steps ──────────────────────────────────────────────────────────────
   step1: StepInfo;
@@ -242,8 +251,8 @@ function parseRequestId(value: string | undefined): bigint | undefined {
  * @param amountBig - Parsed amount from the text input (bigint at active decimals).
  * @param setAmountInput - Input setter (for quick-amount handlers).
  * @param dismissedDepositRequestId - `request_id` of a `Completed` deposit the
- *   user has dismissed via "Make another deposit". When it matches the latest
- *   completed deposit, the done state is suppressed so a fresh deposit can start.
+ *   page has already reacted to. When it matches the latest completed deposit,
+ *   `isDepositCompleted` is suppressed so the reset fires only once.
  */
 export function useDepositFlow(
   direction: Direction,
@@ -375,9 +384,9 @@ export function useDepositFlow(
 
   // Most-recent claimed deposit. The active-request filter above keeps only
   // `PendingVerification`/`PendingClaim`, so a claimed request settles to
-  // `Completed` and drops out of that set. We track it separately to drive the
-  // terminal "done" state instead of collapsing back to the initial form (which
-  // re-enabled Confirm and, during the API's PendingClaim lag, Claim).
+  // `Completed` and drops out of that set. We track it separately so the page
+  // can reset the form once the deposit settles (waiting for the active request
+  // to clear avoids re-enabling Claim during the API's PendingClaim lag).
   const evmDepositCompletedRequest =
     requestsData?.requests
       .filter((r) => r.type === "Deposit" && r.status === "Completed")
@@ -386,8 +395,8 @@ export function useDepositFlow(
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )[0] ?? null;
 
-  // Terminal done state: the latest deposit is `Completed` (no newer Pending*
-  // request) and the user has not dismissed it via "Make another deposit".
+  // Reset signal: the latest deposit is `Completed` (no newer Pending* request)
+  // and the page has not yet reacted to it.
   const evmDepositIsCompleted =
     evmDepositActiveRequest === null &&
     evmDepositCompletedRequest !== null &&
@@ -446,8 +455,8 @@ export function useDepositFlow(
       )[0] ?? null;
 
   // Most-recent claimed deposit (settled to `Completed`). Tracked separately so
-  // the flow can show a terminal "done" state instead of collapsing back to the
-  // initial form once the claimed request drops out of the active set.
+  // the page can reset the form once the claimed request drops out of the active
+  // set (waiting for that avoids re-enabling Claim during the PendingClaim lag).
   const stellarDepositCompletedRequest =
     requestsData?.requests
       .filter((r) => r.type === "Deposit" && r.status === "Completed")
@@ -456,8 +465,8 @@ export function useDepositFlow(
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )[0] ?? null;
 
-  // Terminal done state: the latest deposit is `Completed` (no newer Pending*
-  // request) and the user has not dismissed it via "Make another deposit".
+  // Reset signal: the latest deposit is `Completed` (no newer Pending* request)
+  // and the page has not yet reacted to it.
   const stellarDepositIsCompleted =
     stellarDepositActiveRequest === null &&
     stellarDepositCompletedRequest !== null &&
@@ -734,8 +743,7 @@ export function useDepositFlow(
       evmDepositMeetsMin &&
       !evmDepositNeedsApproval &&
       !evmRequestDeposit.isPending &&
-      !evmDepositRequestIsConfirmed &&
-      !evmDepositIsCompleted;
+      !evmDepositRequestIsConfirmed;
     const canEvmClaimDeposit =
       isEvmConnected &&
       evmDepositRequestId !== undefined &&
@@ -770,21 +778,17 @@ export function useDepositFlow(
       : canEvmConfirmWithdraw;
     const canEvmClaim = isDeposit ? canEvmClaimDeposit : canEvmClaimWithdraw;
 
-    // Step states. When the deposit is completed (claimed) every step reads as
-    // success — the StepsCard then renders success pills instead of actionable
-    // buttons.
+    // Step states.
     const evmDepositStep1State: StepState =
-      evmDepositIsCompleted ||
       (!evmDepositNeedsApproval && amountBig > 0n && isEvmConnected) ||
       evmDepositRequestIsConfirmed
         ? "success"
         : "idle";
     const evmDepositStep2State: StepState =
-      evmDepositIsCompleted || evmDepositIsPendingClaim || evmClaim.isSuccess
-        ? "success"
-        : "idle";
-    const evmDepositStep3State: StepState =
-      evmDepositIsCompleted || evmClaim.isSuccess ? "success" : "idle";
+      evmDepositIsPendingClaim || evmClaim.isSuccess ? "success" : "idle";
+    const evmDepositStep3State: StepState = evmClaim.isSuccess
+      ? "success"
+      : "idle";
 
     const evmWithdrawStep1State: StepState =
       (evmHasSufficientWithdrawAllowance && isEvmConnected) ||
@@ -856,17 +860,11 @@ export function useDepositFlow(
       hasBalance: evmHasBalance,
       meetsMin: evmMeetsMin,
       isDataPending: evmIsDataPending,
-      isAmountLocked:
-        evmActiveRequest !== null || (isDeposit && evmDepositIsCompleted),
+      isAmountLocked: evmActiveRequest !== null,
       lockedAmountRaw:
         evmActiveRequest !== null && evmDecimals !== undefined
           ? BigInt(evmActiveRequest.amount)
-          : isDeposit &&
-              evmDepositIsCompleted &&
-              evmDepositCompletedRequest !== null &&
-              evmDecimals !== undefined
-            ? BigInt(evmDepositCompletedRequest.amount)
-            : undefined,
+          : undefined,
       requestId: evmRequestId,
       requestIsConfirmed: evmRequestIsConfirmed,
       isPendingVerification: evmIsPendingVerification,
@@ -875,6 +873,15 @@ export function useDepositFlow(
         isDeposit && evmDepositIsCompleted
           ? (evmDepositCompletedRequest?.request_id ?? undefined)
           : undefined,
+      reset: () => {
+        if (isDeposit) {
+          evmRequestDeposit.reset();
+          evmClaim.reset();
+        } else {
+          evmRequestWithdrawal.reset();
+          evmClaimWithdrawal.reset();
+        }
+      },
       step1: {
         label: isDeposit
           ? "Allow Pipeline to use USDC"
@@ -1029,14 +1036,9 @@ export function useDepositFlow(
     ? stellarDepositStep1State
     : stellarWithdrawStep1State;
 
-  // Step 2 state (request). A completed (claimed) deposit reads as success so
-  // the StepsCard renders a success pill instead of an actionable Confirm.
+  // Step 2 state (request).
   const stellarDepositStep2State: StepState =
-    stellarDepositIsCompleted ||
-    stellarDepositIsPendingClaim ||
-    stellarClaim.isSuccess
-      ? "success"
-      : "idle";
+    stellarDepositIsPendingClaim || stellarClaim.isSuccess ? "success" : "idle";
   const stellarWithdrawStep2State: StepState =
     stellarWithdrawIsPendingClaim || stellarClaimWithdrawal.isSuccess
       ? "success"
@@ -1047,7 +1049,7 @@ export function useDepositFlow(
 
   // Step 3 state (claim)
   const stellarStep3State: StepState = isDeposit
-    ? stellarDepositIsCompleted || stellarClaim.isSuccess
+    ? stellarClaim.isSuccess
       ? "success"
       : "idle"
     : stellarClaimWithdrawal.isSuccess
@@ -1078,8 +1080,7 @@ export function useDepositFlow(
     stellarHasBalance === true &&
     bothTrustlinesReady &&
     !stellarRequestDeposit.isPending &&
-    !stellarDepositRequestIsConfirmed &&
-    !stellarDepositIsCompleted;
+    !stellarDepositRequestIsConfirmed;
   const canStellarStep2Withdraw =
     isStellarConnected &&
     stellarCanWithdraw &&
@@ -1187,18 +1188,13 @@ export function useDepositFlow(
     hasBalance: stellarHasBalance,
     meetsMin: stellarMeetsMin,
     isDataPending: stellarIsDataPending,
-    isAmountLocked:
-      stellarRequestIsConfirmed || (isDeposit && stellarDepositIsCompleted),
+    isAmountLocked: stellarRequestIsConfirmed,
     lockedAmountRaw:
       stellarActiveRequest?.amount !== undefined
         ? BigInt(stellarActiveRequest.amount)
         : stellarInflight?.amount !== undefined
           ? BigInt(stellarInflight.amount)
-          : isDeposit &&
-              stellarDepositIsCompleted &&
-              stellarDepositCompletedRequest?.amount !== undefined
-            ? BigInt(stellarDepositCompletedRequest.amount)
-            : undefined,
+          : undefined,
     requestId: stellarRequestId,
     requestIsConfirmed: stellarRequestIsConfirmed,
     isPendingVerification: stellarIsPendingVerification,
@@ -1207,6 +1203,15 @@ export function useDepositFlow(
       isDeposit && stellarDepositIsCompleted
         ? (stellarDepositCompletedRequest?.request_id ?? undefined)
         : undefined,
+    reset: () => {
+      if (isDeposit) {
+        stellarRequestDeposit.reset();
+        stellarClaim.reset();
+      } else {
+        stellarRequestWithdrawal.reset();
+        stellarClaimWithdrawal.reset();
+      }
+    },
     step1: {
       label: isDeposit ? "Enable PLUSD" : "Enable USDC",
       actionLabel: "Enable",

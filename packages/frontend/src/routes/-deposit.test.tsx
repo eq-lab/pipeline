@@ -1273,7 +1273,7 @@ describe("Deposit page — three-step flow", () => {
   });
 });
 
-describe("Deposit page — completed (claimed) deposit terminal state", () => {
+describe("Deposit page — completed (claimed) deposit reset", () => {
   beforeEach(() => {
     mockDirection = "deposit";
     localStorage.clear();
@@ -1302,85 +1302,56 @@ describe("Deposit page — completed (claimed) deposit terminal state", () => {
     created_at: new Date().toISOString(),
   };
 
-  // Regression: a deposit that has settled to `Completed` (e.g. on reload after
-  // claiming) must NOT collapse the flow back to its initial form. Previously
-  // the active-request filter kept only Pending* statuses, so a Completed
-  // request dropped out and Confirm re-enabled (and Claim flickered during the
-  // API's PendingClaim lag). The Completed request must drive a terminal done
-  // state instead.
-  it("renders the done state (no active Confirm/Claim) when the latest deposit is Completed", async () => {
+  // A deposit that has settled to `Completed` (e.g. on reload after claiming)
+  // returns the form to its initial state — there is no terminal "done" layout
+  // and no "Make another deposit" affordance. Waiting for the active request to
+  // clear before resetting avoids re-enabling Claim during the PendingClaim lag.
+  it("returns to the initial form (idle steps, no done affordance) when the latest deposit is Completed", async () => {
     mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
 
     renderDeposit();
 
     await waitFor(() => {
-      // Steps render as success pills — no actionable Confirm/Claim buttons.
-      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Claim" })).toBeNull();
-      expect(screen.getByLabelText("Confirm complete")).toHaveAttribute(
-        "data-state",
-        "success",
-      );
-      expect(screen.getByLabelText("Claim complete")).toHaveAttribute(
-        "data-state",
-        "success",
-      );
-    });
-    // Reset affordance is offered.
-    expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
-  });
-
-  it("locks the amount input to the completed deposit amount", async () => {
-    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
-
-    renderDeposit();
-
-    await waitFor(() => {
-      const input = screen.getByRole("textbox", {
-        name: /USDC amount/i,
-      }) as HTMLInputElement;
-      // 2000000000 raw at 6 dp = 2000.00.
-      expect(input.value).toBe("2000.00");
-      expect(input).toBeDisabled();
-    });
-  });
-
-  it("'Make another deposit' resets the form and restores an actionable flow", async () => {
-    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
-
-    const user = userEvent.setup();
-    renderDeposit();
-
-    const resetBtn = await screen.findByTestId("make-another-deposit");
-    await user.click(resetBtn);
-
-    await waitFor(() => {
-      // Done state dismissed — reset button gone, Confirm available again.
-      expect(screen.queryByTestId("make-another-deposit")).toBeNull();
+      // Steps reset to idle: actionable buttons render, not success pills.
       expect(
         screen.getByRole("button", { name: "Confirm" }),
       ).toBeInTheDocument();
-      // Input cleared so the user can enter a fresh amount.
+      expect(screen.getByRole("button", { name: "Claim" })).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Confirm complete")).toBeNull();
+    expect(screen.queryByLabelText("Claim complete")).toBeNull();
+    // No terminal done affordance.
+    expect(screen.queryByTestId("make-another-deposit")).toBeNull();
+  });
+
+  it("clears the amount input (not locked to the completed amount)", async () => {
+    mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
+
+    renderDeposit();
+
+    await waitFor(() => {
       const input = screen.getByRole("textbox", {
         name: /USDC amount/i,
       }) as HTMLInputElement;
+      // Reset to empty so the user can enter a fresh amount.
       expect(input.value).toBe("");
       expect(input).not.toBeDisabled();
     });
   });
 
-  it("still shows the done state even when the post-deposit balance is below the minimum", async () => {
-    // After depositing, the USDC balance can drop below the minimum. The done
-    // state must take precedence over the low-balance banner.
+  it("shows the low-balance banner when the post-deposit balance is below the minimum", async () => {
+    // After depositing, the USDC balance can drop below the minimum. With the
+    // form reset to its initial state, the low-balance banner is the correct
+    // initial affordance.
     seedBaseMocks({ balance: BALANCE_500_RAW, allowance: "10000000000" });
     mockRequestsData = { requests: [COMPLETED_DEPOSIT] };
 
     renderDeposit();
 
     await waitFor(() => {
-      expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
+      expect(screen.getByTestId("low-balance-banner")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("low-balance-banner")).toBeNull();
+    expect(screen.queryByTestId("make-another-deposit")).toBeNull();
   });
 });
 
@@ -3062,9 +3033,7 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
     renderDepositStellar();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Claim" }),
-      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Claim" })).not.toBeDisabled();
     });
     // Normal label shown.
     await waitFor(() => {
@@ -3101,14 +3070,12 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
 
     // The withdraw Claim button must NOT be disabled due to PLUSD auth state.
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Claim" }),
-      ).not.toBeDisabled();
+      expect(screen.getByRole("button", { name: "Claim" })).not.toBeDisabled();
     });
   });
 });
 
-describe("Deposit page — Stellar completed (claimed) deposit terminal state", () => {
+describe("Deposit page — Stellar completed (claimed) deposit reset", () => {
   beforeEach(() => {
     mockDirection = "deposit";
     localStorage.clear();
@@ -3126,10 +3093,10 @@ describe("Deposit page — Stellar completed (claimed) deposit terminal state", 
     localStorage.clear();
   });
 
-  // Regression for the reported bug: on Stellar, after claiming a deposit the
-  // request settles to `Completed`. The flow must show the done state rather
-  // than re-enabling Confirm (or, during the API's PendingClaim lag, Claim).
-  it("shows the done state with a reset affordance when the latest deposit is Completed", async () => {
+  // On Stellar, after claiming a deposit the request settles to `Completed`.
+  // The form returns to its initial state — a fresh Confirm, no terminal "done"
+  // affordance, and a cleared input — instead of staying pinned on success.
+  it("returns to the initial form when the latest deposit is Completed", async () => {
     seedStellarMocks({
       usdcBalance: "5000",
       sacPlusdBalance: SAC_1000_PLUS, // PLUSD trustline present
@@ -3150,10 +3117,17 @@ describe("Deposit page — Stellar completed (claimed) deposit terminal state", 
     renderDepositStellar();
 
     await waitFor(() => {
-      // No actionable Confirm/Claim — the steps are success pills.
-      expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Claim" })).toBeNull();
-      expect(screen.getByTestId("make-another-deposit")).toBeInTheDocument();
+      // A fresh Confirm is rendered for a new deposit; no done affordance.
+      expect(
+        screen.getByRole("button", { name: "Confirm" }),
+      ).toBeInTheDocument();
     });
+    expect(screen.queryByTestId("make-another-deposit")).toBeNull();
+    // Input reset to empty so a fresh amount can be entered.
+    const input = screen.getByRole("textbox", {
+      name: /USDC amount/i,
+    }) as HTMLInputElement;
+    expect(input.value).toBe("");
+    expect(input).not.toBeDisabled();
   });
 });
