@@ -128,6 +128,10 @@ vi.mock("@/wallet/config", () => ({
 
 // ── TanStack Router mock ──────────────────────────────────────────────────────
 
+// Mutable initial tab for tests — drives the injected useSearch so a test can
+// deep-link the Unstake tab (`/stake?tab=unstake`) without a router context.
+let mockTab: "stake" | "unstake" = "stake";
+
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
@@ -135,9 +139,26 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     ...original,
     useNavigate: vi.fn(() => vi.fn()),
     useRouterState: vi.fn(() => "/stake"),
-    createFileRoute: original.createFileRoute,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createFileRoute: (path: any) => {
+      const realRoute = original.createFileRoute(path);
+      return (options: Record<string, unknown>) => {
+        const route = realRoute(options);
+        // Inject a controllable useSearch so the Stake component can read the
+        // initial `tab` without a router context.
+        (route as unknown as Record<string, unknown>).useSearch = () => ({
+          tab: mockTab,
+        });
+        return route;
+      };
+    },
     Link: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   };
+});
+
+// Every test starts on the Stake tab unless it explicitly deep-links Unstake.
+beforeEach(() => {
+  mockTab = "stake";
 });
 
 // ── ENV mock ──────────────────────────────────────────────────────────────────
@@ -685,6 +706,24 @@ describe("Stake page — Unstake tab", () => {
         screen.getByRole("textbox", { name: /sPLUSD amount/i }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("deep-links the Unstake tab via ?tab=unstake (no click needed)", async () => {
+    // `/stake?tab=unstake` — the home StakeCard's "Unstake" link target.
+    mockTab = "unstake";
+    renderStake();
+
+    await waitFor(() => {
+      // Unstake tab is active on mount: input is the sPLUSD amount field.
+      expect(
+        screen.getByRole("textbox", { name: /sPLUSD amount/i }),
+      ).toBeInTheDocument();
+    });
+    // The Unstake tab is selected (aria-selected) without any interaction.
+    expect(screen.getByRole("tab", { name: "Unstake" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("switch to Unstake clears the amount input", async () => {

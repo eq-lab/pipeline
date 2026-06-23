@@ -1,6 +1,6 @@
 import React from "react";
 import { formatUnits } from "viem";
-import { Button, Card } from "@pipeline/ui";
+import { Button, Card, CoinIcon } from "@pipeline/ui";
 import type { CardPadding } from "@pipeline/ui";
 import { useStats, formatApy } from "@/api";
 
@@ -82,31 +82,46 @@ export interface StakeCardProps extends Omit<
    */
   onStake?: () => void;
   /**
+   * Click handler for the "Unstake" text link shown in the `"splusd"` state.
+   * Expected to navigate to the stake page's Unstake tab
+   * (`/stake?tab=unstake`). Falls back to {@link StakeCardProps.onStake} when
+   * omitted.
+   */
+  onUnstake?: () => void;
+  /**
    * When `true`, the Stake CTA is rendered in its disabled state (per Figma
    * node `1497:95069`). Pass `true` when the connected wallet's PLUSD balance
    * is zero so the button cannot initiate a stake flow with no tokens.
    */
   stakeDisabled?: boolean;
   /**
-   * Mobile-only: connected balance state.
+   * Connected balance state.
    * - `"empty"` (State A): circular CTA disabled, labelled "Nothing to Stake".
    * - `"plusd"` (State B): circular CTA enabled, labelled "Stake".
    * - `"splusd"` (State C): "Staked PLUSD" balance display + "Stake More" CTA
    *   + "Unstake" text link.
-   * When `undefined` the desktop/disconnected appearance is preserved.
+   * When `undefined` the marketing CTA appearance ("Stake PLUSD / Earn X%") is
+   * preserved. The empty/plusd labels are mobile-specific; the `"splusd"`
+   * staked layout is shared by mobile and the desktop dashboard (Figma node
+   * `1497:95217`).
    */
   mobileHomeState?: MobileHomeState;
   /**
-   * Mobile-only: sPLUSD share balance (raw bigint at `splusdDecimals` scale).
-   * Displayed as the top number ("shares") in State C.
+   * sPLUSD share balance (raw bigint at `splusdDecimals` scale). Displayed as
+   * the top number ("shares") in the `"splusd"` state.
    */
   mobileSplusdShares?: bigint;
   /**
-   * Mobile-only: sPLUSD shares converted to PLUSD-equivalent (raw bigint at
-   * `splusdDecimals` scale). Displayed as the sub-line ("X.XX sPLUSD") in
-   * State C.
+   * sPLUSD shares converted to PLUSD-equivalent (raw bigint at `splusdDecimals`
+   * scale). Displayed as the sub-line ("X.XX sPLUSD") in the `"splusd"` state.
    */
   mobileSplusdInPlusd?: bigint;
+  /**
+   * Preformatted USD value of the staked position (e.g. `"$1,000.00"`). When
+   * provided, it is appended to the `"splusd"` sub-line as `· $X.XX` (Figma
+   * node `1497:95226`). Omitted from the sub-line when `undefined`.
+   */
+  splusdUsdValue?: string;
   /**
    * Decimal precision of `mobileSplusdShares` and `mobileSplusdInPlusd`.
    * Defaults to `18` (EVM). Pass `7` for Stellar SAC balances to avoid a
@@ -143,11 +158,13 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
   function StakeCard(
     {
       onStake,
+      onUnstake,
       stakeDisabled,
       className,
       mobileHomeState,
       mobileSplusdShares,
       mobileSplusdInPlusd,
+      splusdUsdValue,
       splusdDecimals = 18,
       ...rest
     },
@@ -232,36 +249,49 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             >
               {sharesFormatted}
             </p>
-            {/* Sub-line: PLUSD-equivalent */}
-            <p
-              className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-caption)]",
-                "leading-[var(--text-pipeline-caption--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink-muted)]",
-                "m-0",
-              ].join(" ")}
+            {/* Sub-line: sPLUSD coin icon + PLUSD-equivalent + USD value
+                (Figma node 1497:95225 / 1497:95226). */}
+            <div
+              className="flex w-full items-center gap-1"
               data-testid="splusd-in-plusd"
             >
-              {inPlusdFormatted} sPLUSD
-            </p>
+              <CoinIcon
+                token="splusd"
+                size="sm"
+                className="size-4 shrink-0"
+                aria-hidden
+              />
+              <p
+                className={[
+                  "font-[family-name:var(--font-body)]",
+                  "text-[length:var(--text-pipeline-caption)]",
+                  "leading-[var(--text-pipeline-caption--line-height)]",
+                  "font-[var(--font-weight-regular)]",
+                  "text-[color:var(--color-pipeline-ink-muted)]",
+                  "m-0",
+                ].join(" ")}
+              >
+                {inPlusdFormatted} sPLUSD
+                {splusdUsdValue ? ` · ${splusdUsdValue}` : ""}
+              </p>
+            </div>
           </header>
 
-          {/* Bottom section: "Stake More" CTA + "Unstake" text link */}
+          {/* Bottom section: "Unstake" text link (bottom-left) + "Stake More"
+              circular CTA (bottom-right), per Figma node 1497:95228. */}
           <div
-            className="flex w-full flex-col items-end gap-2"
+            className="flex w-full items-end justify-between"
             data-testid="home-stake-actions"
           >
-            {/* "Unstake" text link */}
+            {/* "Unstake" text link — bottom-left. */}
             <button
               type="button"
-              onClick={onStake}
+              onClick={onUnstake ?? onStake}
               className={[
                 "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-caption)]",
-                "leading-[var(--text-pipeline-caption--line-height)]",
-                "font-[var(--font-weight-regular)]",
+                "text-[length:var(--text-pipeline-body)]",
+                "leading-[var(--text-pipeline-body--line-height)]",
+                "font-[var(--font-weight-emphasized)]",
                 "text-[color:var(--color-pipeline-ink-muted)]",
                 "underline-offset-2 hover:underline",
                 "cursor-pointer border-0 bg-transparent p-0",
@@ -270,7 +300,7 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             >
               Unstake
             </button>
-            {/* "Stake More" circular CTA.
+            {/* "Stake More" circular CTA — bottom-right, label on two lines.
                 Size: 88px on mobile (matching the base Stake button),
                 restoring the default 128px on desktop (md+). */}
             <Button
@@ -281,7 +311,10 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
               data-node-id="1497:94713"
               data-testid="home-stake-more-button"
             >
-              Stake More
+              <span className="flex flex-col items-center leading-[var(--text-pipeline-body--line-height)]">
+                <span>Stake</span>
+                <span>More</span>
+              </span>
             </Button>
           </div>
         </Card>
