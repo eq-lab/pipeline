@@ -404,6 +404,26 @@ All outbound transactions (`fundRequest`, `yieldMint`, `setAccess`, `refreshScre
 
 Yield mint intents in the outbox carry the full `(YieldAttestation, bridgeSig, custodianSig)` payload in `calldata`. If a yield mint reverts (e.g. reserve-invariant tightening, hard cap breach), the failure is terminal — a new attestation with a fresh `salt` + fresh custodian co-sig is required.
 
+#### Stellar yield-mint phase
+
+The Stellar relayer runs a yield-mint phase parallel to EVM Phase 4. It reuses
+the `yield_mint_outbox` table (discover → submit → confirm) but signs
+`yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
+relayer ed25519 keypair — no BitGo. Double-mint is prevented on-chain by
+`loan_registry.consume_yield`; the `can_yield_be_minted` view is a pre-submit
+optimization. On-chain `FAILED` is terminal (`failed`, operator review).
+
+The phase is enabled only when both contract ids are configured:
+
+- `CHAIN_<id>_RELAYER_STELLAR_YIELD_MINTER_ID` — Soroban `C…` yield-minter id.
+- `CHAIN_<id>_RELAYER_STELLAR_LOAN_REGISTRY_ID` — Soroban `C…` loan-registry id
+  (discovery filter + `can_yield_be_minted` target).
+- Batch size reuses `JOB_RELAYER_STELLAR_BATCH_SIZE` (default 50).
+
+Operational prerequisite: the relayer signer keypair must hold the minter role on
+the access-manager, and the yield-minter must hold the executor role (wired in
+`pipeline-stellar-contracts`).
+
 ### Data Pipeline
 
 ```

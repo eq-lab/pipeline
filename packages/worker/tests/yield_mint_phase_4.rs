@@ -415,6 +415,18 @@ impl OutboxStore for InMemoryOutbox {
         Ok(())
     }
 
+    async fn mark_submitted_stellar(&self, key: &OutboxKey, tx_hash: &str) -> Result<()> {
+        let mut rows = self.rows.lock().unwrap();
+        if let Some(row) = rows.iter_mut().find(|r| {
+            r.loan_id == key.loan_id && r.repayment_id == key.repayment_id && r.status == "pending"
+        }) {
+            "submitted".clone_into(&mut row.status);
+            row.tx_hash = Some(tx_hash.to_owned());
+            row.submitted_at = Some(chrono::Utc::now());
+        }
+        Ok(())
+    }
+
     async fn mark_skipped_already_minted(&self, key: &OutboxKey) -> Result<()> {
         let mut rows = self.rows.lock().unwrap();
         if let Some(row) = rows.iter_mut().find(|r| {

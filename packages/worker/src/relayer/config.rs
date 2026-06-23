@@ -74,6 +74,11 @@ pub struct StellarRelayerSettings {
     pub network_passphrase: String,
     pub access_manager_id: Contract,
     pub plusd_sac_id: Contract,
+    /// Soroban yield-minter contract id. `None` disables the yield-mint phase.
+    pub yield_minter_id: Option<Contract>,
+    /// Soroban loan-registry contract id — `can_yield_be_minted` view target and
+    /// `PaymentRecorded` discovery filter. `None` disables the yield-mint phase.
+    pub loan_registry_id: Option<Contract>,
     pub signing_key: SigningKey,
     pub sumsub_enabled: bool,
     /// Always `false` — Crystal does not support Stellar.
@@ -122,6 +127,21 @@ impl StellarRelayerSettings {
             .map_err(|e| anyhow::anyhow!("{signer_key} must be a Stellar S… Strkey: {e}"))?;
         let signing_key = SigningKey::from_bytes(&priv_key.0);
 
+        let parse_opt_contract = |suffix: &str| -> Result<Option<Contract>> {
+            let key = format!("{p}{suffix}");
+            match env::var(&key) {
+                Err(_) => Ok(None),
+                Ok(raw) => {
+                    let validated = validate_contract_id(&key, raw)?;
+                    let c = Contract::from_string(&validated)
+                        .map_err(|e| anyhow::anyhow!("{key} failed Strkey parse: {e}"))?;
+                    Ok(Some(c))
+                }
+            }
+        };
+        let yield_minter_id = parse_opt_contract("YIELD_MINTER_ID")?;
+        let loan_registry_id = parse_opt_contract("LOAN_REGISTRY_ID")?;
+
         let interval_secs = env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?;
         let sumsub_enabled = env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?;
         // Crystal is force-disabled on Stellar regardless of the global toggle.
@@ -135,6 +155,8 @@ impl StellarRelayerSettings {
             network_passphrase,
             access_manager_id,
             plusd_sac_id,
+            yield_minter_id,
+            loan_registry_id,
             signing_key,
             sumsub_enabled,
             crystal_enabled,

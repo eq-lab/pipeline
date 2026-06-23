@@ -10,6 +10,8 @@
 //! module use `crate::stellar::tx::*` directly.
 
 pub mod job;
+pub mod sim_decode;
 pub mod whitelist;
+pub mod yield_mint;
 
 pub use whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
