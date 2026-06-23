@@ -2,29 +2,30 @@ import React from "react";
 import { Button } from "../Button/Button";
 
 /**
- * Toast — Pipeline UI notification pill.
+ * Toast — Pipeline UI notification.
  *
- * Two visual shapes:
- *   - **Informational** — pill with leading icon + title text.
- *   - **Actionable** — same pill plus a right-aligned action button.
+ * A near-rectangular surface (4px radius) with 16px padding, a 20px leading
+ * icon, and a Body-weight title. Two visual shapes:
+ *   - **Informational** — icon + title text.
+ *   - **Actionable** — same surface plus a right-aligned action button.
  *
  * Four tones, each mapping to a `--color-pipeline-*` fill token:
  *   - `neutral`  → `--color-pipeline-ink` (dark)
- *   - `success`  → `--color-pipeline-success` (green)
+ *   - `success`  → `--color-pipeline-positive-primary` (green #208000)
  *   - `danger`   → `--color-pipeline-danger` (red)
  *   - `pending`  → `--color-pipeline-ink-muted` (muted)
  *
- * Default icons: `check-circle.svg` for neutral/success/danger; `clock-pending.svg`
- * for pending. Pass the `icon` prop to override.
+ * Default icons: a plain checkmark for `success`, `check-circle` for
+ * neutral/danger, and `clock-pending` for `pending`. Pass the `icon` prop to
+ * override (e.g. a token glyph for a claim toast).
  *
  * A11y:
  *   - `role="alert"` + `aria-live="assertive"` for `danger`.
  *   - `role="status"` + `aria-live="polite"` for all other tones.
  *
  * Figma references:
- *   - Informational — node 1497:95187
- *   - Actionable — node 1497:95109
- *   - Base shape (eq-lib) — node 6860:833
+ *   - Success (claim, actionable) — node 1497:95175
+ *   - Success (stake, informational) — node 1497:95270
  */
 
 export type ToastTone = "neutral" | "success" | "danger" | "pending";
@@ -34,8 +35,10 @@ export interface ToastAction {
   onClick: () => void;
 }
 
-export interface ToastProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+export interface ToastProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "title"
+> {
   /** Tone controls background color and default icon. Default: "neutral". */
   tone?: ToastTone;
   /** Title text shown next to the leading icon. */
@@ -50,15 +53,36 @@ export interface ToastProps
 }
 
 // SVG icons inlined so the component is self-contained without an asset bundler.
-// Viewbox: 16.6667 × 16.6667 — matches the existing icon assets in packages/ui/src/assets/icons/.
+// Rendered at 20px to match the restyled toast (Figma node 1497:95270).
 
+// Plain checkmark — default for the `success` tone (Figma node 1497:95270).
+const CheckIcon = (
+  <svg
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    className="size-[20px] shrink-0"
+  >
+    <path
+      d="M4.5 10.5L8 14L15.5 6"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// Circle-enclosed check — default for neutral/danger tones.
+// Viewbox: 16.6667 × 16.6667 — matches the existing icon assets in packages/ui/src/assets/icons/.
 const CheckCircleIcon = (
   <svg
     viewBox="0 0 16.6667 16.6667"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
-    className="size-[16px] shrink-0"
+    className="size-[20px] shrink-0"
   >
     <path
       fillRule="evenodd"
@@ -75,7 +99,7 @@ const ClockPendingIcon = (
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
-    className="size-[16px] shrink-0"
+    className="size-[20px] shrink-0"
   >
     <path
       fillRule="evenodd"
@@ -89,7 +113,7 @@ const ClockPendingIcon = (
 // Background class per tone. All values reference design tokens from theme.css.
 const toneBackground: Record<ToastTone, string> = {
   neutral: "bg-[var(--color-pipeline-ink)]",
-  success: "bg-[var(--color-pipeline-success)]",
+  success: "bg-[var(--color-pipeline-positive-primary)]",
   danger: "bg-[var(--color-pipeline-danger)]",
   // ink-muted is rgba — Tailwind can't apply it directly with bg- utility; use inline style
   pending: "bg-[rgb(56_55_53_/_0.6)]",
@@ -105,22 +129,25 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
     const ariaLive = isDanger ? "assertive" : "polite";
 
     const defaultIcon =
-      tone === "pending" ? ClockPendingIcon : CheckCircleIcon;
+      tone === "pending"
+        ? ClockPendingIcon
+        : tone === "success"
+          ? CheckIcon
+          : CheckCircleIcon;
     const leadingIcon = icon ?? defaultIcon;
 
     const bgClass = toneBackground[tone];
 
     const containerClasses = [
-      "inline-flex items-center gap-3 px-4 py-2",
-      "rounded-[var(--radius-pipeline-pill)]",
+      "inline-flex items-center p-4",
+      "rounded-[var(--radius-pipeline-card)]",
       "shadow-sm",
-      "h-10",
       bgClass,
-      "text-[color:#ffffff]",
+      "text-[color:var(--color-pipeline-on-dark)]",
       "font-[family-name:var(--font-body)]",
       "text-[length:var(--text-pipeline-body)]",
       "leading-[var(--text-pipeline-body--line-height)]",
-      "font-[var(--font-weight-emphasized)]",
+      "font-[var(--font-weight-regular)]",
       className,
     ]
       .filter(Boolean)
@@ -135,17 +162,16 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         {...rest}
       >
         {/* Leading icon */}
-        <span className="shrink-0 text-[color:#ffffff]">{leadingIcon}</span>
+        <span className="shrink-0 text-[color:var(--color-pipeline-on-dark)]">
+          {leadingIcon}
+        </span>
 
-        {/* Title */}
-        <span className="shrink-0 whitespace-nowrap">{title}</span>
+        {/* Title — 8px horizontal padding provides the gap to the icon/button */}
+        <span className="shrink-0 px-2 whitespace-nowrap">{title}</span>
 
         {/* Action button — right-aligned, only when provided */}
         {action && (
-          <Button
-            variant="toast-action"
-            onClick={action.onClick}
-          >
+          <Button variant="toast-action" onClick={action.onClick}>
             {action.label}
           </Button>
         )}
