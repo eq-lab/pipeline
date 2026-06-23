@@ -92,6 +92,7 @@
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
   --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
+  --color-pipeline-positive-primary: #208000; /* fill/positive-primary — success toast bg; node 1497:95270 */
   --color-pipeline-positive-secondary: rgb(
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
@@ -167,6 +168,7 @@
   --color-pipeline-on-warning: #ffffff; /* content on warning fill */
   --color-pipeline-danger: #c0392b; /* fill/danger — error toast bg; base shape node 6860:833 */
   --color-pipeline-on-danger: #ffffff; /* content on danger fill */
+  --color-pipeline-positive-primary: #208000; /* fill/positive-primary — success toast bg; node 1497:95270 */
   --color-pipeline-positive-secondary: rgb(
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */

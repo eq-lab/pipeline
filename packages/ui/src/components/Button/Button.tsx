@@ -3,15 +3,16 @@ import React from "react";
 /**
  * Button — Pipeline UI primitive.
  *
- * Five variants, matching the Figma frame 1497-94556 and toast spec 1497:95109:
+ * Five variants, matching the Figma frame 1497-94556 and toast spec 1497:95175:
  *   - `primary-dark`  — black filled rectangle (e.g. "Connect Wallet" in header)
  *   - `primary-blue`  — navy/cobalt filled rectangle (e.g. "Connect", "Buy")
  *   - `secondary`     — ghost/outlined rectangle (e.g. "Sell" in disabled state —
  *                        transparent fill, ink-primary label, ~0.32 opacity when
  *                        used with the `disabled` prop). Figma nodes 1497:94688–90.
  *   - `circular-blue` — round navy/cobalt CTA (e.g. "Stake")
- *   - `toast-action`  — compact pill CTA for right-aligned actions inside toasts
- *                        (Figma node 1497:95109). White fill, ink text, 32 px tall.
+ *   - `toast-action`  — compact CTA for right-aligned actions inside toasts
+ *                        (Figma node 1497:95175). White fill, ink text, 32 px tall,
+ *                        4 px radius, Body Emphasized label.
  *
  * All variants use design tokens from `@pipeline/ui/styles/theme.css`
  * (no raw colors). Label uses the Body Emphasized type style (Graphik LC
@@ -122,17 +123,17 @@ const variantClasses: Record<ButtonVariant, string> = {
     "disabled:hover:bg-[var(--color-pipeline-brand)]",
   ].join(" "),
 
-  // toast-action — 32px compact pill, white fill, ink text.
-  // Used inside Toast pills for right-aligned follow-up actions (Figma 1497:95109).
+  // toast-action — 32px compact button, white fill, ink text.
+  // Used inside Toast notifications for right-aligned follow-up actions
+  // (Figma node 1497:95175 — "Stake" CTA). 4px radius (radius/radius-s) and
+  // Body Emphasized label (16/22, weight 600, inherited from baseClasses).
   // Inherits the toast's outer surface as focus-ring backdrop — no explicit
   // offset-color needed because the toast background is always dark/coloured.
   "toast-action": [
-    "h-8 min-w-8 px-3",
-    "rounded-[var(--radius-pipeline-pill)]",
+    "h-8 min-w-8 px-2.5",
+    "rounded-[var(--radius-pipeline-button)]",
     "bg-white",
     "text-[color:var(--color-pipeline-ink)]",
-    "text-[length:var(--text-pipeline-caption)]",
-    "leading-[var(--text-pipeline-caption--line-height)]",
     "hover:bg-[color-mix(in_oklab,white_90%,var(--color-pipeline-ink))]",
     "active:bg-[color-mix(in_oklab,white_85%,var(--color-pipeline-ink))]",
     "focus-visible:ring-[var(--color-pipeline-ink)]",
@@ -162,7 +163,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ? compactSizeClasses
         : undefined;
 
-    const composed = [baseClasses, variantClasses[variant], sizeOverride, className]
+    const composed = [
+      baseClasses,
+      variantClasses[variant],
+      sizeOverride,
+      className,
+    ]
       .filter(Boolean)
       .join(" ");
 

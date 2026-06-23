@@ -9,12 +9,12 @@ const meta = {
     docs: {
       description: {
         component:
-          "Pipeline UI Toast notification pill. Two visual shapes: " +
+          "Pipeline UI Toast notification — a 4px-radius surface with a 20px " +
+          "leading icon and Body-weight title. Two visual shapes: " +
           "**Informational** (icon + title, auto-dismissed) and " +
           "**Actionable** (icon + title + right-aligned action button). " +
-          "Four tones: `neutral` (dark), `success` (green), `danger` (red), `pending` (muted). " +
-          "Figma: Informational node 1497:95187, Actionable node 1497:95109, " +
-          "Base shape node 6860:833 (eq-lib).",
+          "Four tones: `neutral` (dark), `success` (green #208000), `danger` (red), `pending` (muted). " +
+          "Figma: success/actionable node 1497:95175, success/informational node 1497:95270.",
       },
     },
   },
@@ -101,7 +101,8 @@ export const CustomIcon: Story = {
   parameters: {
     docs: {
       description: {
-        story: "Demonstrates the `icon` prop override — any ReactNode replaces the default per-tone icon.",
+        story:
+          "Demonstrates the `icon` prop override — any ReactNode replaces the default per-tone icon.",
       },
     },
   },
@@ -138,7 +139,8 @@ export const AllVariants: Story = {
     layout: "fullscreen",
     docs: {
       description: {
-        story: "Matrix showing all four tones × informational and actionable variants.",
+        story:
+          "Matrix showing all four tones × informational and actionable variants.",
       },
     },
   },
@@ -154,9 +156,17 @@ export const AllVariants: Story = {
       }}
     >
       <Toast tone="neutral" title="You staked 1,000.00 PLUSD" />
-      <Toast tone="neutral" title="Deposit submitted" action={{ label: "View", onClick: () => {} }} />
+      <Toast
+        tone="neutral"
+        title="Deposit submitted"
+        action={{ label: "View", onClick: () => {} }}
+      />
       <Toast tone="success" title="Deposit confirmed" />
-      <Toast tone="success" title="+1,000.00 PLUSD" action={{ label: "Stake", onClick: () => {} }} />
+      <Toast
+        tone="success"
+        title="+1,000.00 PLUSD"
+        action={{ label: "Stake", onClick: () => {} }}
+      />
       <Toast tone="danger" title="Deposit failed" />
       <Toast tone="danger" title="Claim failed" />
       <Toast tone="pending" title="Sending…" />

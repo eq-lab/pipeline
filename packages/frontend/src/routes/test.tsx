@@ -1,7 +1,8 @@
 /**
  * /test — Diagnostic page.
  *
- * Two-tab layout driven by a TanStack Router search param (`?tab=status|mocks`):
+ * Three-tab layout driven by a TanStack Router search param
+ * (`?tab=status|mocks|toasts`):
  *
  *   - **Status** (default) — the existing read-only sections surfacing runtime
  *     state: ENV, Wallet, DepositManager, USDC balance, ERC-20 approval. No
@@ -10,6 +11,10 @@
  *   - **Mocks** — a global "Clear mocks" button + one scenario card per
  *     meaningful app state. Clicking Enable wipes all `pipeline.mock.*` keys,
  *     seeds only the scenario's keys, and reloads the page.
+ *
+ *   - **Toasts** — trigger buttons for every toast flavour (tones,
+ *     actionable, pending→resolved lifecycle, custom icon) so the restyled
+ *     toasts can be eyeballed on the real site.
  *
  * The active tab is reflected in the URL. Reloading preserves the tab.
  * Invalid `?tab=` values fall back to `"status"`.
@@ -20,6 +25,7 @@
 import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
+import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
 import {
   useEvmWallet,
@@ -42,11 +48,12 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type TestTab = "status" | "mocks";
+type TestTab = "status" | "mocks" | "toasts";
 
 const TABS = [
   { id: "status", label: "Status" },
   { id: "mocks", label: "Mocks" },
+  { id: "toasts", label: "Toasts" },
 ];
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -54,7 +61,8 @@ const TABS = [
 export const Route = createFileRoute("/test")({
   validateSearch: (raw): { tab: TestTab } => {
     const t = raw.tab;
-    const tab: TestTab = t === "mocks" ? "mocks" : "status";
+    const tab: TestTab =
+      t === "mocks" ? "mocks" : t === "toasts" ? "toasts" : "status";
     return { tab };
   },
   component: TestPage,
@@ -498,6 +506,194 @@ function MocksTab(): React.JSX.Element {
   );
 }
 
+// ── ToastsTab ───────────────────────────────────────────────────────────────
+
+/**
+ * Small token glyph used to demo the `icon` override on a claim toast
+ * (mirrors the PLUSD coin in Figma node 1497:95175).
+ */
+const PlusdGlyph = (
+  <svg
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    className="size-[20px] shrink-0"
+  >
+    <circle cx="10" cy="10" r="10" fill="currentColor" opacity="0.25" />
+    <path
+      d="M10 5v10M7.5 7.5h3.25a1.75 1.75 0 010 3.5H8.75M7.5 11h3.5a1.75 1.75 0 010 3.5H7.5"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+/** A labelled group of demo buttons. */
+function ToastGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <section className="flex flex-col gap-3 border-b border-[color:var(--color-pipeline-line)] pb-6">
+      <h2 className="text-base font-semibold text-[color:var(--color-pipeline-ink)]">
+        {title}
+      </h2>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </section>
+  );
+}
+
+/** Compact trigger button used throughout the Toasts tab. */
+function ToastButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Button
+      variant="primary-dark"
+      size="compact"
+      className="text-xs"
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
+
+/**
+ * The Toasts tab — fires every flavour of toast so they can be eyeballed on
+ * the real site (Storybook can't render the Tailwind utilities). Toasts stack
+ * bottom-right; non-pending ones auto-dismiss after 5s, pending ones stick.
+ */
+function ToastsTab(): React.JSX.Element {
+  const toast = useToast();
+
+  // Show a sticky pending toast, then resolve it to `tone`/`title` after 2s —
+  // demonstrates the upsert-by-id lifecycle used by the deposit/stake flows.
+  const showPendingThen = (
+    key: string,
+    tone: "success" | "danger",
+    title: string,
+  ) => {
+    const id = toast.show({
+      id: `demo-${key}`,
+      tone: "pending",
+      title: "Sending…",
+    });
+    window.setTimeout(() => toast.update(id, { tone, title }), 2000);
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+        Toasts appear bottom-right. Up to 3 stack at once; non-pending toasts
+        auto-dismiss after 5s.
+      </p>
+
+      <ToastGroup title="Informational (no action)">
+        <ToastButton
+          onClick={() =>
+            toast.show({ tone: "neutral", title: "Neutral notification" })
+          }
+        >
+          neutral
+        </ToastButton>
+        <ToastButton
+          onClick={() =>
+            toast.show({ tone: "success", title: "You staked 1,000.00 PLUSD" })
+          }
+        >
+          success
+        </ToastButton>
+        <ToastButton
+          onClick={() => toast.show({ tone: "danger", title: "Claim failed" })}
+        >
+          danger
+        </ToastButton>
+        <ToastButton
+          onClick={() => toast.show({ tone: "pending", title: "Claiming…" })}
+        >
+          pending (sticky)
+        </ToastButton>
+      </ToastGroup>
+
+      <ToastGroup title="Actionable (with button)">
+        <ToastButton
+          onClick={() =>
+            toast.show({
+              tone: "success",
+              title: "+1,000.00 PLUSD",
+              action: {
+                label: "Stake",
+                onClick: () =>
+                  toast.show({ tone: "neutral", title: "Stake clicked" }),
+              },
+            })
+          }
+        >
+          success + Stake
+        </ToastButton>
+        <ToastButton
+          onClick={() =>
+            toast.show({
+              tone: "neutral",
+              title: "Deposit submitted",
+              action: {
+                label: "View",
+                onClick: () =>
+                  toast.show({ tone: "neutral", title: "View clicked" }),
+              },
+            })
+          }
+        >
+          neutral + View
+        </ToastButton>
+      </ToastGroup>
+
+      <ToastGroup title="Lifecycle (pending → resolved)">
+        <ToastButton
+          onClick={() => showPendingThen("ok", "success", "Deposit submitted")}
+        >
+          pending → success
+        </ToastButton>
+        <ToastButton
+          onClick={() => showPendingThen("err", "danger", "Deposit failed")}
+        >
+          pending → danger
+        </ToastButton>
+      </ToastGroup>
+
+      <ToastGroup title="Custom icon">
+        <ToastButton
+          onClick={() =>
+            toast.show({
+              tone: "success",
+              title: "+1,000.00 PLUSD",
+              icon: PlusdGlyph,
+              action: {
+                label: "Stake",
+                onClick: () =>
+                  toast.show({ tone: "neutral", title: "Stake clicked" }),
+              },
+            })
+          }
+        >
+          claim toast (token icon + Stake)
+        </ToastButton>
+      </ToastGroup>
+    </div>
+  );
+}
+
 // ── Page component ────────────────────────────────────────────────────────────
 
 function TestPage(): React.JSX.Element {
@@ -515,7 +711,13 @@ function TestPage(): React.JSX.Element {
 
         <SegmentedTabs tabs={TABS} activeId={tab} onSelect={setTab} />
 
-        {tab === "status" ? <StatusTab /> : <MocksTab />}
+        {tab === "status" ? (
+          <StatusTab />
+        ) : tab === "mocks" ? (
+          <MocksTab />
+        ) : (
+          <ToastsTab />
+        )}
       </main>
     </div>
   );
