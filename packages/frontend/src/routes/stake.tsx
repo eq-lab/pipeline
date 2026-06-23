@@ -11,12 +11,12 @@ import {
   TokenAmountDisplay,
   TokenInput,
 } from "@pipeline/ui";
-import {
-  useWalletView,
-  useConnectModal,
-} from "@/wallet";
+import { useWalletView, useConnectModal } from "@/wallet";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
+
+/** Active tab of the stake page; also the `?tab=` search-param value. */
+type StakeTab = "stake" | "unstake";
 
 /**
  * Stake route — chain-aware stake/unstake page.
@@ -70,8 +70,14 @@ function Stake() {
   // ── Connect modal ────────────────────────────────────────────────────
   const { open: openConnectModal } = useConnectModal();
 
+  // ── Initial tab from the URL ──────────────────────────────────────────
+  // `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home StakeCard's
+  // "Unstake" link). The URL only seeds the initial tab; in-page switching is
+  // local state, so subsequent tab toggles do not push history entries.
+  const { tab: initialTab } = Route.useSearch();
+
   // ── Local state ───────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<"stake" | "unstake">("stake");
+  const [activeTab, setActiveTab] = useState<StakeTab>(initialTab);
   const [amountInput, setAmountInput] = useState("");
 
   const isStakeTab = activeTab === "stake";
@@ -175,10 +181,7 @@ function Stake() {
         title: isStakeTab ? "Staked successfully" : "Unstaked successfully",
       });
     }
-    if (
-      flow.step2Tx.error &&
-      flow.step2Tx.error !== prevStep2Error.current
-    ) {
+    if (flow.step2Tx.error && flow.step2Tx.error !== prevStep2Error.current) {
       console.error(
         isStakeTab ? "Stake failed:" : "Unstake failed:",
         flow.step2Tx.error,
@@ -201,13 +204,10 @@ function Stake() {
   ]);
 
   // ── Tab-switch handler ─────────────────────────────────────────────────
-  const onSelectTab = useCallback(
-    (next: string) => {
-      setActiveTab(next as "stake" | "unstake");
-      setAmountInput("");
-    },
-    [],
-  );
+  const onSelectTab = useCallback((next: string) => {
+    setActiveTab(next as StakeTab);
+    setAmountInput("");
+  }, []);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -250,9 +250,7 @@ function Stake() {
               token={isStakeTab ? "plusd" : "splusd"}
               tokenLabel={isStakeTab ? "PLUSD" : "sPLUSD"}
               balanceLabel={
-                flow.formattedInputBalance
-                  ? flow.formattedInputBalance
-                  : "—"
+                flow.formattedInputBalance ? flow.formattedInputBalance : "—"
               }
               placeholderValue="0"
               value={amountInput}
@@ -278,9 +276,7 @@ function Stake() {
               token={isStakeTab ? "splusd" : "plusd"}
               tokenLabel={isStakeTab ? "sPLUSD" : "PLUSD"}
               balanceLabel={
-                flow.formattedOutputBalance
-                  ? flow.formattedOutputBalance
-                  : "—"
+                flow.formattedOutputBalance ? flow.formattedOutputBalance : "—"
               }
               value={flow.previewOutputValue}
               style={{
@@ -321,7 +317,9 @@ function Stake() {
           </Card>
         ) : (
           <StepsCard
-            data-testid={isStakeTab ? "stake-steps-card" : "stake-unstake-steps"}
+            data-testid={
+              isStakeTab ? "stake-steps-card" : "stake-unstake-steps"
+            }
             steps={flow.steps}
           />
         )}
@@ -331,5 +329,8 @@ function Stake() {
 }
 
 export const Route = createFileRoute("/stake")({
+  validateSearch: (raw): { tab: StakeTab } => ({
+    tab: raw?.tab === "unstake" ? "unstake" : "stake",
+  }),
   component: Stake,
 });

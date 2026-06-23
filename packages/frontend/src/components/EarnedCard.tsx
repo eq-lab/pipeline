@@ -64,10 +64,11 @@ export interface EarnedCardProps extends Omit<
    */
   mobileHomeState?: MobileHomeState;
   /**
-   * Formatted PnL APY label, e.g. `"8.42% p.a."`. When present, this replaces
-   * the placeholder value.
+   * Formatted total PnL in dollars, e.g. `"+$123.00"` (realized + unrealized,
+   * sourced from `GET /v1/pnl` `total_pnl`). When present, this replaces the
+   * placeholder value.
    */
-  avgApyLabel?: string;
+  earnedPnlLabel?: string;
   /**
    * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
    * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
@@ -106,7 +107,7 @@ const valueClasses = [
 
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
   function EarnedCard(
-    { className, mobileHomeState, avgApyLabel, ...rest },
+    { className, mobileHomeState, earnedPnlLabel, ...rest },
     ref,
   ) {
     // Use a unique id per instance to avoid duplicate id attributes when both
@@ -123,14 +124,14 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
       .join(" ");
 
     // Determine the display value based on state.
-    // PnL APY, when available, wins over placeholders.
+    // Total PnL (dollars), when available, wins over placeholders.
     // States A/B (empty/plusd) when connected: "Nothing yet".
-    // Disconnected / desktop / State C without APY: tracking placeholder.
+    // Disconnected / desktop / State C without PnL: tracking placeholder.
     let earnedValue: string;
     let valueExtra: string | undefined;
 
-    if (avgApyLabel !== undefined) {
-      earnedValue = avgApyLabel;
+    if (earnedPnlLabel !== undefined) {
+      earnedValue = earnedPnlLabel;
       valueExtra = undefined;
     } else if (mobileHomeState === "empty" || mobileHomeState === "plusd") {
       // States A/B: "Nothing yet" per Figma frames 1988:7074 / 1984:6501.
@@ -141,11 +142,11 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
       valueExtra = undefined;
     }
 
-    // PnL APY value classes: use green positive token for the earned value.
+    // PnL value classes: use the green positive token for the earned value.
     // Mobile (base): heading-s-mobile = 18px / 28px (Figma node 1886:46777).
     // Desktop (md+): heading-s = 20px / 28px.
     const stateValueClasses =
-      avgApyLabel !== undefined
+      earnedPnlLabel !== undefined
         ? [
             "font-[family-name:var(--font-display)]",
             "text-[length:var(--text-pipeline-heading-s-mobile)]",

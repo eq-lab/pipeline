@@ -31,7 +31,7 @@ import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
-import { usePnl, formatApy, useStatsPrices } from "@/api";
+import { usePnl, useStatsPrices } from "@/api";
 
 /**
  * Home page — full composition (Figma `1497:94556` desktop, `1989:8292` mobile).
@@ -243,11 +243,6 @@ function Home() {
     activeDecimals,
     { signed: true, suffix: "unrealized" },
   );
-  const avgApyFormatted = formatApy(pnl.data?.avg_apy);
-  const earnedApyLabel =
-    isConnected && avgApyFormatted !== "—"
-      ? `${avgApyFormatted} p.a.`
-      : undefined;
   const activeSplusdVaultAddress = isStellar
     ? ENV.STELLAR_STAKED_PLUSD_ID
     : ENV.STAKED_PLUSD_ADDRESS;
@@ -265,6 +260,16 @@ function Home() {
     ? deriveMobileHomeState(plusdBalanceActive, splusdSharesActive)
     : "empty";
 
+  // "Earned" shows the staked position's total PnL in dollars (realized +
+  // unrealized) once the user holds sPLUSD; otherwise the EarnedCard keeps its
+  // per-state placeholder ("Nothing yet" / "Tracked once you stake").
+  const earnedPnlLabel =
+    mobileHomeState === "splusd" && pnl.data?.total_pnl != null
+      ? formatRawDecimalUSD(pnl.data.total_pnl, activeDecimals, {
+          signed: true,
+        })
+      : undefined;
+
   // Disable Stake only when connected with zero or undefined PLUSD balance.
   // When disconnected the CTA stays enabled so the user can navigate to /stake.
   const stakeDisabled =
@@ -275,7 +280,9 @@ function Home() {
     navigate({ to: "/deposit", search: { direction: "deposit" } });
   const onSell = () =>
     navigate({ to: "/deposit", search: { direction: "withdraw" } });
-  const onStake = () => navigate({ to: "/stake" });
+  const onStake = () => navigate({ to: "/stake", search: { tab: "stake" } });
+  const onUnstake = () =>
+    navigate({ to: "/stake", search: { tab: "unstake" } });
 
   return (
     <div
@@ -351,7 +358,7 @@ function Home() {
               <EarnedCard
                 padding="sm"
                 mobileHomeState={isConnected ? mobileHomeState : undefined}
-                avgApyLabel={earnedApyLabel}
+                earnedPnlLabel={earnedPnlLabel}
                 data-testid="home-earned-card"
               />
             </div>
@@ -362,10 +369,12 @@ function Home() {
               padding="sm"
               style={{ width: 189, flexShrink: 0 }}
               onStake={onStake}
+              onUnstake={onUnstake}
               stakeDisabled={stakeDisabled}
               mobileHomeState={isConnected ? mobileHomeState : undefined}
               mobileSplusdShares={splusdSharesActive}
               mobileSplusdInPlusd={splusdInPlusdActive}
+              splusdUsdValue={splusdBalanceFormatted}
               splusdDecimals={activeDecimals}
               data-testid="home-stake-card"
             />
@@ -447,16 +456,30 @@ function Home() {
                 data-testid="home-start-here-card"
               />
               <EarnedCard
-                avgApyLabel={earnedApyLabel}
+                earnedPnlLabel={earnedPnlLabel}
                 data-testid="home-earned-card"
               />
             </div>
 
-            {/* Row 2, columns 3–4: Stake CTA card. */}
+            {/* Row 2, columns 3–4: Stake CTA card. Once the user holds sPLUSD
+                the card switches to the "Staked PLUSD" balance layout (Figma
+                node 1497:95217); otherwise it keeps the marketing CTA. The
+                empty/plusd button labels are mobile-specific, so the desktop
+                instance only opts into the `"splusd"` state. */}
             <StakeCard
               className="col-span-2 col-start-3 row-start-2"
               onStake={onStake}
+              onUnstake={onUnstake}
               stakeDisabled={stakeDisabled}
+              mobileHomeState={
+                isConnected && mobileHomeState === "splusd"
+                  ? "splusd"
+                  : undefined
+              }
+              mobileSplusdShares={splusdSharesActive}
+              mobileSplusdInPlusd={splusdInPlusdActive}
+              splusdUsdValue={splusdBalanceFormatted}
+              splusdDecimals={activeDecimals}
               data-testid="home-stake-card"
             />
 
