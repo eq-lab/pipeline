@@ -268,7 +268,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
               to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
               search={
                 mobileHomeState === "plusd"
-                  ? undefined
+                  ? { tab: "stake" as const }
                   : { direction: "deposit" as const }
               }
               className={[

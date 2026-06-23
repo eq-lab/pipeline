@@ -94,6 +94,7 @@ const mockPnlData = vi.hoisted(() => ({
   current: undefined as
     | {
         total_unrealized_pnl: string;
+        total_pnl?: string;
         avg_apy?: string | null;
       }
     | undefined,
@@ -358,7 +359,10 @@ describe("Home page — disconnected state", () => {
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: "/stake" });
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/stake",
+        search: { tab: "stake" },
+      });
     });
   });
 
@@ -386,7 +390,10 @@ describe("Home page — disconnected state", () => {
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: "/stake" });
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/stake",
+        search: { tab: "stake" },
+      });
     });
   });
 });
@@ -802,23 +809,41 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile StakeCard shows 'Stake More' CTA (State C)", async () => {
+  it("StakeCard shows 'Stake More' CTA (State C)", async () => {
+    renderHome();
+    await waitFor(() => {
+      // Rendered on both the mobile stack and the desktop dashboard.
+      expect(
+        screen.getAllByRole("button", { name: "Stake More PLUSD" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("StakeCard shows 'Unstake' link (State C)", async () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Stake More PLUSD" }),
-      ).toBeInTheDocument();
+        screen.getAllByTestId("unstake-link").length,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it("mobile StakeCard shows 'Unstake' link (State C)", async () => {
+  it("clicking 'Unstake' navigates to /stake?tab=unstake (State C)", async () => {
+    const user = userEvent.setup();
     renderHome();
+
+    const links = await screen.findAllByTestId("unstake-link");
+    await user.click(links[0]!);
+
     await waitFor(() => {
-      expect(screen.getByTestId("unstake-link")).toBeInTheDocument();
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/stake",
+        search: { tab: "unstake" },
+      });
     });
   });
 
-  it("mobile EarnedCard shows tracking placeholder when State C has no PnL APY yet", async () => {
+  it("EarnedCard shows tracking placeholder when State C has no PnL yet", async () => {
     renderHome();
     await waitFor(() => {
       const elements = screen.getAllByText("Tracked once you stake");
@@ -826,18 +851,22 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     });
   });
 
-  it("mobile EarnedCard shows avg APY from PnL when available", async () => {
+  it("EarnedCard shows total PnL in dollars from the pnl API when available", async () => {
     mockPnlData.current = {
       total_unrealized_pnl: "42800000000000000000",
+      total_pnl: "123000000000000000000", // 123 PLUSD at 18 dp
       avg_apy: "0.0842",
     };
 
     renderHome();
 
     await waitFor(() => {
-      const elements = screen.getAllByText("8.42% p.a.");
+      // total_pnl rendered as a signed USD value (Earned card) — not a percent.
+      const elements = screen.getAllByText("+$123.00");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
+    // The old APY label must no longer appear.
+    expect(screen.queryByText("8.42% p.a.")).not.toBeInTheDocument();
   });
 
   it("mobile portfolio chart summary shows sPLUSD balance in currency format and unrealized PnL below it", async () => {
@@ -872,10 +901,38 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
   it("sPLUSD shares display is present in State C", async () => {
     renderHome();
     await waitFor(() => {
-      const sharesEl = screen.getByTestId("splusd-shares");
-      expect(sharesEl).toBeInTheDocument();
+      const sharesEls = screen.getAllByTestId("splusd-shares");
+      expect(sharesEls.length).toBeGreaterThanOrEqual(1);
       // 1000 sPLUSD shares at 18 decimals.
-      expect(sharesEl.textContent).toContain("1,000.00");
+      expect(sharesEls[0]?.textContent).toContain("1,000.00");
+    });
+  });
+
+  it("StakeCard staked sub-line shows the sPLUSD label, USD value and coin icon (State C)", async () => {
+    // The PLUSD-equivalent figure comes from convertToAssets, which is gated on
+    // a non-zero STAKED_PLUSD_ADDRESS — so in this EVM mock (zero-address) the
+    // numeric value is 0; the precise figure is asserted in the Stellar suite.
+    renderHome();
+    await waitFor(() => {
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      // "{X} sPLUSD · ${USD}" with the position's USD value appended
+      // (Figma node 1497:95226).
+      expect(subLine?.textContent).toContain("sPLUSD");
+      expect(subLine?.textContent).toMatch(/· \$[\d,]+\.\d{2}/);
+      // The sPLUSD coin icon precedes the figures.
+      expect(subLine?.querySelector("img")).toBeInTheDocument();
+    });
+  });
+
+  it("desktop StakeCard renders the staked state, not the marketing CTA (State C)", async () => {
+    renderHome();
+    await waitFor(() => {
+      // Both the mobile and desktop instances now show the staked layout, so
+      // there is no generic "Stake" CTA (home-stake-button) anywhere.
+      expect(screen.queryByTestId("home-stake-button")).not.toBeInTheDocument();
+      expect(
+        screen.getAllByTestId("home-stake-more-button").length,
+      ).toBeGreaterThanOrEqual(2);
     });
   });
 });
@@ -1132,6 +1189,15 @@ describe("Home page — Stellar connected balances (#688)", () => {
         name: "$100.00",
       });
       expect(headings.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Staked sub-line: 100 shares × 1.04 rate = 104.00 PLUSD-equivalent,
+    // labelled sPLUSD, with the position's USD value ($100.00) appended and the
+    // sPLUSD coin icon (Figma node 1497:95226).
+    await waitFor(() => {
+      const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
+      expect(subLine?.textContent).toContain("104.00 sPLUSD · $100.00");
+      expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
 
     // Mobile RecentActivityCard should be present (State C).
