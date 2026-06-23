@@ -100,8 +100,8 @@ function Deposit() {
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
   const [copied, setCopied] = useState(false);
-  // `request_id` of a completed deposit the user dismissed via "Make another
-  // deposit". Suppresses the done state so a fresh deposit can be entered.
+  // `request_id` of a completed deposit the page has already reset for. Gates
+  // the auto-reset effect so it fires once per completed deposit.
   const [dismissedDepositId, setDismissedDepositId] = useState<
     string | undefined
   >(undefined);
@@ -135,11 +135,23 @@ function Deposit() {
   // Render nothing only during the initial load, before data first resolves.
   const isInitialDataLoad = flow.isDataPending && !hasLoadedDataRef.current;
 
-  // ── "Make another deposit" — dismiss the completed deposit, reset the form ─
-  const onMakeAnotherDeposit = useCallback(() => {
-    setDismissedDepositId(flow.depositCompletedRequestId);
-    setAmountInput("");
-  }, [flow.depositCompletedRequestId]);
+  // ── Auto-reset once a deposit settles to `Completed` ──────────────────
+  // There is no terminal "done" state: when the latest deposit completes the
+  // form returns to its initial state so a fresh deposit can start. Dismiss the
+  // completed request (so this fires once), clear the input, and reset the
+  // request/claim mutations.
+  const {
+    isDepositCompleted,
+    depositCompletedRequestId,
+    reset: resetFlow,
+  } = flow;
+  useEffect(() => {
+    if (isDepositCompleted) {
+      setDismissedDepositId(depositCompletedRequestId);
+      setAmountInput("");
+      resetFlow();
+    }
+  }, [isDepositCompleted, depositCompletedRequestId, resetFlow]);
 
   // ── Connect modal (shared single instance via ConnectModalProvider) ───
   const { open: openConnectModal } = useConnectModal();
@@ -501,8 +513,7 @@ function Deposit() {
         ) : isInitialDataLoad /* First load only: chain data / requests API still loading — render nothing until first resolved (avoids re-hide flicker on background refetches). */ ? null : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
-          flow.hasBalance === false &&
-          !flow.isDepositCompleted ? (
+          flow.hasBalance === false ? (
           /* No USDC trustline (Stellar deposit, no USDC balance) — must be
              established before the account can hold or deposit USDC. Takes the
              place of the low-balance banner; same layout, but the action adds
@@ -539,9 +550,7 @@ function Deposit() {
               {usdcTrustline?.enabling ? "Adding…" : "Add trustline"}
             </Button>
           </Card>
-        ) : isDeposit &&
-          flow.hasBalance === false &&
-          !flow.isDepositCompleted ? (
+        ) : isDeposit && flow.hasBalance === false ? (
           /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card
             variant="yellow"
@@ -659,21 +668,6 @@ function Deposit() {
             ]}
           />
         )}
-
-        {/* "Make another deposit" — shown once the latest deposit is claimed
-            (Completed). Resets the form so a fresh deposit can be started. */}
-        {flow.isConnected &&
-          !isInitialDataLoad &&
-          flow.isDepositCompleted && (
-            <Button
-              data-testid="make-another-deposit"
-              variant="primary-dark"
-              className="w-full"
-              onClick={onMakeAnotherDeposit}
-            >
-              Make another deposit
-            </Button>
-          )}
       </main>
     </div>
   );
