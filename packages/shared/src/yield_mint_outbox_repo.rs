@@ -60,6 +60,11 @@ pub trait OutboxStore: Send + Sync {
     /// Transition a `pending` row to `submitted`.
     async fn mark_submitted(&self, key: &OutboxKey, bitgo_tx_request_id: &str) -> Result<()>;
 
+    /// Transition a `pending` row to `submitted`, recording the Soroban tx hash
+    /// directly (Stellar path — no BitGo tx-request id). `bitgo_tx_request_id`
+    /// stays NULL.
+    async fn mark_submitted_stellar(&self, key: &OutboxKey, tx_hash: &str) -> Result<()>;
+
     /// Transition a `submitted` row to `confirmed`.
     async fn mark_confirmed(&self, key: &OutboxKey, tx_hash: &str) -> Result<()>;
 
@@ -122,6 +127,58 @@ impl YieldMintOutboxRepo {
         .bind(yield_minter_address)
         .bind(chain_id)
         .bind(loan_registry_address_checksum)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() as usize)
+    }
+
+    /// Stellar variant of [`discover_pending`].
+    ///
+    /// The stored `params` shape is **identical to the EVM shape**: although the
+    /// raw Soroban parser emits a flat `{loan_id, repayment_id, …}`
+    /// (`worker/src/indexer/stellar/loan_registry_parsers.rs`), the indexer then
+    /// runs the `LoanEventMapper` enrichment (EVM parity, #620) which re-wraps
+    /// every lifecycle event into `{loan_id, event:{…}, snapshot:{…}}`
+    /// (`worker/src/indexer/loan_mapper.rs`). So `loan_id` is top-level but
+    /// `repayment_id` is nested under `params->'event'`, exactly like
+    /// [`discover_pending`]. The only Stellar-specific aspect is that the
+    /// loan-registry address is a Soroban `C…` strkey (no EIP-55 checksum).
+    ///
+    /// Returns the number of rows inserted.
+    pub async fn discover_pending_stellar(
+        &self,
+        chain_id: i64,
+        yield_minter_address: &str,
+        loan_registry_contract_id: &str,
+    ) -> Result<usize> {
+        let result = sqlx::query(
+            r"
+            INSERT INTO yield_mint_outbox
+                (chain_id, yield_minter_address, loan_id, repayment_id, status)
+            SELECT
+                cl.chain_id,
+                $1 AS yield_minter_address,
+                (cl.params->>'loan_id')::numeric AS loan_id,
+                (cl.params->'event'->>'repayment_id')::numeric AS repayment_id,
+                'pending'
+            FROM contract_logs cl
+            WHERE cl.event_name = 'PaymentRecorded'
+              AND cl.chain_id = $2
+              AND cl.contract_address = $3
+              AND NOT EXISTS (
+                  SELECT 1 FROM yield_mint_outbox o
+                  WHERE o.chain_id = cl.chain_id
+                    AND o.yield_minter_address = $1
+                    AND o.loan_id = (cl.params->>'loan_id')::numeric
+                    AND o.repayment_id = (cl.params->'event'->>'repayment_id')::numeric
+              )
+            ON CONFLICT DO NOTHING
+            ",
+        )
+        .bind(yield_minter_address)
+        .bind(chain_id)
+        .bind(loan_registry_contract_id)
         .execute(&self.pool)
         .await?;
 
@@ -217,6 +274,39 @@ impl OutboxStore for YieldMintOutboxRepo {
                 loan_id = %key.loan_id,
                 repayment_id = %key.repayment_id,
                 "yield_mint: mark_submitted matched 0 rows (row not in pending state)"
+            );
+        }
+        Ok(())
+    }
+
+    async fn mark_submitted_stellar(&self, key: &OutboxKey, tx_hash: &str) -> Result<()> {
+        let result = sqlx::query(
+            r"
+            UPDATE yield_mint_outbox
+               SET status = 'submitted',
+                   tx_hash = $1,
+                   submitted_at = NOW()
+             WHERE chain_id = $2
+               AND yield_minter_address = $3
+               AND loan_id = $4
+               AND repayment_id = $5
+               AND status = 'pending'
+            ",
+        )
+        .bind(tx_hash)
+        .bind(key.chain_id)
+        .bind(&key.yield_minter_address)
+        .bind(&key.loan_id)
+        .bind(&key.repayment_id)
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!(
+                chain_id = key.chain_id,
+                loan_id = %key.loan_id,
+                repayment_id = %key.repayment_id,
+                "yield_mint: mark_submitted_stellar matched 0 rows (row not in pending state)"
             );
         }
         Ok(())

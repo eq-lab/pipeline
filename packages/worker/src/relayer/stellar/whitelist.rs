@@ -16,11 +16,10 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
 use shared::kyc_repo::KycRepo;
 use stellar_strkey::{ed25519::PublicKey as Ed25519Pub, Contract as ContractStrkey};
-use stellar_xdr::curr::{
-    Limits, ReadXdr, ScVal, ScVec, SorobanAuthorizationEntry, SorobanTransactionData, VecM,
-};
+use stellar_xdr::curr::{Limits, ReadXdr, ScVal, ScVec, VecM};
 
 use crate::indexer::stellar::rpc::{SendResponse, StellarRpc};
+use crate::relayer::stellar::sim_decode::{decode_auth_entries, decode_soroban_data};
 use crate::stellar::tx::{
     address_account, address_contract, build_invoke_envelope, envelope_to_base64, sign_envelope,
     symbol,
@@ -213,31 +212,6 @@ impl StellarWhitelister {
             POLL_MAX_ATTEMPTS
         );
     }
-}
-
-fn decode_soroban_data(b64: &str) -> Result<SorobanTransactionData> {
-    let bytes = STANDARD
-        .decode(b64.as_bytes())
-        .context("decode SorobanTransactionData base64")?;
-    SorobanTransactionData::from_xdr(bytes.as_slice(), Limits::none())
-        .context("decode SorobanTransactionData XDR")
-}
-
-fn decode_auth_entries(
-    results: &[crate::indexer::stellar::rpc::SimulateResult],
-) -> Result<Vec<SorobanAuthorizationEntry>> {
-    let mut out = Vec::new();
-    for r in results {
-        for entry_b64 in &r.auth_xdr_base64 {
-            let bytes = STANDARD
-                .decode(entry_b64.as_bytes())
-                .context("decode SorobanAuthorizationEntry base64")?;
-            let entry = SorobanAuthorizationEntry::from_xdr(bytes.as_slice(), Limits::none())
-                .context("decode SorobanAuthorizationEntry XDR")?;
-            out.push(entry);
-        }
-    }
-    Ok(out)
 }
 
 fn strkey_g(p: &Ed25519Pub) -> String {

@@ -171,3 +171,8 @@ pub fn symbol(s: &str) -> ScVal {
         .expect("symbol fits in StringM<32>");
     ScVal::Symbol(ScSymbol(inner))
 }
+
+/// Build `ScVal::U32(n)`.
+pub fn u32_val(n: u32) -> ScVal {
+    ScVal::U32(n)
+}

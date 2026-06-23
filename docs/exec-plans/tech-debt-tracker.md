@@ -182,6 +182,29 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Confusing dual-file situation; the dead file could mislead future contributors.
 - **Suggested fix:** Confirm with `grep -rn "evm/WalletGateContext"` that no import exists, then delete the file.
 
+### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
+- **Date:** 2026-06-22 (incident 2026-06-23)
+- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs` — `YieldMintOutboxRepo::discover_pending_stellar`
+- **Gap:** The Stellar discovery query is the one piece of the yield-mint phase (Issue #683) with zero automated coverage — the project's no-DB-test rule precludes a unit test, and the orchestration tests exercise the trait surface via an in-memory store, not the SQL. Its correctness depends on an invisible coupling to the indexer's stored `PaymentRecorded` `params` shape and the loan-registry `C…` strkey in `contract_logs.contract_address`.
+- **What happened (2026-06-23):** the coupling broke exactly as predicted. The original SQL read `repayment_id` from **top-level** `params->>'repayment_id'`, derived from reading only the raw parser (`indexer/stellar/loan_registry_parsers.rs`). But the indexer also runs `LoanEventMapper` enrichment (`indexer/loan_mapper.rs:448-465`) which nests it under `params->'event'`. Discovery inserted `repayment_id = NULL` → `null value in column "repayment_id" ... violates not-null constraint`, aborting every relayer cycle. Fixed by switching both `repayment_id` references to `params->'event'->>'repayment_id'` (now identical to EVM `discover_pending`). Not silent in the end (NOT-NULL caught it) — but only because the column happens to be NOT NULL; a nullable column would have silently never minted.
+- **Impact:** Still no regression guard. A future change to the indexer's JSON path or address format would re-break discovery with no test catching it.
+- **Suggested fix:** Add a DB-backed (or fixture-driven `contract_logs` → outbox) integration test that inserts a `PaymentRecorded` row in the indexer's exact enriched shape and asserts a pending outbox row is discovered with non-null `loan_id`/`repayment_id`. Gate it to skip gracefully when no test DB is available, matching the existing `discover_*` test convention.
+- **Dedup note:** post-fix, `discover_pending_stellar` is byte-identical to `discover_pending` (only the caller's `contract_address` bind value differs). Candidate to collapse into one method; kept separate for now (deliberate choice 2026-06-23) — fold into the integration-test work above.
+
+### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op
+- **Date:** 2026-06-22
+- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` — `confirm_submitted_stellar`, the `row.tx_hash` `None` arm
+- **Gap:** A `submitted` row with `tx_hash IS NULL` logs an error and `continue`s every cycle with no path to resolution. Unreachable today (the Stellar `mark_submitted_stellar` always sets `tx_hash`), so it is defensive-only — not a live bug.
+- **Impact:** If the invariant is ever broken, the row sticks in the active set forever, re-logging an error each cycle, never failing out for operator review.
+- **Suggested fix:** Change the branch to `mark_failed(&key, "submitted row missing tx_hash")` so the row leaves the active set and surfaces for operator review instead of looping.
+
+### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
+- **Date:** 2026-06-22
+- **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
+- **Gap:** Two modules define differently-named constants for the same concept (the simulate-only fee that is never charged), with identical values. Issue #683 created `relayer/stellar/sim_decode.rs` as the shared simulate home but left the fee constant duplicated to avoid touching the stable whitelist module.
+- **Impact:** No bug today (values match). Drift risk: a future change to one is silently not reflected in the other.
+- **Suggested fix:** Move the simulate fee into `sim_decode.rs` (e.g. `pub const SIMULATE_FEE: u32 = 1_000_000;`) and point both `whitelist.rs` and `yield_mint.rs` at it; reconcile the two names.
+
 ---
 
 ## Post-MVP
