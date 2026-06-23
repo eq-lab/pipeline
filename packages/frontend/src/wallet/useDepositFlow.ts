@@ -31,7 +31,7 @@
  *   of direction. On EVM, `trustlines` is always empty.
  */
 
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   useWalletView,
   // EVM
@@ -61,6 +61,8 @@ import {
   useStellarChangeTrustUsdc,
   readInflightDeposit,
   readInflightWithdrawal,
+  clearInflightDeposit,
+  clearInflightWithdrawal,
   useStellarNetworkFeeEstimate,
 } from "@/wallet";
 import {
@@ -511,14 +513,55 @@ export function useDepositFlow(
     stellarWithdrawRequestIdBigInt,
   );
 
+  // ── Reconcile stale in-flight records against on-chain claimed state ───────
+  // The in-flight localStorage record is written when `request_deposit` succeeds
+  // and is otherwise only cleared by a successful claim through this app/browser.
+  // If the request was claimed any other way (different device, the API-driven
+  // `Completed` reset, etc.), the record lingers and pins the form as "confirmed"
+  // forever — disabling the amount input with no escape hatch. When the on-chain
+  // request reads back as already claimed, drop the record so a fresh
+  // deposit/withdrawal can start. (A claimed request is terminal, so this never
+  // races with a genuinely in-flight one.)
+  const stellarDepositClaimedOnChain =
+    stellarDepositOnChainReq.request?.claimed === true;
+  const stellarWithdrawClaimedOnChain =
+    stellarWithdrawOnChainReq.request?.claimed === true;
+
+  const stellarDepositInflightActive =
+    stellarDepositInflight !== undefined && !stellarDepositClaimedOnChain;
+  const stellarWithdrawInflightActive =
+    stellarWithdrawInflight !== undefined && !stellarWithdrawClaimedOnChain;
+
+  // Housekeeping: physically remove the dead localStorage key. The UI already
+  // ignores it this render via `*InflightActive`, so correctness does not depend
+  // on this effect firing — it just stops the key from lingering.
+  useEffect(() => {
+    if (
+      stellarAddress &&
+      stellarDepositInflight !== undefined &&
+      stellarDepositClaimedOnChain
+    ) {
+      clearInflightDeposit(stellarAddress);
+    }
+  }, [stellarAddress, stellarDepositInflight, stellarDepositClaimedOnChain]);
+  useEffect(() => {
+    if (
+      stellarAddress &&
+      stellarWithdrawInflight !== undefined &&
+      stellarWithdrawClaimedOnChain
+    ) {
+      clearInflightWithdrawal(stellarAddress);
+    }
+  }, [stellarAddress, stellarWithdrawInflight, stellarWithdrawClaimedOnChain]);
+
   const stellarDepositRequestIsConfirmed =
     stellarDepositActiveRequest !== null ||
     stellarRequestDeposit.isSuccess ||
-    stellarDepositInflight !== undefined;
+    stellarDepositInflightActive;
   const stellarWithdrawRequestIsConfirmed =
     stellarWithdrawActiveRequest !== null ||
     stellarRequestWithdrawal.isSuccess ||
-    stellarWithdrawInflight !== undefined;
+    stellarWithdrawInflightActive;
 
   const stellarDepositIsPendingClaim =
     stellarDepositActiveRequest?.status === "PendingClaim" ||
