@@ -335,6 +335,18 @@ function Deposit() {
   ]);
 
   // ── Toast: step 3 (claim) ─────────────────────────────────────────────
+  // Track the most recent locked request amount so the claim toast can show
+  // the claimed amount even after the flow resets on completion.
+  const lastClaimAmountRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (flow.lockedAmountRaw && flow.decimals !== undefined) {
+      lastClaimAmountRef.current = formatUsdc(
+        flow.lockedAmountRaw,
+        flow.decimals,
+      );
+    }
+  }, [flow.lockedAmountRaw, flow.decimals]);
+
   const prevStep3IsPending = useRef(false);
   const prevStep3IsSuccess = useRef(false);
   const prevStep3Error = useRef<Error | null>(null);
@@ -351,9 +363,24 @@ function Deposit() {
       toast.show({ id: toastId, tone: "pending", title: "Claiming…" });
     }
     if (flow.step3Tx.isSuccess && !prevStep3IsSuccess.current) {
+      const claimedAmount = lastClaimAmountRef.current;
       toast.update(toastId, {
         tone: "success",
-        title: isDeposit ? "PLUSD claimed" : "USDC claimed",
+        // PLUSD claims surface the amount + a Stake CTA; USDC claims (withdraw)
+        // keep the plain confirmation since staking USDC doesn't apply.
+        title: isDeposit
+          ? claimedAmount
+            ? `+${claimedAmount} PLUSD`
+            : "PLUSD claimed"
+          : "USDC claimed",
+        action: isDeposit
+          ? {
+              label: "Stake",
+              // `search: {}` is required to satisfy the typed-router signature
+              // for the (search-less) /stake route under strict type resolution.
+              onClick: () => void navigate({ to: "/stake", search: {} }),
+            }
+          : undefined,
       });
     }
     if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
@@ -368,6 +395,7 @@ function Deposit() {
     flow.step3Tx.isSuccess,
     flow.step3Tx.error,
     toast,
+    navigate,
     direction,
     isStellar,
     isDeposit,
