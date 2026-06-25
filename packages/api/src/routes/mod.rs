@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod common;
 pub mod emails;
 pub mod kyc;
+pub mod loan_book;
 pub mod pnl;
 pub mod portfolio;
 pub mod stats;
