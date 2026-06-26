@@ -15,6 +15,12 @@ use axum::Json;
 pub enum ApiError {
     /// 400 Bad Request. The String is the user-visible error message.
     BadRequest(String),
+    /// 401 Unauthorized. The String is the user-visible error message. Used by the
+    /// auth routes and the `AuthClaims` extractor when authentication fails or is
+    /// not configured.
+    Unauthorized(String),
+    /// 403 Forbidden. The caller is authenticated but lacks the required role.
+    Forbidden(String),
     /// 500 Internal Server Error. The wrapped `anyhow::Error` is logged but never
     /// returned to the caller — the response body is a generic `"internal error"`.
     Internal(anyhow::Error),
@@ -37,6 +43,16 @@ impl IntoResponse for ApiError {
         match self {
             Self::BadRequest(msg) => (
                 StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::Unauthorized(msg) => (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::Forbidden(msg) => (
+                StatusCode::FORBIDDEN,
                 Json(serde_json::json!({"error": msg})),
             )
                 .into_response(),

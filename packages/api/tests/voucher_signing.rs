@@ -55,7 +55,7 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         pool: pool.clone(),
         kyc_repo: KycRepo::new(pool.clone()),
         position_repo: PositionRepo::new(pool.clone()),
-        contract_logs_repo: ContractLogsRepo::new(pool),
+        contract_logs_repo: ContractLogsRepo::new(pool.clone()),
         default_chain_id: chain_id,
         sumsub_client: None,
         sumsub_settings: None,
@@ -64,6 +64,8 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         wq_domains,
         stellar_voucher_signers: HashMap::new(),
         crystal_enabled: false,
+        auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool),
+        jwt_keys: None,
     }
 }
 

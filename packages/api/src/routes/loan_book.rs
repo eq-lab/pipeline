@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::routing::get;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive};
 use serde::Serialize;
@@ -17,10 +18,14 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 
+use crate::auth::{AuthClaims, SecurityAddon};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::AppState;
+
+/// Role required to submit loan data via `POST /v1/loan-book/loan`.
+const ORIGINATOR_ROLE: &str = "originator";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -102,8 +107,9 @@ pub struct LoanBookResponse {
 /// OpenAPI doc bundle for the loan-book route.
 #[derive(OpenApi)]
 #[openapi(
-    paths(get_loan_book),
+    paths(get_loan_book, submit_loan),
     components(schemas(LoanBookResponse, LoanBookSummary, LoanBookEntry)),
+    modifiers(&SecurityAddon),
     tags((name = "LoanBook", description = "Protocol loan book aggregation"))
 )]
 pub struct LoanBookDoc;
@@ -111,7 +117,9 @@ pub struct LoanBookDoc;
 // ── Router ───────────────────────────────────────────────────────────────────
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/loan-book", get(get_loan_book))
+    Router::new()
+        .route("/loan-book", get(get_loan_book))
+        .route("/loan-book/loan", post(submit_loan))
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -134,6 +142,43 @@ async fn get_loan_book(
 ) -> Result<Json<LoanBookResponse>, ApiError> {
     let chain_id = resolve_chain(&state, query.chain_id);
     handle_loan_book(&state, chain_id).await.map(Json)
+}
+
+/// Submit loan data. Restricted to callers holding the `originator` role
+/// (authenticate via `POST /v1/auth/verify`, then send the JWT as
+/// `Authorization: Bearer <token>`).
+///
+/// Not yet implemented: the request payload shape and persistence are TBD, so
+/// an authorized caller currently receives `501 Not Implemented`. The auth +
+/// role gate is live.
+#[utoipa::path(
+    post,
+    path = "/v1/loan-book/loan",
+    request_body(
+        content = serde_json::Value,
+        description = "Loan information payload (shape TBD)",
+    ),
+    responses(
+        (status = 501, description = "Authorized; payload shape and persistence are not yet implemented"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 403, description = "Caller lacks the `originator` role"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "LoanBook"
+)]
+async fn submit_loan(
+    AuthClaims(claims): AuthClaims,
+    State(_state): State<Arc<AppState>>,
+    Json(_payload): Json<serde_json::Value>,
+) -> Result<StatusCode, ApiError> {
+    if !claims.has_role(ORIGINATOR_ROLE) {
+        return Err(ApiError::Forbidden(format!(
+            "this endpoint requires the `{ORIGINATOR_ROLE}` role"
+        )));
+    }
+
+    // TODO: define the loan submission payload and persist it. Empty for now.
+    Ok(StatusCode::NOT_IMPLEMENTED)
 }
 
 async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookResponse, ApiError> {

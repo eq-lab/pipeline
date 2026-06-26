@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::Router;
+use pipeline_api::auth::JwtKeys;
 use pipeline_api::config::ChainsConfig;
 use pipeline_api::AppState;
+use shared::auth_user_repo::AuthUserRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
@@ -40,6 +42,11 @@ async fn main() -> anyhow::Result<()> {
     let kyc_repo = KycRepo::new(pool.clone());
     let position_repo = PositionRepo::new(pool.clone());
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
+    let auth_user_repo = AuthUserRepo::new(pool.clone());
+
+    // JWT keys are optional — when unset the auth endpoints are unavailable but
+    // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
+    let jwt_keys = JwtKeys::from_env()?;
 
     // Parse multi-chain config (CHAINS, DEFAULT_CHAIN_ID, per-chain signer keys).
     let chains_config = ChainsConfig::from_env()?;
@@ -78,6 +85,8 @@ async fn main() -> anyhow::Result<()> {
         wq_domains,
         stellar_voucher_signers,
         crystal_enabled,
+        auth_user_repo,
+        jwt_keys,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
@@ -88,9 +97,11 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::stats::StatsDoc::openapi());
     api_docs.merge(pipeline_api::routes::portfolio::YieldDoc::openapi());
     api_docs.merge(pipeline_api::routes::loan_book::LoanBookDoc::openapi());
+    api_docs.merge(pipeline_api::routes::auth::AuthDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
+        .nest("/v1", pipeline_api::routes::auth::router())
         .nest("/v1/kyc", pipeline_api::routes::kyc::router())
         .nest("/v1", pipeline_api::routes::vouchers::router())
         .nest("/v1", pipeline_api::routes::analytics::router())

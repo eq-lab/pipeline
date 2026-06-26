@@ -28,6 +28,9 @@ utoipa            = { version = "5" }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 stellar-xdr        = { version = "25", features = ["std", "base64", "serde"] }
 stellar-strkey     = "0.0.16"
+jsonwebtoken       = "9"
+uuid               = { version = "1", features = ["v4"] }
+base64             = "0.22"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
