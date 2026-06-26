@@ -1,3 +1,4 @@
+pub mod auth_user_repo;
 pub mod bitgo;
 pub mod chains;
 pub mod contract_logs_repo;
