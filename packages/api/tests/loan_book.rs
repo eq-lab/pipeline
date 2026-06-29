@@ -47,6 +47,7 @@ fn make_loan(
     end_day: i64,
     originator: &str,
     commodity: &str,
+    protection: &str,
 ) -> LoanSnapshotRow {
     LoanSnapshotRow {
         chain_id: 1,
@@ -61,6 +62,7 @@ fn make_loan(
             commodity: commodity.to_owned(),
             corridor: "cr".to_owned(),
             governing_law: "EN".to_owned(),
+            protection: protection.to_owned(),
             metadata_uri: None,
             // `*_k` args are in thousands of USDC.
             original_facility_size: usdc((senior_k + equity_k) * 1_000),
@@ -97,8 +99,9 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
             180,
             "Open Mineral",
             "Copper Concentrate",
+            "LC at sight",
         ),
-        make_loan(2, 40, 10, 1500, 30, 120, "Trafalgar", "Alumina"),
+        make_loan(2, 40, 10, 1500, 30, 120, "Trafalgar", "Alumina", ""),
     ]
 }
 
@@ -157,6 +160,24 @@ fn entry_carries_expected_fields() {
 }
 
 #[test]
+fn protection_maps_nonempty_to_some_and_empty_to_none() {
+    // Loan A (Open Mineral) has protection "LC at sight"; loan B (Trafalgar) has "".
+    let r = at(60, &fixture_loans(), &[]);
+    let a = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Open Mineral")
+        .unwrap();
+    let b = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Trafalgar")
+        .unwrap();
+    assert_eq!(a.protection.as_deref(), Some("LC at sight"));
+    assert_eq!(b.protection, None);
+}
+
+#[test]
 fn matured_loan_excluded() {
     // Day 150: A active (0–180), B matured (ends day 120).
     let r = at(150, &fixture_loans(), &[]);
@@ -200,15 +221,15 @@ fn empty_registry_returns_empty_book() {
 }
 
 #[test]
-fn collateral_coverage_and_protection_are_null_for_now() {
-    // TODO #706: collateral valuation, coverage, and protection have no data source
-    // yet — they must serialize as null until a price feed / field is wired.
+fn collateral_coverage_are_null_for_now() {
+    // TODO #706: collateral valuation and coverage have no data source yet — they
+    // must serialize as null until a price feed is wired. (Protection is now
+    // sourced from the loan metadata; see `protection_maps_*`.)
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.total_collateral, None);
     assert_eq!(r.summary.senior_debt_coverage, None);
     for e in &r.loans {
         assert_eq!(e.collateral, None);
         assert_eq!(e.ltv, None);
-        assert_eq!(e.protection, None);
     }
 }

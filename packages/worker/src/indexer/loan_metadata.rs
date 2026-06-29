@@ -79,6 +79,11 @@ pub struct LoanMetadataJson {
     pub corridor: String,
     #[serde(rename = "governingLaw")]
     pub governing_law: String,
+    /// Trade-finance protection instrument (e.g. "LC at sight", "Doc. coll.").
+    /// `#[serde(default)]` keeps back-compat with legacy IPFS documents that omit
+    /// the key (the struct is `deny_unknown_fields`) — empty string when absent.
+    #[serde(default)]
+    pub protection: String,
     // Optional secondary URI inside the JSON document. Empty/missing is a
     // normal value — stored as NULL in the snapshot's `metadata_uri` field, never a fetch failure.
     #[serde(default, rename = "metadataURI")]

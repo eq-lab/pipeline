@@ -14,6 +14,7 @@ use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
+use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 
@@ -40,6 +41,8 @@ pub struct AppState {
     pub crystal_enabled: bool,
     /// Allow-list of addresses authorized to authenticate (signature-based login).
     pub auth_user_repo: AuthUserRepo,
+    /// Originator-submitted loan applications awaiting trustee review.
+    pub submitted_loan_repo: SubmittedLoanRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
 }

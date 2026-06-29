@@ -15,5 +15,6 @@ pub mod metadata_fetcher;
 pub mod position_repo;
 pub mod signature;
 pub mod stellar_voucher;
+pub mod submitted_loan_repo;
 pub mod sumsub;
 pub mod yield_mint_outbox_repo;

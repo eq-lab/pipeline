@@ -21,6 +21,11 @@ pub enum ApiError {
     Unauthorized(String),
     /// 403 Forbidden. The caller is authenticated but lacks the required role.
     Forbidden(String),
+    /// 404 Not Found. The requested resource does not exist.
+    NotFound(String),
+    /// 409 Conflict. The request conflicts with the resource's current state
+    /// (e.g. reviewing a submission that has already been decided).
+    Conflict(String),
     /// 500 Internal Server Error. The wrapped `anyhow::Error` is logged but never
     /// returned to the caller — the response body is a generic `"internal error"`.
     Internal(anyhow::Error),
@@ -53,6 +58,16 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::Forbidden(msg) => (
                 StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::NotFound(msg) => (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::Conflict(msg) => (
+                StatusCode::CONFLICT,
                 Json(serde_json::json!({"error": msg})),
             )
                 .into_response(),

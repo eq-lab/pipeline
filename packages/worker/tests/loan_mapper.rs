@@ -142,6 +142,7 @@ impl LoanMetadataFetcher for MockMetadataFetcher {
             commodity: "Cotton".to_owned(),
             corridor: "US-NG".to_owned(),
             governing_law: "EN".to_owned(),
+            protection: "LC at sight".to_owned(),
             metadata_uri: Some("ipfs://Qm_secondary".to_owned()),
         })
     }
@@ -333,6 +334,7 @@ fn make_prior_snapshot() -> LoanSnapshot {
         commodity: "Coffee".to_owned(),
         corridor: "BR-US".to_owned(),
         governing_law: "NY".to_owned(),
+        protection: "Prior LC".to_owned(),
         metadata_uri: Some("ipfs://Qm_prior_secondary".to_owned()),
         original_facility_size: BigDecimal::from_str("5000000").unwrap(),
         original_senior_tranche: BigDecimal::from_str("4000000").unwrap(),
@@ -493,6 +495,7 @@ fn compose_drawn_snapshot_full_row() {
         commodity: "Wheat".to_owned(),
         corridor: "UA-EG".to_owned(),
         governing_law: "EN".to_owned(),
+        protection: "LC at sight".to_owned(),
         metadata_uri: Some("ipfs://Qm_secondary_doc".to_owned()),
     };
 
@@ -548,6 +551,7 @@ fn compose_drawn_snapshot_full_row() {
     assert_eq!(snap.commodity, "Wheat");
     assert_eq!(snap.corridor, "UA-EG");
     assert_eq!(snap.governing_law, "EN");
+    assert_eq!(snap.protection, "LC at sight");
     assert_eq!(
         snap.metadata_uri,
         Some("ipfs://Qm_secondary_doc".to_owned())
@@ -643,6 +647,7 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     assert_eq!(snap.commodity, prior.commodity);
     assert_eq!(snap.corridor, prior.corridor);
     assert_eq!(snap.governing_law, prior.governing_law);
+    assert_eq!(snap.protection, prior.protection);
     assert_eq!(snap.metadata_uri, prior.metadata_uri);
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(snap.original_senior_tranche, prior.original_senior_tranche);
@@ -698,6 +703,7 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
         commodity: "Cocoa".to_owned(),
         corridor: "GH-US".to_owned(),
         governing_law: "DE".to_owned(),
+        protection: "New protection".to_owned(),
         metadata_uri: Some("ipfs://Qm_new_secondary".to_owned()),
     };
 
@@ -709,6 +715,7 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     assert_eq!(snap.commodity, "Cocoa");
     assert_eq!(snap.corridor, "GH-US");
     assert_eq!(snap.governing_law, "DE");
+    assert_eq!(snap.protection, "New protection");
     assert_eq!(
         snap.metadata_uri,
         Some("ipfs://Qm_new_secondary".to_owned())
@@ -866,6 +873,7 @@ fn loan_snapshot_serde_round_trip() {
         commodity: "Soybeans".to_owned(),
         corridor: "BR-CN".to_owned(),
         governing_law: "BR".to_owned(),
+        protection: "Doc. coll.".to_owned(),
         metadata_uri: Some("ipfs://Qm_serde_secondary".to_owned()),
         original_facility_size: BigDecimal::from_str("12345678901234567890").unwrap(),
         original_senior_tranche: BigDecimal::from_str("9876543210987654321").unwrap(),
@@ -926,6 +934,43 @@ fn loan_snapshot_serde_round_trip() {
     let restored: LoanSnapshot =
         serde_json::from_value(value).expect("LoanSnapshot should deserialize");
     assert_eq!(restored, snap);
+}
+
+// ---------------------------------------------------------------------------
+// 13b. `protection` back-compat — legacy JSON without the field defaults to ""
+// ---------------------------------------------------------------------------
+
+#[test]
+fn loan_metadata_json_deserializes_with_and_without_protection() {
+    // Document carrying the new field.
+    let with = r#"{
+        "originator": "O", "borrowerId": "B", "commodity": "C",
+        "corridor": "X-Y", "governingLaw": "EN", "protection": "LC at sight"
+    }"#;
+    let parsed: LoanMetadataJson = serde_json::from_str(with).expect("should deserialize");
+    assert_eq!(parsed.protection, "LC at sight");
+
+    // Legacy document with no `protection` key — must default to "" (the struct is
+    // `deny_unknown_fields`, so `#[serde(default)]` is what keeps this from failing).
+    let without = r#"{
+        "originator": "O", "borrowerId": "B", "commodity": "C",
+        "corridor": "X-Y", "governingLaw": "EN"
+    }"#;
+    let parsed: LoanMetadataJson = serde_json::from_str(without).expect("should deserialize");
+    assert_eq!(parsed.protection, "");
+}
+
+#[test]
+fn loan_snapshot_deserializes_legacy_row_without_protection() {
+    // A snapshot JSONB row that predates `protection` must still deserialize (all
+    // existing `contract_logs.params.snapshot` rows look like this).
+    let mut value = serde_json::to_value(make_prior_snapshot()).unwrap();
+    value.as_object_mut().unwrap().remove("protection");
+    assert!(value.get("protection").is_none());
+
+    let restored: LoanSnapshot = serde_json::from_value(value)
+        .expect("legacy snapshot without protection should deserialize");
+    assert_eq!(restored.protection, "");
 }
 
 // ---------------------------------------------------------------------------

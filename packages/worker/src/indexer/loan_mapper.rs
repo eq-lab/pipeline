@@ -104,6 +104,7 @@ pub fn compose_drawn_snapshot(
         commodity: json.commodity,
         corridor: json.corridor,
         governing_law: json.governing_law,
+        protection: json.protection,
         metadata_uri: json.metadata_uri,
         // immutableLoanData
         original_facility_size: u256_to_bigdecimal(immutable.original_facility_size),
@@ -157,7 +158,7 @@ pub fn compose_lifecycle_snapshot(
     cumulative: &RepaymentDataView,
     refreshed_json: Option<LoanMetadataJson>,
 ) -> LoanSnapshot {
-    let (originator, borrower_id, commodity, corridor, governing_law, metadata_uri) =
+    let (originator, borrower_id, commodity, corridor, governing_law, protection, metadata_uri) =
         match refreshed_json {
             Some(json) => (
                 json.originator,
@@ -165,6 +166,7 @@ pub fn compose_lifecycle_snapshot(
                 json.commodity,
                 json.corridor,
                 json.governing_law,
+                json.protection,
                 json.metadata_uri,
             ),
             None => (
@@ -173,6 +175,7 @@ pub fn compose_lifecycle_snapshot(
                 prior.commodity,
                 prior.corridor,
                 prior.governing_law,
+                prior.protection,
                 prior.metadata_uri,
             ),
         };
@@ -184,6 +187,7 @@ pub fn compose_lifecycle_snapshot(
         commodity,
         corridor,
         governing_law,
+        protection,
         metadata_uri,
         // immutable fields — always carry-forward (immutable by construction)
         original_facility_size: prior.original_facility_size,
