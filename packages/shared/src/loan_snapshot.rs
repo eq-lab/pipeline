@@ -14,6 +14,12 @@ pub struct LoanSnapshot {
     pub commodity: String,
     pub corridor: String,
     pub governing_law: String,
+    /// Trade-finance protection instrument (e.g. "LC at sight", "Doc. coll.").
+    /// `#[serde(default)]` is required: `LoanSnapshot` is `deny_unknown_fields` and
+    /// is deserialized from existing `contract_logs.params.snapshot` JSONB rows that
+    /// predate this field — empty string when absent.
+    #[serde(default)]
+    pub protection: String,
     /// Secondary URI inside the IPFS JSON document (optional). Distinct from
     /// `metadata_uri_onchain` which is the mutable on-chain URI pointer.
     pub metadata_uri: Option<String>,

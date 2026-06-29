@@ -56,6 +56,12 @@ Resolved by planner (sensible defaults; flip during approval if wrong):
 - **Re-review semantics** → only `InReview` submissions are reviewable; reviewing an already-decided
   submission returns `409 Conflict`. Decisions are final (no un-reject).
 
+## Status
+
+✅ **Implemented** — all steps below complete. `cargo clippy --all --all-targets -D warnings`
+clean; `cargo test --all` green (added `packages/api/tests/loan_submission.rs` + extended
+`loan_book.rs` / `loan_mapper.rs`); `npx tsx scripts/lint-docs.ts` 0 errors; frontend `tsc --noEmit` clean.
+
 ## Implementation Steps
 
 ### 1. Migration — `packages/shared/migrations/2026MMDD000001_submitted_loans.sql`

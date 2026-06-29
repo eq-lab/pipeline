@@ -9,6 +9,7 @@ use shared::auth_user_repo::AuthUserRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::position_repo::PositionRepo;
+use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 use tower_http::cors::CorsLayer;
@@ -43,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let position_repo = PositionRepo::new(pool.clone());
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
     let auth_user_repo = AuthUserRepo::new(pool.clone());
+    let submitted_loan_repo = SubmittedLoanRepo::new(pool.clone());
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
     // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
@@ -86,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
         stellar_voucher_signers,
         crystal_enabled,
         auth_user_repo,
+        submitted_loan_repo,
         jwt_keys,
     });
 
