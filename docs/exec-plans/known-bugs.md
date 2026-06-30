@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-6: Frontend vitest suite — widespread `localStorage` undefined failures
+- **Date:** 2026-06-30
+- **Location:** `packages/frontend` — wallet store tests, prominently `src/wallet/stellar/useStellarWallet.test.tsx` (21 failures) and broadly across the suite (`yarn workspace @pipeline/frontend test` reports ~615 failed / ~489 passed).
+- **Symptom:** Tests crash in `beforeEach`/`afterEach` with `TypeError: Cannot read properties of undefined (reading 'clear')` at `localStorage.clear()` — i.e. the `localStorage` global is undefined in the jsdom test environment for these files. `useStellarWallet.test.tsx` fails identically (21/21) when run in isolation. Confirmed pre-existing: reproduces with the #716 working tree stashed, so it is unrelated to the dashboard route work. Test files that don't touch `localStorage` (e.g. the new `-dashboard.test.tsx`, `HomeStatsStrip.test.tsx`) pass.
+- **Root cause:** Not investigated. `vite.config.ts` sets `environment: "jsdom"` and `setupFiles: ["./src/test-setup.ts"]`, but `test-setup.ts` only imports `@testing-library/jest-dom` and provides no `localStorage` polyfill; jsdom is not supplying `localStorage` to these files in the current environment. Likely a jsdom/vitest version interaction or a missing global setup.
+- **Workaround:** None applied. Likely fix: add a `localStorage` (Storage) polyfill/mock in `src/test-setup.ts`, or ensure the jsdom environment exposes it. Distinct from BUG-3 (a contract-not-configured assertion mismatch, not a `localStorage` crash).
+
 ### BUG-1: `Typography.stories.tsx` fails strict TS check with unused `React` import
 - **Date:** 2026-05-12
 - **Location:** `packages/ui/src/typography/Typography.stories.tsx:2`
