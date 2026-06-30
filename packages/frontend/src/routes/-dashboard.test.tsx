@@ -203,11 +203,25 @@ describe("/dashboard route shell", () => {
     expect(screen.getAllByText("Coming soon")).toHaveLength(3);
   });
 
-  it("lays out a responsive grid: single column on mobile, two columns at md+", () => {
+  it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {
     renderDashboard();
     const grid = screen.getByTestId("dashboard-grid");
+    // Full-width stack: grid-cols-1 at every breakpoint — matches Figma 3283-12098.
     expect(grid.className).toContain("grid-cols-1");
-    expect(grid.className).toContain("md:grid-cols-2");
+    expect(grid.className).not.toContain("md:grid-cols-2");
+    // All four panels render.
+    expect(
+      screen.getByTestId("dashboard-panel-balance-sheet"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dashboard-panel-deployment-monitor"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dashboard-panel-withdrawal-queue"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("dashboard-panel-yield-history"),
+    ).toBeInTheDocument();
   });
 });
 

@@ -123,6 +123,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 
 ## Epic #712 — Protocol Dashboard
 
-| Issue                                                                                                   | Doc                                                              | Status  |
-| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------- |
-| [#717 Panel B: Deployment Monitor (loan book) UI](https://github.com/eq-lab/pipeline/issues/717)       | [717-loan-book-panel.md](./epic-712/717-loan-book-panel.md)      | Initial |
+| Issue                                                                                                                                                                                                 | Doc                                                                                          | Status  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------- |
+| [#717 Panel B: Deployment Monitor (loan book) UI](https://github.com/eq-lab/pipeline/issues/717)                                                                                                     | [717-loan-book-panel.md](./epic-712/717-loan-book-panel.md)                                  | Initial |
+| [#728 Loan Book panel: render full-width per Figma — 7-column table is clipped in the half-width dashboard grid](https://github.com/eq-lab/pipeline/issues/728) | [728-loan-book-full-width.md](./epic-712/728-loan-book-full-width.md) | Initial |
