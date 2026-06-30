@@ -145,6 +145,20 @@ formatApy(null); // → "—"
 formatApy(undefined); // → "—"
 ```
 
+### `useLoanBook()`
+
+React Query hook that fetches the protocol active loan book from `GET /v1/loan-book`.
+
+```ts
+const { data, isLoading, error, refetch } = useLoanBook();
+// data?.summary.total_deployed — base-6 decimal string in human units (e.g. "8000000.000000" = $8M)
+// data?.loans — LoanBookEntry[]
+```
+
+Always enabled — no wallet connection required. Polls every 30 s.
+
+All monetary string fields (`total_deployed`, `principal`, `collateral`) are **base-6 decimal strings already in human units** — do NOT pass them to `formatUsdc` or `parseUnits`. Use `formatCompactUsd` from `@/utils/formatCompactUsd` instead.
+
 ### `usePnl()`
 
 React Query hook that fetches staking PnL for the connected wallet from
@@ -172,6 +186,12 @@ this event and issues a refetch — no page reload needed.
 
 > **Note:** The event name `pipeline-mock:wallet` is a legacy misnomer. The
 > bridge covers all `pipeline.mock.*` keys, not just wallet ones.
+
+### `useLoanBook` mock keys
+
+| Key                                    | Type                       | Purpose                                              |
+| -------------------------------------- | -------------------------- | ---------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/loan-book`  | JSON `LoanBookResponse`    | Bypasses the real fetch — `useLoanBook` returns this |
 
 ### `useStats` mock keys
 

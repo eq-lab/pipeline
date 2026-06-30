@@ -41,6 +41,13 @@ export type {
 } from "./useStatsPrices";
 export { usePnl } from "./usePnl";
 export type { PnlResponse, UsePnlResult, VaultPnl } from "./usePnl";
+export { useLoanBook } from "./useLoanBook";
+export type {
+  LoanBookSummary,
+  LoanBookEntry,
+  LoanBookResponse,
+  UseLoanBookResult,
+} from "./useLoanBook";
 export { useStellarDepositVoucher } from "./useStellarDepositVoucher";
 export type {
   UseStellarDepositVoucherResult,
