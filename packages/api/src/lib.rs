@@ -13,6 +13,8 @@ use shared::auth_user_repo::AuthUserRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
+use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
@@ -43,6 +45,10 @@ pub struct AppState {
     pub auth_user_repo: AuthUserRepo,
     /// Originator-submitted loan applications awaiting trustee review.
     pub submitted_loan_repo: SubmittedLoanRepo,
+    /// Per-loan collateral asset + discount + price provider (`loan_parameters`).
+    pub loan_parameters_repo: LoanParametersRepo,
+    /// Collected per-asset USD prices (`loan_asset_prices`), for collateral valuation.
+    pub loan_asset_price_repo: LoanAssetPriceRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
 }

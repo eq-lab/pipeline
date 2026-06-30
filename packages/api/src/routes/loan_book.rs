@@ -6,6 +6,7 @@
 //! decimal strings for USDC amounts, decimal-fraction strings for rates, and
 //! `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -52,16 +53,18 @@ pub struct LoanBookSummary {
     /// Total capital deployed = Σ (senior + equity tranche) over active loans,
     /// USDC (6-decimal string).
     pub total_deployed: String,
-    /// Total collateral value = Σ (loan-registry collateral × current price).
+    /// Total collateral value = Σ per-loan collateral over active loans, USDC
+    /// (6-decimal string). Each loan's collateral is `latest price_usd × discount`
+    /// (`loan_parameters` + newest `loan_asset_prices` row for its asset).
     ///
-    /// `null`: TODO #706 — no commodity price feed or collateral-quantity source
-    /// is indexed yet, so live collateral valuation is not computable. Wire this
-    /// once a price source exists.
+    /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
     /// Senior debt coverage = `total_collateral / Σ senior_tranche`, 2-decimal
-    /// string (e.g. `"1.50"`).
+    /// string (e.g. `"1.50"`). The denominator is Σ senior tranche over **all**
+    /// active loans (not just priced ones), so unpriced loans make coverage more
+    /// conservative.
     ///
-    /// `null` while `total_collateral` is unavailable (TODO #706).
+    /// `null` when `total_collateral` is unavailable or Σ senior tranche is zero.
     pub senior_debt_coverage: Option<String>,
     /// Principal-weighted senior interest rate as a decimal fraction (e.g.
     /// `"0.112000"` = 11.2 %), 6-decimal string. Weighted by per-loan principal
@@ -82,13 +85,15 @@ pub struct LoanBookEntry {
     pub commodity: String,
     /// Principal = senior tranche + equity tranche, USDC (6-decimal string).
     pub principal: String,
-    /// Collateral value = collateral quantity × current price, USDC (6-decimal string).
+    /// Collateral value = `latest price_usd × discount`, USDC (6-decimal string).
+    /// The price is the newest `loan_asset_prices` row for the loan's asset; the
+    /// asset and discount come from `loan_parameters` (keyed by `loan_id`).
     ///
-    /// `null`: TODO #706 — no price feed / collateral-quantity source indexed yet.
+    /// `null` when the loan has no `loan_parameters` row or its asset has no price.
     pub collateral: Option<String>,
     /// Loan-to-value = `principal / collateral`, 4-decimal string (e.g. `"0.8511"`).
     ///
-    /// `null` while `collateral` is unavailable (TODO #706).
+    /// `null` when `collateral` is unavailable or zero.
     pub ltv: Option<String>,
     /// Original loan term in days (`maturity − origination`).
     pub duration_days: i64,
@@ -537,7 +542,44 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .list_loan_lifecycle_events(&state.pool, chain_id, to)
         .await?;
 
-    Ok(compute_loan_book(&loans, &events, to))
+    let collateral_by_loan = collateral_by_loan(state).await?;
+
+    Ok(compute_loan_book(&loans, &events, to, &collateral_by_loan))
+}
+
+/// Build the per-loan collateral map: `loan_id → collateral in micro-USDC`, where
+/// collateral = `latest price_usd × discount × 1e6`. The `×1e6` matches the base-6
+/// scale of the on-chain tranche amounts so `compute_loan_book` can value collateral
+/// with the same `base6_to_decimal_string` formatting and ratio math as principal.
+///
+/// Loans whose asset has no stored price are simply absent from the map (→ `null`).
+async fn collateral_by_loan(state: &AppState) -> Result<HashMap<String, BigDecimal>, ApiError> {
+    let params = state.loan_parameters_repo.list_all().await?;
+    let price_by_asset: HashMap<String, BigDecimal> = state
+        .loan_asset_price_repo
+        .latest_prices()
+        .await?
+        .into_iter()
+        .collect();
+
+    let scale = BigDecimal::from(1_000_000);
+    let mut map = HashMap::new();
+    for p in &params {
+        if let Some(price) = price_by_asset.get(&p.asset) {
+            let collateral_micro = (price * &p.discount) * &scale;
+            map.insert(loan_key(&p.loan_id), collateral_micro);
+        }
+    }
+    Ok(map)
+}
+
+/// Canonical map key for a loan id: the `NUMERIC(78,0)` rendered at scale 0, so the
+/// `loan_parameters.loan_id` and the snapshot `loan_id` agree regardless of the
+/// scale each `BigDecimal` happens to carry.
+pub fn loan_key(loan_id: &BigDecimal) -> String {
+    loan_id
+        .with_scale_round(0, RoundingMode::Down)
+        .to_plain_string()
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -573,15 +615,18 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// `routes::portfolio::compute_series`. Matured, closed, and defaulted loans are
 /// excluded (a defaulted loan's `LoanDefaulted` event sets its `effective_end`).
 ///
-/// `total_collateral`, `senior_debt_coverage`, and per-loan `collateral` / `ltv`
-/// are always `null` for now — see the DTO docs (TODO #706: no price source).
+/// `collateral_by_loan` maps `loan_key(loan_id)` → collateral value in micro-USDC
+/// (`latest price_usd × discount × 1e6`); loans absent from the map have no priced
+/// collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
+/// `senior_debt_coverage` are `null` when no active loan has a value.
 ///
 /// Public so the compute-layer test in `packages/api/tests/loan_book.rs` can
 /// exercise it without the HTTP/DB layers.
-pub fn compute_loan_book(
+pub fn compute_loan_book<S: std::hash::BuildHasher>(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
     to: i64,
+    collateral_by_loan: &HashMap<String, BigDecimal, S>,
 ) -> LoanBookResponse {
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
@@ -599,6 +644,12 @@ pub fn compute_loan_book(
     // Principal-weighted numerators; denominator is total_deployed.
     let mut weighted_rate_bps = BigDecimal::from(0);
     let mut weighted_duration = BigDecimal::from(0);
+    // Collateral aggregation (micro-USDC). `any_collateral` tracks whether at least
+    // one active loan had a priced value, so a book with none reports `null`.
+    let mut total_collateral = BigDecimal::from(0);
+    let mut total_senior = BigDecimal::from(0);
+    let mut any_collateral = false;
+    let zero = BigDecimal::from(0);
 
     for loan in &active {
         let s = &loan.snapshot;
@@ -613,16 +664,31 @@ pub fn compute_loan_book(
         total_deployed += &principal;
         weighted_rate_bps += &principal * BigDecimal::from(i64::from(s.senior_interest_rate_bps));
         weighted_duration += &principal * BigDecimal::from(duration_days);
+        total_senior += &s.original_senior_tranche;
+
+        // Collateral = latest price_usd × discount (micro-USDC), keyed by loan_id.
+        // Absent → null; present-but-zero → value 0 with null LTV (no division).
+        let (collateral, ltv) = match collateral_by_loan.get(&loan_key(&loan.loan_id)) {
+            Some(c) => {
+                any_collateral = true;
+                total_collateral += c;
+                let ltv = (c > &zero).then(|| {
+                    (&principal / c)
+                        .with_scale_round(4, RoundingMode::HalfUp)
+                        .to_plain_string()
+                });
+                (Some(base6_to_decimal_string(c)), ltv)
+            }
+            None => (None, None),
+        };
 
         entries.push(LoanBookEntry {
             originator: s.originator.clone(),
             borrower: s.borrower_id.clone(),
             commodity: s.commodity.clone(),
             principal: base6_to_decimal_string(&principal),
-            // TODO #706: collateral value (qty × current price) — no source yet.
-            collateral: None,
-            // TODO #706: ltv = principal / collateral — null while collateral null.
-            ltv: None,
+            collateral,
+            ltv,
             duration_days,
             rate,
             // Protection instrument from the loan metadata; empty string ⇒ null.
@@ -641,13 +707,20 @@ pub fn compute_loan_book(
         .with_scale_round(0, RoundingMode::HalfUp)
         .to_i64();
 
+    // total_collateral = Σ per-loan collateral (only loans that had a value);
+    // null when none did. Coverage = total_collateral / Σ senior, 2 decimals.
+    let total_collateral_str = any_collateral.then(|| base6_to_decimal_string(&total_collateral));
+    let senior_debt_coverage = (any_collateral && total_senior > zero).then(|| {
+        (&total_collateral / &total_senior)
+            .with_scale_round(2, RoundingMode::HalfUp)
+            .to_plain_string()
+    });
+
     LoanBookResponse {
         summary: LoanBookSummary {
             total_deployed: base6_to_decimal_string(&total_deployed),
-            // TODO #706: total_collateral = Σ (collateral qty × current price) — no source yet.
-            total_collateral: None,
-            // TODO #706: senior_debt_coverage = total_collateral / Σ senior_tranche.
-            senior_debt_coverage: None,
+            total_collateral: total_collateral_str,
+            senior_debt_coverage,
             avg_yield: Some(avg_yield),
             avg_duration_days,
         },
