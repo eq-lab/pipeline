@@ -100,7 +100,7 @@ container, directly under the "Loan Book" heading.
 
 ## Implementation Steps
 
-1. **`packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`** —
+1. [x] **`packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`** —
    reorder the panel body JSX inside `DeploymentMonitorPanel`. Replace the
    current single flex column:
 
@@ -133,13 +133,13 @@ container, directly under the "Loan Book" heading.
    - Use the existing `gap-4` rhythm; do not introduce new spacing tokens unless
      the Open Question resolves toward a distinct inner container chrome.
 
-2. **Do NOT modify** `LoanBookTabBar` (lines ~79-113), the tab/badge class
+2. [x] **Do NOT modify** `LoanBookTabBar` (lines ~79-113), the tab/badge class
    constants (lines ~43-77), `LoanBookSummary.tsx`, `LoanBookTable.tsx`, or
    `useDeploymentMonitorPanel.ts`. The only edit is the body-JSX reordering in
    step 1 (plus the optional inner-wrapper border if the Open Question resolves
    that way).
 
-3. Run the TypeScript/lint gate: `npx tsx scripts/lint-docs.ts` for docs, and
+3. [x] Run the TypeScript/lint gate: `npx tsx scripts/lint-docs.ts` for docs, and
    the frontend type-check/build per the package's scripts. Fix any error before
    handing off.
 
