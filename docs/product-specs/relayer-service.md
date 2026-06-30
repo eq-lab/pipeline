@@ -103,10 +103,14 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 ### 6. Price Feed and CCR Monitoring
 
-Relayer monitors every active loan in the LoanRegistry, polling Platts/Argus commodity prices
-on a configurable cadence (working assumption: every 15 minutes during market hours). Computes
+Relayer monitors every active loan in the LoanRegistry, polling a low-cost off-chain commodity
+price source on a configurable cadence (working assumption: every 15 minutes during market
+hours). It derives collateral value per the valuation modes in price-feed.md (price times
+quantity for standard goods, Net Smelter Return for metal concentrate), then computes
 CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
-notifies recipients and queues a `LoanRegistry.updateMutable` call to update `ccrBps`.
+notifies recipients and asks the Trustee to call `update_mutable` to update `ccr`. The Relayer
+has no write role on LoanRegistry. See price-feed.md for sources, the budget ceiling, and the
+off-chain valuation record.
 
 | Event | Trigger | Recipients |
 |---|---|---|
