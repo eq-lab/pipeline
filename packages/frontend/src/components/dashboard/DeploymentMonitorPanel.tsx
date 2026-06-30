@@ -127,9 +127,8 @@ export function DeploymentMonitorPanel() {
       data-testid="dashboard-panel-deployment-monitor"
       data-node-id="3283:14431"
     >
-      {/* Tab bar is always rendered in the ready state */}
+      {/* Summary cards are rendered directly under the heading (Figma 3283:14479) */}
       <div className="flex flex-col gap-4">
-        <LoanBookTabBar activeLoansCount={activeLoansCount} />
         <LoanBookSummary
           totalDeployed={summary.totalDeployed}
           totalCollateral={summary.totalCollateral}
@@ -137,7 +136,11 @@ export function DeploymentMonitorPanel() {
           avgYield={summary.avgYield}
           avgDuration={summary.avgDuration}
         />
-        <LoanBookTable rows={rows} />
+        {/* Tab bar + table grouped in an inner container (Figma container 3283:14479) */}
+        <div className="flex flex-col gap-4" data-testid="loan-book-table-container">
+          <LoanBookTabBar activeLoansCount={activeLoansCount} />
+          <LoanBookTable rows={rows} />
+        </div>
       </div>
     </PanelContainer>
   );
