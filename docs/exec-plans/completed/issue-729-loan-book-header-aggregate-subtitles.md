@@ -84,57 +84,36 @@ Out of scope (STRICT — all merged or owned elsewhere, do NOT touch):
 
 ## Implementation Steps
 
-1. **Add a portfolio-LTV formatter (if the recommended default in Open Questions is
-   confirmed).** In `packages/frontend/src/utils/formatCompactUsd.ts`, add
-   `formatPortfolioLtv(totalDeployed: string | null | undefined, totalCollateral:
-   string | null | undefined): string` that returns `formatLtv`-style integer percent
-   from `parseFloat(totalDeployed) / parseFloat(totalCollateral)`, returning `"—"`
-   (or a sentinel the caller treats as "no subtitle") when either input is null,
-   non-finite, or collateral is `0`. Reuse the existing `formatLtv` rounding rule
-   (`Math.round(fraction * 100)%`). Both inputs are base-6 human-unit decimal strings,
-   so a plain ratio is correct (units cancel) — do NOT use `parseUnits`.
-   - Alternatively, keep this derivation inside the panel hook if a standalone util is
-     overkill; but a util is preferred because it needs unit tests (FRONTEND.md rule 3)
-     and the null/zero edge cases are exactly the kind that regress.
+1. ~~**Add a portfolio-LTV formatter**~~ — **SKIPPED** per resolved open question #1: LTV
+   subtitle omitted entirely. `formatPortfolioLtv` was NOT added to `formatCompactUsd.ts`.
+   The LTV column header renders plain text only until a backend `portfolio_ltv` field
+   exists (future sub-issue).
 
-2. **Surface the three header aggregates from the panel hook.** In
-   `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`, extend
-   `DeploymentMonitorPanelState` (and the `ready` branch) with a `headerAggregates`
-   object carrying optional pre-formatted strings:
-   - `principal`: `formatCompactUsd(data.summary.total_deployed)` (always present).
-   - `collateral`: `data.summary.total_collateral == null ? undefined :
-     formatCompactUsd(data.summary.total_collateral)`.
-   - `ltv`: `formatPortfolioLtv(data.summary.total_deployed, data.summary.total_collateral)`
-     mapped to `undefined` when it has no value.
-   Use `undefined` (not `"—"`) for "no subtitle" so the table can omit the middot run
-   entirely rather than render `Collateral · —`. For non-`ready` states (loading/error/
-   empty) pass `headerAggregates: {}` (all undefined) so headers render label-only.
+2. **[DONE] Surface the header aggregates from the panel hook.** In
+   `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`, extended
+   `DeploymentMonitorPanelState` with a `headerAggregates: LoanBookHeaderAggregates` field
+   carrying optional pre-formatted strings:
+   - `principal`: `formatCompactUsd(data.summary.total_deployed)` (always present when ready).
+   - `collateral`: `undefined` when `total_collateral == null`, else `formatCompactUsd(...)`.
+   - LTV field intentionally absent — do NOT add it.
+   Non-`ready` states (loading/error/empty) return `EMPTY_HEADER_AGGREGATES = {}`.
 
-3. **Thread the aggregates to the table.** In
-   `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`, pass the
-   new `headerAggregates` from the hook into `<LoanBookTable>`.
+3. **[DONE] Thread the aggregates to the table.** In
+   `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`, passed
+   `headerAggregates` from the hook into `<LoanBookTable>`.
 
-4. **Render the subtitles in `LoanBookTable.tsx`.** Extend `LoanBookTableProps` with
-   `headerAggregates?: { principal?: string; collateral?: string; ltv?: string }`.
-   - Desktop (`DesktopTable`): for the Principal / Collateral / LTV `<th>`, render the
-     label, and when the corresponding aggregate is defined, append ` · {value}` in the
-     same caption run. Keep the label and aggregate in one cell so they read as a single
-     line (Figma `Principal · $31.6M`). Use the middot `·` with surrounding spaces.
-   - Mobile (`MobileCards` / `MobileField`): the per-loan cards repeat the column labels
-     ("Principal", "Collateral", "LTV"). Per Figma the aggregate subtitle belongs to the
-     table HEADER, which the mobile card layout does not have. Confirm in Open Questions
-     follow-up is NOT needed here: the mobile frame (`3283-72323`) shows no header row,
-     so do NOT add aggregates to the mobile per-loan field labels. Leave `MobileField`
-     untouched. (Document this explicitly in the component so a future reader doesn't
-     "fix" it.)
-   - Token discipline: subtitle uses the same font/size/color utilities as the existing
-     `headerCellClasses` (no raw hex/font values). If Open Question #2 resolves to "match
-     Figma 12px caption," apply the `caption` token to the whole header run instead.
+4. **[DONE] Render the subtitles in `LoanBookTable.tsx`.** Added `LoanBookHeaderAggregates`
+   interface and `headerAggregates?: LoanBookHeaderAggregates` to `LoanBookTableProps`.
+   - Desktop (`DesktopTable`): Principal and Collateral `<th>` render the aggregate span
+     when the value is non-null; LTV header is always plain.
+   - Mobile (`MobileCards` / `MobileField`): left untouched — no aggregates in the mobile
+     card field labels (Figma node 3283-72323 has no header row). Documented with a comment.
+   - Header typography updated to 12px caption token (`--text-pipeline-caption`) per
+     resolved open question #2 — stepping down from 14px body-s to match Figma exactly.
 
-5. **Keep the data-node-id / data-testid anchors stable.** Add a `data-testid` on each
-   subtitle span (e.g. `loan-book-header-principal-aggregate`) so the new behavior is
-   directly assertable and Figma-QA tooling can target it. Do not alter existing
-   `data-node-id="3283:14431"` or other anchors.
+5. **[DONE] data-testid anchors added.** `data-testid="loan-book-header-principal-aggregate"`
+   and `data-testid="loan-book-header-collateral-aggregate"` on the subtitle `<span>`
+   elements. Existing `data-node-id="3283:14431"` unchanged.
 
 ## Test Strategy
 
