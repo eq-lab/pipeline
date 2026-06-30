@@ -5,28 +5,27 @@ import { WithdrawalQueuePanel } from "@/components/dashboard/WithdrawalQueuePane
 import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
 
 /**
- * Protocol Dashboard route (`/dashboard`) — Issue #716.
+ * Protocol Dashboard route (`/dashboard`) — Issues #716, #728.
  *
- * Stands up the route + the responsive shell hosting four panel slots. Panels
- * are **placeholders** here ("Coming soon"); real data wiring lands in
- * follow-up sub-issues of epic #712. The page is protocol-wide, NOT
- * wallet-gated — it renders fully with no wallet connected (it pulls no wallet
- * hooks at all).
+ * Hosts the four panel slots in a full-width single-column stack at every
+ * viewport width. The page is protocol-wide, NOT wallet-gated — it renders
+ * fully with no wallet connected (it pulls no wallet hooks at all).
  *
  * Entry point: reached from the home page (`/`) "Current APY" external-link
  * icon (`HomeStatsStrip`, Figma node `1497:94564`), not a `TopBar` slot.
  *
- * Layout:
+ * Layout (Issue #728 — matches Figma `3283-12098`):
  *   - Centred content column capped at `max-w-[1200px]` (matches the desktop
  *     frame's 1200px content width), `px-8` side padding (32px, the frame's
  *     inner gutter) and `py-8` vertical padding.
- *   - Desktop (`md+`): two-column grid (`md:grid-cols-2`) with `md:gap-8`
- *     (32px), the multi-column treatment the issue calls for.
- *   - Mobile (below `md`): single-column stack (`grid-cols-1`) with `gap-6`.
- *   Panels render in A→B→C→D reading order. Exact column structure, gaps and
- *   mobile panel ordering against the responsive frame are reconciled when the
- *   real panels land and verified in the epic #712 QA pass (frames
- *   `3283-12098` desktop, `3283-72387` responsive).
+ *   - All viewports: full-width single-column stack (`grid-cols-1`) so every
+ *     panel spans the full ~1136px content width. `gap-6` on mobile stepping
+ *     to `md:gap-8` (32px) at desktop, matching the Figma frame section
+ *     spacing. The previous `md:grid-cols-2` 2×2 grid was a #716 shell
+ *     placeholder — Figma `3283-12098` shows a full-width vertical stack.
+ *   - Source order: Balance Sheet → Loan Book → Withdrawal Queue → Yield
+ *     History. This matches the approved layout; panel reordering to match
+ *     Figma's exact section order is a separate concern if ever needed.
  *
  * Token discipline (FRONTEND.md): no raw hex/font names; all colors and
  * typography flow through `@pipeline/ui` primitives and theme-token utilities.
@@ -64,10 +63,10 @@ function Dashboard() {
           Protocol Dashboard
         </h1>
 
-        {/* Responsive panel grid: single column on mobile, two columns at md+. */}
+        {/* Full-width single-column stack at all viewports — matches Figma 3283-12098. */}
         <div
           data-testid="dashboard-grid"
-          className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8"
+          className="grid grid-cols-1 gap-6 md:gap-8"
         >
           <BalanceSheetPanel />
           <DeploymentMonitorPanel />
