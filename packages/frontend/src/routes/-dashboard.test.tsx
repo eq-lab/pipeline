@@ -443,6 +443,55 @@ describe("DeploymentMonitorPanel — responsive structure", () => {
   });
 });
 
+describe("DeploymentMonitorPanel — section order (issue #726)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("summary cards render before tab bar, tab bar before table, and both are inside the table container", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-summary-cards")).toBeInTheDocument();
+    });
+
+    const summaryCards = screen.getByTestId("loan-book-summary-cards");
+    const tabBar = screen.getByTestId("loan-book-tab-bar");
+    const table = screen.getByTestId("loan-book-table");
+    const tableContainer = screen.getByTestId("loan-book-table-container");
+
+    // summary cards precede tab bar in the DOM
+    expect(
+      summaryCards.compareDocumentPosition(tabBar) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // tab bar precedes table in the DOM
+    expect(
+      tabBar.compareDocumentPosition(table) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // tab bar and table are both descendants of the table container
+    expect(tableContainer.contains(tabBar)).toBe(true);
+    expect(tableContainer.contains(table)).toBe(true);
+
+    // summary cards are NOT inside the table container
+    expect(tableContainer.contains(summaryCards)).toBe(false);
+  });
+});
+
 describe("DeploymentMonitorPanel — tab bar", () => {
   beforeEach(() => {
     localStorage.clear();
