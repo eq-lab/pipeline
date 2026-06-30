@@ -19,7 +19,7 @@ All design tokens are declared as CSS custom properties inside a Tailwind v4 `@t
 
 - **Color** (`--color-pipeline-*`) — background, surface, promo, brand, CTA, ink, and border values sourced from Figma frame `1497-94556`.
 - **Typography** (`--text-pipeline-*`, `--font-weight-*`, `--tracking-pipeline-*`) — font-size/line-height pairs, semantic weight aliases (regular/medium/emphasized/bold), and label tracking.
-- **Radii** (`--radius-pipeline-*`) — card, button, and pill radii.
+- **Radii** (`--radius-pipeline-*`) — card (4px), card-sm (6px, segmented tab container, Figma `radius/radius-xl` node 3283:14480), card-lg (16px), button (4px), and pill (9999px) radii.
 - **Spacing** — Tailwind v4 default 4px numeric scale; no semantic aliases.
 
 Rule: components must not inline raw hex codes. All color, radius, and typography values are consumed through Tailwind utilities (`bg-pipeline-paper`, `text-pipeline-ink`, `rounded-pipeline-card`, `font-display`, etc.).

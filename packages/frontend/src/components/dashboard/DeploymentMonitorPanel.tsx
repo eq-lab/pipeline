@@ -9,9 +9,11 @@
  * The `data-testid` and `data-node-id` attributes are preserved as stable
  * anchors for tests and Figma QA tooling.
  *
- * Includes the Active Loans / In Origination tab bar, with In Origination
- * visibly disabled — no origination endpoint is served yet; the tab will be
- * wired in a follow-up issue.
+ * Includes the Active Loans / In Origination tab bar (Figma node 3283:14480).
+ * The Active Loans tab shows a live count badge (loans.length from the API).
+ * The In Origination tab is visibly disabled — no origination endpoint is
+ * served yet (deferred per #717); it renders no count badge until the endpoint
+ * exists.
  *
  * Figma:
  *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
@@ -24,38 +26,64 @@ import { useDeploymentMonitorPanel } from "./useDeploymentMonitorPanel";
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-// Figma: "Active Loans · 7 / In Origination · 3" tab bar (node 3283:14480).
-// Only "Active Loans" is functional; "In Origination" is disabled until the
-// trustee submissions endpoint is wired (follow-up issue).
+// Figma node 3283:14480 — compact segmented control:
+// - Container: muted fill track (--color-pipeline-fill-muted), 2px padding,
+//   6px radius (--radius-pipeline-card-sm).
+// - Selected tab: white chip (--color-pipeline-surface), 32px height, 6px
+//   horizontal padding, 4px radius (--radius-pipeline-card), caption-size
+//   Medium (500) ink label.
+// - Unselected/disabled tab: transparent bg, same geometry, Regular (400)
+//   ink-muted label, cursor-not-allowed.
+// - Badge: muted fill, 4px radius, caption-size Regular ink-muted text,
+//   min-width 20px, horizontal padding 4px.
+//   Note: Figma also specifies a backdrop-blur ~16px effect on the badge;
+//   omitted — no blur token exists and it has no visible effect on the flat
+//   panel background.
+
+const tabSharedClasses = [
+  "inline-flex items-center justify-center gap-1",
+  "h-8 px-1.5",
+  "rounded-[var(--radius-pipeline-card,4px)]",
+  "font-[family-name:var(--font-body)]",
+  "text-[length:var(--text-pipeline-caption,12px)]",
+  "leading-[var(--text-pipeline-caption--line-height,16px)]",
+].join(" ");
 
 const activeTabClasses = [
-  "inline-flex items-center gap-1.5 px-3 py-1.5",
-  "rounded-[var(--radius-pipeline-pill,9999px)]",
-  "bg-[color:var(--color-pipeline-ink)]",
-  "font-[family-name:var(--font-text)]",
+  tabSharedClasses,
+  "bg-[color:var(--color-pipeline-surface)]",
+  "text-[color:var(--color-pipeline-ink)]",
   "font-medium",
-  "text-[length:var(--text-pipeline-body-s,14px)]",
-  "leading-[var(--text-pipeline-body-s--line-height,20px)]",
-  "text-[color:var(--color-pipeline-paper)]",
   "cursor-default",
 ].join(" ");
 
 const disabledTabClasses = [
-  "inline-flex items-center gap-1.5 px-3 py-1.5",
-  "rounded-[var(--radius-pipeline-pill,9999px)]",
-  "font-[family-name:var(--font-text)]",
-  "font-medium",
-  "text-[length:var(--text-pipeline-body-s,14px)]",
-  "leading-[var(--text-pipeline-body-s--line-height,20px)]",
+  tabSharedClasses,
   "text-[color:var(--color-pipeline-ink-muted)]",
+  "font-normal",
   "cursor-not-allowed",
   "opacity-50",
 ].join(" ");
 
-function LoanBookTabBar() {
+const badgeClasses = [
+  "inline-flex items-center justify-center",
+  "min-w-5 px-1 py-0.5",
+  "rounded-[var(--radius-pipeline-card,4px)]",
+  "bg-[color:var(--color-pipeline-fill-muted)]",
+  "text-[color:var(--color-pipeline-ink-muted)]",
+  "font-normal",
+  "text-[length:var(--text-pipeline-caption,12px)]",
+  "leading-[var(--text-pipeline-caption--line-height,16px)]",
+].join(" ");
+
+interface LoanBookTabBarProps {
+  activeLoansCount: number;
+}
+
+function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
   return (
     <div
-      className="flex items-center gap-1 p-1 rounded-[var(--radius-pipeline-pill,9999px)] bg-[color:var(--color-pipeline-surface-subtle,rgba(50,56,55,0.06))] w-fit"
+      className="flex items-start p-0.5 rounded-[var(--radius-pipeline-card-sm,6px)] bg-[color:var(--color-pipeline-fill-muted)] w-fit"
       data-testid="loan-book-tab-bar"
       role="tablist"
     >
@@ -66,6 +94,9 @@ function LoanBookTabBar() {
         data-testid="loan-book-tab-active-loans"
       >
         Active Loans
+        <span className={badgeClasses} data-testid="loan-book-tab-active-loans-count">
+          {activeLoansCount}
+        </span>
       </div>
       <div
         className={disabledTabClasses}
@@ -75,6 +106,7 @@ function LoanBookTabBar() {
         data-testid="loan-book-tab-in-origination"
       >
         In Origination
+        {/* No count badge — origination endpoint is deferred per #717; no fabricated number. */}
       </div>
     </div>
   );
@@ -83,7 +115,7 @@ function LoanBookTabBar() {
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export function DeploymentMonitorPanel() {
-  const { state, summary, rows, errorMessage, refetch } =
+  const { state, summary, rows, activeLoansCount, errorMessage, refetch } =
     useDeploymentMonitorPanel();
 
   return (
@@ -97,7 +129,7 @@ export function DeploymentMonitorPanel() {
     >
       {/* Tab bar is always rendered in the ready state */}
       <div className="flex flex-col gap-4">
-        <LoanBookTabBar />
+        <LoanBookTabBar activeLoansCount={activeLoansCount} />
         <LoanBookSummary
           totalDeployed={summary.totalDeployed}
           totalCollateral={summary.totalCollateral}
