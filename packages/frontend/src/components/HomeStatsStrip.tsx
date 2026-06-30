@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "@tanstack/react-router";
 import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
 import { useStats, formatApy } from "@/api";
@@ -89,12 +90,17 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
         <Stat label="Current APY" value={apyValue} />
       </div>
 
-      {/* External-link icon button */}
-      <a href="#" aria-label="View details" className={iconButtonClasses}>
+      {/* External-link icon button — opens the Protocol Dashboard (#716). */}
+      <Link
+        to="/dashboard"
+        aria-label="View Protocol Dashboard"
+        className={iconButtonClasses}
+        data-testid="home-stats-dashboard-link"
+      >
         <span className="inline-flex size-6 items-center justify-center">
           <ExternalLinkIcon />
         </span>
-      </a>
+      </Link>
     </div>
   );
 }
