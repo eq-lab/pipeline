@@ -94,50 +94,47 @@ comments):
 
 ## Implementation Steps
 
-1. **Add `useLoanBook` hook** — `packages/frontend/src/api/useLoanBook.ts`. Model on `useStats.ts`:
+1. [x] **Add `useLoanBook` hook** — `packages/frontend/src/api/useLoanBook.ts`. Model on `useStats.ts`:
    - Export `LoanBookSummary`, `LoanBookEntry`, `LoanBookResponse`, `UseLoanBookResult` types that
      mirror the Rust DTOs exactly (nullable fields as `string | null` / `number | null`).
    - `useQuery({ queryKey: ["loan-book"], queryFn: () => apiFetch<LoanBookResponse>("/v1/loan-book"),
      refetchInterval: 30_000 })`. Always enabled (protocol-wide, no wallet).
    - Return `{ data, isLoading, error, refetch }`.
-2. **Export from the API barrel** — add the hook + its types to
+2. [x] **Export from the API barrel** — add the hook + its types to
    `packages/frontend/src/api/index.ts`, and document the hook + its `pipeline.mock.api.GET./v1/loan-book`
    mock key in `packages/frontend/src/api/README.md` (mirroring the `useStats` section).
-3. **Add a compact-USD formatter util** — `packages/frontend/src/utils/formatCompactUsd.ts`:
+3. [x] **Add a compact-USD formatter util** — `packages/frontend/src/utils/formatCompactUsd.ts`:
    - `formatCompactUsd(base6Decimal: string | null | undefined): string` → `"$31.6M"`, `"$8.0M"`,
      `"$0"`, null → `"—"`. Parses the base-6 decimal string (NOT raw sub-units) and applies
      `Intl.NumberFormat` compact notation. Ship `formatCompactUsd.test.ts` in the same change
      (FRONTEND.md rule 3): cover millions, thousands, sub-thousand, zero, null/undefined, and a
      non-numeric input → `"—"`.
-   - Add helpers for the fraction renders or co-locate them: `formatLtv(ltv: string|null)` →
-     `"85%"`/`"—"`, `formatCoverage(c: string|null)` → `"1.5x"`/`"—"`, `formatDurationDays(n)` →
-     `"120d"` (table) and a `"68 days"` variant for the summary card. Each with tests. (If a helper
-     is single-call-site only, keep it co-located in the panel hook instead of `utils/` per rule 3 —
-     decide per helper based on reuse between cards and rows.)
-4. **Build the summary cards subcomponent** — `packages/frontend/src/components/dashboard/LoanBookSummary.tsx`
+   - Added helpers: `formatOneDecimalRate` (1-decimal %, issue #717 decision), `formatLtv`,
+     `formatCoverage`, `formatDurationDays` (compact + long variants). All co-located in
+     `formatCompactUsd.ts` with full unit tests (31 passing).
+4. [x] **Build the summary cards subcomponent** — `packages/frontend/src/components/dashboard/LoanBookSummary.tsx`
    (+ `LoanBookSummary` is presentational; props are the formatted `summary`). Five cards: Total
    Deployed, Collateral, Senior Debt Coverage, Yield, Average Duration. Responsive: a row/grid on
    desktop, wrapping/stacking on mobile. Token-only styling.
-5. **Build the loan table subcomponent** — `packages/frontend/src/components/dashboard/LoanBookTable.tsx`:
+5. [x] **Build the loan table subcomponent** — `packages/frontend/src/components/dashboard/LoanBookTable.tsx`:
    - Desktop (`md+`): a table with header row (Borrower / Commodity, Principal, Collateral, LTV,
      Duration, Rate, Protection) and one row per loan. Wrap in an `overflow-x: auto` container so it
      never forces page horizontal scroll.
    - Mobile (below `md`): each loan rendered as a stacked card of label/value pairs (`hidden md:…`
      toggling per FRONTEND.md responsive convention).
    - Per-loan nullable fields → `—`.
-6. **Rewrite `DeploymentMonitorPanel.tsx`** to consume `useLoanBook` via a co-located
+6. [x] **Rewrite `DeploymentMonitorPanel.tsx`** to consume `useLoanBook` via a co-located
    `useDeploymentMonitorPanel.ts` hook (FRONTEND.md rule 2: view = JSX only, logic in the hook):
    - Hook maps `{ isLoading, error, data }` to a `PanelState` (`loading` | `error` | `empty` (when
      `data.loans` is empty) | `ready`) and exposes formatted summary + rows + `refetch`.
    - View renders `PanelContainer` with the resolved `state`, `onRetry={refetch}`, and — in `ready`
      state — `<LoanBookSummary/>` + `<LoanBookTable/>` as children. Keep the existing
      `data-testid="dashboard-panel-deployment-monitor"` and `data-node-id="3283:14431"`.
-   - Resolve the panel title per Open Questions (keep "Deployment Monitor" unless decided otherwise).
-7. **Update catalogues** — add the compact-USD formatter (and any other extracted util) to
-   `docs/frontend/utils.md`; add `useLoanBook` to `docs/frontend/hooks.md` (it is a shared `@/api`
-   hook). Same commit as the code (FRONTEND.md rules 4 & 5).
-8. **Lint** — run `npx tsx scripts/lint-docs.ts` (docs structure) and the frontend type/lint checks;
-   fix all errors before finishing.
+   - Panel title is **"Loan Book"** per Open Questions resolution. Updated test assertion accordingly.
+   - Includes the Active Loans / In Origination tab bar with In Origination visibly disabled.
+7. [x] **Update catalogues** — added all utils to `docs/frontend/utils.md`; added `useLoanBook` to
+   `docs/frontend/hooks.md`; updated `packages/frontend/src/api/README.md` with hook docs + mock key.
+8. [x] **Lint** — `npx tsx scripts/lint-docs.ts`: 0 errors. `npx tsc --noEmit`: 0 errors.
 
 ## Test Strategy
 
