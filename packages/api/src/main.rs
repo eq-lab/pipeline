@@ -8,6 +8,8 @@ use pipeline_api::AppState;
 use shared::auth_user_repo::AuthUserRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
+use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
@@ -45,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
     let auth_user_repo = AuthUserRepo::new(pool.clone());
     let submitted_loan_repo = SubmittedLoanRepo::new(pool.clone());
+    let loan_parameters_repo = LoanParametersRepo::new(pool.clone());
+    let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
     // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
@@ -89,6 +93,8 @@ async fn main() -> anyhow::Result<()> {
         crystal_enabled,
         auth_user_repo,
         submitted_loan_repo,
+        loan_parameters_repo,
+        loan_asset_price_repo,
         jwt_keys,
     });
 

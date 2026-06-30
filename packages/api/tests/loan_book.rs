@@ -4,9 +4,11 @@
 //! Lives under `packages/api/tests/` to match the project-wide convention (all
 //! tests in `tests/`, feature-named, no inline `#[cfg(test)]` modules in `src/`).
 
+use std::collections::HashMap;
+
 use bigdecimal::BigDecimal;
 
-use pipeline_api::routes::loan_book::{compute_loan_book, LoanBookResponse};
+use pipeline_api::routes::loan_book::{compute_loan_book, loan_key, LoanBookResponse};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 
@@ -14,6 +16,16 @@ const DAY: i64 = 86_400;
 
 fn usdc(whole: i64) -> BigDecimal {
     BigDecimal::from(whole * 1_000_000)
+}
+
+/// Build a `loan_id → collateral (micro-USDC)` map keyed the same way the handler
+/// does, so compute-layer tests can supply collateral without the DB.
+fn collateral_map(entries: &[(i64, BigDecimal)]) -> HashMap<String, BigDecimal> {
+    entries
+        .iter()
+        .cloned()
+        .map(|(id, micro)| (loan_key(&BigDecimal::from(id)), micro))
+        .collect()
 }
 
 fn zero_repayment() -> RepaymentSnapshot {
@@ -106,7 +118,17 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> LoanBookResponse {
-    compute_loan_book(loans, events, t_day * DAY)
+    compute_loan_book(loans, events, t_day * DAY, &HashMap::new())
+}
+
+/// Like `at`, but with a per-loan collateral map.
+fn at_with(
+    t_day: i64,
+    loans: &[LoanSnapshotRow],
+    events: &[LifecycleRow],
+    collateral: &HashMap<String, BigDecimal>,
+) -> LoanBookResponse {
+    compute_loan_book(loans, events, t_day * DAY, collateral)
 }
 
 #[test]
@@ -214,17 +236,16 @@ fn no_active_loans_returns_empty_book() {
 
 #[test]
 fn empty_registry_returns_empty_book() {
-    let r = compute_loan_book(&[], &[], 0);
+    let r = compute_loan_book(&[], &[], 0, &HashMap::new());
     assert!(r.loans.is_empty());
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
 }
 
 #[test]
-fn collateral_coverage_are_null_for_now() {
-    // TODO #706: collateral valuation and coverage have no data source yet — they
-    // must serialize as null until a price feed is wired. (Protection is now
-    // sourced from the loan metadata; see `protection_maps_*`.)
+fn collateral_coverage_null_without_prices() {
+    // No collateral map → every loan's collateral/ltv and the summary aggregates
+    // serialize as null (no loan_parameters / price rows configured).
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.total_collateral, None);
     assert_eq!(r.summary.senior_debt_coverage, None);
@@ -232,4 +253,60 @@ fn collateral_coverage_are_null_for_now() {
         assert_eq!(e.collateral, None);
         assert_eq!(e.ltv, None);
     }
+}
+
+#[test]
+fn collateral_and_ltv_computed_from_map() {
+    // Day 0: only loan A active (principal 100k, senior 80k). Collateral 125k.
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &fixture_loans(), &[], &collateral);
+
+    assert_eq!(r.loans.len(), 1);
+    assert_eq!(r.loans[0].collateral.as_deref(), Some("125000.000000"));
+    // ltv = principal / collateral = 100k / 125k = 0.8000.
+    assert_eq!(r.loans[0].ltv.as_deref(), Some("0.8000"));
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
+    // coverage = total_collateral / Σ senior = 125k / 80k = 1.5625 → "1.56".
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.56"));
+}
+
+#[test]
+fn missing_price_is_null_and_summary_sums_only_priced() {
+    // Day 60: both active. Only loan A (id 1) has a price; loan B (id 2) does not.
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(60, &fixture_loans(), &[], &collateral);
+
+    let a = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Open Mineral")
+        .unwrap();
+    let b = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Trafalgar")
+        .unwrap();
+    assert_eq!(a.collateral.as_deref(), Some("125000.000000"));
+    assert_eq!(a.ltv.as_deref(), Some("0.8000"));
+    assert_eq!(b.collateral, None);
+    assert_eq!(b.ltv, None);
+
+    // total_collateral counts only the priced loan (A); coverage denominator is
+    // Σ senior over ALL active loans (A 80k + B 40k = 120k): 125k / 120k → "1.04".
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("125000.000000"));
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("1.04"));
+}
+
+#[test]
+fn zero_collateral_yields_value_zero_and_null_ltv() {
+    // A priced-but-zero collateral (discount 0 or price 0): value is 0, but LTV is
+    // undefined (no division by zero).
+    let collateral = collateral_map(&[(1, BigDecimal::from(0))]);
+    let r = at_with(0, &fixture_loans(), &[], &collateral);
+
+    assert_eq!(r.loans[0].collateral.as_deref(), Some("0.000000"));
+    assert_eq!(r.loans[0].ltv, None);
+    assert_eq!(r.summary.total_collateral.as_deref(), Some("0.000000"));
+    // coverage = 0 / 80k = "0.00".
+    assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("0.00"));
 }
