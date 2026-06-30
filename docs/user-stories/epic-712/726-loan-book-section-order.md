@@ -80,6 +80,40 @@ region that holds tabs + table, distinct from the summary cards above it.
 
 ---
 
+## Story 5 — Summary cards match the Figma card-horizontal design (node 3283:14434)
+
+**As a** lender viewing the Protocol Dashboard,
+**I want** the five summary cards to look exactly as designed in Figma (white
+background, asymmetric border, small border-radius, correct typography),
+**so that** the visual treatment is consistent with the rest of the UI and the
+cards read as polished data-display components.
+
+### Acceptance criteria
+
+1. Navigate to `/dashboard` in a browser with the Loan Book panel in ready state.
+2. Each of the five summary cards (`data-testid="loan-book-summary-cards"`)
+   has a **white background** (`fill-test/on-primary`, #ffffff —
+   `--color-pipeline-surface`), not the page paper (#f8f7f6).
+3. Each card's border uses the secondary border color (`border-test/secondary`
+   = `--color-pipeline-line`) with **1 px on the top and left edges** and
+   **3 px on the bottom and right edges**, matching the Figma shadow-border
+   treatment.
+4. Each card has a **4 px border-radius** (`radius/radius-xxl` =
+   `--radius-pipeline-card`), not the previous 16 px.
+5. Each card label (e.g. "Total Deployed", "Collateral") renders in
+   **Graphik LC** (body font, `--font-body`) at **16 px / 20 px line-height**,
+   weight **400** (regular) — matching Figma Heading S where `font/title-font-weight`
+   resolves to "Regular"/400.
+6. Each card value (e.g. "$31.6M", "1.5x") renders in **Besley** (display
+   font, `--font-display`) at **20 px / 28 px line-height**, weight **400**
+   (regular) — matching Figma Heading 20.
+7. Each card is exactly **144 px tall** — confirmed from Figma frame `3283:14434`
+   (height=144). The label appears near the top (y=16 in Figma) and the value
+   near the bottom (y=100), achieved via `flex-col justify-between` within the
+   fixed height.
+
+---
+
 ## Story 4 — Loading, empty, and error states are unaffected
 
 **As a** lender viewing the Protocol Dashboard when data is unavailable,
