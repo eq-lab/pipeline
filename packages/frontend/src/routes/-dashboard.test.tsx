@@ -473,6 +473,45 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     expect(disabledTab).toHaveAttribute("aria-disabled", "true");
     expect(disabledTab).toHaveAttribute("aria-selected", "false");
   });
+
+  it("Active Loans badge shows the live count from loans.length", async () => {
+    // FIXTURE_FULL has 2 loans → badge should show "2"
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-tab-active-loans-count"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("loan-book-tab-active-loans-count"),
+    ).toHaveTextContent("2");
+  });
+
+  it("In Origination tab renders no count badge", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-tab-in-origination")).toBeInTheDocument();
+    });
+
+    const inOriginationTab = screen.getByTestId("loan-book-tab-in-origination");
+    // No count badge should be present inside the In Origination tab
+    expect(
+      inOriginationTab.querySelector("[data-testid]"),
+    ).toBeNull();
+  });
 });
 
 describe("dashboard panel state presentations", () => {

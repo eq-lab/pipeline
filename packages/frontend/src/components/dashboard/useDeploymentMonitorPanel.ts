@@ -24,6 +24,8 @@ export interface DeploymentMonitorPanelState {
   state: PanelState;
   summary: LoanBookSummaryProps;
   rows: LoanBookRow[];
+  /** Live count of active loans (loans.length when ready; 0 otherwise). */
+  activeLoansCount: number;
   errorMessage: string | undefined;
   refetch: () => void;
 }
@@ -80,6 +82,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
       state: "loading",
       summary: EMPTY_SUMMARY,
       rows: [],
+      activeLoansCount: 0,
       errorMessage: undefined,
       refetch,
     };
@@ -90,6 +93,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
       state: "error",
       summary: EMPTY_SUMMARY,
       rows: [],
+      activeLoansCount: 0,
       errorMessage: error.message,
       refetch,
     };
@@ -100,6 +104,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
       state: "empty",
       summary: EMPTY_SUMMARY,
       rows: [],
+      activeLoansCount: 0,
       errorMessage: undefined,
       refetch,
     };
@@ -109,6 +114,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     state: "ready",
     summary: formatSummary(data.summary),
     rows: data.loans.map(formatRow),
+    activeLoansCount: data.loans.length,
     errorMessage: undefined,
     refetch,
   };
