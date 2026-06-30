@@ -35,7 +35,10 @@ use shared::price_provider::price_provider_for;
 pub use config::{AssetPriceCollectorSettings, PriceInterval};
 
 /// Delay between collection cycles (5 minutes).
-const CYCLE_DELAY: Duration = Duration::from_mins(5);
+// `Duration::from_mins` is nightly-only (feature `duration_constructors`), so we
+// build the value from seconds and silence clippy's suggestion to use it.
+#[allow(clippy::duration_suboptimal_units)]
+const CYCLE_DELAY: Duration = Duration::from_secs(5 * 60);
 
 /// How recent the latest grid point must be (relative to `now`) for it to be
 /// sourced from the live `current_price` rather than `historical_price`.
