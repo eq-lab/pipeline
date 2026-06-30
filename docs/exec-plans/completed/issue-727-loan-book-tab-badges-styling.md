@@ -69,28 +69,24 @@ Net: this is a compact segmented control (white selected chip on a muted track, 
 
 ## Implementation Steps
 
-1. **Expose the active-loan count from the logic hook** — `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`:
-   - Add `activeLoansCount: number` to the `DeploymentMonitorPanelState` interface.
-   - In each return branch set `activeLoansCount`: `0` for loading/error/empty; `data.loans.length` for ready.
+1. ~~**Expose the active-loan count from the logic hook**~~ ✅ DONE — `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`:
+   - Added `activeLoansCount: number` to the `DeploymentMonitorPanelState` interface.
+   - Set `activeLoansCount: 0` in loading/error/empty branches; `activeLoansCount: data.loans.length` in the ready branch.
 
-2. **(If Open Question resolved toward a token) add the 6px radius token** — `packages/ui/src/styles/theme.css`:
-   - Add `--radius-pipeline-card-sm: 6px;` to BOTH the `:root` block and the `@theme` block (the file declares radii in both), with a comment referencing Figma `radius/radius-xl` and node `3283:14480`. Skip this step if the team chooses the arbitrary-value route.
+2. ~~**(If Open Question resolved toward a token) add the 6px radius token**~~ ✅ DONE — `packages/ui/src/styles/theme.css`:
+   - Added `--radius-pipeline-card-sm: 6px;` to both the `:root` block and the `@theme` block with a comment referencing Figma `radius/radius-xl` and node `3283:14480`.
 
-3. **Restyle the tab bar** — `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`:
-   - Replace `activeTabClasses` / `disabledTabClasses` and the container/`LoanBookTabBar` markup with the segmented-control spec above. Concretely:
-     - Container: `flex items-start p-0.5` (2px) + `rounded-[var(--radius-pipeline-card-sm)]` (or token utility once added) + `bg-[color:var(--color-pipeline-fill-muted)]` + `w-fit`. Keep `data-testid="loan-book-tab-bar"` and `role="tablist"`.
-     - Each tab: `inline-flex items-center justify-center gap-1 h-8 px-1.5 rounded-[var(--radius-pipeline-card)]` (4px), `font-[family-name:var(--font-body)]`, caption size/line-height via `--text-pipeline-caption`.
-     - Selected (Active Loans): `bg-[color:var(--color-pipeline-surface)]`, `text-[color:var(--color-pipeline-ink)]`, `font-medium`, `cursor-default`. Keep `aria-selected="true"`, `data-testid="loan-book-tab-active-loans"`.
-     - Unselected (In Origination): transparent bg, `text-[color:var(--color-pipeline-ink-muted)]`, `font-normal`, `cursor-not-allowed`, disabled affordance (keep `opacity-50` or rely on the muted color — match #717 intent; prefer keeping `aria-disabled` + `cursor-not-allowed`). Keep `aria-selected="false"`, `aria-disabled="true"`, `data-testid="loan-book-tab-in-origination"`.
-   - Add a `LoanBookTabBadge` inline element (small component or inline JSX) rendering the count: `inline-flex items-center justify-center min-w-5 px-1 py-0.5 rounded-[var(--radius-pipeline-card)] bg-[color:var(--color-pipeline-fill-muted)] text-[color:var(--color-pipeline-ink-muted)] font-normal` + caption type. Give it a `data-testid` (e.g. `loan-book-tab-active-loans-count`) for assertion.
-   - Render the Active Loans badge with the live count: pass `activeLoansCount` from the panel into `LoanBookTabBar` as a prop.
-   - Render NO badge on In Origination (pending Open Question). If a placeholder is approved, render a badge with the static value instead.
-   - Drop the now-stale comment block (lines 25–30, 31–53) and rewrite to describe the new segmented-control spec + the badge-data decision. Update the file-top doc comment's tab paragraph (lines 12–15) to mention the live count + disabled In-Origination-with-no-count.
-   - Omit the Figma backdrop-blur effect; leave a one-line code comment noting it was intentionally dropped (no blur token, no visible effect on flat bg).
+3. ~~**Restyle the tab bar**~~ ✅ DONE — `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`:
+   - Full rewrite of the tab bar to segmented-control spec: container uses `--radius-pipeline-card-sm`, selected chip uses `--color-pipeline-surface`, all tabs use caption typography with `--font-body`.
+   - Added `LoanBookTabBar` props interface with `activeLoansCount`.
+   - Active Loans badge: `data-testid="loan-book-tab-active-loans-count"`, muted fill, caption text.
+   - In Origination: no badge, comment explains why.
+   - All `data-testid`/`role`/`aria-*` attributes preserved.
+   - Backdrop-blur effect omitted with code comment (no blur token, no visible effect).
 
-4. **Wire the count through the view** — in `DeploymentMonitorPanel`, destructure `activeLoansCount` from `useDeploymentMonitorPanel()` and pass it to `<LoanBookTabBar activeLoansCount={activeLoansCount} />`.
+4. ~~**Wire the count through the view**~~ ✅ DONE — `DeploymentMonitorPanel` destructures `activeLoansCount` from `useDeploymentMonitorPanel()` and passes it to `<LoanBookTabBar activeLoansCount={activeLoansCount} />`.
 
-5. **Lint** — run `npx tsx scripts/lint-docs.ts` (per AGENTS.md, after TS changes) and the frontend lint/typecheck. Fix any errors before completion.
+5. ~~**Lint**~~ ✅ DONE — `npx tsx scripts/lint-docs.ts` passes (0 errors). `tsc --noEmit` passes. Frontend build succeeds.
 
 ## Test Strategy
 
