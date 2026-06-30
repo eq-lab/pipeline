@@ -35,18 +35,18 @@ Out of scope (do **not** touch — owned by other issues):
 
 ## Implementation Steps
 
-1. **Branch.** Create `fix/728-loan-book-full-width` off current `main`.
+1. ~~**Branch.** Create `fix/728-loan-book-full-width` off current `main`.~~ ✅ Branch `feat/728-loan-book-full-width` already created.
 
-2. **Change the dashboard grid in `packages/frontend/src/routes/dashboard.tsx`** (the `data-testid="dashboard-grid"` container, currently `className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8"` wrapping `<BalanceSheetPanel/> <DeploymentMonitorPanel/> <WithdrawalQueuePanel/> <YieldHistoryPanel/>`). Implement the option chosen in Open Question 1:
+2. ~~**Change the dashboard grid in `packages/frontend/src/routes/dashboard.tsx`**~~ ✅ Done — Approach 2a implemented (full-width single-column stack, source order preserved: Balance Sheet → Loan Book → Withdrawal Queue → Yield History). Grid class changed from `"grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8"` to `"grid grid-cols-1 gap-6 md:gap-8"`. Panel DOM order preserved per manager instruction. (the `data-testid="dashboard-grid"` container, currently `className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8"` wrapping `<BalanceSheetPanel/> <DeploymentMonitorPanel/> <WithdrawalQueuePanel/> <YieldHistoryPanel/>`). Implement the option chosen in Open Question 1:
 
    - **2a — Recommended (full-width stack, matches Figma `3283-12098`):** Replace the grid with a single-column flex/`grid-cols-1` stack at all breakpoints so every panel is full content width. Order the panels to match the Figma frame's top-to-bottom order: **Yield History (charts) → Balance Sheet → Loan Book → Withdrawal Queue.** Keep `gap-6` on mobile stepping to `md:gap-8` (the frame's section spacing). Each panel already fills its container width via `PanelContainer`'s `Card`, so no per-panel width class is needed.
      - Note: reordering panels in the JSX is a layout/structure change consistent with the design and the issue's "spell out the resulting grid arrangement" instruction; it is NOT the tab/card *content* ordering owned by #726. If the manager prefers to keep DOM order untouched to avoid any perceived overlap with #726, a CSS-only stack that preserves the current A→B→C→D source order is acceptable as a fallback — call this out in the PR.
 
    - **2b — Fallback (Panel-B-only full row, keeps 2×2 grid for A/C/D):** Keep `md:grid-cols-2` but make `<DeploymentMonitorPanel/>` span both columns via `className="md:col-span-2"` (or wrap it so the grid item gets `col-span-2`). `PanelContainer` already accepts `className` and forwards it onto the `Card`, so pass `className="md:col-span-2"` to `DeploymentMonitorPanel` and thread it through to `PanelContainer`. Mobile stays `grid-cols-1`. This satisfies #728's literal acceptance criteria (Loan Book full-width) while leaving A/C/D arrangement for a future issue.
 
-3. **Update the layout doc comment** at the top of `dashboard.tsx` (currently describes "two-column grid (`md:grid-cols-2`)" and "A→B→C→D reading order") to describe the new arrangement and cite Figma `3283-12098` as the source of the full-width stack (and `3283-72387` for responsive). Remove the now-inaccurate "two-column" wording.
+3. ~~**Update the layout doc comment**~~ ✅ Done — updated to describe the full-width single-column stack, cites Figma `3283-12098`, removes "two-column" wording, references Issue #728.
 
-4. **No changes to** `DeploymentMonitorPanel.tsx`, `LoanBookSummary.tsx`, `LoanBookTable.tsx`, `PanelContainer.tsx`, or any hook — unless approach 2b requires threading a `className` through `DeploymentMonitorPanel` to `PanelContainer` (PanelContainer already supports `className`; `DeploymentMonitorPanel` would need to accept and forward an optional `className` prop). Keep that change minimal and presentational only.
+4. ~~**No changes to** `DeploymentMonitorPanel.tsx`, etc.~~ ✅ Confirmed — no panel internal changes made.
 
 5. **Lint.** Run `npx tsx scripts/lint-docs.ts` (docs structure) and the frontend type/lint check (`yarn workspace @pipeline/frontend lint` / `tsc`) per AGENTS.md. Fix any errors before finishing.
 
