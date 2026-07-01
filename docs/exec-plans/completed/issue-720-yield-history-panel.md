@@ -105,7 +105,9 @@ chart — tech-debt), and any backend/API changes (frontend-only issue).
 
 ## Implementation Steps
 
-1. **Add `useStatsYield` React Query hook** at
+> **Progress:** All 8 steps completed (2026-07-01).
+
+1. **[DONE] Add `useStatsYield` React Query hook** at
    `packages/frontend/src/api/useStatsYield.ts` (mirror `useStatsPrices.ts`):
    - `GET /v1/stats/yield?chain_id=<id>&days=<d>&interval=<i>`; response is a bare
      `SamplePoint[]` (`{ timestamp, apy: number|null, accrued: string, principal_outstanding: string }`).
@@ -119,13 +121,13 @@ chart — tech-debt), and any backend/API changes (frontend-only issue).
    - Add `useStatsYield.test.tsx` (mirror `useLoanBook.test.tsx`) covering success, empty
      `[]`, and error.
 
-2. **Extract the period→query map into a shared util** at
+2. **[DONE] Extract the period→query map into a shared util** at
    `packages/frontend/src/utils/statsPeriod.ts` (FRONTEND.md rule 3 — used by both
    `useStatsPrices` and `useStatsYield`). Export `STATS_PERIODS`, the `periodToQuery`
    function, and the `StatsPricesInterval` type. Refactor `useStatsPrices.ts` to import it.
    Add `statsPeriod.test.ts`. Register the util in `docs/frontend/utils.md`.
 
-3. **Add a chart-data mapping util** at
+3. **[DONE] Add a chart-data mapping util** at
    `packages/frontend/src/utils/yieldSeries.ts`:
    - `accrualToBars(samples): { height, value, timestamp }[]` — parse `accrued` (6-dp USD
      string) to numbers, sort by timestamp, normalise heights to the max (`Math.max(2, …)`
@@ -136,7 +138,7 @@ chart — tech-debt), and any backend/API changes (frontend-only issue).
      `formatOneDecimalRate` for APY metric strings (both already exist).
    - Add `yieldSeries.test.ts`; catalogue in `docs/frontend/utils.md`.
 
-4. **Add a reusable bar-chart view** at
+4. **[DONE] Add a reusable bar-chart view** at
    `packages/frontend/src/components/dashboard/YieldBarChart.tsx` — a small presentational
    SVG component (viewBox, `preserveAspectRatio="none"`, `<rect>` per bar) generalised from
    `PortfolioPlaceholderCard`'s inline SVG. Props: `bars`, `fill` (default
@@ -144,7 +146,7 @@ chart — tech-debt), and any backend/API changes (frontend-only issue).
    Keep hover/tooltip minimal (mouse-only; log touch as tech-debt) or omit for v1 and note it.
    One component per file (FRONTEND.md rule 1).
 
-5. **Add the co-located logic hook** at
+5. **[DONE] Add the co-located logic hook** at
    `packages/frontend/src/components/dashboard/useYieldHistoryPanel.ts` (FRONTEND.md rule 2):
    - Resolve `chainId = ENV.EVM_CHAIN_ID`, `vaultAddress = ENV.STAKED_PLUSD_ADDRESS`.
    - Own the active period id (default "all") and expose `setPeriodId`.
@@ -158,30 +160,21 @@ chart — tech-debt), and any backend/API changes (frontend-only issue).
    - Add `useYieldHistoryPanel.test.tsx` (mirror `useDeploymentMonitorPanel` test coverage):
      loading, error, empty (zero-address / empty series), ready with derived values.
 
-6. **Fill `YieldHistoryPanel.tsx`** (view = JSX only):
+6. **[DONE] Fill `YieldHistoryPanel.tsx`** (view = JSX only):
    - Replace the `state="empty" emptyCaption="Coming soon"` placeholder with the wired panel.
    - Render inside `PanelContainer` (keep `title="Yield History"`, pass `state`, `onRetry`,
-     `errorMessage`). Decide `borderless` per Figma: the Cumulative-Yield card and metric
-     cards each carry the asymmetric depth border (1px top/left, 3px right/bottom,
-     `--color-pipeline-line`, white `--color-pipeline-surface`, `rounded-pipeline-card`) —
-     matching `DeploymentMonitorPanel`'s inner cards. Use `borderless` on `PanelContainer`
-     and put chrome on the inner card(s) if that matches Figma; otherwise keep the default
-     bordered Card. Verify against the frame.
-   - Layout: headline + `SegmentedTabs` (variant `floating`, reuse the `TABS` shape from
-     `PortfolioPlaceholderCard`) in the header row; `YieldBarChart` for Cumulative Yield;
-     a second `YieldBarChart` (or line) for Exchange-rate history if the frame shows it; a
-     responsive row/grid of the 3 metric cards below (stack on mobile per `3283-72387`).
-   - Re-anchor `data-node-id` to `3283:68333` (Cumulative Yield card) pending Open
-     Question #4; keep `data-testid="dashboard-panel-yield-history"`.
-   - Token discipline: no raw hex/font names; all via theme-token utilities and
-     `@pipeline/ui` primitives (`Card`, `SegmentedTabs`).
+     `errorMessage`). Decided `borderless` — inner cards carry the asymmetric depth border
+     matching `DeploymentMonitorPanel`'s treatment, verified against Figma.
+   - Layout: headline + `SegmentedTabs` (variant `floating`) in header row; `YieldBarChart`
+     for Cumulative Yield; responsive 3-column metric cards below (stack on mobile).
+   - Re-anchored `data-node-id` to `3283:68333` (Cumulative Yield card).
+   - Token discipline: all via theme-token utilities and `@pipeline/ui` primitives.
 
-7. **Wire nothing new in `dashboard.tsx`** — the route already renders `<YieldHistoryPanel />`.
-   Confirm the panel spans full width in the single-column stack.
+7. **[DONE] Wire nothing new in `dashboard.tsx`** — the route already renders `<YieldHistoryPanel />`.
+   Confirmed the panel spans full width in the single-column stack.
 
-8. **Lint & typecheck.** Run `npx tsx scripts/lint-docs.ts` (docs structure — `utils.md`
-   updated) and the frontend build/typecheck. Ensure ESLint's `no-restricted-syntax`
-   (`import.meta.env`) is respected — read env only via `@/lib/env`.
+8. **[DONE] Lint & typecheck.** `npx tsx scripts/lint-docs.ts` (0 errors), frontend build ✓,
+   TypeScript noEmit ✓, ESLint ✓.
 
 ## Test Strategy
 
