@@ -7,8 +7,8 @@ import { PanelEmpty } from "./PanelEmpty";
 /**
  * PanelContainer — shared surface for the four Protocol Dashboard panels
  * (A Balance Sheet, B Deployment Monitor, C Withdrawal Queue, D Yield
- * History). Wraps the `@pipeline/ui` `Card` (`white` variant) with a panel
- * title header and a body region.
+ * History). Wraps the `@pipeline/ui` `Card` (`white` variant) with an optional
+ * panel title header and a body region.
  *
  * State handling: a single `state` discriminator selects which body renders,
  * so all four panels share one loading/empty/error treatment:
@@ -21,14 +21,21 @@ import { PanelEmpty } from "./PanelEmpty";
  * sub-issues of #712 flip them to `"loading"`/`"error"`/`"ready"` as they wire
  * real data. Pure/presentational — no data fetching here.
  *
+ * `title` is optional: panels that correspond to a Figma section with no
+ * heading (e.g. Panel D Yield History — `3283:67619`) omit it. When absent,
+ * no `<h2>` is rendered.
+ *
  * Token discipline: title uses display-font + heading tokens; the surface
  * chrome comes from `Card`. No raw colors/sizes.
  */
 export type PanelState = "ready" | "loading" | "empty" | "error";
 
 export interface PanelContainerProps {
-  /** Panel heading, e.g. "Balance Sheet". */
-  title: string;
+  /**
+   * Panel heading, e.g. "Balance Sheet". Optional — omit for panels whose
+   * Figma section has no heading (e.g. Panel D Yield History).
+   */
+  title?: string;
   /** Which body to render. Defaults to `"ready"` (renders `children`). */
   state?: PanelState;
   /** Retry handler passed to `PanelError` when `state === "error"`. */
@@ -107,7 +114,9 @@ export function PanelContainer({
 }: PanelContainerProps) {
   const body = (
     <>
-      <h2 className={titleClasses}>{title}</h2>
+      {title !== undefined && title !== "" && (
+        <h2 className={titleClasses}>{title}</h2>
+      )}
       <div className="min-h-[120px]">
         <PanelBody
           state={state}

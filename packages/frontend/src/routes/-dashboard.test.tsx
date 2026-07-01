@@ -7,7 +7,7 @@
  *
  * Scenarios covered:
  *   1. Page root + <main> render (protocol-wide; no wallet connected, no gate).
- *   2. All four panel containers render with their titles.
+ *   2. All four panel containers render; three have section headings, Panel D (Yield History) does not.
  *   3. Responsive structure: grid is single-column on mobile, two-column at md+.
  *   4. PanelLoading shows loading copy.
  *   5. PanelEmpty shows its caption.
@@ -76,6 +76,8 @@ vi.mock("@/lib/env", () => ({
     EVM_CHAIN_ID: 560048,
     EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
     DEPOSIT_MANAGER_ADDRESS: "0x0000000000000000000000000000000000000000",
+    // Zero-address triggers YieldHistoryPanel's empty guard (no network calls in test env).
+    STAKED_PLUSD_ADDRESS: "0x0000000000000000000000000000000000000000",
     WALLETCONNECT_PROJECT_ID: "replace-me",
   },
 }));
@@ -187,20 +189,27 @@ describe("/dashboard route shell", () => {
 
   it("renders all four panel containers with their titles", () => {
     renderDashboard();
-    const expected: Array<[string, string]> = [
+    // Panels A, B, C have section headings; Panel D (Yield History) has no <h2>
+    // per Figma frame 3283:67619 — its PanelContainer omits the `title` prop.
+    const panelsWithTitle: Array<[string, string]> = [
       ["dashboard-panel-balance-sheet", "Balance Sheet"],
       // Title updated to "Loan Book" per issue #717 design decision
       ["dashboard-panel-deployment-monitor", "Loan Book"],
       ["dashboard-panel-withdrawal-queue", "Withdrawal Queue"],
-      ["dashboard-panel-yield-history", "Yield History"],
     ];
-    for (const [testId, title] of expected) {
+    for (const [testId, title] of panelsWithTitle) {
       const panel = screen.getByTestId(testId);
       expect(panel).toBeInTheDocument();
       expect(panel).toHaveTextContent(title);
     }
-    // Three placeholders still show "Coming soon" (B is now wired to real data)
-    expect(screen.getAllByText("Coming soon")).toHaveLength(3);
+    // Panel D (Yield History) — testid present, no section <h2>
+    expect(
+      screen.getByTestId("dashboard-panel-yield-history"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Yield History")).not.toBeInTheDocument();
+    // Two placeholders show "Coming soon" (B is wired to real data; D is wired
+    // but shows "Nothing to show yet" with zero-address STAKED_PLUSD_ADDRESS).
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
   });
 
   it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {
@@ -210,18 +219,28 @@ describe("/dashboard route shell", () => {
     expect(grid.className).toContain("grid-cols-1");
     expect(grid.className).not.toContain("md:grid-cols-2");
     // All four panels render.
+    const yieldPanel = screen.getByTestId("dashboard-panel-yield-history");
+    const balancePanel = screen.getByTestId("dashboard-panel-balance-sheet");
+    const loanPanel = screen.getByTestId("dashboard-panel-deployment-monitor");
+    const withdrawalPanel = screen.getByTestId("dashboard-panel-withdrawal-queue");
+    expect(yieldPanel).toBeInTheDocument();
+    expect(balancePanel).toBeInTheDocument();
+    expect(loanPanel).toBeInTheDocument();
+    expect(withdrawalPanel).toBeInTheDocument();
+    // Panel order (Figma section order): Yield History → Balance Sheet →
+    // Loan Book → Withdrawal Queue (coordinator decision, #720).
     expect(
-      screen.getByTestId("dashboard-panel-balance-sheet"),
-    ).toBeInTheDocument();
+      yieldPanel.compareDocumentPosition(balancePanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
-      screen.getByTestId("dashboard-panel-deployment-monitor"),
-    ).toBeInTheDocument();
+      balancePanel.compareDocumentPosition(loanPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
-      screen.getByTestId("dashboard-panel-withdrawal-queue"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("dashboard-panel-yield-history"),
-    ).toBeInTheDocument();
+      loanPanel.compareDocumentPosition(withdrawalPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

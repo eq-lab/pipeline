@@ -59,6 +59,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Not investigated. The mocked test setup appears to leave the WithdrawalQueue contract unconfigured, so the hook short-circuits with a "not configured" error before reaching the signature-decline / submission paths the tests assert on.
 - **Workaround:** None applied.
 
+### BUG-7: `PortfolioPlaceholderCard.test.tsx` — tooltip balance test is time-sensitive
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/PortfolioPlaceholderCard.test.tsx` line 261
+- **Symptom:** The test "pointerMove on chart wrap shows tooltip with '$1,' balance prefix" fails because the synthetic chart curve's balance at the hovered slot is currently sub-$1000 (e.g. `$636.59`). The test was written when `Date.now()` was earlier in the deployment lifetime, causing the synthetic curve to land in a different balance range.
+- **Root cause:** The chart curve is generated deterministically from `Date.now()` as the anchor. As real time advances, the same seeded pseudo-random curve produces lower intermediate balances at the test's hardcoded hover position. The assertion `toContain("$1,")` assumed the value always exceeds $1 K.
+- **Workaround:** None applied. Fix: mock `Date.now()` in the test, or change the assertion to a looser regex (e.g. `/\$[\d.,]+/`).
+
 ---
 
 ## Resolved
