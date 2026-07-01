@@ -82,7 +82,9 @@ describe("Footer — disclaimer and copyright", () => {
     const disclaimer = screen.getByTestId("footer-disclaimer");
     expect(disclaimer).toBeInTheDocument();
     // Check a distinctive substring from the disclaimer copy.
-    expect(disclaimer.textContent).toContain("Pipeline is a financial protocol");
+    expect(disclaimer.textContent).toContain(
+      "Pipeline is a financial protocol",
+    );
     expect(disclaimer.textContent).toContain("due diligence");
   });
 
@@ -114,5 +116,11 @@ describe("Footer — responsive structure", () => {
     const footer = screen.getByTestId("site-footer");
     expect(footer.className).toContain("p-8");
     expect(footer.className).toContain("md:p-24");
+  });
+
+  it("outer footer carries the paper page background (mounted outside route wrappers)", () => {
+    render(<Footer />);
+    const footer = screen.getByTestId("site-footer");
+    expect(footer.className).toContain("bg-[var(--color-pipeline-paper)]");
   });
 });

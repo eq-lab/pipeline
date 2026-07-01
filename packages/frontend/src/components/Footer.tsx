@@ -76,6 +76,11 @@ export const Footer = React.forwardRef<HTMLElement, FooterProps>(
       // 96px (p-24) reducing to 32px (p-8) on mobile — pixel hints, not tokens.
       "flex flex-col gap-12",
       "p-8 md:p-24",
+      // Page background (`--color-pipeline-paper`, #F8F7F6). The footer is mounted
+      // globally in __root.tsx *outside* each route's own paper wrapper, so it must
+      // carry the paper background itself — otherwise it falls back to the bare body
+      // background (Figma 3283-13463; Issue #746).
+      "bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]",
       className,
     ]
       .filter(Boolean)
@@ -160,12 +165,13 @@ export const Footer = React.forwardRef<HTMLElement, FooterProps>(
         >
           {/* Left: 3-line disclaimer. max-w-[480px] matches Figma node 3283:13473. */}
           <p
-            className={[captionTokenClasses, "max-w-[480px] m-0"].join(" ")}
+            className={[captionTokenClasses, "m-0 max-w-[480px]"].join(" ")}
             data-node-id="3283:13473"
             data-testid="footer-disclaimer"
           >
             Pipeline is a financial protocol. This interface is provided for
-            informational purposes only and does not constitute financial advice.
+            informational purposes only and does not constitute financial
+            advice.
             <br />
             Past performance is not indicative of future results. Participation
             involves risk, including possible loss of principal.
