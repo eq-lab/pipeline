@@ -53,6 +53,21 @@ Visible to any LP who connects a whitelisted wallet to the Pipeline app.
 **Reconciliation indicator**
 - The backing invariant (`PLUSD totalSupply == USDC in Capital Wallet + USYC NAV + USDC out on loans + USDC in transit`) displayed with green / amber / red status (green < 0.01% drift, amber 0.01%–1%, red > 1%).
 
+Served by `GET /v1/financial-position` (aggregate statement of financial position).
+Response: `assets` (`liquid` → `cash_stablecoins`, `tokenized_tbills`, `off_chain_usd`;
+`deployed` → `secured_loans_outstanding`, `accrued_interest_receivable`), `liabilities`
+(`senior_claims` → `plusd_outstanding`; `subordinated_capital` → `junior_tranche`), each with
+a rolled-up `total`. Amounts are base-6 decimal strings; a field with no source is served as
+`null`. Deployed figures are summed over the active-loan set (same `origination_date ≤ now <
+effective_end` rule as the Loan Book): `secured_loans_outstanding` sums each active loan's
+senior + equity tranche, `accrued_interest_receivable` sums cumulative `senior_interest`
+received (via `PaymentRecorded`), and `junior_tranche` sums the on-chain original equity
+tranche — the total Originator first-loss margin across active loans (authoritative figure
+is the trustee feed, not yet indexed). In v1 the entire `liquid` block and `plusd_outstanding` are `null` — the
+Capital-Wallet USDC / USYC / in-transit balances are not indexed, and PLUSD `totalSupply` has
+no reliable indexed source (no `Transfer`/mint/burn events). The liquid balances arrive with
+the Panel A reserves source.
+
 ---
 
 ## Protocol Dashboard — Panel B: Deployment Monitor

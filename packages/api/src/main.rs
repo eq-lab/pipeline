@@ -106,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::stats::StatsDoc::openapi());
     api_docs.merge(pipeline_api::routes::portfolio::YieldDoc::openapi());
     api_docs.merge(pipeline_api::routes::loan_book::LoanBookDoc::openapi());
+    api_docs.merge(pipeline_api::routes::financial_position::FinancialPositionDoc::openapi());
     api_docs.merge(pipeline_api::routes::auth::AuthDoc::openapi());
 
     let app = Router::new()
@@ -118,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::stats::router())
         .nest("/v1", pipeline_api::routes::portfolio::router())
         .nest("/v1", pipeline_api::routes::loan_book::router())
+        .nest("/v1", pipeline_api::routes::financial_position::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(
