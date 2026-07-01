@@ -128,10 +128,11 @@ function DesktopTable({ rows }: WithdrawalQueueTableProps) {
     >
       <table className="w-full table-fixed border-collapse">
         <colgroup>
-          {/* Holder — flexible, fills remaining width */}
-          <col />
-          <col style={{ width: "128px" }} />
-          <col style={{ width: "112px" }} />
+          {/* Three equal columns (~1/3 each), matching the Figma flex-1
+              distribution for Holder / Amount / Status. */}
+          <col style={{ width: "33.333%" }} />
+          <col style={{ width: "33.333%" }} />
+          <col style={{ width: "33.334%" }} />
         </colgroup>
         <thead>
           <tr>
