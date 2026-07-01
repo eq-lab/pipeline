@@ -12,6 +12,7 @@ import {
   formatLtv,
   formatCoverage,
   formatDurationDays,
+  formatEstimatedWaitDays,
 } from "./formatCompactUsd";
 
 // ── formatCompactUsd ─────────────────────────────────────────────────────────
@@ -177,5 +178,34 @@ describe("formatDurationDays", () => {
 
   it("returns em-dash for undefined", () => {
     expect(formatDurationDays(undefined)).toBe("—");
+  });
+});
+
+// ── formatEstimatedWaitDays ───────────────────────────────────────────────────
+
+describe("formatEstimatedWaitDays", () => {
+  it("formats a 1-decimal string with tilde prefix", () => {
+    expect(formatEstimatedWaitDays("3.2")).toBe("~3.2 days");
+  });
+
+  it("formats 1.0 correctly", () => {
+    expect(formatEstimatedWaitDays("1.0")).toBe("~1.0 days");
+  });
+
+  it("formats a whole-number string to one decimal", () => {
+    expect(formatEstimatedWaitDays("5")).toBe("~5.0 days");
+  });
+
+  it("returns em-dash for null", () => {
+    expect(formatEstimatedWaitDays(null)).toBe("—");
+  });
+
+  it("returns em-dash for undefined", () => {
+    expect(formatEstimatedWaitDays(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for non-numeric input", () => {
+    expect(formatEstimatedWaitDays("n/a")).toBe("—");
+    expect(formatEstimatedWaitDays("")).toBe("—");
   });
 });

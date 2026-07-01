@@ -89,7 +89,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
 
 ## Implementation Steps
 
-1. **API hook — `packages/frontend/src/api/useWithdrawalQueue.ts`.**
+1. ✅ **API hook — `packages/frontend/src/api/useWithdrawalQueue.ts`.**
    Model on `useLoanBook.ts`. Export:
    - `WithdrawalQueueSummary` — `{ in_queue_usd: string; requests_count: number;
      estimated_wait_days: string | null; liquid_cover: string | null }`.
@@ -103,10 +103,10 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
      `refetchInterval: 30_000`, always enabled. Include the doc-comment note that
      `in_queue_usd`/`amount` are base-6 human-unit strings (use `formatCompactUsd`).
 
-2. **Barrel export — `packages/frontend/src/api/index.ts`.** Export
+2. ✅ **Barrel export — `packages/frontend/src/api/index.ts`.** Export
    `useWithdrawalQueue` and the four types, following the existing block style.
 
-3. **Shared address-truncation util — `packages/frontend/src/utils/truncateAddress.ts`.**
+3. ✅ **Shared address-truncation util — `packages/frontend/src/utils/truncateAddress.ts`.**
    Per FRONTEND.md rule 3 (helper now needed in a 2nd place), extract the 6+4
    truncation currently inlined in `useAccountDropdown.ts`
    (`\`${address.slice(0,6)}…${address.slice(-4)}\``) into
@@ -114,7 +114,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
    gracefully). Refactor `useAccountDropdown.ts` to import it (keeps behavior
    identical). Add the util to `docs/frontend/utils.md` in the same change.
 
-4. **Number formatter — reuse existing utils, add one small helper.**
+4. ✅ **Number formatter — reuse existing utils, add one small helper.**
    - `formatCompactUsd` for `in_queue_usd` and `amount`.
    - `formatCoverage` for `liquid_cover` (`"1.5x"`, `"—"` on null) — already
      exactly the format the card needs.
@@ -125,7 +125,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
      null/non-numeric. Ship a unit test (rule 3). Catalogue it in
      `docs/frontend/utils.md`.
 
-5. **Logic hook — `packages/frontend/src/components/dashboard/useWithdrawalQueuePanel.ts`.**
+5. ✅ **Logic hook — `packages/frontend/src/components/dashboard/useWithdrawalQueuePanel.ts`.**
    Mirror `useDeploymentMonitorPanel.ts`. Call `useWithdrawalQueue()`; derive:
    - `state`: `"loading"` while `isLoading`; `"error"` on `error`; `"empty"` when
      `!data || data.items.length === 0`; else `"ready"`.
@@ -137,7 +137,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
    - If Open Question 2 resolves to "implement expand": also expose the
      first-N/rest split + an `expanded` toggle here (view stays JSX-only).
 
-6. **Table sub-component —
+6. ✅ **Table sub-component —
    `packages/frontend/src/components/dashboard/WithdrawalQueueTable.tsx`.**
    Model on `LoanBookTable.tsx`. Desktop `<table>` (3 columns: Holder / Amount /
    Status) wrapped in `overflow-x-auto`; mobile stacked cards below `md`. Reuse
@@ -147,7 +147,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
    `theme.css`) for the "done" state, per the resolved Open Question 1. Add
    stable `data-testid`s (`withdrawal-queue-table`, `-desktop`, `-mobile`).
 
-7. **Summary cards.** Reuse the card token treatment from `LoanBookSummary.tsx` /
+7. ✅ **Summary cards.** Reuse the card token treatment from `LoanBookSummary.tsx` /
    the Yield-History `MetricCard` (white surface, asymmetric depth border,
    `--radius-pipeline-card`, 16px padding, 144px tall to match Figma frame
    `3283:14895` card-horizontal height=144). Either add a small local
@@ -156,7 +156,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
    otherwise keep a local one consistent with #720's `MetricCard`. Four cards:
    In Queue / Requests / Estimated wait / Liquid Cover.
 
-8. **Panel view — rewrite
+8. ✅ **Panel view — rewrite
    `packages/frontend/src/components/dashboard/WithdrawalQueuePanel.tsx`.**
    Replace the placeholder. Use `PanelContainer` with `title="Withdrawal Queue"`,
    `state`, `onRetry={refetch}`, `errorMessage`, preserve
@@ -166,7 +166,7 @@ _Resolved by product/design (2026-07-01, issue comment) — implement as decided
    y=264 → `gap-8` between cards and table, matching Loan Book's spacing rhythm).
    Keep the view JSX-only (FRONTEND.md rule 2).
 
-9. **Lint.** Run `npx tsx scripts/lint-docs.ts` (docs structure) and the
+9. ✅ **Lint.** Run `npx tsx scripts/lint-docs.ts` (docs structure) and the
    frontend lint/typecheck (`yarn workspace @pipeline/frontend lint` + `tsc`) —
    no raw hex/font values, token discipline, `no-restricted-globals` (never call
    `fetch` outside `src/api/`).

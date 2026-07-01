@@ -2,7 +2,7 @@
  * useAccountDropdown — logic hook for the AccountDropdown component.
  *
  * Owns:
- *   - address truncation helper (`truncateAddress`)
+ *   - address truncation (via shared `truncateAddress` util)
  *   - clipboard copy with a 1.5s `copied` affordance
  *   - outside-click, Escape, and route-change dismissal effects
  *
@@ -10,21 +10,9 @@
  */
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouterState } from "@tanstack/react-router";
+import { truncateAddress } from "@/utils/truncateAddress";
 
-/**
- * Truncates a wallet address for display.
- *
- * EVM (0x…):     slices to `0xXXXX…XXXX` (6 + 4 chars).
- * Stellar (G…):  slices to `GABCDE…WXYZ` (6 + 4 chars).
- * The 6+4 slice works uniformly for both formats.
- *
- * Input:  `0x8493...3b92` (42-char EVM) or a 56-char Stellar G… strkey.
- * Output: `0x8493…3b92` / `GABCDE…WXYZ`.
- */
-export function truncateAddress(address: string): string {
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
+export { truncateAddress };
 
 export interface UseAccountDropdownOptions {
   onClose: () => void;
