@@ -6,12 +6,45 @@
  *   Rate, Protection. Wrapped in `overflow-x: auto` so it never forces
  *   horizontal page scroll (FRONTEND.md wide-content rule).
  *
+ *   Column widths are derived from Figma node 3283-14552 (Table container):
+ *     Borrower/Commodity — flexible (fills remaining space), min-w 1px
+ *     Principal          — 112px  (node 3704:1076 Item width)
+ *     Collateral         — 112px  (node 3704:1079 Item width)
+ *     LTV                — 112px  (node 3704:1082 Item width)
+ *     Duration           — 96px   (node 3704:1085 Item width)
+ *     Rate               — 96px   (node 3704:1088 Item width)
+ *     Protection         — 128px  (node 3704:1091 Item width)
+ *   `table-layout: fixed` + `<colgroup>` enforces these widths so long hash
+ *   strings in the borrower column do not push the numeric columns together.
+ *   The borrower cell is `truncate` (overflow-hidden + text-ellipsis +
+ *   whitespace-nowrap) so any overflow is clipped with an ellipsis.
+ *
+ *   Spacing derived from Figma node 3283-14552 metadata:
+ *     Row height:         64px  (.row h=64, node 3704:1095)
+ *     Row padding:        py-3  (12px top+bottom; .row py-[var(--size-12)])
+ *     Header→row gap:     pb-2  (8px after header; Table container
+ *                                gap-[var(--size-8)] between Header+Content)
+ *     Inter-column gap:   pr-3  (12px right on first cell; row Slot
+ *                                gap-[var(--size-12)] between list-items)
+ *     Row divider:        border-t 1px --color-pipeline-line-subtle on <td>
+ *                                (border-test/secondary light-mode = #F1F1F1;
+ *                                on <td> cells, not <tr>, so border-collapse
+ *                                renders them correctly)
+ *
+ *   Typography:
+ *     Header captions:   12px / 16px, font-normal, --color-pipeline-ink-muted
+ *                        (font/font-size/caption + font/line-height/caption)
+ *     Body cells:        16px / 22px, font-normal, --color-pipeline-ink
+ *                        (font/font-size/body + font/line-height/body = 22px)
+ *
  * Mobile (below `md`): each loan rendered as a stacked card of label/value
- *   pairs with a divider between loans.
+ *   pairs with a divider between loans. Untouched by this issue — Figma mobile
+ *   node 3283-72323 has no header table.
  *
  * Figma references:
- *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
- *   Mobile:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72323
+ *   Desktop:         https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
+ *   Table container: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14552
+ *   Mobile:          https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72323
  *
  * Token discipline: no raw hex/font values.
  */
@@ -66,40 +99,82 @@ export interface LoanBookTableProps {
 
 // ── Token class constants ─────────────────────────────────────────────────────
 
-// Column-header typography: 12px/16px caption token — matches Figma node
-// 3283-14431 exactly (resolved open question #2 in issue #729). The label and
-// aggregate are one continuous caption run joined by a middot ` · `.
+// Column-header cells: 12px/16px caption token (font/font-size/caption +
+// font/line-height/caption). The label and aggregate are one continuous caption
+// run joined by a middot ` · `.
+// `whitespace-nowrap` + `overflow-hidden` prevents wrapping / clips on narrow
+// columns (fixed layout makes this a graceful fallback only).
+//
+// `pb-2` (8px bottom padding): Figma Table container uses gap-[var(--size-8)]
+// between the Header slot (h=24) and the Content slot (starts y=32) — 8px gap.
+// In `border-collapse` mode, the `border-b` on the header cells is the divider
+// line; the 8px padding provides the visual separation below the header text.
+// Token: --color-pipeline-line-subtle = #F1F1F1 (row divider, user dev-mode).
 const headerCellClasses = [
   "text-left",
-  "font-[family-name:var(--font-text)]",
+  "font-[family-name:var(--font-body)]",
   "font-normal",
-  "text-[length:var(--text-pipeline-caption,12px)]",
-  "leading-[var(--text-pipeline-caption--line-height,16px)]",
+  "text-[length:var(--text-pipeline-caption)]",
+  "leading-[var(--text-pipeline-caption--line-height)]",
   "text-[color:var(--color-pipeline-ink-muted)]",
-  "pb-3",
+  "pb-2",
+  "border-b border-[color:var(--color-pipeline-line-subtle)]",
   "whitespace-nowrap",
+  "overflow-hidden",
 ].join(" ");
 
+// Body cells — two padding layers matching Figma geometry (node 3283-14552):
+//   Layer 1 — <td> py-3 (12px): the `.row` Slot starts at y=12 from the row
+//             top edge (Figma: Slot y=12 inside the 64px .row).
+//             Token: --size-12 / var(--size-12, 12px).
+//   Layer 2 — inner <span> py-2 (8px): the `list-item` starts at y=8 inside
+//             the Slot (Figma: list-item y=8 within Slot h=40).
+//             Token: --size-8 / var(--size-8, 8px).
+//   Combined: 12px + 8px = 20px from the row edge to the text top, with 24px
+//             text (22px line-height + line box rounding), then 8px + 12px = 20px
+//             below → 64px total row height matching Figma .row h=64.
+//
+// `border-t` on <td> (not <tr>) — border-collapse renders cell borders
+//   reliably; <tr> borders are unreliable in some browser table paths.
+// Token: --color-pipeline-line-subtle = #F1F1F1 (row divider, user dev-mode).
 const bodyCellClasses = [
-  "font-[family-name:var(--font-text)]",
+  "font-[family-name:var(--font-body)]",
   "font-normal",
-  "text-[length:var(--text-pipeline-body,16px)]",
-  "leading-[var(--text-pipeline-body--line-height,24px)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink)]",
-  "py-4",
+  "py-3",
   "whitespace-nowrap",
+  "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-// First column is wider (borrower/commodity)
+// Cell text inner wrapper: py-2 (8px) is the second padding layer (list-item
+// y=8 inside Slot). Applied as className on a <span> wrapping each cell value.
+const bodyCellInnerClasses = "block py-2";
+
+// First column (borrower/commodity): <td> gets py-3 + border-t (same as
+// bodyCellClasses), overflow-hidden + max-w-0 forces the truncation boundary.
+// The inner <span> carries truncate + py-2 so the ellipsis renders on the text
+// itself while the <td> controls the overflow clip.
 const firstBodyCellClasses = [
-  bodyCellClasses,
-  "pr-6",
-  "font-medium",
+  "font-[family-name:var(--font-body)]",
+  "font-normal",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
+  "text-[color:var(--color-pipeline-ink)]",
+  "py-3",
+  "overflow-hidden",
+  "max-w-0",
+  "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
+
+// Inner span for the borrower cell: truncate (overflow-hidden + text-ellipsis
+// + whitespace-nowrap) + py-2 (8px second padding layer).
+const firstBodyCellInnerClasses = "block truncate py-2";
 
 // Mobile card label
 const mobileLabelClasses = [
-  "font-[family-name:var(--font-text)]",
+  "font-[family-name:var(--font-body)]",
   "font-normal",
   "text-[length:var(--text-pipeline-body-s,14px)]",
   "leading-[var(--text-pipeline-body-s--line-height,20px)]",
@@ -108,10 +183,10 @@ const mobileLabelClasses = [
 
 // Mobile card value
 const mobileValueClasses = [
-  "font-[family-name:var(--font-text)]",
+  "font-[family-name:var(--font-body)]",
   "font-medium",
-  "text-[length:var(--text-pipeline-body,16px)]",
-  "leading-[var(--text-pipeline-body--line-height,24px)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
   "text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
 
@@ -124,10 +199,41 @@ function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
       className="hidden md:block overflow-x-auto w-full"
       data-testid="loan-book-table-desktop"
     >
-      <table className="w-full border-collapse">
+      {/*
+       * table-layout: fixed — columns respect the <col> widths rather than
+       * sizing to content, preventing the borrower hash from squashing the
+       * numeric columns. The borrower column has no explicit <col> width so
+       * it takes all remaining space (Figma: flex-[1_0_0]).
+       *
+       * Column widths from Figma node 3283-14552 (Table container metadata):
+       *   Principal 112px · Collateral 112px · LTV 112px
+       *   Duration 96px · Rate 96px · Protection 128px
+       *   Total fixed: 656px — remainder goes to Borrower/Commodity.
+       *
+       * border-collapse: row dividers are on <td>/<th> cells (not <tr>)
+       * because <tr> border rendering is unreliable in border-separate mode.
+       * border-collapse correctly merges the header border-b with the first
+       * body cell border-t into a single 1px line.
+       */}
+      <table className="w-full border-collapse table-fixed">
+        <colgroup>
+          {/* Borrower/Commodity — flexible, fills remaining width */}
+          <col />
+          <col style={{ width: "112px" }} />
+          <col style={{ width: "112px" }} />
+          <col style={{ width: "112px" }} />
+          <col style={{ width: "96px" }} />
+          <col style={{ width: "96px" }} />
+          <col style={{ width: "128px" }} />
+        </colgroup>
         <thead>
-          <tr className="border-b border-[color:var(--color-pipeline-ink-divider)]">
-            <th className={[headerCellClasses, "pr-6"].join(" ")}>
+          {/*
+           * Header <tr> has no border class — the border-b is on each <th>
+           * via headerCellClasses. border-collapse merges the <th> border-b
+           * with the first body <td> border-t into a single 1px #F1F1F1 line.
+           */}
+          <tr>
+            <th className={[headerCellClasses, "pr-3"].join(" ")}>
               Borrower / Commodity
             </th>
             <th className={headerCellClasses}>
@@ -162,17 +268,40 @@ function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr
-              key={i}
-              className="border-b border-[color:var(--color-pipeline-ink-divider)] last:border-b-0"
-            >
-              <td className={firstBodyCellClasses}>{row.borrowerCommodity}</td>
-              <td className={bodyCellClasses}>{row.principal}</td>
-              <td className={bodyCellClasses}>{row.collateral}</td>
-              <td className={bodyCellClasses}>{row.ltv}</td>
-              <td className={bodyCellClasses}>{row.duration}</td>
-              <td className={bodyCellClasses}>{row.rate}</td>
-              <td className={bodyCellClasses}>{row.protection}</td>
+            // Row borders are on <td> cells (bodyCellClasses/firstBodyCellClasses)
+            // not on <tr> — see table border-collapse comment above.
+            // Figma also specifies border-radius: 4px on rows; unsupported on
+            // <tr> — logged as TD-26 in tech-debt-tracker.md.
+            <tr key={i}>
+              {/*
+               * pr-3 on <td>: 12px right gap matching Figma Slot
+               * gap-[var(--size-12)] between the borrower list-item and
+               * the Principal list-item.
+               * Inner span carries truncate + py-2 (second padding layer).
+               */}
+              <td className={[firstBodyCellClasses, "pr-3"].join(" ")}>
+                <span className={firstBodyCellInnerClasses}>
+                  {row.borrowerCommodity}
+                </span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.principal}</span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.collateral}</span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.ltv}</span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.duration}</span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.rate}</span>
+              </td>
+              <td className={bodyCellClasses}>
+                <span className={bodyCellInnerClasses}>{row.protection}</span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -186,7 +315,7 @@ function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
 function MobileCards({ rows }: LoanBookTableProps) {
   return (
     <div
-      className="block md:hidden flex flex-col divide-y divide-[color:var(--color-pipeline-ink-divider)]"
+      className="block md:hidden flex flex-col divide-y divide-[color:var(--color-pipeline-line)]"
       data-testid="loan-book-table-mobile"
     >
       {rows.map((row, i) => (

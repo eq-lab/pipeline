@@ -131,11 +131,20 @@ export function DeploymentMonitorPanel() {
       state={state}
       onRetry={refetch}
       errorMessage={errorMessage}
+      borderless
       data-testid="dashboard-panel-deployment-monitor"
       data-node-id="3283:14431"
     >
-      {/* Summary cards are rendered directly under the heading (Figma 3283:14479) */}
-      <div className="flex flex-col gap-4">
+      {/*
+       * Spacing from Figma node 3283:14431 (Section):
+       *   heading h=56, cards start y=88 → 32px heading→cards gap.
+       *   PanelContainer (borderless) contributes gap-4 (16px) between <h2>
+       *   and body div. pt-4 (16px) on this wrapper adds the remaining 16px
+       *   → 32px total heading-to-cards.
+       *   gap-8 (32px) between LoanBookSummary and the table container:
+       *   cards end y=232, Container starts y=264 → 32px below cards.
+       */}
+      <div className="flex flex-col gap-8 pt-4">
         <LoanBookSummary
           totalDeployed={summary.totalDeployed}
           totalCollateral={summary.totalCollateral}
@@ -143,8 +152,27 @@ export function DeploymentMonitorPanel() {
           avgYield={summary.avgYield}
           avgDuration={summary.avgDuration}
         />
-        {/* Tab bar + table grouped in an inner container (Figma container 3283:14479) */}
-        <div className="flex flex-col gap-4" data-testid="loan-book-table-container">
+        {/*
+         * Tab bar + table container (Figma node 3283:14479) — bordered card:
+         *   border-radius: var(--radius-radius-xxl, 4px) = --radius-pipeline-card
+         *   border-top/left: 1px solid border-test/secondary = --color-pipeline-line
+         *   border-right/bottom: 3px solid border-test/secondary = --color-pipeline-line
+         *   background: fill-test/on-primary = --color-pipeline-surface (white)
+         *   Same asymmetric "depth" border as the summary cards (LoanBookSummary).
+         *
+         *   Inner padding: tabs at x=16, y=16 → p-4 (16px all sides).
+         *   gap-6 (24px) tabs→table: tabs bottom y=52, table top y=76 → 24px.
+         */}
+        <div
+          className={[
+            "flex flex-col gap-6 p-4",
+            "bg-[color:var(--color-pipeline-surface)]",
+            "rounded-[var(--radius-pipeline-card)]",
+            "border-t border-l border-[color:var(--color-pipeline-line)]",
+            "border-b-[3px] border-r-[3px] border-b-[color:var(--color-pipeline-line)] border-r-[color:var(--color-pipeline-line)]",
+          ].join(" ")}
+          data-testid="loan-book-table-container"
+        >
           <LoanBookTabBar activeLoansCount={activeLoansCount} />
           <LoanBookTable rows={rows} headerAggregates={headerAggregates} />
         </div>

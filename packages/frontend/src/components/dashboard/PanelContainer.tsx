@@ -40,6 +40,14 @@ export interface PanelContainerProps {
   /** Real content, rendered when `state === "ready"`. */
   children?: React.ReactNode;
   className?: string;
+  /**
+   * When `true` the outer `Card` surface (border + background) is suppressed.
+   * Use for the Loan Book (DeploymentMonitorPanel) whose Figma section frame
+   * `3283:14431` is borderless — the visual chrome lives on the inner
+   * summary cards and the table-container card instead.
+   * All other panels keep the default bordered white Card.
+   */
+  borderless?: boolean;
   "data-testid"?: string;
   "data-node-id"?: string;
 }
@@ -94,14 +102,11 @@ export function PanelContainer({
   errorMessage,
   children,
   className,
+  borderless = false,
   ...rest
 }: PanelContainerProps) {
-  return (
-    <Card
-      variant="white"
-      className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
-      {...rest}
-    >
+  const body = (
+    <>
       <h2 className={titleClasses}>{title}</h2>
       <div className="min-h-[120px]">
         <PanelBody
@@ -113,6 +118,30 @@ export function PanelContainer({
           {children}
         </PanelBody>
       </div>
+    </>
+  );
+
+  if (borderless) {
+    // Borderless mode: no Card surface — no border, no background fill.
+    // The Loan Book section frame (Figma 3283:14431) is unstyled; chrome lives
+    // on the inner summary cards and table-container card.
+    return (
+      <div
+        className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+        {...rest}
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Card
+      variant="white"
+      className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+      {...rest}
+    >
+      {body}
     </Card>
   );
 }

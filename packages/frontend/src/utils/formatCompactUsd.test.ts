@@ -39,8 +39,18 @@ describe("formatCompactUsd", () => {
     expect(formatCompactUsd("1200.000000")).toBe("$1.2K");
   });
 
-  it("handles sub-thousand values as integer dollars", () => {
-    expect(formatCompactUsd("999.000000")).toBe("$999");
+  it("handles sub-thousand values with 2 decimal places", () => {
+    expect(formatCompactUsd("999.000000")).toBe("$999.00");
+    expect(formatCompactUsd("999")).toBe("$999.00");
+  });
+
+  it("preserves cents for sub-dollar values", () => {
+    // Bug guard: "0.900000" must NOT round to "$1".
+    expect(formatCompactUsd("0.900000")).toBe("$0.90");
+  });
+
+  it("formats a fractional sub-thousand value with 2 decimal places", () => {
+    expect(formatCompactUsd("12.5")).toBe("$12.50");
   });
 
   it("handles zero", () => {
@@ -108,6 +118,11 @@ describe("formatLtv", () => {
     expect(formatLtv("0.8350")).toBe("84%");
     expect(formatLtv("0.8351")).toBe("84%");
     expect(formatLtv("0.8350")).toBe("84%");
+  });
+
+  it("formats a large LTV with a thousands separator", () => {
+    // "1333.3333" → Math.round(1333.3333 * 100) = 133333 → "133,333%"
+    expect(formatLtv("1333.3333")).toBe("133,333%");
   });
 
   it("returns em-dash for null", () => {
