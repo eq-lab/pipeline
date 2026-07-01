@@ -212,6 +212,30 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** No bug today (values match). Drift risk: a future change to one is silently not reflected in the other.
 - **Suggested fix:** Move the simulate fee into `sim_decode.rs` (e.g. `pub const SIMULATE_FEE: u32 = 1_000_000;`) and point both `whitelist.rs` and `yield_mint.rs` at it; reconcile the two names.
 
+### TD-27: Panel D (Yield History) lacks by-source / T-bill / decomposed-trailing series
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/dashboard/YieldHistoryPanel.tsx`, `useYieldHistoryPanel.ts`
+- **Gap:** Three of the four series described in the original #715 spec are NOT served by
+  the API despite that issue being closed: (a) cumulative PLUSD minted split by source
+  (loan-repayment vs T-bill); (b) real-time T-bill accrual (rolling since last weekly USYC
+  distribution); (c) trailing-30d yield split into loan-yield vs T-bill contributions.
+  `GET /v1/stats/yield` returns only a single blended `accrued` series and a blended `apy`.
+  Backend follow-up issue: **#738**. Seams are clearly labelled with `TODO(#738)` comments.
+- **Impact:** Dashboard shows blended cumulative yield and blended APY only; the by-source
+  breakdown promised in the Figma spec is not shown.
+- **Suggested fix:** Land #738 (backend endpoint delivering decomposed APY + by-source accrued),
+  then wire the new series into `useYieldHistoryPanel` and `YieldHistoryPanel`.
+
+### TD-28: YieldBarChart has no hover/tooltip interaction
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/dashboard/YieldBarChart.tsx`
+- **Gap:** The home chart (`PortfolioPlaceholderCard`) supports hover → vertical cursor line +
+  tooltip. `YieldBarChart` is v1 only (no hover), mirroring the deferred touch interaction
+  in the home chart.
+- **Impact:** Users cannot inspect individual bar values on the Yield History chart.
+- **Suggested fix:** Add `onPointerMove` / `onPointerLeave` and a floating tooltip component
+  to `YieldBarChart` when the interaction UX is prioritised (follow-up issue under epic #712).
+
 ---
 
 ## Post-MVP

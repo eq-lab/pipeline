@@ -15,6 +15,10 @@ Entries are sorted alphabetically by name.
 | `formatLtv` | `@/utils/formatCompactUsd` | Formats a 4-decimal fraction LTV string as a rounded integer percentage (e.g. `"0.8511"` → `"85%"`). null → `"—"`. |
 | `formatOneDecimalRate` | `@/utils/formatCompactUsd` | Formats a decimal-fraction rate/yield string as a one-decimal percentage (e.g. `"0.112000"` → `"11.2%"`). One decimal per issue-717 design decision. null → `"—"`. |
 | `HomeStatsStrip` | `@/components/HomeStatsStrip` | Exchange rate / TVL / Current APY stat row extracted from `WelcomeHeader`. Rendered at the top-right of the heading on desktop (inside `WelcomeHeader`) and as a horizontally-scrollable strip at the bottom of the home page on mobile (in `routes/index.tsx`). |
+| `periodToQuery` | `@/utils/statsPeriod` | Maps a time-range period id (`"7d"`, `"1m"`, `"3m"`, `"1y"`, `"all"`) to the API query params `{ days?, interval }` for `/v1/stats/prices` and `/v1/stats/yield`. Unknown ids fall back to weekly (full-history). Shared by `useStatsPrices` and `useStatsYield`. |
+| `STATS_PERIODS` | `@/utils/statsPeriod` | Array of the five canonical stats period descriptors `[{id, label}]`. Used to render the SegmentedTabs on stats charts. |
+| `accrualToBars` | `@/utils/yieldSeries` | Converts a `SampleYieldItem[]` from `GET /v1/stats/yield` into a 100-slot `YieldBarPoint[]` normalised to the max `accrued` value. Returns `null` on empty/invalid input so callers can show the empty state. |
+| `latestAccrued` | `@/utils/yieldSeries` | Returns the most-recent cumulative `accrued` value (human-unit dollars) from a `SampleYieldItem[]` by timestamp. Returns `null` on empty/invalid input. |
 
 ## How to add a row
 

@@ -23,9 +23,9 @@ import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
  *     to `md:gap-8` (32px) at desktop, matching the Figma frame section
  *     spacing. The previous `md:grid-cols-2` 2×2 grid was a #716 shell
  *     placeholder — Figma `3283-12098` shows a full-width vertical stack.
- *   - Source order: Balance Sheet → Loan Book → Withdrawal Queue → Yield
- *     History. This matches the approved layout; panel reordering to match
- *     Figma's exact section order is a separate concern if ever needed.
+ *   - Source order (Figma `3283-12098`): Yield History (no section heading)
+ *     → Balance Sheet → Loan Book (DeploymentMonitor) → Withdrawal Queue.
+ *     This matches Figma section order per coordinator decision for #720.
  *
  * Token discipline (FRONTEND.md): no raw hex/font names; all colors and
  * typography flow through `@pipeline/ui` primitives and theme-token utilities.
@@ -63,15 +63,22 @@ function Dashboard() {
           Protocol Dashboard
         </h1>
 
-        {/* Full-width single-column stack at all viewports — matches Figma 3283-12098. */}
+        {/*
+         * Full-width single-column stack at all viewports — matches Figma 3283-12098.
+         * Section order per Figma parent frame:
+         *   1. Yield History (Charts/Yield) — Panel D, no section heading (Figma 3283:67619).
+         *   2. Balance Sheet — Panel A.
+         *   3. Loan Book (DeploymentMonitor) — Panel B.
+         *   4. Withdrawal Queue — Panel C.
+         */}
         <div
           data-testid="dashboard-grid"
           className="grid grid-cols-1 gap-6 md:gap-8"
         >
+          <YieldHistoryPanel />
           <BalanceSheetPanel />
           <DeploymentMonitorPanel />
           <WithdrawalQueuePanel />
-          <YieldHistoryPanel />
         </div>
       </main>
     </div>
