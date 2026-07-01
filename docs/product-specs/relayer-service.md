@@ -105,12 +105,13 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 
 Relayer monitors every active loan in the LoanRegistry, polling a low-cost off-chain commodity
 price source on a configurable cadence (working assumption: every 15 minutes during market
-hours). It derives collateral value per the valuation modes in price-feed.md (price times
-quantity for standard goods, Net Smelter Return for metal concentrate), then computes
+hours). It derives collateral value per the valuation modes in collateral-valuation.md (price
+times quantity for standard goods, Net Smelter Return for metal concentrate), then computes
 CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
 notifies recipients and asks the Trustee to call `update_mutable` to update `ccr`. The Relayer
-has no write role on LoanRegistry. See price-feed.md for sources, the budget ceiling, and the
-off-chain valuation record.
+has no write role on LoanRegistry. See collateral-valuation.md for sources, the budget ceiling,
+the valuation modes, and the off-chain valuation record. See price-feed.md for the notification
+thresholds and the on-chain CCR write.
 
 | Event | Trigger | Recipients |
 |---|---|---|

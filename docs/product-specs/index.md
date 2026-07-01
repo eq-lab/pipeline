@@ -39,6 +39,7 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, shared operator authentication and account lifecycle |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |
+| [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |
 | [audit-logging.md](./audit-logging.md) | Audit Logging | Append-only log, third-party sink, compliance traceability |
