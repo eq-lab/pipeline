@@ -1,11 +1,17 @@
 /**
  * React Query hook — fetches averaged sPLUSD share-price history from
  * `GET /v1/stats/prices`.
+ *
+ * The period → API query mapping is shared with `useStatsYield` via the
+ * `periodToQuery` util from `@/utils/statsPeriod`.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import { periodToQuery } from "@/utils/statsPeriod";
 
-export type StatsPricesInterval = "hourly" | "daily" | "weekly";
+// Re-export the interval type so callers that imported it from here continue
+// to compile without changes.
+export type { StatsPricesInterval } from "@/utils/statsPeriod";
 
 export interface StatsPriceItem {
   /** ISO-8601 timestamp for the start of the bucket. */
@@ -16,7 +22,7 @@ export interface StatsPriceItem {
 
 export interface StatsPricesResponse {
   vault_address: string;
-  interval: StatsPricesInterval;
+  interval: import("@/utils/statsPeriod").StatsPricesInterval;
   prices: StatsPriceItem[];
 }
 
@@ -32,25 +38,6 @@ export interface UseStatsPricesResult {
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
-}
-
-function periodToQuery(periodId: string): {
-  days?: number;
-  interval: StatsPricesInterval;
-} {
-  switch (periodId) {
-    case "7d":
-      return { days: 7, interval: "hourly" };
-    case "1m":
-      return { days: 30, interval: "daily" };
-    case "3m":
-      return { days: 90, interval: "daily" };
-    case "1y":
-      return { days: 365, interval: "daily" };
-    case "all":
-    default:
-      return { interval: "weekly" };
-  }
 }
 
 export function useStatsPrices({

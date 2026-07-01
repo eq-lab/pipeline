@@ -9,7 +9,7 @@ import { useLoanBook } from "@/api";
 import type { LoanBookSummary, LoanBookEntry } from "@/api";
 import type { PanelState } from "./PanelContainer";
 import type { LoanBookSummaryProps } from "./LoanBookSummary";
-import type { LoanBookRow } from "./LoanBookTable";
+import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
@@ -24,6 +24,18 @@ export interface DeploymentMonitorPanelState {
   state: PanelState;
   summary: LoanBookSummaryProps;
   rows: LoanBookRow[];
+  /**
+   * Pre-formatted aggregate strings for the table column headers.
+   * Populated from `summary` by the hook (FRONTEND.md rule 2: formatting
+   * lives in the hook, not in the table component).
+   *
+   * - `principal` — always defined when ready (total_deployed is non-null).
+   * - `collateral` — defined only when `total_collateral` is non-null; `undefined`
+   *   while TODO #706 (commodity price feed) is not yet merged.
+   * - LTV subtitle is intentionally omitted until a backend `portfolio_ltv`
+   *   field exists (resolved open question — do NOT compute LTV client-side).
+   */
+  headerAggregates: LoanBookHeaderAggregates;
   /** Live count of active loans (loans.length when ready; 0 otherwise). */
   activeLoansCount: number;
   errorMessage: string | undefined;
@@ -64,6 +76,9 @@ const EMPTY_SUMMARY: LoanBookSummaryProps = {
   avgDuration: "—",
 };
 
+/** No aggregates while loading / error / empty — headers render label-only. */
+const EMPTY_HEADER_AGGREGATES: LoanBookHeaderAggregates = {};
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -81,6 +96,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     return {
       state: "loading",
       summary: EMPTY_SUMMARY,
+      headerAggregates: EMPTY_HEADER_AGGREGATES,
       rows: [],
       activeLoansCount: 0,
       errorMessage: undefined,
@@ -92,6 +108,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     return {
       state: "error",
       summary: EMPTY_SUMMARY,
+      headerAggregates: EMPTY_HEADER_AGGREGATES,
       rows: [],
       activeLoansCount: 0,
       errorMessage: error.message,
@@ -103,6 +120,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     return {
       state: "empty",
       summary: EMPTY_SUMMARY,
+      headerAggregates: EMPTY_HEADER_AGGREGATES,
       rows: [],
       activeLoansCount: 0,
       errorMessage: undefined,
@@ -113,6 +131,15 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   return {
     state: "ready",
     summary: formatSummary(data.summary),
+    headerAggregates: {
+      principal: formatCompactUsd(data.summary.total_deployed),
+      collateral:
+        data.summary.total_collateral == null
+          ? undefined
+          : formatCompactUsd(data.summary.total_collateral),
+      // LTV subtitle intentionally omitted — no backend portfolio_ltv field yet.
+      // Do NOT compute LTV client-side. Resolved in issue #729 open-question #1.
+    },
     rows: data.loans.map(formatRow),
     activeLoansCount: data.loans.length,
     errorMessage: undefined,

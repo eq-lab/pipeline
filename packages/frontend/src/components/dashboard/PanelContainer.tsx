@@ -7,8 +7,8 @@ import { PanelEmpty } from "./PanelEmpty";
 /**
  * PanelContainer — shared surface for the four Protocol Dashboard panels
  * (A Balance Sheet, B Deployment Monitor, C Withdrawal Queue, D Yield
- * History). Wraps the `@pipeline/ui` `Card` (`white` variant) with a panel
- * title header and a body region.
+ * History). Wraps the `@pipeline/ui` `Card` (`white` variant) with an optional
+ * panel title header and a body region.
  *
  * State handling: a single `state` discriminator selects which body renders,
  * so all four panels share one loading/empty/error treatment:
@@ -21,14 +21,21 @@ import { PanelEmpty } from "./PanelEmpty";
  * sub-issues of #712 flip them to `"loading"`/`"error"`/`"ready"` as they wire
  * real data. Pure/presentational — no data fetching here.
  *
+ * `title` is optional: panels that correspond to a Figma section with no
+ * heading (e.g. Panel D Yield History — `3283:67619`) omit it. When absent,
+ * no `<h2>` is rendered.
+ *
  * Token discipline: title uses display-font + heading tokens; the surface
  * chrome comes from `Card`. No raw colors/sizes.
  */
 export type PanelState = "ready" | "loading" | "empty" | "error";
 
 export interface PanelContainerProps {
-  /** Panel heading, e.g. "Balance Sheet". */
-  title: string;
+  /**
+   * Panel heading, e.g. "Balance Sheet". Optional — omit for panels whose
+   * Figma section has no heading (e.g. Panel D Yield History).
+   */
+  title?: string;
   /** Which body to render. Defaults to `"ready"` (renders `children`). */
   state?: PanelState;
   /** Retry handler passed to `PanelError` when `state === "error"`. */
@@ -40,6 +47,14 @@ export interface PanelContainerProps {
   /** Real content, rendered when `state === "ready"`. */
   children?: React.ReactNode;
   className?: string;
+  /**
+   * When `true` the outer `Card` surface (border + background) is suppressed.
+   * Use for the Loan Book (DeploymentMonitorPanel) whose Figma section frame
+   * `3283:14431` is borderless — the visual chrome lives on the inner
+   * summary cards and the table-container card instead.
+   * All other panels keep the default bordered white Card.
+   */
+  borderless?: boolean;
   "data-testid"?: string;
   "data-node-id"?: string;
 }
@@ -94,15 +109,14 @@ export function PanelContainer({
   errorMessage,
   children,
   className,
+  borderless = false,
   ...rest
 }: PanelContainerProps) {
-  return (
-    <Card
-      variant="white"
-      className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
-      {...rest}
-    >
-      <h2 className={titleClasses}>{title}</h2>
+  const body = (
+    <>
+      {title !== undefined && title !== "" && (
+        <h2 className={titleClasses}>{title}</h2>
+      )}
       <div className="min-h-[120px]">
         <PanelBody
           state={state}
@@ -113,6 +127,30 @@ export function PanelContainer({
           {children}
         </PanelBody>
       </div>
+    </>
+  );
+
+  if (borderless) {
+    // Borderless mode: no Card surface — no border, no background fill.
+    // The Loan Book section frame (Figma 3283:14431) is unstyled; chrome lives
+    // on the inner summary cards and table-container card.
+    return (
+      <div
+        className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+        {...rest}
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Card
+      variant="white"
+      className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+      {...rest}
+    >
+      {body}
     </Card>
   );
 }

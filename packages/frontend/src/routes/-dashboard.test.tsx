@@ -7,7 +7,7 @@
  *
  * Scenarios covered:
  *   1. Page root + <main> render (protocol-wide; no wallet connected, no gate).
- *   2. All four panel containers render with their titles.
+ *   2. All four panel containers render; three have section headings, Panel D (Yield History) does not.
  *   3. Responsive structure: grid is single-column on mobile, two-column at md+.
  *   4. PanelLoading shows loading copy.
  *   5. PanelEmpty shows its caption.
@@ -76,6 +76,8 @@ vi.mock("@/lib/env", () => ({
     EVM_CHAIN_ID: 560048,
     EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
     DEPOSIT_MANAGER_ADDRESS: "0x0000000000000000000000000000000000000000",
+    // Zero-address triggers YieldHistoryPanel's empty guard (no network calls in test env).
+    STAKED_PLUSD_ADDRESS: "0x0000000000000000000000000000000000000000",
     WALLETCONNECT_PROJECT_ID: "replace-me",
   },
 }));
@@ -187,20 +189,29 @@ describe("/dashboard route shell", () => {
 
   it("renders all four panel containers with their titles", () => {
     renderDashboard();
-    const expected: Array<[string, string]> = [
+    // Panels A, B, C have section headings; Panel D (Yield History) has no <h2>
+    // per Figma frame 3283:67619 — its PanelContainer omits the `title` prop.
+    const panelsWithTitle: Array<[string, string]> = [
       ["dashboard-panel-balance-sheet", "Balance Sheet"],
       // Title updated to "Loan Book" per issue #717 design decision
       ["dashboard-panel-deployment-monitor", "Loan Book"],
       ["dashboard-panel-withdrawal-queue", "Withdrawal Queue"],
-      ["dashboard-panel-yield-history", "Yield History"],
     ];
-    for (const [testId, title] of expected) {
+    for (const [testId, title] of panelsWithTitle) {
       const panel = screen.getByTestId(testId);
       expect(panel).toBeInTheDocument();
       expect(panel).toHaveTextContent(title);
     }
-    // Three placeholders still show "Coming soon" (B is now wired to real data)
-    expect(screen.getAllByText("Coming soon")).toHaveLength(3);
+    // Panel D (Yield History) — testid present, no section <h2>
+    expect(
+      screen.getByTestId("dashboard-panel-yield-history"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Yield History")).not.toBeInTheDocument();
+    // One placeholder shows "Coming soon" — Panel A (Balance Sheet) only.
+    // Panel B (Loan Book) is wired to real data.
+    // Panel C (Withdrawal Queue) is wired to real data (shows loading/error/empty).
+    // Panel D (Yield History) shows "Nothing to show yet" with zero-address STAKED_PLUSD_ADDRESS.
+    expect(screen.getAllByText("Coming soon")).toHaveLength(1);
   });
 
   it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {
@@ -210,18 +221,28 @@ describe("/dashboard route shell", () => {
     expect(grid.className).toContain("grid-cols-1");
     expect(grid.className).not.toContain("md:grid-cols-2");
     // All four panels render.
+    const yieldPanel = screen.getByTestId("dashboard-panel-yield-history");
+    const balancePanel = screen.getByTestId("dashboard-panel-balance-sheet");
+    const loanPanel = screen.getByTestId("dashboard-panel-deployment-monitor");
+    const withdrawalPanel = screen.getByTestId("dashboard-panel-withdrawal-queue");
+    expect(yieldPanel).toBeInTheDocument();
+    expect(balancePanel).toBeInTheDocument();
+    expect(loanPanel).toBeInTheDocument();
+    expect(withdrawalPanel).toBeInTheDocument();
+    // Panel order (Figma section order): Yield History → Balance Sheet →
+    // Loan Book → Withdrawal Queue (coordinator decision, #720).
     expect(
-      screen.getByTestId("dashboard-panel-balance-sheet"),
-    ).toBeInTheDocument();
+      yieldPanel.compareDocumentPosition(balancePanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
-      screen.getByTestId("dashboard-panel-deployment-monitor"),
-    ).toBeInTheDocument();
+      balancePanel.compareDocumentPosition(loanPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
-      screen.getByTestId("dashboard-panel-withdrawal-queue"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("dashboard-panel-yield-history"),
-    ).toBeInTheDocument();
+      loanPanel.compareDocumentPosition(withdrawalPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
@@ -244,6 +265,150 @@ describe("dashboard panel state presentations", () => {
     expect(screen.getByText("Couldn't load this panel")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
+
+// Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.
+const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
+  summary: {
+    total_deployed: "31600000.000000",
+    total_collateral: null,
+    senior_debt_coverage: null,
+    avg_yield: "0.112000",
+    avg_duration_days: 68,
+  },
+  loans: [
+    {
+      originator: "Open Mineral",
+      borrower: "Open Mineral",
+      commodity: "Copper Concentrate",
+      principal: "8000000.000000",
+      collateral: null,
+      ltv: null,
+      duration_days: 120,
+      rate: "0.112000",
+      protection: "LC at sight",
+      status: "Performing",
+    },
+  ],
+};
+
+// Fixture: both total_deployed and total_collateral set → both subtitles render.
+const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
+  summary: {
+    total_deployed: "31600000.000000",
+    total_collateral: "37600000.000000",
+    senior_debt_coverage: "1.50",
+    avg_yield: "0.112000",
+    avg_duration_days: 68,
+  },
+  loans: [
+    {
+      originator: "Open Mineral",
+      borrower: "Open Mineral",
+      commodity: "Copper Concentrate",
+      principal: "8000000.000000",
+      collateral: "9500000.000000",
+      ltv: "0.8511",
+      duration_days: 120,
+      rate: "0.112000",
+      protection: "LC at sight",
+      status: "Performing",
+    },
+  ],
+};
+
+describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("Principal header shows aggregate, Collateral and LTV headers show label only when collateral is null", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-header-principal-aggregate"),
+      ).toBeInTheDocument();
+    });
+
+    // Principal subtitle renders $31.6M
+    expect(
+      screen.getByTestId("loan-book-header-principal-aggregate"),
+    ).toHaveTextContent("$31.6M");
+
+    // Collateral subtitle is absent when total_collateral is null
+    expect(
+      screen.queryByTestId("loan-book-header-collateral-aggregate"),
+    ).toBeNull();
+  });
+
+  it("Principal and Collateral headers both show aggregates when collateral is non-null", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-header-principal-aggregate"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("loan-book-header-principal-aggregate"),
+    ).toHaveTextContent("$31.6M");
+
+    expect(
+      screen.getByTestId("loan-book-header-collateral-aggregate"),
+    ).toHaveTextContent("$37.6M");
+  });
+
+  it("LTV column header never shows an aggregate subtitle", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
+    });
+
+    // No LTV aggregate testid should ever exist (omitted per resolved open question #1)
+    expect(
+      screen.queryByTestId("loan-book-header-ltv-aggregate"),
+    ).toBeNull();
+  });
+
+  it("loading state renders no aggregate subtitles — headers are label-only", () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    // Panel is in loading state — no aggregate testids present
+    expect(
+      screen.queryByTestId("loan-book-header-principal-aggregate"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("loan-book-header-collateral-aggregate"),
+    ).toBeNull();
   });
 });
 
@@ -440,6 +605,55 @@ describe("DeploymentMonitorPanel — responsive structure", () => {
     // Mobile cards are shown on mobile (block) and hidden at md+ (md:hidden)
     expect(mobile.className).toContain("block");
     expect(mobile.className).toContain("md:hidden");
+  });
+});
+
+describe("DeploymentMonitorPanel — section order (issue #726)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("summary cards render before tab bar, tab bar before table, and both are inside the table container", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-summary-cards")).toBeInTheDocument();
+    });
+
+    const summaryCards = screen.getByTestId("loan-book-summary-cards");
+    const tabBar = screen.getByTestId("loan-book-tab-bar");
+    const table = screen.getByTestId("loan-book-table");
+    const tableContainer = screen.getByTestId("loan-book-table-container");
+
+    // summary cards precede tab bar in the DOM
+    expect(
+      summaryCards.compareDocumentPosition(tabBar) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // tab bar precedes table in the DOM
+    expect(
+      tabBar.compareDocumentPosition(table) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // tab bar and table are both descendants of the table container
+    expect(tableContainer.contains(tabBar)).toBe(true);
+    expect(tableContainer.contains(table)).toBe(true);
+
+    // summary cards are NOT inside the table container
+    expect(tableContainer.contains(summaryCards)).toBe(false);
   });
 });
 

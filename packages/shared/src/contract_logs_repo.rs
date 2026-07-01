@@ -14,6 +14,32 @@ pub struct LifecycleRow {
     pub loan_id: BigDecimal,
 }
 
+/// One `WithdrawalRequested` event joined to its latest `RequestClaimed` (if any),
+/// used by the protocol Withdrawal Queue endpoint (`GET /v1/withdrawal-queue`).
+///
+/// `amount` is this request's withdrawal amount — the value owed to the withdrawer and
+/// the per-request queue contribution. (The event's `queued` field is a global,
+/// monotonically-increasing all-time cumulative counter — `queued(n) = queued(n-1) +
+/// amount(n)`, matching on-chain `queueMetadata().queued` — so it is **not** a
+/// per-request magnitude and is deliberately not selected here.) `claimed_at` is `None`
+/// while the request is still outstanding. The claim match is **contract-scoped**:
+/// `RequestClaimed` is emitted by both the DepositManager and the WithdrawalQueue and
+/// `request_id` is not unique across them, so the join is keyed on
+/// `(request_id, contract_address)`.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct WithdrawalQueueRow {
+    pub request_id: String,
+    /// The withdrawing account (`params->>'withdrawer'`).
+    pub withdrawer: String,
+    /// This request's withdrawal amount (`params->>'amount'`).
+    pub amount: BigDecimal,
+    /// `WithdrawalRequested` block timestamp (unix seconds) — enqueue time.
+    pub requested_at: i64,
+    /// Latest matching `RequestClaimed` block timestamp (unix seconds); `None` while
+    /// the request is still outstanding (queued).
+    pub claimed_at: Option<i64>,
+}
+
 /// The most recent loan-event snapshot per `(chain_id, loan_id)`.
 /// Used by the Portfolio API to assemble the active-loan set for yield computation.
 #[derive(Debug, Clone)]
@@ -224,6 +250,49 @@ impl ContractLogsRepo {
         .fetch_optional(executor)
         .await?;
         Ok(row.and_then(|(v,)| v))
+    }
+
+    /// All `WithdrawalRequested` events for a chain with `block_timestamp <= to_unix`,
+    /// each left-joined to its latest matching `RequestClaimed` (scoped to the same
+    /// `contract_address`, since `request_id` is not unique across contracts).
+    ///
+    /// Returns raw rows; aggregation into queue depth / counts / item table is done by
+    /// the pure `compute_withdrawal_queue` in the API layer. Generic over
+    /// `Executor` so callers can run inside a transaction for a consistent snapshot.
+    pub async fn list_withdrawal_queue_rows<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<WithdrawalQueueRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, WithdrawalQueueRow>(
+            "SELECT r.params->>'request_id'        AS request_id,
+                    r.params->>'withdrawer'        AS withdrawer,
+                    (r.params->>'amount')::numeric AS amount,
+                    r.block_timestamp              AS requested_at,
+                    claim.claimed_at
+             FROM contract_logs r
+             LEFT JOIN LATERAL (
+                 SELECT c.block_timestamp AS claimed_at
+                 FROM contract_logs c
+                 WHERE c.event_name = 'RequestClaimed'
+                   AND c.params->>'request_id' = r.params->>'request_id'
+                   AND c.contract_address = r.contract_address
+                 ORDER BY c.block_timestamp DESC, c.log_index DESC
+                 LIMIT 1
+             ) claim ON TRUE
+             WHERE r.chain_id = $1
+               AND r.event_name = 'WithdrawalRequested'
+               AND r.block_timestamp <= $2",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
     }
 
     /// Connection-scoped fetch of the latest snapshot for a given loan, for use

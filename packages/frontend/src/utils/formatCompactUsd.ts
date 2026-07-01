@@ -49,8 +49,13 @@ export function formatCompactUsd(
     const val = abs / 1_000;
     return `${sign}$${val.toFixed(1)}K`;
   }
-  // Sub-thousand: show as integer dollars (no cents, no suffix).
-  return `${sign}$${Math.round(abs)}`;
+  // Sub-thousand: show 2 decimal places with thousands separator.
+  // e.g. "0.900000" → "$0.90", "12.5" → "$12.50", "999" → "$999.00".
+  // `Math.round` is intentionally NOT used here — it would discard cents.
+  return `${sign}$${abs.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 // ── formatOneDecimalRate ──────────────────────────────────────────────────────
@@ -86,7 +91,9 @@ export function formatLtv(ltv: string | null | undefined): string {
   if (ltv == null) return "—";
   const num = parseFloat(ltv);
   if (!Number.isFinite(num)) return "—";
-  return `${Math.round(num * 100)}%`;
+  // toLocaleString adds thousands separator for large LTV values, e.g.
+  // "1333.3333" → "133,333%". Normal values unaffected: "0.8511" → "85%".
+  return `${Math.round(num * 100).toLocaleString("en-US")}%`;
 }
 
 // ── formatCoverage ────────────────────────────────────────────────────────────
@@ -124,4 +131,26 @@ export function formatDurationDays(
   if (!Number.isFinite(days)) return "—";
   const d = Math.round(days);
   return variant === "long" ? `${d} days` : `${d}d`;
+}
+
+// ── formatEstimatedWaitDays ───────────────────────────────────────────────────
+
+/**
+ * Formats an estimated wait duration string for the Withdrawal Queue panel.
+ *
+ * The API returns `estimated_wait_days` as a 1-decimal string (e.g. `"3.2"`)
+ * or `null` when the estimate is unavailable.
+ *
+ * - `"3.2"`  → `"~3.2 days"`
+ * - `"1.0"`  → `"~1.0 days"`
+ * - `null`   → `"—"`
+ * - non-numeric string → `"—"`
+ */
+export function formatEstimatedWaitDays(
+  days: string | null | undefined,
+): string {
+  if (days == null) return "—";
+  const num = parseFloat(days);
+  if (!Number.isFinite(num)) return "—";
+  return `~${num.toFixed(1)} days`;
 }

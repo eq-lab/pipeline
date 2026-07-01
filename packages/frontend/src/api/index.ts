@@ -59,3 +59,16 @@ export type {
   StellarWithdrawalVoucherResponse,
   StellarWithdrawalVoucherStatus,
 } from "./useStellarWithdrawalVoucher";
+export { useStatsYield } from "./useStatsYield";
+export type {
+  SampleYieldItem,
+  UseStatsYieldParams,
+  UseStatsYieldResult,
+} from "./useStatsYield";
+export { useWithdrawalQueue } from "./useWithdrawalQueue";
+export type {
+  WithdrawalQueueSummary,
+  WithdrawalQueueItem,
+  WithdrawalQueueResponse,
+  UseWithdrawalQueueResult,
+} from "./useWithdrawalQueue";

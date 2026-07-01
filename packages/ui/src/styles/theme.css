@@ -82,6 +82,7 @@
   --color-pipeline-ink-subtle: rgb(56 55 53 / 0.3);
   --color-pipeline-on-dark: #ffffff;
   --color-pipeline-line: rgb(56 55 53 / 0.18);
+  --color-pipeline-line-subtle: #f1f1f1; /* border-test/secondary light-mode — Loan Book table row divider; Figma node 3704:1095 */
   --color-pipeline-surface-muted: rgb(56 55 53 / 0.12);
   --color-pipeline-fill-muted: rgb(
     191 189 187 / 0.12
@@ -157,6 +158,7 @@
   --color-pipeline-line: rgb(
     56 55 53 / 0.18
   ); /* border-test/secondary — node 1497:94562 left border */
+  --color-pipeline-line-subtle: #f1f1f1; /* border-test/secondary light-mode — Loan Book table row divider; Figma node 3704:1095 */
   --color-pipeline-surface-muted: rgb(
     56 55 53 / 0.12
   ); /* fill/surface-muted — hero-circle background (Activity hero node 1497:94912) */

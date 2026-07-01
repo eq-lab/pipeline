@@ -102,6 +102,17 @@ Reads loan identity and immutable parameters from the LoanRegistry on-chain. Rea
 - Available USDC in the Capital Wallet vs total queue depth, expressed as a coverage ratio.
 - Recent fills: `queue_id`, amount filled, full or partial indicator, time-in-queue.
 
+Served by `GET /v1/withdrawal-queue` (aggregate, sourced from `contract_logs`
+`WithdrawalRequested` + `RequestClaimed`). Response: `summary` (`in_queue_usd`,
+`requests_count`, `estimated_wait_days`, `liquid_cover`) and `items[]`
+(`account`, `amount`, `status` ∈ {`Queued`, `Completed`}, newest first). A request is
+`Queued` until a matching `RequestClaimed` exists, then `Completed`; `in_queue_usd` sums
+each queued request's `amount`. (The event's `queued` field is a global all-time
+cumulative counter, not a per-request magnitude, and is not used for depth.)
+`liquid_cover` is served as `null` until a Capital-Wallet USDC-available source exists
+(arrives with the Panel A reserves endpoint); `estimated_wait_days` is the mean historical
+time-in-queue over completed requests.
+
 ---
 
 ## Protocol Dashboard — Panel D: Yield History

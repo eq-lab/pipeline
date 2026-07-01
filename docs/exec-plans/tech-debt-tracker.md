@@ -198,12 +198,50 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** If the invariant is ever broken, the row sticks in the active set forever, re-logging an error each cycle, never failing out for operator review.
 - **Suggested fix:** Change the branch to `mark_failed(&key, "submitted row missing tx_hash")` so the row leaves the active set and surfaces for operator review instead of looping.
 
+### TD-26: Loan Book table rows missing Figma-specified `border-radius: 4px`
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/dashboard/LoanBookTable.tsx` (`DesktopTable`)
+- **Gap:** Figma node 3704:1095 (`.row`) specifies `border-radius: var(--radius-radius-l, 4px)` on each row. The HTML table rendering model does not support `border-radius` on `<tr>` elements — browsers ignore it. The value exists in the design system as `--radius-pipeline-card: 4px` but cannot be applied to a semantic `<table>/<tr>` structure.
+- **Impact:** Cosmetic only — row corners are square instead of 4px rounded as in Figma. No functional or accessibility impact.
+- **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
+
 ### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
 - **Gap:** Two modules define differently-named constants for the same concept (the simulate-only fee that is never charged), with identical values. Issue #683 created `relayer/stellar/sim_decode.rs` as the shared simulate home but left the fee constant duplicated to avoid touching the stable whitelist module.
 - **Impact:** No bug today (values match). Drift risk: a future change to one is silently not reflected in the other.
 - **Suggested fix:** Move the simulate fee into `sim_decode.rs` (e.g. `pub const SIMULATE_FEE: u32 = 1_000_000;`) and point both `whitelist.rs` and `yield_mint.rs` at it; reconcile the two names.
+
+### TD-27: Panel D (Yield History) lacks by-source / T-bill / decomposed-trailing series
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/dashboard/YieldHistoryPanel.tsx`, `useYieldHistoryPanel.ts`
+- **Gap:** Three of the four series described in the original #715 spec are NOT served by
+  the API despite that issue being closed: (a) cumulative PLUSD minted split by source
+  (loan-repayment vs T-bill); (b) real-time T-bill accrual (rolling since last weekly USYC
+  distribution); (c) trailing-30d yield split into loan-yield vs T-bill contributions.
+  `GET /v1/stats/yield` returns only a single blended `accrued` series and a blended `apy`.
+  Backend follow-up issue: **#738**. Seams are clearly labelled with `TODO(#738)` comments.
+- **Impact:** Dashboard shows blended cumulative yield and blended APY only; the by-source
+  breakdown promised in the Figma spec is not shown.
+- **Suggested fix:** Land #738 (backend endpoint delivering decomposed APY + by-source accrued),
+  then wire the new series into `useYieldHistoryPanel` and `YieldHistoryPanel`.
+
+### TD-28: YieldBarChart has no hover/tooltip interaction
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/dashboard/YieldBarChart.tsx`
+- **Gap:** The home chart (`PortfolioPlaceholderCard`) supports hover → vertical cursor line +
+  tooltip. `YieldBarChart` is v1 only (no hover), mirroring the deferred touch interaction
+  in the home chart.
+- **Impact:** Users cannot inspect individual bar values on the Yield History chart.
+- **Suggested fix:** Add `onPointerMove` / `onPointerLeave` and a floating tooltip component
+  to `YieldBarChart` when the interaction UX is prioritised (follow-up issue under epic #712).
+
+### TD-29: Footer nav links are placeholder stubs — real URLs not yet wired
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/Footer.tsx` — `FOOTER_LINKS` const
+- **Gap:** All five footer links (Docs · White Paper · GitHub · X (Twitter) · Telegram) are rendered with `href="#"` and `aria-disabled="true"`. No real URLs were available at the time of implementation (Issue #746, Open Question 1 resolved as "stub for now"). The links do not navigate.
+- **Impact:** Footer is presentationally complete but not functionally wired. No broken/misleading destinations ship; the links simply do nothing.
+- **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
 
 ---
 
