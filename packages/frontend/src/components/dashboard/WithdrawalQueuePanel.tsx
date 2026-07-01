@@ -111,6 +111,9 @@ export function WithdrawalQueuePanel() {
       state={state}
       onRetry={refetch}
       errorMessage={errorMessage}
+      // Borderless section per Figma 3283:12101 — the withdrawal section has no
+      // outer container border; visual chrome lives only on the summary cards.
+      borderless
       data-testid="dashboard-panel-withdrawal-queue"
       data-node-id="3283:14893"
     >
@@ -155,15 +158,11 @@ export function WithdrawalQueuePanel() {
           </div>
         </div>
 
-        {/* Table container — same bordered card as the Loan Book table container */}
+        {/* Table container — borderless per Figma 3283:12101 (unlike the Loan
+            Book table, the withdrawal table has no surrounding card box; it sits
+            on the section background with only row dividers). */}
         <div
-          className={[
-            "flex flex-col p-4",
-            "bg-[color:var(--color-pipeline-surface)]",
-            "rounded-[var(--radius-pipeline-card)]",
-            "border-t border-l border-[color:var(--color-pipeline-line)]",
-            "border-r-[3px] border-b-[3px] border-r-[color:var(--color-pipeline-line)] border-b-[color:var(--color-pipeline-line)]",
-          ].join(" ")}
+          className="flex flex-col"
           data-testid="withdrawal-queue-table-container"
         >
           <WithdrawalQueueTable rows={visibleRows} />
