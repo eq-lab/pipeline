@@ -14,10 +14,14 @@ import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
  * Entry point: reached from the home page (`/`) "Current APY" external-link
  * icon (`HomeStatsStrip`, Figma node `1497:94564`), not a `TopBar` slot.
  *
- * Layout (Issue #728 — matches Figma `3283-12098`):
+ * Layout (Issues #728, #744 — matches Figma `3283-12098`):
  *   - Centred content column capped at `max-w-[1200px]` (matches the desktop
  *     frame's 1200px content width), `px-8` side padding (32px, the frame's
  *     inner gutter) and `py-8` vertical padding.
+ *   - The page is `#F8F7F6` (`--color-pipeline-paper`); the panels live inside a
+ *     white (`--color-pipeline-surface`) rounded content container (Figma
+ *     `3283:12101`). The `Protocol Dashboard` title sits above it on the page
+ *     background, not inside the white surface.
  *   - All viewports: full-width single-column stack (`grid-cols-1`) so every
  *     panel spans the full ~1136px content width. `gap-6` on mobile stepping
  *     to `md:gap-8` (32px) at desktop, matching the Figma frame section
@@ -64,21 +68,32 @@ function Dashboard() {
         </h1>
 
         {/*
-         * Full-width single-column stack at all viewports — matches Figma 3283-12098.
-         * Section order per Figma parent frame:
-         *   1. Yield History (Charts/Yield) — Panel D, no section heading (Figma 3283:67619).
-         *   2. Balance Sheet — Panel A.
-         *   3. Loan Book (DeploymentMonitor) — Panel B.
-         *   4. Withdrawal Queue — Panel C.
+         * White content container (Figma `3283:12101`) — the page background is
+         * `#F8F7F6` (`--color-pipeline-paper`) and the content sits inside a
+         * white (`#ffffff`, `--color-pipeline-surface`) rounded surface. The
+         * title above stays on the page background, matching the Figma frame.
          */}
         <div
-          data-testid="dashboard-grid"
-          className="grid grid-cols-1 gap-6 md:gap-8"
+          data-testid="dashboard-content-container"
+          className="rounded-[var(--radius-pipeline-card-lg)] bg-[color:var(--color-pipeline-surface)] p-4 md:p-8"
         >
-          <YieldHistoryPanel />
-          <BalanceSheetPanel />
-          <DeploymentMonitorPanel />
-          <WithdrawalQueuePanel />
+          {/*
+           * Full-width single-column stack at all viewports — matches Figma 3283-12098.
+           * Section order per Figma parent frame:
+           *   1. Yield History (Charts/Yield) — Panel D, no section heading (Figma 3283:67619).
+           *   2. Balance Sheet — Panel A.
+           *   3. Loan Book (DeploymentMonitor) — Panel B.
+           *   4. Withdrawal Queue — Panel C.
+           */}
+          <div
+            data-testid="dashboard-grid"
+            className="grid grid-cols-1 gap-6 md:gap-8"
+          >
+            <YieldHistoryPanel />
+            <BalanceSheetPanel />
+            <DeploymentMonitorPanel />
+            <WithdrawalQueuePanel />
+          </div>
         </div>
       </main>
     </div>
