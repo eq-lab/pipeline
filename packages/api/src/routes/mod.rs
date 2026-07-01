@@ -8,3 +8,4 @@ pub mod pnl;
 pub mod portfolio;
 pub mod stats;
 pub mod vouchers;
+pub mod withdrawal_queue;

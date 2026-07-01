@@ -70,7 +70,28 @@ _Resolved with the requester on 2026-07-01:_
 
 ## Implementation Steps
 
-1. **Shared repo — raw-row fetch.** Add `WithdrawalQueueRepo` in
+_Status: all steps implemented (2026-07-01). Repo method consolidated into
+`ContractLogsRepo` (option in step 1) — no new `AppState` field needed._
+
+_Response shape revised per requester (2026-07-01) to match the panel:_
+- `summary`: `in_queue_usd` (Σ `amount` of queued rows), `requests_count` (count of
+  queued rows), `estimated_wait_days` (mean historical time-in-queue over completed rows,
+  days, `null` if none), `liquid_cover` (`null` until reserves source — was
+  `coverage_ratio`).
+- `items[]`: `account` (withdrawer), `amount` (request amount, base-6 string), `status` ∈
+  {`Queued`, `Completed`}, ordered by request timestamp desc. Replaces the earlier split
+  summary/`recent_fills`. Repo query also selects `params->>'withdrawer'`.
+
+_Semantics correction (2026-07-01, from real Stellar data):_ the event's `queued` field
+is **not** this request's escrowed portion — it is a global, monotonically-increasing
+all-time cumulative counter (`queued(n) = queued(n-1) + amount(n)`, matching on-chain
+`queueMetadata().queued`). Summing it would overcount. Corrected: a request is `Queued`
+until a matching `RequestClaimed` exists (then `Completed`), and queue depth =
+Σ `amount` over unclaimed requests. The `queued` column is no longer selected. This
+supersedes the original OQ1 request-time (`queued < amount`) model. Verified: on chain
+`99000001` all 5 requests are already claimed → correct all-zeros summary.
+
+1. ✅ **Shared repo — raw-row fetch.** Add `WithdrawalQueueRepo` in
    `packages/shared/src/withdrawal_queue_repo.rs` (register in
    `packages/shared/src/lib.rs`), or add methods to `contract_logs_repo.rs` if the
    reviewer prefers consolidation. Expose one method:
