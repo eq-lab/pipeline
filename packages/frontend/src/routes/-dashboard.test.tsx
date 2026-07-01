@@ -247,6 +247,150 @@ describe("dashboard panel state presentations", () => {
   });
 });
 
+// ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
+
+// Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.
+const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
+  summary: {
+    total_deployed: "31600000.000000",
+    total_collateral: null,
+    senior_debt_coverage: null,
+    avg_yield: "0.112000",
+    avg_duration_days: 68,
+  },
+  loans: [
+    {
+      originator: "Open Mineral",
+      borrower: "Open Mineral",
+      commodity: "Copper Concentrate",
+      principal: "8000000.000000",
+      collateral: null,
+      ltv: null,
+      duration_days: 120,
+      rate: "0.112000",
+      protection: "LC at sight",
+      status: "Performing",
+    },
+  ],
+};
+
+// Fixture: both total_deployed and total_collateral set → both subtitles render.
+const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
+  summary: {
+    total_deployed: "31600000.000000",
+    total_collateral: "37600000.000000",
+    senior_debt_coverage: "1.50",
+    avg_yield: "0.112000",
+    avg_duration_days: 68,
+  },
+  loans: [
+    {
+      originator: "Open Mineral",
+      borrower: "Open Mineral",
+      commodity: "Copper Concentrate",
+      principal: "8000000.000000",
+      collateral: "9500000.000000",
+      ltv: "0.8511",
+      duration_days: 120,
+      rate: "0.112000",
+      protection: "LC at sight",
+      status: "Performing",
+    },
+  ],
+};
+
+describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("Principal header shows aggregate, Collateral and LTV headers show label only when collateral is null", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-header-principal-aggregate"),
+      ).toBeInTheDocument();
+    });
+
+    // Principal subtitle renders $31.6M
+    expect(
+      screen.getByTestId("loan-book-header-principal-aggregate"),
+    ).toHaveTextContent("$31.6M");
+
+    // Collateral subtitle is absent when total_collateral is null
+    expect(
+      screen.queryByTestId("loan-book-header-collateral-aggregate"),
+    ).toBeNull();
+  });
+
+  it("Principal and Collateral headers both show aggregates when collateral is non-null", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-header-principal-aggregate"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByTestId("loan-book-header-principal-aggregate"),
+    ).toHaveTextContent("$31.6M");
+
+    expect(
+      screen.getByTestId("loan-book-header-collateral-aggregate"),
+    ).toHaveTextContent("$37.6M");
+  });
+
+  it("LTV column header never shows an aggregate subtitle", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_WITH_COLLATERAL),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
+    });
+
+    // No LTV aggregate testid should ever exist (omitted per resolved open question #1)
+    expect(
+      screen.queryByTestId("loan-book-header-ltv-aggregate"),
+    ).toBeNull();
+  });
+
+  it("loading state renders no aggregate subtitles — headers are label-only", () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    // Panel is in loading state — no aggregate testids present
+    expect(
+      screen.queryByTestId("loan-book-header-principal-aggregate"),
+    ).toBeNull();
+    expect(
+      screen.queryByTestId("loan-book-header-collateral-aggregate"),
+    ).toBeNull();
+  });
+});
+
 // ── DeploymentMonitorPanel integration tests ──────────────────────────────────
 
 describe("DeploymentMonitorPanel — loading state", () => {

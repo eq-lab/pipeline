@@ -115,8 +115,15 @@ function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export function DeploymentMonitorPanel() {
-  const { state, summary, rows, activeLoansCount, errorMessage, refetch } =
-    useDeploymentMonitorPanel();
+  const {
+    state,
+    summary,
+    rows,
+    headerAggregates,
+    activeLoansCount,
+    errorMessage,
+    refetch,
+  } = useDeploymentMonitorPanel();
 
   return (
     <PanelContainer
@@ -139,7 +146,7 @@ export function DeploymentMonitorPanel() {
         {/* Tab bar + table grouped in an inner container (Figma container 3283:14479) */}
         <div className="flex flex-col gap-4" data-testid="loan-book-table-container">
           <LoanBookTabBar activeLoansCount={activeLoansCount} />
-          <LoanBookTable rows={rows} />
+          <LoanBookTable rows={rows} headerAggregates={headerAggregates} />
         </div>
       </div>
     </PanelContainer>
