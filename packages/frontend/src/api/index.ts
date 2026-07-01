@@ -65,3 +65,10 @@ export type {
   UseStatsYieldParams,
   UseStatsYieldResult,
 } from "./useStatsYield";
+export { useWithdrawalQueue } from "./useWithdrawalQueue";
+export type {
+  WithdrawalQueueSummary,
+  WithdrawalQueueItem,
+  WithdrawalQueueResponse,
+  UseWithdrawalQueueResult,
+} from "./useWithdrawalQueue";

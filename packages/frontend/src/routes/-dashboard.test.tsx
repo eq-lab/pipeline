@@ -207,9 +207,11 @@ describe("/dashboard route shell", () => {
       screen.getByTestId("dashboard-panel-yield-history"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Yield History")).not.toBeInTheDocument();
-    // Two placeholders show "Coming soon" (B is wired to real data; D is wired
-    // but shows "Nothing to show yet" with zero-address STAKED_PLUSD_ADDRESS).
-    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
+    // One placeholder shows "Coming soon" — Panel A (Balance Sheet) only.
+    // Panel B (Loan Book) is wired to real data.
+    // Panel C (Withdrawal Queue) is wired to real data (shows loading/error/empty).
+    // Panel D (Yield History) shows "Nothing to show yet" with zero-address STAKED_PLUSD_ADDRESS.
+    expect(screen.getAllByText("Coming soon")).toHaveLength(1);
   });
 
   it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {

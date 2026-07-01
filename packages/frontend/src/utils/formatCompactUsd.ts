@@ -132,3 +132,25 @@ export function formatDurationDays(
   const d = Math.round(days);
   return variant === "long" ? `${d} days` : `${d}d`;
 }
+
+// ── formatEstimatedWaitDays ───────────────────────────────────────────────────
+
+/**
+ * Formats an estimated wait duration string for the Withdrawal Queue panel.
+ *
+ * The API returns `estimated_wait_days` as a 1-decimal string (e.g. `"3.2"`)
+ * or `null` when the estimate is unavailable.
+ *
+ * - `"3.2"`  → `"~3.2 days"`
+ * - `"1.0"`  → `"~1.0 days"`
+ * - `null`   → `"—"`
+ * - non-numeric string → `"—"`
+ */
+export function formatEstimatedWaitDays(
+  days: string | null | undefined,
+): string {
+  if (days == null) return "—";
+  const num = parseFloat(days);
+  if (!Number.isFinite(num)) return "—";
+  return `~${num.toFixed(1)} days`;
+}

@@ -132,3 +132,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#729 Loan Book table: column headers missing aggregate subtitles](https://github.com/eq-lab/pipeline/issues/729) | [729-loan-book-header-aggregate-subtitles.md](./epic-712/729-loan-book-header-aggregate-subtitles.md) | Initial |
 | [#730 Loan Book table column widths + borrower truncation](https://github.com/eq-lab/pipeline/issues/730) | [730-loan-book-table-column-widths.md](./epic-712/730-loan-book-table-column-widths.md) | Initial |
 | [#720 Panel D: Yield History UI (charts)](https://github.com/eq-lab/pipeline/issues/720) | [720-yield-history-panel.md](./epic-712/720-yield-history-panel.md) | Initial |
+| [#719 Panel C: Withdrawal Queue UI](https://github.com/eq-lab/pipeline/issues/719) | [719-withdrawal-queue-ui.md](./epic-712/719-withdrawal-queue-ui.md) | Initial |
