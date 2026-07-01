@@ -75,17 +75,17 @@ truncation util (extracted per FRONTEND.md rule 3), formatting reuse, and tests.
 
 ## Open Questions
 
-1. **Status label copy.** The API returns `status: "Completed"` for claimed
-   requests, but the Figma design labels the green state **`Processing`**. Which
-   wins — render the API value verbatim (`Completed`), or map `Completed →
-   "Processing"` to match the design? (Recommendation: render the API value
-   `Completed` and treat the Figma "Processing" copy as the discrepancy, but this
-   is a product/design call.) Also: which status gets the green treatment —
-   `Completed` (as "done", matching Figma's green `Processing`) or `Queued`?
-2. **"Show N more" expand.** Implement the client-side row-limit + expand
-   affordance now (e.g. show first 5, "Show N more" toggles the rest), or render
-   all `items[]` rows and defer the expand to a follow-up? The endpoint returns
-   the full list with no server-side cap.
+_Resolved by product/design (2026-07-01, issue comment) — implement as decided below._
+
+1. **Status label copy.** ~~`Completed` vs Figma's `Processing`.~~
+   **Decision: render the API value verbatim — keep `Completed`, do not relabel
+   to `Processing`.** Green treatment goes to `Completed` (the "done" state,
+   matching the slot Figma showed in green); `Queued` uses the neutral/default
+   label treatment.
+2. **"Show N more" expand.** ~~Truncate+expand now, or render all rows?~~
+   **Decision: implement the client-side row limit now — show the first 5 items,
+   then a "Show more" button that reveals the rest.** The table is not expected to
+   be large, so a simple truncate-to-5 + expand toggle is sufficient.
 
 ## Implementation Steps
 
