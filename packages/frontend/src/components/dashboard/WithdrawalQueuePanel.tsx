@@ -133,13 +133,7 @@ export function WithdrawalQueuePanel() {
             data-testid="withdrawal-queue-summary-cards"
           >
             <SummaryCard
-              label={
-                <>
-                  In
-                  <br />
-                  Queue
-                </>
-              }
+              label="In Queue"
               value={summary.inQueue}
               data-testid="withdrawal-queue-card-in-queue"
             />
@@ -149,24 +143,12 @@ export function WithdrawalQueuePanel() {
               data-testid="withdrawal-queue-card-requests"
             />
             <SummaryCard
-              label={
-                <>
-                  Estimated
-                  <br />
-                  wait
-                </>
-              }
+              label="Estimated wait"
               value={summary.estimatedWait}
               data-testid="withdrawal-queue-card-estimated-wait"
             />
             <SummaryCard
-              label={
-                <>
-                  Liquid
-                  <br />
-                  Cover
-                </>
-              }
+              label="Liquid Cover"
               value={summary.liquidCover}
               data-testid="withdrawal-queue-card-liquid-cover"
             />
