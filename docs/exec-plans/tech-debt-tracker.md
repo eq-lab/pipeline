@@ -236,6 +236,13 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add `onPointerMove` / `onPointerLeave` and a floating tooltip component
   to `YieldBarChart` when the interaction UX is prioritised (follow-up issue under epic #712).
 
+### TD-29: Footer nav links are placeholder stubs — real URLs not yet wired
+- **Date:** 2026-07-01
+- **Location:** `packages/frontend/src/components/Footer.tsx` — `FOOTER_LINKS` const
+- **Gap:** All five footer links (Docs · White Paper · GitHub · X (Twitter) · Telegram) are rendered with `href="#"` and `aria-disabled="true"`. No real URLs were available at the time of implementation (Issue #746, Open Question 1 resolved as "stub for now"). The links do not navigate.
+- **Impact:** Footer is presentationally complete but not functionally wired. No broken/misleading destinations ship; the links simply do nothing.
+- **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
+
 ---
 
 ## Post-MVP
