@@ -23,10 +23,11 @@ import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
  *     `3283:12101`). The `Protocol Dashboard` title sits above it on the page
  *     background, not inside the white surface.
  *   - All viewports: full-width single-column stack (`grid-cols-1`) so every
- *     panel spans the full ~1136px content width. `gap-6` on mobile stepping
- *     to `md:gap-8` (32px) at desktop, matching the Figma frame section
- *     spacing. The previous `md:grid-cols-2` 2×2 grid was a #716 shell
- *     placeholder — Figma `3283-12098` shows a full-width vertical stack.
+ *     panel spans the full ~1136px content width. Sections are separated by an
+ *     xxl gap — `gap-12` (48px) on small/responsive devices stepping to
+ *     `md:gap-24` (96px) on larger desktop. The previous `md:grid-cols-2` 2×2
+ *     grid was a #716 shell placeholder — Figma `3283-12098` shows a full-width
+ *     vertical stack.
  *   - Source order (Figma `3283-12098`): Yield History (no section heading)
  *     → Balance Sheet → Loan Book (DeploymentMonitor) → Withdrawal Queue.
  *     This matches Figma section order per coordinator decision for #720.
@@ -87,7 +88,7 @@ function Dashboard() {
            */}
           <div
             data-testid="dashboard-grid"
-            className="grid grid-cols-1 gap-6 md:gap-8"
+            className="grid grid-cols-1 gap-12 md:gap-24"
           >
             <YieldHistoryPanel />
             <BalanceSheetPanel />
