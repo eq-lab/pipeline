@@ -194,7 +194,8 @@ describe("/dashboard route shell", () => {
     // Panels A, B, C have section headings; Panel D (Yield History) has no <h2>
     // per Figma frame 3283:67619 — its PanelContainer omits the `title` prop.
     const panelsWithTitle: Array<[string, string]> = [
-      ["dashboard-panel-balance-sheet", "Balance Sheet"],
+      // Title updated to "Statement of Financial Position" per issue #718 Figma 3283:14275
+      ["dashboard-panel-balance-sheet", "Statement of Financial Position"],
       // Title updated to "Loan Book" per issue #717 design decision
       ["dashboard-panel-deployment-monitor", "Loan Book"],
       ["dashboard-panel-withdrawal-queue", "Withdrawal Queue"],
@@ -209,11 +210,10 @@ describe("/dashboard route shell", () => {
       screen.getByTestId("dashboard-panel-yield-history"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Yield History")).not.toBeInTheDocument();
-    // One placeholder shows "Coming soon" — Panel A (Balance Sheet) only.
+    // Panel A (Balance Sheet) shows loading state — real data hooks in test env.
     // Panel B (Loan Book) is wired to real data.
     // Panel C (Withdrawal Queue) is wired to real data (shows loading/error/empty).
     // Panel D (Yield History) shows "Nothing to show yet" with zero-address STAKED_PLUSD_ADDRESS.
-    expect(screen.getAllByText("Coming soon")).toHaveLength(1);
   });
 
   it("lays out a full-width single-column stack at all viewports (no md:grid-cols-2)", () => {

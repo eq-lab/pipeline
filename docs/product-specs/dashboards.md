@@ -63,10 +63,36 @@ effective_end` rule as the Loan Book): `secured_loans_outstanding` sums each act
 senior + equity tranche, `accrued_interest_receivable` sums cumulative `senior_interest`
 received (via `PaymentRecorded`), and `junior_tranche` sums the on-chain original equity
 tranche — the total Originator first-loss margin across active loans (authoritative figure
-is the trustee feed, not yet indexed). In v1 the entire `liquid` block and `plusd_outstanding` are `null` — the
-Capital-Wallet USDC / USYC / in-transit balances are not indexed, and PLUSD `totalSupply` has
-no reliable indexed source (no `Transfer`/mint/burn events). The liquid balances arrive with
-the Panel A reserves source.
+is the trustee feed, not yet indexed). In v1 the entire `liquid` block and `plusd_outstanding` are `null` from the REST
+endpoint — the Capital-Wallet USDC / USYC / in-transit balances are not indexed,
+and PLUSD `totalSupply` has no reliable indexed source (no `Transfer`/mint/burn
+events). The frontend overrides the two REST `null` leaves with direct
+Stellar/Soroban on-chain reads:
+
+- **PLUSD outstanding** (LIABILITY) — total PLUSD in circulation, read from Horizon:
+  `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → `balances.authorized`.
+  The PLUSD SAC has no Soroban `total_supply()` method; Horizon `/assets` is the only
+  source. Returns a Horizon human-decimal string (no SAC bigint scaling). The `1:1
+  redeemable` caption is displayed on the PLUSD row. Configured via
+  `VITE_STELLAR_PLUSD_ISSUER_ID`.
+- **Cash — stablecoins (USDC)** (ASSET) — ONLY the USDC in Pipeline's custody
+  account, read via a direct Soroban contract call: `usdc_SAC.balance(usdcCustodyId)`.
+  Returns a raw i128 bigint at 7-decimal SAC scale; `sacRawToDisplay` converts to
+  a human number before formatting. Sentinel guard: if the call returns i64 max
+  (~9.2e18), the row renders `—` (issuer account guard). Configured via
+  `VITE_STELLAR_USDC_ID` (SAC contract) and `VITE_STELLAR_USDC_CUSTODY_ID`
+  (custody G-account); both must be set for a real value to display.
+- **USYC (Tokenized T-bills)** — the identity seam `convertUsycToUsdc` (1:1 stub)
+  is in place; with no USYC holding configured, the row renders `—`.
+- **Off-chain USD** — renders `—` (off-chain, no source).
+
+Section totals are client-recomputed from sourced rows only (REST deployed/junior +
+on-chain USDC/PLUSD). A muted footnote "Excludes assets pending a data source" is
+shown while USYC and off-chain USD remain unsourced.
+
+Note: the Liquidity Ratio band, Reconciliation Indicator, and Exchange-Rate line
+described above are not implemented in v1 — the panel is exactly the two-column
+Statement of Financial Position (Figma `3283:14275`).
 
 ---
 

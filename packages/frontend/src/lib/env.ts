@@ -166,6 +166,47 @@ export const ENV = Object.freeze({
    * without making any RPC call.
    */
   STELLAR_STAKED_PLUSD_ID: readString("VITE_STELLAR_STAKED_PLUSD_ID", ""),
+
+  /**
+   * Stellar G-address of the account that issued the PLUSD classic asset.
+   * Used by `useStellarPlusdTotalSupply` to read total PLUSD supply via Horizon:
+   *   `GET /assets?asset_code=PLUSD&asset_issuer={STELLAR_PLUSD_ISSUER_ID}`
+   * → `balances.authorized` gives the total PLUSD in circulation.
+   *
+   * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
+   *
+   * Defaults to the empty string — when empty the hook short-circuits to
+   * `undefined` (row shows `—`).
+   */
+  STELLAR_PLUSD_ISSUER_ID: readString("VITE_STELLAR_PLUSD_ISSUER_ID", ""),
+
+  /**
+   * Soroban contract ID for the USDC Stellar Asset Contract (SAC).
+   * Used by `useStellarUsdcCustodyBalance` to call `balance(usdcCustodyId)` on-chain:
+   *   `usdc_SAC.balance(custodyAccount)` → raw i128 bigint at 7-decimal SAC scale.
+   *
+   * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
+   *
+   * Defaults to the empty string — when empty the hook short-circuits to
+   * `undefined` (row shows `—`).
+   */
+  STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", ""),
+
+  /**
+   * G-address of the account that holds Pipeline's USDC in custody.
+   * Used by `useStellarUsdcCustodyBalance` as the argument to `usdc.balance()`:
+   *   `usdc_SAC.balance(STELLAR_USDC_CUSTODY_ID)` → custody USDC balance.
+   *
+   * This is a classic Stellar G-account (not a contract address) that Pipeline
+   * uses to hold USDC assets. Only the custody account balance is reported on
+   * the balance sheet — NOT the total USDC supply in circulation.
+   *
+   * Futurenet: GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM
+   *
+   * Defaults to the empty string — when empty the hook short-circuits to
+   * `undefined` (row shows `—`).
+   */
+  STELLAR_USDC_CUSTODY_ID: readString("VITE_STELLAR_USDC_CUSTODY_ID", ""),
 });
 
 /**

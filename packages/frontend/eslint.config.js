@@ -89,10 +89,13 @@ export default tseslint.config(
     },
   },
   {
-    // Forbid bare `fetch(...)` calls outside `src/api/`.
-    // All HTTP calls must go through `apiFetch` in `src/api/client.ts`.
+    // Forbid bare `fetch(...)` calls outside `src/api/` and the Stellar wallet
+    // module. All Pipeline backend calls must go through `apiFetch` in
+    // `src/api/client.ts`. The Stellar wallet module is exempted because it
+    // calls the external Horizon REST API (not `ENV.API_BASE_URL`) directly —
+    // `apiFetch` prepends the backend base URL and cannot be used for Horizon.
     files: ["**/*.{ts,tsx}"],
-    ignores: ["src/api/**", "src/test-setup.ts"],
+    ignores: ["src/api/**", "src/wallet/stellar/**", "src/test-setup.ts"],
     rules: {
       "no-restricted-globals": [
         "error",
