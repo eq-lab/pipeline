@@ -176,6 +176,20 @@ export const ENV = Object.freeze({
   STELLAR_PLUSD_ID: readString("VITE_STELLAR_PLUSD_ID", ""),
 
   /**
+   * Stellar G-address of the account that issued the PLUSD classic asset.
+   * Used by `useStellarPlusdTotalSupply` to read total supply from Horizon:
+   *   `GET /assets?asset_code=PLUSD&asset_issuer={STELLAR_PLUSD_ISSUER_ID}`
+   * → `balances.authorized` gives the total PLUSD in circulation.
+   *
+   * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
+   * (same account that issues USDC on futurenet)
+   *
+   * Defaults to the empty string — when empty the hook short-circuits to
+   * `undefined` (row shows `—`).
+   */
+  STELLAR_PLUSD_ISSUER_ID: readString("VITE_STELLAR_PLUSD_ISSUER_ID", ""),
+
+  /**
    * USDC SAC Soroban contract ID on the configured Stellar network.
    * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
    * Defaults to the empty string — when empty the USDC reserve balance hook
@@ -184,13 +198,12 @@ export const ENV = Object.freeze({
   STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", ""),
 
   /**
-   * The Stellar account (G-address) that holds the protocol's USDC reserve —
-   * the "Cash — stablecoins" balance-sheet row reads `usdc.balance(this)`.
+   * The Stellar G-address holding the protocol's USDC reserve. Used by
+   * `useStellarUsdcReserveBalance` to read the account's USDC balance via Horizon:
+   *   `GET /accounts/{STELLAR_RESERVE_ACCOUNT_ID}` → find USDC balance entry.
    *
-   * Confirmed holder (2026-07-02): `GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH`
-   * (a G-account, not a contract — there is no `capital_wallet` contract in the
-   * deployment). Set via `VITE_STELLAR_RESERVE_ACCOUNT_ID`; empty string ⇒
-   * unconfigured ⇒ the reserve row short-circuits to `—`.
+   * Set via `VITE_STELLAR_RESERVE_ACCOUNT_ID`; empty string ⇒ unconfigured ⇒
+   * the reserve row short-circuits to `—`.
    */
   STELLAR_RESERVE_ACCOUNT_ID: readString("VITE_STELLAR_RESERVE_ACCOUNT_ID", ""),
 });

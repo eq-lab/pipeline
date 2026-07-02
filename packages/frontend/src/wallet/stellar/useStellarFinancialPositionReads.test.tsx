@@ -1,19 +1,22 @@
 /**
  * Tests for `useStellarPlusdTotalSupply` and `useStellarUsdcReserveBalance`.
  *
+ * Both hooks now use Horizon REST API (not Soroban simulation). No mock-layer
+ * localStorage keys are set — tests exercise the real fetch path and the
+ * unconfigured short-circuit.
+ *
  * Scenarios:
  *   useStellarPlusdTotalSupply:
- *     1. Mock-key fast-path returns raw bigint without RPC.
- *     2. Unconfigured id (plusdId = "") → returns { data: undefined } immediately, no RPC.
- *     3. Ready state with mock data.
- *     4. Error when RPC fails.
- *     5. No wallet gate — returns data even with no wallet connected.
+ *     1. Returns `undefined` immediately when `plusdIssuerId` is empty — no fetch.
+ *     2. Fetches Horizon /assets and returns `balances.authorized` as a string.
+ *     3. Surfaces error when Horizon fetch fails (non-2xx).
+ *     4. Returns data without a connected wallet (no wallet gate).
  *
  *   useStellarUsdcReserveBalance:
- *     6. Mock-key fast-path returns raw bigint without RPC.
- *     7. Unconfigured (either id empty) → returns { data: undefined }, no RPC.
- *     8. Ready state with mock data.
- *     9. Error when RPC fails.
+ *     5. Returns `undefined` immediately when `reserveAccountId` is empty — no fetch.
+ *     6. Fetches Horizon /accounts and returns the USDC balance string.
+ *     7. Returns "0.0000000" when the account holds no USDC trustline.
+ *     8. Surfaces error when Horizon fetch fails (non-2xx).
  */
 
 import { renderHook, waitFor } from "@testing-library/react";
@@ -38,97 +41,47 @@ function makeWrapper() {
 
 // ── Mock chain constants ───────────────────────────────────────────────────────
 
-const PLUSD_ID = "CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI";
-const USDC_ID = "CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI";
-const RESERVE_ID = "CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU";
+const ISSUER_ID = "GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH";
+const RESERVE_ID = "GAD7YKWKWLZSDKVL2D5FRGKI7IE3PBGN7XNCJQJJH7XCGYEAWXR5FISM";
+const HORIZON_URL = "https://horizon-futurenet.stellar.org";
 
-// These are controlled via vi.mock factories — overridden per test via module re-mock
-let mockPlusdId = PLUSD_ID;
-let mockUsdcId = USDC_ID;
+let mockPlusdIssuerId = ISSUER_ID;
 let mockReserveAccountId = RESERVE_ID;
+let mockHorizonUrl = HORIZON_URL;
 
 vi.mock("./chain", () => ({
-  get plusdId() {
-    return mockPlusdId;
-  },
-  get usdcId() {
-    return mockUsdcId;
+  get plusdIssuerId() {
+    return mockPlusdIssuerId;
   },
   get reserveAccountId() {
     return mockReserveAccountId;
   },
-}));
-
-// ── Mock TokenClient ──────────────────────────────────────────────────────────
-
-const mockTotalSupply = vi.fn();
-const mockBalance = vi.fn();
-
-vi.mock("./contracts/token", () => ({
-  createTokenClient: vi.fn((id: string) => {
-    if (!id) return null;
-    return { totalSupply: mockTotalSupply, balance: mockBalance };
-  }),
-}));
-
-// ── Mock evm/mock for useMock / parseBigInt ───────────────────────────────────
-
-vi.mock("../evm/mock", () => ({
-  useMock: (key: string, parse: (raw: string) => unknown) => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw === null) return undefined;
-      return parse(raw);
-    } catch {
-      return undefined;
-    }
+  get horizonUrl() {
+    return mockHorizonUrl;
   },
-  readMock: (key: string, parse: (raw: string) => unknown) => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw === null) return undefined;
-      return parse(raw);
-    } catch {
-      return undefined;
-    }
-  },
-  parseBigInt: (raw: string): bigint => BigInt(raw),
 }));
+
+// ── fetch mock ────────────────────────────────────────────────────────────────
+
+const mockFetch = vi.fn();
+
+beforeEach(() => {
+  mockPlusdIssuerId = ISSUER_ID;
+  mockReserveAccountId = RESERVE_ID;
+  mockHorizonUrl = HORIZON_URL;
+  vi.stubGlobal("fetch", mockFetch);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
 
 // ── Tests: useStellarPlusdTotalSupply ─────────────────────────────────────────
 
 describe("useStellarPlusdTotalSupply", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    mockTotalSupply.mockClear();
-    mockPlusdId = PLUSD_ID;
-    mockUsdcId = USDC_ID;
-    mockReserveAccountId = RESERVE_ID;
-  });
-
-  afterEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-  });
-
-  it("returns data from mock key without making any RPC call", () => {
-    localStorage.setItem(
-      "pipeline.mock.wallet.stellar.plusd.totalSupply",
-      "431400000000000",
-    );
-
-    const { result } = renderHook(() => useStellarPlusdTotalSupply(), {
-      wrapper: makeWrapper(),
-    });
-
-    expect(result.current.data).toBe(431_400_000_000_000n);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.error).toBeNull();
-    expect(mockTotalSupply).not.toHaveBeenCalled();
-  });
-
-  it("returns undefined immediately when plusdId is empty (no RPC)", () => {
-    mockPlusdId = "";
+  it("returns undefined immediately when plusdIssuerId is empty (no fetch)", () => {
+    mockPlusdIssuerId = "";
 
     const { result } = renderHook(() => useStellarPlusdTotalSupply(), {
       wrapper: makeWrapper(),
@@ -137,26 +90,42 @@ describe("useStellarPlusdTotalSupply", () => {
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(mockTotalSupply).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("returns data from the RPC client in ready state", async () => {
-    mockTotalSupply.mockResolvedValue(200_000_000_000n);
+  it("fetches Horizon /assets and returns balances.authorized as a string", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        _embedded: {
+          records: [{ balances: { authorized: "10000711.9961018" } }],
+        },
+      }),
+    });
 
     const { result } = renderHook(() => useStellarPlusdTotalSupply(), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => {
-      expect(result.current.data).toBe(200_000_000_000n);
+      expect(result.current.data).toBe("10000711.9961018");
     });
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url] = mockFetch.mock.calls[0] as [string, unknown];
+    expect(url).toContain("/assets");
+    expect(url).toContain("PLUSD");
+    expect(url).toContain(encodeURIComponent(ISSUER_ID));
   });
 
-  it("surfaces error when RPC fails", async () => {
-    mockTotalSupply.mockRejectedValue(new Error("RPC unavailable"));
+  it("surfaces error when Horizon returns a non-2xx status", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+    });
 
     const { result } = renderHook(() => useStellarPlusdTotalSupply(), {
       wrapper: makeWrapper(),
@@ -167,19 +136,26 @@ describe("useStellarPlusdTotalSupply", () => {
     });
 
     expect(result.current.data).toBeUndefined();
-    expect(result.current.error?.message).toMatch(/RPC unavailable/);
+    expect(result.current.error?.message).toMatch(/503/);
   });
 
   it("returns data without a connected wallet (no wallet gate)", async () => {
-    // No wallet mock needed — hook should work regardless.
-    mockTotalSupply.mockResolvedValue(50_000_000n);
+    // No wallet state set — hook must work regardless.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        _embedded: {
+          records: [{ balances: { authorized: "5000000.0000000" } }],
+        },
+      }),
+    });
 
     const { result } = renderHook(() => useStellarPlusdTotalSupply(), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => {
-      expect(result.current.data).toBe(50_000_000n);
+      expect(result.current.data).toBe("5000000.0000000");
     });
   });
 });
@@ -187,49 +163,7 @@ describe("useStellarPlusdTotalSupply", () => {
 // ── Tests: useStellarUsdcReserveBalance ───────────────────────────────────────
 
 describe("useStellarUsdcReserveBalance", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    mockBalance.mockClear();
-    mockPlusdId = PLUSD_ID;
-    mockUsdcId = USDC_ID;
-    mockReserveAccountId = RESERVE_ID;
-  });
-
-  afterEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-  });
-
-  it("returns data from mock key without making any RPC call", () => {
-    localStorage.setItem(
-      "pipeline.mock.wallet.stellar.usdc.reserveBalance",
-      "100000000000",
-    );
-
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
-      wrapper: makeWrapper(),
-    });
-
-    expect(result.current.data).toBe(100_000_000_000n);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.error).toBeNull();
-    expect(mockBalance).not.toHaveBeenCalled();
-  });
-
-  it("returns undefined when usdcId is empty (no RPC)", () => {
-    mockUsdcId = "";
-
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
-      wrapper: makeWrapper(),
-    });
-
-    expect(result.current.data).toBeUndefined();
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.error).toBeNull();
-    expect(mockBalance).not.toHaveBeenCalled();
-  });
-
-  it("returns undefined when reserveAccountId is empty (no RPC)", () => {
+  it("returns undefined immediately when reserveAccountId is empty (no fetch)", () => {
     mockReserveAccountId = "";
 
     const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
@@ -239,26 +173,65 @@ describe("useStellarUsdcReserveBalance", () => {
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(mockBalance).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("returns data from the RPC client in ready state", async () => {
-    mockBalance.mockResolvedValue(75_000_000_000n);
+  it("fetches Horizon /accounts and returns the USDC balance string", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        balances: [
+          { balance: "0.0000000", asset_type: "native" },
+          {
+            balance: "1989988801.0000000",
+            asset_type: "credit_alphanum4",
+            asset_code: "USDC",
+            asset_issuer:
+              "GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH",
+          },
+        ],
+      }),
+    });
 
     const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => {
-      expect(result.current.data).toBe(75_000_000_000n);
+      expect(result.current.data).toBe("1989988801.0000000");
     });
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url] = mockFetch.mock.calls[0] as [string, unknown];
+    expect(url).toContain("/accounts/");
+    expect(url).toContain(encodeURIComponent(RESERVE_ID));
   });
 
-  it("surfaces error when RPC fails", async () => {
-    mockBalance.mockRejectedValue(new Error("balance call failed"));
+  it("returns '0.0000000' when the account holds no USDC trustline", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        balances: [{ balance: "100.0000000", asset_type: "native" }],
+      }),
+    });
+
+    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toBe("0.0000000");
+    });
+  });
+
+  it("surfaces error when Horizon returns a non-2xx status", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+    });
 
     const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
       wrapper: makeWrapper(),
@@ -269,6 +242,6 @@ describe("useStellarUsdcReserveBalance", () => {
     });
 
     expect(result.current.data).toBeUndefined();
-    expect(result.current.error?.message).toMatch(/balance call failed/);
+    expect(result.current.error?.message).toMatch(/404/);
   });
 });

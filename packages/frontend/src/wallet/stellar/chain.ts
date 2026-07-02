@@ -80,12 +80,22 @@ export const stakedPlusdId: string = ENV.STELLAR_STAKED_PLUSD_ID;
 
 /**
  * PLUSD SAC Soroban contract ID.
- * Empty string means "unconfigured" — the PLUSD total_supply hook
- * short-circuits to `undefined` without making any RPC call.
+ * Empty string means "unconfigured".
  *
  * Futurenet: CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI
  */
 export const plusdId: string = ENV.STELLAR_PLUSD_ID;
+
+/**
+ * G-address of the account that issued the PLUSD classic Stellar asset.
+ * Used to read total PLUSD supply via Horizon:
+ *   `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
+ * → `balances.authorized` gives the total PLUSD in circulation.
+ *
+ * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
+ */
+export const plusdIssuerId: string = ENV.STELLAR_PLUSD_ISSUER_ID;
 
 /**
  * USDC SAC Soroban contract ID.

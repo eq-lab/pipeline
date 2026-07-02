@@ -1,44 +1,40 @@
 /**
- * Stellar/Soroban read hooks for the Balance Sheet panel (Panel A).
+ * Stellar/Horizon read hooks for the Balance Sheet panel (Panel A).
  *
- * Protocol-level reads — NOT gated on a connected wallet. These read contract
- * state that is public (`total_supply`, `balance(account)`), so the panel
- * renders with no wallet connected.
+ * Both reads use the Horizon REST API, not Soroban simulation:
  *
- * Hooks:
- *   - `useStellarPlusdTotalSupply()`    — PLUSD outstanding (senior claims).
- *   - `useStellarUsdcReserveBalance()` — protocol USDC reserve (liquid assets).
+ * - `useStellarPlusdTotalSupply()` — reads PLUSD supply from Horizon assets endpoint.
+ *   The PLUSD SAC (`CBVAYH66…`) does NOT expose `total_supply` via Soroban; instead
+ *   `GET /assets?asset_code=PLUSD&asset_issuer={issuer}` returns `balances.authorized`
+ *   which is the total PLUSD in circulation as a human-decimal string (e.g. `"10000711.9961018"`).
  *
- * Mock layer (localStorage — dev only)
- * --------------------------------------
- *   `pipeline.mock.wallet.stellar.plusd.totalSupply`
- *     → Raw bigint string at 7-decimal SAC scale (e.g. `"431400000000000"` ≈ $43.14M)
- *   `pipeline.mock.wallet.stellar.usdc.reserveBalance`
- *     → Raw bigint string at 7-decimal SAC scale (e.g. `"100000000000"` ≈ $10K)
+ * - `useStellarUsdcReserveBalance()` — reads the protocol reserve account's USDC
+ *   balance from Horizon: `GET /accounts/{reserveAccountId}`, find the USDC balance entry.
+ *   Returns the human-decimal string (e.g. `"1989988801.0000000"`).
+ *
+ * Both hooks return human-decimal strings that can be formatted directly with
+ * `formatCompactUsd(parseFloat(value))` — no SAC 7-decimal scaling needed.
+ *
+ * Protocol-level reads — NOT gated on a connected wallet.
  *
  * Scale convention
  * ----------------
- * Stellar SAC tokens use 7 decimals (SAC_DECIMALS = 7).
- * 1 PLUSD = 1 USDC = 10_000_000n (raw bigint).
- * Use `sacRawToDisplay(raw, 7)` to convert to a human-readable decimal string.
- * Do NOT mix with REST base-6 decimal strings — those use `formatCompactUsd`.
+ * These hooks return Horizon-formatted decimal strings (standard Stellar 7-decimal
+ * display format, e.g. "10000711.9961018"). Pass directly to `parseFloat()` then
+ * `formatCompactUsd()`. Do NOT apply SAC bigint scaling — that was for Soroban reads.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { createTokenClient } from "./contracts/token";
-import { plusdId, usdcId, reserveAccountId } from "./chain";
-import {
-  STELLAR_MOCK_KEYS,
-  readMockStellarPlusdTotalSupply,
-  readMockStellarUsdcReserveBalance,
-} from "./mock";
-import { useMock, parseBigInt } from "../evm/mock";
+import { plusdIssuerId, reserveAccountId, horizonUrl } from "./chain";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface UseStellarTokenReadResult {
-  /** Raw i128 bigint at 7-decimal SAC scale, or `undefined` while loading / unconfigured. */
-  data: bigint | undefined;
+  /**
+   * Human-decimal string (Horizon format, e.g. `"10000711.9961018"`), or
+   * `undefined` while loading / unconfigured.
+   */
+  data: string | undefined;
   isLoading: boolean;
   error: Error | null;
 }
@@ -46,42 +42,45 @@ export interface UseStellarTokenReadResult {
 // ── useStellarPlusdTotalSupply ────────────────────────────────────────────────
 
 /**
- * Reads `total_supply()` from the PLUSD SAC contract.
+ * Reads the total PLUSD supply in circulation from Horizon.
  *
- * Returns the total PLUSD outstanding as a raw i128 bigint at 7-decimal scale.
- * No wallet connection required — this is protocol-level public state.
+ * Uses `GET /assets?asset_code=PLUSD&asset_issuer={issuer}` → `balances.authorized`.
+ * Returns a human-decimal string (standard Stellar format, e.g. `"10000711.9961018"`).
+ * No wallet connection required — this is public protocol state.
  *
- * Returns `undefined` (not an error) when `STELLAR_PLUSD_ID` is not configured.
+ * Returns `undefined` (not an error) when `STELLAR_PLUSD_ISSUER_ID` is not configured.
  */
 export function useStellarPlusdTotalSupply(): UseStellarTokenReadResult {
-  // ── Mock fast-path (reactive) ─────────────────────────────────────────────
-  const mockValue = useMock(STELLAR_MOCK_KEYS.plusdTotalSupply, parseBigInt);
+  const isConfigured = !!plusdIssuerId;
 
-  const isConfigured = !!plusdId;
-
-  const query = useQuery<bigint, Error>({
-    queryKey: ["stellarPlusdTotalSupply", plusdId],
+  const query = useQuery<string, Error>({
+    queryKey: ["stellarPlusdTotalSupply", plusdIssuerId],
     queryFn: async () => {
-      // Re-read mock at query time (non-reactive path).
-      const mock = readMockStellarPlusdTotalSupply();
-      if (mock !== undefined) return mock;
-
-      const client = createTokenClient(plusdId);
-      if (!client) throw new Error("PLUSD contract not configured");
-      return client.totalSupply();
+      const url = `${horizonUrl}/assets?asset_code=PLUSD&asset_issuer=${encodeURIComponent(plusdIssuerId)}`;
+      const resp = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) {
+        throw new Error(
+          `Horizon /assets fetch failed: ${resp.status} ${resp.statusText}`,
+        );
+      }
+      const data = (await resp.json()) as {
+        _embedded?: { records?: { balances?: { authorized?: string } }[] };
+      };
+      const record = data._embedded?.records?.[0];
+      const authorized = record?.balances?.authorized;
+      if (!authorized) {
+        throw new Error("PLUSD asset not found or balances.authorized missing");
+      }
+      return authorized;
     },
-    enabled: isConfigured && mockValue === undefined,
+    enabled: isConfigured,
     staleTime: 30_000,
     refetchInterval: 30_000,
     retry: false,
   });
 
-  // ── Mock path ─────────────────────────────────────────────────────────────
-  if (mockValue !== undefined) {
-    return { data: mockValue, isLoading: false, error: null };
-  }
-
-  // ── Unconfigured short-circuit ────────────────────────────────────────────
   if (!isConfigured) {
     return { data: undefined, isLoading: false, error: null };
   }
@@ -95,45 +94,55 @@ export function useStellarPlusdTotalSupply(): UseStellarTokenReadResult {
 
 // ── useStellarUsdcReserveBalance ──────────────────────────────────────────────
 
+interface HorizonBalance {
+  balance: string;
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+}
+
 /**
- * Reads `balance(reserveAccount)` from the USDC SAC contract.
+ * Reads the protocol reserve account's USDC balance from Horizon.
  *
- * Returns the protocol's USDC reserve as a raw i128 bigint at 7-decimal scale.
- * No wallet connection required — this is protocol-level public state.
+ * Uses `GET /accounts/{reserveAccountId}` and finds the balance entry where
+ * `asset_code === "USDC"` and `asset_type !== "native"`.
+ * Returns a human-decimal string (e.g. `"1989988801.0000000"`).
+ * No wallet connection required.
  *
- * Returns `undefined` (not an error) when either `STELLAR_USDC_ID` or
- * `STELLAR_RESERVE_ACCOUNT_ID` is not configured (row renders `—`). The reserve
- * holder is a confirmed G-account (see `chain.ts` / `.env`).
+ * Returns `undefined` (not an error) when `STELLAR_RESERVE_ACCOUNT_ID` is not
+ * configured (row renders `—`).
  */
 export function useStellarUsdcReserveBalance(): UseStellarTokenReadResult {
-  // ── Mock fast-path (reactive) ─────────────────────────────────────────────
-  const mockValue = useMock(STELLAR_MOCK_KEYS.usdcReserveBalance, parseBigInt);
+  const isConfigured = !!reserveAccountId;
 
-  const isConfigured = !!usdcId && !!reserveAccountId;
-
-  const query = useQuery<bigint, Error>({
-    queryKey: ["stellarUsdcReserveBalance", usdcId, reserveAccountId],
+  const query = useQuery<string, Error>({
+    queryKey: ["stellarUsdcReserveBalance", reserveAccountId],
     queryFn: async () => {
-      // Re-read mock at query time (non-reactive path).
-      const mock = readMockStellarUsdcReserveBalance();
-      if (mock !== undefined) return mock;
-
-      const client = createTokenClient(usdcId);
-      if (!client) throw new Error("USDC contract not configured");
-      return client.balance(reserveAccountId);
+      const url = `${horizonUrl}/accounts/${encodeURIComponent(reserveAccountId)}`;
+      const resp = await fetch(url, {
+        headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) {
+        throw new Error(
+          `Horizon /accounts fetch failed: ${resp.status} ${resp.statusText}`,
+        );
+      }
+      const data = (await resp.json()) as { balances?: HorizonBalance[] };
+      const usdcEntry = data.balances?.find(
+        (b) => b.asset_type !== "native" && b.asset_code === "USDC",
+      );
+      if (!usdcEntry) {
+        // Account exists but holds no USDC — return "0.0000000"
+        return "0.0000000";
+      }
+      return usdcEntry.balance;
     },
-    enabled: isConfigured && mockValue === undefined,
+    enabled: isConfigured,
     staleTime: 30_000,
     refetchInterval: 30_000,
     retry: false,
   });
 
-  // ── Mock path ─────────────────────────────────────────────────────────────
-  if (mockValue !== undefined) {
-    return { data: mockValue, isLoading: false, error: null };
-  }
-
-  // ── Unconfigured short-circuit ────────────────────────────────────────────
   if (!isConfigured) {
     return { data: undefined, isLoading: false, error: null };
   }
