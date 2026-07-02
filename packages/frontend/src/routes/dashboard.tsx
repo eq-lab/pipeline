@@ -16,8 +16,9 @@ import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
  *
  * Layout (Issues #728, #744 — matches Figma `3283-12098`):
  *   - Centred content column capped at `max-w-[1200px]` (matches the desktop
- *     frame's 1200px content width), `px-8` side padding (32px, the frame's
- *     inner gutter) and `py-8` vertical padding.
+ *     frame's 1200px content width), `px-4` (16px) on mobile / `md:px-8`
+ *     (32px) on desktop side padding matching the Figma XS 16px gutter and
+ *     desktop 32px gutter, and `py-8` vertical padding.
  *   - The page is `#F8F7F6` (`--color-pipeline-paper`); the panels live inside a
  *     white (`--color-pipeline-surface`) rounded content container (Figma
  *     `3283:12101`). The `Protocol Dashboard` title sits above it on the page
@@ -62,7 +63,7 @@ function Dashboard() {
     >
       <main
         data-testid="dashboard-main"
-        className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-8 py-8"
+        className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 py-8 md:px-8"
       >
         <h1 className={titleClasses} data-testid="dashboard-title">
           Protocol Dashboard

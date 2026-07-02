@@ -134,3 +134,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#720 Panel D: Yield History UI (charts)](https://github.com/eq-lab/pipeline/issues/720) | [720-yield-history-panel.md](./epic-712/720-yield-history-panel.md) | Initial |
 | [#719 Panel C: Withdrawal Queue UI](https://github.com/eq-lab/pipeline/issues/719) | [719-withdrawal-queue-ui.md](./epic-712/719-withdrawal-queue-ui.md) | Initial |
 | [#746 Protocol Dashboard: add page footer (logo, nav links, disclaimer, copyright)](https://github.com/eq-lab/pipeline/issues/746) | [746-dashboard-footer.md](./epic-712/746-dashboard-footer.md) | Initial |
+| [#749 Protocol Dashboard: adaptive (mobile) layout does not match Figma](https://github.com/eq-lab/pipeline/issues/749) | [749-dashboard-adaptive-mobile-layout.md](./epic-712/749-dashboard-adaptive-mobile-layout.md) | Initial |

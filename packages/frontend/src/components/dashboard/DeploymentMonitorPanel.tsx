@@ -40,10 +40,27 @@ import { useDeploymentMonitorPanel } from "./useDeploymentMonitorPanel";
 //   omitted — no blur token exists and it has no visible effect on the flat
 //   panel background.
 
+// Tab bar — Figma node 3283:72372 (mobile) / 3283:14480 (desktop).
+//
+// Container: full-width (flex-1 tabs fill the track), muted fill bg
+// (rgba(184,191,190,0.12) = --color-pipeline-fill-muted), 2px padding,
+// radius-xl = 6px track (--radius-pipeline-card-sm).
+//
+// Each tab: flex-1 (fills half the track), h=32px, px=6px, radius-l = 4px
+// (--radius-pipeline-card). Active tab: white bg (--color-pipeline-surface),
+// medium weight ink label. Disabled tab: transparent bg, muted ink label,
+// 50% opacity, not-allowed cursor.
+//
+// Badge: muted fill bg, 4px radius (--radius-pipeline-card), caption-size
+// Regular, muted ink, min-width 20px, horizontal padding 4px, vertical padding 2px.
+// (Figma specifies backdrop-blur on badge — omitted: no blur token exists
+// and it's invisible on the flat panel background.)
+
 const tabSharedClasses = [
-  "inline-flex items-center justify-center gap-1",
+  "flex flex-1 items-center justify-center gap-1",
   "h-8 px-1.5",
-  "rounded-[var(--radius-pipeline-card,4px)]",
+  // Figma radius-l = 4px (segmented-tab corner) — NOT a full pill.
+  "rounded-[var(--radius-pipeline-card)]",
   "font-[family-name:var(--font-body)]",
   "text-[length:var(--text-pipeline-caption,12px)]",
   "leading-[var(--text-pipeline-caption--line-height,16px)]",
@@ -68,7 +85,8 @@ const disabledTabClasses = [
 const badgeClasses = [
   "inline-flex items-center justify-center",
   "min-w-5 px-1 py-0.5",
-  "rounded-[var(--radius-pipeline-card,4px)]",
+  // Badge: 4px radius (--radius-pipeline-card).
+  "rounded-[var(--radius-pipeline-card)]",
   "bg-[color:var(--color-pipeline-fill-muted)]",
   "text-[color:var(--color-pipeline-ink-muted)]",
   "font-normal",
@@ -83,7 +101,7 @@ interface LoanBookTabBarProps {
 function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
   return (
     <div
-      className="flex items-start p-0.5 rounded-[var(--radius-pipeline-card-sm,6px)] bg-[color:var(--color-pipeline-fill-muted)] w-fit"
+      className="flex w-full items-start rounded-[var(--radius-pipeline-card-sm)] bg-[color:var(--color-pipeline-fill-muted)] p-0.5"
       data-testid="loan-book-tab-bar"
       role="tablist"
     >
@@ -94,7 +112,10 @@ function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
         data-testid="loan-book-tab-active-loans"
       >
         Active Loans
-        <span className={badgeClasses} data-testid="loan-book-tab-active-loans-count">
+        <span
+          className={badgeClasses}
+          data-testid="loan-book-tab-active-loans-count"
+        >
           {activeLoansCount}
         </span>
       </div>
@@ -169,7 +190,7 @@ export function DeploymentMonitorPanel() {
             "bg-[color:var(--color-pipeline-surface)]",
             "rounded-[var(--radius-pipeline-card)]",
             "border-t border-l border-[color:var(--color-pipeline-line)]",
-            "border-b-[3px] border-r-[3px] border-b-[color:var(--color-pipeline-line)] border-r-[color:var(--color-pipeline-line)]",
+            "border-r-[3px] border-b-[3px] border-r-[color:var(--color-pipeline-line)] border-b-[color:var(--color-pipeline-line)]",
           ].join(" ")}
           data-testid="loan-book-table-container"
         >
