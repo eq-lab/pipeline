@@ -1,9 +1,14 @@
 /**
- * WithdrawalQueueTable — responsive withdrawal queue table for Panel C.
+ * WithdrawalQueueTable — withdrawal queue table for Panel C.
  *
- * Desktop (`md+`): a semantic `<table>` with 3 columns: Holder / Amount /
- *   Status. Wrapped in `overflow-x: auto` so it never forces horizontal page
- *   scroll (FRONTEND.md wide-content rule).
+ * All viewports: a semantic `<table>` with 3 columns: Holder / Amount /
+ *   Status. Wrapped in `overflow-x: auto` (FRONTEND.md wide-content rule).
+ *
+ *   The Figma XS mobile frame `3283-71053` renders a real 3-column table at
+ *   mobile (Table container w=370, three ~115px `Item` columns) that fits
+ *   within the 370px content area without horizontal scroll. The previous
+ *   stacked-card `MobileCards` path has been removed to match Figma exactly
+ *   (issue #749 resolved decision).
  *
  *   Spacing and typography follow the same conventions as `LoanBookTable`
  *   (Figma section `3283:14893`):
@@ -14,17 +19,14 @@
  *     Header caps:   12px/16px, font-normal, --color-pipeline-ink-muted
  *     Body cells:    16px/22px, font-normal, --color-pipeline-ink
  *
- *   Status colour (resolved Open Question 1):
- *     `Completed` — green (`--color-pipeline-positive`) — the "done" state.
- *     `Queued`    — muted ink (`--color-pipeline-ink-muted`) — neutral/pending.
- *     Unknown status — muted ink (safe fallback).
- *
- * Mobile (below `md`): each request rendered as a stacked card of label/value
- *   pairs with a divider between rows.
+ *   Status colour:
+ *     `Completed`  — green (`--color-pipeline-positive`) — the "done" state.
+ *     `Queued`     — muted ink (`--color-pipeline-ink-muted`) — neutral/pending.
+ *     Unknown      — muted ink (safe fallback).
  *
  * Figma references:
  *   Panel C desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14893
- *   Mobile:          https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387
+ *   Mobile (XS):     https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-71053
  *
  * Token discipline: no raw hex/font values.
  */
@@ -84,24 +86,6 @@ const firstBodyCellClasses = [
 
 const firstBodyCellInnerClasses = "block truncate py-2";
 
-// Mobile card label
-const mobileLabelClasses = [
-  "font-[family-name:var(--font-body)]",
-  "font-normal",
-  "text-[length:var(--text-pipeline-body-s,14px)]",
-  "leading-[var(--text-pipeline-body-s--line-height,20px)]",
-  "text-[color:var(--color-pipeline-ink-muted)]",
-].join(" ");
-
-// Mobile card value
-const mobileValueClasses = [
-  "font-[family-name:var(--font-body)]",
-  "font-medium",
-  "text-[length:var(--text-pipeline-body)]",
-  "leading-[var(--text-pipeline-body--line-height)]",
-  "text-[color:var(--color-pipeline-ink)]",
-].join(" ");
-
 // ── Status badge ─────────────────────────────────────────────────────────────
 
 /**
@@ -118,12 +102,12 @@ function statusColorClass(status: string): string {
   return "text-[color:var(--color-pipeline-ink-muted)]";
 }
 
-// ── Desktop table ─────────────────────────────────────────────────────────────
+// ── Table (all viewports) ─────────────────────────────────────────────────────
 
-function DesktopTable({ rows }: WithdrawalQueueTableProps) {
+function QueueTable({ rows }: WithdrawalQueueTableProps) {
   return (
     <div
-      className="hidden w-full overflow-x-auto md:block"
+      className="w-full overflow-x-auto"
       data-testid="withdrawal-queue-table-desktop"
     >
       <table className="w-full table-fixed border-collapse">
@@ -168,67 +152,22 @@ function DesktopTable({ rows }: WithdrawalQueueTableProps) {
   );
 }
 
-// ── Mobile stacked cards ──────────────────────────────────────────────────────
-
-function MobileCards({ rows }: WithdrawalQueueTableProps) {
-  return (
-    <div
-      className="block flex flex-col divide-y divide-[color:var(--color-pipeline-line)] md:hidden"
-      data-testid="withdrawal-queue-table-mobile"
-    >
-      {rows.map((row, i) => (
-        <div key={i} className="flex flex-col gap-2 py-4">
-          {/* Primary row: holder address */}
-          <div className={mobileValueClasses}>{row.holder}</div>
-          {/* Grid of label/value pairs */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <MobileField label="Amount" value={row.amount} />
-            <MobileField
-              label="Status"
-              value={row.status}
-              valueClassName={statusColorClass(row.status)}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MobileField({
-  label,
-  value,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className={mobileLabelClasses}>{label}</span>
-      <span
-        className={[mobileValueClasses, valueClassName]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// ── WithdrawalQueueTable (both breakpoints) ───────────────────────────────────
+// ── WithdrawalQueueTable ──────────────────────────────────────────────────────
 
 /**
- * Renders the withdrawal queue table. Switches between desktop `<table>` (md+)
- * and stacked mobile cards (below md) automatically via Tailwind breakpoints.
+ * Renders the withdrawal queue table at all viewport widths.
+ *
+ * Mobile (below `md`): the 3-column table fits the 370px content area per
+ * Figma XS frame `3283-71053` (three ~115px `Item` columns). The previous
+ * stacked-card `MobileCards` path has been removed (issue #749 resolved
+ * decision).
+ *
+ * Desktop (`md+`): same table, full width.
  */
 export function WithdrawalQueueTable({ rows }: WithdrawalQueueTableProps) {
   return (
     <div data-testid="withdrawal-queue-table">
-      <DesktopTable rows={rows} />
-      <MobileCards rows={rows} />
+      <QueueTable rows={rows} />
     </div>
   );
 }

@@ -1,14 +1,20 @@
 /**
  * LoanBookSummary — five summary header cards for the Loan Book panel.
  *
- * Presentational: all values are pre-formatted strings. Renders a horizontal
- * scrollable row on mobile and a 5-column grid on desktop.
+ * Presentational: all values are pre-formatted strings.
+ *
+ * Mobile (below `md`): horizontally-scrollable flex row — each card is fixed
+ *   `w-[200px] shrink-0` (Figma `3283:72325` "Second card pair": cards are
+ *   200px, gap 16px, container h=144). The outer `overflow-x-auto` wrapper lets
+ *   the user scroll to reach all 5 cards without wrapping or page overflow.
+ *
+ * Desktop (`md+`): flex row that stretches cards to fill the full width
+ *   equally (flex-1 on each card), matching the 5-column desktop layout.
  *
  * Figma: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline
  *   Desktop: node 3283:14434 — "card-horizontal" (single card)
  *            node 3283:14433 — "Second card pair" (full row of 5 cards)
- *   Mobile:  node 3283:72323 — "Second card pair" frame (200px wide cards,
- *            horizontally scrollable, 16px gap)
+ *   Mobile:  node 3283:72325 — "Second card pair" XS (200px cards, 16px gap, scrollable)
  *
  * Token discipline: no raw hex/font values — all from CSS custom props.
  */
@@ -34,6 +40,9 @@ export interface LoanBookSummaryProps {
 // "border-b-3 border-r-3" treatment; radius/radius-xxl = 4px (--radius-pipeline-card);
 // 16px padding on all sides (size-16). Fixed height 144px confirmed from Figma
 // frame 3283:14434 (height=144): label sits at y=16, value at y=100.
+//
+// Mobile: w-[200px] shrink-0 — fixed 200px, does not shrink (Figma card width).
+// Desktop: flex-1 — stretches to fill equal column width in the 5-card row.
 const cardClasses = [
   "flex flex-col justify-between",
   "bg-[color:var(--color-pipeline-surface)]",
@@ -43,10 +52,9 @@ const cardClasses = [
   "p-4",
   // 144px matches Figma frame 3283:14434 height exactly.
   "h-[144px]",
-  // Min width to keep cards a consistent width on mobile scroll
-  "min-w-[180px]",
-  // Desktop: let the grid size them naturally
-  "md:min-w-0",
+  // Mobile: fixed 200px per Figma card width, no shrink (card row scrolls).
+  // Desktop: flex-1 expands to fill the available width equally.
+  "w-[200px] shrink-0 md:w-auto md:flex-1",
 ].join(" ");
 
 // Card label: Heading S — Graphik LC (body font), 16px/20px, weight regular (400).
@@ -94,9 +102,11 @@ function SummaryCard({
 /**
  * Five summary header cards.
  *
- * Desktop (`md+`): a 5-column grid with equal-width cells and 16px gaps.
- * Mobile (below `md`): a horizontally scrollable strip of fixed-width cards
- * (180px each) with 16px gaps — matches the Figma mobile frame `3283:72323`.
+ * Mobile (below `md`): outer `overflow-x-auto` wrapper; inner `flex gap-4`
+ *   row with fixed-200px cards that do not shrink — user scrolls horizontally
+ *   to reach all 5. Matches Figma XS node `3283:72325`.
+ * Desktop (`md+`): cards stretch to fill width equally (`flex-1`), all 5
+ *   visible in one row.
  */
 export function LoanBookSummary({
   totalDeployed,
@@ -106,13 +116,9 @@ export function LoanBookSummary({
   avgDuration,
 }: LoanBookSummaryProps) {
   return (
-    // Outer wrapper handles overflow clipping on mobile.
     <div className="w-full overflow-x-auto">
       <div
-        className={[
-          "flex items-stretch gap-4",
-          "md:grid md:grid-cols-5 md:gap-4 md:items-stretch",
-        ].join(" ")}
+        className="flex items-stretch gap-4"
         data-testid="loan-book-summary-cards"
       >
         <SummaryCard

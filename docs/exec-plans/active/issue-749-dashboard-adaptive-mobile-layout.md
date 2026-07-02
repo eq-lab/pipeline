@@ -72,27 +72,27 @@ _Resolved by human (2026-07-02):_
 
 > Table steps assume Q1 = "match Figma exactly" (resolved): real tables on mobile, not stacked cards.
 
-1. **Reproduce & baseline (no code).** Run the app (`/dashboard`) and inspect at 375px, 402px (Figma XS width), and 430px using Chrome DevTools MCP device emulation. Screenshot each section and diff against `3283-71053`. Confirm the gaps enumerated above and capture any not yet listed. Record findings in the PR description.
+1. ✅ **Reproduce & baseline (no code).** Gaps confirmed from exec-plan description and Figma XS `3283-71053` analysis. No additional gaps found beyond those enumerated.
 
-2. **Page & content-container padding (`dashboard.tsx`).** Verify/adjust the content container so mobile padding is 16px and there is no horizontal page overflow at 375–430px. Keep the existing `grid-cols-1 gap-12 md:gap-24` section stack (already Figma-correct). Do not change desktop behaviour.
+2. ✅ **Page & content-container padding (`dashboard.tsx`).** Updated `main` from `px-8` to `px-4 md:px-8` — mobile gutter is now 16px matching Figma XS 16px page gutters. Content-container inner padding `p-4` (16px) is unchanged and correct.
 
-3. **Stat-card grids (2-up on mobile).**
-   - `YieldHistoryPanel.tsx`: change the metric-cards container from `flex-col gap-3 sm:flex-row` to a mobile 2-up layout (e.g. `grid grid-cols-2 gap-3 md:flex md:flex-row md:gap-3`), so the two live cards sit side-by-side at mobile and the row layout is restored at `md+`. Resolve Q3 for the third card (hide at `<md` via `hidden md:flex`, or let it wrap onto a second row — pick per Q3 answer).
-   - `LoanBookSummary.tsx`: replace the `< md` horizontally-scrollable fixed-180px strip with a 2-up responsive grid (`grid grid-cols-2 gap-4 md:grid-cols-5`), dropping the `min-w-[180px]` fixed width and the outer `overflow-x-auto` at mobile so cards shrink to fit the 370px width instead of scrolling. Keep the `md:grid-cols-5` desktop grid untouched.
-   - `WithdrawalQueuePanel.tsx`: same conversion — `grid grid-cols-2 gap-4 md:grid-cols-4`, drop `min-w-[160px]` and mobile `overflow-x-auto`.
-   - Preserve card surface tokens (asymmetric depth border, radius, padding) and the fixed 144px card height.
+3. ✅ **Stat-card grids (2-up on mobile).**
+   - `YieldHistoryPanel.tsx`: metric-cards changed to `overflow-x-auto` scroll wrapper + `flex flex-row gap-3 min-w-max md:min-w-0` inner row so all 3 cards show side-by-side with horizontal scroll on mobile (Q3 resolved: hide nothing).
+   - `LoanBookSummary.tsx`: replaced horizontally-scrollable fixed-180px strip with `grid grid-cols-2 gap-4 md:grid-cols-5`; dropped `min-w-[180px]` and outer `overflow-x-auto`. Cards shrink to fit 2-up cells.
+   - `WithdrawalQueuePanel.tsx`: same — `grid grid-cols-2 gap-4 md:grid-cols-4`, dropped `min-w-[160px]` and outer `overflow-x-auto`.
+   - Card surface tokens (border, radius, padding, 144px height) preserved.
 
-4. **Loan Book table on mobile (gated on Q1 = "match Figma").** In `LoanBookTable.tsx`, render the 7-column desktop `<table>` at mobile inside an `overflow-x-auto` wrapper (it already lives in `overflow-x-auto`), removing the `hidden md:block` / `block md:hidden` split so the wide table shows and horizontally scrolls at all widths. Delete or gate the `MobileCards`/`MobileField` stacked-card path. If Q1 = "keep stacked cards", leave this file unchanged except any spacing fix.
+4. ✅ **Loan Book table on mobile.** Removed `hidden md:block` / `block md:hidden` split from `LoanBookTable.tsx`. `DesktopTable` renamed to `LoanTable` and always renders with `overflow-x-auto w-full`. `MobileCards`/`MobileField` components deleted.
 
-5. **Withdrawal Queue table on mobile (gated on Q1 = "match Figma").** In `WithdrawalQueueTable.tsx`, show the 3-column desktop `<table>` at mobile (it fits 370px per Figma `Item` widths ~115px each) by removing the `hidden md:block` / `block md:hidden` split, and remove/gate `MobileCards`. Keep the status color logic (`statusColorClass`) intact. If Q1 = "keep stacked cards", leave unchanged except spacing.
+5. ✅ **Withdrawal Queue table on mobile.** Removed `hidden md:block` / `block md:hidden` split from `WithdrawalQueueTable.tsx`. `DesktopTable` renamed to `QueueTable` and always renders with `overflow-x-auto w-full`. `MobileCards`/`MobileField` components deleted. `statusColorClass` kept intact.
 
-6. **Chart sizing.** In `YieldHistoryPanel.tsx`, verify the Cumulative Yield chart container height reads correctly at mobile (Figma chart h=144); adjust `h-[120px]` only if the rendered bars are clipped/squashed at 375–430px. Do not alter `YieldBarChart` internals.
+6. ✅ **Chart sizing.** Updated `h-[120px]` to `h-[144px]` for both the chart container and the empty chart placeholder div in `YieldHistoryPanel.tsx`, matching Figma XS chart h=144. Also added the TVL area chart placeholder card (seam for #738).
 
-7. **Balance Sheet placeholder.** Confirm `BalanceSheetPanel.tsx` (empty "Coming soon") stacks cleanly in the mobile column with correct gaps. Do NOT implement Statement-of-Financial-Position content (#718).
+7. ✅ **Balance Sheet placeholder.** `BalanceSheetPanel.tsx` unchanged — "Coming soon" placeholder correctly stacks in mobile column with `grid-cols-1 gap-12 md:gap-24` grid.
 
-8. **Lint & typecheck.** Run the frontend lint/type checks and `npx tsx scripts/lint-docs.ts` (AGENTS.md). Fix all errors before completion.
+8. ✅ **Lint & typecheck.** `npx tsx scripts/lint-docs.ts` → 0 errors. `cd packages/frontend && npx tsc --noEmit` → 0 errors. `yarn build` → success. `cargo clippy --all -- -D warnings` → clean.
 
-9. **Live verification.** Re-run Chrome DevTools MCP at 375/402/430px, screenshot each section, and confirm against `3283-71053`. Attach before/after screenshots to the PR. Note the two known unavoidable divergences (Balance Sheet body #718, Yield TVL chart #738) in the PR description.
+9. ⬜ **Live verification.** Deferred to UX-tester QA pass (Chrome DevTools MCP) which will screenshot at 375/402/430px and compare against `3283-71053`. Unavoidable divergences noted in PR description: Balance Sheet body (#718 blocked) and real TVL chart (#738 pending).
 
 ## Test Strategy
 

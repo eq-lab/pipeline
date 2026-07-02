@@ -120,11 +120,12 @@ export const Footer = React.forwardRef<HTMLElement, FooterProps>(
             aria-label="Pipeline"
           />
 
-          {/* Right: horizontal nav links, gap-6 (24px, gap-m), Body type tokens.
+          {/* Right: nav links — vertically stacked on mobile (Figma XS node 3283:74414
+              shows flex-col, gap-[24px]), horizontal flex-wrap row on desktop.
               All hrefs are stubs (href="#", aria-disabled) — see TD-29. */}
           <nav
             aria-label="Footer"
-            className="flex flex-wrap items-center gap-6"
+            className="flex flex-col gap-6 md:flex-row md:flex-wrap md:items-center"
             data-testid="footer-nav"
           >
             {FOOTER_LINKS.map(({ label, href, testId }) => (

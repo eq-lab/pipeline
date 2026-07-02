@@ -1,10 +1,16 @@
 /**
- * LoanBookTable — responsive active-loan table for the Loan Book panel.
+ * LoanBookTable — active-loan table for the Loan Book panel.
  *
- * Desktop (`md+`): a semantic `<table>` with 7 columns matching the Figma
+ * All viewports: a semantic `<table>` with 7 columns matching the Figma
  *   header row: Borrower / Commodity, Principal, Collateral, LTV, Duration,
- *   Rate, Protection. Wrapped in `overflow-x: auto` so it never forces
- *   horizontal page scroll (FRONTEND.md wide-content rule).
+ *   Rate, Protection. Wrapped in `overflow-x: auto` so it horizontally scrolls
+ *   at mobile widths where the full 1024px table exceeds the 370px content
+ *   area (FRONTEND.md wide-content rule).
+ *
+ *   The Figma XS mobile frame `3283-71053` renders the full 7-column table
+ *   scrolling horizontally inside the section — NOT stacked label/value cards.
+ *   The previous `MobileCards` path (block md:hidden) has been removed to
+ *   match Figma exactly (resolved decision for issue #749).
  *
  *   Column widths are derived from Figma node 3283-14552 (Table container):
  *     Borrower/Commodity — flexible (fills remaining space), min-w 1px
@@ -37,14 +43,10 @@
  *     Body cells:        16px / 22px, font-normal, --color-pipeline-ink
  *                        (font/font-size/body + font/line-height/body = 22px)
  *
- * Mobile (below `md`): each loan rendered as a stacked card of label/value
- *   pairs with a divider between loans. Untouched by this issue — Figma mobile
- *   node 3283-72323 has no header table.
- *
  * Figma references:
  *   Desktop:         https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
  *   Table container: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14552
- *   Mobile:          https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72323
+ *   Mobile (XS):     https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-71053
  *
  * Token discipline: no raw hex/font values.
  */
@@ -86,13 +88,12 @@ export interface LoanBookHeaderAggregates {
 export interface LoanBookTableProps {
   rows: LoanBookRow[];
   /**
-   * Optional pre-formatted aggregate strings for the desktop column headers.
+   * Optional pre-formatted aggregate strings for the column headers.
    * When present, the Principal and Collateral headers render as
    * `"Principal · $31.6M"` (label + middot + aggregate in one caption run).
    *
-   * Mobile stacked-card layout (`MobileCards` / `MobileField`) has no header
-   * row — aggregates do NOT apply there (Figma node 3283-72323 shows no header).
-   * Do NOT add aggregates to the mobile per-loan field labels.
+   * Applies at all viewports — the table is now rendered at every width
+   * (no separate MobileCards path). Aggregates appear in the header row.
    */
   headerAggregates?: LoanBookHeaderAggregates;
 }
@@ -172,31 +173,13 @@ const firstBodyCellClasses = [
 // + whitespace-nowrap) + py-2 (8px second padding layer).
 const firstBodyCellInnerClasses = "block truncate py-2";
 
-// Mobile card label
-const mobileLabelClasses = [
-  "font-[family-name:var(--font-body)]",
-  "font-normal",
-  "text-[length:var(--text-pipeline-body-s,14px)]",
-  "leading-[var(--text-pipeline-body-s--line-height,20px)]",
-  "text-[color:var(--color-pipeline-ink-muted)]",
-].join(" ");
+// ── Table (all viewports) ─────────────────────────────────────────────────────
 
-// Mobile card value
-const mobileValueClasses = [
-  "font-[family-name:var(--font-body)]",
-  "font-medium",
-  "text-[length:var(--text-pipeline-body)]",
-  "leading-[var(--text-pipeline-body--line-height)]",
-  "text-[color:var(--color-pipeline-ink)]",
-].join(" ");
-
-// ── Desktop table ─────────────────────────────────────────────────────────────
-
-function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
+function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
   const agg = headerAggregates ?? {};
   return (
     <div
-      className="hidden md:block overflow-x-auto w-full"
+      className="w-full overflow-x-auto"
       data-testid="loan-book-table-desktop"
     >
       {/*
@@ -215,7 +198,7 @@ function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
        * border-collapse correctly merges the header border-b with the first
        * body cell border-t into a single 1px line.
        */}
-      <table className="w-full border-collapse table-fixed">
+      <table className="w-full table-fixed border-collapse">
         <colgroup>
           {/* Borrower/Commodity — flexible, fills remaining width */}
           <col />
@@ -310,57 +293,25 @@ function DesktopTable({ rows, headerAggregates }: LoanBookTableProps) {
   );
 }
 
-// ── Mobile stacked cards ──────────────────────────────────────────────────────
-
-function MobileCards({ rows }: LoanBookTableProps) {
-  return (
-    <div
-      className="block md:hidden flex flex-col divide-y divide-[color:var(--color-pipeline-line)]"
-      data-testid="loan-book-table-mobile"
-    >
-      {rows.map((row, i) => (
-        <div key={i} className="py-4 flex flex-col gap-2">
-          {/* Primary row: borrower/commodity in full */}
-          <div className={mobileValueClasses}>{row.borrowerCommodity}</div>
-          {/* Grid of label/value pairs */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <MobileField label="Principal" value={row.principal} />
-            <MobileField label="Collateral" value={row.collateral} />
-            <MobileField label="LTV" value={row.ltv} />
-            <MobileField label="Duration" value={row.duration} />
-            <MobileField label="Rate" value={row.rate} />
-            <MobileField label="Protection" value={row.protection} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MobileField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className={mobileLabelClasses}>{label}</span>
-      <span className={mobileValueClasses}>{value}</span>
-    </div>
-  );
-}
-
-// ── LoanBookTable (both breakpoints) ─────────────────────────────────────────
+// ── LoanBookTable ─────────────────────────────────────────────────────────────
 
 /**
- * Renders the active-loan table. Switches between desktop `<table>` (md+) and
- * stacked mobile cards (below md) automatically via Tailwind breakpoints.
+ * Renders the active-loan table at all viewport widths.
  *
- * Note: `headerAggregates` only applies to the desktop header row. The mobile
- * stacked-card layout (`MobileCards`) has no header row — aggregates are NOT
- * passed through there (Figma node 3283-72323 shows no header row on mobile).
+ * Mobile (below `md`): the full 7-column table horizontally scrolls inside
+ * its `overflow-x-auto` wrapper (Figma XS frame `3283-71053` — the table
+ * container is w=1024 inside a 370px section). The previous stacked-card
+ * `MobileCards` path has been removed (issue #749 resolved decision).
+ *
+ * Desktop (`md+`): same table, no horizontal scroll needed at full width.
+ *
+ * `headerAggregates` populates the Principal and Collateral header subtitles
+ * at all widths.
  */
 export function LoanBookTable({ rows, headerAggregates }: LoanBookTableProps) {
   return (
     <div data-testid="loan-book-table">
-      <DesktopTable rows={rows} headerAggregates={headerAggregates} />
-      <MobileCards rows={rows} />
+      <LoanTable rows={rows} headerAggregates={headerAggregates} />
     </div>
   );
 }

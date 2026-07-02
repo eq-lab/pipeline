@@ -27,6 +27,10 @@ import { useWithdrawalQueuePanel } from "./useWithdrawalQueuePanel";
 // Card surface: matches the LoanBookSummary card treatment —
 // white surface, asymmetric depth border (1px top+left, 3px bottom+right),
 // 4px radius, 16px padding, 144px tall (Figma frame 3283:14895 card height=144).
+//
+// Mobile: w-[200px] shrink-0 — fixed 200px per Figma card-horizontal node
+// 3283:72377 (w=200). The outer overflow-x-auto wrapper handles scroll.
+// Desktop: md:w-auto md:flex-1 — stretches to fill the 4-column row equally.
 const cardClasses = [
   "flex flex-col justify-between",
   "bg-[color:var(--color-pipeline-surface)]",
@@ -35,8 +39,7 @@ const cardClasses = [
   "rounded-[var(--radius-pipeline-card,4px)]",
   "p-4",
   "h-[144px]",
-  "min-w-[160px]",
-  "md:min-w-0",
+  "w-[200px] shrink-0 md:w-auto md:flex-1",
 ].join(" ");
 
 // Card label: Heading S token — body font, 16px/20px, regular weight.
@@ -126,13 +129,16 @@ export function WithdrawalQueuePanel() {
        *   cards end y=232, table starts y=264 → 32px below cards.
        */}
       <div className="flex flex-col gap-8 pt-4">
-        {/* Four summary cards — horizontally scrollable on mobile */}
+        {/*
+         * Four summary cards — horizontally scrollable flex row at all widths.
+         * Figma XS node 3283:72376 "Second card pair": flex gap-[16px], each
+         * card w=200px shrink-0. The outer overflow-x-auto lets the user scroll
+         * to reach all 4 cards on mobile (2×200+gap=416px > 370px viewport).
+         * On desktop the cards expand (flex-1) to fill the full width.
+         */}
         <div className="w-full overflow-x-auto">
           <div
-            className={[
-              "flex items-stretch gap-4",
-              "md:grid md:grid-cols-4 md:items-stretch md:gap-4",
-            ].join(" ")}
+            className="flex items-stretch gap-4"
             data-testid="withdrawal-queue-summary-cards"
           >
             <SummaryCard
