@@ -102,17 +102,12 @@ export function useStellarPlusdTotalSupply(): UseStellarTokenReadResult {
  * No wallet connection required — this is protocol-level public state.
  *
  * Returns `undefined` (not an error) when either `STELLAR_USDC_ID` or
- * `STELLAR_RESERVE_ACCOUNT_ID` is not configured.
- *
- * TODO (reserve-holder): `STELLAR_RESERVE_ACCOUNT_ID` defaults to the empty
- * string until the reserve holder is confirmed on Futurenet. Row renders `—`.
+ * `STELLAR_RESERVE_ACCOUNT_ID` is not configured (row renders `—`). The reserve
+ * holder is a confirmed G-account (see `chain.ts` / `.env`).
  */
 export function useStellarUsdcReserveBalance(): UseStellarTokenReadResult {
   // ── Mock fast-path (reactive) ─────────────────────────────────────────────
-  const mockValue = useMock(
-    STELLAR_MOCK_KEYS.usdcReserveBalance,
-    parseBigInt,
-  );
+  const mockValue = useMock(STELLAR_MOCK_KEYS.usdcReserveBalance, parseBigInt);
 
   const isConfigured = !!usdcId && !!reserveAccountId;
 

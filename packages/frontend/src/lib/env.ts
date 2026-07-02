@@ -184,22 +184,15 @@ export const ENV = Object.freeze({
   STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", ""),
 
   /**
-   * The Stellar account that holds the protocol's USDC reserve.
+   * The Stellar account (G-address) that holds the protocol's USDC reserve —
+   * the "Cash — stablecoins" balance-sheet row reads `usdc.balance(this)`.
    *
-   * TODO (reserve-holder): There is no explicit `capital_wallet` in the
-   * Futurenet deployment. The most plausible candidate is `deposit_manager`
-   * (`CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU`).
-   * Verify on-chain: query `usdc.balance(deposit_manager)` on Futurenet and
-   * confirm a non-zero balance. Until confirmed, this env var defaults to the
-   * empty string, and the USDC reserve balance row renders `—`.
-   *
-   * Set `VITE_STELLAR_RESERVE_ACCOUNT_ID` in .env to the confirmed holder.
-   * Futurenet deposit_manager: CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU
+   * Confirmed holder (2026-07-02): `GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH`
+   * (a G-account, not a contract — there is no `capital_wallet` contract in the
+   * deployment). Set via `VITE_STELLAR_RESERVE_ACCOUNT_ID`; empty string ⇒
+   * unconfigured ⇒ the reserve row short-circuits to `—`.
    */
-  STELLAR_RESERVE_ACCOUNT_ID: readString(
-    "VITE_STELLAR_RESERVE_ACCOUNT_ID",
-    "",
-  ),
+  STELLAR_RESERVE_ACCOUNT_ID: readString("VITE_STELLAR_RESERVE_ACCOUNT_ID", ""),
 });
 
 /**
