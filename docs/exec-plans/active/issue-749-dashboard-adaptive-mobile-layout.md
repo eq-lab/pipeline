@@ -24,7 +24,7 @@ Presentational / responsive only. Bring the `/dashboard` page's rendering at mob
 **Out of scope (do NOT touch)**
 
 - **Balance Sheet / Statement of Financial Position content.** `BalanceSheetPanel.tsx` is still a "Coming soon" placeholder; the Figma frame shows the full Assets/Liabilities section, but building that content is the job of the separate OPEN, currently `blocked` sub-issue **#718 (Panel A: Balance Sheet & Reconciliation UI)**, which depends on a backend endpoint. #749 must NOT implement the balance-sheet body. It only ensures the placeholder participates correctly in the mobile stack.
-- **Yield "TVL" area chart.** The Figma frame's first Yield chart card is a TVL area chart; the current panel intentionally omits TVL / by-source series pending backend **#738** (documented in `YieldHistoryPanel.tsx`). Adding a second chart card is a data-availability change, not presentational — deferred (see Open Questions Q2).
+- **Yield "TVL" area chart.** The Figma frame's first Yield chart card is a TVL area chart; the current panel intentionally omits TVL / by-source series pending backend **#738** (documented in `YieldHistoryPanel.tsx`). Per resolved Q2: render a **sized "Coming soon" placeholder** matching the Figma chart-card footprint now; the real chart is a follow-up once #738 lands.
 - Global `TopBar` and `Footer` — provided by `packages/frontend/src/routes/__root.tsx`; the footer shipped in #746. The Figma frame's header/footer are already covered.
 - Desktop (`md+`) layout, data hooks, API, number formatting.
 - Product-spec changes (`docs/product-specs/dashboards.md` has no responsive section and no behaviour change occurs).
@@ -37,7 +37,7 @@ Figma frame geometry (from `get_metadata` on `3283:71053`): 402px frame, 370px i
 
 1. **Content-container padding.** `dashboard.tsx` uses `p-4` (16px) on the white content container below `md`. Figma XS: content sits at x=16 inside a 402px frame with the container itself starting at x=0 and inner sections at 16px → effective 16px. This is close; verify the title/content gutter and the `py-8` page padding read correctly at 375–430px (no double gutter, no horizontal page scroll).
 
-2. **Yield metric cards.** `YieldHistoryPanel.tsx` renders the metric cards `flex-col gap-3 sm:flex-row` — i.e. **single-column stacked** below the Tailwind `sm` (640px) breakpoint. Figma XS ("Second card pair", y=684, w=370 with three w=200 cards) shows a **2-up row** for the two live stat cards (`Current NAV / sPLUSD`, `Loan book yield`) as seen in the screenshot. Gap: the code stacks them 1-up on mobile; Figma shows 2-up. Note there are only **two** live metric cards visible in the XS screenshot vs three cards in code (the third, "Target Net to sPLUSD", is the #738 static seam) — confirm whether the third card should be hidden at mobile (see Open Questions Q3).
+2. **Yield metric cards.** `YieldHistoryPanel.tsx` renders the metric cards `flex-col gap-3 sm:flex-row` — i.e. **single-column stacked** below the Tailwind `sm` (640px) breakpoint. Figma XS ("Second card pair", y=684, w=370 with three w=200 cards) shows a **2-up row** for the two live stat cards (`Current NAV / sPLUSD`, `Loan book yield`) as seen in the screenshot. Gap: the code stacks them 1-up on mobile; Figma shows 2-up. Note there are only **two** live metric cards visible in the XS screenshot vs three cards in code (the third, "Target Net to sPLUSD", is the #738 static seam). Per resolved Q3: **show all three cards on mobile — hide nothing** — and allow the row to scroll horizontally (or wrap) so every card stays reachable.
 
 3. **Loan Book summary cards (`LoanBookSummary.tsx`).** Renders a horizontally-scrollable strip of five fixed 180px-wide cards below `md`. Figma XS Loan Book section ("Second card pair", y=64) shows the stat cards as w=200 cards in the 370px section — the screenshot shows the visible pair (`Total Deployed`, `Collateral`) as a **2-up row**, not a horizontally-scrolling strip. Gap: current horizontal-scroll strip vs Figma 2-up wrapping grid.
 
@@ -62,13 +62,15 @@ Figma frame geometry (from `get_metadata` on `3283:71053`): 402px frame, 370px i
 
 ## Open Questions
 
-1. **Mobile table treatment (biggest decision).** Figma XS `3283-71053` renders the Loan Book table as the full 7-column desktop table that **horizontally scrolls** inside the 370px section, and the Withdrawal Queue table as a **real 3-column** table. The current code instead collapses both to stacked label/value cards below `md`. Do we (a) match Figma literally (wide horizontally-scrolling loan table + 3-col withdrawal table on mobile), or (b) keep the existing stacked-card mobile treatment as an intentional touch-friendly deviation? This changes both the component work and the existing responsive tests.
-2. **Yield TVL area chart.** The XS frame's first Yield chart card is a TVL area chart backed by data not served until #738. Confirm it stays deferred for #749 (leaving only the Cumulative-Yield card on mobile), rather than being expected in this bug fix.
-3. **Third Yield metric card on mobile.** The XS screenshot shows only two Yield stat cards (`Current NAV / sPLUSD`, `Loan book yield`) as a 2-up row, but the code renders three (the third is the #738 "Target Net to sPLUSD" static seam). Should the third card be hidden at mobile to match the 2-up Figma layout, kept as a wrapping third card, or is the two-card screenshot just the currently-available subset? Confirm the intended mobile card count/layout.
+_Resolved by human (2026-07-02):_
+
+1. **Mobile table treatment** — RESOLVED: **match Figma exactly.** Render real tables on mobile: the Loan Book as the full 7-column desktop table that **horizontally scrolls** inside the section, and the Withdrawal Queue as a **real 3-column** table (Holder / Amount / Status). Replace the current stacked label/value `MobileCards` treatment for both, and update the existing responsive tests accordingly.
+2. **Yield TVL area chart** — RESOLVED: **add a sized placeholder** ("Coming soon", matching the Figma chart-card footprint) so the mobile rhythm matches now; the real TVL area chart is a **follow-up once backend #738 lands**. Note this seam in the PR description.
+3. **Third Yield metric card on mobile** — RESOLVED: **show everything, hide nothing.** Keep all three metric cards visible on mobile; do not hide the third. Allow the card row to **scroll horizontally** (or wrap) so all cards remain reachable rather than being dropped.
 
 ## Implementation Steps
 
-> Steps 4–6 (tables) are gated on Open Questions Q1. If Q1 = "keep stacked cards", steps 4–6 reduce to spacing/verification only. The steps below assume Q1 = "match Figma" and note the alternative.
+> Table steps assume Q1 = "match Figma exactly" (resolved): real tables on mobile, not stacked cards.
 
 1. **Reproduce & baseline (no code).** Run the app (`/dashboard`) and inspect at 375px, 402px (Figma XS width), and 430px using Chrome DevTools MCP device emulation. Screenshot each section and diff against `3283-71053`. Confirm the gaps enumerated above and capture any not yet listed. Record findings in the PR description.
 
