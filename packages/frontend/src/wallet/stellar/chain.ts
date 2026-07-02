@@ -77,3 +77,32 @@ export const withdrawalQueueId: string = ENV.STELLAR_WITHDRAWAL_QUEUE_ID;
  * without making any RPC call.
  */
 export const stakedPlusdId: string = ENV.STELLAR_STAKED_PLUSD_ID;
+
+/**
+ * PLUSD SAC Soroban contract ID.
+ * Empty string means "unconfigured" — the PLUSD total_supply hook
+ * short-circuits to `undefined` without making any RPC call.
+ *
+ * Futurenet: CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI
+ */
+export const plusdId: string = ENV.STELLAR_PLUSD_ID;
+
+/**
+ * USDC SAC Soroban contract ID.
+ * Empty string means "unconfigured" — the USDC reserve balance hook
+ * short-circuits to `undefined` without making any RPC call.
+ *
+ * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
+ */
+export const usdcId: string = ENV.STELLAR_USDC_ID;
+
+/**
+ * The Stellar account holding the protocol's USDC reserve.
+ * Empty string means "unconfirmed" — the USDC reserve balance hook
+ * short-circuits to `undefined` (row renders `—`).
+ *
+ * TODO (reserve-holder): verify which contract holds the reserve on Futurenet.
+ * Default assumption: deposit_manager (CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU).
+ * Set VITE_STELLAR_RESERVE_ACCOUNT_ID in .env once confirmed.
+ */
+export const reserveAccountId: string = ENV.STELLAR_RESERVE_ACCOUNT_ID;

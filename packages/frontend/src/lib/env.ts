@@ -166,6 +166,40 @@ export const ENV = Object.freeze({
    * without making any RPC call.
    */
   STELLAR_STAKED_PLUSD_ID: readString("VITE_STELLAR_STAKED_PLUSD_ID", ""),
+
+  /**
+   * PLUSD SAC Soroban contract ID on the configured Stellar network.
+   * Futurenet: CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI
+   * Defaults to the empty string — when empty the PLUSD total_supply hook
+   * short-circuits to `undefined` without making any RPC call.
+   */
+  STELLAR_PLUSD_ID: readString("VITE_STELLAR_PLUSD_ID", ""),
+
+  /**
+   * USDC SAC Soroban contract ID on the configured Stellar network.
+   * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
+   * Defaults to the empty string — when empty the USDC reserve balance hook
+   * short-circuits to `undefined` without making any RPC call.
+   */
+  STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", ""),
+
+  /**
+   * The Stellar account that holds the protocol's USDC reserve.
+   *
+   * TODO (reserve-holder): There is no explicit `capital_wallet` in the
+   * Futurenet deployment. The most plausible candidate is `deposit_manager`
+   * (`CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU`).
+   * Verify on-chain: query `usdc.balance(deposit_manager)` on Futurenet and
+   * confirm a non-zero balance. Until confirmed, this env var defaults to the
+   * empty string, and the USDC reserve balance row renders `—`.
+   *
+   * Set `VITE_STELLAR_RESERVE_ACCOUNT_ID` in .env to the confirmed holder.
+   * Futurenet deposit_manager: CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU
+   */
+  STELLAR_RESERVE_ACCOUNT_ID: readString(
+    "VITE_STELLAR_RESERVE_ACCOUNT_ID",
+    "",
+  ),
 });
 
 /**

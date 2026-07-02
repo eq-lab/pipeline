@@ -194,7 +194,7 @@ direction; this is the only remaining soft question, with a recommendation.)_
 
 ## Implementation Steps
 
-1. **Soroban token client** — add
+1. [x] **Soroban token client** — add
    `packages/frontend/src/wallet/stellar/contracts/token.ts` modeled on
    `contracts/stakedPlusd.ts`:
    - `class TokenClient` with `constructor(contractId)`, private
@@ -204,7 +204,7 @@ direction; this is the only remaining soft question, with a recommendation.)_
      (`contract.call("balance", new Address(account).toScVal())`), each returning
      `scValToNative(retval) as bigint`.
    - `createTokenClient(contractId): TokenClient | null` factory (null on empty id).
-2. **ENV + chain re-export** — in `lib/env.ts` add
+2. [x] **ENV + chain re-export** — in `lib/env.ts` add
    `STELLAR_PLUSD_ID` (`VITE_STELLAR_PLUSD_ID`, default `""`) and
    `STELLAR_USDC_ID` (`VITE_STELLAR_USDC_ID`, default `""`), plus a reserve-holder
    id `STELLAR_RESERVE_ACCOUNT_ID` (`VITE_STELLAR_RESERVE_ACCOUNT_ID`, default `""`
@@ -212,13 +212,13 @@ direction; this is the only remaining soft question, with a recommendation.)_
    at wiring time). In `wallet/stellar/chain.ts` re-export `plusdId`, `usdcId`,
    `reserveAccountId` as `const`s with the same short-circuit doc-comment as
    `stakedPlusdId`. Document the Futurenet addresses in the doc-comments.
-3. **Mock keys** — in `wallet/stellar/mock.ts` add keys + reader helpers for
+3. [x] **Mock keys** — in `wallet/stellar/mock.ts` add keys + reader helpers for
    PLUSD total supply and the USDC reserve balance (reuse the existing
    `balance.sac.usdc` convention; add e.g.
    `pipeline.mock.wallet.stellar.plusd.totalSupply` and
    `pipeline.mock.wallet.stellar.usdc.reserveBalance`, raw 7-decimal bigint
    strings), following the `stakedPlusdShareBalance` pattern.
-4. **Stellar read hooks** — add
+4. [x] **Stellar read hooks** — add
    `wallet/stellar/useStellarFinancialPositionReads.ts` (or co-locate near the
    token client), modeled on `useStellarStakedPlusd.ts` read hooks:
    - `useStellarPlusdTotalSupply(): { data?: bigint; isLoading; error }` —
@@ -230,17 +230,17 @@ direction; this is the only remaining soft question, with a recommendation.)_
      same shape, `queryKey: ["stellarUsdcReserveBalance", usdcId, reserveAccountId]`,
      `queryFn` → `createTokenClient(usdcId).balance(reserveAccountId)`, enabled
      when both ids present. No wallet gate.
-5. **USYC seam** — add `components/dashboard/usycNav.ts` (small, swappable):
+5. [x] **USYC seam** — add `components/dashboard/usycNav.ts` (small, swappable):
    `export function convertUsycToUsdc(usycAmount: bigint): bigint { return usycAmount; }`
    (1:1 identity placeholder; real `convert_to_assets`-style NAV wired later).
    The panel hook calls this; with no USYC holding, input is `0n`/absent → row `—`.
-6. **REST hook** — `src/api/useFinancialPosition.ts`, modeled on
+6. [x] **REST hook** — `src/api/useFinancialPosition.ts`, modeled on
    `useWithdrawalQueue.ts`: response types, `useQuery({ queryKey:
    ["financial-position"], queryFn: apiFetch("/v1/financial-position"),
    refetchInterval: 30_000 })`, always enabled. Barrel-export from
    `src/api/index.ts`; README section + `pipeline.mock.api.GET./v1/financial-position`
    mock key.
-7. **Logic hook** — `components/dashboard/useBalanceSheetPanel.ts` (view = JSX only):
+7. [x] **Logic hook** — `components/dashboard/useBalanceSheetPanel.ts` (view = JSX only):
    - Call `useFinancialPosition()` + `useStellarPlusdTotalSupply()` +
      `useStellarUsdcReserveBalance()` + the USYC stub.
    - Normalize to USD-human units: REST base-6 via `parseFloat`; Soroban bigints
@@ -252,7 +252,7 @@ direction; this is the only remaining soft question, with a recommendation.)_
    - `state`: `loading` while REST loads; `error` on REST error (retry via
      `refetch`); else `ready`. Soroban reads still loading/unconfigured surface
      as per-row `—`, never a whole-panel error.
-8. **Panel view** — rewrite `BalanceSheetPanel.tsx` to consume the logic hook via
+8. [x] **Panel view** — rewrite `BalanceSheetPanel.tsx` to consume the logic hook via
    `PanelContainer` (`borderless`, `title="Balance Sheet"`, keep
    `data-testid="dashboard-panel-balance-sheet"` + `data-node-id="3283:14275"`).
    **Layout unchanged (locked):**
@@ -272,7 +272,7 @@ direction; this is the only remaining soft question, with a recommendation.)_
    - Optional muted footnote under the sheet per Open Question 1.
    - Token discipline: no raw hex/font/size literals (layout pixel hints only);
      stable `data-testid`s per row.
-9. **Lint/build** — `npx tsc --noEmit` (frontend), frontend ESLint, and
+9. [x] **Lint/build** — `npx tsc --noEmit` (frontend), frontend ESLint, and
    `npx tsx scripts/lint-docs.ts` for doc edits. Fix all warnings.
 
 ## Test Strategy

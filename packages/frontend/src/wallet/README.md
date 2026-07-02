@@ -888,6 +888,39 @@ token name and require no classic trustline before staking.
 `needsTrustline: true` only when a classic share asset is resolved and the
 connected account has no sPLUSD trustline.
 
+### `TokenClient` / `createTokenClient`
+
+Generic Soroban read client for any SAC/fungible token contract (PLUSD, USDC).
+Modeled on `StakedPlusdClient` — same `simulateReadCall` helper.
+
+```ts
+import { createTokenClient } from "@/wallet/stellar/contracts/token";
+const client = createTokenClient(contractId); // null when id is empty
+await client?.totalSupply(); // → bigint (7-decimal SAC scale)
+await client?.balance(account); // → bigint (7-decimal SAC scale)
+```
+
+### `useStellarPlusdTotalSupply()`
+
+```ts
+const { data, isLoading, error } = useStellarPlusdTotalSupply();
+```
+
+Protocol-level read (no wallet gate). Reads `total_supply()` from the PLUSD SAC
+contract. Returns a raw i128 bigint at 7-decimal scale. Short-circuits to
+`undefined` when `STELLAR_PLUSD_ID` is not configured. Polls every 30 s.
+
+### `useStellarUsdcReserveBalance()`
+
+```ts
+const { data, isLoading, error } = useStellarUsdcReserveBalance();
+```
+
+Protocol-level read (no wallet gate). Reads `balance(reserveAccount)` from the
+USDC SAC contract. Returns a raw i128 bigint at 7-decimal scale. Short-circuits
+to `undefined` when either `STELLAR_USDC_ID` or `STELLAR_RESERVE_ACCOUNT_ID` is
+not configured. Polls every 30 s.
+
 ### Stellar mock keys
 
 | Key                                                              | Type                                        | Notes                                                                                                                                                               |
@@ -906,6 +939,8 @@ connected account has no sPLUSD trustline.
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToShares`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarStakeConvertToShares`. Output = `(assets * rate) / 1e7`. Example: `"9600000"` = 0.96 sPLUSD per PLUSD. **Uses 1e7 (SAC), not 1e18 (EVM).** |
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarUnstakeConvertToAssets`. Output = `(shares * rate) / 1e7`. Example: `"10400000"` = 1.04 PLUSD per sPLUSD.                                  |
 | `pipeline.mock.wallet.stellar.stakedPlusd.shareBalance`          | decimal bigint string (7-dec raw)           | Mocks `useStellarStakedPlusdBalance` and sPLUSD trustline check. E.g. `"10000000"` = 1 sPLUSD.                                                                      |
+| `pipeline.mock.wallet.stellar.plusd.totalSupply`                 | decimal bigint string (7-dec raw)           | Mocks `useStellarPlusdTotalSupply`. E.g. `"431400000000000"` ≈ $43.14M PLUSD.                                                                                       |
+| `pipeline.mock.wallet.stellar.usdc.reserveBalance`               | decimal bigint string (7-dec raw)           | Mocks `useStellarUsdcReserveBalance`. E.g. `"100000000000"` ≈ $10K USDC.                                                                                            |
 
 **DevTools snippet:**
 

@@ -165,6 +165,22 @@ export const STELLAR_MOCK_KEYS = {
    */
   stakedPlusdShareBalance:
     "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
+
+  // ── Balance Sheet panel mock keys ──────────────────────────────────────────
+
+  /**
+   * Mock PLUSD total supply for `useStellarPlusdTotalSupply`.
+   * Raw bigint string in 7-decimal fixed-point (e.g. `"431400000000000"` ≈ $43.14M PLUSD).
+   * DevTools: `localStorage.setItem("pipeline.mock.wallet.stellar.plusd.totalSupply", "431400000000000")`
+   */
+  plusdTotalSupply: "pipeline.mock.wallet.stellar.plusd.totalSupply",
+
+  /**
+   * Mock USDC reserve balance for `useStellarUsdcReserveBalance`.
+   * Raw bigint string in 7-decimal fixed-point (e.g. `"100000000000"` ≈ $10K USDC).
+   * DevTools: `localStorage.setItem("pipeline.mock.wallet.stellar.usdc.reserveBalance", "100000000000")`
+   */
+  usdcReserveBalance: "pipeline.mock.wallet.stellar.usdc.reserveBalance",
 } as const;
 
 // ── Parse helpers ──────────────────────────────────────────────────────────────
@@ -328,6 +344,22 @@ export function readMockStellarChangeTrustStakedPlusd():
       parseJson<{ hash: string }>,
     ) ?? readMockStellarChangeTrust()
   );
+}
+
+/**
+ * Read the mock PLUSD total supply (non-reactive).
+ * Returns a raw bigint at 7-decimal scale, or `undefined`.
+ */
+export function readMockStellarPlusdTotalSupply(): bigint | undefined {
+  return readMock(STELLAR_MOCK_KEYS.plusdTotalSupply, parseBigInt);
+}
+
+/**
+ * Read the mock USDC reserve balance (non-reactive).
+ * Returns a raw bigint at 7-decimal scale, or `undefined`.
+ */
+export function readMockStellarUsdcReserveBalance(): bigint | undefined {
+  return readMock(STELLAR_MOCK_KEYS.usdcReserveBalance, parseBigInt);
 }
 
 /**

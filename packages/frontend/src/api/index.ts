@@ -72,3 +72,14 @@ export type {
   WithdrawalQueueResponse,
   UseWithdrawalQueueResult,
 } from "./useWithdrawalQueue";
+export { useFinancialPosition } from "./useFinancialPosition";
+export type {
+  LiquidAssets,
+  DeployedAssets,
+  FinancialAssets,
+  SeniorClaims,
+  SubordinatedCapital,
+  FinancialLiabilities,
+  FinancialPositionResponse,
+  UseFinancialPositionResult,
+} from "./useFinancialPosition";
