@@ -6,60 +6,39 @@ Plan: `docs/exec-plans/active/issue-718-balance-sheet-panel.md`
 Figma desktop: [node 3283:14275](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14275&m=dev)
 Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72288&m=dev)
 
+**Data sources (real data only — no localStorage mocks):**
+- PLUSD outstanding (LIABILITY): Horizon `GET /assets?asset_code=PLUSD&asset_issuer={VITE_STELLAR_PLUSD_ISSUER_ID}` → `balances.authorized`
+- Cash — stablecoins (USDC) (ASSET): Soroban `usdc_SAC.balance(VITE_STELLAR_USDC_CUSTODY_ID)` via `TokenClient`
+- Deployed / Junior rows: `GET /v1/financial-position` REST API
+- USYC and Off-chain USD: always `—` (no source in v1)
+
 ---
 
-## Story 1: Ready state — blended REST + Soroban data
+## Story 1: Ready state — real data from API + Soroban + Horizon
 
 **Persona:** Any user viewing the Protocol Dashboard.
 
-**Pre-conditions:** Dev server running at `http://localhost:5173`.
+**Pre-conditions:** Dev server running at `http://localhost:5173`. `VITE_STELLAR_PLUSD_ISSUER_ID`, `VITE_STELLAR_USDC_ID`, and `VITE_STELLAR_USDC_CUSTODY_ID` are configured. No `pipeline.mock.*` localStorage keys are set.
 
 **Steps:**
 
-1. Set mock REST data:
-   ```js
-   localStorage.setItem(
-     "pipeline.mock.api.GET./v1/financial-position",
-     JSON.stringify({
-       assets: {
-         total: "8100000.000000",
-         liquid: { total: null, cash_stablecoins: null, tokenized_tbills: null, off_chain_usd: null },
-         deployed: {
-           total: "8100000.000000",
-           secured_loans_outstanding: "8000000.000000",
-           accrued_interest_receivable: "100000.000000",
-         },
-       },
-       liabilities: {
-         total: "500000.000000",
-         senior_claims: { plusd_outstanding: null },
-         subordinated_capital: { junior_tranche: "500000.000000" },
-       },
-     }),
-   );
-   ```
-
-2. Set mock on-chain data (PLUSD total supply ≈ $43.14M):
-   ```js
-   localStorage.setItem("pipeline.mock.wallet.stellar.plusd.totalSupply", "431400000000000");
-   localStorage.setItem("pipeline.mock.wallet.stellar.usdc.reserveBalance", "100000000000");
-   ```
-
-3. Navigate to `/dashboard`.
+1. Navigate to `/dashboard`.
+2. Wait for the Balance Sheet panel to enter ready state (all network calls resolve).
 
 **Expected results:**
 - The Balance Sheet panel (`data-testid="dashboard-panel-balance-sheet"`) renders in ready state.
 - **Assets column** shows:
-  - Secured loans outstanding: `$8.0M` (REST).
-  - Accrued interest receivable: `$100.0K` (REST).
-  - Cash — stablecoins (USDC): `$10.0K` (on-chain: 100_000_000_000n / 1e7).
-  - Tokenized T-bills (USYC): `—`.
-  - Off-chain USD: `—`.
+  - Secured loans outstanding: from REST (`GET /v1/financial-position`)
+  - Accrued interest receivable: from REST
+  - Cash — stablecoins (USDC): from Soroban `usdc.balance(custodyAccount)` — shows `$0` if custody holds no USDC, or `—` if the custody account has no USDC trustline
+  - Tokenized T-bills (USYC): `—`
+  - Off-chain USD: `—`
 - **Liabilities column** shows:
-  - PLUSD outstanding: `$43.1M` (on-chain: 431_400_000_000_000n / 1e7) with caption "1:1 redeemable".
-  - Junior tranche: `$500.0K` (REST).
-- A muted footnote "Excludes assets pending a data source" is visible.
+  - PLUSD outstanding: from Horizon `/assets` with caption "1:1 redeemable"
+  - Junior tranche: from REST
+- A muted footnote "Excludes assets pending a data source" is visible (USYC and off-chain always unsourced).
 - Desktop: two columns side by side with a vertical 1px divider.
+- Network tab confirms: a Soroban `POST https://rpc-futurenet.stellar.org/` fires (USDC `balance()` call) and a Horizon `GET /assets?asset_code=PLUSD…` fires. No `pipeline.mock.*` keys in localStorage.
 
 ---
 
@@ -67,19 +46,12 @@ Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5c
 
 **Persona:** Any user viewing the Protocol Dashboard.
 
-**Pre-conditions:** Dev server running; REST is in-flight (no mock key set; fetch is delayed).
+**Pre-conditions:** Dev server running; REST is in-flight.
 
 **Steps:**
 
-1. Clear all mock keys:
-   ```js
-   localStorage.removeItem("pipeline.mock.api.GET./v1/financial-position");
-   localStorage.removeItem("pipeline.mock.wallet.stellar.plusd.totalSupply");
-   localStorage.removeItem("pipeline.mock.wallet.stellar.usdc.reserveBalance");
-   ```
-
-2. Navigate to `/dashboard`.
-3. Observe immediately before REST resolves.
+1. Navigate to `/dashboard`.
+2. Observe immediately before REST resolves.
 
 **Expected results:**
 - The Balance Sheet panel shows the `PanelLoading` spinner (`data-testid="panel-loading"`).
@@ -109,40 +81,17 @@ Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5c
 
 **Persona:** Any user; Stellar env vars not set.
 
-**Pre-conditions:** `VITE_STELLAR_PLUSD_ID` and `VITE_STELLAR_USDC_ID` are empty (default).
+**Pre-conditions:** `VITE_STELLAR_USDC_ID` and `VITE_STELLAR_USDC_CUSTODY_ID` are empty.
 
 **Steps:**
 
-1. Set mock REST data (deployed rows only):
-   ```js
-   localStorage.setItem(
-     "pipeline.mock.api.GET./v1/financial-position",
-     JSON.stringify({
-       assets: {
-         total: "8000000.000000",
-         liquid: { total: null, cash_stablecoins: null, tokenized_tbills: null, off_chain_usd: null },
-         deployed: {
-           total: "8000000.000000",
-           secured_loans_outstanding: "8000000.000000",
-           accrued_interest_receivable: null,
-         },
-       },
-       liabilities: {
-         total: "500000.000000",
-         senior_claims: { plusd_outstanding: null },
-         subordinated_capital: { junior_tranche: "500000.000000" },
-       },
-     }),
-   );
-   ```
-
-2. Do NOT set Soroban mock keys.
-3. Navigate to `/dashboard`.
+1. Leave USDC env vars unset (defaults to empty string).
+2. Navigate to `/dashboard`.
 
 **Expected results:**
 - Panel is in ready state (not loading, not error).
 - Cash — stablecoins (USDC) renders `—`.
-- PLUSD outstanding renders `—` (with "1:1 redeemable" caption still present).
+- PLUSD outstanding renders `—` (if `VITE_STELLAR_PLUSD_ISSUER_ID` is also unset) or shows a real value (if set).
 - REST-sourced rows (Secured loans, Junior tranche) still render correctly.
 - The footnote "Excludes assets pending a data source" is visible.
 
@@ -152,13 +101,12 @@ Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5c
 
 **Persona:** Any user on a mobile device (375–430px viewport).
 
-**Pre-conditions:** Dev server running; mock data set as in Story 1.
+**Pre-conditions:** Dev server running; real data loading.
 
 **Steps:**
 
-1. Set mock data as in Story 1.
-2. Open DevTools → Device emulation → set viewport to 375px wide.
-3. Navigate to `/dashboard`.
+1. Open DevTools → Device emulation → set viewport to 375px wide.
+2. Navigate to `/dashboard`.
 
 **Expected results:**
 - The Assets section renders first, followed by the Liabilities section below it (single column).
@@ -168,28 +116,17 @@ Figma mobile: [node 3283:72288](https://www.figma.com/design/A43rjYYjSwdTmiwwf5c
 
 ---
 
-## Story 6: Decimal correctness — 7-decimal SAC scale
+## Story 6: Sentinel guard — issuer account does not render $922B
 
-**Persona:** QA tester verifying the 7-vs-6 decimal correctness.
+**Persona:** QA tester verifying the sentinel guard.
 
-**Pre-conditions:** Dev server running.
+**Pre-conditions:** `VITE_STELLAR_USDC_CUSTODY_ID` is set to an issuer account (which returns i64 max from `balance()`).
 
 **Steps:**
 
-1. Set exactly 1 PLUSD total supply (7-decimal: `10_000_000n`):
-   ```js
-   localStorage.setItem("pipeline.mock.wallet.stellar.plusd.totalSupply", "10000000");
-   localStorage.setItem(
-     "pipeline.mock.api.GET./v1/financial-position",
-     JSON.stringify({
-       assets: { total: null, liquid: { total: null, cash_stablecoins: null, tokenized_tbills: null, off_chain_usd: null }, deployed: { total: null, secured_loans_outstanding: null, accrued_interest_receivable: null } },
-       liabilities: { total: null, senior_claims: { plusd_outstanding: null }, subordinated_capital: { junior_tranche: null } },
-     }),
-   );
-   ```
-
+1. Set `VITE_STELLAR_USDC_CUSTODY_ID` to the USDC issuer account address.
 2. Navigate to `/dashboard`.
 
 **Expected results:**
-- PLUSD outstanding shows `$1.00` (= 10_000_000n / 1e7 = 1.0 PLUSD, formatted as $1.00).
-- NOT `$10.0` (which would indicate 6-decimal scale was used incorrectly).
+- Cash — stablecoins (USDC) renders `—` (not ~$922B).
+- No JavaScript error or crash — the hook silently treats the sentinel as unconfigured.

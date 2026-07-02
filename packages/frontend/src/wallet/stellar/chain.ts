@@ -79,14 +79,6 @@ export const withdrawalQueueId: string = ENV.STELLAR_WITHDRAWAL_QUEUE_ID;
 export const stakedPlusdId: string = ENV.STELLAR_STAKED_PLUSD_ID;
 
 /**
- * PLUSD SAC Soroban contract ID.
- * Empty string means "unconfigured".
- *
- * Futurenet: CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI
- */
-export const plusdId: string = ENV.STELLAR_PLUSD_ID;
-
-/**
  * G-address of the account that issued the PLUSD classic Stellar asset.
  * Used to read total PLUSD supply via Horizon:
  *   `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
@@ -98,19 +90,21 @@ export const plusdId: string = ENV.STELLAR_PLUSD_ID;
 export const plusdIssuerId: string = ENV.STELLAR_PLUSD_ISSUER_ID;
 
 /**
- * USDC SAC Soroban contract ID.
- * Empty string means "unconfigured" — the USDC reserve balance hook
- * short-circuits to `undefined` without making any RPC call.
+ * Soroban contract ID for the USDC Stellar Asset Contract (SAC).
+ * Used by `useStellarUsdcCustodyBalance` to call `balance(usdcCustodyId)` on-chain.
  *
  * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
  */
 export const usdcId: string = ENV.STELLAR_USDC_ID;
 
 /**
- * The Stellar account (G-address) holding the protocol's USDC reserve, read by
- * the "Cash — stablecoins" balance-sheet row via `usdc.balance(this)`.
- * Confirmed holder on Futurenet (2026-07-02): a G-account (not a contract).
- * Empty string means "unconfigured" — the USDC reserve balance hook
- * short-circuits to `undefined` (row renders `—`).
+ * G-address of the account holding Pipeline's USDC in custody.
+ * Read via `usdc.balance(usdcCustodyId)` for the "Cash — stablecoins" row on
+ * the Balance Sheet panel. This is NOT the total USDC supply — it is only the
+ * USDC held in Pipeline's custody account.
+ *
+ * Futurenet: GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
  */
-export const reserveAccountId: string = ENV.STELLAR_RESERVE_ACCOUNT_ID;
+export const usdcCustodyId: string = ENV.STELLAR_USDC_CUSTODY_ID;

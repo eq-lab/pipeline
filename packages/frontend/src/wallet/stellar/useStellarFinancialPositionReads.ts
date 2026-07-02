@@ -1,31 +1,34 @@
 /**
- * Stellar/Horizon read hooks for the Balance Sheet panel (Panel A).
+ * Stellar on-chain read hooks for the Balance Sheet panel (Panel A).
  *
- * Both reads use the Horizon REST API, not Soroban simulation:
+ * - `useStellarPlusdTotalSupply()` — total PLUSD in circulation (LIABILITY).
+ *   Source: Horizon REST `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
+ *   → `_embedded.records[0].balances.authorized` (human-decimal string).
+ *   Rationale: a SAC exposes no Soroban `total_supply` view for a classic asset;
+ *   Horizon `/assets` is the only reliable source for issued supply.
  *
- * - `useStellarPlusdTotalSupply()` — reads PLUSD supply from Horizon assets endpoint.
- *   The PLUSD SAC (`CBVAYH66…`) does NOT expose `total_supply` via Soroban; instead
- *   `GET /assets?asset_code=PLUSD&asset_issuer={issuer}` returns `balances.authorized`
- *   which is the total PLUSD in circulation as a human-decimal string (e.g. `"10000711.9961018"`).
- *
- * - `useStellarUsdcReserveBalance()` — reads the protocol reserve account's USDC
- *   balance from Horizon: `GET /accounts/{reserveAccountId}`, find the USDC balance entry.
- *   Returns the human-decimal string (e.g. `"1989988801.0000000"`).
- *
- * Both hooks return human-decimal strings that can be formatted directly with
- * `formatCompactUsd(parseFloat(value))` — no SAC 7-decimal scaling needed.
+ * - `useStellarUsdcCustodyBalance()` — USDC held in Pipeline's custody (ASSET).
+ *   Source: direct Soroban contract call `usdc_SAC.balance(usdcCustodyId)`.
+ *   Returns a raw i128 bigint at 7-decimal SAC scale.
+ *   Defensive guard: if the returned bigint equals the i64/i128 max sentinel
+ *   (~9223372036854775807) the hook returns `undefined` so the row renders `—`
+ *   rather than a garbage ~$922B figure (an issuer account returns that sentinel).
  *
  * Protocol-level reads — NOT gated on a connected wallet.
  *
  * Scale convention
  * ----------------
- * These hooks return Horizon-formatted decimal strings (standard Stellar 7-decimal
- * display format, e.g. "10000711.9961018"). Pass directly to `parseFloat()` then
- * `formatCompactUsd()`. Do NOT apply SAC bigint scaling — that was for Soroban reads.
+ * `useStellarPlusdTotalSupply` returns a Horizon-formatted decimal string
+ * (e.g. "10000711.9961018"). Pass directly to `parseFloat()` then
+ * `formatCompactUsd()`. Do NOT apply SAC bigint scaling.
+ *
+ * `useStellarUsdcCustodyBalance` returns a raw i128 bigint at 7-decimal scale.
+ * Divide by 10^7 (or use `sacRawToDisplay`) before formatting.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { plusdIssuerId, reserveAccountId, horizonUrl } from "./chain";
+import { plusdIssuerId, horizonUrl, usdcId, usdcCustodyId } from "./chain";
+import { createTokenClient } from "./contracts/token";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,41 +42,75 @@ export interface UseStellarTokenReadResult {
   error: Error | null;
 }
 
+export interface UseStellarUsdcCustodyBalanceResult {
+  /**
+   * Raw i128 bigint at 7-decimal SAC scale (e.g. `100000000n` = 10 USDC), or
+   * `undefined` while loading / unconfigured / sentinel detected.
+   */
+  data: bigint | undefined;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+// ── Sentinel guard ────────────────────────────────────────────────────────────
+
+/**
+ * i64 max value — a SAC `balance()` call on an issuer account returns this
+ * sentinel instead of a real balance. If we see it, treat as unconfigured (→ `—`).
+ */
+const I64_MAX = 9223372036854775807n;
+
+function isSentinel(raw: bigint): boolean {
+  return raw >= I64_MAX;
+}
+
+// ── Shared helper ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetches `GET {url}` (a Horizon /assets URL) and returns
+ * `_embedded.records[0].balances.authorized` as a human-decimal string.
+ */
+async function fetchHorizonAssetSupply(
+  url: string,
+  label: string,
+): Promise<string> {
+  const resp = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!resp.ok) {
+    throw new Error(
+      `Horizon /assets fetch failed for ${label}: ${resp.status} ${resp.statusText}`,
+    );
+  }
+  const data = (await resp.json()) as {
+    _embedded?: { records?: { balances?: { authorized?: string } }[] };
+  };
+  const authorized = data._embedded?.records?.[0]?.balances?.authorized;
+  if (!authorized) {
+    throw new Error(
+      `${label} asset not found or balances.authorized missing in Horizon response`,
+    );
+  }
+  return authorized;
+}
+
 // ── useStellarPlusdTotalSupply ────────────────────────────────────────────────
 
 /**
  * Reads the total PLUSD supply in circulation from Horizon.
  *
- * Uses `GET /assets?asset_code=PLUSD&asset_issuer={issuer}` → `balances.authorized`.
- * Returns a human-decimal string (standard Stellar format, e.g. `"10000711.9961018"`).
- * No wallet connection required — this is public protocol state.
+ * `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` → `balances.authorized`.
+ * Returns a human-decimal string (e.g. `"10000711.9961018"`).
+ * No wallet connection required.
  *
- * Returns `undefined` (not an error) when `STELLAR_PLUSD_ISSUER_ID` is not configured.
+ * Returns `undefined` when `VITE_STELLAR_PLUSD_ISSUER_ID` is not configured.
  */
 export function useStellarPlusdTotalSupply(): UseStellarTokenReadResult {
   const isConfigured = !!plusdIssuerId;
 
   const query = useQuery<string, Error>({
     queryKey: ["stellarPlusdTotalSupply", plusdIssuerId],
-    queryFn: async () => {
+    queryFn: () => {
       const url = `${horizonUrl}/assets?asset_code=PLUSD&asset_issuer=${encodeURIComponent(plusdIssuerId)}`;
-      const resp = await fetch(url, {
-        headers: { Accept: "application/json" },
-      });
-      if (!resp.ok) {
-        throw new Error(
-          `Horizon /assets fetch failed: ${resp.status} ${resp.statusText}`,
-        );
-      }
-      const data = (await resp.json()) as {
-        _embedded?: { records?: { balances?: { authorized?: string } }[] };
-      };
-      const record = data._embedded?.records?.[0];
-      const authorized = record?.balances?.authorized;
-      if (!authorized) {
-        throw new Error("PLUSD asset not found or balances.authorized missing");
-      }
-      return authorized;
+      return fetchHorizonAssetSupply(url, "PLUSD");
     },
     enabled: isConfigured,
     staleTime: 30_000,
@@ -92,50 +129,44 @@ export function useStellarPlusdTotalSupply(): UseStellarTokenReadResult {
   };
 }
 
-// ── useStellarUsdcReserveBalance ──────────────────────────────────────────────
-
-interface HorizonBalance {
-  balance: string;
-  asset_type: string;
-  asset_code?: string;
-  asset_issuer?: string;
-}
+// ── useStellarUsdcCustodyBalance ──────────────────────────────────────────────
 
 /**
- * Reads the protocol reserve account's USDC balance from Horizon.
+ * Reads Pipeline's USDC custody balance via a direct Soroban contract call.
  *
- * Uses `GET /accounts/{reserveAccountId}` and finds the balance entry where
- * `asset_code === "USDC"` and `asset_type !== "native"`.
- * Returns a human-decimal string (e.g. `"1989988801.0000000"`).
+ * Calls `usdc_SAC.balance(usdcCustodyId)` — NOT the total USDC supply.
+ * Returns a raw i128 bigint at 7-decimal SAC scale (e.g. `10_000_000n` = 1 USDC).
  * No wallet connection required.
  *
- * Returns `undefined` (not an error) when `STELLAR_RESERVE_ACCOUNT_ID` is not
- * configured (row renders `—`).
+ * Sentinel guard: if the returned balance equals the i64 max value
+ * (~9223372036854775807), the hook returns `undefined` — an issuer account
+ * returns that sentinel and would render as a garbage ~$922B figure.
+ *
+ * Returns `undefined` when `VITE_STELLAR_USDC_ID` or `VITE_STELLAR_USDC_CUSTODY_ID`
+ * is not configured.
  */
-export function useStellarUsdcReserveBalance(): UseStellarTokenReadResult {
-  const isConfigured = !!reserveAccountId;
+export function useStellarUsdcCustodyBalance(): UseStellarUsdcCustodyBalanceResult {
+  const isConfigured = !!usdcId && !!usdcCustodyId;
 
-  const query = useQuery<string, Error>({
-    queryKey: ["stellarUsdcReserveBalance", reserveAccountId],
+  const query = useQuery<bigint, Error>({
+    queryKey: ["stellarUsdcCustodyBalance", usdcId, usdcCustodyId],
     queryFn: async () => {
-      const url = `${horizonUrl}/accounts/${encodeURIComponent(reserveAccountId)}`;
-      const resp = await fetch(url, {
-        headers: { Accept: "application/json" },
-      });
-      if (!resp.ok) {
+      const client = createTokenClient(usdcId);
+      if (!client) {
         throw new Error(
-          `Horizon /accounts fetch failed: ${resp.status} ${resp.statusText}`,
+          "useStellarUsdcCustodyBalance: USDC SAC contract not configured",
         );
       }
-      const data = (await resp.json()) as { balances?: HorizonBalance[] };
-      const usdcEntry = data.balances?.find(
-        (b) => b.asset_type !== "native" && b.asset_code === "USDC",
-      );
-      if (!usdcEntry) {
-        // Account exists but holds no USDC — return "0.0000000"
-        return "0.0000000";
+      const raw = await client.balance(usdcCustodyId);
+      if (isSentinel(raw)) {
+        // The custody account is an issuer — return a value that signals "unconfigured"
+        // so callers render `—` rather than a garbage ~$922B figure.
+        throw new Error(
+          "useStellarUsdcCustodyBalance: balance returned i64 max sentinel — " +
+            "the configured custody account may be an issuer account",
+        );
       }
-      return usdcEntry.balance;
+      return raw;
     },
     enabled: isConfigured,
     staleTime: 30_000,

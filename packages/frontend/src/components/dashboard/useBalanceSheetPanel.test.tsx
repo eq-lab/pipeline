@@ -4,16 +4,21 @@
  * Mocks all data hooks and validates the panel state machine, formatting,
  * and decimal correctness.
  *
+ * Data sources:
+ *   - PLUSD outstanding  → `useStellarPlusdTotalSupply()` (Horizon decimal string)
+ *   - Cash USDC          → `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint)
+ *   - Deployed / Junior  → REST base-6 decimal strings
+ *
  * Scenarios:
  *   1. Loading state — while REST is in-flight.
  *   2. Error state — when REST fails.
- *   3. Blended ready state — REST deployed/junior + Horizon USDC/PLUSD strings.
- *   4. Unconfigured Horizon reads — PLUSD + USDC rows → "—", REST rows still render.
+ *   3. Blended ready state — REST deployed/junior + on-chain USDC/PLUSD.
+ *   4. Unconfigured on-chain reads — PLUSD + USDC rows → "—", REST rows still render.
  *   5. USYC row always renders "—".
  *   6. Off-chain USD row always renders "—".
  *   7. PLUSD outstanding has "1:1 redeemable" caption.
- *   8. String value formatting — Horizon decimal strings format to compact USD.
- *   9. Formatter edge: "0.0000000" → "$0".
+ *   8. PLUSD Horizon string formats to compact USD.
+ *   9. USDC Soroban bigint (0n) formats as "$0", not "—".
  *  10. Unsourced rows → showTotalsDisclaimer = true.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -30,9 +35,10 @@ let mockRestError: Error | null = null;
 let mockRestData: Record<string, unknown> | null = null;
 const mockRestRefetch = vi.fn();
 
-// Horizon hooks return human-decimal strings (not bigints)
+// PLUSD: Horizon returns human-decimal strings
 let mockPlusdData: string | undefined = undefined;
-let mockUsdcData: string | undefined = undefined;
+// USDC: Soroban returns raw i128 bigint at 7-decimal SAC scale
+let mockUsdcData: bigint | undefined = undefined;
 
 vi.mock("@/api/useFinancialPosition", () => ({
   useFinancialPosition: () => ({
@@ -49,7 +55,7 @@ vi.mock("@/wallet/stellar/useStellarFinancialPositionReads", () => ({
     isLoading: false,
     error: null,
   }),
-  useStellarUsdcReserveBalance: () => ({
+  useStellarUsdcCustodyBalance: () => ({
     data: mockUsdcData,
     isLoading: false,
     error: null,
@@ -149,9 +155,11 @@ describe("useBalanceSheetPanel — error state", () => {
 describe("useBalanceSheetPanel — blended ready state", () => {
   beforeEach(() => {
     mockRestData = REST_FIXTURE;
-    // Horizon returns human-decimal strings directly
+    // PLUSD: Horizon returns human-decimal strings
     mockPlusdData = "43140000.0000000"; // 43.14M PLUSD
-    mockUsdcData = "10000.0000000"; // 10K USDC
+    // USDC: Soroban returns raw i128 bigint at 7-decimal scale.
+    // 10,000 USDC = 10_000 * 10^7 = 100_000_000_000n → formats as $10.0K
+    mockUsdcData = 100_000_000_000n;
   });
 
   it("enters ready state", () => {
@@ -215,7 +223,7 @@ describe("useBalanceSheetPanel — blended ready state", () => {
     expect(junior?.value).toBe("$500.0K");
   });
 
-  it("cash USDC renders Horizon reserve balance string", () => {
+  it("cash USDC renders Soroban custody balance (raw bigint → human format)", () => {
     const { result } = renderHook(() => useBalanceSheetPanel(), {
       wrapper: makeWrapper(),
     });
@@ -224,14 +232,14 @@ describe("useBalanceSheetPanel — blended ready state", () => {
       (r) => r.testId === "bs-cash-usdc",
     );
 
-    // "10000.0000000" → $10.0K
+    // 100_000_000_000n = 10,000 USDC at 7-decimal scale → $10.0K
     expect(cash?.value).toBe("$10.0K");
   });
 });
 
-// ── Tests — unconfigured Horizon reads ───────────────────────────────────────
+// ── Tests — unconfigured on-chain reads ──────────────────────────────────────
 
-describe("useBalanceSheetPanel — unconfigured Horizon reads (graceful degradation)", () => {
+describe("useBalanceSheetPanel — unconfigured on-chain reads (graceful degradation)", () => {
   beforeEach(() => {
     mockRestData = REST_FIXTURE;
     mockPlusdData = undefined; // unconfigured
@@ -260,7 +268,7 @@ describe("useBalanceSheetPanel — unconfigured Horizon reads (graceful degradat
     expect(cash?.value).toBe("—");
   });
 
-  it("REST rows still render when Horizon reads are unconfigured", () => {
+  it("REST rows still render when on-chain reads are unconfigured", () => {
     const { result } = renderHook(() => useBalanceSheetPanel(), {
       wrapper: makeWrapper(),
     });
@@ -333,8 +341,9 @@ describe("useBalanceSheetPanel — string formatting correctness", () => {
     expect(plusd?.value).toBe("$1.00");
   });
 
-  it("formats '0.0000000' as $0, not —", () => {
-    mockUsdcData = "0.0000000";
+  it("formats Soroban 0n as $0, not —", () => {
+    // Soroban returns 0n when custody account holds no USDC
+    mockUsdcData = 0n;
 
     const { result } = renderHook(() => useBalanceSheetPanel(), {
       wrapper: makeWrapper(),
@@ -363,9 +372,10 @@ describe("useBalanceSheetPanel — totals disclaimer", () => {
 
   it("showTotalsDisclaimer is true because USYC/off-chain are always unsourced", () => {
     mockRestData = REST_FIXTURE;
-    // Even with all Horizon data populated, USYC and off-chain remain —
+    // Even with all on-chain data populated, USYC and off-chain remain —
     mockPlusdData = "43140000.0000000";
-    mockUsdcData = "10000.0000000";
+    // 100_000_000_000n = 10,000 USDC at 7-decimal scale
+    mockUsdcData = 100_000_000_000n;
 
     const { result } = renderHook(() => useBalanceSheetPanel(), {
       wrapper: makeWrapper(),

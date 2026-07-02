@@ -2,18 +2,22 @@
  * Co-located hook for `BalanceSheetPanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Blends REST `GET /v1/financial-position` + Horizon on-chain reads:
- *   - PLUSD outstanding  → `useStellarPlusdTotalSupply()`   (Horizon decimal string)
- *   - USDC reserve       → `useStellarUsdcReserveBalance()` (Horizon decimal string)
+ * Blends REST `GET /v1/financial-position` + on-chain reads:
+ *   - PLUSD outstanding  → `useStellarPlusdTotalSupply()`        (Horizon decimal string)
+ *   - Cash — stablecoins → `useStellarUsdcCustodyBalance()`      (Soroban raw i128 bigint)
  *   - Deployed / Junior  → REST base-6 decimal strings
  *   - USYC stub          → `convertUsycToUsdc` seam → `—` (no holding in v1)
  *   - Off-chain USD      → `—` (off-chain, no source)
  *
  * Decimal discipline
  * ------------------
- * All numeric values are "human-decimal strings" — standard Stellar/REST display
- * format (e.g. `"10000711.9961018"`). Call `parseFloat(str)` then
- * `formatCompactUsd(str)` directly. No SAC bigint scaling is applied here.
+ * PLUSD: Horizon returns human-decimal strings (e.g. `"10000711.9961018"`).
+ *   Call `parseFloat(str)` directly — no SAC scaling needed.
+ *
+ * USDC: Soroban `balance()` returns a raw i128 bigint at 7-decimal SAC scale.
+ *   Use `sacRawToDisplay(bigint)` → human string → `parseFloat()`.
+ *
+ * REST rows: base-6 decimal strings — pass directly to `formatCompactUsd()`.
  *
  * Section totals are CLIENT-RECOMPUTED (the REST roll-up excludes on-chain
  * leaves). Only sourced rows contribute to the total. Unsourced rows (`—`)
@@ -23,13 +27,14 @@
  * -----------
  *   - `loading` → REST is still in flight.
  *   - `error`   → REST fetch failed (provides `refetch` for retry).
- *   - `ready`   → REST has data; rows render best-effort with Horizon fills.
+ *   - `ready`   → REST has data; rows render best-effort with on-chain fills.
  */
 import { useFinancialPosition } from "@/api/useFinancialPosition";
 import {
   useStellarPlusdTotalSupply,
-  useStellarUsdcReserveBalance,
+  useStellarUsdcCustodyBalance,
 } from "@/wallet/stellar/useStellarFinancialPositionReads";
+import { sacRawToDisplay } from "@/wallet/stellar/useStellarSacToken";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
 import { convertUsycToUsdc } from "./usycNav";
 import type { PanelState } from "./PanelContainer";
@@ -187,7 +192,7 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     refetch,
   } = useFinancialPosition();
   const { data: plusdSupplyStr } = useStellarPlusdTotalSupply();
-  const { data: usdcReserveStr } = useStellarUsdcReserveBalance();
+  const { data: usdcCustodyRaw } = useStellarUsdcCustodyBalance();
 
   // ── Panel-level state ─────────────────────────────────────────────────────
   if (restLoading) {
@@ -212,7 +217,7 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     };
   }
 
-  // ── Ready: blend REST + Horizon ───────────────────────────────────────────
+  // ── Ready: blend REST + on-chain ─────────────────────────────────────────
 
   // REST rows (base-6 decimal strings → parseFloat → human numbers).
   const securedLoans = parseHuman(
@@ -225,12 +230,19 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     rest?.liabilities.subordinated_capital.junior_tranche,
   );
 
-  // Horizon rows (already human-decimal strings → parseFloat).
-  const usdcReserveHuman = parseHuman(usdcReserveStr);
+  // PLUSD outstanding — Horizon human-decimal string → parseFloat.
   const plusdOutstandingHuman = parseHuman(plusdSupplyStr);
 
+  // USDC custody balance — Soroban raw i128 bigint at 7-decimal SAC scale.
+  // `sacRawToDisplay` converts to a human-decimal string; then parseHuman → number.
+  const usdcCustodyHuman =
+    usdcCustodyRaw !== undefined
+      ? parseHuman(sacRawToDisplay(usdcCustodyRaw))
+      : undefined;
+
   // USYC stub — no holding in v1 → always —.
-  void convertUsycToUsdc; // seam imported; swappable when real NAV is available
+  void convertUsycToUsdc; // seam imported; swappable when real NAV is available.
+
   const usycHuman: number | undefined = undefined;
 
   // Off-chain USD — always —.
@@ -238,7 +250,7 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
 
   // ── Section totals (client-recomputed) ───────────────────────────────────
   const assetValues = [
-    usdcReserveHuman,
+    usdcCustodyHuman,
     usycHuman,
     offchainHuman,
     securedLoans,
@@ -258,7 +270,7 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     liquid: [
       {
         label: "Cash — stablecoins (USDC)",
-        value: fmtHuman(usdcReserveHuman),
+        value: fmtHuman(usdcCustodyHuman),
         testId: "bs-cash-usdc",
       },
       {

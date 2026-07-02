@@ -906,20 +906,33 @@ await client?.balance(account); // → bigint (7-decimal SAC scale)
 const { data, isLoading, error } = useStellarPlusdTotalSupply();
 ```
 
-Protocol-level read (no wallet gate). Reads `total_supply()` from the PLUSD SAC
-contract. Returns a raw i128 bigint at 7-decimal scale. Short-circuits to
-`undefined` when `STELLAR_PLUSD_ID` is not configured. Polls every 30 s.
+Protocol-level read (no wallet gate). Reads PLUSD total supply in circulation
+from Horizon: `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}` →
+`balances.authorized`. Returns a Horizon human-decimal string (e.g.
+`"10000711.9961018"`) — pass directly to `parseFloat()`. No SAC bigint scaling.
+Short-circuits to `undefined` when `VITE_STELLAR_PLUSD_ISSUER_ID` is not
+configured. Polls every 30 s.
 
-### `useStellarUsdcReserveBalance()`
+Note: the PLUSD SAC does not expose `total_supply()` via Soroban; Horizon
+`/assets` is the only source for the total issued supply.
+
+### `useStellarUsdcCustodyBalance()`
 
 ```ts
-const { data, isLoading, error } = useStellarUsdcReserveBalance();
+const { data, isLoading, error } = useStellarUsdcCustodyBalance();
 ```
 
-Protocol-level read (no wallet gate). Reads `balance(reserveAccount)` from the
-USDC SAC contract. Returns a raw i128 bigint at 7-decimal scale. Short-circuits
-to `undefined` when either `STELLAR_USDC_ID` or `STELLAR_RESERVE_ACCOUNT_ID` is
-not configured. Polls every 30 s.
+Protocol-level read (no wallet gate). Reads Pipeline's USDC custody balance via
+a direct Soroban contract call: `usdc_SAC.balance(usdcCustodyId)`. Returns a raw
+i128 bigint at 7-decimal SAC scale. This is NOT the total USDC supply — it is
+only the USDC held in Pipeline's custody account.
+
+Sentinel guard: if the returned bigint equals i64 max (~9223372036854775807),
+the hook throws an error so the panel renders `—` instead of a ~$922B figure
+(an issuer account returns that sentinel).
+
+Short-circuits to `undefined` when `VITE_STELLAR_USDC_ID` or
+`VITE_STELLAR_USDC_CUSTODY_ID` is not configured. Polls every 30 s.
 
 ### Stellar mock keys
 
@@ -939,8 +952,7 @@ not configured. Polls every 30 s.
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToShares`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarStakeConvertToShares`. Output = `(assets * rate) / 1e7`. Example: `"9600000"` = 0.96 sPLUSD per PLUSD. **Uses 1e7 (SAC), not 1e18 (EVM).** |
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarUnstakeConvertToAssets`. Output = `(shares * rate) / 1e7`. Example: `"10400000"` = 1.04 PLUSD per sPLUSD.                                  |
 | `pipeline.mock.wallet.stellar.stakedPlusd.shareBalance`          | decimal bigint string (7-dec raw)           | Mocks `useStellarStakedPlusdBalance` and sPLUSD trustline check. E.g. `"10000000"` = 1 sPLUSD.                                                                      |
-| `pipeline.mock.wallet.stellar.plusd.totalSupply`                 | decimal bigint string (7-dec raw)           | Mocks `useStellarPlusdTotalSupply`. E.g. `"431400000000000"` ≈ $43.14M PLUSD.                                                                                       |
-| `pipeline.mock.wallet.stellar.usdc.reserveBalance`               | decimal bigint string (7-dec raw)           | Mocks `useStellarUsdcReserveBalance`. E.g. `"100000000000"` ≈ $10K USDC.                                                                                            |
+| `pipeline.mock.wallet.stellar.plusd.totalSupply`                 | decimal bigint string (7-dec raw)           | (Removed — `useStellarPlusdTotalSupply` uses real Horizon fetch; no mock layer.)                                                                                     |
 
 **DevTools snippet:**
 

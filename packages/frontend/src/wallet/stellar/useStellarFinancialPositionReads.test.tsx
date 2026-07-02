@@ -1,8 +1,11 @@
 /**
- * Tests for `useStellarPlusdTotalSupply` and `useStellarUsdcReserveBalance`.
+ * Tests for `useStellarPlusdTotalSupply` and `useStellarUsdcCustodyBalance`.
  *
- * Both hooks now use Horizon REST API (not Soroban simulation). No mock-layer
- * localStorage keys are set — tests exercise the real fetch path and the
+ * `useStellarPlusdTotalSupply` uses Horizon REST (/assets).
+ * `useStellarUsdcCustodyBalance` uses a direct Soroban contract call via
+ * `createTokenClient(usdcId).balance(usdcCustodyId)`.
+ *
+ * No localStorage mock keys are set — tests exercise real paths and the
  * unconfigured short-circuit.
  *
  * Scenarios:
@@ -12,11 +15,12 @@
  *     3. Surfaces error when Horizon fetch fails (non-2xx).
  *     4. Returns data without a connected wallet (no wallet gate).
  *
- *   useStellarUsdcReserveBalance:
- *     5. Returns `undefined` immediately when `reserveAccountId` is empty — no fetch.
- *     6. Fetches Horizon /accounts and returns the USDC balance string.
- *     7. Returns "0.0000000" when the account holds no USDC trustline.
- *     8. Surfaces error when Horizon fetch fails (non-2xx).
+ *   useStellarUsdcCustodyBalance:
+ *     5. Returns `undefined` immediately when `usdcId` is empty — no RPC call.
+ *     6. Returns `undefined` immediately when `usdcCustodyId` is empty — no RPC call.
+ *     7. Calls `createTokenClient(usdcId).balance(usdcCustodyId)` and returns the raw bigint.
+ *     8. Returns `undefined` (sentinel guard) when balance equals i64 max.
+ *     9. Surfaces error when the Soroban call throws.
  */
 
 import { renderHook, waitFor } from "@testing-library/react";
@@ -25,7 +29,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import {
   useStellarPlusdTotalSupply,
-  useStellarUsdcReserveBalance,
+  useStellarUsdcCustodyBalance,
 } from "./useStellarFinancialPositionReads";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,34 +46,53 @@ function makeWrapper() {
 // ── Mock chain constants ───────────────────────────────────────────────────────
 
 const ISSUER_ID = "GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH";
-const RESERVE_ID = "GAD7YKWKWLZSDKVL2D5FRGKI7IE3PBGN7XNCJQJJH7XCGYEAWXR5FISM";
+const USDC_CONTRACT_ID =
+  "CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI";
+const CUSTODY_ID = "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
 const HORIZON_URL = "https://horizon-futurenet.stellar.org";
 
 let mockPlusdIssuerId = ISSUER_ID;
-let mockReserveAccountId = RESERVE_ID;
+let mockUsdcId = USDC_CONTRACT_ID;
+let mockUsdcCustodyId = CUSTODY_ID;
 let mockHorizonUrl = HORIZON_URL;
 
 vi.mock("./chain", () => ({
   get plusdIssuerId() {
     return mockPlusdIssuerId;
   },
-  get reserveAccountId() {
-    return mockReserveAccountId;
+  get usdcId() {
+    return mockUsdcId;
+  },
+  get usdcCustodyId() {
+    return mockUsdcCustodyId;
   },
   get horizonUrl() {
     return mockHorizonUrl;
   },
 }));
 
-// ── fetch mock ────────────────────────────────────────────────────────────────
+// ── Mock TokenClient ──────────────────────────────────────────────────────────
+
+const mockBalance = vi.fn<(account: string) => Promise<bigint>>();
+
+vi.mock("./contracts/token", () => ({
+  createTokenClient: (contractId: string) => {
+    if (!contractId) return null;
+    return { balance: mockBalance };
+  },
+}));
+
+// ── fetch mock (for Horizon) ──────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
 
 beforeEach(() => {
   mockPlusdIssuerId = ISSUER_ID;
-  mockReserveAccountId = RESERVE_ID;
+  mockUsdcId = USDC_CONTRACT_ID;
+  mockUsdcCustodyId = CUSTODY_ID;
   mockHorizonUrl = HORIZON_URL;
   vi.stubGlobal("fetch", mockFetch);
+  mockBalance.mockReset();
 });
 
 afterEach(() => {
@@ -160,80 +183,60 @@ describe("useStellarPlusdTotalSupply", () => {
   });
 });
 
-// ── Tests: useStellarUsdcReserveBalance ───────────────────────────────────────
+// ── Tests: useStellarUsdcCustodyBalance ───────────────────────────────────────
 
-describe("useStellarUsdcReserveBalance", () => {
-  it("returns undefined immediately when reserveAccountId is empty (no fetch)", () => {
-    mockReserveAccountId = "";
+describe("useStellarUsdcCustodyBalance", () => {
+  it("returns undefined immediately when usdcId is empty (no RPC call)", () => {
+    mockUsdcId = "";
 
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockBalance).not.toHaveBeenCalled();
   });
 
-  it("fetches Horizon /accounts and returns the USDC balance string", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        balances: [
-          { balance: "0.0000000", asset_type: "native" },
-          {
-            balance: "1989988801.0000000",
-            asset_type: "credit_alphanum4",
-            asset_code: "USDC",
-            asset_issuer:
-              "GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH",
-          },
-        ],
-      }),
+  it("returns undefined immediately when usdcCustodyId is empty (no RPC call)", () => {
+    mockUsdcCustodyId = "";
+
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
+      wrapper: makeWrapper(),
     });
 
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(mockBalance).not.toHaveBeenCalled();
+  });
+
+  it("calls createTokenClient(usdcId).balance(usdcCustodyId) and returns raw bigint", async () => {
+    const expectedBalance = 100_000_000n; // 10 USDC at 7-decimal scale
+
+    mockBalance.mockResolvedValueOnce(expectedBalance);
+
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => {
-      expect(result.current.data).toBe("1989988801.0000000");
+      expect(result.current.data).toBe(expectedBalance);
     });
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [url] = mockFetch.mock.calls[0] as [string, unknown];
-    expect(url).toContain("/accounts/");
-    expect(url).toContain(encodeURIComponent(RESERVE_ID));
+    expect(mockBalance).toHaveBeenCalledOnce();
+    expect(mockBalance).toHaveBeenCalledWith(CUSTODY_ID);
   });
 
-  it("returns '0.0000000' when the account holds no USDC trustline", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        balances: [{ balance: "100.0000000", asset_type: "native" }],
-      }),
-    });
+  it("returns undefined (sentinel guard) when balance equals i64 max", async () => {
+    // i64 max — returned by SAC balance() on an issuer account
+    const I64_MAX = 9223372036854775807n;
+    mockBalance.mockResolvedValueOnce(I64_MAX);
 
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
-      wrapper: makeWrapper(),
-    });
-
-    await waitFor(() => {
-      expect(result.current.data).toBe("0.0000000");
-    });
-  });
-
-  it("surfaces error when Horizon returns a non-2xx status", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      statusText: "Not Found",
-    });
-
-    const { result } = renderHook(() => useStellarUsdcReserveBalance(), {
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
       wrapper: makeWrapper(),
     });
 
@@ -242,6 +245,37 @@ describe("useStellarUsdcReserveBalance", () => {
     });
 
     expect(result.current.data).toBeUndefined();
-    expect(result.current.error?.message).toMatch(/404/);
+    expect(result.current.error?.message).toMatch(/sentinel/);
+  });
+
+  it("surfaces error when the Soroban balance() call throws", async () => {
+    mockBalance.mockRejectedValueOnce(
+      new Error("TokenClient simulation error: contract not found"),
+    );
+
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.error?.message).toMatch(/contract not found/);
+  });
+
+  it("returns zero for a custody account holding no USDC", async () => {
+    mockBalance.mockResolvedValueOnce(0n);
+
+    const { result } = renderHook(() => useStellarUsdcCustodyBalance(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toBe(0n);
+    });
+
+    expect(result.current.error).toBeNull();
   });
 });
