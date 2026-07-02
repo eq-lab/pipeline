@@ -160,30 +160,39 @@ then formatted for display. `null`/unavailable values still render `—`.
 
 ## Open Questions
 
-1. **Client-recomputed section totals still may not balance.** With USYC-NAV
-   value, USDC-in-transit, and off-chain USD unsourced, assets will under-count vs
-   PLUSD liabilities. Ship with a muted footnote ("Excludes assets pending a NAV /
-   custody feed") and unequal totals, or hide the section total until fully
-   sourceable? (Recommend footnote + best-effort total.)
-2. **No Figma design for the extra widgets** (sPLUSD exchange-rate line, liquidity
-   ratio + 10/15/20 % band indicator, reconciliation green/amber/red badge). Where
-   and how should these render within Panel A? Need a Figma node or design
-   direction; the plan proposes a below-the-sheet block using existing tokens as a
-   placeholder pending design.
-3. **Reconciliation invariant is only partially computable on-chain** (USYC NAV +
-   in-transit legs are off-chain). Options: (a) show status only when all terms
-   are available, else a neutral "insufficient data" state; (b) compute a partial
-   drift on available terms with a caption; (c) defer just the badge. Which?
-4. **USYC USD value** needs an off-chain NAV price. Is there an existing price
-   source (an API field, an oracle contract address) we should read, or does USYC
-   render units-only / `—` for USD value in v1?
-5. **Are `VITE_CAPITAL_WALLET_ADDRESS` / `VITE_USDC_ADDRESS` / `VITE_USYC_ADDRESS`
-   known** for the target (Hoodi testnet) environment so ops can configure them,
-   or will they stay zero (→ `—`) for now? If unknown, the code lands but shows
-   `—` until configured.
-6. **EVM-only vs dual-namespace.** These reads are EVM-only in this plan. Confirm
-   Stellar parity is not required for Panel A v1 (the app defaults to EVM and
-   PLUSD/sPLUSD/reserves are read on EVM elsewhere).
+**RESOLVED (human, 2026-07-02):**
+
+- **Scope = only Figma `3283-14275`** ("Statement of Financial Position"). No extra
+  widgets. This **removes from scope**: the sPLUSD exchange-rate line, the liquidity
+  ratio + 10/15/20 % band indicator, and the reconciliation green/amber/red badge
+  (former OQ2/OQ3 and the exchange-rate feature). Panel A is exactly the two-column
+  Assets/Liabilities balance sheet with these rows:
+  - Assets → Liquid: `Cash — stablecoins`, `Tokenized T-bills`, `Off-chain USD (trust
+    company account)`; Deployed: `Secured loans outstanding`, `Accrued interest receivable`.
+  - Liabilities → Senior Claims: `PLUSD outstanding` (+ `1:1 redeemable` caption, kept
+    even when value is `—`); Subordinated Capital: `Junior tranche`.
+  - Each side shows a muted rolled-up total; section sub-headers (`Liquid`, `Deployed`,
+    `Senior Claims`, `Subordinated Capital`) as designed.
+- **PLUSD caption** — keep `1:1 redeemable` regardless of value.
+
+**STILL PENDING human clarification (task parked `needs-feedback` — 2026-07-02):**
+_The user is gathering answers and will follow up._
+
+1. **Contract addresses.** Are `VITE_CAPITAL_WALLET_ADDRESS` / `VITE_USDC_ADDRESS` /
+   `VITE_USYC_ADDRESS` known for the target environment, or do they stay unset (→ `—`)
+   for now? (PLUSD outstanding is readable regardless — its address derives from the
+   staking contract's `asset()`.)
+2. **USYC USD value** needs an off-chain NAV price. Is there a source to read (API
+   field / oracle address / constant), or does `Tokenized T-bills` render `—` in v1?
+3. **Unbalanced totals.** With USYC-NAV value, in-transit, and off-chain USD unsourced,
+   Assets will under-count vs Liabilities. Footnote + best-effort total, or hide the
+   total until fully sourceable? (Recommend footnote.)
+4. **EVM-only** for Panel A v1 (no Stellar parity)? (Recommend yes — app defaults to EVM.)
+
+> Note: which specific Liquid rows show real values vs `—` depends on OQ1/OQ2.
+> `Off-chain USD (trust company account)` is off-chain by definition and stays `—`
+> unless a source is named. Deployed rows + Junior tranche come from the REST endpoint
+> and render regardless.
 
 ## Implementation Steps
 
