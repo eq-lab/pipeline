@@ -5,309 +5,326 @@ Source: https://github.com/eq-lab/pipeline/issues/718
 Parent epic: #712 (Protocol Dashboard). Frontend flow. Backing API (#713 / PR #748)
 `GET /v1/financial-position` is merged on `main`.
 
-> **Architecture decision (human, 2026-07-02).** The fields the endpoint serves as
-> `null` (Capital-Wallet reserves — USDC / USYC / in-transit — and PLUSD
-> outstanding) and the previously-deferred sub-features (liquidity ratio vs 15 %
-> target + band indicators, reconciliation invariant status, sPLUSD→PLUSD
-> exchange rate) are NOT deferred and NOT rendered as `—`. Wherever a value is
-> genuinely readable on-chain, the frontend sources it DIRECTLY FROM THE CONTRACT
-> via on-chain reads, blending it with the REST endpoint's populated fields. Only
-> values that are fundamentally not on-chain (off-chain / in-transit USD, USYC
-> NAV price feed) remain `—` and are raised as Open Questions.
+> **Architecture decisions (human, 2026-07-02).**
+> 1. Fields the REST endpoint serves as `null` are sourced DIRECTLY FROM THE
+>    CONTRACT — **on Stellar / Soroban** (NOT EVM). PLUSD outstanding and the
+>    protocol USDC reserve are read on-chain and blended with the REST endpoint's
+>    populated fields.
+> 2. Keep the PLUSD "1:1 redeemable" caption.
+> 3. **No liquidity-ratio / reconciliation / exchange-rate widgets.** Panel A is
+>    exactly the Figma "Statement of Financial Position" two-column sheet
+>    (`3283:14275`) — nothing more.
+> 4. USYC (Tokenized T-bills) is NOT wired now: add a 1:1 identity seam
+>    (`convertUsycToUsdc`) so real NAV can be swapped in later; the row shows
+>    `—`/0 through the stub for v1.
 
-## On-chain read infrastructure (investigated — this is the foundation for the plan)
+## On-chain read infrastructure — STELLAR / SOROBAN (re-investigated)
 
-The frontend is a **dual-namespace** app: EVM (default, via `wagmi`/`viem`) and
-Stellar (Soroban). EVM is the active default (`WalletViewContext` default kind is
-`"evm"`). Existing contract reads live under `packages/frontend/src/wallet/evm/`
-and follow one consistent pattern (see `useStakedPlusd.ts`, `useEvmToken.ts`,
-`useWithdrawalQueue.ts`):
+The panel's on-chain reads use the **Stellar/Soroban** stack under
+`packages/frontend/src/wallet/stellar/`. (An earlier revision wrongly assumed
+EVM/wagmi — that is corrected here; the wagmi/`erc20Abi`/`VITE_*_ADDRESS`
+approach is dropped.)
 
-- **Read primitive**: wagmi `useReadContract({ address, abi, functionName, args, query })`.
-- **Mock layer** (localStorage): named-alias key → generic per-address key
-  (`pipeline.mock.wallet.contract.<addr>.<fn>` / `pipeline.mock.wallet.balance.<addr>`)
-  → zero-address short-circuit (returns `undefined`, no RPC) → real RPC. Reads
-  are reactive via `useMock`/`readMock`.
-- **Config**: contract addresses come from `ENV.*_ADDRESS` in
-  `packages/frontend/src/lib/env.ts` (each defaults to the zero address; zero ⇒
-  hook short-circuits). Existing: `DEPOSIT_MANAGER_ADDRESS`,
-  `WITHDRAWAL_QUEUE_ADDRESS`, `STAKED_PLUSD_ADDRESS`. Immutable reads use
-  `CACHE_FOREVER` (`staleTime: Infinity`).
-- **ABIs**: `packages/frontend/src/wallet/evm/abis/` — `erc20.ts`, `stakedPlusd.ts`, etc.
+**Read pattern (model to follow):**
 
-### What is readable on-chain today, and how
+- **Typed Soroban client class**, one per contract, hand-written in
+  `wallet/stellar/contracts/` — see `contracts/stakedPlusd.ts`
+  (`StakedPlusdClient`). Each read view builds a `contract.call("<fn>", ...scVals)`
+  op, runs it through a private `simulateReadCall(op)` helper that:
+  wraps the op in a `TransactionBuilder` sourced from `READ_SIMULATION_SOURCE`
+  (the canonical null `G…` account from `chain.ts`), calls
+  `server.simulateTransaction(tx)`, guards `isSimulationError`, and returns
+  `scValToNative(result.result.retval)`. The `SorobanRpc.Server` is built from
+  `sorobanRpcUrl` (from `chain.ts`). Read views return raw `bigint` (i128) /
+  `string`.
+- **Factory** `create<Name>Client(contractId): Client | null` — returns `null`
+  when the id is empty (unconfigured) so hooks short-circuit cleanly.
+- **React-Query read hook** wrapping the client — see
+  `useStellarStakedPlusd.ts` (`useStellarStakedPlusdBalance`,
+  `useStellarStakeConvertToShares`, etc.):
+  `useQuery({ queryKey: ["<name>", contractId, ...args], queryFn: async () => {
+  read mock first; else createClient(id); call view; }, enabled: isConfigured &&
+  mockUndefined, staleTime, refetchInterval: 30_000, retry: false })`. Protocol-
+  level reads (`total_supply`, reserve `balance`) do NOT gate on a connected
+  wallet — unlike `useStellarStakedPlusdBalance` which gates on `useStellarWallet()`.
+- **Config**: contract IDs come from `ENV.STELLAR_*_ID` and are re-exported as
+  `const`s from `wallet/stellar/chain.ts` (e.g. `stakedPlusdId`,
+  `depositManagerId`, `withdrawalQueueId`). Empty string ⇒ unconfigured ⇒
+  short-circuit to `undefined`, no RPC.
+- **Mock layer**: localStorage keys in `wallet/stellar/mock.ts`
+  (`STELLAR_MOCK_KEYS` + `readMockStellar*` / `useMock`), e.g.
+  `pipeline.mock.wallet.stellar.balance.sac.usdc` already exists (raw 7-decimal
+  bigint string). Reactive via `useMock`; re-read at query time via `readMock*`.
+- **Decimals**: Stellar SAC tokens use **7 decimals** (`SAC_DECIMALS = 7`, NOT
+  EVM's 6). Scaling helpers `sacRawToDisplay` / `sacDisplayToRaw` are exported
+  from `wallet/stellar/useStellarSacToken.ts`. PLUSD and USDC SAC amounts are
+  raw i128 `bigint` at 7-decimal scale (`1 token = 10_000_000n`).
 
-| Balance-sheet field | On-chain source | Status / gap |
+**Futurenet contract addresses** (from `eq-lab/pipeline-stellar-contracts`,
+`deployments/networks/futurenet/addresses.json`):
+
+| contract | address |
+|---|---|
+| `plusd` | `CBVAYH66RIGA5PKSGHKKGOOQDUPKNVFYBW6P7CGMDX4SD7BI7TXUXSKI` |
+| `usdc` | `CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI` |
+| `staked_pl_usd` | `CDSWAVNSVURETMQ7VPMF3XXADDUZLJNJQ4YBUTV65QZEBF5RVOPGW5M4` |
+| `withdrawal_queue` | `CBNZF5QAFJSYDZKU7G7VTV2G3NQ4BM54FI72O2SXVZTXURHGZ262L4KH` |
+| `deposit_manager` | `CCYQKUAZ7BF22OMXNPF7RJ2D3PDUNV66S3O2L54UYHDYQ4CLMTJHLNWU` |
+| `loan_registry` | `CDVO2BDGXMGP6PJ5ZQRU6PI4BYQO4VVYPL27QTLMZ5RNCC4Z6TXLV5K3` |
+| `yield_minter` | `CAPPCX2IB5YWJNCHZQ64WF2NH4RZXX6KLOK5LBFPD5GU5P2CSARRTHSS` |
+
+**No USYC address and no explicit `capital_wallet` address exist** in the set.
+
+### Per-row data sourcing (baked into the plan)
+
+| Row | Source | Method |
 |---|---|---|
-| **sPLUSD → PLUSD exchange rate** | sPLUSD ERC-4626 vault `convertToAssets(1e18)`; rate = `Number(raw)/1e18`. **Existing precedent:** `HomeStatsStrip.tsx` calls `useStakedPlusdConvertToAssets(10n**18n)`; hook is `useStakedPlusdConvertToAssets` in `wallet/evm/useStakedPlusd.ts`. Protocol-level, no wallet needed. | **READY** — reuse the existing hook. |
-| **PLUSD address** | sPLUSD vault `asset()` view → PLUSD token address. **Existing hook:** `useStakedPlusdAsset()` (`wallet/evm/useStakedPlusd.ts`, used by `routes/index.tsx`). | READY as an address source (no `VITE_PLUSD_ADDRESS` env var exists — must derive via `asset()`). |
-| **PLUSD outstanding (senior claims)** | PLUSD ERC-20 `totalSupply()` at the address from `asset()`. | **GAP (fixable in this issue):** the shared `erc20Abi` (`abis/erc20.ts`) has NO `totalSupply` entry (only `balanceOf`/`decimals`/`symbol`/`name`/`allowance`/`approve`). Must add a `totalSupply` fragment (own minimal ABI or extend `erc20Abi`). Then read is a standard `useReadContract`. |
-| **Capital-Wallet USDC balance** | USDC ERC-20 `balanceOf(capitalWallet)`. | **GAP (config):** there is NO Capital-Wallet address and NO USDC token address in `env.ts`. Requires new `VITE_CAPITAL_WALLET_ADDRESS` + `VITE_USDC_ADDRESS` env vars (default zero → short-circuit). Read pattern = `useEvmToken`/`balanceOf`. |
-| **USYC holding (units)** | USYC ERC-20 `balanceOf(capitalWallet)`. | **GAP (config):** no `VITE_USYC_ADDRESS`. Same as above. |
-| **USYC USD value (at NAV)** | USYC units × issuer NAV price. | **NOT on-chain / partial:** NAV is an off-chain issuer feed. No price feed is wired in the frontend. Units are on-chain; the USD valuation is not. → Open Question. |
-| **USDC deployed on active loans** | Already served by the REST endpoint as `assets.deployed.secured_loans_outstanding`. | READY (REST). Prefer the endpoint over any on-chain recompute. |
-| **USDC in transit (on-ramp leg)** | — | **NOT on-chain:** in-transit funds are between custody legs; no contract exposes this. → remains `—`, Open Question. |
-| **Off-chain USD (trust company account)** | — | **NOT on-chain:** by definition off-chain. → remains `—`, Open Question. |
-| **Junior tranche (subordinated capital)** | Already served by REST as `subordinated_capital.junior_tranche`. | READY (REST). |
-| **Liquidity ratio vs 15 % + 10 %/20 % bands** | Derived: `usdc_liquid / (plusd_outstanding or total senior claims)`. Inputs = Capital-Wallet USDC (on-chain) + PLUSD totalSupply (on-chain). | **DERIVED** — computable once the two on-chain inputs above land. Bands (10/15/20 %) are static thresholds. |
-| **Reconciliation invariant** (`PLUSD totalSupply == USDC + USYC NAV + USDC on loans + USDC in transit`) | Derived from PLUSD totalSupply, USDC balance, USYC NAV value, deployed (REST), in-transit. | **PARTIAL:** USYC-NAV and in-transit legs are not fully sourceable (see above), so the invariant cannot be computed to the spec's green/amber/red drift precisely. → Open Question on how to present a partial reconciliation. |
+| **Liabilities → Senior Claims → PLUSD outstanding** | on-chain | `plusd.total_supply()` on the `plusd` SAC/token contract. Keep the `1:1 redeemable` caption. |
+| **Liabilities → Subordinated Capital → Junior tranche** | REST | `liabilities.subordinated_capital.junior_tranche`. |
+| **Assets → Deployed → Secured loans outstanding** | REST | `assets.deployed.secured_loans_outstanding`. |
+| **Assets → Deployed → Accrued interest receivable** | REST | `assets.deployed.accrued_interest_receivable`. |
+| **Assets → Liquid → Cash — stablecoins (USDC)** | on-chain | `usdc.balance(reserveAccount)` — the protocol reserve's USDC balance. **The reserve holder is NOT explicit** (no `capital_wallet`) — see "Reserve holder" below. |
+| **Assets → Liquid → Tokenized T-bills (USYC)** | stub | `convertUsycToUsdc(usycAmount)` seam (1:1 identity). No USYC holding/address yet → renders `—`/0 in v1. |
+| **Assets → Liquid → Off-chain USD (trust company account)** | none | Off-chain → stays `—`. |
 
-**Net:** exchange rate is ready; PLUSD totalSupply needs an ABI fragment; USDC/USYC
-reserves need new env config + addresses; USYC NAV, in-transit, off-chain USD are
-not on-chain and stay `—`; liquidity ratio is derivable from on-chain inputs;
-full reconciliation is only partially computable.
-
-**Stellar note:** these on-chain reads are implemented on the **EVM** side only
-for v1 (matching the app default and where PLUSD/sPLUSD/reserves live). The
-Stellar namespace is out of scope for this panel; the hooks degrade gracefully
-(zero-address short-circuit) when EVM contracts are unconfigured. Flagged in Open
-Questions in case the coordinator wants dual-namespace parity.
+**Reserve holder for the USDC balance read.** There is no `capital_wallet`
+address in the deployment. The reserve USDC is most plausibly custodied by one of
+the protocol contracts — candidate holders: `deposit_manager`
+(`CCYQKUAZ…`) or `withdrawal_queue` (`CBNZF5QA…`). This is an
+**implementation-time determination**, not a design blocker: the coder verifies
+which account holds the reserve (query `usdc.balance(...)` against each candidate
+on Futurenet, and/or confirm against the contracts repo), wires that id via a new
+env var, and leaves a clear `TODO` if it cannot be confirmed (defaulting to
+`deposit_manager` as the working assumption, short-circuiting to `—` if the id is
+empty/unconfirmed). This is captured as a bounded TODO, not an Open Question that
+gates the plan.
 
 ## Scope
 
 Replace the "Coming soon" placeholder in
 `packages/frontend/src/components/dashboard/BalanceSheetPanel.tsx` with the real
-**Statement of Financial Position** panel (Panel A). Data is **blended** from two
-sources:
+**Statement of Financial Position** panel (Panel A). Data is **blended** from:
 
-1. **REST** `GET /v1/financial-position` — deployed assets, junior tranche, and
-   the rolled-up section totals (already populated server-side).
-2. **On-chain reads** (EVM/wagmi) — PLUSD outstanding (`totalSupply`), Capital-Wallet
-   USDC balance, USYC units, and the sPLUSD→PLUSD exchange rate. Derived on the
-   client: liquidity ratio + band status, and a (partial) reconciliation status.
+1. **REST** `GET /v1/financial-position` — deployed assets + junior tranche.
+2. **On-chain Soroban reads** — PLUSD `total_supply()`, protocol USDC reserve
+   `balance()`.
+3. **Stub seam** — `convertUsycToUsdc` (1:1 identity) for the USYC row.
 
-Layout matches the Figma section (desktop node `3283:14275`; mobile node
-`3283:72288`) — **layout decisions unchanged from the prior revision**:
+Layout matches Figma `3283:14275` (desktop) / `3283:72288` (mobile) — **layout
+locked, unchanged**:
 
-- **Assets** (left) with a muted section total, sub-sections:
-  - **Liquid** → Cash — stablecoins (USDC, on-chain) / Tokenized T-bills (USYC units, on-chain) / Off-chain USD (trust company account) (`—`)
+- **Assets** (left), muted section total, sub-sections:
+  - **Liquid** → Cash — stablecoins (USDC on-chain) / Tokenized T-bills (USYC stub `—`) / Off-chain USD (trust company account) (`—`)
   - **Deployed** → Secured loans outstanding (REST) / Accrued interest receivable (REST)
-- **Liabilities** (right) with a muted section total, sub-sections:
-  - **Senior Claims** → PLUSD outstanding (on-chain `totalSupply`) with the `1:1 redeemable` caption (kept, per decision 2)
+- **Liabilities** (right), muted section total, sub-sections:
+  - **Senior Claims** → PLUSD outstanding (on-chain `total_supply`) + `1:1 redeemable` caption
   - **Subordinated Capital** → Junior tranche (REST)
 
-Additional widgets required by the #718 body and now IN scope (contract-sourced):
+No liquidity-ratio, reconciliation, or exchange-rate widgets.
 
-- **sPLUSD → PLUSD exchange rate** line (on-chain `convertToAssets(1e18)`).
-- **Liquidity ratio** vs 15 % target with 10 % / 20 % band indicators (derived).
-- **Reconciliation invariant status** green/amber/red (partial — see Open Questions).
-
-These extra widgets are NOT in the Figma "Statement of Financial Position" section
-(which only shows the two-column sheet). Their exact placement/visual design is an
-Open Question; the plan proposes rendering them below the two-column sheet in the
-same panel using existing tokens, pending design confirmation.
-
-Money formatting: base-6 REST strings → `formatCompactUsd`. On-chain `bigint`
-values are converted with `viem` `formatUnits` at the token's decimals (USDC 6,
-PLUSD 18, USYC 6 — confirm decimals via `decimals()` read rather than hardcoding)
-then formatted for display. `null`/unavailable values still render `—`.
+Money formatting: REST amounts are base-6 decimal strings → `formatCompactUsd`.
+On-chain Soroban values are raw i128 `bigint` at **7-decimal** scale → convert to
+human units with `sacRawToDisplay` (or divide by `10n**7n`) then format compact.
+Unavailable/unconfigured values render `—`.
 
 ### In scope
 
-- ABI: add `totalSupply` fragment (extend `erc20Abi` or a small dedicated ABI).
-- ENV: add `CAPITAL_WALLET_ADDRESS`, `USDC_ADDRESS`, `USYC_ADDRESS` (default zero
-  → short-circuit), documented in `env.ts` like the existing address vars.
-- On-chain read hooks under `wallet/evm/` for PLUSD `totalSupply` and Capital-Wallet
-  token balances (model on `useEvmToken`/`useStakedPlusd`, full mock-key layer).
+- New Soroban token client `wallet/stellar/contracts/token.ts` (or extend an
+  existing client) exposing `total_supply()` and `balance(account)` for a SAC
+  token, modeled on `StakedPlusdClient` + `createStakedPlusdClient`.
+- New `STELLAR_PLUSD_ID` + `STELLAR_USDC_ID` env vars (and a reserve-holder id —
+  see TODO) in `lib/env.ts`, re-exported as `plusdId` / `usdcId` from
+  `wallet/stellar/chain.ts`.
+- Stellar read hooks: `useStellarPlusdTotalSupply()` and
+  `useStellarUsdcReserveBalance()` (protocol-level, no wallet gate), with the
+  full mock-key layer.
+- `convertUsycToUsdc` seam module (small, easy to swap).
 - REST hook `useFinancialPosition` (`src/api/`), barrel export, README + mock key.
-- Co-located logic hook `useBalanceSheetPanel` that blends REST + on-chain data,
-  formats, and derives liquidity ratio / reconciliation status (view = JSX only).
+- Co-located logic hook `useBalanceSheetPanel` blending REST + Soroban + stub,
+  formatting, computing the client-recomputed section totals (view = JSX only).
 - Rewrite `BalanceSheetPanel.tsx`.
-- Component/hook + on-chain-read + REST-hook regression tests.
+- Tests for the Soroban client, the read hooks, the REST hook, and the panel/logic hook.
 
-### Remains `—` (fundamentally not on-chain — see Open Questions)
+### Remains `—`
 
-- Off-chain USD (trust company account).
-- USDC in transit.
-- USYC USD value at NAV (units are on-chain; the NAV price is an off-chain feed).
+- Off-chain USD (trust company account) — off-chain.
+- Tokenized T-bills (USYC) — no holding/address yet; flows through the 1:1 stub → `—`/0.
 
 ## Assumptions and Risks
 
-- **REST endpoint** `GET /v1/financial-position` shape confirmed in
-  `packages/api/src/routes/financial_position.rs`: every amount an
-  `Option<String>` base-6 decimal; `assets.deployed.*`,
-  `subordinated_capital.junior_tranche`, and the two `total`s populated; `liquid.*`
-  and `plusd_outstanding` null. The plan OVERRIDES the null REST leaves with
-  on-chain reads where possible rather than displaying `—`.
-- **Section totals**: the REST `assets.total` / `liabilities.total` roll up only
-  the non-null REST leaves and therefore EXCLUDE the on-chain-sourced values. Once
-  we add on-chain USDC/USYC/PLUSD, the displayed section total must be
-  **recomputed client-side** to include them (REST deployed/junior + on-chain
-  liquid/PLUSD), otherwise the total will not match the visible rows. This is a
-  change from the prior revision (which used the REST total verbatim). Risk:
-  mixed-source summation across decimals — normalize everything to USD-human
-  units before summing. USYC-NAV and in-transit/off-chain remain excluded from the
-  total while unsourced → the sheet may still not perfectly balance (Open Question 1).
-- **PLUSD address discovery adds a dependency chain**: `useStakedPlusdAsset()` →
-  PLUSD address → `totalSupply()`. If `STAKED_PLUSD_ADDRESS` is zero (dev default),
-  the whole PLUSD branch short-circuits to `—` gracefully. Acceptable.
-- **New env vars unset in current environments** → those reads short-circuit to
-  `—` until ops configures `VITE_CAPITAL_WALLET_ADDRESS` / `VITE_USDC_ADDRESS` /
-  `VITE_USYC_ADDRESS`. The panel must render correctly (no crash, `—` values) in
-  that state — same graceful pattern as the existing zero-address short-circuits.
-- **USDC decimals (6) vs PLUSD (18)**: do not hardcode; read `decimals()` (cached
-  forever) or key off the token. Mixing 6- and 18-decimal bigints without
-  normalizing is the top correctness risk.
-- **Protocol-level, no wallet**: all reads are contract state (`totalSupply`,
-  `balanceOf(capitalWallet)`, `convertToAssets`), NOT the connected wallet — the
-  dashboard renders with no wallet connected. Do NOT gate on `useEvmWallet().address`.
-- **Reconciliation precision**: the spec's drift thresholds (green <0.01 %, amber
-  0.01–1 %, red >1 %) require ALL invariant terms; USYC-NAV + in-transit are
-  missing, so a faithful status is not computable in v1. Risk of showing a
-  misleading "red". → Open Question 3.
-- Risk: the extra widgets (exchange rate, liquidity ratio, reconciliation) have no
-  Figma reference — visual design is unspecified (Open Question 2).
+- **REST shape** confirmed in `packages/api/src/routes/financial_position.rs`:
+  every amount an `Option<String>` base-6 decimal; deployed + junior + the two
+  `total`s populated; `liquid.*` and `plusd_outstanding` null. The plan overrides
+  the null REST leaves with Soroban reads where possible.
+- **Section totals are client-recomputed**, not the REST `total` verbatim: the
+  REST roll-up excludes the on-chain USDC and PLUSD, so the displayed
+  `Assets`/`Liabilities` totals must be summed client-side across REST +
+  on-chain leaves. Normalize everything to USD-human units before summing (REST
+  base-6 vs Soroban 7-decimal). USYC (`—`), in-transit, off-chain USD are excluded
+  while unsourced → the sheet may not perfectly balance (Open Question 1).
+- **7 vs 6 decimals** is the top correctness risk: REST strings are base-6;
+  Soroban i128 are 7-decimal. Do not cross the scales without normalizing. Use
+  `sacRawToDisplay(raw, 7)` for on-chain values.
+- **Protocol-level, no wallet**: `total_supply()` and reserve `balance(account)`
+  are contract state, not the connected wallet — the panel renders with no wallet
+  connected. Do NOT gate these hooks on `useStellarWallet()` (unlike
+  `useStellarStakedPlusdBalance`, which is LP-scoped and does gate).
+- **Unconfigured ids short-circuit to `—`**: if `STELLAR_PLUSD_ID` /
+  `STELLAR_USDC_ID` / reserve id are empty in an environment, the hooks return
+  `undefined` and those rows show `—` — no crash. The panel must render correctly
+  in that state (same pattern as the existing `stakedPlusdId === ""` short-circuit).
+- **Reserve holder is unconfirmed** (no `capital_wallet`): handled as a bounded
+  implementation TODO (default `deposit_manager`, verify on-chain), not a plan blocker.
+- **Futurenet reset risk**: like the sPLUSD client comment warns, Futurenet is
+  periodically reset; ids are env-driven so a redeploy just updates env.
+- Risk: the new Soroban token client must correctly `scValToNative` an i128 into
+  a JS `bigint` — mirror `StakedPlusdClient.totalSupply()` / `.balance()` exactly.
 
 ## Open Questions
 
-**RESOLVED (human, 2026-07-02):**
+1. **Unbalanced section totals.** With USYC (`—`), USDC-in-transit, and off-chain
+   USD unsourced, Assets will under-count vs PLUSD-driven Liabilities, so the two
+   muted totals won't match the Figma mock's equal `$43.14M`. Recommend shipping a
+   small muted footnote under the sheet — "Excludes assets pending a data source"
+   — and rendering best-effort client-recomputed totals rather than hiding them.
+   Confirm this presentation.
 
-- **Scope = only Figma `3283-14275`** ("Statement of Financial Position"). No extra
-  widgets. This **removes from scope**: the sPLUSD exchange-rate line, the liquidity
-  ratio + 10/15/20 % band indicator, and the reconciliation green/amber/red badge
-  (former OQ2/OQ3 and the exchange-rate feature). Panel A is exactly the two-column
-  Assets/Liabilities balance sheet with these rows:
-  - Assets → Liquid: `Cash — stablecoins`, `Tokenized T-bills`, `Off-chain USD (trust
-    company account)`; Deployed: `Secured loans outstanding`, `Accrued interest receivable`.
-  - Liabilities → Senior Claims: `PLUSD outstanding` (+ `1:1 redeemable` caption, kept
-    even when value is `—`); Subordinated Capital: `Junior tranche`.
-  - Each side shows a muted rolled-up total; section sub-headers (`Liquid`, `Deployed`,
-    `Senior Claims`, `Subordinated Capital`) as designed.
-- **PLUSD caption** — keep `1:1 redeemable` regardless of value.
-
-**STILL PENDING human clarification (task parked `needs-feedback` — 2026-07-02):**
-_The user is gathering answers and will follow up._
-
-1. **Contract addresses.** Are `VITE_CAPITAL_WALLET_ADDRESS` / `VITE_USDC_ADDRESS` /
-   `VITE_USYC_ADDRESS` known for the target environment, or do they stay unset (→ `—`)
-   for now? (PLUSD outstanding is readable regardless — its address derives from the
-   staking contract's `asset()`.)
-2. **USYC USD value** needs an off-chain NAV price. Is there a source to read (API
-   field / oracle address / constant), or does `Tokenized T-bills` render `—` in v1?
-3. **Unbalanced totals.** With USYC-NAV value, in-transit, and off-chain USD unsourced,
-   Assets will under-count vs Liabilities. Footnote + best-effort total, or hide the
-   total until fully sourceable? (Recommend footnote.)
-4. **EVM-only** for Panel A v1 (no Stellar parity)? (Recommend yes — app defaults to EVM.)
-
-> Note: which specific Liquid rows show real values vs `—` depends on OQ1/OQ2.
-> `Off-chain USD (trust company account)` is off-chain by definition and stays `—`
-> unless a source is named. Deployed rows + Junior tranche come from the REST endpoint
-> and render regardless.
+_(All prior design/sourcing questions are resolved per the coordinator's
+direction; this is the only remaining soft question, with a recommendation.)_
 
 ## Implementation Steps
 
-1. **ABI — `totalSupply`.** In `packages/frontend/src/wallet/evm/abis/erc20.ts`
-   add a `totalSupply()` view fragment (`inputs: []`, `outputs: [{ type: "uint256" }]`,
-   `stateMutability: "view"`). Keep `as const`.
-2. **ENV config.** In `packages/frontend/src/lib/env.ts` add
-   `CAPITAL_WALLET_ADDRESS` (`VITE_CAPITAL_WALLET_ADDRESS`), `USDC_ADDRESS`
-   (`VITE_USDC_ADDRESS`), `USYC_ADDRESS` (`VITE_USYC_ADDRESS`) — each
-   `readString(..., ZERO_ADDRESS) as 0x${string}`, with the same short-circuit
-   doc-comment as the existing address vars.
-3. **On-chain read hooks** (`packages/frontend/src/wallet/evm/`), each modeled on
-   `useStakedPlusd.ts`/`useEvmToken.ts` with the full mock-key precedence
-   (named alias → per-address → zero-address short-circuit → real RPC) and
-   `CACHE_FOREVER` where the value is effectively static within a page:
-   - `usePlusdTotalSupply()` — depends on `useStakedPlusdAsset()` for the PLUSD
-     address, then `useReadContract({ address: plusd, abi: erc20Abi,
-     functionName: "totalSupply" })`; also read `decimals()` (expect 18) to format.
-     Zero/undefined address ⇒ `undefined`.
-   - `useCapitalWalletBalance(token: 0x${string})` — `balanceOf(CAPITAL_WALLET_ADDRESS)`
-     for a given token address (used for USDC and USYC); read `decimals()` per token.
-     Or reuse `useEvmToken` semantics generalized to an arbitrary `owner`
-     (currently `useEvmToken` fixes owner = connected wallet — needs a variant that
-     takes an explicit owner = Capital Wallet; add `useTokenBalanceOf({ token, owner })`
-     rather than overloading the wallet-scoped hook).
-   - Reuse existing `useStakedPlusdConvertToAssets(10n ** 18n)` for the exchange rate.
-4. **REST hook** — `packages/frontend/src/api/useFinancialPosition.ts`, modeled on
-   `useWithdrawalQueue.ts`: types for the response tree, `useQuery` with
-   `queryKey: ["financial-position"]`, `queryFn: apiFetch("/v1/financial-position")`,
-   `refetchInterval: 30_000`, always enabled. Barrel-export from `src/api/index.ts`;
-   add README section + `pipeline.mock.api.GET./v1/financial-position` mock key.
-5. **Logic hook** — `packages/frontend/src/components/dashboard/useBalanceSheetPanel.ts`
-   (co-located, view = JSX only). Responsibilities:
-   - Call `useFinancialPosition()` + the on-chain hooks from step 3 + the exchange-rate hook.
-   - Normalize every value to USD-human units (REST base-6 strings via `parseFloat`;
-     on-chain bigints via `viem formatUnits` at the token decimals). Format for
-     display with `formatCompactUsd` (or a compact formatter for the already-numeric
-     on-chain values); unavailable → `—`.
-   - Build the view model: assets/liabilities section totals (client-recomputed to
-     include on-chain leaves — see Assumptions/OQ1), each leaf row string, the
-     exchange-rate string, the liquidity ratio + band status (derive: USDC ÷ PLUSD
-     totalSupply; classify vs 10/15/20 %), and the reconciliation status
-     (partial — see OQ3).
-   - `state`: `loading` while REST is loading; `error` on REST error (retry via
-     `refetch`); otherwise `ready`. On-chain reads that are still loading or
-     unconfigured surface as per-row `—`, not a whole-panel error.
-6. **Panel view** — rewrite `BalanceSheetPanel.tsx` to consume the logic hook and
-   render via `PanelContainer` (`borderless`, `title="Balance Sheet"`, keep
+1. **Soroban token client** — add
+   `packages/frontend/src/wallet/stellar/contracts/token.ts` modeled on
+   `contracts/stakedPlusd.ts`:
+   - `class TokenClient` with `constructor(contractId)`, private
+     `simulateReadCall(op)` (identical helper to `StakedPlusdClient`), and read
+     views `totalSupply(): Promise<bigint>` (`contract.call("total_supply")`) and
+     `balance(account: string): Promise<bigint>`
+     (`contract.call("balance", new Address(account).toScVal())`), each returning
+     `scValToNative(retval) as bigint`.
+   - `createTokenClient(contractId): TokenClient | null` factory (null on empty id).
+2. **ENV + chain re-export** — in `lib/env.ts` add
+   `STELLAR_PLUSD_ID` (`VITE_STELLAR_PLUSD_ID`, default `""`) and
+   `STELLAR_USDC_ID` (`VITE_STELLAR_USDC_ID`, default `""`), plus a reserve-holder
+   id `STELLAR_RESERVE_ACCOUNT_ID` (`VITE_STELLAR_RESERVE_ACCOUNT_ID`, default `""`
+   — see reserve-holder TODO; the coder may default this to the deposit_manager id
+   at wiring time). In `wallet/stellar/chain.ts` re-export `plusdId`, `usdcId`,
+   `reserveAccountId` as `const`s with the same short-circuit doc-comment as
+   `stakedPlusdId`. Document the Futurenet addresses in the doc-comments.
+3. **Mock keys** — in `wallet/stellar/mock.ts` add keys + reader helpers for
+   PLUSD total supply and the USDC reserve balance (reuse the existing
+   `balance.sac.usdc` convention; add e.g.
+   `pipeline.mock.wallet.stellar.plusd.totalSupply` and
+   `pipeline.mock.wallet.stellar.usdc.reserveBalance`, raw 7-decimal bigint
+   strings), following the `stakedPlusdShareBalance` pattern.
+4. **Stellar read hooks** — add
+   `wallet/stellar/useStellarFinancialPositionReads.ts` (or co-locate near the
+   token client), modeled on `useStellarStakedPlusd.ts` read hooks:
+   - `useStellarPlusdTotalSupply(): { data?: bigint; isLoading; error }` —
+     `useQuery({ queryKey: ["stellarPlusdTotalSupply", plusdId], queryFn: mock →
+     createTokenClient(plusdId).totalSupply(), enabled: !!plusdId &&
+     mockUndefined, staleTime: 30_000, refetchInterval: 30_000, retry: false })`.
+     No wallet gate.
+   - `useStellarUsdcReserveBalance(): { data?: bigint; isLoading; error }` —
+     same shape, `queryKey: ["stellarUsdcReserveBalance", usdcId, reserveAccountId]`,
+     `queryFn` → `createTokenClient(usdcId).balance(reserveAccountId)`, enabled
+     when both ids present. No wallet gate.
+5. **USYC seam** — add `components/dashboard/usycNav.ts` (small, swappable):
+   `export function convertUsycToUsdc(usycAmount: bigint): bigint { return usycAmount; }`
+   (1:1 identity placeholder; real `convert_to_assets`-style NAV wired later).
+   The panel hook calls this; with no USYC holding, input is `0n`/absent → row `—`.
+6. **REST hook** — `src/api/useFinancialPosition.ts`, modeled on
+   `useWithdrawalQueue.ts`: response types, `useQuery({ queryKey:
+   ["financial-position"], queryFn: apiFetch("/v1/financial-position"),
+   refetchInterval: 30_000 })`, always enabled. Barrel-export from
+   `src/api/index.ts`; README section + `pipeline.mock.api.GET./v1/financial-position`
+   mock key.
+7. **Logic hook** — `components/dashboard/useBalanceSheetPanel.ts` (view = JSX only):
+   - Call `useFinancialPosition()` + `useStellarPlusdTotalSupply()` +
+     `useStellarUsdcReserveBalance()` + the USYC stub.
+   - Normalize to USD-human units: REST base-6 via `parseFloat`; Soroban bigints
+     via `sacRawToDisplay(raw, 7)` → number/string. Format with `formatCompactUsd`;
+     unavailable → `—`.
+   - Build the view model: per-row display strings; client-recomputed section
+     totals (REST deployed/junior + on-chain USDC/PLUSD, in human units); the
+     `1:1 redeemable` caption on PLUSD.
+   - `state`: `loading` while REST loads; `error` on REST error (retry via
+     `refetch`); else `ready`. Soroban reads still loading/unconfigured surface
+     as per-row `—`, never a whole-panel error.
+8. **Panel view** — rewrite `BalanceSheetPanel.tsx` to consume the logic hook via
+   `PanelContainer` (`borderless`, `title="Balance Sheet"`, keep
    `data-testid="dashboard-panel-balance-sheet"` + `data-node-id="3283:14275"`).
-   **Layout unchanged from the prior revision:**
-   - Responsive two-column body: `flex flex-col md:flex-row gap-8`, each column
+   **Layout unchanged (locked):**
+   - Responsive two-column body `flex flex-col md:flex-row gap-8`, each column
      `md:flex-1`; desktop-only 1px vertical divider (`--color-pipeline-line`);
      mobile stacks Assets over Liabilities.
    - Column heading row: `Assets`/`Liabilities` (`heading-m`, display) + muted
-     section total (`heading-m`, `--color-pipeline-ink-muted`), `items-baseline justify-between`.
+     rolled-up total (`heading-m`, `--color-pipeline-ink-muted`),
+     `items-baseline justify-between`.
    - Card Body per column: white surface, asymmetric depth border
      (`border-t border-l border-b-[3px] border-r-[3px]`, `--color-pipeline-line`),
      `rounded-[var(--radius-pipeline-card,4px)]`, `p-4`, `flex flex-col gap-8`.
    - Sub-section: Heading-20 title (display, 20px/28px) + `flex flex-col gap-4` rows.
-   - Extract a presentational `BalanceSheetRow` (label + optional caption +
-     right-aligned value; top border, `pt-4`, label muted, value ink). Keep the
-     `1:1 redeemable` caption on the PLUSD row (decision 2).
-   - Below the two-column sheet, render the extra widgets block (exchange rate,
-     liquidity ratio + band, reconciliation badge) using existing tokens — layout
-     provisional pending OQ2.
+   - Presentational `BalanceSheetRow` (label + optional caption + right-aligned
+     value; top border, `pt-4`, label muted, value ink). Keep `1:1 redeemable`
+     on the PLUSD row.
+   - Optional muted footnote under the sheet per Open Question 1.
    - Token discipline: no raw hex/font/size literals (layout pixel hints only);
-     stable `data-testid`s per row/widget.
-7. **Lint/build** — `npx tsc --noEmit` (frontend), frontend ESLint, and
+     stable `data-testid`s per row.
+9. **Lint/build** — `npx tsc --noEmit` (frontend), frontend ESLint, and
    `npx tsx scripts/lint-docs.ts` for doc edits. Fix all warnings.
 
 ## Test Strategy
 
-Regression/component coverage is required (DoD). Vitest + RTL, mocking the hooks;
-follow `useWithdrawalQueuePanel.test.tsx`, `useYieldHistoryPanel.test.tsx`, and the
-existing `wallet/evm/*.test.tsx` (mock-key-driven) patterns.
+Regression/component coverage required (DoD). Vitest + RTL; follow
+`wallet/stellar/*.test.ts(x)` (mock-key + simulate-mocked) and
+`components/dashboard/useWithdrawalQueuePanel.test.tsx` patterns.
 
-1. **REST hook** — `src/api/useFinancialPosition.test.tsx` (mirror
+1. **Soroban token client** — `wallet/stellar/contracts/token.test.ts` mirroring
+   `contracts/stakedPlusd.test.ts`: assert `totalSupply()` and `balance(account)`
+   build the correct `total_supply` / `balance` ops and decode i128 → `bigint`
+   (mock `simulateTransaction`); `createTokenClient("")` returns `null`.
+2. **Stellar read hooks** — tests for `useStellarPlusdTotalSupply` and
+   `useStellarUsdcReserveBalance`: mock-key fast-path returns the raw bigint
+   without RPC; unconfigured id (empty) short-circuits to `undefined` with NO
+   client construction / RPC; loading→data; error surfaces. Assert NO wallet-gate
+   (returns data with no connected wallet).
+3. **USYC seam** — `usycNav.test.ts`: `convertUsycToUsdc(n) === n` (locks the 1:1
+   identity so a future NAV change is a deliberate, tested edit).
+4. **REST hook** — `src/api/useFinancialPosition.test.tsx` (mirror
    `useWithdrawalQueue.test.tsx`): mock-key path parses JSON; real path calls
    `apiFetch("/v1/financial-position")`; loading→data; error surfaces.
-2. **On-chain hooks** — tests for `usePlusdTotalSupply` and the Capital-Wallet
-   balance hook using the localStorage mock keys and the zero-address
-   short-circuit (assert NO RPC when address is zero → `undefined`). Assert
-   decimals-correct formatting (USDC 6 vs PLUSD 18) via mock decimals.
-3. **Logic hook / panel** — `useBalanceSheetPanel.test.tsx` (mock all data hooks):
-   - **Loading / error / retry** panel states.
-   - **Blended ready state**: REST provides deployed + junior + totals; on-chain
-     mocks provide PLUSD totalSupply, USDC, USYC units, exchange rate. Assert:
-     Deployed & Junior render from REST; Cash—stablecoins renders the on-chain USDC
-     value; PLUSD outstanding renders the on-chain `totalSupply` (NOT `—`); the
-     exchange-rate line renders `1 sPLUSD = X.XXXX PLUSD`; section totals are the
-     client-recomputed blended sums.
-   - **Unconfigured on-chain (zero addresses)**: PLUSD, USDC, USYC rows render `—`
-     while REST rows still render — proves graceful degradation.
-   - **Liquidity ratio band classification**: given USDC and PLUSD inputs, assert
-     the ratio value and that <10 % / 10–20 % / >20 % map to the correct band state.
-   - **Reconciliation partial state**: with USYC-NAV/in-transit unavailable, assert
-     the chosen OQ3 behavior (e.g. "insufficient data" neutral state), not a
-     misleading red.
-   - **Always-`—` fields**: Off-chain USD, USDC in transit, USYC USD value render `—`.
+5. **Logic hook / panel** — `useBalanceSheetPanel.test.tsx` (mock all data hooks):
+   - **Loading / error / retry** panel states (driven by REST).
+   - **Blended ready state**: REST gives deployed + junior; Soroban mocks give
+     PLUSD `total_supply` + USDC reserve balance. Assert Deployed & Junior render
+     from REST; Cash — stablecoins renders the on-chain USDC (7-decimal → human);
+     PLUSD outstanding renders the on-chain `total_supply` (NOT `—`) with the
+     `1:1 redeemable` caption; section totals are the client-recomputed blended sums.
+   - **Unconfigured Soroban (empty ids)**: PLUSD + USDC rows render `—` while REST
+     rows still render — proves graceful degradation.
+   - **USYC row** renders `—`/0 through the stub.
+   - **Off-chain USD** renders `—`.
+   - **Decimals correctness**: a 7-decimal on-chain bigint formats to the right
+     human USD figure (guards the 7-vs-6 scale bug).
    - **Formatter edge**: on-chain `0n` → `$0`; unavailable → `—`.
 
 ## Docs to Update
 
 - `packages/frontend/src/api/README.md` — `useFinancialPosition()` + mock-key entry.
-- `packages/frontend/src/wallet/README.md` — document the new on-chain read hooks
-  (`usePlusdTotalSupply`, Capital-Wallet balance hook) and their mock keys,
-  matching the existing `useStakedPlusd*` / `useEvmToken` entries.
-- `docs/frontend/hooks.md` — add rows for the shared hooks: `useFinancialPosition`
-  (API) and the new on-chain reads. The component-local `useBalanceSheetPanel`
-  stays OUT per FRONTEND.md rule 5.
-- `packages/frontend/src/lib/env.ts` doc-comments cover the three new env vars;
-  if there is an `.env.example` / env doc, add `VITE_CAPITAL_WALLET_ADDRESS`,
-  `VITE_USDC_ADDRESS`, `VITE_USYC_ADDRESS` there too.
+- `packages/frontend/src/wallet/README.md` — document the new Soroban token client
+  (`TokenClient` / `createTokenClient`) and the read hooks
+  (`useStellarPlusdTotalSupply`, `useStellarUsdcReserveBalance`) + their mock keys,
+  matching the existing `StakedPlusdClient` / `useStellarStakedPlusd*` entries.
+- `docs/frontend/hooks.md` — add rows for the shared hooks:
+  `useFinancialPosition` (API), `useStellarPlusdTotalSupply`,
+  `useStellarUsdcReserveBalance`. Component-local `useBalanceSheetPanel` stays OUT
+  (FRONTEND.md rule 5).
+- `lib/env.ts` doc-comments cover `VITE_STELLAR_PLUSD_ID`, `VITE_STELLAR_USDC_ID`,
+  `VITE_STELLAR_RESERVE_ACCOUNT_ID`; add them to any `.env.example` / env doc with
+  the Futurenet values above.
 - `docs/product-specs/dashboards.md` Panel A — note that the frontend now sources
-  PLUSD outstanding + Capital-Wallet reserves + sPLUSD exchange rate + liquidity
-  ratio directly on-chain (the REST endpoint's nulls are a fallback), and record
-  which invariant terms remain unsourceable (USYC NAV, in-transit, off-chain USD).
-  Only finalize once OQ1–OQ4 are resolved.
+  PLUSD outstanding + the USDC reserve directly on Stellar/Soroban (the REST
+  nulls are a fallback), and that USYC/off-chain/in-transit remain `—` pending a
+  data source. Finalize the totals-presentation note once Open Question 1 is resolved.
