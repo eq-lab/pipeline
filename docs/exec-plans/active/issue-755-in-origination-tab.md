@@ -52,6 +52,12 @@ Out of scope:
 
 ## Implementation Steps
 
+> **Status: ✅ all steps complete (2026-07-03).** Deviation: the panel stays
+> `"ready"` when there are zero active loans (rather than showing a panel-level
+> empty), so the In Origination tab is always reachable; each tab renders its
+> own inline empty state (`loan-book-active-empty` / `loan-book-origination-empty`).
+> Existing `-dashboard.test.tsx` expectations were updated accordingly.
+
 1. **Add `packages/frontend/src/api/useLoanSubmissions.ts`** (mirror `useLoanBook.ts`):
    - Hand-written interfaces: `EconomicsInput`, `LocationInput`, `SubmitLoanRequest` (as `loan_data`), `SubmissionView`, `UseLoanSubmissionsResult`.
    - `useQuery` with `queryKey: ["loan-submissions"]`, `queryFn: () => apiFetch<SubmissionView[]>("/v1/loan-book/submissions")` (no status filter — list all), `refetchInterval: 30_000`, always enabled.

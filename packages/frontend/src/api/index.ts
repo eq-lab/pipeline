@@ -48,6 +48,14 @@ export type {
   LoanBookResponse,
   UseLoanBookResult,
 } from "./useLoanBook";
+export { useLoanSubmissions } from "./useLoanSubmissions";
+export type {
+  EconomicsInput,
+  LocationInput,
+  SubmitLoanRequest,
+  SubmissionView,
+  UseLoanSubmissionsResult,
+} from "./useLoanSubmissions";
 export { useStellarDepositVoucher } from "./useStellarDepositVoucher";
 export type {
   UseStellarDepositVoucherResult,

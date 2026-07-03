@@ -17,7 +17,7 @@
  *   9. DeploymentMonitorPanel: empty loans state.
  *  10. DeploymentMonitorPanel: ready state — formatted values + null → "—".
  *  11. DeploymentMonitorPanel: responsive class assertions.
- *  12. DeploymentMonitorPanel: tab bar with disabled "In Origination".
+ *  12. DeploymentMonitorPanel: tab bar — Active Loans + selectable "In Origination" (#755).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
@@ -572,7 +572,7 @@ describe("DeploymentMonitorPanel — empty loans state", () => {
     vi.clearAllMocks();
   });
 
-  it("shows PanelEmpty when loans array is empty", async () => {
+  it("shows an inline empty state on the Active Loans tab when loans array is empty", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_EMPTY),
@@ -580,9 +580,13 @@ describe("DeploymentMonitorPanel — empty loans state", () => {
 
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
 
+    // Issue #755: the panel stays "ready" (summary + tabs render, keeping the
+    // In Origination tab reachable); the Active Loans tab shows its own inline
+    // empty state rather than blanking the whole panel.
     await waitFor(() => {
-      expect(screen.getByTestId("panel-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("loan-book-active-empty")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("loan-book-tab-bar")).toBeInTheDocument();
   });
 });
 
@@ -786,7 +790,7 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     vi.clearAllMocks();
   });
 
-  it("renders Active Loans tab as active and In Origination as disabled", async () => {
+  it("renders Active Loans selected and In Origination selectable (not disabled)", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
@@ -799,11 +803,12 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     });
 
     const activeTab = screen.getByTestId("loan-book-tab-active-loans");
-    const disabledTab = screen.getByTestId("loan-book-tab-in-origination");
+    const originationTab = screen.getByTestId("loan-book-tab-in-origination");
 
     expect(activeTab).toHaveAttribute("aria-selected", "true");
-    expect(disabledTab).toHaveAttribute("aria-disabled", "true");
-    expect(disabledTab).toHaveAttribute("aria-selected", "false");
+    // In Origination is now interactive (issue #755) — no longer disabled.
+    expect(originationTab).not.toHaveAttribute("aria-disabled");
+    expect(originationTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("Active Loans badge shows the live count from loans.length", async () => {
@@ -826,23 +831,29 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     ).toHaveTextContent("2");
   });
 
-  it("In Origination tab renders no count badge", async () => {
+  it("In Origination tab renders a count badge", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_FULL),
+    );
+    // No submissions mock → count is 0 (badge still renders).
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book/submissions",
+      JSON.stringify([]),
     );
 
     render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("loan-book-tab-in-origination"),
+        screen.getByTestId("loan-book-tab-in-origination-count"),
       ).toBeInTheDocument();
     });
 
-    const inOriginationTab = screen.getByTestId("loan-book-tab-in-origination");
-    // No count badge should be present inside the In Origination tab
-    expect(inOriginationTab.querySelector("[data-testid]")).toBeNull();
+    // Issue #755: the badge now renders (count from the submissions endpoint).
+    expect(
+      screen.getByTestId("loan-book-tab-in-origination-count"),
+    ).toHaveTextContent("0");
   });
 });
 

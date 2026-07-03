@@ -10,10 +10,11 @@
  * anchors for tests and Figma QA tooling.
  *
  * Includes the Active Loans / In Origination tab bar (Figma node 3283:14480).
- * The Active Loans tab shows a live count badge (loans.length from the API).
- * The In Origination tab is visibly disabled — no origination endpoint is
- * served yet (deferred per #717); it renders no count badge until the endpoint
- * exists.
+ * Both tabs are selectable and carry a live count badge: Active Loans shows
+ * `loans.length` from `GET /v1/loan-book`; In Origination shows the submission
+ * count from `GET /v1/loan-book/submissions` (issue #755). The In Origination
+ * table reuses the same layout with an added Status column and derives its rows
+ * from each submission's `loan_data` payload.
  *
  * Figma:
  *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
@@ -22,7 +23,13 @@
 import { PanelContainer } from "./PanelContainer";
 import { LoanBookSummary } from "./LoanBookSummary";
 import { LoanBookTable } from "./LoanBookTable";
-import { useDeploymentMonitorPanel } from "./useDeploymentMonitorPanel";
+import { PanelLoading } from "./PanelLoading";
+import { PanelError } from "./PanelError";
+import { PanelEmpty } from "./PanelEmpty";
+import {
+  useDeploymentMonitorPanel,
+  type LoanBookTab,
+} from "./useDeploymentMonitorPanel";
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -74,12 +81,15 @@ const activeTabClasses = [
   "cursor-default",
 ].join(" ");
 
-const disabledTabClasses = [
+// Unselected (but selectable) tab: transparent bg, muted ink, Regular weight,
+// pointer cursor. Both tabs are now interactive (issue #755) — the previous
+// `disabledTabClasses` (opacity-50 / cursor-not-allowed) is retired.
+const inactiveTabClasses = [
   tabSharedClasses,
+  "bg-transparent",
   "text-[color:var(--color-pipeline-ink-muted)]",
   "font-normal",
-  "cursor-not-allowed",
-  "opacity-50",
+  "cursor-pointer",
 ].join(" ");
 
 const badgeClasses = [
@@ -95,20 +105,32 @@ const badgeClasses = [
 ].join(" ");
 
 interface LoanBookTabBarProps {
+  activeTab: LoanBookTab;
+  onSelect: (tab: LoanBookTab) => void;
   activeLoansCount: number;
+  inOriginationCount: number;
 }
 
-function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
+function LoanBookTabBar({
+  activeTab,
+  onSelect,
+  activeLoansCount,
+  inOriginationCount,
+}: LoanBookTabBarProps) {
+  const activeSelected = activeTab === "active";
+  const originationSelected = activeTab === "origination";
   return (
     <div
       className="flex w-full items-start rounded-[var(--radius-pipeline-card-sm)] bg-[color:var(--color-pipeline-fill-muted)] p-0.5"
       data-testid="loan-book-tab-bar"
       role="tablist"
     >
-      <div
-        className={activeTabClasses}
+      <button
+        type="button"
+        className={activeSelected ? activeTabClasses : inactiveTabClasses}
         role="tab"
-        aria-selected="true"
+        aria-selected={activeSelected}
+        onClick={() => onSelect("active")}
         data-testid="loan-book-tab-active-loans"
       >
         Active Loans
@@ -118,22 +140,68 @@ function LoanBookTabBar({ activeLoansCount }: LoanBookTabBarProps) {
         >
           {activeLoansCount}
         </span>
-      </div>
-      <div
-        className={disabledTabClasses}
+      </button>
+      <button
+        type="button"
+        className={originationSelected ? activeTabClasses : inactiveTabClasses}
         role="tab"
-        aria-selected="false"
-        aria-disabled="true"
+        aria-selected={originationSelected}
+        onClick={() => onSelect("origination")}
         data-testid="loan-book-tab-in-origination"
       >
         In Origination
-        {/* No count badge — origination endpoint is deferred per #717; no fabricated number. */}
-      </div>
+        <span
+          className={badgeClasses}
+          data-testid="loan-book-tab-in-origination-count"
+        >
+          {inOriginationCount}
+        </span>
+      </button>
     </div>
   );
 }
 
 // ── Panel ─────────────────────────────────────────────────────────────────────
+
+// In Origination tab body — renders its own loading/error/empty/ready state
+// (independent of the panel-level Active Loans state) so a slow or failed
+// submissions fetch never blanks the whole panel.
+interface OriginationTabBodyProps {
+  state: ReturnType<typeof useDeploymentMonitorPanel>["originationState"];
+  rows: ReturnType<typeof useDeploymentMonitorPanel>["originationRows"];
+  errorMessage: string | undefined;
+  onRetry: () => void;
+}
+
+function OriginationTabBody({
+  state,
+  rows,
+  errorMessage,
+  onRetry,
+}: OriginationTabBodyProps) {
+  switch (state) {
+    case "loading":
+      return <PanelLoading data-testid="loan-book-origination-loading" />;
+    case "error":
+      return (
+        <PanelError
+          data-testid="loan-book-origination-error"
+          onRetry={onRetry}
+          message={errorMessage}
+        />
+      );
+    case "empty":
+      return (
+        <PanelEmpty
+          data-testid="loan-book-origination-empty"
+          caption="No loans in origination"
+        />
+      );
+    case "ready":
+    default:
+      return <LoanBookTable rows={rows} showStatus />;
+  }
+}
 
 export function DeploymentMonitorPanel() {
   const {
@@ -144,6 +212,13 @@ export function DeploymentMonitorPanel() {
     activeLoansCount,
     errorMessage,
     refetch,
+    activeTab,
+    setActiveTab,
+    originationRows,
+    inOriginationCount,
+    originationState,
+    originationErrorMessage,
+    refetchOrigination,
   } = useDeploymentMonitorPanel();
 
   return (
@@ -194,8 +269,29 @@ export function DeploymentMonitorPanel() {
           ].join(" ")}
           data-testid="loan-book-table-container"
         >
-          <LoanBookTabBar activeLoansCount={activeLoansCount} />
-          <LoanBookTable rows={rows} headerAggregates={headerAggregates} />
+          <LoanBookTabBar
+            activeTab={activeTab}
+            onSelect={setActiveTab}
+            activeLoansCount={activeLoansCount}
+            inOriginationCount={inOriginationCount}
+          />
+          {activeTab === "active" ? (
+            rows.length === 0 ? (
+              <PanelEmpty
+                data-testid="loan-book-active-empty"
+                caption="No active loans"
+              />
+            ) : (
+              <LoanBookTable rows={rows} headerAggregates={headerAggregates} />
+            )
+          ) : (
+            <OriginationTabBody
+              state={originationState}
+              rows={originationRows}
+              errorMessage={originationErrorMessage}
+              onRetry={refetchOrigination}
+            />
+          )}
         </div>
       </div>
     </PanelContainer>
