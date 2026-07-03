@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
+  formatBpsRate,
   formatLtv,
   formatCoverage,
   formatDurationDays,
@@ -207,5 +208,24 @@ describe("formatEstimatedWaitDays", () => {
   it("returns em-dash for non-numeric input", () => {
     expect(formatEstimatedWaitDays("n/a")).toBe("—");
     expect(formatEstimatedWaitDays("")).toBe("—");
+  });
+});
+
+// ── formatBpsRate ──────────────────────────────────────────────────────────────
+
+describe("formatBpsRate", () => {
+  it("formats basis points to a one-decimal percentage", () => {
+    expect(formatBpsRate(1120)).toBe("11.2%");
+    expect(formatBpsRate(1170)).toBe("11.7%");
+  });
+
+  it("formats zero", () => {
+    expect(formatBpsRate(0)).toBe("0.0%");
+  });
+
+  it("returns em-dash for null / undefined / non-finite", () => {
+    expect(formatBpsRate(null)).toBe("—");
+    expect(formatBpsRate(undefined)).toBe("—");
+    expect(formatBpsRate(NaN)).toBe("—");
   });
 });

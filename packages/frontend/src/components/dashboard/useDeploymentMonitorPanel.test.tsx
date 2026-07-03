@@ -246,12 +246,13 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     const row0 = result.current.originationRows[0]!;
     expect(row0.borrowerCommodity).toBe("Trafigura / Alumina");
     expect(row0.principal).toBe("$8.0M");
-    expect(row0.collateral).toBe("—"); // no price feed
-    expect(row0.ltv).toBe("85%"); // 1e6 / 1_176_470 ≈ 0.85
-    expect(row0.duration).toBe("120d");
-    expect(row0.rate).toBe("11.2%"); // 1120 bps
+    expect(row0.rate).toBe("11.2%"); // 1120 bps (backend-served)
     expect(row0.protection).toBe("LC at sight");
     expect(row0.status).toBe("InReview");
+    // Not served by the backend → "—" (no frontend-computed metrics).
+    expect(row0.collateral).toBe("—");
+    expect(row0.ltv).toBe("—");
+    expect(row0.duration).toBe("—");
   });
 
   it("falls back to '—' for missing protection and reflects status", async () => {
@@ -266,8 +267,9 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 
     const row1 = result.current.originationRows[1]!;
     expect(row1.protection).toBe("—");
-    expect(row1.ltv).toBe("50%");
-    expect(row1.duration).toBe("60d");
+    expect(row1.ltv).toBe("—");
+    expect(row1.duration).toBe("—");
+    expect(row1.rate).toBe("11.7%"); // 1170 bps
     expect(row1.status).toBe("Approved");
   });
 

@@ -23,6 +23,7 @@ import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
+  formatBpsRate,
   formatLtv,
   formatCoverage,
   formatDurationDays,
@@ -95,38 +96,36 @@ function formatRow(entry: LoanBookEntry): LoanBookRow {
   };
 }
 
-const SECONDS_PER_DAY = 86_400;
-
 /**
  * Maps a loan submission → an In Origination table row.
  *
- * Column mapping (issue #755, from `loan_data` = verbatim `SubmitLoanRequest`):
+ * Only fields the backend serves directly are surfaced. Anything the backend
+ * does not provide as a discrete field renders `"—"` — we do NOT compute
+ * derived metrics client-side (issue #755 decision).
+ *
+ * Column mapping (from `loan_data` = verbatim `SubmitLoanRequest`):
  *   - Borrower / Commodity → `borrower_id` / `commodity`.
  *   - Principal            → `economics.original_facility_size` (base-6 human units).
- *   - Collateral           → `"—"` (no price feed; TODO #706).
- *   - LTV                  → derived from `initial_ccr` (1e6-scaled CCR):
- *                            LTV = 1 / CCR = 1e6 / initial_ccr. `"—"` if ccr <= 0.
- *   - Duration             → `(maturity − origination)` seconds → days.
- *   - Rate                 → `senior_interest_rate_bps / 10_000` (decimal fraction).
+ *   - Rate                 → `economics.senior_interest_rate_bps` (basis points).
  *   - Protection           → `protection` (or `"—"`).
  *   - Status               → submission lifecycle `status`.
+ *   - Collateral           → `"—"` — no backend collateral value (price feed, #706).
+ *   - LTV                  → `"—"` — backend serves no LTV field (`initial_ccr`
+ *                            is a different metric; not derived here).
+ *   - Duration             → `"—"` — backend serves no duration field (only raw
+ *                            origination/maturity timestamps; not derived here).
  */
 function formatSubmissionRow(view: SubmissionView): LoanBookRow {
   const loan = view.loan_data;
   const econ = loan.economics;
-  const durationDays =
-    (econ.original_maturity_date - econ.origination_date) / SECONDS_PER_DAY;
-  const rateFraction = econ.senior_interest_rate_bps / 10_000;
-  const ltvFraction =
-    loan.initial_ccr > 0 ? 1_000_000 / loan.initial_ccr : null;
 
   return {
     borrowerCommodity: `${loan.borrower_id} / ${loan.commodity}`,
     principal: formatCompactUsd(econ.original_facility_size),
     collateral: "—",
-    ltv: ltvFraction == null ? "—" : formatLtv(String(ltvFraction)),
-    duration: formatDurationDays(durationDays, "compact"),
-    rate: formatOneDecimalRate(String(rateFraction)),
+    ltv: "—",
+    duration: "—",
+    rate: formatBpsRate(econ.senior_interest_rate_bps),
     protection: loan.protection ?? "—",
     status: view.status,
   };

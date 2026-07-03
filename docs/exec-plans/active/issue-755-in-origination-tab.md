@@ -29,12 +29,10 @@ Out of scope:
 - **`loan_data` fields available for the table** (from `SubmitLoanRequest` / `EconomicsInput`):
   - Borrower → `loan_data.borrower_id`; Commodity → `loan_data.commodity`.
   - Principal → `loan_data.economics.original_facility_size` — base-6 decimal string **already in human units** (same convention as `/v1/loan-book`), so use `formatCompactUsd` (NOT `formatUsdc`/`parseUnits`).
-  - Duration (days) → `(economics.original_maturity_date − economics.origination_date) / 86400`, both Unix seconds → `formatDurationDays(days, "compact")`.
-  - Rate → `economics.senior_interest_rate_bps / 10000` as a decimal-fraction string → `formatOneDecimalRate`.
+  - Rate → `economics.senior_interest_rate_bps` (basis points) → `formatBpsRate` (unit format of a served value).
   - Protection → `loan_data.protection` (optional) → `"—"` when absent.
-  - Collateral → not valued (no price feed) → `"—"`, matching active-loan behavior.
-  - LTV → derived from `loan_data.initial_ccr` (1e6-scaled CCR; LTV fraction = 1e6/initial_ccr) via `formatLtv`; origination tab only (resolved).
   - Status → `view.status` (`InReview`/`Approved`/`Rejected`), shown in the added Status column.
+  - Collateral, LTV, Duration → `"—"` — the backend serves no discrete field for these; not computed on the frontend (final decision, 2026-07-03).
 - **Risk — panel state coupling.** `PanelContainer` currently wraps the whole panel in a single state derived from the loan-book query. If the submissions query is loading/erroring while active loans are ready, we must not blank the whole panel. Mitigation: keep `PanelContainer`'s state driven by the active-loan query (summary is always the portfolio view); the In Origination tab renders its own loading/empty/error **inside** the table region. Specified in Implementation Steps.
 - **Risk — no Figma for the populated origination table** (the loan-book frame only designs the Active Loans state + the tab/badge). See Open Questions; default is to reuse the 7-column layout for visual parity.
 - Endpoint is public (confirmed in issue comment) — no auth/JWT handling needed; hook is always enabled like `useLoanBook`.
@@ -48,7 +46,7 @@ Out of scope:
 ## Open Questions
 
 1. ~~`loan_data` runtime shape.~~ **RESOLVED (2026-07-03):** backend `SubmissionView.loan_data` is `serde_json::Value` (`packages/api/src/routes/loan_book.rs:214`), serialized inline as a **nested JSON object** = the verbatim `SubmitLoanRequest`. The Swagger `"string"` example is a utoipa artifact for untyped values. Frontend reads `loan_data.borrower_id` / `.commodity` / `.economics.*` / `.protection` / `.initial_ccr` directly — no `JSON.parse`. Endpoint is now public (HTTP 200; returns `[]` on stage — no submissions yet).
-2. ~~LTV / Collateral columns.~~ **RESOLVED (2026-07-03):** Collateral renders `"—"` (no price feed, TODO #706). **LTV is derived from `initial_ccr`** — `ltvFraction = 1_000_000 / initial_ccr` (initial_ccr is the 1e6-scaled collateral-coverage ratio; LTV = 1/CCR), formatted via the existing `formatLtv` (4-decimal fraction string). This derivation applies **only on the In Origination tab** (active-loan LTV stays server-driven and null pending #706).
+2. ~~LTV / Collateral columns.~~ **RESOLVED (2026-07-03, superseded):** Final decision — surface **only backend-served data**; do NOT compute any metric on the frontend. Collateral, LTV, and Duration all render `"—"` for submissions because the backend serves no discrete field for them (`loan_data` carries `initial_ccr` and raw origination/maturity timestamps, not LTV or duration). Only Borrower/Commodity, Principal, Rate (`senior_interest_rate_bps`), Protection, and Status are populated.
 
 ## Implementation Steps
 
@@ -67,7 +65,7 @@ Out of scope:
 3. **Add a Status column to the reused table.** Extend `LoanBookRow` (in `LoanBookTable.tsx`) with an optional `status?: string`, add a `Status` `<th>` + `<td>` and an 8th `<col>` width, rendered only when the row carries a status (active-loan rows leave it undefined → column still renders but empty for the active tab, OR gate the column on the selected tab — decide in code, preferring: Status column present only on the In Origination tab via a `showStatus` prop). Keep token-only styling.
 4. **Extend `useDeploymentMonitorPanel.ts`:**
    - Call `useLoanSubmissions()` alongside `useLoanBook()`.
-   - Add `formatSubmissionRow(view: SubmissionView): LoanBookRow` implementing the mapping in Assumptions: `status: view.status`, `collateral: "—"`, and `ltv` derived as `formatLtv(String(1_000_000 / loan_data.initial_ccr))` (guard `initial_ccr > 0`; else `"—"`).
+   - Add `formatSubmissionRow(view: SubmissionView): LoanBookRow`: `status: view.status`, Principal/Rate/Protection from `loan_data`; `collateral`, `ltv`, `duration` all `"—"` (backend serves no field for them — no frontend computation).
    - Add selected-tab state: `const [activeTab, setActiveTab] = useState<"active" | "origination">("active")`.
    - Extend the returned state with: `inOriginationCount` (= total submissions returned), `originationRows`, `originationState` (loading/error/empty/ready from the submissions query), `activeTab`, `setActiveTab`. Keep the top-level `state` bound to the active-loan query (drives `PanelContainer` + summary cards).
 5. **Update `DeploymentMonitorPanel.tsx`:**
