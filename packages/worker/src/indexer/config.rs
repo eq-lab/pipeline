@@ -24,6 +24,11 @@ pub struct StellarIndexerSettings {
     /// When `None`, the loan-registry indexer branch is a no-op.
     /// Read from `CHAIN_<id>_STELLAR_LOAN_REGISTRY_ID`.
     pub loan_registry_id: Option<String>,
+    /// YieldMinter contract — optional; set only after the contract is deployed to the target chain.
+    /// When `None`, the yield-minter indexer branch is a no-op (ships dark).
+    /// Emits `YieldMinted` events routed to `contract_logs` (same as EVM).
+    /// Read from `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
+    pub yield_minter_id: Option<String>,
     /// IPFS gateway URL used by the loan-metadata fetcher (mirrors `JOB_INDEXER_IPFS_GATEWAY_URL`
     /// on the EVM side). Defaults to `https://ipfs.io/ipfs/` when unset.
     pub ipfs_gateway_url: String,
@@ -64,12 +69,18 @@ impl StellarIndexerSettings {
         let wq_key = format!("{p}WITHDRAWAL_QUEUE_ID");
         let splusd_key = format!("{p}STAKED_PLUSD_ID");
         let lr_key = format!("{p}LOAN_REGISTRY_ID");
+        let ym_key = format!("{p}YIELD_MINTER_ID");
         let deposit_manager_id = validate_contract_id(&dm_key, env_require(&dm_key)?)?;
         let withdrawal_queue_id = validate_contract_id(&wq_key, env_require(&wq_key)?)?;
         let staked_plusd_id = validate_contract_id(&splusd_key, env_require(&splusd_key)?)?;
 
         let loan_registry_id = match env::var(&lr_key) {
             Ok(raw) if !raw.trim().is_empty() => Some(validate_contract_id(&lr_key, raw)?),
+            _ => None,
+        };
+
+        let yield_minter_id = match env::var(&ym_key) {
+            Ok(raw) if !raw.trim().is_empty() => Some(validate_contract_id(&ym_key, raw)?),
             _ => None,
         };
 
@@ -85,6 +96,10 @@ impl StellarIndexerSettings {
         // Include loan_registry_id in the distinctness check when configured.
         if let Some(id) = &loan_registry_id {
             roles.push(("LOAN_REGISTRY_ID", id));
+        }
+        // Include yield_minter_id in the distinctness check when configured.
+        if let Some(id) = &yield_minter_id {
+            roles.push(("YIELD_MINTER_ID", id));
         }
         for (label, id) in roles {
             if !seen.insert(id.as_str()) {
@@ -107,6 +122,7 @@ impl StellarIndexerSettings {
             withdrawal_queue_id,
             staked_plusd_id,
             loan_registry_id,
+            yield_minter_id,
             ipfs_gateway_url,
             polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
             polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,

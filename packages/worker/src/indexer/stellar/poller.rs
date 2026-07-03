@@ -70,6 +70,7 @@ pub struct StellarEventPoller {
     withdrawal_queue_id: String,
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
+    yield_minter_id: Option<String>,
     loan_mapper_deps: Option<LoanMapperDeps>,
 }
 
@@ -83,6 +84,7 @@ impl StellarEventPoller {
         withdrawal_queue_id: String,
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
+        yield_minter_id: Option<String>,
         loan_mapper_deps: Option<LoanMapperDeps>,
     ) -> Self {
         Self {
@@ -93,6 +95,7 @@ impl StellarEventPoller {
             withdrawal_queue_id,
             staked_plusd_id,
             loan_registry_id,
+            yield_minter_id,
             loan_mapper_deps,
         }
     }
@@ -113,6 +116,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(lr_id) = &self.loan_registry_id {
             contract_ids.push(lr_id.clone());
         }
+        if let Some(ym_id) = &self.yield_minter_id {
+            contract_ids.push(ym_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -126,6 +132,7 @@ impl ChainEventPoller for StellarEventPoller {
                 &self.withdrawal_queue_id,
                 &self.staked_plusd_id,
                 self.loan_registry_id.as_deref(),
+                self.yield_minter_id.as_deref(),
             ) {
                 if is_loan_registry_event(&log.event_name) {
                     if let Some(deps) = &self.loan_mapper_deps {
@@ -230,6 +237,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.withdrawal_queue_id.clone(),
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
+        settings.yield_minter_id.clone(),
         loan_mapper_deps,
     );
 

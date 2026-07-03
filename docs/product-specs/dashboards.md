@@ -35,6 +35,44 @@ Visible to any LP who connects a whitelisted wallet to the Pipeline app.
 
 ---
 
+## Protocol Dashboard — Header
+
+The summary strip at the top of the Protocol Dashboard: TVL card, Cumulative Yield card, Current APY Net to sPLUSD, and Loan Book Yield KPIs. All fields derive from already-indexed contract events. Served by three endpoints in the `GET /v1/dashboard/*` group.
+
+### `GET /v1/dashboard/summary?chain_id`
+
+Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, `loan_book_yield`, `cumulative_yield_total`). USDC amounts are 6dp strings; rates are decimal-fraction strings (e.g. `"0.104000"` = 10.4 %); unavailable fields are `null`.
+
+| Field | Definition | Source |
+|---|---|---|
+| `tvl` | Σ `DepositRequested.amount` − Σ `WithdrawalRequested.amount` (request-side, v1 proxy) | `contract_logs` |
+| `outstanding_in_loans` | Σ (senior + equity tranche) over active loans | `compute_financial_position` |
+| `current_apy_net_to_splusd` | Gross book rate × realized net/gross haircut (see below). `null` when no active loans | derived |
+| `loan_book_yield` | Principal-weighted gross senior rate. `null` when no active loans | `compute_loan_book` |
+| `cumulative_yield_total` | Σ `YieldMinted.s_plusd_amount` (net minted to sPLUSD vault; EVM incl. T-bill leg, Stellar loan-repayment-only — see Multi-chain note) | `contract_logs` |
+
+`target_net_to_splusd` is out of scope — the frontend keeps a static `"8–12%"` label.
+
+**`current_apy_net_to_splusd` formula:** `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))`. Sums run over all loans with repayment data; falls back to haircut = 1 (net = gross) when no repayments yet. `null` only when no active loans.
+
+**Note:** the frontend currently maps "Current APY Net to sPLUSD" to `/v1/stats` `vaults[].apy`; switching to the effective-haircut rate requires a frontend update (tracked on epic #712).
+
+### `GET /v1/dashboard/tvl-history?days&interval&chain_id`
+
+Returns `[{ timestamp, tvl }]` (oldest first). `tvl(t)` is the running cumulative net flow (Σ deposits − Σ withdrawals up to `t`). `days`/`interval` (`hourly`/`daily`/`weekly`) mirror `/v1/stats/yield`; the sample cap is `MAX_SAMPLES = 1000` (HTTP 400 on overflow); `days=None` → full history from earliest flow event; no events → `200 []`. Final point equals summary `tvl`.
+
+### `GET /v1/dashboard/yield-history?days&interval&chain_id`
+
+Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)` = Σ `YieldMinted.s_plusd_amount` up to `t`. Same query/cap contract as `tvl-history`. Final point equals `cumulative_yield_total`. Distinct from `/v1/stats/yield` (which is a gross accrual estimate — this is net minted).
+
+### Multi-chain `YieldMinted` indexing
+
+`YieldMinted` is indexed on both **EVM** and **Stellar** chains. The `list_yield_mints` repo query (`params->>'s_plusd_amount'`) works identically on both because both chains store `s_plusd_amount` and `treasury_amount` as decimal strings at the top level of `params`.
+
+**Stellar leg:** on Stellar today, `YieldMinted` is emitted only on loan repayment (`s_plusd_amount = repayment.senior_interest`, the net senior coupon; `treasury_amount = mgmt_fee + perf_fee + oet_alloc`). There is no T-bill vault leg on Stellar currently. The Stellar YieldMinter is configured via `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` (optional; ships dark when unset).
+
+---
+
 ## Protocol Dashboard — Panel A: Balance Sheet
 
 **PLUSD supply**
