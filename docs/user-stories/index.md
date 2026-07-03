@@ -136,3 +136,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#719 Panel C: Withdrawal Queue UI](https://github.com/eq-lab/pipeline/issues/719) | [719-withdrawal-queue-ui.md](./epic-712/719-withdrawal-queue-ui.md) | Initial |
 | [#746 Protocol Dashboard: add page footer (logo, nav links, disclaimer, copyright)](https://github.com/eq-lab/pipeline/issues/746) | [746-dashboard-footer.md](./epic-712/746-dashboard-footer.md) | Initial |
 | [#749 Protocol Dashboard: adaptive (mobile) layout does not match Figma](https://github.com/eq-lab/pipeline/issues/749) | [749-dashboard-adaptive-mobile-layout.md](./epic-712/749-dashboard-adaptive-mobile-layout.md) | Initial |
+| [#754 Protocol Dashboard: layout does not match Figma (spacings, font-sizes)](https://github.com/eq-lab/pipeline/issues/754) | [754-dashboard-figma-spacing-typography.md](./epic-712/754-dashboard-figma-spacing-typography.md) | Initial |
