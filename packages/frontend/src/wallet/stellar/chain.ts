@@ -77,3 +77,34 @@ export const withdrawalQueueId: string = ENV.STELLAR_WITHDRAWAL_QUEUE_ID;
  * without making any RPC call.
  */
 export const stakedPlusdId: string = ENV.STELLAR_STAKED_PLUSD_ID;
+
+/**
+ * G-address of the account that issued the PLUSD classic Stellar asset.
+ * Used to read total PLUSD supply via Horizon:
+ *   `GET /assets?asset_code=PLUSD&asset_issuer={plusdIssuerId}`
+ * → `balances.authorized` gives the total PLUSD in circulation.
+ *
+ * Futurenet: GB4OHB76JOBQAISRNXU7V5U6KOZGHDKTDDMQRZZS2OLLOCVC7WANZMHH
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
+ */
+export const plusdIssuerId: string = ENV.STELLAR_PLUSD_ISSUER_ID;
+
+/**
+ * Soroban contract ID for the USDC Stellar Asset Contract (SAC).
+ * Used by `useStellarUsdcCustodyBalance` to call `balance(usdcCustodyId)` on-chain.
+ *
+ * Futurenet: CBSUIUCCJKYOAMDYDJHQUJRVOGZIMBBTHWQDOEOZOM4KAMCBKYBP7PLI
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
+ */
+export const usdcId: string = ENV.STELLAR_USDC_ID;
+
+/**
+ * G-address of the account holding Pipeline's USDC in custody.
+ * Read via `usdc.balance(usdcCustodyId)` for the "Cash — stablecoins" row on
+ * the Balance Sheet panel. This is NOT the total USDC supply — it is only the
+ * USDC held in Pipeline's custody account.
+ *
+ * Futurenet: GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM
+ * Empty string means "unconfigured" — hook short-circuits to `undefined`.
+ */
+export const usdcCustodyId: string = ENV.STELLAR_USDC_CUSTODY_ID;

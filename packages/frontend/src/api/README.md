@@ -187,6 +187,36 @@ this event and issues a refetch — no page reload needed.
 > **Note:** The event name `pipeline-mock:wallet` is a legacy misnomer. The
 > bridge covers all `pipeline.mock.*` keys, not just wallet ones.
 
+### `useFinancialPosition` mock keys
+
+| Key                                              | Type                           | Purpose                                                      |
+| ------------------------------------------------ | ------------------------------ | ------------------------------------------------------------ |
+| `pipeline.mock.api.GET./v1/financial-position`   | JSON `FinancialPositionResponse` | Bypasses the real fetch — `useFinancialPosition` returns this |
+
+**DevTools snippet:**
+
+```js
+localStorage.setItem(
+  "pipeline.mock.api.GET./v1/financial-position",
+  JSON.stringify({
+    assets: {
+      total: "8100000.000000",
+      liquid: { total: null, cash_stablecoins: null, tokenized_tbills: null, off_chain_usd: null },
+      deployed: {
+        total: "8100000.000000",
+        secured_loans_outstanding: "8000000.000000",
+        accrued_interest_receivable: "100000.000000",
+      },
+    },
+    liabilities: {
+      total: "500000.000000",
+      senior_claims: { plusd_outstanding: null },
+      subordinated_capital: { junior_tranche: "500000.000000" },
+    },
+  }),
+);
+```
+
 ### `useLoanBook` mock keys
 
 | Key                                    | Type                       | Purpose                                              |
