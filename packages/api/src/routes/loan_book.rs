@@ -346,8 +346,8 @@ async fn submit_loan(
     Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
 }
 
-/// List loan submissions. Trustee-only. Optionally filter by `status`; omit the
-/// query param to return all submissions, newest first.
+/// List loan submissions. Public — no authentication required. Optionally filter
+/// by `status`; omit the query param to return all submissions, newest first.
 #[utoipa::path(
     get,
     path = "/v1/loan-book/submissions",
@@ -355,23 +355,13 @@ async fn submit_loan(
     responses(
         (status = 200, description = "Submissions (filtered by status if provided)", body = [SubmissionView]),
         (status = 400, description = "Unknown `status` filter value"),
-        (status = 401, description = "Missing, invalid, or expired token"),
-        (status = 403, description = "Caller lacks the `trustee` role"),
     ),
-    security(("bearer_auth" = [])),
     tag = "LoanBook"
 )]
 async fn list_submissions(
-    AuthClaims(claims): AuthClaims,
     State(state): State<Arc<AppState>>,
     Query(query): Query<SubmissionsQuery>,
 ) -> Result<Json<Vec<SubmissionView>>, ApiError> {
-    if !claims.has_role(TRUSTEE_ROLE) {
-        return Err(ApiError::Forbidden(format!(
-            "this endpoint requires the `{TRUSTEE_ROLE}` role"
-        )));
-    }
-
     let status = match query.status.as_deref() {
         None | Some("") => None,
         Some(s) => Some(SubmissionStatus::from_str(s).map_err(ApiError::BadRequest)?),
