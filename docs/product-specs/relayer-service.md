@@ -49,10 +49,9 @@ Relayer does NOT call `requestWithdrawal`, does NOT call `claim`, and does NOT f
 When a loan repayment USDC inflow is detected at the Capital Wallet:
 
 1. Relayer presents the detected repayment to the Trustee via `GET /v1/trustee/repayments/pending`.
-2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and
-   broadcasts `LoanRegistry.recordPayment` from the Trustee key, crediting the per-loan
-   counters. This must land before any loan-tied mint, because the YieldMinter cap reads
-   those counters.
+2. Trustee submits final split amounts via `POST /v1/trustee/repayments/{id}/approve` and broadcasts
+   `LoanRegistry.recordPayment` from the Trustee key, crediting the per-loan counters. This must land
+   before any loan-tied mint, because the YieldMinter cap reads those counters.
 3. Relayer reads the new counters and builds one `LoanYieldAttestation` per leg, each bound
    to `loanId`, signing each with the `relayerYieldAttestor` key:
    ```
@@ -104,14 +103,13 @@ accrued-but-undistributed yield via `GET /v1/vault/stats` for dashboard display.
 ### 6. Price Feed and CCR Monitoring
 
 Relayer monitors every active loan in the LoanRegistry, polling a low-cost off-chain commodity
-price source on a configurable cadence (working assumption: every 15 minutes during market
-hours). It derives collateral value per the valuation modes in collateral-valuation.md (price
-times quantity for standard goods, Net Smelter Return for metal concentrate), then computes
-CCR = collateral_value / outstanding_senior_principal in basis points. On threshold crossings,
-notifies recipients and asks the Trustee to call `update_mutable` to update `ccr`. The Relayer
-has no write role on LoanRegistry. See collateral-valuation.md for sources, the budget ceiling,
-the valuation modes, and the off-chain valuation record. See price-feed.md for the notification
-thresholds and the on-chain CCR write.
+price source on a configurable cadence (working assumption: every 15 minutes during market hours).
+It derives collateral value per the valuation modes in collateral-valuation.md (price times quantity
+for standard goods, Net Smelter Return for metal concentrate), computes
+CCR = collateral_value / outstanding_senior_principal in basis points, and on threshold crossings
+notifies recipients and asks the Trustee to call `update_mutable` to update `ccr` (Relayer has no
+write role on LoanRegistry). See collateral-valuation.md for sources, budget ceiling, valuation
+modes, and the off-chain valuation record; see price-feed.md for thresholds and the on-chain CCR write.
 
 | Event | Trigger | Recipients |
 |---|---|---|
@@ -191,12 +189,11 @@ Relayer **does not fund withdrawals**. The Withdrawal Queue Wallet is topped up 
 
 **Relayer compromise is bounded to KYT bypass.** A compromised Relayer can sign valid attestations and revoke arbitrary whitelist entries. Neither action mints PLUSD on its own. PLUSD is only minted when the lender calls `claim` against their own deposited USDC. Whitelist enrolment lands only when DepositManager.claim succeeds (against a real ticket and attestation) or when the address holder themselves submits `enrol`. The risk is AML (illicit USDC entering the Capital Wallet via a bypassed KYT, illicit addresses gaining transfer eligibility), not direct theft. PLUSD remains 1:1 backed in every state.
 
-**Key storage.** Relayer hot keys (on-chain caller) are held in a hardware-isolated KMS
-with per-call authorisation and full audit logging. The `relayerYieldAttestor` key (yield
-EIP-712 signing) is held in a separate air-gapped signer with no internet egress and is
-exercised only via the co-signing flow defined in the yield-attestation sections above.
-MPC key shares for cash-rail actions are managed through the custodian vendor's key
-ceremony.
+**Key storage.** Relayer hot keys (on-chain caller) are held in a hardware-isolated KMS with
+per-call authorisation and full audit logging. The `relayerYieldAttestor` key (yield EIP-712
+signing) is held in a separate air-gapped signer with no internet egress, exercised only via the
+co-signing flow defined in the yield-attestation sections above. MPC key shares for cash-rail
+actions are managed through the custodian vendor's key ceremony.
 
 **Audit log.** Every relayer action is recorded in an append-only log mirrored to an
 independent third-party sink. Relayer cannot delete or modify historical entries.
