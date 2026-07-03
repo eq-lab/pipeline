@@ -137,7 +137,7 @@ Checklist of what is still to build on the branch to match the approved spec.
 
 - Data model authority: [loans-data.md](../../product-specs/loans-data.md)
 - Lifecycle and state machine: [loans.md](../../product-specs/loans.md)
-- Minting, caps, console: [trustee-console.md](../../product-specs/trustee-console.md)
+- Minting and caps: [yield.md](../../product-specs/yield.md). Dashboard: [trustee-dashboard.md](../../product-specs/trustee-dashboard.md)
 - Registry function table and roles: [smart-contracts-registry.md](../../product-specs/smart-contracts-registry.md)
 - YieldMinter interface: [smart-contracts-interfaces.md](../../product-specs/smart-contracts-interfaces.md)
 - Yield delivery flow: [yield.md](../../product-specs/yield.md)

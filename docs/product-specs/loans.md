@@ -1,6 +1,6 @@
 # Loan Facilities — Product Spec
 
-> For the per-loan repayment ledger fields and the YieldMinter per-loan mint cap rule that consumes them, see [trustee-console.md](./trustee-console.md).
+> The per-loan repayment ledger fields are in [loans-data.md](./loans-data.md). The YieldMinter per-loan mint cap rule that consumes them is in [yield.md](./yield.md).
 
 ## Overview
 

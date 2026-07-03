@@ -1,6 +1,6 @@
 # Yield Distribution — Product Spec
 
-> For the per-loan mint cap rule on the loan-tied yield path and the split YieldMinter surface (`mintLoanYield` vs `mintTbillYield`), see [trustee-console.md](./trustee-console.md).
+> The per-loan mint cap rule and the split YieldMinter surface (`mintLoanYield` vs `mintTbillYield`) are in the [Per-loan mint cap](#per-loan-mint-cap) section below. Exact interface signatures and attestation structs are in [smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
 
 ## Overview
 
@@ -78,8 +78,8 @@ interest, and the fees are carried inside that interest. On-chain yield delivery
    - Treasury leg: mints `management_fee + performance_fee + oet_allocation` PLUSD to the
      Treasury Wallet. Capped at the recorded fee carve-outs for the loan.
    Both signatures (Relayer ECDSA + custodian EIP-1271) are verified on-chain. Neither party
-   alone can mint. The per-loan cap and the maturity-capped ceiling are detailed in
-   [trustee-console.md](./trustee-console.md).
+   alone can mint. The per-loan cap and the maturity-capped ceiling are detailed in the
+   [Per-loan mint cap](#per-loan-mint-cap) section below.
 
 ### USYC NAV yield distribution (lazy, stake/unstake-triggered)
 
@@ -100,6 +100,48 @@ yield is minted **lazily** on every sPLUSD `Deposit` or `Withdraw` event:
 USYC is not redeemed during yield distribution; it remains in the Capital Wallet. Between
 mints, Relayer polls USYC NAV continuously and exposes accrued-but-undistributed yield via
 `GET /v1/vault/stats` for dashboard display.
+
+---
+
+## Per-loan mint cap
+
+YieldMinter exposes two mint paths and tracks per-loan mints in its own storage. The exact
+interface signatures and attestation structs are in
+[smart-contracts-interfaces.md](./smart-contracts-interfaces.md).
+
+`mintLoanYield` requires `att.loanId` to point to a loan in `Performing` or `Watchlist`.
+`Matured`, `Default`, and `Closed` refuse mints. For `leg = Vault`:
+
+```
+vaultMintedByLoan[loanId] + att.amount <= min(
+  seniorInterestRecorded[loanId],
+  ceiling(loanId)
+)
+
+ceiling(loanId) = Σ over epochs e of
+  originalSeniorTranche * e.seniorInterestRateBps
+    * ( min(block.timestamp, e.maturityDate) - e.effectiveFrom ) / (365 days * 10_000)
+```
+
+The ceiling is the maturity-capped piecewise sum across the epoch schedule. Each epoch's
+accrual stops at its own maturity, so a loan past maturity without a rollover cannot accrue
+beyond its contracted term, and a rollover re-opens accrual under the new rate. For
+`leg = Treasury`:
+
+```
+treasuryMintedByLoan[loanId] + att.amount
+  <= mgmtFeeRecorded[loanId] + perfFeeRecorded[loanId] + oetAllocRecorded[loanId]
+```
+
+`destination` is bound by leg: `Vault` must equal the sPLUSD vault, `Treasury` must equal
+the Treasury Wallet. Replay is gated by `usedLoanRefs[att.repaymentRef]`.
+
+`mintTbillYield` carries no `loanId`. Its cap is the Capital Wallet USYC NAV delta from the
+Relayer's `last_minted_NAV` baseline described above. Replay is gated by
+`usedTbillRefs[att.navRef]`, a distinct map so a T-Bill ref cannot collide with a loan ref.
+
+Both paths require Relayer ECDSA plus custodian EIP-1271 plus the YieldMinter proxy holding
+`YIELD_MINTER` on PLUSD.
 
 ---
 
