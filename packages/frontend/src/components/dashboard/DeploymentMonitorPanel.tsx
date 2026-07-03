@@ -33,42 +33,41 @@ import {
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-// Figma node 3283:14480 — compact segmented control:
-// - Container: muted fill track (--color-pipeline-fill-muted), 2px padding,
-//   6px radius (--radius-pipeline-card-sm).
-// - Selected tab: white chip (--color-pipeline-surface), 32px height, 6px
-//   horizontal padding, 4px radius (--radius-pipeline-card), caption-size
-//   Medium (500) ink label.
-// - Unselected/disabled tab: transparent bg, same geometry, Regular (400)
-//   ink-muted label, cursor-not-allowed.
-// - Badge: muted fill, 4px radius, caption-size Regular ink-muted text,
-//   min-width 20px, horizontal padding 4px.
-//   Note: Figma also specifies a backdrop-blur ~16px effect on the badge;
-//   omitted — no blur token exists and it has no visible effect on the flat
-//   panel background.
-
-// Tab bar — Figma node 3283:72372 (mobile) / 3283:14480 (desktop).
+// Figma nodes 3283:14480 (desktop) / 3283:72372 (mobile) — segmented control.
 //
-// Container: full-width (flex-1 tabs fill the track), muted fill bg
-// (rgba(184,191,190,0.12) = --color-pipeline-fill-muted), 2px padding,
-// radius-xl = 6px track (--radius-pipeline-card-sm).
+// Responsive width behaviour (the two Figma variants are structurally identical
+// — `flex-1` tabs in a `size-full` track — but render differently by context):
+//   - Desktop (md+, node 3283:14480): the track HUGS its content and sits
+//     left-aligned; tabs are sized to their own label+badge (NOT split 50/50).
+//     → `md:w-auto md:self-start` on the track, `md:flex-none` on the tabs.
+//   - Mobile (<md, node 3283:72372): the track fills the section width and the
+//     two tabs split it equally. → `w-full` track, `flex-1` tabs.
 //
-// Each tab: flex-1 (fills half the track), h=32px, px=6px, radius-l = 4px
-// (--radius-pipeline-card). Active tab: white bg (--color-pipeline-surface),
-// medium weight ink label. Disabled tab: transparent bg, muted ink label,
-// 50% opacity, not-allowed cursor.
+// Container (.tabs): muted fill track (--color-pipeline-fill-muted =
+// fill-test/primary), 2px padding (size-2), radius-xl = 6px
+// (--radius-pipeline-card-sm).
 //
-// Badge: muted fill bg, 4px radius (--radius-pipeline-card), caption-size
-// Regular, muted ink, min-width 20px, horizontal padding 4px, vertical padding 2px.
-// (Figma specifies backdrop-blur on badge — omitted: no blur token exists
-// and it's invisible on the flat panel background.)
+// Each .tab: h=32px (h-8), min-w=32px (min-w-8), px=6px (size-6 → px-1.5),
+// radius-l = 4px (--radius-pipeline-card), gap-0. The label sits in its own
+// LabelCont with 6px horizontal padding (px-1.5). Both tabs use caption-size
+// Medium (500) — the selected/unselected tabs differ only by background
+// (white chip vs transparent) and text colour (ink vs ink-muted), NOT weight.
+//
+// Badge: muted fill bg (fill-test/primary), 4px radius (--radius-pipeline-card),
+// caption-size Regular ink-muted, min-width 20px (min-w-5), outer px 4px (px-1)
+// + inner LabelCont px 2px (px-0.5), py 2px (py-0.5).
+// (Figma specifies a background-blur on the badge — omitted: no blur token
+// exists and it's invisible over the flat panel background.)
 
 const tabSharedClasses = [
-  "flex flex-1 items-center justify-center gap-1",
-  "h-8 px-1.5",
+  // Mobile: fill half the track. Desktop: size to content.
+  "flex flex-1 md:flex-none items-center justify-center gap-0",
+  "h-8 min-w-8 px-1.5",
   // Figma radius-l = 4px (segmented-tab corner) — NOT a full pill.
   "rounded-[var(--radius-pipeline-card)]",
   "font-[family-name:var(--font-body)]",
+  // Both tabs are Medium (500) per Figma — selection is conveyed by bg + colour.
+  "font-medium",
   "text-[length:var(--text-pipeline-caption,12px)]",
   "leading-[var(--text-pipeline-caption--line-height,16px)]",
 ].join(" ");
@@ -77,20 +76,21 @@ const activeTabClasses = [
   tabSharedClasses,
   "bg-[color:var(--color-pipeline-surface)]",
   "text-[color:var(--color-pipeline-ink)]",
-  "font-medium",
   "cursor-default",
 ].join(" ");
 
-// Unselected (but selectable) tab: transparent bg, muted ink, Regular weight,
-// pointer cursor. Both tabs are now interactive (issue #755) — the previous
-// `disabledTabClasses` (opacity-50 / cursor-not-allowed) is retired.
+// Unselected (but selectable) tab: transparent bg, muted ink, pointer cursor.
+// Both tabs are interactive (issue #755) — the previous `disabledTabClasses`
+// (opacity-50 / cursor-not-allowed) is retired.
 const inactiveTabClasses = [
   tabSharedClasses,
   "bg-transparent",
   "text-[color:var(--color-pipeline-ink-muted)]",
-  "font-normal",
   "cursor-pointer",
 ].join(" ");
+
+// Label wrapper (LabelCont) — 6px horizontal padding inside the tab chip.
+const tabLabelClasses = "flex items-center justify-center px-1.5";
 
 const badgeClasses = [
   "inline-flex items-center justify-center",
@@ -103,6 +103,43 @@ const badgeClasses = [
   "text-[length:var(--text-pipeline-caption,12px)]",
   "leading-[var(--text-pipeline-caption--line-height,16px)]",
 ].join(" ");
+
+// Badge inner LabelCont — 2px horizontal padding around the count (size-2).
+const badgeLabelClasses = "flex items-center justify-center px-0.5";
+
+interface TabButtonProps {
+  selected: boolean;
+  onSelect: () => void;
+  label: string;
+  count: number;
+  "data-testid": string;
+  countTestId: string;
+}
+
+function TabButton({
+  selected,
+  onSelect,
+  label,
+  count,
+  countTestId,
+  ...rest
+}: TabButtonProps) {
+  return (
+    <button
+      type="button"
+      className={selected ? activeTabClasses : inactiveTabClasses}
+      role="tab"
+      aria-selected={selected}
+      onClick={onSelect}
+      {...rest}
+    >
+      <span className={tabLabelClasses}>{label}</span>
+      <span className={badgeClasses} data-testid={countTestId}>
+        <span className={badgeLabelClasses}>{count}</span>
+      </span>
+    </button>
+  );
+}
 
 interface LoanBookTabBarProps {
   activeTab: LoanBookTab;
@@ -117,46 +154,31 @@ function LoanBookTabBar({
   activeLoansCount,
   inOriginationCount,
 }: LoanBookTabBarProps) {
-  const activeSelected = activeTab === "active";
-  const originationSelected = activeTab === "origination";
   return (
+    // Mobile: full-width track (tabs split it). Desktop (md+): track hugs its
+    // content and left-aligns (self-start) — it does NOT stretch to the panel
+    // width (Figma node 3283:14480).
     <div
-      className="flex w-full items-start rounded-[var(--radius-pipeline-card-sm)] bg-[color:var(--color-pipeline-fill-muted)] p-0.5"
+      className="flex w-full items-start rounded-[var(--radius-pipeline-card-sm)] bg-[color:var(--color-pipeline-fill-muted)] p-0.5 md:w-auto md:self-start"
       data-testid="loan-book-tab-bar"
       role="tablist"
     >
-      <button
-        type="button"
-        className={activeSelected ? activeTabClasses : inactiveTabClasses}
-        role="tab"
-        aria-selected={activeSelected}
-        onClick={() => onSelect("active")}
+      <TabButton
+        selected={activeTab === "active"}
+        onSelect={() => onSelect("active")}
+        label="Active Loans"
+        count={activeLoansCount}
         data-testid="loan-book-tab-active-loans"
-      >
-        Active Loans
-        <span
-          className={badgeClasses}
-          data-testid="loan-book-tab-active-loans-count"
-        >
-          {activeLoansCount}
-        </span>
-      </button>
-      <button
-        type="button"
-        className={originationSelected ? activeTabClasses : inactiveTabClasses}
-        role="tab"
-        aria-selected={originationSelected}
-        onClick={() => onSelect("origination")}
+        countTestId="loan-book-tab-active-loans-count"
+      />
+      <TabButton
+        selected={activeTab === "origination"}
+        onSelect={() => onSelect("origination")}
+        label="In Origination"
+        count={inOriginationCount}
         data-testid="loan-book-tab-in-origination"
-      >
-        In Origination
-        <span
-          className={badgeClasses}
-          data-testid="loan-book-tab-in-origination-count"
-        >
-          {inOriginationCount}
-        </span>
-      </button>
+        countTestId="loan-book-tab-in-origination-count"
+      />
     </div>
   );
 }
