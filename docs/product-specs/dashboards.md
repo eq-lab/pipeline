@@ -156,6 +156,10 @@ Reads loan identity and immutable parameters from the LoanRegistry on-chain. Rea
 **Real-time event log per loan**
 - Chronological list of price feed notifications and status transitions for that loan (watchlist triggers, margin calls, payment delays, AIS blackouts, CMA discrepancies, status transitions).
 
+**In Origination tab**
+- Alongside the Active Loans table, the panel exposes an **In Origination** tab listing submitted-but-not-yet-drawn loans. Served by `GET /v1/loan-book/submissions` (public; returns `SubmissionView[]`, newest first, no status filter — all lifecycle statuses are listed). Each row reuses the Active Loans table layout plus a **Status** column (`InReview` / `Approved` / `Rejected`).
+- Row fields are taken directly from the submission's `loan_data` (the verbatim `SubmitLoanRequest`, a nested JSON object): Borrower/Commodity (`borrower_id` / `commodity`), Principal (`economics.original_facility_size`), Rate (`economics.senior_interest_rate_bps`), and Protection (`protection`). No metrics are computed on the frontend: Collateral, LTV, and Duration render `—` because the backend serves no discrete field for them (the submission carries `initial_ccr` and raw origination/maturity timestamps, not LTV or a duration). The Status cell is colour-coded: `Approved` → positive (green), `Rejected` → negative (red), `InReview` → pending (amber). Both tabs carry a live count badge.
+
 ---
 
 ## Protocol Dashboard — Panel C: Withdrawal Queue

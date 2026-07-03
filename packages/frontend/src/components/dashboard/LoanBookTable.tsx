@@ -63,6 +63,12 @@ export interface LoanBookRow {
   duration: string;
   rate: string;
   protection: string;
+  /**
+   * Lifecycle status (e.g. `"InReview"`), shown in the Status column on the
+   * In Origination tab only. `undefined` on active-loan rows (the Status
+   * column is not rendered for that tab — see `showStatus`).
+   */
+  status?: string;
 }
 
 /**
@@ -96,6 +102,13 @@ export interface LoanBookTableProps {
    * (no separate MobileCards path). Aggregates appear in the header row.
    */
   headerAggregates?: LoanBookHeaderAggregates;
+  /**
+   * When `true`, renders a trailing "Status" column populated from each row's
+   * `status` field. Used by the In Origination tab (issue #755) to surface the
+   * submission lifecycle status (`InReview` / `Approved` / `Rejected`). The
+   * Active Loans tab omits it (`showStatus` unset).
+   */
+  showStatus?: boolean;
 }
 
 // ── Token class constants ─────────────────────────────────────────────────────
@@ -173,9 +186,28 @@ const firstBodyCellClasses = [
 // + whitespace-nowrap) + py-2 (8px second padding layer).
 const firstBodyCellInnerClasses = "block truncate py-2";
 
+// Status column text colour (In Origination tab, #755) — semantic content
+// tokens, mirroring the WithdrawalQueueTable status-colour pattern:
+//   - Approved  → positive (green)
+//   - Rejected  → negative (red)
+//   - InReview  → pending  (amber)
+//   - anything else → muted ink (neutral fallback)
+function statusColorClass(status: string | undefined): string {
+  switch (status) {
+    case "Approved":
+      return "text-[color:var(--color-pipeline-positive)]";
+    case "Rejected":
+      return "text-[color:var(--color-pipeline-negative)]";
+    case "InReview":
+      return "text-[color:var(--color-pipeline-pending)]";
+    default:
+      return "text-[color:var(--color-pipeline-ink-muted)]";
+  }
+}
+
 // ── Table (all viewports) ─────────────────────────────────────────────────────
 
-function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
+function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
   const agg = headerAggregates ?? {};
   return (
     <div
@@ -208,6 +240,8 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
           <col style={{ width: "96px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "128px" }} />
+          {/* Status — In Origination tab only (#755). */}
+          {showStatus && <col style={{ width: "112px" }} />}
         </colgroup>
         <thead>
           {/*
@@ -247,6 +281,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
             <th className={headerCellClasses}>Duration</th>
             <th className={headerCellClasses}>Rate</th>
             <th className={headerCellClasses}>Protection</th>
+            {showStatus && <th className={headerCellClasses}>Status</th>}
           </tr>
         </thead>
         <tbody>
@@ -285,6 +320,18 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
               <td className={bodyCellClasses}>
                 <span className={bodyCellInnerClasses}>{row.protection}</span>
               </td>
+              {showStatus && (
+                <td className={bodyCellClasses}>
+                  <span
+                    className={[
+                      bodyCellInnerClasses,
+                      statusColorClass(row.status),
+                    ].join(" ")}
+                  >
+                    {row.status ?? "—"}
+                  </span>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -308,10 +355,18 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
  * `headerAggregates` populates the Principal and Collateral header subtitles
  * at all widths.
  */
-export function LoanBookTable({ rows, headerAggregates }: LoanBookTableProps) {
+export function LoanBookTable({
+  rows,
+  headerAggregates,
+  showStatus,
+}: LoanBookTableProps) {
   return (
     <div data-testid="loan-book-table">
-      <LoanTable rows={rows} headerAggregates={headerAggregates} />
+      <LoanTable
+        rows={rows}
+        headerAggregates={headerAggregates}
+        showStatus={showStatus}
+      />
     </div>
   );
 }

@@ -98,6 +98,8 @@
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
+  --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
+  --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
   --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
   /* Type ramp */
@@ -176,6 +178,8 @@
     32 128 0 / 0.16
   ); /* fill/positive-secondary — step done pill bg; node 1497-95272 */
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
+  --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
+  --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
   --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
 
   /* --- Typography: families --- */

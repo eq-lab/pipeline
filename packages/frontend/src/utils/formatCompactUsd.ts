@@ -78,6 +78,25 @@ export function formatOneDecimalRate(rate: string | null | undefined): string {
   return `${(num * 100).toFixed(1)}%`;
 }
 
+// ── formatBpsRate ─────────────────────────────────────────────────────────────
+
+/**
+ * Formats a rate expressed in **basis points** (the form the loan-submissions
+ * API serves `senior_interest_rate_bps` in) as a one-decimal percentage.
+ *
+ * This is a unit format of a directly-served value — no metric is derived.
+ *
+ * - `1120` → `"11.2%"`
+ * - `1170` → `"11.7%"`
+ * - `0`    → `"0.0%"`
+ * - `null` → `"—"`
+ */
+export function formatBpsRate(bps: number | null | undefined): string {
+  if (bps == null) return "—";
+  if (!Number.isFinite(bps)) return "—";
+  return `${(bps / 100).toFixed(1)}%`;
+}
+
 // ── formatLtv ────────────────────────────────────────────────────────────────
 
 /**
