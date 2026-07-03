@@ -14,6 +14,7 @@ use pipeline_worker::indexer::stellar::loan_registry_parsers::{
     parse_loan_drawn, parse_loan_rolled_over, parse_location_updated, parse_payment_recorded,
     parse_status_updated,
 };
+use pipeline_worker::indexer::stellar::parsers::parse_yield_minted;
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
     AccountId, Limits, PublicKey, ScAddress, ScMap, ScMapEntry, ScString, ScSymbol, ScVal, ScVec,
@@ -648,4 +649,91 @@ fn u32_max_in_ccr_updated() {
     );
     let log = parse_ccr_updated(&raw).expect("should decode u32::MAX ccr");
     assert_eq!(log.params["new_ccr"], u32::MAX);
+}
+
+// ── parse_yield_minted ────────────────────────────────────────────────────────
+
+/// Encode a `ScVal::Map` with u128 fields (sorted alphabetically by key).
+/// Mirrors the `#[contractevent]` data encoding for fields with type `u128`.
+fn encode_map_u128(pairs: &[(&str, u128)]) -> String {
+    let mut sorted = pairs.to_vec();
+    sorted.sort_by_key(|(k, _)| *k);
+
+    let entries: Vec<ScMapEntry> = sorted
+        .iter()
+        .map(|(k, v)| {
+            let key_sym: StringM<32> = (*k).try_into().unwrap();
+            let hi = (*v >> 64) as u64;
+            let lo = (*v & 0xFFFF_FFFF_FFFF_FFFF) as u64;
+            ScMapEntry {
+                key: ScVal::Symbol(ScSymbol(key_sym)),
+                val: ScVal::U128(UInt128Parts { hi, lo }),
+            }
+        })
+        .collect();
+
+    let map: VecM<ScMapEntry> = entries.try_into().unwrap();
+    ScVal::Map(Some(ScMap(map)))
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
+const YM_CONTRACT: &str = "CDWGDGLKZRGYPZYVXELOWBHIVRPAHGK3DM6AF4M4J3QKQB47QPNKM2LC";
+
+#[test]
+fn yield_minted_decodes_fixture() {
+    let s_plusd_amount: u128 = 500_000_000; // 500 PLUSD (6dp)
+    let treasury_amount: u128 = 25_000_000; // 25 PLUSD
+
+    let raw = make_raw_event(
+        YM_CONTRACT,
+        "yield_minted",
+        vec![], // no #[topic] fields beyond the discriminator symbol
+        encode_map_u128(&[
+            ("s_plusd_amount", s_plusd_amount),
+            ("treasury_amount", treasury_amount),
+        ]),
+    );
+
+    let log = parse_yield_minted(&raw).expect("should decode YieldMinted");
+    assert_eq!(log.event_name, "YieldMinted");
+    assert_eq!(log.contract_address, YM_CONTRACT);
+    assert_eq!(log.params["s_plusd_amount"], "500000000");
+    assert_eq!(log.params["treasury_amount"], "25000000");
+    assert_eq!(log.block_number, 2_000_000);
+    assert_eq!(log.block_timestamp, 1_700_100_000);
+    // log_index = tx_index*1000 + op_index*100 + event_index = 1*1000 + 0 + 2 = 1002
+    assert_eq!(log.log_index, 1002);
+}
+
+#[test]
+fn yield_minted_decodes_large_u128_amounts() {
+    // Test amounts that use the high 64 bits of u128.
+    let s_plusd_amount: u128 = (1u128 << 64) + 42; // spans hi/lo boundary
+    let treasury_amount: u128 = u128::MAX;
+
+    let raw = make_raw_event(
+        YM_CONTRACT,
+        "yield_minted",
+        vec![],
+        encode_map_u128(&[
+            ("s_plusd_amount", s_plusd_amount),
+            ("treasury_amount", treasury_amount),
+        ]),
+    );
+
+    let log = parse_yield_minted(&raw).expect("should decode large u128 YieldMinted");
+    assert_eq!(log.params["s_plusd_amount"], s_plusd_amount.to_string());
+    assert_eq!(log.params["treasury_amount"], u128::MAX.to_string());
+}
+
+#[test]
+fn yield_minted_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        YM_CONTRACT,
+        "deposit_requested", // wrong event name
+        vec![],
+        encode_map_u128(&[("s_plusd_amount", 1), ("treasury_amount", 1)]),
+    );
+    assert!(parse_yield_minted(&raw).is_none());
 }

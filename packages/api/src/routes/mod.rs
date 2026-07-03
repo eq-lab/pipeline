@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod auth;
 pub mod common;
+pub mod dashboard;
 pub mod emails;
 pub mod financial_position;
 pub mod kyc;

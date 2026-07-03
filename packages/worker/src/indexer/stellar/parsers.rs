@@ -15,9 +15,9 @@ use serde_json::{json, Value};
 use stellar_xdr::curr::{Limits, ReadXdr, ScAddress, ScVal};
 
 use crate::indexer::stellar::loan_registry_parsers::{
-    parse_ccr_updated, parse_economics_amended, parse_loan_closed, parse_loan_defaulted,
-    parse_loan_drawn, parse_loan_rolled_over, parse_location_updated, parse_payment_recorded,
-    parse_status_updated,
+    extract_u128_from_map, parse_ccr_updated, parse_economics_amended, parse_loan_closed,
+    parse_loan_defaulted, parse_loan_drawn, parse_loan_rolled_over, parse_location_updated,
+    parse_payment_recorded, parse_status_updated,
 };
 
 pub use crate::stellar::scval::extract_i128;
@@ -220,6 +220,39 @@ pub fn parse_vault_withdraw(raw: &RawEvent) -> Option<StellarLog> {
     })
 }
 
+/// YieldMinter `YieldMinted` event.
+/// topics: [yield_minted]
+/// value:  Map { s_plusd_amount: u128, treasury_amount: u128 }
+///
+/// Params shape matches the EVM `parse_yield_minted` in `packages/worker/src/indexer/parsers.rs`
+/// so that `list_yield_mints` (`params->>'s_plusd_amount'`) works identically on both chains.
+/// On Stellar this event is loan-repayment-only: `s_plusd_amount` = net senior coupon,
+/// `treasury_amount` = mgmt_fee + perf_fee + oet_alloc.
+pub fn parse_yield_minted(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "yield_minted" {
+        return None;
+    }
+    if raw.topics_base64.is_empty() {
+        return None;
+    }
+
+    let s_plusd_amount = extract_u128_from_map(&raw.value_base64, "s_plusd_amount")?;
+    let treasury_amount = extract_u128_from_map(&raw.value_base64, "treasury_amount")?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "YieldMinted".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "s_plusd_amount": s_plusd_amount.to_string(),
+            "treasury_amount": treasury_amount.to_string(),
+        }),
+    })
+}
+
 // ── ScVal helpers (exposed for unit tests) ────────────────────────────────────
 
 /// Decode a base64-encoded XDR `ScVal::U128` into a `u128`.
@@ -318,12 +351,17 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 ///
 /// `loan_registry_id` is `None` when the contract has not yet been deployed
 /// (ships dark — the new branch is a no-op until the env var is set).
+///
+/// `yield_minter_id` is `None` when the YieldMinter contract has not yet been deployed to
+/// this chain. When set, `YieldMinted` events are collected and routed to `StellarLogMapper`
+/// (contract_logs), matching the EVM path. Loan-repayment-only on Stellar today.
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,
     withdrawal_queue_id: &str,
     staked_plusd_id: &str,
     loan_registry_id: Option<&str>,
+    yield_minter_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
@@ -343,6 +381,9 @@ pub fn dispatch_parser(
             .or_else(|| parse_payment_recorded(raw))
             .or_else(|| parse_loan_rolled_over(raw))
             .or_else(|| parse_economics_amended(raw))
+    } else if yield_minter_id == Some(raw.contract_id.as_str()) {
+        // YieldMinter events — routes to StellarLogMapper → contract_logs.
+        parse_yield_minted(raw)
     } else {
         // The RPC `contractIds` filter should make this branch unreachable.
         // If we ever hit it, either config has drifted from what the RPC was

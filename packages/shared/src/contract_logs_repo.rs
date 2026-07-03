@@ -53,6 +53,33 @@ pub struct LoanSnapshotRow {
     pub snapshot: LoanSnapshot,
 }
 
+/// One `DepositRequested` or `WithdrawalRequested` event row.
+///
+/// Used by the Dashboard API to compute TVL (running net flow) as a pure function.
+/// `kind` is `"deposit"` (add) or `"withdrawal"` (subtract); callers apply the sign
+/// themselves when aggregating.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct FlowEventRow {
+    /// Block timestamp in Unix seconds.
+    pub block_timestamp: i64,
+    /// `"deposit"` or `"withdrawal"`.
+    pub kind: String,
+    /// Amount in USDC base units (6-decimal).
+    pub amount: BigDecimal,
+}
+
+/// One `YieldMinted` event row.
+///
+/// Used by the Dashboard API to compute cumulative yield minted to sPLUSD as a
+/// pure function. `s_plusd_amount` is the net PLUSD minted per event.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct YieldMintRow {
+    /// Block timestamp in Unix seconds.
+    pub block_timestamp: i64,
+    /// PLUSD minted to the sPLUSD vault in this event (6-decimal base units).
+    pub s_plusd_amount: BigDecimal,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -287,6 +314,83 @@ impl ContractLogsRepo {
              WHERE r.chain_id = $1
                AND r.event_name = 'WithdrawalRequested'
                AND r.block_timestamp <= $2",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
+    /// All `DepositRequested` and `WithdrawalRequested` events for a chain with
+    /// `block_timestamp <= to_unix`, ordered by `block_timestamp`.
+    ///
+    /// Used by the Dashboard TVL endpoint to reconstruct the running net flow:
+    /// TVL(t) = Σ DepositRequested.amount − Σ WithdrawalRequested.amount (up to t).
+    /// Both event types carry `amount` in USDC 6-decimal base units.
+    ///
+    /// Returns `kind = "deposit"` for `DepositRequested` rows and
+    /// `kind = "withdrawal"` for `WithdrawalRequested` rows.
+    pub async fn list_flow_events<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<FlowEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, FlowEventRow>(
+            "SELECT
+                 block_timestamp,
+                 CASE event_name
+                     WHEN 'DepositRequested'    THEN 'deposit'
+                     WHEN 'WithdrawalRequested' THEN 'withdrawal'
+                 END AS kind,
+                 -- COALESCE guards a malformed/legacy row missing the `amount`
+                 -- key: without it a single NULL would fail-decode the whole
+                 -- query (non-Option BigDecimal) and 500 every dashboard endpoint.
+                 COALESCE((params->>'amount')::numeric, 0) AS amount
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name IN ('DepositRequested', 'WithdrawalRequested')
+               AND block_timestamp <= $2
+             ORDER BY block_timestamp",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
+    /// All `YieldMinted` events for a chain with `block_timestamp <= to_unix`,
+    /// ordered by `block_timestamp`.
+    ///
+    /// Used by the Dashboard yield-history and summary endpoints to compute the
+    /// cumulative net PLUSD minted to the sPLUSD vault. `s_plusd_amount` is
+    /// sourced from `params->>'s_plusd_amount'`.
+    pub async fn list_yield_mints<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<YieldMintRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, YieldMintRow>(
+            "SELECT
+                 block_timestamp,
+                 -- COALESCE guards a malformed row missing `s_plusd_amount`:
+                 -- a NULL would otherwise fail-decode the whole query and 500
+                 -- the summary + yield-history endpoints.
+                 COALESCE((params->>'s_plusd_amount')::numeric, 0) AS s_plusd_amount
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'YieldMinted'
+               AND block_timestamp <= $2
+             ORDER BY block_timestamp",
         )
         .bind(chain_id)
         .bind(to_unix)
