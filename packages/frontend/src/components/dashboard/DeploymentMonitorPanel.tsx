@@ -256,13 +256,12 @@ export function DeploymentMonitorPanel() {
       {/*
        * Spacing from Figma node 3283:14431 (Section):
        *   heading h=56, cards start y=88 → 32px heading→cards gap.
-       *   PanelContainer (borderless) contributes gap-4 (16px) between <h2>
-       *   and body div. pt-4 (16px) on this wrapper adds the remaining 16px
-       *   → 32px total heading-to-cards.
+       *   PanelContainer (borderless) now contributes gap-8 (32px) between
+       *   <h2> and this body div — no extra pt-* needed.
        *   gap-8 (32px) between LoanBookSummary and the table container:
        *   cards end y=232, Container starts y=264 → 32px below cards.
        */}
-      <div className="flex flex-col gap-8 pt-4">
+      <div className="flex flex-col gap-8">
         <LoanBookSummary
           totalDeployed={summary.totalDeployed}
           totalCollateral={summary.totalCollateral}

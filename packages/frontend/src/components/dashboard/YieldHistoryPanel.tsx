@@ -130,7 +130,7 @@ export function YieldHistoryPanel() {
        *   - Three metric cards in a horizontally-scrollable row below.
        *     All cards shown at every viewport — hide nothing (#749 Q3).
        */}
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         {/*
          * Chart cards row — Cumulative Yield + TVL area chart placeholder.
          * Figma XS frame `3283-71053` shows two chart cards side-by-side:
@@ -280,7 +280,7 @@ export function YieldHistoryPanel() {
           data-testid="yield-metric-cards-scroll"
         >
           <div
-            className="flex min-w-max flex-row gap-3 md:min-w-0"
+            className="flex min-w-max flex-row gap-4 md:min-w-0"
             data-testid="yield-metric-cards"
           >
             <MetricCard

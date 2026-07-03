@@ -78,27 +78,30 @@ Container `3283:12101`: 1200px wide, **32px padding** all sides → 1136px conte
 
 ## Implementation Steps
 
-1. **Branch.** From `main`: `git checkout main && git pull && git checkout -b fix/754-dashboard-figma-fidelity`. Do not stack on the current `feat/755-*` branch.
+1. ~~**Branch.** From `main`: `git checkout main && git pull && git checkout -b fix/754-dashboard-figma-fidelity`. Do not stack on the current `feat/755-*` branch.~~ ✅ Branch already created: `fix/754-dashboard-figma-spacing-typography`.
 
-2. **`PanelContainer.tsx` — heading size + heading-to-body gap.**
-   - Change `titleClasses` to Heading L on desktop: `text-[length:var(--text-pipeline-heading-m)]` → step to `md:text-[length:var(--text-pipeline-heading-l)]` / `md:leading-[var(--text-pipeline-heading-l--line-height)]` (mobile step-down kept per existing responsive convention; use `heading-m` mobile). Weight stays `font-normal` (400) pending Open Question 1.
-   - Change the wrapper gap on both the `borderless` and `Card` branches from `gap-4` to **`gap-8` (32px)** to match the 56px-heading → content 32px gap. (Verify this does not double-space panels that also add their own internal top padding; adjust the panel's inner `pt-*` if so.)
+2. ✅ **`PanelContainer.tsx` — heading size + heading-to-body gap.**
+   - Changed `titleClasses` to Heading L on desktop (`md:text-[length:var(--text-pipeline-heading-l)]` / `md:leading-[var(--text-pipeline-heading-l--line-height)]`), mobile stays `heading-m`. Weight `font-normal` (400) per Open Question 1 resolution.
+   - Changed wrapper gap on both `borderless` and `Card` branches from `gap-4` to `gap-8` (32px).
+   - Removed `pt-4` from `DeploymentMonitorPanel` and `WithdrawalQueuePanel` body wrappers to avoid double-spacing (was 16+16=32; now 32+0=32, correct).
 
-3. **`LoanBookTable.tsx` — remove double vertical padding in body cells.**
-   - Body cell and first (borrower) cell: keep `py-3` (12px) on the `<td>`; change the inner wrapper from `block py-2` / `block truncate py-2` to `block` / `block truncate` (drop `py-2`). Net row vertical padding becomes exactly 12/12 = Figma 64px row.
-   - Verify header caption stays Caption 12/16 muted (`pb-2` gives the 8px header→row gap) — no change expected.
+3. ✅ **`LoanBookTable.tsx` — remove double vertical padding in body cells.**
+   - Changed `bodyCellInnerClasses` from `"block py-2"` to `"block"`.
+   - Changed `firstBodyCellInnerClasses` from `"block truncate py-2"` to `"block truncate"`.
 
-4. **`WithdrawalQueueTable.tsx` — same double-padding fix** as step 3 (drop inner `py-2` from body-cell inner wrappers, keep `py-3` on the cell).
+4. ✅ **`WithdrawalQueueTable.tsx` — same double-padding fix.**
+   - Changed `bodyCellInnerClasses` from `"block py-2"` to `"block"`.
+   - Changed `firstBodyCellInnerClasses` from `"block truncate py-2"` to `"block truncate"`.
 
-5. **`YieldHistoryPanel.tsx` — metric-card row + chart-pair gaps.**
-   - Set the metric-cards row gap to **`gap-4` (16px)** (currently `gap-3`/12).
-   - Verify the chart-pair (Cumulative Yield + TVL) row gap is 16px (`gap-4`) and the vertical gap between the chart-pair row and the metric-card row is 16px; adjust the outer `gap-6` if Figma is 16px there (measure `3283:67619` children: chart pair vs "Second card pair" offset). Keep card padding `p-4` and headline/eyebrow tokens.
+5. ✅ **`YieldHistoryPanel.tsx` — metric-card row + chart-pair gaps.**
+   - Changed metric-cards row gap from `gap-3` (12px) to `gap-4` (16px).
+   - Changed outer flex column gap from `gap-6` (24px) to `gap-4` (16px): XS frame confirms 16px gap between Charts (ends y=668) and Second card pair (starts y=684) in `3283:71053`.
 
-6. **`BalanceSheetPanel.tsx`, `LoanBookSummary.tsx`, `WithdrawalQueuePanel.tsx` summary cards — verify only.** Their measured values already match Figma (p-4, gap-4, h-144, label 16/20 w400, value 20/28 display). Do **not** change unless live comparison against `3283:12101` shows drift; if it does, record the exact node + delta in this plan's decision log before editing.
+6. ✅ **`BalanceSheetPanel.tsx`, `LoanBookSummary.tsx`, `WithdrawalQueuePanel.tsx` summary cards — verified.** No changes needed; values already match Figma.
 
-7. **`routes/dashboard.tsx` — verify section gap.** Desktop `md:gap-24` (96) already matches; leave `gap-12` mobile pending Open Question 2. Confirm the white content-container padding (`p-4 md:p-8` = 32px desktop) matches the container's 32px inset — it does.
+7. ✅ **`routes/dashboard.tsx` — verified section gap.** Desktop `md:gap-24` (96px) already correct. Mobile `gap-12` (48px) confirmed from XS frame `3283:71053`: Top→Balance Sheet gap = 892 - 844 = 48px; all subsequent sections also 48px.
 
-8. **Token check.** Confirm no raw hex/font-name literals were introduced; all values are Tailwind numeric spacing or `--text-pipeline-*` / `--font-*` tokens (FRONTEND.md rule).
+8. ✅ **Token check.** No raw hex/font-name literals introduced; all values use Tailwind numeric spacing or `--text-pipeline-*` / `--font-*` tokens.
 
 9. **Lint + build.** Run `npx tsx scripts/lint-docs.ts` (docs), and the frontend typecheck/lint per project scripts; fix all errors.
 

@@ -137,16 +137,15 @@ const headerCellClasses = [
   "overflow-hidden",
 ].join(" ");
 
-// Body cells — two padding layers matching Figma geometry (node 3283-14552):
-//   Layer 1 — <td> py-3 (12px): the `.row` Slot starts at y=12 from the row
-//             top edge (Figma: Slot y=12 inside the 64px .row).
-//             Token: --size-12 / var(--size-12, 12px).
-//   Layer 2 — inner <span> py-2 (8px): the `list-item` starts at y=8 inside
-//             the Slot (Figma: list-item y=8 within Slot h=40).
-//             Token: --size-8 / var(--size-8, 8px).
-//   Combined: 12px + 8px = 20px from the row edge to the text top, with 24px
-//             text (22px line-height + line box rounding), then 8px + 12px = 20px
-//             below → 64px total row height matching Figma .row h=64.
+// Body cells — py-3 (12px top+bottom) matching Figma geometry (node 3283-14552):
+//   Row height: 64px (.row h=64, node 3704:1095).
+//   Row padding: py-3 (12px) on the <td> — the Figma .row has 12px top/bottom
+//   padding (Slot y=12 inside the 64px .row, list-item vertically centred inside
+//   Slot h=40). The previous "two-layer" approach (py-3 on <td> + py-2 on <span>)
+//   was double-counting: the inner py-2 added 8px extra on each side, making rows
+//   taller than Figma. The correct geometry is py-3 on the <td> only, with the
+//   inner <span> providing no vertical padding (items-center on the containing
+//   flex row handles vertical alignment).
 //
 // `border-t` on <td> (not <tr>) — border-collapse renders cell borders
 //   reliably; <tr> borders are unreliable in some browser table paths.
@@ -162,9 +161,9 @@ const bodyCellClasses = [
   "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-// Cell text inner wrapper: py-2 (8px) is the second padding layer (list-item
-// y=8 inside Slot). Applied as className on a <span> wrapping each cell value.
-const bodyCellInnerClasses = "block py-2";
+// Cell text inner wrapper: plain block — no extra vertical padding.
+// (The previous py-2 was a double-padding that made rows taller than Figma h=64.)
+const bodyCellInnerClasses = "block";
 
 // First column (borrower/commodity): <td> gets py-3 + border-t (same as
 // bodyCellClasses), overflow-hidden + max-w-0 forces the truncation boundary.
@@ -183,8 +182,8 @@ const firstBodyCellClasses = [
 ].join(" ");
 
 // Inner span for the borrower cell: truncate (overflow-hidden + text-ellipsis
-// + whitespace-nowrap) + py-2 (8px second padding layer).
-const firstBodyCellInnerClasses = "block truncate py-2";
+// + whitespace-nowrap) — no extra vertical padding (py-3 on the <td> is enough).
+const firstBodyCellInnerClasses = "block truncate";
 
 // Status column text colour (In Origination tab, #755) — semantic content
 // tokens, mirroring the WithdrawalQueueTable status-colour pattern:

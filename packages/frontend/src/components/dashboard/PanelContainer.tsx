@@ -59,16 +59,20 @@ export interface PanelContainerProps {
   "data-node-id"?: string;
 }
 
-// Panel heading — display serif at heading-m (28px), stepping down to
-// heading-m-mobile (20px) below md, matching the home page's responsive
-// type-scale step-down (FRONTEND.md "Responsive behavior").
+// Panel heading — display serif at heading-l (48px/56px) on desktop, stepping
+// down to heading-m (28px/36px) below md, matching the applied Figma values on
+// section title nodes 3283:14432 (Loan Book) and 3283:14894 (Withdrawal Queue):
+// font/title-font-family (display), font/font-size/heading-l (48px),
+// font/line-height/heading-l (56px), font/title-font-weight = Regular (400).
+// Mobile step-down follows the home page responsive type-scale convention
+// (FRONTEND.md "Responsive behavior").
 const titleClasses = [
   "font-[family-name:var(--font-display)]",
   "font-normal",
-  "text-[length:var(--text-pipeline-heading-m-mobile)]",
-  "leading-[var(--text-pipeline-heading-m-mobile--line-height)]",
-  "md:text-[length:var(--text-pipeline-heading-m)]",
-  "md:leading-[var(--text-pipeline-heading-m--line-height)]",
+  "text-[length:var(--text-pipeline-heading-m)]",
+  "leading-[var(--text-pipeline-heading-m--line-height)]",
+  "md:text-[length:var(--text-pipeline-heading-l)]",
+  "md:leading-[var(--text-pipeline-heading-l--line-height)]",
   "text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
 
@@ -134,9 +138,11 @@ export function PanelContainer({
     // Borderless mode: no Card surface — no border, no background fill.
     // The Loan Book section frame (Figma 3283:14431) is unstyled; chrome lives
     // on the inner summary cards and table-container card.
+    // gap-8 (32px) = Figma size-32: heading h=56, content starts y=88 → 32px gap
+    // (measured on nodes 3283:14432 Loan Book, 3283:14894 Withdrawal Queue).
     return (
       <div
-        className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+        className={["flex flex-col gap-8", className].filter(Boolean).join(" ")}
         {...rest}
       >
         {body}
@@ -147,7 +153,8 @@ export function PanelContainer({
   return (
     <Card
       variant="white"
-      className={["flex flex-col gap-4", className].filter(Boolean).join(" ")}
+      // gap-8 (32px) = Figma size-32: heading h=56, content starts y=88 → 32px gap.
+      className={["flex flex-col gap-8", className].filter(Boolean).join(" ")}
       {...rest}
     >
       {body}

@@ -56,7 +56,11 @@ const headerCellClasses = [
   "overflow-hidden",
 ].join(" ");
 
-// Body cells — py-3 (12px) row layer.
+// Body cells — py-3 (12px) row layer matching Figma geometry (section 3283:14893).
+// The previous "two-layer" approach (py-3 on <td> + py-2 on inner <span>) was
+// double-counting: the inner py-2 added 8px extra on each side, making rows
+// taller than Figma h=64. Correct geometry: py-3 on <td> only, inner <span>
+// has no vertical padding.
 const bodyCellClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
@@ -68,8 +72,8 @@ const bodyCellClasses = [
   "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-// Cell inner wrapper: py-2 (8px) second padding layer.
-const bodyCellInnerClasses = "block py-2";
+// Cell inner wrapper: plain block — no extra vertical padding.
+const bodyCellInnerClasses = "block";
 
 // First column (Holder): allow truncation of long addresses.
 const firstBodyCellClasses = [
@@ -84,7 +88,8 @@ const firstBodyCellClasses = [
   "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-const firstBodyCellInnerClasses = "block truncate py-2";
+// Inner span for the holder cell: truncate — no extra vertical padding.
+const firstBodyCellInnerClasses = "block truncate";
 
 // ── Status badge ─────────────────────────────────────────────────────────────
 
