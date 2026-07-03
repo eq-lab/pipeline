@@ -108,6 +108,37 @@ describe("DeploymentMonitorPanel — origination content", () => {
     expect(within(table).getByText("Trafigura / Alumina")).toBeTruthy();
   });
 
+  it("colours the Status cell by lifecycle status", () => {
+    const row = {
+      borrowerCommodity: "X / Y",
+      principal: "$1.0M",
+      collateral: "—",
+      ltv: "—",
+      duration: "—",
+      rate: "10.0%",
+      protection: "—",
+    };
+    hookState = baseState({
+      activeTab: "origination",
+      originationRows: [
+        { ...row, borrowerCommodity: "A / a", status: "Approved" },
+        { ...row, borrowerCommodity: "R / r", status: "Rejected" },
+        { ...row, borrowerCommodity: "I / i", status: "InReview" },
+      ],
+    });
+    render(<DeploymentMonitorPanel />);
+
+    expect(screen.getByText("Approved").className).toContain(
+      "var(--color-pipeline-positive)",
+    );
+    expect(screen.getByText("Rejected").className).toContain(
+      "var(--color-pipeline-negative)",
+    );
+    expect(screen.getByText("InReview").className).toContain(
+      "var(--color-pipeline-pending)",
+    );
+  });
+
   it("shows an empty state when there are no submissions", () => {
     hookState = baseState({
       activeTab: "origination",

@@ -186,6 +186,25 @@ const firstBodyCellClasses = [
 // + whitespace-nowrap) + py-2 (8px second padding layer).
 const firstBodyCellInnerClasses = "block truncate py-2";
 
+// Status column text colour (In Origination tab, #755) — semantic content
+// tokens, mirroring the WithdrawalQueueTable status-colour pattern:
+//   - Approved  → positive (green)
+//   - Rejected  → negative (red)
+//   - InReview  → pending  (amber)
+//   - anything else → muted ink (neutral fallback)
+function statusColorClass(status: string | undefined): string {
+  switch (status) {
+    case "Approved":
+      return "text-[color:var(--color-pipeline-positive)]";
+    case "Rejected":
+      return "text-[color:var(--color-pipeline-negative)]";
+    case "InReview":
+      return "text-[color:var(--color-pipeline-pending)]";
+    default:
+      return "text-[color:var(--color-pipeline-ink-muted)]";
+  }
+}
+
 // ── Table (all viewports) ─────────────────────────────────────────────────────
 
 function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
@@ -303,7 +322,12 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
               </td>
               {showStatus && (
                 <td className={bodyCellClasses}>
-                  <span className={bodyCellInnerClasses}>
+                  <span
+                    className={[
+                      bodyCellInnerClasses,
+                      statusColorClass(row.status),
+                    ].join(" ")}
+                  >
                     {row.status ?? "—"}
                   </span>
                 </td>
