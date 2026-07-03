@@ -1,4 +1,4 @@
-# Build stage — compiles the entire Rust workspace
+# Build stage — compiles the entire workspace
 FROM rust:1.88-slim AS build
 WORKDIR /sln
 
