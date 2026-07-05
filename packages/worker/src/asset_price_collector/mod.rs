@@ -5,16 +5,17 @@
 //! — this deals with external USD asset prices sourced through the pluggable
 //! [`PriceProvider`](shared::price_provider::PriceProvider) abstraction.
 //!
-//! Each cycle, per distinct asset:
+//! Each cycle, per distinct `(asset, price_provider)` pair:
 //!   1. retention delete first (prune points older than the window),
 //!   2. compute the UTC-aligned grid of `retention` points ending at "now",
-//!   3. for every missing grid point, fetch via the asset's provider
+//!   3. for every missing grid point, fetch via that provider
 //!      (`historical_price` for past points, `current_price` for the latest point)
 //!      and idempotently insert.
 //!
-//! An asset configured with more than one provider is logged and skipped. Per-asset
-//! errors are logged and never abort the cycle. The loop sleeps 5 minutes between
-//! cycles.
+//! The series is keyed by `(asset, price_provider, timestamp)`, so the same collateral
+//! asset may be valued by more than one provider — each pair is collected independently.
+//! Per-pair errors are logged and never abort the cycle. The loop sleeps 1 minute
+//! between cycles.
 //!
 //! The pure grid/retention/missing-point logic is factored into standalone functions
 //! ([`align_down_to_grid`], [`expected_grid`], [`missing_points`]) so it is unit
@@ -22,33 +23,33 @@
 
 pub mod config;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
-use shared::loan_parameters_repo::{AssetProvider, LoanParametersRepo};
+use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::price_provider::price_provider_for;
 
 pub use config::{AssetPriceCollectorSettings, PriceInterval};
 
-/// Delay between collection cycles (5 minutes).
+/// Delay between collection cycles (1 minute).
 // `Duration::from_mins` is nightly-only (feature `duration_constructors`), so we
 // build the value from seconds and silence clippy's suggestion to use it.
 #[allow(clippy::duration_suboptimal_units)]
-const CYCLE_DELAY: Duration = Duration::from_secs(5 * 60);
+const CYCLE_DELAY: Duration = Duration::from_secs(60);
 
 /// How recent the latest grid point must be (relative to `now`) for it to be
 /// sourced from the live `current_price` rather than `historical_price`.
 ///
-/// A normally-running job sees a new grid point within one cycle (~5 min); a point
-/// older than this window was missed (restart/downtime) and must be backfilled with
-/// the historical price *for that instant* rather than the later current price —
-/// otherwise e.g. a daily noon close could be filled with the next afternoon's
-/// price. Two cycles of slack tolerate a delayed cycle.
-const FRESHNESS_SECS: i64 = 2 * 5 * 60;
+/// A normally-running job collects each grid point within a cycle; a point older than
+/// this fixed ~10-minute window was missed (restart/downtime) and must be backfilled
+/// with the historical price *for that instant* rather than the later current price —
+/// otherwise e.g. a daily noon close could be filled with the next afternoon's price.
+/// The window is several cycles wide so a delayed cycle still counts the point as live.
+const FRESHNESS_SECS: i64 = 10 * 60;
 
 /// Snap `now` back to the most recent grid point at or before it.
 ///
@@ -126,34 +127,6 @@ pub fn latest_is_live(now: DateTime<Utc>, latest: DateTime<Utc>) -> bool {
     now - latest <= chrono::Duration::seconds(FRESHNESS_SECS)
 }
 
-/// Split the distinct `(asset, price_provider)` pairs into the assets that can be
-/// collected (exactly one provider) and the assets skipped for having conflicting
-/// providers (more than one). Pure so the conflict rule is unit-testable without a
-/// database; output is sorted by asset for determinism.
-#[allow(clippy::type_complexity)]
-pub fn partition_assets(
-    pairs: Vec<AssetProvider>,
-) -> (Vec<(String, String)>, Vec<(String, Vec<String>)>) {
-    let mut by_asset: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for p in pairs {
-        by_asset.entry(p.asset).or_default().push(p.price_provider);
-    }
-    let mut collectable = Vec::new();
-    let mut conflicts = Vec::new();
-    for (asset, mut providers) in by_asset {
-        // Collapse identical providers so only genuinely distinct ones count as a
-        // conflict (the SQL already de-dupes, but stay robust if that changes).
-        providers.sort();
-        providers.dedup();
-        if providers.len() == 1 {
-            collectable.push((asset, providers.pop().expect("len == 1")));
-        } else {
-            conflicts.push((asset, providers));
-        }
-    }
-    (collectable, conflicts)
-}
-
 /// Entry point: loop forever, running one [`cycle`] every [`CYCLE_DELAY`]. Errors
 /// inside a cycle are logged and the loop continues.
 pub async fn run_asset_price_collector_job(
@@ -185,18 +158,12 @@ async fn cycle(
     price_repo: &LoanAssetPriceRepo,
     now: DateTime<Utc>,
 ) -> anyhow::Result<()> {
+    // The query already returns the distinct set of pairs; each is collected
+    // independently against its own `(asset, provider)` series.
     let pairs = params_repo.distinct_asset_providers().await?;
-    let (collectable, conflicts) = partition_assets(pairs);
 
-    for (asset, providers) in &conflicts {
-        tracing::warn!(
-            asset = %asset,
-            providers = ?providers,
-            "asset mapped to conflicting price providers, skipping"
-        );
-    }
-
-    for (asset, provider_key) in &collectable {
+    for pair in &pairs {
+        let (asset, provider_key) = (&pair.asset, &pair.price_provider);
         if let Err(e) = collect_asset(settings, price_repo, asset, provider_key, now).await {
             tracing::error!(asset = %asset, provider = %provider_key, error = ?e, "asset price collection failed");
         }
@@ -222,13 +189,17 @@ async fn collect_asset(
     let latest = *grid.last().expect("non-empty grid has a last element");
 
     // 1. Retention first — prune anything older than the window's oldest point.
-    let deleted = price_repo.delete_older_than(asset, cutoff).await?;
+    let deleted = price_repo
+        .delete_older_than(asset, provider_key, cutoff)
+        .await?;
     if deleted > 0 {
-        tracing::debug!(asset = %asset, deleted, "pruned stale asset prices");
+        tracing::debug!(asset = %asset, provider = %provider_key, deleted, "pruned stale asset prices");
     }
 
     // 2. Find gaps in the window.
-    let existing = price_repo.existing_timestamps_since(asset, cutoff).await?;
+    let existing = price_repo
+        .existing_timestamps_since(asset, provider_key, cutoff)
+        .await?;
     let missing = missing_points(&grid, &existing);
 
     // 3. Backfill each missing point. The latest grid point uses the live
@@ -242,11 +213,13 @@ async fn collect_asset(
         } else {
             provider.historical_price(asset, *ts).await?
         };
-        inserted += price_repo.insert_price(asset, &price, *ts).await?;
+        inserted += price_repo
+            .insert_price(asset, provider_key, &price, *ts)
+            .await?;
     }
 
     if inserted > 0 {
-        tracing::info!(asset = %asset, inserted, "collected asset prices");
+        tracing::info!(asset = %asset, provider = %provider_key, inserted, "collected asset prices");
     }
 
     Ok(())

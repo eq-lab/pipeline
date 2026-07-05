@@ -7,6 +7,12 @@
 //! patterns in `shared` (e.g. `MetadataFetcher`) — the trait is the seam, concrete
 //! implementations live behind it so more providers (CoinGecko, on-chain oracles,
 //! …) can be added without touching the job.
+//!
+//! Two implementations ship today: the deterministic [`StaticPriceProvider`]
+//! (`STATIC_PROVIDER_KEY`, for dev/tests) and the live
+//! [`MetalPricePriceProvider`](crate::metal_price::MetalPricePriceProvider)
+//! (`METALPRICE_PROVIDER_KEY`, precious-metal USD spot/historical rates from
+//! [MetalpriceAPI](https://metalpriceapi.com/documentation)).
 
 use std::sync::Arc;
 
@@ -33,12 +39,20 @@ pub trait PriceProvider: Send + Sync {
 /// Registry key for [`StaticPriceProvider`].
 pub const STATIC_PROVIDER_KEY: &str = "static";
 
+/// Registry key for
+/// [`MetalPricePriceProvider`](crate::metal_price::MetalPricePriceProvider).
+pub const METALPRICE_PROVIDER_KEY: &str = "metal_price";
+
 /// Resolve a `price_provider` string key (as stored in `loan_parameters`) to a
-/// concrete provider. Returns an error for unknown keys so the caller can log and
+/// concrete provider. Returns an error for unknown keys — and for providers whose
+/// configuration is missing (e.g. an unset API key) — so the caller can log and
 /// skip the affected asset.
 pub fn price_provider_for(key: &str) -> Result<Arc<dyn PriceProvider>> {
     match key {
         STATIC_PROVIDER_KEY => Ok(Arc::new(StaticPriceProvider)),
+        METALPRICE_PROVIDER_KEY => Ok(Arc::new(
+            crate::metal_price::MetalPricePriceProvider::from_env()?,
+        )),
         other => Err(anyhow!("unknown price provider key `{other}`")),
     }
 }
