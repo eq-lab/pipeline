@@ -542,20 +542,24 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
 /// scale of the on-chain tranche amounts so `compute_loan_book` can value collateral
 /// with the same `base6_to_decimal_string` formatting and ratio math as principal.
 ///
-/// Loans whose asset has no stored price are simply absent from the map (→ `null`).
+/// Each loan is valued by its own `(asset, price_provider)` pair — the same asset may
+/// carry different prices under different providers. Loans whose `(asset, provider)` has
+/// no stored price are simply absent from the map (→ `null`).
 async fn collateral_by_loan(state: &AppState) -> Result<HashMap<String, BigDecimal>, ApiError> {
     let params = state.loan_parameters_repo.list_all().await?;
-    let price_by_asset: HashMap<String, BigDecimal> = state
+    let price_by_asset_provider: HashMap<(String, String), BigDecimal> = state
         .loan_asset_price_repo
         .latest_prices()
         .await?
         .into_iter()
+        .map(|(asset, provider, price)| ((asset, provider), price))
         .collect();
 
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
     for p in &params {
-        if let Some(price) = price_by_asset.get(&p.asset) {
+        let key = (p.asset.clone(), p.price_provider.clone());
+        if let Some(price) = price_by_asset_provider.get(&key) {
             let collateral_micro = (price * &p.discount) * &scale;
             map.insert(loan_key(&p.loan_id), collateral_micro);
         }

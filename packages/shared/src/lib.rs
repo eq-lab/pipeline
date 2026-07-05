@@ -14,6 +14,7 @@ pub mod loan_parameters_repo;
 pub mod loan_snapshot;
 pub mod log_mapper;
 pub mod metadata_fetcher;
+pub mod metal_price;
 pub mod position_repo;
 pub mod price_provider;
 pub mod signature;

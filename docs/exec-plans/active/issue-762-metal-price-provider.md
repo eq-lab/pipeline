@@ -65,23 +65,27 @@ instead of the deterministic `StaticPriceProvider`.
 
 ## Implementation Steps
 
-1. **Module scaffold.** Add `pub mod metal_price;` to `packages/shared/src/lib.rs` (alphabetical
+**Status: ✅ all steps implemented** (branch `feat/762-metal-price-provider`). Open Questions
+resolved to documented defaults (daily-close accepted, no interval guard; `METALPRICE_API_KEY` /
+`METALPRICE_BASE_URL`) per requester confirmation on the Issue.
+
+1. ✅ **Module scaffold.** Add `pub mod metal_price;` to `packages/shared/src/lib.rs` (alphabetical
    order, before `metadata_fetcher`). Create `packages/shared/src/metal_price.rs`.
 
-2. **Settings (`packages/shared/src/metal_price.rs`).** Add `MetalPriceSettings { api_key: String,
+2. ✅ **Settings (`packages/shared/src/metal_price.rs`).** Add `MetalPriceSettings { api_key: String,
    base_url: String }` with `from_env()` mirroring `CrystalSettings::from_env`
    (`packages/shared/src/crystal/config.rs:45`):
    - `api_key` = `env::var("METALPRICE_API_KEY")` with `.context("required env var METALPRICE_API_KEY is not set")`.
    - `base_url` = `env::var("METALPRICE_BASE_URL").unwrap_or_else(|_| "https://api.metalpriceapi.com/v1".to_owned())`.
 
-3. **Response models.** Define serde structs for the `/latest` and dated responses:
+3. ✅ **Response models.** Define serde structs for the `/latest` and dated responses:
    - `MetalPriceResponse { success: bool, rates: Option<serde_json::Map<String, serde_json::Value>>, error: Option<MetalPriceError> }`
      (or `#[serde(default)]` fields) — model loosely enough to capture the vendor error payload
      (`{"success":false,"error":{"code":..,"info"/"message":..}}`).
    - Keep `rates` values as `serde_json::Value`/`Number` so precision is preserved for the
      `BigDecimal` conversion in step 4.
 
-4. **Pure helpers (unit-testable, no I/O).** Extract as `pub(crate)`/`pub` fns so the external test
+4. ✅ **Pure helpers (unit-testable, no I/O).** Extract as `pub(crate)`/`pub` fns so the external test
    file can call them without network or env:
    - `fn latest_url(base_url: &str, api_key: &str, asset: &str) -> String`
      → `"{base}/latest?api_key={key}&base=USD&currencies={asset}"`.
@@ -93,7 +97,7 @@ instead of the deterministic `StaticPriceProvider`.
      `rates["{asset}"]` and return `BigDecimal::from(1) / rate` (guard against zero); else
      `bail!("metalpriceapi: no rate for {asset}")`.
 
-5. **Provider struct + trait impl.** `pub struct MetalPricePriceProvider { http: reqwest::Client,
+5. ✅ **Provider struct + trait impl.** `pub struct MetalPricePriceProvider { http: reqwest::Client,
    settings: MetalPriceSettings }` with `pub fn from_env() -> Result<Self>` (build
    `reqwest::Client::new()` + `MetalPriceSettings::from_env()?`). Implement
    `#[async_trait] impl PriceProvider for MetalPricePriceProvider`:
@@ -103,20 +107,50 @@ instead of the deterministic `StaticPriceProvider`.
    - `historical_price(asset, at)`: `let date = at.date_naive();` GET `historical_url(...)`; same
      status check + `parse_usd_price`.
 
-6. **Registry wiring (`packages/shared/src/price_provider.rs`).** Add
+6. ✅ **Registry wiring (`packages/shared/src/price_provider.rs`).** Add
    `pub const METALPRICE_PROVIDER_KEY: &str = "metal_price";` next to `STATIC_PROVIDER_KEY`, and a
    match arm in `price_provider_for`:
    `METALPRICE_PROVIDER_KEY => Ok(Arc::new(crate::metal_price::MetalPricePriceProvider::from_env()?)),`.
    Update the module doc comment (lines 1–9) to name the new live provider.
 
-7. **Docs / env.** Add to `.env.example` near the collector block (after line 82) or a new
+7. ✅ **Docs / env.** Add to `.env.example` near the collector block (after line 82) or a new
    "MetalpriceAPI" block:
    - `METALPRICE_API_KEY=` `# required when any loan uses price_provider=metal_price`
    - `METALPRICE_BASE_URL=https://api.metalpriceapi.com/v1  # optional, default shown; EU mirror https://api-eu.metalpriceapi.com/v1`
    Add a vendor pointer under `docs/references/index.md` → "Vendor Documentation":
    `- [MetalpriceAPI documentation](https://metalpriceapi.com/documentation) — precious-metal USD spot & historical rates (metal_price provider)`.
 
-8. **Lint.** Run `cargo clippy --all -- -D warnings` and fix all findings.
+8. ✅ **Lint.** Run `cargo clippy --all -- -D warnings` and fix all findings.
+
+## Scope Extension — provider-keyed `loan_asset_prices` (folded in)
+
+Added mid-implementation at the requester's direction: the same collateral asset must be
+priceable by more than one provider. Previously `loan_asset_prices` was keyed `(asset, timestamp)`
+and the collector *skipped* any asset with >1 provider (`partition_assets` conflict rule) — the
+observed "collection skipped" symptom. This extends the series to be keyed by
+`(asset, price_provider, timestamp)` and removes the conflict rule.
+
+**Decisions (confirmed by requester):** fold into #762 (one branch/PR); existing rows default to
+`price_provider = 'static'`.
+
+Steps (all ✅ implemented):
+1. ✅ **Migration** `packages/shared/migrations/20260705000001_loan_asset_prices_price_provider.sql`:
+   add `price_provider TEXT NOT NULL DEFAULT 'static'`, drop the default after backfill, swap PK
+   `(asset, timestamp)` → `(asset, price_provider, timestamp)`, replace the index with
+   `(asset, price_provider, timestamp DESC)`. All runtime-checked queries (no `query!` macro) → no
+   `.sqlx` regeneration needed.
+2. ✅ **`LoanAssetPriceRepo`**: `insert_price` / `existing_timestamps_since` / `delete_older_than`
+   take a `price_provider` arg and filter/insert on it; `latest_prices` →
+   `DISTINCT ON (asset, price_provider)` returning `(asset, provider, price)`.
+3. ✅ **Collector** (`asset_price_collector/mod.rs`): delete `partition_assets` + the conflict/skip
+   warning; `cycle` iterates the distinct `(asset, provider)` pairs from `distinct_asset_providers()`
+   directly; `collect_asset` threads `provider_key` into every repo call. Dropped now-unused
+   `BTreeMap` / `AssetProvider` imports. Module doc updated.
+4. ✅ **Reader** (`api/routes/loan_book.rs::collateral_by_loan`): key the price map by
+   `(asset, price_provider)` and value each loan by its own `(p.asset, p.price_provider)`.
+5. ✅ **Tests**: removed the three `partition_assets` unit tests (function gone); the remaining pure
+   grid/retention tests are unaffected. Repo/reader paths are DB-backed and not unit-tested (per the
+   pure-test rule), consistent with the pre-existing suite.
 
 ## Test Strategy
 

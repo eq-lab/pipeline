@@ -3,17 +3,9 @@
 
 use chrono::{TimeZone, Utc};
 use pipeline_worker::asset_price_collector::{
-    align_down_to_grid, expected_grid, latest_is_live, missing_points, partition_assets,
-    retention_cutoff, PriceInterval,
+    align_down_to_grid, expected_grid, latest_is_live, missing_points, retention_cutoff,
+    PriceInterval,
 };
-use shared::loan_parameters_repo::AssetProvider;
-
-fn pair(asset: &str, provider: &str) -> AssetProvider {
-    AssetProvider {
-        asset: asset.to_string(),
-        price_provider: provider.to_string(),
-    }
-}
 
 #[test]
 fn align_down_hourly_truncates_to_top_of_hour() {
@@ -182,41 +174,4 @@ fn latest_is_live_boundary_is_two_cycles() {
     // One second past the window is treated as a missed point.
     let past_edge = latest + chrono::Duration::seconds(601);
     assert!(!latest_is_live(past_edge, latest));
-}
-
-#[test]
-fn partition_assets_single_provider_is_collectable() {
-    let (collectable, conflicts) =
-        partition_assets(vec![pair("BTC", "static"), pair("ETH", "static")]);
-    // Sorted by asset for determinism.
-    assert_eq!(
-        collectable,
-        vec![
-            ("BTC".to_string(), "static".to_string()),
-            ("ETH".to_string(), "static".to_string()),
-        ]
-    );
-    assert!(conflicts.is_empty());
-}
-
-#[test]
-fn partition_assets_dedups_identical_pairs() {
-    // Identical (asset, provider) entries collapse and are NOT a conflict.
-    let (collectable, conflicts) =
-        partition_assets(vec![pair("BTC", "static"), pair("BTC", "static")]);
-    assert_eq!(collectable, vec![("BTC".to_string(), "static".to_string())]);
-    assert!(conflicts.is_empty());
-}
-
-#[test]
-fn partition_assets_conflicting_providers_are_skipped() {
-    let (collectable, conflicts) = partition_assets(vec![
-        pair("BTC", "static"),
-        pair("BTC", "other"),
-        pair("ETH", "static"),
-    ]);
-    assert_eq!(collectable, vec![("ETH".to_string(), "static".to_string())]);
-    assert_eq!(conflicts.len(), 1);
-    assert_eq!(conflicts[0].0, "BTC");
-    assert_eq!(conflicts[0].1.len(), 2);
 }

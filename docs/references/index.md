@@ -18,6 +18,7 @@ Links to be added as vendor selections are finalised:
 - Sumsub KYC/KYB API docs
 - Chainalysis Address Screening API docs
 - Platts/Argus price feed API docs
+- [MetalpriceAPI documentation](https://metalpriceapi.com/documentation) — precious-metal (XAU/XAG/…) USD spot & historical rates; backs the `metal_price` price provider
 
 ## Stellar / Soroban
 
