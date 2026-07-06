@@ -142,11 +142,14 @@ export function YieldHistoryPanel() {
         />
 
         {/* RIGHT column (Figma 3380:1920) — Cumulative Yield card + metric cards. */}
-        <div className="flex flex-1 flex-col gap-4">
-          {/* Cumulative Yield card — Figma node 3283:68333. No period tabs per design. */}
+        <div className="flex flex-col gap-4 md:flex-1">
+          {/*
+           * Cumulative Yield card — Figma node 3283:68333. No period tabs per design.
+           * Mobile: fixed 248px (Figma 3283:71770). Desktop: fills the right column.
+           */}
           <div
             className={[
-              "flex flex-1 flex-col gap-4 p-4",
+              "flex h-[248px] flex-col gap-4 p-4 md:h-auto md:flex-1",
               "bg-[color:var(--color-pipeline-surface)]",
               "rounded-[var(--radius-pipeline-card)]",
               "border-t border-l border-[color:var(--color-pipeline-line)]",
@@ -188,10 +191,10 @@ export function YieldHistoryPanel() {
               </span>
             </div>
 
-            {/* Chart — green bars (Figma node 3283:68337); fills remaining height. */}
+            {/* Chart — green bars (Figma 3283:68337). Mobile: 144px; desktop: fills. */}
             {cumulativeBars !== null && cumulativeBars.length > 0 ? (
               <div
-                className="min-h-[144px] flex-1 overflow-hidden"
+                className="h-[144px] overflow-hidden md:h-auto md:flex-1"
                 data-testid="yield-chart-container"
               >
                 <YieldBarChart
@@ -208,7 +211,7 @@ export function YieldHistoryPanel() {
                * PanelContainer `state="empty"` above.
                */
               <div
-                className="min-h-[144px] flex-1"
+                className="h-[144px] md:h-auto md:flex-1"
                 aria-hidden="true"
                 data-testid="yield-chart-placeholder"
               />

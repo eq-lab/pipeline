@@ -116,10 +116,10 @@ then `PanelEmpty` is shown.
 
 ## Responsive layout
 
-**Story 18 — Mobile stacked layout**
+**Story 18 — Mobile stacked layout matches Figma 3283:71057**
 Given a viewport narrower than `md` (768px),
 when the "Top" row renders,
-then the TVL card and Cumulative Yield card stack vertically (flex-col).
+then the cards stack full-width in order TVL → Cumulative Yield → metric cards row, with 16px gaps; the TVL card is 404px tall with its dark chart 240px tall anchored to the bottom, and the Cumulative Yield card is 248px tall with its green chart 144px tall (matching the Figma XS frame).
 
 **Story 19 — Metric cards scroll horizontally on mobile**
 Given a viewport narrower than `md`,

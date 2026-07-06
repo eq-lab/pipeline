@@ -92,7 +92,8 @@ export function TvlCard({
         "border-r-[3px] border-b-[3px]",
         "border-b-[color:var(--color-pipeline-line)]",
         "border-r-[color:var(--color-pipeline-line)]",
-        "flex-1",
+        // Mobile: fixed 404px (Figma 3283:71059). Desktop: fills the 460px row.
+        "h-[404px] md:h-[460px] md:flex-1",
       ].join(" ")}
       data-testid="dashboard-tvl-card"
       data-node-id="3283:67622"
@@ -168,15 +169,14 @@ export function TvlCard({
       </div>
 
       {/*
-       * TVL bar chart — dark (ink) bars. `flex-1` grows to fill the remaining
-       * card height, anchoring the chart to the bottom (Figma chart container
-       * 3283:67630 is 528×240 in the 460-tall card). `min-h-[144px]` keeps it
-       * present when the card stacks at mobile. Uses YieldBarChart with
-       * fill="var(--color-pipeline-ink)".
+       * TVL bar chart — dark (ink) bars, fixed 240px tall anchored to the bottom
+       * (`mt-auto`), matching Figma chart container 3283:67630 (240h) on both
+       * desktop (3283:67622, 460-tall card) and mobile (3283:71067, 404-tall card).
+       * Uses YieldBarChart with fill="var(--color-pipeline-ink)".
        */}
       {tvlBars !== null && tvlBars.length > 0 ? (
         <div
-          className="min-h-[144px] flex-1 overflow-hidden"
+          className="mt-auto h-[240px] overflow-hidden"
           data-testid="dashboard-tvl-chart-container"
         >
           <YieldBarChart
@@ -188,7 +188,7 @@ export function TvlCard({
         </div>
       ) : (
         <div
-          className="min-h-[144px] flex-1"
+          className="mt-auto h-[240px]"
           aria-hidden="true"
           data-testid="dashboard-tvl-chart-placeholder"
         />
