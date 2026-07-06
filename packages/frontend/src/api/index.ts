@@ -91,3 +91,20 @@ export type {
   FinancialPositionResponse,
   UseFinancialPositionResult,
 } from "./useFinancialPosition";
+export { useDashboardSummary } from "./useDashboardSummary";
+export type {
+  DashboardSummary,
+  UseDashboardSummaryResult,
+} from "./useDashboardSummary";
+export { useDashboardTvlHistory } from "./useDashboardTvlHistory";
+export type {
+  TvlPoint,
+  UseDashboardTvlHistoryParams,
+  UseDashboardTvlHistoryResult,
+} from "./useDashboardTvlHistory";
+export { useDashboardYieldHistory } from "./useDashboardYieldHistory";
+export type {
+  YieldPoint,
+  UseDashboardYieldHistoryParams,
+  UseDashboardYieldHistoryResult,
+} from "./useDashboardYieldHistory";

@@ -55,7 +55,7 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 
 **`current_apy_net_to_splusd` formula:** `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))`. Sums run over all loans with repayment data; falls back to haircut = 1 (net = gross) when no repayments yet. `null` only when no active loans.
 
-**Note:** the frontend currently maps "Current APY Net to sPLUSD" to `/v1/stats` `vaults[].apy`; switching to the effective-haircut rate requires a frontend update (tracked on epic #712).
+**Frontend status (issue #760):** the frontend now consumes all three endpoints. "Current APY Net to sPLUSD" maps to `summary.current_apy_net_to_splusd` (the effective-haircut rate); "Loan Book Yield" maps to `summary.loan_book_yield`. The TVL card replaces the prior "TVL chart — Coming soon" placeholder. The cumulative yield series is backed by `/v1/dashboard/yield-history` (net minted), distinct from the prior `/v1/stats/yield` gross-accrual estimate. The deployment ratio (`outstanding_in_loans / tvl`) is displayed as a progress bar — an approved client-side computation of two backend-served values.
 
 ### `GET /v1/dashboard/tvl-history?days&interval&chain_id`
 
@@ -185,8 +185,9 @@ time-in-queue over completed requests.
 
 ## Protocol Dashboard — Panel D: Yield History
 
-**Cumulative yield minted**
-- Time series of cumulative PLUSD minted into the sPLUSD vault, with two distinct series: loan repayment yield (discrete events per RepaymentSettled) and T-bill yield (weekly discrete events from USYC NAV distribution).
+**Cumulative yield minted (issue #760)**
+- The "Top" row (Figma frame `3283:67619`) is a two-column layout: TVL card (left) and Cumulative Yield card (right). The Cumulative Yield series is backed by `GET /v1/dashboard/yield-history` (net minted to sPLUSD, blended single series). The loan-vs-T-bill yield split remains gated on the backend issue #738 — the labelled `#738` seams in the code are preserved. The prior `GET /v1/stats/yield` gross-accrual estimate is no longer the headline source; `summary.cumulative_yield_total` drives the KPI value.
+- Time series of cumulative PLUSD minted into the sPLUSD vault. Loan-vs-T-bill split (two distinct series: loan repayment yield and T-bill yield) is gated on #738.
 
 **Real-time T-bill accrual**
 - Rolling accrued T-bill yield since the last weekly distribution. Resets to zero after each weekly mint event. Informational only — does not affect sPLUSD NAV until the weekly distribution fires.

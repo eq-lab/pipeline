@@ -21,6 +21,7 @@ Entries are sorted alphabetically by name.
 | `STATS_PERIODS` | `@/utils/statsPeriod` | Array of the five canonical stats period descriptors `[{id, label}]`. Used to render the SegmentedTabs on stats charts. |
 | `accrualToBars` | `@/utils/yieldSeries` | Converts a `SampleYieldItem[]` from `GET /v1/stats/yield` into a 100-slot `YieldBarPoint[]` normalised to the max `accrued` value. Returns `null` on empty/invalid input so callers can show the empty state. |
 | `latestAccrued` | `@/utils/yieldSeries` | Returns the most-recent cumulative `accrued` value (human-unit dollars) from a `SampleYieldItem[]` by timestamp. Returns `null` on empty/invalid input. |
+| `pointsToBars` | `@/utils/yieldSeries` | Generic series adapter: converts a `[{ timestamp: string; value: string }]`-shaped array into a 100-slot `YieldBarPoint[]` normalised to the max value. Callers map domain field names to `value` at the call site (e.g. `cumulative_yield`, `tvl`). Returns `null` on empty/invalid/all-zero input. Used by the TVL and dashboard yield-history series (issue #760). |
 
 ## How to add a row
 

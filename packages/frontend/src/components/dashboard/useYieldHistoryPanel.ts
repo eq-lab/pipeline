@@ -2,34 +2,44 @@
  * Co-located hook for `YieldHistoryPanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Resolves chain/vault from ENV defaults (no wallet connection on the Protocol
- * Dashboard), fans out API calls, and derives panel state + formatted values
- * for the view layer.
+ * Resolves chain from ENV defaults (no wallet connection on the Protocol
+ * Dashboard), fans out API calls to the three new `/v1/dashboard/*` endpoints,
+ * and derives panel state + formatted values for the view layer.
  *
- * Decisions:
- *   - `chainId`      = ENV.EVM_CHAIN_ID   (EVM is the canonical chain for the dashboard).
- *   - `vaultAddress` = ENV.STAKED_PLUSD_ADDRESS.
- *   - When the vault address is the zero-address dev default, the panel shows
- *     the `empty` state and no network calls are made — avoids noise in local/dev.
- *   - "Target Net to sPLUSD" is a static product constant ("8–12%") — no endpoint
- *     serves it yet (#738 backend follow-up). Left as a clearly-labelled seam.
- *   - "Current APY, Net to sPLUSD" maps to `vaults[].apy` from `GET /v1/stats`.
- *   - "Loan Book Yield" maps to `summary.avg_yield` from `GET /v1/loan-book`.
+ * Endpoints used (issue #760):
+ *   - `GET /v1/dashboard/summary?chain_id` — five headline KPIs
+ *   - `GET /v1/dashboard/tvl-history?chain_id&days&interval` — TVL series
+ *   - `GET /v1/dashboard/yield-history?chain_id&days&interval` — yield series
+ *
+ * Decisions (issue #760):
+ *   - `chainId` = ENV.EVM_CHAIN_ID (EVM is canonical for the dashboard).
+ *   - All three endpoints are protocol-level (no vault address needed).
+ *     The zero-address vault guard from the pre-#760 version has been dropped —
+ *     these endpoints are unconditionally enabled (they are wallet-less and
+ *     the panel's empty state handles `200 []`).
+ *   - "Target Net to sPLUSD" is a static product constant ("8–12%") — no
+ *     endpoint serves it yet (#738 backend follow-up). Left as a labelled seam.
+ *   - "Current APY, Net to sPLUSD" → `summary.current_apy_net_to_splusd`.
+ *   - "Loan Book Yield" → `summary.loan_book_yield`.
+ *   - Cumulative Yield headline → `summary.cumulative_yield_total`.
+ *   - Progress bar fill → `outstanding_in_loans / tvl` (approved exception
+ *     to "no frontend-computed metrics" for ratio-of-served-values; null/zero
+ *     tvl → null, render empty bar + "—%").
  */
 import { useState } from "react";
 import { ENV } from "@/lib/env";
-import { useStatsYield } from "@/api/useStatsYield";
-import { useStatsPrices } from "@/api/useStatsPrices";
-import { useStats } from "@/api";
-import { useLoanBook } from "@/api";
-import { accrualToBars, latestAccrued } from "@/utils/yieldSeries";
-import { formatCompactUsd, formatOneDecimalRate } from "@/utils/formatCompactUsd";
+import { useDashboardSummary } from "@/api/useDashboardSummary";
+import { useDashboardTvlHistory } from "@/api/useDashboardTvlHistory";
+import { useDashboardYieldHistory } from "@/api/useDashboardYieldHistory";
+import { pointsToBars } from "@/utils/yieldSeries";
+import {
+  formatCompactUsd,
+  formatOneDecimalRate,
+} from "@/utils/formatCompactUsd";
 import type { PanelState } from "./PanelContainer";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /**
  * "Target Net to sPLUSD" is a static product constant (8–12%).
@@ -42,10 +52,13 @@ const TARGET_NET_APY_STATIC = "8–12%";
 // ── Output types ──────────────────────────────────────────────────────────────
 
 export interface YieldHistoryMetricCards {
-  /** Current APY, Net to sPLUSD — from `GET /v1/stats` vaults[].apy. */
+  /**
+   * Current APY, Net to sPLUSD — from `GET /v1/dashboard/summary`
+   * `current_apy_net_to_splusd`. "—" when null.
+   */
   currentApyNet: string;
   /**
-   * Loan Book Yield — from `GET /v1/loan-book` summary.avg_yield.
+   * Loan Book Yield — from `GET /v1/dashboard/summary` `loan_book_yield`.
    * "—" when no active loans or data is unavailable.
    */
   loanBookYield: string;
@@ -56,17 +69,31 @@ export interface YieldHistoryMetricCards {
   targetNetApyStatic: string;
 }
 
+export interface TvlSummary {
+  /** Formatted headline TVL, e.g. "$43.1M". "—" when null/empty. */
+  headlineTvl: string;
+  /** Formatted outstanding in loans, e.g. "$31.6M". "—" when null. */
+  outstandingInLoans: string;
+  /**
+   * Deployment ratio (0–1) for the progress bar, or `null` when
+   * tvl is null/zero (divide-by-zero guard) or outstanding is null.
+   */
+  deployedRatio: number | null;
+}
+
 export interface YieldHistoryPanelState {
   state: PanelState;
   /** Active time-range period id (default "all"). */
   periodId: string;
   setPeriodId: (id: string) => void;
-  /** Pre-computed cumulative-accrual bar array, or `null` when empty/loading. */
+  /** Pre-computed cumulative-yield bar array, or `null` when empty/loading. */
   cumulativeBars: YieldBarPoint[] | null;
   /** Formatted headline value (e.g. "$2.91M") for the Cumulative Yield card. */
   headlineValue: string;
-  /** Pre-computed exchange-rate bar array, or `null` when empty/loading. */
-  exchangeRateBars: YieldBarPoint[] | null;
+  /** Pre-computed TVL bar array, or `null` when empty/loading. */
+  tvlBars: YieldBarPoint[] | null;
+  /** TVL card summary values (formatted). */
+  tvlSummary: TvlSummary;
   /** The three metric card values. */
   metricCards: YieldHistoryMetricCards;
   errorMessage: string | undefined;
@@ -82,6 +109,12 @@ const EMPTY_METRICS: YieldHistoryMetricCards = {
   targetNetApyStatic: TARGET_NET_APY_STATIC,
 };
 
+const EMPTY_TVL_SUMMARY: TvlSummary = {
+  headlineTvl: "—",
+  outstandingInLoans: "—",
+  deployedRatio: null,
+};
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -89,64 +122,42 @@ const EMPTY_METRICS: YieldHistoryMetricCards = {
  *
  * - `loading` → panel shows `PanelLoading`.
  * - `error`   → panel shows `PanelError` with a retry action.
- * - `empty`   → vault is zero-address or all series are empty; shows `PanelEmpty`.
+ * - `empty`   → all series are empty and summary values are null/zero.
  * - `ready`   → derived headline + bar arrays + metric cards are available.
  */
 export function useYieldHistoryPanel(): YieldHistoryPanelState {
   const [periodId, setPeriodId] = useState("all");
 
   const chainId = ENV.EVM_CHAIN_ID;
-  const vaultAddress = ENV.STAKED_PLUSD_ADDRESS;
-  const isZeroVault = vaultAddress === ZERO_ADDRESS;
 
-  // Guard all queries behind the zero-address check so no requests fire in
-  // local dev where the address is the default zero sentinel.
-  const queriesEnabled = !isZeroVault;
+  // ── Fetch all three dashboard endpoints ─────────────────────────────────────
 
-  const yieldQuery = useStatsYield({
+  const summaryQuery = useDashboardSummary();
+
+  const tvlHistoryQuery = useDashboardTvlHistory({
     chainId,
     periodId,
-    enabled: queriesEnabled,
   });
 
-  const pricesQuery = useStatsPrices({
-    vaultAddress,
+  const yieldHistoryQuery = useDashboardYieldHistory({
     chainId,
     periodId,
-    enabled: queriesEnabled,
   });
-
-  const statsQuery = useStats();
-  const loanBookQuery = useLoanBook();
 
   // Combine refetch for all queries
   const refetch = () => {
-    yieldQuery.refetch();
-    pricesQuery.refetch();
-    statsQuery.refetch();
-    loanBookQuery.refetch();
+    summaryQuery.refetch();
+    tvlHistoryQuery.refetch();
+    yieldHistoryQuery.refetch();
   };
 
-  // ── Empty state when vault is zero-address ──────────────────────────────────
-
-  if (isZeroVault) {
-    return {
-      state: "empty",
-      periodId,
-      setPeriodId,
-      cumulativeBars: null,
-      headlineValue: "—",
-      exchangeRateBars: null,
-      metricCards: EMPTY_METRICS,
-      errorMessage: undefined,
-      refetch,
-    };
-  }
-
   // ── Loading ─────────────────────────────────────────────────────────────────
-  // Show loading while any primary data source is loading.
+  // Show loading while summary or any series is loading.
 
-  const isLoading = yieldQuery.isLoading || pricesQuery.isLoading;
+  const isLoading =
+    summaryQuery.isLoading ||
+    tvlHistoryQuery.isLoading ||
+    yieldHistoryQuery.isLoading;
 
   if (isLoading) {
     return {
@@ -155,7 +166,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
       setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
-      exchangeRateBars: null,
+      tvlBars: null,
+      tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards: EMPTY_METRICS,
       errorMessage: undefined,
       refetch,
@@ -163,9 +175,9 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   }
 
   // ── Error ───────────────────────────────────────────────────────────────────
-  // Primary error: yield or prices fetch failed.
 
-  const primaryError = yieldQuery.error ?? pricesQuery.error;
+  const primaryError =
+    summaryQuery.error ?? tvlHistoryQuery.error ?? yieldHistoryQuery.error;
   if (primaryError) {
     return {
       state: "error",
@@ -173,7 +185,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
       setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
-      exchangeRateBars: null,
+      tvlBars: null,
+      tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards: EMPTY_METRICS,
       errorMessage: primaryError.message,
       refetch,
@@ -182,53 +195,66 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
 
   // ── Derive chart data ───────────────────────────────────────────────────────
 
-  const cumulativeBars = accrualToBars(yieldQuery.data);
-
-  // Exchange-rate bars from prices — reuse same bar shape with avg_price
-  // mapped as `value` and `height`.
-  const exchangeRateBars: YieldBarPoint[] | null = (() => {
-    const prices = pricesQuery.data?.prices;
-    if (!prices || prices.length === 0) return null;
-    const valid = prices
-      .map((p) => {
-        const value = parseFloat(p.avg_price);
-        const timestamp = new Date(p.timestamp).getTime();
-        if (!Number.isFinite(value) || value <= 0) return null;
-        if (!Number.isFinite(timestamp)) return null;
-        return { value, timestamp };
-      })
-      .filter((p): p is { value: number; timestamp: number } => p !== null)
-      .sort((a, b) => a.timestamp - b.timestamp);
-    if (valid.length === 0) return null;
-    const maxVal = Math.max(...valid.map((p) => p.value));
-    if (!Number.isFinite(maxVal) || maxVal <= 0) return null;
-    return valid.map((p) => ({
-      value: p.value,
+  // Cumulative yield bars from yield-history series
+  const cumulativeBars = pointsToBars(
+    (yieldHistoryQuery.data ?? []).map((p) => ({
       timestamp: p.timestamp,
-      height: Math.max(2, (p.value / maxVal) * 100),
-    }));
-  })();
+      value: p.cumulative_yield,
+    })),
+  );
 
-  // ── Headline value ──────────────────────────────────────────────────────────
+  // TVL bars from tvl-history series
+  const tvlBars = pointsToBars(
+    (tvlHistoryQuery.data ?? []).map((p) => ({
+      timestamp: p.timestamp,
+      value: p.tvl,
+    })),
+  );
 
-  const rawLatest = latestAccrued(yieldQuery.data);
-  const headlineValue =
-    rawLatest !== null
-      ? // accrued is already in human units (6-decimal USDC); formatCompactUsd
-        // expects a 6-decimal decimal string.
-        formatCompactUsd(String(rawLatest))
-      : "—";
+  // ── Headline value from summary ─────────────────────────────────────────────
+  // Headline comes from summary.cumulative_yield_total (not last chart bar),
+  // so the KPI matches even when the chart resamples/aggregates.
+
+  const summary = summaryQuery.data;
+
+  const headlineValue = summary?.cumulative_yield_total
+    ? formatCompactUsd(summary.cumulative_yield_total)
+    : "—";
+
+  // ── TVL summary ─────────────────────────────────────────────────────────────
+
+  const headlineTvl = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
+  const outstandingInLoans = formatCompactUsd(
+    summary?.outstanding_in_loans ?? null,
+  );
+
+  // Deployment ratio — approved client-side computation (ratio of two served values).
+  // Guard against null/zero tvl to avoid divide-by-zero.
+  let deployedRatio: number | null = null;
+  if (summary?.tvl != null && summary?.outstanding_in_loans != null) {
+    const tvlNum = parseFloat(summary.tvl);
+    const outstandingNum = parseFloat(summary.outstanding_in_loans);
+    if (
+      Number.isFinite(tvlNum) &&
+      Number.isFinite(outstandingNum) &&
+      tvlNum > 0
+    ) {
+      deployedRatio = outstandingNum / tvlNum;
+    }
+  }
+
+  const tvlSummary: TvlSummary = {
+    headlineTvl,
+    outstandingInLoans,
+    deployedRatio,
+  };
 
   // ── Metric cards ────────────────────────────────────────────────────────────
 
-  // Current APY, Net to sPLUSD — from GET /v1/stats
-  const vault = statsQuery.data?.vaults?.[0];
-  const currentApyNet = formatOneDecimalRate(vault?.apy ?? null);
-
-  // Loan Book Yield — from GET /v1/loan-book summary.avg_yield
-  const loanBookYield = formatOneDecimalRate(
-    loanBookQuery.data?.summary?.avg_yield ?? null,
+  const currentApyNet = formatOneDecimalRate(
+    summary?.current_apy_net_to_splusd ?? null,
   );
+  const loanBookYield = formatOneDecimalRate(summary?.loan_book_yield ?? null);
 
   const metricCards: YieldHistoryMetricCards = {
     currentApyNet,
@@ -237,16 +263,24 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     targetNetApyStatic: TARGET_NET_APY_STATIC,
   };
 
-  // ── Empty state when all series are empty ───────────────────────────────────
+  // ── Empty state when all series are empty and summary is null/zero ──────────
 
-  if (cumulativeBars === null && exchangeRateBars === null) {
+  const summaryAllNull =
+    !summary ||
+    (summary.cumulative_yield_total === "0.000000" &&
+      !summary.outstanding_in_loans &&
+      !summary.current_apy_net_to_splusd &&
+      !summary.loan_book_yield);
+
+  if (cumulativeBars === null && tvlBars === null && summaryAllNull) {
     return {
       state: "empty",
       periodId,
       setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
-      exchangeRateBars: null,
+      tvlBars: null,
+      tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards,
       errorMessage: undefined,
       refetch,
@@ -261,7 +295,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     setPeriodId,
     cumulativeBars,
     headlineValue,
-    exchangeRateBars,
+    tvlBars,
+    tvlSummary,
     metricCards,
     errorMessage: undefined,
     refetch,

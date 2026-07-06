@@ -130,7 +130,9 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
 
 ## Implementation Steps
 
-1. **API types + hooks** (`packages/frontend/src/api/`):
+<!-- Progress: all 7 steps complete (issue #760 implementation done) -->
+
+1. [x] **API types + hooks** (`packages/frontend/src/api/`):
    - Add `useDashboardSummary.ts` — `GET /v1/dashboard/summary?chain_id`. Response type
      `DashboardSummary { tvl: string; outstanding_in_loans: string | null;
      current_apy_net_to_splusd: string | null; loan_book_yield: string | null;
@@ -145,7 +147,7 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
    - Export all three hooks + their types from `packages/frontend/src/api/index.ts`.
    - Follow `useStatsYield.ts` structure exactly (React Query, `apiFetch`, `URLSearchParams`,
      `enabled` param). Do not call `fetch` outside `src/api/`.
-2. **Series adapter util** (`packages/frontend/src/utils/`):
+2. [x] **Series adapter util** (`packages/frontend/src/utils/`):
    - The existing `yieldSeries.ts` (`accrualToBars`, `latestAccrued`) is keyed to
      `SampleYieldItem.accrued`. Add a generic mapper (or generalise `accrualToBars`) so a
      `[{ timestamp, value }]`-shaped series maps to `YieldBarPoint[]`. Suggested:
@@ -155,7 +157,7 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
      wrapper if #720 tests still depend on it, or migrate its callers.
    - Per FRONTEND.md rule 3 (+ rule 4 catalogue): ship a unit test in the same commit and add
      the util to `docs/frontend/utils.md`.
-3. **TVL card component** (`packages/frontend/src/components/dashboard/`):
+3. [x] **TVL card component** (`packages/frontend/src/components/dashboard/`):
    - New `TvlCard.tsx` (view, JSX only) + `useTvlCard.ts` (logic hook, FRONTEND.md rule 2) —
      or fold the logic into the panel hook (step 5) if the panel already owns all state.
      Renders: "TVL" eyebrow + headline (`formatCompactUsd(summary.tvl)`); "Outstanding in
@@ -167,12 +169,12 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
      by the Cumulative Yield card and `MetricCard` (border-t/l 1px + border-r/b 3px, radius
      `--radius-pipeline-card`, `bg-pipeline-surface`, `p-4`). `data-testid="dashboard-tvl-card"`,
      `data-node-id="3283:67622"`.
-4. **Progress bar**: check `packages/ui` for an existing `progress-bar` primitive (Figma
+4. [x] **Progress bar**: check `packages/ui` for an existing `progress-bar` primitive (Figma
    instance `3380:1410`). If one exists, reuse it; otherwise render a simple two-layer div
    (track `bg-pipeline-line`, fill `bg-pipeline-ink` sized by the resolved ratio). No new
    design token unless the review requires one. Gate the fill/caption on the Open-Question
    decision.
-5. **Re-wire the panel** (`YieldHistoryPanel.tsx` + `useYieldHistoryPanel.ts`):
+5. [x] **Re-wire the panel** (`YieldHistoryPanel.tsx` + `useYieldHistoryPanel.ts`):
    - In the hook: replace `useStatsYield` with `useDashboardYieldHistory`, add
      `useDashboardTvlHistory` and `useDashboardSummary`. Derive `cumulativeBars` from the
      yield-history series via the new adapter; set `headlineValue =
@@ -195,14 +197,14 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
    - Update the panel/route doc comments: the "TVL chart — Coming soon" placeholder note and
      the `#738`-for-TVL claim are now stale (TVL shipped); keep the `#738` seam note only for
      the yield **split** (by-source / T-bill / trailing-30d), which is still gated.
-6. **Route** (`packages/frontend/src/routes/dashboard.tsx`): no structural change required —
+6. [x] **Route** (`packages/frontend/src/routes/dashboard.tsx`): no structural change required —
    `<YieldHistoryPanel />` remains the first section and now renders the full "Top" row
    (TVL + Cumulative Yield + metrics). Update the route doc comment's "Yield History (no
    section heading)" note to reflect that this section is the Figma "Top" summary strip.
    If the team prefers a dedicated `<DashboardHeader />` component over extending the panel
    (a naming/altitude choice), that is an acceptable alternative — but it must render the same
    single Figma "Top" row, not a separate strip stacked above the yield card.
-7. **Lint**: run `npx tsx scripts/lint-docs.ts` (docs structure) after editing
+7. [x] **Lint**: run `npx tsx scripts/lint-docs.ts` (docs structure) after editing
    `docs/frontend/utils.md`; ensure TypeScript build + ESLint pass (`no-restricted-globals`
    forbids direct `fetch`; keep all fetching in `src/api/`).
 
@@ -247,4 +249,3 @@ is preferred). "Outstanding in Loans" value colour is muted grey in the render.
 - If the deployment-ratio Open Question resolves to "needs a backend field", file a backend
   follow-up issue (do not implement here) and reference it as a labelled seam in the code.
 - No `ARCHITECTURE.md` change (no new domain boundary or dependency direction).
-```

@@ -7,7 +7,12 @@
  *   - `latestAccrued`: empty → null, single point, latest by timestamp.
  */
 import { describe, it, expect } from "vitest";
-import { accrualToBars, latestAccrued, YIELD_CHART_N } from "./yieldSeries";
+import {
+  accrualToBars,
+  latestAccrued,
+  pointsToBars,
+  YIELD_CHART_N,
+} from "./yieldSeries";
 import type { SampleYieldItem } from "@/api/useStatsYield";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -112,6 +117,137 @@ describe("accrualToBars", () => {
     const bars = accrualToBars(samples)!;
     // All bars should have the same value (single sample resampled)
     expect(bars[0]!.value).toBeCloseTo(2910000, 0);
+  });
+});
+
+// ── pointsToBars ──────────────────────────────────────────────────────────────
+
+describe("pointsToBars", () => {
+  it("returns null for undefined input", () => {
+    expect(pointsToBars(undefined)).toBeNull();
+  });
+
+  it("returns null for empty array", () => {
+    expect(pointsToBars([])).toBeNull();
+  });
+
+  it("returns null when all values are zero", () => {
+    const points = [{ timestamp: "2025-01-01T00:00:00Z", value: "0.000000" }];
+    expect(pointsToBars(points)).toBeNull();
+  });
+
+  it("returns YIELD_CHART_N bars for a single valid point", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+    ];
+    const bars = pointsToBars(points);
+    expect(bars).not.toBeNull();
+    expect(bars).toHaveLength(YIELD_CHART_N);
+  });
+
+  it("all bars from a single point have height >= 2 (floor)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    for (const bar of bars) {
+      expect(bar.height).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("normalises heights: last bar is 100 when values are monotone increasing", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+      { timestamp: "2025-01-15T00:00:00Z", value: "3000000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    expect(bars[YIELD_CHART_N - 1]!.height).toBe(100);
+  });
+
+  it("normalises heights to 0–100 range", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    for (const bar of bars) {
+      expect(bar.height).toBeGreaterThanOrEqual(2);
+      expect(bar.height).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("skips non-numeric values", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "bad" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "1000000.000000" },
+    ];
+    const bars = pointsToBars(points);
+    expect(bars).not.toBeNull();
+    expect(bars).toHaveLength(YIELD_CHART_N);
+  });
+
+  it("skips negative values", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "-1000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    // Only the positive point is included; all bars should reflect that value
+    expect(bars).not.toBeNull();
+    expect(bars[0]!.value).toBeCloseTo(2000000, 0);
+  });
+
+  it("skips entries with invalid timestamps", () => {
+    const points = [
+      { timestamp: "not-a-date", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+    ];
+    const bars = pointsToBars(points);
+    expect(bars).not.toBeNull();
+    expect(bars).toHaveLength(YIELD_CHART_N);
+  });
+
+  it("value in bars is in human units (not sub-units)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "2910000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    expect(bars[0]!.value).toBeCloseTo(2910000, 0);
+  });
+
+  it("works for TVL field name mapped to value", () => {
+    const tvlPoints = [
+      { timestamp: "2025-01-01T00:00:00Z", tvl: "10000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", tvl: "20000000.000000" },
+    ];
+    const mapped = tvlPoints.map((p) => ({
+      timestamp: p.timestamp,
+      value: p.tvl,
+    }));
+    const bars = pointsToBars(mapped)!;
+    expect(bars).not.toBeNull();
+    expect(bars[YIELD_CHART_N - 1]!.height).toBe(100);
+  });
+
+  it("works for cumulative_yield field name mapped to value", () => {
+    const yieldPoints = [
+      {
+        timestamp: "2025-01-01T00:00:00Z",
+        cumulative_yield: "1000000.000000",
+      },
+      {
+        timestamp: "2025-01-08T00:00:00Z",
+        cumulative_yield: "2910000.000000",
+      },
+    ];
+    const mapped = yieldPoints.map((p) => ({
+      timestamp: p.timestamp,
+      value: p.cumulative_yield,
+    }));
+    const bars = pointsToBars(mapped)!;
+    expect(bars).not.toBeNull();
+    expect(bars).toHaveLength(YIELD_CHART_N);
   });
 });
 
