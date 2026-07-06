@@ -17,8 +17,9 @@
  *     The zero-address vault guard from the pre-#760 version has been dropped —
  *     these endpoints are unconditionally enabled (they are wallet-less and
  *     the panel's empty state handles `200 []`).
- *   - "Target Net to sPLUSD" is a static product constant ("8–12%") — no
- *     endpoint serves it yet (#738 backend follow-up). Left as a labelled seam.
+ *   - "Target Net to sPLUSD" has no backing endpoint yet (#738 backend
+ *     follow-up); it renders "—" until the backend serves it (surface only
+ *     backend-served data).
  *   - "Current APY, Net to sPLUSD" → `summary.current_apy_net_to_splusd`.
  *   - "Loan Book Yield" → `summary.loan_book_yield`.
  *   - Cumulative Yield headline → `summary.cumulative_yield_total`.
@@ -39,16 +40,6 @@ import {
 import type { PanelState } from "./PanelContainer";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-/**
- * "Target Net to sPLUSD" is a static product constant (8–12%).
- * No API endpoint serves this today — filed as backend follow-up #738.
- * The value is fixed in the Figma spec and the product docs.
- */
-// TODO(#738): replace with live data once the backend serves decomposed APY.
-const TARGET_NET_APY_STATIC = "8–12%";
-
 // ── Output types ──────────────────────────────────────────────────────────────
 
 export interface YieldHistoryMetricCards {
@@ -63,10 +54,10 @@ export interface YieldHistoryMetricCards {
    */
   loanBookYield: string;
   /**
-   * Target Net to sPLUSD — static product constant (8–12%).
-   * No live endpoint today; seam left for #738.
+   * Target Net to sPLUSD — no backing endpoint yet (#738). Renders "—"
+   * until the backend serves a target APY field.
    */
-  targetNetApyStatic: string;
+  targetNetApy: string;
 }
 
 export interface TvlSummary {
@@ -106,7 +97,7 @@ export interface YieldHistoryPanelState {
 const EMPTY_METRICS: YieldHistoryMetricCards = {
   currentApyNet: "—",
   loanBookYield: "—",
-  targetNetApyStatic: TARGET_NET_APY_STATIC,
+  targetNetApy: "—",
 };
 
 const EMPTY_TVL_SUMMARY: TvlSummary = {
@@ -259,8 +250,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   const metricCards: YieldHistoryMetricCards = {
     currentApyNet,
     loanBookYield,
-    // TODO(#738): replace with live decomposed APY when backend endpoint is ready.
-    targetNetApyStatic: TARGET_NET_APY_STATIC,
+    // TODO(#738): wire live target APY when the backend serves it; "—" until then.
+    targetNetApy: "—",
   };
 
   // ── Empty state when all series are empty and summary is null/zero ──────────

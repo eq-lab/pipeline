@@ -82,10 +82,10 @@ Given the summary returns `current_apy_net_to_splusd: null` and `loan_book_yield
 when the metric cards render,
 then both cards show `—`.
 
-**Story 14 — Target Net to sPLUSD is static**
+**Story 14 — Target Net to sPLUSD has no backend source yet**
 Given the dashboard loads,
 when the metric cards render,
-then "Target Net to sPLUSD" always shows `8–12%` (static product constant, #738 seam).
+then "Target Net to sPLUSD" shows `—` (no endpoint serves it; surface only backend-served data — #738 seam).
 
 ---
 

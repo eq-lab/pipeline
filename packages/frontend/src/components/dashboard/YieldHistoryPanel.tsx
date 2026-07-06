@@ -13,8 +13,8 @@
  *     Backed by `GET /v1/dashboard/summary` + `GET /v1/dashboard/yield-history`.
  *
  *   Three metric cards — "Current APY, Net to sPLUSD", "Loan Book Yield",
- *     "Target Net to sPLUSD". The last is a static product constant (8–12%);
- *     a seam for `#738` is labelled in the code.
+ *     "Target Net to sPLUSD". The last has no endpoint yet — it renders "—"
+ *     (surface only backend-served data); a seam for `#738` is labelled in the code.
  *
  * Data that is NOT served by the API today (by-source cumulative minted split,
  * real-time T-bill accrual, trailing-30d loan/T-bill breakdown) is intentionally
@@ -270,13 +270,13 @@ export function YieldHistoryPanel() {
               data-testid="yield-metric-loan-book-yield"
             />
             {/*
-             * TODO(#738): "Target Net to sPLUSD" is the static product constant
-             * "8–12%". No live endpoint serves a decomposed target APY today.
-             * Wire this metric once the backend follow-up #738 delivers the field.
+             * TODO(#738): "Target Net to sPLUSD" has no live endpoint yet, so it
+             * renders "—" (surface only backend-served data). Wire this metric
+             * once the backend follow-up #738 delivers a target APY field.
              */}
             <MetricCard
               label="Target Net to sPLUSD"
-              value={metricCards.targetNetApyStatic}
+              value={metricCards.targetNetApy}
               data-testid="yield-metric-target-net-apy"
             />
           </div>
