@@ -40,6 +40,7 @@ vi.mock("@/lib/env", () => ({
   ENV: {
     API_BASE_URL: "http://localhost:8080",
     EVM_CHAIN_ID: 560048,
+    STELLAR_CHAIN_ID: 99_000_001,
     EVM_RPC_URL: "https://ethereum-hoodi-rpc.publicnode.com",
     DEPOSIT_MANAGER_ADDRESS: "0x0000000000000000000000000000000000000000",
     WALLETCONNECT_PROJECT_ID: "replace-me",
