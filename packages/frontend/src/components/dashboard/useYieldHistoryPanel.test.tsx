@@ -353,18 +353,6 @@ describe("useYieldHistoryPanel — ready state", () => {
     expect(ratio).not.toBeNull();
     expect(ratio!).toBeCloseTo(31600000 / 43140000, 4);
   });
-
-  it("periodId defaults to 'all' and setPeriodId changes it", async () => {
-    const { result } = renderHook(() => useYieldHistoryPanel(), {
-      wrapper: makeWrapper(),
-    });
-
-    expect(result.current.periodId).toBe("all");
-
-    result.current.setPeriodId("1m");
-    // Just checking it doesn't crash — full re-query would need waitFor
-    expect(true).toBe(true);
-  });
 });
 
 // ── Tests: null summary fields ────────────────────────────────────────────────

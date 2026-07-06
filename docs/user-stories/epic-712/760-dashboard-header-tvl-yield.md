@@ -56,7 +56,7 @@ then the headline value is `$2.9M` (from `summary.cumulative_yield_total`, not f
 **Story 9 — Cumulative yield bars from yield-history endpoint**
 Given `/v1/dashboard/yield-history` returns a non-empty series,
 when the Cumulative Yield card renders,
-then green bars are visible (full history). Per Figma 3283:67619 there is **no** time-range tab selector on the card.
+then green bars are visible for the **full history at the default daily interval** (the hooks omit `days` and `interval`). Per Figma 3283:67619 there is **no** time-range tab selector on the card.
 
 **Story 9b — Chart bars are single-colour with a hover tooltip**
 Given the TVL or Cumulative Yield chart has data,

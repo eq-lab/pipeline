@@ -83,8 +83,13 @@ export function YieldBarChart({
 }: YieldBarChartProps) {
   const n = bars.length;
   const wrapRef = useRef<HTMLDivElement>(null);
-  // Hovered bar: index + cursor x (px, relative to the wrapper) for tooltip placement.
-  const [hover, setHover] = useState<{ index: number; x: number } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  // Hovered bar: index, cursor x, and wrapper width (px) for tooltip placement.
+  const [hover, setHover] = useState<{
+    index: number;
+    x: number;
+    w: number;
+  } | null>(null);
 
   if (n === 0) return null;
 
@@ -98,13 +103,20 @@ export function YieldBarChart({
       n - 1,
       Math.max(0, Math.floor((relX / rect.width) * n)),
     );
-    setHover({ index: idx, x: relX });
+    setHover({ index: idx, x: relX, w: rect.width });
   };
 
   const handleLeave = () => setHover(null);
 
   const slotW = VB_W / n;
   const hovered = hover ? bars[hover.index] : null;
+
+  // Clamp the tooltip's centre so it stays fully visible at the first/last bars
+  // (otherwise translateX(-50%) pushes half of it off the chart edge).
+  const halfTooltip = (tooltipRef.current?.offsetWidth ?? 0) / 2;
+  const tooltipLeft = hover
+    ? Math.min(Math.max(hover.x, halfTooltip + 8), hover.w - halfTooltip - 8)
+    : 0;
 
   return (
     <div
@@ -157,6 +169,7 @@ export function YieldBarChart({
       {/* Tooltip — value + date of the hovered bar. Pinned to the top, follows x. */}
       {hovered && hover && (
         <div
+          ref={tooltipRef}
           className={[
             "pointer-events-none absolute top-0 z-10 -translate-x-1/2",
             "flex flex-col gap-0.5 whitespace-nowrap",
@@ -164,7 +177,7 @@ export function YieldBarChart({
             "border border-[color:var(--color-pipeline-line)]",
             "bg-[color:var(--color-pipeline-surface)] shadow-sm",
           ].join(" ")}
-          style={{ left: `${hover.x}px` }}
+          style={{ left: `${tooltipLeft}px` }}
           data-testid="yield-bar-tooltip"
         >
           <span
