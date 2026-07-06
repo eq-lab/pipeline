@@ -4,6 +4,22 @@ MVP quality bars. All targets must be met before mainnet launch.
 
 ## UX Testing Log
 
+### 2026-07-06 — Epic #712 (Protocol Dashboard) — QA pass via `qa` issue #721 (numbers & no-mock-data focus)
+
+- **Scope:** Human-requested pass (#721), focused on (1) numbers & formatting correctness on `/dashboard` and (2) no Figma/mock data — every displayed value must trace to a real backend field, cross-checked against the Network tab. Tested on branch **`feat/760-dashboard-header-stats`** (PR #761, not merged). Frontend served locally against **staging** (`VITE_API_BASE_URL=https://api.pipeline.stage.eqlab.net`, `VITE_EVM_CHAIN_ID=560048`/Hoodi). Chrome DevTools MCP. Desktop 1440 + mobile (500px floor, below md=768). Disconnected wallet. `qa` #721 claimed from `blocked` (human-invoked).
+- **Endpoints verified (all 200, `chain_id=560048`):** `/v1/dashboard/{summary,tvl-history,yield-history}`, `/v1/loan-book`, `/v1/loan-book/submissions`, `/v1/withdrawal-queue`, `/v1/financial-position`.
+- **Stories run:** number-bearing stories across `760` (13), plus live-data number checks for panels `717`/`718`/`719` — **16 verified live.** Null/zero/loading/error/empty synthetic states (760 S3/S5/S13/S15/S16/S17) not exercised (require mock seeding; out of this live-data focus). Layout/Figma-fidelity items already tracked+closed under #726–#730, #741, #742, #744, #749, #754.
+- **Passes:** 16 · **Failures:** 0 · **Blocked:** 0
+- **Bugs filed:** none.
+- **Figma frames:** desktop `3283-12098`, header `3283-67619`, responsive `3283-72387` (numeric/structural cross-reference; visual-fidelity bugs pre-filed & closed).
+- **Score: 9/10**
+  - Header summary strip (#760) is fully wired to live `/v1/dashboard/summary`: TVL **$251.2K** (`251235`), Outstanding **$2.0K** (`2000`), **0.8% deployed** (2000/251235 — NOT the 73.3% Figma mock), Cumulative Yield **$0.03** (`0.028800`), Current APY **15.9%** (`0.159490`, decimal-fraction ×100), Target Net to sPLUSD **—** (unserved). **None** of the Figma placeholders ($43.14M/$31.6M/73.3%/$2.91M/10.4%/10.9%) leaked; every unserved field renders `—`.
+  - Balance Sheet, Loan Book, Withdrawal Queue numbers all match their live responses (`/v1/financial-position`, `/v1/loan-book`, `/v1/withdrawal-queue`). PLUSD outstanding **$10.0M** / Liabilities total **$10.0M** trace to the on-chain Horizon PLUSD supply the #718 hook intentionally blends in (documented; totals client-recomputed with an unsourced-rows footnote) — real sources, not fabrication.
+  - The two anomalous readings — Loan Book Yield **5000.0%** (`loan_book_yield:"50.000000"`) and LTV **194,411%** (`ltv:"1944.1069"`) — are the already-tracked backend data defect **#765**; the frontend formatters (`formatOneDecimalRate`, `formatLtv`) are contract-correct, proven by `0.159490`→15.9% in the same response. Not re-filed.
+  - Only benign console noise (403/400 from `api.web3modal.org` due to placeholder WalletConnect id). Zero app error-level messages. Mobile stacks TVL→Yield→metrics with no horizontal overflow.
+  - **Outcome:** green for the requested focus — no frontend formatting bug, no mock/hardcoded value. Held 1 point only because the null/zero/loading/error/empty states were not exercised this pass (deliberately scoped out). `qa` #721 returned to `blocked` (#765 backend defect still open); epic #712 not closed.
+
+
 ### 2026-06-17 — Epic #556 (Connect Wallet modal) — QA pass (re-run) via `qa` issue #557
 
 - **Scope:** Second pass on `qa` #557 after the right-pane fixes (#579, #580) merged and two new story docs (`579-connect-hero-asset`, `580-connect-modal-headline`) were added. All five user-stories docs under `docs/user-stories/epic-556/` executed against the local Pipeline frontend at `http://localhost:3000/`, disconnected wallet (`pipeline.mock.wallet.isConnected=false`). Desktop 1440×727 + mobile 402/500 (below lg=1024). Chrome DevTools MCP. `qa` #557 claimed from `blocked` (human-invoked directly).
