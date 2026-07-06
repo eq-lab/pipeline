@@ -330,35 +330,38 @@ describe("#749 — WithdrawalQueuePanel summary cards responsive layout", () => 
 describe("#749 — YieldHistoryPanel mobile layout", () => {
   beforeEach(() => {
     fetchMock.mockClear();
-    // Yield panel uses a zero-address STAKED_PLUSD guard from the ENV mock
-    // (already set up above), which triggers the empty/no-data state.
-    fetchMock.mockResolvedValue(
-      new Response(JSON.stringify([]), { status: 200 }),
-    );
+    // Issue #760: the zero-address vault guard was removed; the hook now fetches
+    // unconditionally. Keep fetch pending (never-resolve) so the panel stays in
+    // loading state — sufficient to verify the structural class contracts.
+    fetchMock.mockReturnValue(new Promise(() => {}));
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it("YieldHistoryPanel panel renders (zero-address empty guard active in test env)", () => {
-    // Issue #749: YieldHistoryPanel is verified visually with Chrome DevTools
-    // on the live dev server (route /dashboard). The test ENV uses zero-address
-    // for STAKED_PLUSD_ADDRESS to avoid real network calls, which triggers the
-    // `state="empty"` guard in useYieldHistoryPanel — the panel's children
-    // (TVL placeholder card, metric cards) are not rendered in this mode.
-    //
-    // The TVL placeholder (#738 seam) and metric card scroll row are verified
-    // via visual QA at http://localhost:5173/dashboard at 402px viewport.
-    // Tests that require ready state would need a non-zero-address ENV override.
+  it("YieldHistoryPanel panel renders in loading state (issue #760 — vault guard removed)", () => {
+    // Issue #760: the zero-address vault guard has been removed. The hook now
+    // fetches all three /v1/dashboard/* endpoints unconditionally. With fetch
+    // never resolving (pending), the panel stays in loading state.
+    // TVL card (#760) and metric card scroll row are verified visually at
+    // http://localhost:5173/dashboard; ready-state tests are in
+    // useYieldHistoryPanel.test.tsx with localStorage mock keys.
     render(<YieldHistoryPanel />, { wrapper: makeWrapper() });
 
-    // Panel container renders even in empty state.
+    // Panel container renders even in loading state.
     expect(
       screen.getByTestId("dashboard-panel-yield-history"),
     ).toBeInTheDocument();
-    // Empty state shows "Nothing to show yet" (PanelEmpty default caption).
-    expect(screen.getByTestId("panel-empty")).toBeInTheDocument();
+  });
+
+  it("TVL placeholder testid is absent (replaced by TvlCard in issue #760)", () => {
+    render(<YieldHistoryPanel />, { wrapper: makeWrapper() });
+
+    // The 'yield-tvl-placeholder' testid from the pre-#760 "TVL chart — Coming soon"
+    // placeholder has been removed. The real TvlCard now renders instead when ready.
+    // In loading state neither the placeholder nor the TvlCard are shown.
+    expect(screen.queryByTestId("yield-tvl-placeholder")).toBeNull();
   });
 });
 

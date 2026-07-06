@@ -107,7 +107,7 @@ Figma (mobile XS frame): [node 3283-71053](https://www.figma.com/design/A43rjYYj
 
 - All three metric cards are visible — none are hidden on mobile.
 - The metric cards are arranged in a horizontal row that scrolls horizontally if needed (overflow-x scroll within the cards area).
-- The "Target Net to sPLUSD" card (the third card, static value "8–12%") is NOT hidden or removed on mobile.
+- The "Target Net to sPLUSD" card (the third card, now showing "—" — #760 dropped the static "8–12%" label) is NOT hidden or removed on mobile.
 - No vertical stacking of metric cards (they remain in a flex-row).
 
 ---

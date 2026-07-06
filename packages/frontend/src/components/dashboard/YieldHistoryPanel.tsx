@@ -1,14 +1,20 @@
 /**
- * YieldHistoryPanel — Protocol Dashboard Panel D: Yield History.
+ * YieldHistoryPanel — Protocol Dashboard "Top" row (Figma frame `3283:67619`).
  *
  * Wires the `useYieldHistoryPanel` logic hook (FRONTEND.md rule 2: view =
  * JSX only). Renders:
  *
- *   1. "Cumulative Yield" card — headline value + green bar chart + time-range
- *      SegmentedTabs selector. Backed by `GET /v1/stats/yield`.
- *   2. Three metric cards — "Current APY, Net to sPLUSD", "Loan Book Yield",
- *      "Target Net to sPLUSD". The last is a static product constant (8–12%);
- *      a seam for `#738` is labelled in the code.
+ *   Left column (node `3283:67622`): TVL card — headline, Outstanding in Loans,
+ *     progress bar ("% deployed"), and dark TVL bar chart.
+ *     Backed by `GET /v1/dashboard/summary` + `GET /v1/dashboard/tvl-history`.
+ *
+ *   Right column: Cumulative Yield card — headline value + green bar chart
+ *     (no time-range selector — the Figma "Top" frame shows none).
+ *     Backed by `GET /v1/dashboard/summary` + `GET /v1/dashboard/yield-history`.
+ *
+ *   Three metric cards — "Current APY, Net to sPLUSD", "Loan Book Yield",
+ *     "Target Net to sPLUSD". The last has no endpoint yet — it renders "—"
+ *     (surface only backend-served data); a seam for `#738` is labelled in the code.
  *
  * Data that is NOT served by the API today (by-source cumulative minted split,
  * real-time T-bill accrual, trailing-30d loan/T-bill breakdown) is intentionally
@@ -16,19 +22,15 @@
  * delivers the backend endpoints.
  *
  * Figma:
- *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-68333
- *   Mobile:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387
+ *   Top row:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67619
+ *   TVL card: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67622
+ *   Yield:    https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-68333
+ *   Mobile:   https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387
  */
-import { SegmentedTabs } from "@pipeline/ui";
 import { PanelContainer } from "./PanelContainer";
 import { YieldBarChart } from "./YieldBarChart";
+import { TvlCard } from "./TvlCard";
 import { useYieldHistoryPanel } from "./useYieldHistoryPanel";
-import { STATS_PERIODS } from "@/utils/statsPeriod";
-
-// ── Period tabs ────────────────────────────────────────────────────────────────
-
-// STATS_PERIODS is the canonical period list used by all stats charts.
-const PERIOD_TABS = STATS_PERIODS.map((p) => ({ id: p.id, label: p.label }));
 
 // ── Metric card ────────────────────────────────────────────────────────────────
 // Figma node 3380:1921 — asymmetric depth border, white surface, 16px padding.
@@ -50,7 +52,9 @@ function MetricCard({
   return (
     <div
       className={[
-        "flex flex-col gap-4 p-4",
+        // h-[144px] + justify-between: label pinned to the top, value to the
+        // bottom (Figma node 3380:1921, 176×144 cards).
+        "flex h-[144px] flex-col justify-between p-4",
         "bg-[color:var(--color-pipeline-surface)]",
         "rounded-[var(--radius-pipeline-card)]",
         "border-t border-l border-[color:var(--color-pipeline-line)]",
@@ -99,10 +103,10 @@ function MetricCard({
 export function YieldHistoryPanel() {
   const {
     state,
-    periodId,
-    setPeriodId,
     cumulativeBars,
     headlineValue,
+    tvlBars,
+    tvlSummary,
     metricCards,
     errorMessage,
     refetch,
@@ -118,90 +122,79 @@ export function YieldHistoryPanel() {
       data-node-id="3283:68333"
     >
       {/*
-       * No section heading — per Figma frame 3283:67619, the Yield History
-       * section has no heading text; it is just the Cumulative Yield card +
-       * the 3-stat metric cards grid. PanelContainer's optional `title` prop
-       * is omitted here.
-       *
-       * Layout mirrors the Figma XS frame (3283-71053):
-       *   - Two chart cards side-by-side at desktop, stacked at mobile:
-       *     1. Cumulative Yield card (live data, 3283:68333).
-       *     2. TVL area chart placeholder (pending backend #738).
-       *   - Three metric cards in a horizontally-scrollable row below.
-       *     All cards shown at every viewport — hide nothing (#749 Q3).
+       * No section heading — per Figma frame 3283:67619, the "Top" row has no
+       * heading text. Layout mirrors Figma 3283:67619 (1136×460): two equal
+       * 560-wide columns with a 16px gap, stacked below md.
+       *   LEFT  (3283:67622): TVL card — spans the full column height, dark
+       *     bar chart anchored to the bottom.
+       *   RIGHT (3380:1920): vertical stack —
+       *     1. Cumulative Yield card (3283:68333, ~300h) — green bars, no tabs.
+       *     2. Three metric cards in a row (3380:1921, 144h).
+       *   All three metric cards are shown at every viewport (#749 Q3).
        */}
-      <div className="flex flex-col gap-4">
-        {/*
-         * Chart cards row — Cumulative Yield + TVL area chart placeholder.
-         * Figma XS frame `3283-71053` shows two chart cards side-by-side:
-         *   1. Cumulative Yield (live, backed by GET /v1/stats/yield).
-         *   2. TVL area chart — "Coming soon" placeholder until backend #738 lands.
-         * On mobile the cards stack vertically (flex-col) to fit the 370px section.
-         * On desktop they sit side-by-side (md:flex-row).
-         */}
-        <div className="flex flex-col gap-4 md:flex-row">
-          {/* Cumulative Yield card — Figma node 3283:68333 */}
+      <div className="flex flex-col gap-4 md:h-[460px] md:flex-row">
+        {/* LEFT column — TVL card (Figma 3283:67622); fills the full column height. */}
+        <TvlCard
+          headlineTvl={tvlSummary.headlineTvl}
+          outstandingInLoans={tvlSummary.outstandingInLoans}
+          deployedRatio={tvlSummary.deployedRatio}
+          tvlBars={tvlBars}
+        />
+
+        {/* RIGHT column (Figma 3380:1920) — Cumulative Yield card + metric cards. */}
+        <div className="flex flex-col gap-4 md:flex-1">
+          {/*
+           * Cumulative Yield card — Figma node 3283:68333. No period tabs per design.
+           * Mobile: fixed 248px (Figma 3283:71770). Desktop: fills the right column.
+           */}
           <div
             className={[
-              "flex flex-col gap-4 p-4",
+              "flex h-[248px] flex-col gap-4 p-4 md:h-auto md:flex-1",
               "bg-[color:var(--color-pipeline-surface)]",
               "rounded-[var(--radius-pipeline-card)]",
               "border-t border-l border-[color:var(--color-pipeline-line)]",
               "border-r-[3px] border-b-[3px]",
               "border-b-[color:var(--color-pipeline-line)]",
               "border-r-[color:var(--color-pipeline-line)]",
-              "flex-1",
             ].join(" ")}
             data-testid="yield-cumulative-card"
             data-node-id="3283:68333"
           >
-            {/* Header: eyebrow label + headline + period tabs */}
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex flex-col gap-1">
-                {/* Eyebrow label — Caption token, muted ink */}
-                <span
-                  className={[
-                    "font-[family-name:var(--font-body)]",
-                    "text-[length:var(--text-pipeline-caption)]",
-                    "leading-[var(--text-pipeline-caption--line-height)]",
-                    "font-normal",
-                    "text-[color:var(--color-pipeline-ink-muted)]",
-                  ].join(" ")}
-                >
-                  Cumulative Yield
-                </span>
-                {/* Headline value — Heading M display serif */}
-                <span
-                  className={[
-                    "font-[family-name:var(--font-display)]",
-                    "text-[length:var(--text-pipeline-heading-m-mobile)]",
-                    "leading-[var(--text-pipeline-heading-m-mobile--line-height)]",
-                    "md:text-[length:var(--text-pipeline-heading-m)]",
-                    "md:leading-[var(--text-pipeline-heading-m--line-height)]",
-                    "font-normal",
-                    "text-[color:var(--color-pipeline-ink)]",
-                  ].join(" ")}
-                  data-testid="yield-headline-value"
-                >
-                  {headlineValue}
-                </span>
-              </div>
-
-              {/* Time-range tabs — floating variant, no outer track */}
-              <SegmentedTabs
-                tabs={PERIOD_TABS}
-                activeId={periodId}
-                onSelect={setPeriodId}
-                variant="floating"
-                className="shrink-0"
-              />
+            {/* Header: eyebrow label + headline (Figma 3283:68334 — no tabs). */}
+            <div className="flex flex-col gap-1">
+              {/* Eyebrow label — Caption token, muted ink */}
+              <span
+                className={[
+                  "font-[family-name:var(--font-body)]",
+                  "text-[length:var(--text-pipeline-caption)]",
+                  "leading-[var(--text-pipeline-caption--line-height)]",
+                  "font-normal",
+                  "text-[color:var(--color-pipeline-ink-muted)]",
+                ].join(" ")}
+              >
+                Cumulative Yield
+              </span>
+              {/* Headline value — Heading M display serif */}
+              <span
+                className={[
+                  "font-[family-name:var(--font-display)]",
+                  "text-[length:var(--text-pipeline-heading-m-mobile)]",
+                  "leading-[var(--text-pipeline-heading-m-mobile--line-height)]",
+                  "md:text-[length:var(--text-pipeline-heading-m)]",
+                  "md:leading-[var(--text-pipeline-heading-m--line-height)]",
+                  "font-normal",
+                  "text-[color:var(--color-pipeline-ink)]",
+                ].join(" ")}
+                data-testid="yield-headline-value"
+              >
+                {headlineValue}
+              </span>
             </div>
 
-            {/* Chart — green monotonically-increasing bars, Figma node 3283:68337.
-              Height h-[144px] matches Figma XS chart container h=144 (#749). */}
+            {/* Chart — green bars (Figma 3283:68337). Mobile: 144px; desktop: fills. */}
             {cumulativeBars !== null && cumulativeBars.length > 0 ? (
               <div
-                className="h-[144px] overflow-hidden"
+                className="h-[144px] overflow-hidden md:h-auto md:flex-1"
                 data-testid="yield-chart-container"
               >
                 <YieldBarChart
@@ -212,14 +205,13 @@ export function YieldHistoryPanel() {
               </div>
             ) : (
               /*
-               * Seam: chart area is empty when no yield data is available.
-               * This can happen when the API returns data but all accrued values
-               * are zero (e.g. no active loans yet). The metric cards still render.
-               * Full empty state (vault = zero-address or all series null) is
-               * handled by PanelContainer `state="empty"` above.
+               * Seam: empty chart area when no yield data is available (API returned
+               * data but all cumulative_yield values are zero). Metric cards still
+               * render. Full empty state (all series null) is handled by
+               * PanelContainer `state="empty"` above.
                */
               <div
-                className="flex h-[144px] items-center justify-center"
+                className="h-[144px] md:h-auto md:flex-1"
                 aria-hidden="true"
                 data-testid="yield-chart-placeholder"
               />
@@ -227,82 +219,38 @@ export function YieldHistoryPanel() {
           </div>
 
           {/*
-           * TVL area chart placeholder — seam for backend issue #738.
-           *
-           * Figma XS frame `3283-71053` shows a "TVL area chart" card as the
-           * second chart card beside the Cumulative Yield card. The real TVL
-           * series cannot be built until #738 delivers the backend endpoint.
-           * This placeholder card occupies the same footprint so the mobile
-           * layout rhythm matches Figma now; replace when #738 lands.
-           *
-           * TODO(#738): Replace this placeholder with the real TVL area chart
-           * once the backend endpoint is available.
+           * Metric cards row — Figma node 3380:1921 (three 176×144 cards, 16px gap).
+           * Mobile: overflow-x-auto horizontal scroll so all cards stay reachable.
+           * Desktop (md+): three equal flex-1 cards filling the right column.
            */}
           <div
-            className={[
-              "flex flex-1 flex-col items-center justify-center gap-4 p-4",
-              "bg-[color:var(--color-pipeline-surface)]",
-              "rounded-[var(--radius-pipeline-card)]",
-              "border-t border-l border-[color:var(--color-pipeline-line)]",
-              "border-r-[3px] border-b-[3px]",
-              "border-b-[color:var(--color-pipeline-line)]",
-              "border-r-[color:var(--color-pipeline-line)]",
-              // Match Cumulative Yield card height so both cards are equal-height.
-              "min-h-[144px]",
-            ].join(" ")}
-            data-testid="yield-tvl-placeholder"
+            className="overflow-x-auto"
+            data-testid="yield-metric-cards-scroll"
           >
-            <span
-              className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-caption)]",
-                "leading-[var(--text-pipeline-caption--line-height)]",
-                "font-normal",
-                "text-[color:var(--color-pipeline-ink-muted)]",
-              ].join(" ")}
+            <div
+              className="flex min-w-max flex-row gap-4 md:min-w-0"
+              data-testid="yield-metric-cards"
             >
-              TVL chart — Coming soon
-            </span>
-          </div>
-
-          {/* Close chart cards row */}
-        </div>
-
-        {/*
-         * Metric cards row — Figma node 3380:1921 (three-card row).
-         * All three cards are shown at every viewport — hide nothing (#749 Q3).
-         * Mobile: overflow-x-auto horizontal scroll so all cards remain reachable
-         *   when they cannot fit side-by-side in the 370px content area.
-         * Desktop (md+): flex-row (3 cards side by side, flex-1 each).
-         */}
-        <div
-          className="overflow-x-auto"
-          data-testid="yield-metric-cards-scroll"
-        >
-          <div
-            className="flex min-w-max flex-row gap-4 md:min-w-0"
-            data-testid="yield-metric-cards"
-          >
-            <MetricCard
-              label="Current APY, Net to sPLUSD"
-              value={metricCards.currentApyNet}
-              data-testid="yield-metric-current-apy"
-            />
-            <MetricCard
-              label="Loan Book Yield"
-              value={metricCards.loanBookYield}
-              data-testid="yield-metric-loan-book-yield"
-            />
-            {/*
-             * TODO(#738): "Target Net to sPLUSD" is the static product constant
-             * "8–12%". No live endpoint serves a decomposed target APY today.
-             * Wire this metric once the backend follow-up #738 delivers the field.
-             */}
-            <MetricCard
-              label="Target Net to sPLUSD"
-              value={metricCards.targetNetApyStatic}
-              data-testid="yield-metric-target-net-apy"
-            />
+              <MetricCard
+                label="Current APY, Net to sPLUSD"
+                value={metricCards.currentApyNet}
+                data-testid="yield-metric-current-apy"
+              />
+              <MetricCard
+                label="Loan Book Yield"
+                value={metricCards.loanBookYield}
+                data-testid="yield-metric-loan-book-yield"
+              />
+              {/*
+               * TODO(#738): "Target Net to sPLUSD" has no live endpoint yet, so it
+               * renders "—" (surface only backend-served data). Wire once #738 lands.
+               */}
+              <MetricCard
+                label="Target Net to sPLUSD"
+                value={metricCards.targetNetApy}
+                data-testid="yield-metric-target-net-apy"
+              />
+            </div>
           </div>
         </div>
       </div>

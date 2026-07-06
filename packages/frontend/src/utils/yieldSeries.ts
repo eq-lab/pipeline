@@ -1,10 +1,10 @@
 /**
- * Chart-data mapping utilities for the Yield History panel (issue #720).
+ * Chart-data mapping utilities for the Yield History panel (issue #720) and
+ * the TVL/yield dashboard series (issue #760).
  *
- * Converts raw `SampleYieldItem[]` from `GET /v1/stats/yield` into the
- * 100-bar chart shape used by `YieldBarChart`. Follows the same approach as
- * `pricesToCurve` in `usePortfolioChart.ts` — parse, sort by timestamp,
- * normalise heights against the maximum value.
+ * Converts raw API series into the 100-bar chart shape used by `YieldBarChart`.
+ * Follows the same approach as `pricesToCurve` in `usePortfolioChart.ts` —
+ * parse, sort by timestamp, normalise heights against the maximum value.
  */
 
 import type { SampleYieldItem } from "@/api/useStatsYield";
@@ -32,7 +32,9 @@ export interface YieldBarPoint {
 
 function pickPoint(points: YieldBarPoint[], index: number): YieldBarPoint {
   if (points.length === 1) return points[0]!;
-  const sourceIndex = Math.round((index / (YIELD_CHART_N - 1)) * (points.length - 1));
+  const sourceIndex = Math.round(
+    (index / (YIELD_CHART_N - 1)) * (points.length - 1),
+  );
   return points[Math.min(points.length - 1, sourceIndex)]!;
 }
 
@@ -58,9 +60,13 @@ export function accrualToBars(
       const timestamp = new Date(s.timestamp).getTime();
       if (!Number.isFinite(value) || value < 0) return null;
       if (!Number.isFinite(timestamp)) return null;
-      return { value, timestamp } as Omit<YieldBarPoint, "height"> & { height: 0 };
+      return { value, timestamp } as Omit<YieldBarPoint, "height"> & {
+        height: 0;
+      };
     })
-    .filter((p): p is { value: number; timestamp: number; height: 0 } => p !== null)
+    .filter(
+      (p): p is { value: number; timestamp: number; height: 0 } => p !== null,
+    )
     .sort((a, b) => a.timestamp - b.timestamp);
 
   if (valid.length === 0) return null;
@@ -77,6 +83,69 @@ export function accrualToBars(
   // Map to YIELD_CHART_N slots (resampling when API returns fewer/more points)
   return Array.from({ length: YIELD_CHART_N }, (_, index) => {
     const source = pickPoint(points, index);
+    return {
+      value: source.value,
+      timestamp: source.timestamp,
+      height: source.height,
+    };
+  });
+}
+
+// ── Generic series adapter ────────────────────────────────────────────────────
+
+/**
+ * Generic adapter: converts a `[{ timestamp, value }]`-shaped series into a
+ * `YIELD_CHART_N`-slot `YieldBarPoint[]` normalised to the maximum value.
+ *
+ * Used by the TVL and dashboard yield-history series (issue #760) where the
+ * field name differs from `SampleYieldItem.accrued`. Callers map their
+ * domain field to `value` before passing in:
+ *
+ *   ```ts
+ *   pointsToBars(yieldPoints.map(p => ({ timestamp: p.timestamp, value: p.cumulative_yield })))
+ *   pointsToBars(tvlPoints.map(p => ({ timestamp: p.timestamp, value: p.tvl })))
+ *   ```
+ *
+ * Returns `null` when the input is empty, undefined, or all samples are
+ * invalid, so callers can show the empty state instead of a meaningless chart.
+ *
+ * - Parses `value` as a 6-decimal USDC string (already in human units).
+ * - Sorts by `timestamp` ascending.
+ * - Normalises heights: `height = max(MIN_HEIGHT_PCT, value / max * 100)`.
+ * - Maps to `YIELD_CHART_N` slots using the same `pickPoint` approach.
+ * - Ignores non-finite, negative, or invalid entries.
+ */
+export function pointsToBars(
+  points: { timestamp: string; value: string }[] | undefined,
+): YieldBarPoint[] | null {
+  const valid = (points ?? [])
+    .map((p) => {
+      const value = parseFloat(p.value);
+      const timestamp = new Date(p.timestamp).getTime();
+      if (!Number.isFinite(value) || value < 0) return null;
+      if (!Number.isFinite(timestamp)) return null;
+      return { value, timestamp } as Omit<YieldBarPoint, "height"> & {
+        height: 0;
+      };
+    })
+    .filter(
+      (p): p is { value: number; timestamp: number; height: 0 } => p !== null,
+    )
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (valid.length === 0) return null;
+
+  const maxValue = Math.max(...valid.map((p) => p.value));
+  if (!Number.isFinite(maxValue) || maxValue <= 0) return null;
+
+  const pts: YieldBarPoint[] = valid.map((p) => ({
+    value: p.value,
+    timestamp: p.timestamp,
+    height: Math.max(MIN_HEIGHT_PCT, (p.value / maxValue) * 100),
+  }));
+
+  return Array.from({ length: YIELD_CHART_N }, (_, index) => {
+    const source = pickPoint(pts, index);
     return {
       value: source.value,
       timestamp: source.timestamp,
