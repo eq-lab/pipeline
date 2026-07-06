@@ -303,6 +303,97 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
   });
 });
 
+// ── LTV header aggregate ────────────────────────────────────────────────────
+
+describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
+  it("computes average LTV with null → 0 for a single loan with null ltv", async () => {
+    // FIXTURE_LOAN_BOOK has one loan with ltv: null → null → 0, avg = 0/1 = 0 → "0%"
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    // ltv: null → 0 contribution. avg = 0 / 1 = 0 → formatLtv("0") = "0%"
+    expect(result.current.headerAggregates.ltv).toBe("0%");
+  });
+
+  it("computes average LTV correctly for mixed null/valued ltv", async () => {
+    const fixture = {
+      summary: {
+        total_deployed: "31600000.000000",
+        total_collateral: null,
+        senior_debt_coverage: null,
+        avg_yield: "0.112000",
+        avg_duration_days: 68,
+      },
+      loans: [
+        {
+          originator: "A",
+          borrower: "A",
+          commodity: "X",
+          principal: "8000000.000000",
+          collateral: null,
+          ltv: "0.8000", // → 0.8
+          duration_days: 120,
+          rate: "0.112000",
+          protection: null,
+          status: "Performing",
+        },
+        {
+          originator: "B",
+          borrower: "B",
+          commodity: "Y",
+          principal: "4000000.000000",
+          collateral: null,
+          ltv: null, // → 0
+          duration_days: 60,
+          rate: "0.110000",
+          protection: null,
+          status: "Performing",
+        },
+      ],
+    };
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(fixture));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    // avg = (0.8 + 0) / 2 = 0.4 → formatLtv("0.4") = "40%"
+    expect(result.current.headerAggregates.ltv).toBe("40%");
+  });
+
+  it("leaves ltv aggregate undefined when there are no loans", async () => {
+    const emptyLoansFixture = {
+      summary: {
+        total_deployed: "0.000000",
+        total_collateral: null,
+        senior_debt_coverage: null,
+        avg_yield: null,
+        avg_duration_days: null,
+      },
+      loans: [],
+    };
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(emptyLoansFixture));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    expect(result.current.headerAggregates.ltv).toBeUndefined();
+  });
+});
+
 // ── Tab selection ─────────────────────────────────────────────────────────────
 
 describe("useDeploymentMonitorPanel — tab selection", () => {

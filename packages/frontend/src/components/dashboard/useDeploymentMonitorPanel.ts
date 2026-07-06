@@ -46,8 +46,8 @@ export interface DeploymentMonitorPanelState {
    * - `principal` — always defined when ready (total_deployed is non-null).
    * - `collateral` — defined only when `total_collateral` is non-null; `undefined`
    *   while TODO #706 (commodity price feed) is not yet merged.
-   * - LTV subtitle is intentionally omitted until a backend `portfolio_ltv`
-   *   field exists (resolved open question — do NOT compute LTV client-side).
+   * - `ltv` — user-approved average LTV (null → 0), defined only when
+   *   loans.length > 0 (seam refs #729 / #765).
    */
   headerAggregates: LoanBookHeaderAggregates;
   /** Live count of active loans (loans.length when ready; 0 otherwise). */
@@ -220,6 +220,21 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   // Ready even with zero active loans — the Active Loans tab renders its own
   // inline empty state, keeping the In Origination tab reachable.
   const loans = data?.loans ?? [];
+
+  // ── LTV column aggregate (user-approved calc, exception to no-frontend-computed-
+  // metrics rule, seam refs #729 / #765). Average LTV = Σ(perRowLtv) / count,
+  // where null/missing LTV contributes 0 to the sum but still counts in the
+  // denominator. Only set when loans.length > 0.
+  let ltvAggregate: string | undefined;
+  if (loans.length > 0) {
+    const sum = loans.reduce((acc, loan) => {
+      const v = loan.ltv !== null ? parseFloat(loan.ltv) : 0;
+      return acc + (Number.isFinite(v) ? v : 0);
+    }, 0);
+    const avg = sum / loans.length;
+    ltvAggregate = formatLtv(String(avg));
+  }
+
   return {
     state: "ready",
     summary: data ? formatSummary(data.summary) : EMPTY_SUMMARY,
@@ -230,8 +245,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
             data.summary.total_collateral == null
               ? undefined
               : formatCompactUsd(data.summary.total_collateral),
-          // LTV subtitle intentionally omitted — no backend portfolio_ltv field yet.
-          // Do NOT compute LTV client-side. Resolved in issue #729 open-question #1.
+          ltv: ltvAggregate,
         }
       : EMPTY_HEADER_AGGREGATES,
     rows: loans.map(formatRow),

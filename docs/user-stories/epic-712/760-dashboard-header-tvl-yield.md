@@ -127,3 +127,55 @@ then the cards stack full-width in order TVL → Cumulative Yield → metric car
 Given a viewport narrower than `md`,
 when the metric card row renders,
 then the three cards are horizontally scrollable (overflow-x-auto).
+
+---
+
+## Loan Book — LTV header marker (user-approved frontend calc)
+
+The Loan Book table's LTV column header shows an **average-LTV** marker, computed
+client-side (approved exception to the no-frontend-computed-metrics rule):
+`avg = Σ(per-row LTV) / loans.count`, where each row's `ltv` (decimal fraction) is
+used and **null/missing → 0** (contributes 0 but still counts in the denominator);
+formatted with `formatLtv` (rounded integer `%`). Seam refs #729/#765.
+
+**Story 20 — LTV marker is the average of per-row LTV**
+Given `/v1/loan-book` returns loans with LTV values,
+when the Loan Book table header renders,
+then the LTV column shows `LTV · N%` where `N` = round(avg(row LTVs) × 100) — e.g. two loans at 0.80 and 0.60 → `LTV · 70%`.
+
+**Story 21 — Null LTV rows count as 0 in the average**
+Given some loans have `ltv: null`,
+when the LTV marker is computed,
+then null rows contribute 0 to the sum but still count in the denominator — e.g. loans at 0.80 and null → `LTV · 40%`.
+
+**Story 22 — No LTV marker when there are no loans**
+Given `/v1/loan-book` returns an empty `loans` array,
+when the header renders,
+then the LTV column shows the plain `LTV` label with no aggregate.
+
+---
+
+## Withdrawal Queue — Liquid Cover (user-approved frontend calc)
+
+The Withdrawal Queue "Liquid Cover" card is computed client-side:
+`Liquid Cover = (cash + tokenized-T-bills) / queue`, where
+`cash` = `/v1/financial-position` `assets.liquid.cash_stablecoins`,
+`tbills` = `assets.liquid.tokenized_tbills`, `queue` = `/v1/withdrawal-queue`
+`summary.in_queue_usd`; each **null/missing → 0**; divide-by-zero (queue 0) → `—`;
+formatted with `formatCoverage` (e.g. `1.5x`). Seam: cash + T-bills will be sourced
+from smart contracts (on-chain) once ready — null today, so it reads `0.0x`.
+
+**Story 23 — Liquid Cover reads "0.0x" while cash/T-bills are unsourced (current state)**
+Given the queue is non-zero and `cash_stablecoins`/`tokenized_tbills` are null,
+when the Liquid Cover card renders,
+then it shows `0.0x` ((0 + 0) / queue).
+
+**Story 24 — Liquid Cover guards divide-by-zero**
+Given `in_queue_usd` is 0 (empty queue),
+when the Liquid Cover card renders,
+then it shows `—`.
+
+**Story 25 — Liquid Cover computes a real ratio once cash is served**
+Given `cash_stablecoins` equals the queue amount,
+when the Liquid Cover card renders,
+then it shows `1.0x`.

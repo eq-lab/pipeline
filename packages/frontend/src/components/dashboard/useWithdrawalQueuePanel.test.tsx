@@ -9,6 +9,12 @@
  *
  * Uses the `pipeline.mock.api.*` localStorage mock layer (same approach as
  * `useLoanBook.test.tsx`).
+ *
+ * Liquid Cover is now a frontend calc: (cash + tbills) / queue, where cash and
+ * tbills come from `useFinancialPosition`. In all fixtures cash_stablecoins and
+ * tokenized_tbills are null → 0, so:
+ *   - queue > 0 → "0.0x"
+ *   - queue = 0 or empty state → "—"
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -16,6 +22,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useWithdrawalQueuePanel } from "./useWithdrawalQueuePanel";
 import type { WithdrawalQueueResponse } from "@/api/useWithdrawalQueue";
+import type { FinancialPositionResponse } from "@/api/useFinancialPosition";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -47,6 +54,31 @@ vi.mock("@/lib/env", () => ({
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const FP_KEY = "pipeline.mock.api.GET./v1/financial-position";
+
+/** Null liquid rows: cash = 0, tbills = 0 → liquidCover = "0.0x" when queue > 0. */
+const FIXTURE_FP_NULL_LIQUID: FinancialPositionResponse = {
+  assets: {
+    total: null,
+    liquid: {
+      total: null,
+      cash_stablecoins: null,
+      tokenized_tbills: null,
+      off_chain_usd: null,
+    },
+    deployed: {
+      total: null,
+      secured_loans_outstanding: null,
+      accrued_interest_receivable: null,
+    },
+  },
+  liabilities: {
+    total: null,
+    senior_claims: { plusd_outstanding: null },
+    subordinated_capital: { junior_tranche: null },
+  },
+};
 
 const FIXTURE_WITH_ITEMS: WithdrawalQueueResponse = {
   summary: {
@@ -245,6 +277,9 @@ describe("useWithdrawalQueuePanel — ready state", () => {
       "pipeline.mock.api.GET./v1/withdrawal-queue",
       JSON.stringify(FIXTURE_WITH_ITEMS),
     );
+    // Liquid Cover denominator comes from financial-position. Set null liquid
+    // values so cash + tbills = 0 → liquidCover = "0.0x" (queue > 0).
+    localStorage.setItem(FP_KEY, JSON.stringify(FIXTURE_FP_NULL_LIQUID));
   });
 
   afterEach(() => {
@@ -293,14 +328,40 @@ describe("useWithdrawalQueuePanel — ready state", () => {
     expect(result.current.summary.estimatedWait).toBe("~3.2 days");
   });
 
-  it("formats liquidCover as '—' when null", async () => {
+  it("formats liquidCover as '0.0x' when cash+tbills are null (null → 0) and queue > 0", async () => {
     const { result } = renderHook(() => useWithdrawalQueuePanel(), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    expect(result.current.summary.liquidCover).toBe("—");
+    // cash = 0 (null → 0), tbills = 0 (null → 0), queue = 1850000 > 0
+    // → (0 + 0) / 1850000 = 0 → formatCoverage("0.00") = "0.0x"
+    expect(result.current.summary.liquidCover).toBe("0.0x");
+  });
+
+  it("formats liquidCover with real cash value when financial-position provides it", async () => {
+    // Override FP mock: cash = $1.85M (matching the queue exactly → ratio = 1.0x)
+    const fpWithCash: FinancialPositionResponse = {
+      ...FIXTURE_FP_NULL_LIQUID,
+      assets: {
+        ...FIXTURE_FP_NULL_LIQUID.assets,
+        liquid: {
+          ...FIXTURE_FP_NULL_LIQUID.assets.liquid,
+          cash_stablecoins: "1850000.000000",
+        },
+      },
+    };
+    localStorage.setItem(FP_KEY, JSON.stringify(fpWithCash));
+
+    const { result } = renderHook(() => useWithdrawalQueuePanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    // cash = 1850000, tbills = 0, queue = 1850000 → ratio = 1.0 → "1.0x"
+    expect(result.current.summary.liquidCover).toBe("1.0x");
   });
 
   it("truncates holder address to 6+4 form", async () => {
@@ -351,6 +412,7 @@ describe("useWithdrawalQueuePanel — row expand", () => {
   beforeEach(() => {
     localStorage.clear();
     fetchMock.mockClear();
+    localStorage.setItem(FP_KEY, JSON.stringify(FIXTURE_FP_NULL_LIQUID));
   });
 
   afterEach(() => {
