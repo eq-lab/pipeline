@@ -58,6 +58,12 @@ Given `/v1/dashboard/yield-history` returns a non-empty series,
 when the Cumulative Yield card renders,
 then green bars are visible (full history). Per Figma 3283:67619 there is **no** time-range tab selector on the card.
 
+**Story 9b — Chart bars are single-colour with a hover tooltip**
+Given the TVL or Cumulative Yield chart has data,
+when the chart renders,
+then each bar is a single flat colour (no glow/opacity layering, per Figma); and
+when the pointer hovers over the chart, a tooltip shows the hovered bar's value and date and a faint band highlights that slot.
+
 **Story 10 — Yield loan-vs-T-bill split is absent (#738 gated)**
 Given the dashboard loads,
 when the Cumulative Yield card renders,
