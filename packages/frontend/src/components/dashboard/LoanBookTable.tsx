@@ -75,8 +75,6 @@ export interface LoanBookRow {
  * Pre-formatted aggregate strings for the table column headers.
  *
  * Populated by `useDeploymentMonitorPanel` from `summary` fields.
- * Only Principal and Collateral carry aggregates (LTV subtitle intentionally
- * omitted until a backend `portfolio_ltv` field exists — resolved in #729).
  *
  * `undefined` means "render the plain label with no aggregate" (not "—").
  * This avoids rendering `Collateral · —` when `total_collateral` is null.
@@ -89,6 +87,12 @@ export interface LoanBookHeaderAggregates {
    * TODO #706 (commodity price feed) is not yet merged.
    */
   collateral?: string;
+  /**
+   * User-approved average LTV across all rows (null → 0, seam refs #729/#765).
+   * Formula: Σ(perRowLtv, null→0) / loans.length. Formatted as integer percent,
+   * e.g. `"85%"`. `undefined` when there are no loans (header shows plain `LTV`).
+   */
+  ltv?: string;
 }
 
 export interface LoanBookTableProps {
@@ -276,7 +280,18 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
                 </span>
               )}
             </th>
-            <th className={headerCellClasses}>LTV</th>
+            <th className={headerCellClasses}>
+              LTV
+              {agg.ltv != null && (
+                <span
+                  data-testid="loan-book-header-ltv-aggregate"
+                  aria-hidden="false"
+                >
+                  {" · "}
+                  {agg.ltv}
+                </span>
+              )}
+            </th>
             <th className={headerCellClasses}>Duration</th>
             <th className={headerCellClasses}>Rate</th>
             <th className={headerCellClasses}>Protection</th>

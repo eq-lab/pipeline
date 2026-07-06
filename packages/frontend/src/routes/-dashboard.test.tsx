@@ -476,7 +476,7 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
     ).toHaveTextContent("$37.6M");
   });
 
-  it("LTV column header never shows an aggregate subtitle", async () => {
+  it("LTV column header shows the average-LTV marker (user-approved frontend calc)", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/loan-book",
       JSON.stringify(FIXTURE_WITH_COLLATERAL),
@@ -488,8 +488,11 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       expect(screen.getByTestId("loan-book-table-desktop")).toBeInTheDocument();
     });
 
-    // No LTV aggregate testid should ever exist (omitted per resolved open question #1)
-    expect(screen.queryByTestId("loan-book-header-ltv-aggregate")).toBeNull();
+    // Single loan with ltv "0.8511" → average = 0.8511 → "85%". The LTV marker
+    // is now computed client-side (Σ per-row LTV / count, null → 0).
+    expect(
+      screen.getByTestId("loan-book-header-ltv-aggregate"),
+    ).toHaveTextContent("85%");
   });
 
   it("loading state renders no aggregate subtitles — headers are label-only", () => {

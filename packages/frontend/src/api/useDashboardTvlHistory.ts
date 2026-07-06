@@ -62,7 +62,7 @@ export interface UseDashboardTvlHistoryResult {
 export function useDashboardTvlHistory({
   chainId,
 }: UseDashboardTvlHistoryParams): UseDashboardTvlHistoryResult {
-  const resolvedChainId = chainId || ENV.EVM_CHAIN_ID;
+  const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<TvlPoint[], Error>({
     queryKey: ["dashboard-tvl-history", resolvedChainId],

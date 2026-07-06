@@ -51,7 +51,7 @@ Five headline KPIs (`tvl`, `outstanding_in_loans`, `current_apy_net_to_splusd`, 
 | `loan_book_yield` | Principal-weighted gross senior rate. `null` when no active loans | `compute_loan_book` |
 | `cumulative_yield_total` | Σ `YieldMinted.s_plusd_amount` (net minted to sPLUSD vault; EVM incl. T-bill leg, Stellar loan-repayment-only — see Multi-chain note) | `contract_logs` |
 
-`target_net_to_splusd` is out of scope — no endpoint serves it, so the frontend renders `"—"` for the "Target Net to sPLUSD" card until a backend field lands (#738).
+`target_net_to_splusd` is out of scope — no endpoint serves it, so the frontend keeps a static `"8–12%"` label for the "Target Net to sPLUSD" card (#738 seam).
 
 **`current_apy_net_to_splusd` formula:** `gross_book_rate × (Σ senior_interest / Σ (senior_interest + mgmt_fee + perf_fee))`. Sums run over all loans with repayment data; falls back to haircut = 1 (net = gross) when no repayments yet. `null` only when no active loans.
 
