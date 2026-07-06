@@ -24,6 +24,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,9 +115,12 @@ export interface UseLoanBookResult {
  * units**. Use `formatCompactUsd` (not `formatUsdc`) to display them.
  */
 export function useLoanBook(): UseLoanBookResult {
+  // Protocol Dashboard is Stellar-scoped — query the Stellar chain (99000001).
+  const chainId = ENV.STELLAR_CHAIN_ID;
   const query = useQuery<LoanBookResponse, Error>({
-    queryKey: ["loan-book"],
-    queryFn: () => apiFetch<LoanBookResponse>("/v1/loan-book"),
+    queryKey: ["loan-book", chainId],
+    queryFn: () =>
+      apiFetch<LoanBookResponse>(`/v1/loan-book?chain_id=${chainId}`),
     refetchInterval: 30_000,
   });
 
