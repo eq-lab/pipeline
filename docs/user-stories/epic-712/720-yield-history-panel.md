@@ -64,7 +64,7 @@ Figma mobile: [node 3283:72387](https://www.figma.com/design/A43rjYYjSwdTmiwwf5c
 - Three metric cards are visible below the chart:
   - **"Current APY, Net to sPLUSD"** shows **10.4%**.
   - **"Loan Book Yield"** shows **10.9%**.
-  - **"Target Net to sPLUSD"** shows **"—"** (no backend endpoint yet — #738 seam).
+  - **"Target Net to sPLUSD"** shows **8–12%** (static product constant — #738 seam).
 - The `data-testid="dashboard-panel-yield-history"` attribute is present on the panel root.
 
 ---
@@ -171,5 +171,5 @@ real server that returns 500.
 
 - **"Current APY, Net to sPLUSD"** shows **"—"** (em-dash).
 - **"Loan Book Yield"** shows **"—"** (em-dash).
-- **"Target Net to sPLUSD"** shows **"—"** (no backend endpoint yet — #738 seam; #760 dropped the static "8–12%" label).
+- **"Target Net to sPLUSD"** shows **"8–12%"** (static product constant — #738 seam).
 - The chart still renders (accrued = 1000000 is valid).

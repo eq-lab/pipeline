@@ -300,7 +300,7 @@ describe("useYieldHistoryPanel — ready state", () => {
     expect(result.current.metricCards.loanBookYield).toBe("11.2%");
   });
 
-  it('targetNetApy renders "—" — no backing endpoint yet (#738)', async () => {
+  it('targetNetApy is the static "8–12%" product constant (#738 seam)', async () => {
     const { result } = renderHook(() => useYieldHistoryPanel(), {
       wrapper: makeWrapper(),
     });
@@ -309,7 +309,7 @@ describe("useYieldHistoryPanel — ready state", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    expect(result.current.metricCards.targetNetApy).toBe("—");
+    expect(result.current.metricCards.targetNetApy).toBe("8–12%");
   });
 
   it("TVL headline is formatted from summary.tvl", async () => {

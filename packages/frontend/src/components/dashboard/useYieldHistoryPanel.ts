@@ -18,9 +18,9 @@
  *     The zero-address vault guard from the pre-#760 version has been dropped —
  *     these endpoints are unconditionally enabled (they are wallet-less and
  *     the panel's empty state handles `200 []`).
- *   - "Target Net to sPLUSD" has no backing endpoint yet (#738 backend
- *     follow-up); it renders "—" until the backend serves it (surface only
- *     backend-served data).
+ *   - "Target Net to sPLUSD" is a static product constant ("8–12%") — no
+ *     endpoint serves a target APY yet (#738 backend follow-up); the value is
+ *     fixed in the Figma spec and product docs.
  *   - "Current APY, Net to sPLUSD" → `summary.current_apy_net_to_splusd`.
  *   - "Loan Book Yield" → `summary.loan_book_yield`.
  *   - Cumulative Yield headline → `summary.cumulative_yield_total`.
@@ -54,8 +54,8 @@ export interface YieldHistoryMetricCards {
    */
   loanBookYield: string;
   /**
-   * Target Net to sPLUSD — no backing endpoint yet (#738). Renders "—"
-   * until the backend serves a target APY field.
+   * Target Net to sPLUSD — static product constant (8–12%). No endpoint
+   * serves a target APY yet; seam left for #738.
    */
   targetNetApy: string;
 }
@@ -89,12 +89,20 @@ export interface YieldHistoryPanelState {
   refetch: () => void;
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/**
+ * "Target Net to sPLUSD" is a static product constant (8–12%). No API endpoint
+ * serves a target APY today — seam left for #738. Fixed in the Figma spec and docs.
+ */
+const TARGET_NET_APY_STATIC = "8–12%";
+
 // ── Fallback values ───────────────────────────────────────────────────────────
 
 const EMPTY_METRICS: YieldHistoryMetricCards = {
   currentApyNet: "—",
   loanBookYield: "—",
-  targetNetApy: "—",
+  targetNetApy: TARGET_NET_APY_STATIC,
 };
 
 const EMPTY_TVL_SUMMARY: TvlSummary = {
@@ -236,8 +244,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   const metricCards: YieldHistoryMetricCards = {
     currentApyNet,
     loanBookYield,
-    // TODO(#738): wire live target APY when the backend serves it; "—" until then.
-    targetNetApy: "—",
+    // TODO(#738): replace with live decomposed APY once the backend serves it.
+    targetNetApy: TARGET_NET_APY_STATIC,
   };
 
   // ── Empty state when all series are empty and summary is null/zero ──────────
