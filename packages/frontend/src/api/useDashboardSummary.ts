@@ -75,7 +75,10 @@ export interface UseDashboardSummaryResult {
  * - No vault address required — protocol-level endpoint.
  */
 export function useDashboardSummary(): UseDashboardSummaryResult {
-  const chainId = ENV.EVM_CHAIN_ID;
+  // The Protocol Dashboard is Stellar-scoped: its real/tested data lives on the
+  // Stellar chain (99000001). The EVM chain (560048/Hoodi) carries malformed test
+  // data (see #765), so the dashboard queries Stellar.
+  const chainId = ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<DashboardSummary, Error>({
     queryKey: ["dashboard-summary", chainId],

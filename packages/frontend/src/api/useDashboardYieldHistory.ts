@@ -66,7 +66,7 @@ export interface UseDashboardYieldHistoryResult {
 export function useDashboardYieldHistory({
   chainId,
 }: UseDashboardYieldHistoryParams): UseDashboardYieldHistoryResult {
-  const resolvedChainId = chainId || ENV.EVM_CHAIN_ID;
+  const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
 
   const query = useQuery<YieldPoint[], Error>({
     queryKey: ["dashboard-yield-history", resolvedChainId],

@@ -5,6 +5,8 @@ Issue: https://github.com/eq-lab/pipeline/issues/760
 Route: `/dashboard`
 Figma: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67619
 
+**Chain:** the dashboard is Stellar-scoped — the header hooks query `chain_id=99000001` (`ENV.STELLAR_CHAIN_ID`). The EVM chain (560048/Hoodi) carries malformed test data (#765). Verify against the Stellar chain.
+
 ---
 
 ## TVL card

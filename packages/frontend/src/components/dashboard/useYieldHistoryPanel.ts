@@ -12,7 +12,8 @@
  *   - `GET /v1/dashboard/yield-history?chain_id&days&interval` — yield series
  *
  * Decisions (issue #760):
- *   - `chainId` = ENV.EVM_CHAIN_ID (EVM is canonical for the dashboard).
+ *   - `chainId` = ENV.STELLAR_CHAIN_ID — the Protocol Dashboard is Stellar-scoped
+ *     (real data on chain 99000001; the EVM chain carries malformed test data, #765).
  *   - All three endpoints are protocol-level (no vault address needed).
  *     The zero-address vault guard from the pre-#760 version has been dropped —
  *     these endpoints are unconditionally enabled (they are wallet-less and
@@ -113,7 +114,7 @@ const EMPTY_TVL_SUMMARY: TvlSummary = {
  * - `ready`   → derived headline + bar arrays + metric cards are available.
  */
 export function useYieldHistoryPanel(): YieldHistoryPanelState {
-  const chainId = ENV.EVM_CHAIN_ID;
+  const chainId = ENV.STELLAR_CHAIN_ID;
 
   // ── Fetch all three dashboard endpoints ─────────────────────────────────────
   // The two series show full history at the default daily interval (no selector).
