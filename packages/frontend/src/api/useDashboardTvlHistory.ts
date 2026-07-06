@@ -3,7 +3,8 @@
  * (`GET /v1/dashboard/tvl-history`).
  *
  * The hook is always enabled (no wallet connection required — protocol-level).
- * Takes `chain_id`, `days`, and `interval` via the shared `periodToQuery` util.
+ * Fetches the full history (omits `days`) at the backend default `daily`
+ * interval (omits `interval`) — the dashboard charts render daily data.
  *
  * Mock layer
  * ----------
@@ -22,7 +23,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { periodToQuery } from "@/utils/statsPeriod";
 import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,7 +40,6 @@ export interface TvlPoint {
 
 export interface UseDashboardTvlHistoryParams {
   chainId: number;
-  periodId: string;
 }
 
 export interface UseDashboardTvlHistoryResult {
@@ -57,26 +56,20 @@ export interface UseDashboardTvlHistoryResult {
  * Returns TVL history from `GET /v1/dashboard/tvl-history`.
  *
  * - Polls every 30 s per the dashboard "Real-time updates" convention.
- * - Period → interval mapping from the shared `periodToQuery` util.
+ * - Full history at the default daily interval (both query params omitted).
  * - No wallet or vault address required — protocol-level endpoint.
  */
 export function useDashboardTvlHistory({
   chainId,
-  periodId,
 }: UseDashboardTvlHistoryParams): UseDashboardTvlHistoryResult {
   const resolvedChainId = chainId || ENV.EVM_CHAIN_ID;
 
   const query = useQuery<TvlPoint[], Error>({
-    queryKey: ["dashboard-tvl-history", resolvedChainId, periodId],
+    queryKey: ["dashboard-tvl-history", resolvedChainId],
     queryFn: () => {
-      const period = periodToQuery(periodId);
-      const params = new URLSearchParams({
-        chain_id: String(resolvedChainId),
-        interval: period.interval,
-      });
-      if (period.days !== undefined) {
-        params.set("days", String(period.days));
-      }
+      // Full history (omit `days`) at the backend default daily interval
+      // (omit `interval`) — charts render daily data.
+      const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
       return apiFetch<TvlPoint[]>(
         `/v1/dashboard/tvl-history?${params.toString()}`,
       );

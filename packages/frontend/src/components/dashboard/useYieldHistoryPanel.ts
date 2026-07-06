@@ -27,7 +27,6 @@
  *     to "no frontend-computed metrics" for ratio-of-served-values; null/zero
  *     tvl → null, render empty bar + "—%").
  */
-import { useState } from "react";
 import { ENV } from "@/lib/env";
 import { useDashboardSummary } from "@/api/useDashboardSummary";
 import { useDashboardTvlHistory } from "@/api/useDashboardTvlHistory";
@@ -74,9 +73,6 @@ export interface TvlSummary {
 
 export interface YieldHistoryPanelState {
   state: PanelState;
-  /** Active time-range period id (default "all"). */
-  periodId: string;
-  setPeriodId: (id: string) => void;
   /** Pre-computed cumulative-yield bar array, or `null` when empty/loading. */
   cumulativeBars: YieldBarPoint[] | null;
   /** Formatted headline value (e.g. "$2.91M") for the Cumulative Yield card. */
@@ -117,23 +113,16 @@ const EMPTY_TVL_SUMMARY: TvlSummary = {
  * - `ready`   → derived headline + bar arrays + metric cards are available.
  */
 export function useYieldHistoryPanel(): YieldHistoryPanelState {
-  const [periodId, setPeriodId] = useState("all");
-
   const chainId = ENV.EVM_CHAIN_ID;
 
   // ── Fetch all three dashboard endpoints ─────────────────────────────────────
+  // The two series show full history at the default daily interval (no selector).
 
   const summaryQuery = useDashboardSummary();
 
-  const tvlHistoryQuery = useDashboardTvlHistory({
-    chainId,
-    periodId,
-  });
+  const tvlHistoryQuery = useDashboardTvlHistory({ chainId });
 
-  const yieldHistoryQuery = useDashboardYieldHistory({
-    chainId,
-    periodId,
-  });
+  const yieldHistoryQuery = useDashboardYieldHistory({ chainId });
 
   // Combine refetch for all queries
   const refetch = () => {
@@ -153,8 +142,6 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   if (isLoading) {
     return {
       state: "loading",
-      periodId,
-      setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
       tvlBars: null,
@@ -172,8 +159,6 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   if (primaryError) {
     return {
       state: "error",
-      periodId,
-      setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
       tvlBars: null,
@@ -266,8 +251,6 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   if (cumulativeBars === null && tvlBars === null && summaryAllNull) {
     return {
       state: "empty",
-      periodId,
-      setPeriodId,
       cumulativeBars: null,
       headlineValue: "—",
       tvlBars: null,
@@ -282,8 +265,6 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
 
   return {
     state: "ready",
-    periodId,
-    setPeriodId,
     cumulativeBars,
     headlineValue,
     tvlBars,

@@ -7,7 +7,8 @@
  * point equals `summary.cumulative_yield_total`.
  *
  * The hook is always enabled (no wallet connection required — protocol-level).
- * Takes `chain_id`, `days`, and `interval` via the shared `periodToQuery` util.
+ * Fetches the full history (omits `days`) at the backend default `daily`
+ * interval (omits `interval`) — the dashboard charts render daily data.
  *
  * Mock layer
  * ----------
@@ -26,7 +27,6 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { periodToQuery } from "@/utils/statsPeriod";
 import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -44,7 +44,6 @@ export interface YieldPoint {
 
 export interface UseDashboardYieldHistoryParams {
   chainId: number;
-  periodId: string;
 }
 
 export interface UseDashboardYieldHistoryResult {
@@ -61,26 +60,20 @@ export interface UseDashboardYieldHistoryResult {
  * Returns cumulative yield history from `GET /v1/dashboard/yield-history`.
  *
  * - Polls every 30 s per the dashboard "Real-time updates" convention.
- * - Period → interval mapping from the shared `periodToQuery` util.
+ * - Full history at the default daily interval (both query params omitted).
  * - No wallet or vault address required — protocol-level endpoint.
  */
 export function useDashboardYieldHistory({
   chainId,
-  periodId,
 }: UseDashboardYieldHistoryParams): UseDashboardYieldHistoryResult {
   const resolvedChainId = chainId || ENV.EVM_CHAIN_ID;
 
   const query = useQuery<YieldPoint[], Error>({
-    queryKey: ["dashboard-yield-history", resolvedChainId, periodId],
+    queryKey: ["dashboard-yield-history", resolvedChainId],
     queryFn: () => {
-      const period = periodToQuery(periodId);
-      const params = new URLSearchParams({
-        chain_id: String(resolvedChainId),
-        interval: period.interval,
-      });
-      if (period.days !== undefined) {
-        params.set("days", String(period.days));
-      }
+      // Full history (omit `days`) at the backend default daily interval
+      // (omit `interval`) — charts render daily data.
+      const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
       return apiFetch<YieldPoint[]>(
         `/v1/dashboard/yield-history?${params.toString()}`,
       );

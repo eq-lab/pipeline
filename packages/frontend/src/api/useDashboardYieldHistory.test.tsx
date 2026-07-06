@@ -4,8 +4,8 @@
  * Covers:
  *   - Mock-key path returns fixture data immediately without calling fetch.
  *   - With no mock key, the hook calls apiFetch with `/v1/dashboard/yield-history`.
- *   - URL includes chain_id and interval; days present for non-all periods,
- *     absent for "all".
+ *   - URL includes chain_id and omits both days (full history) and interval
+ *     (backend default daily).
  *   - Error path: when fetch fails, `error` is populated.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -94,7 +94,7 @@ describe("useDashboardYieldHistory — mock-key path", () => {
     );
 
     const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
+      () => useDashboardYieldHistory({ chainId: 560048 }),
       { wrapper: makeWrapper() },
     );
 
@@ -112,7 +112,7 @@ describe("useDashboardYieldHistory — mock-key path", () => {
     );
 
     const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
+      () => useDashboardYieldHistory({ chainId: 560048 }),
       { wrapper: makeWrapper() },
     );
 
@@ -143,7 +143,7 @@ describe("useDashboardYieldHistory — real fetch path", () => {
     );
 
     const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
+      () => useDashboardYieldHistory({ chainId: 560048 }),
       { wrapper: makeWrapper() },
     );
 
@@ -157,37 +157,13 @@ describe("useDashboardYieldHistory — real fetch path", () => {
     );
   });
 
-  it("passes chain_id and interval query params", async () => {
+  it("passes chain_id and omits days + interval (full-history daily)", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(FIXTURE_WITH_DATA), { status: 200 }),
     );
 
     const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
-      { wrapper: makeWrapper() },
-    );
-
-    await waitFor(() => {
-      expect(result.current.data).toBeDefined();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("chain_id=560048"),
-      undefined,
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("interval=weekly"),
-      undefined,
-    );
-  });
-
-  it("omits days param for 'all' period", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(FIXTURE_WITH_DATA), { status: 200 }),
-    );
-
-    const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
+      () => useDashboardYieldHistory({ chainId: 560048 }),
       { wrapper: makeWrapper() },
     );
 
@@ -196,27 +172,10 @@ describe("useDashboardYieldHistory — real fetch path", () => {
     });
 
     const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    // Full history at the default daily interval → only chain_id in the query.
+    expect(url).toContain("chain_id=560048");
+    expect(url).not.toContain("interval=");
     expect(url).not.toContain("days=");
-  });
-
-  it("passes days param for non-all periods", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify(FIXTURE_WITH_DATA), { status: 200 }),
-    );
-
-    const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "1m" }),
-      { wrapper: makeWrapper() },
-    );
-
-    await waitFor(() => {
-      expect(result.current.data).toBeDefined();
-    });
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("days=30"),
-      undefined,
-    );
   });
 
   it("sets error when fetch fails with 500", async () => {
@@ -228,7 +187,7 @@ describe("useDashboardYieldHistory — real fetch path", () => {
     );
 
     const { result } = renderHook(
-      () => useDashboardYieldHistory({ chainId: 560048, periodId: "all" }),
+      () => useDashboardYieldHistory({ chainId: 560048 }),
       { wrapper: makeWrapper() },
     );
 
