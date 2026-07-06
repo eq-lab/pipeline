@@ -157,9 +157,9 @@ export function TvlCard({
           />
         </div>
 
-        {/* "X.X% deployed" caption — Caption token, muted (Figma 3380:1895, y=76) */}
+        {/* "X.X% deployed" caption — Caption token, muted, centred (Figma 3380:1895) */}
         <span
-          className={captionClasses}
+          className={[captionClasses, "text-center"].join(" ")}
           data-testid="dashboard-tvl-deployed-caption"
           data-node-id="3380:1895"
         >
@@ -168,13 +168,15 @@ export function TvlCard({
       </div>
 
       {/*
-       * TVL bar chart — dark (ink) bars, height h-[144px] matching the yield
-       * chart footprint (Figma chart container 3283:67630, 528×240).
-       * Uses YieldBarChart with fill="var(--color-pipeline-ink)".
+       * TVL bar chart — dark (ink) bars. `flex-1` grows to fill the remaining
+       * card height, anchoring the chart to the bottom (Figma chart container
+       * 3283:67630 is 528×240 in the 460-tall card). `min-h-[144px]` keeps it
+       * present when the card stacks at mobile. Uses YieldBarChart with
+       * fill="var(--color-pipeline-ink)".
        */}
       {tvlBars !== null && tvlBars.length > 0 ? (
         <div
-          className="h-[144px] overflow-hidden"
+          className="min-h-[144px] flex-1 overflow-hidden"
           data-testid="dashboard-tvl-chart-container"
         >
           <YieldBarChart
@@ -186,7 +188,7 @@ export function TvlCard({
         </div>
       ) : (
         <div
-          className="flex h-[144px] items-center justify-center"
+          className="min-h-[144px] flex-1"
           aria-hidden="true"
           data-testid="dashboard-tvl-chart-placeholder"
         />

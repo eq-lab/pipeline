@@ -39,10 +39,10 @@ Given the dashboard loads and `/v1/dashboard/tvl-history` returns a non-empty se
 when the TVL card renders,
 then a bar chart with dark (ink) bars is visible inside the card.
 
-**Story 7 — TVL card is the left column, Cumulative Yield is the right column**
+**Story 7 — Two-column "Top" row: TVL left (full height), Cumulative Yield + metric cards right**
 Given the dashboard page loads on a desktop viewport,
 when the "Top" row renders,
-then the TVL card and Cumulative Yield card are side by side (md:flex-row).
+then there are two equal columns (md:flex-row): the **left** column is the TVL card spanning the full row height, and the **right** column is a vertical stack of the Cumulative Yield card (on top) and the three metric cards row (below) — matching Figma 3283:67619.
 
 ---
 
@@ -56,7 +56,7 @@ then the headline value is `$2.9M` (from `summary.cumulative_yield_total`, not f
 **Story 9 — Cumulative yield bars from yield-history endpoint**
 Given `/v1/dashboard/yield-history` returns a non-empty series,
 when the Cumulative Yield card renders,
-then green bars are visible and the period tabs (7d / 1m / 3m / 1y / All) change the series range.
+then green bars are visible (full history). Per Figma 3283:67619 there is **no** time-range tab selector on the card.
 
 **Story 10 — Yield loan-vs-T-bill split is absent (#738 gated)**
 Given the dashboard loads,
