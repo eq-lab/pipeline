@@ -53,6 +53,12 @@ pub struct VoucherResponse {
     pub amount: String,
     pub user: String,
     pub signature: String,
+    /// Unix timestamp (seconds) after which the voucher can no longer be
+    /// claimed. Part of the signed Stellar voucher — the caller must pass it
+    /// verbatim to the on-chain `claim_request`. `None` for EVM chains, whose
+    /// signature does not cover a deadline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deadline: Option<String>,
 }
 
 /// Error returned when voucher signing resolution fails.
@@ -344,6 +350,7 @@ async fn deposit_voucher_evm(
             amount: amount_str,
             user: format!("{user:#x}"),
             signature: format!("0x{}", hex::encode(&sig_bytes)),
+            deadline: None,
         })
         .into_response(),
         Err(e) => {
@@ -444,6 +451,7 @@ async fn withdrawal_voucher_evm(
             amount: amount_str,
             user: format!("{user:#x}"),
             signature: format!("0x{}", hex::encode(&sig_bytes)),
+            deadline: None,
         })
         .into_response(),
         Err(e) => {
@@ -677,8 +685,26 @@ fn sign_and_respond_stellar(
     } else {
         &cfg.domain_wq
     };
-    let sig_bytes =
-        shared::stellar_voucher::sign_voucher(&cfg.signer, domain, rid, &sender_pk, amount);
+
+    // Deadline = now + 24h. The on-chain `claim_request` rejects the voucher once
+    // `ledger.timestamp() > deadline`, and the deadline is part of the signed
+    // voucher, so the caller must pass this exact value to `claim_request`.
+    let deadline = match now_unix() {
+        Ok(now) => now.saturating_add(shared::stellar_voucher::CLAIM_DEADLINE_SECS),
+        Err(e) => {
+            tracing::error!(error = %e, "system clock is before the Unix epoch");
+            return internal_error_response("internal error");
+        }
+    };
+
+    let sig_bytes = shared::stellar_voucher::sign_voucher(
+        &cfg.signer,
+        domain,
+        rid,
+        &sender_pk,
+        amount,
+        deadline,
+    );
 
     Json(VoucherResponse {
         request_id: rid_str,
@@ -687,8 +713,17 @@ fn sign_and_respond_stellar(
         // Keep `0x` prefix for response-shape consistency with EVM path.
         // The chain context (caller knows chain_id) disambiguates how to decode.
         signature: format!("0x{}", hex::encode(sig_bytes)),
+        deadline: Some(deadline.to_string()),
     })
     .into_response()
+}
+
+/// Current Unix timestamp in seconds. Returns `Err` only if the system clock is
+/// set before the Unix epoch (1970).
+fn now_unix() -> Result<u64, std::time::SystemTimeError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
 }
 
 /// Derive the `C…` Strkey from a `StellarVoucherDomain` for the `is_request_claimed` lookup.
