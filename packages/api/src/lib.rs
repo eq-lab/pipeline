@@ -40,7 +40,11 @@ pub struct AppState {
     pub wq_domains: HashMap<i64, Eip712Domain>,
     /// Stellar voucher signing config keyed by chain_id.
     pub stellar_voucher_signers: HashMap<i64, StellarVoucherChainConfig>,
+    /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
+    /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.
+    /// Mirrors the worker's `ELLIPTIC_ENABLED`; defaults to false.
+    pub elliptic_enabled: bool,
     /// Allow-list of addresses authorized to authenticate (signature-based login).
     pub auth_user_repo: AuthUserRepo,
     /// Originator-submitted loan applications awaiting trustee review.

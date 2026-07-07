@@ -1,0 +1,8 @@
+{
+  "type": "wallet_exposure",
+  "process_status": "complete",
+  "risk_score": 0.95,
+  "risk_score_detail": {"destination": 0.95, "source": null},
+  "evaluation_detail": {"source": [], "destination": [{"rule_name":"Sanctions","risk_score":0.95}]},
+  "triggered_rules": [{"rule_name":"Sanctions Exposure"}]
+}

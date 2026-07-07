@@ -49,7 +49,7 @@ pub struct RequestInfo {
     pub request_id: Option<bigdecimal::BigDecimal>,
     pub sender: Option<String>,
     pub amount: Option<bigdecimal::BigDecimal>,
-    pub crystal_kyt_status: Option<i16>,
+    pub kyt_status: Option<i16>,
     pub block_timestamp: i64,
 }
 
@@ -60,7 +60,7 @@ pub struct RequestEventRow {
     pub amount: Option<bigdecimal::BigDecimal>,
     pub assets: Option<bigdecimal::BigDecimal>,
     pub shares: Option<bigdecimal::BigDecimal>,
-    pub crystal_kyt_status: Option<i16>,
+    pub kyt_status: Option<i16>,
     pub block_timestamp: i64,
     pub is_claimed: bool,
     pub on_chain_allowed: bool,
@@ -104,7 +104,7 @@ impl GroupedRequest {
                     }
                 } else {
                     #[allow(clippy::match_same_arms)]
-                    match row.crystal_kyt_status {
+                    match row.kyt_status {
                         Some(1) if row.on_chain_allowed => "PendingClaim",
                         Some(1) => "PendingVerification", // passed KYT but not yet whitelisted
                         Some(_) => "VerificationFailed",
@@ -130,8 +130,8 @@ impl GroupedRequest {
     }
 }
 
-pub struct CrystalTransferResult<'a> {
-    pub crystal_kyt_status: i16,
+pub struct KytTransferResult<'a> {
+    pub kyt_status: i16,
     pub tx_risk: Option<f32>,
     pub tx_signals: Option<&'a serde_json::Value>,
     pub sender_risk: Option<f32>,
@@ -321,7 +321,7 @@ impl KycRepo {
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
         // Only allow profiles that:
         // 1. Have not been allowed on-chain yet (for this chain)
-        // 2. Have at least one DepositRequested with crystal_kyt_status = 1 (clear)
+        // 2. Have at least one DepositRequested with kyt_status = 1 (clear)
         // 3. Pass sumsub/crystal checks if enabled
         let rows = match (sumsub_enabled, crystal_enabled) {
             (true, true) => {
@@ -332,13 +332,13 @@ impl KycRepo {
                        AND p.sumsub_kyc_status = 2
                        AND p.sumsub_review_status = 2
                        AND p.sumsub_aml_status = 2
-                       AND p.crystal_kyt_status = 1
+                       AND p.kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.chain_id = $1
                              AND c.event_name = 'DepositRequested'
                              AND LOWER(c.params->>'user') = p.wallet_address
-                             AND c.crystal_kyt_status = 1
+                             AND c.kyt_status = 1
                        )",
                 )
                 .bind(chain_id)
@@ -369,13 +369,13 @@ impl KycRepo {
                     "SELECT p.wallet_address FROM lp_profiles p
                      WHERE p.chain_id = $1
                        AND p.on_chain_allowed = FALSE
-                       AND p.crystal_kyt_status = 1
+                       AND p.kyt_status = 1
                        AND EXISTS (
                            SELECT 1 FROM contract_logs c
                            WHERE c.chain_id = $1
                              AND c.event_name = 'DepositRequested'
                              AND LOWER(c.params->>'user') = p.wallet_address
-                             AND c.crystal_kyt_status = 1
+                             AND c.kyt_status = 1
                        )",
                 )
                 .bind(chain_id)
@@ -402,46 +402,46 @@ impl KycRepo {
         Ok(rows)
     }
 
-    /// Stellar variant of `fetch_profiles_to_allow` — case-sensitive match, no Crystal gate.
+    /// Stellar variant of `fetch_profiles_to_allow` — case-sensitive match.
+    /// Requires KYT-clear (`kyt_status = 1`) when `elliptic_enabled` is true.
     pub async fn fetch_profiles_to_allow_stellar(
         &self,
         chain_id: i64,
         sumsub_enabled: bool,
+        elliptic_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        let rows = if sumsub_enabled {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT p.wallet_address FROM lp_profiles p
-                 WHERE p.chain_id = $1
-                   AND p.on_chain_allowed = FALSE
-                   AND p.sumsub_kyc_status = 2
-                   AND p.sumsub_review_status = 2
-                   AND p.sumsub_aml_status = 2
-                   AND EXISTS (
-                       SELECT 1 FROM contract_logs c
-                       WHERE c.chain_id = $1
-                         AND c.event_name = 'DepositRequested'
-                         AND c.params->>'user' = p.wallet_address
-                   )",
-            )
-            .bind(chain_id)
-            .fetch_all(&self.pool)
-            .await?
+        // When Elliptic KYT is enabled, the deposit itself must have passed
+        // transaction screening (`c.kyt_status = 1`), mirroring the EVM/Crystal
+        // gate — otherwise an unscreened or screening-errored deposit could be
+        // whitelisted on the strength of the address screen alone.
+        let deposit_kyt = if elliptic_enabled {
+            " AND c.kyt_status = 1"
         } else {
-            sqlx::query_as::<_, WhitelistCandidate>(
-                "SELECT p.wallet_address FROM lp_profiles p
-                 WHERE p.chain_id = $1
-                   AND p.on_chain_allowed = FALSE
-                   AND EXISTS (
-                       SELECT 1 FROM contract_logs c
-                       WHERE c.chain_id = $1
-                         AND c.event_name = 'DepositRequested'
-                         AND c.params->>'user' = p.wallet_address
-                   )",
-            )
+            ""
+        };
+        let mut sql = format!(
+            "SELECT p.wallet_address FROM lp_profiles p
+             WHERE p.chain_id = $1
+               AND p.on_chain_allowed = FALSE
+               AND EXISTS (
+                   SELECT 1 FROM contract_logs c
+                   WHERE c.chain_id = $1
+                     AND c.event_name = 'DepositRequested'
+                     AND c.params->>'user' = p.wallet_address{deposit_kyt}
+               )"
+        );
+        if sumsub_enabled {
+            sql.push_str(
+                " AND p.sumsub_kyc_status = 2 AND p.sumsub_review_status = 2 AND p.sumsub_aml_status = 2",
+            );
+        }
+        if elliptic_enabled {
+            sql.push_str(" AND p.kyt_status = 1");
+        }
+        let rows = sqlx::query_as::<_, WhitelistCandidate>(&sql)
             .bind(chain_id)
             .fetch_all(&self.pool)
-            .await?
-        };
+            .await?;
         Ok(rows)
     }
 
@@ -449,16 +449,16 @@ impl KycRepo {
         &self,
         chain_id: i64,
         _sumsub_enabled: bool,
-        crystal_enabled: bool,
+        kyt_enabled: bool,
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
-        if !crystal_enabled {
+        if !kyt_enabled {
             return Ok(vec![]);
         }
 
-        // Sanctions-only: disallow profiles that were allowed but now have crystal_kyt_status = 2 (failed)
+        // Sanctions-only: disallow profiles that were allowed but now have kyt_status = 2 (failed)
         let rows = sqlx::query_as::<_, WhitelistCandidate>(
             "SELECT wallet_address FROM lp_profiles
-             WHERE chain_id = $1 AND on_chain_allowed = TRUE AND crystal_kyt_status = 2",
+             WHERE chain_id = $1 AND on_chain_allowed = TRUE AND kyt_status = 2",
         )
         .bind(chain_id)
         .fetch_all(&self.pool)
@@ -565,10 +565,40 @@ impl KycRepo {
                     tx_hash,
                     chain_id
              FROM contract_logs
-             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND crystal_kyt_status IS NULL
+             WHERE event_name IN ('DepositRequested', 'WithdrawalRequested') AND kyt_status IS NULL
              ORDER BY id
              LIMIT $1",
         )
+        .bind(batch_size)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Chain-scoped variant of `fetch_unverified_transfers`. Used by the Stellar
+    /// KYT phase so it only screens its own chain's transfers and preserves the
+    /// Strkey (case-sensitive) sender address (no lowercasing here or in the caller).
+    pub async fn fetch_unverified_transfers_for_chain(
+        &self,
+        chain_id: i64,
+        batch_size: i64,
+    ) -> anyhow::Result<Vec<UnverifiedTransfer>> {
+        let rows = sqlx::query_as::<_, UnverifiedTransfer>(
+            "SELECT id,
+                    event_name,
+                    COALESCE(params->>'user', params->>'withdrawer') AS sender,
+                    params->>'receiver' AS receiver,
+                    (params->>'amount')::numeric AS amount,
+                    tx_hash,
+                    chain_id
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name IN ('DepositRequested', 'WithdrawalRequested')
+               AND kyt_status IS NULL
+             ORDER BY id
+             LIMIT $2",
+        )
+        .bind(chain_id)
         .bind(batch_size)
         .fetch_all(&self.pool)
         .await?;
@@ -581,7 +611,7 @@ impl KycRepo {
         wallet_address: &str,
     ) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles SET crystal_kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
+            "UPDATE lp_profiles SET kyt_status = 1, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
         )
         .bind(chain_id)
         .bind(wallet_address)
@@ -596,7 +626,7 @@ impl KycRepo {
         wallet_address: &str,
     ) -> anyhow::Result<()> {
         sqlx::query(
-            "UPDATE lp_profiles SET crystal_kyt_status = 2, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
+            "UPDATE lp_profiles SET kyt_status = 2, updated_at = NOW() WHERE chain_id = $1 AND wallet_address = $2",
         )
         .bind(chain_id)
         .bind(wallet_address)
@@ -612,7 +642,7 @@ impl KycRepo {
     ) -> anyhow::Result<Vec<WhitelistCandidate>> {
         let rows = sqlx::query_as::<_, WhitelistCandidate>(
             "SELECT wallet_address FROM lp_profiles
-             WHERE chain_id = $1 AND crystal_screened_at IS NULL
+             WHERE chain_id = $1 AND kyt_screened_at IS NULL
              ORDER BY created_at
              LIMIT $2",
         )
@@ -623,7 +653,7 @@ impl KycRepo {
         Ok(rows)
     }
 
-    pub async fn set_crystal_address_risk(
+    pub async fn set_kyt_address_risk(
         &self,
         chain_id: i64,
         wallet_address: &str,
@@ -633,9 +663,9 @@ impl KycRepo {
     ) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE lp_profiles
-             SET crystal_address_risk = $3,
-                 crystal_address_risk_signals = $4,
-                 crystal_screened_at = $5,
+             SET kyt_address_risk = $3,
+                 kyt_address_signals = $4,
+                 kyt_screened_at = $5,
                  updated_at = NOW()
              WHERE chain_id = $1 AND wallet_address = $2",
         )
@@ -649,23 +679,23 @@ impl KycRepo {
         Ok(())
     }
 
-    pub async fn set_transfer_crystal_result(
+    pub async fn set_transfer_kyt_result(
         &self,
         log_id: i64,
-        result: &CrystalTransferResult<'_>,
+        result: &KytTransferResult<'_>,
     ) -> anyhow::Result<()> {
         sqlx::query(
             "UPDATE contract_logs
-             SET crystal_kyt_status = $2,
-                 crystal_tx_risk = $3,
-                 crystal_tx_signals = $4,
-                 crystal_sender_risk = $5,
-                 crystal_sender_signals = $6,
-                 crystal_screened_at = $7
+             SET kyt_status = $2,
+                 kyt_tx_risk = $3,
+                 kyt_tx_signals = $4,
+                 kyt_sender_risk = $5,
+                 kyt_sender_signals = $6,
+                 kyt_screened_at = $7
              WHERE id = $1",
         )
         .bind(log_id)
-        .bind(result.crystal_kyt_status)
+        .bind(result.kyt_status)
         .bind(result.tx_risk)
         .bind(result.tx_signals)
         .bind(result.sender_risk)
@@ -706,7 +736,7 @@ impl KycRepo {
             "SELECT (params->>'request_id')::numeric AS request_id,
                     params->>'user' AS sender,
                     (params->>'amount')::numeric AS amount,
-                    crystal_kyt_status,
+                    kyt_status,
                     block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
@@ -738,7 +768,7 @@ impl KycRepo {
             "SELECT (params->>'request_id')::numeric AS request_id,
                     params->>'user' AS sender,
                     (params->>'amount')::numeric AS amount,
-                    crystal_kyt_status,
+                    kyt_status,
                     block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
@@ -769,7 +799,7 @@ impl KycRepo {
             "SELECT (params->>'request_id')::numeric AS request_id,
                     params->>'withdrawer' AS sender,
                     (params->>'amount')::numeric AS amount,
-                    crystal_kyt_status,
+                    kyt_status,
                     block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
@@ -800,7 +830,7 @@ impl KycRepo {
             "SELECT (params->>'request_id')::numeric AS request_id,
                     params->>'withdrawer' AS sender,
                     (params->>'amount')::numeric AS amount,
-                    crystal_kyt_status,
+                    kyt_status,
                     block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
@@ -879,7 +909,7 @@ impl KycRepo {
                            ) AS amount,
                            (r.params->>'assets')::numeric AS assets,
                            (r.params->>'shares')::numeric AS shares,
-                           r.crystal_kyt_status,
+                           r.kyt_status,
                            r.block_timestamp,
                            EXISTS (
                                SELECT 1 FROM contract_logs c2

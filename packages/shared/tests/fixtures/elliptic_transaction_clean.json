@@ -1,0 +1,14 @@
+{
+  "id": "02126171-95b1-49f9-90a2-b857e62b87a2",
+  "screening_id": "007535c0-60f9-45fa-80fa-1b3edc352293",
+  "risk_score": 0.0015073405736889924,
+  "evaluation_detail": [
+    {"rule_id":"cb549e26-a441-42a0-a670-cd4cd2c5a86a","rule_type":"exposure","risk_score":0.0015073405736889924,"matched_behaviors":[],"rule_name":"Obfuscating &amp; Misc.","rule_history_id":"cb549e26-a441-42a0-a670-cd4cd2c5a86a"}
+  ],
+  "subject": {"blockchain":"holistic","asset":"holistic","hash":"f2d701ae85301f5b6ce922eade06b54c3fedb601bb2cd89e53919f10cfad7a72","output_address":"GCO45COWIBDZEGJ3DRGDGCCCJXK777F2S6D6HXQKXVB3EKQVCQU7B2WA","output_type":"address","type":"transaction"},
+  "type": "source_of_funds",
+  "asset_list": ["XLM/stellar"],
+  "process_status": "complete",
+  "error": null,
+  "detected_behaviors": []
+}

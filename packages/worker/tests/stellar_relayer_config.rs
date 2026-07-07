@@ -23,6 +23,7 @@ fn clear_chain_env(id: i64) {
     unsafe {
         std::env::remove_var("CHAINS");
         std::env::remove_var("CRYSTAL_ENABLED");
+        std::env::remove_var("ELLIPTIC_ENABLED");
         std::env::remove_var("JOB_RELAYER_SUMSUB_ENABLED");
         std::env::remove_var("JOB_RELAYER_INTERVAL_SECS");
         for suffix in [
@@ -70,21 +71,21 @@ fn stellar_relayer_settings_happy_path() {
     assert_eq!(s.rpc_url, "https://soroban-testnet.stellar.org");
     assert_eq!(s.network_passphrase, "Test SDF Network ; September 2015");
     assert!(
-        !s.crystal_enabled,
-        "Crystal must be force-disabled on Stellar"
+        !s.elliptic_enabled,
+        "Elliptic must be disabled by default on Stellar (ELLIPTIC_ENABLED not set)"
     );
     clear_chain_env(id);
 }
 
 #[test]
-fn stellar_force_crystal_disabled() {
+fn stellar_elliptic_enabled_when_env_set() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id: i64 = 99_000_001;
     clear_chain_env(id);
     unsafe {
-        std::env::set_var("CRYSTAL_ENABLED", "true");
+        std::env::set_var("ELLIPTIC_ENABLED", "true");
         std::env::set_var(
             "CHAIN_99000001_STELLAR_RPC_URL",
             "https://soroban-testnet.stellar.org",
@@ -104,9 +105,55 @@ fn stellar_force_crystal_disabled() {
     }
     let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
     assert!(
-        !s.crystal_enabled,
-        "Crystal must be false even when CRYSTAL_ENABLED=true"
+        s.elliptic_enabled,
+        "Elliptic must be enabled when ELLIPTIC_ENABLED=true"
     );
+    clear_chain_env(id);
+}
+
+#[test]
+fn stellar_elliptic_enabled_lenient_parse() {
+    // ELLIPTIC_ENABLED is parsed leniently (1/true/yes, case-insensitive) so the
+    // worker agrees with the API — unlike a strict bool parse that only takes
+    // "true"/"false" and would error on "1".
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id: i64 = 99_000_001;
+    clear_chain_env(id);
+    unsafe {
+        std::env::set_var(
+            "CHAIN_99000001_STELLAR_RPC_URL",
+            "https://soroban-testnet.stellar.org",
+        );
+        std::env::set_var(
+            "CHAIN_99000001_RELAYER_STELLAR_ACCESS_MANAGER_ID",
+            FIXTURE_CONTRACT,
+        );
+        std::env::set_var(
+            "CHAIN_99000001_RELAYER_STELLAR_PLUSD_SAC_ID",
+            FIXTURE_CONTRACT,
+        );
+        std::env::set_var(
+            "CHAIN_99000001_RELAYER_STELLAR_SIGNER_SECRET",
+            fixture_seed_strkey(),
+        );
+    }
+
+    // Truthy values enable — including "1", uppercase, and "yes".
+    for truthy in ["1", "TRUE", "yes"] {
+        unsafe { std::env::set_var("ELLIPTIC_ENABLED", truthy) };
+        let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
+        assert!(s.elliptic_enabled, "ELLIPTIC_ENABLED={truthy} must enable");
+    }
+
+    // Non-truthy values disable (no startup error, unlike strict bool parsing).
+    for falsy in ["0", "no", "false"] {
+        unsafe { std::env::set_var("ELLIPTIC_ENABLED", falsy) };
+        let s = StellarRelayerSettings::from_chain_env(id).expect("parses");
+        assert!(!s.elliptic_enabled, "ELLIPTIC_ENABLED={falsy} must disable");
+    }
+
     clear_chain_env(id);
 }
 

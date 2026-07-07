@@ -78,6 +78,11 @@ async fn main() -> anyhow::Result<()> {
         .ok()
         .is_none_or(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
 
+    // Elliptic KYT (Stellar). Defaults to false — matches the worker's ELLIPTIC_ENABLED.
+    let elliptic_enabled = std::env::var("ELLIPTIC_ENABLED")
+        .ok()
+        .is_some_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
+
     let state = Arc::new(AppState {
         pool: pool.clone(),
         kyc_repo,
@@ -91,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         wq_domains,
         stellar_voucher_signers,
         crystal_enabled,
+        elliptic_enabled,
         auth_user_repo,
         submitted_loan_repo,
         loan_parameters_repo,

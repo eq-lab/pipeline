@@ -1,6 +1,7 @@
 pub mod config;
 pub mod crystal_check;
 pub mod custodian;
+pub mod elliptic_check;
 pub mod relayer_job;
 pub mod stellar;
 pub mod sumsub_check;
