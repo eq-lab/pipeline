@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! domain_separator = sha256( XDR(Domain { contract_separator, network_id }) )
-//! voucher_hash     = sha256( XDR(Voucher { request_id, sender, amount }) )
+//! voucher_hash     = sha256( XDR(Voucher { request_id, sender, amount, deadline }) )
 //! digest           = sha256( domain_separator || voucher_hash )
 //! ```
 //!
@@ -23,6 +23,12 @@ use stellar_xdr::curr::{
     AccountId, BytesM, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScBytes, ScMap,
     ScMapEntry, ScSymbol, ScVal, StringM, UInt128Parts, Uint256, VecM, WriteXdr,
 };
+
+/// Voucher claim window: signed deadlines are set this far into the future.
+///
+/// The on-chain `claim_request` rejects the voucher once `ledger.timestamp() >
+/// deadline`, so this bounds how long a signed voucher stays claimable.
+pub const CLAIM_DEADLINE_SECS: u64 = 24 * 60 * 60;
 
 /// A loaded ed25519 signing key for Stellar voucher signing.
 #[derive(Debug)]
@@ -133,16 +139,20 @@ fn domain_xdr(domain: &StellarVoucherDomain) -> Vec<u8> {
 
 /// Encode the `Voucher` struct as the XDR bytes that soroban's `to_xdr(e)` produces.
 ///
-/// `Voucher { request_id: u128, sender: Address, amount: i128 }`.
-/// Field order after alphabetical sort: `amount` < `request_id` < `sender`.
+/// `Voucher { request_id: u128, sender: Address, amount: i128, deadline: u64 }`.
+/// Field order after alphabetical sort: `amount` < `deadline` < `request_id` < `sender`.
 fn voucher_xdr(
     request_id: u128,
     sender: &stellar_strkey::ed25519::PublicKey,
     amount: i128,
+    deadline: u64,
 ) -> Vec<u8> {
     // amount (i128)
     let (hi, lo) = i128_to_parts(amount);
     let amount_val = ScVal::I128(Int128Parts { hi, lo });
+
+    // deadline (u64)
+    let deadline_val = ScVal::U64(deadline);
 
     // request_id (u128)
     let (hi, lo) = u128_to_parts(request_id);
@@ -155,11 +165,12 @@ fn voucher_xdr(
 
     let entries: VecM<ScMapEntry> = vec![
         map_entry("amount", amount_val),
+        map_entry("deadline", deadline_val),
         map_entry("request_id", rid_val),
         map_entry("sender", sender_val),
     ]
     .try_into()
-    .expect("three entries fit in VecM");
+    .expect("four entries fit in VecM");
 
     let sc_map_val = ScVal::Map(Some(ScMap(entries)));
     sc_map_val
@@ -173,7 +184,7 @@ fn voucher_xdr(
 ///
 /// ```text
 /// domain_separator = sha256( XDR(Domain { contract_separator, network_id }) )
-/// voucher_hash     = sha256( XDR(Voucher { request_id, sender, amount }) )
+/// voucher_hash     = sha256( XDR(Voucher { request_id, sender, amount, deadline }) )
 /// digest           = sha256( domain_separator || voucher_hash )
 /// ```
 pub fn voucher_digest(
@@ -181,9 +192,11 @@ pub fn voucher_digest(
     request_id: u128,
     sender: &stellar_strkey::ed25519::PublicKey,
     amount: i128,
+    deadline: u64,
 ) -> [u8; 32] {
     let domain_sep: [u8; 32] = Sha256::digest(domain_xdr(domain)).into();
-    let voucher_hash: [u8; 32] = Sha256::digest(voucher_xdr(request_id, sender, amount)).into();
+    let voucher_hash: [u8; 32] =
+        Sha256::digest(voucher_xdr(request_id, sender, amount, deadline)).into();
 
     let mut combined = [0u8; 64];
     combined[..32].copy_from_slice(&domain_sep);
@@ -199,8 +212,9 @@ pub fn sign_voucher(
     request_id: u128,
     sender: &stellar_strkey::ed25519::PublicKey,
     amount: i128,
+    deadline: u64,
 ) -> [u8; 64] {
-    let digest = voucher_digest(domain, request_id, sender, amount);
+    let digest = voucher_digest(domain, request_id, sender, amount, deadline);
     let sig: Signature = signer.signing_key.sign(&digest);
     sig.to_bytes()
 }
@@ -240,6 +254,9 @@ mod tests {
 
     // ── Golden-fixture test ───────────────────────────────────────────────────
     //
+    /// Fixed deadline used by the golden-digest fixture below.
+    const GOLDEN_DEADLINE: u64 = 1_800_000_000;
+
     // The expected digest below was obtained by invoking the deployed testnet
     // DepositManager `digest(...)` view via the Stellar CLI:
     //
@@ -251,20 +268,21 @@ mod tests {
     //     -- digest \
     //     --request_id 1 \
     //     --sender GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM \
-    //     --amount 1000000
+    //     --amount 1000000 \
+    //     --deadline 1800000000
     //
     // If this test fails after a soroban-sdk upgrade, re-run the command above and
     // update `GOLDEN_DIGEST_HEX` — a divergence means the on-chain `to_xdr(e)`
     // layout has changed and our `stellar-xdr` reproduction needs to catch up.
     const GOLDEN_DIGEST_HEX: &str =
-        "9b5efb4375bbbb89200320c22d0aba0acb8c86e901030379ca3d326e55345191";
+        "56af16fabbf4264d9d2efb3e06c2da801374ce76a9d7a35afa32d9293f1cde3d";
 
     #[test]
     fn golden_digest_fixture() {
         let expected = hex::decode(GOLDEN_DIGEST_HEX).expect("valid hex");
         let domain = testnet_domain();
         let sender = testnet_sender();
-        let got = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128);
+        let got = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
         assert_eq!(
             got.as_slice(),
             expected.as_slice(),
@@ -290,8 +308,8 @@ mod tests {
     #[test]
     fn voucher_xdr_is_deterministic() {
         let sender = testnet_sender();
-        let a = voucher_xdr(1u128, &sender, 1_000_000_i128);
-        let b = voucher_xdr(1u128, &sender, 1_000_000_i128);
+        let a = voucher_xdr(1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
+        let b = voucher_xdr(1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
         assert!(!a.is_empty(), "voucher XDR should not be empty");
         assert_eq!(a, b, "voucher XDR should be deterministic");
     }
@@ -311,8 +329,10 @@ mod tests {
     #[test]
     fn voucher_hash_reproducible() {
         let sender = testnet_sender();
-        let hash_a: [u8; 32] = Sha256::digest(voucher_xdr(1u128, &sender, 1_000_000_i128)).into();
-        let hash_b: [u8; 32] = Sha256::digest(voucher_xdr(1u128, &sender, 1_000_000_i128)).into();
+        let hash_a: [u8; 32] =
+            Sha256::digest(voucher_xdr(1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE)).into();
+        let hash_b: [u8; 32] =
+            Sha256::digest(voucher_xdr(1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE)).into();
         assert_eq!(hash_a, hash_b);
         assert_ne!(hash_a, [0u8; 32]);
     }
@@ -323,12 +343,15 @@ mod tests {
         let domain = testnet_domain();
         let sender = testnet_sender();
 
-        let base = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128);
-        let diff_rid = voucher_digest(&domain, 2u128, &sender, 1_000_000_i128);
-        let diff_amount = voucher_digest(&domain, 1u128, &sender, 2_000_000_i128);
+        let base = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
+        let diff_rid = voucher_digest(&domain, 2u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
+        let diff_amount = voucher_digest(&domain, 1u128, &sender, 2_000_000_i128, GOLDEN_DEADLINE);
+        let diff_deadline =
+            voucher_digest(&domain, 1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE + 1);
 
         assert_ne!(base, diff_rid, "changing request_id must change digest");
         assert_ne!(base, diff_amount, "changing amount must change digest");
+        assert_ne!(base, diff_deadline, "changing deadline must change digest");
     }
 
     // ── Signature round-trip ─────────────────────────────────────────────────
@@ -341,14 +364,21 @@ mod tests {
         let domain = testnet_domain();
         let sender = testnet_sender();
 
-        let sig_bytes = sign_voucher(&signer, &domain, 1u128, &sender, 1_000_000_i128);
+        let sig_bytes = sign_voucher(
+            &signer,
+            &domain,
+            1u128,
+            &sender,
+            1_000_000_i128,
+            GOLDEN_DEADLINE,
+        );
         assert_eq!(sig_bytes.len(), 64);
 
         // Verify via ed25519-dalek VerifyingKey
         let verifying_key =
             ed25519_dalek::VerifyingKey::from_bytes(&signer.verifier_pubkey).unwrap();
         let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
-        let digest = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128);
+        let digest = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
         verifying_key
             .verify(&digest, &sig)
             .expect("signature must verify");
@@ -396,8 +426,8 @@ mod tests {
     fn negative_amount_differs_from_positive() {
         let domain = testnet_domain();
         let sender = testnet_sender();
-        let pos = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128);
-        let neg = voucher_digest(&domain, 1u128, &sender, -1_000_000_i128);
+        let pos = voucher_digest(&domain, 1u128, &sender, 1_000_000_i128, GOLDEN_DEADLINE);
+        let neg = voucher_digest(&domain, 1u128, &sender, -1_000_000_i128, GOLDEN_DEADLINE);
         assert_ne!(pos, neg);
     }
 }
