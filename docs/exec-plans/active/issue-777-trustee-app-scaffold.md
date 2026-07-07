@@ -109,6 +109,13 @@ only; no Trustee flow logic.
 
 ## Implementation Steps
 
+> **Status: all steps completed** (coder pass, 2026-07-07). See the PR for the diff and the
+> Issue #777 comments for two logged deviations: (a) both Dockerfile stages copy all three
+> workspace `package.json` files, not just each stage's own two, because Yarn 4's immutable
+> install validates full workspace membership once `packages/trustee` joined the root
+> `workspaces` array; (b) the argocd Application spec (step 10) was posted as an Issue
+> comment per plan.
+
 1. **Root workspace wiring** (`package.json`): add `"packages/trustee"` to the
    `workspaces` array. Optionally add a convenience script
    `"trustee:dev": "yarn workspace @pipeline/trustee dev"` mirroring
@@ -243,6 +250,11 @@ only; no Trustee flow logic.
 
 ## Test Strategy
 
+> **Status: all checks completed and green** — vitest (15/15), `tsc -b && vite build`,
+> `eslint . && prettier --check .`, `docker build --target trustee .` + container smoke test
+> (`/__env.js`, `/`, and a client-side route all correct), `npx tsx scripts/lint-docs.ts` (0
+> errors), and `yarn workspace @pipeline/frontend build` (unaffected).
+
 - **Unit/route tests (vitest + Testing Library):** add
   `packages/trustee/src/routes/-index.test.tsx` and one placeholder test per
   type route (`-type1-direct.test.tsx`, etc.) that render the route component
@@ -269,6 +281,12 @@ only; no Trustee flow logic.
   workspace + lockfile change to confirm no collateral breakage.
 
 ## Docs to Update
+
+> **Status: completed** — `docs/FRONTEND.md` updated (two-Vite-apps note + Trustee Docker
+> section); `docs/exec-plans/tech-debt-tracker.md` TD-32/TD-33 logged; user-stories doc
+> `docs/user-stories/epic-775/777-trustee-app-scaffold.md` added and linked from
+> `docs/user-stories/index.md`. No top-level README referencing port 5173 was found to
+> update (grep checked).
 
 - **Product spec:** none. `docs/product-specs/trustee-dashboard.md` (spec #453)
   already exists and describes behavior; this is a structural scaffold that

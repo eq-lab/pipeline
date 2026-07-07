@@ -138,3 +138,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#749 Protocol Dashboard: adaptive (mobile) layout does not match Figma](https://github.com/eq-lab/pipeline/issues/749) | [749-dashboard-adaptive-mobile-layout.md](./epic-712/749-dashboard-adaptive-mobile-layout.md) | Initial |
 | [#754 Protocol Dashboard: layout does not match Figma (spacings, font-sizes)](https://github.com/eq-lab/pipeline/issues/754) | [754-dashboard-figma-spacing-typography.md](./epic-712/754-dashboard-figma-spacing-typography.md) | Initial |
 | [#760 Protocol Dashboard: wire header summary strip + TVL/yield series to /v1/dashboard/* endpoints](https://github.com/eq-lab/pipeline/issues/760) | [760-dashboard-header-tvl-yield.md](./epic-712/760-dashboard-header-tvl-yield.md) | Initial |
+
+---
+
+## Epic #775 — Trustee Admin Panel
+
+| Issue                                                                                            | Doc                                                                            | Status  |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- |
+| [#777 Trustee: scaffold packages/trustee Vite app (port 5174)](https://github.com/eq-lab/pipeline/issues/777) | [777-trustee-app-scaffold.md](./epic-775/777-trustee-app-scaffold.md)          | Initial |

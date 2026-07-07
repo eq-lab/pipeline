@@ -90,12 +90,16 @@ See [`docs/frontend/hooks.md`](./frontend/hooks.md) for the full `useToast` API 
 
 File-based routing is provided by [TanStack Router](https://tanstack.com/router) (`@tanstack/react-router`). Route files live in `packages/frontend/src/routes/`. The plugin (`@tanstack/router-plugin`) auto-generates `src/routeTree.gen.ts` on every `vite build` / `vite dev` run; that file is committed (so `tsc` works on a fresh clone without first running the dev server / build) but must not be edited manually.
 
-Single SPA serving two logical views gated by authenticated role:
+Single SPA for the LP-facing app, gated by wallet connection (WalletConnect v2 / Reown AppKit) at `/`.
 
-| View               | Auth                                              | Entry  |
-| ------------------ | ------------------------------------------------- | ------ |
-| LP Dashboard       | Wallet connection (WalletConnect v2 / RainbowKit) | `/`    |
-| Operations Console | Email + password + 2FA                            | `/ops` |
+There are now **two separate Vite apps** in this workspace, each with its own entrypoint, port, and deploy image — they share only `@pipeline/ui` (design tokens/components) and the runtime-env-via-`window.__ENV__` mechanism:
+
+| App                 | Package             | Dev port | Docker target |
+| ------------------- | -------------------- | -------- | -------------- |
+| LP frontend         | `packages/frontend`  | 5173     | `frontend`      |
+| Trustee admin panel | `packages/trustee`   | 5174     | `trustee`       |
+
+The Trustee panel (epic #775, spec #453) is the Pipeline Trust Company's operational action surface — origination approval, cash movement, lifecycle, default management, and monitoring. It is scaffolded with placeholder routes only as of #777; wallet/API plumbing is a separate extraction (#778) shared from the LP app rather than duplicated. See `docs/product-specs/trustee-dashboard.md` for the four Trustee flow types.
 
 ### LP Dashboard panels
 
@@ -211,6 +215,29 @@ docker run --rm -p 8081:80 \
   -e VITE_STAKED_PLUSD_ADDRESS=0x0000000000000000000000000000000000000000 \
   -e VITE_WALLETCONNECT_PROJECT_ID=replace-me \
   pipeline-frontend
+```
+
+### Trustee image
+
+The Trustee admin panel image is built the same way from the `trustee` Dockerfile target:
+
+```bash
+docker build --target trustee -t pipeline-trustee .
+```
+
+It mirrors the frontend image shape (`docker/trustee/nginx.conf` + `docker/trustee/entrypoint.sh`,
+static Vite output served on container port 80, SPA fallback to `index.html`). Its runtime-env
+surface is intentionally smaller — only the Relayer API base URL is needed at scaffold time (#777);
+it grows as Trustee flow sub-issues of epic #775 land.
+
+| Key                  | Default when unset      |
+| -------------------- | ------------------------ |
+| `VITE_API_BASE_URL`  | `http://localhost:8080`  |
+
+```bash
+docker run --rm -p 8082:80 \
+  -e VITE_API_BASE_URL=http://host.docker.internal:8080 \
+  pipeline-trustee
 ```
 
 Use a host port that does not conflict with the API dev server. Then check the runtime file and a

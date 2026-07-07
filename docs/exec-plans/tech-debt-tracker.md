@@ -272,6 +272,34 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   (and the EVM equivalent) and wire the disallow pass to it, or formalise the separate admin
   revocation flow for both chains.
 
+### TD-32: Trustee app duplicates env-accessor + Docker entrypoint plumbing with the LP app
+- **Date:** 2026-07-07
+- **Location:** `packages/trustee/src/lib/env.ts`, `docker/trustee/entrypoint.sh`
+- **Gap:** Issue #777 scaffolds `packages/trustee` as a thin app that imports `@pipeline/ui`
+  only. Its runtime-env accessor (`readString`/`readNumber` pattern) and Docker entrypoint
+  (`jq`-built `window.__ENV__` writer) are copy-pasted from `packages/frontend`, not shared.
+  The wallet/API client/formatter extraction into a shared package is the explicit scope of
+  the epic #775 follow-up sub-issue #778.
+- **Impact:** Two copies of the same env-accessor shape to keep in sync until #778 lands;
+  low risk since the trustee surface is currently a single key (`VITE_API_BASE_URL`).
+- **Suggested fix:** When #778 extracts shared frontend code, fold the env-accessor pattern
+  (or a shared factory for it) and the entrypoint script generation into the shared package
+  so both apps consume one implementation.
+
+### TD-33: Trustee eslint config omits the wallet/api import-restriction blocks
+- **Date:** 2026-07-07
+- **Location:** `packages/trustee/eslint.config.js`
+- **Gap:** `packages/frontend/eslint.config.js` has `no-restricted-imports` blocks confining
+  wagmi/viem/AppKit/react-query/Stellar SDK imports to `src/wallet/**` and `src/api/**`, plus
+  a `no-restricted-globals` guard on bare `fetch`. The trustee scaffold has none of these
+  because those modules do not exist there yet (Issue #777 imports `@pipeline/ui` only, no
+  wallet/api deps).
+- **Impact:** None today — there is nothing in `packages/trustee` for the guards to protect.
+  Adding wallet/API deps directly (bypassing #778's shared extraction) would go unguarded.
+- **Suggested fix:** When #778 lands the shared wallet/api layer (or the trustee app grows
+  its own), reinstate the equivalent `no-restricted-imports`/`no-restricted-globals` blocks
+  scoped to wherever that code lives in `packages/trustee`.
+
 ---
 
 ## Post-MVP
