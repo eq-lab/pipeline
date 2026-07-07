@@ -243,6 +243,35 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Impact:** Footer is presentationally complete but not functionally wired. No broken/misleading destinations ship; the links simply do nothing.
 - **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
 
+### TD-30: `fetch_unverified_transfers` is not chain-scoped
+- **Date:** 2026-07-06
+- **Location:** `packages/shared/src/kyc_repo.rs` — `fetch_unverified_transfers`
+- **Gap:** The original (EVM/Crystal) `fetch_unverified_transfers` selects unscreened
+  `DepositRequested`/`WithdrawalRequested` rows across **all** chains (no `chain_id` filter).
+  In a mixed EVM+Stellar deployment an EVM relayer could pick up Stellar rows (and would
+  lowercase their case-sensitive Strkey addresses). The new Stellar Elliptic phase uses a
+  chain-scoped `fetch_unverified_transfers_for_chain`, so Stellar is safe; the EVM path
+  should be scoped too.
+- **Impact:** Latent cross-chain screening in mixed deployments; no impact in single-chain
+  or EVM-only deployments today.
+- **Suggested fix:** Add a `chain_id` parameter/filter to `fetch_unverified_transfers` and
+  pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
+
+### TD-31: Stellar KYT disallow is DB-only (no on-chain deauthorize)
+- **Date:** 2026-07-06
+- **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar` disallow pass
+- **Gap:** When a Stellar profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
+  `on_chain_allowed = FALSE` in the DB but submits no on-chain `set_authorized(addr, false)`
+  transaction — the `StellarWhitelister` exposes no deauthorize path today. A previously
+  authorized, now-sanctioned wallet retains on-chain authorization until an admin revokes it.
+  This is **symmetric with EVM** (`phase_sync_whitelist`'s `process_disallows` is also
+  deferred to a separate admin flow), so it is not a Stellar-specific regression.
+- **Impact:** Automated relayer does not revoke on-chain access on a KYT failure; requires a
+  manual/admin revocation flow (same as EVM).
+- **Suggested fix:** Add a `set_authorized(addr, false)` submission path to `StellarWhitelister`
+  (and the EVM equivalent) and wire the disallow pass to it, or formalise the separate admin
+  revocation flow for both chains.
+
 ---
 
 ## Post-MVP

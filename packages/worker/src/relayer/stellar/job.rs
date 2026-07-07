@@ -4,22 +4,26 @@
 //! Stellar:
 //!   - Phase 0: populate `lp_profiles` from indexed `DepositRequested` events
 //!     (Stellar-aware variant — preserves Strkey case).
+//!   - Phase 2: Elliptic KYT/AML screening (address + deposit-tx, chain-scoped).
 //!   - Phase 3: sync whitelist to on-chain `access_manager.set_authorized`.
 //!
 //! Sumsub (Phase 1) is a no-op everywhere — Sumsub statuses are populated by
 //! the API's webhook handler. Crystal (Phase 2) is skipped because Crystal does
-//! not support Stellar today. Phase 4 (yield-mint) runs when the yield-minter
-//! and loan-registry contract ids are configured — it signs `mint_yield`
-//! directly with the relayer keypair (no BitGo).
+//! not support Stellar today; Elliptic is used instead when `ELLIPTIC_ENABLED=true`.
+//! Phase 4 (yield-mint) runs when the yield-minter and loan-registry contract ids
+//! are configured — it signs `mint_yield` directly with the relayer keypair (no BitGo).
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use shared::elliptic::client::EllipticClient;
+use shared::elliptic::config::EllipticSettings;
 use shared::kyc_repo::KycRepo;
 use shared::yield_mint_outbox_repo::YieldMintOutboxRepo;
 
 use crate::relayer::config::StellarRelayerSettings;
+use crate::relayer::elliptic_check::phase_check_elliptic;
 use crate::relayer::stellar::whitelist::{phase_sync_whitelist_stellar, StellarWhitelister};
 use crate::relayer::stellar::yield_mint::{
     phase_yield_mint_stellar, StellarPhase4Settings, StellarYieldMinter,
@@ -47,7 +51,7 @@ pub(crate) async fn run_stellar_relayer_inner(
         access_manager = %settings.access_manager_id,
         plusd_sac = %settings.plusd_sac_id,
         sumsub_enabled = settings.sumsub_enabled,
-        crystal_enabled = settings.crystal_enabled,
+        elliptic_enabled = settings.elliptic_enabled,
         "stellar relayer job running"
     );
 
@@ -84,6 +88,14 @@ pub(crate) async fn run_stellar_relayer_inner(
         None
     };
 
+    let elliptic_client = if settings.elliptic_enabled {
+        let s = EllipticSettings::from_env()
+            .context("ELLIPTIC_ENABLED=true but Elliptic settings are missing")?;
+        Some(EllipticClient::new(s))
+    } else {
+        None
+    };
+
     let chain_id = settings.chain_id;
 
     loop {
@@ -105,12 +117,18 @@ pub(crate) async fn run_stellar_relayer_inner(
             _ => {}
         }
 
+        // Phase 2: Elliptic KYT/AML screening (chain-scoped).
+        if let Some(ref elliptic) = elliptic_client {
+            phase_check_elliptic(elliptic, &kyc_repo, chain_id).await;
+        }
+
         // Phase 3: sync whitelist on-chain via access_manager.execute(set_authorized).
         phase_sync_whitelist_stellar(
             &whitelister,
             &kyc_repo,
             chain_id,
             settings.sumsub_enabled,
+            settings.elliptic_enabled,
             settings.batch_size,
         )
         .await;

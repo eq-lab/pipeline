@@ -223,15 +223,20 @@ fn strkey_g(p: &Ed25519Pub) -> String {
 /// Stellar parallel of `phase_sync_whitelist`. Reads pending Stellar profiles, pre-checks
 /// on-chain authorization, and submits `access_manager.execute(set_authorized(addr, true))`
 /// for each candidate. On a confirmed tx, flips `lp_profiles.on_chain_allowed = TRUE`.
+///
+/// When `elliptic_enabled` is true, only KYT-clear profiles (kyt_status = 1) are allowed,
+/// and profiles with kyt_status = 2 (failed) are disallowed (DB-side only — the Stellar
+/// access_manager has no deauthorize path exposed by this relayer today).
 pub async fn phase_sync_whitelist_stellar(
     whitelister: &StellarWhitelister,
     kyc_repo: &KycRepo,
     chain_id: i64,
     sumsub_enabled: bool,
+    elliptic_enabled: bool,
     batch_size: usize,
 ) {
     let candidates = match kyc_repo
-        .fetch_profiles_to_allow_stellar(chain_id, sumsub_enabled)
+        .fetch_profiles_to_allow_stellar(chain_id, sumsub_enabled, elliptic_enabled)
         .await
     {
         Ok(c) => c,
@@ -309,6 +314,38 @@ pub async fn phase_sync_whitelist_stellar(
                     "stellar: set_authorized tx failed, will retry next iteration"
                 );
             }
+        }
+    }
+
+    // Disallow pass: flip DB flag for profiles that have kyt_status = 2 (KYT failed).
+    // Note: DB-side only — the Stellar access_manager has no deauthorize path exposed
+    // by this relayer today. On-chain revocation is a future gap item.
+    let to_disallow = match kyc_repo
+        .fetch_profiles_to_disallow(chain_id, sumsub_enabled, elliptic_enabled)
+        .await
+    {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!(error = %e, "stellar: failed to fetch profiles to disallow");
+            return;
+        }
+    };
+
+    for candidate in to_disallow {
+        if let Err(e) = kyc_repo
+            .set_disallowed(chain_id, &candidate.wallet_address)
+            .await
+        {
+            tracing::error!(
+                wallet = %candidate.wallet_address,
+                error = %e,
+                "stellar: failed to set_disallowed in DB"
+            );
+        } else {
+            tracing::info!(
+                wallet = %candidate.wallet_address,
+                "stellar: set_disallowed (DB-only; on-chain deauthorize not yet implemented)"
+            );
         }
     }
 }

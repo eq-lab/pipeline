@@ -64,6 +64,7 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         wq_domains,
         stellar_voucher_signers: HashMap::new(),
         crystal_enabled: false,
+        elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
         submitted_loan_repo: shared::submitted_loan_repo::SubmittedLoanRepo::new(pool.clone()),
         loan_parameters_repo: shared::loan_parameters_repo::LoanParametersRepo::new(pool.clone()),

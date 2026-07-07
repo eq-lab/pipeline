@@ -270,7 +270,7 @@ async fn deposit_voucher_evm(
         }
     };
 
-    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
+    if state.crystal_enabled && req.kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -385,7 +385,7 @@ async fn withdrawal_voucher_evm(
         }
     };
 
-    if state.crystal_enabled && req.crystal_kyt_status != Some(1) {
+    if state.crystal_enabled && req.kyt_status != Some(1) {
         return (
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({"error": "KYT screening not passed"})),
@@ -487,9 +487,16 @@ async fn deposit_voucher_stellar(
         }
     };
 
-    // Crystal KYT: skip for Stellar — Crystal does not return kyt_status for
-    // Stellar addresses. Fall through as "screened-as-clean" per the plan.
-    // (The `crystal_kyt_status` column stays NULL for Stellar rows from the indexer.)
+    // Elliptic KYT: when enabled, the deposit must have passed screening
+    // (kyt_status = 1), mirroring the EVM Crystal gate. When Elliptic is disabled,
+    // Stellar deposit rows have kyt_status = NULL, so this check is skipped.
+    if state.elliptic_enabled && req.kyt_status != Some(1) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "KYT screening not passed"})),
+        )
+            .into_response();
+    }
 
     // is_on_chain_allowed: same SQL as EVM (Decision #4 in the exec plan).
     // Stellar voucher requests return 403 until lp_profiles rows exist.
@@ -564,7 +571,16 @@ async fn withdrawal_voucher_stellar(
         }
     };
 
-    // Crystal KYT: skip for Stellar (see deposit_voucher_stellar comment).
+    // Elliptic KYT: when enabled, the withdrawal address must have passed
+    // screening (kyt_status = 1), mirroring the EVM Crystal gate. When Elliptic is
+    // disabled, Stellar withdrawal rows have kyt_status = NULL, so this is skipped.
+    if state.elliptic_enabled && req.kyt_status != Some(1) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "KYT screening not passed"})),
+        )
+            .into_response();
+    }
 
     // is_on_chain_allowed: same SQL as EVM (Decision #4).
     match state.kyc_repo.is_on_chain_allowed(chain_id, wallet).await {

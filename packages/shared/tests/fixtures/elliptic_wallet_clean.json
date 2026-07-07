@@ -1,0 +1,17 @@
+{
+  "id": "f102c41d-921c-4a53-af66-983010fa103e",
+  "screening_id": "8ebad933-445f-4a46-80d7-656e2d14a093",
+  "subject": {"asset":"holistic","hash":"GAFB7IYPCYZCODQBB5BR5JO45JC4PPVLARUAXQSFHWTLH2KMHPWJ36GD","type":"address","blockchain":"holistic"},
+  "type": "wallet_exposure",
+  "process_status": "complete",
+  "risk_score": 0.005328906366491394,
+  "risk_score_detail": {"destination": 0.005328906366491394, "source": null},
+  "evaluation_detail": {
+    "source": [],
+    "destination": [
+      {"rule_id":"cb549e26-a441-42a0-a670-cd4cd2c5a86a","rule_type":"exposure","risk_score":0.005328906366491394,"matched_behaviors":[],"rule_name":"Obfuscating &amp; Misc."}
+    ]
+  },
+  "triggered_rules": [],
+  "detected_behaviors": []
+}

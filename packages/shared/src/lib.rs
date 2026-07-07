@@ -5,6 +5,7 @@ pub mod contract_logs_repo;
 pub mod crystal;
 pub mod db;
 pub mod eip712;
+pub mod elliptic;
 pub mod events;
 pub mod evm;
 pub mod json_numeric;

@@ -62,11 +62,12 @@ impl EvmRelayerSettings {
 
 // ─── Stellar relayer settings ────────────────────────────────────────────────
 
-/// Settings for the Stellar/Soroban relayer — only Phase 0 (profile population) and
-/// Phase 3 (whitelist sync via `access_manager.execute(set_authorized)`) run.
+/// Settings for the Stellar/Soroban relayer — Phase 0 (profile population),
+/// Phase 2 (Elliptic KYT, when enabled), and Phase 3 (whitelist sync via
+/// `access_manager.execute(set_authorized)`) run.
 ///
-/// Sumsub respects the global `JOB_RELAYER_SUMSUB_ENABLED`. Crystal is forced to
-/// `false` because Crystal does not support Stellar today.
+/// Sumsub respects the global `JOB_RELAYER_SUMSUB_ENABLED`. Elliptic KYT is
+/// toggled by `ELLIPTIC_ENABLED` (default `false`).
 pub struct StellarRelayerSettings {
     pub chain_id: i64,
     pub interval_secs: u64,
@@ -81,8 +82,8 @@ pub struct StellarRelayerSettings {
     pub loan_registry_id: Option<Contract>,
     pub signing_key: SigningKey,
     pub sumsub_enabled: bool,
-    /// Always `false` — Crystal does not support Stellar.
-    pub crystal_enabled: bool,
+    /// KYT via Elliptic. Enabled with ELLIPTIC_ENABLED=true.
+    pub elliptic_enabled: bool,
     /// Maximum addresses processed per Phase 3 cycle.
     pub batch_size: usize,
 }
@@ -144,8 +145,9 @@ impl StellarRelayerSettings {
 
         let interval_secs = env_parse("JOB_RELAYER_INTERVAL_SECS", 60)?;
         let sumsub_enabled = env_parse("JOB_RELAYER_SUMSUB_ENABLED", true)?;
-        // Crystal is force-disabled on Stellar regardless of the global toggle.
-        let crystal_enabled = false;
+        // Lenient parse (1/true/yes, case-insensitive) to match how the API reads
+        // ELLIPTIC_ENABLED, so the two components never disagree on the same value.
+        let elliptic_enabled = env_flag("ELLIPTIC_ENABLED", false);
         let batch_size = env_parse("JOB_RELAYER_STELLAR_BATCH_SIZE", 50usize)?;
 
         Ok(Self {
@@ -159,7 +161,7 @@ impl StellarRelayerSettings {
             loan_registry_id,
             signing_key,
             sumsub_enabled,
-            crystal_enabled,
+            elliptic_enabled,
             batch_size,
         })
     }
@@ -216,6 +218,17 @@ where
 
 fn env_parse_string(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+/// Lenient boolean flag: `1`/`true`/`yes` (case-insensitive) → true; any other
+/// value → false; unset → `default`. Mirrors the API's `ELLIPTIC_ENABLED`
+/// parsing so both components interpret the same value identically. (Unlike
+/// `env_parse::<bool>`, which errors on anything but exact `true`/`false`.)
+fn env_flag(key: &str, default: bool) -> bool {
+    match env::var(key) {
+        Ok(v) => matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"),
+        Err(_) => default,
+    }
 }
 
 fn env_require_address(key: &str) -> Result<Address> {
