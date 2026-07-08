@@ -13,6 +13,7 @@ import { Route as Type4MonitoringRouteImport } from './routes/type4-monitoring'
 import { Route as Type3CouncilRouteImport } from './routes/type3-council'
 import { Route as Type2MpcRouteImport } from './routes/type2-mpc'
 import { Route as Type1DirectRouteImport } from './routes/type1-direct'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as IndexRouteImport } from './routes/index'
 
 const Type4MonitoringRoute = Type4MonitoringRouteImport.update({
@@ -35,6 +36,11 @@ const Type1DirectRoute = Type1DirectRouteImport.update({
   path: '/type1-direct',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -43,6 +49,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
   '/type1-direct': typeof Type1DirectRoute
   '/type2-mpc': typeof Type2MpcRoute
   '/type3-council': typeof Type3CouncilRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
   '/type1-direct': typeof Type1DirectRoute
   '/type2-mpc': typeof Type2MpcRoute
   '/type3-council': typeof Type3CouncilRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
   '/type1-direct': typeof Type1DirectRoute
   '/type2-mpc': typeof Type2MpcRoute
   '/type3-council': typeof Type3CouncilRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/sign-in'
     | '/type1-direct'
     | '/type2-mpc'
     | '/type3-council'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/sign-in'
     | '/type1-direct'
     | '/type2-mpc'
     | '/type3-council'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/sign-in'
     | '/type1-direct'
     | '/type2-mpc'
     | '/type3-council'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SignInRoute: typeof SignInRoute
   Type1DirectRoute: typeof Type1DirectRoute
   Type2MpcRoute: typeof Type2MpcRoute
   Type3CouncilRoute: typeof Type3CouncilRoute
@@ -125,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Type1DirectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SignInRoute: SignInRoute,
   Type1DirectRoute: Type1DirectRoute,
   Type2MpcRoute: Type2MpcRoute,
   Type3CouncilRoute: Type3CouncilRoute,

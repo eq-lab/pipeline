@@ -300,6 +300,22 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   its own), reinstate the equivalent `no-restricted-imports`/`no-restricted-globals` blocks
   scoped to wherever that code lives in `packages/trustee`.
 
+### TD-34: Trustee sign-in "Connect Wallet" button is a documented no-op
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/components/SignInCard.tsx`
+- **Gap:** Issue #787 ships the sign-in gate UI only (Figma node `4174-31660`). The
+  "Connect Wallet" button's `onClick` performs no network call, no wallet-connect flow, and
+  no redirect — it is a `// TODO(#778)` stub. There is no auth/session/wallet layer in
+  `packages/trustee` yet (that extraction is #778), and spec #453 explicitly puts
+  Authentication / 2FA / operator onboarding out of scope.
+- **Impact:** The sign-in screen is visual-only; navigating to `/sign-in` does not gate any
+  other route today (no route guard exists), and clicking Connect Wallet does nothing
+  observable. Acceptable for a UI-only issue; would be a real gap if shipped as the only
+  auth surface.
+- **Suggested fix:** When #778 lands the wallet/session layer, wire this button to the real
+  wallet-connect flow and add a route guard that redirects unauthenticated users to
+  `/sign-in`.
+
 ---
 
 ## Post-MVP
