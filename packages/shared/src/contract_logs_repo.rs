@@ -80,6 +80,23 @@ pub struct YieldMintRow {
     pub s_plusd_amount: BigDecimal,
 }
 
+/// One indexed Stellar `AssetTransfer` event row.
+///
+/// Emitted by the worker's Stellar indexer for transfers of the tracked asset
+/// where **both** endpoints are custody/ramp addresses (see the worker's
+/// `transfer_between_tracked`). Used by the Capital Allocation API to compute the
+/// `in_transit` bucket as net custody→ramp flow. `amount` is in USDC base units
+/// (6-decimal), matching the other `contract_logs` amounts.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AssetTransferRow {
+    /// Sender Strkey (`params->>'from'`).
+    pub from_addr: String,
+    /// Recipient Strkey (`params->>'to'`).
+    pub to_addr: String,
+    /// Transfer amount in base units (`params->>'amount'`).
+    pub amount: BigDecimal,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -391,6 +408,40 @@ impl ContractLogsRepo {
                AND event_name = 'YieldMinted'
                AND block_timestamp <= $2
              ORDER BY block_timestamp",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
+    /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
+    ///
+    /// Used by the Capital Allocation API to compute the `in_transit` bucket as the
+    /// net custody→ramp flow. Only transfers between tracked (custody ∪ ramp)
+    /// accounts are indexed, so callers classify `from`/`to` against the configured
+    /// address sets.
+    pub async fn list_asset_transfers<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<AssetTransferRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, AssetTransferRow>(
+            "SELECT
+                 params->>'from' AS from_addr,
+                 params->>'to'   AS to_addr,
+                 -- COALESCE guards a malformed row missing `amount`: a NULL would
+                 -- otherwise fail-decode the whole query (non-Option BigDecimal).
+                 COALESCE((params->>'amount')::numeric, 0) AS amount
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'AssetTransfer'
+               AND block_timestamp <= $2",
         )
         .bind(chain_id)
         .bind(to_unix)

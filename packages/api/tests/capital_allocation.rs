@@ -5,12 +5,15 @@
 //! Lives under `packages/api/tests/` to match the project-wide convention (all
 //! tests in `tests/`, feature-named, no inline `#[cfg(test)]` modules in `src/`).
 
+use std::collections::HashSet;
+
 use bigdecimal::BigDecimal;
 
+use pipeline_api::config::TransferAddressSets;
 use pipeline_api::routes::capital_allocation::{
     compute_capital_allocation, CapitalAllocationResponse,
 };
-use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 
 const DAY: i64 = 86_400;
@@ -92,7 +95,8 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> CapitalAllocationResponse {
-    compute_capital_allocation(loans, events, t_day * DAY)
+    // Default: no asset transfers and no custody/ramp config → in_transit is null.
+    compute_capital_allocation(loans, events, t_day * DAY, &[], None)
 }
 
 // ── Null buckets ───────────────────────────────────────────────────────────────
@@ -159,4 +163,93 @@ fn no_active_loans_yields_zero_deployed_and_null_buckets() {
     assert_eq!(r.total, Some("0.000000".to_owned()));
     assert_eq!(r.buckets.capital_wallet, None);
     assert_eq!(r.buckets.tbills, None);
+}
+
+// ── in_transit: net custody→ramp flow ──────────────────────────────────────────
+
+const CUSTODY: &str = "GAFB7IYPCYZCODQBB5BR5JO45JC4PPVLARUAXQSFHWTLH2KMHPWJ36GD";
+const RAMP: &str = "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQHES5";
+const EXTERNAL: &str = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
+
+fn transfer(from: &str, to: &str, whole: i64) -> AssetTransferRow {
+    AssetTransferRow {
+        from_addr: from.to_owned(),
+        to_addr: to.to_owned(),
+        amount: usdc(whole),
+    }
+}
+
+/// Address sets with a given asset decimal scale. The other tests use 6-decimal
+/// (canonical, no normalization) so their round `usdc()` fixtures read directly.
+fn addr_sets_with_decimals(asset_decimals: u32) -> TransferAddressSets {
+    TransferAddressSets {
+        custody: [CUSTODY.to_owned()].into_iter().collect::<HashSet<_>>(),
+        ramp: [RAMP.to_owned()].into_iter().collect::<HashSet<_>>(),
+        asset_decimals,
+    }
+}
+
+fn addr_sets() -> TransferAddressSets {
+    addr_sets_with_decimals(6)
+}
+
+#[test]
+fn in_transit_nets_custody_to_ramp_flow() {
+    let transfers = vec![
+        transfer(CUSTODY, RAMP, 100), // out: +100
+        transfer(RAMP, CUSTODY, 30),  // back: -30
+        transfer(CUSTODY, CUSTODY, 5), // internal shuffle: ignored
+        transfer(CUSTODY, EXTERNAL, 999), // untracked counterparty: ignored
+    ];
+    let sets = addr_sets();
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    assert_eq!(r.buckets.in_transit, Some("70.000000".to_owned()));
+    // deployed 0 (no loans) + in_transit 70.
+    assert_eq!(r.total, Some("70.000000".to_owned()));
+}
+
+#[test]
+fn in_transit_clamps_negative_to_zero() {
+    // More returned from ramp than sent → raw net negative → clamped to 0.
+    let transfers = vec![transfer(RAMP, CUSTODY, 50)];
+    let sets = addr_sets();
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn in_transit_is_null_when_unconfigured() {
+    // Transfers present but no custody/ramp config → in_transit stays null.
+    let transfers = vec![transfer(CUSTODY, RAMP, 100)];
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, None);
+    assert_eq!(r.buckets.in_transit, None);
+    assert_eq!(r.total, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn in_transit_adds_to_total_alongside_deployed() {
+    let transfers = vec![transfer(CUSTODY, RAMP, 100)];
+    let sets = addr_sets();
+    // Day 60: both fixture loans active → deployed 120k; in_transit 100.
+    let r = compute_capital_allocation(&fixture_loans(), &[], 60 * DAY, &transfers, Some(&sets));
+    assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.total, Some("120100.000000".to_owned()));
+}
+
+#[test]
+fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
+    // Tracked asset is the 7-decimal USDC SAC. A raw transfer amount of
+    // 1_000_000_000 (7-dec) = 100 USDC must normalize to 6-dec base 100_000_000
+    // → "100.000000", i.e. divided by 10 relative to the 6-decimal reading.
+    let raw_7dec = BigDecimal::from(1_000_000_000_i64); // 100.0000000 at 7 decimals
+    let transfers = vec![AssetTransferRow {
+        from_addr: CUSTODY.to_owned(),
+        to_addr: RAMP.to_owned(),
+        amount: raw_7dec,
+    }];
+    let sets = addr_sets_with_decimals(7);
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.total, Some("100.000000".to_owned()));
 }

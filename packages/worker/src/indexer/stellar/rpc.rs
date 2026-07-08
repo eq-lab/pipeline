@@ -75,11 +75,9 @@ impl StellarRpc {
     ) -> Result<(Vec<RawEvent>, u64)> {
         const PAGE_LIMIT: u64 = 10_000;
 
-        let contract_ids_json: Vec<Value> = filter
-            .contract_ids
-            .iter()
-            .map(|id| Value::String(id.clone()))
-            .collect();
+        // Soroban `getEvents` caps each filter at 5 contract IDs, so split our
+        // contract set across multiple `contract` filters (the RPC unions them).
+        let filters = build_contract_filters(&filter.contract_ids);
 
         let mut out = Vec::new();
         let mut latest_ledger = end_ledger;
@@ -93,12 +91,7 @@ impl StellarRpc {
                 None => json!({ "limit": PAGE_LIMIT }),
             };
             let mut params = json!({
-                "filters": [
-                    {
-                        "type": "contract",
-                        "contractIds": contract_ids_json,
-                    }
-                ],
+                "filters": filters.clone(),
                 "pagination": pagination,
             });
             if cursor.is_none() {
@@ -441,6 +434,27 @@ struct SorobanEventJson {
     in_successful_contract_call: bool,
     #[serde(rename = "txHash")]
     tx_hash: Option<String>,
+}
+
+/// Maximum contract IDs Soroban `getEvents` allows in a single `contract` filter.
+const MAX_CONTRACT_IDS_PER_FILTER: usize = 5;
+
+/// Build the `getEvents` `filters` array from a set of contract IDs.
+///
+/// Soroban `getEvents` rejects a filter with more than
+/// [`MAX_CONTRACT_IDS_PER_FILTER`] contract IDs (`-32602 … maximum 5 contract IDs
+/// per filter`) and allows at most 5 filters per request. We chunk the IDs into
+/// ≤5-ID `contract` filters; the RPC treats multiple filters as a union (OR), so
+/// this is equivalent to one filter with every ID, just within the per-filter cap
+/// (supporting up to 25 contract IDs total).
+pub fn build_contract_filters(contract_ids: &[String]) -> Vec<Value> {
+    contract_ids
+        .chunks(MAX_CONTRACT_IDS_PER_FILTER)
+        .map(|chunk| {
+            let ids: Vec<Value> = chunk.iter().map(|id| Value::String(id.clone())).collect();
+            json!({ "type": "contract", "contractIds": ids })
+        })
+        .collect()
 }
 
 /// Parse a single JSON event object into a `RawEvent`.

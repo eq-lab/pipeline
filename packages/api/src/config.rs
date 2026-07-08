@@ -1,10 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
 use alloy::signers::local::PrivateKeySigner;
 use anyhow::{Context, Result};
 
-use shared::chains::{parse_chain_type, parse_chains_env, parse_default_chain_id, ChainKind};
+use shared::chains::{
+    parse_chain_type, parse_chains_env, parse_default_chain_id, validate_stellar_address, ChainKind,
+};
 use shared::eip712::Eip712Domain;
 use shared::stellar_voucher::{StellarVoucherDomain, StellarVoucherSigner};
 
@@ -58,7 +60,35 @@ pub struct ChainsConfig {
     pub voucher: HashMap<i64, VoucherChainConfig>,
     /// Stellar voucher signing config keyed by chain_id.
     pub stellar_voucher: HashMap<i64, StellarVoucherChainConfig>,
+    /// Custody + ramp address sets keyed by chain_id, for the Capital Allocation
+    /// `in_transit` bucket. Only present for chains where BOTH lists are configured.
+    pub transfer_addresses: HashMap<i64, TransferAddressSets>,
 }
+
+/// Custody + ramp Stellar address sets used to classify indexed `AssetTransfer`
+/// events into the `in_transit` bucket (net custody→ramp flow).
+///
+/// Parsed from per-chain, API-specific env vars (parallel to the worker's
+/// job-level `JOB_INDEXER_STELLAR_*` vars — the API and worker are decoupled):
+/// ```text
+/// CHAIN_<id>_API_STELLAR_CUSTODY_ADDRESSES=G...,C...
+/// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...
+/// ```
+/// Both address lists must be set for `in_transit` to be sourced; otherwise it
+/// stays `null`. `asset_decimals` is the tracked asset's on-chain decimal scale
+/// (e.g. 7 for the Stellar USDC SAC) — transfer amounts are normalized from this
+/// scale to the endpoint's canonical 6-decimal USD base units before being summed
+/// with `deployed`. Read from `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` (default 7).
+#[derive(Debug)]
+pub struct TransferAddressSets {
+    pub custody: HashSet<String>,
+    pub ramp: HashSet<String>,
+    pub asset_decimals: u32,
+}
+
+/// The endpoint-canonical amount scale (6-decimal USDC base units) that all
+/// capital-allocation buckets are expressed in.
+pub const CANONICAL_AMOUNT_DECIMALS: u32 = 6;
 
 impl ChainsConfig {
     pub fn from_env() -> Result<Self> {
@@ -67,6 +97,7 @@ impl ChainsConfig {
 
         let mut voucher = HashMap::new();
         let mut stellar_voucher = HashMap::new();
+        let mut transfer_addresses = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -79,6 +110,7 @@ impl ChainsConfig {
                     load_evm_voucher_config(chain_id, &mut voucher)?;
                 }
                 ChainKind::Stellar => {
+                    load_transfer_addresses(chain_id, &mut transfer_addresses)?;
                     // Load STELLAR_VERIFIER_SECRET once and cache the raw seed bytes.
                     if stellar_seed_cache.is_none() {
                         let secret = env::var("STELLAR_VERIFIER_SECRET").with_context(|| {
@@ -113,8 +145,70 @@ impl ChainsConfig {
             default_chain_id,
             voucher,
             stellar_voucher,
+            transfer_addresses,
         })
     }
+}
+
+/// Load custody/ramp address sets for one Stellar chain from the API-specific
+/// `CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES` vars. Both must be non-empty
+/// for `in_transit` to be sourced; a partial config is disabled with a warning
+/// (matches the worker's all-or-nothing behaviour for the same real accounts).
+fn load_transfer_addresses(
+    chain_id: i64,
+    out: &mut HashMap<i64, TransferAddressSets>,
+) -> Result<()> {
+    let custody_key = format!("CHAIN_{chain_id}_API_STELLAR_CUSTODY_ADDRESSES");
+    let ramp_key = format!("CHAIN_{chain_id}_API_STELLAR_RAMP_ADDRESSES");
+    let decimals_key = format!("CHAIN_{chain_id}_API_STELLAR_ASSET_DECIMALS");
+    let custody = parse_stellar_address_csv(&custody_key)?;
+    let ramp = parse_stellar_address_csv(&ramp_key)?;
+
+    // Default 7 = Stellar USDC SAC. Override per chain if the tracked asset differs.
+    let asset_decimals: u32 = match env::var(&decimals_key) {
+        Ok(v) => v
+            .trim()
+            .parse()
+            .with_context(|| format!("{decimals_key} must be a non-negative integer"))?,
+        Err(_) => 7,
+    };
+    if asset_decimals > 18 {
+        anyhow::bail!("{decimals_key} must be ≤ 18 (got {asset_decimals})");
+    }
+
+    match (custody.is_empty(), ramp.is_empty()) {
+        (false, false) => {
+            out.insert(
+                chain_id,
+                TransferAddressSets {
+                    custody,
+                    ramp,
+                    asset_decimals,
+                },
+            );
+        }
+        (true, true) => { /* not configured — in_transit stays null */ }
+        _ => {
+            tracing::warn!(
+                chain_id,
+                "only one of {custody_key} / {ramp_key} set — in_transit disabled (need both)"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Parse an optional CSV of Stellar addresses (`G…` or `C…`) from `key`, validated
+/// and normalized via `validate_stellar_address`. Unset/empty → empty set.
+fn parse_stellar_address_csv(key: &str) -> Result<HashSet<String>> {
+    let Ok(val) = env::var(key) else {
+        return Ok(HashSet::new());
+    };
+    val.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| validate_stellar_address(key, s.to_owned()))
+        .collect()
 }
 
 fn load_evm_voucher_config(

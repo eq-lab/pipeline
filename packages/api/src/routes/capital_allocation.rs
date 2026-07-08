@@ -14,8 +14,13 @@
 //!   this differs from `financial-position.secured_loans_outstanding`, which is
 //!   senior + equity). The active-loan set (`origination_date ≤ now < effective_end`)
 //!   mirrors `routes::financial_position` / `routes::loan_book`.
+//! - **`in_transit`** — net custody→ramp flow of the tracked asset:
+//!   `Σ(custody→ramp) − Σ(ramp→custody)` over indexed `AssetTransfer` events
+//!   (clamped at 0). Sourced only when both custody and ramp address sets are
+//!   configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`); otherwise
+//!   `null`. NOTE: an approximation — disbursed funds that leave the ramp to
+//!   borrowers off-chain are not observed, so this can over-state true in-transit.
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
-//! - **`in_transit`** — `null`. TODO: index converting / in-transit balances.
 //! - **`trust_account`** — `null`. TODO: fetch from the bank API.
 //! - **`tbills`** — `null`. TODO: index the USYC / T-Bills holding.
 
@@ -28,8 +33,9 @@ use bigdecimal::BigDecimal;
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
-use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 
+use crate::config::TransferAddressSets;
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{resolve_chain, ChainQuery};
@@ -44,8 +50,9 @@ pub struct CapitalBuckets {
     /// Capital-Wallet USDC, idle. `null` — not indexed.
     /// TODO: index the Capital-Wallet USDC balance and populate this.
     pub capital_wallet: Option<String>,
-    /// Funds converting at providers (on/off-ramp). `null` — not indexed.
-    /// TODO: index converting / in-transit balances and populate this.
+    /// Funds in transit on the on/off-ramp leg — net custody→ramp flow of the
+    /// tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0). `null`
+    /// when custody/ramp address sets are not configured for the chain.
     pub in_transit: Option<String>,
     /// USD residuals held in the trust account. `null` — not indexed.
     /// TODO: fetch from the bank API and populate this.
@@ -115,8 +122,15 @@ async fn get_capital_allocation(
         .contract_logs_repo
         .list_loan_lifecycle_events(&state.pool, chain_id, to)
         .await?;
+    let transfers = state
+        .contract_logs_repo
+        .list_asset_transfers(&state.pool, chain_id, to)
+        .await?;
+    let addr = state.transfer_addresses.get(&chain_id);
 
-    Ok(Json(compute_capital_allocation(&loans, &events, to)))
+    Ok(Json(compute_capital_allocation(
+        &loans, &events, to, &transfers, addr,
+    )))
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -140,12 +154,28 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
     }
 }
 
+/// Normalize a raw on-chain amount from `asset_decimals` scale to the endpoint's
+/// canonical 6-decimal base units. A 7-decimal USDC SAC amount is divided by 10;
+/// a 6-decimal amount is returned unchanged. Config bounds `asset_decimals ≤ 18`,
+/// so the exponent stays small and the `10i128.pow` cannot overflow.
+fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
+    use std::cmp::Ordering;
+
+    use crate::config::CANONICAL_AMOUNT_DECIMALS as CANON;
+    match asset_decimals.cmp(&CANON) {
+        Ordering::Equal => raw,
+        Ordering::Greater => raw / BigDecimal::from(10i128.pow(asset_decimals - CANON)),
+        Ordering::Less => raw * BigDecimal::from(10i128.pow(CANON - asset_decimals)),
+    }
+}
+
 /// Pure computation: no DB calls. Builds the capital allocation from pre-fetched
-/// loan snapshots and lifecycle events as-of `to`.
+/// loan snapshots, lifecycle events, and asset transfers as-of `to`.
 ///
 /// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
-/// Only `deployed` (Σ senior tranche over the active set) is sourced; the remaining
-/// buckets are `null` (no source yet — see module docs).
+/// `deployed` = Σ senior tranche over the active set. `in_transit` = net custody→ramp
+/// flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0),
+/// sourced only when `addr` is `Some`. Remaining buckets are `null`.
 ///
 /// Public so the compute-layer test in `packages/api/tests/capital_allocation.rs` can
 /// exercise it without the HTTP/DB layers.
@@ -153,6 +183,8 @@ pub fn compute_capital_allocation(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
     to: i64,
+    transfers: &[AssetTransferRow],
+    addr: Option<&TransferAddressSets>,
 ) -> CapitalAllocationResponse {
     let mut deployed = BigDecimal::from(0);
 
@@ -163,16 +195,40 @@ pub fn compute_capital_allocation(
         }
     }
 
-    let deployed_str = base6_to_decimal_string(&deployed);
+    // in_transit = net custody→ramp flow (only when both address sets configured).
+    // Amounts are in the tracked asset's on-chain scale (`asset_decimals`); they
+    // are normalized to the canonical 6-decimal base units so they can be summed
+    // with `deployed` and formatted with `base6_to_decimal_string`.
+    let in_transit = addr.map(|sets| {
+        let mut net = BigDecimal::from(0);
+        for t in transfers {
+            let out = sets.custody.contains(&t.from_addr) && sets.ramp.contains(&t.to_addr);
+            let back = sets.ramp.contains(&t.from_addr) && sets.custody.contains(&t.to_addr);
+            if out {
+                net += &t.amount;
+            } else if back {
+                net -= &t.amount;
+            }
+            // custody↔custody / ramp↔ramp shuffles net to zero — ignored.
+        }
+        let net = normalize_to_canonical(net, sets.asset_decimals);
+        // A displayed in-transit balance shouldn't be negative.
+        net.max(BigDecimal::from(0))
+    });
+
+    // Total = Σ of the sourced buckets (deployed + in_transit when present).
+    let mut total = deployed.clone();
+    if let Some(it) = &in_transit {
+        total += it;
+    }
 
     CapitalAllocationResponse {
-        // Only `deployed` contributes while the other buckets are null.
-        total: Some(deployed_str.clone()),
+        total: Some(base6_to_decimal_string(&total)),
         buckets: CapitalBuckets {
             capital_wallet: None,
-            in_transit: None,
+            in_transit: in_transit.as_ref().map(base6_to_decimal_string),
             trust_account: None,
-            deployed: Some(deployed_str),
+            deployed: Some(base6_to_decimal_string(&deployed)),
             tbills: None,
         },
     }

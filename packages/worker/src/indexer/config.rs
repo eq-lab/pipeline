@@ -2,7 +2,9 @@ use std::env;
 
 use anyhow::{Context, Result};
 
-pub use shared::chains::{parse_chain_type, parse_chains_env, validate_contract_id, ChainKind};
+pub use shared::chains::{
+    parse_chain_type, parse_chains_env, validate_contract_id, validate_stellar_address, ChainKind,
+};
 
 /// Type alias so existing call sites in the worker that use `ChainType` still compile.
 pub type ChainType = ChainKind;
@@ -29,6 +31,21 @@ pub struct StellarIndexerSettings {
     /// Emits `YieldMinted` events routed to `contract_logs` (same as EVM).
     /// Read from `CHAIN_<id>_STELLAR_YIELD_MINTER_ID`.
     pub yield_minter_id: Option<String>,
+    /// Asset (SAC / SEP-41 token) contract whose `transfer` events are tracked
+    /// for custody/ramp flows. `Some` only when asset-transfer tracking is fully
+    /// enabled — i.e. the asset id **and** both address lists are configured
+    /// (see the all-or-nothing rule in `from_chain_env`). `None` ships dark.
+    /// Job-level config, read from `JOB_INDEXER_STELLAR_ASSET_ID` (applies to
+    /// every Stellar chain).
+    pub asset_id: Option<String>,
+    /// Custody addresses (`G…` or `C…`) — a transfer is tracked when `from` or
+    /// `to` is in `custody_addresses ∪ ramp_addresses`. Empty unless
+    /// asset-transfer tracking is enabled. Read from
+    /// `JOB_INDEXER_STELLAR_CUSTODY_ADDRESSES` (job-level).
+    pub custody_addresses: Vec<String>,
+    /// Ramp addresses (`G…` or `C…`) — see `custody_addresses`.
+    /// Read from `JOB_INDEXER_STELLAR_RAMP_ADDRESSES` (job-level).
+    pub ramp_addresses: Vec<String>,
     /// IPFS gateway URL used by the loan-metadata fetcher (mirrors `JOB_INDEXER_IPFS_GATEWAY_URL`
     /// on the EVM side). Defaults to `https://ipfs.io/ipfs/` when unset.
     pub ipfs_gateway_url: String,
@@ -84,6 +101,68 @@ impl StellarIndexerSettings {
             _ => None,
         };
 
+        // ── Asset-transfer tracking (custody/ramp flows) ────────────────────────
+        // Job-level (applies to every Stellar chain), read from `JOB_INDEXER_STELLAR_*`.
+        // All-or-nothing: tracking is enabled only when the asset id AND both
+        // address lists are configured. None set = ships dark silently. Some but
+        // not all set = disabled with a warning so the misconfig is visible.
+        let asset_key = "JOB_INDEXER_STELLAR_ASSET_ID";
+        let custody_key = "JOB_INDEXER_STELLAR_CUSTODY_ADDRESSES";
+        let ramp_key = "JOB_INDEXER_STELLAR_RAMP_ADDRESSES";
+
+        // Read the raw values and determine *presence* WITHOUT validating yet.
+        // Strkey validation is deferred to the fully-configured branch so that a
+        // malformed address in a partial (or fully-absent) config disables the
+        // feature with a warning rather than crashing the whole worker at startup.
+        let asset_raw = env::var(asset_key)
+            .ok()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        let custody_raw = split_csv_raw(env::var(custody_key).ok().as_deref());
+        let ramp_raw = split_csv_raw(env::var(ramp_key).ok().as_deref());
+
+        let (asset_id, custody_addresses, ramp_addresses) = match (
+            asset_raw.is_some(),
+            custody_raw.is_empty(),
+            ramp_raw.is_empty(),
+        ) {
+            // Fully configured — validate strictly (a typo fails loudly here).
+            (true, false, false) => {
+                let asset_id = validate_contract_id(asset_key, asset_raw.unwrap())?;
+                let custody = custody_raw
+                    .into_iter()
+                    .map(|a| validate_stellar_address(custody_key, a))
+                    .collect::<Result<Vec<_>>>()?;
+                let ramp = ramp_raw
+                    .into_iter()
+                    .map(|a| validate_stellar_address(ramp_key, a))
+                    .collect::<Result<Vec<_>>>()?;
+                (Some(asset_id), custody, ramp)
+            }
+            // Nothing configured — ships dark silently.
+            (false, true, true) => (None, Vec::new(), Vec::new()),
+            // Partial configuration — disable and warn (no validation, no error).
+            (asset_present, custody_empty, ramp_empty) => {
+                let mut missing = Vec::new();
+                if !asset_present {
+                    missing.push(asset_key);
+                }
+                if custody_empty {
+                    missing.push(custody_key);
+                }
+                if ramp_empty {
+                    missing.push(ramp_key);
+                }
+                tracing::warn!(
+                    chain_id,
+                    missing = missing.join(", "),
+                    "asset-transfer tracking partially configured — disabled; set all of \
+                     ASSET_ID, CUSTODY_ADDRESSES, RAMP_ADDRESSES to enable"
+                );
+                (None, Vec::new(), Vec::new())
+            }
+        };
+
         // All configured roles must be distinct contracts. `dispatch_parser`'s if/else
         // ladder commits to the first matching branch, so a duplicate would silently
         // misroute one role's events to another role's parser group.
@@ -100,6 +179,11 @@ impl StellarIndexerSettings {
         // Include yield_minter_id in the distinctness check when configured.
         if let Some(id) = &yield_minter_id {
             roles.push(("YIELD_MINTER_ID", id));
+        }
+        // Include the asset id when transfer tracking is enabled — it is polled
+        // alongside the other roles and routed by the same if/else dispatch ladder.
+        if let Some(id) = &asset_id {
+            roles.push(("ASSET_ID", id));
         }
         for (label, id) in roles {
             if !seen.insert(id.as_str()) {
@@ -123,6 +207,9 @@ impl StellarIndexerSettings {
             staked_plusd_id,
             loan_registry_id,
             yield_minter_id,
+            asset_id,
+            custody_addresses,
+            ramp_addresses,
             ipfs_gateway_url,
             polling_interval_ms: env_parse("JOB_INDEXER_POLLING_INTERVAL_MS", 500)?,
             polling_ledger_range: env_parse("JOB_INDEXER_POLLING_BLOCK_RANGE", 1000)?,
@@ -228,6 +315,22 @@ fn env_csv_require(key: &str) -> Result<Vec<String>> {
         anyhow::bail!("{key} must not be empty");
     }
     Ok(items)
+}
+
+/// Split an optional CSV value into trimmed, non-empty **raw** entries.
+///
+/// No Strkey validation — presence is decided from the raw entries, and callers
+/// validate only once asset-transfer tracking is fully configured (so a typo in a
+/// partial/disabled config doesn't crash startup).
+fn split_csv_raw(raw: Option<&str>) -> Vec<String> {
+    raw.map(|v| {
+        v.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 pub fn env_bool(key: &str) -> bool {
