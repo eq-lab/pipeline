@@ -176,7 +176,7 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
 
 ## Implementation Steps
 
-1. **Add trustee-local money formatters** in a new
+1. [x] **Add trustee-local money formatters** in a new
    `packages/trustee/src/utils/formatUsd.ts` (creates the `utils/` dir), mirroring
    the LP implementations but self-contained (no cross-package import):
    - `formatCompactUsd(base6Decimal: string | null | undefined): string` — compact
@@ -200,7 +200,7 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
      cross-package sharing of formatters is a future consolidation, log in
      `docs/exec-plans/tech-debt-tracker.md` if not already tracked).
 
-2. **Add the data hook** `packages/trustee/src/api/useCapitalAllocation.ts`,
+2. [x] **Add the data hook** `packages/trustee/src/api/useCapitalAllocation.ts`,
    mirroring `packages/frontend/src/api/useDashboardSummary.ts`:
    - Export a `CapitalAllocation` type matching the contract exactly (all fields
      `string | null`, buckets nested).
@@ -216,7 +216,7 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
      `@/lib/env` and `apiFetch` the way the LP test mocks them (see
      `useDashboardSummary.test.tsx`); render the hook under a `QueryClientProvider`.
 
-3. **Build the Capital Allocation card component**
+3. [x] **Build the Capital Allocation card component**
    `packages/trustee/src/components/CapitalAllocationCard.tsx` (+ colocated
    `useCapitalAllocationCard.ts` hook per FRONTEND.md rule 2: the `.tsx` is
    JSX/styling only; the hook owns the query wiring and the value→display mapping,
@@ -248,7 +248,7 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
      legend values, (b) partial data (some buckets `null`) → asserts `—` for the
      nulls, (c) loading → skeleton present, (d) error → error surface present.
 
-4. **Replace the Overview route body** in
+4. [x] **Replace the Overview route body** in
    `packages/trustee/src/routes/index.tsx`:
    - Keep `createFileRoute("/")`. Render the `<main>` region (the shell provides
      the sidebar + outer layout; keep the route's own `<main>` landmark as today).
@@ -263,7 +263,7 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
      Tailwind 4px scale and keep it consistent with #786's existing main padding
      — reconcile with what `TrusteeShell` already applies so padding isn't doubled.
 
-5. **Update the existing route smoke test**
+5. [x] **Update the existing route smoke test**
    `packages/trustee/src/routes/-index.test.tsx`: it currently asserts the
    placeholder body. Update it to reflect the new body — assert the "Overview"
    heading still renders and the Capital Allocation card mounts. Because the route
@@ -271,26 +271,30 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
    `useCapitalAllocation` (or `apiFetch`) so the smoke test stays deterministic
    and does not hit the network.
 
-6. **Update `packages/trustee/src/lib/nav.ts`** (optional / minor): the Overview
-   `description` placeholder copy ("Content lands in a later sub-issue…") is no
-   longer accurate for the page body, but `navLabel`/`heading` are still used by
-   the sidebar. Leave `navLabel`/`heading`; the `description` field is only used
-   by placeholder route bodies — Overview no longer uses it, so no change is
-   strictly required. Do not remove the field (other placeholder routes still use
-   it). Note in the PR.
+6. [x] **Update `packages/trustee/src/lib/nav.ts`** (optional / minor): left
+   unchanged — `navLabel`/`heading` are still used by the sidebar and by other
+   placeholder routes' bodies; `description` is simply no longer read by the
+   Overview route now that it renders `CapitalAllocationCard` directly. No
+   removal needed (other placeholder routes still use `description`). Noted
+   here per the plan's ask to flag the decision.
 
-7. **Figma verification pass.** Compare the rendered page against
-   `/tmp/figma-overview/get_screenshot_0.png` and the `get_metadata.txt` bounding
-   boxes: title size/colour, card padding, total type scale, legend dot colours
-   and spacing, chip radii. Adjust token mappings to pixel/token-exact. (The user
-   reviews UI live — start the dev server per the "always start dev server"
-   convention: `yarn workspace @pipeline/trustee dev`, port 5174.)
+7. [x] **Figma verification pass.** Compared the rendered page against
+   `/tmp/figma-overview/get_screenshot_0.png` and `get_metadata.txt` bounding
+   boxes: title uses `--text-pipeline-title` (64px/64px) on
+   `--color-pipeline-ink-subtle`, matching the Figma `rgba(56,55,53,0.3)`
+   title exactly; card padding 32px; total at Figma's literal
+   `text-[58px]/leading-[81.2px]` (no existing token at that exact size, so
+   kept as an arbitrary value consistent with SignInCard's precedent of
+   scoped one-off sizes); legend dot/bar colours mapped per
+   `useCapitalAllocationCard.ts` (brand/positive-primary tokens where exact,
+   `#c9a200`/`#6666b3`/`rgba(56,55,53,0.35)` as documented scoped one-offs).
+   The dev server was already running on port 5174 for live review.
 
-8. **Lint + tests.** Run the trustee ESLint config (no raw `fetch`, no raw
-   `import.meta.env`, no inline hex where a token exists) and the colocated tests.
-   Sandbox test quirk (per the issue): if the workspace test runner breaks, run
-   `node node_modules/.bin/vitest run` under Node 20. Also run
-   `npx tsx scripts/lint-docs.ts` (AGENTS.md) after the docs/util-catalogue edit.
+8. [x] **Lint + tests.** `yarn workspace @pipeline/trustee lint` (ESLint +
+   Prettier) and `yarn workspace @pipeline/trustee test` (94/94 passing) both
+   green under the sandbox's Node 20 — the documented Node-26 jsdom quirk did
+   not reproduce. `npx tsx scripts/lint-docs.ts` — 0 errors after the
+   docs/util-catalogue + user-stories edits.
 
 ## Test Strategy
 
@@ -314,19 +318,20 @@ Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the
 
 ## Docs to Update
 
-- `docs/frontend/utils.md` — catalogue the new trustee-scoped `formatCompactUsd` /
-  `formatFullUsd` (import path + one-line description), noting the deliberate
-  duplication of the LP util pending cross-package consolidation.
-- `docs/exec-plans/tech-debt-tracker.md` — log the formatter duplication
-  (trustee vs. LP) as consolidation debt if not already tracked; and note the
-  deferred Capital-Allocation percentage/bar-fill (pending a backend percentage
-  field).
-- `docs/FRONTEND.md` — no change required (the Trustee app + capital-allocation
-  are already implied by the epic); add a one-line note under the Trustee section
-  only if the human wants the Overview page documented there. Optional.
+- [x] `docs/frontend/utils.md` — catalogued the new trustee-scoped
+  `formatCompactUsd` / `formatFullUsd` (import path + one-line description),
+  noting the deliberate duplication of the LP util pending cross-package
+  consolidation.
+- [x] `docs/exec-plans/tech-debt-tracker.md` — logged the formatter
+  duplication (trustee vs. LP) as TD-38, and the deferred Capital-Allocation
+  percentage/bar-fill as TD-39 (pending a backend percentage field).
+- `docs/FRONTEND.md` — no change made; not required (the Trustee app +
+  capital-allocation are already implied by the epic).
 - **No product-spec change** — this is a frontend rendering of an existing,
   already-specced endpoint; behaviour is not newly introduced here. (The endpoint
   and Trustee dashboard are specced in `docs/product-specs/trustee-dashboard.md`
   / spec #453.)
-- **Follow-up issue to file** (per Open Question #4): a new `frontend` sub-issue
-  of #775 for the Needs Attention section, blocked on its backend endpoint.
+- [x] **Follow-up issue** (per Open Question #4 / Decision #4): already filed as
+  [#799](https://github.com/eq-lab/pipeline/issues/799), a `blocked` sub-issue
+  of #775 for the Needs Attention section, pending its backend endpoint. No
+  new issue needed.

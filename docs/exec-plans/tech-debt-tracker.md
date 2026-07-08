@@ -377,6 +377,39 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   collapse/off-canvas variant, likely mirroring the LP app's `MobileNavMenu` pattern
   (`packages/frontend/src/components/MobileNavMenu.tsx`).
 
+### TD-38: Trustee `formatCompactUsd`/`formatFullUsd` duplicate the LP frontend's money formatters
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/utils/formatUsd.ts` vs.
+  `packages/frontend/src/utils/formatCompactUsd.ts` / `packages/frontend/src/lib/usdc.ts`
+- **Gap:** Issue #797 needed trustee-local money formatters for the Overview page's Capital
+  Allocation card, but the trustee app deliberately does not depend on `@pipeline/frontend`
+  (epic #775 keeps the two apps separate) and has no shared formatting package to pull from.
+  The result is two near-identical `formatCompactUsd` implementations (trustee's trims
+  trailing decimal zeros to match the Figma legend precision; the LP one always shows one
+  decimal) plus a second `formatFullUsd` port of the LP whole-dollar formatter.
+- **Impact:** Low today (small, well-tested pure functions) but any future rounding/precision
+  fix has to be applied in both places.
+- **Suggested fix:** If a third consumer needs the same formatting, extract a shared
+  `@pipeline/format` (or similar) package both `frontend` and `trustee` can depend on, rather
+  than depending on either app package directly.
+
+### TD-39: Capital Allocation bar has no real proportions (bucket percentages not served)
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
+- **Gap:** The Figma design for the Overview page's Capital Allocation card (node `4116:8934`)
+  shows a proportionally-filled segmented bar with per-bucket percentages (7% / 4% / 1% / 83% /
+  4%). `GET /v1/capital-allocation` serves only bucket values + `total`, no percentage/proportion
+  fields, and computing `bucket/total` client-side is forbidden by the project rule [no
+  frontend-computed metrics]. Issue #797 (human-confirmed decision, 2026-07-08) ships an inert,
+  equal-width placeholder bar instead — styled per Figma's segment colours but not driven by
+  real data.
+- **Impact:** The bar does not visually communicate the actual allocation split; only the
+  legend's dollar values are real. Cosmetic only — no correctness risk since no percentage is
+  claimed anywhere in the UI.
+- **Suggested fix:** Once the backend serves either the raw proportions or `total` is populated
+  reliably enough that a server-computed percentage field can be added to the response, wire the
+  bar's segment widths to that field (still not computed client-side).
+
 ---
 
 ## Post-MVP

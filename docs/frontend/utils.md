@@ -4,12 +4,16 @@ Catalogue of shared frontend utility helpers. Governed by [`docs/FRONTEND.md` �
 
 **Inclusion criteria.** A helper appears here when it is used in two or more places and has been lifted into a dedicated module under `packages/frontend/src/utils/` or `packages/ui/src/utils/`. Every entry must ship with unit tests in the same commit that adds it.
 
+**Trustee app.** `packages/trustee/` does not depend on `@pipeline/frontend` (epic #775 keeps the two apps separate), so it has its own `src/utils/` with deliberately duplicated formatters where the LP equivalent isn't importable. These are marked "(trustee)" below; see `docs/exec-plans/tech-debt-tracker.md` for the cross-package consolidation debt this creates.
+
 Entries are sorted alphabetically by name.
 
 | Name | Import path | Description |
 |------|-------------|-------------|
 | `CACHE_FOREVER` | `@/wallet` (internal: `src/wallet/evm/cache.ts`) | Wagmi query options preset for "fetch once per page lifetime" reads (immutable-in-practice on-chain data). Sets `staleTime: Infinity`, `gcTime: Infinity`, and disables all automatic refetch triggers. |
 | `formatCompactUsd` | `@/utils/formatCompactUsd` | Formats base-6 decimal-string USDC amounts (already in human units, e.g. `"8000000.000000"`) as compact dollar notation (`"$8.0M"`, `"$500.0K"`). Do NOT pass raw sub-unit bigints. null/undefined/non-numeric → `"—"`. |
+| `formatCompactUsd` (trustee) | `@/utils/formatUsd` (`packages/trustee/src/utils/formatUsd.ts`) | Trustee-local port of the LP `formatCompactUsd`, tuned to the Overview page's Capital Allocation legend precision (trims trailing decimal zeros: `"96000000.000000"` → `"$96M"`, `"8400000.000000"` → `"$8.4M"`, `"4950000.000000"` → `"$4.95M"`). null/undefined/non-numeric → `"—"`. |
+| `formatFullUsd` (trustee) | `@/utils/formatUsd` (`packages/trustee/src/utils/formatUsd.ts`) | Formats a base-6 decimal-string USD amount as fully-expanded whole dollars with thousands separators, for the Capital Allocation card's big total (`"115190000.000000"` → `"$115,190,000"`). null/undefined/non-numeric → `"—"`. |
 | `formatCoverage` | `@/utils/formatCompactUsd` | Formats a 2-decimal ratio string as a one-decimal `"x"` suffix (e.g. `"1.50"` → `"1.5x"`). null → `"—"`. |
 | `formatEstimatedWaitDays` | `@/utils/formatCompactUsd` | Formats the `estimated_wait_days` string from the withdrawal-queue API as `"~3.2 days"`. null/non-numeric → `"—"`. |
 | `formatDurationDays` | `@/utils/formatCompactUsd` | Formats a duration in whole days. `compact` variant: `"120d"` (table); `long` variant: `"68 days"` (summary card). null → `"—"`. |
