@@ -1,24 +1,28 @@
 /**
  * Unit tests for `TrusteeSessionProvider` / `useTrusteeSession()` (#791, plus
- * the #793/#794 PR-792-review follow-ups).
+ * the #793/#794/#795 follow-ups).
  *
  * Covers the exec plan's test strategy:
  *   - Initial state is `unauthenticated`.
- *   - `signIn()` happy path: opens the connect modal, then once a wallet
- *     connects, drives challenge → sign → verify → `authenticated`, storing
- *     a token (verified via the session store) and redirecting to `/`.
+ *   - `signIn()` ALWAYS opens the connect modal, then once the user's
+ *     explicitly-picked chain connects, drives challenge → sign → verify →
+ *     `authenticated`, storing a token (verified via the session store) and
+ *     redirecting to `/`.
  *   - `401` on the challenge → `unauthorized` with an explanatory error.
  *   - The user rejecting the signature → back to `unauthenticated`, no error.
- *   - `signOut()` clears the token and disconnects, then navigates to `/sign-in`.
+ *   - `signOut()` clears the token and disconnects both wallets, then
+ *     navigates to `/sign-in`.
  *   - Hydration from an existing valid token → `authenticated` (covered by
  *     `-sessionStore.test.ts`; this file focuses on the orchestration).
  *   - (#793) Cancelling the connect modal (no wallet chosen) resets `status`
  *     back to `unauthenticated` — no more stuck "Connecting…".
  *   - (#794) A Stellar wallet (e.g. Freighter) drives the challenge with its
- *     `G…` address and `STELLAR_CHAIN_ID`, both when it connects fresh and
- *     when it is already connected before `signIn()` is called; a
- *     pre-connected wallet no longer races the modal, and EVM is not
- *     hard-preferred when both chains are connected.
+ *     `G…` address and `STELLAR_CHAIN_ID` when the user explicitly picks it
+ *     in the modal, whether it connects fresh or was already connected.
+ *   - (#795) `signIn()` ALWAYS opens the modal, even when a wallet (e.g. an
+ *     auto-reconnected/persisted EVM session) is already connected — ambient
+ *     connection state never auto-signs or skips the picker. Only the user's
+ *     explicit `onModalWalletSelect` pick drives the flow.
  *
  * Wallet hooks (`useEvmWallet`, `useStellarWallet`, `useConnectModal`) and
  * the auth API wrappers are mocked; `useNavigate` is mocked to capture
@@ -161,7 +165,7 @@ describe("TrusteeSessionProvider — initial state", () => {
 });
 
 describe("TrusteeSessionProvider — signIn() happy path (EVM)", () => {
-  it("opens the connect modal, then drives challenge -> sign -> verify -> authenticated", async () => {
+  it("opens the connect modal, then drives challenge -> sign -> verify -> authenticated after the user picks EVM", async () => {
     mockGetAuthChallenge.mockResolvedValue({
       message: "Welcome to Pipeline! ...",
       nonce: "n1",
@@ -179,9 +183,12 @@ describe("TrusteeSessionProvider — signIn() happy path (EVM)", () => {
     expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("status")).toHaveTextContent("connecting");
 
-    // Simulate the wallet connecting after the modal opens, then force a
-    // re-render so the mocked `useEvmWallet()` is re-invoked with the new
-    // module-level state (the real hook would re-render reactively on its own).
+    // The user explicitly picks the EVM tab in the modal.
+    act(() => fireModalWalletSelect("evm"));
+
+    // Simulate the wallet connecting after the pick, then force a re-render
+    // so the mocked `useEvmWallet()` is re-invoked with the new module-level
+    // state (the real hook would re-render reactively on its own).
     evmState = { isConnected: true, address: "0xabc" };
     rerender(
       <TrusteeSessionProvider>
@@ -217,6 +224,7 @@ describe("TrusteeSessionProvider — 401 on challenge", () => {
 
     renderProvider();
     act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
 
     await waitFor(() => {
       expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
@@ -236,6 +244,7 @@ describe("TrusteeSessionProvider — signature rejected", () => {
 
     renderProvider();
     act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
 
     await waitFor(() => {
       expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
@@ -256,6 +265,7 @@ describe("TrusteeSessionProvider — 401 on verify", () => {
 
     renderProvider();
     act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
 
     await waitFor(() => {
       expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
@@ -275,6 +285,18 @@ describe("TrusteeSessionProvider — signOut()", () => {
 
     expect(getSessionToken()).toBeUndefined();
     expect(mockEvmDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
+  });
+
+  it("disconnects BOTH wallets when both are connected, so no stale connection lingers", () => {
+    evmState = { isConnected: true, address: "0xabc" };
+    stellarState = { isConnected: true, address: "GBOTHCONNECTED" };
+    renderProvider();
+
+    act(() => screen.getByText("sign out").click());
+
+    expect(mockEvmDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockStellarDisconnect).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
   });
 });
@@ -327,6 +349,7 @@ describe("TrusteeSessionProvider — modal cancelled (#793)", () => {
 
     renderProvider();
     act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
 
     await waitFor(() => {
       expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
@@ -340,10 +363,10 @@ describe("TrusteeSessionProvider — modal cancelled (#793)", () => {
   });
 });
 
-// ── #794 — Stellar wallet drives the flow; no EVM hard-preference ─────────────
+// ── #794 — Stellar wallet drives the flow when explicitly picked ──────────────
 
-describe("TrusteeSessionProvider — Stellar-only connect (#794)", () => {
-  it("drives the challenge with the Stellar G… address and STELLAR_CHAIN_ID when Freighter connects", async () => {
+describe("TrusteeSessionProvider — Stellar connect via explicit modal pick (#794)", () => {
+  it("drives the challenge with the Stellar G… address and STELLAR_CHAIN_ID after the user picks Soroban and Freighter connects", async () => {
     mockGetAuthChallenge.mockResolvedValue({
       message: "Welcome to Pipeline! ...",
       nonce: "n1",
@@ -357,6 +380,8 @@ describe("TrusteeSessionProvider — Stellar-only connect (#794)", () => {
     const { rerender } = renderProvider();
     act(() => screen.getByText("sign in").click());
     expect(screen.getByTestId("status")).toHaveTextContent("connecting");
+
+    act(() => fireModalWalletSelect("soroban"));
 
     stellarState = {
       isConnected: true,
@@ -388,8 +413,8 @@ describe("TrusteeSessionProvider — Stellar-only connect (#794)", () => {
   });
 });
 
-describe("TrusteeSessionProvider — pre-connected wallet does not race the modal (#794)", () => {
-  it("signs in directly with the already-connected Stellar wallet, without opening the modal", async () => {
+describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in the modal (#794)", () => {
+  it("signs in with the already-connected Stellar wallet once the user picks Soroban in the modal", async () => {
     mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
     mockStellarSignMessage.mockResolvedValue({ signature: "c3RlbGxhcg==" });
     mockPostAuthVerify.mockResolvedValue({ token: "jwt", expiresIn: 86400 });
@@ -398,16 +423,18 @@ describe("TrusteeSessionProvider — pre-connected wallet does not race the moda
     renderProvider();
     act(() => screen.getByText("sign in").click());
 
-    await waitFor(() => {
-      expect(mockPostAuthVerify).toHaveBeenCalled();
-    });
+    // The modal always opens, even with a wallet already connected (#795).
+    expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
 
-    expect(mockGetAuthChallenge).toHaveBeenCalledWith(
-      "GALREADYCONNECTED",
-      99000001,
-    );
-    // No ambiguity (only one wallet connected) — the modal never needed to open.
-    expect(mockOpenConnectModal).not.toHaveBeenCalled();
+    act(() => fireModalWalletSelect("soroban"));
+
+    await waitFor(() => {
+      expect(mockGetAuthChallenge).toHaveBeenCalledWith(
+        "GALREADYCONNECTED",
+        99000001,
+      );
+    });
   });
 
   it("does not hard-prefer EVM when both wallets are already connected — waits for the user's modal pick", async () => {
@@ -421,8 +448,8 @@ describe("TrusteeSessionProvider — pre-connected wallet does not race the moda
     renderProvider();
     act(() => screen.getByText("sign in").click());
 
-    // Both chains are already connected — ambiguous, so the modal opens
-    // instead of silently picking EVM.
+    // Both chains are already connected — the modal opens and neither
+    // ambient connection auto-signs.
     expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
     expect(mockGetAuthChallenge).not.toHaveBeenCalled();
 
@@ -457,5 +484,74 @@ describe("TrusteeSessionProvider — pre-connected wallet does not race the moda
       expect(mockGetAuthChallenge).toHaveBeenCalledWith("0xabc", 560048);
     });
     expect(mockStellarSignMessage).not.toHaveBeenCalled();
+  });
+});
+
+// ── #795 — signIn() always opens the modal; ambient state never hijacks ───────
+
+describe("TrusteeSessionProvider — signIn() always opens the modal (#795)", () => {
+  it("opens the modal even when exactly one wallet (e.g. an auto-reconnected/persisted EVM session) is already connected", () => {
+    // Simulates wagmi restoring a persisted EVM connection on page load,
+    // before the user ever clicks "Connect Wallet".
+    evmState = { isConnected: true, address: "0xpersisted" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+
+    expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("status")).toHaveTextContent("connecting");
+    // No sign-in kicked off automatically from the ambient connection.
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
+    expect(mockEvmSignMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not auto-sign with a pre-connected EVM wallet even if it later re-renders while the modal is open", async () => {
+    evmState = { isConnected: true, address: "0xpersisted" };
+
+    const { rerender } = renderProvider();
+    act(() => screen.getByText("sign in").click());
+    expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
+
+    // A re-render (e.g. an unrelated state change) must not cause the watch
+    // effect to pick up the already-connected EVM wallet — no chain has been
+    // explicitly picked yet.
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
+    expect(screen.getByTestId("status")).toHaveTextContent("connecting");
+  });
+
+  it("signs in with the explicitly-picked Freighter (Soroban) wallet even when an ambient EVM connection is present", async () => {
+    mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
+    mockStellarSignMessage.mockResolvedValue({ signature: "c3RlbGxhcg==" });
+    mockPostAuthVerify.mockResolvedValue({ token: "jwt", expiresIn: 86400 });
+    // Ambient/auto-reconnected EVM wallet present at page load.
+    evmState = { isConnected: true, address: "0xpersisted" };
+
+    const { rerender } = renderProvider();
+    act(() => screen.getByText("sign in").click());
+    expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
+
+    // The user explicitly picks Freighter/Soroban in the picker.
+    act(() => fireModalWalletSelect("soroban"));
+    stellarState = { isConnected: true, address: "GEXPLICITPICK" };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mockGetAuthChallenge).toHaveBeenCalledWith(
+        "GEXPLICITPICK",
+        99000001,
+      );
+    });
+    expect(mockEvmSignMessage).not.toHaveBeenCalled();
   });
 });
