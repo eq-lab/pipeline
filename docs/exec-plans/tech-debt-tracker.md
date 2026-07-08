@@ -286,7 +286,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   (or a shared factory for it) and the entrypoint script generation into the shared package
   so both apps consume one implementation.
 
-### TD-33: Trustee eslint config omits the wallet/api import-restriction blocks
+### TD-33: Trustee eslint config omits the wallet/api import-restriction blocks [RESOLVED 2026-07-08 / #791]
 - **Date:** 2026-07-07
 - **Location:** `packages/trustee/eslint.config.js`
 - **Gap:** `packages/frontend/eslint.config.js` has `no-restricted-imports` blocks confining
@@ -296,11 +296,16 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   wallet/api deps).
 - **Impact:** None today — there is nothing in `packages/trustee` for the guards to protect.
   Adding wallet/API deps directly (bypassing #778's shared extraction) would go unguarded.
-- **Suggested fix:** When #778 lands the shared wallet/api layer (or the trustee app grows
-  its own), reinstate the equivalent `no-restricted-imports`/`no-restricted-globals` blocks
-  scoped to wherever that code lives in `packages/trustee`.
+- **Resolved by #791:** the sign-in flow landed the wallet-connect slice as the new
+  `@pipeline/wallet-connect` shared package (not trustee-local files), so the trustee itself
+  never imports wagmi/viem/AppKit/Stellar SDKs directly — `packages/trustee/eslint.config.js`
+  now has an unconditional `no-restricted-imports` block for those packages (no carve-out
+  needed, since no legitimate trustee file imports them) plus a `no-restricted-globals` guard
+  confining bare `fetch` to `src/api/**` (`apiFetch` in `src/api/client.ts`, which injects the
+  bearer token). `@pipeline/wallet-connect` has its own equivalent boundary scoped to its
+  `src/evm/**`/`src/stellar/**` modules.
 
-### TD-34: Trustee sign-in "Connect Wallet" button is a documented no-op
+### TD-34: Trustee sign-in "Connect Wallet" button is a documented no-op [RESOLVED 2026-07-08 / #791]
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/components/SignInCard.tsx`
 - **Gap:** Issue #787 ships the sign-in gate UI only (Figma node `4174-31660`). The
@@ -312,9 +317,38 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   other route today (no route guard exists), and clicking Connect Wallet does nothing
   observable. Acceptable for a UI-only issue; would be a real gap if shipped as the only
   auth surface.
-- **Suggested fix:** When #778 lands the wallet/session layer, wire this button to the real
-  wallet-connect flow and add a route guard that redirects unauthenticated users to
-  `/sign-in`.
+- **Resolved by #791:** `SignInCard` now calls `useTrusteeSession().signIn()`, which drives
+  wallet-connect → `GET /v1/auth/challenge` → sign → `POST /v1/auth/verify` → stores the JWT in
+  `sessionStorage` → redirects to `/`. A `401` renders as an inline "not authorized" error on
+  the card. `TrusteeShell` now gates every route (`RouteGate`): unauthenticated → `/sign-in`,
+  authenticated on `/sign-in` → `/`.
+
+### TD-35: `@pipeline/wallet-connect` duplicates rather than moves the LP wallet-connect slice
+- **Date:** 2026-07-08
+- **Location:** `packages/wallet-connect/src/{evm,stellar}/*`, `packages/frontend/src/wallet/*`
+- **Gap:** #791 extracted a minimal wallet-connect slice (connect/disconnect, address, the
+  picker modal, provider mounting, plus net-new `signMessage`) into a new shared package
+  per the exec plan's approach (a), but **copied** rather than **moved** the LP's
+  `evm/{chain,config,mock}.ts`, `stellar/{chain,config,connectionStore,mock}.ts`,
+  `ConnectModalProvider.tsx`/`ConnectModalContext.ts`, and `ConnectWalletModal.tsx` (plus the
+  `connect-hero-ship.webp` asset) rather than re-pointing the LP app's imports at the new
+  package. The exec plan's fallback path ("If moving risks LP regressions within this issue's
+  blast radius, copy the minimal slice and log the duplication as tech-debt for #778") was
+  taken to keep #791's blast radius scoped to the Trustee app and avoid touching LP import
+  sites/tests under this issue.
+- **Impact:** Two copies of connect/disconnect/config/mock logic for EVM and Stellar chain +
+  wallet plumbing exist today (LP-owned in `packages/frontend/src/wallet`, shared in
+  `packages/wallet-connect`). They are behaviourally identical at the point of the copy but
+  will drift if one is changed without the other (e.g. a `useEvmWallet` bugfix). The LP app
+  does **not** yet consume `@pipeline/wallet-connect` — it still owns its terms-gate-coupled
+  `WalletGateProvider`/`useTermsAcknowledgement` wiring, which `@pipeline/wallet-connect`
+  deliberately decouples from (see the package's `WalletGateContext.ts`).
+- **Suggested fix:** #778 (shared wallet/api extraction, currently `backlog`) should re-point
+  `packages/frontend`'s imports at `@pipeline/wallet-connect` for the overlapping surface
+  (connect/disconnect, address, connectors, the connect modal, `signMessage`) and delete the
+  LP-local duplicates, keeping only genuinely LP-specific code (`WalletGateProvider`, the
+  deposit/withdraw/stake contract hooks, the terms-acknowledgement flag) in
+  `packages/frontend/src/wallet`.
 
 ---
 

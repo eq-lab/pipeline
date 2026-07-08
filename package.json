@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/frontend",
     "packages/trustee",
-    "packages/ui"
+    "packages/ui",
+    "packages/wallet-connect"
   ],
   "scripts": {
     "lint:docs": "npx tsx scripts/lint-docs.ts",

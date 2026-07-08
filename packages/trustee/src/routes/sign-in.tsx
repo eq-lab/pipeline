@@ -9,13 +9,17 @@ import { SignInCard } from "@/components/SignInCard";
  * tint (`rgba(246,248,248,0.8)`) has no equivalent design token today, so it
  * is a documented one-off arbitrary value scoped to this route.
  *
- * Out of scope here (see issue #787): the "Overview" heading + timestamp
- * header row visible behind the overlay in the Figma frame is the dashboard
- * shell's content, tracked by #786 — this route renders only the gate
- * itself on the standard paper background. The `TrusteeShell` topbar (logo +
- * flow-type nav) still wraps every route including this one; hiding it for
- * an authenticated-gate screen is left to the wallet/session wiring in #778,
- * which will decide when the gate actually needs to render standalone.
+ * Wired to the real sign-in flow (#791): `SignInCard` calls
+ * `useTrusteeSession().signIn()`, which drives wallet-connect → backend
+ * signature challenge → sign → verify → session. Route gating
+ * (`TrusteeShell` → `RouteGate`) renders this route standalone — the topbar
+ * nav is hidden while unauthenticated — and redirects an already-authenticated
+ * visitor away from `/sign-in` to `/`.
+ *
+ * Out of scope here: the "Overview" heading + timestamp header row visible
+ * behind the overlay in the Figma frame is the dashboard shell's content,
+ * tracked by #786 — this route renders only the gate itself on the standard
+ * paper background.
  */
 function SignIn() {
   return (

@@ -140,7 +140,14 @@ reviewer — it does not change behaviour and is not a blocking product question
 
 ## Implementation Steps
 
-1. **Create the shared wallet-connect slice** (approach (a)). Preferred: a new workspace package
+> **Status: implemented (2026-07-08).** All 13 steps below are done. Package boundary: new
+> shared package `packages/wallet-connect` (`@pipeline/wallet-connect`), **copied** (not moved)
+> from the LP frontend per the plan's documented fallback — logged as **TD-35**. See the coder's
+> report on the Issue for the full deviation list (provider mounting point for
+> `TrusteeSessionProvider`, and a post-implementation lazy-config fix for a bootstrap crash
+> found during manual verification).
+
+1. [x] **Create the shared wallet-connect slice** (approach (a)). Preferred: a new workspace package
    (e.g. `packages/wallet-connect`, `name: @pipeline/wallet-connect`, `private: true`) added to
    root `workspaces`, exporting only what sign-in needs:
    - Providers: EVM (`EvmWalletProvider` = `WagmiProvider` + `QueryClientProvider`, from
@@ -164,7 +171,7 @@ reviewer — it does not change behaviour and is not a blocking product question
    - **Fallback (if a new package is rejected):** land the slice under `packages/trustee/src/wallet/`
      and add a tech-debt entry to fold it into #778.
 
-2. **Add the trustee API client with bearer injection.** New `packages/trustee/src/api/client.ts`
+2. [x] **Add the trustee API client with bearer injection.** New `packages/trustee/src/api/client.ts`
    exporting `apiFetch<T>(path, init?)` modeled on the LP client (`ENV.API_BASE_URL` base,
    non-2xx → throw with the JSON `error` field), **plus**:
    - Inject `Authorization: Bearer <token>` from the current session when a token is present
@@ -176,7 +183,7 @@ reviewer — it does not change behaviour and is not a blocking product question
    - Add `getAuthChallenge(address, chainId)` and `postAuthVerify({ chainId, address, signature })`
      typed wrappers around `/v1/auth/challenge` and `/v1/auth/verify`.
 
-3. **Add trustee dependencies + env.** Update `packages/trustee/package.json` to depend on the new
+3. [x] **Add trustee dependencies + env.** Update `packages/trustee/package.json` to depend on the new
    package (and transitively the wallet SDKs it needs: wagmi/viem/@reown/appkit/react-query,
    @creit.tech/stellar-wallets-kit/@stellar/stellar-sdk). Extend `packages/trustee/src/lib/env.ts`
    with the vars the wallet slice + auth flow need, mirroring the LP env names:
@@ -185,8 +192,13 @@ reviewer — it does not change behaviour and is not a blocking product question
    `VITE_STELLAR_HORIZON_URL` (as the kit requires), and `VITE_WALLETCONNECT_PROJECT_ID`.
    Update `packages/trustee/public/__env.js`, the root `.env`/example, and the
    `docker/trustee` runtime-env template accordingly.
+   **Deviation:** `VITE_STELLAR_RPC_URL`/`VITE_STELLAR_HORIZON_URL` were not added — #791's
+   flow only needs `signMessage` (no Horizon/Soroban RPC calls), so those two were left for
+   whichever later flow sub-issue needs them. The root `.env.example` already had every var the
+   Trustee needs (both apps share `envDir`), so no new root `.env.example` entries were required
+   — only `docker/trustee/entrypoint.sh` gained the new `window.__ENV__` keys.
 
-4. **Add the trustee session store + provider.** New
+4. [x] **Add the trustee session store + provider.** New
    `packages/trustee/src/auth/TrusteeSessionProvider.tsx` + `useTrusteeSession()` context, plus a
    **non-hook module-level accessor** (`getSessionToken()`) so `apiFetch` and the router guard can
    read the token outside React. The store:
@@ -199,13 +211,13 @@ reviewer — it does not change behaviour and is not a blocking product question
    - `signIn()` orchestrates the flow (step 6). `signOut()` clears the stored token, disconnects
      the wallet, and returns to `unauthenticated`. **No** on-chain role read anywhere.
 
-5. **Reinstate the eslint boundary (TD-33).** Add the `no-restricted-imports`
+5. [x] **Reinstate the eslint boundary (TD-33).** Add the `no-restricted-imports`
    (wagmi/viem/@reown/*/react-query + @creit.tech/*/@stellar/*) and `no-restricted-globals`
    (bare `fetch`) blocks to the new package's eslint config and/or
    `packages/trustee/eslint.config.js`, scoped so the wallet SDKs are only importable inside the
    wallet module and `fetch` only inside the api module. Update the TD-33 tech-debt entry.
 
-6. **Implement the sign-in orchestration.** In `TrusteeSessionProvider` (or a `useSignIn` hook it
+6. [x] **Implement the sign-in orchestration.** In `TrusteeSessionProvider` (or a `useSignIn` hook it
    uses), `signIn()`:
    1. Set `status = "connecting"`; open the connect modal (`useConnectModal().open()`); wait for a
       connected address (EVM or Stellar) — the connected wallet determines `{ address, chainId }`
@@ -218,42 +230,59 @@ reviewer — it does not change behaviour and is not a blocking product question
       `{ token, address, chainId, expiresAt: now + expires_in }`, set `status = "authenticated"`,
       and redirect to `/`. On `401` → surface a verification-failed error (rare: nonce expired /
       signature mismatch) and return to `unauthenticated`.
+   **Deviation:** step 1's "wait for a connected address" is implemented as a `useEffect` that
+   reactively watches `useEvmWallet()`/`useStellarWallet()` (rather than polling/awaiting a
+   single promise from the connect modal, which has no such promise to await — connection
+   resolves via wagmi/Stellar-kit callbacks). A `401` from `/v1/auth/verify` (step 4) is always
+   framed as "Sign-in verification failed" rather than repeating the challenge step's "not
+   authorized" copy, since the backend returns the same generic 401 for both unknown-address and
+   bad-signature cases at that endpoint and re-using the challenge copy there would be misleading
+   (the address WAS authorized enough to receive a challenge).
 
-7. **Wire providers in `main.tsx`.** Mount, around `<RouterProvider>` in
-   `packages/trustee/src/main.tsx` (following the LP ordering, **minus** `WalletGateProvider`):
-   `EvmWalletProvider → StellarWalletProvider → ConnectModalProvider → TrusteeSessionProvider`.
-   Preserve `StrictMode`. Pass the router a `context` carrying a session accessor (or rely on the
-   module-level `getSessionToken()`/status getter) so the guard in step 9 can read auth state.
+7. [x] **Wire providers in `main.tsx`.**
+   **Deviation:** `TrusteeSessionProvider` is mounted in `routes/__root.tsx` (wrapping
+   `TrusteeShell`), not in `main.tsx` around `<RouterProvider>` — it calls `useNavigate()` for
+   the sign-in/sign-out redirects, which requires router context that only exists **inside**
+   `<RouterProvider>`, not above it. `main.tsx` mounts `EvmWalletProvider → StellarWalletProvider
+   → ConnectModalProvider → <RouterProvider>`; the root route then renders
+   `TrusteeSessionProvider → TrusteeShell`. Route gating (step 9) reads `useTrusteeSession()`
+   directly (a React context read) rather than a module-level non-hook getter, since it renders
+   from within the same React tree — no `beforeLoad` needed.
+   **Post-implementation fix:** the first cut read `getWalletConnectConfig()` at **module scope**
+   in `evm/chain.ts` / `evm/config.ts` / `stellar/chain.ts` / `stellar/config.ts` (mirroring the
+   LP originals, which read `@/lib/env` at module scope). Found via manual dev-server
+   verification: ES module imports are hoisted and evaluated before the importing module's own
+   body runs, so `main.tsx`'s `setWalletConnectConfig()` call — however early in the file —
+   always runs **after** those modules' top-level code, throwing
+   `setWalletConnectConfig() must be called before any wallet-connect module is used` on every
+   load. Fixed by making all four modules **lazy**: `getHoodiChain()`, `initEvmWalletConnect()`,
+   `getKitNetwork()`/`getNetworkPassphrase()`, and `initStellarWalletConnect()` now read the
+   config only when called (from `EvmWalletProvider`/`StellarWalletProvider` on render, memoized
+   so init runs exactly once), not at import time. Re-verified via Chrome DevTools against the
+   running dev server: `/sign-in` renders with no uncaught error, and the connect modal opens.
 
-8. **Wire the "Connect Wallet" button.** In `packages/trustee/src/components/SignInCard.tsx`,
-   replace the `TODO(#778)` no-op `onClick` with `useTrusteeSession().signIn()`. Update the doc
-   comment (remove the "documented no-op" language). Render the `unauthorized`/error state inline
-   on the card — a short "This wallet is not authorized to sign in. Contact your administrator."
-   message with a disconnect/retry action; show a busy state while `status === "connecting"`.
+8. [x] **Wire the "Connect Wallet" button.**
 
-9. **Add route gating.** In `packages/trustee/src/routes/__root.tsx` (or a `beforeLoad` on the
-   protected routes / a `TrusteeShell`-level guard):
-   - Unauthenticated (no valid token) → redirect to `/sign-in`.
-   - Authenticated on `/sign-in` → redirect to `/`.
-   - Use a TanStack Router `beforeLoad` reading the non-hook session getter (step 4), **or** a
-     guard component that renders `<Outlet/>` only when authenticated. Ensure `/sign-in` renders
-     **standalone** — hide the `TrusteeShell` topbar nav when unauthenticated (resolves the note
-     left in `sign-in.tsx` / `TrusteeShell.tsx` about the topbar wrapping the gate).
+9. [x] **Add route gating.** Implemented as a `RouteGate` component (`src/auth/RouteGate.tsx`)
+   rendered by `TrusteeShell` in place of a bare `<Outlet/>`, using `useLocation()` + `<Navigate>`
+   rather than a router `beforeLoad` (simpler given the session lives in a React context already
+   mounted above every route).
 
-10. **Add a sign-out affordance.** In `TrusteeShell.tsx` (authenticated view), add an
-    account/sign-out control (truncated `address` + "Sign out" → `signOut()`). Minimal styling;
-    match a Figma frame if one exists.
+10. [x] **Add a sign-out affordance.** Truncated address + "Sign out" in `TrusteeShell`'s topbar,
+    visible only when authenticated (also hides the flow-type nav when unauthenticated, per step
+    9's standalone-`/sign-in` requirement).
 
-11. **Update the sign-in route + doc comments.** `packages/trustee/src/routes/sign-in.tsx` doc
-    comment updated for the wired behaviour; resolve the topbar-hiding note.
+11. [x] **Update the sign-in route + doc comments.**
 
-12. **Clear TD-34 / update TD-33.** Close **TD-34** (no-op now wired) in
-    `docs/exec-plans/tech-debt-tracker.md`; update **TD-33** (eslint boundary reinstated). Add any
-    new tech-debt (wallet-slice duplication to reconcile with #778 if the fallback path was taken).
+12. [x] **Clear TD-34 / update TD-33.** Both resolved in `docs/exec-plans/tech-debt-tracker.md`;
+    added **TD-35** for the wallet-connect package's copy-not-move (see step 1's package-boundary
+    note).
 
-13. **Lint + typecheck + build.** Run `yarn workspace @pipeline/trustee lint` and `build`
-    (`tsc -b && vite build`), `npx tsx scripts/lint-docs.ts`, and — if LP wallet files moved — the
-    LP frontend's tests/build to confirm zero regression.
+13. [x] **Lint + typecheck + build.** `yarn workspace @pipeline/trustee lint`/`build`,
+    `yarn workspace @pipeline/wallet-connect` lint/typecheck/test, `yarn workspace
+    @pipeline/frontend lint`/`build` (zero LP regression — LP source untouched, only copied
+    from), `npx tsx scripts/lint-docs.ts`. `cargo clippy --all -- -D warnings` also re-run
+    (no Rust changes in this issue).
 
 ## Test Strategy
 
