@@ -1,27 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
+import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
 
 /**
  * Overview — the Trustee app's index route (Figma node `4116:8855`'s
- * "Overview" nav item, active by default).
+ * "Overview" nav item, active by default; page body Figma node `4116:8922`).
  *
- * #786 retires the #777 scaffold's "pick a flow type" launcher page — Overview
- * is now a first-class nav destination (sidebar-driven, see `TrusteeSidebar`)
- * rather than a list of links to the other sections. A genuine
- * portfolio-wide summary lands in a later sub-issue of epic #775; this is a
- * placeholder body only.
+ * #786 retired the #777 scaffold's "pick a flow type" launcher page and left
+ * a placeholder body here. Issue #797 replaces that placeholder with the real
+ * Overview page: the "Overview" header + the Capital Allocation card wired to
+ * `GET /v1/capital-allocation`.
+ *
+ * Net scope for #797 (see `docs/exec-plans/active/issue-797-*.md` "Decisions"
+ * section, human-confirmed 2026-07-08) — everything else in the Figma frame
+ * is deferred/out of scope:
+ *   - No header timestamp — no `as_of`/`generated_at` API field exists yet.
+ *   - No reconciliation header / provenance chips on the card — no backing
+ *     field.
+ *   - No standalone Cash-in-Transit or Active Deal cards — removed entirely
+ *     (the `in_transit` bucket stays in the Capital Allocation legend).
+ *   - No Needs Attention section — deferred to follow-up issue #799 (blocked
+ *     on a backend endpoint); renders nothing.
  */
-const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/")!;
-
 function Overview() {
   return (
-    <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-12 md:px-8">
-      <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-m)] leading-[var(--text-pipeline-heading-m--line-height)] text-[color:var(--color-pipeline-ink)]">
-        {navItem.heading}
+    <main className="flex w-full max-w-[1180px] flex-col gap-[30px] px-[56px] pt-[40px] pb-[80px]">
+      <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-title)] leading-[var(--text-pipeline-title--line-height)] text-[color:var(--color-pipeline-ink-subtle)]">
+        Overview
       </h1>
-      <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink-muted)]">
-        {navItem.description}
-      </p>
+      <CapitalAllocationCard />
     </main>
   );
 }
