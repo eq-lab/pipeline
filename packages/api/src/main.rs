@@ -73,6 +73,8 @@ async fn main() -> anyhow::Result<()> {
     }
     // Stellar voucher config maps directly — one entry per configured Stellar chain.
     let stellar_voucher_signers = chains_config.stellar_voucher;
+    // Custody/ramp address sets for the capital-allocation in_transit bucket.
+    let transfer_addresses = chains_config.transfer_addresses;
 
     let crystal_enabled = std::env::var("CRYSTAL_ENABLED")
         .ok()
@@ -95,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
         dm_domains,
         wq_domains,
         stellar_voucher_signers,
+        transfer_addresses,
         crystal_enabled,
         elliptic_enabled,
         auth_user_repo,

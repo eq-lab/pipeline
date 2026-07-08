@@ -21,7 +21,7 @@ use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
 
 use crate::auth::JwtKeys;
-use crate::config::StellarVoucherChainConfig;
+use crate::config::{StellarVoucherChainConfig, TransferAddressSets};
 
 pub struct AppState {
     pub pool: sqlx::PgPool,
@@ -40,6 +40,9 @@ pub struct AppState {
     pub wq_domains: HashMap<i64, Eip712Domain>,
     /// Stellar voucher signing config keyed by chain_id.
     pub stellar_voucher_signers: HashMap<i64, StellarVoucherChainConfig>,
+    /// Custody + ramp address sets keyed by chain_id, for the Capital Allocation
+    /// `in_transit` bucket. Absent for chains without both lists configured.
+    pub transfer_addresses: HashMap<i64, TransferAddressSets>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.
