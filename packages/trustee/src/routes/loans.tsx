@@ -2,18 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
 
 /**
- * Overview — the Trustee app's index route (Figma node `4116:8855`'s
- * "Overview" nav item, active by default).
+ * Loans (placeholder).
  *
- * #786 retires the #777 scaffold's "pick a flow type" launcher page — Overview
- * is now a first-class nav destination (sidebar-driven, see `TrusteeSidebar`)
- * rather than a list of links to the other sections. A genuine
- * portfolio-wide summary lands in a later sub-issue of epic #775; this is a
- * placeholder body only.
+ * See docs/product-specs/trustee-dashboard.md for the loan disbursement and
+ * lifecycle flows (Types 1 and 2). Content lands in a per-flow sub-issue of
+ * epic #775 (#786 replaces the #777 scaffold's `/type1-direct`/`/type2-mpc`
+ * routes with the Figma nav taxonomy).
  */
-const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/")!;
+const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/loans")!;
 
-function Overview() {
+function Loans() {
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-12 md:px-8">
       <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-m)] leading-[var(--text-pipeline-heading-m--line-height)] text-[color:var(--color-pipeline-ink)]">
@@ -26,6 +24,6 @@ function Overview() {
   );
 }
 
-export const Route = createFileRoute("/")({
-  component: Overview,
+export const Route = createFileRoute("/loans")({
+  component: Loans,
 });

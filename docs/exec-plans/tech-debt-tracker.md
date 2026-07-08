@@ -350,6 +350,33 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   deposit/withdraw/stake contract hooks, the terms-acknowledgement flag) in
   `packages/frontend/src/wallet`.
 
+### TD-36: Trustee sidebar nav badges have no backend count source
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
+- **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
+  (4), and Cash Management (3) — presumably counts of pending/actionable items per section.
+  There is no backend endpoint serving these counts today, so per the project rule [no
+  frontend-computed metrics] issue #786 omits the numbers entirely rather than deriving them
+  client-side. The badge slot (`NavBadge`) is built and renders nothing when
+  `TrusteeNavItem.badgeCount` is `undefined`, ready to light up once a real count exists.
+- **Impact:** The sidebar under-represents the Figma mock (no badges) until a backend source
+  lands; no functional impact, just a deferred visual/product feature.
+- **Suggested fix:** When a backend endpoint for per-section pending-item counts exists,
+  populate `badgeCount` on the relevant `TRUSTEE_NAV_ITEMS` entries (likely via a query hook
+  passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
+
+### TD-37: Trustee sidebar has no mobile/responsive behavior
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/components/TrusteeSidebar.tsx`
+- **Gap:** Issue #786 implements the Figma sidebar (node `4116:8855`) as desktop-only: a fixed
+  320px `<aside>` with no collapse, drawer, or off-canvas behavior below any breakpoint. The
+  Figma frame itself is desktop-only, so there is no design reference for mobile yet.
+- **Impact:** On narrow viewports the fixed 320px sidebar competes with the main content area
+  for space; there is no hamburger/collapse affordance to reclaim it.
+- **Suggested fix:** Once a mobile nav design exists (own Figma frame), add a breakpoint-gated
+  collapse/off-canvas variant, likely mirroring the LP app's `MobileNavMenu` pattern
+  (`packages/frontend/src/components/MobileNavMenu.tsx`).
+
 ---
 
 ## Post-MVP

@@ -12,9 +12,9 @@ import { SignInCard } from "@/components/SignInCard";
  * Wired to the real sign-in flow (#791): `SignInCard` calls
  * `useTrusteeSession().signIn()`, which drives wallet-connect → backend
  * signature challenge → sign → verify → session. Route gating
- * (`TrusteeShell` → `RouteGate`) renders this route standalone — the topbar
- * nav is hidden while unauthenticated — and redirects an already-authenticated
- * visitor away from `/sign-in` to `/`.
+ * (`TrusteeShell` → `RouteGate`) renders this route standalone — the sidebar
+ * nav (#786) is hidden while unauthenticated — and redirects an
+ * already-authenticated visitor away from `/sign-in` to `/`.
  *
  * Out of scope here: the "Overview" heading + timestamp header row visible
  * behind the overlay in the Figma frame is the dashboard shell's content,
@@ -25,7 +25,9 @@ function SignIn() {
   return (
     <main
       className={[
-        "flex min-h-[calc(100vh-73px)] w-full items-center justify-center p-4",
+        // No sidebar/topbar on this standalone route (#786), so the overlay
+        // is a full viewport height rather than offset by chrome.
+        "flex min-h-screen w-full items-center justify-center p-4",
         "bg-[rgba(246,248,248,0.8)] backdrop-blur-[6px]",
       ].join(" ")}
       data-testid="sign-in-overlay"
