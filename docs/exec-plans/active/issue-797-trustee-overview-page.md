@@ -161,6 +161,19 @@ tokens exactly as #786 / SignInCard did.
    A client-clock timestamp would be a derived/non-backend value. Recommend
    **omit the timestamp** until the API provides one. Confirm.
 
+## Decisions (resolved with human, 2026-07-08)
+
+Open Questions resolved as follows (recommendations accepted):
+
+1. **Segmented bar + percentages → values only, inert bar.** Render the legend with dollar values (`—` for null fields), **omit percentages entirely**, and render a **styled but non-proportional placeholder bar** (inert — not driven by `bucket/total`). Do NOT compute percentages client-side. When the backend serves proportion/percentage fields, a follow-up wires the real bar.
+2. **Value format** — resolved by code inspection (trustee-local `formatCompactUsd` + `formatFullUsd`, nullable → `—`).
+3. **Reconciliation header + provenance chips → defer / omit.** No hardcoded drift number, no fake "refreshed 2m ago". Leave them out until an endpoint serves the data.
+4. **Needs Attention → defer to a follow-up sub-issue.** Render nothing now (no mock, no empty-state against a non-existent contract). Follow-up issue filed as a sub-issue of #775.
+5. **Loading / error / empty states** — accept the planner recommendation: token-styled skeleton on the total+legend region while loading; inline error surface inside the card (SignInCard/`Card` danger pattern); per-field `null` → `—`.
+6. **Header timestamp → omit** until the API provides an `as_of`/`generated_at` field. No client-clock time.
+
+Net scope for THIS issue: Overview header ("Overview" title, no timestamp) + the Capital Allocation card (total + inert placeholder bar + legend values from `GET /v1/capital-allocation`, `—` for nulls). Everything else deferred.
+
 ## Implementation Steps
 
 1. **Add trustee-local money formatters** in a new
