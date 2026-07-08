@@ -76,4 +76,4 @@ export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";
 export type { ConnectModalContextValue } from "./ConnectModalContext";
 export { ConnectWalletModal } from "./ConnectWalletModal";
-export type { ConnectWalletModalProps } from "./ConnectWalletModal";
+export type { ConnectWalletModalProps, WalletTab } from "./ConnectWalletModal";

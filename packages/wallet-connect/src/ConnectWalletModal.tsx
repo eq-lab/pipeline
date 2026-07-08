@@ -67,7 +67,7 @@ function trapFocus(container: HTMLElement, e: KeyboardEvent) {
 
 // ── Wallet catalogue ──────────────────────────────────────────────────────────
 
-type WalletTab = "evm" | "soroban";
+export type WalletTab = "evm" | "soroban";
 
 interface WalletEntry {
   /** Unique id within the Connect modal. */
@@ -555,8 +555,24 @@ function RightImagePanel() {
 export interface ConnectWalletModalProps {
   /** Whether the modal is visible. */
   open: boolean;
-  /** Called when the user dismisses (Escape / scrim / × button). */
+  /**
+   * Called whenever the modal closes, for ANY reason — a true dismissal
+   * (Escape / × button) or as a side effect of the user picking a wallet
+   * (see `onWalletSelect`, which fires first in that case). Callers that only
+   * need to hide the modal (e.g. `ConnectModalProvider.close()`) use this.
+   */
   onDismiss: () => void;
+  /**
+   * Called with the chosen tab when the user picks a wallet row (before
+   * `onDismiss`), i.e. the modal is closing because a connect attempt is
+   * starting — NOT because the user cancelled. Callers that need to
+   * distinguish "user picked a wallet" from "user cancelled with no
+   * selection" (#793 — the Trustee sign-in flow resetting its busy state only
+   * on a true cancel) subscribe to this instead of / in addition to
+   * `onDismiss`. The chain also lets a caller with more than one already
+   * connected wallet (#794) know which one the user actually acted on.
+   */
+  onWalletSelect?: (chain: WalletTab) => void;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -564,6 +580,7 @@ export interface ConnectWalletModalProps {
 export function ConnectWalletModal({
   open,
   onDismiss,
+  onWalletSelect,
 }: ConnectWalletModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "connect-wallet-modal-heading";
@@ -637,16 +654,20 @@ export function ConnectWalletModal({
       : walletEntries;
 
   function handleEvmWalletClick(entry: (typeof EVM_WALLETS)[number]) {
-    onDismiss();
-    // Trust wallet → open website (no dedicated connector)
+    // Trust wallet → open website (no dedicated connector); this is not a
+    // connect attempt, so it does NOT fire `onWalletSelect`.
     if (entry.id === "trust") {
+      onDismiss();
       window.open(entry.websiteUrl, "_blank", "noopener,noreferrer");
       return;
     }
+    onWalletSelect?.("evm");
+    onDismiss();
     connectEvmWallet(entry.id as EvmWalletConnectorId);
   }
 
   function handleSorobanWalletClick(entry: (typeof SOROBAN_WALLETS)[number]) {
+    onWalletSelect?.("soroban");
     onDismiss();
     void connectSorobanWallet(entry.id, () => {
       window.open(entry.websiteUrl, "_blank", "noopener,noreferrer");
