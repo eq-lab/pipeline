@@ -92,14 +92,16 @@ File-based routing is provided by [TanStack Router](https://tanstack.com/router)
 
 Single SPA for the LP-facing app, gated by wallet connection (WalletConnect v2 / Reown AppKit) at `/`.
 
-There are now **two separate Vite apps** in this workspace, each with its own entrypoint, port, and deploy image — they share only `@pipeline/ui` (design tokens/components) and the runtime-env-via-`window.__ENV__` mechanism:
+There are now **two separate Vite apps** in this workspace, each with its own entrypoint, port, and deploy image — they share `@pipeline/ui` (design tokens/components), the runtime-env-via-`window.__ENV__` mechanism, and (since #791) the wallet-connect slice in `@pipeline/wallet-connect`:
 
 | App                 | Package             | Dev port | Docker target |
 | ------------------- | -------------------- | -------- | -------------- |
 | LP frontend         | `packages/frontend`  | 5173     | `frontend`      |
 | Trustee admin panel | `packages/trustee`   | 5174     | `trustee`       |
 
-The Trustee panel (epic #775, spec #453) is the Pipeline Trust Company's operational action surface — origination approval, cash movement, lifecycle, default management, and monitoring. It is scaffolded with placeholder routes only as of #777; wallet/API plumbing is a separate extraction (#778) shared from the LP app rather than duplicated. See `docs/product-specs/trustee-dashboard.md` for the four Trustee flow types.
+The Trustee panel (epic #775, spec #453) is the Pipeline Trust Company's operational action surface — origination approval, cash movement, lifecycle, default management, and monitoring. #791 wired its sign-in flow to the backend signature-auth contract (`docs/product-specs/api-authorization.md`): wallet connect → challenge → sign → verify → JWT bearer session, with route gating on every other route. The remaining Type 1-4 flow surfaces are still placeholder routes, pending epic #775's per-flow sub-issues.
+
+`packages/wallet-connect` (`@pipeline/wallet-connect`) is a **new shared workspace package** (source-only, like `@pipeline/ui` — no build step, consumed directly by each app's own Vite/tsc) holding the minimal wallet-connect slice both apps need: EVM (wagmi/viem/Reown AppKit) and Stellar (`@creit.tech/stellar-wallets-kit`) connect/disconnect/address, the shared `ConnectWalletModal` picker, provider mounting, and message-signing (`signMessage`, EVM `personal_sign` / Stellar SEP-0053) used by the Trustee's auth flow. Its pre-connect gate (`WalletGateContext`) is injectable and defaults to a no-op — the LP app mounts its own `WalletGateProvider` (first-connection terms gate, still LP-local) above it; the Trustee mounts none. The LP frontend's `packages/frontend/src/wallet` still owns its own copy of the overlapping EVM/Stellar connect code (not yet re-pointed at the shared package — tracked as tech debt, TD-35) plus everything Trustee doesn't need (deposit/withdraw/stake contract hooks, the terms gate itself).
 
 ### LP Dashboard panels
 

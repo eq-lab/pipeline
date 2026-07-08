@@ -1,5 +1,6 @@
 import { Button } from "@pipeline/ui";
 import { LockIcon } from "@/components/LockIcon";
+import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
 
 /**
  * SignInCard — the "Login Prompt" card from the Trustee sign-in overlay
@@ -21,11 +22,18 @@ import { LockIcon } from "@/components/LockIcon";
  *     `--radius-pipeline-pill` radius, 48px tall) labelled "Connect Wallet";
  *     caption footer, ink-muted, centered.
  *
- * The "Connect Wallet" button is a documented UI-only no-op — wiring to the
- * wallet/session layer is deferred to #778 (see
- * docs/exec-plans/tech-debt-tracker.md).
+ * "Connect Wallet" wires to the real sign-in flow (#791):
+ * connect wallet → `GET /v1/auth/challenge` → sign the message → `POST
+ * /v1/auth/verify` → store the JWT → redirect to the dashboard. The
+ * `unauthorized` status (backend `401` — address not on the allow-list) is
+ * rendered inline as an error state on the card. There is no client-side
+ * on-chain role check; authorization is entirely server-side.
  */
 export function SignInCard() {
+  const { status, error, signIn, signOut } = useTrusteeSession();
+  const isConnecting = status === "connecting";
+  const isUnauthorized = status === "unauthorized";
+
   return (
     <div
       className={[
@@ -58,6 +66,16 @@ export function SignInCard() {
         </div>
       </div>
 
+      {isUnauthorized && error ? (
+        <div
+          role="alert"
+          data-testid="sign-in-error"
+          className="w-full rounded-[var(--radius-pipeline-card)] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 text-center font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink)]"
+        >
+          {error}
+        </div>
+      ) : null}
+
       <div className="flex w-full flex-col items-start gap-3">
         <Button
           variant="primary-dark"
@@ -67,12 +85,14 @@ export function SignInCard() {
           // Issue #357). Figma's `radius/radius-full` (240px) maps to the
           // existing pill token.
           className="!w-full !min-w-0 !rounded-[var(--radius-pipeline-pill)]"
-          onClick={() => {
-            // TODO(#778): wire to the wallet/session layer. UI-only per
-            // issue #787 — no network call, no redirect.
-          }}
+          disabled={isConnecting}
+          onClick={isUnauthorized ? signOut : signIn}
         >
-          Connect Wallet
+          {isConnecting
+            ? "Connecting…"
+            : isUnauthorized
+              ? "Try a different wallet"
+              : "Connect Wallet"}
         </Button>
         <p className="w-full text-center font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink-muted)]">
           No account? Contact your administrator.

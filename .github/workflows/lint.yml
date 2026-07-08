@@ -50,3 +50,14 @@ jobs:
           node-version: '20'
       - run: yarn install --frozen-lockfile
       - run: cd packages/trustee && npx tsc --noEmit
+
+  lint-wallet-connect:
+    name: TypeScript typecheck (wallet-connect)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: yarn install --frozen-lockfile
+      - run: cd packages/wallet-connect && npx tsc --noEmit

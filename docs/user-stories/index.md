@@ -147,3 +147,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- |
 | [#777 Trustee: scaffold packages/trustee Vite app (port 5174)](https://github.com/eq-lab/pipeline/issues/777) | [777-trustee-app-scaffold.md](./epic-775/777-trustee-app-scaffold.md)          | Initial |
 | [#787 Trustee: implement the sign-in section (Figma 4174-31660)](https://github.com/eq-lab/pipeline/issues/787) | [787-trustee-sign-in.md](./epic-775/787-trustee-sign-in.md)                   | Initial |
+| [#791 Trustee: sign-in flow — wallet-connect wiring + session + route gating](https://github.com/eq-lab/pipeline/issues/791) | [791-trustee-sign-in-flow.md](./epic-775/791-trustee-sign-in-flow.md)         | Initial |

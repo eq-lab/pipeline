@@ -76,6 +76,7 @@ COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
 COPY packages/frontend/package.json packages/frontend/package.json
 COPY packages/trustee/package.json packages/trustee/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
 
 RUN corepack enable && yarn install --immutable
 
@@ -108,12 +109,15 @@ COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
 COPY packages/frontend/package.json packages/frontend/package.json
 COPY packages/trustee/package.json packages/trustee/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
 
 RUN corepack enable && yarn install --immutable
 
-# @pipeline/trustee imports the source-only @pipeline/ui workspace package.
+# @pipeline/trustee imports the source-only @pipeline/ui and
+# @pipeline/wallet-connect workspace packages (#791 sign-in flow).
 COPY packages/trustee/ packages/trustee/
 COPY packages/ui/ packages/ui/
+COPY packages/wallet-connect/ packages/wallet-connect/
 
 RUN yarn workspace @pipeline/trustee build
 
