@@ -298,6 +298,12 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
 
 **Reorg handling.** Indexer tracks `finalized` vs `latest` separately. Handlers only process finalized events for state-changing actions (signing, funding). `latest` events used for real-time dashboard data with a "pending confirmation" label.
 
+**Stellar asset-transfer tracking (custody/ramp flows).** The Stellar indexer can additionally track a single asset's (SAC / SEP-41 token) `transfer` events to reconcile flows in and out of custody and ramp accounts. It persists **raw** transfers only (`from` / `to` / `amount` in `contract_logs.params`, amount as an i128 string) under `event_name = "AssetTransfer"`; a transfer is stored only when **both** its `from` **and** `to` are in the configured address set — i.e. internal movements between tracked accounts (custody↔ramp, custody↔custody, ramp↔ramp). Transfers with an untracked counterparty (external inflows/outflows) are not captured. No role/direction labeling — downstream consumers classify against the address lists. Configured **job-level** (applies to every Stellar chain), read once at startup, and **all-or-nothing**: tracking activates only when all three vars are set (none set = ships dark; partial = disabled with a warning log):
+
+- `JOB_INDEXER_STELLAR_ASSET_ID` — Soroban `C…` id of the asset (SAC) to watch.
+- `JOB_INDEXER_STELLAR_CUSTODY_ADDRESSES` — CSV of custody addresses (`G…` or `C…`).
+- `JOB_INDEXER_STELLAR_RAMP_ADDRESSES` — CSV of ramp addresses (`G…` or `C…`).
+
 ### Data Model (logical entities)
 
 ```

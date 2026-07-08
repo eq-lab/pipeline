@@ -54,7 +54,24 @@ pub fn parse_chains_env() -> Result<Vec<i64>> {
 }
 
 /// Normalize and validate a Stellar contract-id env var (a `C…` Strkey).
-pub fn validate_contract_id(key: &str, mut raw: String) -> Result<String> {
+pub fn validate_contract_id(key: &str, raw: String) -> Result<String> {
+    let upper = validate_strkey(key, raw, &['C'])?;
+    Ok(upper)
+}
+
+/// Normalize and validate a Stellar address env var that may be either an
+/// account (`G…`) or a contract (`C…`) Strkey.
+///
+/// Used for custody/ramp address lists, where transfers can move between
+/// end-user accounts (`G…`) and contracts (`C…`). Uppercases and enforces the
+/// 56-char base32 Strkey shape; accepts a leading `G` or `C`.
+pub fn validate_stellar_address(key: &str, raw: String) -> Result<String> {
+    validate_strkey(key, raw, &['G', 'C'])
+}
+
+/// Shared Strkey normalizer: uppercases `raw`, enforces the 56-char base32
+/// alphabet, and requires the first character to be one of `allowed_prefixes`.
+fn validate_strkey(key: &str, mut raw: String, allowed_prefixes: &[char]) -> Result<String> {
     raw.make_ascii_uppercase();
     let upper = raw;
     if upper.len() != 56 {
@@ -63,8 +80,13 @@ pub fn validate_contract_id(key: &str, mut raw: String) -> Result<String> {
             upper.len()
         );
     }
-    if !upper.starts_with('C') {
-        anyhow::bail!("{key} must be a Stellar contract Strkey (starts with 'C')");
+    if !allowed_prefixes.iter().any(|p| upper.starts_with(*p)) {
+        let prefixes: String = allowed_prefixes
+            .iter()
+            .map(|p| format!("'{p}'"))
+            .collect::<Vec<_>>()
+            .join(" or ");
+        anyhow::bail!("{key} must be a Stellar Strkey that starts with {prefixes}");
     }
     if !upper
         .bytes()

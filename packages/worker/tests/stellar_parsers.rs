@@ -5,14 +5,17 @@
 ///   - topics[0] = ScVal::Symbol(snake_case_event_name)
 ///   - topics[1..n] = #[topic] fields in declaration order
 ///   - value = ScVal::Map with non-topic fields (sorted alphabetically)
+use std::collections::HashSet;
+
 use pipeline_worker::indexer::stellar::parsers::{
-    dispatch_parser, parse_deposit_requested, parse_request_claimed, parse_vault_deposit,
-    parse_vault_withdraw, parse_withdrawal_requested,
+    dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_request_claimed,
+    parse_vault_deposit, parse_vault_withdraw, parse_withdrawal_requested,
+    transfer_between_tracked,
 };
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
-    AccountId, Int128Parts, Limits, PublicKey, ScAddress, ScMap, ScMapEntry, ScSymbol, ScVal,
-    StringM, UInt128Parts, Uint256, VecM, WriteXdr,
+    AccountId, ContractId, Hash, Int128Parts, Limits, PublicKey, ScAddress, ScMap, ScMapEntry,
+    ScSymbol, ScVal, StringM, UInt128Parts, Uint256, VecM, WriteXdr,
 };
 
 // ── ScVal encode helpers ─────────────────────────────────────────────────────
@@ -66,13 +69,33 @@ fn encode_map_i128(pairs: &[(&str, i128)]) -> String {
         .unwrap()
 }
 
+/// Encode a plain `ScVal::I128` value (SAC transfer amount shape).
+fn encode_i128_plain(v: i128) -> String {
+    let hi = (v >> 64) as i64;
+    let lo = (v & 0xFFFF_FFFF_FFFF_FFFF) as u64;
+    ScVal::I128(Int128Parts { hi, lo })
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
+/// Encode a Stellar C… contract address as ScVal::Address.
+fn encode_contract(strkey: &str) -> String {
+    let c = stellar_strkey::Contract::from_string(strkey).unwrap();
+    ScVal::Address(ScAddress::Contract(ContractId(Hash(c.0))))
+        .to_xdr_base64(Limits::none())
+        .unwrap()
+}
+
 // ── Test addresses ────────────────────────────────────────────────────────────
 
 const DM_CONTRACT: &str = "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO";
 const WQ_CONTRACT: &str = "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL";
 const SPLUSD_CONTRACT: &str = "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5";
+const ASSET_CONTRACT: &str = "CCEMOFO5TE6MDLNKU3TB4QDVWLGWM6MBMB5RQKLB4APLDGX3RG4QYFHU";
 const USER_G: &str = "GA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQHES5";
 const OPERATOR_G: &str = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ";
+/// A custody address (G…) used in transfer-tracking tests.
+const CUSTODY_G: &str = "GAFB7IYPCYZCODQBB5BR5JO45JC4PPVLARUAXQSFHWTLH2KMHPWJ36GD";
 
 fn make_raw_event(
     contract_id: &str,
@@ -398,8 +421,16 @@ fn make_vault_withdraw(contract_id: &str) -> RawEvent {
 #[test]
 fn dispatch_deposit_requested_from_dm_succeeds() {
     let raw = make_deposit_requested(DM_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None)
-        .expect("DM-emitted deposit_requested should decode");
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("DM-emitted deposit_requested should decode");
     assert_eq!(log.event_name, "DepositRequested");
 }
 
@@ -409,22 +440,47 @@ fn dispatch_deposit_requested_from_wq_rejected() {
     // decode as DepositRequested. The RPC filter shouldn't deliver it, but if
     // it ever did (config typo, future overlapping contracts), we fail closed.
     let raw = make_deposit_requested(WQ_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 #[test]
 fn dispatch_withdrawal_requested_from_wq_succeeds() {
     let raw = make_withdrawal_requested(WQ_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None)
-        .expect("WQ-emitted withdrawal_requested should decode");
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("WQ-emitted withdrawal_requested should decode");
     assert_eq!(log.event_name, "WithdrawalRequested");
 }
 
 #[test]
 fn dispatch_request_claimed_from_dm_succeeds() {
     let raw = make_request_claimed(DM_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None)
-        .expect("DM-emitted request_claimed should decode");
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("DM-emitted request_claimed should decode");
     assert_eq!(log.event_name, "RequestClaimed");
 }
 
@@ -433,16 +489,32 @@ fn dispatch_request_claimed_from_wq_succeeds() {
     // request_queue::claim_request is intentionally shared — must work for both
     // DM and WQ origins.
     let raw = make_request_claimed(WQ_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None)
-        .expect("WQ-emitted request_claimed should decode");
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("WQ-emitted request_claimed should decode");
     assert_eq!(log.event_name, "RequestClaimed");
 }
 
 #[test]
 fn dispatch_vault_deposit_from_splusd_succeeds() {
     let raw = make_vault_deposit(SPLUSD_CONTRACT);
-    let log = dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None)
-        .expect("splusd-emitted vault deposit should decode");
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("splusd-emitted vault deposit should decode");
     assert_eq!(log.event_name, "StakingDeposit");
 }
 
@@ -452,13 +524,31 @@ fn dispatch_vault_deposit_from_dm_rejected() {
     // contract must NOT decode as StakingDeposit — the most likely real-world
     // name collision if RPC filtering ever loosens.
     let raw = make_vault_deposit(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 #[test]
 fn dispatch_unknown_contract_returns_none() {
     let raw = make_deposit_requested(UNKNOWN_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 #[test]
@@ -466,7 +556,16 @@ fn dispatch_withdrawal_requested_from_dm_rejected() {
     // Symmetric to dispatch_deposit_requested_from_wq_rejected: a WQ event
     // coming from the DM contract must not decode as WithdrawalRequested.
     let raw = make_withdrawal_requested(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 #[test]
@@ -475,7 +574,16 @@ fn dispatch_request_claimed_from_splusd_rejected() {
     // library), but the splusd vault never emits it. From splusd, the
     // dispatch tries only vault parsers, both of which reject by event_name.
     let raw = make_request_claimed(SPLUSD_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 #[test]
@@ -483,7 +591,16 @@ fn dispatch_vault_withdraw_from_dm_rejected() {
     // Symmetric to dispatch_vault_deposit_from_dm_rejected: a vault `withdraw`
     // event from the DM contract must not decode as StakingWithdrawal.
     let raw = make_vault_withdraw(DM_CONTRACT);
-    assert!(dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none());
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 // ── i128 boundary values ──────────────────────────────────────────────────────
@@ -577,6 +694,7 @@ fn loan_registry_branch_routes_to_parsers() {
         SPLUSD_CONTRACT,
         Some(LR_CONTRACT),
         None,
+        None,
     )
     .expect("loan_drawn from LR contract should decode");
     assert_eq!(log.event_name, "LoanDrawn");
@@ -590,8 +708,194 @@ fn unconfigured_loan_registry_id_skips_branch() {
     // falls into the unexpected-contract warn+None path.
     let raw = make_loan_drawn_event(LR_CONTRACT);
     assert!(
-        dispatch_parser(&raw, DM_CONTRACT, WQ_CONTRACT, SPLUSD_CONTRACT, None, None).is_none(),
+        dispatch_parser(
+            &raw,
+            DM_CONTRACT,
+            WQ_CONTRACT,
+            SPLUSD_CONTRACT,
+            None,
+            None,
+            None
+        )
+        .is_none(),
         "loan_drawn with no loan_registry_id configured should return None"
+    );
+}
+
+// ── parse_asset_transfer ──────────────────────────────────────────────────────
+
+#[test]
+fn asset_transfer_decodes_plain_i128_value() {
+    let amount: i128 = 12_345_678;
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_i128_plain(amount),
+    );
+
+    let log = parse_asset_transfer(&raw).expect("should decode AssetTransfer");
+    assert_eq!(log.event_name, "AssetTransfer");
+    assert_eq!(log.contract_address, ASSET_CONTRACT);
+    assert_eq!(log.params["from"], USER_G);
+    assert_eq!(log.params["to"], CUSTODY_G);
+    assert_eq!(log.params["amount"], amount.to_string());
+}
+
+#[test]
+fn asset_transfer_decodes_amount_map_fallback() {
+    // Muxed / newer-protocol variant: value is a Map { amount: i128 }.
+    let amount: i128 = 999;
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_map_i128(&[("amount", amount)]),
+    );
+
+    let log = parse_asset_transfer(&raw).expect("should decode via amount-map fallback");
+    assert_eq!(log.params["amount"], amount.to_string());
+}
+
+#[test]
+fn asset_transfer_decodes_contract_counterparties() {
+    // Custody/ramp addresses may be contracts (C…), not just accounts.
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![
+            encode_contract(SPLUSD_CONTRACT),
+            encode_contract(DM_CONTRACT),
+        ],
+        encode_i128_plain(1),
+    );
+
+    let log = parse_asset_transfer(&raw).expect("should decode C… counterparties");
+    assert_eq!(log.params["from"], SPLUSD_CONTRACT);
+    assert_eq!(log.params["to"], DM_CONTRACT);
+}
+
+#[test]
+fn asset_transfer_tolerates_extra_asset_topic() {
+    // SAC emits an optional 4th topic (sep0011 asset string); ignore it.
+    let sym: StringM<32> = "USDC".try_into().unwrap();
+    let asset_topic = ScVal::Symbol(ScSymbol(sym))
+        .to_xdr_base64(Limits::none())
+        .unwrap();
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![
+            encode_account(USER_G),
+            encode_account(CUSTODY_G),
+            asset_topic,
+        ],
+        encode_i128_plain(5),
+    );
+
+    let log = parse_asset_transfer(&raw).expect("extra asset topic should be ignored");
+    assert_eq!(log.params["from"], USER_G);
+    assert_eq!(log.params["to"], CUSTODY_G);
+}
+
+#[test]
+fn asset_transfer_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "approve",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_i128_plain(1),
+    );
+    assert!(parse_asset_transfer(&raw).is_none());
+}
+
+#[test]
+fn asset_transfer_rejects_short_topics() {
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G)], // only from, missing to
+        encode_i128_plain(1),
+    );
+    assert!(parse_asset_transfer(&raw).is_none());
+}
+
+#[test]
+fn asset_transfer_rejects_non_i128_value() {
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_symbol("not_a_number"),
+    );
+    assert!(parse_asset_transfer(&raw).is_none());
+}
+
+// ── transfer_between_tracked ──────────────────────────────────────────────────
+
+#[test]
+fn transfer_between_tracked_requires_both_sides() {
+    // Both CUSTODY_G and OPERATOR_G are tracked; USER_G is external.
+    let tracked: HashSet<String> = [CUSTODY_G.to_owned(), OPERATOR_G.to_owned()]
+        .into_iter()
+        .collect();
+    assert!(transfer_between_tracked(CUSTODY_G, OPERATOR_G, &tracked)); // both tracked
+    assert!(!transfer_between_tracked(CUSTODY_G, USER_G, &tracked)); // only from tracked
+    assert!(!transfer_between_tracked(USER_G, CUSTODY_G, &tracked)); // only to tracked
+    assert!(!transfer_between_tracked(USER_G, USER_G, &tracked)); // neither tracked
+    assert!(!transfer_between_tracked(
+        CUSTODY_G,
+        OPERATOR_G,
+        &HashSet::new()
+    )); // empty set
+}
+
+// ── dispatch_parser: asset_id routing ─────────────────────────────────────────
+
+#[test]
+fn asset_id_branch_routes_to_transfer_parser() {
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_i128_plain(42),
+    );
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        Some(ASSET_CONTRACT),
+    )
+    .expect("transfer from asset contract should decode");
+    assert_eq!(log.event_name, "AssetTransfer");
+    assert_eq!(log.params["amount"], "42");
+}
+
+#[test]
+fn unconfigured_asset_id_skips_branch() {
+    // With no asset_id configured, a transfer from the asset contract falls into
+    // the unexpected-contract warn+None path.
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_i128_plain(1),
+    );
+    assert!(
+        dispatch_parser(
+            &raw,
+            DM_CONTRACT,
+            WQ_CONTRACT,
+            SPLUSD_CONTRACT,
+            None,
+            None,
+            None
+        )
+        .is_none(),
+        "transfer with no asset_id configured should return None"
     );
 }
 

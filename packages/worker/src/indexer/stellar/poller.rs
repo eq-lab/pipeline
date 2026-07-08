@@ -3,7 +3,7 @@
 /// Uses the hand-rolled JSON-RPC client (`StellarRpc`) to fetch `getEvents` responses
 /// and the pure decoders in `parsers.rs` to produce `StellarLogMapper` or
 /// `LoanEventMapper` boxes (the latter for LoanRegistry events when configured).
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -27,7 +27,7 @@ use crate::indexer::{
         loan_registry_parsers::stellar_log_to_loan_event,
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
-        parsers::dispatch_parser,
+        parsers::{dispatch_parser, transfer_between_tracked},
         rpc::{EventFilter, StellarRpc},
     },
 };
@@ -71,6 +71,12 @@ pub struct StellarEventPoller {
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
     yield_minter_id: Option<String>,
+    /// Asset (SAC) contract whose `transfer` events are tracked. `Some` only when
+    /// asset-transfer tracking is fully configured.
+    asset_id: Option<String>,
+    /// Union of custody + ramp addresses. A transfer is persisted only when its
+    /// `from` or `to` is in this set. Empty when tracking is disabled.
+    tracked_addresses: HashSet<String>,
     loan_mapper_deps: Option<LoanMapperDeps>,
 }
 
@@ -85,6 +91,8 @@ impl StellarEventPoller {
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
         yield_minter_id: Option<String>,
+        asset_id: Option<String>,
+        tracked_addresses: HashSet<String>,
         loan_mapper_deps: Option<LoanMapperDeps>,
     ) -> Self {
         Self {
@@ -96,6 +104,8 @@ impl StellarEventPoller {
             staked_plusd_id,
             loan_registry_id,
             yield_minter_id,
+            asset_id,
+            tracked_addresses,
             loan_mapper_deps,
         }
     }
@@ -119,6 +129,9 @@ impl ChainEventPoller for StellarEventPoller {
         if let Some(ym_id) = &self.yield_minter_id {
             contract_ids.push(ym_id.clone());
         }
+        if let Some(asset_id) = &self.asset_id {
+            contract_ids.push(asset_id.clone());
+        }
 
         let filter = EventFilter { contract_ids };
 
@@ -133,8 +146,27 @@ impl ChainEventPoller for StellarEventPoller {
                 &self.staked_plusd_id,
                 self.loan_registry_id.as_deref(),
                 self.yield_minter_id.as_deref(),
+                self.asset_id.as_deref(),
             ) {
-                if is_loan_registry_event(&log.event_name) {
+                // Asset transfers are only persisted when BOTH endpoints are
+                // tracked (custody ∪ ramp) — internal movements only; external
+                // inflows/outflows are skipped.
+                if log.event_name == "AssetTransfer" {
+                    let from = log
+                        .params
+                        .get("from")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let to = log.params.get("to").and_then(|v| v.as_str()).unwrap_or("");
+                    if !transfer_between_tracked(from, to, &self.tracked_addresses) {
+                        continue;
+                    }
+                    mappers.push(Box::new(StellarLogMapper::new(
+                        log,
+                        self.chain_id,
+                        self.repo.clone(),
+                    )));
+                } else if is_loan_registry_event(&log.event_name) {
                     if let Some(deps) = &self.loan_mapper_deps {
                         let loan_event = stellar_log_to_loan_event(log);
                         mappers.push(Box::new(LoanEventMapper::<StellarAddress, u32>::new(
@@ -229,6 +261,25 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         None
     };
 
+    // Asset-transfer tracking (custody/ramp flows). `asset_id` is `Some` only when
+    // fully configured (asset id + custody + ramp addresses); the union of both
+    // address lists is the membership filter applied in `poll`.
+    let tracked_addresses: HashSet<String> = settings
+        .custody_addresses
+        .iter()
+        .chain(settings.ramp_addresses.iter())
+        .cloned()
+        .collect();
+    if let Some(asset_id) = &settings.asset_id {
+        tracing::info!(
+            asset_id = %asset_id,
+            chain_id,
+            custody = settings.custody_addresses.len(),
+            ramp = settings.ramp_addresses.len(),
+            "Stellar asset-transfer tracking enabled"
+        );
+    }
+
     let poller = StellarEventPoller::new(
         rpc,
         chain_id,
@@ -238,6 +289,8 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
         settings.yield_minter_id.clone(),
+        settings.asset_id.clone(),
+        tracked_addresses,
         loan_mapper_deps,
     );
 

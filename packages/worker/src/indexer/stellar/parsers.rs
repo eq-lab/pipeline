@@ -253,6 +253,57 @@ pub fn parse_yield_minted(raw: &RawEvent) -> Option<StellarLog> {
     })
 }
 
+/// SAC / SEP-41 asset `transfer` event.
+/// topics: [transfer, from: Address, to: Address, (optional) sep0011 asset: String]
+/// value:  i128 amount (plain `ScVal::I128`), or `Map { amount: i128 }` on
+///         muxed / newer-protocol variants.
+///
+/// Remapped to `event_name = "AssetTransfer"`. Only `from` / `to` / `amount`
+/// are persisted (raw transfer, no role/direction labeling — see Issue #789).
+/// Membership filtering against the custody/ramp sets happens in the poller;
+/// this decoder is intentionally address-agnostic and pure.
+pub fn parse_asset_transfer(raw: &RawEvent) -> Option<StellarLog> {
+    if raw.event_name != "transfer" {
+        return None;
+    }
+    if raw.topics_base64.len() < 3 {
+        return None;
+    }
+
+    let from = extract_address(&raw.topics_base64[1])?;
+    let to = extract_address(&raw.topics_base64[2])?;
+    // Standard SAC transfer carries the amount as a plain i128 value; tolerate a
+    // `Map { amount }` shape for muxed / newer-protocol variants.
+    let amount = extract_i128(&raw.value_base64)
+        .or_else(|| extract_i128_from_map(&raw.value_base64, "amount"))?;
+
+    Some(StellarLog {
+        contract_address: raw.contract_id.clone(),
+        event_name: "AssetTransfer".to_owned(),
+        block_number: raw.ledger as u64,
+        tx_hash: raw.tx_hash.clone(),
+        log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
+        block_timestamp: raw.ledger_closed_at_unix,
+        params: json!({
+            "from": from,
+            "to": to,
+            "amount": amount.to_string(),
+        }),
+    })
+}
+
+/// True when **both** a transfer's `from` and `to` are in the tracked address
+/// set (custody ∪ ramp) — i.e. an internal movement between tracked accounts.
+/// Transfers with an untracked counterparty (external inflows/outflows) are
+/// excluded. Pure helper so the poller's filter is unit-testable.
+pub fn transfer_between_tracked<S: std::hash::BuildHasher>(
+    from: &str,
+    to: &str,
+    tracked: &std::collections::HashSet<String, S>,
+) -> bool {
+    tracked.contains(from) && tracked.contains(to)
+}
+
 // ── ScVal helpers (exposed for unit tests) ────────────────────────────────────
 
 /// Decode a base64-encoded XDR `ScVal::U128` into a `u128`.
@@ -355,6 +406,11 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `yield_minter_id` is `None` when the YieldMinter contract has not yet been deployed to
 /// this chain. When set, `YieldMinted` events are collected and routed to `StellarLogMapper`
 /// (contract_logs), matching the EVM path. Loan-repayment-only on Stellar today.
+///
+/// `asset_id` is `Some` only when asset-transfer tracking is fully configured
+/// (asset id + custody + ramp addresses). When set, `transfer` events from the
+/// asset contract are decoded to `"AssetTransfer"` logs; the poller then filters
+/// them against the custody/ramp address set before persisting.
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,
@@ -362,6 +418,7 @@ pub fn dispatch_parser(
     staked_plusd_id: &str,
     loan_registry_id: Option<&str>,
     yield_minter_id: Option<&str>,
+    asset_id: Option<&str>,
 ) -> Option<StellarLog> {
     if raw.contract_id == deposit_manager_id {
         parse_deposit_requested(raw).or_else(|| parse_request_claimed(raw))
@@ -384,6 +441,10 @@ pub fn dispatch_parser(
     } else if yield_minter_id == Some(raw.contract_id.as_str()) {
         // YieldMinter events — routes to StellarLogMapper → contract_logs.
         parse_yield_minted(raw)
+    } else if asset_id == Some(raw.contract_id.as_str()) {
+        // Asset (SAC) transfer events — routed to StellarLogMapper → contract_logs
+        // after the poller applies the custody/ramp membership filter.
+        parse_asset_transfer(raw)
     } else {
         // The RPC `contractIds` filter should make this branch unreachable.
         // If we ever hit it, either config has drifted from what the RPC was
