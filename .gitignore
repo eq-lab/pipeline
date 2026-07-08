@@ -16,6 +16,9 @@ node_modules/
 packages/frontend/node_modules/
 packages/frontend/dist/
 packages/frontend/.vite/
+packages/trustee/node_modules/
+packages/trustee/dist/
+packages/trustee/.vite/
 
 # TypeScript incremental build info
 **/tsconfig.tsbuildinfo
@@ -41,4 +44,5 @@ packages/ui/storybook-static/
 *.swp
 *.swo
 packages/frontend/.tanstack/
+packages/trustee/.tanstack/
 docs.local/

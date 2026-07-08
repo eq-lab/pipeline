@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@import "@pipeline/ui/styles/theme.css";
+
+/* Pull utility class names from the shared UI workspace so Tailwind v4
+   generates CSS for any classnames authored in @pipeline/ui sources. */
+@source "../../ui/src/**/*.{ts,tsx}";

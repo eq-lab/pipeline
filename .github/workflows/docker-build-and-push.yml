@@ -60,6 +60,15 @@ jobs:
             type=sha,format=short,prefix=
             type=ref,event=tag
 
+      - name: Extract metadata for Trustee image
+        id: meta-trustee
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-trustee
+          tags: |
+            type=sha,format=short,prefix=
+            type=ref,event=tag
+
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -89,3 +98,13 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+
+      - name: Build and push Trustee image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: trustee
+          push: true
+          tags: ${{ steps.meta-trustee.outputs.tags }}
+          labels: ${{ steps.meta-trustee.outputs.labels }}

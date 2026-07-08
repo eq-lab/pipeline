@@ -39,3 +39,14 @@ jobs:
           node-version: '20'
       - run: yarn install --frozen-lockfile
       - run: cd packages/frontend && npx tsc --noEmit
+
+  lint-trustee:
+    name: TypeScript typecheck (Trustee)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: yarn install --frozen-lockfile
+      - run: cd packages/trustee && npx tsc --noEmit
