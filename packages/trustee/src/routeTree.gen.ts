@@ -9,36 +9,42 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as Type4MonitoringRouteImport } from './routes/type4-monitoring'
-import { Route as Type3CouncilRouteImport } from './routes/type3-council'
-import { Route as Type2MpcRouteImport } from './routes/type2-mpc'
-import { Route as Type1DirectRouteImport } from './routes/type1-direct'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as RiskCouncilRouteImport } from './routes/risk-council'
+import { Route as OriginationRouteImport } from './routes/origination'
+import { Route as LoansRouteImport } from './routes/loans'
+import { Route as CashManagementRouteImport } from './routes/cash-management'
+import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
 
-const Type4MonitoringRoute = Type4MonitoringRouteImport.update({
-  id: '/type4-monitoring',
-  path: '/type4-monitoring',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const Type3CouncilRoute = Type3CouncilRouteImport.update({
-  id: '/type3-council',
-  path: '/type3-council',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const Type2MpcRoute = Type2MpcRouteImport.update({
-  id: '/type2-mpc',
-  path: '/type2-mpc',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const Type1DirectRoute = Type1DirectRouteImport.update({
-  id: '/type1-direct',
-  path: '/type1-direct',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RiskCouncilRoute = RiskCouncilRouteImport.update({
+  id: '/risk-council',
+  path: '/risk-council',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OriginationRoute = OriginationRouteImport.update({
+  id: '/origination',
+  path: '/origination',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoansRoute = LoansRouteImport.update({
+  id: '/loans',
+  path: '/loans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CashManagementRoute = CashManagementRouteImport.update({
+  id: '/cash-management',
+  path: '/cash-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditLogRoute = AuditLogRouteImport.update({
+  id: '/audit-log',
+  path: '/audit-log',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -49,100 +55,114 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/audit-log': typeof AuditLogRoute
+  '/cash-management': typeof CashManagementRoute
+  '/loans': typeof LoansRoute
+  '/origination': typeof OriginationRoute
+  '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
-  '/type1-direct': typeof Type1DirectRoute
-  '/type2-mpc': typeof Type2MpcRoute
-  '/type3-council': typeof Type3CouncilRoute
-  '/type4-monitoring': typeof Type4MonitoringRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/audit-log': typeof AuditLogRoute
+  '/cash-management': typeof CashManagementRoute
+  '/loans': typeof LoansRoute
+  '/origination': typeof OriginationRoute
+  '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
-  '/type1-direct': typeof Type1DirectRoute
-  '/type2-mpc': typeof Type2MpcRoute
-  '/type3-council': typeof Type3CouncilRoute
-  '/type4-monitoring': typeof Type4MonitoringRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/audit-log': typeof AuditLogRoute
+  '/cash-management': typeof CashManagementRoute
+  '/loans': typeof LoansRoute
+  '/origination': typeof OriginationRoute
+  '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
-  '/type1-direct': typeof Type1DirectRoute
-  '/type2-mpc': typeof Type2MpcRoute
-  '/type3-council': typeof Type3CouncilRoute
-  '/type4-monitoring': typeof Type4MonitoringRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/audit-log'
+    | '/cash-management'
+    | '/loans'
+    | '/origination'
+    | '/risk-council'
     | '/sign-in'
-    | '/type1-direct'
-    | '/type2-mpc'
-    | '/type3-council'
-    | '/type4-monitoring'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/audit-log'
+    | '/cash-management'
+    | '/loans'
+    | '/origination'
+    | '/risk-council'
     | '/sign-in'
-    | '/type1-direct'
-    | '/type2-mpc'
-    | '/type3-council'
-    | '/type4-monitoring'
   id:
     | '__root__'
     | '/'
+    | '/audit-log'
+    | '/cash-management'
+    | '/loans'
+    | '/origination'
+    | '/risk-council'
     | '/sign-in'
-    | '/type1-direct'
-    | '/type2-mpc'
-    | '/type3-council'
-    | '/type4-monitoring'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuditLogRoute: typeof AuditLogRoute
+  CashManagementRoute: typeof CashManagementRoute
+  LoansRoute: typeof LoansRoute
+  OriginationRoute: typeof OriginationRoute
+  RiskCouncilRoute: typeof RiskCouncilRoute
   SignInRoute: typeof SignInRoute
-  Type1DirectRoute: typeof Type1DirectRoute
-  Type2MpcRoute: typeof Type2MpcRoute
-  Type3CouncilRoute: typeof Type3CouncilRoute
-  Type4MonitoringRoute: typeof Type4MonitoringRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/type4-monitoring': {
-      id: '/type4-monitoring'
-      path: '/type4-monitoring'
-      fullPath: '/type4-monitoring'
-      preLoaderRoute: typeof Type4MonitoringRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/type3-council': {
-      id: '/type3-council'
-      path: '/type3-council'
-      fullPath: '/type3-council'
-      preLoaderRoute: typeof Type3CouncilRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/type2-mpc': {
-      id: '/type2-mpc'
-      path: '/type2-mpc'
-      fullPath: '/type2-mpc'
-      preLoaderRoute: typeof Type2MpcRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/type1-direct': {
-      id: '/type1-direct'
-      path: '/type1-direct'
-      fullPath: '/type1-direct'
-      preLoaderRoute: typeof Type1DirectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/sign-in': {
       id: '/sign-in'
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/risk-council': {
+      id: '/risk-council'
+      path: '/risk-council'
+      fullPath: '/risk-council'
+      preLoaderRoute: typeof RiskCouncilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/origination': {
+      id: '/origination'
+      path: '/origination'
+      fullPath: '/origination'
+      preLoaderRoute: typeof OriginationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/loans': {
+      id: '/loans'
+      path: '/loans'
+      fullPath: '/loans'
+      preLoaderRoute: typeof LoansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cash-management': {
+      id: '/cash-management'
+      path: '/cash-management'
+      fullPath: '/cash-management'
+      preLoaderRoute: typeof CashManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit-log': {
+      id: '/audit-log'
+      path: '/audit-log'
+      fullPath: '/audit-log'
+      preLoaderRoute: typeof AuditLogRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -157,11 +177,12 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuditLogRoute: AuditLogRoute,
+  CashManagementRoute: CashManagementRoute,
+  LoansRoute: LoansRoute,
+  OriginationRoute: OriginationRoute,
+  RiskCouncilRoute: RiskCouncilRoute,
   SignInRoute: SignInRoute,
-  Type1DirectRoute: Type1DirectRoute,
-  Type2MpcRoute: Type2MpcRoute,
-  Type3CouncilRoute: Type3CouncilRoute,
-  Type4MonitoringRoute: Type4MonitoringRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

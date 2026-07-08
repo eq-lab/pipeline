@@ -1,32 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TRUSTEE_FLOW_TYPES } from "@/lib/flowTypes";
+import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
 
 /**
- * Type 4 — Decision monitoring (placeholder).
+ * Audit Log (placeholder).
  *
  * See docs/product-specs/trustee-dashboard.md, "Type 4 — Decision
- * monitoring" section, for surfaces 13-17 (mint queue, reserves and
- * invariants, T-Bill band and forward strip, portfolio aggregates, audit
- * log). Read-only monitoring UI lands in a per-surface sub-issue of epic
- * #775.
+ * monitoring" section, for surface 17 (audit log). Read-only monitoring UI
+ * lands in a per-surface sub-issue of epic #775 (#786 replaces the #777
+ * scaffold's `/type4-monitoring` route with the Figma nav taxonomy).
  */
-const flowType = TRUSTEE_FLOW_TYPES.find(
-  (t) => t.path === "/type4-monitoring",
-)!;
+const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/audit-log")!;
 
-function Type4Monitoring() {
+function AuditLog() {
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-12 md:px-8">
       <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-m)] leading-[var(--text-pipeline-heading-m--line-height)] text-[color:var(--color-pipeline-ink)]">
-        {flowType.heading}
+        {navItem.heading}
       </h1>
       <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink-muted)]">
-        {flowType.description}
+        {navItem.description}
       </p>
     </main>
   );
 }
 
-export const Route = createFileRoute("/type4-monitoring")({
-  component: Type4Monitoring,
+export const Route = createFileRoute("/audit-log")({
+  component: AuditLog,
 });

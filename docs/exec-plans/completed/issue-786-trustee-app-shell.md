@@ -1,0 +1,136 @@
+# Issue #786: Trustee: implement the app shell (Figma 4116-8855)
+
+Source: https://github.com/eq-lab/pipeline/issues/786
+
+## Scope
+
+Replace the placeholder topbar-based `TrusteeShell` (`packages/trustee/src/components/TrusteeShell.tsx`, from the #777 scaffold) with the persistent app shell from Figma node `4116:8855` ("Aside"): a **fixed 320px left sidebar navigation panel** plus a **flex-1 main content area** that renders the router `<Outlet/>`.
+
+In scope:
+
+- A new left-sidebar `Aside` navigation component, pixel/token-exact per the extracted Figma spec (see design context at `/tmp/figma-shell/get_design_context.txt`, screenshot `/tmp/figma-shell/get_screenshot_0.png`, metadata `/tmp/figma-shell/get_metadata.txt`).
+- The overall shell frame: `flex-row` with a fixed `320px` sidebar + `flex-1` main region hosting `RouteGate`/`<Outlet/>`.
+- Wiring the existing placeholder routes (`/type1-direct`, `/type2-mpc`, `/type3-council`, `/type4-monitoring`, `/`) into the sidebar nav (see Open Questions #1 for the label→route mapping — needs human confirmation before the nav labels are finalized).
+- The bottom account chip (avatar, truncated address from `useTrusteeSession().address`, "Trustee · connected" subtitle, `⋯` affordance).
+- Keeping `/sign-in` standalone (no sidebar) while unauthenticated, preserving the current `RouteGate` behavior.
+- Mapping every raw hex/rgba from the Figma export to a theme token, or documenting a scoped one-off where no token exists (see Assumptions).
+- Nav glyph SVGs (6 icons) — new inline SVGs, since `@pipeline/ui`'s `NavIcon` only ships `home | deposit | stats | history` (see Open Questions #3).
+
+Out of scope:
+
+- Per-flow logic (Types 1–4, issues #780–#782) — routes stay as placeholders.
+- The sign-in section UI (#787, closed) and sign-in flow (#791, closed).
+- Backend changes; count badges are **not** to be client-computed (see Open Questions #2).
+- New shared `@pipeline/ui` components unless a nav-icon/account-chip extraction is explicitly agreed — default to keeping shell-specific pieces inside `packages/trustee`.
+
+## Assumptions and Risks
+
+- **Token mapping.** The Figma variable defs were empty (`{}`), so colors are raw hex/rgba. Confirmed mappings:
+  - `#000080` (Aside bg, active label) → `--color-pipeline-brand` (exact, `theme.css:78`).
+  - white text / white active surface → `--color-pipeline-on-dark` (#ffffff) / `--color-pipeline-surface` (#ffffff).
+  - Font "Inter" in Figma → project body token `--font-body` (`"Graphik LC"…`, `theme.css:72`). Do NOT hardcode Inter.
+  - The wordmark → the existing `Logo` component from `@pipeline/ui` (116×32 matches).
+- **Token GAPS (scoped one-offs, must be documented inline like `SignInCard.tsx`/`sign-in.tsx` do):**
+  - Divider `rgba(235,233,230,0.25)` — no token (235,233,230 = #EBE9E6, a warm off-white for dark surfaces; not in `theme.css`).
+  - Account subtitle / `⋯` `rgba(235,233,230,0.7)` — no token.
+  - Count-badge bg `rgba(191,189,187,0.24)` — `--color-pipeline-fill-muted` shares the rgb (191 189 187) but has alpha **0.12**, not 0.24 (`theme.css:87`). Not an exact match → treat as a documented one-off unless the reviewer prefers reusing the 0.12 token.
+  Risk: introducing dark-sidebar rgba values as arbitrary Tailwind values is consistent with the existing `SignInCard`/`sign-in.tsx` precedent, but a reviewer may prefer adding named tokens to `theme.css`. Flagged, not decided (see Open Questions #7).
+- **Sign-in height coupling.** `packages/trustee/src/routes/sign-in.tsx` currently uses `min-h-[calc(100vh-73px)]` (73px = the OLD topbar height). With a sidebar shell there is no topbar, so `/sign-in` should be full viewport height. The shell rework must update that value (to `min-h-screen` or `min-h-[100vh]`) or the sign-in overlay will be short by 73px. Risk of a regression if missed.
+- **Nav taxonomy mismatch.** Figma labels (Overview/Origination/Loans/Cash Management/Risk Council/Audit Log) do not match the scaffold's `TRUSTEE_FLOW_TYPES` (Type-1..4). Resolving this touches `flowTypes.ts`, the route paths, and possibly route filenames — a larger blast radius than pure styling. Gated on Open Questions #1.
+- **Tall sidebar in Figma.** The frame is 1583px tall because of the `flex-1` spacer (node 4116:8910) pushing the account chip to the bottom of a very tall artboard. In implementation the sidebar is `h-screen` (or `min-h-screen`) with `flex-1` spacer — do not hardcode 1583px.
+- **Existing tests.** `packages/trustee/src/routes/-index.test.tsx` and the per-type route tests assert current shell/nav behavior; changing nav labels or structure will require updating them. No `TrusteeShell`-specific test file exists today, but route tests render through `__root.tsx` → shell.
+- Dependency: builds on #777 (merged) and the #791 session flow (merged). No unfinished upstream work blocks this, but the nav-taxonomy decision (Open Q #1) is a human gate.
+
+## Open Questions
+
+1. **Nav taxonomy vs placeholder routes.** Figma nav (Overview / Origination / Loans / Cash Management / Risk Council / Audit Log) does not map 1:1 to `TRUSTEE_FLOW_TYPES` (Type-1 Direct / Type-2 MPC / Type-3 RISK_COUNCIL / Type-4 Monitoring). Proposed mapping for confirmation: Overview → `/` (index/landing); Origination/Loans/Cash Management → the Type-1/Type-2 direct-action surfaces; Risk Council → `/type3-council`; Audit Log → part of `/type4-monitoring`. This is a guess — please confirm which nav item routes to which existing path, what "Overview" points at, and whether the placeholder routes/`flowTypes.ts` labels should be renamed to the Figma taxonomy. **Human confirmation required before finalizing nav.**
+2. **Count badges (1 / 4 / 3).** Where do these counts come from? Per the project rule [no frontend-computed metrics], they must be backend-served or rendered as nothing — never derived client-side. Is there an API field for these counts, or are badges out of scope for the shell (render the badge slot only when a backend count exists)? Recommend: omit badges in this issue (no backend source yet) and add them when a count endpoint exists. Confirm.
+3. **Nav icons.** The 6 glyphs (pie-chart / lightbulb / dollar-in-circle / briefcase / shield / list) are new. `@pipeline/ui`'s `NavIcon` only ships `home | deposit | stats | history` (its `deposit` glyph is a dollar-in-circle and may be reusable for "Cash Management"). The other 5 need new inline SVGs. Should they be added to the shared `NavIcon` component, or kept as trustee-local inline SVGs? Recommend trustee-local for now (trustee-specific taxonomy); confirm. Also: the exact SVG path data lives on the Figma localhost asset server (not on disk) — the coder will need the Figma MCP `get_image`/asset fetch for the 6 SVGs, or a human to export them.
+4. **Account chip `⋯` menu + address source.** The address renders from `useTrusteeSession().address` (truncated `0x…`). Does `⋯` open a menu, and does that menu host sign-out (`useTrusteeSession().signOut`)? The old shell had an explicit "Sign out" button; the Figma has only a `⋯`. Recommend `⋯` opens a small menu/popover containing "Sign out" so the affordance isn't lost. Confirm placement/behavior.
+5. **Sidebar responsiveness / mobile.** The Figma frame is desktop-only (fixed 320px). Behavior below a breakpoint (collapse to icons? off-canvas drawer? hidden?) is unspecified. Recommend: fixed 320px sidebar on `md+`, and a documented fallback below `md` (e.g. sidebar hidden behind a hamburger, or stacked) — but the exact mobile spec needs confirmation.
+6. **Shell vs sign-in route.** Confirm the shell renders the sidebar only for authenticated routes and `/sign-in` stays standalone (current `RouteGate` hides chrome while unauthenticated). This is the intended behavior; flagging only because the sign-in route's `min-h-[calc(100vh-73px)]` must change (see Risks).
+7. **Tokens vs arbitrary values.** The three dark-sidebar rgba values (`rgba(235,233,230,0.25)`, `rgba(235,233,230,0.7)`, `rgba(191,189,187,0.24)`) have no theme token. Add named tokens to `packages/ui/src/styles/theme.css`, or keep them as documented scoped arbitrary values (the `SignInCard.tsx` precedent)? Recommend documented one-offs for this issue.
+
+## Decisions (resolved with human, 2026-07-08)
+
+The Open Questions above are resolved as follows:
+
+1. **Nav taxonomy → routes:** **Adopt Figma's 6 as routes.** Create six placeholder routes matching the Figma taxonomy — `Overview` (index `/`), `Origination`, `Loans`, `Cash Management`, `Risk Council`, `Audit Log` — and retire the `Type-1..4` route labels/`TRUSTEE_FLOW_TYPES`. The Figma nav is the real product navigation; per-flow signing content still lands later (#780–#782). Placeholder page bodies are fine for this issue; the nav + active state must be correct.
+2. **Count badges:** **Omit until a backend source exists.** Do NOT render the `1/4/3` numbers. Build the badge slot so a backend-served count can populate it later, but render nothing now (upholds [no frontend-computed metrics]). Log the deferred badge wiring in `docs/exec-plans/tech-debt-tracker.md`.
+3. **Nav icons:** trustee-local inline SVGs (not added to shared `@pipeline/ui NavIcon`). Use the **exact path data** exported to `/tmp/figma-shell/icons/` — `overview-pie.svg`, `origination-bulb.svg`, `loans-dollar.svg`, `cash-briefcase.svg`, `risk-shield.svg`, `audit-list.svg` (all `viewBox 0 0 20 20`) and `avatar.svg` (`viewBox 0 0 15 15`) for the account chip. Set `fill="currentColor"` so each glyph inherits the item's active (brand) / inactive (on-dark) color; drop the `var(--fill-0, white)` from the raw export.
+4. **`⋯` menu + sign-out:** the `⋯` affordance opens a small popover menu containing **"Sign out"** (wired to `useTrusteeSession().signOut`). No always-visible sign-out button. Address from `useTrusteeSession().address` via `truncateAddress`.
+5. **Mobile:** **desktop-first, defer mobile.** Fixed 320px sidebar; no mobile drawer in this issue. Log the responsive/off-canvas behavior as follow-up tech debt in `docs/exec-plans/tech-debt-tracker.md`.
+6. **Shell vs `/sign-in`:** confirmed — shell renders the sidebar only for authenticated routes; `/sign-in` stays standalone. Fix `sign-in.tsx`'s `min-h-[calc(100vh-73px)]` → full-height.
+7. **Tokens:** documented scoped one-offs for the three dark-sidebar rgba values (the `SignInCard.tsx` precedent), NOT new theme tokens.
+
+## Implementation Steps
+
+**Status: implemented (2026-07-08).** All steps below are complete.
+
+1. [x] Implement per the Decisions above — nav taxonomy, badge omission, icon source, `⋯`/sign-out, desktop-only, sign-in standalone, one-off tokens are all settled; no further human gate.
+2. [x] Create the sidebar component `packages/trustee/src/components/TrusteeSidebar.tsx` (name TBD — could stay `TrusteeShell` or split shell vs. sidebar):
+   - Root: `flex flex-col bg-[color:var(--color-pipeline-brand)] w-[320px] px-4 py-6 h-screen shrink-0` (16px = px-4, 24px = py-6; 320 = 288 content + 2×16 padding).
+   - Wordmark block: `Logo` (width 116, h-32) in a `pb-[26px]` container.
+   - Nav items (map from the confirmed taxonomy): each `h-14` (56px), `flex items-center gap-[14px] px-4 rounded-[4px] w-full`, 20px icon slot + label at `font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)]`.
+     - Active item: `bg-[color:var(--color-pipeline-surface)]` with label `text-[color:var(--color-pipeline-brand)]` — drive off TanStack Router `activeProps`, do not hardcode "Overview" as active.
+     - Inactive items: transparent bg, `text-[color:var(--color-pipeline-on-dark)]`.
+   - Optional count badge slot (per Open Q #2 — render only when a backend count is supplied; omit entirely if none): `h-5 min-w-5 rounded-[4px] px-[7.5px] bg-[rgba(191,189,187,0.24)]` (documented one-off), `text-[length:var(--text-pipeline-caption)] text-center text-[color:var(--color-pipeline-on-dark)]`.
+   - Two dividers wrapped in `py-3` (12px): `border-t border-solid border-[rgba(235,233,230,0.25)]` (documented one-off). Placement: after Overview, and before the Risk Council / Audit Log group.
+   - `flex-1` spacer to push the account chip down.
+   - Account chip: `border-t border-[rgba(235,233,230,0.25)] flex items-center gap-3 px-2 pt-[11px] pb-[10px]`; 28px avatar circle (`rounded-full size-7 border border-solid border-white`) with a 15px avatar glyph; address `text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-on-dark)]` from `truncateAddress(address)`; subtitle "Trustee · connected" at `text-[length:var(--text-pipeline-caption)] text-[rgba(235,233,230,0.7)]` (documented one-off); `⋯` affordance (18px, `opacity-70`) — wire to a sign-out menu per Open Q #4.
+   - Keep/relocate the existing `truncateAddress` helper. Done: relocated to `packages/trustee/src/lib/truncateAddress.ts`.
+3. [x] Add the 6 nav-icon SVGs (per Open Q #3 decision) — new inline SVGs in `packages/trustee/src/components/` (e.g. `TrusteeNavIcons.tsx`) using verbatim Figma path data (fetched via Figma MCP asset export), `fill="currentColor"`, 20px, so they inherit the item's active/inactive color. Reuse `@pipeline/ui`'s `NavIcon name="deposit"` for the dollar glyph if it matches "Cash Management". Done: `TrusteeNavIcons.tsx` has all 6 sidebar glyphs plus the account-chip avatar glyph, all trustee-local per the decision (no shared `NavIcon` reuse — the taxonomy doesn't overlap).
+4. [x] Rework the shell frame in `packages/trustee/src/components/TrusteeShell.tsx`:
+   - Authenticated: `<div className="flex min-h-screen">` → `<TrusteeSidebar/>` + a `min-w-0 flex-1` wrapper hosting `<RouteGate/>`/`<Outlet/>`. The main region hosts the routed page; per-flow route components already render their own `<main>`/heading, so the shell's wrapper is a plain `<div>` (not `<main>`) to avoid nested `<main>` landmarks.
+   - Unauthenticated / `/sign-in`: render `<RouteGate/>` standalone with NO sidebar (preserve current behavior). Keep the `isAuthenticated` gate.
+5. [x] Update `packages/trustee/src/routes/sign-in.tsx`: change `min-h-[calc(100vh-73px)]` to full-height (`min-h-screen`) now that there is no topbar, and update the stale comment referencing the topbar.
+6. [x] Renamed the taxonomy per the Decisions: `packages/trustee/src/lib/flowTypes.ts` deleted, replaced by `packages/trustee/src/lib/nav.ts` (`TRUSTEE_NAV_ITEMS`); route files under `packages/trustee/src/routes/` renamed to `origination.tsx`, `loans.tsx`, `cash-management.tsx`, `risk-council.tsx`, `audit-log.tsx` (old `type1-direct.tsx`..`type4-monitoring.tsx` deleted); `routeTree.gen.ts` regenerated by `yarn workspace @pipeline/trustee build` (not hand-edited).
+7. [x] Updated the landing route `packages/trustee/src/routes/index.tsx` — Overview is now the index route's own placeholder body (heading + description from `TRUSTEE_NAV_ITEMS`), replacing the old "pick a flow type" `LinkCard` launcher page.
+8. [x] Ran `yarn workspace @pipeline/trustee lint` and `yarn workspace @pipeline/trustee build`; ran `npx tsx scripts/lint-docs.ts` for docs (0 errors); a trustee dev server was already running on port 5174 for live visual review against the Figma frame.
+
+## Test Strategy
+
+- [x] **Updated existing route tests** that render through `__root.tsx` → shell: rewrote `packages/trustee/src/routes/-index.test.tsx` for the new Overview placeholder; deleted the old `-type1..4` test files and added `-origination.test.tsx`, `-loans.test.tsx`, `-cash-management.test.tsx`, `-risk-council.test.tsx`, `-audit-log.test.tsx` (placeholder heading smoke tests, mirroring the old per-type test shape).
+- [x] **Added a shell/sidebar test** `packages/trustee/src/components/-TrusteeSidebar.test.tsx` (mounts a minimal in-test TanStack router, mirroring `packages/frontend/src/components/TopBar.test.tsx`) asserting:
+  - Sidebar renders all 6 nav items + the `Logo` wordmark.
+  - Active-route styling applies to the current route via `aria-current="page"` (checked for `/loans` and the index route `/`).
+  - Account chip renders the truncated address from a mocked `useTrusteeSession()` and the "Trustee · connected" subtitle; renders nothing when `address` is `undefined`.
+  - `⋯` opens a menu exposing "Sign out" and calls `signOut` on click.
+  - Badge slot renders nothing for any nav item (no backend count source) — guards the [no frontend-computed metrics] rule.
+- [x] **Auth gating**: unchanged `RouteGate`/`isAuthenticated` behavior in `TrusteeShell` — sidebar only renders in the authenticated branch; `/sign-in` renders `RouteGate` standalone. Covered by the existing `-sign-in.test.tsx` suite (unmodified, still passing).
+- [x] **Figma verification (manual)**: dev server confirmed serving at `http://localhost:5174` (already running); visual pixel comparison against `/tmp/figma-shell/get_screenshot_0.png` left for the user's live review per project convention (agents don't drive the user's browser). The live review caught two defects fixed in a follow-up pass (see "Deviations" below).
+- [x] Edge cases covered in tests: undefined `address` renders no chip and no literal "undefined" text; `whitespace-nowrap` applied to labels; no badges rendered anywhere.
+
+Full suite: `yarn workspace @pipeline/trustee lint` and `node node_modules/.bin/vitest run` (Node 20) — 67/67 tests pass, 12/12 files.
+
+### Deviations (post-review fixes)
+
+The human's live-render review against `/tmp/figma-shell/get_screenshot_0.png` caught two defects
+not visible from source review alone, both fixed before completion:
+
+1. **Wordmark invisible.** `@pipeline/ui`'s `Logo` sets an inline `style={{ color: brand navy }}`
+   by default; passing a Tailwind `className` for color does not override it (inline `style`
+   always wins over a class-based `color` declaration). The sidebar's `<Logo className="text-...on-dark" />`
+   was silently defeated, so the wordmark rendered navy-on-navy. Fixed by passing
+   `style={{ color: "var(--color-pipeline-on-dark)" }}` directly (mirrors
+   `packages/frontend/src/components/ConnectWalletModal.tsx`'s `<Logo style={{ color: "#fff" }} />`
+   on its own dark surface).
+2. **Active nav item was white-on-white.** TanStack Router's `Link` concatenates
+   `className` + `activeProps.className`/`inactiveProps.className` rather than replacing —
+   the base className's `text-on-dark` color utility and `activeProps`'s `text-brand` utility
+   both landed in the DOM simultaneously, and CSS cascade order (not "active wins") decided
+   which color rendered, which produced brand-colored icon+label on the white active surface in
+   theory but was fragile / order-dependent in practice. Fixed by moving the base `className` to
+   layout-only (no color) and putting the active/inactive surface + text color exclusively in
+   `activeProps`/`inactiveProps` respectively, so only one color class is ever present in the DOM
+   at a time. Added regression assertions in `-TrusteeSidebar.test.tsx` checking the active
+   item's class list contains brand text + white surface and does NOT contain the on-dark class
+   (and vice versa for inactive items), plus a direct check of the Logo's computed inline color.
+
+## Docs to Update
+
+- [x] No product-spec change required — this is presentation chrome for behavior already specified in `docs/product-specs/trustee-dashboard.md` (spec #453); the underlying Type 1-4 mechanism taxonomy in the spec is a separate concept from the Figma nav's presentation grouping and is unchanged.
+- [x] No new shared `@pipeline/ui` component was introduced (nav icons and the account-chip avatar stayed trustee-local per the Decisions). No dark-sidebar tokens were added to `theme.css` — the three rgba values remain documented scoped one-offs in `TrusteeSidebar.tsx`.
+- [x] Added `docs/user-stories/epic-775/786-trustee-app-shell.md` (5 stories) and linked it from `docs/user-stories/index.md`.
+- [x] Logged TD-36 (nav badges, no backend source) and TD-37 (no mobile/responsive sidebar) in `docs/exec-plans/tech-debt-tracker.md`.
+- Log any deferred badge/mobile work in `docs/exec-plans/tech-debt-tracker.md` if the human defers those decisions.
