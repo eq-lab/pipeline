@@ -181,7 +181,7 @@ function parseClassicAsset(raw: string, fallbackCode: string): ClassicAsset {
  * Used only for the mock fast-path — the real path derives this from the SAC.
  */
 const PROTOCOL_ISSUER =
-  "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
+  "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU";
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 

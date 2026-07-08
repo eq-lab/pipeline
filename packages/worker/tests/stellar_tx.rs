@@ -14,7 +14,7 @@ use pipeline_worker::stellar::tx::{
 };
 
 fn fixture_user() -> Ed25519Pub {
-    Ed25519Pub::from_string("GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM")
+    Ed25519Pub::from_string("GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU")
         .expect("valid G… strkey")
 }
 

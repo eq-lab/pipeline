@@ -50,7 +50,7 @@ DevTools `__query` inspection).
 
 **Expected**:
 - Hook returns the mock contract IDs immediately.
-- `addresses.usdcAsset.issuer` equals `"GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM"`.
+- `addresses.usdcAsset.issuer` equals `"GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU"`.
 - No Soroban RPC call is made.
 
 ---

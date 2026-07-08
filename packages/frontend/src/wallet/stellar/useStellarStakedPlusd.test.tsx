@@ -613,7 +613,7 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     // the "loading" test's mockReturnValue(new Promise(() => {})).
     mockName.mockReset();
     mockName.mockResolvedValue(
-      "sPLUSD:GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      "sPLUSD:GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
     );
     mockLoadAccount.mockResolvedValue({
       id: TEST_ADDRESS,

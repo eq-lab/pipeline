@@ -40,7 +40,7 @@ This deliberately reuses the EVM voucher route, query-parameter shape, and respo
 - **`u128` request_id round-trip vs `U256`.** EVM `RequestInfo.request_id` is a `BigDecimal` parsed into `U256`; Soroban `request_id: u128` (`pipeline-stellar-contracts/contracts/request-queue/src/types.rs:14`) and the indexer writes it as a base-10 string (`stellar/parsers.rs:60`). We parse the string into `u128` for the Stellar XDR path. `BigDecimal → u128` will succeed as long as `request_id < 2^128`, which it always is for the Soroban schema. We must reject (HTTP 500 with a clear error) any value that overflows, mirroring the existing EVM `parse::<U256>()` failure path.
 - **`network_id` is `sha256(passphrase)`.** Stellar's `ledger.network_id()` returns the SHA-256 of the network passphrase (`"Test SDF Network ; September 2015"` for testnet). The API config must compute this at startup from the passphrase env var; we already have the passphrase via `CHAIN_<id>_STELLAR_NETWORK_PASSPHRASE` in the indexer config and can reuse the same env var (Open Q1).
 - **Strkey `G…` validation.** The wallet query param for Stellar must be validated as a 56-char Strkey starting with `G` (account ed25519 pubkey). We reuse `stellar-strkey::ed25519::PublicKey::from_string` (workspace dep) for that check; a malformed input returns HTTP 400 mirroring the existing `Address::parse` failure path.
-- **The deployed verifier secret is operator-controlled.** The testnet on-chain verifier today is `GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM` per the Issue body. The plan does not introduce a key rotation path — that follows from any future `set_verifier` call on the Soroban contracts and an env update.
+- **The deployed verifier secret is operator-controlled.** The testnet on-chain verifier today is `GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU` per the Issue body. The plan does not introduce a key rotation path — that follows from any future `set_verifier` call on the Soroban contracts and an env update.
 - **Dependency on #528.** The indexer plan ships `stellar-xdr` and `stellar-strkey` to `packages/worker`. For this issue both crates must be promoted/used from `shared/` (workspace deps already exist at the root `Cargo.toml`). No version bumps required.
 
 ## Resolved Decisions
@@ -112,15 +112,15 @@ Internally, `voucher_digest` reproduces the `to_xdr` output for the two `#[contr
 
 ### 3. Golden-fixture test against the on-chain `digest(...)` view [DONE — pure-Rust reproduction verified]
 
-The deployed testnet DepositManager `digest(...)` view was invoked once via the Stellar CLI for the fixed triple `(request_id=1u128, sender="GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM", amount=1_000_000_i128)` against contract `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO`:
+The deployed testnet DepositManager `digest(...)` view was invoked once via the Stellar CLI for the fixed triple `(request_id=1u128, sender="GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU", amount=1_000_000_i128)` against contract `CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO`:
 
 ```
 stellar contract invoke \
   --id CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO \
   --network testnet \
-  --source-account GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM \
+  --source-account GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU \
   --send=no \
-  -- digest --request_id 1 --sender GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM --amount 1000000
+  -- digest --request_id 1 --sender GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU --amount 1000000
 # → "9b5efb4375bbbb89200320c22d0aba0acb8c86e901030379ca3d326e55345191"
 ```
 

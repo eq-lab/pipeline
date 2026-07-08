@@ -34,7 +34,7 @@ Both USDC and PLUSD are Stellar Asset Contracts (SEP-41 standard interface):
 
 - **Decimals**: **7** (Stellar SAC standard — not EVM USDC's 6).
   `1 USDC = 10_000_000` raw units.
-- **Protocol issuer**: `GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM`.
+- **Protocol issuer**: `GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU`.
   This is distinct from the Circle testnet USDC issuer (`GBBD47…`) used by
   the existing Blend integration (`VITE_STELLAR_USDC_ISSUER`).
 - **Trustline requirement**: accounts must have an established trustline before
