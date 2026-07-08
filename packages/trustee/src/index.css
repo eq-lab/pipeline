@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@import "@pipeline/ui/styles/theme.css";
+
+/* Pull utility class names from the shared workspace packages so Tailwind v4
+   generates CSS for any classnames authored outside the Trustee app's own
+   src. Without these, components rendered from those packages (e.g. the
+   ConnectWalletModal in @pipeline/wallet-connect) mount unstyled — their
+   utility classes never make it into the generated stylesheet. */
+@source "../../ui/src/**/*.{ts,tsx}";
+@source "../../wallet-connect/src/**/*.{ts,tsx}";

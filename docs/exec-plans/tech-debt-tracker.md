@@ -272,6 +272,84 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   (and the EVM equivalent) and wire the disallow pass to it, or formalise the separate admin
   revocation flow for both chains.
 
+### TD-32: Trustee app duplicates env-accessor + Docker entrypoint plumbing with the LP app
+- **Date:** 2026-07-07
+- **Location:** `packages/trustee/src/lib/env.ts`, `docker/trustee/entrypoint.sh`
+- **Gap:** Issue #777 scaffolds `packages/trustee` as a thin app that imports `@pipeline/ui`
+  only. Its runtime-env accessor (`readString`/`readNumber` pattern) and Docker entrypoint
+  (`jq`-built `window.__ENV__` writer) are copy-pasted from `packages/frontend`, not shared.
+  The wallet/API client/formatter extraction into a shared package is the explicit scope of
+  the epic #775 follow-up sub-issue #778.
+- **Impact:** Two copies of the same env-accessor shape to keep in sync until #778 lands;
+  low risk since the trustee surface is currently a single key (`VITE_API_BASE_URL`).
+- **Suggested fix:** When #778 extracts shared frontend code, fold the env-accessor pattern
+  (or a shared factory for it) and the entrypoint script generation into the shared package
+  so both apps consume one implementation.
+
+### TD-33: Trustee eslint config omits the wallet/api import-restriction blocks [RESOLVED 2026-07-08 / #791]
+- **Date:** 2026-07-07
+- **Location:** `packages/trustee/eslint.config.js`
+- **Gap:** `packages/frontend/eslint.config.js` has `no-restricted-imports` blocks confining
+  wagmi/viem/AppKit/react-query/Stellar SDK imports to `src/wallet/**` and `src/api/**`, plus
+  a `no-restricted-globals` guard on bare `fetch`. The trustee scaffold has none of these
+  because those modules do not exist there yet (Issue #777 imports `@pipeline/ui` only, no
+  wallet/api deps).
+- **Impact:** None today — there is nothing in `packages/trustee` for the guards to protect.
+  Adding wallet/API deps directly (bypassing #778's shared extraction) would go unguarded.
+- **Resolved by #791:** the sign-in flow landed the wallet-connect slice as the new
+  `@pipeline/wallet-connect` shared package (not trustee-local files), so the trustee itself
+  never imports wagmi/viem/AppKit/Stellar SDKs directly — `packages/trustee/eslint.config.js`
+  now has an unconditional `no-restricted-imports` block for those packages (no carve-out
+  needed, since no legitimate trustee file imports them) plus a `no-restricted-globals` guard
+  confining bare `fetch` to `src/api/**` (`apiFetch` in `src/api/client.ts`, which injects the
+  bearer token). `@pipeline/wallet-connect` has its own equivalent boundary scoped to its
+  `src/evm/**`/`src/stellar/**` modules.
+
+### TD-34: Trustee sign-in "Connect Wallet" button is a documented no-op [RESOLVED 2026-07-08 / #791]
+- **Date:** 2026-07-08
+- **Location:** `packages/trustee/src/components/SignInCard.tsx`
+- **Gap:** Issue #787 ships the sign-in gate UI only (Figma node `4174-31660`). The
+  "Connect Wallet" button's `onClick` performs no network call, no wallet-connect flow, and
+  no redirect — it is a `// TODO(#778)` stub. There is no auth/session/wallet layer in
+  `packages/trustee` yet (that extraction is #778), and spec #453 explicitly puts
+  Authentication / 2FA / operator onboarding out of scope.
+- **Impact:** The sign-in screen is visual-only; navigating to `/sign-in` does not gate any
+  other route today (no route guard exists), and clicking Connect Wallet does nothing
+  observable. Acceptable for a UI-only issue; would be a real gap if shipped as the only
+  auth surface.
+- **Resolved by #791:** `SignInCard` now calls `useTrusteeSession().signIn()`, which drives
+  wallet-connect → `GET /v1/auth/challenge` → sign → `POST /v1/auth/verify` → stores the JWT in
+  `sessionStorage` → redirects to `/`. A `401` renders as an inline "not authorized" error on
+  the card. `TrusteeShell` now gates every route (`RouteGate`): unauthenticated → `/sign-in`,
+  authenticated on `/sign-in` → `/`.
+
+### TD-35: `@pipeline/wallet-connect` duplicates rather than moves the LP wallet-connect slice
+- **Date:** 2026-07-08
+- **Location:** `packages/wallet-connect/src/{evm,stellar}/*`, `packages/frontend/src/wallet/*`
+- **Gap:** #791 extracted a minimal wallet-connect slice (connect/disconnect, address, the
+  picker modal, provider mounting, plus net-new `signMessage`) into a new shared package
+  per the exec plan's approach (a), but **copied** rather than **moved** the LP's
+  `evm/{chain,config,mock}.ts`, `stellar/{chain,config,connectionStore,mock}.ts`,
+  `ConnectModalProvider.tsx`/`ConnectModalContext.ts`, and `ConnectWalletModal.tsx` (plus the
+  `connect-hero-ship.webp` asset) rather than re-pointing the LP app's imports at the new
+  package. The exec plan's fallback path ("If moving risks LP regressions within this issue's
+  blast radius, copy the minimal slice and log the duplication as tech-debt for #778") was
+  taken to keep #791's blast radius scoped to the Trustee app and avoid touching LP import
+  sites/tests under this issue.
+- **Impact:** Two copies of connect/disconnect/config/mock logic for EVM and Stellar chain +
+  wallet plumbing exist today (LP-owned in `packages/frontend/src/wallet`, shared in
+  `packages/wallet-connect`). They are behaviourally identical at the point of the copy but
+  will drift if one is changed without the other (e.g. a `useEvmWallet` bugfix). The LP app
+  does **not** yet consume `@pipeline/wallet-connect` — it still owns its terms-gate-coupled
+  `WalletGateProvider`/`useTermsAcknowledgement` wiring, which `@pipeline/wallet-connect`
+  deliberately decouples from (see the package's `WalletGateContext.ts`).
+- **Suggested fix:** #778 (shared wallet/api extraction, currently `backlog`) should re-point
+  `packages/frontend`'s imports at `@pipeline/wallet-connect` for the overlapping surface
+  (connect/disconnect, address, connectors, the connect modal, `signMessage`) and delete the
+  LP-local duplicates, keeping only genuinely LP-specific code (`WalletGateProvider`, the
+  deposit/withdraw/stake contract hooks, the terms-acknowledgement flag) in
+  `packages/frontend/src/wallet`.
+
 ---
 
 ## Post-MVP

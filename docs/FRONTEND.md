@@ -90,12 +90,18 @@ See [`docs/frontend/hooks.md`](./frontend/hooks.md) for the full `useToast` API 
 
 File-based routing is provided by [TanStack Router](https://tanstack.com/router) (`@tanstack/react-router`). Route files live in `packages/frontend/src/routes/`. The plugin (`@tanstack/router-plugin`) auto-generates `src/routeTree.gen.ts` on every `vite build` / `vite dev` run; that file is committed (so `tsc` works on a fresh clone without first running the dev server / build) but must not be edited manually.
 
-Single SPA serving two logical views gated by authenticated role:
+Single SPA for the LP-facing app, gated by wallet connection (WalletConnect v2 / Reown AppKit) at `/`.
 
-| View               | Auth                                              | Entry  |
-| ------------------ | ------------------------------------------------- | ------ |
-| LP Dashboard       | Wallet connection (WalletConnect v2 / RainbowKit) | `/`    |
-| Operations Console | Email + password + 2FA                            | `/ops` |
+There are now **two separate Vite apps** in this workspace, each with its own entrypoint, port, and deploy image — they share `@pipeline/ui` (design tokens/components), the runtime-env-via-`window.__ENV__` mechanism, and (since #791) the wallet-connect slice in `@pipeline/wallet-connect`:
+
+| App                 | Package             | Dev port | Docker target |
+| ------------------- | -------------------- | -------- | -------------- |
+| LP frontend         | `packages/frontend`  | 5173     | `frontend`      |
+| Trustee admin panel | `packages/trustee`   | 5174     | `trustee`       |
+
+The Trustee panel (epic #775, spec #453) is the Pipeline Trust Company's operational action surface — origination approval, cash movement, lifecycle, default management, and monitoring. #791 wired its sign-in flow to the backend signature-auth contract (`docs/product-specs/api-authorization.md`): wallet connect → challenge → sign → verify → JWT bearer session, with route gating on every other route. The remaining Type 1-4 flow surfaces are still placeholder routes, pending epic #775's per-flow sub-issues.
+
+`packages/wallet-connect` (`@pipeline/wallet-connect`) is a **new shared workspace package** (source-only, like `@pipeline/ui` — no build step, consumed directly by each app's own Vite/tsc) holding the minimal wallet-connect slice both apps need: EVM (wagmi/viem/Reown AppKit) and Stellar (`@creit.tech/stellar-wallets-kit`) connect/disconnect/address, the shared `ConnectWalletModal` picker, provider mounting, and message-signing (`signMessage`, EVM `personal_sign` / Stellar SEP-0053) used by the Trustee's auth flow. Its pre-connect gate (`WalletGateContext`) is injectable and defaults to a no-op — the LP app mounts its own `WalletGateProvider` (first-connection terms gate, still LP-local) above it; the Trustee mounts none. The LP frontend's `packages/frontend/src/wallet` still owns its own copy of the overlapping EVM/Stellar connect code (not yet re-pointed at the shared package — tracked as tech debt, TD-35) plus everything Trustee doesn't need (deposit/withdraw/stake contract hooks, the terms gate itself).
 
 ### LP Dashboard panels
 
@@ -211,6 +217,29 @@ docker run --rm -p 8081:80 \
   -e VITE_STAKED_PLUSD_ADDRESS=0x0000000000000000000000000000000000000000 \
   -e VITE_WALLETCONNECT_PROJECT_ID=replace-me \
   pipeline-frontend
+```
+
+### Trustee image
+
+The Trustee admin panel image is built the same way from the `trustee` Dockerfile target:
+
+```bash
+docker build --target trustee -t pipeline-trustee .
+```
+
+It mirrors the frontend image shape (`docker/trustee/nginx.conf` + `docker/trustee/entrypoint.sh`,
+static Vite output served on container port 80, SPA fallback to `index.html`). Its runtime-env
+surface is intentionally smaller — only the Relayer API base URL is needed at scaffold time (#777);
+it grows as Trustee flow sub-issues of epic #775 land.
+
+| Key                  | Default when unset      |
+| -------------------- | ------------------------ |
+| `VITE_API_BASE_URL`  | `http://localhost:8080`  |
+
+```bash
+docker run --rm -p 8082:80 \
+  -e VITE_API_BASE_URL=http://host.docker.internal:8080 \
+  pipeline-trustee
 ```
 
 Use a host port that does not conflict with the API dev server. Then check the runtime file and a

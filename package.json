@@ -4,13 +4,16 @@
   "private": true,
   "workspaces": [
     "packages/frontend",
-    "packages/ui"
+    "packages/trustee",
+    "packages/ui",
+    "packages/wallet-connect"
   ],
   "scripts": {
     "lint:docs": "npx tsx scripts/lint-docs.ts",
     "codegen": "echo 'TODO: codegen'",
     "prepare": "husky",
-    "front:dev": "yarn workspace @pipeline/frontend dev"
+    "front:dev": "yarn workspace @pipeline/frontend dev",
+    "trustee:dev": "yarn workspace @pipeline/trustee dev"
   },
   "devDependencies": {
     "husky": "9.1.7",

@@ -74,7 +74,9 @@ WORKDIR /sln
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
 COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/trustee/package.json packages/trustee/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
 
 RUN corepack enable && yarn install --immutable
 
@@ -94,5 +96,40 @@ COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/frontend/entrypoint.sh /docker-entrypoint.d/40-write-runtime-env.sh
 RUN chmod +x /docker-entrypoint.d/40-write-runtime-env.sh
 COPY --from=frontend-build /sln/packages/frontend/dist/ /usr/share/nginx/html/
+
+EXPOSE 80
+
+# Trustee build image
+FROM node:22-slim AS trustee-build
+WORKDIR /sln
+
+# Copy workspace manifests first for stable dependency layers.
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/releases/yarn-4.13.0.cjs .yarn/releases/yarn-4.13.0.cjs
+COPY packages/frontend/package.json packages/frontend/package.json
+COPY packages/trustee/package.json packages/trustee/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/wallet-connect/package.json packages/wallet-connect/package.json
+
+RUN corepack enable && yarn install --immutable
+
+# @pipeline/trustee imports the source-only @pipeline/ui and
+# @pipeline/wallet-connect workspace packages (#791 sign-in flow).
+COPY packages/trustee/ packages/trustee/
+COPY packages/ui/ packages/ui/
+COPY packages/wallet-connect/ packages/wallet-connect/
+
+RUN yarn workspace @pipeline/trustee build
+
+# Trustee runtime image
+FROM nginx:1.27-alpine AS trustee
+WORKDIR /usr/share/nginx/html
+
+RUN apk add --no-cache jq
+
+COPY docker/trustee/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/trustee/entrypoint.sh /docker-entrypoint.d/40-write-runtime-env.sh
+RUN chmod +x /docker-entrypoint.d/40-write-runtime-env.sh
+COPY --from=trustee-build /sln/packages/trustee/dist/ /usr/share/nginx/html/
 
 EXPOSE 80
