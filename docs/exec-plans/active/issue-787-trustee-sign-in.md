@@ -5,17 +5,21 @@ Source: https://github.com/eq-lab/pipeline/issues/787
 Sub-issue of epic #775 (Trustee Admin Panel). Depends on #777 (scaffold — merged).
 Product/technical spec: #453, persisted at `docs/product-specs/trustee-dashboard.md`.
 
-> **BLOCKED PENDING HUMAN INPUT.** Two hard blockers must be resolved before a
-> coder can execute this plan faithfully — see **Open Questions**:
-> 1. The Figma frame (node `4174-31660`) could not be retrieved this session
->    (Figma MCP not connected). We refuse to guess a pixel/token-exact design.
-> 2. Behavioural scope of "sign-in" is undefined and likely conflicts with the
->    deferred wallet/session layer (#778). The frame must be inspected to know
->    whether this is credentials, wallet-connect, or 2FA.
+> **RESOLVED — implemented 2026-07-08.** Both blockers below are closed:
+> 1. The Figma frame (node `4174-31660`) was exported out-of-band and provided
+>    to the coder as saved artifacts (`screenshot.png`, `design-context.txt`,
+>    `variables.txt`, `metadata.txt`) — pixel/token-exact, no guessing.
+> 2. Scope confirmed as **(a) static UI only**: the frame is a wallet-connect
+>    "Unauthenticated Overlay" / "Login Prompt" card. The "Connect Wallet"
+>    button `onClick` is a documented no-op tied to #778 (see
+>    `docs/exec-plans/tech-debt-tracker.md` TD-34). No credentials/2FA form
+>    exists in this frame, so the `@pipeline/ui` `Input`/`Label`/`PasswordField`
+>    question is moot — no new UI primitives were added.
 >
-> The steps below are the **structural skeleton** the coder will flesh out once
-> the design is retrievable and the scope question is answered. They are
-> intentionally design-agnostic where the Figma is load-bearing.
+> Implementation: `packages/trustee/src/routes/sign-in.tsx`,
+> `packages/trustee/src/components/SignInCard.tsx`,
+> `packages/trustee/src/components/LockIcon.tsx`, test
+> `packages/trustee/src/routes/-sign-in.test.tsx`.
 
 ## Scope
 
@@ -94,95 +98,72 @@ Product/technical spec: #453, persisted at `docs/product-specs/trustee-dashboard
   `TrusteeShell` (e.g. a pathless/standalone layout or a conditional in the
   shell) depends on the Figma — deferred to the design (noted in steps).
 
-## Open Questions
+## Open Questions — resolved
 
-- **[BLOCKER] Figma frame not retrievable this session.** The Figma MCP is not
-  connected, so node `4174-31660` could not be inspected (screenshot / metadata
-  / variables / design-context all unavailable). Per manager direction we will
-  not guess a pixel/token-exact design. Reconnect the Figma MCP (or have a
-  human export the frame's layout + tokens) before the coder starts, so layout,
-  spacing, typography tokens, form-field styling, and responsive breakpoints
-  come from the design and not invention.
-- **[BLOCKER] Static UI only, or real auth/session wiring?** #453 puts
-  Authentication / 2FA / operator onboarding out of scope and the scaffold has
-  no auth/wallet/session layer (that is #778). Confirm the intended scope:
-  (a) **static sign-in UI only** — form layout + components, controlled inputs,
-  no real submit/verify/redirect; or (b) **wired sign-in** — which needs a
-  backend/session contract. If the frame implies **wallet-connect** sign-in, it
-  depends on the wallet layer deferred to #778 (blocked). If it implies
-  **credentials + 2FA**, the backend auth/session contract does not exist today
-  and #453 excludes it — specify what endpoint/session shape it should target,
-  or confirm UI-only. **Default assumption if unanswered: static UI only, no
-  submit behaviour, `onSubmit` left as a documented no-op / TODO tied to #778.**
-- **`@pipeline/ui` form primitives — add here or wait?** A credential form
-  needs generic `Input`/`Label` (and maybe `PasswordField`) that the kit lacks.
-  Assumed: add them to `packages/ui` (reusable, token-driven) as part of this
-  issue. Confirm that is acceptable rather than deferring the primitives to a
-  separate `@pipeline/ui` issue. (Moot if the frame is wallet-connect only.)
+- **Figma frame.** Retrieved out-of-band (node `4174-31660`, saved artifacts).
+  It is an "Unauthenticated Overlay" / "Login Prompt" — a centered card over a
+  blurred content backdrop, not a form.
+- **Scope.** Confirmed (a) static UI only. The card's single action is a
+  "Connect Wallet" pill button — this **is** wallet-connect sign-in per the
+  design, so real wiring is correctly blocked on #778; the button ships as a
+  documented no-op (see TD-34 in `docs/exec-plans/tech-debt-tracker.md`).
+- **`@pipeline/ui` form primitives.** Moot — the frame has no text/password
+  fields, only a heading, subtext, one button, and a caption. No `Input`/
+  `Label`/`PasswordField` were added. The existing `Button` (`primary-dark`
+  variant) was reused with a `!`-prefixed className override for the pill
+  radius and full width (same override pattern the Button component itself
+  uses for its `compact` size, per the Tailwind v4 equal-specificity note in
+  `Card.tsx`) — no new Button variant needed.
+- One new component was added: `packages/trustee/src/components/LockIcon.tsx`
+  (24×24 padlock glyph), kept trustee-local rather than promoted to
+  `@pipeline/ui` since only this screen uses it today.
 
-## Implementation Steps
+## Implementation Steps — completed 2026-07-08
 
-> Execute **only after** Open Questions 1 and 2 are resolved. The Figma frame
-> drives every visual decision; the scope answer decides whether step 5 exists.
+1. **[DONE] Retrieve the design.** Pulled from the saved out-of-band Figma
+   export (`design-context.txt`, `variables.txt`, `metadata.txt`,
+   `screenshot.png`) for node `4174-31660`. Layout, spacing, typography, and
+   colour tokens recorded and mapped to `@pipeline/ui` theme tokens (see
+   `SignInCard.tsx` header comment for the full mapping table). Two values
+   have no existing token and are documented one-off arbitrary values scoped
+   to this component: the card's 24px corner radius (existing radii are 4/6/16
+   px) and the overlay's `rgba(246,248,248,0.8)` tint + blur.
 
-1. **Retrieve the design.** With the Figma MCP reconnected, pull node
-   `4174-31660` via `mcp__figma__get_screenshot`, `get_metadata`,
-   `get_variable_defs`, and `get_design_context`. Record the frame's layout
-   structure, spacing, typography, colour tokens, form-field styles, any hero
-   imagery, and responsive breakpoints. Map every Figma variable to an existing
-   `@pipeline/ui` theme token (`--color-pipeline-*`, `--font-*`,
-   `--text-pipeline-*` from `packages/ui/src/styles/theme.css`); flag any token
-   with no equivalent as a follow-up rather than hardcoding a raw value.
+2. **[SKIPPED — moot]** No form primitives needed; the frame has no text
+   fields. See "Open Questions — resolved" above.
 
-2. **Add missing form primitives to `@pipeline/ui`** (only those the frame
-   uses): e.g. `packages/ui/src/components/Input/Input.tsx` +
-   `index.ts`, a `Label`, and — if shown — a password field with show/hide and
-   an error/help-text slot. Mirror the existing component conventions (one
-   component per file, token-driven Tailwind classes, a `.stories.tsx`, and a
-   type export added to `packages/ui/src/index.ts`). Match the Figma exactly
-   (radius, height, padding, focus ring, disabled/error states).
-
-3. **Create the sign-in route** at
+3. **[DONE] Create the sign-in route** at
    `packages/trustee/src/routes/sign-in.tsx` using `createFileRoute("/sign-in")`.
-   Compose the screen from `@pipeline/ui` primitives (`Card`, `Button`, `Logo`,
-   the new `Input`/`Label`, hero imagery if any). Keep any page-specific
-   composite in its own file under `packages/trustee/src/components/`
-   (e.g. `SignInForm.tsx`) per FRONTEND.md "one component per file".
+   Composed from `@pipeline/ui`'s `Button` plus a new page-local
+   `SignInCard.tsx` (the "Login Prompt" card) and `LockIcon.tsx` (the badge
+   glyph), both under `packages/trustee/src/components/` per FRONTEND.md
+   "one component per file".
 
-4. **Decide the sign-in layout's relationship to `TrusteeShell`** based on the
-   frame: if the design is chromeless (no app topbar/nav), render sign-in
-   outside the shell — either give sign-in its own standalone layout (not the
-   `__root.tsx` `TrusteeShell` wrapper) or make `TrusteeShell` conditionally
-   omit the nav on `/sign-in`. Document the choice in a code comment. Do not
-   restructure routing beyond what the design requires.
+4. **[DONE, deviated] Shell/topbar relationship.** Per direct instruction
+   (issue #787 comment), the "Overview" heading + timestamp header row visible
+   behind the overlay in the Figma frame is out of scope (#786's scope) — this
+   route does not attempt to reproduce or hide it. `/sign-in` still renders
+   inside the existing `TrusteeShell` topbar (logo + flow nav); the route body
+   is the overlay-tinted, blurred full-bleed area with the centered card, per
+   the plan's "on the paper background is fine" allowance. Revisit when #778
+   defines the real gate (likely wants the shell nav hidden while
+   unauthenticated).
 
-5. **Wire form behaviour per the scope answer (Open Question 2).**
-   - If **static UI only** (default): controlled input state (`useState`),
-     client-side field presence/format validation only, and an `onSubmit` that
-     is a documented no-op / `// TODO(#778): wire auth/session` — no network
-     call, no redirect. Log the deferral in
-     `docs/exec-plans/tech-debt-tracker.md`.
-   - If **wired**: STOP — this depends on an auth/session contract and/or the
-     #778 wallet layer that do not exist. Re-open as blocked on #778 / a new
-     backend auth issue rather than inventing a contract.
+5. **[DONE] Form behaviour — static UI only (confirmed).** No `useState`
+   needed (no fields). The "Connect Wallet" button's `onClick` is a documented
+   no-op / `// TODO(#778): wire auth/session`. Logged as TD-34 in
+   `docs/exec-plans/tech-debt-tracker.md`.
 
-6. **Assets.** If the frame includes a hero image/illustration, add it under
-   `packages/trustee/src/assets/` (mirror the LP app's `?url` import pattern,
-   e.g. `import heroUrl from "@/assets/…?url"`). Prefer an existing
-   `@pipeline/ui` illustration if the design uses one already in the kit.
+6. **[SKIPPED — moot]** No hero image/illustration in this frame.
 
-7. **Accessibility.** Labelled inputs (`<label htmlFor>` / `aria-label`),
-   correct `type`/`autoComplete` on credential fields, visible focus states,
-   and a submit button reachable by keyboard — matching the LP app's
-   accessibility bar (see `ConnectWalletModal.tsx` focus-trap conventions if
-   the sign-in is modal).
+7. **[DONE] Accessibility.** The icon badge is `aria-hidden`; the button is a
+   real `<button>` element (keyboard-reachable, uses `Button`'s existing
+   focus-visible ring). No form fields to label.
 
-8. **Run and verify locally.** `yarn workspace @pipeline/trustee dev` →
-   confirm `/sign-in` renders on http://localhost:5174 with theme tokens
-   applied and matches the Figma frame at desktop and mobile widths. Start the
-   dev server so the user can review live (per project memory: always bring up
-   the dev server after frontend changes). Do a side-by-side against the Figma
-   screenshot.
+8. **[DONE] Run and verify locally.** `yarn workspace @pipeline/trustee build`
+   and `dev` both confirmed `/sign-in` renders and returns HTTP 200
+   (route-tree regenerated). Dev server left available for live review per
+   project convention.
 
 ## Test Strategy
 
