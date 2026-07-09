@@ -135,6 +135,16 @@ implementation time to confirm nothing drifted.
 
 ## Implementation Steps
 
+**Status: COMPLETE** (all 6 steps implemented; see PR for this issue). One
+deviation from plan: the section is rendered INSIDE the same white `Card` as
+the Capital Allocation content (not a bare transparent section) — corrected
+per human review follow-up on this issue after visually comparing against the
+Figma `4116:8928` background node, which contains both. The "Review" button
+also does NOT copy the origination table's dimmed/`opacity-60` disabled
+style — that is a different Figma component (`4116:9159`) from this
+section's Review button (`4116:9016`), which is full-opacity per Figma; the
+button stays inert via `disabled`/`aria-disabled` only, not a visual dimming.
+
 1. **Extend the submissions hook** — `packages/trustee/src/api/useLoanSubmissions.ts`:
    - Add an optional argument, e.g. `useLoanSubmissions(options?: { status?: SubmissionStatusFilter })`
      where `SubmissionStatusFilter = "InReview" | "Approved" | "Rejected"`

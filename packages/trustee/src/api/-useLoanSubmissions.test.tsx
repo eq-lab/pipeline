@@ -7,6 +7,10 @@
  *   - Success path returns the parsed SubmissionView[].
  *   - Error path populates `error`.
  *   - refetchInterval is set to 30 s.
+ *   - (#818) The optional `status` filter appends `&status=<value>` to the
+ *     URL and is included in the query key; omitting it preserves the
+ *     pre-#818 no-`status` behavior (backwards-compat guard for #813's
+ *     `useOriginationTable`).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -168,5 +172,41 @@ describe("useLoanSubmissions", () => {
       expect(result.current.error).not.toBeNull();
     });
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("(#818) issues a request with NO status= param when called with no argument (backwards-compat)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIXTURE_SUBMISSIONS), { status: 200 }),
+    );
+
+    const { result } = renderHook(() => useLoanSubmissions(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE_SUBMISSIONS);
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).not.toContain("status=");
+  });
+
+  it("(#818) issues a request with status=InReview and chain_id=99000001 when filtered", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(FIXTURE_SUBMISSIONS), { status: 200 }),
+    );
+
+    const { result } = renderHook(
+      () => useLoanSubmissions({ status: "InReview" }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(FIXTURE_SUBMISSIONS);
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("status=InReview");
+    expect(url).toContain("chain_id=99000001");
   });
 });

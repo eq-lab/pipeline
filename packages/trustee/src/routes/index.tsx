@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
+import { NeedsAttention } from "@/components/NeedsAttention";
 
 /**
  * Overview — the Trustee app's index route (Figma node `4116:8855`'s
@@ -18,8 +19,14 @@ import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
  *     field.
  *   - No standalone Cash-in-Transit or Active Deal cards — removed entirely
  *     (the `in_transit` bucket stays in the Capital Allocation legend).
- *   - No Needs Attention section — deferred to follow-up issue #799 (blocked
- *     on a backend endpoint); renders nothing.
+ *
+ * Issue #818 adds the "Needs Attention" section directly after the Capital
+ * Allocation card (resolved OQ#3, human review), rendering ONLY the
+ * Origination group, backed by real `GET /v1/loan-book/submissions?status=InReview`
+ * data. The whole section (heading and all) renders nothing when there are
+ * no in-review submissions — see `NeedsAttention.tsx`. The Loans —
+ * Payments Due / Cash Management / Risk Council groups remain deferred to
+ * follow-up issue #799 (blocked on backend endpoints).
  */
 function Overview() {
   return (
@@ -28,6 +35,7 @@ function Overview() {
         Overview
       </h1>
       <CapitalAllocationCard />
+      <NeedsAttention />
     </main>
   );
 }
