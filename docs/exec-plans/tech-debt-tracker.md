@@ -410,6 +410,22 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   reliably enough that a server-computed percentage field can be added to the response, wire the
   bar's segment widths to that field (still not computed client-side).
 
+### TD-40: Trustee Overview drift text + provenance chips are static mock strings
+- **Date:** 2026-07-09
+- **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
+- **Gap:** Issue #807 adds the reconciliation drift header
+  ("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%") and the 4 provenance chips ("on-chain balance ·
+  current block", "Relayer API · refreshed 2m ago", "Trustee feed · reconciled today", "stale
+  values are labeled inline") as hard-coded mock text — neither is backed by any API field.
+  `GET /v1/capital-allocation` has no drift/provenance data at all.
+- **Impact:** The values are always identical regardless of actual reconciliation state; if the
+  real drift ever exceeded 0.01% or a data source actually went stale, the UI would not reflect
+  it. Cosmetic/interim only — explicitly authorised by the requester as static mock chrome (#807),
+  not a silent correctness bug.
+- **Suggested fix:** Wire to real provenance/drift data once the backend serves it — e.g. a
+  drift percentage field plus per-source last-updated timestamps/status — and replace the static
+  strings and `PROVENANCE_CHIPS` config with data-driven rendering.
+
 ---
 
 ## Post-MVP

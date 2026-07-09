@@ -3,7 +3,8 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 
 /**
  * CapitalAllocationCard — the Trustee Overview page's "Capital Allocation"
- * card (Figma node `4116:8928`, frame `4116-8854`), issue #797.
+ * card (Figma node `4116:8928`, frame `4116-8854`), issue #797, extended in
+ * #807.
  *
  * Net scope for this issue (see `docs/exec-plans/active/issue-797-*.md`
  * "Decisions" section, human-confirmed 2026-07-08):
@@ -15,9 +16,13 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
  *   - Per-bucket legend (Capital Wallet / In transit / Trust account /
  *     Deployed / T-Bills (USYC)) with compact dollar values, "—" for null.
  *
- * Explicitly deferred/omitted (not built here): the green reconciliation
- * header ("RECONCILES TO PLUSD BACKING · DRIFT < …"), the 4 provenance
- * chips, and any percentage labels — none have a backing API field.
+ * Static mock chrome (#807): the green reconciliation header
+ * ("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%") and the 4 provenance chips
+ * below the legend are hard-coded mock strings — neither has a backing API
+ * field yet. They were explicitly deferred in #797 and are added here as
+ * interim static content per requester decision; a later follow-up wires
+ * them to real provenance/drift data (see `docs/exec-plans/tech-debt-tracker.md`).
+ * Any percentage labels remain out of scope (bar/legend stay non-computed).
  *
  * Pixel/token mapping from the Figma export:
  *   - Card: white surface, `rounded-[4px]` → `--radius-pipeline-card`,
@@ -31,7 +36,58 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
  *     unbadged nav items. The mid grey segment
  *     (`rgba(56,55,53,0.35)`) is a darker alpha step of the ink token family
  *     than any existing muted/subtle token, so it is also a scoped one-off.
+ *   - Drift text (`4116:8931`): `#208000` → `--color-pipeline-positive-primary`
+ *     (exact). `text-[12.5px]`, `leading-[17.5px]`, `tracking-[0.75px]` are
+ *     not tokens — documented one-off arbitrary values (Figma is pixel-exact
+ *     at a non-token size).
+ *   - Provenance chips (`4116:8966`): chip 1 text/dot `#000080` →
+ *     `--color-pipeline-brand` (exact); chip 2 text/dot `#208000` →
+ *     `--color-pipeline-positive-primary` (exact). Chip bg/border for both are
+ *     alpha derivatives of those hexes with no matching token — one-offs.
+ *     Chip 3 (`#6e6400` text/dot, `rgba(211,235,117,0.16)` bg,
+ *     `rgba(201,162,0,0.35)` border) and chip 4 (`#b20000` text/dot,
+ *     `rgba(178,0,0,0.07)` bg, `rgba(178,0,0,0.25)` border) have no token
+ *     match at all — `#b20000` is deliberately NOT `--color-pipeline-negative`
+ *     (`#c0392b`); all six values are scoped one-offs, same precedent as
+ *     `SignInCard` / #786 / the #797 bucket colours above.
  */
+
+/**
+ * Static mock provenance-chip descriptors (#807) — no backing field. Kept as
+ * plain config in the view file per FRONTEND.md rule 2 (this is not derived
+ * state, so it does not warrant a hook).
+ */
+const PROVENANCE_CHIPS = [
+  {
+    label: "on-chain balance · current block",
+    text: "var(--color-pipeline-brand)",
+    bg: "rgba(0,0,128,0.05)",
+    border: "rgba(0,0,128,0.25)",
+    dot: "var(--color-pipeline-brand)",
+  },
+  {
+    label: "Relayer API · refreshed 2m ago",
+    text: "var(--color-pipeline-positive-primary)",
+    bg: "rgba(32,128,0,0.06)",
+    border: "rgba(32,128,0,0.25)",
+    dot: "var(--color-pipeline-positive-primary)",
+  },
+  {
+    label: "Trustee feed · reconciled today",
+    text: "#6e6400",
+    bg: "rgba(211,235,117,0.16)",
+    border: "rgba(201,162,0,0.35)",
+    dot: "#6e6400",
+  },
+  {
+    label: "stale values are labeled inline",
+    text: "#b20000",
+    bg: "rgba(178,0,0,0.07)",
+    border: "rgba(178,0,0,0.25)",
+    dot: "#b20000",
+  },
+] as const;
+
 export function CapitalAllocationCard() {
   const { isLoading, isError, errorMessage, totalDisplay, legend } =
     useCapitalAllocationCard();
@@ -46,6 +102,15 @@ export function CapitalAllocationCard() {
       <div className="flex w-full items-baseline justify-between">
         <span className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] leading-[var(--text-pipeline-body--line-height)] text-[color:var(--color-pipeline-ink)]">
           Capital Allocation
+        </span>
+        {/* Static mock text, no backing field (issue #807) — drift is not
+            served by any API yet; `justify-between` on the parent right-aligns
+            this automatically. */}
+        <span
+          data-testid="capital-allocation-drift"
+          className="font-[family-name:var(--font-body)] text-[12.5px] leading-[17.5px] font-bold tracking-[0.75px] text-[color:var(--color-pipeline-positive-primary)]"
+        >
+          RECONCILES TO PLUSD BACKING · DRIFT &lt; 0.01%
         </span>
       </div>
 
@@ -107,6 +172,34 @@ export function CapitalAllocationCard() {
                 />
                 <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]">
                   {row.label} {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Static mock provenance chips, no backing field (#807) — mirrors
+              the legend's inline `style` pattern above since colours are
+              chip-specific one-offs. */}
+          <div
+            className="flex w-full flex-wrap items-center gap-x-2 gap-y-2"
+            data-testid="capital-allocation-provenance"
+          >
+            {PROVENANCE_CHIPS.map((chip) => (
+              <div
+                key={chip.label}
+                className="inline-flex h-[25px] items-center gap-[7px] rounded-[var(--radius-pipeline-card)] border border-solid px-[7px]"
+                style={{ backgroundColor: chip.bg, borderColor: chip.border }}
+              >
+                <span
+                  className="size-[6px] shrink-0 rounded-[3px] opacity-75"
+                  style={{ backgroundColor: chip.dot }}
+                  aria-hidden="true"
+                />
+                <span
+                  className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)]"
+                  style={{ color: chip.text }}
+                >
+                  {chip.label}
                 </span>
               </div>
             ))}
