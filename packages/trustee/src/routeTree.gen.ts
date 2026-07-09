@@ -16,6 +16,7 @@ import { Route as LoansRouteImport } from './routes/loans'
 import { Route as CashManagementRouteImport } from './routes/cash-management'
 import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OriginationLoanIdRouteImport } from './routes/origination.$loanId'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -52,24 +53,31 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OriginationLoanIdRoute = OriginationLoanIdRouteImport.update({
+  id: '/$loanId',
+  path: '/$loanId',
+  getParentRoute: () => OriginationRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
+  '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$loanId': typeof OriginationLoanIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
+  '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$loanId': typeof OriginationLoanIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,9 +85,10 @@ export interface FileRoutesById {
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
+  '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$loanId': typeof OriginationLoanIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$loanId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$loanId'
   id:
     | '__root__'
     | '/'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$loanId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -116,7 +128,7 @@ export interface RootRouteChildren {
   AuditLogRoute: typeof AuditLogRoute
   CashManagementRoute: typeof CashManagementRoute
   LoansRoute: typeof LoansRoute
-  OriginationRoute: typeof OriginationRoute
+  OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRoute
   SignInRoute: typeof SignInRoute
 }
@@ -172,15 +184,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/origination/$loanId': {
+      id: '/origination/$loanId'
+      path: '/$loanId'
+      fullPath: '/origination/$loanId'
+      preLoaderRoute: typeof OriginationLoanIdRouteImport
+      parentRoute: typeof OriginationRoute
+    }
   }
 }
+
+interface OriginationRouteChildren {
+  OriginationLoanIdRoute: typeof OriginationLoanIdRoute
+}
+
+const OriginationRouteChildren: OriginationRouteChildren = {
+  OriginationLoanIdRoute: OriginationLoanIdRoute,
+}
+
+const OriginationRouteWithChildren = OriginationRoute._addFileChildren(
+  OriginationRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
   LoansRoute: LoansRoute,
-  OriginationRoute: OriginationRoute,
+  OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRoute,
   SignInRoute: SignInRoute,
 }

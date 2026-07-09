@@ -73,6 +73,12 @@ export interface OriginationTableRow {
   maturity: string;
   submitted: string;
   status: OriginationRowStatus;
+  /**
+   * The raw `SubmissionView` this row was mapped from — NOT rendered
+   * directly; exposed so the view can pass it via router navigation state
+   * when the row is activated (issue #816, the Origination details page).
+   */
+  submission: SubmissionView;
 }
 
 export type OriginationTableState = "loading" | "error" | "empty" | "ready";
@@ -145,6 +151,7 @@ export function mapSubmissionToRow(
     maturity: formatMaturityDate(safeNumber(economics.original_maturity_date)),
     submitted: formatSubmittedDate(submission.created_at),
     status: resolveStatus(submission),
+    submission,
   };
 }
 

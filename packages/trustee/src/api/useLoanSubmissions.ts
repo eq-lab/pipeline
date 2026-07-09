@@ -64,6 +64,12 @@ export interface LocationInput {
   updated_at: number;
 }
 
+/** A single document reference (name + URI), per the backend `LoanDocumentDto`. */
+export interface LoanDocumentDto {
+  name: string;
+  uri: string;
+}
+
 /**
  * The submitted loan payload — every input required by the on-chain
  * `draw_loan`, persisted verbatim for trustee review (`SubmitLoanRequest`).
@@ -104,6 +110,13 @@ export interface SubmissionView {
   created_at: string;
   /** Last update timestamp (RFC 3339). */
   updated_at: string;
+  /**
+   * Documents referenced in the submitted metadata (Agreement, License,
+   * T&Cs, …), lifted server-side from `loan_data.documents`
+   * (`loan_book.rs:235`). Empty `[]` for legacy submissions that predate the
+   * field — render a graceful empty state, never fabricate entries.
+   */
+  documents: LoanDocumentDto[];
   /**
    * The full submitted payload, passed through verbatim by the backend as
    * `serde_json::Value` — treat as loosely-typed at the boundary even though

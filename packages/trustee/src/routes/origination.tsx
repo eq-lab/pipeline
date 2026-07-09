@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
 import {
   useOriginationTable,
@@ -190,6 +190,24 @@ function StatusCell({ status }: { status: OriginationTableRow["status"] }) {
 
 function OriginationTable() {
   const { state, errorMessage, rows } = useOriginationTable();
+  const navigate = useNavigate();
+
+  /**
+   * Row activation (click or Enter/Space) navigates to the details page
+   * (issue #816), passing the clicked row's raw `SubmissionView` via router
+   * state so the details page has the data immediately (no extra fetch on
+   * the happy path). The inert "Review" button inside the row is `disabled`
+   * (no click handler of its own), so it can never fire this navigation or
+   * double-trigger it — `stopPropagation` on it is defensive anyway, since a
+   * disabled button does not dispatch click events in the DOM.
+   */
+  function goToDetail(row: OriginationTableRow) {
+    void navigate({
+      to: "/origination/$loanId",
+      params: { loanId: String(row.id) },
+      state: { submission: row.submission } as never,
+    });
+  }
 
   if (state === "error") {
     return (
@@ -273,12 +291,21 @@ function OriginationTable() {
               key={row.id}
               data-testid="origination-row"
               role="row"
-              className="grid items-stretch"
+              tabIndex={0}
+              aria-label={`Open details for ${row.originator} — ${row.commodity}`}
+              className="grid cursor-pointer items-stretch hover:bg-[rgba(191,189,187,0.08)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#000080]"
               style={{
                 gridTemplateColumns: GRID_TEMPLATE_COLUMNS,
                 // Separator BETWEEN rows only — the first row's top edge is the
                 // box border itself, so it gets no extra top border.
                 borderTop: i === 0 ? undefined : `1px solid ${LINE_COLOR}`,
+              }}
+              onClick={() => goToDetail(row)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToDetail(row);
+                }
               }}
             >
               <div
