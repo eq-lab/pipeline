@@ -10,6 +10,14 @@
  * / CCR / mint-invariants / signature-verified banner — the Figma's
  * valuation card is incorrect and must not exist in this component at all
  * (issue #821 supersedes the closed #816, which had it).
+ *
+ * Also covers the status-conditional detail footer (issue #823): InReview
+ * renders the three inert action buttons (unchanged); Approved renders the
+ * green "Approved & minted · <date>" banner (and NO "funded from batch"
+ * text — that segment is deliberately omitted, no backing field); Rejected
+ * renders the red "Rejected · <date> — <reason>" banner; both banner cases
+ * assert the action buttons are ABSENT. An unknown status falls back to the
+ * InReview footer.
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -79,6 +87,9 @@ const READY_RESULT: OriginationDetailResult = {
     governingLaw: "England & Wales",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
+  statusKind: "in-review",
+  reviewedDate: "2 Jan",
+  rejectionReason: "—",
 };
 
 describe("Origination details route", () => {
@@ -155,20 +166,6 @@ describe("Origination details route", () => {
     expect(screen.getByText("No documents provided.")).toBeInTheDocument();
   });
 
-  it("renders three inert action buttons with disabled/aria-disabled", () => {
-    mockDetail(READY_RESULT);
-    renderRoute();
-    for (const testId of [
-      "origination-detail-request-changes",
-      "origination-detail-reject",
-      "origination-detail-approve",
-    ]) {
-      const button = screen.getByTestId(testId);
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute("aria-disabled", "true");
-    }
-  });
-
   it("renders a loading state", () => {
     mockDetail({ ...READY_RESULT, state: "loading" });
     renderRoute();
@@ -239,5 +236,94 @@ describe("Origination details route", () => {
     expect(
       screen.getAllByTestId("origination-detail-status-chip"),
     ).toHaveLength(1);
+  });
+
+  // ── Status-conditional detail footer (issue #823) ─────────────────────────
+
+  describe("status-conditional footer", () => {
+    it("InReview: renders the three inert action buttons; NO banner", () => {
+      mockDetail(READY_RESULT); // statusKind: "in-review"
+      renderRoute();
+      for (const testId of [
+        "origination-detail-request-changes",
+        "origination-detail-reject",
+        "origination-detail-approve",
+      ]) {
+        const button = screen.getByTestId(testId);
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute("aria-disabled", "true");
+      }
+      expect(
+        screen.queryByTestId("origination-detail-approved-banner"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-rejected-banner"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("Approved: renders the green 'Approved & minted · <date>' banner; NO action buttons; NO fabricated batch text", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      renderRoute();
+      const banner = screen.getByTestId("origination-detail-approved-banner");
+      expect(banner).toHaveTextContent("Approved & minted · 2 Jan");
+      expect(screen.queryByText(/funded from batch/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/#B-102/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-request-changes"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-reject"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-approve"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("Rejected: renders the red 'Rejected · <date> — <reason>' banner; NO action buttons", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "rejected", label: "Rejected" },
+        statusKind: "rejected",
+        reviewedDate: "5 May",
+        rejectionReason: "Missing export permit",
+      });
+      renderRoute();
+      const banner = screen.getByTestId("origination-detail-rejected-banner");
+      expect(banner).toHaveTextContent(
+        "Rejected · 5 May — Missing export permit",
+      );
+      expect(
+        screen.queryByTestId("origination-detail-request-changes"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-reject"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-approve"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("unknown status: falls back to the InReview action-buttons footer", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "unknown", label: "—" },
+        statusKind: "unknown",
+      });
+      renderRoute();
+      expect(
+        screen.getByTestId("origination-detail-request-changes"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-approved-banner"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-rejected-banner"),
+      ).not.toBeInTheDocument();
+    });
   });
 });

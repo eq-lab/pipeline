@@ -42,6 +42,27 @@
  *     verified" banners are OMITTED entirely (no backend source — do not
  *     fabricate).
  *
+ * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
+ *
+ * The always-shown `ActionButtons` block is replaced by a footer that
+ * branches on the submission's status:
+ *   - InReview  → unchanged `ActionButtons` (note + three inert buttons).
+ *   - Approved  → a green banner: "Approved & minted · `<reviewedDate>`".
+ *     The Figma's semibold navy "funded from batch #B-102 →" segment is
+ *     OMITTED — no `batch` field exists on `SubmissionView`/`loan_data`;
+ *     never fabricate it (resolved via the issue's Open Questions).
+ *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
+ *   - unknown   → falls back to the InReview `ActionButtons` footer, so the
+ *     page is never actionless/blank (resolved via Open Questions).
+ *
+ * `reviewedDate` is `formatSubmittedDate(submission.updated_at)` — NOT
+ * `formatMaturityDate` (which takes Unix seconds and adds the year;
+ * `updated_at` is RFC 3339). This mirrors the #813 table's Approved pill,
+ * which already formats its date the same way. `rejectionReason` is
+ * `safeString(submission.reason)` ("—" if absent). Both are computed here
+ * so the view stays a pure render (`docs/FRONTEND.md` rule 2) — see
+ * `origination.$id.tsx`'s `ApprovedBanner`/`RejectedBanner`.
+ *
  * Out of scope (do NOT reintroduce): `useCollateralValuation`, the
  * `CollateralValuationResponse` shape, `ValuationDisplay`/`ValuationInputRow`/
  * `WaterfallRow`, `mapValuation`, `modeLabel`, `usdOrDash`, `initial_ccr` /
@@ -53,7 +74,7 @@ import { useMemo } from "react";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
-import { formatMaturityDate } from "@/utils/formatDate";
+import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -133,6 +154,12 @@ export interface OriginationDetailResult {
   statusChip: StatusChip;
   loanTerms: LoanTermsDisplay;
   dealDetails: DealDetailsDisplay;
+  /** Drives the status-conditional footer (issue #823) — mirrors `statusChip.kind`. */
+  statusKind: StatusChip["kind"];
+  /** `formatSubmittedDate(submission.updated_at)`, e.g. "2 Jan". "—" if absent. */
+  reviewedDate: string;
+  /** `safeString(submission.reason)` — "—" when not Rejected / no reason given. */
+  rejectionReason: string;
 }
 
 // ── Status chip ───────────────────────────────────────────────────────────────
@@ -252,16 +279,24 @@ export function useOriginationDetail(
           governingLaw: "—",
           documents: [],
         },
+        statusKind: "unknown",
+        reviewedDate: "—",
+        rejectionReason: "—",
       };
     }
+
+    const statusChip = resolveStatusChip(submission);
 
     return {
       state: "ready",
       heading: mapHeading(submission),
       breadcrumb: mapHeading(submission),
-      statusChip: resolveStatusChip(submission),
+      statusChip,
       loanTerms: mapLoanTerms(submission),
       dealDetails: mapDealDetails(submission),
+      statusKind: statusChip.kind,
+      reviewedDate: formatSubmittedDate(submission.updated_at),
+      rejectionReason: safeString(submission.reason),
     };
   }, [submission, submissionState]);
 }

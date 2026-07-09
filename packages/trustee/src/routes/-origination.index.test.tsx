@@ -11,6 +11,11 @@
  * Mounts a minimal in-test TanStack router (mirroring
  * `-TrusteeSidebar.test.tsx`) so the in-review row's `Link` resolves without
  * the full app router tree.
+ *
+ * Issue #823 adds whole-row-click navigation for ALL statuses (Approved/
+ * Rejected/InReview), keyboard (Enter) navigation, and asserts the InReview
+ * row's Review `Link` doesn't double-navigate when clicked (its `onClick`
+ * stops propagation to the row handler — both target the same URL).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -310,5 +315,123 @@ describe("Origination route", () => {
     expect(screen.getByTestId("origination-status-unknown")).toHaveTextContent(
       "—",
     );
+  });
+
+  // ── Row-click navigation (issue #823) ─────────────────────────────────────
+
+  describe("row-click navigation", () => {
+    it("clicking an Approved row navigates to /origination/2 with the row's SubmissionView as state", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [APPROVED_ROW],
+      });
+      const onDetailLocation = vi.fn();
+      renderRoute(onDetailLocation);
+
+      fireEvent.click(await screen.findByTestId("origination-row"));
+
+      const marker = await screen.findByTestId("detail-route-marker");
+      expect(marker).toBeInTheDocument();
+      expect(onDetailLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ submission: APPROVED_ROW.submission }),
+        "/origination/2",
+      );
+    });
+
+    it("clicking a Rejected row navigates to /origination/3 with the row's SubmissionView as state", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [REJECTED_ROW],
+      });
+      const onDetailLocation = vi.fn();
+      renderRoute(onDetailLocation);
+
+      fireEvent.click(await screen.findByTestId("origination-row"));
+
+      const marker = await screen.findByTestId("detail-route-marker");
+      expect(marker).toBeInTheDocument();
+      expect(onDetailLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ submission: REJECTED_ROW.submission }),
+        "/origination/3",
+      );
+    });
+
+    it("clicking an InReview row (not the Review link itself) navigates to /origination/1", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [IN_REVIEW_ROW],
+      });
+      const onDetailLocation = vi.fn();
+      renderRoute(onDetailLocation);
+
+      fireEvent.click(await screen.findByTestId("origination-row"));
+
+      const marker = await screen.findByTestId("detail-route-marker");
+      expect(marker).toBeInTheDocument();
+      expect(onDetailLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ submission: SUBMISSION }),
+        "/origination/1",
+      );
+    });
+
+    it("pressing Enter on a focused row navigates to the detail page (keyboard path)", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [APPROVED_ROW],
+      });
+      const onDetailLocation = vi.fn();
+      renderRoute(onDetailLocation);
+
+      const row = await screen.findByTestId("origination-row");
+      row.focus();
+      fireEvent.keyDown(row, { key: "Enter" });
+
+      const marker = await screen.findByTestId("detail-route-marker");
+      expect(marker).toBeInTheDocument();
+      expect(onDetailLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ submission: APPROVED_ROW.submission }),
+        "/origination/2",
+      );
+    });
+
+    it("clicking the Review link navigates exactly once (no double-navigation from the row handler)", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [IN_REVIEW_ROW],
+      });
+      const onDetailLocation = vi.fn();
+      renderRoute(onDetailLocation);
+
+      fireEvent.click(await screen.findByTestId("origination-status-review"));
+
+      await screen.findByTestId("detail-route-marker");
+      // The child route mounts once per navigation; a double-fire would
+      // render the marker/observer twice via re-navigation, but a single
+      // navigation call is the direct signal a duplicate history entry did
+      // NOT occur (stopPropagation on the Review link prevents the row's
+      // own onClick from also firing).
+      expect(onDetailLocation).toHaveBeenCalledTimes(1);
+    });
+
+    it("each row is focusable (tabIndex 0) and has an accessible name", async () => {
+      mockTable({
+        state: "ready",
+        errorMessage: null,
+        rows: [IN_REVIEW_ROW, APPROVED_ROW, REJECTED_ROW],
+      });
+      renderRoute();
+
+      const rows = await screen.findAllByTestId("origination-row");
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row).toHaveAttribute("tabIndex", "0");
+        expect(row.getAttribute("aria-label")).toMatch(/^Open .+ submission$/);
+      }
+    });
   });
 });
