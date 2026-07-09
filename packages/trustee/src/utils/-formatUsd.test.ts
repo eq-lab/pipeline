@@ -2,10 +2,11 @@
  * Tests for `src/utils/formatUsd.ts`.
  *
  * Mirrors the LP `formatCompactUsd.test.ts` cases for the compact formatter,
- * plus the whole-dollar formatter used for the Capital Allocation total.
+ * plus the whole-dollar formatter used for the Capital Allocation total, plus
+ * the bps-rate formatter used by the Origination table (issue #813).
  */
 import { describe, it, expect } from "vitest";
-import { formatCompactUsd, formatFullUsd } from "./formatUsd";
+import { formatBpsRate, formatCompactUsd, formatFullUsd } from "./formatUsd";
 
 describe("formatCompactUsd", () => {
   it("formats whole millions without a decimal (Figma: $96M)", () => {
@@ -76,5 +77,29 @@ describe("formatFullUsd", () => {
 
   it("returns em-dash for non-numeric input", () => {
     expect(formatFullUsd("not-a-number")).toBe("—");
+  });
+});
+
+describe("formatBpsRate", () => {
+  it("formats bps to a one-decimal percentage (Figma: 14.0%)", () => {
+    expect(formatBpsRate(1400)).toBe("14.0%");
+  });
+
+  it("formats another bps value (Figma: 13.0%)", () => {
+    expect(formatBpsRate(1300)).toBe("13.0%");
+  });
+
+  it("formats zero", () => {
+    expect(formatBpsRate(0)).toBe("0.0%");
+  });
+
+  it("returns em-dash for null/undefined", () => {
+    expect(formatBpsRate(null)).toBe("—");
+    expect(formatBpsRate(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for non-finite input", () => {
+    expect(formatBpsRate(NaN)).toBe("—");
+    expect(formatBpsRate(Infinity)).toBe("—");
   });
 });
