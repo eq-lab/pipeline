@@ -346,4 +346,205 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
       expect(row.percentDisplay).toBeNull();
     });
   });
+
+  it('renders "< 1%" for a strictly-positive sub-1%-share bucket (PR #811 review follow-up)', () => {
+    // tbills = 500,000 / 100,500,000 ≈ 0.4975% — must NOT round to "0%" or "1%".
+    mockCapitalAllocation({
+      data: {
+        total: "100500000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: null,
+          deployed: "100000000.000000",
+          tbills: "500000.000000",
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    expect(percentOf(result.current.legend, "tbills")).toBe("< 1%");
+    // 100,000,000 / 100,500,000 ≈ 99.5% → rounds to 100% (independent
+    // per-bucket rounding, deliberately not normalized to sum to 100).
+    expect(percentOf(result.current.legend, "deployed")).toBe("100%");
+  });
+
+  it('renders "< 1%" exactly at a share just under 1%, and "1%" once the share reaches 1%', () => {
+    // in_transit = 999,999 / 100,000,000 ≈ 0.999999% → "< 1%".
+    mockCapitalAllocation({
+      data: {
+        total: "100000000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: "999999.000000",
+          trust_account: null,
+          deployed: null,
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result: justUnder } = renderHook(() => useCapitalAllocationCard());
+    expect(percentOf(justUnder.current.legend, "in_transit")).toBe("< 1%");
+
+    // trust_account = 1,000,000 / 100,000,000 = exactly 1% → "1%", not "< 1%".
+    mockCapitalAllocation({
+      data: {
+        total: "100000000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: "1000000.000000",
+          deployed: null,
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result: atOnePercent } = renderHook(() =>
+      useCapitalAllocationCard(),
+    );
+    expect(percentOf(atOnePercent.current.legend, "trust_account")).toBe("1%");
+  });
+});
+
+describe("useCapitalAllocationCard — proportional allocation bar (barFraction, PR #811 review follow-up)", () => {
+  function barFractionOf(
+    legend: ReturnType<typeof useCapitalAllocationCard>["legend"],
+    key: string,
+  ) {
+    return legend.find((row) => row.key === key)?.barFraction;
+  }
+
+  it("computes the exact (unrounded) fraction of the total for every populated bucket", () => {
+    mockCapitalAllocation({
+      data: {
+        total: "115190000.000000",
+        buckets: {
+          capital_wallet: "8400000.000000",
+          in_transit: "4950000.000000",
+          trust_account: "1200000.000000",
+          deployed: "96000000.000000",
+          tbills: "4640000.000000",
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    const total = 115_190_000;
+    expect(barFractionOf(result.current.legend, "capital_wallet")).toBeCloseTo(
+      8_400_000 / total,
+    );
+    expect(barFractionOf(result.current.legend, "deployed")).toBeCloseTo(
+      96_000_000 / total,
+    );
+    // The largest bucket (deployed) has the largest fraction.
+    const deployedFraction = barFractionOf(result.current.legend, "deployed");
+    const capitalWalletFraction = barFractionOf(
+      result.current.legend,
+      "capital_wallet",
+    );
+    expect(deployedFraction).toBeGreaterThan(capitalWalletFraction as number);
+  });
+
+  it("sets barFraction to null for a null/unknown bucket, even when other buckets are known", () => {
+    mockCapitalAllocation({
+      data: {
+        total: "96000000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: null,
+          deployed: "96000000.000000",
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    expect(barFractionOf(result.current.legend, "capital_wallet")).toBeNull();
+    expect(barFractionOf(result.current.legend, "in_transit")).toBeNull();
+    expect(barFractionOf(result.current.legend, "trust_account")).toBeNull();
+    expect(barFractionOf(result.current.legend, "tbills")).toBeNull();
+    expect(barFractionOf(result.current.legend, "deployed")).toBe(1);
+  });
+
+  it("sets barFraction to null for every bucket when the total is unknown", () => {
+    mockCapitalAllocation({
+      data: {
+        total: null,
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: null,
+          deployed: null,
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    result.current.legend.forEach((row) => {
+      expect(row.barFraction).toBeNull();
+    });
+  });
+
+  it("still computes a (thin) barFraction for a sub-1%-percentDisplay bucket — the bar segment is not suppressed", () => {
+    mockCapitalAllocation({
+      data: {
+        total: "100500000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: null,
+          deployed: "100000000.000000",
+          tbills: "500000.000000",
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    const tbillsRow = result.current.legend.find((row) => row.key === "tbills");
+    expect(tbillsRow?.percentDisplay).toBe("< 1%");
+    expect(tbillsRow?.barFraction).toBeCloseTo(500_000 / 100_500_000);
+    expect(tbillsRow?.barFraction).toBeGreaterThan(0);
+  });
+
+  it("computes the capital_wallet barFraction against the on-chain-augmented total (double-count guard scenario)", () => {
+    mockCapitalAllocation({
+      data: {
+        total: "96000000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          trust_account: null,
+          deployed: "96000000.000000",
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: "8400000.0000000" });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    // Total = 96M + 8.4M = 104.4M.
+    expect(barFractionOf(result.current.legend, "capital_wallet")).toBeCloseTo(
+      8_400_000 / 104_400_000,
+    );
+    expect(barFractionOf(result.current.legend, "deployed")).toBeCloseTo(
+      96_000_000 / 104_400_000,
+    );
+  });
 });

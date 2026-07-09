@@ -1,11 +1,13 @@
 /**
- * Tests for `CapitalAllocationCard` (issue #797, extended in #807 and #805).
+ * Tests for `CapitalAllocationCard` (issue #797, extended in #807 and #805,
+ * including a human review follow-up on PR #811).
  *
  * The `useCapitalAllocationCard` hook is mocked so these are pure render
  * tests with no network / QueryClient involved. The on-chain Capital-Wallet
- * fold-in sum logic and the percentage-pill computation (issue #805) are
- * covered by `-useCapitalAllocationCard.test.ts` — this file only asserts
- * the card renders whatever total/legend/percentDisplay the hook returns.
+ * fold-in sum logic, the percentage-pill computation, and the bar-fraction
+ * computation (issue #805) are covered by `-useCapitalAllocationCard.test.ts`
+ * — this file only asserts the card renders whatever
+ * total/legend/percentDisplay/barFraction the hook returns.
  *
  * `@pipeline/wallet-connect` is also mocked (even though this file never
  * calls it directly) because `./useCapitalAllocationCard` statically imports
@@ -37,6 +39,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         value: "—",
         color: "var(--color-pipeline-brand)",
         percentDisplay: null,
+        barFraction: null,
       },
       {
         key: "in_transit",
@@ -44,6 +47,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         value: "—",
         color: "#c9a200",
         percentDisplay: null,
+        barFraction: null,
       },
       {
         key: "trust_account",
@@ -51,6 +55,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         value: "—",
         color: "rgba(56, 55, 53, 0.35)",
         percentDisplay: null,
+        barFraction: null,
       },
       {
         key: "deployed",
@@ -58,6 +63,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         value: "—",
         color: "var(--color-pipeline-positive-primary)",
         percentDisplay: null,
+        barFraction: null,
       },
       {
         key: "tbills",
@@ -65,6 +71,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         value: "—",
         color: "#6666b3",
         percentDisplay: null,
+        barFraction: null,
       },
     ],
   };
@@ -72,6 +79,52 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
     ...base,
     ...overrides,
   });
+}
+
+/** Full-data legend fixture matching the Figma reference (7/4/1/83/4 %). */
+function fullDataLegend(): UseCapitalAllocationCardResult["legend"] {
+  return [
+    {
+      key: "capital_wallet",
+      label: "Capital Wallet",
+      value: "$8.4M",
+      color: "var(--color-pipeline-brand)",
+      percentDisplay: "7%",
+      barFraction: 8_400_000 / 115_190_000,
+    },
+    {
+      key: "in_transit",
+      label: "In transit",
+      value: "$4.95M",
+      color: "#c9a200",
+      percentDisplay: "4%",
+      barFraction: 4_950_000 / 115_190_000,
+    },
+    {
+      key: "trust_account",
+      label: "Trust account",
+      value: "$1.2M",
+      color: "rgba(56, 55, 53, 0.35)",
+      percentDisplay: "1%",
+      barFraction: 1_200_000 / 115_190_000,
+    },
+    {
+      key: "deployed",
+      label: "Deployed",
+      value: "$96M",
+      color: "var(--color-pipeline-positive-primary)",
+      percentDisplay: "83%",
+      barFraction: 96_000_000 / 115_190_000,
+    },
+    {
+      key: "tbills",
+      label: "T-Bills (USYC)",
+      value: "$4.64M",
+      color: "#6666b3",
+      percentDisplay: "4%",
+      barFraction: 4_640_000 / 115_190_000,
+    },
+  ];
 }
 
 afterEach(() => {
@@ -82,43 +135,7 @@ describe("CapitalAllocationCard", () => {
   it("renders the formatted total and all five legend values with full data", () => {
     mockHook({
       totalDisplay: "$115,190,000",
-      legend: [
-        {
-          key: "capital_wallet",
-          label: "Capital Wallet",
-          value: "$8.4M",
-          color: "var(--color-pipeline-brand)",
-          percentDisplay: "7%",
-        },
-        {
-          key: "in_transit",
-          label: "In transit",
-          value: "$4.95M",
-          color: "#c9a200",
-          percentDisplay: "4%",
-        },
-        {
-          key: "trust_account",
-          label: "Trust account",
-          value: "$1.2M",
-          color: "rgba(56, 55, 53, 0.35)",
-          percentDisplay: "1%",
-        },
-        {
-          key: "deployed",
-          label: "Deployed",
-          value: "$96M",
-          color: "var(--color-pipeline-positive-primary)",
-          percentDisplay: "83%",
-        },
-        {
-          key: "tbills",
-          label: "T-Bills (USYC)",
-          value: "$4.64M",
-          color: "#6666b3",
-          percentDisplay: "4%",
-        },
-      ],
+      legend: fullDataLegend(),
     });
 
     render(<CapitalAllocationCard />);
@@ -138,43 +155,7 @@ describe("CapitalAllocationCard", () => {
   it("renders the four provenance chips (#807, static mock)", () => {
     mockHook({
       totalDisplay: "$115,190,000",
-      legend: [
-        {
-          key: "capital_wallet",
-          label: "Capital Wallet",
-          value: "$8.4M",
-          color: "var(--color-pipeline-brand)",
-          percentDisplay: "7%",
-        },
-        {
-          key: "in_transit",
-          label: "In transit",
-          value: "$4.95M",
-          color: "#c9a200",
-          percentDisplay: "4%",
-        },
-        {
-          key: "trust_account",
-          label: "Trust account",
-          value: "$1.2M",
-          color: "rgba(56, 55, 53, 0.35)",
-          percentDisplay: "1%",
-        },
-        {
-          key: "deployed",
-          label: "Deployed",
-          value: "$96M",
-          color: "var(--color-pipeline-positive-primary)",
-          percentDisplay: "83%",
-        },
-        {
-          key: "tbills",
-          label: "T-Bills (USYC)",
-          value: "$4.64M",
-          color: "#6666b3",
-          percentDisplay: "4%",
-        },
-      ],
+      legend: fullDataLegend(),
     });
 
     render(<CapitalAllocationCard />);
@@ -206,6 +187,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "var(--color-pipeline-brand)",
           percentDisplay: null,
+          barFraction: null,
         },
         {
           key: "in_transit",
@@ -213,6 +195,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "#c9a200",
           percentDisplay: null,
+          barFraction: null,
         },
         {
           key: "trust_account",
@@ -220,6 +203,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "rgba(56, 55, 53, 0.35)",
           percentDisplay: null,
+          barFraction: null,
         },
         {
           key: "deployed",
@@ -227,6 +211,7 @@ describe("CapitalAllocationCard", () => {
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
           percentDisplay: "100%",
+          barFraction: 1,
         },
         {
           key: "tbills",
@@ -234,6 +219,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "#6666b3",
           percentDisplay: null,
+          barFraction: null,
         },
       ],
     });
@@ -292,6 +278,7 @@ describe("CapitalAllocationCard", () => {
           value: "$8.4M",
           color: "var(--color-pipeline-brand)",
           percentDisplay: "8%",
+          barFraction: 8_400_000 / 104_400_000,
         },
         {
           key: "in_transit",
@@ -299,6 +286,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "#c9a200",
           percentDisplay: null,
+          barFraction: null,
         },
         {
           key: "trust_account",
@@ -306,6 +294,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "rgba(56, 55, 53, 0.35)",
           percentDisplay: null,
+          barFraction: null,
         },
         {
           key: "deployed",
@@ -313,6 +302,7 @@ describe("CapitalAllocationCard", () => {
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
           percentDisplay: "92%",
+          barFraction: 96_000_000 / 104_400_000,
         },
         {
           key: "tbills",
@@ -320,6 +310,7 @@ describe("CapitalAllocationCard", () => {
           value: "—",
           color: "#6666b3",
           percentDisplay: null,
+          barFraction: null,
         },
       ],
     });
@@ -335,43 +326,7 @@ describe("CapitalAllocationCard", () => {
     it("renders a percentage pill per bucket with the right value", () => {
       mockHook({
         totalDisplay: "$115,190,000",
-        legend: [
-          {
-            key: "capital_wallet",
-            label: "Capital Wallet",
-            value: "$8.4M",
-            color: "var(--color-pipeline-brand)",
-            percentDisplay: "7%",
-          },
-          {
-            key: "in_transit",
-            label: "In transit",
-            value: "$4.95M",
-            color: "#c9a200",
-            percentDisplay: "4%",
-          },
-          {
-            key: "trust_account",
-            label: "Trust account",
-            value: "$1.2M",
-            color: "rgba(56, 55, 53, 0.35)",
-            percentDisplay: "1%",
-          },
-          {
-            key: "deployed",
-            label: "Deployed",
-            value: "$96M",
-            color: "var(--color-pipeline-positive-primary)",
-            percentDisplay: "83%",
-          },
-          {
-            key: "tbills",
-            label: "T-Bills (USYC)",
-            value: "$4.64M",
-            color: "#6666b3",
-            percentDisplay: "4%",
-          },
-        ],
+        legend: fullDataLegend(),
       });
 
       render(<CapitalAllocationCard />);
@@ -405,6 +360,7 @@ describe("CapitalAllocationCard", () => {
             value: "—",
             color: "var(--color-pipeline-brand)",
             percentDisplay: null,
+            barFraction: null,
           },
           {
             key: "in_transit",
@@ -412,6 +368,7 @@ describe("CapitalAllocationCard", () => {
             value: "—",
             color: "#c9a200",
             percentDisplay: null,
+            barFraction: null,
           },
           {
             key: "trust_account",
@@ -419,6 +376,7 @@ describe("CapitalAllocationCard", () => {
             value: "—",
             color: "rgba(56, 55, 53, 0.35)",
             percentDisplay: null,
+            barFraction: null,
           },
           {
             key: "deployed",
@@ -426,6 +384,7 @@ describe("CapitalAllocationCard", () => {
             value: "$96M",
             color: "var(--color-pipeline-positive-primary)",
             percentDisplay: "100%",
+            barFraction: 1,
           },
           {
             key: "tbills",
@@ -433,6 +392,7 @@ describe("CapitalAllocationCard", () => {
             value: "—",
             color: "#6666b3",
             percentDisplay: null,
+            barFraction: null,
           },
         ],
       });
@@ -456,6 +416,225 @@ describe("CapitalAllocationCard", () => {
       expect(
         screen.getByTestId("capital-allocation-percent-deployed"),
       ).toHaveTextContent("100%");
+    });
+
+    it('renders "< 1%" for a sub-1%-share bucket, and it still gets a pill (PR #811 review follow-up)', () => {
+      mockHook({
+        totalDisplay: "$100,500,000",
+        legend: [
+          {
+            key: "capital_wallet",
+            label: "Capital Wallet",
+            value: "—",
+            color: "var(--color-pipeline-brand)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "in_transit",
+            label: "In transit",
+            value: "—",
+            color: "#c9a200",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "trust_account",
+            label: "Trust account",
+            value: "—",
+            color: "rgba(56, 55, 53, 0.35)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "deployed",
+            label: "Deployed",
+            value: "$100M",
+            color: "var(--color-pipeline-positive-primary)",
+            percentDisplay: "100%",
+            barFraction: 100_000_000 / 100_500_000,
+          },
+          {
+            key: "tbills",
+            label: "T-Bills (USYC)",
+            value: "$500K",
+            color: "#6666b3",
+            percentDisplay: "< 1%",
+            barFraction: 500_000 / 100_500_000,
+          },
+        ],
+      });
+
+      render(<CapitalAllocationCard />);
+
+      expect(
+        screen.getByTestId("capital-allocation-percent-tbills"),
+      ).toHaveTextContent("< 1%");
+    });
+  });
+
+  describe("proportional allocation bar (PR #811 review follow-up)", () => {
+    it("sizes each bar segment's width to its exact (unrounded) barFraction", () => {
+      mockHook({
+        totalDisplay: "$115,190,000",
+        legend: fullDataLegend(),
+      });
+
+      render(<CapitalAllocationCard />);
+
+      const deployedSegment = screen.getByTestId(
+        "capital-allocation-bar-segment-deployed",
+      );
+      const capitalWalletSegment = screen.getByTestId(
+        "capital-allocation-bar-segment-capital_wallet",
+      );
+
+      // deployed (83%) is by far the widest segment — the largest bucket
+      // gets the widest segment.
+      const deployedWidth = parseFloat(deployedSegment.style.width);
+      const capitalWalletWidth = parseFloat(capitalWalletSegment.style.width);
+      expect(deployedWidth).toBeGreaterThan(capitalWalletWidth);
+      expect(deployedWidth).toBeCloseTo((96_000_000 / 115_190_000) * 100, 5);
+      expect(capitalWalletWidth).toBeCloseTo(
+        (8_400_000 / 115_190_000) * 100,
+        5,
+      );
+
+      // All five buckets are known, so all five segments render.
+      expect(
+        screen.getByTestId("capital-allocation-bar-segment-in_transit"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("capital-allocation-bar-segment-trust_account"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("capital-allocation-bar-segment-tbills"),
+      ).toBeInTheDocument();
+    });
+
+    it("renders no bar segment for a null/unknown bucket", () => {
+      mockHook({
+        totalDisplay: "$96,000,000",
+        legend: [
+          {
+            key: "capital_wallet",
+            label: "Capital Wallet",
+            value: "—",
+            color: "var(--color-pipeline-brand)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "in_transit",
+            label: "In transit",
+            value: "—",
+            color: "#c9a200",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "trust_account",
+            label: "Trust account",
+            value: "—",
+            color: "rgba(56, 55, 53, 0.35)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "deployed",
+            label: "Deployed",
+            value: "$96M",
+            color: "var(--color-pipeline-positive-primary)",
+            percentDisplay: "100%",
+            barFraction: 1,
+          },
+          {
+            key: "tbills",
+            label: "T-Bills (USYC)",
+            value: "—",
+            color: "#6666b3",
+            percentDisplay: null,
+            barFraction: null,
+          },
+        ],
+      });
+
+      render(<CapitalAllocationCard />);
+
+      expect(
+        screen.queryByTestId("capital-allocation-bar-segment-capital_wallet"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-bar-segment-in_transit"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-bar-segment-trust_account"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-bar-segment-tbills"),
+      ).not.toBeInTheDocument();
+
+      const deployedSegment = screen.getByTestId(
+        "capital-allocation-bar-segment-deployed",
+      );
+      expect(parseFloat(deployedSegment.style.width)).toBeCloseTo(100, 5);
+    });
+
+    it("still renders a (thin) bar segment for a sub-1%-percentDisplay bucket", () => {
+      mockHook({
+        totalDisplay: "$100,500,000",
+        legend: [
+          {
+            key: "capital_wallet",
+            label: "Capital Wallet",
+            value: "—",
+            color: "var(--color-pipeline-brand)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "in_transit",
+            label: "In transit",
+            value: "—",
+            color: "#c9a200",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "trust_account",
+            label: "Trust account",
+            value: "—",
+            color: "rgba(56, 55, 53, 0.35)",
+            percentDisplay: null,
+            barFraction: null,
+          },
+          {
+            key: "deployed",
+            label: "Deployed",
+            value: "$100M",
+            color: "var(--color-pipeline-positive-primary)",
+            percentDisplay: "100%",
+            barFraction: 100_000_000 / 100_500_000,
+          },
+          {
+            key: "tbills",
+            label: "T-Bills (USYC)",
+            value: "$500K",
+            color: "#6666b3",
+            percentDisplay: "< 1%",
+            barFraction: 500_000 / 100_500_000,
+          },
+        ],
+      });
+
+      render(<CapitalAllocationCard />);
+
+      const tbillsSegment = screen.getByTestId(
+        "capital-allocation-bar-segment-tbills",
+      );
+      const width = parseFloat(tbillsSegment.style.width);
+      expect(width).toBeGreaterThan(0);
+      expect(width).toBeCloseTo((500_000 / 100_500_000) * 100, 5);
     });
   });
 });

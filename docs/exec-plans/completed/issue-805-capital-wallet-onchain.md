@@ -53,9 +53,8 @@ Narrowed per the two latest human comments on #805 (authoritative):
   `@pipeline/wallet-connect`** as a shared Stellar read helper, which is the only
   path consistent with the boundary. The extraction is small (one class + one
   thin function; the LP's `TokenClient` is ~120 lines and self-contained).
-- **`@tanstack/react-query` is forbidden outside `src/evm/**` inside
-  `@pipeline/wallet-connect`** (its own `eslint.config.js`). So the shared helper
-  in `src/stellar/**` must expose a **plain async read function** (not a
+- **`@tanstack/react-query` is forbidden outside `src/evm/**`inside`@pipeline/wallet-connect`** (its own `eslint.config.js`). So the shared helper
+in `src/stellar/**` must expose a **plain async read function\*\* (not a
   `useQuery` hook). The trustee wraps it in `useQuery` on its side, where
   react-query is allowed. This mirrors how the LP frontend layers
   `useStellarUsdcCustodyBalance` (react-query) over `TokenClient` (pure SDK).
@@ -73,7 +72,7 @@ Narrowed per the two latest human comments on #805 (authoritative):
   before formatting, and must convert to a comparable unit before summing with
   the backend `total`. Getting the scale wrong is an easy 10x/100x error.
 - **Total is now a client-side sum** — an explicit, documented exception to
-  [no frontend-computed metrics]. The rule forbids *deriving* metrics the backend
+  [no frontend-computed metrics]. The rule forbids _deriving_ metrics the backend
   should own; here the human explicitly requested an interim sum of two
   authoritative real sources (backend total + real on-chain balance). Document
   this inline and in the tech-debt tracker so it reads as deliberate, guarded,
@@ -106,7 +105,7 @@ implemented per the resolutions below.
 
 1. **wallet-connect config vs. explicit args for the Soroban RPC URL / USDC SAC
    id.** RESOLVED: explicit function arguments (`getSacBalance({ sorobanRpcUrl,
-   networkPassphrase, sacContractId, account })`) — `WalletConnectConfig` is
+networkPassphrase, sacContractId, account })`) — `WalletConnectConfig` is
    unchanged; the trustee passes `ENV.STELLAR_RPC_URL` / `ENV.STELLAR_USDC_ID` /
    `ENV.STELLAR_NETWORK_PASSPHRASE` in directly.
 2. **Display when the backend `total` is `null` but the on-chain Capital-Wallet
@@ -125,6 +124,7 @@ conflict on `CapitalAllocationCard.tsx`): each legend row also renders a percent
 to 100. This is an **explicitly requested reversal** of TD-39's "no client-computed percentages"
 deferral (documented inline in `useCapitalAllocationCard.ts` and folded into TD-41). Implemented
 as:
+
 - `AllocationLegendRow.percentDisplay: string | null` (new field) in
   `packages/trustee/src/components/useCapitalAllocationCard.ts`, computed via
   `computeTotalNum` (extracted from the total-display logic) + `computePercentDisplay`.
@@ -150,7 +150,7 @@ the plan's description. Noted on the issue as a deviation per the coder skill's 
    `packages/frontend/src/wallet/stellar/contracts/token.ts`:
    - A small `TokenClient`-style reader using
      `{ Account, Contract, TransactionBuilder, BASE_FEE, xdr, Address,
-     scValToNative, rpc as SorobanRpc }` from `@stellar/stellar-sdk`.
+scValToNative, rpc as SorobanRpc }` from `@stellar/stellar-sdk`.
    - `balance(account)`: builds `contract.call("balance", new Address(account).toScVal())`,
      runs `server.simulateTransaction(tx)` against the Soroban RPC using the
      `READ_SIMULATION_SOURCE` null account
@@ -158,7 +158,7 @@ the plan's description. Noted on the issue as a deviation per the coder skill's 
      `scValToNative(retval)` as a raw i128 `bigint` (7-decimal SAC scale).
    - Export a plain async function, e.g.
      `readSacBalance({ sorobanRpcUrl, networkPassphrase, usdcContractId, account })
-     : Promise<bigint>` (NO react-query — react-query is forbidden outside
+: Promise<bigint>` (NO react-query — react-query is forbidden outside
      `src/evm/**` here). Return the raw bigint; let the caller scale/guard, OR
      apply the sentinel guard here (recommend applying the sentinel guard here so
      every consumer inherits it — see step 2).
@@ -187,8 +187,8 @@ the plan's description. Noted on the issue as a deviation per the coder skill's 
    - `STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", "")` (empty = unconfigured → `—`)
    - `STELLAR_USDC_CUSTODY_ID: readString("VITE_STELLAR_USDC_CUSTODY_ID", "")`
      (empty = unconfigured → `—`)
-   Follow the existing empty-string-means-unconfigured pattern used by the LP's
-   `chain.ts` (`usdcId`/`usdcCustodyId`).
+     Follow the existing empty-string-means-unconfigured pattern used by the LP's
+     `chain.ts` (`usdcId`/`usdcCustodyId`).
 6. SKIPPED — resolved to "explicit args" (preferred); `WalletConnectConfig` and
    `main.tsx` are unchanged. The trustee hook passes the RPC url / passphrase /
    USDC id directly to `getSacBalance`.
@@ -200,9 +200,9 @@ the plan's description. Noted on the issue as a deviation per the coder skill's 
    - Short-circuits to `{ data: undefined }` when `ENV.STELLAR_USDC_ID` or
      `ENV.STELLAR_USDC_CUSTODY_ID` is empty (unconfigured → `—`).
    - Calls `readSacBalance({ sorobanRpcUrl: ENV.STELLAR_RPC_URL,
-     networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
-     usdcContractId: ENV.STELLAR_USDC_ID,
-     account: ENV.STELLAR_USDC_CUSTODY_ID })` inside `queryFn`.
+networkPassphrase: ENV.STELLAR_NETWORK_PASSPHRASE,
+usdcContractId: ENV.STELLAR_USDC_ID,
+account: ENV.STELLAR_USDC_CUSTODY_ID })` inside `queryFn`.
    - Query key includes the USDC id + custody id + RPC url (mirrors LP).
      `refetchInterval: 30_000`, `staleTime: 30_000`, `retry: false` — matching
      `useCapitalAllocation` and the LP hooks.
@@ -320,3 +320,31 @@ the plan's description. Noted on the issue as a deviation per the coder skill's 
   an interim source until the backend serves it.
 - The `@pipeline/wallet-connect` barrel docblock (`src/index.ts`) — note the new
   Stellar SAC read helper in the boundary description.
+
+## Post-archive addendum: PR #811 human review follow-up (correctness review passed, two non-blocking fixes)
+
+Applied after this plan was archived to `completed/` (the correctness review on PR #811 passed
+with no blockers; these are two additional human-requested polish fixes, folded into the same
+PR rather than a new issue):
+
+1. **Proportional allocation bar.** The bar (previously an inert, equal-width placeholder per
+   #797/TD-39) now sizes each segment's width to that bucket's EXACT (unrounded) share of the
+   displayed total — `AllocationLegendRow.barFraction: number | null`, computed by
+   `computeBarFraction` in `useCapitalAllocationCard.ts` and rendered via inline `width` style in
+   `CapitalAllocationCard.tsx`. A `null` bucket/unknown total renders no segment (filtered before
+   mapping) rather than a fabricated share. Uses the raw fraction (not the rounded percent text)
+   so segments sum to ~100% instead of drifting from independent per-row rounding.
+2. **`< 1%` display rule.** `computePercentDisplay` now renders `"< 1%"` for a strictly-positive
+   share under 1% (previously would round to `"0%"` or `"1%"`); `pct <= 0` or non-finite still →
+   `null` (no pill); `pct >= 1` still rounds to the nearest whole percent. A sub-1% bucket still
+   gets its (thin) proportional bar segment via `barFraction` — the two computations are
+   deliberately independent (rounded display text vs. raw fraction).
+
+Explicitly out of scope for this follow-up (per the review-feedback instructions): PR #812's
+stale-zero-override / >100%-when-total-null follow-up — a separately tracked issue, not
+regressed by either fix above.
+
+TD-41 (`docs/exec-plans/tech-debt-tracker.md`) extended to cover both fixes as the same category
+of guarded, documented, client-computed proportion over real sources. Tests extended in
+`-useCapitalAllocationCard.test.ts` (barFraction computation, `< 1%` boundary at exactly 1%) and
+`-CapitalAllocationCard.test.tsx` (segment width assertions, `< 1%` pill rendering).

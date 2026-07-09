@@ -43,10 +43,28 @@
  * (TD-39) — the requester decided the on-chain-augmented total is now
  * authoritative enough to divide by. Documented alongside the total-sum
  * exception in `docs/exec-plans/tech-debt-tracker.md` TD-41.
- *   - A `null`/absent bucket renders NO percentage (`percentDisplay: null` →
- *     the view shows no pill) — never a fabricated `0%`.
+ *   - A `null`/absent bucket, an unknown total, or a `<= 0` share renders NO
+ *     percentage (`percentDisplay: null` → the view shows no pill) — never a
+ *     fabricated `0%`.
+ *   - A strictly-positive share under 1% renders `"< 1%"` (human review
+ *     follow-up on PR #811) — NOT rounded down to `"0%"` and NOT rounded up to
+ *     `"1%"`. `pct >= 1` rounds to the nearest whole percent as before.
  *   - Percentages are NOT normalized to sum to 100; independent per-bucket
  *     rounding may total 99% or 101%, matching the Figma reference.
+ *
+ * ## Proportional allocation bar (human review follow-up on #805, PR #811)
+ *
+ * Each legend row also carries `barFraction` — the EXACT (unrounded) share of
+ * the displayed total, in `[0, 1]`. `CapitalAllocationCard.tsx` uses this to
+ * size each bar segment's width, so the bar now visually matches the legend
+ * percentages (superseding #797/TD-39's inert equal-width placeholder bar for
+ * buckets with a known value). A `null` `barFraction` (bucket/total unknown)
+ * renders NO segment for that bucket — same "nothing known" conditions as
+ * `percentDisplay`, but using the raw fraction (not the rounded/`"< 1%"`
+ * display text) so segments sum to ~100% rather than drifting from rounding.
+ * Folded into TD-41 alongside the total-sum and percentage-pill exceptions —
+ * all three are the same category of guarded, documented, explicitly
+ * requested client-side arithmetic over real sources.
  */
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
@@ -61,12 +79,21 @@ export interface AllocationLegendRow {
   /** CSS color value for the legend dot / bar segment (see component docs for token mapping). */
   color: string;
   /**
-   * `"N%"` of the displayed total (rounded to the nearest whole percent), or
-   * `null` when the bucket is null/absent or the total is unknown — the view
-   * renders no pill in that case (never a fabricated `0%`). See the
+   * `"N%"` of the displayed total (rounded to the nearest whole percent),
+   * `"< 1%"` for a strictly-positive sub-1%-share bucket, or `null` when the
+   * bucket is null/absent, the total is unknown, or the share is `<= 0` — the
+   * view renders no pill in that case (never a fabricated `0%`). See the
    * "Per-bucket percentage pills" docs above.
    */
   percentDisplay: string | null;
+  /**
+   * EXACT (unrounded) share of the displayed total in `[0, 1]`, for the
+   * allocation bar's proportional segment width — `null` under the same
+   * "nothing known" conditions as `percentDisplay` (renders no segment).
+   * Distinct from `percentDisplay`: the bar needs the raw fraction (segments
+   * sum to ~100%), not the rounded/`"< 1%"` display text.
+   */
+  barFraction: number | null;
 }
 
 export interface UseCapitalAllocationCardResult {
@@ -131,9 +158,16 @@ function formatTotalDisplay(totalNum: number | undefined): string {
 }
 
 /**
- * Computes a legend row's `"N%"` of the displayed total, rounded to the
- * nearest whole percent — `null` when the bucket value is null/absent or the
- * total is unknown/zero (never a fabricated `0%`). Figma node `4116:8961`.
+ * Computes a legend row's percentage of the displayed total — `null` when the
+ * bucket value is null/absent, the total is unknown/zero, or the computed
+ * percentage is non-finite or `<= 0` (never a fabricated `0%`). Figma node
+ * `4116:8961`.
+ *
+ * Human review feedback on #805 (PR #811, addressed as a follow-up fix): a
+ * bucket whose share is strictly between 0 and 1 percent must render `"< 1%"`
+ * — NOT rounded down to `"0%"` (would look like nothing) and NOT rounded up
+ * to `"1%"` (would overstate a tiny bucket). `pct >= 1` still rounds to the
+ * nearest whole percent as before.
  */
 function computePercentDisplay(
   bucketValue: string | null | undefined,
@@ -144,7 +178,35 @@ function computePercentDisplay(
   }
   const bucketNum = parseFloat(bucketValue);
   if (!Number.isFinite(bucketNum)) return null;
-  return `${Math.round((bucketNum / totalNum) * 100)}%`;
+
+  const pct = (bucketNum / totalNum) * 100;
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  if (pct < 1) return "< 1%";
+  return `${Math.round(pct)}%`;
+}
+
+/**
+ * Computes a legend row's EXACT (unrounded) share of the displayed total, as
+ * a fraction in `[0, 1]` — used for the bar segment's proportional width
+ * (Figma allocation bar, review follow-up on #805/PR #811). Distinct from
+ * `computePercentDisplay`'s rounded/`"< 1%"` text: the bar must sum to ~100%
+ * across segments, so it uses the raw fraction, not the rounded display
+ * string. `null` under the same "nothing known" conditions as the percent
+ * pill — the bar renders no segment for that bucket.
+ */
+function computeBarFraction(
+  bucketValue: string | null | undefined,
+  totalNum: number | undefined,
+): number | null {
+  if (bucketValue == null || totalNum === undefined || totalNum === 0) {
+    return null;
+  }
+  const bucketNum = parseFloat(bucketValue);
+  if (!Number.isFinite(bucketNum)) return null;
+
+  const fraction = bucketNum / totalNum;
+  if (!Number.isFinite(fraction) || fraction <= 0) return null;
+  return fraction;
 }
 
 export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
@@ -172,6 +234,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
       // Figma #000080 — exact match for --color-pipeline-brand.
       color: "var(--color-pipeline-brand)",
       percentDisplay: computePercentDisplay(effectiveCapitalWallet, totalNum),
+      barFraction: computeBarFraction(effectiveCapitalWallet, totalNum),
     },
     {
       key: "in_transit",
@@ -180,6 +243,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
       // Figma #c9a200 — no matching token; scoped one-off (SignInCard/#786 precedent).
       color: "#c9a200",
       percentDisplay: computePercentDisplay(data?.buckets.in_transit, totalNum),
+      barFraction: computeBarFraction(data?.buckets.in_transit, totalNum),
     },
     {
       key: "trust_account",
@@ -192,6 +256,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
         data?.buckets.trust_account,
         totalNum,
       ),
+      barFraction: computeBarFraction(data?.buckets.trust_account, totalNum),
     },
     {
       key: "deployed",
@@ -200,6 +265,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
       // Figma #208000 — exact match for --color-pipeline-positive-primary.
       color: "var(--color-pipeline-positive-primary)",
       percentDisplay: computePercentDisplay(data?.buckets.deployed, totalNum),
+      barFraction: computeBarFraction(data?.buckets.deployed, totalNum),
     },
     {
       key: "tbills",
@@ -208,6 +274,7 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
       // Figma #6666b3 — no matching token; scoped one-off (SignInCard/#786 precedent).
       color: "#6666b3",
       percentDisplay: computePercentDisplay(data?.buckets.tbills, totalNum),
+      barFraction: computeBarFraction(data?.buckets.tbills, totalNum),
     },
   ];
 
