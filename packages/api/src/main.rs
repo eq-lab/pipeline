@@ -14,6 +14,7 @@ use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -49,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let submitted_loan_repo = SubmittedLoanRepo::new(pool.clone());
     let loan_parameters_repo = LoanParametersRepo::new(pool.clone());
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
+    let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
     // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
@@ -101,6 +103,7 @@ async fn main() -> anyhow::Result<()> {
         submitted_loan_repo,
         loan_parameters_repo,
         loan_asset_price_repo,
+        collateral_valuation_repo,
         jwt_keys,
     });
 
@@ -117,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::withdrawal_queue::WithdrawalQueueDoc::openapi());
     api_docs.merge(pipeline_api::routes::auth::AuthDoc::openapi());
     api_docs.merge(pipeline_api::routes::dashboard::DashboardDoc::openapi());
+    api_docs.merge(pipeline_api::routes::collateral_valuation::CollateralValuationDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -132,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::capital_allocation::router())
         .nest("/v1", pipeline_api::routes::withdrawal_queue::router())
         .nest("/v1", pipeline_api::routes::dashboard::router())
+        .nest("/v1", pipeline_api::routes::collateral_valuation::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

@@ -19,6 +19,7 @@ use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 
 use crate::auth::JwtKeys;
 use crate::config::StellarVoucherChainConfig;
@@ -53,6 +54,8 @@ pub struct AppState {
     pub loan_parameters_repo: LoanParametersRepo,
     /// Collected per-asset USD prices (`loan_asset_prices`), for collateral valuation.
     pub loan_asset_price_repo: LoanAssetPriceRepo,
+    /// Per-loan collateral valuation record (anchor + assay/offtake/quantity).
+    pub collateral_valuation_repo: CollateralValuationRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
 }
