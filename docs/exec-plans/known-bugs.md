@@ -17,6 +17,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+
+### BUG-8: `-deposit.test.tsx` Stellar voucher mocks nest `signatureBytes` under `data` instead of top-level
+- **Date:** 2026-07-09
+- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` — the `@/api` mock factory for `useStellarDepositVoucher` / `useStellarWithdrawalVoucher` (around line 201-219).
+- **Symptom:** The mock returns `{ data: { signatureBytes: ... }, status, error, refetch }`, but the real hooks (`useStellarDepositVoucher.ts` / `useStellarWithdrawalVoucher.ts`) expose `signatureBytes` as a top-level field on the hook result, not nested inside `data`. The `useDepositFlow.ts` Stellar claim `onAction` handler reads `(stellarVoucher as { signatureBytes? }).signatureBytes` (top-level), so with this mock shape `sig` is always `undefined` when status is "ready". No test currently clicks the Stellar Claim button (`renderDepositStellar()` tests only assert enabled/disabled state, never `user.click`), so this has been latent and undetected.
+- **Root cause:** Mock was written against a guessed/incorrect shape and never exercised end-to-end via a click assertion.
+- **Workaround:** None applied — found while implementing #800 (voucher `deadline` threading). Fix by moving `signatureBytes` to the mock's top level (matching `UseStellarDepositVoucherResult`/`UseStellarWithdrawalVoucherResult`) and adding a click-triggers-write test for the Stellar claim path, analogous to the existing EVM "clicking Claim ... triggers claim.write" tests.
+
 ### BUG-6: Frontend vitest suite — widespread `localStorage` undefined failures
 - **Date:** 2026-06-30
 - **Location:** `packages/frontend` — wallet store tests, prominently `src/wallet/stellar/useStellarWallet.test.tsx` (21 failures) and broadly across the suite (`yarn workspace @pipeline/frontend test` reports ~615 failed / ~489 passed).

@@ -85,6 +85,7 @@ describe("useStellarWithdrawalVoucher", () => {
       amount: "10000000",
       user: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
       signature: hexSig,
+      deadline: "1800000000",
     });
 
     const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
@@ -97,6 +98,9 @@ describe("useStellarWithdrawalVoucher", () => {
     expect(result.current.signatureBytes).toBeInstanceOf(Uint8Array);
     expect(result.current.signatureBytes?.length).toBe(64);
     expect(result.current.error).toBeNull();
+    // deadline (u64 seconds) must pass through the voucher response
+    // unchanged — required by the live claim_request(...) shape (#800).
+    expect(result.current.data?.deadline).toBe("1800000000");
   });
 
   it("request URL includes &chain_id=99000001", async () => {

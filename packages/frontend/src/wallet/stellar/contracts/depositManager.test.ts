@@ -333,6 +333,7 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
       client.buildClaimRequest(
         1n,
         new Uint8Array(32), // wrong length
+        1_800_000_000n,
         mockAccount as unknown as Account,
       ),
     ).rejects.toThrow("64 bytes");
@@ -348,9 +349,35 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
     const xdrResult = await client.buildClaimRequest(
       1n,
       new Uint8Array(64).fill(0x01),
+      1_800_000_000n,
       mockAccount as unknown as Account,
     );
     expect(typeof xdrResult).toBe("string");
+  });
+
+  it("passes deadline as a u64 scVal, the third claim_request op arg", async () => {
+    mockNativeToScVal.mockClear();
+    const client = new DepositManagerClient(CONTRACT_ID);
+    const mockAccount = {
+      accountId: () => CONTRACT_ID,
+      sequenceNumber: () => "1",
+      incrementSequenceNumber: () => {},
+    };
+    await client.buildClaimRequest(
+      1n,
+      new Uint8Array(64).fill(0x01),
+      1_800_000_000n,
+      mockAccount as unknown as Account,
+    );
+    expect(mockNativeToScVal).toHaveBeenCalledWith(1_800_000_000n, {
+      type: "u64",
+    });
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "claim_request",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it("does not require a global Buffer when building claim bytes", async () => {
@@ -369,6 +396,7 @@ describe("DepositManagerClient.buildClaimRequest()", () => {
         client.buildClaimRequest(
           1n,
           new Uint8Array(64).fill(0x02),
+          1_800_000_000n,
           mockAccount as unknown as Account,
         ),
       ).resolves.toBe("assembled-xdr");

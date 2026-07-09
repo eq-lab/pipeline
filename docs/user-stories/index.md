@@ -118,6 +118,7 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#666 [FE] Deposit page: step row labels not vertically centered](https://github.com/eq-lab/pipeline/issues/666)                                                               | [666-step-row-label-vertical-center.md](./epic-498/666-step-row-label-vertical-center.md)             | Initial |
 | [#667 [Stellar] Deposit: amount input shows API value (not 0) when Claim is active](https://github.com/eq-lab/pipeline/issues/667)                                             | [667-stellar-claim-locked-amount.md](./epic-498/667-stellar-claim-locked-amount.md)                   | Initial |
 | [#672 [FE] [Stellar] Disable the Claim button while the PLUSD trustline is unauthorized](https://github.com/eq-lab/pipeline/issues/672)                                        | [672-stellar-claim-unauthorized-trustline-guard.md](./epic-498/672-stellar-claim-unauthorized-trustline-guard.md) | Initial |
+| [#800 Voucher digest drift: shared crate hashes 4 fields (incl. deadline), deployed contract digest is 3-arg](https://github.com/eq-lab/pipeline/issues/800)                  | [800-voucher-digest-deadline.md](./epic-498/800-voucher-digest-deadline.md)                           | Initial |
 
 ---
 

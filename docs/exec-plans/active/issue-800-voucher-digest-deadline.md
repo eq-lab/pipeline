@@ -90,10 +90,10 @@ added separately (captured in the steps below).
 
 ### A. Shared crate — golden test repoint only (NO digest/signing change)
 
-1. `packages/shared/src/stellar_voucher.rs` — DO NOT touch `voucher_xdr`, `voucher_digest`, `sign_voucher`, or
+1. [x] `packages/shared/src/stellar_voucher.rs` — DO NOT touch `voucher_xdr`, `voucher_digest`, `sign_voucher`, or
    any of the module/function docstrings describing the 4-field `Voucher { request_id, sender, amount,
    deadline }` preimage. They are already correct.
-2. In the `tests` module, fix `golden_digest_fixture` ONLY:
+2. [x] In the `tests` module, fix `golden_digest_fixture` ONLY:
    - Repoint `TESTNET_DM_STRKEY`: `"CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO"` →
      `"CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX"`. Update its doc comment ("Deployed testnet
      DepositManager (from .env.example)") to note this is the LIVE DM matching `VITE_STELLAR_DEPOSIT_MANAGER_ID`.
@@ -105,41 +105,41 @@ added separately (captured in the steps below).
      `--id` to `CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX`, `--source-account` and `--sender`
      to `GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU`.
    - Leave `GOLDEN_DEADLINE`, `TESTNET_VERIFIER`, `testnet_domain()`, `testnet_sender()` unchanged (still used).
-3. Run `cargo test -p shared stellar_voucher` — `golden_digest_fixture` must PASS against
+3. [x] Run `cargo test -p shared stellar_voucher` — `golden_digest_fixture` must PASS against
    `123b18a9…905cb01f3`, and every other test in the module must remain green.
 
 ### B. Frontend claim wiring (deposit + withdraw)
 
-4. `packages/frontend/src/api/useDepositVoucher.ts`: add an optional `deadline?: string` field to the
+4. [x] `packages/frontend/src/api/useDepositVoucher.ts`: add an optional `deadline?: string` field to the
    `VoucherResponse` interface (with a doc comment: "Claim deadline (u64 seconds) — pass to
    `claim_request`; still part of the signed digest"). This propagates to the deposit path automatically via
    `StellarVoucherResponse = VoucherResponse` in `useStellarDepositVoucher.ts`.
-5. `packages/frontend/src/api/useStellarWithdrawalVoucher.ts`: add the same `deadline?: string` field to the
+5. [x] `packages/frontend/src/api/useStellarWithdrawalVoucher.ts`: add the same `deadline?: string` field to the
    `StellarWithdrawalVoucherResponse` interface.
-6. `packages/frontend/src/wallet/stellar/contracts/depositManager.ts` `buildClaimRequest(...)`: add a
+6. [x] `packages/frontend/src/wallet/stellar/contracts/depositManager.ts` `buildClaimRequest(...)`: add a
    `deadline: bigint` parameter (after `verifierSignature`, before `sourceAccount`), document it, and append
    `nativeToScVal(deadline, { type: "u64" })` as the third arg to the `this.contract.call("claim_request", …)`
    op (after the signature `scvBytes`). Update the method docstring to list the new param.
-7. `packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts` `buildClaimRequest(...)`: apply the
+7. [x] `packages/frontend/src/wallet/stellar/contracts/withdrawalQueue.ts` `buildClaimRequest(...)`: apply the
    identical change (new `deadline: bigint` param + third `nativeToScVal(deadline, { type: "u64" })` op arg).
-8. `packages/frontend/src/wallet/stellar/useStellarDepositManager.ts` `useStellarClaim`: extend the `write`
+8. [x] `packages/frontend/src/wallet/stellar/useStellarDepositManager.ts` `useStellarClaim`: extend the `write`
    callback signature (line ~75 in the `StellarClaimResult` type and line ~368 in the `useCallback`) from
    `(requestId, verifierSignature)` to `(requestId, verifierSignature, deadline: bigint)`; thread `deadline`
    into the `client.buildClaimRequest(requestId, verifierSignature, deadline, sourceAccount)` call (line ~430).
-9. `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.ts` `useStellarClaimWithdrawal`: apply the
+9. [x] `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.ts` `useStellarClaimWithdrawal`: apply the
    identical `write` signature + `buildClaimRequest` threading change (lines ~75, ~370, ~431).
-10. `packages/frontend/src/wallet/useDepositFlow.ts` claim call site (lines ~1293-1303):
+10. [x] `packages/frontend/src/wallet/useDepositFlow.ts` claim call site (lines ~1293-1303):
     - Read `deadline` from the active voucher response: `stellarVoucher.data?.deadline` (parse to `bigint`).
     - Extend the existing `sig` guard: derive `const deadline = stellarVoucher.status === "ready" &&
       stellarVoucher.data?.deadline !== undefined ? BigInt(stellarVoucher.data.deadline) : undefined;` and
       `if (!sig || deadline === undefined) return;`.
     - Pass `deadline` as the third arg: `stellarClaim.write(stellarRequestIdBigInt, sig, deadline)` and
       `stellarClaimWithdrawal.write(stellarRequestIdBigInt, sig, deadline)`.
-11. Run `npx tsc --noEmit` (or the workspace typecheck) to confirm the new arg threads cleanly end-to-end.
+11. [x] Run `npx tsc --noEmit` (or the workspace typecheck) to confirm the new arg threads cleanly end-to-end.
 
 ### C. Docs
 
-12. `docs/generated/stellar-protocol-contracts.md`:
+12. [x] `docs/generated/stellar-protocol-contracts.md`:
     - In BOTH the `deposit_manager` and `withdrawal_queue` interface blocks, change the `digest` line from
       `fn digest(request_id: u128, sender: Address, amount: i128) -> BytesN<32>;` to
       `fn digest(request_id: u128, sender: Address, amount: i128, deadline: u64) -> BytesN<32>;`.
@@ -152,7 +152,7 @@ added separately (captured in the steps below).
       defaults shown, and that the 4-arg `digest` / 3-arg `claim_request` interface above reflects the LIVE
       contract. This doc is hand-maintained (fetched via `stellar contract info interface`, no generator
       script) — edit in place.
-13. `docs/design-docs/multi-chain-kyc-sharding.md` "Stellar Voucher Signing" section:
+13. [x] `docs/design-docs/multi-chain-kyc-sharding.md` "Stellar Voucher Signing" section:
     - In the digest-scheme code block, restore `deadline` to the `Voucher` preimage:
       `voucher_hash = sha256( XDR(Voucher { request_id: u128, sender: Address, amount: i128, deadline: u64 }) )`.
     - Add one line: `deadline` is part of the signed digest AND is passed to `claim_request` at claim time
@@ -160,6 +160,25 @@ added separately (captured in the steps below).
     - Update the "A live golden-fixture test … requires manual execution" sentence: the golden fixture
       (`golden_digest_fixture`) is now enabled and asserts the on-chain 4-arg `digest` value against the LIVE
       DepositManager `CBN4P3NY…`.
+
+### D. User-stories doc (ISSUE_PROTOCOL §6)
+
+14. [x] Added `docs/user-stories/epic-498/800-voucher-digest-deadline.md` and linked it from
+    `docs/user-stories/index.md` under Epic #498.
+
+## Implementation Notes (post-execution)
+
+- All steps implemented exactly as planned; no deviations.
+- Frontend claim-builder/hook tests extended to assert `deadline` threads through as a `u64` scVal for both
+  deposit and withdraw (`depositManager.test.ts`, `useStellarDepositManager.test.tsx`,
+  `useStellarWithdrawalQueue.test.tsx`); voucher-hook tests extended to assert `deadline` passes through the
+  response unchanged (`useStellarDepositVoucher.test.tsx`, `useStellarWithdrawalVoucher.test.tsx`).
+- Found and logged (not fixed inline, per AGENTS.md) a pre-existing, unrelated latent bug: `-deposit.test.tsx`'s
+  Stellar voucher mocks nest `signatureBytes` under `data` instead of at the hook-result top level, so no test
+  in that file currently exercises a Stellar Claim click end-to-end. Logged as BUG-8 in
+  `docs/exec-plans/known-bugs.md`.
+- `cargo test -p shared`, `cargo test --all`, `cargo clippy --all -- -D warnings`, frontend `tsc --noEmit`,
+  `yarn build`, `eslint`/`prettier` on touched files, and `npx tsx scripts/lint-docs.ts` all pass clean.
 
 ## Test Strategy
 

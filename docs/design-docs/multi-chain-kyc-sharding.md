@@ -77,15 +77,17 @@ The `request-queue` Soroban contract (`pipeline-stellar-contracts/contracts/requ
 
 ```
 domain_separator = sha256( XDR(Domain { contract_separator: <dm_or_wq_address>, network_id: sha256(passphrase) }) )
-voucher_hash     = sha256( XDR(Voucher { request_id: u128, sender: Address, amount: i128 }) )
+voucher_hash     = sha256( XDR(Voucher { request_id: u128, sender: Address, amount: i128, deadline: u64 }) )
 digest           = sha256( domain_separator || voucher_hash )
 ```
+
+`deadline` is part of the signed digest AND is passed to `claim_request` at claim time (sourced from the voucher API's `deadline` field) — see #800.
 
 The XDR encoding mirrors `soroban-sdk`'s `#[contracttype]` `to_xdr(e)` output: a `ScVal::Map` of alphabetically-sorted `(ScSymbol, ScVal)` entries (see `packages/shared/src/stellar_voucher.rs`).
 
 ### XDR parity
 
-The `stellar-xdr` crate (v25) is used to reproduce the `to_xdr` output without pulling `soroban-sdk` into the API server (which targets `x86_64-unknown-linux-gnu`, not `wasm32-unknown-unknown`). The parity is validated by determinism and collision-resistance unit tests. A live golden-fixture test requiring a deployed testnet Soroban RPC call is documented in the source but requires manual execution (see `stellar_voucher::tests` in `packages/shared/src/stellar_voucher.rs`).
+The `stellar-xdr` crate (v25) is used to reproduce the `to_xdr` output without pulling `soroban-sdk` into the API server (which targets `x86_64-unknown-linux-gnu`, not `wasm32-unknown-unknown`). The parity is validated by determinism and collision-resistance unit tests. The golden-fixture test (`golden_digest_fixture`) is enabled and asserts the on-chain 4-arg `digest` value against the LIVE DepositManager `CBN4P3NYJQKMRQ5EKMYLY26TBOJRT2CRW4SUTHZFQ2HAK3KXHDIZTLCX` byte-for-byte (see `stellar_voucher::tests` in `packages/shared/src/stellar_voucher.rs`).
 
 ### Wallet normalisation
 

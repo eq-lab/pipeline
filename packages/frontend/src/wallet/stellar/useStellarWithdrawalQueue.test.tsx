@@ -453,6 +453,7 @@ describe("useStellarRequestWithdrawal", () => {
 
 describe("useStellarClaimWithdrawal", () => {
   const validSig = new Uint8Array(64).fill(0xab);
+  const deadline = 1_800_000_000n;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -478,7 +479,7 @@ describe("useStellarClaimWithdrawal", () => {
     });
 
     act(() => {
-      result.current.write(42n, validSig);
+      result.current.write(42n, validSig, deadline);
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -496,7 +497,7 @@ describe("useStellarClaimWithdrawal", () => {
     });
 
     act(() => {
-      result.current.write(42n, new Uint8Array(32));
+      result.current.write(42n, new Uint8Array(32), deadline);
     });
 
     expect(result.current.error?.message).toMatch(/must be 64 bytes/);
@@ -515,7 +516,7 @@ describe("useStellarClaimWithdrawal", () => {
     });
 
     act(() => {
-      result.current.write(42n, validSig);
+      result.current.write(42n, validSig, deadline);
     });
 
     expect(result.current.error?.message).toMatch(
@@ -534,7 +535,7 @@ describe("useStellarClaimWithdrawal", () => {
     });
 
     act(() => {
-      result.current.write(42n, validSig);
+      result.current.write(42n, validSig, deadline);
     });
 
     await waitFor(() => expect(result.current.error).not.toBeNull());
@@ -557,12 +558,35 @@ describe("useStellarClaimWithdrawal", () => {
     });
 
     act(() => {
-      result.current.write(42n, validSig);
+      result.current.write(42n, validSig, deadline);
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(readInflightWithdrawal(TEST_ADDRESS)).toBeUndefined();
+  });
+
+  it("threads deadline into WithdrawalQueueClient.buildClaimRequest", async () => {
+    vi.spyOn(mockModule, "readMockStellarClaimWithdrawal").mockReturnValue(
+      undefined,
+    );
+
+    const { result } = renderHook(() => useStellarClaimWithdrawal(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.write(42n, validSig, deadline);
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockBuildClaimRequest).toHaveBeenCalledWith(
+      42n,
+      validSig,
+      deadline,
+      expect.anything(),
+    );
   });
 });
 

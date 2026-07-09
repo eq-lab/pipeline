@@ -72,7 +72,11 @@ export interface RequestDepositResult {
 }
 
 export interface StellarClaimResult {
-  write: (requestId: bigint, verifierSignature: Uint8Array) => void;
+  write: (
+    requestId: bigint,
+    verifierSignature: Uint8Array,
+    deadline: bigint,
+  ) => void;
   data: { hash: string } | undefined;
   isPending: boolean;
   isSuccess: boolean;
@@ -339,14 +343,16 @@ export function useStellarRequestDeposit(): RequestDepositResult {
 // ── useStellarClaim ───────────────────────────────────────────────────────────
 
 /**
- * Write hook for `claim_request(request_id: u128, verifier_signature: BytesN<64>)`.
+ * Write hook for `claim_request(request_id: u128, verifier_signature: BytesN<64>, deadline: u64)`.
  *
  * The `verifierSignature` must be exactly 64 bytes (ed25519 signature).
+ * `deadline` comes from the voucher response and is required by the live
+ * on-chain `claim_request` shape (see #800).
  *
  * @example
  * ```tsx
  * const { write, data, isPending, isSuccess, error, reset } = useStellarClaim();
- * write(requestId, signatureBytes);
+ * write(requestId, signatureBytes, deadline);
  * ```
  */
 export function useStellarClaim(): StellarClaimResult {
@@ -366,7 +372,7 @@ export function useStellarClaim(): StellarClaimResult {
   }, []);
 
   const write = useCallback(
-    (requestId: bigint, verifierSignature: Uint8Array) => {
+    (requestId: bigint, verifierSignature: Uint8Array, deadline: bigint) => {
       // ── Validate signature length ─────────────────────────────────────────
       if (verifierSignature.length !== 64) {
         setError(
@@ -430,6 +436,7 @@ export function useStellarClaim(): StellarClaimResult {
           const assembledXdr = await client.buildClaimRequest(
             requestId,
             verifierSignature,
+            deadline,
             sourceAccount,
           );
 

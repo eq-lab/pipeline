@@ -37,6 +37,11 @@ export interface StellarWithdrawalVoucherResponse {
    * Pass the decoded `signatureBytes` to `useStellarClaimWithdrawal.write()`.
    */
   signature: string;
+  /**
+   * Claim deadline (u64 seconds) — pass to `claim_request`; still part of
+   * the signed digest.
+   */
+  deadline?: string;
 }
 
 export type StellarWithdrawalVoucherStatus =
