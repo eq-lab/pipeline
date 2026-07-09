@@ -21,12 +21,18 @@ import { NeedsAttention } from "@/components/NeedsAttention";
  *     (the `in_transit` bucket stays in the Capital Allocation legend).
  *
  * Issue #818 adds the "Needs Attention" section directly after the Capital
- * Allocation card (resolved OQ#3, human review), rendering ONLY the
+ * Allocation content (resolved OQ#3, human review), rendering ONLY the
  * Origination group, backed by real `GET /v1/loan-book/submissions?status=InReview`
  * data. The whole section (heading and all) renders nothing when there are
  * no in-review submissions — see `NeedsAttention.tsx`. The Loans —
  * Payments Due / Cash Management / Risk Council groups remain deferred to
  * follow-up issue #799 (blocked on backend endpoints).
+ *
+ * `<NeedsAttention />` is passed as `CapitalAllocationCard`'s `children`
+ * (human review follow-up, issue #818) rather than mounted as its own
+ * sibling `Card` — per the Figma background node `4116:8928`, Capital
+ * Allocation and Needs Attention share ONE continuous white surface, not two
+ * stacked white blocks.
  */
 function Overview() {
   return (
@@ -34,8 +40,9 @@ function Overview() {
       <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-title)] leading-[var(--text-pipeline-title--line-height)] text-[color:var(--color-pipeline-ink-subtle)]">
         Overview
       </h1>
-      <CapitalAllocationCard />
-      <NeedsAttention />
+      <CapitalAllocationCard>
+        <NeedsAttention />
+      </CapitalAllocationCard>
     </main>
   );
 }

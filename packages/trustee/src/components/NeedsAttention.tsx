@@ -1,4 +1,3 @@
-import { Card } from "@pipeline/ui";
 import { OriginationIcon } from "./TrusteeNavIcons";
 import { useNeedsAttention } from "./useNeedsAttention";
 
@@ -24,14 +23,17 @@ import { useNeedsAttention } from "./useNeedsAttention";
  * page's disabled Review button pattern (`-useOriginationTable.ts` /
  * `origination.tsx`'s `StatusCell` "in-review" case).
  *
+ * NOT a `Card` (human review follow-up, issue #818): per the Figma
+ * background node `4116:8928`, the "Needs Attention" heading/group/rows live
+ * INSIDE the SAME single white surface as the Capital Allocation content —
+ * ONE continuous card, not two stacked white blocks. This component
+ * therefore renders plain content (no white background/border/radius of its
+ * own); the Overview route passes it as `children` to `CapitalAllocationCard`,
+ * which renders it inside its own `Card`, right after its own content. An
+ * earlier cut wrapped this in its own `Card`, which visually produced a
+ * second white block with a gap — corrected here.
+ *
  * Pixel/token mapping from the Figma export:
- *   - Card: white surface, same `Card` primitive as `CapitalAllocationCard`
- *     (`variant="white"`, `rounded-[4px]` → `--radius-pipeline-card`,
- *     `p-[32px]`) — per Figma node `4116:8928`, the "Needs Attention"
- *     heading/group/rows live INSIDE the SAME white background container as
- *     the Capital Allocation content, not in a separate transparent section.
- *     Human review follow-up (this issue): the initial cut rendered this on
- *     the page's transparent background — corrected to match the Figma card.
  *   - Section heading "Needs Attention": Besley display, `text-[36px]
  *     leading-[46px]`, `--color-pipeline-ink` (exact `#262524`) — NOT
  *     `--text-pipeline-title` (64px); arbitrary one-off at a non-token size,
@@ -71,10 +73,8 @@ export function NeedsAttention() {
   }
 
   return (
-    <Card
-      variant="white"
-      padding="none"
-      className="flex w-full flex-col items-start gap-[10px] p-8"
+    <div
+      className="flex w-full flex-col items-start gap-[10px]"
       data-testid="needs-attention"
       aria-label="Needs Attention"
     >
@@ -135,7 +135,7 @@ export function NeedsAttention() {
           ))}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
