@@ -1,5 +1,5 @@
 /**
- * Tests for `CapitalAllocationCard` (issue #797).
+ * Tests for `CapitalAllocationCard` (issue #797, extended in #807).
  *
  * The `useCapitalAllocationCard` hook is mocked so these are pure render
  * tests with no network / QueryClient involved.
@@ -95,6 +95,66 @@ describe("CapitalAllocationCard", () => {
     expect(screen.getByText("Trust account $1.2M")).toBeInTheDocument();
     expect(screen.getByText("Deployed $96M")).toBeInTheDocument();
     expect(screen.getByText("T-Bills (USYC) $4.64M")).toBeInTheDocument();
+    expect(
+      screen.getByText("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("capital-allocation-drift")).toBeInTheDocument();
+  });
+
+  it("renders the four provenance chips (#807, static mock)", () => {
+    mockHook({
+      totalDisplay: "$115,190,000",
+      legend: [
+        {
+          key: "capital_wallet",
+          label: "Capital Wallet",
+          value: "$8.4M",
+          color: "var(--color-pipeline-brand)",
+        },
+        {
+          key: "in_transit",
+          label: "In transit",
+          value: "$4.95M",
+          color: "#c9a200",
+        },
+        {
+          key: "trust_account",
+          label: "Trust account",
+          value: "$1.2M",
+          color: "rgba(56, 55, 53, 0.35)",
+        },
+        {
+          key: "deployed",
+          label: "Deployed",
+          value: "$96M",
+          color: "var(--color-pipeline-positive-primary)",
+        },
+        {
+          key: "tbills",
+          label: "T-Bills (USYC)",
+          value: "$4.64M",
+          color: "#6666b3",
+        },
+      ],
+    });
+
+    render(<CapitalAllocationCard />);
+
+    expect(
+      screen.getByText("on-chain balance · current block"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Relayer API · refreshed 2m ago"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Trustee feed · reconciled today"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("stale values are labeled inline"),
+    ).toBeInTheDocument();
+
+    const chipContainer = screen.getByTestId("capital-allocation-provenance");
+    expect(chipContainer.children).toHaveLength(4);
   });
 
   it("renders em-dash for null buckets (partial/deployed-only data)", () => {
@@ -152,6 +212,17 @@ describe("CapitalAllocationCard", () => {
       screen.getByTestId("capital-allocation-skeleton"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Capital Wallet")).not.toBeInTheDocument();
+
+    // Drift text lives in the always-rendered header row (#807) — it shows
+    // even while the rest of the card is loading.
+    expect(
+      screen.getByText("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%"),
+    ).toBeInTheDocument();
+
+    // Provenance chips live only in the loaded branch, under the legend.
+    expect(
+      screen.queryByTestId("capital-allocation-provenance"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an inline error surface on error", () => {
@@ -163,7 +234,7 @@ describe("CapitalAllocationCard", () => {
     expect(screen.getByText("Network error")).toBeInTheDocument();
   });
 
-  it("does not render any percentage labels", () => {
+  it("does not render any client-computed bucket percentage labels", () => {
     mockHook({
       totalDisplay: "$115,190,000",
       legend: [
@@ -200,8 +271,19 @@ describe("CapitalAllocationCard", () => {
       ],
     });
 
-    const { container } = render(<CapitalAllocationCard />);
+    render(<CapitalAllocationCard />);
 
-    expect(container.textContent).not.toMatch(/%/);
+    // Original intent (pre-#807): no client-computed bar/bucket percentages
+    // (e.g. the Figma design's 7% / 4% / 1% / 83% / 4% split) are rendered —
+    // the bar stays an inert, equal-width placeholder. Scoped to the legend
+    // region rather than the whole card, since the #807 drift text
+    // legitimately contains a static "< 0.01%" mock string.
+    const legendRegion = screen
+      .getByText("Capital Wallet $8.4M")
+      .closest("div")?.parentElement;
+    expect(legendRegion?.textContent).not.toMatch(/\d+%/);
+    ["7%", "4%", "1%", "83%"].forEach((pct) => {
+      expect(screen.queryByText(pct)).not.toBeInTheDocument();
+    });
   });
 });

@@ -151,3 +151,4 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#791 Trustee: sign-in flow — wallet-connect wiring + session + route gating](https://github.com/eq-lab/pipeline/issues/791) | [791-trustee-sign-in-flow.md](./epic-775/791-trustee-sign-in-flow.md)         | Initial |
 | [#786 Trustee: implement the app shell (Figma 4116-8855)](https://github.com/eq-lab/pipeline/issues/786) | [786-trustee-app-shell.md](./epic-775/786-trustee-app-shell.md)              | Initial |
 | [#797 Trustee: implement the Overview page (Figma 4116-8854)](https://github.com/eq-lab/pipeline/issues/797) | [797-trustee-overview-page.md](./epic-775/797-trustee-overview-page.md)      | Initial |
+| [#807 Trustee Overview: add reconciliation drift text + provenance chips (mock)](https://github.com/eq-lab/pipeline/issues/807) | [807-overview-drift-chips.md](./epic-775/807-overview-drift-chips.md)        | Initial |

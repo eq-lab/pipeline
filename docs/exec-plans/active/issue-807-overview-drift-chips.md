@@ -105,10 +105,12 @@ a hook per FRONTEND.md rule 2). Keep it inside `CapitalAllocationCard.tsx`.
 
 ## Implementation Steps
 
-1. On branch `feat/807-overview-drift-chips`, open
+Status: all steps completed (coder, 2026-07-09).
+
+1. [x] On branch `feat/807-overview-drift-chips`, open
    `packages/trustee/src/components/CapitalAllocationCard.tsx`.
 
-2. **Drift text.** In the header row `div` (`flex w-full items-baseline
+2. [x] **Drift text.** In the header row `div` (`flex w-full items-baseline
    justify-between`), add a second child after the "Capital Allocation" span:
    a `<span data-testid="capital-allocation-drift">` with the literal text
    `RECONCILES TO PLUSD BACKING · DRIFT < 0.01%` and classes:
@@ -118,7 +120,7 @@ a hook per FRONTEND.md rule 2). Keep it inside `CapitalAllocationCard.tsx`.
    Add an inline comment: static mock text, no backing field (issue #807).
    The existing `justify-between` will right-align it; header stays a single row.
 
-3. **Provenance chips.** After the closing legend `</div>` (still inside the
+3. [x] **Provenance chips.** After the closing legend `</div>` (still inside the
    `<>…</>` non-loading branch, so chips render only with data — matching Figma
    where they sit under the legend), add a chip row. Define a local const array
    of 4 chip descriptors `{ label, text, bg, border, dot }` using the exact
@@ -139,26 +141,30 @@ a hook per FRONTEND.md rule 2). Keep it inside `CapitalAllocationCard.tsx`.
    pattern in this same file — consistent, and avoids arbitrary-class colour
    soup).
 
-4. Keep the loading skeleton and error branches unchanged. The drift text lives
+4. [x] Keep the loading skeleton and error branches unchanged. The drift text lives
    in the always-rendered header row (fine — it is static chrome, shows in all
    states, matching Figma which has no skeleton for it). The chips live only in
    the loaded branch (they visually belong under the legend).
 
-5. **Update the component doc comment.** The current block-comment lists the
+5. [x] **Update the component doc comment.** The current block-comment lists the
    drift header and provenance chips under "Explicitly deferred/omitted". Rewrite
    that paragraph to state they are now rendered as **static mock chrome** (issue
    #807), with no backing field, pending a real provenance/drift wiring
    follow-up. Add the one-off colour/size notes for the drift text and chips to
    the "Pixel/token mapping" section of the comment.
 
-6. **Log tech debt.** Append an entry to
+6. [x] **Log tech debt.** Append an entry to
    `docs/exec-plans/tech-debt-tracker.md`: "Trustee Overview drift text +
    provenance chips are static mock strings (#807) — wire to real
    provenance/drift API when available." (Per AGENTS.md tech-debt rule; this is
-   the deliberate shortcut being taken.)
+   the deliberate shortcut being taken.) — logged as TD-40.
 
-7. Run lint/build + tests (see Test Strategy). Do NOT commit — the manager
+7. [x] Run lint/build + tests (see Test Strategy). Do NOT commit — the manager
    commits the plan and the implementation.
+
+8. [x] (Added per ISSUE_PROTOCOL §6, not itemized above) Wrote
+   `docs/user-stories/epic-775/807-overview-drift-chips.md` and linked it from
+   `docs/user-stories/index.md`.
 
 ## Test Strategy
 
