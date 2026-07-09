@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card } from "@pipeline/ui";
 import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 
@@ -77,6 +78,15 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
  *     `text-[12px]`/`leading-[16.8px]`, `rgba(56,55,53,0.6)` — an alpha step
  *     of the ink token family with no exact token match; scoped one-off,
  *     same precedent as the mid-grey bar segment above.
+ *
+ * `children` (issue #818, human review follow-up): the Figma background node
+ * `4116:8928` wraps the ENTIRE Overview page content — Capital Allocation
+ * AND "Needs Attention" — in ONE continuous white surface, not two separate
+ * stacked cards. Rather than duplicating this `Card` wrapper in a second
+ * component (which renders a visible gap/second white block), the Overview
+ * route passes `<NeedsAttention />` in as `children` here, rendered directly
+ * after this card's own content, still inside the SAME `Card`.
+ * `NeedsAttention.tsx` itself renders plain content (no `Card` of its own).
  */
 
 /**
@@ -115,7 +125,19 @@ const PROVENANCE_CHIPS = [
   },
 ] as const;
 
-export function CapitalAllocationCard() {
+export interface CapitalAllocationCardProps {
+  /**
+   * Extra content rendered inside the SAME white `Card` as this component's
+   * own content, directly after it (issue #818 — see the module doc's
+   * `children` note). Used by the Overview route to append `<NeedsAttention />`
+   * without creating a second, visually separate white block.
+   */
+  children?: ReactNode;
+}
+
+export function CapitalAllocationCard({
+  children,
+}: CapitalAllocationCardProps = {}) {
   const { isLoading, isError, errorMessage, totalDisplay, legend } =
     useCapitalAllocationCard();
 
@@ -266,6 +288,11 @@ export function CapitalAllocationCard() {
           </div>
         </>
       )}
+
+      {/* #818: e.g. <NeedsAttention /> — rendered inside this SAME white
+          Card, independent of this card's own loading/error state (it gates
+          on its own hook). See the module doc's `children` note. */}
+      {children}
     </Card>
   );
 }

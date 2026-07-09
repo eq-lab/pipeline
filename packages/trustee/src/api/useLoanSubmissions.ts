@@ -120,6 +120,24 @@ export interface UseLoanSubmissionsResult {
   refetch: () => void;
 }
 
+/**
+ * Narrow status filter accepted by `useLoanSubmissions`. Mirrors the known
+ * `SubmissionView["status"]` literals (not `string`) — the backend's
+ * `SubmissionsQuery.status` 400s on unknown values, so widening this would
+ * let a bad filter silently reach the API.
+ */
+export type SubmissionStatusFilter = "InReview" | "Approved" | "Rejected";
+
+/** Options accepted by `useLoanSubmissions`. */
+export interface UseLoanSubmissionsOptions {
+  /**
+   * Server-side status filter (`&status=<value>` on the request). Omit for
+   * today's default behavior — all statuses, unchanged query key — so
+   * existing callers (e.g. `useOriginationTable`, issue #813) are unaffected.
+   */
+  status?: SubmissionStatusFilter;
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -131,15 +149,26 @@ export interface UseLoanSubmissionsResult {
  *   Stellar-scoped like the LP Protocol Dashboard.
  * - Polls every 30 s per the dashboard "Real-time updates" convention
  *   (`docs/FRONTEND.md`).
- * - Returns all statuses; the caller renders each row's `status`.
+ * - Returns all statuses by default; the caller renders each row's `status`.
+ * - Optional `status` filter (issue #818): appends `&status=<value>` to the
+ *   request URL — a real server-side filter (`packages/api/src/routes/loan_book.rs`'s
+ *   `SubmissionsQuery.status`), not a client-side one — and is included in the
+ *   query key (`["loan-submissions", chainId, status ?? "all"]`) so filtered
+ *   and unfiltered variants cache independently. Omitting `status` preserves
+ *   the pre-#818 behavior exactly.
  */
-export function useLoanSubmissions(): UseLoanSubmissionsResult {
+export function useLoanSubmissions(
+  options?: UseLoanSubmissionsOptions,
+): UseLoanSubmissionsResult {
   const chainId = ENV.STELLAR_CHAIN_ID;
+  const status = options?.status;
   const query = useQuery<SubmissionView[], Error>({
-    queryKey: ["loan-submissions", chainId],
+    queryKey: ["loan-submissions", chainId, status ?? "all"],
     queryFn: () =>
       apiFetch<SubmissionView[]>(
-        `/v1/loan-book/submissions?chain_id=${chainId}`,
+        `/v1/loan-book/submissions?chain_id=${chainId}${
+          status ? `&status=${status}` : ""
+        }`,
       ),
     refetchInterval: 30_000,
   });
