@@ -80,3 +80,24 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
   }).format(num);
   return `$${formatted}`;
 }
+
+// ── formatBpsRate ─────────────────────────────────────────────────────────────
+
+/**
+ * Formats a rate expressed in **basis points** (the form the loan-submissions
+ * API serves `senior_interest_rate_bps` in, issue #813) as a one-decimal
+ * percentage. Mirrors the LP frontend's `formatBpsRate`
+ * (`packages/frontend/src/utils/formatCompactUsd.ts`).
+ *
+ * This is a unit format of a directly-served value — no metric is derived.
+ *
+ * - `1400` → `"14.0%"`
+ * - `0`    → `"0.0%"`
+ * - `null | undefined` → `"—"`
+ * - non-finite input   → `"—"`
+ */
+export function formatBpsRate(bps: number | null | undefined): string {
+  if (bps == null) return "—";
+  if (!Number.isFinite(bps)) return "—";
+  return `${(bps / 100).toFixed(1)}%`;
+}
