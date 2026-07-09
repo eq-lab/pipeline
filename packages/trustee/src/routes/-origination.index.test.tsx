@@ -23,7 +23,7 @@ import {
   useLocation,
   Outlet,
 } from "@tanstack/react-router";
-import { Route } from "./origination";
+import { Route } from "./origination.index";
 import { useOriginationTable } from "./-useOriginationTable";
 import type {
   OriginationTableRow,
