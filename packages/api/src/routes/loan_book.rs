@@ -18,6 +18,8 @@ use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
+use shared::collateral_valuation::{ccr_bps, compute_collateral};
+use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow, QuantityReportRow};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
 
@@ -95,6 +97,10 @@ pub struct LoanBookEntry {
     ///
     /// `null` when `collateral` is unavailable or zero.
     pub ltv: Option<String>,
+    /// Collateral Coverage Ratio in basis points (`14000` = 140 %) =
+    /// `collateral / outstanding senior principal`. `null` when collateral is
+    /// unavailable or the senior principal is fully repaid.
+    pub ccr_bps: Option<u32>,
     /// Original loan term in days (`maturity − origination`).
     pub duration_days: i64,
     /// Senior interest rate as a decimal fraction, 6-decimal string (e.g. `"0.112000"`
@@ -532,21 +538,47 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .list_loan_lifecycle_events(&state.pool, chain_id, to)
         .await?;
 
-    let collateral_by_loan = collateral_by_loan(state).await?;
+    let collateral_by_loan = collateral_by_loan(state, chain_id).await?;
 
     Ok(compute_loan_book(&loans, &events, to, &collateral_by_loan))
 }
 
-/// Build the per-loan collateral map: `loan_id → collateral in micro-USDC`, where
-/// collateral = `latest price_usd × discount × 1e6`. The `×1e6` matches the base-6
-/// scale of the on-chain tranche amounts so `compute_loan_book` can value collateral
-/// with the same `base6_to_decimal_string` formatting and ratio math as principal.
+/// Build the per-loan collateral map: `loan_id → collateral in micro-USDC`, valued
+/// from the collateral-valuation record (anchor + latest assay / offtake / quantity)
+/// and the latest reference price via [`compute_collateral`]. Collateral comes out
+/// in USD; the `×1e6` scales it to the base-6 units of the on-chain tranche amounts
+/// so `compute_loan_book` can format and ratio it against principal.
 ///
-/// Each loan is valued by its own `(asset, price_provider)` pair — the same asset may
-/// carry different prices under different providers. Loans whose `(asset, provider)` has
-/// no stored price are simply absent from the map (→ `null`).
-async fn collateral_by_loan(state: &AppState) -> Result<HashMap<String, BigDecimal>, ApiError> {
-    let params = state.loan_parameters_repo.list_all().await?;
+/// Loans whose record is incomplete (missing assay/offtake/quantity/price for their
+/// mode) are simply absent from the map (→ `null`).
+async fn collateral_by_loan(
+    state: &AppState,
+    chain_id: i64,
+) -> Result<HashMap<String, BigDecimal>, ApiError> {
+    let repo = &state.collateral_valuation_repo;
+    let anchors = repo.all_anchors(chain_id).await?;
+    if anchors.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let assays: HashMap<String, AssayRow> = repo
+        .latest_assays(chain_id)
+        .await?
+        .into_iter()
+        .map(|r| (loan_key(&r.loan_id), r))
+        .collect();
+    let offtakes: HashMap<String, OfftakeTermsRow> = repo
+        .latest_offtakes(chain_id)
+        .await?
+        .into_iter()
+        .map(|r| (loan_key(&r.loan_id), r))
+        .collect();
+    let quantities: HashMap<String, QuantityReportRow> = repo
+        .latest_quantities(chain_id)
+        .await?
+        .into_iter()
+        .map(|r| (loan_key(&r.loan_id), r))
+        .collect();
     let price_by_asset_provider: HashMap<(String, String), BigDecimal> = state
         .loan_asset_price_repo
         .latest_prices()
@@ -557,11 +589,20 @@ async fn collateral_by_loan(state: &AppState) -> Result<HashMap<String, BigDecim
 
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
-    for p in &params {
-        let key = (p.asset.clone(), p.price_provider.clone());
-        if let Some(price) = price_by_asset_provider.get(&key) {
-            let collateral_micro = (price * &p.discount) * &scale;
-            map.insert(loan_key(&p.loan_id), collateral_micro);
+    for anchor in &anchors {
+        let key = loan_key(&anchor.loan_id);
+        let price =
+            price_by_asset_provider.get(&(anchor.asset.clone(), anchor.price_provider.clone()));
+        let computed = compute_collateral(
+            anchor,
+            assays.get(&key),
+            offtakes.get(&key),
+            quantities.get(&key),
+            price,
+        )
+        .map_err(ApiError::Internal)?;
+        if let Some(c) = computed {
+            map.insert(key, c.collateral_value * &scale);
         }
     }
     Ok(map)
@@ -660,9 +701,11 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         weighted_duration += &principal * BigDecimal::from(duration_days);
         total_senior += &s.original_senior_tranche;
 
-        // Collateral = latest price_usd × discount (micro-USDC), keyed by loan_id.
-        // Absent → null; present-but-zero → value 0 with null LTV (no division).
-        let (collateral, ltv) = match collateral_by_loan.get(&loan_key(&loan.loan_id)) {
+        // Collateral value (micro-USDC) from the valuation record, keyed by loan_id.
+        // Absent → null; present-but-zero → value 0 with null LTV/CCR (no division).
+        // CCR = collateral / outstanding senior principal (both micro-USDC, so the
+        // ratio is unit-free); outstanding = original senior tranche − senior repaid.
+        let (collateral, ltv, ccr) = match collateral_by_loan.get(&loan_key(&loan.loan_id)) {
             Some(c) => {
                 any_collateral = true;
                 total_collateral += c;
@@ -671,9 +714,13 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
                         .with_scale_round(4, RoundingMode::HalfUp)
                         .to_plain_string()
                 });
-                (Some(base6_to_decimal_string(c)), ltv)
+                let outstanding_senior =
+                    &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
+                let ccr = (c > &zero && outstanding_senior > zero)
+                    .then(|| ccr_bps(c, &outstanding_senior));
+                (Some(base6_to_decimal_string(c)), ltv, ccr)
             }
-            None => (None, None),
+            None => (None, None, None),
         };
 
         entries.push(LoanBookEntry {
@@ -683,6 +730,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             principal: base6_to_decimal_string(&principal),
             collateral,
             ltv,
+            ccr_bps: ccr,
             duration_days,
             rate,
             // Protection instrument from the loan metadata; empty string ⇒ null.

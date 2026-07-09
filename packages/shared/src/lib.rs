@@ -22,4 +22,6 @@ pub mod signature;
 pub mod stellar_voucher;
 pub mod submitted_loan_repo;
 pub mod sumsub;
+pub mod collateral_valuation;
+pub mod collateral_valuation_repo;
 pub mod yield_mint_outbox_repo;

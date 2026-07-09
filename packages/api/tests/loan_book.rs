@@ -271,6 +271,18 @@ fn collateral_and_ltv_computed_from_map() {
 }
 
 #[test]
+fn ccr_bps_is_collateral_over_outstanding_senior() {
+    // Day 0: loan A active, senior 80k, collateral 125k → CCR = 125k/80k = 15625 bps.
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+    let r = at_with(0, &fixture_loans(), &[], &collateral);
+    assert_eq!(r.loans[0].ccr_bps, Some(15_625));
+
+    // Loan without collateral → CCR null.
+    let r2 = at(0, &fixture_loans(), &[]);
+    assert_eq!(r2.loans[0].ccr_bps, None);
+}
+
+#[test]
 fn missing_price_is_null_and_summary_sums_only_priced() {
     // Day 60: both active. Only loan A (id 1) has a price; loan B (id 2) does not.
     let collateral = collateral_map(&[(1, usdc(125_000))]);

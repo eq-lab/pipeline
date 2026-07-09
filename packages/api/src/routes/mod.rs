@@ -10,5 +10,6 @@ pub mod loan_book;
 pub mod pnl;
 pub mod portfolio;
 pub mod stats;
+pub mod collateral_valuation;
 pub mod vouchers;
 pub mod withdrawal_queue;
