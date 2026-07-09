@@ -42,7 +42,10 @@ To render the footer the detail view model (`-origination-detail.ts`) must expos
 
 ## Implementation Steps
 
-1. **Extend the detail view model** — `packages/trustee/src/routes/-origination-detail.ts`:
+_All steps below are implemented and green (trustee lint + build + full `vitest run` — 24
+files / 237 tests — pass; `lint-docs.ts` 0 errors)._
+
+1. **DONE.** **Extend the detail view model** — `packages/trustee/src/routes/-origination-detail.ts`:
    - Import `formatSubmittedDate` from `@/utils/formatDate` (alongside the existing `formatMaturityDate`).
    - Add fields to the `OriginationDetailResult` interface to drive the footer without the view re-deriving anything:
      - `statusKind: "in-review" | "approved" | "rejected" | "unknown"` (or reuse `statusChip.kind`),
@@ -50,19 +53,26 @@ To render the footer the detail view model (`-origination-detail.ts`) must expos
      - `rejectionReason: string` — `safeString(submission.reason)` (renders "—" if absent).
    - Populate them in the ready branch and give them safe defaults in the not-found/empty branch. Keep all formatting in the hook (view stays pure — `docs/FRONTEND.md` rule 2).
 
-2. **Replace `ActionButtons` with a status-conditional footer** — `packages/trustee/src/routes/origination.$id.tsx`:
+2. **DONE.** **Replace `ActionButtons` with a status-conditional footer** — `packages/trustee/src/routes/origination.$id.tsx`:
    - Keep `ActionButtons` as the InReview footer (unchanged markup + `data-testid`s).
    - Add an `ApprovedBanner` component: container `flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]`; a 15px `CheckIcon` (reuse the existing one, sized to match the Figma's 15px SVG) in `--color-pipeline-positive-primary`; text `Approved & minted · {reviewedDate}` at `text-[14px] leading-[19.6px]` in `--color-pipeline-positive-primary`. `data-testid="origination-detail-approved-banner"`. Omit the "funded from batch" segment (pending OQ#1).
    - Add a `RejectedBanner` component: same container shape with `border-[rgba(192,57,43,0.3)] bg-[rgba(192,57,43,0.08)]`; text `Rejected · {reviewedDate} — {rejectionReason}` in `--color-pipeline-negative`, same type scale. `data-testid="origination-detail-rejected-banner"`. (Copy/icon pending OQ#3.)
    - In `OriginationDetail`, replace the unconditional `<ActionButtons />` with a switch on the new status kind: InReview → `<ActionButtons />`; Approved → `<ApprovedBanner date={...} />`; Rejected → `<RejectedBanner date={...} reason={...} />`; unknown → `<ActionButtons />` fallback (pending OQ#3).
 
-3. **Row-click navigation** — `packages/trustee/src/routes/origination.index.tsx` (recommended option 2 from Assumptions):
+3. **DONE.** **Row-click navigation** — `packages/trustee/src/routes/origination.index.tsx` (recommended option 2 from Assumptions):
    - Import `useNavigate` from `@tanstack/react-router`; call it inside `OriginationTable`.
    - On each row `<div role="row">`, add `tabIndex={0}`, an accessible label (e.g. `aria-label={`Open ${row.originator} submission`}`), `cursor-pointer`, an `onClick` that calls `navigate({ to: "/origination/$id", params: { id: String(row.id) }, state: { submission: row.submission } })`, and an `onKeyDown` that fires the same navigation on `Enter`/`Space` (prevent default on Space to avoid page scroll).
    - Keep the existing InReview `<Link>` (`StatusCell` "in-review") intact for the Figma's Review button, but add `onClick={(e) => e.stopPropagation()}` so it doesn't also trigger the row handler (both target the same URL; stopPropagation prevents a duplicated navigation/history entry). Do the same on the document/other interactive children if any exist (none currently in the table row besides the Review link).
    - Leave the Approved/Rejected/unknown pills as non-interactive (`<span>`) — the row handles their navigation.
 
-4. **Update the docstrings** in both `.tsx` files and `-origination-detail.ts` to describe the new footer states and the row-click behavior, and cross-reference `#823` and this exec plan (matching the existing docstring style that cites issue numbers + Figma node ids).
+4. **DONE.** **Update the docstrings** in both `.tsx` files and `-origination-detail.ts` to describe the new footer states and the row-click behavior, and cross-reference `#823` and this exec plan (matching the existing docstring style that cites issue numbers + Figma node ids).
+
+## Additional deliverable (ISSUE_PROTOCOL §6)
+
+**DONE.** Added `docs/user-stories/epic-775/823-origination-rowclick-status-footer.md`
+(7 stories covering row-click nav for all three statuses, keyboard access, no
+double-navigation, and the three footer states) and linked it from
+`docs/user-stories/index.md`'s Epic #775 table.
 
 ## Test Strategy
 

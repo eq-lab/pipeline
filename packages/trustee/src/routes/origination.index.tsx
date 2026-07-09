@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
 import {
   useOriginationTable,
@@ -28,6 +28,21 @@ import {
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
  *     Figma reference.
+ *
+ * ## Row-click navigation (issue #823)
+ *
+ * The ENTIRE row (not just the InReview "Review" control) navigates to
+ * `/origination/$id`, for ALL statuses — including Approved/Rejected rows,
+ * whose status cell is a non-interactive pill. Each row is a
+ * `role="row"` `div` with `tabIndex={0}`, an `aria-label`, and an
+ * `onClick`/`onKeyDown` (Enter/Space) calling `useNavigate()`. It is
+ * deliberately NOT an `<a>`/`<Link>` wrapper — nesting the row anchor around
+ * the InReview `StatusCell`'s own `<Link>` would produce invalid nested
+ * anchors. The InReview Review `Link` is kept as-is (so it remains its own
+ * focusable, screen-reader-navigable control per the Figma) but its `onClick`
+ * calls `stopPropagation()` so a click on it doesn't also fire the row's
+ * handler (both target the same URL — this just avoids a duplicated
+ * navigation/history entry, see the exec plan's Assumptions section).
  *
  * ## Layout — full-width CSS grid (not an HTML `<table>`)
  *
@@ -164,6 +179,11 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
           state={{ submission: row.submission }}
           aria-label="Review submission"
           data-testid="origination-status-review"
+          // The row itself also navigates on click (issue #823) — stop
+          // propagation so this doesn't ALSO fire the row's handler (both
+          // target the same URL; this just avoids a duplicated history
+          // entry).
+          onClick={(e) => e.stopPropagation()}
           className="inline-flex h-[36px] items-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[12px] font-[family-name:var(--font-body)] text-[15px] text-white"
         >
           {status.label}
@@ -193,6 +213,15 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
 
 function OriginationTable() {
   const { state, errorMessage, rows } = useOriginationTable();
+  const navigate = useNavigate();
+
+  function goToDetail(row: OriginationTableRow) {
+    void navigate({
+      to: "/origination/$id",
+      params: { id: String(row.id) },
+      state: { submission: row.submission },
+    });
+  }
 
   if (state === "error") {
     return (
@@ -276,7 +305,17 @@ function OriginationTable() {
               key={row.id}
               data-testid="origination-row"
               role="row"
-              className="grid items-stretch"
+              tabIndex={0}
+              aria-label={`Open ${row.originator} submission`}
+              onClick={() => goToDetail(row)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  // Prevent Space from scrolling the page.
+                  e.preventDefault();
+                  goToDetail(row);
+                }
+              }}
+              className="grid cursor-pointer items-stretch"
               style={{
                 gridTemplateColumns: GRID_TEMPLATE_COLUMNS,
                 // Separator BETWEEN rows only — the first row's top edge is the

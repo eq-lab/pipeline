@@ -20,6 +20,8 @@
  *     `statusChip`.
  *   - Edge cases: empty `documents`, corridor without a hyphen, zero-value
  *     economics (`"$0"` not `—`), unknown status string.
+ *   - Issue #823: `statusKind`/`reviewedDate`/`rejectionReason` fields that
+ *     drive the status-conditional detail footer.
  */
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -194,6 +196,79 @@ describe("useOriginationDetail — status chip", () => {
       kind: "unknown",
       label: "SomethingNew",
     });
+  });
+});
+
+// ── Status-conditional footer fields (issue #823) ──────────────────────────
+
+describe("useOriginationDetail — footer fields (statusKind/reviewedDate/rejectionReason)", () => {
+  it("exposes statusKind mirroring statusChip.kind, and reviewedDate from updated_at, for InReview", () => {
+    mockSubmissions([FULL_SUBMISSION]);
+    const { result } = renderHook(() =>
+      useOriginationDetail("7", FULL_SUBMISSION),
+    );
+    expect(result.current.statusKind).toBe("in-review");
+    expect(result.current.reviewedDate).toBe("18 Jun");
+    expect(result.current.rejectionReason).toBe("—");
+  });
+
+  it("exposes statusKind 'approved' and the formatted updated_at date", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      status: "Approved",
+      updated_at: "2026-01-02T00:00:00Z",
+    };
+    mockSubmissions([submission]);
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.statusKind).toBe("approved");
+    expect(result.current.reviewedDate).toBe("2 Jan");
+    expect(result.current.rejectionReason).toBe("—");
+  });
+
+  it("exposes statusKind 'rejected', the formatted updated_at date, and the reason", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      status: "Rejected",
+      reason: "Missing export permit",
+      updated_at: "2026-05-05T00:00:00Z",
+    };
+    mockSubmissions([submission]);
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.statusKind).toBe("rejected");
+    expect(result.current.reviewedDate).toBe("5 May");
+    expect(result.current.rejectionReason).toBe("Missing export permit");
+  });
+
+  it("renders rejectionReason as '—' when Rejected but reason is null", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      status: "Rejected",
+      reason: null,
+    };
+    mockSubmissions([submission]);
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.rejectionReason).toBe("—");
+  });
+
+  it("exposes statusKind 'unknown' for an unrecognized status string", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      status: "SomethingNew",
+    };
+    mockSubmissions([submission]);
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.statusKind).toBe("unknown");
+  });
+
+  it("gives safe '—' defaults for statusKind/reviewedDate/rejectionReason in the not-found state", async () => {
+    mockSubmissions([FULL_SUBMISSION], false);
+    const { result } = renderHook(() => useOriginationDetail("999", undefined));
+    await waitFor(() => {
+      expect(result.current.state).toBe("not-found");
+    });
+    expect(result.current.statusKind).toBe("unknown");
+    expect(result.current.reviewedDate).toBe("—");
+    expect(result.current.rejectionReason).toBe("—");
   });
 });
 

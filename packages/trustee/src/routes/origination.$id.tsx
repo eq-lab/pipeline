@@ -25,6 +25,23 @@ import { useOriginationDetail, type StatusChip } from "./-origination-detail";
  *     by `$id` from the submissions list; render a not-found state if
  *     absent.
  *
+ * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
+ *
+ * The always-shown `ActionButtons` block below is now rendered only for
+ * `InReview` (and any unknown status, as a safe fallback). `Approved` and
+ * `Rejected` submissions instead render a colored banner in its place:
+ *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
+ *     "Approved & minted · `<date>`". The Figma's "funded from batch
+ *     #B-102 →" segment is OMITTED — no `batch` field exists on
+ *     `SubmissionView`/`loan_data`; never fabricated.
+ *   - `RejectedBanner` — red (`--color-pipeline-negative`), "Rejected ·
+ *     `<date>` — `<reason>`" (`reason` = `SubmissionView.reason`, backed).
+ *     No Figma reference exists for this state; it mirrors the Approved
+ *     banner's shape/tokens in red.
+ * Both dates are `updated_at` formatted via `formatSubmittedDate` (surfaced
+ * as `reviewedDate` by the view-model) — NOT `formatMaturityDate` (Unix
+ * seconds + year).
+ *
  * The `.tsx` is JSX/styling only; all data extraction + formatting lives in
  * the colocated `-origination-detail.ts` view-model hook, mirroring
  * `-useOriginationTable.ts`'s split (`docs/FRONTEND.md` rule 2).
@@ -266,6 +283,68 @@ function ActionButtons() {
   );
 }
 
+/**
+ * Green "Approved & minted · `<date>`" banner (issue #823, Figma node
+ * `4116:9656`), rendered in place of `ActionButtons` for Approved
+ * submissions. The Figma's semibold navy "funded from batch #B-102 →"
+ * segment is deliberately omitted — no backing field, never fabricated.
+ */
+function ApprovedBanner({ date }: { date: string }) {
+  return (
+    <div
+      data-testid="origination-detail-approved-banner"
+      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
+    >
+      <CheckIcon
+        width={15}
+        height={15}
+        className="text-[color:var(--color-pipeline-positive-primary)]"
+      />
+      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
+        Approved &amp; minted · {date}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Red "Rejected · `<date>` — `<reason>`" banner (issue #823), rendered in
+ * place of `ActionButtons` for Rejected submissions. No Figma reference
+ * exists for this state — mirrors `ApprovedBanner`'s container shape in the
+ * red tokens already used by this route's `StatusPill`.
+ */
+function RejectedBanner({ date, reason }: { date: string; reason: string }) {
+  return (
+    <div
+      data-testid="origination-detail-rejected-banner"
+      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(192,57,43,0.3)] bg-[rgba(192,57,43,0.08)] px-[17px] py-[11px]"
+    >
+      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-negative)]">
+        Rejected · {date} — {reason}
+      </span>
+    </div>
+  );
+}
+
+function DetailFooter({
+  statusKind,
+  reviewedDate,
+  rejectionReason,
+}: {
+  statusKind: StatusChip["kind"];
+  reviewedDate: string;
+  rejectionReason: string;
+}) {
+  if (statusKind === "approved") {
+    return <ApprovedBanner date={reviewedDate} />;
+  }
+  if (statusKind === "rejected") {
+    return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
+  }
+  // InReview and unknown both fall back to the inert action buttons.
+  return <ActionButtons />;
+}
+
 function OriginationDetail() {
   const { id } = Route.useParams();
   const location = useLocation();
@@ -336,7 +415,11 @@ function OriginationDetail() {
           <DealDetailsCard dealDetails={detail.dealDetails} />
         </div>
 
-        <ActionButtons />
+        <DetailFooter
+          statusKind={detail.statusKind}
+          reviewedDate={detail.reviewedDate}
+          rejectionReason={detail.rejectionReason}
+        />
       </div>
     </main>
   );
