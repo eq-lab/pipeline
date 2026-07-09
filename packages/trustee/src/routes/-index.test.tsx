@@ -6,6 +6,13 @@
  * component that issues a query, this wraps the render in a
  * `QueryClientProvider` and mocks `apiFetch` so the smoke test stays
  * deterministic and never hits the network.
+ *
+ * `@pipeline/wallet-connect` is mocked because `CapitalAllocationCard` now
+ * (issue #805) mounts `useCapitalWalletBalance`, which statically imports
+ * `@pipeline/wallet-connect` for its on-chain read. Without this mock, the
+ * real module graph (down to `@creit.tech/stellar-wallets-kit`'s
+ * `defaultModules()` / `@stellar/freighter-api`) gets pulled in, which can
+ * fail to resolve in some sandboxes.
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -23,6 +30,10 @@ vi.mock("@/api/client", () => ({
       tbills: "4640000.000000",
     },
   }),
+}));
+
+vi.mock("@pipeline/wallet-connect", () => ({
+  getSacBalance: vi.fn().mockRejectedValue(new Error("not configured")),
 }));
 
 function renderIndex() {

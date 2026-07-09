@@ -99,30 +99,49 @@ Narrowed per the two latest human comments on #805 (authoritative):
   total; the visual acceptance is "the Capital Wallet legend shows a real dollar
   figure and the total reflects it," verified live per FRONTEND.md.
 
-## Open Questions
+## Open Questions — RESOLVED
+
+Both resolved by the human/manager before implementation started (see issue #805 comments);
+implemented per the resolutions below.
 
 1. **wallet-connect config vs. explicit args for the Soroban RPC URL / USDC SAC
-   id.** The shared read helper needs the Soroban RPC URL + network passphrase +
-   USDC SAC contract id. Preferred: pass them as explicit arguments from the
-   trustee caller (keeps `WalletConnectConfig` unchanged and the helper a pure
-   function). Acceptable alternative: add `stellarRpcUrl` (and optionally the
-   USDC SAC id) to `WalletConnectConfig` and have `main.tsx` inject them, matching
-   how `stellarNetworkPassphrase` is already injected. Flagging because it changes
-   the shared package's public config shape. **Recommend explicit args unless a
-   reviewer prefers config parity.**
+   id.** RESOLVED: explicit function arguments (`getSacBalance({ sorobanRpcUrl,
+   networkPassphrase, sacContractId, account })`) — `WalletConnectConfig` is
+   unchanged; the trustee passes `ENV.STELLAR_RPC_URL` / `ENV.STELLAR_USDC_ID` /
+   `ENV.STELLAR_NETWORK_PASSPHRASE` in directly.
 2. **Display when the backend `total` is `null` but the on-chain Capital-Wallet
-   balance is present.** The human said "handle a `null` backend total
-   gracefully — do NOT fabricate." Proposed rule: if backend `total` is `null`,
-   show the on-chain Capital-Wallet balance **as the total** (it is the only known
-   real component) and keep the `capital_wallet` legend value populated. Fallback
-   if that reads as misleading: render the total as `—` and still populate the
-   `capital_wallet` legend. **Recommend "on-chain value as the sole known
-   component" since it is real data**, but confirm — this is a product-display
-   judgment.
+   balance is present.** RESOLVED: show the on-chain Capital-Wallet balance as
+   the sole known total (real data, not fabricated); `—` only when neither
+   source has anything. Implemented in `computeTotalNum` /
+   `useCapitalAllocationCard.ts`.
+
+## Scope addition mid-implementation (human, Figma node `4116:8961`)
+
+After the read-path implementation (Steps A–D below) was complete, the human requested folding in
+a further UI change to the same legend rather than opening a separate issue/PR (to avoid a merge
+conflict on `CapitalAllocationCard.tsx`): each legend row also renders a percentage pill
+(`[colored dot + N%]` prefixing `Label $Value`), computed as `bucket_value ÷ displayed_total`
+(the SAME guarded total from Step D), rounded to the nearest whole percent, not normalized to sum
+to 100. This is an **explicitly requested reversal** of TD-39's "no client-computed percentages"
+deferral (documented inline in `useCapitalAllocationCard.ts` and folded into TD-41). Implemented
+as:
+- `AllocationLegendRow.percentDisplay: string | null` (new field) in
+  `packages/trustee/src/components/useCapitalAllocationCard.ts`, computed via
+  `computeTotalNum` (extracted from the total-display logic) + `computePercentDisplay`.
+- `CapitalAllocationCard.tsx`: each legend row renders a pill (dot + `N%`) when
+  `percentDisplay !== null`, else falls back to the pre-#805 plain dot — never a fabricated `0%`.
+- Tests added in `-useCapitalAllocationCard.test.ts` (percentage computation, including the
+  double-count-guard total) and `-CapitalAllocationCard.test.tsx` (pill rendering, null-bucket →
+  no pill).
 
 ## Implementation Steps
 
-### A. Shared SAC balance read in `@pipeline/wallet-connect` (option b)
+**Status: all steps complete.** Minor naming deviation from this plan: the exported function is
+named `getSacBalance` (not `readSacBalance`), and its params object uses `sacContractId` (not
+`usdcContractId`) since it's a generic SAC reader, not USDC-specific — functionally identical to
+the plan's description. Noted on the issue as a deviation per the coder skill's contract.
+
+### A. Shared SAC balance read in `@pipeline/wallet-connect` (option b) — DONE
 
 1. Add a Stellar SAC read module at
    `packages/wallet-connect/src/stellar/sacBalance.ts` (lives under
@@ -160,7 +179,7 @@ Narrowed per the two latest human comments on #805 (authoritative):
    scaled bigint; the i64-max sentinel throws/maps to the guarded outcome; a
    simulation error propagates.
 
-### B. Trustee env plumbing
+### B. Trustee env plumbing — DONE
 
 5. In `packages/trustee/src/lib/env.ts`, add three accessors to the frozen `ENV`
    object (values already exist in `.env` / `.env.example`):
@@ -170,14 +189,11 @@ Narrowed per the two latest human comments on #805 (authoritative):
      (empty = unconfigured → `—`)
    Follow the existing empty-string-means-unconfigured pattern used by the LP's
    `chain.ts` (`usdcId`/`usdcCustodyId`).
-6. If Open Question Q1 resolves to "config-based": add `stellarRpcUrl` to
-   `WalletConnectConfig` (`packages/wallet-connect/src/config.ts`) and pass
-   `ENV.STELLAR_RPC_URL` in `packages/trustee/src/main.tsx`'s
-   `setWalletConnectConfig({...})`. If it resolves to "explicit args" (preferred),
-   skip this step — the trustee hook passes the RPC url / passphrase / USDC id
-   directly to `readSacBalance`.
+6. SKIPPED — resolved to "explicit args" (preferred); `WalletConnectConfig` and
+   `main.tsx` are unchanged. The trustee hook passes the RPC url / passphrase /
+   USDC id directly to `getSacBalance`.
 
-### C. Trustee Capital-Wallet balance hook
+### C. Trustee Capital-Wallet balance hook — DONE
 
 7. Add `packages/trustee/src/api/useCapitalWalletBalance.ts` — a `useQuery` hook
    (react-query is allowed in the trustee) that:
@@ -199,7 +215,7 @@ Narrowed per the two latest human comments on #805 (authoritative):
    - This is NOT a `fetch` (it goes through the SDK simulate), so it does not hit
      the `no-restricted-globals: fetch` rule; it lives under `src/api/` anyway.
 
-### D. Wire into the card view hook
+### D. Wire into the card view hook — DONE (extended with the percentage-pill scope addition above)
 
 8. In `packages/trustee/src/components/useCapitalAllocationCard.ts`:
    - Call both `useCapitalAllocation()` and the new `useCapitalWalletBalance()`.
@@ -226,23 +242,25 @@ Narrowed per the two latest human comments on #805 (authoritative):
    - Keep the mapping in the hook (view stays pure per FRONTEND.md rule 2). Add a
      clear docblock explaining the guarded interim sum and citing the human
      decision + this exec plan.
-9. `CapitalAllocationCard.tsx` needs **no structural change** — it already renders
-   `legend[].value` and `totalDisplay`. Verify the loading/error branches still
-   behave (the new hook feeds the same `isLoading`/`isError` contract).
+9. DEVIATION: `CapitalAllocationCard.tsx` DID need a structural change after all
+   — the mid-implementation scope addition (Figma `4116:8961`) added a
+   percentage pill per legend row, replacing the plain dot when
+   `percentDisplay !== null`. The loading/error branches are otherwise
+   unchanged and still behave per the original plan (verified by tests).
 
-### E. Docs + tech debt
+### E. Docs + tech debt — DONE
 
-10. Add a tech-debt entry (next id **TD-41**) in
-    `docs/exec-plans/tech-debt-tracker.md`: "Trustee Capital-Wallet balance is a
-    client-side interim source + client-side total sum" — record that (a) the
-    on-chain read substitutes for the backend `capital_wallet` bucket until
-    `capital_allocation.rs` indexes it, (b) the displayed total is a guarded
-    client-side sum, and (c) both should be removed once the backend serves
-    `capital_wallet` (the guard already prefers the backend value). Reference the
-    existing TD-39/TD-40 pattern.
-11. Update `.env.example` comments only if wording needs to reflect the trustee
-    now also consuming `VITE_STELLAR_USDC_ID` / `VITE_STELLAR_USDC_CUSTODY_ID` /
-    `VITE_STELLAR_RPC_URL` (values already present). No new keys.
+10. Added tech-debt entry **TD-41** in `docs/exec-plans/tech-debt-tracker.md` —
+    extended beyond the plan's original wording to also cover the
+    percentage-pill scope addition (client-computed, explicitly requested,
+    reversing TD-39's deferral).
+11. `.env.example` — reviewed; existing comments already accurately describe
+    `VITE_STELLAR_USDC_ID` / `VITE_STELLAR_USDC_CUSTODY_ID` /
+    `VITE_STELLAR_RPC_URL` for the LP frontend's use, and are equally accurate
+    for the trustee's new use (same values, same semantics) — no wording change
+    needed.
+12. Added `docs/user-stories/epic-775/805-capital-wallet-onchain.md` (ISSUE_PROTOCOL
+    §6 requirement) and linked it from `docs/user-stories/index.md`.
 
 ## Test Strategy
 

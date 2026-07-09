@@ -4,7 +4,7 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 /**
  * CapitalAllocationCard — the Trustee Overview page's "Capital Allocation"
  * card (Figma node `4116:8928`, frame `4116-8854`), issue #797, extended in
- * #807.
+ * #807 and #805.
  *
  * Net scope for this issue (see `docs/exec-plans/active/issue-797-*.md`
  * "Decisions" section, human-confirmed 2026-07-08):
@@ -22,7 +22,18 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
  * field yet. They were explicitly deferred in #797 and are added here as
  * interim static content per requester decision; a later follow-up wires
  * them to real provenance/drift data (see `docs/exec-plans/tech-debt-tracker.md`).
- * Any percentage labels remain out of scope (bar/legend stay non-computed).
+ *
+ * Legend percentage pills (Figma node `4116:8961`, #805 scope addition): each
+ * row shows `bucket_value ÷ displayed_total` (the SAME guarded total computed
+ * for #805's Capital-Wallet fold-in), rounded to the nearest whole percent.
+ * This is a deliberate, EXPLICITLY REQUESTED reversal of the bar's "no
+ * client-computed percentages" deferral above — the requester decided the
+ * total is now authoritative enough (backend + on-chain) to divide by. See
+ * `useCapitalAllocationCard.ts` for the computation and
+ * `docs/exec-plans/tech-debt-tracker.md` TD-41 for the tracked exception. A
+ * `null` `percentDisplay` (bucket/total unknown) renders the pre-#805 plain
+ * dot instead of a pill — never a fabricated `0%`. The bar itself remains
+ * unchanged/non-computed (out of scope).
  *
  * Pixel/token mapping from the Figma export:
  *   - Card: white surface, `rounded-[4px]` → `--radius-pipeline-card`,
@@ -50,6 +61,13 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
  *     match at all — `#b20000` is deliberately NOT `--color-pipeline-negative`
  *     (`#c0392b`); all six values are scoped one-offs, same precedent as
  *     `SignInCard` / #786 / the #797 bucket colours above.
+ *   - Percentage pill (`4116:8961`/`4116:8962`): pill background
+ *     `rgba(191,189,187,0.12)` — same one-off as #786's nav badge background;
+ *     `h-[16.8px]`, `rounded-[4px]`. Dot: `size-[8px] rounded-[2px]` in the
+ *     row's own bucket colour (see above), `left-[4px]`. Percent text:
+ *     `text-[12px]`/`leading-[16.8px]`, `rgba(56,55,53,0.6)` — an alpha step
+ *     of the ink token family with no exact token match; scoped one-off,
+ *     same precedent as the mid-grey bar segment above.
  */
 
 /**
@@ -162,14 +180,36 @@ export function CapitalAllocationCard() {
             ))}
           </div>
 
-          <div className="flex w-full flex-wrap gap-x-6 gap-y-3">
+          <div className="flex w-full flex-wrap items-end gap-x-6 gap-y-3">
             {legend.map((row) => (
-              <div key={row.key} className="flex items-center gap-2">
-                <span
-                  className="size-2 shrink-0 rounded-[2px]"
-                  style={{ backgroundColor: row.color }}
-                  aria-hidden="true"
-                />
+              <div key={row.key} className="flex items-end gap-2">
+                {/* Percentage pill (Figma node 4116:8961, #805 scope addition)
+                    — bucket_value ÷ displayed total, rounded to the nearest
+                    whole percent; renders nothing when the bucket/total is
+                    unknown (never a fabricated 0%). Replaces the standalone
+                    dot from #797 — the dot now lives inside the pill. */}
+                {row.percentDisplay !== null && (
+                  <span
+                    className="relative flex h-[16.8px] shrink-0 items-center rounded-[4px] bg-[rgba(191,189,187,0.12)] pl-[4px]"
+                    data-testid={`capital-allocation-percent-${row.key}`}
+                  >
+                    <span
+                      className="size-[8px] shrink-0 rounded-[2px]"
+                      style={{ backgroundColor: row.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="pr-[5px] pl-[5px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] text-[rgba(56,55,53,0.6)]">
+                      {row.percentDisplay}
+                    </span>
+                  </span>
+                )}
+                {row.percentDisplay === null && (
+                  <span
+                    className="size-2 shrink-0 self-center rounded-[2px]"
+                    style={{ backgroundColor: row.color }}
+                    aria-hidden="true"
+                  />
+                )}
                 <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]">
                   {row.label} {row.value}
                 </span>

@@ -1,14 +1,28 @@
 /**
- * Tests for `CapitalAllocationCard` (issue #797, extended in #807).
+ * Tests for `CapitalAllocationCard` (issue #797, extended in #807 and #805).
  *
  * The `useCapitalAllocationCard` hook is mocked so these are pure render
- * tests with no network / QueryClient involved.
+ * tests with no network / QueryClient involved. The on-chain Capital-Wallet
+ * fold-in sum logic and the percentage-pill computation (issue #805) are
+ * covered by `-useCapitalAllocationCard.test.ts` — this file only asserts
+ * the card renders whatever total/legend/percentDisplay the hook returns.
+ *
+ * `@pipeline/wallet-connect` is also mocked (even though this file never
+ * calls it directly) because `./useCapitalAllocationCard` statically imports
+ * `useCapitalWalletBalance`, which statically imports `@pipeline/wallet-connect`
+ * — without this mock, `vi.spyOn`-ing the view hook still pulls in the real
+ * module graph (down to `@creit.tech/stellar-wallets-kit`'s `defaultModules()`
+ * / `@stellar/freighter-api`), which can fail to resolve in some sandboxes.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { CapitalAllocationCard } from "./CapitalAllocationCard";
 import * as hookModule from "./useCapitalAllocationCard";
 import type { UseCapitalAllocationCardResult } from "./useCapitalAllocationCard";
+
+vi.mock("@pipeline/wallet-connect", () => ({
+  getSacBalance: vi.fn(),
+}));
 
 function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
   const base: UseCapitalAllocationCardResult = {
@@ -22,21 +36,36 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
         label: "Capital Wallet",
         value: "—",
         color: "var(--color-pipeline-brand)",
+        percentDisplay: null,
       },
-      { key: "in_transit", label: "In transit", value: "—", color: "#c9a200" },
+      {
+        key: "in_transit",
+        label: "In transit",
+        value: "—",
+        color: "#c9a200",
+        percentDisplay: null,
+      },
       {
         key: "trust_account",
         label: "Trust account",
         value: "—",
         color: "rgba(56, 55, 53, 0.35)",
+        percentDisplay: null,
       },
       {
         key: "deployed",
         label: "Deployed",
         value: "—",
         color: "var(--color-pipeline-positive-primary)",
+        percentDisplay: null,
       },
-      { key: "tbills", label: "T-Bills (USYC)", value: "—", color: "#6666b3" },
+      {
+        key: "tbills",
+        label: "T-Bills (USYC)",
+        value: "—",
+        color: "#6666b3",
+        percentDisplay: null,
+      },
     ],
   };
   vi.spyOn(hookModule, "useCapitalAllocationCard").mockReturnValue({
@@ -59,30 +88,35 @@ describe("CapitalAllocationCard", () => {
           label: "Capital Wallet",
           value: "$8.4M",
           color: "var(--color-pipeline-brand)",
+          percentDisplay: "7%",
         },
         {
           key: "in_transit",
           label: "In transit",
           value: "$4.95M",
           color: "#c9a200",
+          percentDisplay: "4%",
         },
         {
           key: "trust_account",
           label: "Trust account",
           value: "$1.2M",
           color: "rgba(56, 55, 53, 0.35)",
+          percentDisplay: "1%",
         },
         {
           key: "deployed",
           label: "Deployed",
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
+          percentDisplay: "83%",
         },
         {
           key: "tbills",
           label: "T-Bills (USYC)",
           value: "$4.64M",
           color: "#6666b3",
+          percentDisplay: "4%",
         },
       ],
     });
@@ -110,30 +144,35 @@ describe("CapitalAllocationCard", () => {
           label: "Capital Wallet",
           value: "$8.4M",
           color: "var(--color-pipeline-brand)",
+          percentDisplay: "7%",
         },
         {
           key: "in_transit",
           label: "In transit",
           value: "$4.95M",
           color: "#c9a200",
+          percentDisplay: "4%",
         },
         {
           key: "trust_account",
           label: "Trust account",
           value: "$1.2M",
           color: "rgba(56, 55, 53, 0.35)",
+          percentDisplay: "1%",
         },
         {
           key: "deployed",
           label: "Deployed",
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
+          percentDisplay: "83%",
         },
         {
           key: "tbills",
           label: "T-Bills (USYC)",
           value: "$4.64M",
           color: "#6666b3",
+          percentDisplay: "4%",
         },
       ],
     });
@@ -166,30 +205,35 @@ describe("CapitalAllocationCard", () => {
           label: "Capital Wallet",
           value: "—",
           color: "var(--color-pipeline-brand)",
+          percentDisplay: null,
         },
         {
           key: "in_transit",
           label: "In transit",
           value: "—",
           color: "#c9a200",
+          percentDisplay: null,
         },
         {
           key: "trust_account",
           label: "Trust account",
           value: "—",
           color: "rgba(56, 55, 53, 0.35)",
+          percentDisplay: null,
         },
         {
           key: "deployed",
           label: "Deployed",
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
+          percentDisplay: "100%",
         },
         {
           key: "tbills",
           label: "T-Bills (USYC)",
           value: "—",
           color: "#6666b3",
+          percentDisplay: null,
         },
       ],
     });
@@ -234,56 +278,184 @@ describe("CapitalAllocationCard", () => {
     expect(screen.getByText("Network error")).toBeInTheDocument();
   });
 
-  it("does not render any client-computed bucket percentage labels", () => {
+  it("renders a Capital Wallet value and total sourced from the on-chain fold-in (#805)", () => {
+    // Represents the guarded interim sum: backend total ($96M, deployed-only)
+    // + on-chain Capital Wallet balance ($8.4M) = $104,400,000. The card only
+    // renders whatever the hook returns — the sum itself is computed and
+    // tested in `-useCapitalAllocationCard.test.ts`.
     mockHook({
-      totalDisplay: "$115,190,000",
+      totalDisplay: "$104,400,000",
       legend: [
         {
           key: "capital_wallet",
           label: "Capital Wallet",
           value: "$8.4M",
           color: "var(--color-pipeline-brand)",
+          percentDisplay: "8%",
         },
         {
           key: "in_transit",
           label: "In transit",
-          value: "$4.95M",
+          value: "—",
           color: "#c9a200",
+          percentDisplay: null,
         },
         {
           key: "trust_account",
           label: "Trust account",
-          value: "$1.2M",
+          value: "—",
           color: "rgba(56, 55, 53, 0.35)",
+          percentDisplay: null,
         },
         {
           key: "deployed",
           label: "Deployed",
           value: "$96M",
           color: "var(--color-pipeline-positive-primary)",
+          percentDisplay: "92%",
         },
         {
           key: "tbills",
           label: "T-Bills (USYC)",
-          value: "$4.64M",
+          value: "—",
           color: "#6666b3",
+          percentDisplay: null,
         },
       ],
     });
 
     render(<CapitalAllocationCard />);
 
-    // Original intent (pre-#807): no client-computed bar/bucket percentages
-    // (e.g. the Figma design's 7% / 4% / 1% / 83% / 4% split) are rendered —
-    // the bar stays an inert, equal-width placeholder. Scoped to the legend
-    // region rather than the whole card, since the #807 drift text
-    // legitimately contains a static "< 0.01%" mock string.
-    const legendRegion = screen
-      .getByText("Capital Wallet $8.4M")
-      .closest("div")?.parentElement;
-    expect(legendRegion?.textContent).not.toMatch(/\d+%/);
-    ["7%", "4%", "1%", "83%"].forEach((pct) => {
-      expect(screen.queryByText(pct)).not.toBeInTheDocument();
+    expect(screen.getByText("$104,400,000")).toBeInTheDocument();
+    expect(screen.getByText("Capital Wallet $8.4M")).toBeInTheDocument();
+    expect(screen.getByText("8%")).toBeInTheDocument();
+  });
+
+  describe("percentage pills (#805 scope addition, Figma 4116:8961)", () => {
+    it("renders a percentage pill per bucket with the right value", () => {
+      mockHook({
+        totalDisplay: "$115,190,000",
+        legend: [
+          {
+            key: "capital_wallet",
+            label: "Capital Wallet",
+            value: "$8.4M",
+            color: "var(--color-pipeline-brand)",
+            percentDisplay: "7%",
+          },
+          {
+            key: "in_transit",
+            label: "In transit",
+            value: "$4.95M",
+            color: "#c9a200",
+            percentDisplay: "4%",
+          },
+          {
+            key: "trust_account",
+            label: "Trust account",
+            value: "$1.2M",
+            color: "rgba(56, 55, 53, 0.35)",
+            percentDisplay: "1%",
+          },
+          {
+            key: "deployed",
+            label: "Deployed",
+            value: "$96M",
+            color: "var(--color-pipeline-positive-primary)",
+            percentDisplay: "83%",
+          },
+          {
+            key: "tbills",
+            label: "T-Bills (USYC)",
+            value: "$4.64M",
+            color: "#6666b3",
+            percentDisplay: "4%",
+          },
+        ],
+      });
+
+      render(<CapitalAllocationCard />);
+
+      expect(
+        screen.getByTestId("capital-allocation-percent-capital_wallet"),
+      ).toHaveTextContent("7%");
+      expect(
+        screen.getByTestId("capital-allocation-percent-in_transit"),
+      ).toHaveTextContent("4%");
+      expect(
+        screen.getByTestId("capital-allocation-percent-trust_account"),
+      ).toHaveTextContent("1%");
+      expect(
+        screen.getByTestId("capital-allocation-percent-deployed"),
+      ).toHaveTextContent("83%");
+      expect(
+        screen.getByTestId("capital-allocation-percent-tbills"),
+      ).toHaveTextContent("4%");
+      // Percentages are independently rounded and deliberately NOT
+      // normalized to sum to 100 (7+4+1+83+4 = 99, matching Figma).
+    });
+
+    it("renders no percentage pill for a null/unknown bucket", () => {
+      mockHook({
+        totalDisplay: "$96,000,000",
+        legend: [
+          {
+            key: "capital_wallet",
+            label: "Capital Wallet",
+            value: "—",
+            color: "var(--color-pipeline-brand)",
+            percentDisplay: null,
+          },
+          {
+            key: "in_transit",
+            label: "In transit",
+            value: "—",
+            color: "#c9a200",
+            percentDisplay: null,
+          },
+          {
+            key: "trust_account",
+            label: "Trust account",
+            value: "—",
+            color: "rgba(56, 55, 53, 0.35)",
+            percentDisplay: null,
+          },
+          {
+            key: "deployed",
+            label: "Deployed",
+            value: "$96M",
+            color: "var(--color-pipeline-positive-primary)",
+            percentDisplay: "100%",
+          },
+          {
+            key: "tbills",
+            label: "T-Bills (USYC)",
+            value: "—",
+            color: "#6666b3",
+            percentDisplay: null,
+          },
+        ],
+      });
+
+      render(<CapitalAllocationCard />);
+
+      // Never a fabricated 0% — no pill at all for null-bucket rows.
+      expect(
+        screen.queryByTestId("capital-allocation-percent-capital_wallet"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-percent-in_transit"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-percent-trust_account"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("capital-allocation-percent-tbills"),
+      ).not.toBeInTheDocument();
+      // The only known bucket still gets its pill.
+      expect(
+        screen.getByTestId("capital-allocation-percent-deployed"),
+      ).toHaveTextContent("100%");
     });
   });
 });

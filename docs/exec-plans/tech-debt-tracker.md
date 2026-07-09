@@ -426,6 +426,39 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   drift percentage field plus per-source last-updated timestamps/status — and replace the static
   strings and `PROVENANCE_CHIPS` config with data-driven rendering.
 
+### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages
+- **Date:** 2026-07-09
+- **Location:** `packages/trustee/src/api/useCapitalWalletBalance.ts`,
+  `packages/trustee/src/components/useCapitalAllocationCard.ts`,
+  `packages/wallet-connect/src/stellar/sacBalance.ts`
+- **Gap:** Issue #805 reads the Capital Wallet bucket's USDC balance directly from the Stellar
+  contract (`usdc.balance(ENV.STELLAR_USDC_CUSTODY_ID)` via the new shared
+  `@pipeline/wallet-connect` `getSacBalance` helper) as an interim substitute for the backend
+  `capital_wallet` bucket, which `GET /v1/capital-allocation` still serves as `null`
+  (`packages/api/src/routes/capital_allocation.rs` has not indexed it). Three client-side
+  behaviors stem from this, all deliberate and guarded:
+  1. The Capital Wallet legend value prefers the backend bucket but falls back to this on-chain
+     read.
+  2. The displayed total is a client-side sum (`backend total + on-chain balance`), added ONLY
+     while the backend bucket is `null` (double-count guard).
+  3. **Scope addition (human, Figma node `4116:8961`):** each legend row also shows
+     `bucket_value ÷ displayed_total` rounded to the nearest whole percent — a client-computed
+     percentage, explicitly requested to reverse TD-39's "no client-computed percentages"
+     deferral now that the on-chain-augmented total is considered authoritative enough to divide
+     by. Percentages are independently rounded per bucket and NOT normalized to sum to 100.
+- **Impact:** None of this is fabricated data — all three behaviors sum/divide two or more
+  real, authoritative sources (backend response + live on-chain read) — but it is arithmetic the
+  backend should eventually own outright once `capital_allocation.rs` indexes `capital_wallet`
+  and (if ever added) serves a proportion/percentage field. Until then, the total and every
+  bucket's percentage silently change if either source's shape changes (e.g. decimal scale),
+  since the trustee performs the conversion (`sacRawToDisplay`-style 7-decimal → human-unit
+  string, duplicated locally per TD-38's precedent since the trustee cannot depend on
+  `@pipeline/frontend`).
+- **Suggested fix:** Remove `useCapitalWalletBalance` and the total-sum/percentage-computation
+  logic in `useCapitalAllocationCard.ts` once the backend serves a non-null `capital_wallet`
+  bucket (and, if the bar is ever wired to real data per TD-39, a percentage/proportion field) —
+  the existing "prefer backend value" guards already make this a no-op removal for callers.
+
 ---
 
 ## Post-MVP
