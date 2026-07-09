@@ -201,7 +201,7 @@ export const ENV = Object.freeze({
    * uses to hold USDC assets. Only the custody account balance is reported on
    * the balance sheet — NOT the total USDC supply in circulation.
    *
-   * Futurenet: GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM
+   * Futurenet: GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU
    *
    * Defaults to the empty string — when empty the hook short-circuits to
    * `undefined` (row shows `—`).

@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn stellar_wallet_passthrough_valid() {
-        let valid = "GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM";
+        let valid = "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU";
         let result = normalise_wallet(ChainKind::Stellar, valid);
         assert_eq!(result.unwrap(), valid);
     }

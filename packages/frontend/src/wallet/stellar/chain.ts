@@ -104,7 +104,7 @@ export const usdcId: string = ENV.STELLAR_USDC_ID;
  * the Balance Sheet panel. This is NOT the total USDC supply — it is only the
  * USDC held in Pipeline's custody account.
  *
- * Futurenet: GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM
+ * Futurenet: GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU
  * Empty string means "unconfigured" — hook short-circuits to `undefined`.
  */
 export const usdcCustodyId: string = ENV.STELLAR_USDC_CUSTODY_ID;

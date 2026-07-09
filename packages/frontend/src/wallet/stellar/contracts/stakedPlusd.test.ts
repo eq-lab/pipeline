@@ -315,7 +315,7 @@ describe("StakedPlusdClient.name()", () => {
     mockIsSimulationError.mockReturnValue(false);
     mockSimulateTransaction.mockResolvedValue(makeMockResult("retval-scval"));
     mockScValToNative.mockReturnValue(
-      "sPLUSD:GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      "sPLUSD:GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
     );
   });
 
@@ -323,7 +323,7 @@ describe("StakedPlusdClient.name()", () => {
     const client = new StakedPlusdClient(CONTRACT_ID);
     const result = await client.name();
     expect(result).toBe(
-      "sPLUSD:GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM",
+      "sPLUSD:GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
     );
     expect(mockContractCall).toHaveBeenCalledWith("name");
   });

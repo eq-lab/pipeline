@@ -7,7 +7,7 @@
  * tokens:
  *   - USDC:  `CCWX3TKH3K5SQDPOBGQTGOGE6Q5VEZWCOYJ2HDVV5U6GNN5U4WOEB3C7`
  *   - PLUSD: `CAC7JMGRFZBL4IS4WBO5R3AMTK3C53FEOQZSU2WL5C4TWCRFAYWFSIBN`
- * Both are issued by `GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM`
+ * Both are issued by `GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU`
  * and use **7 decimals** (Stellar SAC standard — NOT EVM's 6).
  *
  * ## Key differences from `useStellarToken`
@@ -104,7 +104,7 @@ export interface UseStellarSacTokenParams {
   assetCode: string;
   /**
    * Classic issuer public key (`G…`).
-   * IMPORTANT: for the protocol assets this is `GC5SUAXMROK67LIE3DDMJG3AHHEVSFDAZ55A4WS655XYSKIN46RG7ACM`,
+   * IMPORTANT: for the protocol assets this is `GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU`,
    * NOT the Circle issuer from `chain.ts`.
    */
   assetIssuer: string;
