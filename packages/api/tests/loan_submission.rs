@@ -3,8 +3,8 @@
 //! (matches the project-wide convention: all tests in `tests/`, no live Postgres).
 
 use pipeline_api::routes::loan_book::{
-    resolve_review, validate_submission, EconomicsInput, LocationInput, ReviewDecision,
-    ReviewRequest, SubmitLoanRequest,
+    extract_documents, resolve_review, validate_submission, EconomicsInput, LoanDocumentDto,
+    LocationInput, ReviewDecision, ReviewRequest, SubmitLoanRequest,
 };
 use shared::submitted_loan_repo::SubmissionStatus;
 
@@ -234,5 +234,45 @@ fn submit_request_defaults_optional_fields() {
     let req: SubmitLoanRequest = serde_json::from_value(json).expect("deserialize");
     assert_eq!(req.protection, "");
     assert_eq!(req.secondary_metadata_uri, None);
+    assert!(req.documents.is_empty());
     assert!(validate_submission(&req).is_ok());
+}
+
+// ── documents: POST accepts, GET view lifts from the stored payload ───────────
+
+#[test]
+fn extract_documents_reads_populated_array() {
+    let loan_data = serde_json::json!({
+        "documents": [
+            { "name": "Agreement", "uri": "ipfs://QmA" },
+            { "name": "License", "uri": "ipfs://QmB" }
+        ]
+    });
+    let docs = extract_documents(&loan_data);
+    assert_eq!(docs.len(), 2);
+    assert_eq!(docs[0].name, "Agreement");
+    assert_eq!(docs[1].uri, "ipfs://QmB");
+}
+
+#[test]
+fn extract_documents_defaults_empty_for_legacy_payload() {
+    // A submission blob that predates the `documents` field.
+    let loan_data = serde_json::json!({ "originator": "Open Mineral" });
+    assert!(extract_documents(&loan_data).is_empty());
+}
+
+#[test]
+fn documents_round_trip_from_submit_request_to_view() {
+    // The POST handler stores `serde_json::to_value(&payload)` verbatim; the GET
+    // view then lifts `documents` back out of that stored blob.
+    let mut req = valid_request();
+    req.documents = vec![LoanDocumentDto {
+        name: "Agreement".to_owned(),
+        uri: "ipfs://QmA".to_owned(),
+    }];
+    let loan_data = serde_json::to_value(&req).expect("serialize submission");
+    let docs = extract_documents(&loan_data);
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].name, "Agreement");
+    assert_eq!(docs[0].uri, "ipfs://QmA");
 }

@@ -223,8 +223,21 @@ pub struct SubmissionView {
     pub created_at: String,
     /// Last update timestamp (RFC 3339).
     pub updated_at: String,
+    /// Documents referenced in the submitted metadata (Agreement, License, T&Cs, …),
+    /// lifted from `loan_data.documents` for direct consumption. Empty for legacy
+    /// submissions that predate the field (`loan_data` still carries it verbatim).
+    pub documents: Vec<LoanDocumentDto>,
     /// The full submitted payload (all `draw_loan` inputs), passed through verbatim.
     pub loan_data: serde_json::Value,
+}
+
+/// Lift the `documents` array out of a stored submission payload. Missing or
+/// malformed `documents` yields an empty vec (legacy submissions predate the field).
+pub fn extract_documents(loan_data: &serde_json::Value) -> Vec<LoanDocumentDto> {
+    loan_data
+        .get("documents")
+        .and_then(|v| serde_json::from_value::<Vec<LoanDocumentDto>>(v.clone()).ok())
+        .unwrap_or_default()
 }
 
 impl From<SubmittedLoanRow> for SubmissionView {
@@ -236,6 +249,7 @@ impl From<SubmittedLoanRow> for SubmissionView {
             originator: r.originator,
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
+            documents: extract_documents(&r.loan_data),
             loan_data: r.loan_data,
         }
     }
