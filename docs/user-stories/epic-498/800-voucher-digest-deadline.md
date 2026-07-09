@@ -101,7 +101,7 @@ and its response includes both `signature` and `deadline`
 - No change to the signed digest or to backend signing — `deadline` was
   already part of both; only the frontend claim call site needed to pass it
   as an explicit contract argument.
-- Known pre-existing gap (not fixed by this issue, logged as BUG-7 in
+- Known pre-existing gap (not fixed by this issue, logged as BUG-8 in
   `docs/exec-plans/known-bugs.md`): `-deposit.test.tsx`'s Stellar voucher
   mocks nest `signatureBytes` under `data` instead of at the hook-result top
   level, so no test in that file currently clicks the Stellar Claim button
