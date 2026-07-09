@@ -16,6 +16,8 @@ import { Route as LoansRouteImport } from './routes/loans'
 import { Route as CashManagementRouteImport } from './routes/cash-management'
 import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OriginationIndexRouteImport } from './routes/origination.index'
+import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -52,24 +54,37 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OriginationIndexRoute = OriginationIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OriginationRoute,
+} as any)
+const OriginationIdRoute = OriginationIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => OriginationRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
+  '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$id': typeof OriginationIdRoute
+  '/origination/': typeof OriginationIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$id': typeof OriginationIdRoute
+  '/origination': typeof OriginationIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,9 +92,11 @@ export interface FileRoutesById {
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRoute
-  '/origination': typeof OriginationRoute
+  '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/origination/$id': typeof OriginationIdRoute
+  '/origination/': typeof OriginationIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,15 +108,18 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$id'
+    | '/origination/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/audit-log'
     | '/cash-management'
     | '/loans'
-    | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$id'
+    | '/origination'
   id:
     | '__root__'
     | '/'
@@ -109,6 +129,8 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/origination/$id'
+    | '/origination/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -116,7 +138,7 @@ export interface RootRouteChildren {
   AuditLogRoute: typeof AuditLogRoute
   CashManagementRoute: typeof CashManagementRoute
   LoansRoute: typeof LoansRoute
-  OriginationRoute: typeof OriginationRoute
+  OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRoute
   SignInRoute: typeof SignInRoute
 }
@@ -172,15 +194,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/origination/': {
+      id: '/origination/'
+      path: '/'
+      fullPath: '/origination/'
+      preLoaderRoute: typeof OriginationIndexRouteImport
+      parentRoute: typeof OriginationRoute
+    }
+    '/origination/$id': {
+      id: '/origination/$id'
+      path: '/$id'
+      fullPath: '/origination/$id'
+      preLoaderRoute: typeof OriginationIdRouteImport
+      parentRoute: typeof OriginationRoute
+    }
   }
 }
+
+interface OriginationRouteChildren {
+  OriginationIdRoute: typeof OriginationIdRoute
+  OriginationIndexRoute: typeof OriginationIndexRoute
+}
+
+const OriginationRouteChildren: OriginationRouteChildren = {
+  OriginationIdRoute: OriginationIdRoute,
+  OriginationIndexRoute: OriginationIndexRoute,
+}
+
+const OriginationRouteWithChildren = OriginationRoute._addFileChildren(
+  OriginationRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
   LoansRoute: LoansRoute,
-  OriginationRoute: OriginationRoute,
+  OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRoute,
   SignInRoute: SignInRoute,
 }

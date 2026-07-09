@@ -26,6 +26,7 @@ const FULL_SUBMISSION: SubmissionView = {
   originator: "Auric Andes",
   created_at: "2026-06-18T10:00:00Z",
   updated_at: "2026-06-18T10:00:00Z",
+  documents: [],
   loan_data: {
     to: "G...",
     metadata_uri: "ipfs://...",
