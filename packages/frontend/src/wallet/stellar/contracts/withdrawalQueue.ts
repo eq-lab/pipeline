@@ -230,12 +230,14 @@ export class WithdrawalQueueClient {
    *
    * @param requestId         - The u128 request ID.
    * @param verifierSignature - 64-byte verifier signature (BytesN<64>).
+   * @param deadline          - Claim deadline (u64 seconds), from the voucher response.
    * @param sourceAccount     - Funded `Account` for transaction fee.
    * @returns Assembled (but unsigned) transaction XDR string.
    */
   async buildClaimRequest(
     requestId: bigint,
     verifierSignature: Uint8Array,
+    deadline: bigint,
     sourceAccount: Account,
   ): Promise<string> {
     if (verifierSignature.length !== 64) {
@@ -252,6 +254,7 @@ export class WithdrawalQueueClient {
           typeof xdr.ScVal.scvBytes
         >[0],
       ),
+      nativeToScVal(deadline, { type: "u64" }),
     );
 
     const tx = new TransactionBuilder(sourceAccount, {

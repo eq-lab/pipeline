@@ -30,6 +30,11 @@ export interface VoucherResponse {
   user: string;
   /** Verifier signature — passed directly to `useClaim.write()`. */
   signature: string;
+  /**
+   * Claim deadline (u64 seconds) — pass to `claim_request`; still part of
+   * the signed digest.
+   */
+  deadline?: string;
 }
 
 export type VoucherStatus = "idle" | "pending" | "ready" | "failed";

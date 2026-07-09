@@ -1295,11 +1295,25 @@ export function useDepositFlow(
           stellarVoucher.status === "ready"
             ? (stellarVoucher as { signatureBytes?: Uint8Array }).signatureBytes
             : undefined;
-        if (!sig) return;
+        // `deadline` is required by the live on-chain `claim_request(request_id,
+        // verifier_signature, deadline)` shape (see #800) — a voucher response
+        // missing or malformed it must not be treated as claimable. Validate
+        // it is a well-formed non-negative integer string before converting —
+        // `BigInt("abc")` throws inside this uncaught handler, and
+        // `BigInt("")` silently yields `0n`, defeating the "no bogus 0" intent.
+        const deadlineRaw =
+          stellarVoucher.status === "ready"
+            ? stellarVoucher.data?.deadline
+            : undefined;
+        const deadline =
+          deadlineRaw !== undefined && /^\d+$/.test(deadlineRaw)
+            ? BigInt(deadlineRaw)
+            : undefined;
+        if (!sig || deadline === undefined) return;
         if (isDeposit) {
-          stellarClaim.write(stellarRequestIdBigInt, sig);
+          stellarClaim.write(stellarRequestIdBigInt, sig, deadline);
         } else {
-          stellarClaimWithdrawal.write(stellarRequestIdBigInt, sig);
+          stellarClaimWithdrawal.write(stellarRequestIdBigInt, sig, deadline);
         }
       },
     },

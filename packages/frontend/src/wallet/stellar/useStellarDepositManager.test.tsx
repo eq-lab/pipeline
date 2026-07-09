@@ -433,6 +433,7 @@ describe("useStellarClaim", () => {
   });
 
   const sig64 = new Uint8Array(64).fill(1);
+  const deadline = 1_800_000_000n;
 
   it("mock key → settles with hash", async () => {
     vi.spyOn(mockModule, "readMockStellarClaim").mockReturnValue({
@@ -444,7 +445,7 @@ describe("useStellarClaim", () => {
     });
 
     act(() => {
-      result.current.write(42n, sig64);
+      result.current.write(42n, sig64, deadline);
     });
 
     expect(result.current.isPending).toBe(true);
@@ -466,12 +467,38 @@ describe("useStellarClaim", () => {
     });
 
     act(() => {
-      result.current.write(42n, shortSig);
+      result.current.write(42n, shortSig, deadline);
     });
 
     expect(result.current.error?.message).toMatch(/64 bytes/);
     expect(result.current.isPending).toBe(false);
     expect(result.current.isSuccess).toBe(false);
+  });
+
+  it("threads deadline into DepositManagerClient.buildClaimRequest", async () => {
+    mockBuildClaimRequest.mockClear();
+    mockBuildClaimRequest.mockResolvedValue("assembled-xdr");
+    mockGetAccount.mockResolvedValue({ id: "GADDR", sequence: "100" });
+    mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
+
+    const { result } = renderHook(() => useStellarClaim(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.write(42n, sig64, deadline);
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(mockBuildClaimRequest).toHaveBeenCalledWith(
+      42n,
+      sig64,
+      deadline,
+      expect.anything(),
+    );
   });
 });
 
