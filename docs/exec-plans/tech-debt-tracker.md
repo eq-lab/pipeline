@@ -18,6 +18,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 ## Known Gaps
 
 ### TD-1: Lint command not yet configured
+
 - **Date:** 2026-04-21
 - **Location:** Root package.json, AGENTS.md
 - **Gap:** No unified lint command across Rust (cargo clippy) and TypeScript (eslint). AGENTS.md references cargo clippy individually but no single `make lint` or script covers both.
@@ -25,6 +26,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add a root `Makefile` or `justfile` with `lint` target calling both `cargo clippy --all -- -D warnings` and frontend eslint.
 
 ### TD-2: Architecture boundary linting not configured
+
 - **Date:** 2026-04-21
 - **Location:** packages/
 - **Gap:** No automated enforcement of the layering model (worker must not import api, api must not import worker directly, etc.). Rust module visibility helps but is not sufficient.
@@ -32,6 +34,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Evaluate `cargo deny` for dependency auditing; document module pub/priv visibility conventions in ARCHITECTURE.md.
 
 ### TD-3: Frontend component library not selected
+
 - **Date:** 2026-04-21
 - **Location:** packages/frontend
 - **Gap:** Component library decision deferred (Shadcn/ui vs Radix UI primitives). package.json is empty of UI dependencies.
@@ -39,6 +42,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Evaluate and select before first frontend feature implementation sprint.
 
 ### TD-4: MPC vendor not selected
+
 - **Date:** 2026-04-21
 - **Location:** packages/worker, docs/SECURITY.md
 - **Gap:** Fireblocks vs BitGo RFI in progress. Worker cannot implement MPC signing until SDK is chosen.
@@ -46,6 +50,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Complete RFI, select vendor, add SDK dependency to worker Cargo.toml.
 
 ### TD-5: Storybook preview imports theme.css only as a commented TODO
+
 - **Date:** 2026-05-12
 - **Location:** packages/ui/.storybook/preview.ts
 - **Gap:** `src/styles/theme.css` does not exist yet; the import line is commented out with a TODO so `yarn storybook` works without the file. Once the theme issue lands, the comment must be enabled.
@@ -53,6 +58,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Enable the import in preview.ts when the Phase-3 theme/token issue lands.
 
 ### TD-7: packages/frontend/tsconfig.tsbuildinfo not gitignored
+
 - **Date:** 2026-05-12
 - **Location:** packages/frontend/tsconfig.tsbuildinfo, .gitignore
 - **Gap:** The `tsconfig.tsbuildinfo` build cache file is not listed in the root `.gitignore` or any package-level `.gitignore`. Git reports it as modified after every TypeScript build.
@@ -60,6 +66,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add `**/tsconfig.tsbuildinfo` (or `tsconfig.tsbuildinfo`) to the root `.gitignore`.
 
 ### TD-6: No Foundation/Tokens Storybook story
+
 - **Date:** 2026-05-12
 - **Location:** packages/ui/src/stories/
 - **Gap:** There is no Storybook story that previews every `--color-pipeline-*`, `--text-pipeline-*`, `--radius-pipeline-*` token so reviewers can compare values to Figma visually. Deferred from Issue #41 to keep that issue tightly scoped to the `@theme` declaration.
@@ -67,6 +74,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add a `Foundation/Tokens.stories.tsx` that renders color swatches, type ramp samples, and radius examples alongside the token names and expected values.
 
 ### TD-7: Same-tab mock bridge not testable in jsdom
+
 - **Date:** 2026-05-14
 - **Location:** `packages/frontend/src/wallet/mock.ts` — `installSameTabMockBridge`
 - **Gap:** jsdom's `localStorage` uses non-configurable property descriptors, so `localStorage.setItem` cannot be replaced via direct assignment or `vi.spyOn`. The bridge's patching behavior (dispatching `pipeline-mock:wallet` when a mock key is written from the DevTools console) cannot be verified in the vitest/jsdom test suite. Tests cover the observable result (hook re-renders when the custom event fires) but not the patch mechanism itself.
@@ -74,6 +82,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add a Playwright/browser test in CI that opens the dev server, sets a mock key via DevTools evaluation, and asserts the UI updates without a reload. Alternatively, refactor the bridge to be injectable/mockable (e.g., accept a `storage` parameter in `installSameTabMockBridge` for test injection).
 
 ### TD-8: LoanMintedMapper does metadata fetch inside the indexer transaction, blocking forward progress on URI outage
+
 - **Date:** 2026-05-22 (policy revised 2026-05-25)
 - **Location:** `packages/worker/src/indexer/loan_mapper.rs` — `LoanMintedMapper::populate_details`, called from `index_once` inside `repo.pool.begin()` ... `tx.commit()`.
 - **Gap:** Each `LoanMinted` event triggers (a) an `eth_call tokenURI(loanId)` and (b) an `https://` or `ipfs://` JSON fetch with 1s/5s/30s retry. The current policy is "never skip `loan_details`": any unrecoverable failure propagates out of `insert(...)`, the indexer's outer transaction rolls back, and the entire block range is retried on the next polling cycle. While the URI source is unavailable the indexer literally does not advance past the affected range — and because all event types share the same `index_once` transaction, deposit/withdrawal/staking indexing is also stalled.
@@ -81,6 +90,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Lift the fetch out of the indexer transaction. The mapper writes only the `contract_logs` row (and enqueues a backfill record). A separate worker consumes the queue, performs `tokenURI` + fetch + upsert into `loan_details` with its own retry budget. The indexer always advances; `loan_details` arrives eventually. This is a meaningful change to the failure model — adopt it when the volume of `LoanMinted` events or the unreliability of the URI source justifies the engineering cost.
 
 ### TD-9: Outdated loans-data product spec — references non-existent on-chain reader
+
 - **Date:** 2026-05-22
 - **Location:** `docs/product-specs/loans-data.md`
 - **Gap:** The spec documents a `LoanRegistry.getImmutable(loanId)` reader returning a Solidity `ImmutableLoanData` struct. Neither exists on the deployed `LoanRegistryUpgradeable` contract (verified — it inherits ERC-721 and exposes `tokenURI(uint256)` only; the immutable data lives in the off-chain JSON document `tokenURI` points at).
@@ -88,6 +98,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Rewrite the "ImmutableLoanData" section of `loans-data.md` to describe (1) the off-chain JSON schema fetched via `tokenURI(loanId)`, (2) the indexer's `loan_details` table materialisation, (3) ops query for failed fetches: `contract_logs LEFT JOIN loan_details WHERE event_name='LoanMinted' AND loan_details.loan_id IS NULL`. File a separate `documentation,backlog` Issue and link it here.
 
 ### TD-10: Extract Modal + Switch UI primitives into `@pipeline/ui`
+
 - **Date:** 2026-05-25
 - **Location:** `packages/frontend/src/components/FirstConnectionModal.tsx`
 - **Gap:** The inline `Toggle` (Switch) component and the portal overlay pattern used by `FirstConnectionModal` are implemented inline with no reusable primitive in `@pipeline/ui`. If a second consumer needs a modal or toggle, it will duplicate the styles.
@@ -95,6 +106,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** When a second modal or toggle consumer appears in the codebase, extract `Switch` (role="switch", off/on colour tokens) and `Modal` / `ModalOverlay` (portal + focus trap + scrim + `role="dialog"`) into `@pipeline/ui` and update all consumers.
 
 ### TD-11: Dual `@stellar/stellar-sdk` versions (15.1.0 direct + 14.4.3 via blend-sdk)
+
 - **Date:** 2026-06-02
 - **Location:** `packages/frontend/package.json`, `node_modules/@blend-capital/blend-sdk/node_modules/@stellar/stellar-sdk`
 - **Gap:** `@blend-capital/blend-sdk@3.2.2` bundles its own `@stellar/stellar-sdk@14.4.3` in a nested `node_modules`, while the app directly depends on `15.1.0`. Two copies are shipped in the bundle. The Soroban RPC lifecycle in `blendPool.ts` uses the direct `15.1.0` import; blend-sdk uses its own `14.4.3` internally. There is no version conflict today — both resolve correctly via Yarn's hoisting — but bundle size increases and type mismatches are possible if the two diverge further.
@@ -102,6 +114,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** When blend-sdk releases a version that declares `@stellar/stellar-sdk@^15` as a peer/dependency range, upgrade blend-sdk and verify the direct install deduplications. Track with `yarn why @stellar/stellar-sdk` to confirm dedup. File a follow-up issue if that version ships.
 
 ### TD-12: `yarn workspace @pipeline/frontend lint` fails on `main` (Prettier drift in 11 files)
+
 - **Date:** 2026-06-04
 - **Location:** `packages/frontend/src` — 11 files including `StartHereCard.tsx`, `TopBar.test.tsx`, `WelcomeHeader.tsx`, `routes/index.tsx`, `routes/-index.test.tsx`
 - **Gap:** The frontend lint script's Prettier check exits 1 on a clean `main` checkout — formatting drifted without the gate catching it (CI does not currently fail on it).
@@ -109,6 +122,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** One-shot `prettier --write` pass over the workspace in a dedicated chore PR, then make CI run the same lint script so drift fails fast.
 
 ### TD-14: Replace `STELLAR_VERIFIER_SECRET` with KMS/BitGo provisioning
+
 - **Date:** 2026-06-11
 - **Location:** `packages/api/src/config.rs`, `.env.example`
 - **Gap:** The Stellar ed25519 signing key is provisioned via a flat `STELLAR_VERIFIER_SECRET` env var (Strkey `S…` seed in plaintext). For production this should be backed by KMS or BitGo key management, mirroring the EVM `SIGNER_KEY` path.
@@ -116,6 +130,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Introduce a per-chain `CHAIN_<id>_STELLAR_VERIFIER_SECRET` var alongside a KMS/BitGo integration path (matches the future per-chain naming scheme for mainnet).
 
 ### TD-15: `STELLAR_VERIFIER_SECRET` is chain-agnostic (flat)
+
 - **Date:** 2026-06-11
 - **Location:** `packages/api/src/config.rs`
 - **Gap:** A single `STELLAR_VERIFIER_SECRET` is shared across all Stellar chains. If testnet and mainnet ever need different signing keys (e.g., after a `set_verifier` rotation on one but not the other), the config cannot express that.
@@ -123,6 +138,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Rename to `CHAIN_<id>_API_STELLAR_VERIFIER_SECRET` per chain. Track against TD-14 above.
 
 ### TD-16: Stellar `lp_profiles` whitelist path not seeded [RESOLVED 2026-06-15 / #562]
+
 - **Date:** 2026-06-11
 - **Location:** `packages/shared/src/kyc_repo.rs`, `is_on_chain_allowed`
 - **Gap:** `is_on_chain_allowed` runs identical SQL for Stellar and EVM (Decision #4 in exec plan #555). Stellar voucher requests will 403 until `lp_profiles` rows exist for the wallet on the Stellar chain. No tooling or migration seeds those rows.
@@ -130,6 +146,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Resolved by #562:** Issue #562 added `KycRepo::populate_profiles_from_deposits_stellar` (case-sensitive Strkey insert) and `fetch_profiles_to_allow_stellar` (case-sensitive lookup, no Crystal gate). The Stellar relayer job calls them every cycle so `lp_profiles` is now seeded the same way the EVM path seeds itself.
 
 ### TD-17: Stellar relayer signer is a plaintext `S…` seed
+
 - **Date:** 2026-06-15
 - **Location:** `packages/worker/src/relayer/config.rs::StellarRelayerSettings`, `.env.example::CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET`
 - **Gap:** The Stellar relayer's ed25519 signing key is provisioned via a flat `CHAIN_<id>_RELAYER_STELLAR_SIGNER_SECRET` env var (Strkey `S…` seed in plaintext). Parallel to TD-14 (the API voucher key). For production this should be backed by KMS or BitGo key management, mirroring the EVM `SIGNER_KEY` path.
@@ -137,6 +154,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Introduce a KMS-backed signer behind the `StellarRelayerSettings.signing_key` field (e.g. fetch the seed from AWS KMS at startup). Pair with TD-14 in a single migration if possible.
 
 ### TD-13: CI does not run the frontend unit test suite (vitest)
+
 - **Date:** 2026-06-04
 - **Location:** `.github/workflows/` — Lint workflow runs docs lint, Rust clippy, TS typecheck; Tests workflow runs Rust unit tests only
 - **Gap:** `yarn workspace @pipeline/frontend test` (778 vitest tests) is not executed by any CI check, so PRs can merge with a red frontend suite.
@@ -144,6 +162,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Add a frontend-tests job (`yarn workspace @pipeline/frontend test --run`) to the Tests workflow and make it a required check.
 
 ### TD-18: Stellar price-poller uses Utc::now() instead of canonical ledger close-time
+
 - **Date:** 2026-06-16
 - **Location:** `packages/worker/src/price_poller/stellar/poller.rs` — `StellarPricePoller::fetch_share_price`
 - **Gap:** `simulateTransaction` returns the `latestLedger` sequence but not its close-time. The current implementation uses `Utc::now()` at sample time, introducing at most `poll_interval_secs` (≤60s) skew relative to the actual ledger close-time.
@@ -151,6 +170,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Fetch the canonical ledger close-time via `getLedgerEntries(LedgerHeader)` using the `latestLedger` sequence returned by simulate. This adds one extra RPC round-trip per poll tick. Implement when downstream consumers require exact-to-the-ledger timestamps.
 
 ### TD-19: StepRow still uses raw className override instead of Button size="compact"
+
 - **Date:** 2026-06-18
 - **Location:** `packages/ui/src/components/StepRow/StepRow.tsx` (~lines 170–178)
 - **Gap:** `StepRow` uses `className="!h-8 ..."` to override the `primary-dark` button height.
@@ -162,6 +182,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   the `Button` prop; adjust any test assertions that relied on the className value directly.
 
 ### TD-20: `ConnectChooserModal` is dead code — superseded by `ConnectWalletModal`
+
 - **Date:** 2026-06-18
 - **Location:** `packages/frontend/src/components/ConnectChooserModal.tsx` (and its test)
 - **Gap:** `ConnectChooserModal` is no longer imported from any non-test production file since `ConnectWalletModal` replaced it (Issue #558). Its own test file exercises it in isolation only.
@@ -169,6 +190,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Delete `ConnectChooserModal.tsx` and `ConnectChooserModal.test.tsx` after confirming via `grep -rn ConnectChooserModal` that no production import exists. Update the `ConnectWalletModal.tsx` JSDoc comment that still references it.
 
 ### TD-22: Active-chain `isConnected` derivation is duplicated across three files
+
 - **Date:** 2026-06-19
 - **Location:** `packages/frontend/src/api/useRequests.ts`, `packages/frontend/src/routes/transactions.tsx`, `packages/frontend/src/components/RecentActivityCard.tsx`
 - **Gap:** The three-line active-chain `isConnected` derivation (`kind === "stellar" ? isStellarConnected : isEvmConnected`) was intentionally inlined at the two render sites (Issue #644 Option A) to keep the bug fix minimal and low-risk. It now exists in three places.
@@ -176,6 +198,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Extract a small `useActiveChainConnection()` hook (e.g. in `packages/frontend/src/wallet/`) returning `{ kind, isConnected, address }` and have all three files consume it.
 
 ### TD-21: `packages/frontend/src/wallet/evm/WalletGateContext.ts` is dead code — legacy no-arg `openGate()` variant
+
 - **Date:** 2026-06-18
 - **Location:** `packages/frontend/src/wallet/evm/WalletGateContext.ts`
 - **Gap:** This file defines a different `WalletGateContextValue` interface (no `onProceed` callback) from the live one at `packages/frontend/src/wallet/WalletGateContext.ts`. `useEvmWallet.ts` imports from `../WalletGateContext` (the correct live path). The `evm/WalletGateContext.ts` file is not imported by anything except itself.
@@ -183,6 +206,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Confirm with `grep -rn "evm/WalletGateContext"` that no import exists, then delete the file.
 
 ### TD-23: `discover_pending_stellar` SQL has no automated coverage; silent-failure mode [PARTIALLY REALIZED 2026-06-23]
+
 - **Date:** 2026-06-22 (incident 2026-06-23)
 - **Location:** `packages/shared/src/yield_mint_outbox_repo.rs` — `YieldMintOutboxRepo::discover_pending_stellar`
 - **Gap:** The Stellar discovery query is the one piece of the yield-mint phase (Issue #683) with zero automated coverage — the project's no-DB-test rule precludes a unit test, and the orchestration tests exercise the trait surface via an in-memory store, not the SQL. Its correctness depends on an invisible coupling to the indexer's stored `PaymentRecorded` `params` shape and the loan-registry `C…` strkey in `contract_logs.contract_address`.
@@ -192,6 +216,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Dedup note:** post-fix, `discover_pending_stellar` is byte-identical to `discover_pending` (only the caller's `contract_address` bind value differs). Candidate to collapse into one method; kept separate for now (deliberate choice 2026-06-23) — fold into the integration-test work above.
 
 ### TD-24: `confirm_submitted_stellar` NULL `tx_hash` branch is a perpetual no-op
+
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` — `confirm_submitted_stellar`, the `row.tx_hash` `None` arm
 - **Gap:** A `submitted` row with `tx_hash IS NULL` logs an error and `continue`s every cycle with no path to resolution. Unreachable today (the Stellar `mark_submitted_stellar` always sets `tx_hash`), so it is defensive-only — not a live bug.
@@ -199,6 +224,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Change the branch to `mark_failed(&key, "submitted row missing tx_hash")` so the row leaves the active set and surfaces for operator review instead of looping.
 
 ### TD-26: Loan Book table rows missing Figma-specified `border-radius: 4px`
+
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/dashboard/LoanBookTable.tsx` (`DesktopTable`)
 - **Gap:** Figma node 3704:1095 (`.row`) specifies `border-radius: var(--radius-radius-l, 4px)` on each row. The HTML table rendering model does not support `border-radius` on `<tr>` elements — browsers ignore it. The value exists in the design system as `--radius-pipeline-card: 4px` but cannot be applied to a semantic `<table>/<tr>` structure.
@@ -206,6 +232,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** If the rounded corners are required, replace the semantic `<table>` with a `<div>`-based grid layout (role="table", role="row", role="cell" for accessibility). This is a layout restructure, not a one-liner, and should be a separate issue.
 
 ### TD-25: Duplicated Soroban simulate-fee constant (`SIM_FEE` vs `VIEW_PRECHECK_FEE`)
+
 - **Date:** 2026-06-22
 - **Location:** `packages/worker/src/relayer/stellar/yield_mint.rs` (`SIM_FEE = 1_000_000`), `packages/worker/src/relayer/stellar/whitelist.rs` (`VIEW_PRECHECK_FEE = 1_000_000`)
 - **Gap:** Two modules define differently-named constants for the same concept (the simulate-only fee that is never charged), with identical values. Issue #683 created `relayer/stellar/sim_decode.rs` as the shared simulate home but left the fee constant duplicated to avoid touching the stable whitelist module.
@@ -213,6 +240,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Move the simulate fee into `sim_decode.rs` (e.g. `pub const SIMULATE_FEE: u32 = 1_000_000;`) and point both `whitelist.rs` and `yield_mint.rs` at it; reconcile the two names.
 
 ### TD-27: Panel D (Yield History) lacks by-source / T-bill / decomposed-trailing series
+
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/dashboard/YieldHistoryPanel.tsx`, `useYieldHistoryPanel.ts`
 - **Gap:** Three of the four series described in the original #715 spec are NOT served by
@@ -227,6 +255,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   then wire the new series into `useYieldHistoryPanel` and `YieldHistoryPanel`.
 
 ### TD-28: YieldBarChart has no hover/tooltip interaction
+
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/dashboard/YieldBarChart.tsx`
 - **Gap:** The home chart (`PortfolioPlaceholderCard`) supports hover → vertical cursor line +
@@ -237,6 +266,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   to `YieldBarChart` when the interaction UX is prioritised (follow-up issue under epic #712).
 
 ### TD-29: Footer nav links are placeholder stubs — real URLs not yet wired
+
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/Footer.tsx` — `FOOTER_LINKS` const
 - **Gap:** All five footer links (Docs · White Paper · GitHub · X (Twitter) · Telegram) are rendered with `href="#"` and `aria-disabled="true"`. No real URLs were available at the time of implementation (Issue #746, Open Question 1 resolved as "stub for now"). The links do not navigate.
@@ -244,6 +274,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Once the real URLs are confirmed (e.g. `https://docs.pipeline.one/`, White Paper PDF, GitHub org link, X profile, Telegram channel), update the `href` values in `FOOTER_LINKS`, remove `aria-disabled="true"`, add `target="_blank" rel="noopener noreferrer"`, and remove this entry.
 
 ### TD-30: `fetch_unverified_transfers` is not chain-scoped
+
 - **Date:** 2026-07-06
 - **Location:** `packages/shared/src/kyc_repo.rs` — `fetch_unverified_transfers`
 - **Gap:** The original (EVM/Crystal) `fetch_unverified_transfers` selects unscreened
@@ -258,6 +289,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   pass the EVM relayer's `chain_id`, mirroring `fetch_unverified_transfers_for_chain`.
 
 ### TD-31: Stellar KYT disallow is DB-only (no on-chain deauthorize)
+
 - **Date:** 2026-07-06
 - **Location:** `packages/worker/src/relayer/stellar/whitelist.rs` — `phase_sync_whitelist_stellar` disallow pass
 - **Gap:** When a Stellar profile becomes KYT-failed (`kyt_status = 2`), the relayer sets
@@ -273,6 +305,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   revocation flow for both chains.
 
 ### TD-32: Trustee app duplicates env-accessor + Docker entrypoint plumbing with the LP app
+
 - **Date:** 2026-07-07
 - **Location:** `packages/trustee/src/lib/env.ts`, `docker/trustee/entrypoint.sh`
 - **Gap:** Issue #777 scaffolds `packages/trustee` as a thin app that imports `@pipeline/ui`
@@ -287,6 +320,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   so both apps consume one implementation.
 
 ### TD-33: Trustee eslint config omits the wallet/api import-restriction blocks [RESOLVED 2026-07-08 / #791]
+
 - **Date:** 2026-07-07
 - **Location:** `packages/trustee/eslint.config.js`
 - **Gap:** `packages/frontend/eslint.config.js` has `no-restricted-imports` blocks confining
@@ -306,6 +340,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `src/evm/**`/`src/stellar/**` modules.
 
 ### TD-34: Trustee sign-in "Connect Wallet" button is a documented no-op [RESOLVED 2026-07-08 / #791]
+
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/components/SignInCard.tsx`
 - **Gap:** Issue #787 ships the sign-in gate UI only (Figma node `4174-31660`). The
@@ -324,6 +359,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   authenticated on `/sign-in` → `/`.
 
 ### TD-35: `@pipeline/wallet-connect` duplicates rather than moves the LP wallet-connect slice
+
 - **Date:** 2026-07-08
 - **Location:** `packages/wallet-connect/src/{evm,stellar}/*`, `packages/frontend/src/wallet/*`
 - **Gap:** #791 extracted a minimal wallet-connect slice (connect/disconnect, address, the
@@ -351,6 +387,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `packages/frontend/src/wallet`.
 
 ### TD-36: Trustee sidebar nav badges have no backend count source
+
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/lib/nav.ts` (`TrusteeNavItem.badgeCount`), `packages/trustee/src/components/TrusteeSidebar.tsx` (`NavBadge`)
 - **Gap:** The Figma design (node `4116:8855`) shows count badges on Origination (1), Loans
@@ -366,6 +403,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   passed into `TrusteeSidebar`/`NavItem`, not a hardcoded value).
 
 ### TD-37: Trustee sidebar has no mobile/responsive behavior
+
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/components/TrusteeSidebar.tsx`
 - **Gap:** Issue #786 implements the Figma sidebar (node `4116:8855`) as desktop-only: a fixed
@@ -378,6 +416,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   (`packages/frontend/src/components/MobileNavMenu.tsx`).
 
 ### TD-38: Trustee `formatCompactUsd`/`formatFullUsd` duplicate the LP frontend's money formatters
+
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/utils/formatUsd.ts` vs.
   `packages/frontend/src/utils/formatCompactUsd.ts` / `packages/frontend/src/lib/usdc.ts`
@@ -394,6 +433,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   than depending on either app package directly.
 
 ### TD-39: Capital Allocation bar has no real proportions (bucket percentages not served)
+
 - **Date:** 2026-07-08
 - **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
 - **Gap:** The Figma design for the Overview page's Capital Allocation card (node `4116:8934`)
@@ -411,6 +451,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   bar's segment widths to that field (still not computed client-side).
 
 ### TD-40: Trustee Overview drift text + provenance chips are static mock strings
+
 - **Date:** 2026-07-09
 - **Location:** `packages/trustee/src/components/CapitalAllocationCard.tsx`
 - **Gap:** Issue #807 adds the reconciliation drift header
@@ -425,6 +466,49 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Wire to real provenance/drift data once the backend serves it — e.g. a
   drift percentage field plus per-source last-updated timestamps/status — and replace the static
   strings and `PROVENANCE_CHIPS` config with data-driven rendering.
+
+### TD-41: Trustee Capital-Wallet balance is a client-side interim source + client-side total sum + client-side legend percentages + client-side proportional bar
+
+- **Date:** 2026-07-09 (extended same-day, PR #811 review follow-up)
+- **Location:** `packages/trustee/src/api/useCapitalWalletBalance.ts`,
+  `packages/trustee/src/components/useCapitalAllocationCard.ts`,
+  `packages/trustee/src/components/CapitalAllocationCard.tsx`,
+  `packages/wallet-connect/src/stellar/sacBalance.ts`
+- **Gap:** Issue #805 reads the Capital Wallet bucket's USDC balance directly from the Stellar
+  contract (`usdc.balance(ENV.STELLAR_USDC_CUSTODY_ID)` via the new shared
+  `@pipeline/wallet-connect` `getSacBalance` helper) as an interim substitute for the backend
+  `capital_wallet` bucket, which `GET /v1/capital-allocation` still serves as `null`
+  (`packages/api/src/routes/capital_allocation.rs` has not indexed it). Four client-side
+  behaviors stem from this, all deliberate and guarded:
+  1. The Capital Wallet legend value prefers the backend bucket but falls back to this on-chain
+     read.
+  2. The displayed total is a client-side sum (`backend total + on-chain balance`), added ONLY
+     while the backend bucket is `null` (double-count guard).
+  3. **Scope addition (human, Figma node `4116:8961`):** each legend row also shows
+     `bucket_value ÷ displayed_total` rounded to the nearest whole percent (or `"< 1%"` for a
+     strictly-positive sub-1% share, per a same-day PR #811 review follow-up) — a client-computed
+     percentage, explicitly requested to reverse TD-39's "no client-computed percentages"
+     deferral now that the on-chain-augmented total is considered authoritative enough to divide
+     by. Percentages are independently rounded per bucket and NOT normalized to sum to 100.
+  4. **Review follow-up (human, PR #811):** the previously-inert, equal-width allocation bar
+     (TD-39) now sizes each segment's width to that bucket's EXACT (unrounded) share of the same
+     displayed total (`row.barFraction`) — a second, related client-computed proportion, using
+     the raw fraction (not the rounded percent text) so segments sum to ~100%. A bucket with an
+     unknown value/total renders no segment.
+- **Impact:** None of this is fabricated data — all four behaviors sum/divide two or more
+  real, authoritative sources (backend response + live on-chain read) — but it is arithmetic the
+  backend should eventually own outright once `capital_allocation.rs` indexes `capital_wallet`
+  and (if ever added) serves a proportion/percentage field. Until then, the total, every bucket's
+  percentage, and every bar segment's width silently change if either source's shape changes
+  (e.g. decimal scale), since the trustee performs the conversion (`sacRawToDisplay`-style
+  7-decimal → human-unit string, duplicated locally per TD-38's precedent since the trustee
+  cannot depend on `@pipeline/frontend`).
+- **Suggested fix:** Remove `useCapitalWalletBalance` and the total-sum/percentage/bar-fraction
+  computation logic in `useCapitalAllocationCard.ts` (and the proportional-width rendering in
+  `CapitalAllocationCard.tsx`) once the backend serves a non-null `capital_wallet` bucket (and,
+  if a percentage/proportion field is ever added server-side, prefer that instead of computing
+  `barFraction`/`percentDisplay` client-side) — the existing "prefer backend value" guards already
+  make this a no-op removal for callers.
 
 ---
 

@@ -80,6 +80,31 @@ export const ENV = Object.freeze({
    * Stellar testnet sentinel; must match the API/worker CHAIN_<id> configuration.
    */
   STELLAR_CHAIN_ID: readNumber("VITE_STELLAR_CHAIN_ID", 99_000_001),
+
+  /**
+   * Soroban RPC URL — used for direct on-chain contract reads (issue #805,
+   * the Capital-Wallet USDC balance). Distinct from Horizon; defaults to the
+   * public testnet Soroban RPC endpoint.
+   */
+  STELLAR_RPC_URL: readString(
+    "VITE_STELLAR_RPC_URL",
+    "https://soroban-testnet.stellar.org",
+  ),
+
+  /**
+   * USDC SAC (Stellar Asset Contract) Soroban contract id. Empty string means
+   * unconfigured — callers must render "—" rather than fabricate a value.
+   */
+  STELLAR_USDC_ID: readString("VITE_STELLAR_USDC_ID", ""),
+
+  /**
+   * Pipeline USDC custody account (`G…`) — its `usdc.balance()` is the
+   * Capital Wallet bucket's on-chain source (issue #805). Empty string means
+   * unconfigured — callers must render "—" rather than fabricate a value. If
+   * this account is actually the USDC issuer, `balance()` returns the i64-max
+   * sentinel, which the read path guards and also maps to "—".
+   */
+  STELLAR_USDC_CUSTODY_ID: readString("VITE_STELLAR_USDC_CUSTODY_ID", ""),
 });
 
 /**

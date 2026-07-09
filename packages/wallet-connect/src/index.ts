@@ -23,6 +23,11 @@
  * @creit.tech/stellar-wallets-kit, or @stellar/stellar-sdk directly from
  * outside this package — the ESLint `no-restricted-imports` rule enforces
  * this boundary (mirrors `packages/frontend/src/wallet/index.ts`, TD-33).
+ *
+ * `getSacBalance` (issue #805) is a plain async Stellar SAC `balance(account)`
+ * read — NOT a hook (this package forbids `@tanstack/react-query` outside
+ * `src/evm/**`). Callers that want polling/caching wrap it in their own
+ * `useQuery` (e.g. the Trustee's `useCapitalWalletBalance`).
  */
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -70,6 +75,12 @@ export type {
   UseStellarConnectorsResult,
   SorobanWalletId,
 } from "./stellar/useStellarWallet";
+export {
+  getSacBalance,
+  isSacBalanceSentinel,
+  SAC_BALANCE_I64_MAX,
+} from "./stellar/sacBalance";
+export type { GetSacBalanceParams } from "./stellar/sacBalance";
 
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
