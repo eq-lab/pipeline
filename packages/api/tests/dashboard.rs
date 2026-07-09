@@ -81,6 +81,7 @@ fn make_loan(
             governing_law: "EN".to_owned(),
             protection: String::new(),
             metadata_uri: None,
+            documents: Vec::new(),
             original_facility_size: usdc(senior_usdc + equity_usdc),
             original_senior_tranche: usdc(senior_usdc),
             original_equity_tranche: usdc(equity_usdc),

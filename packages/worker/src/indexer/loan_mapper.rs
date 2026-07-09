@@ -106,6 +106,7 @@ pub fn compose_drawn_snapshot(
         governing_law: json.governing_law,
         protection: json.protection,
         metadata_uri: json.metadata_uri,
+        documents: json.documents,
         // immutableLoanData
         original_facility_size: u256_to_bigdecimal(immutable.original_facility_size),
         original_senior_tranche: u256_to_bigdecimal(immutable.original_senior_tranche),
@@ -158,27 +159,37 @@ pub fn compose_lifecycle_snapshot(
     cumulative: &RepaymentDataView,
     refreshed_json: Option<LoanMetadataJson>,
 ) -> LoanSnapshot {
-    let (originator, borrower_id, commodity, corridor, governing_law, protection, metadata_uri) =
-        match refreshed_json {
-            Some(json) => (
-                json.originator,
-                json.borrower_id,
-                json.commodity,
-                json.corridor,
-                json.governing_law,
-                json.protection,
-                json.metadata_uri,
-            ),
-            None => (
-                prior.originator,
-                prior.borrower_id,
-                prior.commodity,
-                prior.corridor,
-                prior.governing_law,
-                prior.protection,
-                prior.metadata_uri,
-            ),
-        };
+    let (
+        originator,
+        borrower_id,
+        commodity,
+        corridor,
+        governing_law,
+        protection,
+        metadata_uri,
+        documents,
+    ) = match refreshed_json {
+        Some(json) => (
+            json.originator,
+            json.borrower_id,
+            json.commodity,
+            json.corridor,
+            json.governing_law,
+            json.protection,
+            json.metadata_uri,
+            json.documents,
+        ),
+        None => (
+            prior.originator,
+            prior.borrower_id,
+            prior.commodity,
+            prior.corridor,
+            prior.governing_law,
+            prior.protection,
+            prior.metadata_uri,
+            prior.documents,
+        ),
+    };
 
     LoanSnapshot {
         // IPFS fields (carry-forward or re-fetched)
@@ -189,6 +200,7 @@ pub fn compose_lifecycle_snapshot(
         governing_law,
         protection,
         metadata_uri,
+        documents,
         // immutable fields — always carry-forward (immutable by construction)
         original_facility_size: prior.original_facility_size,
         original_senior_tranche: prior.original_senior_tranche,

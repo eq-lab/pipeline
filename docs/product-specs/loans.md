@@ -67,9 +67,10 @@ It holds seven numeric fields:
 - `originationDate`, `originalMaturityDate`
 
 Descriptive material (originator label, hashed borrower identifier, commodity, corridor,
-governing law, additional legal documents) is carried in the IPFS document referenced by
-`metadataURI`. The `originator` address is passed to `mintLoan` and stored alongside the
-NFT owner.
+governing law, protection instrument) is carried in the IPFS document referenced by
+`metadataURI`, along with a `documents` array of `{ name, uri }` links to the underlying
+legal documents (e.g. Agreement, License, Terms & Conditions). The `originator` address is
+passed to `mintLoan` and stored alongside the NFT owner.
 
 ### Economics epochs (rate and maturity over the loan's life)
 

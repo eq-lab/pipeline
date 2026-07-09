@@ -98,7 +98,9 @@ already-decided submission returns `409 Conflict`.
 **Payload.** `POST /v1/loan-book/loan` carries every input to the on-chain
 `draw_loan`: the holder `to`, the on-chain `metadata_uri`, the off-chain metadata
 document fields (`originator`, `borrower_id`, `commodity`, `corridor`,
-`governing_law`, `protection`, optional `secondary_metadata_uri`), the
+`governing_law`, `protection`, optional `secondary_metadata_uri`, and
+`documents` — an array of `{ name, uri }` links such as the Agreement,
+License, and Terms & Conditions), the
 `economics` block (`ImmutableLoanData` — base-6 USDC amount strings, bps rate,
 origination/maturity timestamps), `initial_ccr`, and `initial_location`
 (`LocationUpdate`). The whole payload is stored verbatim as JSONB. Submission
