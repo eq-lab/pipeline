@@ -85,6 +85,8 @@ shown before the broadcast control is enabled. Approval broadcasts `mintLoan` fr
 Trustee key. The resulting disbursement is a separate Type 2 action the Trustee co-signs
 next.
 
+**Implementation status (#821):** a read-only version ships at `/origination/$id` (reached from the "Review" control on the Origination table #813 and the Overview Needs Attention section #818), rendering the submission's Loan Terms + Deal Details from `GET /v1/loan-book/submissions` plus a lifecycle status chip. The Approve / Reject / Request-changes buttons render inert (the Type-1 review/mint signing flow is a separate sub-issue), and no collateral valuation is shown pre-mint (no on-chain `loan_id` to value against yet).
+
 ---
 
 ## Type 2 — Capital Wallet MPC co-signature

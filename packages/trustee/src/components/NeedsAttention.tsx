@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { OriginationIcon } from "./TrusteeNavIcons";
 import { useNeedsAttention } from "./useNeedsAttention";
 
@@ -18,10 +19,10 @@ import { useNeedsAttention } from "./useNeedsAttention";
  * supplementary block, not the page's primary content (unlike
  * `CapitalAllocationCard`, which does show loading/error states).
  *
- * Resolved OQ#1 (human): the "Review" button is rendered per Figma but
- * **inert** — disabled/no-op, no wiring/navigation. Mirrors the origination
- * page's disabled Review button pattern (`-useOriginationTable.ts` /
- * `origination.tsx`'s `StatusCell` "in-review" case).
+ * Resolved OQ#1 (human, superseded by issue #821): the "Review" button now
+ * navigates to `/origination/$id`, passing the row's source `SubmissionView`
+ * as router state — mirroring `origination.tsx`'s `StatusCell` "in-review"
+ * case, which was wired the same way in the same issue.
  *
  * NOT a `Card` (human review follow-up, issue #818): per the Figma
  * background node `4116:8928`, the "Needs Attention" heading/group/rows live
@@ -57,13 +58,13 @@ import { useNeedsAttention } from "./useNeedsAttention";
  *     (exact `rgba(56,55,53,0.6)`).
  *   - Review button (Figma node `4116:9016`): `--color-pipeline-brand` (exact
  *     `#000080`) bg, white text, `rounded-[4px]`, `h-[40px]`, `px-[16px]`,
- *     `text-[16px]` Inter regular, full opacity. Human review follow-up (this
- *     issue): the initial cut wrongly copied the ORIGINATION TABLE's disabled
- *     Review button shape (`h-[36px]`/`text-[15px]`/`opacity-60`, Figma node
- *     `4116:9159`) — a DIFFERENT Figma component from this section's button.
- *     This button stays visually identical to Figma (no dimming) while still
- *     being functionally inert via `disabled`/`aria-disabled` (accessibility,
- *     not a visual affordance, signals the no-op state here).
+ *     `text-[16px]` Inter regular, full opacity. Human review follow-up
+ *     (issue #818): the initial cut wrongly copied the ORIGINATION TABLE's
+ *     disabled Review button shape (`h-[36px]`/`text-[15px]`/`opacity-60`,
+ *     Figma node `4116:9159`) — a DIFFERENT Figma component from this
+ *     section's button. Issue #821 wires it live (navigates to
+ *     `/origination/$id`); the `disabled`/`aria-disabled` inert affordance is
+ *     removed accordingly, keeping the same visual shape.
  */
 export function NeedsAttention() {
   const { state, rows } = useNeedsAttention();
@@ -121,16 +122,16 @@ export function NeedsAttention() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                disabled
-                aria-disabled="true"
-                aria-label="Review submission (not yet available)"
+              <Link
+                to="/origination/$id"
+                params={{ id: String(row.id) }}
+                state={{ submission: row.submission }}
+                aria-label="Review submission"
                 data-testid="needs-attention-review"
-                className="flex h-[40px] shrink-0 cursor-not-allowed items-center justify-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
+                className="flex h-[40px] shrink-0 items-center justify-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
               >
                 Review
-              </button>
+              </Link>
             </div>
           ))}
         </div>

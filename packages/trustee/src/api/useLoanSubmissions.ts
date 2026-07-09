@@ -87,6 +87,15 @@ export interface SubmitLoanRequest {
   secondary_metadata_uri?: string | null;
 }
 
+/**
+ * A single document reference (name + URI) from the loan metadata document
+ * (backend `LoanDocumentDto`, `loan_book.rs:123`).
+ */
+export interface LoanDocumentDto {
+  name: string;
+  uri: string;
+}
+
 /** One submission as returned by `GET /v1/loan-book/submissions`. */
 export interface SubmissionView {
   id: number;
@@ -104,6 +113,13 @@ export interface SubmissionView {
   created_at: string;
   /** Last update timestamp (RFC 3339). */
   updated_at: string;
+  /**
+   * Documents referenced in the submitted metadata (Agreement, License,
+   * T&Cs, …), lifted by the backend from `loan_data.documents` for direct
+   * consumption (`loan_book.rs:233-235`). Empty for legacy submissions that
+   * predate the field — render a graceful empty state, never fabricate.
+   */
+  documents: LoanDocumentDto[];
   /**
    * The full submitted payload, passed through verbatim by the backend as
    * `serde_json::Value` — treat as loosely-typed at the boundary even though

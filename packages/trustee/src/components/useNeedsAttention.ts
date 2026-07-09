@@ -46,6 +46,12 @@ export interface NeedsAttentionRow {
   id: number;
   title: string;
   subtitle: string;
+  /**
+   * The source `SubmissionView`, threaded through so the Review button can
+   * navigate to `/origination/$id` with it as router state (issue #821)
+   * without a second lookup by `id`.
+   */
+  submission: SubmissionView;
 }
 
 export type NeedsAttentionState = "loading" | "error" | "empty" | "ready";
@@ -99,6 +105,7 @@ export function mapSubmissionToNeedsAttentionRow(
     id: submission.id,
     title: `${friendlyOriginator} — ${commodity}: new request`,
     subtitle: subtitleParts.join(" · "),
+    submission,
   };
 }
 

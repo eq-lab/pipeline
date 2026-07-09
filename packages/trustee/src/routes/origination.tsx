@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
 import {
   useOriginationTable,
@@ -21,8 +21,9 @@ import {
  *     pre-mint exists for the valuation mode, and it must not be inferred
  *     from the commodity string (see `-useOriginationTable.ts` docs).
  *   - Status/action column: `Approved` → green "Approved & minted · <date>"
- *     pill; `InReview` → an inert/disabled "Review" button (no review route
- *     exists yet); `Rejected` → red "Rejected" pill with `reason` on hover.
+ *     pill; `InReview` → a "Review" control that navigates to
+ *     `/origination/$id` (issue #821), passing the row's `SubmissionView` as
+ *     router state; `Rejected` → red "Rejected" pill with `reason` on hover.
  *   - The Figma static footer note ("The document set adapts to the
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
@@ -62,7 +63,8 @@ import {
  *     colors). The check icon (Figma node `4116:9216`, a localhost dev-server
  *     SVG asset not fetchable at runtime) is redrawn inline as `CheckIcon`.
  *   - Review button: `#000080` bg (exact match `--color-pipeline-brand`),
- *     white text, `rounded-[4px]`, `15px` Inter regular, `h-[36px]`.
+ *     white text, `rounded-[4px]`, `15px` Inter regular, `h-[36px]`. Live
+ *     navigation as of issue #821 (previously an inert placeholder).
  *   - Rejected pill: no Figma reference row exists for this status (resolved
  *     via the issue's Open Questions as a "sensible token-consistent
  *     default") — mirrors the Approved pill's shape with
@@ -141,7 +143,8 @@ function CheckIcon(props: React.SVGAttributes<SVGSVGElement>) {
   );
 }
 
-function StatusCell({ status }: { status: OriginationTableRow["status"] }) {
+function StatusCell({ row }: { row: OriginationTableRow }) {
+  const { status } = row;
   switch (status.kind) {
     case "approved":
       return (
@@ -155,16 +158,16 @@ function StatusCell({ status }: { status: OriginationTableRow["status"] }) {
       );
     case "in-review":
       return (
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          aria-label="Review submission (not yet available)"
+        <Link
+          to="/origination/$id"
+          params={{ id: String(row.id) }}
+          state={{ submission: row.submission }}
+          aria-label="Review submission"
           data-testid="origination-status-review"
-          className="h-[36px] cursor-not-allowed rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[12px] font-[family-name:var(--font-body)] text-[15px] text-white opacity-60"
+          className="inline-flex h-[36px] items-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[12px] font-[family-name:var(--font-body)] text-[15px] text-white"
         >
           {status.label}
-        </button>
+        </Link>
       );
     case "rejected":
       return (
@@ -335,7 +338,7 @@ function OriginationTable() {
                 data-testid={`origination-status-cell-${row.id}`}
                 className={`${BODY_CELL_CLASS} items-end`}
               >
-                <StatusCell status={row.status} />
+                <StatusCell row={row} />
               </div>
             </div>
           ))}

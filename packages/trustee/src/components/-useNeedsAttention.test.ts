@@ -27,6 +27,7 @@ const IN_REVIEW_SUBMISSION: SubmissionView = {
   originator: "0xSubmitterAddress",
   created_at: "2026-06-18T10:00:00Z",
   updated_at: "2026-06-18T10:00:00Z",
+  documents: [],
   loan_data: {
     to: "G...",
     metadata_uri: "ipfs://...",

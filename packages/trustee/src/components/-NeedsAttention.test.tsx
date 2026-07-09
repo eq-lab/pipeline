@@ -1,6 +1,7 @@
 /**
  * Render tests for `NeedsAttention.tsx` — the Overview page's Needs
- * Attention section, Origination group ONLY (issue #818).
+ * Attention section, Origination group ONLY (issue #818, Review button
+ * wired to `/origination/$id` in issue #821).
  *
  * Covers:
  *   - Renders the "Needs Attention" heading + "Origination" group header +
@@ -9,13 +10,32 @@
  *     when there are no in-review submissions (empty state).
  *   - Renders nothing on loading/error (supplementary block, not primary
  *     content — resolved default per the exec plan).
- *   - The "Review" button is present, disabled, and has the accessible
- *     label / aria-disabled (inert, not wired).
+ *   - The "Review" button navigates to `/origination/$id` with the row's
+ *     `SubmissionView` as router state, and is keyboard-focusable (not
+ *     disabled).
+ *
+ * Mounts a minimal in-test TanStack router (mirroring
+ * `-TrusteeSidebar.test.tsx`) so the `Link` resolves without the full app
+ * router tree, and asserts on the resolved `href` + navigation outcome
+ * rather than reaching into TanStack Router internals.
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+  createMemoryHistory,
+  useLocation,
+  Outlet,
+} from "@tanstack/react-router";
 import { NeedsAttention } from "./NeedsAttention";
-import type { UseNeedsAttentionResult } from "./useNeedsAttention";
+import type {
+  NeedsAttentionRow,
+  UseNeedsAttentionResult,
+} from "./useNeedsAttention";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
 
 const mockUseNeedsAttention = vi.fn<() => UseNeedsAttentionResult>();
 
@@ -23,24 +43,107 @@ vi.mock("./useNeedsAttention", () => ({
   useNeedsAttention: () => mockUseNeedsAttention(),
 }));
 
+const SUBMISSION: SubmissionView = {
+  id: 1,
+  status: "InReview",
+  reason: null,
+  originator: "0xSubmitterAddress",
+  created_at: "2026-06-18T10:00:00Z",
+  updated_at: "2026-06-18T10:00:00Z",
+  documents: [],
+  loan_data: {
+    to: "G...",
+    metadata_uri: "ipfs://...",
+    originator: "Open Mineral",
+    borrower_id: "borrower-1",
+    commodity: "Copper Concentrate",
+    corridor: "PE-CN",
+    governing_law: "England",
+    economics: {
+      original_facility_size: "3500000.000000",
+      original_senior_tranche: "3000000.000000",
+      original_equity_tranche: "500000.000000",
+      original_offtaker_price: "3500000.000000",
+      senior_interest_rate_bps: 1400,
+      origination_date: 1_750_000_000,
+      original_maturity_date: 1_797_292_800,
+    },
+    initial_ccr: 1_500_000,
+    initial_location: {
+      location_type: "Vessel",
+      location_identifier: "MV Example",
+      tracking_url: "https://example.com",
+      updated_at: 1_750_000_000,
+    },
+  },
+};
+
+const ROW_1: NeedsAttentionRow = {
+  id: 1,
+  title: "Open Mineral — Copper Concentrate: new request",
+  subtitle: "Copper Concentrate · PE → CN · submitted 18 Jun",
+  submission: SUBMISSION,
+};
+
+const ROW_2: NeedsAttentionRow = {
+  id: 2,
+  title: "Auric Andes — Gold Pyrite Concentrate: new request",
+  subtitle: "Gold Pyrite Concentrate · submitted 20 Jun",
+  submission: { ...SUBMISSION, id: 2 },
+};
+
+/** Records the location observed by a child route, so navigation can be asserted. */
+function LocationRecorder({
+  onLocation,
+}: {
+  onLocation: (state: unknown, pathname: string) => void;
+}) {
+  const location = useLocation();
+  onLocation(location.state, location.pathname);
+  return <p data-testid="detail-route-marker">detail route</p>;
+}
+
+/** Builds a minimal in-test router: `/` renders NeedsAttention, `/origination/$id` records the navigation. */
+function buildRouter(
+  onDetailLocation: (state: unknown, pathname: string) => void,
+) {
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/",
+    component: () => <NeedsAttention />,
+  });
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/origination/$id",
+    component: () => <LocationRecorder onLocation={onDetailLocation} />,
+  });
+  const routeTree = rootRoute.addChildren([indexRoute, detailRoute]);
+  return createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+}
+
+function renderNeedsAttention(
+  onDetailLocation: (state: unknown, pathname: string) => void = () => {},
+) {
+  const router = buildRouter(onDetailLocation);
+  return render(<RouterProvider router={router} />);
+}
+
 describe("NeedsAttention", () => {
-  it("renders the heading, group header, and one row per in-review submission", () => {
+  it("renders the heading, group header, and one row per in-review submission", async () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
-      rows: [
-        {
-          id: 1,
-          title: "Open Mineral — Copper Concentrate: new request",
-          subtitle: "Copper Concentrate · PE → CN · submitted 18 Jun",
-        },
-      ],
+      rows: [ROW_1],
     });
 
-    render(<NeedsAttention />);
+    renderNeedsAttention();
 
     expect(
-      screen.getByRole("heading", { name: "Needs Attention" }),
+      await screen.findByRole("heading", { name: "Needs Attention" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Origination")).toBeInTheDocument();
     expect(screen.getByTestId("needs-attention")).toBeInTheDocument();
@@ -56,50 +159,54 @@ describe("NeedsAttention", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders one row per in-review submission when there are multiple", () => {
+  it("renders one row per in-review submission when there are multiple", async () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
-      rows: [
-        {
-          id: 1,
-          title: "Open Mineral — Copper Concentrate: new request",
-          subtitle: "Copper Concentrate · PE → CN · submitted 18 Jun",
-        },
-        {
-          id: 2,
-          title: "Auric Andes — Gold Pyrite Concentrate: new request",
-          subtitle: "Gold Pyrite Concentrate · submitted 20 Jun",
-        },
-      ],
+      rows: [ROW_1, ROW_2],
     });
 
-    render(<NeedsAttention />);
-    expect(screen.getAllByTestId("needs-attention-row")).toHaveLength(2);
+    renderNeedsAttention();
+    expect(await screen.findAllByTestId("needs-attention-row")).toHaveLength(2);
   });
 
-  it("renders the Review button as disabled/inert with an accessible label", () => {
+  it("renders the Review control as a live, keyboard-focusable link (not disabled)", async () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
-      rows: [
-        {
-          id: 1,
-          title: "Open Mineral — Copper Concentrate: new request",
-          subtitle: "Copper Concentrate · PE → CN · submitted 18 Jun",
-        },
-      ],
+      rows: [ROW_1],
     });
 
-    render(<NeedsAttention />);
+    renderNeedsAttention();
 
-    const button = screen.getByTestId("needs-attention-review");
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("aria-disabled", "true");
-    expect(button).toHaveAccessibleName(
-      "Review submission (not yet available)",
+    const link = await screen.findByTestId("needs-attention-review");
+    expect(link).not.toBeDisabled();
+    expect(link).not.toHaveAttribute("aria-disabled");
+    expect(link).toHaveAttribute("href", "/origination/1");
+    expect(link).toHaveAccessibleName("Review submission");
+    expect(link).toHaveTextContent("Review");
+    // Anchors are natively keyboard-focusable/activatable — no tabIndex override needed.
+    expect(link.tagName).toBe("A");
+  });
+
+  it("clicking Review navigates to /origination/$id with the row's SubmissionView as state", async () => {
+    mockUseNeedsAttention.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      rows: [ROW_1],
+    });
+
+    const onDetailLocation = vi.fn();
+    renderNeedsAttention(onDetailLocation);
+
+    fireEvent.click(await screen.findByTestId("needs-attention-review"));
+
+    const marker = await screen.findByTestId("detail-route-marker");
+    expect(marker).toBeInTheDocument();
+    expect(onDetailLocation).toHaveBeenCalledWith(
+      expect.objectContaining({ submission: SUBMISSION }),
+      "/origination/1",
     );
-    expect(button).toHaveTextContent("Review");
   });
 
   it("renders nothing (whole section absent) when state is 'empty'", () => {
@@ -109,7 +216,7 @@ describe("NeedsAttention", () => {
       rows: [],
     });
 
-    render(<NeedsAttention />);
+    renderNeedsAttention();
 
     expect(screen.queryByTestId("needs-attention")).not.toBeInTheDocument();
     expect(screen.queryByText("Needs Attention")).not.toBeInTheDocument();
@@ -123,7 +230,7 @@ describe("NeedsAttention", () => {
       rows: [],
     });
 
-    render(<NeedsAttention />);
+    renderNeedsAttention();
 
     expect(screen.queryByTestId("needs-attention")).not.toBeInTheDocument();
   });
@@ -135,7 +242,7 @@ describe("NeedsAttention", () => {
       rows: [],
     });
 
-    render(<NeedsAttention />);
+    renderNeedsAttention();
 
     expect(screen.queryByTestId("needs-attention")).not.toBeInTheDocument();
   });
