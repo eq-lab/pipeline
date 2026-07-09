@@ -1,21 +1,3 @@
-/**
- * React Query hook — fetches a deposit voucher (verifier signature) from the
- * Pipeline API (`GET /v1/deposits/{request_id}/voucher?wallet=<address>`).
- *
- * The voucher contains the `signature` needed to call `useClaim.write()`.
- * The hook is disabled when `requestId` is `undefined` or the wallet is
- * disconnected — it returns `{ status: "idle" }` in those cases.
- *
- * Mock layer
- * ----------
- * The hook is reactive to changes in `pipeline.mock.api.*` localStorage keys.
- * Two mock keys are checked (most-specific first):
- *
- *   1. `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher?wallet=<addr>`
- *   2. `pipeline.mock.api.GET./v1/deposits/<requestId>/voucher`
- *
- * See `src/api/README.md` for the full mock-key schema and DevTools snippets.
- */
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { useEvmWallet } from "@/wallet";
@@ -72,7 +54,7 @@ function subscribeMockVersion(listener: () => void) {
  *
  * - Disabled when `requestId` is `undefined` or the wallet is disconnected.
  * - Polls until the voucher is ready (verifier may have latency).
- * - The `status` field conveys: `"idle"` | `"pending"` | `"ready"` | `"failed"`.
+ * - The `status` field conveys: `"idle"` | `"pending"` | `"ready"` | `"failed".`
  *
  * @param requestId  The deposit request ID (string, e.g. "42"). Pass `undefined`
  *                   to keep the hook in the idle/disabled state.
@@ -108,12 +90,7 @@ export function useDepositVoucher(
     // Keep retrying on retriable errors (404 = not yet visible, 403 = not yet allowed).
     retry: (failureCount, error) => {
       const msg = error?.message ?? "";
-      const isRetriable =
-        msg.includes("Not Found") ||
-        msg.includes("not found") ||
-        msg.includes("Forbidden") ||
-        msg.includes("forbidden") ||
-        msg.includes("not yet");
+      const isRetriable = msg.includes("Not Found") || msg.includes("not found") || msg.includes("Forbidden") || msg.includes("forbidden") || msg.includes("not yet");
       return isRetriable && failureCount < 20;
     },
     retryDelay: 3000,
