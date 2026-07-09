@@ -58,8 +58,9 @@ function CheckIcon(props: React.SVGAttributes<SVGSVGElement>) {
 }
 
 /** DocumentIcon — redrawn inline (Figma node `4116:9364`'s asset is a
- * localhost dev-server SVG, not fetchable at runtime). A simple file glyph
- * painted with `currentColor`. */
+ * localhost dev-server SVG, not fetchable at runtime). A FILLED file glyph
+ * painted with `currentColor` — the Figma asset is `fill="#000080"` (a solid
+ * navy document), not a thin outline, so it's filled here to match. */
 function DocumentIcon(props: React.SVGAttributes<SVGSVGElement>) {
   return (
     <svg
@@ -72,17 +73,12 @@ function DocumentIcon(props: React.SVGAttributes<SVGSVGElement>) {
       height={16}
       {...props}
     >
+      {/* Filled body with the folded corner cut out via fill-rule. */}
       <path
-        d="M4 1.5H9L12.5 5V13.5C12.5 14.0523 12.0523 14.5 11.5 14.5H4.5C3.94772 14.5 3.5 14.0523 3.5 13.5V2.5C3.5 1.94772 3.94772 1.5 4 1.5Z"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 1.5V5H12.5"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M4 1.5C3.44772 1.5 3 1.94772 3 2.5V13.5C3 14.0523 3.44772 14.5 4 14.5H12C12.5523 14.5 13 14.0523 13 13.5V5.20711L9.29289 1.5H4ZM9 2.5V5C9 5.27614 9.22386 5.5 9.5 5.5H12L9 2.5Z"
+        fill="currentColor"
       />
     </svg>
   );
@@ -201,9 +197,17 @@ function DealDetailsCard({
           </p>
         ) : (
           dealDetails.documents.map((doc, i) => (
-            <div
+            <a
               key={`${doc.name}-${i}`}
-              className="flex items-center gap-[12px] py-[8px]"
+              href={doc.uri || undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={doc.uri ? undefined : true}
+              className={[
+                "flex items-center gap-[12px] py-[8px] no-underline",
+                doc.uri ? "cursor-pointer" : "pointer-events-none",
+              ].join(" ")}
+              data-testid="origination-detail-document"
             >
               <span className="flex size-[32px] shrink-0 items-center justify-center rounded-[4px] bg-[rgba(0,0,128,0.06)] text-[#000080]">
                 <DocumentIcon />
@@ -214,7 +218,7 @@ function DealDetailsCard({
               >
                 {doc.name}
               </span>
-            </div>
+            </a>
           ))
         )}
       </div>
@@ -235,7 +239,7 @@ function ActionButtons() {
           disabled
           aria-disabled="true"
           data-testid="origination-detail-request-changes"
-          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] opacity-60"
+          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
         >
           Request changes
         </button>
@@ -244,7 +248,7 @@ function ActionButtons() {
           disabled
           aria-disabled="true"
           data-testid="origination-detail-reject"
-          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] opacity-60"
+          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
         >
           Reject
         </button>
@@ -253,7 +257,7 @@ function ActionButtons() {
           disabled
           aria-disabled="true"
           data-testid="origination-detail-approve"
-          className="h-[48px] cursor-not-allowed rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white opacity-60"
+          className="h-[48px] cursor-not-allowed rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white"
         >
           Approve
         </button>
@@ -308,7 +312,12 @@ function OriginationDetail() {
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[8px] px-[56px] pt-[39px] pb-[80px]">
       <p className="font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524]">
-        Origination
+        <Link
+          to="/origination"
+          className="text-[#262524] no-underline hover:underline"
+        >
+          Origination
+        </Link>
         <span className="text-[rgba(56,55,53,0.6)]">
           {" "}
           / {detail.breadcrumb}

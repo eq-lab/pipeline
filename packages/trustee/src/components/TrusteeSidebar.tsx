@@ -231,7 +231,7 @@ function AccountChip() {
 export function TrusteeSidebar() {
   return (
     <aside
-      className="flex h-screen w-[320px] shrink-0 flex-col bg-[color:var(--color-pipeline-brand)] px-4 py-6"
+      className="sticky top-0 flex h-screen w-[320px] shrink-0 flex-col overflow-y-auto bg-[color:var(--color-pipeline-brand)] px-4 py-6"
       aria-label="Trustee navigation"
     >
       <div className="w-full shrink-0 pb-[26px]">
