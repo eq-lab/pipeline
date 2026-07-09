@@ -26,7 +26,7 @@ use pipeline_worker::indexer::{
 };
 use shared::{
     json_numeric::u256_to_bigdecimal,
-    loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
+    loan_snapshot::{LoanDocument, LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
 };
 
@@ -144,6 +144,7 @@ impl LoanMetadataFetcher for MockMetadataFetcher {
             governing_law: "EN".to_owned(),
             protection: "LC at sight".to_owned(),
             metadata_uri: Some("ipfs://Qm_secondary".to_owned()),
+            documents: Vec::new(),
         })
     }
 }
@@ -336,6 +337,10 @@ fn make_prior_snapshot() -> LoanSnapshot {
         governing_law: "NY".to_owned(),
         protection: "Prior LC".to_owned(),
         metadata_uri: Some("ipfs://Qm_prior_secondary".to_owned()),
+        documents: vec![LoanDocument {
+            name: "Prior Agreement".to_owned(),
+            uri: "ipfs://Qm_prior_agreement".to_owned(),
+        }],
         original_facility_size: BigDecimal::from_str("5000000").unwrap(),
         original_senior_tranche: BigDecimal::from_str("4000000").unwrap(),
         original_equity_tranche: BigDecimal::from_str("1000000").unwrap(),
@@ -497,6 +502,16 @@ fn compose_drawn_snapshot_full_row() {
         governing_law: "EN".to_owned(),
         protection: "LC at sight".to_owned(),
         metadata_uri: Some("ipfs://Qm_secondary_doc".to_owned()),
+        documents: vec![
+            LoanDocument {
+                name: "Agreement".to_owned(),
+                uri: "ipfs://Qm_agreement".to_owned(),
+            },
+            LoanDocument {
+                name: "License".to_owned(),
+                uri: "ipfs://Qm_license".to_owned(),
+            },
+        ],
     };
 
     let immutable = ImmutableLoanDataView {
@@ -555,6 +570,19 @@ fn compose_drawn_snapshot_full_row() {
     assert_eq!(
         snap.metadata_uri,
         Some("ipfs://Qm_secondary_doc".to_owned())
+    );
+    assert_eq!(
+        snap.documents,
+        vec![
+            LoanDocument {
+                name: "Agreement".to_owned(),
+                uri: "ipfs://Qm_agreement".to_owned(),
+            },
+            LoanDocument {
+                name: "License".to_owned(),
+                uri: "ipfs://Qm_license".to_owned(),
+            },
+        ]
     );
 
     assert_eq!(
@@ -649,6 +677,8 @@ fn compose_lifecycle_snapshot_carry_forward_when_uri_unchanged() {
     assert_eq!(snap.governing_law, prior.governing_law);
     assert_eq!(snap.protection, prior.protection);
     assert_eq!(snap.metadata_uri, prior.metadata_uri);
+    // Documents carry forward unchanged when the on-chain URI is unchanged.
+    assert_eq!(snap.documents, prior.documents);
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(snap.original_senior_tranche, prior.original_senior_tranche);
     assert_eq!(snap.ccr_bps, 8500_u32);
@@ -705,6 +735,10 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
         governing_law: "DE".to_owned(),
         protection: "New protection".to_owned(),
         metadata_uri: Some("ipfs://Qm_new_secondary".to_owned()),
+        documents: vec![LoanDocument {
+            name: "New Agreement".to_owned(),
+            uri: "ipfs://Qm_new_agreement".to_owned(),
+        }],
     };
 
     let snap =
@@ -719,6 +753,14 @@ fn compose_lifecycle_snapshot_refetches_ipfs_when_uri_changed() {
     assert_eq!(
         snap.metadata_uri,
         Some("ipfs://Qm_new_secondary".to_owned())
+    );
+    // Refreshed IPFS document replaces the prior document set.
+    assert_eq!(
+        snap.documents,
+        vec![LoanDocument {
+            name: "New Agreement".to_owned(),
+            uri: "ipfs://Qm_new_agreement".to_owned(),
+        }]
     );
     assert_eq!(snap.original_facility_size, prior.original_facility_size);
     assert_eq!(
@@ -875,6 +917,10 @@ fn loan_snapshot_serde_round_trip() {
         governing_law: "BR".to_owned(),
         protection: "Doc. coll.".to_owned(),
         metadata_uri: Some("ipfs://Qm_serde_secondary".to_owned()),
+        documents: vec![LoanDocument {
+            name: "Terms and Conditions".to_owned(),
+            uri: "ipfs://Qm_serde_tnc".to_owned(),
+        }],
         original_facility_size: BigDecimal::from_str("12345678901234567890").unwrap(),
         original_senior_tranche: BigDecimal::from_str("9876543210987654321").unwrap(),
         original_equity_tranche: BigDecimal::from_str("2469135690246913569").unwrap(),
@@ -971,6 +1017,81 @@ fn loan_snapshot_deserializes_legacy_row_without_protection() {
     let restored: LoanSnapshot = serde_json::from_value(value)
         .expect("legacy snapshot without protection should deserialize");
     assert_eq!(restored.protection, "");
+}
+
+// ---------------------------------------------------------------------------
+// 13c. `documents` — parse the full IPFS document shape + back-compat
+// ---------------------------------------------------------------------------
+
+#[test]
+fn loan_metadata_json_deserializes_documents_array() {
+    // The exact shape the IPFS document now carries (Issue #803).
+    let doc = r#"{
+        "originator": "Alan Walkovitz",
+        "borrowerId": "Open Mineral",
+        "commodity": "Jet fuel JET A-1",
+        "corridor": "South Korea -> Mongolia",
+        "governingLaw": "English law, LCIA London",
+        "protection": "LC at sight",
+        "documents": [
+            { "name": "Agreement", "uri": "https://example.com/ipfs/QmA" },
+            { "name": "License", "uri": "https://example.com/ipfs/QmB" },
+            { "name": "Terms and Conditions", "uri": "https://example.com/ipfs/QmC" }
+        ],
+        "metadataURI": "https://example.com/ipfs/QmMeta"
+    }"#;
+    let parsed: LoanMetadataJson = serde_json::from_str(doc).expect("should deserialize");
+    assert_eq!(parsed.documents.len(), 3);
+    assert_eq!(parsed.documents[0].name, "Agreement");
+    assert_eq!(parsed.documents[0].uri, "https://example.com/ipfs/QmA");
+    assert_eq!(parsed.documents[2].name, "Terms and Conditions");
+    assert_eq!(
+        parsed.metadata_uri,
+        Some("https://example.com/ipfs/QmMeta".to_owned())
+    );
+}
+
+#[test]
+fn loan_metadata_json_deserializes_without_documents() {
+    // Legacy document with no `documents` key — must default to an empty vec (the
+    // struct is `deny_unknown_fields`, so `#[serde(default)]` is what keeps this
+    // from failing).
+    let without = r#"{
+        "originator": "O", "borrowerId": "B", "commodity": "C",
+        "corridor": "X-Y", "governingLaw": "EN"
+    }"#;
+    let parsed: LoanMetadataJson = serde_json::from_str(without).expect("should deserialize");
+    assert!(parsed.documents.is_empty());
+}
+
+#[test]
+fn loan_document_tolerates_extra_keys() {
+    // Per-document objects are NOT `deny_unknown_fields`, so an unexpected key inside
+    // a document entry must not fail the whole fetch.
+    let with_extra = r#"{
+        "originator": "O", "borrowerId": "B", "commodity": "C",
+        "corridor": "X-Y", "governingLaw": "EN",
+        "documents": [
+            { "name": "Agreement", "uri": "ipfs://QmA", "sha256": "deadbeef" }
+        ]
+    }"#;
+    let parsed: LoanMetadataJson =
+        serde_json::from_str(with_extra).expect("extra per-document keys should be tolerated");
+    assert_eq!(parsed.documents.len(), 1);
+    assert_eq!(parsed.documents[0].name, "Agreement");
+}
+
+#[test]
+fn loan_snapshot_deserializes_legacy_row_without_documents() {
+    // A snapshot JSONB row that predates `documents` must still deserialize to an
+    // empty vec (all pre-#803 `contract_logs.params.snapshot` rows look like this).
+    let mut value = serde_json::to_value(make_prior_snapshot()).unwrap();
+    value.as_object_mut().unwrap().remove("documents");
+    assert!(value.get("documents").is_none());
+
+    let restored: LoanSnapshot = serde_json::from_value(value)
+        .expect("legacy snapshot without documents should deserialize");
+    assert!(restored.documents.is_empty());
 }
 
 // ---------------------------------------------------------------------------

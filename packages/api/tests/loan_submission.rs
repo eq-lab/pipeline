@@ -19,6 +19,7 @@ fn valid_request() -> SubmitLoanRequest {
         governing_law: "EN".to_owned(),
         protection: "LC at sight".to_owned(),
         secondary_metadata_uri: None,
+        documents: Vec::new(),
         economics: EconomicsInput {
             original_facility_size: "100000.000000".to_owned(),
             original_senior_tranche: "80000.000000".to_owned(),

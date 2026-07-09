@@ -23,6 +23,12 @@ pub struct LoanSnapshot {
     /// Secondary URI inside the IPFS JSON document (optional). Distinct from
     /// `metadata_uri_onchain` which is the mutable on-chain URI pointer.
     pub metadata_uri: Option<String>,
+    /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
+    /// `#[serde(default)]` is required: `LoanSnapshot` is `deny_unknown_fields` and
+    /// is deserialized from existing `contract_logs.params.snapshot` JSONB rows that
+    /// predate this field — empty vec when absent.
+    #[serde(default)]
+    pub documents: Vec<LoanDocument>,
 
     // immutableLoanData (7 fields matching the new contract struct)
     pub original_facility_size: BigDecimal,
@@ -57,6 +63,15 @@ pub struct LoanSnapshot {
 
     // cumulativeRepaymentData (block-pinned)
     pub repayment: RepaymentSnapshot,
+}
+
+/// A single document reference (name + URI) from the loan metadata document.
+/// Deliberately not `deny_unknown_fields` so extra per-document keys in the IPFS
+/// document are tolerated rather than failing the whole fetch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoanDocument {
+    pub name: String,
+    pub uri: String,
 }
 
 /// Snapshot of the on-chain `LocationUpdate` struct at event time.

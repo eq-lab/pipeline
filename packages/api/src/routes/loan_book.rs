@@ -107,6 +107,16 @@ pub struct LoanBookEntry {
     pub protection: Option<String>,
     /// Loan status from the latest snapshot (`Performing`, `WatchList`, …).
     pub status: String,
+    /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
+    /// Empty when the loan's metadata records none.
+    pub documents: Vec<LoanDocumentDto>,
+}
+
+/// A single document reference (name + URI) from the loan metadata document.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct LoanDocumentDto {
+    pub name: String,
+    pub uri: String,
 }
 
 /// Response for `GET /v1/loan-book`.
@@ -172,6 +182,9 @@ pub struct SubmitLoanRequest {
     /// Optional secondary URI inside the metadata document.
     #[serde(default)]
     pub secondary_metadata_uri: Option<String>,
+    /// Documents referenced in the metadata document (Agreement, License, T&Cs, …).
+    #[serde(default)]
+    pub documents: Vec<LoanDocumentDto>,
     /// Loan economics fixed at origination.
     pub economics: EconomicsInput,
     /// Initial collateral-coverage ratio (1e6-scaled; must be `>= 1_000_000`).
@@ -253,6 +266,7 @@ pub struct ReviewRequest {
         LoanBookResponse,
         LoanBookSummary,
         LoanBookEntry,
+        LoanDocumentDto,
         SubmitLoanRequest,
         SubmitLoanResponse,
         EconomicsInput,
@@ -688,6 +702,14 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             // Protection instrument from the loan metadata; empty string ⇒ null.
             protection: (!s.protection.is_empty()).then(|| s.protection.clone()),
             status: s.status.clone(),
+            documents: s
+                .documents
+                .iter()
+                .map(|d| LoanDocumentDto {
+                    name: d.name.clone(),
+                    uri: d.uri.clone(),
+                })
+                .collect(),
         });
     }
 

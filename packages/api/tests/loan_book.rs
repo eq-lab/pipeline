@@ -76,6 +76,7 @@ fn make_loan(
             governing_law: "EN".to_owned(),
             protection: protection.to_owned(),
             metadata_uri: None,
+            documents: Vec::new(),
             // `*_k` args are in thousands of USDC.
             original_facility_size: usdc((senior_k + equity_k) * 1_000),
             original_senior_tranche: usdc(senior_k * 1_000),

@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 
+use shared::loan_snapshot::LoanDocument;
 use shared::metadata_fetcher::MetadataFetcher;
 
 // ── Chain-agnostic address/id/block abstractions ──────────────────────────────
@@ -88,6 +89,11 @@ pub struct LoanMetadataJson {
     // normal value — stored as NULL in the snapshot's `metadata_uri` field, never a fetch failure.
     #[serde(default, rename = "metadataURI")]
     pub metadata_uri: Option<String>,
+    /// Documents referenced in the metadata document (Agreement, License, T&Cs, …).
+    /// `#[serde(default)]` keeps back-compat with legacy IPFS documents that omit the
+    /// key (the struct is `deny_unknown_fields`) — empty vec when absent.
+    #[serde(default)]
+    pub documents: Vec<LoanDocument>,
 }
 
 /// Plain-Rust projection of `ILoanRegistry.ImmutableLoanData` returned by

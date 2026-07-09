@@ -67,6 +67,7 @@ fn make_loan(
             governing_law: "EN".to_owned(),
             protection: String::new(),
             metadata_uri: None,
+            documents: Vec::new(),
             original_facility_size: usdc((senior_k + equity_k) * 1_000),
             original_senior_tranche: usdc(senior_k * 1_000),
             original_equity_tranche: usdc(equity_k * 1_000),
@@ -196,9 +197,9 @@ fn addr_sets() -> TransferAddressSets {
 #[test]
 fn in_transit_nets_custody_to_ramp_flow() {
     let transfers = vec![
-        transfer(CUSTODY, RAMP, 100), // out: +100
-        transfer(RAMP, CUSTODY, 30),  // back: -30
-        transfer(CUSTODY, CUSTODY, 5), // internal shuffle: ignored
+        transfer(CUSTODY, RAMP, 100),     // out: +100
+        transfer(RAMP, CUSTODY, 30),      // back: -30
+        transfer(CUSTODY, CUSTODY, 5),    // internal shuffle: ignored
         transfer(CUSTODY, EXTERNAL, 999), // untracked counterparty: ignored
     ];
     let sets = addr_sets();

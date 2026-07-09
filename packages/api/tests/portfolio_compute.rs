@@ -66,6 +66,7 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
                 governing_law: "EN".to_owned(),
                 protection: String::new(),
                 metadata_uri: None,
+                documents: Vec::new(),
                 // immutableLoanData
                 original_facility_size: usdc(tranche),
                 original_senior_tranche: usdc(tranche),
