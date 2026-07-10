@@ -76,6 +76,19 @@
  * `formatInitialCcr`, `freshnessLabel`. See the exec plan
  * (`docs/exec-plans/active/issue-821-trustee-origination-details-page.md`)
  * for why.
+ *
+ * ## Approve & mint transaction preview (issue #838, Figma node `4116:13943`)
+ *
+ * `transactionPreview` formats the same `loan_data` payload already passed to
+ * `useDrawLoan` as the dark code block shown inside the Approve confirmation
+ * dialog (`-ApproveMintDialog.tsx`). Fields are read defensively exactly like
+ * `mapLoanTerms`/`mapDealDetails` above (never fabricate; `—` on anything
+ * missing/malformed). The four green mint-invariant checklist rows the Figma
+ * frame also shows are deliberately OMITTED — no backing data (consistent
+ * with #821's omission of the "mint invariants pass" / "signature verified"
+ * banners). The `initialLocation` line is `initial_location.location_identifier`
+ * ALONE — `loan_data` carries no country field, so the Figma's "· PE" suffix
+ * is not reproducible and is dropped rather than fabricated.
  */
 import { useMemo } from "react";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
@@ -154,6 +167,26 @@ export interface DealDetailsDisplay {
   documents: DocumentDisplay[];
 }
 
+/** One `key: value` row inside the transaction-preview code block. */
+export interface TransactionPreviewRow {
+  /** Field name as it appears before the colon, e.g. `"originator"`. */
+  label: string;
+  /** Formatted value, or `"—"` when the underlying field is missing. */
+  value: string;
+}
+
+/**
+ * View-model for the Approve & mint dialog's transaction-preview code block
+ * (issue #838, Figma `4116:13943`). `keyword` is the static
+ * `"LoanRegistry.mintLoan"` call name; `rows` are rendered as
+ * `  <label>: <value>,` lines (the `.tsx` adds the structural indent/comma/
+ * closing paren — see `-ApproveMintDialog.tsx`).
+ */
+export interface TransactionPreviewDisplay {
+  keyword: string;
+  rows: TransactionPreviewRow[];
+}
+
 export interface OriginationDetailResult {
   state: OriginationDetailState;
   heading: string;
@@ -167,7 +200,19 @@ export interface OriginationDetailResult {
   reviewedDate: string;
   /** `safeString(submission.reason)` — "—" when not Rejected / no reason given. */
   rejectionReason: string;
+  /** The Approve & mint dialog's transaction-preview code block (issue #838). */
+  transactionPreview: TransactionPreviewDisplay;
 }
+
+const EMPTY_TRANSACTION_PREVIEW: TransactionPreviewDisplay = {
+  keyword: "LoanRegistry.mintLoan",
+  rows: [
+    { label: "originator", value: "—" },
+    { label: "economics", value: "—" },
+    { label: "metadataURI", value: "—" },
+    { label: "initialLocation", value: "—" },
+  ],
+};
 
 // ── Status chip ───────────────────────────────────────────────────────────────
 
@@ -232,6 +277,56 @@ function mapHeading(submission: SubmissionView): string {
   const loanData: Partial<SubmissionView["loan_data"]> =
     submission.loan_data ?? {};
   return `${safeString(loanData.originator)} — ${safeString(loanData.commodity)}`;
+}
+
+// ── Transaction preview (issue #838) ─────────────────────────────────────────
+
+/**
+ * Formats the `economics` block into the single summary value shown on the
+ * preview's `economics:` row, e.g.
+ * `"{ facility $3,500,000 · senior $2,800,000 · equity $700,000 · offtaker
+ * $3,750,000 · 14.0% · 10 Jul 2026 → 15 Dec 2026 }"`. Reuses the same
+ * formatters as `mapLoanTerms` — this is a passthrough re-composition, not a
+ * derived/computed metric. Individual missing fields fall back to `—`
+ * in-line rather than dropping the whole row.
+ */
+function formatEconomicsSummary(
+  loanData: Partial<SubmissionView["loan_data"]>,
+): string {
+  const economics: Partial<SubmissionView["loan_data"]["economics"]> =
+    loanData.economics ?? {};
+
+  const facility = formatFullUsd(economics.original_facility_size ?? null);
+  const senior = formatFullUsd(economics.original_senior_tranche ?? null);
+  const equity = formatFullUsd(economics.original_equity_tranche ?? null);
+  const offtaker = formatFullUsd(economics.original_offtaker_price ?? null);
+  const rate = formatBpsRate(safeNumber(economics.senior_interest_rate_bps));
+  const start = formatMaturityDate(safeNumber(economics.origination_date));
+  const maturity = formatMaturityDate(
+    safeNumber(economics.original_maturity_date),
+  );
+
+  return `{ facility ${facility} · senior ${senior} · equity ${equity} · offtaker ${offtaker} · ${rate} · ${start} → ${maturity} }`;
+}
+
+function mapTransactionPreview(
+  submission: SubmissionView,
+): TransactionPreviewDisplay {
+  const loanData: Partial<SubmissionView["loan_data"]> =
+    submission.loan_data ?? {};
+
+  return {
+    keyword: "LoanRegistry.mintLoan",
+    rows: [
+      { label: "originator", value: safeString(loanData.originator) },
+      { label: "economics", value: formatEconomicsSummary(loanData) },
+      { label: "metadataURI", value: safeString(loanData.metadata_uri) },
+      {
+        label: "initialLocation",
+        value: safeString(loanData.initial_location?.location_identifier),
+      },
+    ],
+  };
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -301,6 +396,7 @@ export function useOriginationDetail(
         statusKind: "unknown",
         reviewedDate: "—",
         rejectionReason: "—",
+        transactionPreview: EMPTY_TRANSACTION_PREVIEW,
       };
     }
 
@@ -316,6 +412,7 @@ export function useOriginationDetail(
       statusKind: statusChip.kind,
       reviewedDate: formatSubmittedDate(submission.updated_at),
       rejectionReason: safeString(submission.reason),
+      transactionPreview: mapTransactionPreview(submission),
     };
   }, [submission, submissionState]);
 }

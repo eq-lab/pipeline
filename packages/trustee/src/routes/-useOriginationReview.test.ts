@@ -1,13 +1,17 @@
 /**
  * Tests for `useOriginationReview` (issue #829, chain-first mint ordering
- * added by #831) — the Origination details page's Approve/Reject
- * orchestration. Mocks `useReviewSubmission`, `useDrawLoan`, and
- * `useLoanSubmissions` so this exercises only the orchestration/error-mapping
- * logic, not the network/Soroban RPC.
+ * added by #831, approve-confirmation-dialog gate added by #838) — the
+ * Origination details page's Approve/Reject orchestration. Mocks
+ * `useReviewSubmission`, `useDrawLoan`, and `useLoanSubmissions` so this
+ * exercises only the orchestration/error-mapping logic, not the
+ * network/Soroban RPC.
  *
  * Covers:
  *   - `approve()` calls `useDrawLoan().mutateAsync` BEFORE
- *     `useReviewSubmission().mutate` (chain-first ordering).
+ *     `useReviewSubmission().mutate` (chain-first ordering) — UNCHANGED by
+ *     #838; it is now invoked as the approve dialog's confirm action rather
+ *     than directly by a page button, but the orchestration itself is
+ *     identical.
  *   - A rejected/failed mint does NOT call review; the mapped on-chain error
  *     surfaces; the submission stays actionable (retryable).
  *   - A successful mint THEN triggers the `{ decision: "Approved" }` review
@@ -24,6 +28,11 @@
  *   - The known-limitation message when the mint succeeds but review fails.
  *   - `openReject()`/`cancelReject()`/`submitReject()` and the #829 review
  *     error-status mapping are unchanged.
+ *   - Issue #838: `approveOpen` defaults false; `openApprove()` opens it (and
+ *     resets a stale review error); `cancelApprove()` closes it, always
+ *     resets the review mutation, and resets the draw-loan mutation ONLY
+ *     when it hasn't already succeeded (preserving the idempotency marker);
+ *     the dialog closes itself once the review call succeeds.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
@@ -49,6 +58,7 @@ vi.mock("@/api/useReviewSubmission", () => ({
 // ── Mock @/api/useDrawLoan ─────────────────────────────────────────────────────
 
 const mockMutateAsync = vi.fn();
+const mockDrawLoanReset = vi.fn();
 let mockDrawLoanState: {
   isPending: boolean;
   isSuccess: boolean;
@@ -63,7 +73,7 @@ vi.mock("@/api/useDrawLoan", () => ({
     isSuccess: mockDrawLoanState.isSuccess,
     error: mockDrawLoanState.error,
     stage: mockDrawLoanState.stage,
-    reset: vi.fn(),
+    reset: mockDrawLoanReset,
   }),
 }));
 
@@ -128,6 +138,7 @@ beforeEach(() => {
   mockMutate.mockReset();
   mockReset.mockReset();
   mockMutateAsync.mockReset();
+  mockDrawLoanReset.mockReset();
   mockReviewState = { isPending: false, error: null };
   mockDrawLoanState = {
     isPending: false,
@@ -161,10 +172,10 @@ describe("useOriginationReview", () => {
 
     expect(callOrder).toEqual(["drawLoan", "review"]);
     expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
-    expect(mockMutate).toHaveBeenCalledWith({
-      id: 7,
-      decision: "Approved",
-    });
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
   });
 
   it("a rejected/failed mint does NOT call review, and the submission stays actionable", async () => {
@@ -210,10 +221,10 @@ describe("useOriginationReview", () => {
     act(() => result.current.approve());
 
     expect(mockMutateAsync).not.toHaveBeenCalled();
-    expect(mockMutate).toHaveBeenCalledWith({
-      id: 7,
-      decision: "Approved",
-    });
+    expect(mockMutate).toHaveBeenCalledWith(
+      { id: 7, decision: "Approved" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
   });
 
   it("does nothing when the submission is not found", async () => {
@@ -430,5 +441,93 @@ describe("useOriginationReview", () => {
   it("returns null errorMessage when there is no error", () => {
     const { result } = renderHook(() => useOriginationReview("7"));
     expect(result.current.errorMessage).toBeNull();
+  });
+
+  // ── Approve confirmation dialog (issue #838) ────────────────────────────────
+
+  describe("approve confirmation dialog (issue #838)", () => {
+    it("approveOpen defaults to false", () => {
+      const { result } = renderHook(() => useOriginationReview("7"));
+      expect(result.current.approveOpen).toBe(false);
+    });
+
+    it("openApprove() opens the dialog and resets a stale review error", () => {
+      const { result } = renderHook(() => useOriginationReview("7"));
+      act(() => result.current.openApprove());
+      expect(result.current.approveOpen).toBe(true);
+      expect(mockReset).toHaveBeenCalled();
+    });
+
+    it("cancelApprove() closes the dialog and resets the review mutation", () => {
+      const { result } = renderHook(() => useOriginationReview("7"));
+      act(() => result.current.openApprove());
+      act(() => result.current.cancelApprove());
+      expect(result.current.approveOpen).toBe(false);
+      expect(mockReset).toHaveBeenCalled();
+    });
+
+    it("cancelApprove() resets the draw-loan mutation when the mint has NOT already succeeded", () => {
+      mockDrawLoanState = {
+        isPending: false,
+        isSuccess: false,
+        error: new Error("Signature cancelled"),
+        stage: null,
+      };
+      const { result } = renderHook(() => useOriginationReview("7"));
+      act(() => result.current.cancelApprove());
+      expect(mockDrawLoanReset).toHaveBeenCalled();
+    });
+
+    it("cancelApprove() does NOT reset the draw-loan mutation once the mint already succeeded (idempotency guard)", () => {
+      mockDrawLoanState = {
+        isPending: false,
+        isSuccess: true,
+        error: null,
+        stage: null,
+      };
+      mockReviewState = { isPending: false, error: new Error("boom") };
+      const { result } = renderHook(() => useOriginationReview("7"));
+      act(() => result.current.cancelApprove());
+      expect(mockDrawLoanReset).not.toHaveBeenCalled();
+    });
+
+    it("Approve does not mint directly — mint fires only when approve() (the dialog's confirm action) is invoked", async () => {
+      mockMutateAsync.mockResolvedValue({ hash: "tx-hash" });
+      const { result } = renderHook(() => useOriginationReview("7"));
+
+      act(() => result.current.openApprove());
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+      expect(mockMutate).not.toHaveBeenCalled();
+
+      await act(async () => {
+        result.current.approve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockMutateAsync).toHaveBeenCalledWith({ loanData: LOAN_DATA });
+      expect(mockMutate).toHaveBeenCalledWith(
+        { id: 7, decision: "Approved" },
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      );
+    });
+
+    it("the dialog closes automatically once the review call succeeds", async () => {
+      mockMutateAsync.mockResolvedValue({ hash: "tx-hash" });
+      mockMutate.mockImplementation((_input, opts) => {
+        opts?.onSuccess?.();
+      });
+      const { result } = renderHook(() => useOriginationReview("7"));
+
+      act(() => result.current.openApprove());
+      expect(result.current.approveOpen).toBe(true);
+
+      await act(async () => {
+        result.current.approve();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(result.current.approveOpen).toBe(false);
+    });
   });
 });

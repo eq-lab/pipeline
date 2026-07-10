@@ -2,6 +2,7 @@ import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { useOriginationDetail, type StatusChip } from "./-origination-detail";
 import { useOriginationReview } from "./-useOriginationReview";
 import { RejectReasonDialog } from "./-RejectReasonDialog";
+import { ApproveMintDialog } from "./-ApproveMintDialog";
 
 /**
  * Origination details / review page (issue #821, Figma node `4116:9292`) —
@@ -19,8 +20,13 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  *     `POST /v1/loan-book/submissions/{id}/review` via
  *     `-useOriginationReview.ts` / `useReviewSubmission`. Approve additionally
  *     performs a trustee-wallet-signed on-chain `draw_loan` mint BEFORE that
- *     review call (issue #831 — see "Approve/Reject wiring" below). Request
- *     changes stays inert/disabled — no endpoint exists for it.
+ *     review call (issue #831 — see "Approve/Reject wiring" below). As of
+ *     issue #838, Approve opens the `-ApproveMintDialog` confirmation dialog
+ *     (Figma `4116:13943`) rather than minting immediately — see that
+ *     section. The inert "Request changes" button and the "Approval mints
+ *     the loan NFT…" footer note were both removed by issue #838 (no
+ *     backend endpoint for the former; the latter was redundant with the
+ *     new dialog's copy).
  *   - Only the backend-backed status chip renders. The Figma's static
  *     "Your key · one click" chip and "NSR · Net Smelter Return"
  *     valuation-mode chip are both dropped — no data source, never
@@ -48,33 +54,45 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  * as `reviewedDate` by the view-model) — NOT `formatMaturityDate` (Unix
  * seconds + year).
  *
- * ## Approve/Reject wiring (issue #829, extended by #831's chain-first mint)
+ * ## Approve/Reject wiring (issue #829, extended by #831's chain-first mint,
+ * gated behind a confirmation dialog by #838)
  *
  * `ActionButtons` (the InReview footer) now fires real mutations via
  * `useOriginationReview` (composing `useDrawLoan` and `useReviewSubmission`):
- *   - **Approve** now runs chain-first: `useDrawLoan` builds → simulates
- *     (the "verify the loan" step) → requests the connected trustee wallet's
- *     signature → submits → polls the `draw_loan` mint to a terminal status
- *     BEFORE `useReviewSubmission`'s `POST .../review {decision:"Approved"}`
- *     ever fires. The button label swaps through the mint's progress stages
- *     ("Waiting for wallet signature…" → "Submitting on-chain…" →
- *     "Confirming…" → "Finalizing approval…").
+ *   - **Approve** OPENS the `-ApproveMintDialog` confirmation dialog (issue
+ *     #838, Figma `4116:13943`) — it no longer mints immediately. The
+ *     dialog's transaction-preview code block renders `detail.transactionPreview`
+ *     (real `loan_data`, `—` fallbacks; the four green mint-invariant rows
+ *     are omitted — no backing data). Clicking the dialog's "Mint loan"
+ *     button runs the UNCHANGED chain-first #831 orchestration: `useDrawLoan`
+ *     builds → simulates (the "verify the loan" step) → requests the
+ *     connected trustee wallet's signature → submits → polls the `draw_loan`
+ *     mint to a terminal status BEFORE `useReviewSubmission`'s
+ *     `POST .../review {decision:"Approved"}` ever fires. The "Mint loan"
+ *     button's label swaps through the mint's progress stages ("Waiting for
+ *     wallet signature…" → "Submitting on-chain…" → "Confirming…" →
+ *     "Finalizing approval…").
  *   - A wallet rejection or any mint failure (simulate/send/poll) makes
  *     **no** review call — the submission stays `InReview`, a mapped
- *     retryable error renders inline, and no signature is ever requested if
- *     the simulate step fails.
- *   - **Reject** is unchanged: opens `RejectReasonDialog` (a
- *     min-5-trimmed-chars reason, Submit + Cancel), a pure DB review call.
- *   - Both buttons disable through the whole mint + review sequence; a
- *     mapped error (mint failure, or the #829 review errors: 409 "already
- *     reviewed", 403 "not authorized", 401 session-expired, other generic)
- *     renders inline near the buttons and inside the dialog.
+ *     retryable error renders inline inside the dialog, and no signature is
+ *     ever requested if the simulate step fails. Cancel/Escape/backdrop are
+ *     locked while minting (see `-ApproveMintDialog.tsx`) but available once
+ *     the error settles.
+ *   - **Reject** is unchanged: opens `RejectReasonDialog` (re-skinned to
+ *     Figma `4116:14123` by #838 — same min-5-trimmed-chars-reason logic,
+ *     "Send to originator" + Cancel), a pure DB review call.
+ *   - Both the page-level Reject/Approve buttons disable while any mutation
+ *     is in flight; a mapped error (mint failure, or the #829 review errors:
+ *     409 "already reviewed", 403 "not authorized", 401 session-expired,
+ *     other generic) renders inside whichever dialog is open, or inline near
+ *     the buttons as a defensive fallback if neither is.
  *   - On success, the submissions list is invalidated and
  *     `-origination-detail.ts`'s resolution fix (prefer the live list copy
  *     over stale router state) flips this footer to the Approved/Rejected
- *     banner without a manual refresh.
- * "Request changes" has no backend endpoint and stays inert/disabled exactly
- * as before.
+ *     banner without a manual refresh; the approve dialog closes itself on
+ *     review success.
+ * The inert "Request changes" button and the "Approval mints the loan NFT…"
+ * footer note were both removed by issue #838.
  *
  * The `.tsx` is JSX/styling only; all data extraction + formatting lives in
  * the colocated `-origination-detail.ts` view-model hook (mirroring
@@ -279,38 +297,31 @@ function DealDetailsCard({
 }
 
 interface ActionButtonsProps {
+  /** Opens the approve & mint confirmation dialog (issue #838). */
   onApprove: () => void;
   onReject: () => void;
   isPending: boolean;
-  /** Progress label while the on-chain mint is in flight (issue #831), or `null`. */
-  mintingLabel: string | null;
   errorMessage: string | null;
 }
 
 /**
- * The InReview footer's action buttons. Approve/Reject are WIRED (issue
- * #829) — `onApprove` fires the chain-first mint-then-review flow (issue
- * #831: `useOriginationReview.approve` mints on-chain first, then calls the
- * review endpoint), `onReject` opens the reject-reason dialog (owned by the
- * caller). Both buttons disable through the whole mint + review sequence;
- * the Approve label swaps to `mintingLabel`'s progress copy ("Waiting for
- * wallet signature…" → "Submitting on-chain…" → "Confirming…" →
- * "Finalizing approval…") while minting. "Request changes" has no backend
- * endpoint and stays inert/disabled.
+ * The InReview footer's action buttons. `onApprove` OPENS the
+ * `-ApproveMintDialog` confirmation dialog (issue #838) — the chain-first
+ * mint-then-review flow (issue #831) now runs only from that dialog's "Mint
+ * loan" action, not directly from this button. `onReject` opens the
+ * reject-reason dialog (owned by the caller). Both buttons disable while any
+ * mutation is in flight. The inert "Request changes" button and the
+ * "Approval mints the loan NFT…" footer note were both removed by issue
+ * #838.
  */
 function ActionButtons({
   onApprove,
   onReject,
   isPending,
-  mintingLabel,
   errorMessage,
 }: ActionButtonsProps) {
   return (
     <div className="flex flex-col items-start gap-[20px] pt-[4px]">
-      <p className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[rgba(56,55,53,0.6)]">
-        Approval mints the loan NFT from your Trustee key. Disbursement is the
-        separate Cash Management stage you co-sign next.
-      </p>
       {errorMessage && (
         <p
           data-testid="origination-detail-review-error"
@@ -320,15 +331,6 @@ function ActionButtons({
         </p>
       )}
       <div className="flex items-start gap-[10px]">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          data-testid="origination-detail-request-changes"
-          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
-        >
-          Request changes
-        </button>
         <button
           type="button"
           disabled={isPending}
@@ -347,7 +349,7 @@ function ActionButtons({
           data-testid="origination-detail-approve"
           className="h-[48px] rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {mintingLabel ?? (isPending ? "Submitting…" : "Approve")}
+          Approve
         </button>
       </div>
     </div>
@@ -407,7 +409,6 @@ function DetailFooter({
   onApprove,
   onReject,
   isPending,
-  mintingLabel,
   errorMessage,
 }: {
   statusKind: StatusChip["kind"];
@@ -416,7 +417,6 @@ function DetailFooter({
   onApprove: () => void;
   onReject: () => void;
   isPending: boolean;
-  mintingLabel: string | null;
   errorMessage: string | null;
 }) {
   if (statusKind === "approved") {
@@ -431,7 +431,6 @@ function DetailFooter({
       onApprove={onApprove}
       onReject={onReject}
       isPending={isPending}
-      mintingLabel={mintingLabel}
       errorMessage={errorMessage}
     />
   );
@@ -512,18 +511,30 @@ function OriginationDetail() {
           statusKind={detail.statusKind}
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
-          onApprove={review.approve}
+          onApprove={review.openApprove}
           onReject={review.openReject}
           isPending={review.isPending}
-          mintingLabel={review.mintingLabel}
-          // While the reject dialog is open, its own error surface (below)
-          // owns the mutation error — avoid rendering it twice.
-          errorMessage={review.rejectOpen ? null : review.errorMessage}
+          // While either dialog is open, its own error surface (below) owns
+          // the mutation error — avoid rendering it twice.
+          errorMessage={
+            review.approveOpen || review.rejectOpen ? null : review.errorMessage
+          }
         />
       </div>
 
+      <ApproveMintDialog
+        open={review.approveOpen}
+        onCancel={review.cancelApprove}
+        onConfirm={review.approve}
+        isSubmitting={review.isPending}
+        mintingLabel={review.mintingLabel}
+        errorMessage={review.approveOpen ? review.errorMessage : null}
+        preview={detail.transactionPreview}
+      />
+
       <RejectReasonDialog
         open={review.rejectOpen}
+        originator={detail.dealDetails.originator}
         onCancel={review.cancelReject}
         onSubmit={review.submitReject}
         isSubmitting={review.isPending}
