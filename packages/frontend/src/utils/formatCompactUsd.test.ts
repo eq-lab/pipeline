@@ -14,6 +14,7 @@ import {
   formatCoverage,
   formatDurationDays,
   formatEstimatedWaitDays,
+  formatFullUsd,
 } from "./formatCompactUsd";
 
 // ── formatCompactUsd ─────────────────────────────────────────────────────────
@@ -227,5 +228,38 @@ describe("formatBpsRate", () => {
     expect(formatBpsRate(null)).toBe("—");
     expect(formatBpsRate(undefined)).toBe("—");
     expect(formatBpsRate(NaN)).toBe("—");
+  });
+});
+
+// ── formatFullUsd ─────────────────────────────────────────────────────────────
+
+describe("formatFullUsd", () => {
+  it("formats a base-6 decimal string as fully-expanded whole dollars", () => {
+    expect(formatFullUsd("3500000.000000")).toBe("$3,500,000");
+  });
+
+  it("formats a value under one thousand", () => {
+    expect(formatFullUsd("999.000000")).toBe("$999");
+  });
+
+  it("handles zero", () => {
+    expect(formatFullUsd("0.000000")).toBe("$0");
+    expect(formatFullUsd("0")).toBe("$0");
+  });
+
+  it("returns em-dash for null", () => {
+    expect(formatFullUsd(null)).toBe("—");
+  });
+
+  it("returns em-dash for undefined", () => {
+    expect(formatFullUsd(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for non-numeric input", () => {
+    expect(formatFullUsd("not-a-number")).toBe("—");
+  });
+
+  it("returns em-dash for empty string", () => {
+    expect(formatFullUsd("")).toBe("—");
   });
 });

@@ -13,8 +13,11 @@
  * Both tabs are selectable and carry a live count badge: Active Loans shows
  * `loans.length` from `GET /v1/loan-book`; In Origination shows the submission
  * count from `GET /v1/loan-book/submissions` (issue #755). The In Origination
- * table reuses the same layout with an added Status column and derives its rows
- * from each submission's `loan_data` payload.
+ * tab renders its own `OriginationTable` (issue #814, Figma node `4116-9155`)
+ * — a distinct 8-column field set (Originator/Commodity/Facility/Corridor/
+ * Rate/Maturity/Submitted/Status) derived from each submission's `loan_data`
+ * payload via `mapSubmissionToRow`; it no longer shares `LoanBookTable`'s
+ * Active-Loans column set.
  *
  * Figma:
  *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14431
@@ -23,6 +26,7 @@
 import { PanelContainer } from "./PanelContainer";
 import { LoanBookSummary } from "./LoanBookSummary";
 import { LoanBookTable } from "./LoanBookTable";
+import { OriginationTable } from "./OriginationTable";
 import { PanelLoading } from "./PanelLoading";
 import { PanelError } from "./PanelError";
 import { PanelEmpty } from "./PanelEmpty";
@@ -221,7 +225,7 @@ function OriginationTabBody({
       );
     case "ready":
     default:
-      return <LoanBookTable rows={rows} showStatus />;
+      return <OriginationTable rows={rows} />;
   }
 }
 

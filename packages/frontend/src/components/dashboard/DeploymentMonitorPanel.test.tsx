@@ -2,8 +2,8 @@
  * Component tests for `DeploymentMonitorPanel` (issue #755).
  *
  * The data/logic hook `useDeploymentMonitorPanel` is mocked so these tests
- * focus on the view: tab bar interactivity, count badges, and the origination
- * table's Status column.
+ * focus on the view: tab bar interactivity, count badges, and the
+ * In-Origination `OriginationTable`'s field set (issue #814).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
@@ -48,13 +48,14 @@ function baseState(
     setActiveTab,
     originationRows: [
       {
-        borrowerCommodity: "Trafigura / Alumina",
-        principal: "$8.0M",
-        collateral: "—",
-        ltv: "—",
-        duration: "—",
+        id: 1,
+        originator: "Trafigura",
+        commodity: "Alumina",
+        facility: "$8,000,000",
+        corridor: "West Africa → EU",
         rate: "11.2%",
-        protection: "LC at sight",
+        maturity: "15 Dec 2026",
+        submitted: "18 Jun",
         status: "InReview",
       },
     ],
@@ -96,34 +97,52 @@ describe("DeploymentMonitorPanel — tab bar", () => {
   });
 });
 
-describe("DeploymentMonitorPanel — origination content", () => {
-  it("renders the Status column with the submission status when the tab is active", () => {
+describe("DeploymentMonitorPanel — origination content (issue #814 field set)", () => {
+  it("renders the Figma 4116-9155 columns with the submission's formatted values when the tab is active", () => {
     hookState = baseState({ activeTab: "origination" });
     render(<DeploymentMonitorPanel />);
 
-    // Status header present in the origination table.
-    expect(screen.getByText("Status")).toBeTruthy();
-    const table = screen.getByTestId("loan-book-table");
+    // New 8-column header set.
+    for (const header of [
+      "Originator",
+      "Commodity",
+      "Facility",
+      "Corridor",
+      "Rate",
+      "Maturity",
+      "Submitted",
+      "Status",
+    ]) {
+      expect(screen.getByText(header)).toBeTruthy();
+    }
+
+    const table = screen.getByTestId("origination-table");
+    expect(within(table).getByText("Trafigura")).toBeTruthy();
+    expect(within(table).getByText("Alumina")).toBeTruthy();
+    expect(within(table).getByText("$8,000,000")).toBeTruthy();
+    expect(within(table).getByText("West Africa → EU")).toBeTruthy();
+    expect(within(table).getByText("15 Dec 2026")).toBeTruthy();
+    expect(within(table).getByText("18 Jun")).toBeTruthy();
     expect(within(table).getByText("InReview")).toBeTruthy();
-    expect(within(table).getByText("Trafigura / Alumina")).toBeTruthy();
   });
 
   it("colours the Status cell by lifecycle status", () => {
     const row = {
-      borrowerCommodity: "X / Y",
-      principal: "$1.0M",
-      collateral: "—",
-      ltv: "—",
-      duration: "—",
+      id: 1,
+      originator: "X",
+      commodity: "Y",
+      facility: "$1,000,000",
+      corridor: "A → B",
       rate: "10.0%",
-      protection: "—",
+      maturity: "1 Jan 2027",
+      submitted: "1 Jan",
     };
     hookState = baseState({
       activeTab: "origination",
       originationRows: [
-        { ...row, borrowerCommodity: "A / a", status: "Approved" },
-        { ...row, borrowerCommodity: "R / r", status: "Rejected" },
-        { ...row, borrowerCommodity: "I / i", status: "InReview" },
+        { ...row, originator: "A", status: "Approved" },
+        { ...row, originator: "R", status: "Rejected" },
+        { ...row, originator: "I", status: "InReview" },
       ],
     });
     render(<DeploymentMonitorPanel />);
@@ -150,8 +169,9 @@ describe("DeploymentMonitorPanel — origination content", () => {
     expect(screen.getByTestId("loan-book-origination-empty")).toBeTruthy();
   });
 
-  it("does not render the Status column on the Active Loans tab", () => {
+  it("does not render the origination Status column on the Active Loans tab", () => {
     render(<DeploymentMonitorPanel />); // activeTab: "active"
+    expect(screen.queryByTestId("origination-table")).toBeNull();
     expect(screen.queryByText("Status")).toBeNull();
   });
 });

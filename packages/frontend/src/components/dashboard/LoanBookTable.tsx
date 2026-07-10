@@ -63,12 +63,6 @@ export interface LoanBookRow {
   duration: string;
   rate: string;
   protection: string;
-  /**
-   * Lifecycle status (e.g. `"InReview"`), shown in the Status column on the
-   * In Origination tab only. `undefined` on active-loan rows (the Status
-   * column is not rendered for that tab — see `showStatus`).
-   */
-  status?: string;
 }
 
 /**
@@ -106,13 +100,6 @@ export interface LoanBookTableProps {
    * (no separate MobileCards path). Aggregates appear in the header row.
    */
   headerAggregates?: LoanBookHeaderAggregates;
-  /**
-   * When `true`, renders a trailing "Status" column populated from each row's
-   * `status` field. Used by the In Origination tab (issue #755) to surface the
-   * submission lifecycle status (`InReview` / `Approved` / `Rejected`). The
-   * Active Loans tab omits it (`showStatus` unset).
-   */
-  showStatus?: boolean;
 }
 
 // ── Token class constants ─────────────────────────────────────────────────────
@@ -128,7 +115,10 @@ export interface LoanBookTableProps {
 // In `border-collapse` mode, the `border-b` on the header cells is the divider
 // line; the 8px padding provides the visual separation below the header text.
 // Token: --color-pipeline-line-subtle = #F1F1F1 (row divider, user dev-mode).
-const headerCellClasses = [
+// Exported for reuse by `OriginationTable.tsx` (issue #814 decision: keep the
+// dashboard's existing table visual language for the In-Origination tab's new
+// column set, rather than adopting the trustee's grid layout).
+export const headerCellClasses = [
   "text-left",
   "font-[family-name:var(--font-body)]",
   "font-normal",
@@ -154,7 +144,7 @@ const headerCellClasses = [
 // `border-t` on <td> (not <tr>) — border-collapse renders cell borders
 //   reliably; <tr> borders are unreliable in some browser table paths.
 // Token: --color-pipeline-line-subtle = #F1F1F1 (row divider, user dev-mode).
-const bodyCellClasses = [
+export const bodyCellClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
   "text-[length:var(--text-pipeline-body)]",
@@ -167,13 +157,13 @@ const bodyCellClasses = [
 
 // Cell text inner wrapper: plain block — no extra vertical padding.
 // (The previous py-2 was a double-padding that made rows taller than Figma h=64.)
-const bodyCellInnerClasses = "block";
+export const bodyCellInnerClasses = "block";
 
 // First column (borrower/commodity): <td> gets py-3 + border-t (same as
 // bodyCellClasses), overflow-hidden + max-w-0 forces the truncation boundary.
 // The inner <span> carries truncate + py-2 so the ellipsis renders on the text
 // itself while the <td> controls the overflow clip.
-const firstBodyCellClasses = [
+export const firstBodyCellClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
   "text-[length:var(--text-pipeline-body)]",
@@ -187,30 +177,11 @@ const firstBodyCellClasses = [
 
 // Inner span for the borrower cell: truncate (overflow-hidden + text-ellipsis
 // + whitespace-nowrap) — no extra vertical padding (py-3 on the <td> is enough).
-const firstBodyCellInnerClasses = "block truncate";
-
-// Status column text colour (In Origination tab, #755) — semantic content
-// tokens, mirroring the WithdrawalQueueTable status-colour pattern:
-//   - Approved  → positive (green)
-//   - Rejected  → negative (red)
-//   - InReview  → pending  (amber)
-//   - anything else → muted ink (neutral fallback)
-function statusColorClass(status: string | undefined): string {
-  switch (status) {
-    case "Approved":
-      return "text-[color:var(--color-pipeline-positive)]";
-    case "Rejected":
-      return "text-[color:var(--color-pipeline-negative)]";
-    case "InReview":
-      return "text-[color:var(--color-pipeline-pending)]";
-    default:
-      return "text-[color:var(--color-pipeline-ink-muted)]";
-  }
-}
+export const firstBodyCellInnerClasses = "block truncate";
 
 // ── Table (all viewports) ─────────────────────────────────────────────────────
 
-function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
+function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
   const agg = headerAggregates ?? {};
   return (
     <div
@@ -243,8 +214,6 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
           <col style={{ width: "96px" }} />
           <col style={{ width: "96px" }} />
           <col style={{ width: "128px" }} />
-          {/* Status — In Origination tab only (#755). */}
-          {showStatus && <col style={{ width: "112px" }} />}
         </colgroup>
         <thead>
           {/*
@@ -295,7 +264,6 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
             <th className={headerCellClasses}>Duration</th>
             <th className={headerCellClasses}>Rate</th>
             <th className={headerCellClasses}>Protection</th>
-            {showStatus && <th className={headerCellClasses}>Status</th>}
           </tr>
         </thead>
         <tbody>
@@ -334,18 +302,6 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
               <td className={bodyCellClasses}>
                 <span className={bodyCellInnerClasses}>{row.protection}</span>
               </td>
-              {showStatus && (
-                <td className={bodyCellClasses}>
-                  <span
-                    className={[
-                      bodyCellInnerClasses,
-                      statusColorClass(row.status),
-                    ].join(" ")}
-                  >
-                    {row.status ?? "—"}
-                  </span>
-                </td>
-              )}
             </tr>
           ))}
         </tbody>
@@ -369,18 +325,10 @@ function LoanTable({ rows, headerAggregates, showStatus }: LoanBookTableProps) {
  * `headerAggregates` populates the Principal and Collateral header subtitles
  * at all widths.
  */
-export function LoanBookTable({
-  rows,
-  headerAggregates,
-  showStatus,
-}: LoanBookTableProps) {
+export function LoanBookTable({ rows, headerAggregates }: LoanBookTableProps) {
   return (
     <div data-testid="loan-book-table">
-      <LoanTable
-        rows={rows}
-        headerAggregates={headerAggregates}
-        showStatus={showStatus}
-      />
+      <LoanTable rows={rows} headerAggregates={headerAggregates} />
     </div>
   );
 }

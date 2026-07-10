@@ -13,17 +13,23 @@
  * cards + the shared PanelContainer chrome). The In Origination tab carries its
  * own `originationState` so a slow/failed submissions fetch never blanks the
  * whole panel.
+ *
+ * The In Origination tab's row shape (`OriginationTableRow`) and its
+ * submission→row mapping (`mapSubmissionToRow`) live in `originationRow.ts`
+ * (issue #814 — the tab now shows a distinct Figma `4116-9155` field set,
+ * replacing the Active-Loans-shaped `LoanBookRow` it previously reused).
  */
 import { useState } from "react";
 import { useLoanBook, useLoanSubmissions } from "@/api";
-import type { LoanBookSummary, LoanBookEntry, SubmissionView } from "@/api";
+import type { LoanBookSummary, LoanBookEntry } from "@/api";
 import type { PanelState } from "./PanelContainer";
 import type { LoanBookSummaryProps } from "./LoanBookSummary";
 import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
+import type { OriginationTableRow } from "./originationRow";
+import { mapSubmissionToRow } from "./originationRow";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
-  formatBpsRate,
   formatLtv,
   formatCoverage,
   formatDurationDays,
@@ -61,7 +67,7 @@ export interface DeploymentMonitorPanelState {
   /** Selects a tab. */
   setActiveTab: (tab: LoanBookTab) => void;
   /** Formatted In Origination rows (all submissions, newest first). */
-  originationRows: LoanBookRow[];
+  originationRows: OriginationTableRow[];
   /** Live count of submissions in origination (0 otherwise). */
   inOriginationCount: number;
   /** Independent state for the In Origination tab body. */
@@ -93,41 +99,6 @@ function formatRow(entry: LoanBookEntry): LoanBookRow {
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
     protection: entry.protection ?? "—",
-  };
-}
-
-/**
- * Maps a loan submission → an In Origination table row.
- *
- * Only fields the backend serves directly are surfaced. Anything the backend
- * does not provide as a discrete field renders `"—"` — we do NOT compute
- * derived metrics client-side (issue #755 decision).
- *
- * Column mapping (from `loan_data` = verbatim `SubmitLoanRequest`):
- *   - Borrower / Commodity → `borrower_id` / `commodity`.
- *   - Principal            → `economics.original_facility_size` (base-6 human units).
- *   - Rate                 → `economics.senior_interest_rate_bps` (basis points).
- *   - Protection           → `protection` (or `"—"`).
- *   - Status               → submission lifecycle `status`.
- *   - Collateral           → `"—"` — no backend collateral value (price feed, #706).
- *   - LTV                  → `"—"` — backend serves no LTV field (`initial_ccr`
- *                            is a different metric; not derived here).
- *   - Duration             → `"—"` — backend serves no duration field (only raw
- *                            origination/maturity timestamps; not derived here).
- */
-function formatSubmissionRow(view: SubmissionView): LoanBookRow {
-  const loan = view.loan_data;
-  const econ = loan.economics;
-
-  return {
-    borrowerCommodity: `${loan.borrower_id} / ${loan.commodity}`,
-    principal: formatCompactUsd(econ.original_facility_size),
-    collateral: "—",
-    ltv: "—",
-    duration: "—",
-    rate: formatBpsRate(econ.senior_interest_rate_bps),
-    protection: loan.protection ?? "—",
-    status: view.status,
   };
 }
 
@@ -166,7 +137,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
 
   // ── In Origination tab — independent of the Active Loans query ───────────────
   const originationRows = submissions.data
-    ? submissions.data.map(formatSubmissionRow)
+    ? submissions.data.map(mapSubmissionToRow)
     : [];
   const inOriginationCount = submissions.data?.length ?? 0;
   let originationState: PanelState;

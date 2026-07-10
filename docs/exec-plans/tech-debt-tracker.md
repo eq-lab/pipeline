@@ -512,37 +512,47 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-42: Trustee Origination page duplicates the LP `loan_data` extractor, and two Figma cells have no backend source
 
-- **Date:** 2026-07-09
+- **Date:** 2026-07-09 (updated 2026-07-10, issue #814)
 - **Location:** `packages/trustee/src/api/useLoanSubmissions.ts`,
   `packages/trustee/src/routes/-useOriginationTable.ts`,
-  `packages/trustee/src/routes/origination.tsx` (issue #813); mirrors
-  `packages/frontend/src/api/useLoanSubmissions.ts` and
-  `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts` on the LP side.
-- **Gap:** The Trustee Origination page reads the same `GET /v1/loan-book/submissions` endpoint
-  as the LP Protocol Dashboard's In-Origination tab (#814), but the trustee cannot depend on
-  `@pipeline/frontend` (epic #775 keeps the two apps separate), so `useLoanSubmissions.ts`'s
-  typed interfaces (`EconomicsInput`, `LocationInput`, `SubmitLoanRequest`, `SubmissionView`) and
-  the field-mapping logic in `-useOriginationTable.ts` (`mapSubmissionToRow`, base-6/bps/date
-  parsing, `—` fallbacks) are a hand-mirrored duplicate of the LP's equivalents, same precedent
-  as TD-38's `formatUsd.ts` duplication. Additionally, two Figma cells on this page have no
-  backend field to source them, resolved as deliberate omissions/placeholders for #813 (human,
-  issue #813 comment):
+  `packages/trustee/src/routes/origination.tsx` (issue #813); mirrored on the LP side by
+  `packages/frontend/src/api/useLoanSubmissions.ts` (pre-existing),
+  `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
+  #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
+  `formatMaturityDate` / `formatSubmittedDate` (`packages/frontend/src/utils/formatDate.ts`)
+  formatters — hand-mirrored, byte-for-byte, from the trustee's `formatUsd.ts` / `formatDate.ts`.
+- **Gap:** The Trustee Origination page and the LP Protocol Dashboard's In-Origination tab (#814)
+  both read `GET /v1/loan-book/submissions` and now render the **same eight-column field set**
+  (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), but the two apps
+  cannot share code (epic #775 keeps them separate), so `useLoanSubmissions.ts`'s typed
+  interfaces (`EconomicsInput`, `LocationInput`, `SubmitLoanRequest`, `SubmissionView`) and the
+  field-mapping logic (`mapSubmissionToRow`: base-6/bps/date parsing, `—` fallbacks, corridor
+  arrow substitution) are hand-mirrored on both sides — same precedent as TD-38's `formatUsd.ts`
+  duplication, now widened by #814 to also cover the extractor and the two new date/full-USD
+  formatters. Additionally, two Figma cells on the trustee page have no backend field to source
+  them, resolved as deliberate omissions/placeholders for #813 (human, issue #813 comment) and
+  mirrored identically on the LP side (human, issue #814 comment):
   1. The Figma "Commodity · valuation" sub-line ("NSR · Net Smelter Return" / "Standard · price
-     × quantity") is omitted entirely — `ValuationMode` lives in `loan_collateral_valuations`
-     keyed by an on-chain `loan_id`, which pre-mint submissions don't have yet.
-  2. The Figma "Review" button on `InReview` rows is rendered inert/disabled — no
-     submission-review/detail route exists in the trustee app yet.
-- **Impact:** Any change to the LP's `loan_data` shape, base-6/bps/date conventions, or
-  `SubmissionView` fields must be manually ported to the trustee copy (and to #814's own LP-side
-  widening of the same column set) or the two surfaces will silently drift out of sync. The two
-  omitted cells mean the Origination page is visually incomplete relative to the Figma reference
-  until a backend field / review route exists.
+     × quantity") is omitted entirely on **both** apps — `ValuationMode` lives in
+     `loan_collateral_valuations` keyed by an on-chain `loan_id`, which pre-mint submissions
+     don't have yet.
+  2. The Figma "Review" button on `InReview` rows is rendered inert/disabled on the **trustee**
+     page only — no submission-review/detail route exists in the trustee app yet. The **LP**
+     dashboard doesn't attempt this treatment at all (resolved, issue #814): it keeps its
+     existing simple color-coded status label, since the LP app is read-only for submissions
+     with no review route.
+- **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
+  `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
+  (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own
+  `formatUsd`/`formatDate` formatters) or the surfaces will silently drift out of sync. The
+  omitted valuation cell means both Origination surfaces are visually incomplete relative to the
+  Figma reference until a backend field exists.
 - **Suggested fix:** Extract a shared, framework-agnostic `loan_data` parsing package (types +
-  base-6/bps/date formatters) once a third consumer appears or the LP/trustee mapping needs to
-  change together; until then keep both hand-mirrored per the epic #775 app-separation rule. Add
-  a `valuation_mode`/similar field to `SubmissionView` (backend change) to un-omit the valuation
+  base-6/bps/date formatters) now that a **second** consumer (the LP side, #814) exists on top of
+  the trustee's; until then keep both hand-mirrored per the epic #775 app-separation rule. Add a
+  `valuation_mode`/similar field to `SubmissionView` (backend change) to un-omit the valuation
   sub-line, and wire a submission-review route (separate Type-1 sub-issue of epic #775) to make
-  the Review button live.
+  the trustee's Review button live.
 
 ---
 
