@@ -519,3 +519,69 @@ fn entry_spot_fields_null_when_absent_from_map() {
     assert_eq!(r.loans[0].spot_price, None);
     assert_eq!(r.loans[0].spot_change_7d, None);
 }
+
+// ── review fixes: at-risk maturity bound, NAV denominator, outstanding basis ──
+
+#[test]
+fn at_risk_excludes_watchlist_loan_past_maturity() {
+    // WatchList loan matured at day 100 with no LoanClosed event; at day 150 it must
+    // NOT count as at-risk (bounded by effective_end = maturity), so it can't linger
+    // indefinitely.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 25, 0, 1000, 0, 100, "MaturedWatch", "Coffee", ""),
+        "WatchList",
+    ));
+    let r = at(150, &loans, &[]);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
+}
+
+#[test]
+fn at_risk_pct_includes_default_collateral_in_denominator() {
+    // Active loan 1 collateral 100k; defaulted loan 3 (senior 30k) collateral 60k.
+    // nav_denom = 100k (active) + 60k (default) = 160k → 30k / 160k = 0.1875.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let collateral = collateral_map(&[(1, usdc(100_000)), (3, usdc(60_000))]);
+    let r = at_with(60, &loans, &events, &collateral);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "30000.000000");
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("0.1875")
+    );
+}
+
+#[test]
+fn at_risk_pct_clamps_at_100_percent() {
+    // Large default (200k senior) against tiny NAV (50k) → raw ratio 4.0, clamped.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 200, 0, 1000, 0, 200, "BigDefault", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let collateral = collateral_map(&[(3, usdc(50_000))]);
+    let r = at_with(60, &loans, &events, &collateral);
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("1.0000")
+    );
+}
+
+#[test]
+fn deployed_senior_and_concentration_use_outstanding_senior() {
+    // Loan A senior 80k with 30k repaid → outstanding 50k; only A active at day 0.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let r = at(0, &loans, &[]);
+    // deployed_senior nets the repaid principal (50k), not the original 80k.
+    assert_eq!(r.summary.deployed_senior, "50000.000000");
+    // single active loan → its commodity is 100% of outstanding senior.
+    let top = r.summary.top_concentration.expect("present");
+    assert_eq!(top.commodity, "Copper Concentrate");
+    assert_eq!(top.share, "1.0000");
+}

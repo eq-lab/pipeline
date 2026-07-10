@@ -6,7 +6,7 @@
 //! decimal strings for USDC amounts, decimal-fraction strings for rates, and
 //! `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -20,7 +20,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
-use shared::collateral_valuation_repo::{AssayRow, OfftakeTermsRow, QuantityReportRow};
+use shared::collateral_valuation_repo::{
+    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
+};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
 
@@ -81,9 +83,10 @@ pub struct LoanBookSummary {
     /// Also backs the Trustee "Loans" page **Weighted tenor** tile (same
     /// principal-weighted definition over the active set).
     pub avg_duration_days: Option<i64>,
-    /// Σ senior tranche over active loans, USDC (6-decimal string). Distinct from
-    /// `total_deployed`, which additionally includes the equity tranche. Backs the
-    /// Trustee "Loans" page **Deployed senior** tile.
+    /// Σ **outstanding** senior (original senior − senior principal repaid) over active
+    /// loans, USDC (6-decimal string). Distinct from `total_deployed` (senior + equity,
+    /// original). Backs the Trustee "Loans" page **Deployed senior** tile; shares the
+    /// outstanding-senior basis with the Senior-outst. column and the at-risk/concentration figures.
     pub deployed_senior: String,
     /// Principal-weighted senior interest rate as a decimal fraction (6-decimal
     /// string), over active loans. Backs the **Weighted rate** tile. Same value and
@@ -100,12 +103,13 @@ pub struct LoanBookSummary {
     /// USDC 6-decimal string; `"0.000000"` when none. Backs the **At-risk (WL +
     /// Default)** tile (absolute sub-figure).
     pub at_risk_wl_and_default_senior: String,
-    /// `at_risk_wl_and_default_senior / total_collateral` (NAV), 4-decimal fraction
-    /// string (e.g. `"0.0430"`). Backs the **At-risk (WL + Default)** tile headline
-    /// %. `null` when `total_collateral` is unavailable or zero.
+    /// At-risk senior over whole-book NAV (active-loan collateral + at-risk-default
+    /// collateral), 4-decimal fraction string (e.g. `"0.0430"`), clamped to ≤ `"1.0000"`.
+    /// Backs the **At-risk (WL + Default)** tile headline %. `null` when no collateral
+    /// is available for the relevant book.
     pub at_risk_wl_and_default_pct: Option<String>,
-    /// Largest single-commodity exposure by senior share over active loans. Backs the
-    /// **Top concentration** tile. `null` when Σ senior is zero.
+    /// Largest single-commodity exposure by **outstanding**-senior share over active
+    /// loans. Backs the **Top concentration** tile. `null` when Σ outstanding senior is zero.
     pub top_concentration: Option<TopConcentration>,
 }
 
@@ -127,7 +131,7 @@ pub struct LoanSpot {
 pub struct TopConcentration {
     /// Underlying commodity with the largest senior exposure.
     pub commodity: String,
-    /// That commodity's share of Σ senior, 4-decimal fraction (e.g. `"0.0720"`).
+    /// That commodity's share of Σ outstanding senior, 4-decimal fraction (e.g. `"0.0720"`).
     pub share: String,
 }
 
@@ -640,8 +644,22 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .list_loan_lifecycle_events(&state.pool, chain_id, to)
         .await?;
 
-    let collateral_by_loan = collateral_by_loan(state, chain_id).await?;
-    let spot_by_loan = spot_by_loan(state, chain_id, to).await?;
+    // Fetch the shared inputs ONCE and pass into both builders (they both key off the
+    // valuation anchors + the latest price series).
+    let anchors = state
+        .collateral_valuation_repo
+        .all_anchors(chain_id)
+        .await?;
+    let latest_prices: HashMap<(String, String), BigDecimal> = state
+        .loan_asset_price_repo
+        .latest_prices()
+        .await?
+        .into_iter()
+        .map(|(asset, provider, price)| ((asset, provider), price))
+        .collect();
+
+    let collateral_by_loan = collateral_by_loan(state, chain_id, &anchors, &latest_prices).await?;
+    let spot_by_loan = spot_by_loan(state, to, &anchors, &latest_prices).await?;
 
     Ok(compute_loan_book(
         &loans,
@@ -654,34 +672,30 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
 
 /// Build the per-loan spot map: `loan_id → { latest price, trailing 7-day change }`,
 /// for the underlying asset each loan's collateral-valuation anchor names (asset +
-/// price provider). The latest price is `latest_prices()`; the 7-day change compares
-/// it against the newest price at or before `to − 7d` (`prices_as_of`). Loans without
-/// an anchor, or an asset/provider with no stored price, are absent (→ `null` fields).
+/// price provider). `latest` is the pre-fetched latest price per (asset, provider);
+/// the 7-day change compares it against the newest price in the window
+/// `(to − 14d, to − 7d]` (`prices_as_of`) so a stale price can't masquerade as the
+/// 7-day-prior value. Loans without an anchor, or an asset/provider with no stored
+/// price, are absent (→ `null` fields).
 async fn spot_by_loan(
     state: &AppState,
-    chain_id: i64,
     to: i64,
+    anchors: &[CollateralValuationRow],
+    latest: &HashMap<(String, String), BigDecimal>,
 ) -> Result<HashMap<String, LoanSpot>, ApiError> {
-    let repo = &state.collateral_valuation_repo;
-    let anchors = repo.all_anchors(chain_id).await?;
     if anchors.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let latest: HashMap<(String, String), BigDecimal> = state
-        .loan_asset_price_repo
-        .latest_prices()
-        .await?
-        .into_iter()
-        .map(|(asset, provider, price)| ((asset, provider), price))
-        .collect();
-
-    // Newest price at or before `to − 7d`, per (asset, provider).
+    // Newest price in the trailing window (to−14d, to−7d], per (asset, provider):
+    // the "~7 days ago" reference, floored so an ancient price isn't used.
     let cutoff = DateTime::<Utc>::from_timestamp(to - 7 * SECS_PER_DAY, 0)
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("invalid `to` timestamp: {to}")))?;
+    let not_before = DateTime::<Utc>::from_timestamp(to - 14 * SECS_PER_DAY, 0)
         .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("invalid `to` timestamp: {to}")))?;
     let prior: HashMap<(String, String), BigDecimal> = state
         .loan_asset_price_repo
-        .prices_as_of(cutoff)
+        .prices_as_of(cutoff, not_before)
         .await?
         .into_iter()
         .map(|(asset, provider, price)| ((asset, provider), price))
@@ -689,12 +703,12 @@ async fn spot_by_loan(
 
     let zero = BigDecimal::from(0);
     let mut map = HashMap::new();
-    for anchor in &anchors {
+    for anchor in anchors {
         let pair = (anchor.asset.clone(), anchor.price_provider.clone());
         let Some(spot) = latest.get(&pair) else {
             continue;
         };
-        // 7-day change as a decimal fraction; null when the prior price is absent/zero.
+        // 7-day change as a decimal fraction; null when no in-window prior price (or zero).
         let change_7d = prior.get(&pair).filter(|p| *p > &zero).map(|p| {
             ((spot - p) / p)
                 .with_scale_round(4, RoundingMode::HalfUp)
@@ -703,10 +717,9 @@ async fn spot_by_loan(
         map.insert(
             loan_key(&anchor.loan_id),
             LoanSpot {
-                price: Some(
-                    spot.with_scale_round(2, RoundingMode::HalfUp)
-                        .to_plain_string(),
-                ),
+                // Full precision — the change above is derived from this same value,
+                // and sub-dollar assets must not be truncated to 2 decimals.
+                price: Some(spot.to_plain_string()),
                 change_7d,
             },
         );
@@ -720,17 +733,19 @@ async fn spot_by_loan(
 /// in USD; the `×1e6` scales it to the base-6 units of the on-chain tranche amounts
 /// so `compute_loan_book` can format and ratio it against principal.
 ///
-/// Loans whose record is incomplete (missing assay/offtake/quantity/price for their
-/// mode) are simply absent from the map (→ `null`).
+/// `anchors` and `latest_prices` are pre-fetched by the handler (shared with
+/// `spot_by_loan`). Loans whose record is incomplete (missing assay/offtake/quantity/
+/// price for their mode) are simply absent from the map (→ `null`).
 async fn collateral_by_loan(
     state: &AppState,
     chain_id: i64,
+    anchors: &[CollateralValuationRow],
+    latest_prices: &HashMap<(String, String), BigDecimal>,
 ) -> Result<HashMap<String, BigDecimal>, ApiError> {
-    let repo = &state.collateral_valuation_repo;
-    let anchors = repo.all_anchors(chain_id).await?;
     if anchors.is_empty() {
         return Ok(HashMap::new());
     }
+    let repo = &state.collateral_valuation_repo;
 
     let assays: HashMap<String, AssayRow> = repo
         .latest_assays(chain_id)
@@ -750,20 +765,11 @@ async fn collateral_by_loan(
         .into_iter()
         .map(|r| (loan_key(&r.loan_id), r))
         .collect();
-    let price_by_asset_provider: HashMap<(String, String), BigDecimal> = state
-        .loan_asset_price_repo
-        .latest_prices()
-        .await?
-        .into_iter()
-        .map(|(asset, provider, price)| ((asset, provider), price))
-        .collect();
-
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
-    for anchor in &anchors {
+    for anchor in anchors {
         let key = loan_key(&anchor.loan_id);
-        let price =
-            price_by_asset_provider.get(&(anchor.asset.clone(), anchor.price_provider.clone()));
+        let price = latest_prices.get(&(anchor.asset.clone(), anchor.price_provider.clone()));
         let computed = compute_collateral(
             anchor,
             assays.get(&key),
@@ -854,7 +860,13 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     // Collateral aggregation (micro-USDC). `any_collateral` tracks whether at least
     // one active loan had a priced value, so a book with none reports `null`.
     let mut total_collateral = BigDecimal::from(0);
+    // total_senior = Σ ORIGINAL senior (used by senior_debt_coverage);
+    // total_outstanding_senior = Σ OUTSTANDING senior (net of repaid), used by
+    // deployed_senior + top_concentration so all "senior exposure" figures share a basis.
     let mut total_senior = BigDecimal::from(0);
+    let mut total_outstanding_senior = BigDecimal::from(0);
+    // Outstanding senior per commodity, for the top-concentration tile.
+    let mut senior_by_commodity: HashMap<&str, BigDecimal> = HashMap::new();
     let mut any_collateral = false;
     let zero = BigDecimal::from(0);
 
@@ -873,9 +885,15 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         weighted_duration += &principal * BigDecimal::from(duration_days);
         total_senior += &s.original_senior_tranche;
 
-        // Outstanding senior = original senior tranche − senior principal repaid.
-        // Drives both the "Senior outst." column and the CCR denominator.
-        let outstanding_senior = &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
+        // Outstanding senior = original senior tranche − senior principal repaid,
+        // floored at zero. Drives the "Senior outst." column, the CCR denominator,
+        // deployed_senior, and the top-concentration tile.
+        let outstanding_senior =
+            (&s.original_senior_tranche - &s.repayment.senior_principal_repaid).max(zero.clone());
+        total_outstanding_senior += &outstanding_senior;
+        *senior_by_commodity
+            .entry(s.commodity.as_str())
+            .or_insert_with(|| BigDecimal::from(0)) += &outstanding_senior;
 
         // Collateral value (micro-USDC) from the valuation record, keyed by loan_id.
         // Absent → null; present-but-zero → value 0 with null LTV/CCR (no division).
@@ -948,39 +966,62 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     });
 
     // ── Trustee "Loans" page metrics ──────────────────────────────────────────
-    // At-risk = Σ outstanding senior of open loans (originated, not closed) whose
-    // status is WatchList or Default. This is computed over the FULL `loans` slice,
-    // NOT `active`: a defaulted loan's `LoanDefaulted` event sets its `effective_end`,
-    // so it is excluded from `active` — but it must still count as at-risk.
+    // At-risk = Σ outstanding senior of at-risk loans, computed over the FULL `loans`
+    // slice. WatchList counts only while the loan is still active (`to < effective_end`,
+    // i.e. not past maturity/close); Default counts until the loan is explicitly closed
+    // (`LoanClosed`), even though defaults drop out of the `active` set. This bounds the
+    // population so a matured-but-never-closed loan isn't counted indefinitely.
+    let active_keys: HashSet<String> = active.iter().map(|l| loan_key(&l.loan_id)).collect();
     let mut at_risk_wl_and_default_senior = BigDecimal::from(0);
+    // NAV denominator spans the same book the numerator draws from: active-loan
+    // collateral (total_collateral) plus the collateral of at-risk loans that fell out
+    // of the active set (defaults), so the ratio reflects whole-book NAV.
+    let mut at_risk_extra_collateral = BigDecimal::from(0);
+    let mut any_extra_collateral = false;
     for loan in loans {
         let s = &loan.snapshot;
-        let is_at_risk = s.origination_date <= to
+        let at_risk = s.origination_date <= to
             && !is_closed(loan, events, to)
-            && matches!(s.status.as_str(), "WatchList" | "Default");
-        if is_at_risk {
-            at_risk_wl_and_default_senior +=
-                &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
+            && match s.status.as_str() {
+                "Default" => true,
+                "WatchList" => to < effective_end(loan, events),
+                _ => false,
+            };
+        if !at_risk {
+            continue;
+        }
+        // Floor at zero so an over-repaid / anomalous snapshot can't subtract.
+        at_risk_wl_and_default_senior +=
+            (&s.original_senior_tranche - &s.repayment.senior_principal_repaid).max(zero.clone());
+        // Add collateral of at-risk loans not already summed into total_collateral.
+        let key = loan_key(&loan.loan_id);
+        if !active_keys.contains(&key) {
+            if let Some(c) = collateral_by_loan.get(&key) {
+                at_risk_extra_collateral += c;
+                any_extra_collateral = true;
+            }
         }
     }
-    // Relative share over NAV (total collateral). Null when NAV is unavailable/zero.
-    let at_risk_wl_and_default_pct = (any_collateral && total_collateral > zero).then(|| {
-        (&at_risk_wl_and_default_senior / &total_collateral)
-            .with_scale_round(4, RoundingMode::HalfUp)
-            .to_plain_string()
-    });
-
-    // Top concentration = largest single-commodity senior exposure over active loans,
-    // as a share of Σ senior. Several loans of the same commodity are summed.
-    let mut senior_by_commodity: HashMap<&str, BigDecimal> = HashMap::new();
-    for loan in &active {
-        *senior_by_commodity
-            .entry(loan.snapshot.commodity.as_str())
-            .or_insert_with(|| BigDecimal::from(0)) += &loan.snapshot.original_senior_tranche;
-    }
-    let top_concentration = (total_senior > zero)
+    // Share over whole-book NAV, clamped to ≤ 100%. Null when no collateral is
+    // available for the relevant book.
+    let nav_denom = &total_collateral + &at_risk_extra_collateral;
+    let at_risk_wl_and_default_pct = ((any_collateral || any_extra_collateral) && nav_denom > zero)
         .then(|| {
-            // Max by senior exposure; ties broken by commodity name for determinism.
+            let ratio = &at_risk_wl_and_default_senior / &nav_denom;
+            let one = BigDecimal::from(1);
+            let capped = if ratio > one { one } else { ratio };
+            capped
+                .with_scale_round(4, RoundingMode::HalfUp)
+                .to_plain_string()
+        });
+
+    // Top concentration = largest single-commodity OUTSTANDING-senior exposure over
+    // active loans, as a share of total outstanding senior (consistent with the
+    // Senior-outst. column and the at-risk figure). `senior_by_commodity` was
+    // accumulated in the entry loop.
+    let top_concentration = (total_outstanding_senior > zero)
+        .then(|| {
+            // Max by exposure; ties broken by commodity name for determinism.
             senior_by_commodity
                 .into_iter()
                 .max_by(|(a_name, a_sen), (b_name, b_sen)| {
@@ -988,7 +1029,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
                 })
                 .map(|(commodity, sen)| TopConcentration {
                     commodity: commodity.to_owned(),
-                    share: (&sen / &total_senior)
+                    share: (&sen / &total_outstanding_senior)
                         .with_scale_round(4, RoundingMode::HalfUp)
                         .to_plain_string(),
                 })
@@ -1002,7 +1043,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             senior_debt_coverage,
             avg_yield: Some(avg_yield.clone()),
             avg_duration_days,
-            deployed_senior: base6_to_decimal_string(&total_senior),
+            deployed_senior: base6_to_decimal_string(&total_outstanding_senior),
             // Weighted rate/tenor: same principal-weighted definition as the two
             // fields above, exposed under Trustee-facing names.
             weighted_rate: Some(avg_yield),

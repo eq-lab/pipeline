@@ -103,21 +103,24 @@ impl LoanAssetPriceRepo {
         Ok(rows)
     }
 
-    /// The newest stored `price_usd` per `(asset, price_provider)` at or before `cutoff`
-    /// (one row per pair, picked by latest `timestamp <= cutoff`). Used by the loan-book
-    /// read to compute a trailing price change (spot vs. N days ago). A pair with no row
-    /// at/before `cutoff` is absent from the result.
+    /// The newest stored `price_usd` per `(asset, price_provider)` within the window
+    /// `(not_before, cutoff]` (one row per pair, picked by latest `timestamp`). Used by
+    /// the loan-book read to compute a trailing price change (spot vs. N days ago); the
+    /// `not_before` floor prevents an arbitrarily stale row from being mislabeled as the
+    /// N-days-ago price. A pair with no row in the window is absent from the result.
     pub async fn prices_as_of(
         &self,
         cutoff: DateTime<Utc>,
+        not_before: DateTime<Utc>,
     ) -> Result<Vec<(String, String, BigDecimal)>, sqlx::Error> {
         let rows: Vec<(String, String, BigDecimal)> = sqlx::query_as(
             "SELECT DISTINCT ON (asset, price_provider) asset, price_provider, price_usd \
              FROM loan_asset_prices \
-             WHERE timestamp <= $1 \
+             WHERE timestamp <= $1 AND timestamp > $2 \
              ORDER BY asset, price_provider, timestamp DESC",
         )
         .bind(cutoff)
+        .bind(not_before)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)

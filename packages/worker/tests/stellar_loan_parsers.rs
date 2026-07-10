@@ -375,14 +375,16 @@ fn loan_defaulted_decodes_fixture() {
         LR_CONTRACT,
         "loan_defaulted",
         vec![encode_u32(99)],
-        encode_map_u32(&[("ccr", 500)]),
+        // Soroban-units: CCR in `ONE = 1_000_000` scale. 1_250_000 = 125%.
+        encode_map_u32(&[("ccr", 1_250_000)]),
     );
 
     let log = parse_loan_defaulted(&raw).expect("should decode LoanDefaulted");
     assert_eq!(log.event_name, "LoanDefaulted");
     assert_eq!(log.params["loan_id"], "99");
-    // EVM-parity shape: renamed from on-chain `ccr` to `ccr_bps`.
-    assert_eq!(log.params["ccr_bps"], 500);
+    // EVM-parity shape: renamed from on-chain `ccr` to `ccr_bps` AND converted
+    // from 1e6-scale to basis points: 1_250_000 / 100 = 12_500 bps = 125%.
+    assert_eq!(log.params["ccr_bps"], 12_500);
     assert!(log.params.get("ccr").is_none(), "renamed to ccr_bps");
 }
 
