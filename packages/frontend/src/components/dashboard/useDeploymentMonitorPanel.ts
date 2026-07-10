@@ -29,6 +29,7 @@ import type { OriginationTableRow } from "./originationRow";
 import { mapSubmissionToRow } from "./originationRow";
 import {
   formatCompactUsd,
+  formatRegistryCompactUsd,
   formatOneDecimalRate,
   formatLtv,
   formatCoverage,
@@ -82,7 +83,9 @@ export interface DeploymentMonitorPanelState {
 
 function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   return {
-    totalDeployed: formatCompactUsd(summary.total_deployed),
+    // total_deployed is registry-sourced → 1000× low (#840 workaround).
+    totalDeployed: formatRegistryCompactUsd(summary.total_deployed),
+    // collateral comes from the price feed (#706), not the registry — no scale fix.
     totalCollateral: formatCompactUsd(summary.total_collateral),
     seniorDebtCoverage: formatCoverage(summary.senior_debt_coverage),
     avgYield: formatOneDecimalRate(summary.avg_yield),
@@ -93,7 +96,8 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     borrowerCommodity: `${entry.borrower} / ${entry.commodity}`,
-    principal: formatCompactUsd(entry.principal),
+    // principal is registry-sourced → 1000× low (#840 workaround).
+    principal: formatRegistryCompactUsd(entry.principal),
     collateral: formatCompactUsd(entry.collateral),
     ltv: formatLtv(entry.ltv),
     duration: formatDurationDays(entry.duration_days, "compact"),
@@ -211,7 +215,7 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     summary: data ? formatSummary(data.summary) : EMPTY_SUMMARY,
     headerAggregates: data
       ? {
-          principal: formatCompactUsd(data.summary.total_deployed),
+          principal: formatRegistryCompactUsd(data.summary.total_deployed),
           collateral:
             data.summary.total_collateral == null
               ? undefined

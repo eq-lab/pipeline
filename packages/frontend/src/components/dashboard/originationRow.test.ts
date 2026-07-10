@@ -56,7 +56,7 @@ describe("mapSubmissionToRow", () => {
     const row = mapSubmissionToRow(FULL_SUBMISSION);
     expect(row.originator).toBe("Auric Andes");
     expect(row.commodity).toBe("Gold pyrite concentrate");
-    expect(row.facility).toBe("$3,500,000");
+    expect(row.facility).toBe("$3.5M"); // compact, matching Active Loans (#841)
     expect(row.corridor).toBe("PE → CN");
     expect(row.rate).toBe("14.0%");
     expect(row.maturity).toBe("15 Dec 2026");

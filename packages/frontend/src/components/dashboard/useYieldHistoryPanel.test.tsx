@@ -56,9 +56,16 @@ vi.mock("@/lib/env", () => ({
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
+// `outstanding_in_loans` is registry-sourced and currently served at 1e3-too-small
+// scale (#840). This fixture is pinned at that buggy-backend scale
+// ("31600.000000" instead of the real "31600000.000000") so that, after the
+// client-side ×1000 workaround (`scaleRegistryAmount`, #841) is applied at
+// the source, the resulting display string ("$31.6M") and deployedRatio
+// (~0.7326) match reality. `tvl` is NOT registry-sourced and stays at its
+// correct (unscaled) value.
 const SUMMARY_FIXTURE: DashboardSummary = {
   tvl: "43140000.000000",
-  outstanding_in_loans: "31600000.000000",
+  outstanding_in_loans: "31600.000000", // ×1000 workaround → "$31.6M"
   current_apy_net_to_splusd: "0.104",
   loan_book_yield: "0.112",
   cumulative_yield_total: "2910000.000000",
@@ -334,13 +341,14 @@ describe("useYieldHistoryPanel — ready state", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    // SUMMARY_FIXTURE outstanding_in_loans = "31600000.000000" → "$31.6M"
+    // SUMMARY_FIXTURE outstanding_in_loans = "31600.000000" (registry-scale) →
+    // ×1000 workaround (#840/#841) → 31,600,000 → "$31.6M".
     expect(result.current.tvlSummary.outstandingInLoans).toMatch(
       /^\$\d+(\.\d)?M$/,
     );
   });
 
-  it("deployedRatio is computed as outstanding_in_loans / tvl", async () => {
+  it("deployedRatio is computed as (scaled) outstanding_in_loans / tvl", async () => {
     const { result } = renderHook(() => useYieldHistoryPanel(), {
       wrapper: makeWrapper(),
     });
@@ -349,7 +357,9 @@ describe("useYieldHistoryPanel — ready state", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    // 31600000 / 43140000 ≈ 0.7326
+    // Scaled outstanding (31600.000000 × 1000 = 31600000) / tvl (43140000)
+    // ≈ 0.7326 — NOT the raw pre-scale ratio (~0.0007), guarding that the
+    // ×1000 workaround is applied before the ratio is computed (#841).
     const ratio = result.current.tvlSummary.deployedRatio;
     expect(ratio).not.toBeNull();
     expect(ratio!).toBeCloseTo(31600000 / 43140000, 4);

@@ -51,7 +51,7 @@ function baseState(
         id: 1,
         originator: "Trafigura",
         commodity: "Alumina",
-        facility: "$8,000,000",
+        facility: "$8.0M",
         corridor: "West Africa → EU",
         rate: "11.2%",
         maturity: "15 Dec 2026",
@@ -119,7 +119,7 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     const table = screen.getByTestId("origination-table");
     expect(within(table).getByText("Trafigura")).toBeTruthy();
     expect(within(table).getByText("Alumina")).toBeTruthy();
-    expect(within(table).getByText("$8,000,000")).toBeTruthy();
+    expect(within(table).getByText("$8.0M")).toBeTruthy();
     expect(within(table).getByText("West Africa → EU")).toBeTruthy();
     expect(within(table).getByText("15 Dec 2026")).toBeTruthy();
     expect(within(table).getByText("18 Jun")).toBeTruthy();
@@ -131,7 +131,7 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
       id: 1,
       originator: "X",
       commodity: "Y",
-      facility: "$1,000,000",
+      facility: "$1.0M",
       corridor: "A → B",
       rate: "10.0%",
       maturity: "1 Jan 2027",
