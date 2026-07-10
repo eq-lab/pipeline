@@ -9,14 +9,20 @@ entire submissions-table row now navigates to `/origination/:id` for ALL statuse
 Approved and Rejected rows included, which only had a status pill (no Review control)
 before — passing the row's `SubmissionView` via router state; (2) the details page's
 always-shown "Request changes / Reject / Approve" footer is replaced by a
-status-conditional block: `InReview` keeps the existing inert buttons, `Approved` shows a
-green "Approved & minted · `<date>`" banner (Figma node `4116:9656`; the Figma's "funded
-from batch #B-102 →" segment is deliberately omitted — no backing field, never
-fabricated), and `Rejected` shows a red "Rejected · `<date>` — `<reason>`" banner (no
-Figma reference; mirrors the Approved banner's shape in red tokens). Both dates are
-`updated_at` formatted as "2 Jan" via `formatSubmittedDate`. An unknown/unrecognized
-status falls back to the InReview footer. Visual fidelity (spacing, colors, radii) is
-verified separately by the QA agent's Figma comparison.
+status-conditional block: `InReview` keeps the existing buttons (Reject/Approve later
+wired to the review endpoint by #829 — inert as of #823), `Approved` shows a green
+"Approved · `<date>`" banner (Figma node `4116:9656`; the Figma's "funded from batch
+#B-102 →" segment is deliberately omitted — no backing field, never fabricated), and
+`Rejected` shows a red "Rejected · `<date>` — `<reason>`" banner (no Figma reference;
+mirrors the Approved banner's shape in red tokens). Both dates are `updated_at` formatted
+as "2 Jan" via `formatSubmittedDate`. An unknown/unrecognized status falls back to the
+InReview footer. Visual fidelity (spacing, colors, radii) is verified separately by the QA
+agent's Figma comparison.
+
+**Copy note (amended by #829):** the Approved banner/pill originally read "Approved &
+minted · `<date>`" as of this issue. #829 dropped "& minted" — the review endpoint is a
+pure DB status flip, and nothing is minted on-chain until the separate blocked issue #831
+ships. The stories below reflect the current "Approved · `<date>`" copy.
 
 ---
 
@@ -31,7 +37,7 @@ one `Approved` submission.
 **Steps:**
 
 1. Navigate to `http://localhost:5174/origination` while authenticated.
-2. Locate an Approved row (green "Approved & minted · `<date>`" pill, no Review button)
+2. Locate an Approved row (green "Approved · `<date>`" pill, no Review button)
    and click anywhere on the row (not just the pill).
 
 **Expected outcomes:**
@@ -103,7 +109,7 @@ one `Approved` submission.
 
 ---
 
-## Story 5: Approved submission's details page shows the green "Approved & minted" banner
+## Story 5: Approved submission's details page shows the green "Approved" banner
 
 **Persona:** Trustee operator confirming a submission's mint status from its details
 page.
@@ -120,8 +126,9 @@ click or direct URL).
 **Expected outcomes:**
 
 - No "Request changes" / "Reject" / "Approve" buttons render.
-- A green banner renders instead, reading "Approved & minted · `<date>`", where `<date>`
-  is the submission's last-updated date formatted like "2 Jan" (no year).
+- A green banner renders instead, reading "Approved · `<date>`" (not "Approved & minted" —
+  see the copy note above), where `<date>` is the submission's last-updated date formatted
+  like "2 Jan" (no year).
 - No "funded from batch #…" text or any batch number appears anywhere on the page — this
   segment has no backing data and is never fabricated.
 
@@ -148,7 +155,7 @@ non-empty `reason`.
 
 ---
 
-## Story 7: InReview submission's details page still shows the original inert action buttons
+## Story 7: InReview submission's details page still shows the original action buttons
 
 **Persona:** Trustee operator reviewing a submission still awaiting a decision.
 
@@ -162,6 +169,11 @@ non-empty `reason`.
 **Expected outcomes:**
 
 - The original note ("Approval mints the loan NFT from your Trustee key...") and the
-  three buttons — "Request changes", "Reject", "Approve" — render exactly as before,
-  visually present but disabled/inert (clicking does nothing).
+  three buttons — "Request changes", "Reject", "Approve" — render exactly as before.
 - Neither the green Approved banner nor the red Rejected banner renders.
+
+**Note (amended by #829):** as of this issue (#823), all three buttons were
+disabled/inert. #829 wired "Reject" and "Approve" to the real review endpoint (see
+[829-approve-reject-review-wiring.md](./829-approve-reject-review-wiring.md) for the
+current, functional behavior); "Request changes" remains inert — no endpoint exists for
+it.

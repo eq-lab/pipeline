@@ -5,11 +5,13 @@
  *   - Attaches `Authorization: Bearer <token>` when a session token is present.
  *   - Omits the header entirely when no session token is present.
  *   - Forwards the base URL from `ENV`.
- *   - Maps a 401 response to `ApiUnauthorizedError`.
- *   - Non-401 non-2xx responses throw a plain `Error`.
+ *   - Maps a 401 response to `ApiUnauthorizedError` (an `ApiError` subclass
+ *     with `status === 401`, issue #829).
+ *   - Non-401 non-2xx responses throw `ApiError` carrying the numeric
+ *     `.status` (issue #829).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { apiFetch, ApiUnauthorizedError } from "./client";
+import { apiFetch, ApiError, ApiUnauthorizedError } from "./client";
 
 vi.mock("@/lib/env", () => ({
   ENV: {
@@ -88,7 +90,32 @@ describe("apiFetch — 401 handling", () => {
     );
   });
 
-  it("throws a plain Error (not ApiUnauthorizedError) on other non-2xx statuses", async () => {
+  it("populates .status = 401 on ApiUnauthorizedError, and it is an instanceof ApiError", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "address is not authorized" }), {
+        status: 401,
+      }),
+    );
+
+    await expect(
+      apiFetch("/v1/auth/challenge?address=0x1"),
+    ).rejects.toMatchObject({ status: 401 });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "address is not authorized" }), {
+        status: 401,
+      }),
+    );
+    try {
+      await apiFetch("/v1/auth/challenge?address=0x1");
+      expect.unreachable("apiFetch should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toBeInstanceOf(ApiUnauthorizedError);
+    }
+  });
+
+  it("throws ApiError (not ApiUnauthorizedError) carrying .status on other non-2xx statuses", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "boom" }), {
         status: 500,
@@ -97,14 +124,20 @@ describe("apiFetch — 401 handling", () => {
     );
 
     await expect(apiFetch("/v1/health")).rejects.toThrow("boom");
+
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "boom again" }), {
-        status: 500,
+        status: 409,
       }),
     );
-    await expect(apiFetch("/v1/health")).rejects.not.toBeInstanceOf(
-      ApiUnauthorizedError,
-    );
+    try {
+      await apiFetch("/v1/health");
+      expect.unreachable("apiFetch should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).not.toBeInstanceOf(ApiUnauthorizedError);
+      expect((err as ApiError).status).toBe(409);
+    }
   });
 
   it("falls back to statusText when the error body is not JSON", async () => {
@@ -131,5 +164,13 @@ describe("apiFetch — success", () => {
     const result = await apiFetch("/v1/auth/challenge?address=0x1");
 
     expect(result).toEqual(payload);
+  });
+
+  it("resolves to undefined (not a JSON-parse throw) on a 2xx response with an empty body (issue #829)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("", { status: 200 }));
+
+    const result = await apiFetch("/v1/loan-book/submissions/7/review");
+
+    expect(result).toBeUndefined();
   });
 });

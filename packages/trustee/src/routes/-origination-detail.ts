@@ -42,15 +42,21 @@
  *     verified" banners are OMITTED entirely (no backend source — do not
  *     fabricate).
  *
- * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
+ * ## Status-conditional footer (issue #823, Figma node `4116:9656`; copy
+ * amended by #829)
  *
  * The always-shown `ActionButtons` block is replaced by a footer that
  * branches on the submission's status:
- *   - InReview  → unchanged `ActionButtons` (note + three inert buttons).
- *   - Approved  → a green banner: "Approved & minted · `<reviewedDate>`".
- *     The Figma's semibold navy "funded from batch #B-102 →" segment is
- *     OMITTED — no `batch` field exists on `SubmissionView`/`loan_data`;
- *     never fabricate it (resolved via the issue's Open Questions).
+ *   - InReview  → `ActionButtons`, now WIRED (issue #829): Approve/Reject
+ *     call the review endpoint through `-useOriginationReview.ts` instead of
+ *     being inert.
+ *   - Approved  → a green banner: "Approved · `<reviewedDate>`" (status flip
+ *     only — issue #829 dropped "& minted" from the #823 copy: nothing is
+ *     actually minted on-chain until the separate #831 mint lands; restore
+ *     "& minted" once #831 ships). The Figma's semibold navy "funded from
+ *     batch #B-102 →" segment is OMITTED — no `batch` field exists on
+ *     `SubmissionView`/`loan_data`; never fabricate it (resolved via #823's
+ *     Open Questions).
  *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
  *   - unknown   → falls back to the InReview `ActionButtons` footer, so the
  *     page is never actionless/blank (resolved via Open Questions).
@@ -236,6 +242,18 @@ function mapHeading(submission: SubmissionView): string {
  * @param id                the `$id` route param (the submission's `id`).
  * @param stateSubmission   `SubmissionView` passed via router navigation
  *                           state by the #813/#818 Review control, if present.
+ *
+ * ## Resolution precedence (fixed by #829 — load-bearing for Approve/Reject)
+ *
+ * Prefers the LIVE `useLoanSubmissions()` list copy over `stateSubmission`
+ * whenever the list already contains a matching `id`; `stateSubmission` is
+ * used only as an initial-render fallback (first paint, before the list
+ * query has resolved a match — e.g. a direct-URL/refresh visit before the
+ * list finishes loading). Before #829, `stateSubmission` always won when
+ * present, so after a successful Approve/Reject the invalidated list would
+ * refetch a fresh (status-flipped) copy, but the memo kept returning the
+ * stale navigation-state snapshot — the footer would never flip to the
+ * Approved/Rejected banner until a hard refresh dropped the router state.
  */
 export function useOriginationDetail(
   id: string,
@@ -245,8 +263,8 @@ export function useOriginationDetail(
     useLoanSubmissions();
 
   const submission = useMemo<SubmissionView | undefined>(() => {
-    if (stateSubmission) return stateSubmission;
-    return submissions?.find((s) => String(s.id) === id);
+    const fromList = submissions?.find((s) => String(s.id) === id);
+    return fromList ?? stateSubmission;
   }, [stateSubmission, submissions, id]);
 
   const needsFallback = !stateSubmission;

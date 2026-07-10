@@ -44,8 +44,8 @@ returns submissions covering all three statuses (`InReview`, `Approved`, `Reject
 - No footer note (or any other text) renders beneath the table — the Figma's static
   "The document set adapts to the commodity…" note is deliberately not part of this page.
 - Every column has a fixed minimum width and consistent internal padding, so cell content
-  (e.g. a long originator name or the "Approved & minted · <date>" pill) never touches or
-  overlaps the neighboring column.
+  (e.g. a long originator name or the "Approved · <date>" pill — copy amended by #829, see
+  Story 2) never touches or overlaps the neighboring column.
 
 ---
 
@@ -66,8 +66,10 @@ returns submissions covering all three statuses (`InReview`, `Approved`, `Reject
 
 - The `InReview` row shows a navy "Review" button. The button is **disabled/inert** — clicking
   it does nothing and it does not navigate anywhere (no submission-review route exists yet).
-- The `Approved` row shows a green pill reading "Approved & minted · &lt;date&gt;" with a small
-  check icon.
+- The `Approved` row shows a green pill reading "Approved · &lt;date&gt;" with a small check
+  icon (copy amended by issue #829 — reads "Approved" only, NOT "Approved & minted": the
+  review endpoint is a pure DB status flip; the on-chain mint is deferred to the separate
+  blocked issue #831).
 - The `Rejected` row shows a red "Rejected" pill.
 - Hovering the `Rejected` pill shows the submission's `reason` string as a tooltip (native
   `title` attribute).

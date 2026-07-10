@@ -30,11 +30,13 @@
  *     seconds), formatted via `formatMaturityDate` (e.g. `"15 Dec 2026"`).
  *   - Submitted   → `SubmissionView.created_at` (RFC 3339), formatted via
  *     `formatSubmittedDate` (e.g. `"18 Jun"`).
- *   - Status/action (8th column) — resolved (human, issue #813 comment):
- *     - `Approved`  → green "Approved & minted · <date>" pill. No on-chain
- *       mint timestamp is served by this endpoint, so the date uses
- *       `updated_at` (the closest proxy for "when the status last changed
- *       to Approved").
+ *   - Status/action (8th column) — resolved (human, issue #813 comment; copy
+ *     amended by #829):
+ *     - `Approved`  → green "Approved · <date>" pill (issue #829 dropped
+ *       "& minted" — the review endpoint is a pure DB status flip; no
+ *       on-chain mint happens until the separate blocked issue #831 ships,
+ *       restore "& minted" then). The date uses `updated_at` (the closest
+ *       proxy for "when the status last changed to Approved").
  *     - `InReview`  → an inert/disabled "Review" button (no review route
  *       exists yet in the trustee app — see Open Questions in the exec plan;
  *       this is a Figma-shape placeholder, not a wired action).
@@ -107,9 +109,12 @@ function safeNumber(value: unknown): number | undefined {
 function resolveStatus(submission: SubmissionView): OriginationRowStatus {
   switch (submission.status) {
     case "Approved":
+      // "Approved" only (NOT "Approved & minted", issue #829) — the review
+      // endpoint is a pure DB status flip; nothing is minted on-chain until
+      // the separate blocked issue #831 ships.
       return {
         kind: "approved",
-        label: `Approved & minted · ${formatSubmittedDate(submission.updated_at)}`,
+        label: `Approved · ${formatSubmittedDate(submission.updated_at)}`,
       };
     case "InReview":
       return { kind: "in-review", label: "Review" };

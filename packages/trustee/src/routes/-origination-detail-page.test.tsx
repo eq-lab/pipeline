@@ -11,17 +11,29 @@
  * valuation card is incorrect and must not exist in this component at all
  * (issue #821 supersedes the closed #816, which had it).
  *
- * Also covers the status-conditional detail footer (issue #823): InReview
- * renders the three inert action buttons (unchanged); Approved renders the
- * green "Approved & minted · <date>" banner (and NO "funded from batch"
- * text — that segment is deliberately omitted, no backing field); Rejected
- * renders the red "Rejected · <date> — <reason>" banner; both banner cases
- * assert the action buttons are ABSENT. An unknown status falls back to the
- * InReview footer.
+ * Also covers the status-conditional detail footer (issue #823, copy
+ * amended by #829): InReview renders the three action buttons (Request
+ * changes inert; Reject/Approve now WIRED — issue #829); Approved renders
+ * the green "Approved · <date>" banner (NOT "Approved & minted" — #829
+ * dropped that segment pending the separate #831 on-chain mint; and NO
+ * "funded from batch" text — that segment is deliberately omitted, no
+ * backing field); Rejected renders the red "Rejected · <date> — <reason>"
+ * banner; both banner cases assert the action buttons are ABSENT. An
+ * unknown status falls back to the InReview footer.
+ *
+ * Approve/Reject wiring (issue #829): `useOriginationReview` is mocked
+ * (like `useOriginationDetail`) so these are pure render-layer tests —
+ * clicking Approve/Reject calls the mocked orchestration functions, pending
+ * disables the buttons, and the mapped error renders inline (footer) or
+ * inside the reject dialog depending on `rejectOpen`. `RejectReasonDialog`
+ * itself is NOT mocked — its own behavior is covered by
+ * `-RejectReasonDialog.test.tsx`; here it's exercised as a real integration
+ * point (Cancel/Submit call the mocked `cancelReject`/`submitReject`).
  */
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import type { OriginationDetailResult } from "./-origination-detail";
+import type { UseOriginationReviewResult } from "./-useOriginationReview";
 
 const mockUseParams = vi.fn(() => ({ id: "7" }));
 const mockUseLocation = vi.fn(() => ({ state: {} }));
@@ -49,6 +61,11 @@ vi.mock("./-origination-detail", async () => {
   };
 });
 
+const mockUseOriginationReview = vi.fn<() => UseOriginationReviewResult>();
+vi.mock("./-useOriginationReview", () => ({
+  useOriginationReview: () => mockUseOriginationReview(),
+}));
+
 import { Route } from "./origination.$id";
 import { useOriginationDetail } from "./-origination-detail";
 
@@ -60,6 +77,23 @@ import { useOriginationDetail } from "./-origination-detail";
 function mockDetail(result: OriginationDetailResult) {
   vi.mocked(useOriginationDetail).mockReturnValue(result);
 }
+
+function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
+  mockUseOriginationReview.mockReturnValue({
+    approve: vi.fn(),
+    openReject: vi.fn(),
+    cancelReject: vi.fn(),
+    submitReject: vi.fn(),
+    isPending: false,
+    errorMessage: null,
+    rejectOpen: false,
+    ...overrides,
+  });
+}
+
+beforeEach(() => {
+  mockReview();
+});
 
 function renderRoute() {
   const Page = Route.options.component as React.ComponentType;
@@ -241,18 +275,22 @@ describe("Origination details route", () => {
   // ── Status-conditional detail footer (issue #823) ─────────────────────────
 
   describe("status-conditional footer", () => {
-    it("InReview: renders the three inert action buttons; NO banner", () => {
+    it("InReview: Request changes is inert; Reject/Approve are enabled; NO banner", () => {
       mockDetail(READY_RESULT); // statusKind: "in-review"
       renderRoute();
-      for (const testId of [
+
+      const requestChanges = screen.getByTestId(
         "origination-detail-request-changes",
-        "origination-detail-reject",
-        "origination-detail-approve",
-      ]) {
-        const button = screen.getByTestId(testId);
-        expect(button).toBeDisabled();
-        expect(button).toHaveAttribute("aria-disabled", "true");
-      }
+      );
+      expect(requestChanges).toBeDisabled();
+      expect(requestChanges).toHaveAttribute("aria-disabled", "true");
+
+      const rejectButton = screen.getByTestId("origination-detail-reject");
+      const approveButton = screen.getByTestId("origination-detail-approve");
+      expect(rejectButton).not.toBeDisabled();
+      expect(approveButton).not.toBeDisabled();
+      expect(approveButton).toHaveTextContent("Approve");
+
       expect(
         screen.queryByTestId("origination-detail-approved-banner"),
       ).not.toBeInTheDocument();
@@ -261,7 +299,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("Approved: renders the green 'Approved & minted · <date>' banner; NO action buttons; NO fabricated batch text", () => {
+    it("Approved: renders the green 'Approved · <date>' banner (NOT 'Approved & minted'); NO action buttons; NO fabricated batch text", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "approved", label: "Approved" },
@@ -270,7 +308,8 @@ describe("Origination details route", () => {
       });
       renderRoute();
       const banner = screen.getByTestId("origination-detail-approved-banner");
-      expect(banner).toHaveTextContent("Approved & minted · 2 Jan");
+      expect(banner).toHaveTextContent("Approved · 2 Jan");
+      expect(screen.queryByText(/Approved & minted/)).not.toBeInTheDocument();
       expect(screen.queryByText(/funded from batch/)).not.toBeInTheDocument();
       expect(screen.queryByText(/#B-102/)).not.toBeInTheDocument();
       expect(
@@ -324,6 +363,108 @@ describe("Origination details route", () => {
       expect(
         screen.queryByTestId("origination-detail-rejected-banner"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Approve/Reject wiring (issue #829) ─────────────────────────────────────
+
+  describe("Approve/Reject wiring", () => {
+    it("clicking Approve calls review.approve()", () => {
+      const approve = vi.fn();
+      mockReview({ approve });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("origination-detail-approve"));
+      expect(approve).toHaveBeenCalledTimes(1);
+    });
+
+    it("clicking Reject calls review.openReject()", () => {
+      const openReject = vi.fn();
+      mockReview({ openReject });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("origination-detail-reject"));
+      expect(openReject).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables Reject/Approve (but not Request changes, already disabled) while isPending", () => {
+      mockReview({ isPending: true });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(screen.getByTestId("origination-detail-reject")).toBeDisabled();
+      const approveButton = screen.getByTestId("origination-detail-approve");
+      expect(approveButton).toBeDisabled();
+      expect(approveButton).toHaveTextContent("Submitting…");
+    });
+
+    it("renders the mapped error inline near the buttons when set and the dialog is closed", () => {
+      mockReview({
+        errorMessage: "You are not authorized to review submissions.",
+        rejectOpen: false,
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(
+        screen.getByTestId("origination-detail-review-error"),
+      ).toHaveTextContent("You are not authorized to review submissions.");
+    });
+
+    it("does NOT render the inline error while the reject dialog is open (the dialog owns it)", () => {
+      mockReview({
+        errorMessage: "This submission has already been reviewed.",
+        rejectOpen: true,
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(
+        screen.queryByTestId("origination-detail-review-error"),
+      ).not.toBeInTheDocument();
+      // ...it renders inside the dialog instead.
+      expect(screen.getByTestId("reject-reason-error")).toHaveTextContent(
+        "This submission has already been reviewed.",
+      );
+    });
+
+    it("renders the RejectReasonDialog when rejectOpen is true, and NOT when false", () => {
+      mockReview({ rejectOpen: false });
+      mockDetail(READY_RESULT);
+      const { rerender } = renderRoute();
+      expect(
+        screen.queryByTestId("reject-reason-dialog"),
+      ).not.toBeInTheDocument();
+
+      mockReview({ rejectOpen: true });
+      const Page = Route.options.component as React.ComponentType;
+      rerender(<Page />);
+      expect(screen.getByTestId("reject-reason-dialog")).toBeInTheDocument();
+    });
+
+    it("Cancel in the dialog calls review.cancelReject()", () => {
+      const cancelReject = vi.fn();
+      mockReview({ rejectOpen: true, cancelReject });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("reject-reason-cancel"));
+      expect(cancelReject).toHaveBeenCalledTimes(1);
+    });
+
+    it("Submit in the dialog calls review.submitReject(reason) with the trimmed reason", () => {
+      const submitReject = vi.fn();
+      mockReview({ rejectOpen: true, submitReject });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.change(screen.getByTestId("reject-reason-input"), {
+        target: { value: "  Missing export permit  " },
+      });
+      fireEvent.click(screen.getByTestId("reject-reason-submit"));
+      expect(submitReject).toHaveBeenCalledWith("Missing export permit");
     });
   });
 });

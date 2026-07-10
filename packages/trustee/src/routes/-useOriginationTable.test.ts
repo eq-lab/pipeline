@@ -130,7 +130,7 @@ describe("mapSubmissionToRow", () => {
     });
     expect(row.status).toEqual({
       kind: "approved",
-      label: "Approved & minted · 2 Jan",
+      label: "Approved · 2 Jan",
     });
   });
 
