@@ -43,20 +43,21 @@
  *     fabricate).
  *
  * ## Status-conditional footer (issue #823, Figma node `4116:9656`; copy
- * amended by #829)
+ * amended by #829, restored by #831)
  *
  * The always-shown `ActionButtons` block is replaced by a footer that
  * branches on the submission's status:
- *   - InReview  → `ActionButtons`, now WIRED (issue #829): Approve/Reject
- *     call the review endpoint through `-useOriginationReview.ts` instead of
- *     being inert.
- *   - Approved  → a green banner: "Approved · `<reviewedDate>`" (status flip
- *     only — issue #829 dropped "& minted" from the #823 copy: nothing is
- *     actually minted on-chain until the separate #831 mint lands; restore
- *     "& minted" once #831 ships). The Figma's semibold navy "funded from
- *     batch #B-102 →" segment is OMITTED — no `batch` field exists on
- *     `SubmissionView`/`loan_data`; never fabricate it (resolved via #823's
- *     Open Questions).
+ *   - InReview  → `ActionButtons`, WIRED (issue #829, extended by #831):
+ *     Approve now mints on-chain first (`useDrawLoan`), then calls the
+ *     review endpoint through `-useOriginationReview.ts`; Reject is
+ *     unchanged (pure DB review call).
+ *   - Approved  → a green banner: "Approved & minted · `<reviewedDate>`"
+ *     (issue #829 dropped "& minted" pending the real mint; #831 restored it
+ *     — Approve now performs a genuine trustee-wallet-signed on-chain
+ *     `draw_loan` mint before this banner ever renders). The Figma's
+ *     semibold navy "funded from batch #B-102 →" segment is OMITTED — no
+ *     `batch` field exists on `SubmissionView`/`loan_data`; never fabricate
+ *     it (resolved via #823's Open Questions).
  *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
  *   - unknown   → falls back to the InReview `ActionButtons` footer, so the
  *     page is never actionless/blank (resolved via Open Questions).

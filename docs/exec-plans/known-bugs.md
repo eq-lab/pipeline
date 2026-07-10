@@ -67,6 +67,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Not investigated. The mocked test setup appears to leave the WithdrawalQueue contract unconfigured, so the hook short-circuits with a "not configured" error before reaching the signature-decline / submission paths the tests assert on.
 - **Workaround:** None applied.
 
+### BUG-8: `@pipeline/wallet-connect` — `localStorage` undefined in several jsdom test files
+
+- **Date:** 2026-07-10
+- **Location:** `packages/wallet-connect/src/evm/mock.test.ts`, `packages/wallet-connect/src/evm/useEvmWallet.test.tsx`, `packages/wallet-connect/src/stellar/useStellarWallet.test.tsx` (39 tests across these 3 files).
+- **Symptom:** `yarn workspace @pipeline/wallet-connect test` (and each file run standalone, e.g. `vitest run src/stellar/useStellarWallet.test.tsx`) fails with `TypeError: Cannot read properties of undefined (reading 'clear')` at `localStorage.clear()` in `beforeEach`/`afterEach` hooks, and similar `localStorage` accesses inside the hooks under test. Reproduces on a clean checkout of this branch's base commit (`4f742af`, before any #831 work), confirming it is pre-existing and unrelated to issue #831.
+- **Root cause:** Not investigated. `vite.config.ts`'s `test.environment` is `"jsdom"` with `globals: true`, so `localStorage` should be jsdom-provided; something in this package's `test-setup.ts` or dependency versions leaves the global `localStorage` unset for these three files specifically (other test files in the same package, e.g. `sacBalance.test.ts`, `loanRegistry.test.ts`, `connectionStore.test.ts`, pass cleanly).
+- **Workaround:** None applied. Run the unaffected files individually to validate unrelated changes (as done for issue #831's `loanRegistry.test.ts`).
+
 ### BUG-7: `PortfolioPlaceholderCard.test.tsx` — tooltip balance test is time-sensitive
 - **Date:** 2026-07-01
 - **Location:** `packages/frontend/src/components/PortfolioPlaceholderCard.test.tsx` line 261

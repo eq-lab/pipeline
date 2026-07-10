@@ -12,19 +12,21 @@
  * (issue #821 supersedes the closed #816, which had it).
  *
  * Also covers the status-conditional detail footer (issue #823, copy
- * amended by #829): InReview renders the three action buttons (Request
- * changes inert; Reject/Approve now WIRED — issue #829); Approved renders
- * the green "Approved · <date>" banner (NOT "Approved & minted" — #829
- * dropped that segment pending the separate #831 on-chain mint; and NO
- * "funded from batch" text — that segment is deliberately omitted, no
- * backing field); Rejected renders the red "Rejected · <date> — <reason>"
- * banner; both banner cases assert the action buttons are ABSENT. An
- * unknown status falls back to the InReview footer.
+ * amended by #829, restored by #831): InReview renders the three action
+ * buttons (Request changes inert; Reject/Approve now WIRED — issue #829,
+ * chain-first mint added by #831); Approved renders the green "Approved &
+ * minted · <date>" banner (restored — #829 dropped "& minted" pending the
+ * real mint, #831 shipped it) and NO "funded from batch" text — that segment
+ * is deliberately omitted, no backing field; Rejected renders the red
+ * "Rejected · <date> — <reason>" banner; both banner cases assert the
+ * action buttons are ABSENT. An unknown status falls back to the InReview
+ * footer.
  *
- * Approve/Reject wiring (issue #829): `useOriginationReview` is mocked
- * (like `useOriginationDetail`) so these are pure render-layer tests —
- * clicking Approve/Reject calls the mocked orchestration functions, pending
- * disables the buttons, and the mapped error renders inline (footer) or
+ * Approve/Reject wiring (issue #829, extended by #831): `useOriginationReview`
+ * is mocked (like `useOriginationDetail`) so these are pure render-layer
+ * tests — clicking Approve/Reject calls the mocked orchestration functions,
+ * pending disables the buttons, `mintingLabel` swaps the Approve button's
+ * text while minting, and the mapped error renders inline (footer) or
  * inside the reject dialog depending on `rejectOpen`. `RejectReasonDialog`
  * itself is NOT mocked — its own behavior is covered by
  * `-RejectReasonDialog.test.tsx`; here it's exercised as a real integration
@@ -85,6 +87,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     cancelReject: vi.fn(),
     submitReject: vi.fn(),
     isPending: false,
+    mintingLabel: null,
     errorMessage: null,
     rejectOpen: false,
     ...overrides,
@@ -299,7 +302,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("Approved: renders the green 'Approved · <date>' banner (NOT 'Approved & minted'); NO action buttons; NO fabricated batch text", () => {
+    it("Approved: renders the green 'Approved & minted · <date>' banner (restored, #831); NO action buttons; NO fabricated batch text", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "approved", label: "Approved" },
@@ -308,8 +311,7 @@ describe("Origination details route", () => {
       });
       renderRoute();
       const banner = screen.getByTestId("origination-detail-approved-banner");
-      expect(banner).toHaveTextContent("Approved · 2 Jan");
-      expect(screen.queryByText(/Approved & minted/)).not.toBeInTheDocument();
+      expect(banner).toHaveTextContent("Approved & minted · 2 Jan");
       expect(screen.queryByText(/funded from batch/)).not.toBeInTheDocument();
       expect(screen.queryByText(/#B-102/)).not.toBeInTheDocument();
       expect(
@@ -398,6 +400,53 @@ describe("Origination details route", () => {
       const approveButton = screen.getByTestId("origination-detail-approve");
       expect(approveButton).toBeDisabled();
       expect(approveButton).toHaveTextContent("Submitting…");
+    });
+
+    // ── On-chain minting progress (issue #831) ──────────────────────────────
+
+    it("shows the mint's progress label on the Approve button while minting", () => {
+      mockReview({
+        isPending: true,
+        mintingLabel: "Waiting for wallet signature…",
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      const approveButton = screen.getByTestId("origination-detail-approve");
+      expect(approveButton).toBeDisabled();
+      expect(approveButton).toHaveTextContent("Waiting for wallet signature…");
+    });
+
+    it("swaps the progress label through each mint stage", () => {
+      mockReview({ isPending: true, mintingLabel: "Submitting on-chain…" });
+      mockDetail(READY_RESULT);
+      const { rerender } = renderRoute();
+      expect(
+        screen.getByTestId("origination-detail-approve"),
+      ).toHaveTextContent("Submitting on-chain…");
+
+      mockReview({ isPending: true, mintingLabel: "Confirming…" });
+      const Page = Route.options.component as React.ComponentType;
+      rerender(<Page />);
+      expect(
+        screen.getByTestId("origination-detail-approve"),
+      ).toHaveTextContent("Confirming…");
+
+      mockReview({ isPending: true, mintingLabel: "Finalizing approval…" });
+      rerender(<Page />);
+      expect(
+        screen.getByTestId("origination-detail-approve"),
+      ).toHaveTextContent("Finalizing approval…");
+    });
+
+    it("falls back to 'Submitting…' when isPending but mintingLabel is null (e.g. Reject in flight)", () => {
+      mockReview({ isPending: true, mintingLabel: null });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(
+        screen.getByTestId("origination-detail-approve"),
+      ).toHaveTextContent("Submitting…");
     });
 
     it("renders the mapped error inline near the buttons when set and the dialog is closed", () => {

@@ -17,8 +17,10 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  *     `GET /v1/loan-book/{loan_id}/valuations` with).
  *   - Approve / Reject render per Figma and are WIRED (issue #829) to
  *     `POST /v1/loan-book/submissions/{id}/review` via
- *     `-useOriginationReview.ts` / `useReviewSubmission`. Request changes
- *     stays inert/disabled — no endpoint exists for it.
+ *     `-useOriginationReview.ts` / `useReviewSubmission`. Approve additionally
+ *     performs a trustee-wallet-signed on-chain `draw_loan` mint BEFORE that
+ *     review call (issue #831 — see "Approve/Reject wiring" below). Request
+ *     changes stays inert/disabled — no endpoint exists for it.
  *   - Only the backend-backed status chip renders. The Figma's static
  *     "Your key · one click" chip and "NSR · Net Smelter Return"
  *     valuation-mode chip are both dropped — no data source, never
@@ -35,9 +37,9 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  * `InReview` (and any unknown status, as a safe fallback). `Approved` and
  * `Rejected` submissions instead render a colored banner in its place:
  *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
- *     "Approved · `<date>`" (copy amended by #829 — see below). The Figma's
- *     "funded from batch #B-102 →" segment is OMITTED — no `batch` field
- *     exists on `SubmissionView`/`loan_data`; never fabricated.
+ *     "Approved & minted · `<date>`" (restored by #831 — see below). The
+ *     Figma's "funded from batch #B-102 →" segment is OMITTED — no `batch`
+ *     field exists on `SubmissionView`/`loan_data`; never fabricated.
  *   - `RejectedBanner` — red (`--color-pipeline-negative`), "Rejected ·
  *     `<date>` — `<reason>`" (`reason` = `SubmissionView.reason`, backed).
  *     No Figma reference exists for this state; it mirrors the Approved
@@ -46,15 +48,25 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  * as `reviewedDate` by the view-model) — NOT `formatMaturityDate` (Unix
  * seconds + year).
  *
- * ## Approve/Reject wiring (issue #829)
+ * ## Approve/Reject wiring (issue #829, extended by #831's chain-first mint)
  *
  * `ActionButtons` (the InReview footer) now fires real mutations via
- * `useOriginationReview` (composing `useReviewSubmission`, a React-Query
- * mutation over `POST /v1/loan-book/submissions/{id}/review`):
- *   - **Approve** fires immediately with no reason.
- *   - **Reject** opens `RejectReasonDialog` (a min-5-trimmed-chars reason,
- *     Submit + Cancel).
- *   - Both buttons disable while pending; a mapped error (409 "already
+ * `useOriginationReview` (composing `useDrawLoan` and `useReviewSubmission`):
+ *   - **Approve** now runs chain-first: `useDrawLoan` builds → simulates
+ *     (the "verify the loan" step) → requests the connected trustee wallet's
+ *     signature → submits → polls the `draw_loan` mint to a terminal status
+ *     BEFORE `useReviewSubmission`'s `POST .../review {decision:"Approved"}`
+ *     ever fires. The button label swaps through the mint's progress stages
+ *     ("Waiting for wallet signature…" → "Submitting on-chain…" →
+ *     "Confirming…" → "Finalizing approval…").
+ *   - A wallet rejection or any mint failure (simulate/send/poll) makes
+ *     **no** review call — the submission stays `InReview`, a mapped
+ *     retryable error renders inline, and no signature is ever requested if
+ *     the simulate step fails.
+ *   - **Reject** is unchanged: opens `RejectReasonDialog` (a
+ *     min-5-trimmed-chars reason, Submit + Cancel), a pure DB review call.
+ *   - Both buttons disable through the whole mint + review sequence; a
+ *     mapped error (mint failure, or the #829 review errors: 409 "already
  *     reviewed", 403 "not authorized", 401 session-expired, other generic)
  *     renders inline near the buttons and inside the dialog.
  *   - On success, the submissions list is invalidated and
@@ -63,12 +75,6 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
  *     banner without a manual refresh.
  * "Request changes" has no backend endpoint and stays inert/disabled exactly
  * as before.
- *
- * **Interim banner copy (resolved, #829):** the Approved banner reads
- * "Approved · `<date>`" — a pure DB status flip, NOT "Approved & minted". No
- * on-chain mint happens yet; that is deferred to the separate blocked issue
- * **#831** (trustee-wallet-signed `draw_loan`). Restore "& minted" once #831
- * ships.
  *
  * The `.tsx` is JSX/styling only; all data extraction + formatting lives in
  * the colocated `-origination-detail.ts` view-model hook (mirroring
@@ -276,19 +282,27 @@ interface ActionButtonsProps {
   onApprove: () => void;
   onReject: () => void;
   isPending: boolean;
+  /** Progress label while the on-chain mint is in flight (issue #831), or `null`. */
+  mintingLabel: string | null;
   errorMessage: string | null;
 }
 
 /**
  * The InReview footer's action buttons. Approve/Reject are WIRED (issue
- * #829) — `onApprove` fires the review mutation immediately, `onReject`
- * opens the reject-reason dialog (owned by the caller). "Request changes"
- * has no backend endpoint and stays inert/disabled.
+ * #829) — `onApprove` fires the chain-first mint-then-review flow (issue
+ * #831: `useOriginationReview.approve` mints on-chain first, then calls the
+ * review endpoint), `onReject` opens the reject-reason dialog (owned by the
+ * caller). Both buttons disable through the whole mint + review sequence;
+ * the Approve label swaps to `mintingLabel`'s progress copy ("Waiting for
+ * wallet signature…" → "Submitting on-chain…" → "Confirming…" →
+ * "Finalizing approval…") while minting. "Request changes" has no backend
+ * endpoint and stays inert/disabled.
  */
 function ActionButtons({
   onApprove,
   onReject,
   isPending,
+  mintingLabel,
   errorMessage,
 }: ActionButtonsProps) {
   return (
@@ -333,7 +347,7 @@ function ActionButtons({
           data-testid="origination-detail-approve"
           className="h-[48px] rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending ? "Submitting…" : "Approve"}
+          {mintingLabel ?? (isPending ? "Submitting…" : "Approve")}
         </button>
       </div>
     </div>
@@ -341,13 +355,13 @@ function ActionButtons({
 }
 
 /**
- * Green "Approved · `<date>`" banner (issue #823, Figma node `4116:9656`;
- * copy amended by #829), rendered in place of `ActionButtons` for Approved
- * submissions. The Figma's semibold navy "funded from batch #B-102 →"
- * segment is deliberately omitted — no backing field, never fabricated.
- * Reads "Approved · `<date>`" (NOT "Approved & minted") — issue #829 flips
- * only the DB status; no on-chain mint happens until the separate #831
- * lands. Restore "& minted" once #831 ships.
+ * Green "Approved & minted · `<date>`" banner (issue #823, Figma node
+ * `4116:9656`; copy restored by #831), rendered in place of `ActionButtons`
+ * for Approved submissions. The Figma's semibold navy "funded from batch
+ * #B-102 →" segment is deliberately omitted — no backing field, never
+ * fabricated. "& minted" is no longer aspirational: Approve now performs a
+ * real trustee-wallet-signed on-chain `draw_loan` mint before this banner
+ * ever renders (issue #831).
  */
 function ApprovedBanner({ date }: { date: string }) {
   return (
@@ -361,7 +375,7 @@ function ApprovedBanner({ date }: { date: string }) {
         className="text-[color:var(--color-pipeline-positive-primary)]"
       />
       <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
-        Approved · {date}
+        Approved & minted · {date}
       </span>
     </div>
   );
@@ -393,6 +407,7 @@ function DetailFooter({
   onApprove,
   onReject,
   isPending,
+  mintingLabel,
   errorMessage,
 }: {
   statusKind: StatusChip["kind"];
@@ -401,6 +416,7 @@ function DetailFooter({
   onApprove: () => void;
   onReject: () => void;
   isPending: boolean;
+  mintingLabel: string | null;
   errorMessage: string | null;
 }) {
   if (statusKind === "approved") {
@@ -415,6 +431,7 @@ function DetailFooter({
       onApprove={onApprove}
       onReject={onReject}
       isPending={isPending}
+      mintingLabel={mintingLabel}
       errorMessage={errorMessage}
     />
   );
@@ -498,6 +515,7 @@ function OriginationDetail() {
           onApprove={review.approve}
           onReject={review.openReject}
           isPending={review.isPending}
+          mintingLabel={review.mintingLabel}
           // While the reject dialog is open, its own error surface (below)
           // owns the mutation error — avoid rendering it twice.
           errorMessage={review.rejectOpen ? null : review.errorMessage}
