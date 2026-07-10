@@ -10,8 +10,9 @@
  * ## Field mapping (see the exec plan's Assumptions section for the backend
  * source of each field)
  *
- *   - Originator  → `SubmissionView.originator` (top-level authenticated
- *     submitter, NOT `loan_data.originator`).
+ *   - Originator  → `loan_data.originator` (the originator's name as
+ *     submitted with the loan, NOT the top-level `SubmissionView.originator`
+ *     authenticated-submitter address).
  *   - Commodity   → `loan_data.commodity`. The Figma also shows a valuation
  *     sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"),
  *     but no field in `loan_data`/`SubmissionView` carries a valuation mode
@@ -141,7 +142,7 @@ export function mapSubmissionToRow(
 
   return {
     id: submission.id,
-    originator: safeString(submission.originator),
+    originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
     facility: formatFullUsd(economics.original_facility_size ?? null),
     // Figma renders the corridor with an arrow separator ("PE → CN"); the

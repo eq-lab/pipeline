@@ -23,7 +23,7 @@ const FULL_SUBMISSION: SubmissionView = {
   id: 1,
   status: "InReview",
   reason: null,
-  originator: "Auric Andes",
+  originator: "GABCD1234EFGH5678IJKL9012MNOP3456QRST7890UVWX",
   created_at: "2026-06-18T10:00:00Z",
   updated_at: "2026-06-18T10:00:00Z",
   documents: [],
