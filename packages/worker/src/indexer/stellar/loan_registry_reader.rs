@@ -230,7 +230,13 @@ pub fn decode_mutable_loan_data(scval: &ScVal) -> Result<MutableLoanDataView> {
         other => anyhow::bail!("MutableLoanData.status: unknown variant '{other}'"),
     };
 
-    let ccr_bps = map_u32(&map, "ccr", "MutableLoanData")?;
+    // Soroban stores CCR in the same `ONE = 1_000_000` fixed-point scale as the
+    // interest rate (100% → 1_000_000, 120% → 1_200_000). The shared snapshot field
+    // is basis points (1 bp = 1/10_000), matching EVM's native `ccrBps`. Divide by
+    // 100 here — mirroring the `senior_interest_rate` conversion above — so stored
+    // `ccr_bps` means the same thing on both chains. (Loan-book CCR is recomputed
+    // from collateral downstream, so this only fixes the stored snapshot value.)
+    let ccr_bps = map_u32(&map, "ccr", "MutableLoanData")? / 100;
     let last_reported_ccr_timestamp =
         map_u64(&map, "last_reported_ccr_timestamp", "MutableLoanData")?;
     let current_maturity_timestamp =

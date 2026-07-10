@@ -47,6 +47,9 @@ pub struct LoanSnapshot {
     pub next_economics_epochs_id: BigDecimal,
     pub next_repayment_id: BigDecimal,
     pub status: String,
+    /// Collateral-coverage ratio in basis points (12_000 = 120%), normalized across
+    /// chains: EVM emits native `ccrBps`; the Stellar indexer converts the Soroban
+    /// `ONE = 1_000_000`-scaled `ccr` (÷100) so both mean basis points here.
     pub ccr_bps: u32,
     pub last_reported_ccr_timestamp: i64,
     /// Rollover-aware maturity timestamp (may differ from `original_maturity_date` after rollovers).
