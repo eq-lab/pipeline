@@ -147,9 +147,11 @@ pub fn parse_location_updated(raw: &RawEvent) -> Option<StellarLog> {
 /// stored event_name = "LoanDefaulted"
 ///
 /// `params.ccr_bps` matches EVM's `parse_loan_defaulted` (which emits
-/// `decoded.ccrBps`). The on-chain Soroban Map key is `ccr`; we rename to
-/// `ccr_bps` on the way out so downstream consumers (mapper, analytics) can
-/// read a single field name across chains.
+/// `decoded.ccrBps` in basis points). The on-chain Soroban Map key is `ccr`,
+/// stored in the contract's `ONE = 1_000_000` fixed-point scale (100% =
+/// 1_000_000); we divide by 100 to basis points — mirroring
+/// `decode_mutable_loan_data` — and rename to `ccr_bps` so downstream consumers
+/// (mapper, analytics) read a single field name and unit across chains.
 pub fn parse_loan_defaulted(raw: &RawEvent) -> Option<StellarLog> {
     if raw.event_name != "loan_defaulted" {
         return None;
@@ -159,7 +161,7 @@ pub fn parse_loan_defaulted(raw: &RawEvent) -> Option<StellarLog> {
     }
 
     let loan_id = extract_u32(&raw.topics_base64[1])?;
-    let ccr_bps = extract_u32_from_map(&raw.value_base64, "ccr")?;
+    let ccr_bps = extract_u32_from_map(&raw.value_base64, "ccr")? / 100;
 
     Some(StellarLog {
         contract_address: raw.contract_id.clone(),

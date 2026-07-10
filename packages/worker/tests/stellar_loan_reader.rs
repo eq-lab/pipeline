@@ -132,7 +132,8 @@ fn decode_mutable_loan_data_happy_path() {
     );
 
     let scval = make_map(vec![
-        ("ccr", u32_val(12500)),
+        // Soroban-units: CCR in `ONE = 1_000_000` scale. 1_250_000 = 125%.
+        ("ccr", u32_val(1_250_000)),
         ("closure_reason", enum_variant("None")),
         ("current_location", current_location),
         ("current_maturity_timestamp", u64_val(1_731_600_000)),
@@ -147,7 +148,8 @@ fn decode_mutable_loan_data_happy_path() {
 
     assert_eq!(view.status, 0); // 0 = Performing
     assert_eq!(view.closure_reason, 0); // 0 = None
-    assert_eq!(view.ccr_bps, 12500);
+                                        // Decoder converts Soroban 1e6-units → bps: 1_250_000 / 100 = 12_500 bps = 125%.
+    assert_eq!(view.ccr_bps, 12_500);
     assert_eq!(view.next_economics_epochs_id, U256::from(1u32));
     assert_eq!(view.next_repayment_id, U256::from(2u32));
     assert_eq!(view.metadata_uri, "ipfs://QmAbc");

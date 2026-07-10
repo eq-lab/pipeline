@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 
-use pipeline_api::routes::loan_book::{compute_loan_book, loan_key, LoanBookResponse};
+use pipeline_api::routes::loan_book::{compute_loan_book, loan_key, LoanBookResponse, LoanSpot};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 
@@ -119,7 +119,7 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> LoanBookResponse {
-    compute_loan_book(loans, events, t_day * DAY, &HashMap::new())
+    compute_loan_book(loans, events, t_day * DAY, &HashMap::new(), &HashMap::new())
 }
 
 /// Like `at`, but with a per-loan collateral map.
@@ -129,7 +129,32 @@ fn at_with(
     events: &[LifecycleRow],
     collateral: &HashMap<String, BigDecimal>,
 ) -> LoanBookResponse {
-    compute_loan_book(loans, events, t_day * DAY, collateral)
+    compute_loan_book(loans, events, t_day * DAY, collateral, &HashMap::new())
+}
+
+/// Like `at`, but with a per-loan spot-price map.
+fn at_with_spot(
+    t_day: i64,
+    loans: &[LoanSnapshotRow],
+    spot: &HashMap<String, LoanSpot>,
+) -> LoanBookResponse {
+    compute_loan_book(loans, &[], t_day * DAY, &HashMap::new(), spot)
+}
+
+/// Build a `loan_id → LoanSpot` map keyed like the handler.
+fn spot_map(entries: &[(i64, Option<&str>, Option<&str>)]) -> HashMap<String, LoanSpot> {
+    entries
+        .iter()
+        .map(|(id, price, change)| {
+            (
+                loan_key(&BigDecimal::from(*id)),
+                LoanSpot {
+                    price: price.map(str::to_owned),
+                    change_7d: change.map(str::to_owned),
+                },
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -161,6 +186,24 @@ fn avg_duration_is_principal_weighted() {
     // Day 60: terms A=180d, B=90d. (100k·180 + 50k·90) / 150k = 150.
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.avg_duration_days, Some(150));
+}
+
+#[test]
+fn weighted_rate_and_tenor_mirror_avg_fields() {
+    // The Trustee-facing weighted_rate / weighted_tenor_days carry the same
+    // principal-weighted values as avg_yield / avg_duration_days.
+    let r = at(60, &fixture_loans(), &[]);
+    assert_eq!(r.summary.weighted_rate, r.summary.avg_yield);
+    assert_eq!(r.summary.weighted_rate.as_deref(), Some("0.130000"));
+    assert_eq!(r.summary.weighted_tenor_days, r.summary.avg_duration_days);
+    assert_eq!(r.summary.weighted_tenor_days, Some(150));
+}
+
+#[test]
+fn weighted_rate_and_tenor_null_when_no_active_loans() {
+    let r = at(500, &fixture_loans(), &[]); // both matured
+    assert_eq!(r.summary.weighted_rate, None);
+    assert_eq!(r.summary.weighted_tenor_days, None);
 }
 
 #[test]
@@ -237,7 +280,7 @@ fn no_active_loans_returns_empty_book() {
 
 #[test]
 fn empty_registry_returns_empty_book() {
-    let r = compute_loan_book(&[], &[], 0, &HashMap::new());
+    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new());
     assert!(r.loans.is_empty());
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
@@ -322,4 +365,223 @@ fn zero_collateral_yields_value_zero_and_null_ltv() {
     assert_eq!(r.summary.total_collateral.as_deref(), Some("0.000000"));
     // coverage = 0 / 80k = "0.00".
     assert_eq!(r.summary.senior_debt_coverage.as_deref(), Some("0.00"));
+}
+
+// ── Trustee "Loans" page metrics (deployed senior, at-risk, top concentration) ──
+
+/// Override a loan's snapshot status (`Performing` | `WatchList` | `Default` | `Closed`).
+fn with_status(mut row: LoanSnapshotRow, status: &str) -> LoanSnapshotRow {
+    status.clone_into(&mut row.snapshot.status);
+    row
+}
+
+fn event(name: &str, loan_id: i64, day: i64) -> LifecycleRow {
+    LifecycleRow {
+        event_name: name.to_owned(),
+        block_timestamp: day * DAY,
+        loan_id: BigDecimal::from(loan_id),
+    }
+}
+
+#[test]
+fn deployed_senior_sums_senior_tranche_only() {
+    // Day 60: both active. Σ senior = A 80k + B 40k = 120k (excludes equity).
+    // total_deployed (senior + equity) is 150k, so the two must differ.
+    let r = at(60, &fixture_loans(), &[]);
+    assert_eq!(r.summary.deployed_senior, "120000.000000");
+    assert_eq!(r.summary.total_deployed, "150000.000000");
+}
+
+#[test]
+fn at_risk_includes_defaulted_loan_excluded_from_active_set() {
+    // Loan 3: Default, originated day 0, maturity day 200, LoanDefaulted at day 50.
+    // At day 60 its effective_end = min(200, 50) = 50 → excluded from `active`, but
+    // it is still an open, at-risk position (no LoanClosed).
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+
+    let r = at(60, &loans, &events);
+    // Not in the active table…
+    assert!(r.loans.iter().all(|e| e.originator != "DefaultCo"));
+    // …but its outstanding senior (30k) counts as at-risk.
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "30000.000000");
+}
+
+#[test]
+fn at_risk_counts_watchlist_excludes_performing_and_closed() {
+    // Loan 3 WatchList (active), loan 4 Closed-with-stale-WatchList-status.
+    let mut loans = fixture_loans(); // A + B are Performing
+    loans.push(with_status(
+        make_loan(3, 25, 0, 1000, 0, 200, "WatchCo", "Cocoa", ""),
+        "WatchList",
+    ));
+    loans.push(with_status(
+        make_loan(4, 15, 0, 1000, 0, 200, "ClosedCo", "Cocoa", ""),
+        "WatchList",
+    ));
+    let events = vec![event("LoanClosed", 4, 40)];
+
+    let r = at(60, &loans, &events);
+    // Only the WatchList loan 3 (25k) counts; Performing A/B and the Closed loan 4 do not.
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "25000.000000");
+}
+
+#[test]
+fn at_risk_wl_and_default_pct_is_over_total_collateral_nav() {
+    // Active loan A priced at 125k collateral; a separate Default loan (30k senior).
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let collateral = collateral_map(&[(1, usdc(125_000))]);
+
+    let r = at_with(60, &loans, &events, &collateral);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "30000.000000");
+    // pct = at_risk_wl_and_default_senior / total_collateral = 30k / 125k = 0.2400.
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("0.2400")
+    );
+}
+
+#[test]
+fn at_risk_zero_when_all_performing_and_pct_null_without_nav() {
+    // fixture_loans are all Performing; no collateral map → NAV unavailable.
+    let r = at(60, &fixture_loans(), &[]);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
+    assert_eq!(r.summary.at_risk_wl_and_default_pct, None);
+}
+
+#[test]
+fn top_concentration_aggregates_loans_of_the_same_commodity() {
+    // Three active loans: Cocoa 30k + Cocoa 40k = 70k, Copper 50k. Σ senior = 120k.
+    // Top = Cocoa, share = 70k / 120k = 0.5833.
+    let loans = vec![
+        make_loan(1, 30, 0, 1000, 0, 200, "A", "Cocoa", ""),
+        make_loan(2, 40, 0, 1000, 0, 200, "B", "Cocoa", ""),
+        make_loan(3, 50, 0, 1000, 0, 200, "C", "Copper", ""),
+    ];
+    let r = at(60, &loans, &[]);
+    let top = r.summary.top_concentration.expect("concentration present");
+    assert_eq!(top.commodity, "Cocoa");
+    assert_eq!(top.share, "0.5833");
+}
+
+#[test]
+fn empty_book_defaults_the_trustee_metric_fields() {
+    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new());
+    assert_eq!(r.summary.deployed_senior, "0.000000");
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
+    assert_eq!(r.summary.at_risk_wl_and_default_pct, None);
+    assert!(r.summary.top_concentration.is_none());
+}
+
+// ── Loans table per-loan columns (senior outstanding, maturity, CCR age, spot) ──
+
+#[test]
+fn entry_senior_outstanding_nets_repaid_from_original() {
+    // Loan A senior 80k, with 30k senior principal already repaid → outstanding 50k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let r = at(0, &loans, &[]); // day 0: only loan A active
+    assert_eq!(r.loans[0].principal, "100000.000000"); // original senior + equity
+    assert_eq!(r.loans[0].senior_outstanding, "50000.000000"); // 80k − 30k
+}
+
+#[test]
+fn entry_exposes_rollover_maturity_and_ccr_report_timestamp() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.current_maturity_timestamp = 1_900_000_000;
+    loans[0].snapshot.last_reported_ccr_timestamp = 1_800_000_000;
+    let r = at(0, &loans, &[]);
+    assert_eq!(r.loans[0].maturity, 1_900_000_000);
+    assert_eq!(r.loans[0].ccr_reported_at, 1_800_000_000);
+}
+
+#[test]
+fn entry_carries_spot_price_and_change_from_map() {
+    // Day 0: only loan 1 active. Supply its spot price + 7d change.
+    let spot = spot_map(&[(1, Some("9120.00"), Some("0.0080"))]);
+    let r = at_with_spot(0, &fixture_loans(), &spot);
+    assert_eq!(r.loans[0].spot_price.as_deref(), Some("9120.00"));
+    assert_eq!(r.loans[0].spot_change_7d.as_deref(), Some("0.0080"));
+}
+
+#[test]
+fn entry_spot_fields_null_when_absent_from_map() {
+    let r = at(0, &fixture_loans(), &[]);
+    assert_eq!(r.loans[0].spot_price, None);
+    assert_eq!(r.loans[0].spot_change_7d, None);
+}
+
+// ── review fixes: at-risk maturity bound, NAV denominator, outstanding basis ──
+
+#[test]
+fn at_risk_excludes_watchlist_loan_past_maturity() {
+    // WatchList loan matured at day 100 with no LoanClosed event; at day 150 it must
+    // NOT count as at-risk (bounded by effective_end = maturity), so it can't linger
+    // indefinitely.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 25, 0, 1000, 0, 100, "MaturedWatch", "Coffee", ""),
+        "WatchList",
+    ));
+    let r = at(150, &loans, &[]);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
+}
+
+#[test]
+fn at_risk_pct_includes_default_collateral_in_denominator() {
+    // Active loan 1 collateral 100k; defaulted loan 3 (senior 30k) collateral 60k.
+    // nav_denom = 100k (active) + 60k (default) = 160k → 30k / 160k = 0.1875.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let collateral = collateral_map(&[(1, usdc(100_000)), (3, usdc(60_000))]);
+    let r = at_with(60, &loans, &events, &collateral);
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "30000.000000");
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("0.1875")
+    );
+}
+
+#[test]
+fn at_risk_pct_clamps_at_100_percent() {
+    // Large default (200k senior) against tiny NAV (50k) → raw ratio 4.0, clamped.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 200, 0, 1000, 0, 200, "BigDefault", "Coffee", ""),
+        "Default",
+    ));
+    let events = vec![event("LoanDefaulted", 3, 50)];
+    let collateral = collateral_map(&[(3, usdc(50_000))]);
+    let r = at_with(60, &loans, &events, &collateral);
+    assert_eq!(
+        r.summary.at_risk_wl_and_default_pct.as_deref(),
+        Some("1.0000")
+    );
+}
+
+#[test]
+fn deployed_senior_and_concentration_use_outstanding_senior() {
+    // Loan A senior 80k with 30k repaid → outstanding 50k; only A active at day 0.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let r = at(0, &loans, &[]);
+    // deployed_senior nets the repaid principal (50k), not the original 80k.
+    assert_eq!(r.summary.deployed_senior, "50000.000000");
+    // single active loan → its commodity is 100% of outstanding senior.
+    let top = r.summary.top_concentration.expect("present");
+    assert_eq!(top.commodity, "Copper Concentrate");
+    assert_eq!(top.share, "1.0000");
 }
