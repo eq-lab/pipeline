@@ -33,10 +33,13 @@
  *   - Status/action (8th column) — resolved (human, issue #813 comment; copy
  *     amended by #829):
  *     - `Approved`  → green "Approved · <date>" pill (issue #829 dropped
- *       "& minted" — the review endpoint is a pure DB status flip; no
- *       on-chain mint happens until the separate blocked issue #831 ships,
- *       restore "& minted" then). The date uses `updated_at` (the closest
- *       proxy for "when the status last changed to Approved").
+ *       "& minted" — the review endpoint is a pure DB status flip). Issue
+ *       #831 shipped the real on-chain mint (chain-first, before the review
+ *       call), but this compact table pill deliberately stays SHORT — "&
+ *       minted" is restored only on the `/origination/$id` detail banner
+ *       (`-origination-detail.ts`), per #831's Open Question 5 default. The
+ *       date uses `updated_at` (the closest proxy for "when the status last
+ *       changed to Approved").
  *     - `InReview`  → an inert/disabled "Review" button (no review route
  *       exists yet in the trustee app — see Open Questions in the exec plan;
  *       this is a Figma-shape placeholder, not a wired action).
@@ -109,9 +112,9 @@ function safeNumber(value: unknown): number | undefined {
 function resolveStatus(submission: SubmissionView): OriginationRowStatus {
   switch (submission.status) {
     case "Approved":
-      // "Approved" only (NOT "Approved & minted", issue #829) — the review
-      // endpoint is a pure DB status flip; nothing is minted on-chain until
-      // the separate blocked issue #831 ships.
+      // "Approved" only (NOT "Approved & minted") — deliberately kept short
+      // in this compact table pill even after #831's real on-chain mint;
+      // "& minted" is restored on the `/origination/$id` detail banner only.
       return {
         kind: "approved",
         label: `Approved · ${formatSubmittedDate(submission.updated_at)}`,

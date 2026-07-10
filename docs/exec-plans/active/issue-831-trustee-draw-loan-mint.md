@@ -151,6 +151,44 @@ _Not empty — this is the frontend flow's human gate. Each carries the planner'
    actionable InReview footer with a mapped inline error and make no review call. Confirm
    there is no Figma to match; otherwise adopt it.
 
+## Implementation Status (coder, 2026-07-10)
+
+All Open Questions resolved by the human on the Issue (see the issue comments); all steps
+below implemented and verified:
+
+- [x] Step 1–3 (A): `loanRegistry.ts` + `loanRegistry.test.ts` in `@pipeline/wallet-connect`
+      — encoding, envelope build/simulate, `drawLoan` orchestration, full test matrix.
+- [x] Step 2: exported from `packages/wallet-connect/src/index.ts` in the Stellar namespace.
+- [x] Step 4–5 (B): `VITE_STELLAR_LOAN_REGISTRY_ID` / `VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID`
+      added to `packages/trustee/src/lib/env.ts` and `docker/trustee/entrypoint.sh` (both the
+      `--arg` and the JSON key). `VITE_STELLAR_RPC_URL` reconciliation was already present on
+      this branch (the #835/#836 fix), confirmed still intact.
+- [x] Step 6: `packages/trustee/src/api/useDrawLoan.ts` (+ test) — thin mutation hook, no
+      `@stellar/stellar-sdk` import (ESLint-clean).
+- [x] Step 7: `-useOriginationReview.ts` extended — chain-first Approve ordering, no-double-mint
+      guard for already-Approved submissions, and (added during this coder pass — see below)
+      the **idempotency re-click guard**: `approve()` now checks `drawLoanMutation.isSuccess`
+      FIRST and, if the mint already succeeded in this session, skips step 1 entirely and
+      retries only the review call. This closes the gap between the plan's Open Question 4
+      recommendation (frontend-only guard, no backend dependency) and the human's final
+      resolution comment on the issue, which explicitly requires "re-click of Approve, if a
+      `minted` marker exists for that submission, SKIP Step 1 and run only Step 2" — the
+      code as first found on this branch re-invoked `drawLoan` unconditionally on every
+      `approve()` call (guarded only by `status === "Approved"`, not by the mint's own
+      success), which would have double-minted on a mint-succeeded/review-failed retry.
+- [x] Step 8: `origination.$id.tsx` — `ActionButtons` shows the minting progress label;
+      `ApprovedBanner` restored to "Approved & minted".
+- [x] Step 9–10 (C): `docs/product-specs/trustee-dashboard.md` updated; `loans.md` /
+      `smart-contracts-operations.md` checked — neither claims the mint is
+      unimplemented/relayer-signed, no change needed; tech debt logged as TD-43
+      (`docs/exec-plans/tech-debt-tracker.md`) — deferred backend `loan_drawn` reconciliation
+      follow-up (the accepted hard-reload residual) + the third hand-mirrored
+      `SubmitLoanRequest` copy. `docs/exec-plans/known-bugs.md` BUG-8 logs the pre-existing,
+      unrelated `localStorage`-in-jsdom test failures.
+- [x] Test Strategy: all listed test files exist and pass (see the coder's final report for
+      exact counts); `docs/user-stories/epic-775/831-onchain-draw-loan-mint.md` written and
+      linked from `docs/user-stories/index.md`.
+
 ## Implementation Steps
 
 ### A. Contract layer in `@pipeline/wallet-connect` (all `@stellar/stellar-sdk` usage lives here)

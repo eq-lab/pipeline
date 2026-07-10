@@ -105,6 +105,25 @@ export const ENV = Object.freeze({
    * sentinel, which the read path guards and also maps to "—".
    */
   STELLAR_USDC_CUSTODY_ID: readString("VITE_STELLAR_USDC_CUSTODY_ID", ""),
+
+  /**
+   * Loan-registry Soroban contract id — the `target` of the executor's
+   * `execute(target, "draw_loan", args, caller)` call (issue #831, Approve's
+   * on-chain mint). Empty string means unconfigured — `useDrawLoan` must
+   * short-circuit with a clear "not configured" error rather than attempt an
+   * RPC call, same convention as `STELLAR_USDC_ID`/`STELLAR_USDC_CUSTODY_ID`.
+   */
+  STELLAR_LOAN_REGISTRY_ID: readString("VITE_STELLAR_LOAN_REGISTRY_ID", ""),
+
+  /**
+   * Executor / access-control Soroban contract id that `draw_loan` is
+   * reached through (issue #831). Empty string means unconfigured — see
+   * `STELLAR_LOAN_REGISTRY_ID`.
+   */
+  STELLAR_LOAN_REGISTRY_EXECUTOR_ID: readString(
+    "VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID",
+    "",
+  ),
 });
 
 /**

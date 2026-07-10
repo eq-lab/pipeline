@@ -554,6 +554,37 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   sub-line, and wire a submission-review route (separate Type-1 sub-issue of epic #775) to make
   the trustee's Review button live.
 
+### TD-43: `draw_loan` mint↔review reconciliation has no backend fallback; `SubmitLoanRequest` gains a third hand-mirrored copy
+
+- **Date:** 2026-07-10
+- **Location:** `packages/trustee/src/routes/-useOriginationReview.ts` (issue #831);
+  `packages/wallet-connect/src/stellar/contracts/loanRegistry.ts` (its own `SubmitLoanRequest`/
+  `EconomicsInput`/`LocationInput` port, deliberately self-contained per the package's boundary
+  rule — see TD-42 for the existing trustee/LP hand-mirroring this now triples).
+- **Gap:** Approve's chain-first flow (mint the loan on-chain, then call the existing
+  `POST /v1/loan-book/submissions/{id}/review`) has a frontend-only idempotency guard: if the
+  mint succeeds but the review call then fails, re-clicking Approve in the SAME session skips
+  the on-chain step (`useDrawLoan`'s `isSuccess` acts as an in-memory "minted" marker) and retries
+  only the review call. A **hard page reload** between mint-success and review-failure loses that
+  marker — a subsequent Approve would attempt another on-chain `draw_loan` call (whether the
+  contract itself dedupes/rejects a re-mint of an already-registered loan is unconfirmed). There
+  is no backend reconciliation: the worker already indexes the `loan_drawn` event but nothing
+  auto-flips the DB submission to `Approved` from it, so a lost review call has no server-side
+  recovery path today. Separately, `@pipeline/wallet-connect`'s `loanRegistry.ts` necessarily
+  defines its own narrow `SubmitLoanRequest` (only the 5 `draw_loan`-relevant fields) rather than
+  importing the trustee's — the package cannot depend on either app — adding a third hand-mirrored
+  shape alongside TD-42's trustee/LP pair.
+- **Impact:** A rare operational edge case (mint succeeds, review fails, operator reloads before
+  retrying) can leave a loan minted on-chain with its DB submission stuck `InReview` with no
+  automated way to reconcile — requires manual intervention (direct DB update or a future backend
+  tool) until the follow-up below ships. The type triplication risks silent drift if `draw_loan`'s
+  accepted shape changes without updating all three copies.
+- **Suggested fix:** File a follow-up backend issue (Epic #775 / Stellar epic #444) to have the
+  worker auto-flip a submission to `Approved` when it observes the matching indexed `loan_drawn`
+  event, closing the reload gap without any frontend change. Consider the same shared
+  `loan_data`-parsing package suggested by TD-42's fix, extended to also host the ScVal-encoding
+  transform matrix, if a third on-chain consumer ever needs it.
+
 ---
 
 ## Post-MVP
