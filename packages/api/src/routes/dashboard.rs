@@ -44,7 +44,7 @@ use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::intervals::Interval;
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::routes::financial_position::compute_financial_position;
-use crate::routes::loan_book::compute_loan_book;
+use crate::routes::loan_book::{compute_loan_book, LoanSpot};
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -328,9 +328,10 @@ pub fn compute_summary(
     let fp = compute_financial_position(loans, events, to);
     let outstanding_in_loans = fp.assets.deployed.secured_loans_outstanding;
 
-    // Loan book (no collateral needed for yield; pass an empty map).
+    // Loan book (only avg_yield is needed here; collateral + spot maps are irrelevant).
     let empty_collateral: HashMap<String, BigDecimal> = HashMap::new();
-    let lb = compute_loan_book(loans, events, to, &empty_collateral);
+    let empty_spot: HashMap<String, LoanSpot> = HashMap::new();
+    let lb = compute_loan_book(loans, events, to, &empty_collateral, &empty_spot);
     let loan_book_yield = lb.summary.avg_yield.clone();
 
     // current_apy_net_to_splusd = gross_book_rate × haircut.
