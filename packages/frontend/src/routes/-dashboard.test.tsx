@@ -94,9 +94,15 @@ vi.stubGlobal("fetch", fetchMock);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
+// `total_deployed` and `principal` are registry-sourced fields the backend
+// currently serves at 1e3-too-small scale (#840). These fixtures are pinned
+// at that buggy-backend scale so that, after the client-side ×1000
+// workaround (`formatRegistryCompactUsd`, #841) is applied, the resulting
+// display strings ("$31.6M" / "$8.0M") match reality. `collateral` /
+// `total_collateral` are price-feed-sourced (#706) and stay at correct scale.
 const FIXTURE_FULL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600000.000000",
+    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -107,7 +113,7 @@ const FIXTURE_FULL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000000.000000",
+      principal: "8000.000000", // ×1000 workaround → "$8.0M"
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -119,7 +125,7 @@ const FIXTURE_FULL: LoanBookResponse = {
       originator: "Trafalgar",
       borrower: "Trafalgar",
       commodity: "Alumina",
-      principal: "5200000.000000",
+      principal: "5200.000000", // ×1000 workaround → "$5.2M"
       collateral: null,
       ltv: null,
       duration_days: 150,
@@ -411,9 +417,10 @@ describe("#749 — YieldHistoryPanel mobile layout", () => {
 // ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
 
 // Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.
+// total_deployed / principal at registry (÷1000) scale — see FIXTURE_FULL comment above.
 const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600000.000000",
+    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -424,7 +431,7 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000000.000000",
+      principal: "8000.000000", // ×1000 workaround → "$8.0M"
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -436,9 +443,11 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
 };
 
 // Fixture: both total_deployed and total_collateral set → both subtitles render.
+// total_deployed / principal at registry (÷1000) scale; total_collateral /
+// collateral are price-feed-sourced (#706) and stay at correct scale.
 const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600000.000000",
+    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
     total_collateral: "37600000.000000",
     senior_debt_coverage: "1.50",
     avg_yield: "0.112000",
@@ -449,7 +458,7 @@ const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000000.000000",
+      principal: "8000.000000", // ×1000 workaround → "$8.0M"
       collateral: "9500000.000000",
       ltv: "0.8511",
       duration_days: 120,
@@ -962,10 +971,10 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     expect(screen.queryByText("Protection")).toBeNull();
 
     // Formatted values from FIXTURE_SUBMISSIONS: loan_data.originator (not the
-    // top-level submitter address), fully-expanded facility, arrow corridor.
+    // top-level submitter address), compact facility (#841), arrow corridor.
     expect(screen.getByText("Auric Andes")).toBeInTheDocument();
     expect(screen.getByText("Gold pyrite concentrate")).toBeInTheDocument();
-    expect(screen.getByText("$3,500,000")).toBeInTheDocument();
+    expect(screen.getByText("$3.5M")).toBeInTheDocument();
     expect(screen.getByText("PE → CN")).toBeInTheDocument();
     expect(screen.getByText("14.0%")).toBeInTheDocument();
     expect(screen.getByText("15 Dec 2026")).toBeInTheDocument();

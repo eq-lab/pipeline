@@ -35,7 +35,10 @@ import {
   useStellarUsdcCustodyBalance,
 } from "@/wallet/stellar/useStellarFinancialPositionReads";
 import { sacRawToDisplay } from "@/wallet/stellar/useStellarSacToken";
-import { formatCompactUsd } from "@/utils/formatCompactUsd";
+import {
+  formatCompactUsd,
+  scaleRegistryAmount,
+} from "@/utils/formatCompactUsd";
 import { convertUsycToUsdc } from "./usycNav";
 import type { PanelState } from "./PanelContainer";
 
@@ -220,9 +223,17 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
   // ── Ready: blend REST + on-chain ─────────────────────────────────────────
 
   // REST rows (base-6 decimal strings → parseFloat → human numbers).
-  const securedLoans = parseHuman(
+  //
+  // #840 workaround — remove when backend scale fixed: `secured_loans_outstanding`
+  // is registry-sourced and arrives 1000× too small (issue #841). Scale it ONCE
+  // here, at the source, so both the displayed value and the assets-total
+  // aggregation below use the same corrected number. Do NOT scale
+  // `accrued_interest_receivable` — it is not registry-derived and is already
+  // at the correct scale.
+  const securedLoansScaled = scaleRegistryAmount(
     rest?.assets.deployed.secured_loans_outstanding,
   );
+  const securedLoans = parseHuman(securedLoansScaled);
   const accruedInterest = parseHuman(
     rest?.assets.deployed.accrued_interest_receivable,
   );
@@ -287,9 +298,12 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     deployed: [
       {
         label: "Secured loans outstanding",
+        // #840 workaround — remove when backend scale fixed: format the
+        // already-scaled value (securedLoansScaled), not the raw REST string,
+        // so the display matches the scaled figure summed into assetsTotal.
         value:
           securedLoans !== undefined
-            ? formatCompactUsd(rest!.assets.deployed.secured_loans_outstanding!)
+            ? formatCompactUsd(securedLoansScaled!)
             : "—",
         testId: "bs-secured-loans",
       },

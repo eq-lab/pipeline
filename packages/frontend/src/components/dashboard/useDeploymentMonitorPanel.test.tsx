@@ -54,9 +54,15 @@ vi.mock("@/lib/env", () => ({
 const LOAN_BOOK_KEY = "pipeline.mock.api.GET./v1/loan-book";
 const SUBMISSIONS_KEY = "pipeline.mock.api.GET./v1/loan-book/submissions";
 
+// `total_deployed` and `principal` are registry-sourced fields the backend
+// currently serves at 1e3-too-small scale (#840). These fixtures are pinned
+// at that buggy-backend scale so that, after the client-side ×1000
+// workaround (`formatRegistryCompactUsd`, #841) is applied, the resulting
+// display strings ("$31.6M" / "$8.0M") match reality. `collateral` /
+// `total_collateral` are price-feed-sourced (#706) and stay at correct scale.
 const FIXTURE_LOAN_BOOK: LoanBookResponse = {
   summary: {
-    total_deployed: "31600000.000000",
+    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -67,7 +73,7 @@ const FIXTURE_LOAN_BOOK: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000000.000000",
+      principal: "8000.000000", // ×1000 workaround → "$8.0M"
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -248,7 +254,7 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     // mapping source matters (see originationRow.test.ts for the distinction).
     expect(row0.originator).toBe("0xabc");
     expect(row0.commodity).toBe("Alumina");
-    expect(row0.facility).toBe("$8,000,000"); // fully-expanded, not compact
+    expect(row0.facility).toBe("$8.0M"); // compact, matching Active Loans (#841)
     expect(row0.corridor).toBe("West Africa → EU");
     expect(row0.rate).toBe("11.2%"); // 1120 bps (backend-served)
     expect(row0.maturity).toBe("14 Mar 2024");
@@ -268,7 +274,7 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 
     const row1 = result.current.originationRows[1]!;
     expect(row1.commodity).toBe("Cobalt");
-    expect(row1.facility).toBe("$4,400,000");
+    expect(row1.facility).toBe("$4.4M"); // compact, matching Active Loans (#841)
     expect(row1.corridor).toBe("DRC → CN");
     expect(row1.rate).toBe("11.7%"); // 1170 bps
     expect(row1.maturity).toBe("14 Jan 2024");
@@ -327,7 +333,9 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
   it("computes average LTV correctly for mixed null/valued ltv", async () => {
     const fixture = {
       summary: {
-        total_deployed: "31600000.000000",
+        // Registry-scale (÷1000 of the real amount) — see FIXTURE_LOAN_BOOK
+        // comment above re: the #840/#841 ×1000 workaround.
+        total_deployed: "31600.000000",
         total_collateral: null,
         senior_debt_coverage: null,
         avg_yield: "0.112000",
@@ -338,7 +346,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           originator: "A",
           borrower: "A",
           commodity: "X",
-          principal: "8000000.000000",
+          principal: "8000.000000", // registry-scale, see above
           collateral: null,
           ltv: "0.8000", // → 0.8
           duration_days: 120,
@@ -350,7 +358,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           originator: "B",
           borrower: "B",
           commodity: "Y",
-          principal: "4000000.000000",
+          principal: "4000.000000", // registry-scale, see above
           collateral: null,
           ltv: null, // → 0
           duration_days: 60,

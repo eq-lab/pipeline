@@ -19,7 +19,9 @@
  *     mirroring #813): OMIT the sub-line entirely — do not infer it from the
  *     commodity name.
  *   - Facility    → `loan_data.economics.original_facility_size`, formatted
- *     via `formatFullUsd` (fully expanded, e.g. `"$3,500,000"`).
+ *     via `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active
+ *     Loans table (#841). No #840 ×1000 correction — submission amounts are
+ *     already at the correct 6-decimal scale.
  *   - Corridor    → `loan_data.corridor`, hyphen separator rendered as the
  *     Figma's arrow glyph ("PE-CN" → "PE → CN").
  *   - Rate        → `loan_data.economics.senior_interest_rate_bps`, formatted
@@ -42,7 +44,7 @@
  * for the trustee↔LP extractor duplication this creates.
  */
 import type { SubmissionView } from "@/api/useLoanSubmissions";
-import { formatBpsRate, formatFullUsd } from "@/utils/formatCompactUsd";
+import { formatBpsRate, formatCompactUsd } from "@/utils/formatCompactUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -95,7 +97,10 @@ export function mapSubmissionToRow(
     id: submission.id,
     originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
-    facility: formatFullUsd(economics.original_facility_size ?? null),
+    // Compact M/K to match the Active Loans table (#841). In-origination
+    // amounts come from the submission's loan_data (correct 6-decimal scale),
+    // so no #840 ×1000 correction is needed here — formatting only.
+    facility: formatCompactUsd(economics.original_facility_size ?? null),
     // Figma renders the corridor with an arrow separator ("PE → CN"); the
     // stored value uses a hyphen ("PE-CN"). Same data, design-matching glyph.
     corridor: safeString(loanData.corridor).replace(/\s*-\s*/g, " → "),

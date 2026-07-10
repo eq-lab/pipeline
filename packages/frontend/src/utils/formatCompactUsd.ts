@@ -58,6 +58,64 @@ export function formatCompactUsd(
   })}`;
 }
 
+// ── scaleRegistryAmount ───────────────────────────────────────────────────────
+
+/**
+ * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
+ *
+ * The Stellar loan-registry stores economics amounts at **1e3 scale** (a
+ * `$1.2M` facility is `1_200_000_000` on-chain — see the `draw_loan` encoding,
+ * issue #831). Several backend surfaces read those back and serve them as if
+ * they were plain 6-decimal USDC, so they arrive **1000× too small**
+ * (`"1200.000000"` instead of `"1200000.000000"`). Confirmed (#841) on:
+ *   - loan-book `principal` / `total_deployed`
+ *   - `GET /v1/financial-position` → `assets.deployed.secured_loans_outstanding`
+ *   - `GET /v1/dashboard/summary` → `outstanding_in_loans`
+ *
+ * The proper fix is backend (#840). Until it lands, this is the shared ×1000
+ * core: scale the raw base-6 decimal string **at the source**, before it is
+ * formatted, summed into a total, or used in a ratio — so every downstream
+ * consumer (display string, aggregation, progress-bar ratio) sees a
+ * consistent, already-correct value. **When #840 is fixed, delete this
+ * helper and all its call sites** — otherwise amounts will render 1000×
+ * too BIG.
+ *
+ * Apply ONLY to registry-economics amounts. Do NOT apply to `collateral` /
+ * `total_collateral` (price feed, #706) or `tvl` / `accrued_interest_receivable`
+ * (already correct scale) — those are different, already-correct sources.
+ *
+ * @returns the scaled base-6 decimal string, or `null` for null/undefined/
+ *   non-finite input (passthrough — callers decide how to render "missing").
+ */
+export function scaleRegistryAmount(
+  base6Decimal: string | null | undefined,
+): string | null {
+  if (base6Decimal == null) return null;
+  const num = parseFloat(base6Decimal);
+  if (!Number.isFinite(num)) return null;
+  return (num * 1000).toFixed(6);
+}
+
+// ── formatRegistryCompactUsd ──────────────────────────────────────────────────
+
+/**
+ * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
+ *
+ * Compact-formats a registry-sourced amount after applying the ×1000
+ * `scaleRegistryAmount` correction. See that function's doc comment for the
+ * full rationale. **When #840 is fixed, delete this helper and revert the
+ * call sites to `formatCompactUsd`.**
+ *
+ * Apply ONLY to registry-economics amounts (`principal`, `total_deployed`).
+ * Do NOT use it for `collateral`/`total_collateral` — those come from the
+ * price feed (#706), a different (already-correct) scale.
+ */
+export function formatRegistryCompactUsd(
+  base6Decimal: string | null | undefined,
+): string {
+  return formatCompactUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
+}
+
 // ── formatOneDecimalRate ──────────────────────────────────────────────────────
 
 /**
