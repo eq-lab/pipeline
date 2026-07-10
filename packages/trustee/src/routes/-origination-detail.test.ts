@@ -12,7 +12,12 @@
  *     (friendly name, NOT the submitter address), commodity, governing law,
  *     documents list).
  *   - Missing/malformed `loan_data` fields render "—", never throw.
- *   - Router state present → uses it directly (no dependence on the refetch).
+ *   - Router state present, list not yet resolved a match → uses router
+ *     state directly (no loading flash on initial render).
+ *   - Router state present AND the list has a fresher match → the LIVE list
+ *     copy wins (issue #829 — load-bearing so a post-Approve/Reject refetch
+ *     actually flips the footer; see `-origination-detail.ts`'s "Resolution
+ *     precedence" docs).
  *   - No router state → refetch fallback selects the submission by matching
  *     `String(s.id) === id`; absent id → `not-found`; refetch in flight →
  *     `loading`.
@@ -376,15 +381,36 @@ describe("useOriginationDetail — refetch fallback (no router state)", () => {
     });
   });
 
-  it("prefers router state over the refetched list when both are present", () => {
+  // ── Resolution precedence (issue #829 — load-bearing for Approve/Reject) ──
+
+  it("prefers router state on initial render, before the list query has resolved a match", () => {
     const stateSubmission: SubmissionView = {
       ...FULL_SUBMISSION,
       id: 7,
       loan_data: { ...FULL_SUBMISSION.loan_data, originator: "From state" },
     };
+    // The list query hasn't produced data yet (still loading) — router
+    // state renders immediately, no loading flash.
+    mockSubmissions(undefined, true);
+
+    const { result } = renderHook(() =>
+      useOriginationDetail("7", stateSubmission),
+    );
+    expect(result.current.state).toBe("ready");
+    expect(result.current.dealDetails.originator).toBe("From state");
+  });
+
+  it("prefers the LIVE list copy over router state once the list contains a fresher match (drives the post-review footer flip)", () => {
+    const stateSubmission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      id: 7,
+      status: "InReview",
+      loan_data: { ...FULL_SUBMISSION.loan_data, originator: "From state" },
+    };
     const listSubmission: SubmissionView = {
       ...FULL_SUBMISSION,
       id: 7,
+      status: "Approved",
       loan_data: { ...FULL_SUBMISSION.loan_data, originator: "From list" },
     };
     mockSubmissions([listSubmission]);
@@ -392,6 +418,9 @@ describe("useOriginationDetail — refetch fallback (no router state)", () => {
     const { result } = renderHook(() =>
       useOriginationDetail("7", stateSubmission),
     );
-    expect(result.current.dealDetails.originator).toBe("From state");
+    // The list's fresher copy wins — both the mapped field and the status
+    // that drives the Approved/Rejected banner.
+    expect(result.current.dealDetails.originator).toBe("From list");
+    expect(result.current.statusKind).toBe("approved");
   });
 });

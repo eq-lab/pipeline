@@ -1,5 +1,7 @@
 import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { useOriginationDetail, type StatusChip } from "./-origination-detail";
+import { useOriginationReview } from "./-useOriginationReview";
+import { RejectReasonDialog } from "./-RejectReasonDialog";
 
 /**
  * Origination details / review page (issue #821, Figma node `4116:9292`) —
@@ -13,8 +15,10 @@ import { useOriginationDetail, type StatusChip } from "./-origination-detail";
  *     omitted entirely — it is INCORRECT (no submission is anchored
  *     on-chain pre-mint, so there is no `loan_id` to call
  *     `GET /v1/loan-book/{loan_id}/valuations` with).
- *   - Approve / Reject / Request changes render per Figma but are
- *     inert/disabled (the Type-1 review/mint flow is a separate sub-issue).
+ *   - Approve / Reject render per Figma and are WIRED (issue #829) to
+ *     `POST /v1/loan-book/submissions/{id}/review` via
+ *     `-useOriginationReview.ts` / `useReviewSubmission`. Request changes
+ *     stays inert/disabled — no endpoint exists for it.
  *   - Only the backend-backed status chip renders. The Figma's static
  *     "Your key · one click" chip and "NSR · Net Smelter Return"
  *     valuation-mode chip are both dropped — no data source, never
@@ -31,9 +35,9 @@ import { useOriginationDetail, type StatusChip } from "./-origination-detail";
  * `InReview` (and any unknown status, as a safe fallback). `Approved` and
  * `Rejected` submissions instead render a colored banner in its place:
  *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
- *     "Approved & minted · `<date>`". The Figma's "funded from batch
- *     #B-102 →" segment is OMITTED — no `batch` field exists on
- *     `SubmissionView`/`loan_data`; never fabricated.
+ *     "Approved · `<date>`" (copy amended by #829 — see below). The Figma's
+ *     "funded from batch #B-102 →" segment is OMITTED — no `batch` field
+ *     exists on `SubmissionView`/`loan_data`; never fabricated.
  *   - `RejectedBanner` — red (`--color-pipeline-negative`), "Rejected ·
  *     `<date>` — `<reason>`" (`reason` = `SubmissionView.reason`, backed).
  *     No Figma reference exists for this state; it mirrors the Approved
@@ -42,9 +46,34 @@ import { useOriginationDetail, type StatusChip } from "./-origination-detail";
  * as `reviewedDate` by the view-model) — NOT `formatMaturityDate` (Unix
  * seconds + year).
  *
+ * ## Approve/Reject wiring (issue #829)
+ *
+ * `ActionButtons` (the InReview footer) now fires real mutations via
+ * `useOriginationReview` (composing `useReviewSubmission`, a React-Query
+ * mutation over `POST /v1/loan-book/submissions/{id}/review`):
+ *   - **Approve** fires immediately with no reason.
+ *   - **Reject** opens `RejectReasonDialog` (a min-5-trimmed-chars reason,
+ *     Submit + Cancel).
+ *   - Both buttons disable while pending; a mapped error (409 "already
+ *     reviewed", 403 "not authorized", 401 session-expired, other generic)
+ *     renders inline near the buttons and inside the dialog.
+ *   - On success, the submissions list is invalidated and
+ *     `-origination-detail.ts`'s resolution fix (prefer the live list copy
+ *     over stale router state) flips this footer to the Approved/Rejected
+ *     banner without a manual refresh.
+ * "Request changes" has no backend endpoint and stays inert/disabled exactly
+ * as before.
+ *
+ * **Interim banner copy (resolved, #829):** the Approved banner reads
+ * "Approved · `<date>`" — a pure DB status flip, NOT "Approved & minted". No
+ * on-chain mint happens yet; that is deferred to the separate blocked issue
+ * **#831** (trustee-wallet-signed `draw_loan`). Restore "& minted" once #831
+ * ships.
+ *
  * The `.tsx` is JSX/styling only; all data extraction + formatting lives in
- * the colocated `-origination-detail.ts` view-model hook, mirroring
- * `-useOriginationTable.ts`'s split (`docs/FRONTEND.md` rule 2).
+ * the colocated `-origination-detail.ts` view-model hook (mirroring
+ * `-useOriginationTable.ts`'s split), and all Approve/Reject orchestration
+ * lives in `-useOriginationReview.ts` (`docs/FRONTEND.md` rule 2).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -243,13 +272,39 @@ function DealDetailsCard({
   );
 }
 
-function ActionButtons() {
+interface ActionButtonsProps {
+  onApprove: () => void;
+  onReject: () => void;
+  isPending: boolean;
+  errorMessage: string | null;
+}
+
+/**
+ * The InReview footer's action buttons. Approve/Reject are WIRED (issue
+ * #829) — `onApprove` fires the review mutation immediately, `onReject`
+ * opens the reject-reason dialog (owned by the caller). "Request changes"
+ * has no backend endpoint and stays inert/disabled.
+ */
+function ActionButtons({
+  onApprove,
+  onReject,
+  isPending,
+  errorMessage,
+}: ActionButtonsProps) {
   return (
     <div className="flex flex-col items-start gap-[20px] pt-[4px]">
       <p className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[rgba(56,55,53,0.6)]">
         Approval mints the loan NFT from your Trustee key. Disbursement is the
         separate Cash Management stage you co-sign next.
       </p>
+      {errorMessage && (
+        <p
+          data-testid="origination-detail-review-error"
+          className="font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-negative)]"
+        >
+          {errorMessage}
+        </p>
+      )}
       <div className="flex items-start gap-[10px]">
         <button
           type="button"
@@ -262,21 +317,23 @@ function ActionButtons() {
         </button>
         <button
           type="button"
-          disabled
-          aria-disabled="true"
+          disabled={isPending}
+          aria-disabled={isPending}
+          onClick={onReject}
           data-testid="origination-detail-reject"
-          className="h-[40px] cursor-not-allowed rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
+          className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Reject
         </button>
         <button
           type="button"
-          disabled
-          aria-disabled="true"
+          disabled={isPending}
+          aria-disabled={isPending}
+          onClick={onApprove}
           data-testid="origination-detail-approve"
-          className="h-[48px] cursor-not-allowed rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white"
+          className="h-[48px] rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Approve
+          {isPending ? "Submitting…" : "Approve"}
         </button>
       </div>
     </div>
@@ -284,10 +341,13 @@ function ActionButtons() {
 }
 
 /**
- * Green "Approved & minted · `<date>`" banner (issue #823, Figma node
- * `4116:9656`), rendered in place of `ActionButtons` for Approved
+ * Green "Approved · `<date>`" banner (issue #823, Figma node `4116:9656`;
+ * copy amended by #829), rendered in place of `ActionButtons` for Approved
  * submissions. The Figma's semibold navy "funded from batch #B-102 →"
  * segment is deliberately omitted — no backing field, never fabricated.
+ * Reads "Approved · `<date>`" (NOT "Approved & minted") — issue #829 flips
+ * only the DB status; no on-chain mint happens until the separate #831
+ * lands. Restore "& minted" once #831 ships.
  */
 function ApprovedBanner({ date }: { date: string }) {
   return (
@@ -301,7 +361,7 @@ function ApprovedBanner({ date }: { date: string }) {
         className="text-[color:var(--color-pipeline-positive-primary)]"
       />
       <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
-        Approved &amp; minted · {date}
+        Approved · {date}
       </span>
     </div>
   );
@@ -330,10 +390,18 @@ function DetailFooter({
   statusKind,
   reviewedDate,
   rejectionReason,
+  onApprove,
+  onReject,
+  isPending,
+  errorMessage,
 }: {
   statusKind: StatusChip["kind"];
   reviewedDate: string;
   rejectionReason: string;
+  onApprove: () => void;
+  onReject: () => void;
+  isPending: boolean;
+  errorMessage: string | null;
 }) {
   if (statusKind === "approved") {
     return <ApprovedBanner date={reviewedDate} />;
@@ -341,8 +409,15 @@ function DetailFooter({
   if (statusKind === "rejected") {
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
   }
-  // InReview and unknown both fall back to the inert action buttons.
-  return <ActionButtons />;
+  // InReview and unknown both fall back to the (now wired) action buttons.
+  return (
+    <ActionButtons
+      onApprove={onApprove}
+      onReject={onReject}
+      isPending={isPending}
+      errorMessage={errorMessage}
+    />
+  );
 }
 
 function OriginationDetail() {
@@ -351,6 +426,7 @@ function OriginationDetail() {
   const stateSubmission = location.state.submission;
 
   const detail = useOriginationDetail(id, stateSubmission);
+  const review = useOriginationReview(id);
 
   if (detail.state === "loading") {
     return (
@@ -419,8 +495,22 @@ function OriginationDetail() {
           statusKind={detail.statusKind}
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
+          onApprove={review.approve}
+          onReject={review.openReject}
+          isPending={review.isPending}
+          // While the reject dialog is open, its own error surface (below)
+          // owns the mutation error — avoid rendering it twice.
+          errorMessage={review.rejectOpen ? null : review.errorMessage}
         />
       </div>
+
+      <RejectReasonDialog
+        open={review.rejectOpen}
+        onCancel={review.cancelReject}
+        onSubmit={review.submitReject}
+        isSubmitting={review.isPending}
+        errorMessage={review.rejectOpen ? review.errorMessage : null}
+      />
     </main>
   );
 }

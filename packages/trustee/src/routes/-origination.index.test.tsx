@@ -135,7 +135,7 @@ const APPROVED_ROW: OriginationTableRow = {
   rate: "13.0%",
   maturity: "30 Jun 2026",
   submitted: "2 Jan",
-  status: { kind: "approved", label: "Approved & minted · 2 Jan" },
+  status: { kind: "approved", label: "Approved · 2 Jan" },
   submission: { ...SUBMISSION, id: 2 },
 };
 
@@ -255,7 +255,7 @@ describe("Origination route", () => {
 
     // Approved -> green pill with the mint date.
     expect(screen.getByTestId("origination-status-approved")).toHaveTextContent(
-      "Approved & minted · 2 Jan",
+      "Approved · 2 Jan",
     );
 
     // Rejected -> red pill with the reason available on hover (title attr).

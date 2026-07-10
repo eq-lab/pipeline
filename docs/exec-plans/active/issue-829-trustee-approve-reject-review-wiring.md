@@ -79,15 +79,14 @@ Explicitly OUT of scope:
 
 ## Open Questions
 
-- The #823 Approved banner / table pill copy says "Approved & minted", but this
-  issue only flips the DB status — no on-chain mint happens until #831 lands.
-  Should the interim copy stay "Approved & minted" (accepting it is aspirational)
-  or drop "& minted" until #831 ships? (Product/copy decision; low stakes but the
-  current wording is literally inaccurate in the #829-only state.)
+**RESOLVED (human, issue #829 comment):** drop "& minted" from the interim copy. The
+#823 Approved banner/pill now reads "Approved · `<date>`" (status flip only, NOT
+"Approved & minted") until the separate blocked issue #831 (on-chain `draw_loan` mint)
+ships, at which point "& minted" is restored.
 
 ## Implementation Steps
 
-1. **Type HTTP status on API errors** — `packages/trustee/src/api/client.ts`.
+1. **DONE.** **Type HTTP status on API errors** — `packages/trustee/src/api/client.ts`.
    Add the failing response's `status` to the thrown error so callers can branch
    on 403/409 without parsing message text. Minimal approach: introduce an
    `ApiError extends Error { readonly status: number }` thrown for all non-2xx
@@ -98,7 +97,7 @@ Explicitly OUT of scope:
    `packages/trustee/src/api/-client.test.ts` to assert `.status` is populated
    and that the 401 path still throws `ApiUnauthorizedError`.
 
-2. **Add the review mutation hook** — new
+2. **DONE.** **Add the review mutation hook** — new
    `packages/trustee/src/api/useReviewSubmission.ts`. A `useMutation` that
    `POST`s to `/v1/loan-book/submissions/{id}/review` through `apiFetch`
    (mirror the POST body/headers pattern in `packages/trustee/src/api/auth.ts`:
@@ -113,7 +112,7 @@ Explicitly OUT of scope:
    Register it in `docs/frontend/hooks.md` (shared hook catalogue, FRONTEND rule
    5) — noted in Docs to Update.
 
-3. **Map errors to friendly copy** — inside the page orchestration (step 5), map
+3. **DONE.** **Map errors to friendly copy** — inside the page orchestration (step 5), map
    the thrown `ApiError.status` to user-facing text:
    - `409` → "This submission has already been reviewed. Refresh to see the
      latest status."
@@ -125,7 +124,7 @@ Explicitly OUT of scope:
    - other → generic "Something went wrong. Please try again." plus the backend
      message when present.
 
-4. **Reject-reason dialog** — new component
+4. **DONE.** **Reject-reason dialog** — new component
    `packages/trustee/src/routes/-RejectReasonDialog.tsx` (the `-` prefix keeps it
    out of TanStack file-based route generation, matching the existing
    `-origination-detail.ts` convention; one component per file, FRONTEND rule 1).
@@ -144,7 +143,7 @@ Explicitly OUT of scope:
      `-useRejectReasonDialog.ts` hook (FRONTEND rule 2: logic out of the `.tsx`),
      with a unit test.
 
-5. **Page orchestration hook** — new
+5. **DONE.** **Page orchestration hook** — new
    `packages/trustee/src/routes/-useOriginationReview.ts`, co-located with the
    route, so `origination.$id.tsx` stays JSX-only (FRONTEND rule 2). It composes
    `useReviewSubmission`, owns the reject-dialog open/close state, exposes:
@@ -156,7 +155,7 @@ Explicitly OUT of scope:
    On success, the query invalidation from step 2 refetches the list; combined
    with step 6's resolution fix, the footer flips automatically. Add a unit test.
 
-6. **Fix submission resolution so the footer flips** —
+6. **DONE.** **Fix submission resolution so the footer flips** —
    `packages/trustee/src/routes/-origination-detail.ts`, the `submission` memo
    (~lines 247-250). Change the precedence to prefer the live
    `useLoanSubmissions()` copy when it contains the `id`, falling back to
@@ -169,7 +168,7 @@ Explicitly OUT of scope:
    the list contains a fresher copy (e.g. status changed to `Approved`), that
    copy wins and drives the footer.
 
-7. **Wire the view** — `packages/trustee/src/routes/origination.$id.tsx`.
+7. **DONE.** **Wire the view** — `packages/trustee/src/routes/origination.$id.tsx`.
    - Call `useOriginationReview(id)` in `OriginationDetail` and thread its state
      down to the footer.
    - In `ActionButtons` (currently three inert buttons): enable **Reject**
@@ -186,9 +185,24 @@ Explicitly OUT of scope:
      `origination-detail-reject`, `origination-detail-request-changes`) so
      existing selectors/tests still resolve.
 
-8. **Lint** — run `npx tsx scripts/lint-docs.ts` (docs structure) and the
+8. **DONE.** **Lint** — run `npx tsx scripts/lint-docs.ts` (docs structure) and the
    trustee package's typecheck/lint/tests (per AGENTS.md TypeScript rule). Fix
    all errors before finishing.
+
+   **Resume-pass verification (coder):** re-ran the full gate against the
+   uncommitted tree — `tsc --noEmit`, `eslint .`, `vitest run` (277/277
+   passed), `tsc -b && vite build`, `lint-docs.ts` (0 errors), root
+   `cargo clippy --all -- -D warnings` and `cargo test --all` (all green),
+   and `packages/frontend`'s `tsc --noEmit`. `prettier --check .` initially
+   flagged 3 files (`client.ts`, `-client.test.ts`,
+   `-RejectReasonDialog.test.tsx`) as unformatted; ran
+   `prettier --write` on exactly those 3 files (whitespace/formatting only,
+   no logic change) and confirmed `prettier --check .` passes clean
+   afterward. No other changes were needed — all steps 1-7 were already
+   correctly implemented in the working tree, including the resolved Open
+   Question ("Approved · `<date>`", no "& minted") in
+   `-useOriginationTable.ts`, `origination.index.tsx`, and
+   `origination.$id.tsx`.
 
 ## Test Strategy
 
@@ -237,3 +251,20 @@ No backend tests — the endpoint and its contract already exist and are unchang
 - If any shared util is extracted (e.g. a status→copy mapper), catalogue it in
   `docs/frontend/utils.md` with a test (FRONTEND rules 3-4). Otherwise no util
   doc change.
+
+**DONE.** All of the above, plus (given the Open Question resolution to drop "& minted"):
+`packages/trustee/src/routes/-useOriginationTable.ts` and `origination.index.tsx` pill
+copy/comments, `origination.$id.tsx` banner copy/comments, and the corresponding test
+files. Also updated the pre-existing `docs/user-stories/epic-775/823-*.md` and
+`813-*.md` story docs (copy-only corrections, since the rendered text they described
+literally changed) and added the new required
+`docs/user-stories/epic-775/829-approve-reject-review-wiring.md` (linked from
+`docs/user-stories/index.md`).
+
+**Deviation from plan:** `apiFetch`'s success path unconditionally called
+`response.json()`, which throws on the review endpoint's genuinely empty `200` body
+(`Result<StatusCode, ApiError>` in `loan_book.rs` — no JSON at all). Fixed
+`packages/trustee/src/api/client.ts` to read `response.text()` first and only
+`JSON.parse` when non-empty, resolving to `undefined` otherwise, with a covering test.
+Without this the review mutation would have always rejected even on a successful
+Approve/Reject. Noted as a comment on the issue.

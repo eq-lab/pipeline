@@ -85,7 +85,7 @@ shown before the broadcast control is enabled. Approval broadcasts `mintLoan` fr
 Trustee key. The resulting disbursement is a separate Type 2 action the Trustee co-signs
 next.
 
-**Implementation status (#821):** a read-only version ships at `/origination/$id` (reached from the "Review" control on the Origination table #813 and the Overview Needs Attention section #818), rendering the submission's Loan Terms + Deal Details from `GET /v1/loan-book/submissions` plus a lifecycle status chip. The Approve / Reject / Request-changes buttons render inert (the Type-1 review/mint signing flow is a separate sub-issue), and no collateral valuation is shown pre-mint (no on-chain `loan_id` to value against yet).
+**Implementation status (#821, #829):** a version ships at `/origination/$id` (reached from the "Review" control on the Origination table #813 and the Overview Needs Attention section #818), rendering the submission's Loan Terms + Deal Details from `GET /v1/loan-book/submissions` plus a lifecycle status chip; no collateral valuation is shown pre-mint (no on-chain `loan_id` to value against yet). Approve/Reject (#829) are wired to the existing DB-only `POST /v1/loan-book/submissions/{id}/review` endpoint — Approve sends `{decision:"Approved"}` (no reason); Reject opens a reason dialog (min 5 chars trimmed) and sends `{decision:"Rejected",reason}`. This is a pure DB status flip; **no on-chain transaction is sent**. The full Type-1 signing flow (wallet-signed `draw_loan`, mirroring `mintLoan` above) is the separate blocked issue **#831**; until it ships the Approved banner/pill read "Approved · `<date>`" (not "Approved & minted"). "Request changes" has no endpoint yet and stays inert.
 
 ---
 

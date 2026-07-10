@@ -20,10 +20,13 @@ import {
  *     "Standard · price × quantity") is OMITTED — no data source reachable
  *     pre-mint exists for the valuation mode, and it must not be inferred
  *     from the commodity string (see `-useOriginationTable.ts` docs).
- *   - Status/action column: `Approved` → green "Approved & minted · <date>"
- *     pill; `InReview` → a "Review" control that navigates to
- *     `/origination/$id` (issue #821), passing the row's `SubmissionView` as
- *     router state; `Rejected` → red "Rejected" pill with `reason` on hover.
+ *   - Status/action column: `Approved` → green "Approved · <date>" pill
+ *     (copy amended by #829 — reads "Approved" only, NOT "Approved &
+ *     minted": the review endpoint is a pure DB status flip, and nothing is
+ *     minted on-chain until the separate blocked issue #831 ships);
+ *     `InReview` → a "Review" control that navigates to `/origination/$id`
+ *     (issue #821), passing the row's `SubmissionView` as router state;
+ *     `Rejected` → red "Rejected" pill with `reason` on hover.
  *   - The Figma static footer note ("The document set adapts to the
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
@@ -95,8 +98,8 @@ const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/origination")!;
  * 100% of the card width: the seven data columns are flexible tracks in the
  * Figma's relative proportions (`minmax(0, Nfr)` so they can shrink and
  * ellipsis-truncate rather than overflow), and the action column is a fixed
- * 210px (matching Figma) so the "Approved & minted · <date>" pill / Review
- * button always fit and are never cut. Total = exactly 100%, no horizontal
+ * 210px (matching Figma) so the "Approved · <date>" pill / Review button
+ * always fit and are never cut. Total = exactly 100%, no horizontal
  * scroll/clip.
  */
 const GRID_TEMPLATE_COLUMNS =
