@@ -27,6 +27,9 @@
  *     economics (`"$0"` not `—`), unknown status string.
  *   - Issue #823: `statusKind`/`reviewedDate`/`rejectionReason` fields that
  *     drive the status-conditional detail footer.
+ *   - Issue #838: `transactionPreview` — the Approve & mint dialog's
+ *     transaction-preview code-block rows, formatted from real `loan_data`,
+ *     with `—` fallbacks and no fabrication.
  */
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
@@ -349,6 +352,82 @@ describe("useOriginationDetail — defensive reads", () => {
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.loanTerms.facility).toBe("$0");
+  });
+});
+
+// ── Transaction preview (issue #838) ─────────────────────────────────────────
+
+describe("useOriginationDetail — transactionPreview", () => {
+  it("formats all rows from a full loan_data payload", () => {
+    mockSubmissions([FULL_SUBMISSION]);
+    const { result } = renderHook(() =>
+      useOriginationDetail("7", FULL_SUBMISSION),
+    );
+
+    expect(result.current.transactionPreview.keyword).toBe(
+      "LoanRegistry.mintLoan",
+    );
+    const rows = result.current.transactionPreview.rows;
+    expect(rows.find((r) => r.label === "originator")?.value).toBe(
+      "Auric Andes S.A.C.",
+    );
+    const economics = rows.find((r) => r.label === "economics")?.value;
+    expect(economics).toContain("$3,500,000");
+    expect(economics).toContain("$2,800,000");
+    expect(economics).toContain("$700,000");
+    expect(economics).toContain("$3,750,000");
+    expect(economics).toContain("14.0%");
+    expect(rows.find((r) => r.label === "metadataURI")?.value).toBe(
+      "ipfs://...",
+    );
+    expect(rows.find((r) => r.label === "initialLocation")?.value).toBe(
+      "MV Example",
+    );
+  });
+
+  it("renders '—' for missing/malformed loan_data fields, never throws", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      loan_data: {
+        ...FULL_SUBMISSION.loan_data,
+        metadata_uri: "",
+        // @ts-expect-error — intentionally malformed for the defensive-read test
+        economics: undefined,
+        // @ts-expect-error — intentionally malformed for the defensive-read test
+        initial_location: undefined,
+      },
+    };
+    mockSubmissions([submission]);
+
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    const rows = result.current.transactionPreview.rows;
+    expect(rows.find((r) => r.label === "metadataURI")?.value).toBe("—");
+    expect(rows.find((r) => r.label === "initialLocation")?.value).toBe("—");
+    const economics = rows.find((r) => r.label === "economics")?.value;
+    expect(economics).toContain("—");
+  });
+
+  it("initialLocation is location_identifier ALONE (no country suffix)", () => {
+    mockSubmissions([FULL_SUBMISSION]);
+    const { result } = renderHook(() =>
+      useOriginationDetail("7", FULL_SUBMISSION),
+    );
+    const location = result.current.transactionPreview.rows.find(
+      (r) => r.label === "initialLocation",
+    )?.value;
+    expect(location).toBe("MV Example");
+    expect(location).not.toContain(",");
+  });
+
+  it("gives a safe empty-dash transactionPreview in the not-found state", async () => {
+    mockSubmissions([FULL_SUBMISSION], false);
+    const { result } = renderHook(() => useOriginationDetail("999", undefined));
+    await waitFor(() => {
+      expect(result.current.state).toBe("not-found");
+    });
+    expect(
+      result.current.transactionPreview.rows.every((r) => r.value === "—"),
+    ).toBe(true);
   });
 });
 

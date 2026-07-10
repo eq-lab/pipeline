@@ -1,10 +1,14 @@
 /**
- * Tests for `RejectReasonDialog` (issue #829). Real `useRejectReasonDialog`
- * hook is exercised (not mocked) — cheap and gives real validation coverage.
+ * Tests for `RejectReasonDialog` (issue #829, re-skinned to Figma
+ * `4116:14123` by issue #838). Real `useRejectReasonDialog` hook is
+ * exercised (not mocked) — cheap and gives real validation coverage.
  *
  * Covers:
  *   - Renders nothing when `open` is false.
  *   - Renders the dialog when `open` is true.
+ *   - The title interpolates the `originator` prop; the subtitle renders.
+ *   - The reason field is a single-line input carrying the Figma placeholder.
+ *   - The primary button reads "Send to originator".
  *   - Cancel fires `onCancel` without calling `onSubmit`.
  *   - Escape fires `onCancel` without calling `onSubmit`.
  *   - Clicking the backdrop fires `onCancel`; clicking inside the dialog does not.
@@ -18,8 +22,11 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RejectReasonDialog } from "./-RejectReasonDialog";
 
+const ORIGINATOR = "Auric Andes S.A.C.";
+
 function renderDialog(overrides?: {
   open?: boolean;
+  originator?: string;
   onCancel?: () => void;
   onSubmit?: (reason: string) => void;
   isSubmitting?: boolean;
@@ -30,6 +37,7 @@ function renderDialog(overrides?: {
   const utils = render(
     <RejectReasonDialog
       open={overrides?.open ?? true}
+      originator={overrides?.originator ?? ORIGINATOR}
       onCancel={onCancel}
       onSubmit={onSubmit}
       isSubmitting={overrides?.isSubmitting ?? false}
@@ -53,6 +61,37 @@ describe("RejectReasonDialog", () => {
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveAttribute("role", "dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
+  });
+
+  it("interpolates the originator into the title and renders the subtitle", () => {
+    renderDialog({ originator: "Auric Andes S.A.C." });
+    expect(
+      screen.getByRole("heading", {
+        name: "Reject request — Auric Andes S.A.C.",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The request closes and the originator sees your reason.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a single-line input with the Figma placeholder", () => {
+    renderDialog();
+    const input = screen.getByTestId("reject-reason-input");
+    expect(input.tagName).toBe("INPUT");
+    expect(input).toHaveAttribute(
+      "placeholder",
+      "e.g. offtaker price below facility covenant",
+    );
+  });
+
+  it("primary button reads 'Send to originator'", () => {
+    renderDialog();
+    expect(screen.getByTestId("reject-reason-submit")).toHaveTextContent(
+      "Send to originator",
+    );
   });
 
   it("Cancel fires onCancel without submitting", () => {

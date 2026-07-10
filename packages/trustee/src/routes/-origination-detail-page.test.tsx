@@ -12,25 +12,29 @@
  * (issue #821 supersedes the closed #816, which had it).
  *
  * Also covers the status-conditional detail footer (issue #823, copy
- * amended by #829, restored by #831): InReview renders the three action
- * buttons (Request changes inert; Reject/Approve now WIRED — issue #829,
- * chain-first mint added by #831); Approved renders the green "Approved &
- * minted · <date>" banner (restored — #829 dropped "& minted" pending the
- * real mint, #831 shipped it) and NO "funded from batch" text — that segment
- * is deliberately omitted, no backing field; Rejected renders the red
- * "Rejected · <date> — <reason>" banner; both banner cases assert the
- * action buttons are ABSENT. An unknown status falls back to the InReview
- * footer.
+ * amended by #829, restored by #831): InReview renders the Reject/Approve
+ * action buttons (WIRED — issue #829, chain-first mint added by #831,
+ * gated behind a confirmation dialog by #838); Approved renders the green
+ * "Approved & minted · <date>" banner (restored — #829 dropped "& minted"
+ * pending the real mint, #831 shipped it) and NO "funded from batch" text —
+ * that segment is deliberately omitted, no backing field; Rejected renders
+ * the red "Rejected · <date> — <reason>" banner; both banner cases assert
+ * the action buttons are ABSENT. An unknown status falls back to the
+ * InReview footer. The inert "Request changes" button (issue #838) no
+ * longer exists at all.
  *
- * Approve/Reject wiring (issue #829, extended by #831): `useOriginationReview`
- * is mocked (like `useOriginationDetail`) so these are pure render-layer
- * tests — clicking Approve/Reject calls the mocked orchestration functions,
- * pending disables the buttons, `mintingLabel` swaps the Approve button's
- * text while minting, and the mapped error renders inline (footer) or
- * inside the reject dialog depending on `rejectOpen`. `RejectReasonDialog`
- * itself is NOT mocked — its own behavior is covered by
- * `-RejectReasonDialog.test.tsx`; here it's exercised as a real integration
- * point (Cancel/Submit call the mocked `cancelReject`/`submitReject`).
+ * Approve/Reject wiring (issue #829, extended by #831, gated behind
+ * confirmation dialogs by #838): `useOriginationReview` is mocked (like
+ * `useOriginationDetail`) so these are pure render-layer tests — clicking
+ * Approve OPENS the `ApproveMintDialog` (`review.openApprove`), clicking
+ * Reject opens `RejectReasonDialog` (`review.openReject`); pending disables
+ * both page-level buttons; the mapped error renders inline near the buttons
+ * only when NEITHER dialog is open, otherwise inside whichever dialog is
+ * open. Neither dialog component is mocked — `RejectReasonDialog`'s own
+ * behavior is covered by `-RejectReasonDialog.test.tsx` and
+ * `ApproveMintDialog`'s by `-ApproveMintDialog.test.tsx`; here both are
+ * exercised as real integration points (Cancel/Confirm/Submit call the
+ * mocked `cancelApprove`/`approve`/`cancelReject`/`submitReject`).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -83,12 +87,15 @@ function mockDetail(result: OriginationDetailResult) {
 function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
   mockUseOriginationReview.mockReturnValue({
     approve: vi.fn(),
+    openApprove: vi.fn(),
+    cancelApprove: vi.fn(),
     openReject: vi.fn(),
     cancelReject: vi.fn(),
     submitReject: vi.fn(),
     isPending: false,
     mintingLabel: null,
     errorMessage: null,
+    approveOpen: false,
     rejectOpen: false,
     ...overrides,
   });
@@ -127,6 +134,15 @@ const READY_RESULT: OriginationDetailResult = {
   statusKind: "in-review",
   reviewedDate: "2 Jan",
   rejectionReason: "—",
+  transactionPreview: {
+    keyword: "LoanRegistry.mintLoan",
+    rows: [
+      { label: "originator", value: "Auric Andes S.A.C." },
+      { label: "economics", value: "{ facility $3,500,000 }" },
+      { label: "metadataURI", value: "ipfs://auric-assay-offtake-hash" },
+      { label: "initialLocation", value: "MV Example" },
+    ],
+  },
 };
 
 describe("Origination details route", () => {
@@ -278,15 +294,13 @@ describe("Origination details route", () => {
   // ── Status-conditional detail footer (issue #823) ─────────────────────────
 
   describe("status-conditional footer", () => {
-    it("InReview: Request changes is inert; Reject/Approve are enabled; NO banner", () => {
+    it("InReview: Reject/Approve are enabled; no Request changes button; NO banner", () => {
       mockDetail(READY_RESULT); // statusKind: "in-review"
       renderRoute();
 
-      const requestChanges = screen.getByTestId(
-        "origination-detail-request-changes",
-      );
-      expect(requestChanges).toBeDisabled();
-      expect(requestChanges).toHaveAttribute("aria-disabled", "true");
+      expect(
+        screen.queryByTestId("origination-detail-request-changes"),
+      ).not.toBeInTheDocument();
 
       const rejectButton = screen.getByTestId("origination-detail-reject");
       const approveButton = screen.getByTestId("origination-detail-approve");
@@ -299,6 +313,14 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("origination-detail-rejected-banner"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("does NOT render the removed footer note about minting/disbursement", () => {
+      mockDetail(READY_RESULT);
+      renderRoute();
+      expect(
+        screen.queryByText(/Approval mints the loan NFT/),
       ).not.toBeInTheDocument();
     });
 
@@ -357,7 +379,10 @@ describe("Origination details route", () => {
       });
       renderRoute();
       expect(
-        screen.getByTestId("origination-detail-request-changes"),
+        screen.getByTestId("origination-detail-reject"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("origination-detail-approve"),
       ).toBeInTheDocument();
       expect(
         screen.queryByTestId("origination-detail-approved-banner"),
@@ -371,14 +396,16 @@ describe("Origination details route", () => {
   // ── Approve/Reject wiring (issue #829) ─────────────────────────────────────
 
   describe("Approve/Reject wiring", () => {
-    it("clicking Approve calls review.approve()", () => {
+    it("clicking Approve calls review.openApprove() (issue #838 — opens the confirm dialog, does not mint directly)", () => {
+      const openApprove = vi.fn();
       const approve = vi.fn();
-      mockReview({ approve });
+      mockReview({ openApprove, approve });
       mockDetail(READY_RESULT);
       renderRoute();
 
       fireEvent.click(screen.getByTestId("origination-detail-approve"));
-      expect(approve).toHaveBeenCalledTimes(1);
+      expect(openApprove).toHaveBeenCalledTimes(1);
+      expect(approve).not.toHaveBeenCalled();
     });
 
     it("clicking Reject calls review.openReject()", () => {
@@ -391,67 +418,19 @@ describe("Origination details route", () => {
       expect(openReject).toHaveBeenCalledTimes(1);
     });
 
-    it("disables Reject/Approve (but not Request changes, already disabled) while isPending", () => {
+    it("disables Reject/Approve while isPending", () => {
       mockReview({ isPending: true });
       mockDetail(READY_RESULT);
       renderRoute();
 
       expect(screen.getByTestId("origination-detail-reject")).toBeDisabled();
-      const approveButton = screen.getByTestId("origination-detail-approve");
-      expect(approveButton).toBeDisabled();
-      expect(approveButton).toHaveTextContent("Submitting…");
+      expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
     });
 
-    // ── On-chain minting progress (issue #831) ──────────────────────────────
-
-    it("shows the mint's progress label on the Approve button while minting", () => {
-      mockReview({
-        isPending: true,
-        mintingLabel: "Waiting for wallet signature…",
-      });
-      mockDetail(READY_RESULT);
-      renderRoute();
-
-      const approveButton = screen.getByTestId("origination-detail-approve");
-      expect(approveButton).toBeDisabled();
-      expect(approveButton).toHaveTextContent("Waiting for wallet signature…");
-    });
-
-    it("swaps the progress label through each mint stage", () => {
-      mockReview({ isPending: true, mintingLabel: "Submitting on-chain…" });
-      mockDetail(READY_RESULT);
-      const { rerender } = renderRoute();
-      expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toHaveTextContent("Submitting on-chain…");
-
-      mockReview({ isPending: true, mintingLabel: "Confirming…" });
-      const Page = Route.options.component as React.ComponentType;
-      rerender(<Page />);
-      expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toHaveTextContent("Confirming…");
-
-      mockReview({ isPending: true, mintingLabel: "Finalizing approval…" });
-      rerender(<Page />);
-      expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toHaveTextContent("Finalizing approval…");
-    });
-
-    it("falls back to 'Submitting…' when isPending but mintingLabel is null (e.g. Reject in flight)", () => {
-      mockReview({ isPending: true, mintingLabel: null });
-      mockDetail(READY_RESULT);
-      renderRoute();
-
-      expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toHaveTextContent("Submitting…");
-    });
-
-    it("renders the mapped error inline near the buttons when set and the dialog is closed", () => {
+    it("renders the mapped error inline near the buttons when set and both dialogs are closed", () => {
       mockReview({
         errorMessage: "You are not authorized to review submissions.",
+        approveOpen: false,
         rejectOpen: false,
       });
       mockDetail(READY_RESULT);
@@ -479,6 +458,22 @@ describe("Origination details route", () => {
       );
     });
 
+    it("does NOT render the inline error while the approve dialog is open (the dialog owns it)", () => {
+      mockReview({
+        errorMessage: "Signature cancelled. Click Approve again to retry.",
+        approveOpen: true,
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(
+        screen.queryByTestId("origination-detail-review-error"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("approve-mint-error")).toHaveTextContent(
+        "Signature cancelled. Click Approve again to retry.",
+      );
+    });
+
     it("renders the RejectReasonDialog when rejectOpen is true, and NOT when false", () => {
       mockReview({ rejectOpen: false });
       mockDetail(READY_RESULT);
@@ -493,7 +488,18 @@ describe("Origination details route", () => {
       expect(screen.getByTestId("reject-reason-dialog")).toBeInTheDocument();
     });
 
-    it("Cancel in the dialog calls review.cancelReject()", () => {
+    it("passes the originator through to the RejectReasonDialog's title", () => {
+      mockReview({ rejectOpen: true });
+      mockDetail(READY_RESULT);
+      renderRoute();
+      expect(
+        screen.getByRole("heading", {
+          name: `Reject request — ${READY_RESULT.dealDetails.originator}`,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("Cancel in the reject dialog calls review.cancelReject()", () => {
       const cancelReject = vi.fn();
       mockReview({ rejectOpen: true, cancelReject });
       mockDetail(READY_RESULT);
@@ -503,7 +509,7 @@ describe("Origination details route", () => {
       expect(cancelReject).toHaveBeenCalledTimes(1);
     });
 
-    it("Submit in the dialog calls review.submitReject(reason) with the trimmed reason", () => {
+    it("Submit in the reject dialog calls review.submitReject(reason) with the trimmed reason", () => {
       const submitReject = vi.fn();
       mockReview({ rejectOpen: true, submitReject });
       mockDetail(READY_RESULT);
@@ -514,6 +520,100 @@ describe("Origination details route", () => {
       });
       fireEvent.click(screen.getByTestId("reject-reason-submit"));
       expect(submitReject).toHaveBeenCalledWith("Missing export permit");
+    });
+
+    // ── Approve & mint confirmation dialog (issue #838) ─────────────────────
+
+    it("renders the ApproveMintDialog when approveOpen is true, and NOT when false", () => {
+      mockReview({ approveOpen: false });
+      mockDetail(READY_RESULT);
+      const { rerender } = renderRoute();
+      expect(
+        screen.queryByTestId("approve-mint-dialog"),
+      ).not.toBeInTheDocument();
+
+      mockReview({ approveOpen: true });
+      const Page = Route.options.component as React.ComponentType;
+      rerender(<Page />);
+      expect(screen.getByTestId("approve-mint-dialog")).toBeInTheDocument();
+    });
+
+    it("passes detail.transactionPreview into the ApproveMintDialog", () => {
+      mockReview({ approveOpen: true });
+      mockDetail(READY_RESULT);
+      renderRoute();
+      const preview = screen.getByTestId("approve-mint-preview");
+      expect(preview).toHaveTextContent("Auric Andes S.A.C.");
+      expect(preview).toHaveTextContent("ipfs://auric-assay-offtake-hash");
+      expect(preview).toHaveTextContent("MV Example");
+    });
+
+    it("Cancel in the approve dialog calls review.cancelApprove()", () => {
+      const cancelApprove = vi.fn();
+      mockReview({ approveOpen: true, cancelApprove });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("approve-mint-cancel"));
+      expect(cancelApprove).toHaveBeenCalledTimes(1);
+    });
+
+    it("Mint loan in the approve dialog calls review.approve()", () => {
+      const approve = vi.fn();
+      mockReview({ approveOpen: true, approve });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("approve-mint-confirm"));
+      expect(approve).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the mint's progress label on the dialog's Mint loan button while minting", () => {
+      mockReview({
+        approveOpen: true,
+        isPending: true,
+        mintingLabel: "Waiting for wallet signature…",
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      const confirmButton = screen.getByTestId("approve-mint-confirm");
+      expect(confirmButton).toBeDisabled();
+      expect(confirmButton).toHaveTextContent("Waiting for wallet signature…");
+    });
+
+    it("swaps the progress label through each mint stage inside the dialog", () => {
+      mockReview({
+        approveOpen: true,
+        isPending: true,
+        mintingLabel: "Submitting on-chain…",
+      });
+      mockDetail(READY_RESULT);
+      const { rerender } = renderRoute();
+      expect(screen.getByTestId("approve-mint-confirm")).toHaveTextContent(
+        "Submitting on-chain…",
+      );
+
+      mockReview({
+        approveOpen: true,
+        isPending: true,
+        mintingLabel: "Confirming…",
+      });
+      const Page = Route.options.component as React.ComponentType;
+      rerender(<Page />);
+      expect(screen.getByTestId("approve-mint-confirm")).toHaveTextContent(
+        "Confirming…",
+      );
+
+      mockReview({
+        approveOpen: true,
+        isPending: true,
+        mintingLabel: "Finalizing approval…",
+      });
+      rerender(<Page />);
+      expect(screen.getByTestId("approve-mint-confirm")).toHaveTextContent(
+        "Finalizing approval…",
+      );
     });
   });
 });

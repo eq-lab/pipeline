@@ -88,6 +88,8 @@ Both frames are **640px** wide with **30px** horizontal / **28px** vertical padd
 
 ## Implementation Steps
 
+_All 8 steps below are DONE — implemented, tested, linted, built._
+
 1. **Remove the footer note** in `packages/trustee/src/routes/origination.$id.tsx` `ActionButtons` — delete the `<p>` at lines 310-313 ("Approval mints the loan NFT…"). Adjust the `flex flex-col ... gap-[20px]` container as needed so the error/button layout still reads correctly without it.
 2. **Remove the "Request changes" button** in `ActionButtons` (lines 322-331) and its `data-testid="origination-detail-request-changes"`. The remaining `Reject` / `Approve` buttons keep their `gap-[10px]` row. Reflow check: the row is left-aligned (`items-start gap-[10px]`); removing the first (leftmost) button simply shifts Reject/Approve left — no centering or spacer to fix. Confirm visually against the page (no Figma change for the InReview footer itself in this issue).
 3. **Reject dialog re-skin** — `packages/trustee/src/routes/-RejectReasonDialog.tsx`:

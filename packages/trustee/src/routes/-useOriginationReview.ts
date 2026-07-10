@@ -1,8 +1,23 @@
 /**
  * Page orchestration hook for the Origination details page's Approve/Reject
  * controls. Co-located with the route per `docs/FRONTEND.md` rule 2 —
- * `origination.$id.tsx` stays JSX-only; this hook owns the reject-dialog
- * open/close state and maps mutation errors to user-facing copy.
+ * `origination.$id.tsx` stays JSX-only; this hook owns the reject-dialog AND
+ * (as of issue #838) the approve-mint-confirmation-dialog open/close state,
+ * and maps mutation errors to user-facing copy.
+ *
+ * ## Approve confirmation gate (issue #838, Figma node `4116:13943`)
+ *
+ * Before #838, clicking Approve fired `approve()` (below) immediately. #838
+ * introduces a pre-mint confirmation dialog (`-ApproveMintDialog.tsx`):
+ * `openApprove()` opens it; `approve()` — UNCHANGED — is now invoked only as
+ * the dialog's "Mint loan" confirm action; `cancelApprove()` closes it
+ * without touching the on-chain mint. This does not alter the #831
+ * orchestration itself (still chain-first mint → review, still guarded by
+ * the same idempotency check) — it only gates *when* `approve()` fires.
+ * `cancelApprove()` deliberately does NOT reset `useDrawLoan`'s mutation once
+ * it has already succeeded (`drawLoanMutation.isSuccess`) — doing so would
+ * erase the idempotency guard's "already minted this session" marker and
+ * risk a second on-chain mint on a subsequent Approve click.
  *
  * ## Chain-first Approve ordering (issue #831)
  *
@@ -68,8 +83,17 @@ import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import { ApiError, ApiUnauthorizedError } from "@/api/client";
 
 export interface UseOriginationReviewResult {
-  /** Fires the chain-first Approve flow (mint, then review) — no-op if already Approved. */
+  /**
+   * Fires the chain-first Approve flow (mint, then review) — no-op if
+   * already Approved. As of issue #838 this is invoked as the
+   * `-ApproveMintDialog`'s "Mint loan" confirm action, not directly by the
+   * page's Approve button (see `openApprove`).
+   */
   approve: () => void;
+  /** Opens the approve & mint confirmation dialog (issue #838). */
+  openApprove: () => void;
+  /** Closes the approve & mint dialog without minting. */
+  cancelApprove: () => void;
   /** Opens the reason dialog. */
   openReject: () => void;
   /** Closes the reject-reason dialog without submitting. */
@@ -79,13 +103,16 @@ export interface UseOriginationReviewResult {
   /** True while the mint, the review call, or Reject is in flight. */
   isPending: boolean;
   /**
-   * Progress label for the Approve button while minting (issue #831 Open
-   * Question 5: "Waiting for wallet signature…" -> "Submitting on-chain…" ->
-   * "Confirming…" -> "Finalizing approval…"). `null` when not minting.
+   * Progress label for the "Mint loan" confirm action while minting (issue
+   * #831 Open Question 5: "Waiting for wallet signature…" -> "Submitting
+   * on-chain…" -> "Confirming…" -> "Finalizing approval…"). `null` when not
+   * minting.
    */
   mintingLabel: string | null;
   /** User-facing error copy, mapped from the last failed step, or `null`. */
   errorMessage: string | null;
+  /** Whether the approve & mint confirmation dialog is open (issue #838). */
+  approveOpen: boolean;
   /** Whether the reject-reason dialog is open. */
   rejectOpen: boolean;
 }
@@ -157,6 +184,7 @@ function mintStageLabel(stage: DrawLoanStage | null): string {
 export function useOriginationReview(id: string): UseOriginationReviewResult {
   const reviewMutation = useReviewSubmission();
   const drawLoanMutation = useDrawLoan();
+  const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const submissionId = Number(id);
 
@@ -165,6 +193,16 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   // never triggers a second network fetch.
   const { data: submissions } = useLoanSubmissions();
   const submission = submissions?.find((s) => s.id === submissionId);
+
+  // Fires the review call and, on success, closes the approve dialog (issue
+  // #838) — the footer then flips to the Approved banner via the existing
+  // list-invalidation-driven refetch (`-origination-detail.ts`).
+  function fireApprovalReview() {
+    reviewMutation.mutate(
+      { id: submissionId, decision: "Approved" },
+      { onSuccess: () => setApproveOpen(false) },
+    );
+  }
 
   function approve() {
     if (!submission) return;
@@ -178,7 +216,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     // skip step 1 (mint) entirely and retry ONLY step 2 (finalize). Never
     // re-invoke `drawLoan` once it has already succeeded for this submission.
     if (drawLoanMutation.isSuccess) {
-      reviewMutation.mutate({ id: submissionId, decision: "Approved" });
+      fireApprovalReview();
       return;
     }
 
@@ -191,8 +229,31 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
         // `drawLoanMutation.error` already carries the mapped detail.
         return;
       }
-      reviewMutation.mutate({ id: submissionId, decision: "Approved" });
+      fireApprovalReview();
     })();
+  }
+
+  // Opens the approve & mint confirmation dialog (issue #838), clearing any
+  // stale review error left over from a previous Reject attempt sharing the
+  // same `reviewMutation` instance — mirrors `openReject`'s reset below.
+  function openApprove() {
+    reviewMutation.reset();
+    setApproveOpen(true);
+  }
+
+  // Closes the approve & mint dialog without minting. Only reachable while
+  // NOT submitting (the dialog disables Cancel/Escape/backdrop-close during
+  // the mint — see `-ApproveMintDialog.tsx`), so this always represents
+  // either a fresh, untouched dialog or one showing a settled error.
+  // `drawLoanMutation.reset()` is skipped once it has already succeeded —
+  // clearing it would erase the idempotency guard's "already minted this
+  // session" marker and risk a second on-chain mint on retry.
+  function cancelApprove() {
+    setApproveOpen(false);
+    reviewMutation.reset();
+    if (!drawLoanMutation.isSuccess) {
+      drawLoanMutation.reset();
+    }
   }
 
   function openReject() {
@@ -230,12 +291,15 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
 
   return {
     approve,
+    openApprove,
+    cancelApprove,
     openReject,
     cancelReject,
     submitReject,
     isPending: drawLoanMutation.isPending || reviewMutation.isPending,
     mintingLabel,
     errorMessage,
+    approveOpen,
     rejectOpen,
   };
 }
