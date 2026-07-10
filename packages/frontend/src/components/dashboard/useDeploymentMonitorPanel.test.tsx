@@ -225,15 +225,13 @@ describe("useDeploymentMonitorPanel — panel state", () => {
       "Open Mineral / Copper Concentrate",
     );
     expect(result.current.rows[0]!.principal).toBe("$8.0M");
-    // Active-loan rows carry no status (Status column is origination-only).
-    expect(result.current.rows[0]!.status).toBeUndefined();
   });
 });
 
 // ── In Origination tab ──────────────────────────────────────────────────────
 
 describe("useDeploymentMonitorPanel — In Origination tab", () => {
-  it("maps a submission's loan_data into an origination row", async () => {
+  it("maps a submission's loan_data into an OriginationTableRow (issue #814 field set)", async () => {
     localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
     localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(FIXTURE_SUBMISSIONS));
 
@@ -245,18 +243,20 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 
     expect(result.current.inOriginationCount).toBe(2);
     const row0 = result.current.originationRows[0]!;
-    expect(row0.borrowerCommodity).toBe("Trafigura / Alumina");
-    expect(row0.principal).toBe("$8.0M");
+    // Originator is loan_data.originator (the submitted name), not the
+    // top-level submitter address — same value in this fixture, but the
+    // mapping source matters (see originationRow.test.ts for the distinction).
+    expect(row0.originator).toBe("0xabc");
+    expect(row0.commodity).toBe("Alumina");
+    expect(row0.facility).toBe("$8,000,000"); // fully-expanded, not compact
+    expect(row0.corridor).toBe("West Africa → EU");
     expect(row0.rate).toBe("11.2%"); // 1120 bps (backend-served)
-    expect(row0.protection).toBe("LC at sight");
+    expect(row0.maturity).toBe("14 Mar 2024");
+    expect(row0.submitted).toBe("1 Jul");
     expect(row0.status).toBe("InReview");
-    // Not served by the backend → "—" (no frontend-computed metrics).
-    expect(row0.collateral).toBe("—");
-    expect(row0.ltv).toBe("—");
-    expect(row0.duration).toBe("—");
   });
 
-  it("falls back to '—' for missing protection and reflects status", async () => {
+  it("reflects the second row's fields", async () => {
     localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
     localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(FIXTURE_SUBMISSIONS));
 
@@ -267,10 +267,12 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     await waitFor(() => expect(result.current.originationState).toBe("ready"));
 
     const row1 = result.current.originationRows[1]!;
-    expect(row1.protection).toBe("—");
-    expect(row1.ltv).toBe("—");
-    expect(row1.duration).toBe("—");
+    expect(row1.commodity).toBe("Cobalt");
+    expect(row1.facility).toBe("$4,400,000");
+    expect(row1.corridor).toBe("DRC → CN");
     expect(row1.rate).toBe("11.7%"); // 1170 bps
+    expect(row1.maturity).toBe("14 Jan 2024");
+    expect(row1.submitted).toBe("2 Jul");
     expect(row1.status).toBe("Approved");
   });
 

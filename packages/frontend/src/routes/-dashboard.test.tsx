@@ -18,6 +18,9 @@
  *  10. DeploymentMonitorPanel: ready state — formatted values + null → "—".
  *  11. DeploymentMonitorPanel: responsive class assertions.
  *  12. DeploymentMonitorPanel: tab bar — Active Loans + selectable "In Origination" (#755).
+ *  13. DeploymentMonitorPanel: In Origination tab renders the Figma 4116-9155 field set
+ *      (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), the old
+ *      Active-Loans-shaped columns are absent, and the Active Loans tab is unchanged (#814).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
@@ -32,6 +35,7 @@ import { DeploymentMonitorPanel } from "@/components/dashboard/DeploymentMonitor
 import { WithdrawalQueuePanel } from "@/components/dashboard/WithdrawalQueuePanel";
 import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
 import type { LoanBookResponse } from "@/api";
+import type { SubmissionView } from "@/api/useLoanSubmissions";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -136,6 +140,44 @@ const FIXTURE_EMPTY: LoanBookResponse = {
   },
   loans: [],
 };
+
+// Issue #814 — In-Origination tab field set (Figma node 4116-9155).
+const FIXTURE_SUBMISSIONS: SubmissionView[] = [
+  {
+    id: 1,
+    status: "InReview",
+    reason: null,
+    originator: "0xabc",
+    created_at: "2026-06-18T10:00:00Z",
+    updated_at: "2026-06-18T10:00:00Z",
+    loan_data: {
+      to: "0xdef",
+      metadata_uri: "ipfs://meta",
+      originator: "Auric Andes",
+      borrower_id: "borrower-1",
+      commodity: "Gold pyrite concentrate",
+      corridor: "PE-CN",
+      governing_law: "England",
+      economics: {
+        original_facility_size: "3500000.000000",
+        original_senior_tranche: "3000000.000000",
+        original_equity_tranche: "500000.000000",
+        original_offtaker_price: "3500000.000000",
+        senior_interest_rate_bps: 1400,
+        origination_date: 1_750_000_000,
+        original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
+      },
+      initial_ccr: 1_500_000,
+      initial_location: {
+        location_type: "Vessel",
+        location_identifier: "MV Example",
+        tracking_url: "https://example.com",
+        updated_at: 1_750_000_000,
+      },
+      protection: "LC at sight",
+    },
+  },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -861,6 +903,121 @@ describe("DeploymentMonitorPanel — tab bar", () => {
     expect(
       screen.getByTestId("loan-book-tab-in-origination-count"),
     ).toHaveTextContent("0");
+  });
+});
+
+describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("renders the Figma 4116-9155 column set and formatted values when selected", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book/submissions",
+      JSON.stringify(FIXTURE_SUBMISSIONS),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-tab-in-origination"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("loan-book-tab-in-origination"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("origination-table")).toBeInTheDocument();
+    });
+
+    // New 8-column header set.
+    for (const header of [
+      "Originator",
+      "Commodity",
+      "Facility",
+      "Corridor",
+      "Rate",
+      "Maturity",
+      "Submitted",
+      "Status",
+    ]) {
+      expect(screen.getByText(header)).toBeInTheDocument();
+    }
+
+    // Old Active-Loans-shaped columns are absent from this tab.
+    expect(screen.queryByText("Borrower / Commodity")).toBeNull();
+    expect(screen.queryByText("Principal")).toBeNull();
+    expect(screen.queryByText("LTV")).toBeNull();
+    expect(screen.queryByText("Duration")).toBeNull();
+    expect(screen.queryByText("Protection")).toBeNull();
+
+    // Formatted values from FIXTURE_SUBMISSIONS: loan_data.originator (not the
+    // top-level submitter address), fully-expanded facility, arrow corridor.
+    expect(screen.getByText("Auric Andes")).toBeInTheDocument();
+    expect(screen.getByText("Gold pyrite concentrate")).toBeInTheDocument();
+    expect(screen.getByText("$3,500,000")).toBeInTheDocument();
+    expect(screen.getByText("PE → CN")).toBeInTheDocument();
+    expect(screen.getByText("14.0%")).toBeInTheDocument();
+    expect(screen.getByText("15 Dec 2026")).toBeInTheDocument();
+    expect(screen.getByText("InReview")).toBeInTheDocument();
+  });
+
+  it("still renders the empty state on the In Origination tab with no submissions", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book/submissions",
+      JSON.stringify([]),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-tab-in-origination"),
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("loan-book-tab-in-origination"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("loan-book-origination-empty"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("origination-table")).toBeNull();
+  });
+
+  it("the Active Loans tab is unaffected — still renders its own 7-column set", async () => {
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book",
+      JSON.stringify(FIXTURE_FULL),
+    );
+    localStorage.setItem(
+      "pipeline.mock.api.GET./v1/loan-book/submissions",
+      JSON.stringify(FIXTURE_SUBMISSIONS),
+    );
+
+    render(<DeploymentMonitorPanel />, { wrapper: makeWrapper() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loan-book-table")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Borrower / Commodity")).toBeInTheDocument();
+    expect(screen.getByText("Protection")).toBeInTheDocument();
+    expect(screen.queryByTestId("origination-table")).toBeNull();
   });
 });
 

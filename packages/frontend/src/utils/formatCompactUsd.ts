@@ -97,6 +97,34 @@ export function formatBpsRate(bps: number | null | undefined): string {
   return `${(bps / 100).toFixed(1)}%`;
 }
 
+// ── formatFullUsd ─────────────────────────────────────────────────────────────
+
+/**
+ * Formats a base-6 decimal-string USD amount as fully-expanded whole dollars
+ * with thousands separators — used by the In-Origination table's Facility
+ * column (issue #814, Figma node `4116-9155`), which shows the full amount
+ * rather than the table's usual compact notation (`formatCompactUsd`).
+ *
+ * Hand-mirrored, byte-for-byte, from the trustee app's
+ * `packages/trustee/src/utils/formatUsd.ts::formatFullUsd` (issue #813) — the
+ * two apps stay separate per epic #775, so this is a deliberate duplicate,
+ * not a shared import. See TD-42 (`docs/exec-plans/tech-debt-tracker.md`).
+ *
+ * - `"3500000.000000"` → `"$3,500,000"`
+ * - `"0.000000"`        → `"$0"`
+ * - `null | undefined`  → `"—"`
+ * - non-numeric input   → `"—"`
+ */
+export function formatFullUsd(base6Decimal: string | null | undefined): string {
+  if (base6Decimal == null) return "—";
+  const num = parseFloat(base6Decimal);
+  if (!Number.isFinite(num)) return "—";
+  const formatted = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(num);
+  return `$${formatted}`;
+}
+
 // ── formatLtv ────────────────────────────────────────────────────────────────
 
 /**

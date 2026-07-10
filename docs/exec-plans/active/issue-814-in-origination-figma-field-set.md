@@ -51,43 +51,44 @@ The current In Origination tab (built in #755) reuses the shared `LoanBookTable`
 
 ## Implementation Steps
 
-1. **Add the missing frontend formatters (mirrored from trustee, behaviour-identical).**
-   - In `packages/frontend/src/utils/formatCompactUsd.ts`, add `formatFullUsd(base6Decimal: string | null | undefined): string` — `Intl.NumberFormat("en-US", { maximumFractionDigits: 0 })`, `$`-prefixed, `—` for null/non-numeric — copied from `packages/trustee/src/utils/formatUsd.ts`. (Or place in a `formatUsd.ts` sibling if preferred; keep one home for money formatters.)
-   - Create `packages/frontend/src/utils/formatDate.ts` with `formatMaturityDate` (Unix seconds → `en-GB` `"15 Dec 2026"`) and `formatSubmittedDate` (RFC 3339 → `en-GB` `"18 Jun"`), copied verbatim from `packages/trustee/src/utils/formatDate.ts`, `—` for missing/unparseable.
-   - Add unit tests mirroring the trustee's (or extend `formatCompactUsd.test.ts` and add `formatDate.test.ts`): expanded-dollar formatting, date shapes, and `—` fallbacks.
+1. **[DONE] Add the missing frontend formatters (mirrored from trustee, behaviour-identical).**
+   - Added `formatFullUsd` to `packages/frontend/src/utils/formatCompactUsd.ts` — `Intl.NumberFormat("en-US", { maximumFractionDigits: 0 })`, `$`-prefixed, `—` for null/non-numeric — byte-for-byte mirror of `packages/trustee/src/utils/formatUsd.ts`.
+   - Created `packages/frontend/src/utils/formatDate.ts` with `formatMaturityDate` (Unix seconds → `en-GB` `"15 Dec 2026"`) and `formatSubmittedDate` (RFC 3339 → `en-GB` `"18 Jun"`), copied verbatim from `packages/trustee/src/utils/formatDate.ts`, `—` for missing/unparseable.
+   - Added unit tests: extended `formatCompactUsd.test.ts` with a `formatFullUsd` describe block, and created `formatDate.test.ts`.
 
-2. **Add the extraction/formatting layer** (mirror `packages/trustee/src/routes/-useOriginationTable.ts`, minus the trustee-only router-nav `submission` threading and Review action). Create `packages/frontend/src/components/dashboard/originationRow.ts` (or co-locate in the panel hook file if lighter) exporting:
-   - `OriginationTableRow` — `{ id, originator, commodity, facility, corridor, rate, maturity, submitted, status }` where `status` is the raw `SubmissionView["status"]` string (the dashboard renders it via `statusColorClass`).
-   - `mapSubmissionToRow(view: SubmissionView): OriginationTableRow` — defensive `safeString`/`safeNumber` helpers; corridor hyphen→` → ` arrow; `formatFullUsd`/`formatBpsRate`/`formatMaturityDate`/`formatSubmittedDate` as in the table above. Every nested access guarded so a malformed submission renders `—`, never throws.
+2. **[DONE] Added the extraction/formatting layer** in `packages/frontend/src/components/dashboard/originationRow.ts` (mirrors `packages/trustee/src/routes/-useOriginationTable.ts`, minus the trustee-only router-nav `submission` threading and Review action):
+   - `OriginationTableRow` — `{ id, originator, commodity, facility, corridor, rate, maturity, submitted, status }`, `status` is the raw `SubmissionView["status"]` string.
+   - `mapSubmissionToRow(submission: SubmissionView): OriginationTableRow` — defensive `safeString`/`safeNumber` helpers; corridor hyphen→` → ` arrow; `formatFullUsd`/`formatBpsRate`/`formatMaturityDate`/`formatSubmittedDate`. Every nested access guarded so a malformed submission renders `—`, never throws.
 
-3. **Create the presentational component** `packages/frontend/src/components/dashboard/OriginationTable.tsx`:
-   - An 8-column table using the dashboard Loan Book table's existing visual tokens (`headerCellClasses`/`bodyCellClasses` styling from `LoanBookTable.tsx` — reuse or extract the shared class constants), `table-fixed`, `border-collapse`, wrapped in `overflow-x-auto` (FRONTEND.md wide-content rule).
+3. **[DONE] Created the presentational component** `packages/frontend/src/components/dashboard/OriginationTable.tsx`:
+   - An 8-column table reusing the dashboard Loan Book table's visual tokens — `headerCellClasses`/`bodyCellClasses`/`bodyCellInnerClasses`/`firstBodyCellClasses`/`firstBodyCellInnerClasses` were exported from `LoanBookTable.tsx` and imported here — `table-fixed`, `border-collapse`, wrapped in `overflow-x-auto`.
    - Column headers: `Originator · Commodity · Facility · Corridor · Rate · Maturity · Submitted · Status`.
-   - Status cell keeps `statusColorClass` color-coded text (pending Open-Question #2 resolution). Missing status → `—`.
-   - Stable `data-testid`s (e.g. `origination-table`, and reuse/extend the existing `loan-book-*` anchors where sensible) for tests/QA.
+   - Status cell keeps a local `statusColorClass` color-coded text implementation (Open Question #2 resolved: simple label, no pill/Review). Missing status → `—`.
+   - `data-testid="origination-table"` (+ `origination-table-desktop`) for tests/QA.
 
-4. **Rewire the panel** in `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`:
-   - `OriginationTabBody` `ready` case renders `<OriginationTable rows={originationRows} />` instead of `<LoanBookTable rows={rows} showStatus />`.
-   - Keep the existing `loading`/`error`/`empty` states and the `refetchOrigination` retry wiring.
+4. **[DONE] Rewired the panel** in `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.tsx`:
+   - `OriginationTabBody` `ready` case now renders `<OriginationTable rows={rows} />` instead of `<LoanBookTable rows={rows} showStatus />`.
+   - Loading/error/empty states and the `refetchOrigination` retry wiring are unchanged.
 
-5. **Update the panel hook** `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`:
-   - Change `originationRows` typing from `LoanBookRow[]` to `OriginationTableRow[]`; replace the current `formatSubmissionRow` with `mapSubmissionToRow` from step 2.
-   - Leave the Active Loans path (`formatRow`, `LoanBookRow`, summary, header aggregates) and the `inOriginationCount` / `originationState` / `originationErrorMessage` wiring untouched.
+5. **[DONE] Updated the panel hook** `packages/frontend/src/components/dashboard/useDeploymentMonitorPanel.ts`:
+   - `originationRows` is now typed `OriginationTableRow[]`; the old `formatSubmissionRow` was removed and replaced by `mapSubmissionToRow` from step 2.
+   - The Active Loans path (`formatRow`, `LoanBookRow`, summary, header aggregates) and the `inOriginationCount` / `originationState` / `originationErrorMessage` wiring are untouched.
 
-6. **Clean up the shared table** `packages/frontend/src/components/dashboard/LoanBookTable.tsx`:
-   - Remove the now-unused `showStatus` prop, the Status `<col>`/`<th>`/`<td>`, `statusColorClass`, and the `status?` field on `LoanBookRow` **only if** nothing else consumes them (grep first). If reused elsewhere, leave in place. Keep this change minimal and non-breaking for Active Loans.
+6. **[DONE] Cleaned up the shared table** `packages/frontend/src/components/dashboard/LoanBookTable.tsx`:
+   - Removed the `showStatus` prop, the Status `<col>`/`<th>`/`<td>`, `statusColorClass`, and the `status?` field on `LoanBookRow` — grepped first and confirmed nothing else consumed them (an unrelated local `statusColorClass` in `WithdrawalQueueTable.tsx` is untouched). Active Loans behavior is unchanged.
 
-7. **Lint & typecheck.** Run `npx tsx scripts/lint-docs.ts` (per AGENTS.md, after TS changes) plus the frontend lint/typecheck/build so no unused-symbol or type errors remain.
+7. **[DONE] Lint & typecheck.** `npx tsx scripts/lint-docs.ts` (0 errors, pre-existing warnings only), `eslint .` (clean), `tsc -b` (clean), `vite build` (succeeds), `prettier --check .` (clean on all touched files).
 
 ## Test Strategy
 
-- **Unit — extraction layer** (`originationRow.test.ts`, mirroring `packages/trustee/src/routes/-useOriginationTable.test.ts`): each column maps from the right field; corridor `PE-CN` → `PE → CN`; `formatFullUsd`/`formatBpsRate`/date formatting; **missing/malformed `loan_data`, `economics`, and each field → `—`** (never throws); originator uses `loan_data.originator` not the submitter address.
-- **Unit — formatters**: `formatFullUsd` (`"3500000.000000"` → `"$3,500,000"`, `null`/non-numeric → `"—"`); `formatMaturityDate` / `formatSubmittedDate` shapes and `—` fallbacks.
-- **Component/panel** (extend `packages/frontend/src/routes/-dashboard.test.tsx`): selecting the In Origination tab renders the new columns (assert the `Originator`/`Facility`/`Corridor`/`Maturity`/`Submitted` headers are present and a sample row's formatted values appear); the old columns (`Principal`/`Collateral`/`LTV`/`Duration`/`Protection`) are **absent** from this tab; loading/error/empty states still render; the Active Loans tab is unchanged. Update or remove any existing assertions that relied on the old In-Origination column set.
-- **Figma verification**: after implementation, verify the rendered In Origination tab against Figma node `4116-9155` for column set, order, and the resolved styling decision (Open Question #3). The user reviews UI live (pixel/token-exact) — hard-refresh to pick up HMR.
+- **[DONE] Unit — extraction layer** (`originationRow.test.ts`, mirroring `packages/trustee/src/routes/-useOriginationTable.test.ts`): each column maps from the right field; corridor `PE-CN` → `PE → CN`; `formatFullUsd`/`formatBpsRate`/date formatting; missing/malformed `loan_data`, `economics`, and each field → `—` (never throws); originator uses `loan_data.originator` not the submitter address.
+- **[DONE] Unit — formatters**: `formatFullUsd` (`"3500000.000000"` → `"$3,500,000"`, `null`/non-numeric → `"—"`); `formatMaturityDate` / `formatSubmittedDate` shapes and `—` fallbacks.
+- **[DONE] Component/panel**: extended `packages/frontend/src/routes/-dashboard.test.tsx` and `packages/frontend/src/components/dashboard/DeploymentMonitorPanel.test.tsx` — selecting the In Origination tab renders the new columns and formatted values; the old columns (`Principal`/`Collateral`/`LTV`/`Duration`/`Protection`/`Borrower / Commodity`) are absent from this tab; loading/error/empty states still render; the Active Loans tab is unchanged. Updated `useDeploymentMonitorPanel.test.tsx`'s In-Origination assertions to the new row shape.
+- **Figma verification**: pending — the user reviews the rendered In Origination tab live against Figma node `4116-9155` (pixel/token-exact); hard-refresh to pick up HMR.
 
 ## Docs to Update
 
-- `docs/exec-plans/tech-debt-tracker.md` — extend **TD-42** to record that the LP side now also carries the hand-mirrored `loan_data` extractor (`mapSubmissionToRow`) and the mirrored `formatFullUsd`/`formatMaturityDate`/`formatSubmittedDate` formatters (previously only the trustee copy existed), reinforcing the "extract a shared package once a third consumer appears" suggestion.
-- No product-spec change — this is a presentational field re-mapping of an already-specified tab (behaviour surface is unchanged; same endpoint, same data). If `docs/frontend/index.md` documents the In-Origination tab column set, update that reference.
+- **[DONE]** `docs/exec-plans/tech-debt-tracker.md` — extended **TD-42** to record that the LP side now also carries the hand-mirrored `loan_data` extractor (`originationRow.ts`'s `mapSubmissionToRow`) and the mirrored `formatFullUsd`/`formatMaturityDate`/`formatSubmittedDate` formatters (previously only the trustee copy existed), and reinforced the "extract a shared package now that a second consumer exists" suggestion.
+- **[DONE]** No product-spec change — this is a presentational field re-mapping of an already-specified tab (behaviour surface is unchanged; same endpoint, same data). Confirmed `docs/frontend/index.md` does not document the In-Origination tab column set, so no update needed there.
+- **[DONE]** Added `docs/user-stories/epic-712/814-origination-figma-field-set.md` and linked it from `docs/user-stories/index.md` (ISSUE_PROTOCOL §6 requirement).
 - No user-docs / design-doc change beyond the above.
