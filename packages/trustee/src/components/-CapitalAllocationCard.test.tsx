@@ -146,13 +146,9 @@ describe("CapitalAllocationCard", () => {
     expect(screen.getByText("Trust account $1.2M")).toBeInTheDocument();
     expect(screen.getByText("Deployed $96M")).toBeInTheDocument();
     expect(screen.getByText("T-Bills (USYC) $4.64M")).toBeInTheDocument();
-    expect(
-      screen.getByText("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("capital-allocation-drift")).toBeInTheDocument();
   });
 
-  it("renders the four provenance chips (#807, static mock)", () => {
+  it("does not render the removed #807 mock chrome (#825): drift header + provenance chips", () => {
     mockHook({
       totalDisplay: "$115,190,000",
       legend: fullDataLegend(),
@@ -161,20 +157,17 @@ describe("CapitalAllocationCard", () => {
     render(<CapitalAllocationCard />);
 
     expect(
-      screen.getByText("on-chain balance · current block"),
-    ).toBeInTheDocument();
+      screen.queryByText("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%"),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Relayer API · refreshed 2m ago"),
-    ).toBeInTheDocument();
+      screen.queryByTestId("capital-allocation-drift"),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Trustee feed · reconciled today"),
-    ).toBeInTheDocument();
+      screen.queryByText("on-chain balance · current block"),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText("stale values are labeled inline"),
-    ).toBeInTheDocument();
-
-    const chipContainer = screen.getByTestId("capital-allocation-provenance");
-    expect(chipContainer.children).toHaveLength(4);
+      screen.queryByTestId("capital-allocation-provenance"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders em-dash for null buckets (partial/deployed-only data)", () => {
@@ -242,17 +235,6 @@ describe("CapitalAllocationCard", () => {
       screen.getByTestId("capital-allocation-skeleton"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Capital Wallet")).not.toBeInTheDocument();
-
-    // Drift text lives in the always-rendered header row (#807) — it shows
-    // even while the rest of the card is loading.
-    expect(
-      screen.getByText("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%"),
-    ).toBeInTheDocument();
-
-    // Provenance chips live only in the loaded branch, under the legend.
-    expect(
-      screen.queryByTestId("capital-allocation-provenance"),
-    ).not.toBeInTheDocument();
   });
 
   it("shows an inline error surface on error", () => {
