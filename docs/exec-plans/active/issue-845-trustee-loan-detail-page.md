@@ -20,13 +20,14 @@ summary tiles (Facility/disbursed, Repaid to date, Interest to distribute), the
 "Registry state & derived" card, the "Current stage — … in transit" card + its action,
 and the "Other actions on this loan" block. Any of these added later is a separate issue.
 
-## Resolved gating decision (human, issue #845 comment)
+## Resolved gating decision (human, issue #845 comments)
 
-`GET /v1/loan-book` (`LoanBookEntry`, `loan_book.rs:140`) exposes **no loan id**, so the
-frontend had nothing to route to `/loans/$id` with, nor to call the valuations endpoint.
-**Decision:** add `loan_id` to the loan-book list **within #845** (small backend change),
-mirrored on the trustee frontend type. #845 therefore touches **backend + frontend**
-(keeps the `frontend` flow label; the backend delta is a single field).
+`GET /v1/loan-book` needs to expose the loan's id so the frontend can route to `/loans/$id`
+and call the valuations endpoint. **Decision (human):** the loan id is the loan-book
+**entry's DB id**, and it is served on the loan-book response — **owned on the backend
+separately; this PR makes NO Rust change** ("only frontend"). This branch consumes
+`loan_id` from the loan-book response (added to the trustee `LoanBookEntry` type) and is
+ready the moment the field is present. #845 is therefore **frontend-only**.
 
 ## Data sources
 
@@ -80,15 +81,14 @@ mirrored on the trustee frontend type. #845 therefore touches **backend + fronte
 
 ## Implementation Steps
 
-### 1. Backend — expose `loan_id` on the loan-book list
-`packages/api/src/routes/loan_book.rs`: add `pub loan_id: String` to `LoanBookEntry`
-(doc it), and populate it in the entry builder (`~:920`) with `loan_key(&loan.loan_id)`
-(the canonical normalized decimal string the valuations endpoint round-trips via
-`BigDecimal::from_str`). Update `packages/api/tests/loan_book.rs` expectations. `cargo test`.
+### 1. Backend — expose the loan-book entry's DB id (OWNED SEPARATELY, no Rust here)
+`GET /v1/loan-book` must return the entry's DB id as `loan_id`. Per "only frontend", this
+PR makes **no Rust change** — the field is owned on the backend separately. The frontend
+below consumes it and is ready once it is served.
 
-### 2. Frontend — mirror `loan_id` on the trustee type
-`packages/trustee/src/api/useLoanBook.ts`: add `loan_id: string` to `LoanBookEntry` (+ header
-note). Update #843 fixtures/tests that construct a `LoanBookEntry`.
+### 2. Frontend — consume `loan_id` on the trustee type
+`packages/trustee/src/api/useLoanBook.ts`: add `loan_id: string` to `LoanBookEntry` (the DB
+entry id, + header note). Update #843 fixtures/tests that construct a `LoanBookEntry`.
 
 ### 3. Valuation hook + types
 New `packages/trustee/src/api/useLoanValuation.ts`: `useLoanValuation(loanId)` →

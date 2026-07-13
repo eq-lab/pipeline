@@ -18,6 +18,7 @@ import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
+import { Route as LoansIdRouteImport } from './routes/loans.$id'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -64,15 +65,21 @@ const OriginationIdRoute = OriginationIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => OriginationRoute,
 } as any)
+const LoansIdRoute = LoansIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => LoansRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
+  '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/': typeof OriginationIndexRoute
 }
@@ -80,9 +87,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
+  '/loans': typeof LoansRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination': typeof OriginationIndexRoute
 }
@@ -91,10 +99,11 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
+  '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/origination/': typeof OriginationIndexRoute
 }
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
     | '/origination/'
   fileRoutesByTo: FileRoutesByTo
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/loans'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
     | '/origination'
   id:
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
     | '/origination/'
   fileRoutesById: FileRoutesById
@@ -137,7 +149,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditLogRoute: typeof AuditLogRoute
   CashManagementRoute: typeof CashManagementRoute
-  LoansRoute: typeof LoansRoute
+  LoansRoute: typeof LoansRouteWithChildren
   OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRoute
   SignInRoute: typeof SignInRoute
@@ -208,8 +220,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OriginationIdRouteImport
       parentRoute: typeof OriginationRoute
     }
+    '/loans/$id': {
+      id: '/loans/$id'
+      path: '/$id'
+      fullPath: '/loans/$id'
+      preLoaderRoute: typeof LoansIdRouteImport
+      parentRoute: typeof LoansRoute
+    }
   }
 }
+
+interface LoansRouteChildren {
+  LoansIdRoute: typeof LoansIdRoute
+}
+
+const LoansRouteChildren: LoansRouteChildren = {
+  LoansIdRoute: LoansIdRoute,
+}
+
+const LoansRouteWithChildren = LoansRoute._addFileChildren(LoansRouteChildren)
 
 interface OriginationRouteChildren {
   OriginationIdRoute: typeof OriginationIdRoute
@@ -229,7 +258,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
-  LoansRoute: LoansRoute,
+  LoansRoute: LoansRouteWithChildren,
   OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRoute,
   SignInRoute: SignInRoute,

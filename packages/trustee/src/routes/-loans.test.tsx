@@ -1,21 +1,35 @@
 /**
- * Render tests for the Trustee Loans route (issue #843).
+ * Render tests for the Trustee Loans route (issue #843, row-click navigation
+ * added in #845).
  *
  * `useLoanBook` is mocked so the page renders against a representative response
  * without the query layer. Asserts the heading, the five summary cards, the
  * tab-bar + per-status counts, the table rows, the pre-default (`<120%`) CCR
  * band styling, `—` on null cells, the client-side tab filter, and the
  * CCR-band footnote — plus the loading / error / empty states.
+ *
+ * `useNavigate` is mocked (bare-render, no router tree — mirrors
+ * `-origination-detail-page.test.tsx`'s router-primitive mocks) so #845's
+ * row-click navigation to `/loans/$id` (with the `LoanBookEntry` as router
+ * state) can be asserted via the spy.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { LoanBookResponse } from "@/api/useLoanBook";
-import { Route } from "./loans";
 
-// ── Mock the data hook ────────────────────────────────────────────────────────
+// ── Mock router navigate + the data hook ──────────────────────────────────────
+
+const navigateSpy = vi.fn();
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return { ...actual, useNavigate: () => navigateSpy };
+});
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
+import { Route } from "./loans";
 const mockUseLoanBook = vi.mocked(useLoanBook);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -36,6 +50,7 @@ const RESPONSE: LoanBookResponse = {
   },
   loans: [
     {
+      loan_id: "1",
       originator: "Delta Commodities",
       borrower: "b1",
       commodity: "Coffee",
@@ -54,6 +69,7 @@ const RESPONSE: LoanBookResponse = {
       status: "Performing",
     },
     {
+      loan_id: "2",
       originator: "Sahel Cocoa",
       borrower: "b2",
       commodity: "Cocoa",
@@ -90,6 +106,7 @@ function ready(data: LoanBookResponse) {
 
 beforeEach(() => {
   mockUseLoanBook.mockReset();
+  navigateSpy.mockReset();
 });
 
 // ── Ready state ────────────────────────────────────────────────────────────────
@@ -146,10 +163,20 @@ describe("Loans route (ready)", () => {
     fireEvent.click(screen.getByTestId("loans-tab-Watchlist"));
     expect(screen.getByText("Sahel Cocoa")).toBeInTheDocument();
     expect(screen.queryByText("Delta Commodities")).not.toBeInTheDocument();
-    // No priced collateral and no CCR ⇒ em-dash, no CCR band chip.
     expect(screen.queryByTestId("loans-ccr")).not.toBeInTheDocument();
     const row = screen.getByTestId("loans-row");
     expect(within(row).getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("navigates to /loans/$id with the entry in router state when a row is clicked (#845)", () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loans-row"));
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: "/loans/$id",
+      params: { id: "1" },
+      state: { entry: expect.objectContaining({ loan_id: "1" }) },
+    });
   });
 
   it("shows the empty message for the (backend-unpopulated) Default tab", () => {

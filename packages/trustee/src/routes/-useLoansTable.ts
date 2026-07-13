@@ -116,8 +116,12 @@ export interface CcrCell {
 
 /** One formatted, display-ready row of the active-loan table. */
 export interface LoanTableRow {
-  /** Stable list key (`originator|commodity|maturity` — no id field is served). */
+  /** Stable list key = the on-chain `loan_id`. */
   key: string;
+  /** On-chain loan id — the `/loans/$id` route param (issue #845). */
+  loanId: string;
+  /** The source entry, threaded through so the row-click can pass it as router state. */
+  entry: LoanBookEntry;
   originator: string;
   commodity: string;
   /** Spot sub-line, or `null` when the asset is unpriced (no sub-line). */
@@ -284,7 +288,9 @@ export function mapEntryToRow(
         };
 
   return {
-    key: `${entry.originator}|${entry.commodity}|${entry.maturity}`,
+    key: entry.loan_id,
+    loanId: entry.loan_id,
+    entry,
     originator: safeString(entry.originator),
     commodity: safeString(entry.commodity),
     spot: formatSpot(entry.spot_price, entry.spot_change_7d),

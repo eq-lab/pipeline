@@ -563,6 +563,16 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   Loans-page amounts render 1000× too big and CCR 1000× too small). See #843's exec plan
   (`docs/exec-plans/active/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
+
+  **Addendum (issue #845, Trustee Loan detail page — a fifth hand-mirroring):** the loan detail
+  page adds `packages/trustee/src/api/useLoanValuation.ts` (+ self-contained
+  `CollateralValuationResponse`/`CollateralValuationInputs`/`Ccr` types) — a hand-mirrored port of
+  `packages/api/src/routes/collateral_valuation.rs`'s response, again per the epic-#775
+  app-separation rule (no shared package). Unlike the loan-book list amounts, this endpoint serves
+  **plain USD** (already computed server-side), so the `#840` ×1000 workaround does NOT apply — a
+  scale distinction the frontend must keep straight across the two loan-book surfaces. Frontend-only
+  per #845: consumes a `loan_id` (the loan-book entry's DB id) the `/v1/loan-book` response is
+  expected to serve; the backend field is owned separately (no Rust change in the #845 PR).
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own

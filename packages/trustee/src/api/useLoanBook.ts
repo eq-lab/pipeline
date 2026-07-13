@@ -99,6 +99,12 @@ export interface LoanBookSummary {
 
 /** One row in the active-loan table. */
 export interface LoanBookEntry {
+  /**
+   * The loan's id — the DB entry id (decimal string, e.g. `"1"`), served on the
+   * loan-book response. Used as the `/loans/$id` route param and the `{loan_id}`
+   * path param for `GET /v1/loan-book/{loan_id}/valuations` (issue #845).
+   */
+  loan_id: string;
   /** Originating party (e.g. `"Open Mineral"`). */
   originator: string;
   /** Borrower identifier. Not rendered on this page. */
