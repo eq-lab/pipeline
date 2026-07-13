@@ -89,17 +89,29 @@ const CARD_CLASS =
 
 function Hero({
   hero,
+  onBack,
 }: {
   hero: ReturnType<typeof useLoanDetailMock>["hero"];
+  /** When provided, the back affordance is a button (fake in-page nav) instead of a router Link. */
+  onBack?: () => void;
 }) {
+  const backClass =
+    "self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline";
   return (
     <div className="flex flex-col gap-[8px]">
-      <Link
-        to="/loans"
-        className="font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
-      >
-        {hero.backLabel}
-      </Link>
+      {onBack ? (
+        <button
+          type="button"
+          onClick={onBack}
+          className={`${backClass} cursor-pointer bg-transparent p-0 text-left`}
+        >
+          {hero.backLabel}
+        </button>
+      ) : (
+        <Link to="/loans" className={backClass}>
+          {hero.backLabel}
+        </Link>
+      )}
       <h1 className="font-[family-name:var(--font-display)] text-[44px] leading-[48.4px] text-[#262524]">
         {hero.title}
       </h1>
@@ -448,14 +460,20 @@ function OtherActionsCard({
   );
 }
 
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── View ────────────────────────────────────────────────────────────────────
 
-function LoanDetail() {
+/**
+ * The full loan-detail view. Rendered both by the `/loans/$id` route (below)
+ * and — until real routing is wired — inline from the Loans list as a "fake"
+ * in-page navigation (`onBack` returns to the list without a URL change). See
+ * `loans.tsx`.
+ */
+export function LoanDetailView({ onBack }: { onBack?: () => void }) {
   const mock = useLoanDetailMock();
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
-      <Hero hero={mock.hero} />
+      <Hero hero={mock.hero} onBack={onBack} />
       <DealJourney journey={mock.journey} />
       <SummaryTiles tiles={mock.tiles} />
       <div className="flex w-full flex-col gap-[16px] lg:flex-row">
@@ -469,5 +487,5 @@ function LoanDetail() {
 }
 
 export const Route = createFileRoute("/loans/$id")({
-  component: LoanDetail,
+  component: () => <LoanDetailView />,
 });

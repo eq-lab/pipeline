@@ -12,15 +12,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import { Route } from "./loans";
 
-// ── Mock router navigate (#847 row-click) + the data hook ─────────────────────
-
-const navigateSpy = vi.fn();
-vi.mock("@tanstack/react-router", async () => {
-  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
-    "@tanstack/react-router",
-  );
-  return { ...actual, useNavigate: () => navigateSpy };
-});
+// ── Mock the data hook ────────────────────────────────────────────────────────
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
@@ -98,7 +90,6 @@ function ready(data: LoanBookResponse) {
 
 beforeEach(() => {
   mockUseLoanBook.mockReset();
-  navigateSpy.mockReset();
 });
 
 // ── Ready state ────────────────────────────────────────────────────────────────
@@ -111,13 +102,19 @@ describe("Loans route (ready)", () => {
     expect(screen.getByRole("heading", { name: "Loans" })).toBeInTheDocument();
   });
 
-  it("navigates to /loans/$id when a row is clicked (#847)", () => {
+  it("opens the loan detail view in-place when a row is clicked, and back returns to the list (#847 fake nav)", () => {
     renderRoute();
     fireEvent.click(screen.getByTestId("loans-row"));
-    expect(navigateSpy).toHaveBeenCalledWith({
-      to: "/loans/$id",
-      params: { id: "Delta Commodities|Coffee|1785000000" },
-    });
+    // The list is swapped for the detail view (no URL change).
+    expect(
+      screen.getByTestId("loan-detail-price-collateral"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Helios Metals · Lithium" }),
+    ).toBeInTheDocument();
+    // Back affordance returns to the list.
+    fireEvent.click(screen.getByText("‹ Loans"));
+    expect(screen.getByRole("heading", { name: "Loans" })).toBeInTheDocument();
   });
 
   it("renders the five summary cards with the Figma values", () => {

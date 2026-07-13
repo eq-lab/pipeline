@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   useLoansTable,
@@ -8,6 +8,7 @@ import {
   type LoanTableRow,
   type LoansSummaryView,
 } from "./-useLoansTable";
+import { LoanDetailView } from "./loans.$id";
 
 /**
  * Loans — the real Trustee page (issue #843, Figma node `4116:9989`), replacing
@@ -391,18 +392,12 @@ function LoanRow({
 function LoansTable({
   activeTab,
   rows,
+  onOpenLoan,
 }: {
   activeTab: LoanTab;
   rows: LoanTableRow[];
+  onOpenLoan: (row: LoanTableRow) => void;
 }) {
-  const navigate = useNavigate();
-
-  function openLoan(row: LoanTableRow) {
-    // The loan detail page (#847) is a static mock, so `id` is cosmetic — the
-    // row's stable list key is passed as the route param.
-    void navigate({ to: "/loans/$id", params: { id: row.key } });
-  }
-
   return (
     <div
       className="w-full"
@@ -449,7 +444,7 @@ function LoansTable({
               key={row.key}
               row={row}
               isFirst={i === 0}
-              onOpen={openLoan}
+              onOpen={onOpenLoan}
             />
           ))}
         </div>
@@ -494,8 +489,16 @@ function CcrFootnote() {
 
 function Loans() {
   const [activeTab, setActiveTab] = useState<LoanTab>("Performing");
+  // ⚠️ TEMPORARY "fake" navigation (#847): clicking a row swaps this page for
+  // the loan detail view in-place — no URL change. Real routing to `/loans/$id`
+  // is deferred (the nested route needs a layout `<Outlet/>`); to be revisited.
+  const [detailOpen, setDetailOpen] = useState(false);
   const { state, errorMessage, summary, counts, rows } =
     useLoansTable(activeTab);
+
+  if (detailOpen) {
+    return <LoanDetailView onBack={() => setDetailOpen(false)} />;
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-[26px] px-4 py-12 md:px-8">
@@ -537,7 +540,11 @@ function Loans() {
               due" banner + "Record coupon" action are OMITTED (resolved Open
               Question 3: no /v1/loan-book data source). */}
           <div className="flex w-full flex-col rounded-[4px] bg-[color:var(--color-pipeline-surface)] pt-[36px] pr-[32px] pb-[32px] pl-[32px]">
-            <LoansTable activeTab={activeTab} rows={rows} />
+            <LoansTable
+              activeTab={activeTab}
+              rows={rows}
+              onOpenLoan={() => setDetailOpen(true)}
+            />
             <CcrFootnote />
           </div>
         </>
