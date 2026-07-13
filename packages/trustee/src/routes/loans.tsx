@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   useLoansTable,
@@ -309,12 +309,30 @@ function CcrCellView({ row }: { row: LoanTableRow }) {
   );
 }
 
-function LoanRow({ row, isFirst }: { row: LoanTableRow; isFirst: boolean }) {
+function LoanRow({
+  row,
+  isFirst,
+  onOpen,
+}: {
+  row: LoanTableRow;
+  isFirst: boolean;
+  onOpen: (row: LoanTableRow) => void;
+}) {
   return (
     <div
       data-testid="loans-row"
       role="row"
-      className="grid items-stretch"
+      tabIndex={0}
+      aria-label={`Open ${row.originator} loan`}
+      onClick={() => onOpen(row)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          // Prevent Space from scrolling the page.
+          e.preventDefault();
+          onOpen(row);
+        }
+      }}
+      className="grid cursor-pointer items-stretch"
       style={{
         gridTemplateColumns: GRID_TEMPLATE_COLUMNS,
         // Separator BETWEEN rows only — the first row's top edge is the box border.
@@ -377,6 +395,14 @@ function LoansTable({
   activeTab: LoanTab;
   rows: LoanTableRow[];
 }) {
+  const navigate = useNavigate();
+
+  function openLoan(row: LoanTableRow) {
+    // The loan detail page (#847) is a static mock, so `id` is cosmetic — the
+    // row's stable list key is passed as the route param.
+    void navigate({ to: "/loans/$id", params: { id: row.key } });
+  }
+
   return (
     <div
       className="w-full"
@@ -419,7 +445,12 @@ function LoansTable({
           style={{ border: `1px solid ${LINE_COLOR}`, borderTopWidth: "2px" }}
         >
           {rows.map((row, i) => (
-            <LoanRow key={row.key} row={row} isFirst={i === 0} />
+            <LoanRow
+              key={row.key}
+              row={row}
+              isFirst={i === 0}
+              onOpen={openLoan}
+            />
           ))}
         </div>
       )}

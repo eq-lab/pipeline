@@ -12,7 +12,15 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import { Route } from "./loans";
 
-// ── Mock the data hook ────────────────────────────────────────────────────────
+// ── Mock router navigate (#847 row-click) + the data hook ─────────────────────
+
+const navigateSpy = vi.fn();
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return { ...actual, useNavigate: () => navigateSpy };
+});
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
@@ -90,6 +98,7 @@ function ready(data: LoanBookResponse) {
 
 beforeEach(() => {
   mockUseLoanBook.mockReset();
+  navigateSpy.mockReset();
 });
 
 // ── Ready state ────────────────────────────────────────────────────────────────
@@ -100,6 +109,15 @@ describe("Loans route (ready)", () => {
   it("renders the Loans heading", () => {
     renderRoute();
     expect(screen.getByRole("heading", { name: "Loans" })).toBeInTheDocument();
+  });
+
+  it("navigates to /loans/$id when a row is clicked (#847)", () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loans-row"));
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: "/loans/$id",
+      params: { id: "Delta Commodities|Coffee|1785000000" },
+    });
   });
 
   it("renders the five summary cards with the Figma values", () => {
