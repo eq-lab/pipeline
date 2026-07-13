@@ -512,10 +512,14 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ### TD-42: Trustee Origination page duplicates the LP `loan_data` extractor, and two Figma cells have no backend source
 
-- **Date:** 2026-07-09 (updated 2026-07-10, issue #814)
+- **Date:** 2026-07-09 (updated 2026-07-10, issue #814; updated 2026-07-13, issue #843)
 - **Location:** `packages/trustee/src/api/useLoanSubmissions.ts`,
   `packages/trustee/src/routes/-useOriginationTable.ts`,
-  `packages/trustee/src/routes/origination.tsx` (issue #813); mirrored on the LP side by
+  `packages/trustee/src/routes/origination.tsx` (issue #813);
+  `packages/trustee/src/api/useLoanBook.ts`,
+  `packages/trustee/src/routes/-useLoansTable.ts`,
+  `packages/trustee/src/utils/formatUsd.ts` (`scaleRegistryAmount` /
+  `formatRegistryCompactUsd` / `formatRegistryFullUsd`, issue #843); mirrored on the LP side by
   `packages/frontend/src/api/useLoanSubmissions.ts` (pre-existing),
   `packages/frontend/src/components/dashboard/originationRow.ts` (`mapSubmissionToRow`, issue
   #814), and the `formatFullUsd` (in `packages/frontend/src/utils/formatCompactUsd.ts`) /
@@ -541,6 +545,24 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
      dashboard doesn't attempt this treatment at all (resolved, issue #814): it keeps its
      existing simple color-coded status label, since the LP app is read-only for submissions
      with no review route.
+
+  **Addendum (issue #843, Trustee Loans page — a fourth hand-mirroring):** the Trustee Loans page
+  (`useLoanBook.ts` + its self-contained `LoanBookSummary`/`LoanBookEntry`/`TopConcentration`/
+  `LoanBookResponse` types, `-useLoansTable.ts`'s row/summary mapping, and the new
+  `scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryFullUsd` helpers in the trustee
+  `formatUsd.ts`) hand-mirrors the LP frontend's `useLoanBook.ts` and
+  `packages/frontend/src/utils/formatCompactUsd.ts::scaleRegistryAmount` (issue #842) rather than
+  sharing them — the same epic-#775 app-separation constraint. Two extra wrinkles specific to this
+  page: (a) the trustee `useLoanBook` types carry the **post-#833 Trustee-only summary fields**
+  (`deployed_senior`, `weighted_rate`, `weighted_tenor_days`, `at_risk_wl_and_default_*`,
+  `top_concentration`, per-loan `senior_outstanding`/`ccr_bps`/`ccr_reported_at`/`spot_*`) that the
+  pre-#833 LP hook does **not**, so the two loan-book hooks have already drifted; and (b) the
+  `scaleRegistryAmount` ×1000 helpers and `-useLoansTable.ts`'s `correctCcrBps` (÷1000) are the
+  trustee copies of the **#840 registry-scale workaround** — cross-linked to TD-42-adjacent debt so
+  they are removed **together with the LP copies when backend issue #840 is fixed** (otherwise the
+  Loans-page amounts render 1000× too big and CCR 1000× too small). See #843's exec plan
+  (`docs/exec-plans/active/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
+  detail.
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own
