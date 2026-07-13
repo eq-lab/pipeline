@@ -302,6 +302,14 @@ pub struct SubmissionView {
     pub reason: Option<String>,
     /// The submitter (authenticated address).
     pub originator: String,
+    /// Chain the linked loan was drawn on; `null` while pre-drawn.
+    pub chain_id: Option<i64>,
+    /// On-chain loan id once the submission's loan is drawn and linked (by
+    /// `metadata_uri`); `null` while pre-drawn. Read-only pointer — the loan's live
+    /// state lives in the on-chain loan book (`GET /v1/loan-book`), not here. (The
+    /// `/submissions` listing returns only pre-drawn rows, so this is `null` there;
+    /// it is populated when a single submission is fetched after its loan is drawn.)
+    pub loan_id: Option<String>,
     /// Submission timestamp (RFC 3339).
     pub created_at: String,
     /// Last update timestamp (RFC 3339).
@@ -330,6 +338,8 @@ impl From<SubmittedLoanRow> for SubmissionView {
             status: r.status,
             reason: r.reason,
             originator: r.originator,
+            chain_id: r.chain_id,
+            loan_id: r.loan_id.map(|id| loan_key(&id)),
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
             documents: extract_documents(&r.loan_data),

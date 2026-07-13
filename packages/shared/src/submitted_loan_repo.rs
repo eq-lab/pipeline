@@ -9,9 +9,10 @@
 use std::fmt;
 use std::str::FromStr;
 
+use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 /// Lifecycle state of a submission. Stored as TEXT (with a CHECK constraint) in
 /// `submitted_loans.status`.
@@ -69,6 +70,12 @@ pub struct SubmittedLoanRow {
     pub reason: Option<String>,
     /// The authenticated submitter (JWT `sub`).
     pub originator: String,
+    /// Chain the linked loan was drawn on; `None` until drawn (pre-drawn).
+    pub chain_id: Option<i64>,
+    /// On-chain loan id once the loan is drawn and linked (by `metadata_uri`);
+    /// `None` while the submission is pre-drawn. Read-only pointer — on-chain *state*
+    /// (status/CCR/repayment) is not copied here; derive it from `contract_logs`.
+    pub loan_id: Option<BigDecimal>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -94,8 +101,12 @@ impl SubmittedLoanRepo {
         Ok(id)
     }
 
-    /// List submissions, newest first. `None` returns all; `Some(status)` filters
-    /// by lifecycle state.
+    /// List **pre-drawn** submissions (the review queue), newest first. Rows whose
+    /// loan has been drawn (`loan_id IS NOT NULL`) are excluded — once drawn, a loan
+    /// belongs to the on-chain loan book (`GET /v1/loan-book`), not the submissions
+    /// queue (Approach A: the pre-drawn / post-drawn split is the off-chain/on-chain
+    /// boundary). `None` returns all pre-drawn; `Some(status)` additionally filters by
+    /// review state.
     pub async fn list(
         &self,
         status: Option<SubmissionStatus>,
@@ -103,8 +114,10 @@ impl SubmittedLoanRepo {
         match status {
             Some(s) => {
                 sqlx::query_as::<_, SubmittedLoanRow>(
-                    "SELECT id, loan_data, status, reason, originator, created_at, updated_at \
-                     FROM submitted_loans WHERE status = $1 ORDER BY created_at DESC, id DESC",
+                    "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
+                     created_at, updated_at \
+                     FROM submitted_loans WHERE loan_id IS NULL AND status = $1 \
+                     ORDER BY created_at DESC, id DESC",
                 )
                 .bind(s.as_str())
                 .fetch_all(&self.pool)
@@ -112,8 +125,10 @@ impl SubmittedLoanRepo {
             }
             None => {
                 sqlx::query_as::<_, SubmittedLoanRow>(
-                    "SELECT id, loan_data, status, reason, originator, created_at, updated_at \
-                     FROM submitted_loans ORDER BY created_at DESC, id DESC",
+                    "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
+                     created_at, updated_at \
+                     FROM submitted_loans WHERE loan_id IS NULL \
+                     ORDER BY created_at DESC, id DESC",
                 )
                 .fetch_all(&self.pool)
                 .await
@@ -121,10 +136,11 @@ impl SubmittedLoanRepo {
         }
     }
 
-    /// Fetch a single submission by `id`.
+    /// Fetch a single submission by `id` (any stage — pre- or post-drawn).
     pub async fn find(&self, id: i64) -> Result<Option<SubmittedLoanRow>, sqlx::Error> {
         sqlx::query_as::<_, SubmittedLoanRow>(
-            "SELECT id, loan_data, status, reason, originator, created_at, updated_at \
+            "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
+             created_at, updated_at \
              FROM submitted_loans WHERE id = $1",
         )
         .bind(id)
@@ -151,6 +167,37 @@ impl SubmittedLoanRepo {
         .bind(new_status.as_str())
         .bind(reason)
         .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(affected > 0)
+    }
+
+    /// Thin bridge: point an open submission at its freshly-drawn on-chain loan,
+    /// matching by `metadata_uri` against the unlinked submission (`loan_id IS NULL`).
+    /// Sets **only** the `chain_id` / `loan_id` pointer — the submission's review
+    /// `status` is left frozen at its last pre-chain value, and on-chain state is NOT
+    /// copied here (Approach A: derive it from `contract_logs` at read time).
+    ///
+    /// Takes a caller-supplied connection so it runs inside the indexer's transaction.
+    /// Returns whether a submission was linked — `false` (no match) is normal (a loan
+    /// may be drawn with no prior submission), so callers must not fail indexing on it.
+    /// The partial unique index on `(loan_data->>'metadata_uri') WHERE loan_id IS NULL`
+    /// guarantees at most one row matches.
+    pub async fn link_drawn(
+        conn: &mut PgConnection,
+        metadata_uri: &str,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+    ) -> Result<bool, sqlx::Error> {
+        let affected = sqlx::query(
+            "UPDATE submitted_loans \
+                SET chain_id = $2, loan_id = $3, updated_at = now() \
+              WHERE loan_data->>'metadata_uri' = $1 AND loan_id IS NULL",
+        )
+        .bind(metadata_uri)
+        .bind(chain_id)
+        .bind(loan_id)
+        .execute(&mut *conn)
         .await?
         .rows_affected();
         Ok(affected > 0)
