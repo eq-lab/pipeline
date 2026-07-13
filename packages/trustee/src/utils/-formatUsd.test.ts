@@ -6,7 +6,14 @@
  * the bps-rate formatter used by the Origination table (issue #813).
  */
 import { describe, it, expect } from "vitest";
-import { formatBpsRate, formatCompactUsd, formatFullUsd } from "./formatUsd";
+import {
+  formatBpsRate,
+  formatCompactUsd,
+  formatFullUsd,
+  formatRegistryCompactUsd,
+  formatRegistryFullUsd,
+  scaleRegistryAmount,
+} from "./formatUsd";
 
 describe("formatCompactUsd", () => {
   it("formats whole millions without a decimal (Figma: $96M)", () => {
@@ -77,6 +84,70 @@ describe("formatFullUsd", () => {
 
   it("returns em-dash for non-numeric input", () => {
     expect(formatFullUsd("not-a-number")).toBe("—");
+  });
+});
+
+// ── #840 registry-scale workaround (issue #843) ──────────────────────────────
+
+describe("scaleRegistryAmount (#840 ×1000 workaround)", () => {
+  it("multiplies a registry base-6 amount by 1000 (1000× too small on the wire)", () => {
+    // A $1.2M facility arrives as "1200.000000" — scale to "1200000.000000".
+    expect(scaleRegistryAmount("1200.000000")).toBe("1200000.000000");
+  });
+
+  it("scales the Figma Deployed-senior value ($96M served as 96000)", () => {
+    expect(scaleRegistryAmount("96000.000000")).toBe("96000000.000000");
+  });
+
+  it("preserves fractional cents through the ×1000", () => {
+    expect(scaleRegistryAmount("1840.000000")).toBe("1840000.000000");
+  });
+
+  it("returns null for null/undefined (passthrough — caller decides how to render)", () => {
+    expect(scaleRegistryAmount(null)).toBeNull();
+    expect(scaleRegistryAmount(undefined)).toBeNull();
+  });
+
+  it("returns null for non-finite input", () => {
+    expect(scaleRegistryAmount("not-a-number")).toBeNull();
+  });
+});
+
+describe("formatRegistryCompactUsd (#840 ×1000 workaround)", () => {
+  it("scales then compact-formats (Figma Deployed senior: $96M)", () => {
+    expect(formatRegistryCompactUsd("96000.000000")).toBe("$96M");
+  });
+
+  it("scales then compact-formats the At-risk sub ($4.85M)", () => {
+    expect(formatRegistryCompactUsd("4850.000000")).toBe("$4.85M");
+  });
+
+  it("returns em-dash for null/undefined", () => {
+    expect(formatRegistryCompactUsd(null)).toBe("—");
+    expect(formatRegistryCompactUsd(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for non-numeric input", () => {
+    expect(formatRegistryCompactUsd("not-a-number")).toBe("—");
+  });
+});
+
+describe("formatRegistryFullUsd (#840 ×1000 workaround)", () => {
+  it("scales then full-formats the Senior outst. column (Figma: $1,840,000)", () => {
+    expect(formatRegistryFullUsd("1840.000000")).toBe("$1,840,000");
+  });
+
+  it("scales the second Figma row ($1,260,000)", () => {
+    expect(formatRegistryFullUsd("1260.000000")).toBe("$1,260,000");
+  });
+
+  it("returns em-dash for null/undefined", () => {
+    expect(formatRegistryFullUsd(null)).toBe("—");
+    expect(formatRegistryFullUsd(undefined)).toBe("—");
+  });
+
+  it("returns em-dash for non-numeric input", () => {
+    expect(formatRegistryFullUsd("not-a-number")).toBe("—");
   });
 });
 

@@ -1,6 +1,7 @@
 /**
  * Trustee-local money formatters for the Overview page's Capital Allocation
- * card (issue #797).
+ * card (issue #797), extended by the Origination page (issue #813) and the
+ * Loans page (issue #843).
  *
  * The trustee app deliberately does NOT depend on `@pipeline/frontend` (epic
  * #775 keeps the two apps separate), so these are self-contained ports of the
@@ -14,6 +15,53 @@
  * `GET /v1/capital-allocation` serves (`base6_to_decimal_string` on the
  * backend). Do not pass raw sub-unit bigints.
  */
+
+// ── scaleRegistryAmount ───────────────────────────────────────────────────────
+
+/**
+ * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
+ *
+ * The Stellar loan-registry stores economics amounts at **1e3 scale** (a
+ * `$1.2M` facility is `1_200_000_000` on-chain — see the `draw_loan` encoding,
+ * issue #831). Several backend surfaces read those back and serve them as if
+ * they were plain 6-decimal USDC, so they arrive **1000× too small**
+ * (`"1200.000000"` instead of `"1200000.000000"`). Confirmed (#841) on
+ * `GET /v1/loan-book`'s registry-sourced amounts (`summary.deployed_senior`,
+ * `summary.at_risk_wl_and_default_senior`, per-loan `senior_outstanding`) —
+ * the Trustee Loans page (issue #843).
+ *
+ * Hand-mirrored, byte-for-byte, from the LP frontend's
+ * `packages/frontend/src/utils/formatCompactUsd.ts::scaleRegistryAmount`
+ * (issue #842) — the two apps stay separate per epic #775, so this is a
+ * deliberate duplicate, not a shared import. See TD-42
+ * (`docs/exec-plans/tech-debt-tracker.md`).
+ *
+ * The proper fix is backend (#840). Until it lands, this is the shared ×1000
+ * core: scale the raw base-6 decimal string **at the source**, before it is
+ * formatted, summed into a total, or used in a ratio — so every downstream
+ * consumer (display string, aggregation, progress-bar ratio) sees a
+ * consistent, already-correct value. **When #840 is fixed, delete this
+ * helper and all its call sites** — otherwise amounts will render 1000×
+ * too BIG.
+ *
+ * Apply ONLY to registry-economics amounts. Do NOT apply to `collateral` /
+ * `total_collateral` (price feed, #706), `ccr_bps` / `at_risk_wl_and_default_pct`
+ * / `top_concentration.share` (backend-computed ratios — the ×1000 scale
+ * mixes into the numerator/denominator differently; see the Loans page's
+ * `-useLoansTable.ts` for the CCR-specific ÷1000 correction), or `tvl` /
+ * `accrued_interest_receivable` (already correct scale).
+ *
+ * @returns the scaled base-6 decimal string, or `null` for null/undefined/
+ *   non-finite input (passthrough — callers decide how to render "missing").
+ */
+export function scaleRegistryAmount(
+  base6Decimal: string | null | undefined,
+): string | null {
+  if (base6Decimal == null) return null;
+  const num = parseFloat(base6Decimal);
+  if (!Number.isFinite(num)) return null;
+  return (num * 1000).toFixed(6);
+}
 
 // ── formatCompactUsd ─────────────────────────────────────────────────────────
 
@@ -79,6 +127,42 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
     maximumFractionDigits: 0,
   }).format(num);
   return `$${formatted}`;
+}
+
+// ── formatRegistryCompactUsd / formatRegistryFullUsd ──────────────────────────
+
+/**
+ * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
+ *
+ * Compact-formats a registry-sourced amount after applying the ×1000
+ * `scaleRegistryAmount` correction. See that function's doc comment for the
+ * full rationale. **When #840 is fixed, delete this helper and revert the
+ * call sites to `formatCompactUsd`.**
+ *
+ * Apply ONLY to registry-economics amounts (Loans page: `deployed_senior`,
+ * `at_risk_wl_and_default_senior`). Do NOT use it for `collateral` — that
+ * comes from the price feed (#706), a different (already-correct) scale.
+ */
+export function formatRegistryCompactUsd(
+  base6Decimal: string | null | undefined,
+): string {
+  return formatCompactUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
+}
+
+/**
+ * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
+ *
+ * Fully-expands a registry-sourced amount (thousands separators, no decimal
+ * places) after applying the ×1000 `scaleRegistryAmount` correction — the
+ * Loans page's "Senior outst." column style (`formatFullUsd`) applied to a
+ * registry-sourced amount (`senior_outstanding`). See `scaleRegistryAmount`'s
+ * doc comment for the full rationale. **When #840 is fixed, delete this
+ * helper and revert the call site to `formatFullUsd`.**
+ */
+export function formatRegistryFullUsd(
+  base6Decimal: string | null | undefined,
+): string {
+  return formatFullUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
 }
 
 // ── formatBpsRate ─────────────────────────────────────────────────────────────
