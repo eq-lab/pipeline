@@ -108,6 +108,41 @@ function trimDecimals(value: number): string {
   return value.toFixed(2).replace(/\.?0+$/, "");
 }
 
+// ── formatCompactUsd2dp ───────────────────────────────────────────────────────
+
+/**
+ * Compact USD like `formatCompactUsd`, but with a FIXED two decimal places
+ * (trailing zeros kept) — the Loans-page table style (`$2.10M`, `$1.49M`,
+ * `$1.84M`, `$1.26M`, issue #843). Distinct from `formatCompactUsd`, which
+ * trims trailing zeros for the tighter Capital-Allocation legend precision
+ * (`$96M`, `$8.4M`).
+ *
+ * - `"2100000.000000"` → `"$2.10M"`
+ * - `"1490000.000000"` → `"$1.49M"`
+ * - `"500000.000000"`  → `"$500.00K"`
+ * - `"0.000000"`       → `"$0.00"`
+ * - `null | undefined` → `"—"`
+ * - non-numeric input  → `"—"`
+ */
+export function formatCompactUsd2dp(
+  base6Decimal: string | null | undefined,
+): string {
+  if (base6Decimal == null) return "—";
+  const num = parseFloat(base6Decimal);
+  if (!Number.isFinite(num)) return "—";
+
+  const abs = Math.abs(num);
+  const sign = num < 0 ? "-" : "";
+
+  if (abs >= 1_000_000) {
+    return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  }
+  if (abs >= 1_000) {
+    return `${sign}$${(abs / 1_000).toFixed(2)}K`;
+  }
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
 // ── formatFullUsd ─────────────────────────────────────────────────────────────
 
 /**
@@ -129,7 +164,7 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
   return `$${formatted}`;
 }
 
-// ── formatRegistryCompactUsd / formatRegistryFullUsd ──────────────────────────
+// ── formatRegistryCompactUsd / formatRegistryCompact2dpUsd ────────────────────
 
 /**
  * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
@@ -139,9 +174,10 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
  * full rationale. **When #840 is fixed, delete this helper and revert the
  * call sites to `formatCompactUsd`.**
  *
- * Apply ONLY to registry-economics amounts (Loans page: `deployed_senior`,
- * `at_risk_wl_and_default_senior`). Do NOT use it for `collateral` — that
- * comes from the price feed (#706), a different (already-correct) scale.
+ * Apply ONLY to registry-economics amounts (Loans page summary cards:
+ * `deployed_senior`, `at_risk_wl_and_default_senior`). Do NOT use it for
+ * `collateral` — that comes from the price feed (#706), a different
+ * (already-correct) scale.
  */
 export function formatRegistryCompactUsd(
   base6Decimal: string | null | undefined,
@@ -152,17 +188,17 @@ export function formatRegistryCompactUsd(
 /**
  * ⚠️ TEMPORARY WORKAROUND for issue #840 — REMOVE once the backend is fixed.
  *
- * Fully-expands a registry-sourced amount (thousands separators, no decimal
- * places) after applying the ×1000 `scaleRegistryAmount` correction — the
- * Loans page's "Senior outst." column style (`formatFullUsd`) applied to a
+ * Two-decimal compact form of a registry-sourced amount after applying the
+ * ×1000 `scaleRegistryAmount` correction — the Loans page's "Senior outst."
+ * column style (`formatCompactUsd2dp`, e.g. `$1.84M`) applied to a
  * registry-sourced amount (`senior_outstanding`). See `scaleRegistryAmount`'s
- * doc comment for the full rationale. **When #840 is fixed, delete this
- * helper and revert the call site to `formatFullUsd`.**
+ * doc comment for the full rationale. **When #840 is fixed, delete this helper
+ * and revert the call site to `formatCompactUsd2dp`.**
  */
-export function formatRegistryFullUsd(
+export function formatRegistryCompact2dpUsd(
   base6Decimal: string | null | undefined,
 ): string {
-  return formatFullUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
+  return formatCompactUsd2dp(scaleRegistryAmount(base6Decimal) ?? undefined);
 }
 
 // ── formatBpsRate ─────────────────────────────────────────────────────────────

@@ -65,6 +65,10 @@ import {
  *     header row sits above the box, unbordered (Origination precedent).
  *   - Body cells `Inter 16px / #262524`; originator semibold; stage + chevron
  *     ink-muted; CCR `Inter Bold 16.5px`; spot/age subs `12–12.5px` ink-muted.
+ *   - Senior outst. + Collateral: two-decimal compact (`$1.84M` / `$2.10M`,
+ *     `formatCompactUsd2dp`). Senior outst. is a deliberate deviation from the
+ *     Figma (which shows full dollars `$1,840,000`) — the two amount columns
+ *     were unified to the same 2-dp compact style during live review.
  *   - Footnote `Inter 13px / ink-muted`, `leading-[18.2px]`, coloured band spans.
  */
 

@@ -45,9 +45,9 @@ import type {
   LoanBookSummary,
 } from "@/api/useLoanBook";
 import {
-  formatCompactUsd,
+  formatCompactUsd2dp,
   formatRegistryCompactUsd,
-  formatRegistryFullUsd,
+  formatRegistryCompact2dpUsd,
 } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
 
@@ -122,9 +122,9 @@ export interface LoanTableRow {
   commodity: string;
   /** Spot sub-line, or `null` when the asset is unpriced (no sub-line). */
   spot: SpotLine | null;
-  /** Outstanding senior, #840-scaled full dollars (`$1,840,000`). */
+  /** Outstanding senior, #840-scaled two-decimal compact (`$1.84M`). */
   seniorOutstanding: string;
-  /** Collateral, compact USD, **unscaled** (price-feed, #706). `$2.10M` / `—`. */
+  /** Collateral, two-decimal compact USD, **unscaled** (price-feed, #706). `$2.10M` / `—`. */
   collateral: string;
   /** CCR cell, or `null` when `ccr_bps` is unavailable. */
   ccr: CcrCell | null;
@@ -289,9 +289,10 @@ export function mapEntryToRow(
     commodity: safeString(entry.commodity),
     spot: formatSpot(entry.spot_price, entry.spot_change_7d),
     // #840 workaround: senior_outstanding is registry-sourced ⇒ scale ×1000.
-    seniorOutstanding: formatRegistryFullUsd(entry.senior_outstanding),
+    // Two-decimal compact (e.g. $1.84M) to match the collateral column.
+    seniorOutstanding: formatRegistryCompact2dpUsd(entry.senior_outstanding),
     // collateral is price-feed sourced (#706) ⇒ already correct-scale, unscaled.
-    collateral: formatCompactUsd(entry.collateral),
+    collateral: formatCompactUsd2dp(entry.collateral),
     ccr,
     maturity: formatMaturityDate(entry.maturity),
     stage: safeString(entry.status),

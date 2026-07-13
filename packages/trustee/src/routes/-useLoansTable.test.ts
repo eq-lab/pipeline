@@ -154,10 +154,10 @@ describe("mapEntryToRow", () => {
     const row = mapEntryToRow(makeEntry(), NOW_MS);
     expect(row.originator).toBe("Delta Commodities");
     expect(row.commodity).toBe("Coffee");
-    // #840: senior_outstanding "1840" ⇒ $1,840,000 (×1000, full dollars).
-    expect(row.seniorOutstanding).toBe("$1,840,000");
-    // collateral is price-feed sourced ⇒ unscaled compact.
-    expect(row.collateral).toBe("$2.1M");
+    // #840: senior_outstanding "1840" ⇒ $1.84M (×1000, two-decimal compact).
+    expect(row.seniorOutstanding).toBe("$1.84M");
+    // collateral is price-feed sourced ⇒ unscaled, two-decimal compact.
+    expect(row.collateral).toBe("$2.10M");
     expect(row.spot).toEqual({ text: "$4,500 · −18% 7d", negative: true });
     expect(row.maturity).toBe(formatMaturityDate(1_785_000_000));
     expect(row.stage).toBe("WatchList");

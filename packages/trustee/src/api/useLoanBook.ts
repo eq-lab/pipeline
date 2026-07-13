@@ -20,7 +20,7 @@
  * `senior_outstanding`/`principal` are **registry-sourced** base-6 decimal
  * strings (already in human units, e.g. `"1200000.000000"` = $1.2M) that are
  * **1000× too small** on the wire (issue #840) — scale them with
- * `scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryFullUsd`
+ * `scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryCompact2dpUsd`
  * from `@/utils/formatUsd` before display. `collateral` (and
  * `total_collateral`, not used on this page) is price-feed sourced (#706)
  * and already correct-scale — do NOT scale it. `ccr_bps` and

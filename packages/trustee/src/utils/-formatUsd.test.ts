@@ -9,9 +9,10 @@ import { describe, it, expect } from "vitest";
 import {
   formatBpsRate,
   formatCompactUsd,
+  formatCompactUsd2dp,
   formatFullUsd,
   formatRegistryCompactUsd,
-  formatRegistryFullUsd,
+  formatRegistryCompact2dpUsd,
   scaleRegistryAmount,
 } from "./formatUsd";
 
@@ -87,6 +88,34 @@ describe("formatFullUsd", () => {
   });
 });
 
+describe("formatCompactUsd2dp", () => {
+  it("keeps a fixed two decimals in millions (Figma Collateral: $2.10M)", () => {
+    expect(formatCompactUsd2dp("2100000.000000")).toBe("$2.10M");
+  });
+
+  it("formats the second Figma collateral row ($1.49M)", () => {
+    expect(formatCompactUsd2dp("1490000.000000")).toBe("$1.49M");
+  });
+
+  it("keeps two decimals for thousands (K)", () => {
+    expect(formatCompactUsd2dp("500000.000000")).toBe("$500.00K");
+  });
+
+  it("formats zero with two decimals", () => {
+    expect(formatCompactUsd2dp("0.000000")).toBe("$0.00");
+  });
+
+  it("handles negatives", () => {
+    expect(formatCompactUsd2dp("-2100000.000000")).toBe("-$2.10M");
+  });
+
+  it("returns em-dash for null/undefined and non-numeric input", () => {
+    expect(formatCompactUsd2dp(null)).toBe("—");
+    expect(formatCompactUsd2dp(undefined)).toBe("—");
+    expect(formatCompactUsd2dp("not-a-number")).toBe("—");
+  });
+});
+
 // ── #840 registry-scale workaround (issue #843) ──────────────────────────────
 
 describe("scaleRegistryAmount (#840 ×1000 workaround)", () => {
@@ -132,22 +161,22 @@ describe("formatRegistryCompactUsd (#840 ×1000 workaround)", () => {
   });
 });
 
-describe("formatRegistryFullUsd (#840 ×1000 workaround)", () => {
-  it("scales then full-formats the Senior outst. column (Figma: $1,840,000)", () => {
-    expect(formatRegistryFullUsd("1840.000000")).toBe("$1,840,000");
+describe("formatRegistryCompact2dpUsd (#840 ×1000 workaround)", () => {
+  it("scales then 2-dp-compact-formats the Senior outst. column ($1.84M)", () => {
+    expect(formatRegistryCompact2dpUsd("1840.000000")).toBe("$1.84M");
   });
 
-  it("scales the second Figma row ($1,260,000)", () => {
-    expect(formatRegistryFullUsd("1260.000000")).toBe("$1,260,000");
+  it("scales the second Figma row ($1.26M)", () => {
+    expect(formatRegistryCompact2dpUsd("1260.000000")).toBe("$1.26M");
   });
 
   it("returns em-dash for null/undefined", () => {
-    expect(formatRegistryFullUsd(null)).toBe("—");
-    expect(formatRegistryFullUsd(undefined)).toBe("—");
+    expect(formatRegistryCompact2dpUsd(null)).toBe("—");
+    expect(formatRegistryCompact2dpUsd(undefined)).toBe("—");
   });
 
   it("returns em-dash for non-numeric input", () => {
-    expect(formatRegistryFullUsd("not-a-number")).toBe("—");
+    expect(formatRegistryCompact2dpUsd("not-a-number")).toBe("—");
   });
 });
 

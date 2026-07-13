@@ -134,7 +134,7 @@ describe("Loans route (ready)", () => {
     const rows = screen.getAllByTestId("loans-row");
     expect(rows).toHaveLength(1);
     expect(screen.getByText("Delta Commodities")).toBeInTheDocument();
-    expect(screen.getByText("$1,840,000")).toBeInTheDocument();
+    expect(screen.getByText("$1.84M")).toBeInTheDocument();
     const ccr = screen.getByTestId("loans-ccr");
     expect(ccr).toHaveTextContent("114%");
     expect(ccr).toHaveAttribute("data-band", "pre-default");
