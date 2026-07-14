@@ -99,6 +99,14 @@ export interface LoanBookSummary {
 
 /** One row in the active-loan table. */
 export interface LoanBookEntry {
+  /**
+   * On-chain loan id (`SubmissionView.loan_id`), served since the loan/chain-id
+   * addition to `GET /v1/loan-book`. Stable row key and the `/loans/$id` route
+   * param + the `{loan_id}` path segment for `useLoanValuation`.
+   */
+  loan_id: string;
+  /** Chain the loan lives on (Stellar chain id for the Trustee app). */
+  chain_id: number;
   /** Originating party (e.g. `"Open Mineral"`). */
   originator: string;
   /** Borrower identifier. Not rendered on this page. */

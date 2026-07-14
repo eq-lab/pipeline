@@ -17,7 +17,9 @@ import { Route as CashManagementRouteImport } from './routes/cash-management'
 import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
+import { Route as LoansIndexRouteImport } from './routes/loans.index'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
+import { Route as LoansIdRouteImport } from './routes/loans.$id'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -59,31 +61,44 @@ const OriginationIndexRoute = OriginationIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OriginationRoute,
 } as any)
+const LoansIndexRoute = LoansIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LoansRoute,
+} as any)
 const OriginationIdRoute = OriginationIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => OriginationRoute,
+} as any)
+const LoansIdRoute = LoansIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => LoansRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
+  '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/loans': typeof LoansIndexRoute
   '/origination': typeof OriginationIndexRoute
 }
 export interface FileRoutesById {
@@ -91,11 +106,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/loans': typeof LoansRoute
+  '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
   '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
+  '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
 }
 export interface FileRouteTypes {
@@ -108,17 +125,20 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
+    | '/loans/'
     | '/origination/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/audit-log'
     | '/cash-management'
-    | '/loans'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
+    | '/loans'
     | '/origination'
   id:
     | '__root__'
@@ -129,7 +149,9 @@ export interface FileRouteTypes {
     | '/origination'
     | '/risk-council'
     | '/sign-in'
+    | '/loans/$id'
     | '/origination/$id'
+    | '/loans/'
     | '/origination/'
   fileRoutesById: FileRoutesById
 }
@@ -137,7 +159,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditLogRoute: typeof AuditLogRoute
   CashManagementRoute: typeof CashManagementRoute
-  LoansRoute: typeof LoansRoute
+  LoansRoute: typeof LoansRouteWithChildren
   OriginationRoute: typeof OriginationRouteWithChildren
   RiskCouncilRoute: typeof RiskCouncilRoute
   SignInRoute: typeof SignInRoute
@@ -201,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OriginationIndexRouteImport
       parentRoute: typeof OriginationRoute
     }
+    '/loans/': {
+      id: '/loans/'
+      path: '/'
+      fullPath: '/loans/'
+      preLoaderRoute: typeof LoansIndexRouteImport
+      parentRoute: typeof LoansRoute
+    }
     '/origination/$id': {
       id: '/origination/$id'
       path: '/$id'
@@ -208,8 +237,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OriginationIdRouteImport
       parentRoute: typeof OriginationRoute
     }
+    '/loans/$id': {
+      id: '/loans/$id'
+      path: '/$id'
+      fullPath: '/loans/$id'
+      preLoaderRoute: typeof LoansIdRouteImport
+      parentRoute: typeof LoansRoute
+    }
   }
 }
+
+interface LoansRouteChildren {
+  LoansIdRoute: typeof LoansIdRoute
+  LoansIndexRoute: typeof LoansIndexRoute
+}
+
+const LoansRouteChildren: LoansRouteChildren = {
+  LoansIdRoute: LoansIdRoute,
+  LoansIndexRoute: LoansIndexRoute,
+}
+
+const LoansRouteWithChildren = LoansRoute._addFileChildren(LoansRouteChildren)
 
 interface OriginationRouteChildren {
   OriginationIdRoute: typeof OriginationIdRoute
@@ -229,7 +277,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
-  LoansRoute: LoansRoute,
+  LoansRoute: LoansRouteWithChildren,
   OriginationRoute: OriginationRouteWithChildren,
   RiskCouncilRoute: RiskCouncilRoute,
   SignInRoute: SignInRoute,

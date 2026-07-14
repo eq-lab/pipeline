@@ -29,6 +29,8 @@ const NOW_S = NOW_MS / 1000;
 
 function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
   return {
+    loan_id: "4488",
+    chain_id: 99_000_001,
     originator: "Delta Commodities",
     borrower: "borrower-1",
     commodity: "Coffee",
@@ -152,6 +154,9 @@ describe("formatSpot", () => {
 describe("mapEntryToRow", () => {
   it("scales registry senior ×1000, leaves collateral unscaled, maps the CCR", () => {
     const row = mapEntryToRow(makeEntry(), NOW_MS);
+    // The served loan_id is both the stable list key and the /loans/$id nav param.
+    expect(row.key).toBe("4488");
+    expect(row.loanId).toBe("4488");
     expect(row.originator).toBe("Delta Commodities");
     expect(row.commodity).toBe("Coffee");
     // #840: senior_outstanding "1840" ⇒ $1.84M (×1000, two-decimal compact).
@@ -238,9 +243,9 @@ describe("buildLoansView", () => {
   const data: LoanBookResponse = {
     summary: SUMMARY,
     loans: [
-      makeEntry({ originator: "Alpha", status: "Performing" }),
-      makeEntry({ originator: "Beta", status: "Performing" }),
-      makeEntry({ originator: "Gamma", status: "WatchList" }),
+      makeEntry({ loan_id: "1", originator: "Alpha", status: "Performing" }),
+      makeEntry({ loan_id: "2", originator: "Beta", status: "Performing" }),
+      makeEntry({ loan_id: "3", originator: "Gamma", status: "WatchList" }),
     ],
   };
 

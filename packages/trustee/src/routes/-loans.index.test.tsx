@@ -1,21 +1,33 @@
 /**
- * Render tests for the Trustee Loans route (issue #843).
+ * Render tests for the Trustee Loans list route (`loans.index.tsx`, issue #843).
  *
  * `useLoanBook` is mocked so the page renders against a representative response
  * without the query layer. Asserts the heading, the five summary cards, the
  * tab-bar + per-status counts, the table rows, the pre-default (`<120%`) CCR
  * band styling, `—` on null cells, the client-side tab filter, and the
- * CCR-band footnote — plus the loading / error / empty states.
+ * CCR-band footnote — plus the loading / error / empty states. Row-click now
+ * navigates to `/loans/$id` with the served `loan_id` (`useNavigate` mocked;
+ * the #847 in-page "fake nav" is gone).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { LoanBookResponse } from "@/api/useLoanBook";
-import { Route } from "./loans";
+
+// ── Mock the router navigation ─────────────────────────────────────────────────
+
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+    "@tanstack/react-router",
+  );
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 
 // ── Mock the data hook ────────────────────────────────────────────────────────
 
 vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
 import { useLoanBook } from "@/api/useLoanBook";
+import { Route } from "./loans.index";
 const mockUseLoanBook = vi.mocked(useLoanBook);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -36,6 +48,8 @@ const RESPONSE: LoanBookResponse = {
   },
   loans: [
     {
+      loan_id: "4488",
+      chain_id: 99_000_001,
       originator: "Delta Commodities",
       borrower: "b1",
       commodity: "Coffee",
@@ -54,6 +68,8 @@ const RESPONSE: LoanBookResponse = {
       status: "Performing",
     },
     {
+      loan_id: "4489",
+      chain_id: 99_000_001,
       originator: "Sahel Cocoa",
       borrower: "b2",
       commodity: "Cocoa",
@@ -90,16 +106,35 @@ function ready(data: LoanBookResponse) {
 
 beforeEach(() => {
   mockUseLoanBook.mockReset();
+  mockNavigate.mockReset();
 });
 
 // ── Ready state ────────────────────────────────────────────────────────────────
 
-describe("Loans route (ready)", () => {
+describe("Loans list route (ready)", () => {
   beforeEach(() => ready(RESPONSE));
 
   it("renders the Loans heading", () => {
     renderRoute();
     expect(screen.getByRole("heading", { name: "Loans" })).toBeInTheDocument();
+  });
+
+  it("navigates to /loans/$id with the loan_id when a row is clicked", () => {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loans-row"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id",
+      params: { id: "4488" },
+    });
+  });
+
+  it("navigates on keyboard activation (Enter)", () => {
+    renderRoute();
+    fireEvent.keyDown(screen.getByTestId("loans-row"), { key: "Enter" });
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id",
+      params: { id: "4488" },
+    });
   });
 
   it("renders the five summary cards with the Figma values", () => {
@@ -180,7 +215,7 @@ describe("Loans route (ready)", () => {
 
 // ── Empty / loading / error ─────────────────────────────────────────────────────
 
-describe("Loans route (empty book)", () => {
+describe("Loans list route (empty book)", () => {
   it("renders summary + a per-tab empty message when no loans are active", () => {
     ready({ ...RESPONSE, loans: [] });
     renderRoute();
@@ -191,7 +226,7 @@ describe("Loans route (empty book)", () => {
   });
 });
 
-describe("Loans route (loading)", () => {
+describe("Loans list route (loading)", () => {
   it("renders the skeleton", () => {
     mockUseLoanBook.mockReturnValue({
       data: undefined,
@@ -204,7 +239,7 @@ describe("Loans route (loading)", () => {
   });
 });
 
-describe("Loans route (error)", () => {
+describe("Loans list route (error)", () => {
   it("renders the error alert", () => {
     mockUseLoanBook.mockReturnValue({
       data: undefined,

@@ -563,6 +563,19 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   Loans-page amounts render 1000× too big and CCR 1000× too small). See #843's exec plan
   (`docs/exec-plans/active/issue-843-trustee-loans-page.md`) RISK 1 for the CCR/at-risk% scale-mix
   detail.
+
+  **Addendum (issues #845 / #847, Trustee Loan detail page — a fifth hand-mirroring):** the Loan
+  detail page's Price & collateral section hand-mirrors the backend
+  `CollateralValuationResponse` DTO (`packages/api/src/routes/collateral_valuation.rs`) as
+  `packages/trustee/src/api/useLoanValuation.ts`'s self-contained
+  `LoanValuationResponse`/`ValuationInputs`/`Waterfall`/`ValuationCcr`/`MetalInput`/`PenaltyInput`
+  types — same epic-#775 app-separation constraint, no LP counterpart exists. **Scale note:** unlike
+  `/v1/loan-book`, this endpoint recomputes money in **plain USD** (not the base-6/registry scale),
+  so its amount fields are already correct — the #840 `scaleRegistryAmount` ×1000 workaround is
+  **NOT** applied here (a documented divergence from the loan-book hand-mirror above). Also on this
+  branch the loan-book `LoanBookEntry` hand-mirror gained the `loan_id`/`chain_id` fields (added
+  backend-side in "add loan and chain ids to loan-book endpoint"), used as the `/loans/$id` route
+  param + the valuation path segment — port them if the LP hook ever adopts them.
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own
