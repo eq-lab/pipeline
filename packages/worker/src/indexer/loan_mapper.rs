@@ -14,6 +14,7 @@ use shared::{
     json_numeric::u256_to_bigdecimal,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
+    submitted_loan_repo::SubmittedLoanRepo,
 };
 
 use super::loan_metadata::{
@@ -492,7 +493,32 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             params: enriched_params,
         };
 
-        self.event_repo.insert_row(conn, &row, self.chain_id).await
+        self.event_repo.insert_row(conn, &row, self.chain_id).await?;
+
+        // Thin bridge (Approach A): when a loan is drawn, point its open submission at
+        // the new on-chain loan by matching `metadata_uri`. Pointer only — no on-chain
+        // state is copied into `submitted_loans`. Runs in the same transaction as the
+        // contract_logs write. A missing submission is normal (loan drawn with no prior
+        // submission) and must not fail indexing.
+        if self.event.event_name == "LoanDrawn" {
+            let linked = SubmittedLoanRepo::link_drawn(
+                conn,
+                &snapshot.metadata_uri_onchain,
+                self.chain_id,
+                &loan_id,
+            )
+            .await?;
+            tracing::info!(
+                chain_id = self.chain_id,
+                loan_id = %loan_id,
+                metadata_uri = %snapshot.metadata_uri_onchain,
+                linked,
+                "LoanDrawn: {} submission by metadata_uri",
+                if linked { "linked" } else { "no matching" }
+            );
+        }
+
+        Ok(())
     }
 }
 

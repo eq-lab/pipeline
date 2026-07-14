@@ -217,6 +217,8 @@ fn loans_sorted_by_principal_descending() {
 fn entry_carries_expected_fields() {
     let r = at(0, &fixture_loans(), &[]);
     let e = &r.loans[0];
+    assert_eq!(e.chain_id, 1);
+    assert_eq!(e.loan_id, "1");
     assert_eq!(e.originator, "Open Mineral");
     assert_eq!(e.borrower, "borrower-1");
     assert_eq!(e.commodity, "Copper Concentrate");

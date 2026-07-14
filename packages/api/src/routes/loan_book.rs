@@ -138,6 +138,12 @@ pub struct TopConcentration {
 /// One row in the Loan Book table.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoanBookEntry {
+    /// Chain the loan is drawn on.
+    pub chain_id: i64,
+    /// On-chain loan id (`uint256`, decimal string). Serialized as a string because a
+    /// `uint256` exceeds `u64` and JSON's safe-integer range — same convention as
+    /// `SubmissionView.loan_id`.
+    pub loan_id: String,
     /// Originating party (e.g. `"Open Mineral"`).
     pub originator: String,
     /// Borrower identifier from the loan snapshot.
@@ -296,12 +302,24 @@ pub struct SubmissionsQuery {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SubmissionView {
     pub id: i64,
-    /// `InReview` | `Approved` | `Rejected`.
+    /// Lifecycle status. While pre-drawn this is the trustee **review** state
+    /// (`InReview` | `Approved` | `Rejected`). Once the loan is drawn (`loan_id` set),
+    /// it is the loan's **live on-chain** status (`Performing` | `WatchList` |
+    /// `Default` | `Closed`), derived at read time from `contract_logs` — the weak
+    /// bridge never copies on-chain state onto the submission row.
     pub status: String,
-    /// Rejection reason; present iff `status = Rejected`.
+    /// Rejection reason; present iff the (stored review) status is `Rejected`.
     pub reason: Option<String>,
     /// The submitter (authenticated address).
     pub originator: String,
+    /// Chain the linked loan was drawn on; `null` while pre-drawn.
+    pub chain_id: Option<i64>,
+    /// On-chain loan id (`uint256`, decimal string) once the submission's loan is drawn
+    /// and linked by `metadata_uri`; `null` while pre-drawn. Read-only pointer — the
+    /// loan's live state lives in the on-chain loan book (`GET /v1/loan-book`); here it
+    /// backs the derived `status` above. Serialized as a string because a `uint256`
+    /// exceeds `u64` and JSON's safe-integer range.
+    pub loan_id: Option<String>,
     /// Submission timestamp (RFC 3339).
     pub created_at: String,
     /// Last update timestamp (RFC 3339).
@@ -330,6 +348,8 @@ impl From<SubmittedLoanRow> for SubmissionView {
             status: r.status,
             reason: r.reason,
             originator: r.originator,
+            chain_id: r.chain_id,
+            loan_id: r.loan_id.map(|id| loan_key(&id)),
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
             documents: extract_documents(&r.loan_data),
@@ -480,7 +500,41 @@ async fn list_submissions(
     };
 
     let rows = state.submitted_loan_repo.list(status).await?;
-    Ok(Json(rows.into_iter().map(SubmissionView::from).collect()))
+
+    // Weak bridge: a drawn submission's live status lives in `contract_logs`, not on
+    // the submission row (whose stored `status` is frozen at the review outcome). Derive
+    // it at read time — group the drawn rows by chain, fetch each loan's latest on-chain
+    // status, and override the view's `status` for those rows.
+    let mut ids_by_chain: HashMap<i64, Vec<BigDecimal>> = HashMap::new();
+    for r in &rows {
+        if let (Some(chain_id), Some(loan_id)) = (r.chain_id, r.loan_id.as_ref()) {
+            ids_by_chain.entry(chain_id).or_default().push(loan_id.clone());
+        }
+    }
+    let mut onchain_status: HashMap<(i64, String), String> = HashMap::new();
+    for (chain_id, loan_ids) in &ids_by_chain {
+        for (loan_id, status) in state
+            .contract_logs_repo
+            .latest_status_by_loans(&state.pool, *chain_id, loan_ids)
+            .await?
+        {
+            onchain_status.insert((*chain_id, loan_key(&loan_id)), status);
+        }
+    }
+
+    let views = rows
+        .into_iter()
+        .map(|r| {
+            let mut view = SubmissionView::from(r);
+            if let (Some(chain_id), Some(loan_id)) = (view.chain_id, view.loan_id.as_ref()) {
+                if let Some(status) = onchain_status.get(&(chain_id, loan_id.clone())) {
+                    view.status.clone_from(status);
+                }
+            }
+            view
+        })
+        .collect();
+    Ok(Json(views))
 }
 
 /// Approve or reject a submission. Trustee-only. A rejection must carry a
@@ -918,6 +972,8 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         let spot = spot_by_loan.get(&loan_key(&loan.loan_id));
 
         entries.push(LoanBookEntry {
+            chain_id: loan.chain_id,
+            loan_id: loan_key(&loan.loan_id),
             originator: s.originator.clone(),
             borrower: s.borrower_id.clone(),
             commodity: s.commodity.clone(),
