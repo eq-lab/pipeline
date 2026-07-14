@@ -7,6 +7,7 @@ pub mod emails;
 pub mod financial_position;
 pub mod kyc;
 pub mod loan_book;
+pub mod loan_financials;
 pub mod pnl;
 pub mod portfolio;
 pub mod stats;

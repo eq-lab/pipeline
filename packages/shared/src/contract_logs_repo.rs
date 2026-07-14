@@ -461,6 +461,49 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
+    /// Sum of `YieldMinted.s_plusd_amount` attributable to a single loan, in USDC
+    /// base units (6-decimal).
+    ///
+    /// Per-loan attribution goes through `yield_mint_outbox`: each confirmed mint
+    /// job carries the `tx_hash` of the mint transaction, and on Soroban a mint tx
+    /// corresponds to exactly one `(loan_id, repayment_id)` repayment. We therefore
+    /// sum the `YieldMinted` events whose `tx_hash` matches one of this loan's
+    /// `confirmed` outbox rows. `DISTINCT` guards a batch tx that would otherwise be
+    /// double-counted if several outbox rows shared a `tx_hash`.
+    ///
+    /// Returns `0` when the loan has no confirmed mints. Chain-scoped; the
+    /// yield-minter address is not needed because `(chain_id, loan_id)` already
+    /// pins the outbox rows.
+    pub async fn minted_yield_for_loan<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+    ) -> anyhow::Result<BigDecimal>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let minted: BigDecimal = sqlx::query_scalar(
+            "SELECT COALESCE(SUM((cl.params->>'s_plusd_amount')::numeric), 0)
+             FROM contract_logs cl
+             WHERE cl.chain_id = $1
+               AND cl.event_name = 'YieldMinted'
+               AND cl.tx_hash IN (
+                   SELECT DISTINCT o.tx_hash
+                   FROM yield_mint_outbox o
+                   WHERE o.chain_id = $1
+                     AND o.loan_id = $2
+                     AND o.status = 'confirmed'
+                     AND o.tx_hash IS NOT NULL
+               )",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .fetch_one(executor)
+        .await?;
+        Ok(minted)
+    }
+
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
     ///
     /// Used by the Capital Allocation API to compute the `in_transit` bucket as the
