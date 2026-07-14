@@ -138,6 +138,12 @@ pub struct TopConcentration {
 /// One row in the Loan Book table.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct LoanBookEntry {
+    /// Chain the loan is drawn on.
+    pub chain_id: i64,
+    /// On-chain loan id (`uint256`, decimal string). Serialized as a string because a
+    /// `uint256` exceeds `u64` and JSON's safe-integer range — same convention as
+    /// `SubmissionView.loan_id`.
+    pub loan_id: String,
     /// Originating party (e.g. `"Open Mineral"`).
     pub originator: String,
     /// Borrower identifier from the loan snapshot.
@@ -966,6 +972,8 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
         let spot = spot_by_loan.get(&loan_key(&loan.loan_id));
 
         entries.push(LoanBookEntry {
+            chain_id: loan.chain_id,
+            loan_id: loan_key(&loan.loan_id),
             originator: s.originator.clone(),
             borrower: s.borrower_id.clone(),
             commodity: s.commodity.clone(),
