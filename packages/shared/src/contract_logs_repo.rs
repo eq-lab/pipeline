@@ -273,6 +273,51 @@ impl ContractLogsRepo {
         Ok(result)
     }
 
+    /// Latest on-chain `status` for each of `loan_ids` on `chain_id`, as
+    /// `(loan_id, status)` pairs. The "latest" snapshot per loan wins (same ordering as
+    /// `list_latest_loan_snapshots_for_chain`). Loans with no indexed events are simply
+    /// absent from the result. Used to derive a linked submission's live status at read
+    /// time (the weak-bridge model keeps on-chain state in `contract_logs`, not on the
+    /// submission row).
+    pub async fn latest_status_by_loans<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_ids: &[bigdecimal::BigDecimal],
+    ) -> anyhow::Result<Vec<(bigdecimal::BigDecimal, String)>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        if loan_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, (bigdecimal::BigDecimal, String)>(
+            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+                 (params->>'loan_id')::numeric        AS loan_id,
+                 params->'snapshot'->>'status'        AS status
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND (params->>'loan_id')::numeric = ANY($2)
+             ORDER BY (params->>'loan_id')::numeric, block_number DESC, log_index DESC",
+        )
+        .bind(chain_id)
+        .bind(loan_ids)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
     /// Earliest `origination_date` (from `params->'snapshot'->>'origination_date'`)
     /// across all loans on a chain. Used by the API to default the "full history"
     /// lookback window. Returns `None` if no loan events have been indexed yet.

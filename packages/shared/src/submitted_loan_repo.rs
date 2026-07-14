@@ -101,12 +101,11 @@ impl SubmittedLoanRepo {
         Ok(id)
     }
 
-    /// List **pre-drawn** submissions (the review queue), newest first. Rows whose
-    /// loan has been drawn (`loan_id IS NOT NULL`) are excluded — once drawn, a loan
-    /// belongs to the on-chain loan book (`GET /v1/loan-book`), not the submissions
-    /// queue (Approach A: the pre-drawn / post-drawn split is the off-chain/on-chain
-    /// boundary). `None` returns all pre-drawn; `Some(status)` additionally filters by
-    /// review state.
+    /// List submissions, newest first — both pre-drawn (review queue) and drawn
+    /// (linked to an on-chain loan). The stored `status` is the frozen *review*
+    /// outcome; the API derives a drawn submission's live on-chain status at read time
+    /// from `contract_logs` (weak bridge — on-chain state is never copied onto the
+    /// submission row). `Some(status)` filters by the stored review state.
     pub async fn list(
         &self,
         status: Option<SubmissionStatus>,
@@ -116,7 +115,7 @@ impl SubmittedLoanRepo {
                 sqlx::query_as::<_, SubmittedLoanRow>(
                     "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
                      created_at, updated_at \
-                     FROM submitted_loans WHERE loan_id IS NULL AND status = $1 \
+                     FROM submitted_loans WHERE status = $1 \
                      ORDER BY created_at DESC, id DESC",
                 )
                 .bind(s.as_str())
@@ -127,7 +126,7 @@ impl SubmittedLoanRepo {
                 sqlx::query_as::<_, SubmittedLoanRow>(
                     "SELECT id, loan_data, status, reason, originator, chain_id, loan_id, \
                      created_at, updated_at \
-                     FROM submitted_loans WHERE loan_id IS NULL \
+                     FROM submitted_loans \
                      ORDER BY created_at DESC, id DESC",
                 )
                 .fetch_all(&self.pool)
