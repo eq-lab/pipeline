@@ -84,6 +84,47 @@ Origination row-click precedent (#823).
 whether #847 supersedes #845 or the live sections replace mock sections incrementally. Noted,
 not gating.
 
+## Follow-up on this branch — live migration (unblocks #845)
+Once `GET /v1/loan-book` began serving `loan_id`/`chain_id` (backend commit "add loan and chain
+ids to loan-book endpoint", merged from `main`), the two blocked sections migrated off the mock
+and the temporary in-page "fake navigation" was removed:
+
+1. **Real routing.** `loans.tsx` is now a pass-through `<Outlet/>` layout (mirrors
+   `origination.tsx`, #821); the list moved to `loans.index.tsx` and the detail page is the real
+   `/loans/$id` route. Rows navigate with `{ to: "/loans/$id", params: { id: loan_id } }`
+   (`-useLoansTable.ts` now keys rows on the served `loan_id`). The `detailOpen`/`onBack` hack is
+   gone.
+2. **Hero identity (live).** Sourced from the matching `/v1/loan-book` row (originator · commodity).
+   The **status block follows design-assignment §3.2**: the backend serves the raw on-chain status
+   as a string, and `statusToChip` maps it to the display chip + band on the frontend
+   (`Performing`→Performing, `Watchlist`→Watchlist, `Matured`→**Past Due** rename, `Default`,
+   `Closed`; ready before the backend emits `Matured`). The status bar carries **no dates** (maturity
+   is a key number, not a status field — §S5); the meta is `Loan #<id> · on-chain <raw status>` (the
+   raw status is always printed per §3.2). The `Disbursing` variant needs outbound-movement state
+   not served here, so a Performing loan renders "Performing". Degrades to `Loan #<id>` when no
+   active-book row matches (never fabricated).
+3. **Price & collateral (live).** New `useLoanValuation(loanId)` hook →
+   `GET /v1/loan-book/{loan_id}/valuations`; `-useLoanDetail.ts` builds the card view-model. Fields
+   the endpoint does not serve are **not** carried over from the mock (per never-fabricate): the
+   "feed 2h old" freshness note → real `price_provider` attribution; the on-chain-write footnote →
+   dropped; absent inputs → `—` + a real `missing_inputs` "Awaiting:" note. **Scale:** the
+   valuations endpoint returns plain-USD amounts, so the #840 ×1000 workaround is NOT applied here
+   (see tech-debt tracker TD-42 fifth-hand-mirroring addendum).
+4. **Loan-lifecycle stepper (live).** No longer the fabricated payment-journey mock (Funding /
+   Coupon / …). `buildLifecycle` renders the fixed ordered stepper — **Origination · Disbursing ·
+   Performing · Watchlist · Past Due · Default · Closed** — with the current step derived from the
+   on-chain status via `statusToChip` (earlier = done, later = pending). **Origination** is the
+   §3.1 In Review → Approved phase (before the loan exists on-chain), so it is always done for any
+   loan the loan-book returns. Node labels + short descriptors are §3.1/§3.2 copy (content from the
+   MD); the stepper **visual is kept from Figma** node `4116:10549`. The fabricated per-node dates
+   (`5 Jan · batch #B-102`, …) are dropped. Data limit (documented in code): on-chain `Performing`
+   maps to the **Performing** step, so **Disbursing** (approved on-chain, disbursement wire not yet
+   sent) also shows as done and is never the current step until the off-chain "wire sent" movement
+   signal is served.
+
+Still mock (no backend source yet): summary tiles · registry state · current stage · other actions
+(`-loanDetailMock.ts`, with the migrated `hero`/`priceCollateral`/`journey` slices removed).
+
 ## Docs to Update
 - `loans.$id.tsx` header: Figma node id + token map (Step 4).
 - No tech-debt entry needed (no new hand-mirrored API type — the mock has no backend counterpart).
