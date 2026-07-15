@@ -585,8 +585,9 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   registry/loan-snapshot-sourced, so they are treated as **#840 1000×-low** and scaled with
   `formatRegistryCompactUsd` in `-useLoanDetail.ts::buildFinancials` — **to be verified against real
   data**; if it turns out correct-scale, swap to `formatCompactUsd` (part of the #840 workaround
-  family, removed together when #840 is fixed). Two rows (`Epochs`, `Custodian co-sig on mint`) have
-  no field on this endpoint yet and render `—` pending clarification.
+  family, removed together when #840 is fixed). The `Custodian co-sig on mint` row has
+  no field on this endpoint yet and renders `—` pending clarification (the `Epochs` row is now
+  sourced from the endpoint's `epoch` object, #857).
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own

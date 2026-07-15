@@ -42,11 +42,17 @@ import type {
 } from "@/api/useLoanValuation";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type {
+  Epoch,
   LoanFinancialsResponse,
   UseLoanFinancialsResult,
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
-import { formatFullUsd, formatRegistryCompactUsd } from "@/utils/formatUsd";
+import {
+  formatBpsRate,
+  formatFullUsd,
+  formatRegistryCompactUsd,
+} from "@/utils/formatUsd";
+import { formatEpochDate } from "@/utils/formatDate";
 import {
   LOAN_DETAIL_MOCK,
   type CurrentStage,
@@ -442,6 +448,18 @@ const fmtRegistryUsd = formatRegistryCompactUsd;
  * fabricated. `not_minted_yield` is shown as a single figure (no vault/treasury
  * split — open question b).
  */
+/**
+ * Formats the current epoch as `"1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"`
+ * (number · APY · start → maturity); `—` when no epoch is on record (#857).
+ */
+function formatEpoch(epoch: Epoch | null): string {
+  if (epoch == null) return "—";
+  return (
+    `${epoch.number} · ${formatBpsRate(epoch.current_apy_bps)} · ` +
+    `${formatEpochDate(epoch.start_date)} → ${formatEpochDate(epoch.maturity_date)}`
+  );
+}
+
 export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
   const loc = data.location;
   const statusLocation = loc
@@ -450,8 +468,7 @@ export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
 
   return [
     { label: "Status / location", value: statusLocation, tag: "chain" },
-    // No epoch/terms field on /financials yet — pending clarification (#852).
-    { label: "Epochs", value: "—", tag: "chain" },
+    { label: "Epochs", value: formatEpoch(data.epoch), tag: "chain" },
     {
       label: "Recorded counters",
       value:

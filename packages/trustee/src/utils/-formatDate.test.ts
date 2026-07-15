@@ -4,7 +4,11 @@
  * formatters (issue #813).
  */
 import { describe, it, expect } from "vitest";
-import { formatMaturityDate, formatSubmittedDate } from "./formatDate";
+import {
+  formatEpochDate,
+  formatMaturityDate,
+  formatSubmittedDate,
+} from "./formatDate";
 
 describe("formatMaturityDate", () => {
   it("formats a Unix-seconds timestamp as day + short month + year (Figma: 15 Dec 2026)", () => {
@@ -44,5 +48,18 @@ describe("formatSubmittedDate", () => {
 
   it("returns em-dash for an unparseable string", () => {
     expect(formatSubmittedDate("not-a-date")).toBe("—");
+  });
+});
+
+describe("formatEpochDate", () => {
+  it("formats an RFC 3339 timestamp as day + short month + year (#857)", () => {
+    expect(formatEpochDate("2026-06-18T18:17:37Z")).toBe("18 Jun 2026");
+    expect(formatEpochDate("2029-08-19T04:04:17Z")).toBe("19 Aug 2029");
+  });
+
+  it("returns em-dash for null/undefined/unparseable", () => {
+    expect(formatEpochDate(null)).toBe("—");
+    expect(formatEpochDate(undefined)).toBe("—");
+    expect(formatEpochDate("not-a-date")).toBe("—");
   });
 });

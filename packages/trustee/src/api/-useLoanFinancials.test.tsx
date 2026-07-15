@@ -40,6 +40,12 @@ const FIXTURE: LoanFinancialsResponse = {
     tracking_url: "",
     updated_at: "2026-06-01T00:00:00Z",
   },
+  epoch: {
+    number: 1,
+    current_apy_bps: 1000,
+    start_date: "2026-06-18T18:17:37Z",
+    maturity_date: "2029-08-19T04:04:17Z",
+  },
   offtaker: "6300.000000",
   principal: "4800.000000",
   interest: "231.000000",
