@@ -88,7 +88,11 @@ function makeResult(
           value: "Performing · Vessel MV Andes",
           tag: "chain",
         },
-        { label: "Epochs", value: "—", tag: "chain" },
+        {
+          label: "Epochs",
+          value: "1 · 10.0% · 18 Jun 2026 → 19 Aug 2029",
+          tag: "chain",
+        },
         {
           label: "Recorded counters",
           value:
@@ -255,6 +259,9 @@ describe("Loan detail route — Registry state & derived (live)", () => {
     expect(within(reg).getByText("Status / location")).toBeInTheDocument();
     expect(
       within(reg).getByText("Performing · Vessel MV Andes"),
+    ).toBeInTheDocument();
+    expect(
+      within(reg).getByText("1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"),
     ).toBeInTheDocument();
     expect(
       within(reg).getByText(

@@ -351,6 +351,12 @@ function makeFinancials(
       tracking_url: "",
       updated_at: "2026-06-01T00:00:00Z",
     },
+    epoch: {
+      number: 1,
+      current_apy_bps: 1000,
+      start_date: "2026-06-18T18:17:37Z",
+      maturity_date: "2029-08-19T04:04:17Z",
+    },
     // Registry-sourced ⇒ 1000× low on the wire (#840); ×1000 helpers restore scale.
     offtaker: "6300.000000",
     principal: "4800.000000",
@@ -384,7 +390,11 @@ describe("buildFinancials", () => {
         value: "Performing · Vessel MV Andes",
         tag: "chain",
       },
-      { label: "Epochs", value: "—", tag: "chain" },
+      {
+        label: "Epochs",
+        value: "1 · 10.0% · 18 Jun 2026 → 19 Aug 2029",
+        tag: "chain",
+      },
       {
         label: "Recorded counters",
         value: "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
@@ -403,6 +413,11 @@ describe("buildFinancials", () => {
       value: "Performing",
       tag: "chain",
     });
+  });
+
+  it("renders — for the Epochs row when no epoch is on record (#857)", () => {
+    const rows = buildFinancials(makeFinancials({ epoch: null }));
+    expect(rows[1]).toEqual({ label: "Epochs", value: "—", tag: "chain" });
   });
 });
 

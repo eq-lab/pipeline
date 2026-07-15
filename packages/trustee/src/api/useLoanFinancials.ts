@@ -37,6 +37,18 @@ export interface LocationView {
   updated_at: string;
 }
 
+/** The loan's current epoch (genesis or latest rollover/amend). */
+export interface Epoch {
+  /** 1-based epoch number. */
+  number: number;
+  /** Current senior APY in basis points (`1000` = 10.0%). */
+  current_apy_bps: number;
+  /** Epoch start, RFC-3339 UTC timestamp. */
+  start_date: string;
+  /** Epoch maturity, RFC-3339 UTC timestamp. */
+  maturity_date: string;
+}
+
 /** Shape of the `GET /v1/loan-book/{loan_id}/financials` response. */
 export interface LoanFinancialsResponse {
   loan_id: string;
@@ -44,6 +56,8 @@ export interface LoanFinancialsResponse {
   status: string;
   /** Current physical location of the collateral; `null` when never reported. */
   location: LocationView | null;
+  /** Current epoch (number · APY · start → maturity); `null` when none on record. */
+  epoch: Epoch | null;
   /** Original offtaker price (USDC 6-decimal string) — total the offtaker owes. */
   offtaker: string;
   /** Principal deployed: `original_senior_tranche + original_equity_tranche`. */

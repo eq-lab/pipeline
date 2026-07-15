@@ -55,3 +55,19 @@ export function formatSubmittedDate(
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH).format(date);
 }
+
+/**
+ * Formats an RFC 3339 timestamp as `"18 Jun 2026"` (day + short month + year) —
+ * the loan-detail epoch range (`start_date → maturity_date`, issue #857). Keeps
+ * the year, unlike `formatSubmittedDate`, since epoch maturities can be years out.
+ *
+ * - `"2026-06-18T18:17:37Z"` → `"18 Jun 2026"`
+ * - `null | undefined` → `"—"`
+ * - unparseable string → `"—"`
+ */
+export function formatEpochDate(rfc3339: string | null | undefined): string {
+  if (rfc3339 == null) return "—";
+  const date = new Date(rfc3339);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", DAY_MONTH_YEAR).format(date);
+}
