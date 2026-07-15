@@ -5,13 +5,10 @@ import {
   type LabelValueRow,
   type LifecycleStep,
   type PriceCollateralView,
+  type RegistryView,
   type StatusBand,
 } from "./-useLoanDetail";
-import {
-  type RegistryRow,
-  type SummaryTile,
-  type TileTone,
-} from "./-loanDetailMock";
+import { type SummaryTile, type TileTone } from "./-loanDetailMock";
 
 /**
  * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
@@ -440,7 +437,7 @@ function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
 
 // ── Registry state & derived ──────────────────────────────────────────────────
 
-function RegistryCard({ registry }: { registry: RegistryRow[] }) {
+function RegistryCard({ registry }: { registry: RegistryView }) {
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[8px] p-[26px]`}
@@ -448,18 +445,51 @@ function RegistryCard({ registry }: { registry: RegistryRow[] }) {
       data-testid="loan-detail-registry"
     >
       <CardTitle>Registry state &amp; derived</CardTitle>
-      <div>
-        {registry.map((row, i) => (
-          <KeyValueRow
-            key={row.label}
-            label={row.label}
-            tag={row.tag}
-            isLast={i === registry.length - 1}
-          >
-            {row.value}
-          </KeyValueRow>
-        ))}
-      </div>
+
+      {registry.state === "loading" ? (
+        <div
+          data-testid="loan-detail-registry-loading"
+          className="flex flex-col gap-[10px] pt-[6px]"
+          aria-busy="true"
+        >
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="h-[22px] w-full animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)]"
+            />
+          ))}
+        </div>
+      ) : registry.state === "error" ? (
+        <p
+          role="alert"
+          data-testid="loan-detail-registry-error"
+          className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{ color: NEGATIVE_RED }}
+        >
+          {registry.errorMessage ?? "Failed to load the financials."}
+        </p>
+      ) : registry.state === "empty" ? (
+        <p
+          data-testid="loan-detail-registry-empty"
+          className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{ color: INK_MUTED }}
+        >
+          No financials on record for this loan.
+        </p>
+      ) : (
+        <div>
+          {registry.rows.map((row, i) => (
+            <KeyValueRow
+              key={row.label}
+              label={row.label}
+              tag={row.tag}
+              isLast={i === registry.rows.length - 1}
+            >
+              {row.value}
+            </KeyValueRow>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

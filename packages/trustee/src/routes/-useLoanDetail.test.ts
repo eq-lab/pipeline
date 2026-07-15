@@ -13,12 +13,18 @@ import type {
   LoanValuationResponse,
   UseLoanValuationResult,
 } from "@/api/useLoanValuation";
+import type {
+  LoanFinancialsResponse,
+  UseLoanFinancialsResult,
+} from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
 import {
+  buildFinancials,
   buildHero,
   buildLifecycle,
   buildPriceCollateral,
   buildPriceCollateralState,
+  buildRegistryState,
   statusToChip,
 } from "./-useLoanDetail";
 
@@ -333,5 +339,106 @@ describe("buildPriceCollateralState", () => {
     );
     expect(pc.state).toBe("ready");
     expect(pc.spot.main).toBe("$10,450");
+  });
+});
+
+// ── buildFinancials / buildRegistryState (issue #852) ─────────────────────────
+
+function makeFinancials(
+  overrides: Partial<LoanFinancialsResponse> = {},
+): LoanFinancialsResponse {
+  return {
+    loan_id: "4488",
+    status: "Performing",
+    location: {
+      location_type: "Vessel",
+      location_identifier: "MV Andes",
+      tracking_url: "",
+      updated_at: "2026-06-01T00:00:00Z",
+    },
+    // Registry-sourced ⇒ 1000× low on the wire (#840); ×1000 helpers restore scale.
+    offtaker: "6300.000000",
+    principal: "4800.000000",
+    interest: "231.000000",
+    fees: "69.000000",
+    minted_yield: "115.500000",
+    not_minted_yield: "115.500000",
+    offtaker_outstanding: "0.000000",
+    ...overrides,
+  };
+}
+
+function makeFinancialsQuery(
+  overrides: Partial<UseLoanFinancialsResult> = {},
+): UseLoanFinancialsResult {
+  return {
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+    ...overrides,
+  };
+}
+
+describe("buildFinancials", () => {
+  it("maps the financials to registry rows (registry amounts scaled ×1000)", () => {
+    const rows = buildFinancials(makeFinancials());
+    expect(rows).toEqual([
+      {
+        label: "Status / location",
+        value: "Performing · Vessel MV Andes",
+        tag: "chain",
+      },
+      { label: "Epochs", value: "—", tag: "chain" },
+      {
+        label: "Recorded counters",
+        value: "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
+        tag: "chain",
+      },
+      { label: "Offtaker still owed", value: "$0 of $6.3M", tag: "computed" },
+      { label: "Unminted yield", value: "$115.5K", tag: "computed" },
+      { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
+    ]);
+  });
+
+  it("shows the status alone when no location is reported (never fabricated)", () => {
+    const rows = buildFinancials(makeFinancials({ location: null }));
+    expect(rows[0]).toEqual({
+      label: "Status / location",
+      value: "Performing",
+      tag: "chain",
+    });
+  });
+});
+
+describe("buildRegistryState", () => {
+  it("maps a loading query to the loading state", () => {
+    expect(
+      buildRegistryState(makeFinancialsQuery({ isLoading: true })).state,
+    ).toBe("loading");
+  });
+
+  it("maps a 404 to the neutral 'empty' state", () => {
+    const view = buildRegistryState(
+      makeFinancialsQuery({ error: new ApiError("not found", 404) }),
+    );
+    expect(view.state).toBe("empty");
+    expect(view.rows).toEqual([]);
+  });
+
+  it("maps a non-404 error to the error state", () => {
+    const view = buildRegistryState(
+      makeFinancialsQuery({ error: new ApiError("boom", 500) }),
+    );
+    expect(view.state).toBe("error");
+    expect(view.errorMessage).toBe("boom");
+  });
+
+  it("maps loaded data to the ready view-model with rows", () => {
+    const view = buildRegistryState(
+      makeFinancialsQuery({ data: makeFinancials() }),
+    );
+    expect(view.state).toBe("ready");
+    expect(view.rows).toHaveLength(6);
   });
 });
