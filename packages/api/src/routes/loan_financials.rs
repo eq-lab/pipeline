@@ -26,7 +26,7 @@ use bigdecimal::BigDecimal;
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
-use shared::contract_logs_repo::LoanSnapshotRow;
+use shared::contract_logs_repo::{EconomicsEventRow, LoanSnapshotRow};
 use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
@@ -34,6 +34,16 @@ use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::AppState;
+
+/// Basis points per 100% (`10_000` bps = 100%). Matches `routes::loan_book::BPS_DENOM`.
+const BPS_DENOM: i64 = 10_000;
+
+/// The LoanRegistry contract's fixed-point `ONE` (= 100%). Economics-event rates
+/// (`LoanRolledOver` / `EconomicsAmended` `new_rate`) are scaled by 1e6, so
+/// `new_rate / 100` is bps (`150_000` → `1_500` bps = 15%). This is a *different
+/// scale* from the snapshot's bps origination rate — see `current_epoch`, which
+/// normalises event rates to bps on fold.
+const ECONOMICS_RATE_ONE: i64 = 1_000_000;
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
@@ -66,6 +76,27 @@ pub struct LoanFinancialsResponse {
 
     /// Offtaker amount still owed: `offtaker − repayment.offtaker_received`.
     pub offtaker_outstanding: String,
+
+    /// Current economics epoch (rate + date window + ordinal).
+    pub epoch: EpochView,
+}
+
+/// The loan's current economics epoch.
+///
+/// Epoch 1 opens at loan draw (`origination_date` → `original_maturity_date`, at
+/// the origination rate). Each `LoanRolledOver` opens a new epoch whose start is
+/// the previous epoch's maturity; an `EconomicsAmended` amends the current epoch's
+/// rate/maturity in place without advancing the ordinal.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EpochView {
+    /// 1-based epoch ordinal (1 = the original draw window).
+    pub number: u32,
+    /// Current APY in basis points (`1_120` = 11.2%) — the epoch's rate.
+    pub current_apy_bps: u32,
+    /// ISO-8601 UTC epoch start date.
+    pub start_date: String,
+    /// ISO-8601 UTC epoch maturity date.
+    pub maturity_date: String,
 }
 
 /// Collateral location, projected from the loan snapshot's `current_location`.
@@ -85,7 +116,7 @@ pub struct LocationView {
 #[derive(OpenApi)]
 #[openapi(
     paths(get_loan_financials),
-    components(schemas(LoanFinancialsResponse, LocationView)),
+    components(schemas(LoanFinancialsResponse, LocationView, EpochView)),
     modifiers(&SecurityAddon)
 )]
 pub struct LoanFinancialsDoc;
@@ -143,14 +174,25 @@ async fn get_loan_financials(
         .minted_yield_for_loan(&state.pool, chain_id, &loan_id)
         .await?;
 
-    Ok(Json(build_response(&row, &minted_yield)))
+    let economics_events = state
+        .contract_logs_repo
+        .list_loan_economics_events(&state.pool, chain_id, &loan_id)
+        .await?;
+
+    Ok(Json(build_response(&row, &minted_yield, &economics_events)))
 }
 
 // ── Assembly (pure) ────────────────────────────────────────────────────────────
 
-/// Assemble the response from the loan snapshot and the loan's minted-yield total.
-/// Pure and unit-testable: no DB, no clock.
-fn build_response(row: &LoanSnapshotRow, minted_yield: &BigDecimal) -> LoanFinancialsResponse {
+/// Assemble the response from the loan snapshot, the loan's minted-yield total,
+/// and its chronologically-ordered economics events. Pure and unit-testable: no
+/// DB, no clock. `pub` so the feature tests in `packages/api/tests/` can exercise
+/// it directly (project rule: tests live in `tests/`, not inline in `src/`).
+pub fn build_response(
+    row: &LoanSnapshotRow,
+    minted_yield: &BigDecimal,
+    economics_events: &[EconomicsEventRow],
+) -> LoanFinancialsResponse {
     let s: &LoanSnapshot = &row.snapshot;
 
     let principal = &s.original_senior_tranche + &s.original_equity_tranche;
@@ -176,7 +218,55 @@ fn build_response(row: &LoanSnapshotRow, minted_yield: &BigDecimal) -> LoanFinan
         minted_yield: base6_to_decimal_string(minted_yield),
         not_minted_yield: base6_to_decimal_string(&not_minted),
         offtaker_outstanding: base6_to_decimal_string(&offtaker_outstanding),
+        epoch: current_epoch(s, economics_events),
     }
+}
+
+/// Fold the ordered economics events onto epoch 1 (seeded from origination data)
+/// and project the resulting current epoch.
+///
+/// `LoanRolledOver` advances the ordinal and opens a new window starting at the
+/// prior maturity; `EconomicsAmended` overwrites the current window's rate and
+/// maturity without advancing the ordinal (per the loan-epoch model in the module
+/// docs). `events` must be ordered by `(block_number, log_index)`.
+fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
+    let mut number: u32 = 1;
+    let mut start = s.origination_date;
+    let mut maturity = s.original_maturity_date;
+    // Current rate in bps. The origination rate is already bps; event rates are
+    // the contract's 1e6-scaled fraction, normalised to bps on fold so the two
+    // scales are never mixed.
+    let mut rate_bps = s.senior_interest_rate_bps;
+
+    for e in events {
+        match e.event_name.as_str() {
+            "LoanRolledOver" => {
+                number += 1;
+                start = maturity;
+                maturity = e.new_maturity_timestamp;
+                rate_bps = economics_rate_to_bps(e.new_rate);
+            }
+            "EconomicsAmended" => {
+                maturity = e.new_maturity_timestamp;
+                rate_bps = economics_rate_to_bps(e.new_rate);
+            }
+            _ => {}
+        }
+    }
+
+    EpochView {
+        number,
+        current_apy_bps: rate_bps,
+        start_date: iso_utc_from_unix(start),
+        maturity_date: iso_utc_from_unix(maturity),
+    }
+}
+
+/// Contract-1e6-scaled event rate → bps: `new_rate × 10_000 / 1_000_000 = new_rate / 100`,
+/// rounded half-up (`150_000` → `1_500` bps = 15%).
+fn economics_rate_to_bps(new_rate: i64) -> u32 {
+    let bps = (new_rate * BPS_DENOM + ECONOMICS_RATE_ONE / 2) / ECONOMICS_RATE_ONE;
+    bps as u32
 }
 
 /// Project `current_location` to a `LocationView`, or `None` when no location has
@@ -194,144 +284,3 @@ fn location_view(s: &LoanSnapshot) -> Option<LocationView> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use shared::loan_snapshot::{LocationUpdateSnapshot, RepaymentSnapshot};
-
-    fn repayment(senior_interest: i64, mgmt: i64, perf: i64, offtaker_recv: i64) -> RepaymentSnapshot {
-        RepaymentSnapshot {
-            offtaker_received: BigDecimal::from(offtaker_recv),
-            senior_principal_repaid: BigDecimal::from(0),
-            senior_interest: BigDecimal::from(senior_interest),
-            equity_distributed: BigDecimal::from(0),
-            mgmt_fee: BigDecimal::from(mgmt),
-            perf_fee: BigDecimal::from(perf),
-            oet_alloc: BigDecimal::from(0),
-        }
-    }
-
-    fn snapshot(
-        status: &str,
-        senior_tranche: i64,
-        equity_tranche: i64,
-        offtaker_price: i64,
-        repayment: RepaymentSnapshot,
-        location: LocationUpdateSnapshot,
-    ) -> LoanSnapshot {
-        LoanSnapshot {
-            originator: String::new(),
-            borrower_id: String::new(),
-            commodity: String::new(),
-            corridor: String::new(),
-            governing_law: String::new(),
-            protection: String::new(),
-            metadata_uri: None,
-            documents: vec![],
-            original_facility_size: BigDecimal::from(senior_tranche + equity_tranche),
-            original_senior_tranche: BigDecimal::from(senior_tranche),
-            original_equity_tranche: BigDecimal::from(equity_tranche),
-            original_offtaker_price: BigDecimal::from(offtaker_price),
-            senior_interest_rate_bps: 1_200,
-            origination_date: 0,
-            original_maturity_date: 0,
-            next_economics_epochs_id: BigDecimal::from(0),
-            next_repayment_id: BigDecimal::from(0),
-            status: status.to_owned(),
-            ccr_bps: 12_000,
-            last_reported_ccr_timestamp: 0,
-            current_maturity_timestamp: 0,
-            closure_reason: String::new(),
-            current_location: location,
-            metadata_uri_onchain: String::new(),
-            repayment,
-        }
-    }
-
-    fn empty_location() -> LocationUpdateSnapshot {
-        LocationUpdateSnapshot {
-            location_type: String::new(),
-            location_identifier: String::new(),
-            tracking_url: String::new(),
-            updated_at: 0,
-        }
-    }
-
-    fn row(snapshot: LoanSnapshot) -> LoanSnapshotRow {
-        LoanSnapshotRow {
-            chain_id: 1,
-            loan_id: BigDecimal::from(42),
-            block_number: 0,
-            log_index: 0,
-            event_name: "PaymentRecorded".to_owned(),
-            block_timestamp: 0,
-            snapshot,
-        }
-    }
-
-    #[test]
-    fn derives_realized_figures_and_outstanding() {
-        // 1000 USDC offtaker, 900 principal (800 senior + 100 equity),
-        // 50 interest + (30 mgmt + 20 perf) fees realized, 40 minted,
-        // 600 offtaker received.
-        let snap = snapshot(
-            "Performing",
-            800_000_000,
-            100_000_000,
-            1_000_000_000,
-            repayment(50_000_000, 30_000_000, 20_000_000, 600_000_000),
-            empty_location(),
-        );
-        let resp = build_response(&row(snap), &BigDecimal::from(40_000_000));
-
-        assert_eq!(resp.loan_id, "42");
-        assert_eq!(resp.status, "Performing");
-        assert!(resp.location.is_none());
-        assert_eq!(resp.offtaker, "1000.000000");
-        assert_eq!(resp.principal, "900.000000");
-        assert_eq!(resp.interest, "50.000000");
-        assert_eq!(resp.fees, "50.000000");
-        assert_eq!(resp.minted_yield, "40.000000");
-        // (50 + 50) − 40 = 60
-        assert_eq!(resp.not_minted_yield, "60.000000");
-        // 1000 − 600 = 400
-        assert_eq!(resp.offtaker_outstanding, "400.000000");
-    }
-
-    #[test]
-    fn not_minted_yield_clamps_at_zero() {
-        let snap = snapshot(
-            "Performing",
-            100_000_000,
-            0,
-            100_000_000,
-            repayment(10_000_000, 0, 0, 0),
-            empty_location(),
-        );
-        // minted (25) exceeds realized interest+fees (10) → clamp to 0.
-        let resp = build_response(&row(snap), &BigDecimal::from(25_000_000));
-        assert_eq!(resp.not_minted_yield, "0.000000");
-    }
-
-    #[test]
-    fn location_projected_when_reported() {
-        let snap = snapshot(
-            "WatchList",
-            100_000_000,
-            0,
-            100_000_000,
-            repayment(0, 0, 0, 0),
-            LocationUpdateSnapshot {
-                location_type: "Vessel".to_owned(),
-                location_identifier: "MV Example".to_owned(),
-                tracking_url: "https://track.example/1".to_owned(),
-                updated_at: 0,
-            },
-        );
-        let resp = build_response(&row(snap), &BigDecimal::from(0));
-        let loc = resp.location.expect("location present");
-        assert_eq!(loc.location_type, "Vessel");
-        assert_eq!(loc.location_identifier, "MV Example");
-        assert_eq!(loc.updated_at, "1970-01-01T00:00:00Z");
-    }
-}
