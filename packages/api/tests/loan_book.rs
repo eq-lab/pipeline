@@ -8,7 +8,9 @@ use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
 
-use pipeline_api::routes::loan_book::{compute_loan_book, loan_key, LoanBookResponse, LoanSpot};
+use pipeline_api::routes::loan_book::{
+    compute_loan_book, display_status, loan_key, LoanBookResponse, LoanSpot,
+};
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 
@@ -90,7 +92,8 @@ fn make_loan(
             status: "Performing".to_owned(),
             ccr_bps: 11_750,
             last_reported_ccr_timestamp: 0,
-            current_maturity_timestamp: 0,
+            // Rollover-aware maturity defaults to the original maturity (no rollover).
+            current_maturity_timestamp: end_day * DAY,
             closure_reason: "None".to_owned(),
             current_location: zero_location(),
             metadata_uri_onchain: String::new(),
@@ -118,8 +121,23 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
     ]
 }
 
+/// Disbursement map marking every loan's off-ramp complete, so the displayed status
+/// reflects the raw on-chain status (Performing / WatchList) plus the Past Due
+/// override — not Disbursing. Tests exercising the Disbursing override pass their own
+/// map instead.
+fn all_complete(loans: &[LoanSnapshotRow]) -> HashMap<String, bool> {
+    loans.iter().map(|l| (loan_key(&l.loan_id), true)).collect()
+}
+
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> LoanBookResponse {
-    compute_loan_book(loans, events, t_day * DAY, &HashMap::new(), &HashMap::new())
+    compute_loan_book(
+        loans,
+        events,
+        t_day * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &all_complete(loans),
+    )
 }
 
 /// Like `at`, but with a per-loan collateral map.
@@ -129,7 +147,14 @@ fn at_with(
     events: &[LifecycleRow],
     collateral: &HashMap<String, BigDecimal>,
 ) -> LoanBookResponse {
-    compute_loan_book(loans, events, t_day * DAY, collateral, &HashMap::new())
+    compute_loan_book(
+        loans,
+        events,
+        t_day * DAY,
+        collateral,
+        &HashMap::new(),
+        &all_complete(loans),
+    )
 }
 
 /// Like `at`, but with a per-loan spot-price map.
@@ -138,7 +163,14 @@ fn at_with_spot(
     loans: &[LoanSnapshotRow],
     spot: &HashMap<String, LoanSpot>,
 ) -> LoanBookResponse {
-    compute_loan_book(loans, &[], t_day * DAY, &HashMap::new(), spot)
+    compute_loan_book(
+        loans,
+        &[],
+        t_day * DAY,
+        &HashMap::new(),
+        spot,
+        &all_complete(loans),
+    )
 }
 
 /// Build a `loan_id → LoanSpot` map keyed like the handler.
@@ -201,7 +233,11 @@ fn weighted_rate_and_tenor_mirror_avg_fields() {
 
 #[test]
 fn weighted_rate_and_tenor_null_when_no_active_loans() {
-    let r = at(500, &fixture_loans(), &[]); // both matured
+    // Both loans closed (past maturity alone no longer removes a loan — it becomes
+    // Past Due and stays active; only close/default empties the book).
+    let events = vec![event("LoanClosed", 1, 181), event("LoanClosed", 2, 121)];
+    let r = at(500, &fixture_loans(), &events);
+    assert!(r.loans.is_empty());
     assert_eq!(r.summary.weighted_rate, None);
     assert_eq!(r.summary.weighted_tenor_days, None);
 }
@@ -246,19 +282,22 @@ fn protection_maps_nonempty_to_some_and_empty_to_none() {
 }
 
 #[test]
-fn matured_loan_excluded() {
-    // Day 150: A active (0–180), B matured (ends day 120).
+fn matured_loan_stays_active_as_past_due() {
+    // Day 150: A active (0–180) → Performing; B past maturity (ends day 120) but not
+    // closed → stays in the book as `Past Due` (no longer excluded). Both count toward
+    // the summary.
     let r = at(150, &fixture_loans(), &[]);
-    assert_eq!(r.loans.len(), 1);
-    assert_eq!(r.loans[0].originator, "Open Mineral");
-    assert_eq!(r.summary.total_deployed, "100000.000000");
-    assert_eq!(r.summary.avg_yield.as_deref(), Some("0.120000"));
-    assert_eq!(r.summary.avg_duration_days, Some(180));
+    assert_eq!(r.loans.len(), 2);
+    let a = r.loans.iter().find(|e| e.loan_id == "1").unwrap();
+    let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
+    assert_eq!(a.status, "Performing");
+    assert_eq!(b.status, "Past Due");
+    assert_eq!(r.summary.total_deployed, "150000.000000");
 }
 
 #[test]
 fn closed_loan_excluded_via_lifecycle_event() {
-    // LoanClosed for A at day 100 → effective_end = min(180, 100) = 100.
+    // LoanClosed for A at day 100 → effective_end = 100 (the close event).
     // At day 110: A closed, B still active (30–120).
     let events = vec![LifecycleRow {
         event_name: "LoanClosed".to_owned(),
@@ -272,8 +311,9 @@ fn closed_loan_excluded_via_lifecycle_event() {
 
 #[test]
 fn no_active_loans_returns_empty_book() {
-    // Day 500: both matured.
-    let r = at(500, &fixture_loans(), &[]);
+    // Day 500: both loans closed (past maturity alone keeps them as Past Due).
+    let events = vec![event("LoanClosed", 1, 181), event("LoanClosed", 2, 121)];
+    let r = at(500, &fixture_loans(), &events);
     assert!(r.loans.is_empty());
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
@@ -282,7 +322,7 @@ fn no_active_loans_returns_empty_book() {
 
 #[test]
 fn empty_registry_returns_empty_book() {
-    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new());
+    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new(), &HashMap::new());
     assert!(r.loans.is_empty());
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
@@ -397,8 +437,8 @@ fn deployed_senior_sums_senior_tranche_only() {
 #[test]
 fn at_risk_includes_defaulted_loan_excluded_from_active_set() {
     // Loan 3: Default, originated day 0, maturity day 200, LoanDefaulted at day 50.
-    // At day 60 its effective_end = min(200, 50) = 50 → excluded from `active`, but
-    // it is still an open, at-risk position (no LoanClosed).
+    // At day 60 its effective_end = 50 (the default event) → excluded from `active`,
+    // but it is still an open, at-risk position (no LoanClosed).
     let mut loans = fixture_loans();
     loans.push(with_status(
         make_loan(3, 30, 0, 1000, 0, 200, "DefaultCo", "Coffee", ""),
@@ -477,7 +517,7 @@ fn top_concentration_aggregates_loans_of_the_same_commodity() {
 
 #[test]
 fn empty_book_defaults_the_trustee_metric_fields() {
-    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new());
+    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new(), &HashMap::new());
     assert_eq!(r.summary.deployed_senior, "0.000000");
     assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
     assert_eq!(r.summary.at_risk_wl_and_default_pct, None);
@@ -525,17 +565,17 @@ fn entry_spot_fields_null_when_absent_from_map() {
 // ── review fixes: at-risk maturity bound, NAV denominator, outstanding basis ──
 
 #[test]
-fn at_risk_excludes_watchlist_loan_past_maturity() {
-    // WatchList loan matured at day 100 with no LoanClosed event; at day 150 it must
-    // NOT count as at-risk (bounded by effective_end = maturity), so it can't linger
-    // indefinitely.
+fn at_risk_includes_watchlist_loan_past_maturity() {
+    // WatchList loan matured at day 100 with no LoanClosed event; at day 150 it is now
+    // `Past Due` — still an open, at-risk position — so its senior (25k) counts. (Only
+    // an explicit close/default removes a loan; maturity alone no longer does.)
     let mut loans = fixture_loans();
     loans.push(with_status(
         make_loan(3, 25, 0, 1000, 0, 100, "MaturedWatch", "Coffee", ""),
         "WatchList",
     ));
     let r = at(150, &loans, &[]);
-    assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
+    assert_eq!(r.summary.at_risk_wl_and_default_senior, "25000.000000");
 }
 
 #[test]
@@ -586,4 +626,100 @@ fn deployed_senior_and_concentration_use_outstanding_senior() {
     let top = r.summary.top_concentration.expect("present");
     assert_eq!(top.commodity, "Copper Concentrate");
     assert_eq!(top.share, "1.0000");
+}
+
+// ── Derived status overrides: Disbursing + Past Due ────────────────────────────
+
+/// Disbursement map marking the given loan ids complete; ids absent from the map
+/// default to incomplete (Disbursing).
+fn disbursement(complete_ids: &[i64]) -> HashMap<String, bool> {
+    complete_ids
+        .iter()
+        .map(|id| (loan_key(&BigDecimal::from(*id)), true))
+        .collect()
+}
+
+#[test]
+fn status_disbursing_when_off_ramp_incomplete() {
+    // Loan A active at day 0 with no completion recorded → Disbursing.
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+    );
+    assert_eq!(r.loans[0].status, "Disbursing");
+}
+
+#[test]
+fn status_reverts_to_onchain_when_off_ramp_complete() {
+    // Same loan, off-ramp complete → the live Performing status shows through.
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &disbursement(&[1]),
+    );
+    assert_eq!(r.loans[0].status, "Performing");
+}
+
+#[test]
+fn status_past_due_when_complete_and_past_current_maturity() {
+    // Loan B (ends day 120) at day 150 with off-ramp complete → Past Due.
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        150 * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &disbursement(&[1, 2]),
+    );
+    let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
+    assert_eq!(b.status, "Past Due");
+}
+
+#[test]
+fn status_disbursing_outranks_past_due() {
+    // Loan B past maturity AND off-ramp incomplete → Disbursing wins over Past Due.
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        150 * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &disbursement(&[1]), // loan 2 left incomplete
+    );
+    let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
+    assert_eq!(b.status, "Disbursing");
+}
+
+#[test]
+fn display_status_never_overrides_terminal_states() {
+    // Default / Closed pass through regardless of off-ramp or maturity.
+    assert_eq!(display_status("Default", false, 100, 0), "Default");
+    assert_eq!(display_status("Closed", false, 100, 0), "Closed");
+    assert_eq!(display_status("Default", true, 100, 200), "Default");
+}
+
+#[test]
+fn display_status_precedence_matrix() {
+    // Performing, complete, not matured → Performing.
+    assert_eq!(display_status("Performing", true, 50, 100), "Performing");
+    // Performing, complete, matured → Past Due.
+    assert_eq!(display_status("Performing", true, 150, 100), "Past Due");
+    // Performing, incomplete → Disbursing (even before maturity).
+    assert_eq!(display_status("Performing", false, 50, 100), "Disbursing");
+    // WatchList behaves like Performing for the overrides.
+    assert_eq!(display_status("WatchList", true, 150, 100), "Past Due");
+    assert_eq!(display_status("WatchList", false, 50, 100), "Disbursing");
+    // now == maturity is NOT past due (strictly greater).
+    assert_eq!(display_status("Performing", true, 100, 100), "Performing");
 }

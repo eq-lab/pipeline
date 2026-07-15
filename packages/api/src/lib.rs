@@ -14,6 +14,7 @@ use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
@@ -59,6 +60,8 @@ pub struct AppState {
     pub loan_asset_price_repo: LoanAssetPriceRepo,
     /// Per-loan collateral valuation record (anchor + assay/offtake/quantity).
     pub collateral_valuation_repo: CollateralValuationRepo,
+    /// Per-loan USDC off-ramp completion flag, backing the `Disbursing` status.
+    pub loan_disbursement_repo: LoanDisbursementRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
 }
