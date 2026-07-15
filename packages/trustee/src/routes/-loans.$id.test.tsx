@@ -76,10 +76,7 @@ function makeResult(
         state: "active",
         index: 3,
       },
-      { label: "Watchlist", sub: "elevated risk", state: "pending", index: 4 },
-      { label: "Past Due", sub: "overdue, unpaid", state: "pending", index: 5 },
-      { label: "Default", sub: "council declared", state: "pending", index: 6 },
-      { label: "Closed", sub: "terminal", state: "pending", index: 7 },
+      { label: "Closed", sub: "terminal", state: "pending", index: 4 },
     ],
     tiles: LOAN_DETAIL_MOCK.tiles,
     registry: {
@@ -310,20 +307,15 @@ describe("Loan detail route — Registry state & derived (live)", () => {
 });
 
 describe("Loan detail route — still-mock sections", () => {
-  it("renders the seven lifecycle statuses (live, from the stepper view-model)", () => {
+  it("renders the 4-node spine and NOT risk states as steps (#854)", () => {
     renderRoute();
     const lifecycle = screen.getByTestId("loan-detail-lifecycle");
-    for (const label of [
-      "Origination",
-      "Disbursing",
-      "Performing",
-      "Watchlist",
-      "Past Due",
-      "Default",
-      "Closed",
-    ]) {
+    for (const label of ["Origination", "Disbursing", "Performing", "Closed"]) {
       expect(within(lifecycle).getByText(label)).toBeInTheDocument();
     }
+    // Risk branch states are not sequential steps for a healthy Performing loan.
+    expect(within(lifecycle).queryByText("Past Due")).not.toBeInTheDocument();
+    expect(within(lifecycle).queryByText("Default")).not.toBeInTheDocument();
   });
 
   it("renders the three summary tiles", () => {
