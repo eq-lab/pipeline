@@ -576,6 +576,17 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   branch the loan-book `LoanBookEntry` hand-mirror gained the `loan_id`/`chain_id` fields (added
   backend-side in "add loan and chain ids to loan-book endpoint"), used as the `/loans/$id` route
   param + the valuation path segment — port them if the LP hook ever adopts them.
+
+  **Addendum (issue #852, Trustee Loan detail — a sixth hand-mirroring):** the loan detail's
+  "Registry state & derived" section hand-mirrors the backend `LoanFinancialsResponse` DTO
+  (`packages/api/src/routes/loan_financials.rs`) as `packages/trustee/src/api/useLoanFinancials.ts`'s
+  self-contained `LoanFinancialsResponse`/`LocationView` types — same epic-#775 constraint, no LP
+  counterpart. **Scale (open, #852):** unlike `/valuations`, this endpoint's money fields are
+  registry/loan-snapshot-sourced, so they are treated as **#840 1000×-low** and scaled with
+  `formatRegistryCompactUsd` in `-useLoanDetail.ts::buildFinancials` — **to be verified against real
+  data**; if it turns out correct-scale, swap to `formatCompactUsd` (part of the #840 workaround
+  family, removed together when #840 is fixed). Two rows (`Epochs`, `Custodian co-sig on mint`) have
+  no field on this endpoint yet and render `—` pending clarification.
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own

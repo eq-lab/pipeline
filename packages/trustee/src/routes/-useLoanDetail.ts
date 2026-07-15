@@ -17,8 +17,10 @@
  *     (`useLoanValuation`).
  *   - **Loan-lifecycle stepper** ← derived from the on-chain status
  *     (`buildLifecycle`); no longer a static fixture (design assignment §3.2).
- *   - Summary tiles · registry state · current stage · other actions ←
- *     `LOAN_DETAIL_MOCK` (no backend source yet).
+ *   - **Registry state & derived** ← `GET /v1/loan-book/{loan_id}/financials`
+ *     (`useLoanFinancials`, issue #852).
+ *   - Summary tiles · current stage · other actions ← `LOAN_DETAIL_MOCK` (no
+ *     backend source yet).
  *
  * ## Never-fabricate (memory: no frontend-computed metrics)
  * The valuation endpoint drives P&C directly; fields it does not serve are NOT
@@ -38,13 +40,17 @@ import type {
   LoanValuationResponse,
   UseLoanValuationResult,
 } from "@/api/useLoanValuation";
+import { useLoanFinancials } from "@/api/useLoanFinancials";
+import type {
+  LoanFinancialsResponse,
+  UseLoanFinancialsResult,
+} from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
-import { formatFullUsd } from "@/utils/formatUsd";
+import { formatFullUsd, formatRegistryCompactUsd } from "@/utils/formatUsd";
 import {
   LOAN_DETAIL_MOCK,
   type CurrentStage,
   type OtherActions,
-  type RegistryRow,
   type SummaryTile,
 } from "./-loanDetailMock";
 
@@ -90,6 +96,23 @@ export interface PriceCollateralView {
   missingNote: string | null;
 }
 
+/** Source tag shown next to a registry row's label. */
+export type RegistryTag = "chain" | "computed" | "relayer";
+
+/** One row of the "Registry state & derived" card, with its source tag. */
+export interface RegistryRow {
+  label: string;
+  value: string;
+  tag: RegistryTag;
+}
+
+/** The "Registry state & derived" card view-model (its own load/error/ready state). */
+export interface RegistryView {
+  state: "loading" | "error" | "empty" | "ready";
+  errorMessage: string | null;
+  rows: RegistryRow[];
+}
+
 export type LoanDetailState = "loading" | "error" | "ready";
 
 export interface UseLoanDetailResult {
@@ -99,7 +122,7 @@ export interface UseLoanDetailResult {
   hero: HeroView;
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
-  registry: RegistryRow[];
+  registry: RegistryView;
   currentStage: CurrentStage;
   otherActions: OtherActions;
   priceCollateral: PriceCollateralView;
@@ -374,17 +397,102 @@ function placeholderPc(
   };
 }
 
+// ── Registry state & derived (issue #852) ────────────────────────────────────
+
+/**
+ * ⚠️ #840 workaround (issue #852 open question a) — the financials money fields
+ * are registry/loan-snapshot-sourced, so they are treated as **1000× too small on
+ * the wire** and scaled ×1000 (`formatRegistryCompactUsd`), the same family as the
+ * loan-book `senior_outstanding` correction. **Verify against real data**; if this
+ * endpoint serves correct-scale amounts, swap to `formatCompactUsd`.
+ */
+const fmtRegistryUsd = formatRegistryCompactUsd;
+
+/**
+ * Builds the "Registry state & derived" rows from the financials response.
+ *
+ * `Epochs` and `Custodian co-sig on mint` have no field on this endpoint yet, so
+ * they render `—` pending clarification (issue #852 open question c) — never
+ * fabricated. `not_minted_yield` is shown as a single figure (no vault/treasury
+ * split — open question b).
+ */
+export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
+  const loc = data.location;
+  const statusLocation = loc
+    ? `${data.status} · ${loc.location_type} ${loc.location_identifier}`.trim()
+    : data.status;
+
+  return [
+    { label: "Status / location", value: statusLocation, tag: "chain" },
+    // No epoch/terms field on /financials yet — pending clarification (#852).
+    { label: "Epochs", value: "—", tag: "chain" },
+    {
+      label: "Recorded counters",
+      value:
+        `offtaker ${fmtRegistryUsd(data.offtaker)} · ` +
+        `principal ${fmtRegistryUsd(data.principal)} · ` +
+        `interest ${fmtRegistryUsd(data.interest)} · ` +
+        `fees ${fmtRegistryUsd(data.fees)}`,
+      tag: "chain",
+    },
+    {
+      label: "Offtaker still owed",
+      value: `${fmtRegistryUsd(data.offtaker_outstanding)} of ${fmtRegistryUsd(data.offtaker)}`,
+      tag: "computed",
+    },
+    {
+      label: "Unminted yield",
+      value: fmtRegistryUsd(data.not_minted_yield),
+      tag: "computed",
+    },
+    // No custodian-co-sig / mint-queue field on /financials yet — pending (#852).
+    { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
+  ];
+}
+
+/**
+ * Maps the financials query's load/error/data states to the Registry view-model.
+ * A 404 (`ApiError.status === 404`) — no financials on record for the loan —
+ * renders a neutral `"empty"` note, not a red error (mirrors P&C).
+ */
+export function buildRegistryState(
+  financials: UseLoanFinancialsResult,
+): RegistryView {
+  if (financials.isLoading) {
+    return { state: "loading", errorMessage: null, rows: [] };
+  }
+  if (financials.error) {
+    if (
+      financials.error instanceof ApiError &&
+      financials.error.status === 404
+    ) {
+      return { state: "empty", errorMessage: null, rows: [] };
+    }
+    return { state: "error", errorMessage: financials.error.message, rows: [] };
+  }
+  if (financials.data) {
+    return {
+      state: "ready",
+      errorMessage: null,
+      rows: buildFinancials(financials.data),
+    };
+  }
+  return { state: "ready", errorMessage: null, rows: [] };
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * Wires the loan-book row (hero) + the per-loan valuation (Price & collateral)
- * for `loanId`, composed with the still-mock sections. The top-level `state`
- * tracks the loan-book fetch (hero source); Price & collateral carries its own
- * `state` so it can load/error independently within the page.
+ * Wires the loan-book row (hero + lifecycle), the per-loan valuation (Price &
+ * collateral), and the per-loan financials (Registry state & derived) for
+ * `loanId`, composed with the still-mock sections. The top-level `state` tracks
+ * the loan-book fetch (hero source); Price & collateral and Registry each carry
+ * their own `state` so they load/error independently within the page.
  */
 export function useLoanDetail(loanId: string): UseLoanDetailResult {
   const loanBook = useLoanBook();
   const valuation = useLoanValuation(loanId);
+  const financials = useLoanFinancials(loanId);
 
   const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
 
@@ -405,7 +513,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
     tiles: LOAN_DETAIL_MOCK.tiles,
-    registry: LOAN_DETAIL_MOCK.registry,
+    registry: buildRegistryState(financials),
     currentStage: LOAN_DETAIL_MOCK.currentStage,
     otherActions: LOAN_DETAIL_MOCK.otherActions,
     priceCollateral,

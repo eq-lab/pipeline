@@ -82,7 +82,27 @@ function makeResult(
       { label: "Closed", sub: "terminal", state: "pending", index: 7 },
     ],
     tiles: LOAN_DETAIL_MOCK.tiles,
-    registry: LOAN_DETAIL_MOCK.registry,
+    registry: {
+      state: "ready",
+      errorMessage: null,
+      rows: [
+        {
+          label: "Status / location",
+          value: "Performing · Vessel MV Andes",
+          tag: "chain",
+        },
+        { label: "Epochs", value: "—", tag: "chain" },
+        {
+          label: "Recorded counters",
+          value:
+            "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
+          tag: "chain",
+        },
+        { label: "Offtaker still owed", value: "$0 of $6.3M", tag: "computed" },
+        { label: "Unminted yield", value: "$115.5K", tag: "computed" },
+        { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
+      ],
+    },
     currentStage: LOAN_DETAIL_MOCK.currentStage,
     otherActions: LOAN_DETAIL_MOCK.otherActions,
     priceCollateral: {
@@ -231,6 +251,64 @@ describe("Loan detail route — Price & collateral (live)", () => {
   });
 });
 
+describe("Loan detail route — Registry state & derived (live)", () => {
+  it("renders the financials rows + source tags", () => {
+    renderRoute();
+    const reg = screen.getByTestId("loan-detail-registry");
+    expect(within(reg).getByText("Status / location")).toBeInTheDocument();
+    expect(
+      within(reg).getByText("Performing · Vessel MV Andes"),
+    ).toBeInTheDocument();
+    expect(
+      within(reg).getByText(
+        "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
+      ),
+    ).toBeInTheDocument();
+    expect(within(reg).getByText("$0 of $6.3M")).toBeInTheDocument();
+    expect(within(reg).getByText("Unminted yield")).toBeInTheDocument();
+    expect(
+      within(reg).getByText("Custodian co-sig on mint"),
+    ).toBeInTheDocument();
+    expect(within(reg).getAllByText("relayer").length).toBeGreaterThan(0);
+  });
+
+  it("renders the loading skeleton while financials load", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        registry: { state: "loading", errorMessage: null, rows: [] },
+      }),
+    );
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-registry-loading"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders a neutral 'no financials' note for a 404 (empty state)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        registry: { state: "empty", errorMessage: null, rows: [] },
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-registry-empty")).toHaveTextContent(
+      "No financials on record for this loan.",
+    );
+  });
+
+  it("renders the error message when financials fail", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        registry: { state: "error", errorMessage: "boom", rows: [] },
+      }),
+    );
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-registry-error")).toHaveTextContent(
+      "boom",
+    );
+  });
+});
+
 describe("Loan detail route — still-mock sections", () => {
   it("renders the seven lifecycle statuses (live, from the stepper view-model)", () => {
     renderRoute();
@@ -256,16 +334,6 @@ describe("Loan detail route — still-mock sections", () => {
     expect(
       within(tiles).getByText("Interest to distribute"),
     ).toBeInTheDocument();
-  });
-
-  it("renders the Registry state & derived rows with source tags", () => {
-    renderRoute();
-    const reg = screen.getByTestId("loan-detail-registry");
-    expect(within(reg).getByText("Status / location")).toBeInTheDocument();
-    expect(
-      within(reg).getByText("Custodian co-sig on mint"),
-    ).toBeInTheDocument();
-    expect(within(reg).getAllByText("relayer").length).toBeGreaterThan(0);
   });
 
   it("renders the current-stage card + primary action", () => {

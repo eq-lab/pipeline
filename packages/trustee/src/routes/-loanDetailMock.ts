@@ -12,8 +12,10 @@
  *   - **Price & collateral** → `GET /v1/loan-book/{loan_id}/valuations`.
  *   - **Loan-lifecycle stepper** → derived from the on-chain status
  *     (`buildLifecycle` in `-useLoanDetail.ts`, design assignment §3.2).
- * Still mock (no backend source yet): summary tiles · registry state · current
- * stage · other actions.
+ *   - **Registry state & derived** → `GET /v1/loan-book/{loan_id}/financials`
+ *     (`useLoanFinancials` + `buildFinancials`, issue #852).
+ * Still mock (no backend source yet): summary tiles · current stage · other
+ * actions.
  *
  * The copy below matches the Figma reference exactly (a design mock, so the
  * fabricated-detail rules that gate the live build do not apply here).
@@ -32,15 +34,6 @@ export interface SummaryTile {
   subTone: TileTone;
 }
 
-export type RegistryTag = "chain" | "computed" | "relayer";
-
-/** One row of the "Registry state & derived" card, with its source tag. */
-export interface RegistryRow {
-  label: string;
-  value: string;
-  tag: RegistryTag;
-}
-
 export interface CurrentStage {
   title: string;
   /** Right-aligned tag, e.g. `"Relayer + custodian mint · monitor only"`. */
@@ -56,7 +49,6 @@ export interface OtherActions {
 
 export interface LoanDetailMock {
   tiles: SummaryTile[];
-  registry: RegistryRow[];
   currentStage: CurrentStage;
   otherActions: OtherActions;
 }
@@ -82,30 +74,6 @@ export const LOAN_DETAIL_MOCK: LoanDetailMock = {
       value: "$115.5K",
       sub: "final coupon · mint pending",
       subTone: "attention",
-    },
-  ],
-  registry: [
-    {
-      label: "Status / location",
-      value: "Performing · MV Andes, IMO 9741205",
-      tag: "chain",
-    },
-    { label: "Epochs", value: "1 · 13.0% · 2 Jan → 30 Jun", tag: "chain" },
-    {
-      label: "Recorded counters",
-      value: "offtaker $6.30M · principal $4.8M · interest $231K · fees $69K",
-      tag: "chain",
-    },
-    { label: "Offtaker still owed", value: "$0 of $6.30M", tag: "computed" },
-    {
-      label: "Unminted — vault / treasury",
-      value: "$115.5K / $34.5K",
-      tag: "computed",
-    },
-    {
-      label: "Custodian co-sig on mint",
-      value: "awaiting USDC",
-      tag: "relayer",
     },
   ],
   currentStage: {
