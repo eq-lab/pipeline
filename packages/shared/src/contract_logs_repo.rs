@@ -97,6 +97,31 @@ pub struct AssetTransferRow {
     pub amount: BigDecimal,
 }
 
+/// One `LoanRolledOver` or `EconomicsAmended` event for a single loan, projected
+/// from the top-level `params` keys the indexer emits (`new_rate`,
+/// `new_maturity_timestamp`) — see the EVM/Stellar `parse_loan_rolled_over` /
+/// `parse_economics_amended` parsers, whose tests lock this shape.
+///
+/// Used to reconstruct the loan's economics-epoch timeline: epoch 1 is seeded from
+/// the loan's origination data, then these events are folded on in chronological
+/// order — a `LoanRolledOver` opens a new epoch (its start = the prior epoch's
+/// maturity), while an `EconomicsAmended` amends the current epoch in place.
+///
+/// `new_rate` is the contract's fixed-point rate (scaled by `ONE = 1_000_000`, so
+/// `150_000` = 15%) — note this differs from the snapshot's `senior_interest_rate_bps`
+/// bps scale. `new_maturity_timestamp` is Unix seconds. Both are `->>` text-extracted
+/// then cast, so the EVM (JSON number) and Stellar (JSON string) encodings decode
+/// identically.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct EconomicsEventRow {
+    /// `"LoanRolledOver"` or `"EconomicsAmended"`.
+    pub event_name: String,
+    /// New senior interest rate, scaled by the contract's `ONE = 1_000_000`.
+    pub new_rate: i64,
+    /// New maturity timestamp (Unix seconds).
+    pub new_maturity_timestamp: i64,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -502,6 +527,43 @@ impl ContractLogsRepo {
         .fetch_one(executor)
         .await?;
         Ok(minted)
+    }
+
+    /// The `LoanRolledOver` and `EconomicsAmended` events for a single loan,
+    /// ordered chronologically by `(block_number, log_index)`.
+    ///
+    /// Callers fold these onto the loan's origination data to rebuild the
+    /// economics-epoch timeline (see [`EconomicsEventRow`]). `new_rate` /
+    /// `new_maturity_timestamp` are read from the top-level `params` keys the
+    /// indexer emits — the parser tests in `packages/worker/tests/` lock that
+    /// shape. `COALESCE(…, 0)` guards a malformed row missing either field so a
+    /// NULL cannot fail-decode the whole query.
+    pub async fn list_loan_economics_events<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+    ) -> anyhow::Result<Vec<EconomicsEventRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, EconomicsEventRow>(
+            "SELECT
+                 event_name,
+                 COALESCE((params->>'new_rate')::numeric, 0)::bigint AS new_rate,
+                 COALESCE((params->>'new_maturity_timestamp')::numeric, 0)::bigint
+                     AS new_maturity_timestamp
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
+               AND (params->>'loan_id')::numeric = $2
+             ORDER BY block_number, log_index",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
     }
 
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
