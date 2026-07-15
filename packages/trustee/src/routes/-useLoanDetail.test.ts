@@ -162,75 +162,70 @@ describe("buildHero", () => {
 // ── buildLifecycle (design assignment §3.2 status stepper) ────────────────────
 
 describe("buildLifecycle", () => {
-  const labels = (rawStatus: string | undefined) =>
+  const spine = (rawStatus: string | undefined) =>
     buildLifecycle(rawStatus).map((s) => `${s.label}:${s.state}`);
 
-  it("opens with Origination then the §3.2 statuses, in order", () => {
+  it("is the 4-node happy-path spine — risk states are not sequential steps (#854)", () => {
     expect(buildLifecycle("Performing").map((s) => s.label)).toEqual([
       "Origination",
       "Disbursing",
       "Performing",
-      "Watchlist",
-      "Past Due",
-      "Default",
       "Closed",
     ]);
   });
 
-  it("marks a Performing loan: Origination + Disbursing done, Performing active", () => {
-    expect(labels("Performing")).toEqual([
+  it("a Performing loan's only forward step is Closed (no Past Due/Default upcoming)", () => {
+    expect(spine("Performing")).toEqual([
       "Origination:done",
       "Disbursing:done",
       "Performing:active",
-      "Watchlist:pending",
-      "Past Due:pending",
-      "Default:pending",
       "Closed:pending",
     ]);
   });
 
-  it("marks a WatchList loan active at Watchlist (earlier done, later pending)", () => {
-    expect(labels("WatchList")).toEqual([
-      "Origination:done",
-      "Disbursing:done",
-      "Performing:done",
-      "Watchlist:active",
-      "Past Due:pending",
-      "Default:pending",
-      "Closed:pending",
-    ]);
+  it("shows the current live status on the live node — Watchlist", () => {
+    const steps = buildLifecycle("WatchList");
+    expect(steps[2]).toMatchObject({
+      label: "Watchlist",
+      state: "active",
+      sub: "elevated risk",
+    });
+    expect(steps[3]).toMatchObject({ label: "Closed", state: "pending" });
   });
 
-  it("maps on-chain Matured to the Past Due step being active", () => {
+  it("maps on-chain Matured to a Past Due live node (still → Closed, not a step)", () => {
     const steps = buildLifecycle("Matured");
-    expect(steps.find((s) => s.state === "active")?.label).toBe("Past Due");
+    expect(steps[2]).toMatchObject({ label: "Past Due", state: "active" });
+    expect(steps[3]).toMatchObject({ label: "Closed", state: "pending" });
   });
 
-  it("marks a Closed loan: every earlier step done, Closed active", () => {
-    expect(labels("Closed")).toEqual([
+  it("shows Default as the live-node branch state (→ Closed)", () => {
+    const steps = buildLifecycle("Default");
+    expect(steps[2]).toMatchObject({ label: "Default", state: "active" });
+    expect(steps[3]).toMatchObject({ label: "Closed", state: "pending" });
+  });
+
+  it("marks a Closed loan: spine done, Closed active", () => {
+    expect(spine("Closed")).toEqual([
       "Origination:done",
       "Disbursing:done",
       "Performing:done",
-      "Watchlist:done",
-      "Past Due:done",
-      "Default:done",
       "Closed:active",
     ]);
   });
 
-  it("keeps Origination done even when the status is present but unmapped", () => {
-    expect(labels("???")).toEqual([
-      "Origination:done",
-      "Disbursing:pending",
-      "Performing:pending",
-      "Watchlist:pending",
-      "Past Due:pending",
-      "Default:pending",
-      "Closed:pending",
+  it("keeps the spine done for a present-but-unmapped status (live node active)", () => {
+    const steps = buildLifecycle("???");
+    expect(steps.map((s) => s.state)).toEqual([
+      "done",
+      "done",
+      "active",
+      "pending",
     ]);
+    expect(steps[2]?.label).toBe("???");
   });
 
-  it("leaves every step pending when there is no status at all (no loan-book row)", () => {
+  it("leaves every step pending when there is no status (no loan-book row)", () => {
     expect(buildLifecycle(undefined).every((s) => s.state === "pending")).toBe(
       true,
     );

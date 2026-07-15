@@ -183,9 +183,9 @@ export type StepState = "done" | "active" | "pending";
 
 /** One node of the loan-lifecycle stepper. */
 export interface LifecycleStep {
-  /** Status label (the §3.2 chip label). */
+  /** Node label — a spine phase, or the current live status on the live node. */
   label: string;
-  /** Short descriptor beneath the node, from the §3.2 "Meaning" column. */
+  /** Short descriptor beneath the node (static design copy, not per-loan data). */
   sub: string;
   state: StepState;
   /** 1-based position shown inside active/pending nodes (done nodes show a check). */
@@ -193,52 +193,78 @@ export interface LifecycleStep {
 }
 
 /**
- * The loan lifecycle, in order — the stepper's fixed node list. It opens with
- * **Origination** (the §3.1 In Review → Approved phase, before the loan exists
- * on-chain), which is always complete for any loan the loan-book returns; then
- * the §3.2 chip statuses. Sub-lines are short descriptors distilled from the
- * MD's "Meaning" columns (static design copy, not per-loan data).
+ * Short descriptor for each live status on the middle "live" node (design
+ * assignment §3.2 "Meaning" column).
  */
-const LIFECYCLE: readonly { label: string; sub: string }[] = [
-  { label: "Origination", sub: "reviewed & approved" },
-  { label: "Disbursing", sub: "minted, not yet funded" },
-  { label: "Performing", sub: "deployed & current" },
-  { label: "Watchlist", sub: "elevated risk" },
-  { label: "Past Due", sub: "overdue, unpaid" },
-  { label: "Default", sub: "council declared" },
-  { label: "Closed", sub: "terminal" },
-] as const;
+const LIVE_STATUS_SUB: Record<string, string> = {
+  Performing: "deployed & current",
+  Watchlist: "elevated risk",
+  "Past Due": "overdue, unpaid",
+  Default: "council declared",
+};
 
 /**
- * Builds the loan-lifecycle stepper from the raw on-chain status. Any loan the
- * loan-book returns has already cleared **Origination** (it exists on-chain), so
- * that first step is always done. The current step is then the mapped chip label
- * (`statusToChip`); earlier steps render done, later steps pending.
+ * Builds the loan-lifecycle stepper from the raw on-chain status.
  *
- * Data note: on-chain `Performing` maps to the **Performing** step, so
- * **Disbursing** (approved on-chain but the disbursement wire not yet sent) also
- * shows as done and is never the current step here — distinguishing it needs the
- * off-chain "wire sent" movement signal, which this page is not served yet. The
- * step exists so the derivation is ready the moment that signal lands. An
- * absent status (no loan-book row) leaves every step pending — never fabricated.
+ * The stepper is the **happy-path spine** of the design-assignment §3.2 status
+ * diagram — `Origination → Disbursing → (live) → Closed` — NOT a linear list of
+ * every status. Watchlist / Past Due / Default are **branch flows off the live
+ * state**, not sequential stages, so they are never shown as "upcoming" steps
+ * (issue #854): a healthy Performing loan's only forward step is **Closed**.
+ *
+ * The middle **live node** reflects where the loan actually is: while live it
+ * takes the current status label (`Performing` / `Watchlist` / `Past Due` /
+ * `Default` via `statusToChip`); once `Closed` it reads as the completed
+ * `Performing` phase. States:
+ *   - `Origination` — done for any loan the loan-book returns (it exists on-chain).
+ *   - `Disbursing` — done for any live/closed loan; never the current step until
+ *     the off-chain "wire sent" movement signal is served (on-chain `Performing`
+ *     maps to the live node, not Disbursing).
+ *   - live node — active while the loan is live; done once Closed.
+ *   - `Closed` — active when the status is `Closed`, else pending.
+ *
+ * An absent status (no loan-book row) leaves every step pending — never fabricated.
  */
 export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   const hasStatus = rawStatus != null && rawStatus.length > 0;
-  const currentLabel = hasStatus ? statusToChip(rawStatus).label : null;
-  const currentIndex = currentLabel
-    ? LIFECYCLE.findIndex((s) => s.label === currentLabel)
-    : -1;
-  return LIFECYCLE.map((step, i) => {
-    let state: StepState;
-    if (currentIndex < 0) {
-      // Loan exists but its status is unmapped: Origination is still complete.
-      state = hasStatus && step.label === "Origination" ? "done" : "pending";
-    } else {
-      state =
-        i < currentIndex ? "done" : i === currentIndex ? "active" : "pending";
-    }
-    return { label: step.label, sub: step.sub, index: i + 1, state };
-  });
+  const chip = hasStatus ? statusToChip(rawStatus) : null;
+  const isClosed = chip?.label === "Closed";
+  const isLive = hasStatus && !isClosed;
+
+  // The live node adopts the current status while live; a neutral "Performing"
+  // phase label before (no status) or after (Closed) — we don't store the
+  // prior live status, so we never fabricate a specific risk state for it.
+  const liveLabel = isLive ? chip!.label : "Performing";
+  const liveSub = isLive
+    ? (LIVE_STATUS_SUB[chip!.label] ?? "live")
+    : "deployed & current";
+
+  return [
+    {
+      label: "Origination",
+      sub: "reviewed & approved",
+      index: 1,
+      state: hasStatus ? "done" : "pending",
+    },
+    {
+      label: "Disbursing",
+      sub: "minted, not yet funded",
+      index: 2,
+      state: hasStatus ? "done" : "pending",
+    },
+    {
+      label: liveLabel,
+      sub: liveSub,
+      index: 3,
+      state: isLive ? "active" : isClosed ? "done" : "pending",
+    },
+    {
+      label: "Closed",
+      sub: "terminal",
+      index: 4,
+      state: isClosed ? "active" : "pending",
+    },
+  ];
 }
 
 /** `$X` for a plain USD price string; `—` for null/non-finite. */
