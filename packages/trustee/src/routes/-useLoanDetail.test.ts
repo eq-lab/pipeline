@@ -136,19 +136,19 @@ describe("statusToChip", () => {
 // ── buildHero ───────────────────────────────────────────────────────────────
 
 describe("buildHero", () => {
-  it("builds the identity + mapped chip; the status bar carries no dates", () => {
+  it("builds the identity + mapped chip; meta shows the maturity date (#859)", () => {
     const hero = buildHero("4488", makeEntry());
     expect(hero.title).toBe("Helios Metals · Lithium");
     expect(hero.status).toEqual({ label: "Performing", band: "positive" });
-    // No maturity/days-left — just the id + the raw on-chain status.
-    expect(hero.meta).toBe("Loan #4488 · on-chain Performing");
+    // Maturity date in the hero for both variants (entry.maturity = 30 Jun 2026).
+    expect(hero.meta).toBe("Loan #4488 · matures 30 Jun 2026");
     expect(hero.backLabel).toBe("‹ Loans");
   });
 
-  it("renames the chip for a Matured loan while printing the raw status", () => {
+  it("renames the chip for a Matured loan (maturity date still shown)", () => {
     const hero = buildHero("4488", makeEntry({ status: "Matured" }));
     expect(hero.status).toEqual({ label: "Past Due", band: "negative" });
-    expect(hero.meta).toBe("Loan #4488 · on-chain Matured");
+    expect(hero.meta).toBe("Loan #4488 · matures 30 Jun 2026");
   });
 
   it("degrades to the loan id only when no row is found (never fabricates)", () => {
@@ -156,6 +156,11 @@ describe("buildHero", () => {
     expect(hero.title).toBe("Loan #999");
     expect(hero.status).toBeNull();
     expect(hero.meta).toBe("Loan #999");
+  });
+
+  it("omits the maturity clause when the date is unavailable (no fabrication)", () => {
+    const hero = buildHero("4488", makeEntry({ maturity: NaN }));
+    expect(hero.meta).toBe("Loan #4488");
   });
 });
 

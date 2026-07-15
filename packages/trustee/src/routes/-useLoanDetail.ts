@@ -52,9 +52,12 @@ import {
   formatFullUsd,
   formatRegistryCompactUsd,
 } from "@/utils/formatUsd";
-import { formatEpochDate } from "@/utils/formatDate";
+import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
   LOAN_DETAIL_MOCK,
+  LOAN_DETAIL_WATCHLIST_MOCK,
+  WATCHLIST_CCR_TREND,
+  type CcrTrend,
   type CurrentStage,
   type OtherActions,
   type SummaryTile,
@@ -121,17 +124,30 @@ export interface RegistryView {
 
 export type LoanDetailState = "loading" | "error" | "ready";
 
+/**
+ * Which status-conditional layout the page renders (§S5 variants). Derived from
+ * the on-chain status; drives the section set in `loans.$id.tsx` (issue #859).
+ * Only `performing` and `watchlist` are built today — the rest fall back to the
+ * `performing` layout until their designs land.
+ */
+export type LoanDetailVariant = "performing" | "watchlist";
+
 export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
   state: LoanDetailState;
   errorMessage: string | null;
+  /** Status-selected layout — the view branches on this before rendering. */
+  variant: LoanDetailVariant;
   hero: HeroView;
+  /** Lifecycle stepper — rendered only by the `performing` layout (§859: none on Watchlist). */
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
   registry: RegistryView;
   currentStage: CurrentStage;
   otherActions: OtherActions;
   priceCollateral: PriceCollateralView;
+  /** CCR-trend chart (Watchlist only); `null` for the performing layout. */
+  ccrTrend: CcrTrend | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -302,10 +318,10 @@ function formatCcrPct(ccrPct: string | null | undefined): string {
  * found (e.g. a direct URL to a non-active loan), degrades to the loan id only —
  * never fabricates identity.
  *
- * The status bar carries **no dates** (maturity is a "key number", not a status
- * field — design assignment §S5): the meta is the loan id plus the raw on-chain
- * status the backend serves (always printed per §3.2), while the chip shows the
- * mapped display label (`statusToChip`).
+ * The meta prints the loan id + the **maturity date** (both layouts — issue #859;
+ * the maturity is a real served field, `entry.maturity`). The chip shows the
+ * mapped display status (`statusToChip`). The Figma hero corridor
+ * (`Colombia → Italy`) has no backend source and is omitted (never fabricated).
  */
 export function buildHero(
   loanId: string,
@@ -320,11 +336,15 @@ export function buildHero(
     };
   }
   const chip = statusToChip(entry.status);
+  const metaParts = [
+    `Loan #${entry.loan_id}`,
+    `matures ${formatMaturityDate(entry.maturity)}`,
+  ].filter((p) => !p.endsWith("—"));
   return {
     backLabel: BACK_LABEL,
     title: `${entry.originator} · ${entry.commodity}`,
     status: { label: chip.label, band: chip.band },
-    meta: `Loan #${entry.loan_id} · on-chain ${chip.raw}`,
+    meta: metaParts.join(" · "),
   };
 }
 
@@ -550,15 +570,27 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     entry?.spot_change_7d ?? null,
   );
 
+  // Status-conditional layout (§859): the on-chain status selects the section
+  // set. Only Watchlist has its own layout today; everything else uses the
+  // performing layout. `statusToChip` maps on-chain `WatchList` → "Watchlist".
+  const variant: LoanDetailVariant =
+    entry != null && statusToChip(entry.status).label === "Watchlist"
+      ? "watchlist"
+      : "performing";
+  const mock =
+    variant === "watchlist" ? LOAN_DETAIL_WATCHLIST_MOCK : LOAN_DETAIL_MOCK;
+
   return {
     state,
     errorMessage: loanBook.error?.message ?? null,
+    variant,
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
-    tiles: LOAN_DETAIL_MOCK.tiles,
+    tiles: mock.tiles,
     registry: buildRegistryState(financials),
-    currentStage: LOAN_DETAIL_MOCK.currentStage,
-    otherActions: LOAN_DETAIL_MOCK.otherActions,
+    currentStage: mock.currentStage,
+    otherActions: mock.otherActions,
     priceCollateral,
+    ccrTrend: variant === "watchlist" ? WATCHLIST_CCR_TREND : null,
   };
 }

@@ -51,11 +51,13 @@ function makeResult(
   return {
     state: "ready",
     errorMessage: null,
+    variant: "performing",
+    ccrTrend: null,
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
       status: { label: "Performing", band: "positive" },
-      meta: "Loan #4488 · on-chain Performing",
+      meta: "Loan #4488 · matures 30 Jun 2026",
     },
     lifecycle: [
       {
@@ -138,7 +140,7 @@ describe("Loan detail route — hero (live)", () => {
       "Performing",
     );
     expect(screen.getByTestId("loan-detail-meta")).toHaveTextContent(
-      "Loan #4488 · on-chain Performing",
+      "Loan #4488 · matures 30 Jun 2026",
     );
   });
 
@@ -376,6 +378,93 @@ describe("Loan detail route — top-level states", () => {
     expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
       "href",
       "/loans",
+    );
+  });
+});
+
+describe("Loan detail route — Watchlist variant (#859)", () => {
+  function watchlistResult() {
+    return makeResult({
+      variant: "watchlist",
+      hero: {
+        backLabel: "‹ Loans",
+        title: "Delta Commodities · Coffee",
+        status: { label: "Watchlist", band: "attention" },
+        meta: "Loan #4471 · matures 1 Aug 2026",
+      },
+      tiles: [
+        {
+          label: "Facility / disbursed",
+          value: "$1.84M / $1.84M",
+          sub: "funded from batch #B-097 · 12 Feb",
+          subTone: "muted",
+        },
+        {
+          label: "Repaid to date",
+          value: "$0",
+          sub: "coupon missed · 15 Jun",
+          subTone: "negative",
+        },
+        {
+          label: "Days on watchlist",
+          value: "18",
+          sub: "since 3 Jun",
+          subTone: "muted",
+        },
+      ],
+      currentStage: {
+        title: "Current stage — escalation decision pending",
+        tag: "Risk Council · 24h timelock",
+        tagTone: "risk",
+        body: "Coffee is down 18% in 30 days…",
+        actionLabel: "Open escalation →",
+      },
+      otherActions: {
+        actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+        note: "",
+      },
+      ccrTrend: {
+        startLabel: "146% · 1 May",
+        currentLabel: "114%",
+        upperThresholdLabel: "120%",
+        lowerThresholdLabel: "110%",
+      },
+    });
+  }
+
+  it("renders the CCR-trend chart and the Days-on-watchlist tile", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    const chart = screen.getByTestId("loan-detail-ccr-trend");
+    expect(chart).toBeInTheDocument();
+    expect(within(chart).getByText("146% · 1 May")).toBeInTheDocument();
+    expect(within(chart).getByText("114%")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("loan-detail-tiles")).getByText(
+        "Days on watchlist",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the lifecycle stepper and the Registry card", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-lifecycle"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-registry"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the escalation stage with the risk-toned tag pill", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-stage-tag")).toHaveTextContent(
+      "Risk Council · 24h timelock",
+    );
+    expect(screen.getByTestId("loan-detail-primary-action")).toHaveTextContent(
+      "Open escalation",
     );
   });
 });
