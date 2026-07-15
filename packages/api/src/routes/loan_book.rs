@@ -40,6 +40,33 @@ const TRUSTEE_ROLE: &str = "trustee";
 /// initial CCR must be at least 100 % (`>= ONE`), mirroring `draw_loan`.
 const CCR_ONE: u32 = 1_000_000;
 
+/// Derived display status: the loan is drawn but its USDC off-ramp is not yet marked
+/// complete. Overrides `Performing` / `WatchList`. See [`display_status`].
+const STATUS_DISBURSING: &str = "Disbursing";
+/// Derived display status: past the current (rollover-adjusted) maturity and still
+/// `Performing` / `WatchList`. See [`display_status`].
+const STATUS_PAST_DUE: &str = "Past Due";
+
+/// Compute the **displayed** loan status, layering two derived states over the raw
+/// on-chain status:
+///
+/// * `Disbursing` — the USDC off-ramp is not yet marked complete (`off_ramp_complete`
+///   is `false`). This is the default right after a loan is drawn; a trustee flips it
+///   via `POST /v1/loan-book/{loan_id}/disbursement/complete`.
+/// * `Past Due` — `now` is past the loan's current (rollover-adjusted) maturity.
+///
+/// Precedence: terminal on-chain states (`Default`, `Closed`) are never overridden;
+/// `Disbursing` outranks `Past Due` (a freshly-drawn loan can't be overdue before its
+/// off-ramp completes). Only `Performing` / `WatchList` are ever overridden — any other
+/// raw status (e.g. an unknown value) passes through unchanged.
+pub fn display_status(raw: &str, off_ramp_complete: bool, now: i64, current_maturity: i64) -> String {
+    match raw {
+        "Performing" | "WatchList" if !off_ramp_complete => STATUS_DISBURSING.to_owned(),
+        "Performing" | "WatchList" if now > current_maturity => STATUS_PAST_DUE.to_owned(),
+        _ => raw.to_owned(),
+    }
+}
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /// Seconds per day. Matches `routes::portfolio::SECS_PER_DAY`; duplicated here to
@@ -194,7 +221,10 @@ pub struct LoanBookEntry {
     /// Sourced from the loan metadata (`LoanSnapshot.protection`); `null` when the
     /// loan has no protection recorded (empty string in the snapshot).
     pub protection: Option<String>,
-    /// Loan status from the latest snapshot (`Performing`, `WatchList`, …).
+    /// Displayed loan status. The raw on-chain snapshot status (`Performing`,
+    /// `WatchList`, `Default`, `Closed`) with two derived overrides layered on:
+    /// `Disbursing` (USDC off-ramp not yet complete) and `Past Due` (past the current
+    /// maturity). See [`display_status`].
     pub status: String,
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
     /// Empty when the loan's metadata records none.
@@ -378,7 +408,7 @@ pub struct ReviewRequest {
 /// OpenAPI doc bundle for the loan-book route.
 #[derive(OpenApi)]
 #[openapi(
-    paths(get_loan_book, submit_loan, list_submissions, review_submission),
+    paths(get_loan_book, submit_loan, list_submissions, review_submission, complete_disbursement),
     components(schemas(
         LoanBookResponse,
         LoanBookSummary,
@@ -408,6 +438,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/loan-book/submissions/{id}/review",
             post(review_submission),
+        )
+        .route(
+            "/loan-book/{loan_id}/disbursement/complete",
+            post(complete_disbursement),
         )
 }
 
@@ -588,6 +622,63 @@ async fn review_submission(
     Ok(StatusCode::OK)
 }
 
+/// Mark a loan's USDC off-ramp complete, flipping it out of `Disbursing` so the API
+/// surfaces its live on-chain status. Trustee-only. Idempotent — completing an
+/// already-complete loan just refreshes the actor/timestamp. Returns `404` when no
+/// loan with that id is indexed on the chain.
+#[utoipa::path(
+    post,
+    path = "/v1/loan-book/{loan_id}/disbursement/complete",
+    params(
+        ("loan_id" = String, Path, description = "On-chain loan id"),
+        ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
+    ),
+    responses(
+        (status = 200, description = "Off-ramp marked complete"),
+        (status = 400, description = "Malformed loan id"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 403, description = "Caller lacks the `trustee` role"),
+        (status = 404, description = "Loan not indexed on this chain"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "LoanBook"
+)]
+async fn complete_disbursement(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Path(loan_id): Path<String>,
+    Query(query): Query<ChainQuery>,
+) -> Result<StatusCode, ApiError> {
+    if !claims.has_role(TRUSTEE_ROLE) {
+        return Err(ApiError::Forbidden(format!(
+            "this endpoint requires the `{TRUSTEE_ROLE}` role"
+        )));
+    }
+
+    let chain_id = resolve_chain(&state, query.chain_id);
+    let loan_id = BigDecimal::from_str(loan_id.trim())
+        .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
+
+    // 404 when the loan isn't indexed on this chain (no on-chain snapshot). Reuses the
+    // latest-status lookup: an empty result means the loan has no indexed events.
+    let indexed = state
+        .contract_logs_repo
+        .latest_status_by_loans(&state.pool, chain_id, std::slice::from_ref(&loan_id))
+        .await?;
+    if indexed.is_empty() {
+        return Err(ApiError::NotFound(format!(
+            "loan {loan_id} not indexed on chain {chain_id}"
+        )));
+    }
+
+    state
+        .loan_disbursement_repo
+        .mark_complete(chain_id, &loan_id, &claims.sub)
+        .await?;
+
+    Ok(StatusCode::OK)
+}
+
 /// Validate a review request and map it to the `(status, reason)` the repo expects.
 /// Pure (no I/O) so it is unit-testable. Reject ⇒ a non-empty `reason` is required;
 /// Approve ⇒ no reason may be supplied.
@@ -715,12 +806,23 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
     let collateral_by_loan = collateral_by_loan(state, chain_id, &anchors, &latest_prices).await?;
     let spot_by_loan = spot_by_loan(state, to, &anchors, &latest_prices).await?;
 
+    // Per-loan USDC off-ramp completion, keyed by loan_key. Absent → not complete
+    // (Disbursing). Backs the `Disbursing` status override.
+    let disbursement_by_loan: HashMap<String, bool> = state
+        .loan_disbursement_repo
+        .list_for_chain(chain_id)
+        .await?
+        .into_iter()
+        .map(|(loan_id, complete)| (loan_key(&loan_id), complete))
+        .collect();
+
     Ok(compute_loan_book(
         &loans,
         &events,
         to,
         &collateral_by_loan,
         &spot_by_loan,
+        &disbursement_by_loan,
     ))
 }
 
@@ -855,36 +957,44 @@ fn principal_of(loan: &LoanSnapshotRow) -> BigDecimal {
     &loan.snapshot.original_senior_tranche + &loan.snapshot.original_equity_tranche
 }
 
-/// Effective end of a loan: `min(original_maturity_date, earliest LoanClosed /
-/// LoanDefaulted timestamp)`. Mirrors `routes::portfolio`'s end-resolution so the
-/// "active" set is identical across endpoints.
+/// Effective end of a loan for the loan-book active set: the earliest `LoanClosed` /
+/// `LoanDefaulted` timestamp, or `i64::MAX` when the loan is neither closed nor
+/// defaulted.
+///
+/// Unlike `routes::portfolio`'s end-resolution, maturity does **not** bound the active
+/// set here: a loan past its maturity but not yet closed/defaulted stays active and
+/// surfaces as `Past Due` (see [`display_status`]). Only an explicit close/default
+/// removes it from the loan book (matching the "everything except Closed + Default"
+/// grouping).
 fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
-    let lifecycle_end = events
+    events
         .iter()
         .filter(|e| {
             (e.event_name == "LoanClosed" || e.event_name == "LoanDefaulted")
                 && e.loan_id == loan.loan_id
         })
         .map(|e| e.block_timestamp)
-        .min();
-
-    match lifecycle_end {
-        Some(lc) => loan.snapshot.original_maturity_date.min(lc),
-        None => loan.snapshot.original_maturity_date,
-    }
+        .min()
+        .unwrap_or(i64::MAX)
 }
 
 /// Pure computation: no DB calls. Builds the Loan Book summary + active-loan table
 /// from pre-fetched loan snapshots and lifecycle events as-of `to`.
 ///
-/// "Active" = `origination_date <= to < effective_end`, matching
-/// `routes::portfolio::compute_series`. Matured, closed, and defaulted loans are
-/// excluded (a defaulted loan's `LoanDefaulted` event sets its `effective_end`).
+/// "Active" = `origination_date <= to` and not yet closed/defaulted (`to <
+/// effective_end`). Unlike `routes::portfolio`, maturity does **not** remove a loan:
+/// a past-maturity, still-open loan stays active and surfaces as `Past Due`. Only
+/// `LoanClosed` / `LoanDefaulted` exclude a loan (the "everything except Closed +
+/// Default" grouping).
 ///
 /// `collateral_by_loan` maps `loan_key(loan_id)` → collateral value in micro-USDC
 /// (`latest price_usd × discount × 1e6`); loans absent from the map have no priced
 /// collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
 /// `senior_debt_coverage` are `null` when no active loan has a value.
+///
+/// `disbursement_by_loan` maps `loan_key(loan_id)` → `off_ramp_complete`. Loans absent
+/// from the map are treated as NOT complete (still `Disbursing`), matching the
+/// "default after draw" semantics.
 ///
 /// Public so the compute-layer test in `packages/api/tests/loan_book.rs` can
 /// exercise it without the HTTP/DB layers.
@@ -894,6 +1004,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     to: i64,
     collateral_by_loan: &HashMap<String, BigDecimal, S>,
     spot_by_loan: &HashMap<String, LoanSpot, S>,
+    disbursement_by_loan: &HashMap<String, bool, S>,
 ) -> LoanBookResponse {
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
@@ -971,6 +1082,14 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
 
         let spot = spot_by_loan.get(&loan_key(&loan.loan_id));
 
+        // Displayed status = raw on-chain status with the Disbursing / Past Due
+        // overrides layered on. Absent disbursement row → not complete (Disbursing).
+        let off_ramp_complete = disbursement_by_loan
+            .get(&loan_key(&loan.loan_id))
+            .copied()
+            .unwrap_or(false);
+        let status = display_status(&s.status, off_ramp_complete, to, s.current_maturity_timestamp);
+
         entries.push(LoanBookEntry {
             chain_id: loan.chain_id,
             loan_id: loan_key(&loan.loan_id),
@@ -990,7 +1109,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             rate,
             // Protection instrument from the loan metadata; empty string ⇒ null.
             protection: (!s.protection.is_empty()).then(|| s.protection.clone()),
-            status: s.status.clone(),
+            status,
             documents: s
                 .documents
                 .iter()
@@ -1023,10 +1142,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
 
     // ── Trustee "Loans" page metrics ──────────────────────────────────────────
     // At-risk = Σ outstanding senior of at-risk loans, computed over the FULL `loans`
-    // slice. WatchList counts only while the loan is still active (`to < effective_end`,
-    // i.e. not past maturity/close); Default counts until the loan is explicitly closed
-    // (`LoanClosed`), even though defaults drop out of the `active` set. This bounds the
-    // population so a matured-but-never-closed loan isn't counted indefinitely.
+    // slice. WatchList counts while the loan is still open (`to < effective_end`, i.e.
+    // not yet closed/defaulted — a past-maturity WatchList loan is `Past Due` and still
+    // at risk); Default counts until the loan is explicitly closed (`LoanClosed`), even
+    // though defaults drop out of the `active` set.
     let active_keys: HashSet<String> = active.iter().map(|l| loan_key(&l.loan_id)).collect();
     let mut at_risk_wl_and_default_senior = BigDecimal::from(0);
     // NAV denominator spans the same book the numerator draws from: active-loan

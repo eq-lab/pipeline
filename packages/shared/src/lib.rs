@@ -11,6 +11,7 @@ pub mod evm;
 pub mod json_numeric;
 pub mod kyc_repo;
 pub mod loan_asset_price_repo;
+pub mod loan_disbursement_repo;
 pub mod loan_parameters_repo;
 pub mod loan_snapshot;
 pub mod log_mapper;

@@ -328,10 +328,19 @@ pub fn compute_summary(
     let fp = compute_financial_position(loans, events, to);
     let outstanding_in_loans = fp.assets.deployed.secured_loans_outstanding;
 
-    // Loan book (only avg_yield is needed here; collateral + spot maps are irrelevant).
+    // Loan book (only avg_yield is needed here; collateral + spot + disbursement maps
+    // are irrelevant — disbursement only affects the per-loan displayed status).
     let empty_collateral: HashMap<String, BigDecimal> = HashMap::new();
     let empty_spot: HashMap<String, LoanSpot> = HashMap::new();
-    let lb = compute_loan_book(loans, events, to, &empty_collateral, &empty_spot);
+    let empty_disbursement: HashMap<String, bool> = HashMap::new();
+    let lb = compute_loan_book(
+        loans,
+        events,
+        to,
+        &empty_collateral,
+        &empty_spot,
+        &empty_disbursement,
+    );
     let loan_book_yield = lb.summary.avg_yield.clone();
 
     // current_apy_net_to_splusd = gross_book_rate × haircut.

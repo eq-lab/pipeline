@@ -12,6 +12,7 @@ use shared::{
     db::EventRepo,
     events::EventRow,
     json_numeric::u256_to_bigdecimal,
+    loan_disbursement_repo::LoanDisbursementRepo,
     loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot},
     log_mapper::LogMapper,
     submitted_loan_repo::SubmittedLoanRepo,
@@ -516,6 +517,12 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
                 "LoanDrawn: {} submission by metadata_uri",
                 if linked { "linked" } else { "no matching" }
             );
+
+            // Seed the disbursement flag: a freshly-drawn loan starts in `Disbursing`
+            // (off_ramp_complete = FALSE) until a trustee marks the USDC off-ramp
+            // complete. Idempotent — a re-indexed LoanDrawn won't reset a loan an
+            // operator has already completed. Same transaction as the log write.
+            LoanDisbursementRepo::mark_drawn(conn, self.chain_id, &loan_id).await?;
         }
 
         Ok(())

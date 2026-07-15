@@ -106,7 +106,8 @@ fn derives_realized_figures_and_outstanding() {
         repayment(50_000_000, 30_000_000, 20_000_000, 600_000_000),
         empty_location(),
     );
-    let resp = build_response(&row(snap), &BigDecimal::from(40_000_000), &[]);
+    // off_ramp complete + now == maturity(0) → the raw on-chain status shows through.
+    let resp = build_response(&row(snap), &BigDecimal::from(40_000_000), &[], true, 0);
 
     assert_eq!(resp.loan_id, "42");
     assert_eq!(resp.status, "Performing");
@@ -136,7 +137,7 @@ fn not_minted_yield_clamps_at_zero() {
         empty_location(),
     );
     // minted (25) exceeds realized interest+fees (10) → clamp to 0.
-    let resp = build_response(&row(snap), &BigDecimal::from(25_000_000), &[]);
+    let resp = build_response(&row(snap), &BigDecimal::from(25_000_000), &[], true, 0);
     assert_eq!(resp.not_minted_yield, "0.000000");
 }
 
@@ -155,7 +156,7 @@ fn location_projected_when_reported() {
             updated_at: 0,
         },
     );
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &[]);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 0);
     let loc = resp.location.expect("location present");
     assert_eq!(loc.location_type, "Vessel");
     assert_eq!(loc.location_identifier, "MV Example");
@@ -189,7 +190,7 @@ fn epoch_folds_rollover_then_amendment() {
         econ_event("EconomicsAmended", 160_000, jul2),
     ];
 
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &events);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
     // Rollover advanced the ordinal; the amendment did not.
     assert_eq!(resp.epoch.number, 2);
     // Amendment overwrote the rate in place → 160_000 / 100 = 1_600 bps (16%).
@@ -198,6 +199,37 @@ fn epoch_folds_rollover_then_amendment() {
     assert_eq!(resp.epoch.start_date, "2026-04-01T00:00:00Z");
     // Amendment overwrote the maturity → jul1 + 1 day.
     assert_eq!(resp.epoch.maturity_date, "2026-07-02T00:00:00Z");
+}
+
+#[test]
+fn status_is_disbursing_when_off_ramp_incomplete() {
+    // A performing loan whose USDC off-ramp is not yet complete → Disbursing.
+    let snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+    assert_eq!(resp.status, "Disbursing");
+}
+
+#[test]
+fn status_is_past_due_when_complete_and_past_maturity() {
+    // Off-ramp complete, but `now` is past the current maturity → Past Due.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    snap.current_maturity_timestamp = 1_000;
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000);
+    assert_eq!(resp.status, "Past Due");
 }
 
 #[test]
@@ -223,7 +255,7 @@ fn epoch_amendment_without_rollover_keeps_ordinal() {
 
     let events = [econ_event("EconomicsAmended", 95_000, may1)];
 
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &events);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
     // No rollover → still epoch 1, still starting at origination.
     assert_eq!(resp.epoch.number, 1);
     assert_eq!(resp.epoch.start_date, "2026-01-01T00:00:00Z");

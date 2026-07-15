@@ -9,6 +9,7 @@ use shared::auth_user_repo::AuthUserRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
@@ -51,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
     let loan_parameters_repo = LoanParametersRepo::new(pool.clone());
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
+    let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
     // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
@@ -107,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         loan_parameters_repo,
         loan_asset_price_repo,
         collateral_valuation_repo,
+        loan_disbursement_repo,
         jwt_keys,
     });
 

@@ -33,6 +33,7 @@ use crate::auth::SecurityAddon;
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::loan_book::display_status;
 use crate::AppState;
 
 /// Basis points per 100% (`10_000` bps = 100%). Matches `routes::loan_book::BPS_DENOM`.
@@ -52,7 +53,10 @@ const ECONOMICS_RATE_ONE: i64 = 1_000_000;
 pub struct LoanFinancialsResponse {
     /// On-chain loan id (string; may exceed JS safe-int range).
     pub loan_id: String,
-    /// Loan status (`Performing`, `WatchList`, `Default`, `Closed`).
+    /// Displayed loan status: the raw on-chain status (`Performing`, `WatchList`,
+    /// `Default`, `Closed`) with the derived `Disbursing` (USDC off-ramp not yet
+    /// complete) and `Past Due` (past current maturity) overrides layered on. See
+    /// `routes::loan_book::display_status`.
     pub status: String,
     /// Current physical location of the collateral. `null` when never reported.
     pub location: Option<LocationView>,
@@ -179,7 +183,19 @@ async fn get_loan_financials(
         .list_loan_economics_events(&state.pool, chain_id, &loan_id)
         .await?;
 
-    Ok(Json(build_response(&row, &minted_yield, &economics_events)))
+    // USDC off-ramp completion, for the `Disbursing` status override. Absent → false.
+    let off_ramp_complete = state
+        .loan_disbursement_repo
+        .is_complete(chain_id, &loan_id)
+        .await?;
+
+    Ok(Json(build_response(
+        &row,
+        &minted_yield,
+        &economics_events,
+        off_ramp_complete,
+        now,
+    )))
 }
 
 // ── Assembly (pure) ────────────────────────────────────────────────────────────
@@ -188,10 +204,16 @@ async fn get_loan_financials(
 /// and its chronologically-ordered economics events. Pure and unit-testable: no
 /// DB, no clock. `pub` so the feature tests in `packages/api/tests/` can exercise
 /// it directly (project rule: tests live in `tests/`, not inline in `src/`).
+///
+/// `off_ramp_complete` is the loan's USDC-off-ramp flag and `now` the reference clock;
+/// together with the snapshot's maturity they drive the displayed `status` (the
+/// `Disbursing` / `Past Due` overrides — see `display_status`).
 pub fn build_response(
     row: &LoanSnapshotRow,
     minted_yield: &BigDecimal,
     economics_events: &[EconomicsEventRow],
+    off_ramp_complete: bool,
+    now: i64,
 ) -> LoanFinancialsResponse {
     let s: &LoanSnapshot = &row.snapshot;
 
@@ -209,7 +231,7 @@ pub fn build_response(
 
     LoanFinancialsResponse {
         loan_id: row.loan_id.to_string(),
-        status: s.status.clone(),
+        status: display_status(&s.status, off_ramp_complete, now, s.current_maturity_timestamp),
         location: location_view(s),
         offtaker: base6_to_decimal_string(&s.original_offtaker_price),
         principal: base6_to_decimal_string(&principal),
