@@ -615,17 +615,20 @@ function OtherActionsCard({
 
 /**
  * The Disbursing-loan current-stage card with the wired "Mark disbursement
- * complete" action (`POST …/disbursement/complete`, issue #862). The copy is
- * static (mock, describing the off-ramp step); the button is the one real,
- * status-changing action on the loan-detail page — it flips the loan out of
+ * complete" action (`POST …/disbursement/complete`, issues #862 / #864).
+ * Disbursing has no dedicated Figma flow, so the page keeps the Performing
+ * layout and only this "Next Step" card differs. The `Complete off-ramp` button
+ * is the one real, status-changing action — it flips the loan out of
  * `Disbursing` and refetches. Pending disables the button; a failure surfaces
  * inline (404 = loan not indexed).
  */
 function DisbursementActionCard({
+  loanName,
   onComplete,
   pending,
   error,
 }: {
+  loanName: string;
   onComplete: () => void;
   pending: boolean;
   error: string | null;
@@ -636,11 +639,10 @@ function DisbursementActionCard({
       style={cardStyle()}
       data-testid="loan-detail-disbursement"
     >
-      <CardTitle>Current stage — disbursing</CardTitle>
+      <CardTitle>Next Step</CardTitle>
       <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
-        The senior principal is being wired to the borrower via the USDC
-        off-ramp. Mark the disbursement complete once the wire has settled to
-        flip the loan to Performing.
+        Mark {loanName} USDC off-ramp complete — this will move the Disbursing
+        status to Performing.
       </p>
       <button
         type="button"
@@ -650,7 +652,7 @@ function DisbursementActionCard({
         className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
         style={{ backgroundColor: BRAND }}
       >
-        {pending ? "Completing…" : "Mark disbursement complete"}
+        {pending ? "Completing…" : "Complete off-ramp"}
       </button>
       {error && (
         <p
@@ -828,6 +830,7 @@ function LoanDetail() {
           </div>
           {detail.variant === "disbursing" ? (
             <DisbursementActionCard
+              loanName={detail.hero.title}
               onComplete={() => completeDisbursement.mutate({ loanId: id })}
               pending={completeDisbursement.isPending}
               error={completeDisbursement.error?.message ?? null}

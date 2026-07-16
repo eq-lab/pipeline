@@ -391,10 +391,19 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     });
   }
 
-  it("renders the disbursement action instead of the mock current-stage card", () => {
+  it("renders the 'Next Step' card instead of the mock current-stage card", () => {
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
-    expect(screen.getByTestId("loan-detail-disbursement")).toBeInTheDocument();
+    const card = screen.getByTestId("loan-detail-disbursement");
+    expect(card).toBeInTheDocument();
+    expect(within(card).getByText("Next Step")).toBeInTheDocument();
+    // Description references the loan name and the Disbursing → Performing move.
+    expect(card).toHaveTextContent(
+      "Mark Helios Metals · Lithium USDC off-ramp complete — this will move the Disbursing status to Performing.",
+    );
+    expect(
+      screen.getByTestId("loan-detail-complete-disbursement"),
+    ).toHaveTextContent("Complete off-ramp");
     expect(
       screen.queryByTestId("loan-detail-current-stage"),
     ).not.toBeInTheDocument();
