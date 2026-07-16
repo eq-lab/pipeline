@@ -411,12 +411,14 @@ export async function drawLoan({
  * Appends an epoch from the prior maturity, sets `currentMaturityDate`, returns
  * the loan's status to Performing, and raises the mint ceiling only (mints
  * nothing). On success the indexer emits `LoanRolledOver { new_maturity_timestamp:
- * u64, new_rate: u32 }` — the two positional args below (after `loan_id`) are
- * derived from that event shape.
+ * u64, new_rate: u32 }`.
  *
- * ⚠️ Positional arg order (`loan_id`, `new_maturity_timestamp`, `new_rate`) is
- * inferred from the event payload and MUST be confirmed against the deployed
- * contract on testnet (as #831 verified `draw_loan`'s 5 args). The verifying
+ * Positional args: **`(loan_id: u32, new_rate: u32, new_maturity_timestamp:
+ * u64)`** — rate BEFORE maturity, matching the S9 form order. `new_rate` is the
+ * on-chain bps × 100 scale (see `encodeRolloverArgs`). The initial cut sent
+ * `(loan_id, new_maturity, new_rate)` and the contract trapped
+ * (`UnreachableCodeReached` — `new_maturity` decoded as `1234`, a past
+ * timestamp, tripping the future-maturity guard). The verifying
  * `simulateTransaction` in `buildRolloverEnvelope` fails loudly on a wrong
  * encoding before any signature is requested.
  */
@@ -455,13 +457,16 @@ export interface RolloverResult {
  */
 export function encodeRolloverArgs(
   loanId: number,
-  newMaturity: number,
   newRateBps: number,
+  newMaturity: number,
 ): xdr.ScVal[] {
   return [
     xdr.ScVal.scvU32(loanId),
+    // Rate is stored on-chain at bps × 100 (same scale as `draw_loan`'s
+    // `senior_interest_rate = senior_interest_rate_bps * 100`; the indexer reads
+    // it back with `/ 100`). Pass the scaled value, not raw bps.
+    xdr.ScVal.scvU32(newRateBps * 100),
     u64(newMaturity),
-    xdr.ScVal.scvU32(newRateBps),
   ];
 }
 
@@ -512,7 +517,7 @@ export async function buildRolloverEnvelope({
     "execute",
     new Address(targetId).toScVal(),
     xdr.ScVal.scvSymbol("rollover"),
-    xdr.ScVal.scvVec(encodeRolloverArgs(loanId, newMaturity, newRateBps)),
+    xdr.ScVal.scvVec(encodeRolloverArgs(loanId, newRateBps, newMaturity)),
     new Address(caller).toScVal(),
   );
 

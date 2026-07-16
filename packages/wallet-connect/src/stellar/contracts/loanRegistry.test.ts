@@ -520,12 +520,13 @@ describe("drawLoan", () => {
 // ── encodeRolloverArgs (issue #870) ────────────────────────────────────────────
 
 describe("encodeRolloverArgs", () => {
-  it("encodes (loan_id: u32, new_maturity_timestamp: u64, new_rate: u32)", () => {
-    const args = encodeRolloverArgs(4488, 1_790_000_000, 1450);
+  it("encodes (loan_id: u32, new_rate: u32 [bps×100], new_maturity: u64)", () => {
+    const args = encodeRolloverArgs(4488, 1450, 1_790_000_000);
     expect(args).toHaveLength(3);
     expect(args[0]).toEqual({ t: "u32", v: 4488 });
-    expect(args[1]).toEqual({ t: "u64", v: 1_790_000_000n });
-    expect(args[2]).toEqual({ t: "u32", v: 1450 });
+    // Rate scaled ×100 to the on-chain unit (1450 bps → 145000).
+    expect(args[1]).toEqual({ t: "u32", v: 145_000 });
+    expect(args[2]).toEqual({ t: "u64", v: 1_790_000_000n });
   });
 });
 
