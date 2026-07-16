@@ -585,24 +585,26 @@ const LOCATION_INPUT = {
 };
 
 describe("encodeUpdateMutableArgs", () => {
-  it("encodes (loan_id:u32, status:enum, ccr:u32 [ONE=1e6], location:LocationUpdate map, metadata:String)", () => {
+  it("encodes the contract's arg ORDER: (loan_id:u32, metadata:String, status:enum, ccr:u32 [ONE=1e6], location:LocationUpdate map)", () => {
     const args = encodeUpdateMutableArgs(
       4488,
       "WatchList",
       135,
       LOCATION_INPUT,
-      "",
+      "ipfs://assay",
     );
     expect(args).toHaveLength(5);
     expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    // metadata_uri is SECOND, not last (deployed signature). Sending it last put
+    // the status enum in the String slot → guest-side TryFromVal panic (#872).
+    expect(args[1]).toEqual({ t: "string", v: "ipfs://assay" });
     // Status is a unit-variant enum: vec([symbol]).
-    expect(args[1]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
+    expect(args[2]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
     // 135% → ONE=1e6 scale (percent × 10000).
-    expect(args[2]).toEqual({ t: "u32", v: 1_350_000 });
-    // Location is the same `LocationUpdate` map as draw_loan — NOT a bare string
-    // (a string traps the contract with UnreachableCodeReached, issue #872).
-    expect(args[3]).toMatchObject({ t: "map" });
-    const locationMap = args[3] as unknown as {
+    expect(args[3]).toEqual({ t: "u32", v: 1_350_000 });
+    // Location is the same `LocationUpdate` map as draw_loan — NOT a bare string.
+    expect(args[4]).toMatchObject({ t: "map" });
+    const locationMap = args[4] as unknown as {
       t: "map";
       v: Array<{ key: { v: string }; val: { t: string; v: string | bigint } }>;
     };
@@ -620,7 +622,6 @@ describe("encodeUpdateMutableArgs", () => {
       v: [{ t: "symbol", v: "Vessel" }],
     });
     expect(byKey.updated_at).toEqual({ t: "u64", v: 1_784_000_000n });
-    expect(args[4]).toEqual({ t: "string", v: "" });
   });
 });
 

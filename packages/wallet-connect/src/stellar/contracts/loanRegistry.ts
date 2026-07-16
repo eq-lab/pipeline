@@ -659,14 +659,20 @@ export interface UpdateMutableResult {
 }
 
 /**
- * Encodes `update_mutable`'s positional args, per the contract signature
- * `updateMutable(loan_id: u32, status: LoanStatus, new_ccr: u32 [ONE=1e6],
- * new_location: LocationUpdate, metadata_uri: String)` (see
- * `docs/product-specs/loans-data.md`). Exported for unit testing.
+ * Encodes `update_mutable`'s positional args, per the actual contract signature
+ * (confirmed against the deployed Rust source):
+ *
+ *   update_mutable(e, loan_id: u32, metadata_uri: String, status: LoanStatus,
+ *                  new_ccr: u32 [ONE=1e6], new_location: LocationUpdate)
+ *
+ * `e: &Env` is implicit (not a wire arg), so the 5 encoded positional args are
+ * `[loan_id, metadata_uri, status, new_ccr, new_location]` — note `metadata_uri`
+ * is SECOND, not last. Exported for unit testing.
  *
  * `new_location` is the same `LocationUpdate` map as `draw_loan`'s
- * `initial_location` — NOT a bare string. Passing a plain `String` here makes
- * the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`).
+ * `initial_location` — NOT a bare string. A wrong arg ORDER or a mistyped arg
+ * makes the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`);
+ * that trap is what an out-of-order encoding produced here.
  */
 export function encodeUpdateMutableArgs(
   loanId: number,
@@ -677,10 +683,10 @@ export function encodeUpdateMutableArgs(
 ): xdr.ScVal[] {
   return [
     xdr.ScVal.scvU32(loanId),
+    xdr.ScVal.scvString(metadataUri),
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(status)]),
     xdr.ScVal.scvU32(Math.round(ccrPercent * 10_000)),
     encodeLocationMap(location),
-    xdr.ScVal.scvString(metadataUri),
   ];
 }
 
