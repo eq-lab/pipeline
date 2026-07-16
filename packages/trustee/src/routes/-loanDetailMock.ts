@@ -15,7 +15,10 @@
  *   - **Registry state & derived** → `GET /v1/loan-book/{loan_id}/financials`
  *     (`useLoanFinancials` + `buildFinancials`, issue #852).
  * Still mock (no backend source yet): summary tiles · current stage · other
- * actions.
+ * actions. The **Watchlist variant** (issue #859, Figma node `4116:10803`) adds
+ * its own mock slice (`LOAN_DETAIL_WATCHLIST_MOCK`) plus the CCR-trend chart
+ * series — no backend source for the trend history / days-on-watchlist /
+ * coupon-missed / escalation copy yet, so they are mock until an endpoint lands.
  *
  * The copy below matches the Figma reference exactly (a design mock, so the
  * fabricated-detail rules that gate the live build do not apply here).
@@ -23,7 +26,7 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type TileTone = "muted" | "positive" | "attention";
+export type TileTone = "muted" | "positive" | "attention" | "negative";
 
 /** One of the three summary tiles below the stepper. */
 export interface SummaryTile {
@@ -34,16 +37,22 @@ export interface SummaryTile {
   subTone: TileTone;
 }
 
+/** Colour treatment of the current-stage right-aligned tag. */
+export type StageTagTone = "muted" | "risk";
+
 export interface CurrentStage {
   title: string;
   /** Right-aligned tag, e.g. `"Relayer + custodian mint · monitor only"`. */
   tag: string;
+  /** `"risk"` renders the tag as a red-bordered pill (escalation); default muted text. */
+  tagTone?: StageTagTone;
   body: string;
   actionLabel: string;
 }
 
 export interface OtherActions {
   actions: string[];
+  /** Timelock note; empty string when the variant has none (e.g. Watchlist). */
   note: string;
 }
 
@@ -51,6 +60,22 @@ export interface LoanDetailMock {
   tiles: SummaryTile[];
   currentStage: CurrentStage;
   otherActions: OtherActions;
+}
+
+/**
+ * The CCR-trend chart (Watchlist variant, Figma `4116:10868`). Mock — no CCR
+ * time-series endpoint serves this page yet (#859). The chart geometry is a
+ * fixed representative decline; these labels are slotted into it.
+ */
+export interface CcrTrend {
+  /** Bottom-left caption — the series start, e.g. `"146% · 1 May"`. */
+  startLabel: string;
+  /** Current CCR, bold red near the end dot, e.g. `"114%"`. */
+  currentLabel: string;
+  /** Upper guide-line label, e.g. `"120%"`. */
+  upperThresholdLabel: string;
+  /** Lower guide-line label, e.g. `"110%"`. */
+  lowerThresholdLabel: string;
 }
 
 // ── Fixture ─────────────────────────────────────────────────────────────────
@@ -91,4 +116,49 @@ export const LOAN_DETAIL_MOCK: LoanDetailMock = {
     ],
     note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
   },
+};
+
+// ── Watchlist variant (issue #859, Figma node 4116:10803) ─────────────────────
+
+/** The still-mock sections of the Watchlist loan-detail layout. */
+export const LOAN_DETAIL_WATCHLIST_MOCK: LoanDetailMock = {
+  tiles: [
+    {
+      label: "Facility / disbursed",
+      value: "$1.84M / $1.84M",
+      sub: "funded from batch #B-097 · 12 Feb",
+      subTone: "muted",
+    },
+    {
+      label: "Repaid to date",
+      value: "$0",
+      sub: "coupon missed · 15 Jun",
+      subTone: "negative",
+    },
+    {
+      label: "Days on watchlist",
+      value: "18",
+      sub: "since 3 Jun",
+      subTone: "muted",
+    },
+  ],
+  currentStage: {
+    title: "Current stage — escalation decision pending",
+    tag: "Risk Council · 24h timelock",
+    tagTone: "risk",
+    body: "Coffee is down 18% in 30 days: CCR crossed the 120% threshold on 20 Jun and sits at 114%. The 15 Jun coupon was missed. If the loan is past recovery on the performing path, draft a setDefault proposal.",
+    actionLabel: "Open escalation →",
+  },
+  otherActions: {
+    actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+    note: "",
+  },
+};
+
+/** CCR-trend chart mock for the Watchlist variant. */
+export const WATCHLIST_CCR_TREND: CcrTrend = {
+  startLabel: "146% · 1 May",
+  currentLabel: "114%",
+  upperThresholdLabel: "120%",
+  lowerThresholdLabel: "110%",
 };

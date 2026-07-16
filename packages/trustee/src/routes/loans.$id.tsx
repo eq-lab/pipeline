@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import {
   useLoanDetail,
   type HeroView,
@@ -8,7 +10,11 @@ import {
   type RegistryView,
   type StatusBand,
 } from "./-useLoanDetail";
-import { type SummaryTile, type TileTone } from "./-loanDetailMock";
+import {
+  type CcrTrend,
+  type SummaryTile,
+  type TileTone,
+} from "./-loanDetailMock";
 
 /**
  * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
@@ -16,16 +22,23 @@ import { type SummaryTile, type TileTone } from "./-loanDetailMock";
  * A real route at `/loans/$id`, keyed by the loan-book `loan_id` (the #847
  * in-page "fake navigation" is gone now that a real id is served).
  *
- * ## Live vs. mock sections (see `-useLoanDetail.ts`)
- *   - **Hero identity** and **Price & collateral** are sourced live for the
- *     clicked loan (loan-book row + `GET /v1/loan-book/{loan_id}/valuations`).
- *   - Deal journey · summary tiles · registry state · current stage · other
- *     actions remain the #847 static mock until a backend source lands.
- * All action buttons are inert (visual only) for this issue.
+ * ## Status-conditional layout (#859 / #862)
+ * The page branches on `detail.variant` (derived from the served display status):
+ *   - **performing** — lifecycle stepper + Price & collateral + Registry state.
+ *   - **watchlist** — no stepper; a CCR-trend chart beside Price & collateral,
+ *     a "Days on watchlist" tile, and an escalation current-stage card (Figma
+ *     node `4116:10803`).
+ *   - **disbursing** — the performing layout, but the current-stage card is the
+ *     wired disbursement-complete action (`POST …/disbursement/complete`, #862);
+ *     the lifecycle shows the Disbursing node active.
+ * Shared live sections render in both: Hero + status chip (loan-book row), Price
+ * & collateral (`/valuations`), Registry (`/financials`, performing only).
+ * Watchlist-only sections with no backend source (CCR-trend series, tiles copy,
+ * escalation copy) are mock until an endpoint lands. Action buttons are inert.
  *
  * ## Figma → token / px map
  *   - `‹ Loans` `Besley 18px / #262524`; title `Besley 44px`; both ink.
- *   - Status chip → colour band (`statusToBand`): positive green (0.08 bg / 0.3
+ *   - Status chip → colour band (`chipStyle`): positive green (0.08 bg / 0.3
  *     border), attention amber `#6e6400`, negative red `#b20000`, neutral muted.
  *   - Card `bg-white`, `LINE_COLOR` border (`rgba(56,55,53,0.18)`), `rounded-[4px]`.
  *   - Card title `Besley 26px` ink; row label `Inter 15px` ink-muted; value `Inter 16px` ink.
@@ -53,12 +66,17 @@ const STEP_DONE_BG = "rgba(32, 128, 0, 0.08)";
 const STEP_DONE_LINE = "rgba(32, 128, 0, 0.3)";
 const STEP_ACTIVE_RING = "0px 0px 0px 4px rgba(0, 0, 128, 0.12)";
 
+/** CCR-trend chart dashed guide-line colour (Watchlist variant, Figma 4116:10868). */
+const CCR_GUIDE = "rgba(178, 0, 0, 0.35)";
+
 function toneColor(tone: TileTone): string {
   switch (tone) {
     case "positive":
       return POSITIVE_GREEN;
     case "attention":
       return ATTENTION_AMBER;
+    case "negative":
+      return NEGATIVE_RED;
     default:
       return INK_MUTED;
   }
@@ -84,6 +102,12 @@ function chipStyle(band: StatusBand): React.CSSProperties {
         color: NEGATIVE_RED,
         backgroundColor: "rgba(178,0,0,0.08)",
         borderColor: "rgba(178,0,0,0.3)",
+      };
+    case "info":
+      return {
+        color: BRAND,
+        backgroundColor: "rgba(0,0,128,0.08)",
+        borderColor: "rgba(0,0,128,0.3)",
       };
     default:
       return {
@@ -509,12 +533,26 @@ function CurrentStageCard({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
         <CardTitle>{stage.title}</CardTitle>
-        <span
-          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-          style={{ color: INK_MUTED }}
-        >
-          {stage.tag}
-        </span>
+        {stage.tagTone === "risk" ? (
+          <span
+            data-testid="loan-detail-stage-tag"
+            className="inline-flex items-center rounded-[4px] border border-solid px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap"
+            style={{
+              color: NEGATIVE_RED,
+              backgroundColor: "rgba(178,0,0,0.08)",
+              borderColor: "rgba(178,0,0,0.3)",
+            }}
+          >
+            {stage.tag}
+          </span>
+        ) : (
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            {stage.tag}
+          </span>
+        )}
       </div>
       <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
         {stage.body}
@@ -562,12 +600,245 @@ function OtherActionsCard({
           </button>
         ))}
       </div>
-      <p
-        className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
-        style={{ color: INK_MUTED }}
-      >
-        {otherActions.note}
+      {otherActions.note && (
+        <p
+          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+          style={{ color: INK_MUTED }}
+        >
+          {otherActions.note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Disbursement action (Disbursing variant, #862) ───────────────────────────
+
+/**
+ * The Disbursing-loan current-stage card with the wired "Mark disbursement
+ * complete" action (`POST …/disbursement/complete`, issues #862 / #864).
+ * Disbursing has no dedicated Figma flow, so the page keeps the Performing
+ * layout and only this "Next Step" card differs. The `Complete off-ramp` button
+ * is the one real, status-changing action — it flips the loan out of
+ * `Disbursing` and refetches. Pending disables the button; a failure surfaces
+ * inline (404 = loan not indexed).
+ */
+function DisbursementActionCard({
+  loanName,
+  onRequestComplete,
+}: {
+  loanName: string;
+  /** Opens the confirmation modal — the actual POST fires on confirm. */
+  onRequestComplete: () => void;
+}) {
+  return (
+    <div
+      className={`${CARD_CLASS} gap-[16px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-disbursement"
+    >
+      <CardTitle>Next Step</CardTitle>
+      <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
+        Mark {loanName} USDC off-ramp complete — this will move the Disbursing
+        status to Performing.
       </p>
+      <button
+        type="button"
+        data-testid="loan-detail-complete-disbursement"
+        onClick={onRequestComplete}
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
+        style={{ backgroundColor: BRAND }}
+      >
+        Complete off-ramp
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Small confirmation modal for the "Complete off-ramp" action (#864). Mirrors
+ * the shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`,
+ * `aria-modal`, Escape + backdrop-click cancel (never a stray confirm), navy
+ * confirm button. The `POST …/disbursement/complete` fires on Confirm; pending
+ * disables both buttons and the mutation error surfaces inline.
+ */
+function DisbursementConfirmDialog({
+  open,
+  loanName,
+  onCancel,
+  onConfirm,
+  pending,
+  error,
+}: {
+  open: boolean;
+  loanName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onCancel();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, pending, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      data-testid="disbursement-confirm-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)]"
+      onClick={() => !pending && onCancel()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="disbursement-confirm-title"
+        data-testid="disbursement-confirm-dialog"
+        className="flex w-[460px] max-w-[calc(100vw-32px)] flex-col gap-[8px] rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="disbursement-confirm-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
+        >
+          Complete off-ramp?
+        </h2>
+        <p className="font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[rgba(56,55,53,0.6)]">
+          Mark {loanName} USDC off-ramp complete — this will move the Disbursing
+          status to Performing.
+        </p>
+        {error && (
+          <p
+            role="alert"
+            data-testid="disbursement-confirm-error"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+          >
+            {error}
+          </p>
+        )}
+        <div className="flex items-start justify-end gap-[12px] pt-[16px]">
+          <button
+            type="button"
+            data-testid="disbursement-confirm-cancel"
+            onClick={onCancel}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="disbursement-confirm-submit"
+            onClick={onConfirm}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            {pending ? "Completing…" : "Complete off-ramp"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
+
+/**
+ * CCR-trend line chart (Figma node `4116:10868`, Watchlist variant). Mock — no
+ * CCR time-series endpoint feeds this page yet (#859); the geometry is a fixed
+ * representative decline and the labels come from the mock fixture. Two dashed
+ * red guide lines (120% / 110%), a solid red trend line ending in a dot below
+ * the 120% threshold, plus the start caption. viewBox is 440×124 (the Figma SVG
+ * box) and scales to the card width.
+ */
+function CcrTrendCard({ trend }: { trend: CcrTrend }) {
+  return (
+    <div
+      className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-ccr-trend"
+    >
+      <CardTitle>CCR trend</CardTitle>
+      <svg
+        viewBox="0 0 440 124"
+        className="w-full"
+        role="img"
+        aria-label={`CCR trend, currently ${trend.currentLabel}`}
+      >
+        {/* Dashed threshold guide lines. */}
+        <line
+          x1="10"
+          y1="32.4"
+          x2="430"
+          y2="32.4"
+          stroke={CCR_GUIDE}
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+        <line
+          x1="10"
+          y1="61"
+          x2="430"
+          y2="61"
+          stroke={CCR_GUIDE}
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+        {/* Declining CCR line + current dot. */}
+        <polyline
+          points="10,8 130,11 250,18 330,30 400,42 427,46"
+          fill="none"
+          stroke={NEGATIVE_RED}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="427" cy="46" r="4" fill={NEGATIVE_RED} />
+        {/* Labels. */}
+        <text
+          x="398"
+          y="28"
+          fontFamily="var(--font-body)"
+          fontSize="10.5"
+          fill={NEGATIVE_RED}
+        >
+          {trend.upperThresholdLabel}
+        </text>
+        <text
+          x="398"
+          y="57"
+          fontFamily="var(--font-body)"
+          fontSize="10.5"
+          fill={NEGATIVE_RED}
+        >
+          {trend.lowerThresholdLabel}
+        </text>
+        <text
+          x="380"
+          y="74"
+          fontFamily="var(--font-body)"
+          fontSize="13.4"
+          fontWeight="700"
+          fill={NEGATIVE_RED}
+        >
+          {trend.currentLabel}
+        </text>
+        <text
+          x="10"
+          y="115"
+          fontFamily="var(--font-body)"
+          fontSize="12.4"
+          fill={INK_MUTED}
+        >
+          {trend.startLabel}
+        </text>
+      </svg>
     </div>
   );
 }
@@ -577,6 +848,8 @@ function OtherActionsCard({
 function LoanDetail() {
   const { id } = Route.useParams();
   const detail = useLoanDetail(id);
+  const completeDisbursement = useCompleteDisbursement();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -610,7 +883,23 @@ function LoanDetail() {
             />
           ))}
         </div>
+      ) : detail.variant === "watchlist" ? (
+        // Watchlist layout (#859): no lifecycle stepper, no Registry card — a
+        // CCR-trend chart sits beside Price & collateral, and the current-stage
+        // card is escalation-focused.
+        <>
+          <Hero hero={detail.hero} />
+          <SummaryTiles tiles={detail.tiles} />
+          <div className="flex w-full flex-col gap-[16px] lg:flex-row">
+            <PriceCollateralCard pc={detail.priceCollateral} />
+            {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
+          </div>
+          <CurrentStageCard stage={detail.currentStage} />
+          <OtherActionsCard otherActions={detail.otherActions} />
+        </>
       ) : (
+        // Performing layout (default) + Disbursing (same layout, but the
+        // current-stage card is the wired disbursement-complete action, #862).
         <>
           <Hero hero={detail.hero} />
           <Lifecycle steps={detail.lifecycle} />
@@ -619,8 +908,31 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             <RegistryCard registry={detail.registry} />
           </div>
-          <CurrentStageCard stage={detail.currentStage} />
+          {detail.variant === "disbursing" ? (
+            <DisbursementActionCard
+              loanName={detail.hero.title}
+              onRequestComplete={() => {
+                completeDisbursement.reset();
+                setConfirmOpen(true);
+              }}
+            />
+          ) : (
+            <CurrentStageCard stage={detail.currentStage} />
+          )}
           <OtherActionsCard otherActions={detail.otherActions} />
+          <DisbursementConfirmDialog
+            open={confirmOpen}
+            loanName={detail.hero.title}
+            pending={completeDisbursement.isPending}
+            error={completeDisbursement.error?.message ?? null}
+            onCancel={() => setConfirmOpen(false)}
+            onConfirm={() =>
+              completeDisbursement.mutate(
+                { loanId: id },
+                { onSuccess: () => setConfirmOpen(false) },
+              )
+            }
+          />
         </>
       )}
     </main>

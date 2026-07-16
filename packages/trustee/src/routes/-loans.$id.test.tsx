@@ -11,7 +11,7 @@
  * top-level loading / error states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import { LOAN_DETAIL_MOCK } from "./-loanDetailMock";
 
@@ -30,6 +30,20 @@ vi.mock("@tanstack/react-router", async () => {
 const mockUseLoanDetail = vi.fn<() => UseLoanDetailResult>();
 vi.mock("./-useLoanDetail", () => ({
   useLoanDetail: () => mockUseLoanDetail(),
+}));
+
+// The page calls `useCompleteDisbursement` (a mutation) unconditionally; mock it
+// so the render tests need no QueryClientProvider. Mutable fields are set per test.
+const { mockComplete } = vi.hoisted(() => ({
+  mockComplete: {
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    error: null as Error | null,
+  },
+}));
+vi.mock("@/api/useCompleteDisbursement", () => ({
+  useCompleteDisbursement: () => mockComplete,
 }));
 
 import { Route } from "./loans.$id";
@@ -51,11 +65,13 @@ function makeResult(
   return {
     state: "ready",
     errorMessage: null,
+    variant: "performing",
+    ccrTrend: null,
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
       status: { label: "Performing", band: "positive" },
-      meta: "Loan #4488 · on-chain Performing",
+      meta: "Loan #4488 · matures 30 Jun 2026",
     },
     lifecycle: [
       {
@@ -126,6 +142,10 @@ function makeResult(
 beforeEach(() => {
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
+  mockComplete.mutate = vi.fn();
+  mockComplete.reset = vi.fn();
+  mockComplete.isPending = false;
+  mockComplete.error = null;
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -138,7 +158,7 @@ describe("Loan detail route — hero (live)", () => {
       "Performing",
     );
     expect(screen.getByTestId("loan-detail-meta")).toHaveTextContent(
-      "Loan #4488 · on-chain Performing",
+      "Loan #4488 · matures 30 Jun 2026",
     );
   });
 
@@ -360,6 +380,93 @@ describe("Loan detail route — still-mock sections", () => {
   });
 });
 
+describe("Loan detail route — Disbursing variant (#862)", () => {
+  function disbursingResult() {
+    return makeResult({
+      variant: "disbursing",
+      hero: {
+        backLabel: "‹ Loans",
+        title: "Helios Metals · Lithium",
+        status: { label: "Disbursing", band: "info" },
+        meta: "Loan #4488 · matures 30 Jun 2026",
+      },
+    });
+  }
+
+  it("renders the 'Next Step' card instead of the mock current-stage card", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    const card = screen.getByTestId("loan-detail-disbursement");
+    expect(card).toBeInTheDocument();
+    expect(within(card).getByText("Next Step")).toBeInTheDocument();
+    // Description references the loan name and the Disbursing → Performing move.
+    expect(card).toHaveTextContent(
+      "Mark Helios Metals · Lithium USDC off-ramp complete — this will move the Disbursing status to Performing.",
+    );
+    expect(
+      screen.getByTestId("loan-detail-complete-disbursement"),
+    ).toHaveTextContent("Complete off-ramp");
+    expect(
+      screen.queryByTestId("loan-detail-current-stage"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens a confirmation modal on click (no mutation yet)", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("disbursement-confirm-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    expect(
+      screen.getByTestId("disbursement-confirm-dialog"),
+    ).toBeInTheDocument();
+    expect(mockComplete.mutate).not.toHaveBeenCalled();
+  });
+
+  it("fires the mutation with the loan id when the modal is confirmed", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    fireEvent.click(screen.getByTestId("disbursement-confirm-submit"));
+    expect(mockComplete.mutate).toHaveBeenCalledWith(
+      { loanId: "4488" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("cancel closes the modal without mutating", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    fireEvent.click(screen.getByTestId("disbursement-confirm-cancel"));
+    expect(
+      screen.queryByTestId("disbursement-confirm-dialog"),
+    ).not.toBeInTheDocument();
+    expect(mockComplete.mutate).not.toHaveBeenCalled();
+  });
+
+  it("disables the confirm button and shows 'Completing…' while pending", () => {
+    mockComplete.isPending = true;
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    const btn = screen.getByTestId("disbursement-confirm-submit");
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent("Completing…");
+  });
+
+  it("surfaces the mutation error inside the modal", () => {
+    mockComplete.error = new Error("loan 4488 not indexed on chain 99000001");
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    expect(screen.getByTestId("disbursement-confirm-error")).toHaveTextContent(
+      "not indexed",
+    );
+  });
+});
+
 describe("Loan detail route — top-level states", () => {
   it("renders the loading skeleton", () => {
     mockUseLoanDetail.mockReturnValue(makeResult({ state: "loading" }));
@@ -376,6 +483,93 @@ describe("Loan detail route — top-level states", () => {
     expect(screen.getByText("‹ Loans").closest("a")).toHaveAttribute(
       "href",
       "/loans",
+    );
+  });
+});
+
+describe("Loan detail route — Watchlist variant (#859)", () => {
+  function watchlistResult() {
+    return makeResult({
+      variant: "watchlist",
+      hero: {
+        backLabel: "‹ Loans",
+        title: "Delta Commodities · Coffee",
+        status: { label: "Watchlist", band: "attention" },
+        meta: "Loan #4471 · matures 1 Aug 2026",
+      },
+      tiles: [
+        {
+          label: "Facility / disbursed",
+          value: "$1.84M / $1.84M",
+          sub: "funded from batch #B-097 · 12 Feb",
+          subTone: "muted",
+        },
+        {
+          label: "Repaid to date",
+          value: "$0",
+          sub: "coupon missed · 15 Jun",
+          subTone: "negative",
+        },
+        {
+          label: "Days on watchlist",
+          value: "18",
+          sub: "since 3 Jun",
+          subTone: "muted",
+        },
+      ],
+      currentStage: {
+        title: "Current stage — escalation decision pending",
+        tag: "Risk Council · 24h timelock",
+        tagTone: "risk",
+        body: "Coffee is down 18% in 30 days…",
+        actionLabel: "Open escalation →",
+      },
+      otherActions: {
+        actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+        note: "",
+      },
+      ccrTrend: {
+        startLabel: "146% · 1 May",
+        currentLabel: "114%",
+        upperThresholdLabel: "120%",
+        lowerThresholdLabel: "110%",
+      },
+    });
+  }
+
+  it("renders the CCR-trend chart and the Days-on-watchlist tile", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    const chart = screen.getByTestId("loan-detail-ccr-trend");
+    expect(chart).toBeInTheDocument();
+    expect(within(chart).getByText("146% · 1 May")).toBeInTheDocument();
+    expect(within(chart).getByText("114%")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("loan-detail-tiles")).getByText(
+        "Days on watchlist",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("omits the lifecycle stepper and the Registry card", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-lifecycle"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-registry"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the escalation stage with the risk-toned tag pill", () => {
+    mockUseLoanDetail.mockReturnValue(watchlistResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-stage-tag")).toHaveTextContent(
+      "Risk Council · 24h timelock",
+    );
+    expect(screen.getByTestId("loan-detail-primary-action")).toHaveTextContent(
+      "Open escalation",
     );
   });
 });

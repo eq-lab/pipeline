@@ -52,9 +52,12 @@ import {
   formatFullUsd,
   formatRegistryCompactUsd,
 } from "@/utils/formatUsd";
-import { formatEpochDate } from "@/utils/formatDate";
+import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
   LOAN_DETAIL_MOCK,
+  LOAN_DETAIL_WATCHLIST_MOCK,
+  WATCHLIST_CCR_TREND,
+  type CcrTrend,
   type CurrentStage,
   type OtherActions,
   type SummaryTile,
@@ -62,7 +65,12 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type StatusBand = "positive" | "attention" | "negative" | "neutral";
+export type StatusBand =
+  | "positive"
+  | "attention"
+  | "negative"
+  | "neutral"
+  | "info";
 
 /** The hero identity block, sourced from the loan-book row. */
 export interface HeroView {
@@ -121,17 +129,30 @@ export interface RegistryView {
 
 export type LoanDetailState = "loading" | "error" | "ready";
 
+/**
+ * Which status-conditional layout the page renders (§S5 variants). Derived from
+ * the on-chain status; drives the section set in `loans.$id.tsx` (issue #859).
+ * Only `performing` and `watchlist` are built today — the rest fall back to the
+ * `performing` layout until their designs land.
+ */
+export type LoanDetailVariant = "performing" | "watchlist" | "disbursing";
+
 export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
   state: LoanDetailState;
   errorMessage: string | null;
+  /** Status-selected layout — the view branches on this before rendering. */
+  variant: LoanDetailVariant;
   hero: HeroView;
+  /** Lifecycle stepper — rendered only by the `performing` layout (§859: none on Watchlist). */
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
   registry: RegistryView;
   currentStage: CurrentStage;
   otherActions: OtherActions;
   priceCollateral: PriceCollateralView;
+  /** CCR-trend chart (Watchlist only); `null` for the performing layout. */
+  ccrTrend: CcrTrend | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -167,11 +188,17 @@ export interface StatusChip {
  */
 export function statusToChip(rawStatus: string): StatusChip {
   switch (rawStatus) {
+    // `Disbursing` is a backend-derived display status (off-ramp not yet
+    // complete); a Performing-family in-progress state → `info` (brand) band.
+    case "Disbursing":
+      return { label: "Disbursing", band: "info", raw: rawStatus };
     case "Performing":
       return { label: "Performing", band: "positive", raw: rawStatus };
     case "Watchlist":
     case "WatchList":
       return { label: "Watchlist", band: "attention", raw: rawStatus };
+    // Backend now serves `Past Due` directly; keep `Matured` as a legacy fallback.
+    case "Past Due":
     case "Matured":
       return { label: "Past Due", band: "negative", raw: rawStatus };
     case "Default":
@@ -223,10 +250,12 @@ const LIVE_STATUS_SUB: Record<string, string> = {
  * `Default` via `statusToChip`); once `Closed` it reads as the completed
  * `Performing` phase. States:
  *   - `Origination` — done for any loan the loan-book returns (it exists on-chain).
- *   - `Disbursing` — done for any live/closed loan; never the current step until
- *     the off-chain "wire sent" movement signal is served (on-chain `Performing`
- *     maps to the live node, not Disbursing).
- *   - live node — active while the loan is live; done once Closed.
+ *   - `Disbursing` — **active** when the served status is `Disbursing` (off-ramp
+ *     not yet complete, issue #862); done once the loan is live/closed; pending
+ *     when no status. (Now that the backend serves `Disbursing` directly, this
+ *     step can be the current one — closes the #854 data gap.)
+ *   - live node — active while the loan is a live non-Disbursing status; done
+ *     once Closed; pending while still Disbursing.
  *   - `Closed` — active when the status is `Closed`, else pending.
  *
  * An absent status (no loan-book row) leaves every step pending — never fabricated.
@@ -235,11 +264,13 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   const hasStatus = rawStatus != null && rawStatus.length > 0;
   const chip = hasStatus ? statusToChip(rawStatus) : null;
   const isClosed = chip?.label === "Closed";
-  const isLive = hasStatus && !isClosed;
+  const isDisbursing = chip?.label === "Disbursing";
+  // Live = a non-Disbursing, non-Closed status (Performing / Watchlist / Past Due / Default).
+  const isLive = hasStatus && !isClosed && !isDisbursing;
 
   // The live node adopts the current status while live; a neutral "Performing"
-  // phase label before (no status) or after (Closed) — we don't store the
-  // prior live status, so we never fabricate a specific risk state for it.
+  // phase label before (Disbursing / no status) or after (Closed) — we don't
+  // store the prior live status, so we never fabricate a specific risk state.
   const liveLabel = isLive ? chip!.label : "Performing";
   const liveSub = isLive
     ? (LIVE_STATUS_SUB[chip!.label] ?? "live")
@@ -256,7 +287,7 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
       label: "Disbursing",
       sub: "minted, not yet funded",
       index: 2,
-      state: hasStatus ? "done" : "pending",
+      state: isDisbursing ? "active" : hasStatus ? "done" : "pending",
     },
     {
       label: liveLabel,
@@ -302,10 +333,10 @@ function formatCcrPct(ccrPct: string | null | undefined): string {
  * found (e.g. a direct URL to a non-active loan), degrades to the loan id only —
  * never fabricates identity.
  *
- * The status bar carries **no dates** (maturity is a "key number", not a status
- * field — design assignment §S5): the meta is the loan id plus the raw on-chain
- * status the backend serves (always printed per §3.2), while the chip shows the
- * mapped display label (`statusToChip`).
+ * The meta prints the loan id + the **maturity date** (both layouts — issue #859;
+ * the maturity is a real served field, `entry.maturity`). The chip shows the
+ * mapped display status (`statusToChip`). The Figma hero corridor
+ * (`Colombia → Italy`) has no backend source and is omitted (never fabricated).
  */
 export function buildHero(
   loanId: string,
@@ -320,11 +351,15 @@ export function buildHero(
     };
   }
   const chip = statusToChip(entry.status);
+  const metaParts = [
+    `Loan #${entry.loan_id}`,
+    `matures ${formatMaturityDate(entry.maturity)}`,
+  ].filter((p) => !p.endsWith("—"));
   return {
     backLabel: BACK_LABEL,
     title: `${entry.originator} · ${entry.commodity}`,
     status: { label: chip.label, band: chip.band },
-    meta: `Loan #${entry.loan_id} · on-chain ${chip.raw}`,
+    meta: metaParts.join(" · "),
   };
 }
 
@@ -550,15 +585,30 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     entry?.spot_change_7d ?? null,
   );
 
+  // Status-conditional layout (§859 / §862): the served display status selects
+  // the section set. Watchlist has its own layout; Disbursing reuses the
+  // performing layout but swaps in the disbursement-complete action card.
+  const chipLabel = entry != null ? statusToChip(entry.status).label : null;
+  const variant: LoanDetailVariant =
+    chipLabel === "Watchlist"
+      ? "watchlist"
+      : chipLabel === "Disbursing"
+        ? "disbursing"
+        : "performing";
+  const mock =
+    variant === "watchlist" ? LOAN_DETAIL_WATCHLIST_MOCK : LOAN_DETAIL_MOCK;
+
   return {
     state,
     errorMessage: loanBook.error?.message ?? null,
+    variant,
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
-    tiles: LOAN_DETAIL_MOCK.tiles,
+    tiles: mock.tiles,
     registry: buildRegistryState(financials),
-    currentStage: LOAN_DETAIL_MOCK.currentStage,
-    otherActions: LOAN_DETAIL_MOCK.otherActions,
+    currentStage: mock.currentStage,
+    otherActions: mock.otherActions,
     priceCollateral,
+    ccrTrend: variant === "watchlist" ? WATCHLIST_CCR_TREND : null,
   };
 }

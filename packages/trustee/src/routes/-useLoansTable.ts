@@ -83,14 +83,17 @@ export const LOAN_TABS: readonly LoanTab[] = [
 ] as const;
 
 /**
- * Tab → served `status` literal it filters on. The backend serves `"WatchList"`
- * (capital L); the tab reads `"Watchlist"` (Figma casing).
+ * Tab → the served `status` literals it includes. The backend serves `"WatchList"`
+ * (capital L); the tab reads `"Watchlist"` (Figma casing). The **Performing** tab
+ * also includes **`"Disbursing"`** — a backend-derived, Performing-family display
+ * status (off-ramp not yet complete, #862) — so freshly-drawn loans surface there
+ * rather than disappearing from every tab.
  */
-const TAB_STATUS: Record<LoanTab, string> = {
-  Performing: "Performing",
-  Watchlist: "WatchList",
-  Default: "Default",
-  Closed: "Closed",
+const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
+  Performing: ["Performing", "Disbursing"],
+  Watchlist: ["WatchList"],
+  Default: ["Default"],
+  Closed: ["Closed"],
 };
 
 /** CCR footnote band → determines the CCR cell colour. */
@@ -330,7 +333,9 @@ function countByStatus(rows: LoanTableRow[]): Record<LoanTab, number> {
     Closed: 0,
   };
   for (const tab of LOAN_TABS) {
-    counts[tab] = rows.filter((r) => r.status === TAB_STATUS[tab]).length;
+    counts[tab] = rows.filter((r) =>
+      TAB_STATUSES[tab].includes(r.status),
+    ).length;
   }
   return counts;
 }
@@ -351,7 +356,9 @@ export function buildLoansView(
 } {
   const allRows = data.loans.map((entry) => mapEntryToRow(entry, nowMs));
   const counts = countByStatus(allRows);
-  const rows = allRows.filter((r) => r.status === TAB_STATUS[activeTab]);
+  const rows = allRows.filter((r) =>
+    TAB_STATUSES[activeTab].includes(r.status),
+  );
   return { summary: mapSummary(data.summary), counts, rows };
 }
 
