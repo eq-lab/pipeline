@@ -46,6 +46,23 @@ vi.mock("@/api/useCompleteDisbursement", () => ({
   useCompleteDisbursement: () => mockComplete,
 }));
 
+// `useRollover` pulls in @pipeline/wallet-connect (freighter) — mock it so the
+// render tests don't load the wallet chain and need no QueryClient.
+const { mockRollover } = vi.hoisted(() => ({
+  mockRollover: {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(() => Promise.resolve({ hash: "0xhash" })),
+    reset: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    error: null as Error | null,
+    stage: null,
+  },
+}));
+vi.mock("@/api/useRollover", () => ({
+  useRollover: () => mockRollover,
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -148,6 +165,10 @@ beforeEach(() => {
   mockComplete.reset = vi.fn();
   mockComplete.isPending = false;
   mockComplete.error = null;
+  mockRollover.mutateAsync = vi.fn(() => Promise.resolve({ hash: "0xhash" }));
+  mockRollover.reset = vi.fn();
+  mockRollover.isPending = false;
+  mockRollover.error = null;
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -432,6 +453,42 @@ describe("Loan detail route — Matured variant (#866)", () => {
     expect(screen.getByTestId("loan-detail-meta")).toHaveTextContent(
       "Loan #4483 · 15 Jun 2026 — passed",
     );
+  });
+
+  it("opens the rollover modal from the Roll over action (#870)", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    expect(screen.queryByTestId("rollover-dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    const dialog = screen.getByTestId("rollover-dialog");
+    expect(dialog).toBeInTheDocument();
+    // Guard banner shows the matured date; submit is disabled until the form is filled.
+    expect(screen.getByTestId("rollover-guard")).toHaveTextContent(
+      "matured 15 Jun 2026",
+    );
+    expect(screen.getByTestId("rollover-submit")).toBeDisabled();
+    expect(mockRollover.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("submits the on-chain rollover with the entered rate + maturity", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    fireEvent.change(screen.getByTestId("rollover-rate"), {
+      target: { value: "1450" },
+    });
+    fireEvent.change(screen.getByTestId("rollover-maturity"), {
+      target: { value: "2026-09-30" },
+    });
+    const submit = screen.getByTestId("rollover-submit");
+    expect(submit).not.toBeDisabled();
+    fireEvent.click(submit);
+    expect(mockRollover.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488, // Route.useParams is patched to id "4488" in this suite.
+      newRateBps: 1450,
+      // 2026-09-30T00:00:00Z in Unix seconds.
+      newMaturity: Math.floor(Date.parse("2026-09-30T00:00:00Z") / 1000),
+    });
   });
 });
 
