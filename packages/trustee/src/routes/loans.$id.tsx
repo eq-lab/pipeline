@@ -12,6 +12,7 @@ import {
 } from "./-useLoanDetail";
 import {
   type CcrTrend,
+  type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
 } from "./-loanDetailMock";
@@ -31,6 +32,9 @@ import {
  *   - **disbursing** — the performing layout, but the current-stage card is the
  *     wired disbursement-complete action (`POST …/disbursement/complete`, #862);
  *     the lifecycle shows the Disbursing node active.
+ *   - **matured** — no stepper; a rollover card beside Price & collateral, the
+ *     hero shows `<date> — passed`, and Roll over is the matured-only fast-path
+ *     (Figma node `4116:10969`, #866). The served `Past Due` status maps here.
  * Shared live sections render in both: Hero + status chip (loan-book row), Price
  * & collateral (`/valuations`), Registry (`/financials`, performing only).
  * Watchlist-only sections with no backend source (CCR-trend series, tiles copy,
@@ -747,6 +751,57 @@ function DisbursementConfirmDialog({
   );
 }
 
+// ── Matured rollover card (Matured variant, #866) ────────────────────────────
+
+/**
+ * The Matured "rollover" card (Figma `4116:10969`, right column). The title
+ * interpolates the loan's live maturity date; the `rollover available` tag is an
+ * olive/attention pill. The "Roll over →" button is **inert** for now — the S9
+ * rollover flow / backend endpoint doesn't exist yet (#866 / #867), so this is a
+ * visual placeholder like the other mock action buttons.
+ */
+function MaturedRolloverCard({
+  rollover,
+  maturityDate,
+}: {
+  rollover: RolloverCardData;
+  maturityDate: string | null;
+}) {
+  const title =
+    maturityDate != null
+      ? `Matured ${maturityDate} without full repayment`
+      : "Matured without full repayment";
+  return (
+    <div
+      className={`${CARD_CLASS} flex-1 gap-[16px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-rollover"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
+        <CardTitle>{title}</CardTitle>
+        <span
+          data-testid="loan-detail-rollover-tag"
+          className="inline-flex items-center rounded-[4px] border border-solid px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap"
+          style={chipStyle("attention")}
+        >
+          {rollover.tag}
+        </span>
+      </div>
+      <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
+        {rollover.body}
+      </p>
+      <button
+        type="button"
+        data-testid="loan-detail-rollover-action"
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
+        style={{ backgroundColor: BRAND }}
+      >
+        {rollover.actionLabel}
+      </button>
+    </div>
+  );
+}
+
 // ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
 
 /**
@@ -895,6 +950,23 @@ function LoanDetail() {
             {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
           </div>
           <CurrentStageCard stage={detail.currentStage} />
+          <OtherActionsCard otherActions={detail.otherActions} />
+        </>
+      ) : detail.variant === "matured" ? (
+        // Matured layout (#866): no stepper, no Registry — a rollover card sits
+        // beside Price & collateral (rollover is the matured-only fast-path).
+        <>
+          <Hero hero={detail.hero} />
+          <SummaryTiles tiles={detail.tiles} />
+          <div className="flex w-full flex-col gap-[16px] lg:flex-row">
+            <PriceCollateralCard pc={detail.priceCollateral} />
+            {detail.rollover && (
+              <MaturedRolloverCard
+                rollover={detail.rollover}
+                maturityDate={detail.maturityDate}
+              />
+            )}
+          </div>
           <OtherActionsCard otherActions={detail.otherActions} />
         </>
       ) : (

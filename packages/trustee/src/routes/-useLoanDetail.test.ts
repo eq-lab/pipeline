@@ -116,23 +116,24 @@ describe("statusToChip", () => {
     });
   });
 
-  it("maps the backend-derived Disbursing / Past Due display statuses (#862)", () => {
+  it("maps the backend-derived Disbursing display status (#862)", () => {
     expect(statusToChip("Disbursing")).toEqual({
       label: "Disbursing",
       band: "info",
       raw: "Disbursing",
     });
-    expect(statusToChip("Past Due")).toEqual({
-      label: "Past Due",
-      band: "negative",
-      raw: "Past Due",
-    });
   });
 
-  it("keeps the legacy Matured → Past Due fallback (display rename, keeps raw)", () => {
+  it("maps the past-maturity status (Past Due / Matured) to the Matured chip (#866)", () => {
+    // Backend serves `Past Due`; the design renders this state as `Matured`.
+    expect(statusToChip("Past Due")).toEqual({
+      label: "Matured",
+      band: "attention",
+      raw: "Past Due",
+    });
     expect(statusToChip("Matured")).toEqual({
-      label: "Past Due",
-      band: "negative",
+      label: "Matured",
+      band: "attention",
       raw: "Matured",
     });
   });
@@ -158,10 +159,10 @@ describe("buildHero", () => {
     expect(hero.backLabel).toBe("‹ Loans");
   });
 
-  it("renames the chip for a Matured loan (maturity date still shown)", () => {
+  it("renders a matured loan with the Matured chip and '— passed' maturity (#866)", () => {
     const hero = buildHero("4488", makeEntry({ status: "Matured" }));
-    expect(hero.status).toEqual({ label: "Past Due", band: "negative" });
-    expect(hero.meta).toBe("Loan #4488 · matures 30 Jun 2026");
+    expect(hero.status).toEqual({ label: "Matured", band: "attention" });
+    expect(hero.meta).toBe("Loan #4488 · 30 Jun 2026 — passed");
   });
 
   it("degrades to the loan id only when no row is found (never fabricates)", () => {
@@ -210,9 +211,9 @@ describe("buildLifecycle", () => {
     ]);
   });
 
-  it("maps the literal Past Due status to the live node (active)", () => {
+  it("maps the past-maturity status to a Matured live node (active, #866)", () => {
     const steps = buildLifecycle("Past Due");
-    expect(steps[2]).toMatchObject({ label: "Past Due", state: "active" });
+    expect(steps[2]).toMatchObject({ label: "Matured", state: "active" });
     expect(steps[1]).toMatchObject({ label: "Disbursing", state: "done" });
   });
 
@@ -226,9 +227,9 @@ describe("buildLifecycle", () => {
     expect(steps[3]).toMatchObject({ label: "Closed", state: "pending" });
   });
 
-  it("maps on-chain Matured to a Past Due live node (still → Closed, not a step)", () => {
+  it("maps legacy on-chain Matured to a Matured live node (still → Closed)", () => {
     const steps = buildLifecycle("Matured");
-    expect(steps[2]).toMatchObject({ label: "Past Due", state: "active" });
+    expect(steps[2]).toMatchObject({ label: "Matured", state: "active" });
     expect(steps[3]).toMatchObject({ label: "Closed", state: "pending" });
   });
 

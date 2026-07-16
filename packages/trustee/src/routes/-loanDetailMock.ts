@@ -162,3 +162,56 @@ export const WATCHLIST_CCR_TREND: CcrTrend = {
   upperThresholdLabel: "120%",
   lowerThresholdLabel: "110%",
 };
+
+// ── Matured variant (issue #866, Figma node 4116:10969) ───────────────────────
+
+/**
+ * The Matured "rollover" card (right column of the Matured variant). Mock — no
+ * rollover (S9) backend flow yet, so the button is inert. The card title
+ * interpolates the loan's live maturity date in the view.
+ */
+export interface RolloverCard {
+  /** Olive "available" pill, e.g. `"rollover available"`. */
+  tag: string;
+  body: string;
+  actionLabel: string;
+}
+
+/** The still-mock sections of the Matured loan-detail layout. */
+export interface MaturedMock {
+  tiles: SummaryTile[];
+  rollover: RolloverCard;
+  otherActions: OtherActions;
+}
+
+export const LOAN_DETAIL_MATURED_MOCK: MaturedMock = {
+  tiles: [
+    {
+      label: "Facility / senior",
+      value: "$1,125,000 / $900,000",
+      sub: "funded from batch #B-097 · 12 Feb",
+      subTone: "muted",
+    },
+    {
+      label: "Repaid to date",
+      value: "$0",
+      sub: "full repayment expected mid-Jul",
+      subTone: "muted",
+    },
+    {
+      label: "Rate · epochs",
+      value: "12.5% p.a.",
+      sub: "epoch 1",
+      subTone: "muted",
+    },
+  ],
+  rollover: {
+    tag: "rollover available",
+    body: "now ≥ currentMaturityDate and status is not Default or Closed — the instant post-maturity rollover from your key is available. A penalty re-term outside this fast-path would be a Risk Council amendEconomics.",
+    actionLabel: "Roll over →",
+  },
+  otherActions: {
+    actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+    note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  },
+};

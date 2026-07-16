@@ -55,11 +55,13 @@ import {
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
   LOAN_DETAIL_MOCK,
+  LOAN_DETAIL_MATURED_MOCK,
   LOAN_DETAIL_WATCHLIST_MOCK,
   WATCHLIST_CCR_TREND,
   type CcrTrend,
   type CurrentStage,
   type OtherActions,
+  type RolloverCard,
   type SummaryTile,
 } from "./-loanDetailMock";
 
@@ -131,11 +133,14 @@ export type LoanDetailState = "loading" | "error" | "ready";
 
 /**
  * Which status-conditional layout the page renders (§S5 variants). Derived from
- * the on-chain status; drives the section set in `loans.$id.tsx` (issue #859).
- * Only `performing` and `watchlist` are built today — the rest fall back to the
- * `performing` layout until their designs land.
+ * the served display status; drives the section set in `loans.$id.tsx`
+ * (issues #859 / #862 / #866). Unbuilt statuses fall back to `performing`.
  */
-export type LoanDetailVariant = "performing" | "watchlist" | "disbursing";
+export type LoanDetailVariant =
+  | "performing"
+  | "watchlist"
+  | "disbursing"
+  | "matured";
 
 export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
@@ -144,15 +149,19 @@ export interface UseLoanDetailResult {
   /** Status-selected layout — the view branches on this before rendering. */
   variant: LoanDetailVariant;
   hero: HeroView;
-  /** Lifecycle stepper — rendered only by the `performing` layout (§859: none on Watchlist). */
+  /** Lifecycle stepper — rendered only by the `performing`/`disbursing` layout (none on Watchlist/Matured). */
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
   registry: RegistryView;
   currentStage: CurrentStage;
   otherActions: OtherActions;
   priceCollateral: PriceCollateralView;
-  /** CCR-trend chart (Watchlist only); `null` for the performing layout. */
+  /** CCR-trend chart (Watchlist only); `null` otherwise. */
   ccrTrend: CcrTrend | null;
+  /** Rollover card (Matured only); `null` otherwise. */
+  rollover: RolloverCard | null;
+  /** Formatted maturity date (e.g. `"15 Jun 2026"`), for the Matured rollover-card title; `null` when absent. */
+  maturityDate: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -198,9 +207,12 @@ export function statusToChip(rawStatus: string): StatusChip {
     case "WatchList":
       return { label: "Watchlist", band: "attention", raw: rawStatus };
     // Backend now serves `Past Due` directly; keep `Matured` as a legacy fallback.
+    // Past-maturity: the backend serves `Past Due`, but the design renders this
+    // state as **Matured** (chip + dedicated screen + rollover, #866/#867). The
+    // legacy `Matured` value maps the same. Olive/attention band.
     case "Past Due":
     case "Matured":
-      return { label: "Past Due", band: "negative", raw: rawStatus };
+      return { label: "Matured", band: "attention", raw: rawStatus };
     case "Default":
       return { label: "Default", band: "negative", raw: rawStatus };
     case "Closed":
@@ -232,7 +244,7 @@ export interface LifecycleStep {
 const LIVE_STATUS_SUB: Record<string, string> = {
   Performing: "deployed & current",
   Watchlist: "elevated risk",
-  "Past Due": "overdue, unpaid",
+  Matured: "past maturity",
   Default: "council declared",
 };
 
@@ -351,10 +363,18 @@ export function buildHero(
     };
   }
   const chip = statusToChip(entry.status);
-  const metaParts = [
-    `Loan #${entry.loan_id}`,
-    `matures ${formatMaturityDate(entry.maturity)}`,
-  ].filter((p) => !p.endsWith("—"));
+  const maturityDate = formatMaturityDate(entry.maturity);
+  // A matured loan's maturity has passed → "<date> — passed"; otherwise
+  // "matures <date>". Dropped entirely when the date is unavailable.
+  const maturityClause =
+    maturityDate === "—"
+      ? null
+      : chip.label === "Matured"
+        ? `${maturityDate} — passed`
+        : `matures ${maturityDate}`;
+  const metaParts = [`Loan #${entry.loan_id}`, maturityClause].filter(
+    (p): p is string => p != null,
+  );
   return {
     backLabel: BACK_LABEL,
     title: `${entry.originator} · ${entry.commodity}`,
@@ -585,18 +605,37 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     entry?.spot_change_7d ?? null,
   );
 
-  // Status-conditional layout (§859 / §862): the served display status selects
-  // the section set. Watchlist has its own layout; Disbursing reuses the
-  // performing layout but swaps in the disbursement-complete action card.
+  // Status-conditional layout (§859 / §862 / §866): the served display status
+  // selects the section set. Watchlist and Matured have their own layouts;
+  // Disbursing reuses the performing layout with the disbursement-complete card.
   const chipLabel = entry != null ? statusToChip(entry.status).label : null;
   const variant: LoanDetailVariant =
     chipLabel === "Watchlist"
       ? "watchlist"
       : chipLabel === "Disbursing"
         ? "disbursing"
-        : "performing";
-  const mock =
-    variant === "watchlist" ? LOAN_DETAIL_WATCHLIST_MOCK : LOAN_DETAIL_MOCK;
+        : chipLabel === "Matured"
+          ? "matured"
+          : "performing";
+
+  const tiles =
+    variant === "watchlist"
+      ? LOAN_DETAIL_WATCHLIST_MOCK.tiles
+      : variant === "matured"
+        ? LOAN_DETAIL_MATURED_MOCK.tiles
+        : LOAN_DETAIL_MOCK.tiles;
+  const otherActions =
+    variant === "watchlist"
+      ? LOAN_DETAIL_WATCHLIST_MOCK.otherActions
+      : variant === "matured"
+        ? LOAN_DETAIL_MATURED_MOCK.otherActions
+        : LOAN_DETAIL_MOCK.otherActions;
+  // currentStage is only rendered by performing/disbursing; watchlist supplies
+  // its escalation copy, matured renders the rollover card instead.
+  const currentStage =
+    variant === "watchlist"
+      ? LOAN_DETAIL_WATCHLIST_MOCK.currentStage
+      : LOAN_DETAIL_MOCK.currentStage;
 
   return {
     state,
@@ -604,11 +643,13 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     variant,
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
-    tiles: mock.tiles,
+    tiles,
     registry: buildRegistryState(financials),
-    currentStage: mock.currentStage,
-    otherActions: mock.otherActions,
+    currentStage,
+    otherActions,
     priceCollateral,
     ccrTrend: variant === "watchlist" ? WATCHLIST_CCR_TREND : null,
+    rollover: variant === "matured" ? LOAN_DETAIL_MATURED_MOCK.rollover : null,
+    maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
   };
 }
