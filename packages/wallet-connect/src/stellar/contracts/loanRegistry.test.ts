@@ -25,6 +25,8 @@ import {
   parseUsdcAmountToU128,
   encodeRolloverArgs,
   buildRolloverEnvelope,
+  encodeUpdateMutableArgs,
+  buildUpdateMutableEnvelope,
   type SubmitLoanRequest,
 } from "./loanRegistry";
 
@@ -570,5 +572,65 @@ describe("buildRolloverEnvelope", () => {
       buildRolloverEnvelope(args({ executorId: "" })),
     ).rejects.toThrow("executorId must not be empty");
     expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+// ── encodeUpdateMutableArgs (issue #872) ────────────────────────────────────────
+
+describe("encodeUpdateMutableArgs", () => {
+  it("encodes (loan_id:u32, status:enum, ccr:u32 [ONE=1e6], location:String, metadata:String)", () => {
+    const args = encodeUpdateMutableArgs(
+      4488,
+      "WatchList",
+      135,
+      "Vessel MV Andes",
+      "",
+    );
+    expect(args).toHaveLength(5);
+    expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    // Status is a unit-variant enum: vec([symbol]).
+    expect(args[1]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
+    // 135% → ONE=1e6 scale (percent × 10000).
+    expect(args[2]).toEqual({ t: "u32", v: 1_350_000 });
+    expect(args[3]).toEqual({ t: "string", v: "Vessel MV Andes" });
+    expect(args[4]).toEqual({ t: "string", v: "" });
+  });
+});
+
+describe("buildUpdateMutableEnvelope", () => {
+  function args(overrides: Record<string, unknown> = {}) {
+    return {
+      executorId: EXECUTOR_ID,
+      targetId: TARGET_ID,
+      caller: CALLER,
+      loanId: 4488,
+      status: "Performing",
+      ccrPercent: 135,
+      location: "Vessel MV Andes",
+      metadataUri: "",
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      ...overrides,
+    };
+  }
+
+  it("calls execute with (target, update_mutable symbol, args vec, caller)", async () => {
+    await buildUpdateMutableEnvelope(args());
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: TARGET_ID },
+      { t: "symbol", v: "update_mutable" },
+      expect.objectContaining({ t: "vec" }),
+      { t: "address", v: CALLER },
+    );
+  });
+
+  it("throws a simulation error without assembling", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
+    await expect(buildUpdateMutableEnvelope(args())).rejects.toThrow(
+      "updateMutable simulation error",
+    );
+    expect(mockAssembleTransaction).not.toHaveBeenCalled();
   });
 });
