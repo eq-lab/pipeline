@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import {
   useLoanDetail,
   type HeroView,
@@ -20,12 +21,15 @@ import {
  * A real route at `/loans/$id`, keyed by the loan-book `loan_id` (the #847
  * in-page "fake navigation" is gone now that a real id is served).
  *
- * ## Status-conditional layout (#859)
- * The page branches on `detail.variant` (derived from the on-chain status):
+ * ## Status-conditional layout (#859 / #862)
+ * The page branches on `detail.variant` (derived from the served display status):
  *   - **performing** — lifecycle stepper + Price & collateral + Registry state.
  *   - **watchlist** — no stepper; a CCR-trend chart beside Price & collateral,
  *     a "Days on watchlist" tile, and an escalation current-stage card (Figma
  *     node `4116:10803`).
+ *   - **disbursing** — the performing layout, but the current-stage card is the
+ *     wired disbursement-complete action (`POST …/disbursement/complete`, #862);
+ *     the lifecycle shows the Disbursing node active.
  * Shared live sections render in both: Hero + status chip (loan-book row), Price
  * & collateral (`/valuations`), Registry (`/financials`, performing only).
  * Watchlist-only sections with no backend source (CCR-trend series, tiles copy,
@@ -97,6 +101,12 @@ function chipStyle(band: StatusBand): React.CSSProperties {
         color: NEGATIVE_RED,
         backgroundColor: "rgba(178,0,0,0.08)",
         borderColor: "rgba(178,0,0,0.3)",
+      };
+    case "info":
+      return {
+        color: BRAND,
+        backgroundColor: "rgba(0,0,128,0.08)",
+        borderColor: "rgba(0,0,128,0.3)",
       };
     default:
       return {
@@ -601,6 +611,61 @@ function OtherActionsCard({
   );
 }
 
+// ── Disbursement action (Disbursing variant, #862) ───────────────────────────
+
+/**
+ * The Disbursing-loan current-stage card with the wired "Mark disbursement
+ * complete" action (`POST …/disbursement/complete`, issue #862). The copy is
+ * static (mock, describing the off-ramp step); the button is the one real,
+ * status-changing action on the loan-detail page — it flips the loan out of
+ * `Disbursing` and refetches. Pending disables the button; a failure surfaces
+ * inline (404 = loan not indexed).
+ */
+function DisbursementActionCard({
+  onComplete,
+  pending,
+  error,
+}: {
+  onComplete: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <div
+      className={`${CARD_CLASS} gap-[16px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-disbursement"
+    >
+      <CardTitle>Current stage — disbursing</CardTitle>
+      <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
+        The senior principal is being wired to the borrower via the USDC
+        off-ramp. Mark the disbursement complete once the wire has settled to
+        flip the loan to Performing.
+      </p>
+      <button
+        type="button"
+        data-testid="loan-detail-complete-disbursement"
+        onClick={onComplete}
+        disabled={pending}
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ backgroundColor: BRAND }}
+      >
+        {pending ? "Completing…" : "Mark disbursement complete"}
+      </button>
+      {error && (
+        <p
+          role="alert"
+          data-testid="loan-detail-disbursement-error"
+          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{ color: NEGATIVE_RED }}
+        >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
 
 /**
@@ -702,6 +767,7 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
 function LoanDetail() {
   const { id } = Route.useParams();
   const detail = useLoanDetail(id);
+  const completeDisbursement = useCompleteDisbursement();
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -750,7 +816,8 @@ function LoanDetail() {
           <OtherActionsCard otherActions={detail.otherActions} />
         </>
       ) : (
-        // Performing layout (default): lifecycle stepper + Registry state & derived.
+        // Performing layout (default) + Disbursing (same layout, but the
+        // current-stage card is the wired disbursement-complete action, #862).
         <>
           <Hero hero={detail.hero} />
           <Lifecycle steps={detail.lifecycle} />
@@ -759,7 +826,15 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             <RegistryCard registry={detail.registry} />
           </div>
-          <CurrentStageCard stage={detail.currentStage} />
+          {detail.variant === "disbursing" ? (
+            <DisbursementActionCard
+              onComplete={() => completeDisbursement.mutate({ loanId: id })}
+              pending={completeDisbursement.isPending}
+              error={completeDisbursement.error?.message ?? null}
+            />
+          ) : (
+            <CurrentStageCard stage={detail.currentStage} />
+          )}
           <OtherActionsCard otherActions={detail.otherActions} />
         </>
       )}

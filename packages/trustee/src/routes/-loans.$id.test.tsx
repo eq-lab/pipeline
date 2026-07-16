@@ -11,7 +11,7 @@
  * top-level loading / error states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import { LOAN_DETAIL_MOCK } from "./-loanDetailMock";
 
@@ -30,6 +30,19 @@ vi.mock("@tanstack/react-router", async () => {
 const mockUseLoanDetail = vi.fn<() => UseLoanDetailResult>();
 vi.mock("./-useLoanDetail", () => ({
   useLoanDetail: () => mockUseLoanDetail(),
+}));
+
+// The page calls `useCompleteDisbursement` (a mutation) unconditionally; mock it
+// so the render tests need no QueryClientProvider. Mutable fields are set per test.
+const { mockComplete } = vi.hoisted(() => ({
+  mockComplete: {
+    mutate: vi.fn(),
+    isPending: false,
+    error: null as Error | null,
+  },
+}));
+vi.mock("@/api/useCompleteDisbursement", () => ({
+  useCompleteDisbursement: () => mockComplete,
 }));
 
 import { Route } from "./loans.$id";
@@ -128,6 +141,9 @@ function makeResult(
 beforeEach(() => {
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
+  mockComplete.mutate = vi.fn();
+  mockComplete.isPending = false;
+  mockComplete.error = null;
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -359,6 +375,54 @@ describe("Loan detail route — still-mock sections", () => {
     expect(
       within(actions).getByText(/Risk Council proposals under a 24h timelock/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Disbursing variant (#862)", () => {
+  function disbursingResult() {
+    return makeResult({
+      variant: "disbursing",
+      hero: {
+        backLabel: "‹ Loans",
+        title: "Helios Metals · Lithium",
+        status: { label: "Disbursing", band: "info" },
+        meta: "Loan #4488 · matures 30 Jun 2026",
+      },
+    });
+  }
+
+  it("renders the disbursement action instead of the mock current-stage card", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-disbursement")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-current-stage"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("fires the complete-disbursement mutation with the loan id on click", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    expect(mockComplete.mutate).toHaveBeenCalledWith({ loanId: "4488" });
+  });
+
+  it("disables the button and shows 'Completing…' while pending", () => {
+    mockComplete.isPending = true;
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    const btn = screen.getByTestId("loan-detail-complete-disbursement");
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent("Completing…");
+  });
+
+  it("surfaces the mutation error inline", () => {
+    mockComplete.error = new Error("loan 4488 not indexed on chain 99000001");
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    expect(
+      screen.getByTestId("loan-detail-disbursement-error"),
+    ).toHaveTextContent("not indexed");
   });
 });
 
