@@ -123,6 +123,23 @@ export type {
   BuildRolloverEnvelopeParams,
 } from "./stellar/contracts/loanRegistry";
 
+/**
+ * `updateMutable` (issue #872) — trustee-wallet-signed on-chain
+ * `LoanRegistry.updateMutable` through the executor `execute` proxy. Non-economic
+ * fields only (status / CCR / location / metadata URI), no NAV impact.
+ */
+export {
+  updateMutable,
+  buildUpdateMutableEnvelope,
+  encodeUpdateMutableArgs,
+} from "./stellar/contracts/loanRegistry";
+export type {
+  UpdateMutableParams,
+  UpdateMutableResult,
+  UpdateMutableStage,
+  BuildUpdateMutableEnvelopeParams,
+} from "./stellar/contracts/loanRegistry";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";

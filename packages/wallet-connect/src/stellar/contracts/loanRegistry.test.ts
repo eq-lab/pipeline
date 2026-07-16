@@ -25,6 +25,8 @@ import {
   parseUsdcAmountToU128,
   encodeRolloverArgs,
   buildRolloverEnvelope,
+  encodeUpdateMutableArgs,
+  buildUpdateMutableEnvelope,
   type SubmitLoanRequest,
 } from "./loanRegistry";
 
@@ -570,5 +572,93 @@ describe("buildRolloverEnvelope", () => {
       buildRolloverEnvelope(args({ executorId: "" })),
     ).rejects.toThrow("executorId must not be empty");
     expect(mockGetAccount).not.toHaveBeenCalled();
+  });
+});
+
+// ── encodeUpdateMutableArgs (issue #872) ────────────────────────────────────────
+
+const LOCATION_INPUT = {
+  location_type: "Vessel",
+  location_identifier: "IMO-9741205",
+  tracking_url: "https://track.example/9741205",
+  updated_at: 1_784_000_000,
+};
+
+describe("encodeUpdateMutableArgs", () => {
+  it("encodes the contract's arg ORDER: (loan_id:u32, metadata:String, status:enum, ccr:u32 [ONE=1e6], location:LocationUpdate map)", () => {
+    const args = encodeUpdateMutableArgs(
+      4488,
+      "WatchList",
+      135,
+      LOCATION_INPUT,
+      "ipfs://assay",
+    );
+    expect(args).toHaveLength(5);
+    expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    // metadata_uri is SECOND, not last (deployed signature). Sending it last put
+    // the status enum in the String slot → guest-side TryFromVal panic (#872).
+    expect(args[1]).toEqual({ t: "string", v: "ipfs://assay" });
+    // Status is a unit-variant enum: vec([symbol]).
+    expect(args[2]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
+    // 135% → ONE=1e6 scale (percent × 10000).
+    expect(args[3]).toEqual({ t: "u32", v: 1_350_000 });
+    // Location is the same `LocationUpdate` map as draw_loan — NOT a bare string.
+    expect(args[4]).toMatchObject({ t: "map" });
+    const locationMap = args[4] as unknown as {
+      t: "map";
+      v: Array<{ key: { v: string }; val: { t: string; v: string | bigint } }>;
+    };
+    expect(locationMap.v.map((e) => e.key.v)).toEqual([
+      "location_identifier",
+      "location_type",
+      "tracking_url",
+      "updated_at",
+    ]);
+    const byKey = Object.fromEntries(
+      locationMap.v.map((e) => [e.key.v, e.val]),
+    );
+    expect(byKey.location_type).toEqual({
+      t: "vec",
+      v: [{ t: "symbol", v: "Vessel" }],
+    });
+    expect(byKey.updated_at).toEqual({ t: "u64", v: 1_784_000_000n });
+  });
+});
+
+describe("buildUpdateMutableEnvelope", () => {
+  function args(overrides: Record<string, unknown> = {}) {
+    return {
+      executorId: EXECUTOR_ID,
+      targetId: TARGET_ID,
+      caller: CALLER,
+      loanId: 4488,
+      status: "Performing",
+      ccrPercent: 135,
+      location: LOCATION_INPUT,
+      metadataUri: "",
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      ...overrides,
+    };
+  }
+
+  it("calls execute with (target, update_mutable symbol, args vec, caller)", async () => {
+    await buildUpdateMutableEnvelope(args());
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: TARGET_ID },
+      { t: "symbol", v: "update_mutable" },
+      expect.objectContaining({ t: "vec" }),
+      { t: "address", v: CALLER },
+    );
+  });
+
+  it("throws a simulation error without assembling", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
+    await expect(buildUpdateMutableEnvelope(args())).rejects.toThrow(
+      "updateMutable simulation error",
+    );
+    expect(mockAssembleTransaction).not.toHaveBeenCalled();
   });
 });
