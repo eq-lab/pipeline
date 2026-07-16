@@ -399,3 +399,206 @@ export async function drawLoan({
 
   return { hash: sendResult.hash };
 }
+
+// ── Rollover (issue #870) ─────────────────────────────────────────────────────
+
+/**
+ * Soroban client for the trustee's `rollover` on-chain call (issue #870) —
+ * `LoanRegistry.rollover`, run through the SAME executor proxy as `draw_loan`:
+ *
+ *   executor.execute(target: Address, function: Symbol("rollover"), args, caller)
+ *
+ * Appends an epoch from the prior maturity, sets `currentMaturityDate`, returns
+ * the loan's status to Performing, and raises the mint ceiling only (mints
+ * nothing). On success the indexer emits `LoanRolledOver { new_maturity_timestamp:
+ * u64, new_rate: u32 }`.
+ *
+ * Positional args: **`(loan_id: u32, new_rate: u32, new_maturity_timestamp:
+ * u64)`** — rate BEFORE maturity, matching the S9 form order. `new_rate` is the
+ * on-chain bps × 100 scale (see `encodeRolloverArgs`). The initial cut sent
+ * `(loan_id, new_maturity, new_rate)` and the contract trapped
+ * (`UnreachableCodeReached` — `new_maturity` decoded as `1234`, a past
+ * timestamp, tripping the future-maturity guard). The verifying
+ * `simulateTransaction` in `buildRolloverEnvelope` fails loudly on a wrong
+ * encoding before any signature is requested.
+ */
+export type RolloverStage = DrawLoanStage;
+
+export interface RolloverParams {
+  /** Executor / access-control contract id (same as `draw_loan`). */
+  executorId: string;
+  /** Loan-registry contract id (the `execute` call's `target`). */
+  targetId: string;
+  /** Connected trustee wallet address — both `caller` and the tx source account. */
+  caller: string;
+  /** On-chain loan id (u32). */
+  loanId: number;
+  /** New senior interest rate, basis points (u32). */
+  newRateBps: number;
+  /** New maturity timestamp, Unix seconds (u64). */
+  newMaturity: number;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: (
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  onStageChange?: (stage: RolloverStage) => void;
+}
+
+export interface RolloverResult {
+  hash: string;
+}
+
+/**
+ * Encodes `rollover`'s positional args: `(loan_id: u32, new_maturity_timestamp:
+ * u64, new_rate: u32)`. Exported for direct unit testing. See the arg-order
+ * caveat above.
+ */
+export function encodeRolloverArgs(
+  loanId: number,
+  newRateBps: number,
+  newMaturity: number,
+): xdr.ScVal[] {
+  return [
+    xdr.ScVal.scvU32(loanId),
+    // Rate is stored on-chain at bps × 100 (same scale as `draw_loan`'s
+    // `senior_interest_rate = senior_interest_rate_bps * 100`; the indexer reads
+    // it back with `/ 100`). Pass the scaled value, not raw bps.
+    xdr.ScVal.scvU32(newRateBps * 100),
+    u64(newMaturity),
+  ];
+}
+
+export interface BuildRolloverEnvelopeParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  newRateBps: number;
+  newMaturity: number;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+/**
+ * Builds, simulates, and assembles the `execute(target, "rollover", args,
+ * caller)` transaction — unsigned XDR ready for `signTransaction`. The
+ * simulation is the pre-submit verify step (mirrors `buildDrawLoanEnvelope`).
+ */
+export async function buildRolloverEnvelope({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  newRateBps,
+  newMaturity,
+  rpcUrl,
+  networkPassphrase,
+}: BuildRolloverEnvelopeParams): Promise<string> {
+  if (!executorId) {
+    throw new Error("buildRolloverEnvelope: executorId must not be empty");
+  }
+  if (!targetId) {
+    throw new Error("buildRolloverEnvelope: targetId must not be empty");
+  }
+  if (!caller) {
+    throw new Error("buildRolloverEnvelope: caller must not be empty");
+  }
+
+  const contract = new Contract(executorId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(caller);
+
+  const op = contract.call(
+    "execute",
+    new Address(targetId).toScVal(),
+    xdr.ScVal.scvSymbol("rollover"),
+    xdr.ScVal.scvVec(encodeRolloverArgs(loanId, newRateBps, newMaturity)),
+    new Address(caller).toScVal(),
+  );
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`rollover simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+/**
+ * Signs and submits the trustee-wallet-signed `rollover` end-to-end: build
+ * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
+ * a terminal status. Mirrors `drawLoan`. Any wallet-reject or simulate/send/poll
+ * failure rejects this promise.
+ */
+export async function rollover({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  newRateBps,
+  newMaturity,
+  rpcUrl,
+  networkPassphrase,
+  signTransaction,
+  onStageChange,
+}: RolloverParams): Promise<RolloverResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildRolloverEnvelope({
+    executorId,
+    targetId,
+    caller,
+    loanId,
+    newRateBps,
+    newMaturity,
+    rpcUrl,
+    networkPassphrase,
+  });
+
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `rollover: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `rollover: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return { hash: sendResult.hash };
+}

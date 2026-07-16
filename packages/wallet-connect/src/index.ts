@@ -105,6 +105,24 @@ export type {
   BuildDrawLoanEnvelopeParams,
 } from "./stellar/contracts/loanRegistry";
 
+/**
+ * `rollover` (issue #870) — trustee-wallet-signed on-chain `LoanRegistry.rollover`
+ * through the same executor `execute` proxy as `draw_loan`. Appends an epoch,
+ * sets `currentMaturityDate`, returns status to Performing (mints nothing).
+ * `encodeRolloverArgs` is exported for unit-testing the ScVal transform.
+ */
+export {
+  rollover,
+  buildRolloverEnvelope,
+  encodeRolloverArgs,
+} from "./stellar/contracts/loanRegistry";
+export type {
+  RolloverParams,
+  RolloverResult,
+  RolloverStage,
+  BuildRolloverEnvelopeParams,
+} from "./stellar/contracts/loanRegistry";
+
 // ── Connect-modal (shared single instance) ────────────────────────────────────
 export { ConnectModalProvider } from "./ConnectModalProvider";
 export { useConnectModal } from "./ConnectModalContext";

@@ -23,6 +23,8 @@ import {
   buildDrawLoanEnvelope,
   encodeDrawLoanArgs,
   parseUsdcAmountToU128,
+  encodeRolloverArgs,
+  buildRolloverEnvelope,
   type SubmitLoanRequest,
 } from "./loanRegistry";
 
@@ -512,5 +514,61 @@ describe("drawLoan", () => {
       "User declined access",
     );
     expect(mockSendTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── encodeRolloverArgs (issue #870) ────────────────────────────────────────────
+
+describe("encodeRolloverArgs", () => {
+  it("encodes (loan_id: u32, new_rate: u32 [bps×100], new_maturity: u64)", () => {
+    const args = encodeRolloverArgs(4488, 1450, 1_790_000_000);
+    expect(args).toHaveLength(3);
+    expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    // Rate scaled ×100 to the on-chain unit (1450 bps → 145000).
+    expect(args[1]).toEqual({ t: "u32", v: 145_000 });
+    expect(args[2]).toEqual({ t: "u64", v: 1_790_000_000n });
+  });
+});
+
+describe("buildRolloverEnvelope", () => {
+  function args(overrides: Record<string, unknown> = {}) {
+    return {
+      executorId: EXECUTOR_ID,
+      targetId: TARGET_ID,
+      caller: CALLER,
+      loanId: 4488,
+      newRateBps: 1450,
+      newMaturity: 1_790_000_000,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      ...overrides,
+    };
+  }
+
+  it("calls execute with (target, rollover symbol, args vec, caller)", async () => {
+    await buildRolloverEnvelope(args());
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: TARGET_ID },
+      { t: "symbol", v: "rollover" },
+      expect.objectContaining({ t: "vec" }),
+      { t: "address", v: CALLER },
+    );
+  });
+
+  it("throws a simulation error without assembling", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
+    await expect(buildRolloverEnvelope(args())).rejects.toThrow(
+      "rollover simulation error",
+    );
+    expect(mockAssembleTransaction).not.toHaveBeenCalled();
+  });
+
+  it("throws for an empty executorId without calling the RPC", async () => {
+    await expect(
+      buildRolloverEnvelope(args({ executorId: "" })),
+    ).rejects.toThrow("executorId must not be empty");
+    expect(mockGetAccount).not.toHaveBeenCalled();
   });
 });

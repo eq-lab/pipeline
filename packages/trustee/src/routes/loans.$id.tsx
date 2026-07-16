@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
+import { useRollover } from "@/api/useRollover";
 import {
   useLoanDetail,
   type HeroView,
@@ -763,9 +764,12 @@ function DisbursementConfirmDialog({
 function MaturedRolloverCard({
   rollover,
   maturityDate,
+  onRollover,
 }: {
   rollover: RolloverCardData;
   maturityDate: string | null;
+  /** Opens the rollover confirmation modal (#870). */
+  onRollover: () => void;
 }) {
   const title =
     maturityDate != null
@@ -793,11 +797,179 @@ function MaturedRolloverCard({
       <button
         type="button"
         data-testid="loan-detail-rollover-action"
+        onClick={onRollover}
         className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
         style={{ backgroundColor: BRAND }}
       >
         {rollover.actionLabel}
       </button>
+    </div>
+  );
+}
+
+/**
+ * The Roll over confirmation modal (S9, Figma node `4116:14050`, issue #870).
+ * Collects the new rate (bps) + new maturity, then submits the on-chain
+ * `LoanRegistry.rollover` via `useRollover`. Mirrors the shared dialog shell
+ * (Escape/backdrop cancel, navy confirm, pending/error). The mint-ceiling delta
+ * is not previewed with a figure — the real ceiling change is computed on-chain
+ * at rollover (avoids fabricating a transaction-effect number).
+ */
+function RolloverDialog({
+  open,
+  loanName,
+  maturityLabel,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: {
+  open: boolean;
+  loanName: string;
+  maturityLabel: string | null;
+  onClose: () => void;
+  onConfirm: (newRateBps: number, newMaturityUnix: number) => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  const [rateBps, setRateBps] = useState("");
+  const [maturity, setMaturity] = useState("");
+
+  // Reset the form each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setRateBps("");
+      setMaturity("");
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, pending, onClose]);
+
+  if (!open) return null;
+
+  const bps = Number.parseInt(rateBps, 10);
+  const maturityUnix = maturity
+    ? Math.floor(new Date(`${maturity}T00:00:00Z`).getTime() / 1000)
+    : NaN;
+  const valid =
+    Number.isFinite(bps) && bps > 0 && Number.isFinite(maturityUnix);
+
+  const fieldClass =
+    "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
+
+  return (
+    <div
+      data-testid="rollover-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)]"
+      onClick={() => !pending && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rollover-title"
+        data-testid="rollover-dialog"
+        className="flex w-[560px] max-w-[calc(100vw-32px)] flex-col gap-[12px] rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="rollover-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
+        >
+          Rollover — {loanName}
+        </h2>
+        <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
+          LoanRegistry.rollover · your key · appends an epoch from the prior
+          maturity, sets currentMaturityDate, returns status to Performing.
+          Raises the mint ceiling only — mints nothing.
+        </p>
+
+        <div
+          data-testid="rollover-guard"
+          className="rounded-[4px] border border-solid px-[14px] py-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{
+            color: POSITIVE_GREEN,
+            backgroundColor: "rgba(32,128,0,0.08)",
+            borderColor: "rgba(32,128,0,0.3)",
+          }}
+        >
+          Guard passes: matured{maturityLabel ? ` ${maturityLabel}` : ""}.
+        </div>
+
+        <div className="flex flex-wrap gap-[16px] pt-[4px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]">
+              New rate (bps)
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              data-testid="rollover-rate"
+              value={rateBps}
+              disabled={pending}
+              onChange={(e) => setRateBps(e.target.value)}
+              placeholder="e.g. 1450"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className="font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]">
+              New maturity
+            </span>
+            <input
+              type="date"
+              data-testid="rollover-maturity"
+              value={maturity}
+              disabled={pending}
+              onChange={(e) => setMaturity(e.target.value)}
+              className={fieldClass}
+            />
+          </label>
+        </div>
+
+        <p className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[rgba(56,55,53,0.6)]">
+          The new mint ceiling is computed on-chain at rollover (interest
+          headroom only — no mint).
+        </p>
+
+        {error && (
+          <p
+            role="alert"
+            data-testid="rollover-error"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+          >
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-start justify-end gap-[12px] pt-[12px]">
+          <button
+            type="button"
+            data-testid="rollover-cancel"
+            onClick={onClose}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            data-testid="rollover-submit"
+            onClick={() => onConfirm(bps, maturityUnix)}
+            disabled={!valid || pending}
+            className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            {pending ? "Rolling over…" : "Roll over loan"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -905,6 +1077,8 @@ function LoanDetail() {
   const detail = useLoanDetail(id);
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const rolloverMutation = useRollover();
+  const [rolloverOpen, setRolloverOpen] = useState(false);
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -964,10 +1138,29 @@ function LoanDetail() {
               <MaturedRolloverCard
                 rollover={detail.rollover}
                 maturityDate={detail.maturityDate}
+                onRollover={() => {
+                  rolloverMutation.reset();
+                  setRolloverOpen(true);
+                }}
               />
             )}
           </div>
           <OtherActionsCard otherActions={detail.otherActions} />
+          <RolloverDialog
+            open={rolloverOpen}
+            loanName={detail.hero.title}
+            maturityLabel={detail.maturityDate}
+            pending={rolloverMutation.isPending}
+            error={rolloverMutation.error?.message ?? null}
+            onClose={() => setRolloverOpen(false)}
+            onConfirm={(newRateBps, newMaturity) => {
+              // Close on success; the error surfaces inline via the hook state.
+              void rolloverMutation
+                .mutateAsync({ loanId: Number(id), newRateBps, newMaturity })
+                .then(() => setRolloverOpen(false))
+                .catch(() => {});
+            }}
+          />
         </>
       ) : (
         // Performing layout (default) + Disbursing (same layout, but the
