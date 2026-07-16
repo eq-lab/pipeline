@@ -273,4 +273,21 @@ describe("buildLoansView", () => {
     const { rows } = buildLoansView(data, "Default", NOW_MS);
     expect(rows).toEqual([]);
   });
+
+  it("includes Disbursing loans under the Performing tab (#864)", () => {
+    const withDisbursing: LoanBookResponse = {
+      summary: SUMMARY,
+      loans: [
+        ...data.loans,
+        makeEntry({ loan_id: "4", originator: "Delta", status: "Disbursing" }),
+      ],
+    };
+    const { counts, rows } = buildLoansView(
+      withDisbursing,
+      "Performing",
+      NOW_MS,
+    );
+    expect(counts.Performing).toBe(3); // 2 Performing + 1 Disbursing
+    expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Delta"]);
+  });
 });

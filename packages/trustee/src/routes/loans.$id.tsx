@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import {
@@ -615,20 +616,20 @@ function OtherActionsCard({
 
 /**
  * The Disbursing-loan current-stage card with the wired "Mark disbursement
- * complete" action (`POST …/disbursement/complete`, issue #862). The copy is
- * static (mock, describing the off-ramp step); the button is the one real,
- * status-changing action on the loan-detail page — it flips the loan out of
+ * complete" action (`POST …/disbursement/complete`, issues #862 / #864).
+ * Disbursing has no dedicated Figma flow, so the page keeps the Performing
+ * layout and only this "Next Step" card differs. The `Complete off-ramp` button
+ * is the one real, status-changing action — it flips the loan out of
  * `Disbursing` and refetches. Pending disables the button; a failure surfaces
  * inline (404 = loan not indexed).
  */
 function DisbursementActionCard({
-  onComplete,
-  pending,
-  error,
+  loanName,
+  onRequestComplete,
 }: {
-  onComplete: () => void;
-  pending: boolean;
-  error: string | null;
+  loanName: string;
+  /** Opens the confirmation modal — the actual POST fires on confirm. */
+  onRequestComplete: () => void;
 }) {
   return (
     <div
@@ -636,32 +637,112 @@ function DisbursementActionCard({
       style={cardStyle()}
       data-testid="loan-detail-disbursement"
     >
-      <CardTitle>Current stage — disbursing</CardTitle>
+      <CardTitle>Next Step</CardTitle>
       <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
-        The senior principal is being wired to the borrower via the USDC
-        off-ramp. Mark the disbursement complete once the wire has settled to
-        flip the loan to Performing.
+        Mark {loanName} USDC off-ramp complete — this will move the Disbursing
+        status to Performing.
       </p>
       <button
         type="button"
         data-testid="loan-detail-complete-disbursement"
-        onClick={onComplete}
-        disabled={pending}
-        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={onRequestComplete}
+        className="inline-flex h-[40px] w-fit items-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
         style={{ backgroundColor: BRAND }}
       >
-        {pending ? "Completing…" : "Mark disbursement complete"}
+        Complete off-ramp
       </button>
-      {error && (
-        <p
-          role="alert"
-          data-testid="loan-detail-disbursement-error"
-          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-          style={{ color: NEGATIVE_RED }}
+    </div>
+  );
+}
+
+/**
+ * Small confirmation modal for the "Complete off-ramp" action (#864). Mirrors
+ * the shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`,
+ * `aria-modal`, Escape + backdrop-click cancel (never a stray confirm), navy
+ * confirm button. The `POST …/disbursement/complete` fires on Confirm; pending
+ * disables both buttons and the mutation error surfaces inline.
+ */
+function DisbursementConfirmDialog({
+  open,
+  loanName,
+  onCancel,
+  onConfirm,
+  pending,
+  error,
+}: {
+  open: boolean;
+  loanName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onCancel();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, pending, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      data-testid="disbursement-confirm-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)]"
+      onClick={() => !pending && onCancel()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="disbursement-confirm-title"
+        data-testid="disbursement-confirm-dialog"
+        className="flex w-[460px] max-w-[calc(100vw-32px)] flex-col gap-[8px] rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="disbursement-confirm-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
         >
-          {error}
+          Complete off-ramp?
+        </h2>
+        <p className="font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[rgba(56,55,53,0.6)]">
+          Mark {loanName} USDC off-ramp complete — this will move the Disbursing
+          status to Performing.
         </p>
-      )}
+        {error && (
+          <p
+            role="alert"
+            data-testid="disbursement-confirm-error"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+          >
+            {error}
+          </p>
+        )}
+        <div className="flex items-start justify-end gap-[12px] pt-[16px]">
+          <button
+            type="button"
+            data-testid="disbursement-confirm-cancel"
+            onClick={onCancel}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="disbursement-confirm-submit"
+            onClick={onConfirm}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            {pending ? "Completing…" : "Complete off-ramp"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -768,6 +849,7 @@ function LoanDetail() {
   const { id } = Route.useParams();
   const detail = useLoanDetail(id);
   const completeDisbursement = useCompleteDisbursement();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -828,14 +910,29 @@ function LoanDetail() {
           </div>
           {detail.variant === "disbursing" ? (
             <DisbursementActionCard
-              onComplete={() => completeDisbursement.mutate({ loanId: id })}
-              pending={completeDisbursement.isPending}
-              error={completeDisbursement.error?.message ?? null}
+              loanName={detail.hero.title}
+              onRequestComplete={() => {
+                completeDisbursement.reset();
+                setConfirmOpen(true);
+              }}
             />
           ) : (
             <CurrentStageCard stage={detail.currentStage} />
           )}
           <OtherActionsCard otherActions={detail.otherActions} />
+          <DisbursementConfirmDialog
+            open={confirmOpen}
+            loanName={detail.hero.title}
+            pending={completeDisbursement.isPending}
+            error={completeDisbursement.error?.message ?? null}
+            onCancel={() => setConfirmOpen(false)}
+            onConfirm={() =>
+              completeDisbursement.mutate(
+                { loanId: id },
+                { onSuccess: () => setConfirmOpen(false) },
+              )
+            }
+          />
         </>
       )}
     </main>
