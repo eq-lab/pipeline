@@ -37,6 +37,7 @@ vi.mock("./-useLoanDetail", () => ({
 const { mockComplete } = vi.hoisted(() => ({
   mockComplete: {
     mutate: vi.fn(),
+    reset: vi.fn(),
     isPending: false,
     error: null as Error | null,
   },
@@ -142,6 +143,7 @@ beforeEach(() => {
   mockUseLoanDetail.mockReset();
   mockUseLoanDetail.mockReturnValue(makeResult());
   mockComplete.mutate = vi.fn();
+  mockComplete.reset = vi.fn();
   mockComplete.isPending = false;
   mockComplete.error = null;
 });
@@ -409,29 +411,59 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("fires the complete-disbursement mutation with the loan id on click", () => {
+  it("opens a confirmation modal on click (no mutation yet)", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("disbursement-confirm-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    expect(
+      screen.getByTestId("disbursement-confirm-dialog"),
+    ).toBeInTheDocument();
+    expect(mockComplete.mutate).not.toHaveBeenCalled();
+  });
+
+  it("fires the mutation with the loan id when the modal is confirmed", () => {
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
     fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
-    expect(mockComplete.mutate).toHaveBeenCalledWith({ loanId: "4488" });
+    fireEvent.click(screen.getByTestId("disbursement-confirm-submit"));
+    expect(mockComplete.mutate).toHaveBeenCalledWith(
+      { loanId: "4488" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
   });
 
-  it("disables the button and shows 'Completing…' while pending", () => {
+  it("cancel closes the modal without mutating", () => {
+    mockUseLoanDetail.mockReturnValue(disbursingResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    fireEvent.click(screen.getByTestId("disbursement-confirm-cancel"));
+    expect(
+      screen.queryByTestId("disbursement-confirm-dialog"),
+    ).not.toBeInTheDocument();
+    expect(mockComplete.mutate).not.toHaveBeenCalled();
+  });
+
+  it("disables the confirm button and shows 'Completing…' while pending", () => {
     mockComplete.isPending = true;
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
-    const btn = screen.getByTestId("loan-detail-complete-disbursement");
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    const btn = screen.getByTestId("disbursement-confirm-submit");
     expect(btn).toBeDisabled();
     expect(btn).toHaveTextContent("Completing…");
   });
 
-  it("surfaces the mutation error inline", () => {
+  it("surfaces the mutation error inside the modal", () => {
     mockComplete.error = new Error("loan 4488 not indexed on chain 99000001");
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
-    expect(
-      screen.getByTestId("loan-detail-disbursement-error"),
-    ).toHaveTextContent("not indexed");
+    fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
+    expect(screen.getByTestId("disbursement-confirm-error")).toHaveTextContent(
+      "not indexed",
+    );
   });
 });
 
