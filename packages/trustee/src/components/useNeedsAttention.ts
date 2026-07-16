@@ -1,14 +1,14 @@
 /**
  * Query-wiring + value→display mapping for the Overview page's "Needs
- * Attention" section, Origination group ONLY (issue #818, Figma node
- * `4116:9004` section / `4116:9006`+`4116:9008` Origination group).
+ * Attention" section (issue #818, Figma node `4116:9004`). Two groups:
+ *   - **Origination** — in-review submissions (#818).
+ *   - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867).
  *
  * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` component is JSX/
  * styling only; this hook owns the `useLoanSubmissions({ status: "InReview" })`
- * call and maps each in-review `SubmissionView` into a display-ready row so
- * the view stays a pure render function (and this mapping is unit-testable
- * without a DOM). Mirrors `-useOriginationTable.ts`'s `state` discriminant
- * shape.
+ * + `useLoanBook()` calls and maps each into a display-ready row so the view
+ * stays a pure render function (and this mapping is unit-testable without a
+ * DOM). Mirrors `-useOriginationTable.ts`'s `state` discriminant shape.
  *
  * ## Field mapping (resolved Open Questions, issue #818 comments)
  *
@@ -37,6 +37,8 @@
  */
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
+import { useLoanBook } from "@/api/useLoanBook";
+import type { LoanBookEntry } from "@/api/useLoanBook";
 import { formatSubmittedDate } from "@/utils/formatDate";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -54,12 +56,25 @@ export interface NeedsAttentionRow {
   submission: SubmissionView;
 }
 
+/**
+ * One Loans-group Needs Attention row (issue #867) — a live loan that is
+ * **Watchlist** or **Matured**, linking to `/loans/$id`.
+ */
+export interface LoanNeedsAttentionRow {
+  loanId: string;
+  title: string;
+  subtitle: string;
+}
+
 export type NeedsAttentionState = "loading" | "error" | "empty" | "ready";
 
 export interface UseNeedsAttentionResult {
   state: NeedsAttentionState;
   errorMessage: string | null;
+  /** Origination group — in-review submissions. */
   rows: NeedsAttentionRow[];
+  /** Loans group — Watchlist + Matured loans (issue #867). */
+  loanRows: LoanNeedsAttentionRow[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,37 +124,69 @@ export function mapSubmissionToNeedsAttentionRow(
   };
 }
 
+/**
+ * The Loans-group Needs Attention label for a served display status, or `null`
+ * when the loan doesn't need attention. `WatchList` → Watchlist; the
+ * past-maturity status (`Past Due`, and legacy `Matured`) → Matured (issue #867).
+ */
+export function loanAttentionLabel(status: string): string | null {
+  if (status === "WatchList" || status === "Watchlist") return "Watchlist";
+  if (status === "Past Due" || status === "Matured") return "Matured";
+  return null;
+}
+
+/** Maps a needs-attention loan-book row to a Loans-group row (link → `/loans/$id`). */
+export function mapLoanToNeedsAttentionRow(
+  entry: LoanBookEntry,
+  label: string,
+): LoanNeedsAttentionRow {
+  return {
+    loanId: entry.loan_id,
+    title: `${safeString(entry.originator) ?? "—"} · ${safeString(entry.commodity) ?? "—"}`,
+    subtitle: `${label} · loan #${entry.loan_id}`,
+  };
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * Wires `useLoanSubmissions({ status: "InReview" })` to the Needs Attention
- * (Origination group) display state. The `state` discriminant lets the view
- * render loading/error/empty/ready without repeating the precedence logic
- * (mirrors `useOriginationTable`'s pattern).
+ * Wires the Needs Attention section's two groups:
+ *   - **Origination** — `useLoanSubmissions({ status: "InReview" })`.
+ *   - **Loans** — `useLoanBook()` filtered to Watchlist + Matured (issue #867).
+ *
+ * Supplementary block: the view renders nothing while loading/error or when both
+ * groups are empty. Both queries are read unconditionally (hook rules) before the
+ * state is derived.
  */
 export function useNeedsAttention(): UseNeedsAttentionResult {
-  const { data, isLoading, error } = useLoanSubmissions({
-    status: "InReview",
+  const submissions = useLoanSubmissions({ status: "InReview" });
+  const loanBook = useLoanBook();
+
+  if (submissions.isLoading || loanBook.isLoading) {
+    return { state: "loading", errorMessage: null, rows: [], loanRows: [] };
+  }
+  const error = submissions.error ?? loanBook.error;
+  if (error) {
+    return {
+      state: "error",
+      errorMessage: error.message,
+      rows: [],
+      loanRows: [],
+    };
+  }
+
+  const rows = (submissions.data ?? [])
+    .filter((submission) => submission.status === "InReview")
+    .map(mapSubmissionToNeedsAttentionRow);
+
+  const loanRows = (loanBook.data?.loans ?? []).flatMap((entry) => {
+    const label = loanAttentionLabel(entry.status);
+    return label ? [mapLoanToNeedsAttentionRow(entry, label)] : [];
   });
 
-  if (isLoading) {
-    return { state: "loading", errorMessage: null, rows: [] };
-  }
-  if (error) {
-    return { state: "error", errorMessage: error.message, rows: [] };
+  if (rows.length === 0 && loanRows.length === 0) {
+    return { state: "empty", errorMessage: null, rows: [], loanRows: [] };
   }
 
-  const inReview = (data ?? []).filter(
-    (submission) => submission.status === "InReview",
-  );
-
-  if (inReview.length === 0) {
-    return { state: "empty", errorMessage: null, rows: [] };
-  }
-
-  return {
-    state: "ready",
-    errorMessage: null,
-    rows: inReview.map(mapSubmissionToNeedsAttentionRow),
-  };
+  return { state: "ready", errorMessage: null, rows, loanRows };
 }

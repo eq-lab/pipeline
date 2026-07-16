@@ -12,13 +12,16 @@
  *   - `state` derivation: loading/error/empty/ready.
  *   - Non-InReview submissions (if any slip through) are excluded.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import {
+  loanAttentionLabel,
+  mapLoanToNeedsAttentionRow,
   mapSubmissionToNeedsAttentionRow,
   useNeedsAttention,
 } from "./useNeedsAttention";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
+import type { LoanBookEntry, LoanBookResponse } from "@/api/useLoanBook";
 
 const IN_REVIEW_SUBMISSION: SubmissionView = {
   id: 1,
@@ -148,9 +151,77 @@ vi.mock("@/api/useLoanSubmissions", async () => {
   };
 });
 
+vi.mock("@/api/useLoanBook", () => ({ useLoanBook: vi.fn() }));
+
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import { useLoanBook } from "@/api/useLoanBook";
+
+function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
+  return {
+    loan_id: "4488",
+    chain_id: 99_000_001,
+    originator: "Helios Metals",
+    borrower: "b1",
+    commodity: "Lithium",
+    principal: "0",
+    senior_outstanding: "0",
+    maturity: 1_782_777_600,
+    ccr_reported_at: 0,
+    spot_price: null,
+    spot_change_7d: null,
+    collateral: null,
+    ltv: null,
+    ccr_bps: null,
+    duration_days: 180,
+    rate: "0.130000",
+    protection: null,
+    status: "WatchList",
+    ...overrides,
+  };
+}
+
+/** Minimal loan-book query result (only `.loans` is read by the hook). */
+function bookResult(loans: LoanBookEntry[]) {
+  return {
+    data: { loans } as unknown as LoanBookResponse,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  };
+}
+
+describe("loanAttentionLabel / mapLoanToNeedsAttentionRow (#867)", () => {
+  it("maps Watchlist / past-maturity statuses to labels; others to null", () => {
+    expect(loanAttentionLabel("WatchList")).toBe("Watchlist");
+    expect(loanAttentionLabel("Past Due")).toBe("Matured");
+    expect(loanAttentionLabel("Matured")).toBe("Matured");
+    expect(loanAttentionLabel("Performing")).toBeNull();
+    expect(loanAttentionLabel("Disbursing")).toBeNull();
+    expect(loanAttentionLabel("Closed")).toBeNull();
+  });
+
+  it("maps a loan to a Loans-group row (title + subtitle + loanId)", () => {
+    const row = mapLoanToNeedsAttentionRow(
+      makeLoanEntry({
+        loan_id: "4471",
+        originator: "Delta",
+        commodity: "Coffee",
+      }),
+      "Watchlist",
+    );
+    expect(row).toEqual({
+      loanId: "4471",
+      title: "Delta · Coffee",
+      subtitle: "Watchlist · loan #4471",
+    });
+  });
+});
 
 describe("useNeedsAttention", () => {
+  beforeEach(() => {
+    // Default: no needs-attention loans (existing submission tests unaffected).
+    vi.mocked(useLoanBook).mockReturnValue(bookResult([]));
+  });
   it("returns 'loading' while the query is loading", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
       data: undefined,
@@ -241,6 +312,44 @@ describe("useNeedsAttention", () => {
       error: null,
       refetch: vi.fn(),
     });
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.state).toBe("empty");
+  });
+
+  it("surfaces Watchlist + Matured loans as Loans-group rows, excluding others (#867)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useLoanBook).mockReturnValue(
+      bookResult([
+        makeLoanEntry({ loan_id: "1", status: "WatchList" }),
+        makeLoanEntry({ loan_id: "2", status: "Past Due" }),
+        makeLoanEntry({ loan_id: "3", status: "Performing" }),
+        makeLoanEntry({ loan_id: "4", status: "Closed" }),
+      ]),
+    );
+    const { result } = renderHook(() => useNeedsAttention());
+    // Ready on loan rows alone, even though there are no in-review submissions.
+    expect(result.current.state).toBe("ready");
+    expect(result.current.rows).toEqual([]);
+    expect(result.current.loanRows.map((r) => r.loanId)).toEqual(["1", "2"]);
+    expect(result.current.loanRows[0]?.subtitle).toContain("Watchlist");
+    expect(result.current.loanRows[1]?.subtitle).toContain("Matured");
+  });
+
+  it("returns 'empty' only when BOTH groups are empty", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    vi.mocked(useLoanBook).mockReturnValue(
+      bookResult([makeLoanEntry({ status: "Performing" })]),
+    );
     const { result } = renderHook(() => useNeedsAttention());
     expect(result.current.state).toBe("empty");
   });
