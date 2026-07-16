@@ -67,6 +67,8 @@ function makeResult(
     errorMessage: null,
     variant: "performing",
     ccrTrend: null,
+    rollover: null,
+    maturityDate: "30 Jun 2026",
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
@@ -377,6 +379,59 @@ describe("Loan detail route — still-mock sections", () => {
     expect(
       within(actions).getByText(/Risk Council proposals under a 24h timelock/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Matured variant (#866)", () => {
+  function maturedResult() {
+    return makeResult({
+      variant: "matured",
+      maturityDate: "15 Jun 2026",
+      hero: {
+        backLabel: "‹ Loans",
+        title: "Volta Cashew · Cashew",
+        status: { label: "Matured", band: "attention" },
+        meta: "Loan #4483 · 15 Jun 2026 — passed",
+      },
+      rollover: {
+        tag: "rollover available",
+        body: "now ≥ currentMaturityDate and status is not Default or Closed — the instant post-maturity rollover from your key is available.",
+        actionLabel: "Roll over →",
+      },
+    });
+  }
+
+  it("renders the rollover card (title with maturity date, tag, action) — no stepper/Registry", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    const card = screen.getByTestId("loan-detail-rollover");
+    expect(
+      within(card).getByText("Matured 15 Jun 2026 without full repayment"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("loan-detail-rollover-tag")).toHaveTextContent(
+      "rollover available",
+    );
+    expect(screen.getByTestId("loan-detail-rollover-action")).toHaveTextContent(
+      "Roll over",
+    );
+    // Matured has no lifecycle stepper and no Registry card.
+    expect(
+      screen.queryByTestId("loan-detail-lifecycle"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-registry"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the Matured chip and '— passed' maturity in the hero", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-status-chip")).toHaveTextContent(
+      "Matured",
+    );
+    expect(screen.getByTestId("loan-detail-meta")).toHaveTextContent(
+      "Loan #4483 · 15 Jun 2026 — passed",
+    );
   });
 });
 

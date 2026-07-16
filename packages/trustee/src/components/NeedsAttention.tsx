@@ -66,10 +66,43 @@ import { useNeedsAttention } from "./useNeedsAttention";
  *     `/origination/$id`); the `disabled`/`aria-disabled` inert affordance is
  *     removed accordingly, keeping the same visual shape.
  */
-export function NeedsAttention() {
-  const { state, rows } = useNeedsAttention();
+const ROW_CLASS =
+  "flex min-h-[72px] w-full items-center gap-[16px] rounded-[4px] border border-solid px-[17px] py-[15px]";
+const ROW_STYLE = {
+  backgroundColor: "rgba(211,235,117,0.16)",
+  borderColor: "rgba(56,55,53,0.18)",
+} as const;
+const GROUP_LABEL_CLASS =
+  "font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] tracking-[0.96px] text-[color:var(--color-pipeline-ink-muted)] uppercase";
+const ACTION_CLASS =
+  "flex h-[40px] shrink-0 items-center justify-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white";
 
-  if (state !== "ready" || rows.length === 0) {
+/** The lightbulb icon circle + the title/subtitle text block, shared by both groups. */
+function RowBody({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <>
+      <span
+        className="flex size-[36px] shrink-0 items-center justify-center rounded-full bg-[color:var(--color-pipeline-brand)]"
+        aria-hidden="true"
+      >
+        <OriginationIcon width={18} height={18} className="text-white" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
+        <p className="truncate font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[color:var(--color-pipeline-ink)]">
+          {title}
+        </p>
+        <p className="truncate font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] text-[color:var(--color-pipeline-ink-muted)]">
+          {subtitle}
+        </p>
+      </div>
+    </>
+  );
+}
+
+export function NeedsAttention() {
+  const { state, rows, loanRows } = useNeedsAttention();
+
+  if (state !== "ready" || (rows.length === 0 && loanRows.length === 0)) {
     return null;
   }
 
@@ -83,59 +116,68 @@ export function NeedsAttention() {
         Needs Attention
       </h2>
 
-      <div
-        className="flex w-full flex-col items-start gap-[14px]"
-        data-testid="needs-attention-origination"
-      >
-        <p className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] tracking-[0.96px] text-[color:var(--color-pipeline-ink-muted)] uppercase">
-          Origination
-        </p>
+      {rows.length > 0 && (
+        <div
+          className="flex w-full flex-col items-start gap-[14px]"
+          data-testid="needs-attention-origination"
+        >
+          <p className={GROUP_LABEL_CLASS}>Origination</p>
 
-        <div className="flex w-full flex-col gap-3">
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              data-testid="needs-attention-row"
-              className="flex min-h-[72px] w-full items-center gap-[16px] rounded-[4px] border border-solid px-[17px] py-[15px]"
-              style={{
-                backgroundColor: "rgba(211,235,117,0.16)",
-                borderColor: "rgba(56,55,53,0.18)",
-              }}
-            >
-              <span
-                className="flex size-[36px] shrink-0 items-center justify-center rounded-full bg-[color:var(--color-pipeline-brand)]"
-                aria-hidden="true"
+          <div className="flex w-full flex-col gap-3">
+            {rows.map((row) => (
+              <div
+                key={row.id}
+                data-testid="needs-attention-row"
+                className={ROW_CLASS}
+                style={ROW_STYLE}
               >
-                <OriginationIcon
-                  width={18}
-                  height={18}
-                  className="text-white"
-                />
-              </span>
-
-              <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
-                <p className="truncate font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[color:var(--color-pipeline-ink)]">
-                  {row.title}
-                </p>
-                <p className="truncate font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] text-[color:var(--color-pipeline-ink-muted)]">
-                  {row.subtitle}
-                </p>
+                <RowBody title={row.title} subtitle={row.subtitle} />
+                <Link
+                  to="/origination/$id"
+                  params={{ id: String(row.id) }}
+                  state={{ submission: row.submission }}
+                  aria-label="Review submission"
+                  data-testid="needs-attention-review"
+                  className={ACTION_CLASS}
+                >
+                  Review
+                </Link>
               </div>
-
-              <Link
-                to="/origination/$id"
-                params={{ id: String(row.id) }}
-                state={{ submission: row.submission }}
-                aria-label="Review submission"
-                data-testid="needs-attention-review"
-                className="flex h-[40px] shrink-0 items-center justify-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white"
-              >
-                Review
-              </Link>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {loanRows.length > 0 && (
+        <div
+          className="flex w-full flex-col items-start gap-[14px]"
+          data-testid="needs-attention-loans"
+        >
+          <p className={GROUP_LABEL_CLASS}>Loans</p>
+
+          <div className="flex w-full flex-col gap-3">
+            {loanRows.map((row) => (
+              <div
+                key={row.loanId}
+                data-testid="needs-attention-loan-row"
+                className={ROW_CLASS}
+                style={ROW_STYLE}
+              >
+                <RowBody title={row.title} subtitle={row.subtitle} />
+                <Link
+                  to="/loans/$id"
+                  params={{ id: row.loanId }}
+                  aria-label={`Open ${row.title}`}
+                  data-testid="needs-attention-open"
+                  className={ACTION_CLASS}
+                >
+                  Open
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

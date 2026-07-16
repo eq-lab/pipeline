@@ -274,6 +274,25 @@ describe("buildLoansView", () => {
     expect(rows).toEqual([]);
   });
 
+  it("includes Past Due / Matured loans under the Watchlist tab (#867)", () => {
+    const withPastDue: LoanBookResponse = {
+      summary: SUMMARY,
+      loans: [
+        makeEntry({ loan_id: "1", originator: "Alpha", status: "WatchList" }),
+        makeEntry({ loan_id: "2", originator: "Bravo", status: "Past Due" }),
+        makeEntry({ loan_id: "3", originator: "Charlie", status: "Matured" }),
+        makeEntry({ loan_id: "4", originator: "Delta", status: "Performing" }),
+      ],
+    };
+    const { counts, rows } = buildLoansView(withPastDue, "Watchlist", NOW_MS);
+    expect(counts.Watchlist).toBe(3); // WatchList + Past Due + Matured
+    expect(rows.map((r) => r.originator)).toEqual([
+      "Alpha",
+      "Bravo",
+      "Charlie",
+    ]);
+  });
+
   it("includes Disbursing loans under the Performing tab (#864)", () => {
     const withDisbursing: LoanBookResponse = {
       summary: SUMMARY,

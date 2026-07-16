@@ -91,7 +91,10 @@ export const LOAN_TABS: readonly LoanTab[] = [
  */
 const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
   Performing: ["Performing", "Disbursing"],
-  Watchlist: ["WatchList"],
+  // Watchlist groups the at-risk set: elevated-risk WatchList loans plus
+  // past-maturity ones (served `Past Due`, legacy `Matured`) — otherwise a
+  // matured loan would match no tab and vanish from the list (#867).
+  Watchlist: ["WatchList", "Past Due", "Matured"],
   Default: ["Default"],
   Closed: ["Closed"],
 };

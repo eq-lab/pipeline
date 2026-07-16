@@ -32,6 +32,7 @@ import {
 } from "@tanstack/react-router";
 import { NeedsAttention } from "./NeedsAttention";
 import type {
+  LoanNeedsAttentionRow,
   NeedsAttentionRow,
   UseNeedsAttentionResult,
 } from "./useNeedsAttention";
@@ -92,6 +93,12 @@ const ROW_2: NeedsAttentionRow = {
   submission: { ...SUBMISSION, id: 2 },
 };
 
+const LOAN_ROW: LoanNeedsAttentionRow = {
+  loanId: "4471",
+  title: "Delta Commodities · Coffee",
+  subtitle: "Watchlist · loan #4471",
+};
+
 /** Records the location observed by a child route, so navigation can be asserted. */
 function LocationRecorder({
   onLocation,
@@ -118,7 +125,12 @@ function buildRouter(
     path: "/origination/$id",
     component: () => <LocationRecorder onLocation={onDetailLocation} />,
   });
-  const routeTree = rootRoute.addChildren([indexRoute, detailRoute]);
+  const loanRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/loans/$id",
+    component: () => <p data-testid="loan-route-marker">loan route</p>,
+  });
+  const routeTree = rootRoute.addChildren([indexRoute, detailRoute, loanRoute]);
   return createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: ["/"] }),
@@ -138,6 +150,7 @@ describe("NeedsAttention", () => {
       state: "ready",
       errorMessage: null,
       rows: [ROW_1],
+      loanRows: [],
     });
 
     renderNeedsAttention();
@@ -164,10 +177,35 @@ describe("NeedsAttention", () => {
       state: "ready",
       errorMessage: null,
       rows: [ROW_1, ROW_2],
+      loanRows: [],
     });
 
     renderNeedsAttention();
     expect(await screen.findAllByTestId("needs-attention-row")).toHaveLength(2);
+  });
+
+  it("renders the Loans group with an Open link per Watchlist/Matured loan (#867)", async () => {
+    mockUseNeedsAttention.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      rows: [],
+      loanRows: [LOAN_ROW],
+    });
+
+    renderNeedsAttention();
+
+    expect(
+      await screen.findByTestId("needs-attention-loans"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Loans")).toBeInTheDocument();
+    expect(screen.getByText("Delta Commodities · Coffee")).toBeInTheDocument();
+    const open = screen.getByTestId("needs-attention-open");
+    expect(open).toHaveAttribute("href", "/loans/4471");
+    expect(open).toHaveTextContent("Open");
+    // Origination group is absent when there are no in-review submissions.
+    expect(
+      screen.queryByTestId("needs-attention-origination"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Review control as a live, keyboard-focusable link (not disabled)", async () => {
@@ -175,6 +213,7 @@ describe("NeedsAttention", () => {
       state: "ready",
       errorMessage: null,
       rows: [ROW_1],
+      loanRows: [],
     });
 
     renderNeedsAttention();
@@ -194,6 +233,7 @@ describe("NeedsAttention", () => {
       state: "ready",
       errorMessage: null,
       rows: [ROW_1],
+      loanRows: [],
     });
 
     const onDetailLocation = vi.fn();
@@ -214,6 +254,7 @@ describe("NeedsAttention", () => {
       state: "empty",
       errorMessage: null,
       rows: [],
+      loanRows: [],
     });
 
     renderNeedsAttention();
@@ -228,6 +269,7 @@ describe("NeedsAttention", () => {
       state: "loading",
       errorMessage: null,
       rows: [],
+      loanRows: [],
     });
 
     renderNeedsAttention();
@@ -240,6 +282,7 @@ describe("NeedsAttention", () => {
       state: "error",
       errorMessage: "network down",
       rows: [],
+      loanRows: [],
     });
 
     renderNeedsAttention();

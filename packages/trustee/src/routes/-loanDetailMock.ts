@@ -108,14 +108,25 @@ export const LOAN_DETAIL_MOCK: LoanDetailMock = {
     actionLabel: "Open on-ramp & mint →",
   },
   otherActions: {
+    // Record coupon is available in any post-Disbursing status (#867); Roll over
+    // is matured-only (gated to the Matured variant), so it is NOT listed here.
     actions: [
       "Update lifecycle",
-      "Roll over",
+      "Record coupon",
       "Close loan",
       "Escalate to Risk Council",
     ],
     note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
   },
+};
+
+/**
+ * Disbursing other-actions (#867): still pre-funding, so **no Record coupon**
+ * (coupon recording is post-Disbursing) and **no Roll over** (matured-only).
+ */
+export const LOAN_DETAIL_DISBURSING_OTHER_ACTIONS: OtherActions = {
+  actions: ["Update lifecycle", "Escalate to Risk Council"],
+  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
 };
 
 // ── Watchlist variant (issue #859, Figma node 4116:10803) ─────────────────────
@@ -150,7 +161,8 @@ export const LOAN_DETAIL_WATCHLIST_MOCK: LoanDetailMock = {
     actionLabel: "Open escalation →",
   },
   otherActions: {
-    actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+    // Record coupon available (post-Disbursing, #867); Roll over is matured-only.
+    actions: ["Update lifecycle", "Record coupon", "Escalate to Risk Council"],
     note: "",
   },
 };
@@ -161,4 +173,64 @@ export const WATCHLIST_CCR_TREND: CcrTrend = {
   currentLabel: "114%",
   upperThresholdLabel: "120%",
   lowerThresholdLabel: "110%",
+};
+
+// ── Matured variant (issue #866, Figma node 4116:10969) ───────────────────────
+
+/**
+ * The Matured "rollover" card (right column of the Matured variant). Mock — no
+ * rollover (S9) backend flow yet, so the button is inert. The card title
+ * interpolates the loan's live maturity date in the view.
+ */
+export interface RolloverCard {
+  /** Olive "available" pill, e.g. `"rollover available"`. */
+  tag: string;
+  body: string;
+  actionLabel: string;
+}
+
+/** The still-mock sections of the Matured loan-detail layout. */
+export interface MaturedMock {
+  tiles: SummaryTile[];
+  rollover: RolloverCard;
+  otherActions: OtherActions;
+}
+
+export const LOAN_DETAIL_MATURED_MOCK: MaturedMock = {
+  tiles: [
+    {
+      label: "Facility / senior",
+      value: "$1,125,000 / $900,000",
+      sub: "funded from batch #B-097 · 12 Feb",
+      subTone: "muted",
+    },
+    {
+      label: "Repaid to date",
+      value: "$0",
+      sub: "full repayment expected mid-Jul",
+      subTone: "muted",
+    },
+    {
+      label: "Rate · epochs",
+      value: "12.5% p.a.",
+      sub: "epoch 1",
+      subTone: "muted",
+    },
+  ],
+  rollover: {
+    tag: "rollover available",
+    body: "now ≥ currentMaturityDate and status is not Default or Closed — the instant post-maturity rollover from your key is available. A penalty re-term outside this fast-path would be a Risk Council amendEconomics.",
+    actionLabel: "Roll over →",
+  },
+  otherActions: {
+    // Matured is the only variant that lists Roll over (the matured-only
+    // fast-path, #867); Record coupon is also available (post-Disbursing).
+    actions: [
+      "Update lifecycle",
+      "Record coupon",
+      "Roll over",
+      "Escalate to Risk Council",
+    ],
+    note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
+  },
 };
