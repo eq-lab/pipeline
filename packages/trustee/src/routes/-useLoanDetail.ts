@@ -55,6 +55,7 @@ import {
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
   LOAN_DETAIL_MOCK,
+  LOAN_DETAIL_DISBURSING_OTHER_ACTIONS,
   LOAN_DETAIL_MATURED_MOCK,
   LOAN_DETAIL_WATCHLIST_MOCK,
   WATCHLIST_CCR_TREND,
@@ -629,7 +630,9 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
       ? LOAN_DETAIL_WATCHLIST_MOCK.otherActions
       : variant === "matured"
         ? LOAN_DETAIL_MATURED_MOCK.otherActions
-        : LOAN_DETAIL_MOCK.otherActions;
+        : variant === "disbursing"
+          ? LOAN_DETAIL_DISBURSING_OTHER_ACTIONS
+          : LOAN_DETAIL_MOCK.otherActions;
   // currentStage is only rendered by performing/disbursing; watchlist supplies
   // its escalation copy, matured renders the rollover card instead.
   const currentStage =

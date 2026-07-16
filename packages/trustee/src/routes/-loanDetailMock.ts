@@ -108,14 +108,25 @@ export const LOAN_DETAIL_MOCK: LoanDetailMock = {
     actionLabel: "Open on-ramp & mint →",
   },
   otherActions: {
+    // Record coupon is available in any post-Disbursing status (#867); Roll over
+    // is matured-only (gated to the Matured variant), so it is NOT listed here.
     actions: [
       "Update lifecycle",
-      "Roll over",
+      "Record coupon",
       "Close loan",
       "Escalate to Risk Council",
     ],
     note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
   },
+};
+
+/**
+ * Disbursing other-actions (#867): still pre-funding, so **no Record coupon**
+ * (coupon recording is post-Disbursing) and **no Roll over** (matured-only).
+ */
+export const LOAN_DETAIL_DISBURSING_OTHER_ACTIONS: OtherActions = {
+  actions: ["Update lifecycle", "Escalate to Risk Council"],
+  note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
 };
 
 // ── Watchlist variant (issue #859, Figma node 4116:10803) ─────────────────────
@@ -150,7 +161,8 @@ export const LOAN_DETAIL_WATCHLIST_MOCK: LoanDetailMock = {
     actionLabel: "Open escalation →",
   },
   otherActions: {
-    actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+    // Record coupon available (post-Disbursing, #867); Roll over is matured-only.
+    actions: ["Update lifecycle", "Record coupon", "Escalate to Risk Council"],
     note: "",
   },
 };
@@ -211,7 +223,14 @@ export const LOAN_DETAIL_MATURED_MOCK: MaturedMock = {
     actionLabel: "Roll over →",
   },
   otherActions: {
-    actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
+    // Matured is the only variant that lists Roll over (the matured-only
+    // fast-path, #867); Record coupon is also available (post-Disbursing).
+    actions: [
+      "Update lifecycle",
+      "Record coupon",
+      "Roll over",
+      "Escalate to Risk Council",
+    ],
     note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
   },
 };
