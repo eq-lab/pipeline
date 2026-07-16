@@ -116,7 +116,20 @@ describe("statusToChip", () => {
     });
   });
 
-  it("renames Matured → Past Due (display rename only, keeps raw)", () => {
+  it("maps the backend-derived Disbursing / Past Due display statuses (#862)", () => {
+    expect(statusToChip("Disbursing")).toEqual({
+      label: "Disbursing",
+      band: "info",
+      raw: "Disbursing",
+    });
+    expect(statusToChip("Past Due")).toEqual({
+      label: "Past Due",
+      band: "negative",
+      raw: "Past Due",
+    });
+  });
+
+  it("keeps the legacy Matured → Past Due fallback (display rename, keeps raw)", () => {
     expect(statusToChip("Matured")).toEqual({
       label: "Past Due",
       band: "negative",
@@ -186,6 +199,21 @@ describe("buildLifecycle", () => {
       "Performing:active",
       "Closed:pending",
     ]);
+  });
+
+  it("a Disbursing loan has the Disbursing node active (#862), live + Closed pending", () => {
+    expect(spine("Disbursing")).toEqual([
+      "Origination:done",
+      "Disbursing:active",
+      "Performing:pending",
+      "Closed:pending",
+    ]);
+  });
+
+  it("maps the literal Past Due status to the live node (active)", () => {
+    const steps = buildLifecycle("Past Due");
+    expect(steps[2]).toMatchObject({ label: "Past Due", state: "active" });
+    expect(steps[1]).toMatchObject({ label: "Disbursing", state: "done" });
   });
 
   it("shows the current live status on the live node — Watchlist", () => {

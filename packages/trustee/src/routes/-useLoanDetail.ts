@@ -65,7 +65,12 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type StatusBand = "positive" | "attention" | "negative" | "neutral";
+export type StatusBand =
+  | "positive"
+  | "attention"
+  | "negative"
+  | "neutral"
+  | "info";
 
 /** The hero identity block, sourced from the loan-book row. */
 export interface HeroView {
@@ -130,7 +135,7 @@ export type LoanDetailState = "loading" | "error" | "ready";
  * Only `performing` and `watchlist` are built today — the rest fall back to the
  * `performing` layout until their designs land.
  */
-export type LoanDetailVariant = "performing" | "watchlist";
+export type LoanDetailVariant = "performing" | "watchlist" | "disbursing";
 
 export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
@@ -183,11 +188,17 @@ export interface StatusChip {
  */
 export function statusToChip(rawStatus: string): StatusChip {
   switch (rawStatus) {
+    // `Disbursing` is a backend-derived display status (off-ramp not yet
+    // complete); a Performing-family in-progress state → `info` (brand) band.
+    case "Disbursing":
+      return { label: "Disbursing", band: "info", raw: rawStatus };
     case "Performing":
       return { label: "Performing", band: "positive", raw: rawStatus };
     case "Watchlist":
     case "WatchList":
       return { label: "Watchlist", band: "attention", raw: rawStatus };
+    // Backend now serves `Past Due` directly; keep `Matured` as a legacy fallback.
+    case "Past Due":
     case "Matured":
       return { label: "Past Due", band: "negative", raw: rawStatus };
     case "Default":
@@ -239,10 +250,12 @@ const LIVE_STATUS_SUB: Record<string, string> = {
  * `Default` via `statusToChip`); once `Closed` it reads as the completed
  * `Performing` phase. States:
  *   - `Origination` — done for any loan the loan-book returns (it exists on-chain).
- *   - `Disbursing` — done for any live/closed loan; never the current step until
- *     the off-chain "wire sent" movement signal is served (on-chain `Performing`
- *     maps to the live node, not Disbursing).
- *   - live node — active while the loan is live; done once Closed.
+ *   - `Disbursing` — **active** when the served status is `Disbursing` (off-ramp
+ *     not yet complete, issue #862); done once the loan is live/closed; pending
+ *     when no status. (Now that the backend serves `Disbursing` directly, this
+ *     step can be the current one — closes the #854 data gap.)
+ *   - live node — active while the loan is a live non-Disbursing status; done
+ *     once Closed; pending while still Disbursing.
  *   - `Closed` — active when the status is `Closed`, else pending.
  *
  * An absent status (no loan-book row) leaves every step pending — never fabricated.
@@ -251,11 +264,13 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   const hasStatus = rawStatus != null && rawStatus.length > 0;
   const chip = hasStatus ? statusToChip(rawStatus) : null;
   const isClosed = chip?.label === "Closed";
-  const isLive = hasStatus && !isClosed;
+  const isDisbursing = chip?.label === "Disbursing";
+  // Live = a non-Disbursing, non-Closed status (Performing / Watchlist / Past Due / Default).
+  const isLive = hasStatus && !isClosed && !isDisbursing;
 
   // The live node adopts the current status while live; a neutral "Performing"
-  // phase label before (no status) or after (Closed) — we don't store the
-  // prior live status, so we never fabricate a specific risk state for it.
+  // phase label before (Disbursing / no status) or after (Closed) — we don't
+  // store the prior live status, so we never fabricate a specific risk state.
   const liveLabel = isLive ? chip!.label : "Performing";
   const liveSub = isLive
     ? (LIVE_STATUS_SUB[chip!.label] ?? "live")
@@ -272,7 +287,7 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
       label: "Disbursing",
       sub: "minted, not yet funded",
       index: 2,
-      state: hasStatus ? "done" : "pending",
+      state: isDisbursing ? "active" : hasStatus ? "done" : "pending",
     },
     {
       label: liveLabel,
@@ -570,13 +585,16 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     entry?.spot_change_7d ?? null,
   );
 
-  // Status-conditional layout (§859): the on-chain status selects the section
-  // set. Only Watchlist has its own layout today; everything else uses the
-  // performing layout. `statusToChip` maps on-chain `WatchList` → "Watchlist".
+  // Status-conditional layout (§859 / §862): the served display status selects
+  // the section set. Watchlist has its own layout; Disbursing reuses the
+  // performing layout but swaps in the disbursement-complete action card.
+  const chipLabel = entry != null ? statusToChip(entry.status).label : null;
   const variant: LoanDetailVariant =
-    entry != null && statusToChip(entry.status).label === "Watchlist"
+    chipLabel === "Watchlist"
       ? "watchlist"
-      : "performing";
+      : chipLabel === "Disbursing"
+        ? "disbursing"
+        : "performing";
   const mock =
     variant === "watchlist" ? LOAN_DETAIL_WATCHLIST_MOCK : LOAN_DETAIL_MOCK;
 
