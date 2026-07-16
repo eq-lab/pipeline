@@ -624,18 +624,31 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
     fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
       target: { value: "135" },
     });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location-type"), {
+      target: { value: "Vessel" },
+    });
     fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
-      target: { value: "Vessel MV Andes · IMO 9741205" },
+      target: { value: "MV Andes · IMO 9741205" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-tracking"), {
+      target: { value: "https://track.example/9741205" },
     });
     fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
       target: { value: "ipfs://assay" },
     });
     fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    // Location is submitted as the on-chain `LocationUpdate` struct (not a bare
+    // string — a string traps the contract; issue #872).
     expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       status: "WatchList",
       ccrPercent: 135,
-      location: "Vessel MV Andes · IMO 9741205",
+      location: {
+        location_type: "Vessel",
+        location_identifier: "MV Andes · IMO 9741205",
+        tracking_url: "https://track.example/9741205",
+        updated_at: expect.any(Number),
+      },
       metadataUri: "ipfs://assay",
     });
   });

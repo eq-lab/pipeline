@@ -51,11 +51,18 @@ function makeWrapper() {
   return wrapper;
 }
 
+const LOCATION = {
+  location_type: "Vessel",
+  location_identifier: "MV Andes · IMO 9741205",
+  tracking_url: "",
+  updated_at: 1_784_000_000,
+};
+
 const INPUT = {
   loanId: 4488,
   status: "WatchList",
   ccrPercent: 135,
-  location: "Vessel MV Andes",
+  location: LOCATION,
   metadataUri: "",
 };
 
@@ -94,7 +101,7 @@ describe("useUpdateLifecycle", () => {
       loanId: 4488,
       status: "WatchList",
       ccrPercent: 135,
-      location: "Vessel MV Andes",
+      location: LOCATION,
       metadataUri: "",
     });
   });

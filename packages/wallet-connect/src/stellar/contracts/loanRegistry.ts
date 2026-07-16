@@ -641,8 +641,8 @@ export interface UpdateMutableParams {
   status: string;
   /** New CCR as a percent (e.g. `135` for 135%); scaled to `ONE = 1e6` on encode. */
   ccrPercent: number;
-  /** Free-form collateral location string. */
-  location: string;
+  /** New collateral location — the `LocationUpdate` struct (not a bare string). */
+  location: LocationInput;
   /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
   metadataUri: string;
   rpcUrl: string;
@@ -659,22 +659,27 @@ export interface UpdateMutableResult {
 }
 
 /**
- * Encodes `update_mutable`'s positional args: `(loan_id: u32, status: enum,
- * ccr: u32 [ONE=1e6], location: String, metadata_uri: String)`. Exported for
- * unit testing. See the arg-order caveat above.
+ * Encodes `update_mutable`'s positional args, per the contract signature
+ * `updateMutable(loan_id: u32, status: LoanStatus, new_ccr: u32 [ONE=1e6],
+ * new_location: LocationUpdate, metadata_uri: String)` (see
+ * `docs/product-specs/loans-data.md`). Exported for unit testing.
+ *
+ * `new_location` is the same `LocationUpdate` map as `draw_loan`'s
+ * `initial_location` — NOT a bare string. Passing a plain `String` here makes
+ * the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`).
  */
 export function encodeUpdateMutableArgs(
   loanId: number,
   status: string,
   ccrPercent: number,
-  location: string,
+  location: LocationInput,
   metadataUri: string,
 ): xdr.ScVal[] {
   return [
     xdr.ScVal.scvU32(loanId),
     xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(status)]),
     xdr.ScVal.scvU32(Math.round(ccrPercent * 10_000)),
-    xdr.ScVal.scvString(location),
+    encodeLocationMap(location),
     xdr.ScVal.scvString(metadataUri),
   ];
 }
@@ -686,7 +691,7 @@ export interface BuildUpdateMutableEnvelopeParams {
   loanId: number;
   status: string;
   ccrPercent: number;
-  location: string;
+  location: LocationInput;
   metadataUri: string;
   rpcUrl: string;
   networkPassphrase: string;

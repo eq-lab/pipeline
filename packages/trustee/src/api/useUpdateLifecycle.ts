@@ -17,10 +17,11 @@ import {
   updateMutable,
   useStellarWallet,
   type UpdateMutableStage,
+  type LocationInput,
 } from "@pipeline/wallet-connect";
 import { ENV } from "@/lib/env";
 
-export type { UpdateMutableStage };
+export type { UpdateMutableStage, LocationInput };
 
 export interface UseUpdateLifecycleInput {
   /** On-chain loan id (u32). */
@@ -29,8 +30,8 @@ export interface UseUpdateLifecycleInput {
   status: string;
   /** New CCR as a percent (e.g. `135`); scaled to `ONE = 1e6` in the binding. */
   ccrPercent: number;
-  /** Free-form collateral location string. */
-  location: string;
+  /** New collateral location — the `LocationUpdate` struct the contract expects. */
+  location: LocationInput;
   /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
   metadataUri: string;
 }

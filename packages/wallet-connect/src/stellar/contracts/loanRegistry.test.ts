@@ -577,13 +577,20 @@ describe("buildRolloverEnvelope", () => {
 
 // ── encodeUpdateMutableArgs (issue #872) ────────────────────────────────────────
 
+const LOCATION_INPUT = {
+  location_type: "Vessel",
+  location_identifier: "IMO-9741205",
+  tracking_url: "https://track.example/9741205",
+  updated_at: 1_784_000_000,
+};
+
 describe("encodeUpdateMutableArgs", () => {
-  it("encodes (loan_id:u32, status:enum, ccr:u32 [ONE=1e6], location:String, metadata:String)", () => {
+  it("encodes (loan_id:u32, status:enum, ccr:u32 [ONE=1e6], location:LocationUpdate map, metadata:String)", () => {
     const args = encodeUpdateMutableArgs(
       4488,
       "WatchList",
       135,
-      "Vessel MV Andes",
+      LOCATION_INPUT,
       "",
     );
     expect(args).toHaveLength(5);
@@ -592,7 +599,27 @@ describe("encodeUpdateMutableArgs", () => {
     expect(args[1]).toEqual({ t: "vec", v: [{ t: "symbol", v: "WatchList" }] });
     // 135% → ONE=1e6 scale (percent × 10000).
     expect(args[2]).toEqual({ t: "u32", v: 1_350_000 });
-    expect(args[3]).toEqual({ t: "string", v: "Vessel MV Andes" });
+    // Location is the same `LocationUpdate` map as draw_loan — NOT a bare string
+    // (a string traps the contract with UnreachableCodeReached, issue #872).
+    expect(args[3]).toMatchObject({ t: "map" });
+    const locationMap = args[3] as unknown as {
+      t: "map";
+      v: Array<{ key: { v: string }; val: { t: string; v: string | bigint } }>;
+    };
+    expect(locationMap.v.map((e) => e.key.v)).toEqual([
+      "location_identifier",
+      "location_type",
+      "tracking_url",
+      "updated_at",
+    ]);
+    const byKey = Object.fromEntries(
+      locationMap.v.map((e) => [e.key.v, e.val]),
+    );
+    expect(byKey.location_type).toEqual({
+      t: "vec",
+      v: [{ t: "symbol", v: "Vessel" }],
+    });
+    expect(byKey.updated_at).toEqual({ t: "u64", v: 1_784_000_000n });
     expect(args[4]).toEqual({ t: "string", v: "" });
   });
 });
@@ -606,7 +633,7 @@ describe("buildUpdateMutableEnvelope", () => {
       loanId: 4488,
       status: "Performing",
       ccrPercent: 135,
-      location: "Vessel MV Andes",
+      location: LOCATION_INPUT,
       metadataUri: "",
       rpcUrl: RPC_URL,
       networkPassphrase: PASSPHRASE,

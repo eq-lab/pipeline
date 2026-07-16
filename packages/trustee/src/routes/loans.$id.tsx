@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
-import { useUpdateLifecycle } from "@/api/useUpdateLifecycle";
+import {
+  useUpdateLifecycle,
+  type LocationInput,
+} from "@/api/useUpdateLifecycle";
 import {
   useLoanDetail,
   type HeroView,
@@ -1004,7 +1007,7 @@ function UpdateLifecycleDialog({
   onConfirm: (input: {
     status: string;
     ccrPercent: number;
-    location: string;
+    location: LocationInput;
     metadataUri: string;
   }) => void;
   pending: boolean;
@@ -1012,14 +1015,18 @@ function UpdateLifecycleDialog({
 }) {
   const [status, setStatus] = useState(currentStatus);
   const [ccr, setCcr] = useState("");
-  const [location, setLocation] = useState("");
+  const [locationType, setLocationType] = useState("Vessel");
+  const [locationId, setLocationId] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
   const [metadataUri, setMetadataUri] = useState("");
 
   useEffect(() => {
     if (open) {
       setStatus(currentStatus);
       setCcr("");
-      setLocation("");
+      setLocationType("Vessel");
+      setLocationId("");
+      setTrackingUrl("");
       setMetadataUri("");
     }
   }, [open, currentStatus]);
@@ -1037,7 +1044,9 @@ function UpdateLifecycleDialog({
 
   const ccrPercent = Number.parseFloat(ccr);
   const valid =
-    Number.isFinite(ccrPercent) && ccrPercent > 0 && location.trim().length > 0;
+    Number.isFinite(ccrPercent) &&
+    ccrPercent > 0 &&
+    locationId.trim().length > 0;
 
   const fieldClass =
     "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
@@ -1101,14 +1110,44 @@ function UpdateLifecycleDialog({
             />
           </label>
           <label className="flex flex-1 flex-col gap-[6px]">
-            <span className={labelClass}>Location</span>
+            <span className={labelClass}>Location type</span>
+            <select
+              data-testid="update-lifecycle-location-type"
+              value={locationType}
+              disabled={pending}
+              onChange={(e) => setLocationType(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="Vessel">Vessel</option>
+              <option value="Warehouse">Warehouse</option>
+              <option value="TankFarm">Tank farm</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-[16px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Location identifier</span>
             <input
               type="text"
               data-testid="update-lifecycle-location"
-              value={location}
+              value={locationId}
               disabled={pending}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Vessel MV Andes · IMO 9741205"
+              onChange={(e) => setLocationId(e.target.value)}
+              placeholder="e.g. MV Andes · IMO 9741205"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Tracking URL (optional)</span>
+            <input
+              type="text"
+              data-testid="update-lifecycle-tracking"
+              value={trackingUrl}
+              disabled={pending}
+              onChange={(e) => setTrackingUrl(e.target.value)}
+              placeholder="https://…"
               className={fieldClass}
             />
           </label>
@@ -1156,7 +1195,12 @@ function UpdateLifecycleDialog({
               onConfirm({
                 status,
                 ccrPercent,
-                location: location.trim(),
+                location: {
+                  location_type: locationType,
+                  location_identifier: locationId.trim(),
+                  tracking_url: trackingUrl.trim(),
+                  updated_at: Math.floor(Date.now() / 1000),
+                },
                 metadataUri: metadataUri.trim(),
               })
             }
