@@ -901,3 +901,212 @@ export async function updateMutable({
 
   return { hash: sendResult.hash };
 }
+
+// ── Record payment (issue #882) ───────────────────────────────────────────────
+
+/**
+ * Soroban client for the trustee's `record_payment` on-chain call (issue #882) —
+ * `LoanRegistry.recordPayment`, through the same executor proxy as `draw_loan`:
+ *
+ *   executor.execute(target, function: Symbol("record_payment"), args, caller)
+ *
+ * Pure accounting: records a repayment split (no USDC moves, no PLUSD mint).
+ * Emits `PaymentRecorded`. Confirmed against the deployed Rust source:
+ *
+ *   record_payment(e, loan_id: u32, repayment: RepaymentData)
+ *
+ * where `RepaymentData` is a struct (NOT the flat 8-arg EVM form the product-spec
+ * docs list) — so the two wire args are `[u32 loan_id, map repayment]`. Amounts
+ * are `u128` in the on-chain 7-decimal USDC base-unit scale — the same scale the
+ * `/waterfall` endpoint returns, so its values pass through unscaled. The struct
+ * is a sorted-key `scMap` (like `draw_loan`'s economics/location maps).
+ */
+export type RecordPaymentStage = DrawLoanStage;
+
+/**
+ * The `RepaymentData` fields, each a whole-base-unit (7-decimal USDC) integer
+ * string. `senior_principal_repaid` / `senior_interest` / `mgmt_fee` / `perf_fee`
+ * / `oet_alloc` come straight from `/waterfall`; `offtaker_received` is the entered
+ * amount; `equity_distributed` is the residual so the six components sum to
+ * `offtaker_received`.
+ */
+export interface RepaymentInput {
+  offtaker_received: string;
+  senior_principal_repaid: string;
+  senior_interest: string;
+  equity_distributed: string;
+  mgmt_fee: string;
+  perf_fee: string;
+  oet_alloc: string;
+}
+
+export interface RecordPaymentParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  repayment: RepaymentInput;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: (
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  onStageChange?: (stage: RecordPaymentStage) => void;
+}
+
+export interface RecordPaymentResult {
+  hash: string;
+}
+
+/** Encodes the `RepaymentData` struct as a sorted-key `u128` map. */
+function encodeRepaymentData(r: RepaymentInput): xdr.ScVal {
+  return scMap([
+    ["equity_distributed", u128(BigInt(r.equity_distributed))],
+    ["mgmt_fee", u128(BigInt(r.mgmt_fee))],
+    ["oet_alloc", u128(BigInt(r.oet_alloc))],
+    ["offtaker_received", u128(BigInt(r.offtaker_received))],
+    ["perf_fee", u128(BigInt(r.perf_fee))],
+    ["senior_interest", u128(BigInt(r.senior_interest))],
+    ["senior_principal_repaid", u128(BigInt(r.senior_principal_repaid))],
+  ]);
+}
+
+/**
+ * Encodes `record_payment`'s two positional args: `[loan_id: u32, repayment:
+ * RepaymentData]`. Exported for unit testing.
+ */
+export function encodeRecordPaymentArgs(
+  loanId: number,
+  repayment: RepaymentInput,
+): xdr.ScVal[] {
+  return [xdr.ScVal.scvU32(loanId), encodeRepaymentData(repayment)];
+}
+
+export interface BuildRecordPaymentEnvelopeParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  repayment: RepaymentInput;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+/**
+ * Builds, simulates, and assembles the `execute(target, "record_payment", args,
+ * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
+ * `buildUpdateMutableEnvelope`.
+ */
+export async function buildRecordPaymentEnvelope({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  repayment,
+  rpcUrl,
+  networkPassphrase,
+}: BuildRecordPaymentEnvelopeParams): Promise<string> {
+  if (!executorId) {
+    throw new Error("buildRecordPaymentEnvelope: executorId must not be empty");
+  }
+  if (!targetId) {
+    throw new Error("buildRecordPaymentEnvelope: targetId must not be empty");
+  }
+  if (!caller) {
+    throw new Error("buildRecordPaymentEnvelope: caller must not be empty");
+  }
+
+  const contract = new Contract(executorId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(caller);
+
+  const op = contract.call(
+    "execute",
+    new Address(targetId).toScVal(),
+    xdr.ScVal.scvSymbol("record_payment"),
+    xdr.ScVal.scvVec(encodeRecordPaymentArgs(loanId, repayment)),
+    new Address(caller).toScVal(),
+  );
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`recordPayment simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+/**
+ * Signs and submits the trustee-wallet-signed `record_payment` end-to-end: build
+ * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
+ * a terminal status. Mirrors `updateMutable`.
+ */
+export async function recordPayment({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  repayment,
+  rpcUrl,
+  networkPassphrase,
+  signTransaction,
+  onStageChange,
+}: RecordPaymentParams): Promise<RecordPaymentResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildRecordPaymentEnvelope({
+    executorId,
+    targetId,
+    caller,
+    loanId,
+    repayment,
+    rpcUrl,
+    networkPassphrase,
+  });
+
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `recordPayment: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `recordPayment: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return { hash: sendResult.hash };
+}

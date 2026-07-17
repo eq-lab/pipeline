@@ -15,6 +15,7 @@ import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import { LOAN_DETAIL_MOCK } from "./-loanDetailMock";
 
+const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
     "@tanstack/react-router",
@@ -24,6 +25,7 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
       <a href={to}>{children}</a>
     ),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -191,6 +193,7 @@ beforeEach(() => {
   mockUpdateLifecycle.reset = vi.fn();
   mockUpdateLifecycle.isPending = false;
   mockUpdateLifecycle.error = null;
+  mockNavigate.mockReset();
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -649,6 +652,22 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
       },
       metadataUri: "ipfs://assay",
     });
+  });
+});
+
+describe("Loan detail route — Record coupon (#882)", () => {
+  it("navigates to the full-page Record-coupon route from the Record coupon action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Record coupon"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id/record-coupon",
+      params: { id: "4488" },
+    });
+    // Unlike Update lifecycle, this is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
   });
 });
 

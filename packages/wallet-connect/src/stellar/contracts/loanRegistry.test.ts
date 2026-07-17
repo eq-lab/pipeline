@@ -27,7 +27,10 @@ import {
   buildRolloverEnvelope,
   encodeUpdateMutableArgs,
   buildUpdateMutableEnvelope,
+  encodeRecordPaymentArgs,
+  buildRecordPaymentEnvelope,
   type SubmitLoanRequest,
+  type RepaymentInput,
 } from "./loanRegistry";
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
@@ -675,6 +678,85 @@ describe("buildUpdateMutableEnvelope", () => {
     mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
     await expect(buildUpdateMutableEnvelope(args())).rejects.toThrow(
       "updateMutable simulation error",
+    );
+    expect(mockAssembleTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── encodeRecordPaymentArgs / recordPayment (issue #882) ────────────────────────
+
+const REPAYMENT: RepaymentInput = {
+  offtaker_received: "1500000000000", // $150,000 @ 7-decimal base units
+  senior_principal_repaid: "0",
+  senior_interest: "1155000000000",
+  equity_distributed: "0",
+  mgmt_fee: "120000000000",
+  perf_fee: "150000000000",
+  oet_alloc: "75000000000",
+};
+
+describe("encodeRecordPaymentArgs", () => {
+  it("encodes [loan_id: u32, repayment: RepaymentData map] with sorted u128 fields", () => {
+    const args = encodeRecordPaymentArgs(4488, REPAYMENT);
+    expect(args).toHaveLength(2);
+    expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    expect(args[1]).toMatchObject({ t: "map" });
+
+    const map = args[1] as unknown as {
+      t: "map";
+      v: Array<{ key: { v: string }; val: { t: string; v: bigint } }>;
+    };
+    // Soroban struct = sorted-key map.
+    expect(map.v.map((e) => e.key.v)).toEqual([
+      "equity_distributed",
+      "mgmt_fee",
+      "oet_alloc",
+      "offtaker_received",
+      "perf_fee",
+      "senior_interest",
+      "senior_principal_repaid",
+    ]);
+    const byKey = Object.fromEntries(map.v.map((e) => [e.key.v, e.val]));
+    // Each amount is u128, passed through unscaled (base units).
+    expect(byKey.offtaker_received).toEqual({
+      t: "u128",
+      v: 1_500_000_000_000n,
+    });
+    expect(byKey.senior_interest).toEqual({ t: "u128", v: 1_155_000_000_000n });
+    expect(byKey.senior_principal_repaid).toEqual({ t: "u128", v: 0n });
+  });
+});
+
+describe("buildRecordPaymentEnvelope", () => {
+  function args(overrides: Record<string, unknown> = {}) {
+    return {
+      executorId: EXECUTOR_ID,
+      targetId: TARGET_ID,
+      caller: CALLER,
+      loanId: 4488,
+      repayment: REPAYMENT,
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      ...overrides,
+    };
+  }
+
+  it("calls execute with (target, record_payment symbol, args vec, caller)", async () => {
+    await buildRecordPaymentEnvelope(args());
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: TARGET_ID },
+      { t: "symbol", v: "record_payment" },
+      expect.objectContaining({ t: "vec" }),
+      { t: "address", v: CALLER },
+    );
+  });
+
+  it("throws a simulation error without assembling", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
+    await expect(buildRecordPaymentEnvelope(args())).rejects.toThrow(
+      "recordPayment simulation error",
     );
     expect(mockAssembleTransaction).not.toHaveBeenCalled();
   });

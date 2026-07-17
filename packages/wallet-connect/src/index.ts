@@ -116,6 +116,24 @@ export {
   buildRolloverEnvelope,
   encodeRolloverArgs,
 } from "./stellar/contracts/loanRegistry";
+
+/**
+ * `record_payment` (issue #882) — trustee-wallet-signed on-chain
+ * `LoanRegistry.recordPayment` through the executor `execute` proxy. Pure
+ * accounting; records a repayment split as a `RepaymentData` struct.
+ */
+export {
+  recordPayment,
+  buildRecordPaymentEnvelope,
+  encodeRecordPaymentArgs,
+} from "./stellar/contracts/loanRegistry";
+export type {
+  RepaymentInput,
+  RecordPaymentParams,
+  RecordPaymentResult,
+  RecordPaymentStage,
+  BuildRecordPaymentEnvelopeParams,
+} from "./stellar/contracts/loanRegistry";
 export type {
   RolloverParams,
   RolloverResult,
