@@ -72,31 +72,23 @@ export function parseUsdInput(input: string): number | null {
 }
 
 /**
- * On-chain base-unit scale for `/waterfall` + `record_payment` amounts.
- *
- * The endpoint doc says "7-decimal", but the live response is the registry's
- * **×1000 (3-decimal)** scale: `senior_principal_returned = "1000000000"` (1e9)
- * for a loan whose senior outstanding is $1,000,000 ⇒ $1 = 1000 base units
- * (verified against a real testnet response, #882). Same 3-decimal convention as
- * `draw_loan`'s `parseUsdcAmountToU128`.
- */
-const BASE_UNITS_PER_USD = 1000;
-
-/**
- * Converts a USD dollar amount to the raw on-chain base-unit integer string
- * `useLoanWaterfall`'s `amount` param expects. `null`/non-positive → `"0"` (the
- * hook's own `enabled` guard keeps the query off for `"0"`).
+ * The `/waterfall` `amount` param and all response fields are handled **as-is**
+ * — the backend already accounts for USDC decimals, so the frontend applies NO
+ * decimal scaling (#882): the entered USD dollar amount is sent verbatim and the
+ * response integers are the dollar amounts to display directly. (Distinct from
+ * the registry-sourced senior-outstanding / offtaker-outstanding fields, which
+ * DO need the ×1000 #840 correction — see `scaledUsd`.)
  */
 export function usdToBaseUnits(usd: number | null): string {
   if (usd == null) return "0";
-  return Math.round(usd * BASE_UNITS_PER_USD).toString();
+  return Math.round(usd).toString();
 }
 
-/** Parses a whole-base-unit integer string back to USD dollars. */
+/** Parses a waterfall amount (already USD, backend-scaled) to a number. */
 function baseUnitsToUsd(baseUnits: string | undefined): number | null {
   if (baseUnits == null) return null;
   const n = Number(baseUnits);
-  return Number.isFinite(n) ? n / BASE_UNITS_PER_USD : null;
+  return Number.isFinite(n) ? n : null;
 }
 
 /** Sums whole-base-unit integer strings via `BigInt` — exact, no float drift. */
@@ -112,8 +104,8 @@ function usdFull(usd: number | null): string {
 
 /**
  * Builds the on-chain `RepaymentData` (issue #882) from the waterfall preview +
- * the entered offtaker amount (all whole-base-unit integer strings — the ×1000
- * scale `record_payment` expects; passed through unscaled).
+ * the entered offtaker amount (integer strings, backend-scaled as-is — passed
+ * through unscaled to `record_payment`).
  *
  * This is the **interest-only coupon** flow (a `recordPayment` with **zero
  * principal** — the design's info banner): `senior_principal_repaid` is always

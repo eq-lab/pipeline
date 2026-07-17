@@ -169,24 +169,24 @@ function ready() {
 
 /**
  * A representative waterfall preview for a $45,000 interest-only coupon.
- * ×1000 (3-decimal) base units — the registry scale the endpoint actually uses
- * (#882): $35,000 = 35_000_000.
+ * Backend-scaled as-is (dollar integers) — the frontend applies no decimal
+ * scaling (#882): $35,000 = "35000".
  */
 const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   senior_principal_returned: "0",
-  senior_coupon_net: "35000000", // $35,000
-  management_fee: "5000000", // $5,000
-  performance_fee: "3000000", // $3,000
-  oet_allocation: "2000000", // $2,000
+  senior_coupon_net: "35000", // $35,000
+  management_fee: "5000", // $5,000
+  performance_fee: "3000", // $3,000
+  oet_allocation: "2000", // $2,000
 };
 
 /** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "1840000000", // $1,840,000 ×1000
-  senior_coupon_net: "35000000",
-  management_fee: "5000000",
-  performance_fee: "3000000",
-  oet_allocation: "2000000",
+  senior_principal_returned: "1840000", // $1,840,000 as-is
+  senior_coupon_net: "35000",
+  management_fee: "5000",
+  performance_fee: "3000",
+  oet_allocation: "2000",
 };
 
 function mockWaterfall(
@@ -240,13 +240,13 @@ describe("Record Coupon route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "45000000",
+        offtaker_received: "45000",
         senior_principal_repaid: "0",
-        senior_interest: "35000000",
+        senior_interest: "35000",
         equity_distributed: "0",
-        mgmt_fee: "5000000",
-        perf_fee: "3000000",
-        oet_alloc: "2000000",
+        mgmt_fee: "5000",
+        perf_fee: "3000",
+        oet_alloc: "2000",
       },
     });
   });
@@ -309,14 +309,13 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    // $45,000 * 1000 = 45,000,000 base units (×1000 registry scale) — the last
-    // call's 2nd arg.
+    // Amount sent as-is (backend handles USDC decimals) — the last call's 2nd arg.
     const lastCall =
       mockUseLoanWaterfall.mock.calls[
         mockUseLoanWaterfall.mock.calls.length - 1
       ]!;
     expect(lastCall[0]).toBe("4488");
-    expect(lastCall[1]).toBe("45000000");
+    expect(lastCall[1]).toBe("45000");
   });
 
   it("renders the waterfall rows from the mocked useLoanWaterfall response", () => {

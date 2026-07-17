@@ -31,14 +31,13 @@ describe("parseUsdInput", () => {
 });
 
 describe("usdToBaseUnits", () => {
-  it("converts a USD dollar amount to the ×1000 (3-decimal) base-unit string", () => {
-    // $45,000 * 1000 = 45,000,000 base units.
-    expect(usdToBaseUnits(45000)).toBe("45000000");
+  it("sends the entered USD amount as-is (backend handles USDC decimals)", () => {
+    expect(usdToBaseUnits(45000)).toBe("45000");
   });
 
-  it("rounds to the nearest base unit", () => {
-    expect(usdToBaseUnits(2.34)).toBe("2340"); // 2.34 * 1000
-    expect(usdToBaseUnits(0.0006)).toBe("1"); // rounds 0.6 base units up to 1
+  it("rounds to a whole-dollar integer string", () => {
+    expect(usdToBaseUnits(2.4)).toBe("2");
+    expect(usdToBaseUnits(2.6)).toBe("3");
   });
 
   it('returns "0" for null (keeps the waterfall query disabled)', () => {
@@ -110,28 +109,28 @@ describe("isTerminalRepayment", () => {
 });
 
 describe("buildRepaymentInput (issue #882)", () => {
-  // ×1000 (3-decimal) base units. senior_principal_returned is deliberately
-  // NON-zero to prove the interest-only override forces senior_principal_repaid
-  // to "0" regardless.
+  // Backend-scaled as-is (dollar integers). senior_principal_returned is
+  // deliberately NON-zero to prove the interest-only override forces
+  // senior_principal_repaid to "0" regardless.
   const WATERFALL = {
-    senior_principal_returned: "999000000", // ignored (interest-only)
-    senior_coupon_net: "115500000", // $115,500
-    management_fee: "12000000", // $12,000
-    performance_fee: "15000000", // $15,000
-    oet_allocation: "7500000", // $7,500
+    senior_principal_returned: "999", // ignored (interest-only)
+    senior_coupon_net: "115500", // $115,500
+    management_fee: "12000", // $12,000
+    performance_fee: "15000", // $15,000
+    oet_allocation: "7500", // $7,500
   };
 
   it("forces zero principal (interest-only) + equity as the residual (sums to offtaker)", () => {
-    // Offtaker $150,000 = 150_000_000 base units; interest+fees sum to it → equity = 0.
-    const input = buildRepaymentInput("150000000", WATERFALL);
+    // Offtaker $150,000; interest+fees sum to it → equity = 0.
+    const input = buildRepaymentInput("150000", WATERFALL);
     expect(input).toEqual({
-      offtaker_received: "150000000",
+      offtaker_received: "150000",
       senior_principal_repaid: "0",
-      senior_interest: "115500000",
+      senior_interest: "115500",
       equity_distributed: "0",
-      mgmt_fee: "12000000",
-      perf_fee: "15000000",
-      oet_alloc: "7500000",
+      mgmt_fee: "12000",
+      perf_fee: "15000",
+      oet_alloc: "7500",
     });
     // The six components sum exactly to offtaker_received.
     const six =
@@ -146,17 +145,17 @@ describe("buildRepaymentInput (issue #882)", () => {
 
   it("routes the leftover to equity when interest+fees are below the offtaker amount", () => {
     // Offtaker $200,000; interest+fees $150,000 → equity = $50,000.
-    const input = buildRepaymentInput("200000000", WATERFALL);
-    expect(input!.equity_distributed).toBe("50000000");
+    const input = buildRepaymentInput("200000", WATERFALL);
+    expect(input!.equity_distributed).toBe("50000");
   });
 
   it("clamps equity at 0 (never negative) when interest+fees exceed the amount", () => {
-    const input = buildRepaymentInput("100000000", WATERFALL);
+    const input = buildRepaymentInput("100000", WATERFALL);
     expect(input!.equity_distributed).toBe("0");
   });
 
   it("returns null before an amount/preview is available", () => {
     expect(buildRepaymentInput("0", WATERFALL)).toBeNull();
-    expect(buildRepaymentInput("150000000", undefined)).toBeNull();
+    expect(buildRepaymentInput("150000", undefined)).toBeNull();
   });
 });
