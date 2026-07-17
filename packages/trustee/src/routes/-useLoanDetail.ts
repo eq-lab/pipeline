@@ -154,7 +154,8 @@ export interface UseLoanDetailResult {
   lifecycle: LifecycleStep[];
   tiles: SummaryTile[];
   registry: RegistryView;
-  currentStage: CurrentStage;
+  /** Current-stage/escalation card — Watchlist only; `null` for every other variant (#876). */
+  currentStage: CurrentStage | null;
   otherActions: OtherActions;
   priceCollateral: PriceCollateralView;
   /** CCR-trend chart (Watchlist only); `null` otherwise. */
@@ -633,12 +634,14 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
         : variant === "disbursing"
           ? LOAN_DETAIL_DISBURSING_OTHER_ACTIONS
           : LOAN_DETAIL_MOCK.otherActions;
-  // currentStage is only rendered by performing/disbursing; watchlist supplies
-  // its escalation copy, matured renders the rollover card instead.
+  // Only the Watchlist variant renders a current-stage card (its escalation
+  // copy). The Performing "on-ramp in transit" card was removed (#876);
+  // Disbursing shows the disbursement-complete action, Matured the rollover
+  // card. `null` for every non-watchlist variant.
   const currentStage =
     variant === "watchlist"
-      ? LOAN_DETAIL_WATCHLIST_MOCK.currentStage
-      : LOAN_DETAIL_MOCK.currentStage;
+      ? (LOAN_DETAIL_WATCHLIST_MOCK.currentStage ?? null)
+      : null;
 
   return {
     state,

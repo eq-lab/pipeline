@@ -123,7 +123,7 @@ export function ApproveMintDialog({
           id="approve-mint-title"
           className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
         >
-          Approve & mint loan
+          Approve & draw loan
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
           Transaction preview — sent from your Trustee key.
@@ -182,7 +182,7 @@ export function ApproveMintDialog({
             onClick={onConfirm}
             className="h-[40px] rounded-[4px] bg-[#000080] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {mintingLabel ?? "Mint loan"}
+            {mintingLabel ?? "Draw loan"}
           </button>
         </div>
       </div>

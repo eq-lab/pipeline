@@ -110,6 +110,10 @@ vi.mock("@stellar/stellar-sdk", () => {
       t: opts?.type,
       v: value,
     })),
+    // Tagged stand-in: our loan-id extractor reads `.__native` off the ScVal.
+    scValToNative: vi.fn(
+      (v: { __native?: unknown } | undefined) => v?.__native,
+    ),
     xdr: {
       ScVal: {
         scvString: (v: string) => ({ t: "string", v }),
@@ -458,13 +462,26 @@ describe("drawLoan", () => {
 
     const result = await drawLoan(baseParams({ signTransaction }));
 
-    expect(result).toEqual({ hash: "tx-hash" });
+    // No returnValue / meta on this mock → loanId not recoverable (null), but
+    // the mint still succeeds and returns the hash.
+    expect(result).toEqual({ hash: "tx-hash", loanId: null });
     expect(signTransaction).toHaveBeenCalledWith("assembled-xdr", {
       networkPassphrase: PASSPHRASE,
       address: CALLER,
     });
     expect(mockSendTransaction).toHaveBeenCalledWith("signed-tx");
     expect(mockPollTransaction).toHaveBeenCalledWith("tx-hash");
+  });
+
+  it("extracts the drawn loan id from the transaction return value (#876)", async () => {
+    mockPollTransaction.mockResolvedValue({
+      status: "SUCCESS",
+      returnValue: { __native: 42n },
+    });
+
+    const result = await drawLoan(baseParams());
+
+    expect(result).toEqual({ hash: "tx-hash", loanId: 42 });
   });
 
   it("fires stage callbacks in order: awaiting-signature -> submitting -> confirming", async () => {

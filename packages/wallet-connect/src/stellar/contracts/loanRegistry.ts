@@ -69,6 +69,7 @@ import {
   xdr,
   Address,
   nativeToScVal,
+  scValToNative,
   rpc as SorobanRpc,
   type Transaction,
 } from "@stellar/stellar-sdk";
@@ -142,6 +143,14 @@ export interface DrawLoanParams {
 
 export interface DrawLoanResult {
   hash: string;
+  /**
+   * The on-chain id of the loan just drawn (#876) — lets the trustee jump
+   * straight to `/loans/{loanId}` after approving. Sourced from the tx's
+   * return value (`draw_loan` returns the new id), falling back to the
+   * `loan_drawn` event topic. `null` if neither is present in the result
+   * (the mint still succeeded — the caller just can't deep-link).
+   */
+  loanId: number | null;
 }
 
 // ── ScVal encoding helpers ────────────────────────────────────────────────────
@@ -333,6 +342,61 @@ export async function buildDrawLoanEnvelope({
   return assembled.toXDR();
 }
 
+/**
+ * Coerces a `scValToNative` result (bigint | number | anything) to a positive
+ * integer loan id, or `null` when it isn't one.
+ */
+function toLoanId(native: unknown): number | null {
+  const n =
+    typeof native === "bigint"
+      ? Number(native)
+      : typeof native === "number"
+        ? native
+        : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Best-effort extraction of the just-drawn loan id from a successful
+ * `draw_loan` transaction (#876). Tries the tx return value first (`draw_loan`
+ * returns the new id), then the `loan_drawn` contract event's `loan_id` topic
+ * (`topics: [loan_drawn, loan_id: u32, holder]` — see the worker's
+ * `parse_loan_drawn`). Returns `null` if neither is present or decodable — the
+ * mint still succeeded, the caller just can't deep-link to the loan.
+ */
+function extractDrawnLoanId(
+  finalResult: SorobanRpc.Api.GetSuccessfulTransactionResponse,
+): number | null {
+  // 1) The call's return value — `execute` forwards `draw_loan`'s returned id.
+  try {
+    if (finalResult.returnValue) {
+      const id = toLoanId(scValToNative(finalResult.returnValue));
+      if (id != null) return id;
+    }
+  } catch {
+    // fall through to the event scan
+  }
+
+  // 2) The `loan_drawn` contract event topic.
+  try {
+    const events = finalResult.resultMetaXdr.v3().sorobanMeta()?.events() ?? [];
+    for (const event of events) {
+      const topics = event.body().v0().topics();
+      const nameTopic = topics[0];
+      const idTopic = topics[1];
+      if (!nameTopic || !idTopic) continue;
+      if (scValToNative(nameTopic) === "loan_drawn") {
+        const id = toLoanId(scValToNative(idTopic));
+        if (id != null) return id;
+      }
+    }
+  } catch {
+    // ignore — return null below
+  }
+
+  return null;
+}
+
 // ── Orchestration: build → sign → submit → poll ───────────────────────────────
 
 /**
@@ -397,7 +461,7 @@ export async function drawLoan({
     );
   }
 
-  return { hash: sendResult.hash };
+  return { hash: sendResult.hash, loanId: extractDrawnLoanId(finalResult) };
 }
 
 // ── Rollover (issue #870) ─────────────────────────────────────────────────────

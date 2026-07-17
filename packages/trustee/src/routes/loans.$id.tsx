@@ -528,7 +528,7 @@ function RegistryCard({ registry }: { registry: RegistryView }) {
 function CurrentStageCard({
   stage,
 }: {
-  stage: ReturnType<typeof useLoanDetail>["currentStage"];
+  stage: NonNullable<ReturnType<typeof useLoanDetail>["currentStage"]>;
 }) {
   return (
     <div
@@ -1123,7 +1123,9 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
           </div>
-          <CurrentStageCard stage={detail.currentStage} />
+          {detail.currentStage && (
+            <CurrentStageCard stage={detail.currentStage} />
+          )}
           <OtherActionsCard otherActions={detail.otherActions} />
         </>
       ) : detail.variant === "matured" ? (
@@ -1173,7 +1175,7 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             <RegistryCard registry={detail.registry} />
           </div>
-          {detail.variant === "disbursing" ? (
+          {detail.variant === "disbursing" && (
             <DisbursementActionCard
               loanName={detail.hero.title}
               onRequestComplete={() => {
@@ -1181,8 +1183,6 @@ function LoanDetail() {
                 setConfirmOpen(true);
               }}
             />
-          ) : (
-            <CurrentStageCard stage={detail.currentStage} />
           )}
           <OtherActionsCard otherActions={detail.otherActions} />
           <DisbursementConfirmDialog

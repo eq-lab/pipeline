@@ -139,7 +139,7 @@ function makeResult(
         { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
       ],
     },
-    currentStage: LOAN_DETAIL_MOCK.currentStage,
+    currentStage: null,
     otherActions: LOAN_DETAIL_MOCK.otherActions,
     priceCollateral: {
       state: "ready",
@@ -378,15 +378,13 @@ describe("Loan detail route — still-mock sections", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the current-stage card + primary action", () => {
+  it("does NOT render a current-stage card on a performing loan (#876)", () => {
     renderRoute();
-    const stage = screen.getByTestId("loan-detail-current-stage");
+    // The mock "on-ramp in transit" current-stage card was removed from the
+    // Performing layout (#876); only the Watchlist variant renders one now.
     expect(
-      within(stage).getByText("Current stage — on-ramp in transit"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("loan-detail-primary-action")).toHaveTextContent(
-      "Open on-ramp & mint",
-    );
+      screen.queryByTestId("loan-detail-current-stage"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Other actions buttons + timelock note", () => {

@@ -115,6 +115,14 @@ export interface UseOriginationReviewResult {
   approveOpen: boolean;
   /** Whether the reject-reason dialog is open. */
   rejectOpen: boolean;
+  /**
+   * On-chain id of the loan drawn in this session (#876) — lets the Approved
+   * banner deep-link to `/loans/{id}`. `null` before a successful mint, or if
+   * the id couldn't be recovered from the tx (or after a page reload — the
+   * mint mutation's data is not persisted; same accepted residual as the
+   * idempotency marker).
+   */
+  mintedLoanId: number | null;
 }
 
 /** Maps a thrown review-mutation error to user-facing copy. `null` when there is no error. */
@@ -301,5 +309,6 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     errorMessage,
     approveOpen,
     rejectOpen,
+    mintedLoanId: drawLoanMutation.mintedLoanId,
   };
 }
