@@ -1261,6 +1261,34 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
   const lastX = scaleX(trend.points.length - 1);
   const lastY = scaleY(trend.points[trend.points.length - 1]!);
 
+  // Right-edge labels (current value + one per threshold) share the same x, so
+  // when the loan's CCR sits far from the thresholds — squeezing 120% / 110%
+  // together on the per-loan scale — their text would overprint. Lay them out
+  // top→bottom with a minimum vertical gap, then shift the stack up if it would
+  // spill past the viewBox bottom.
+  const LABEL_GAP = 13;
+  const LABEL_MAX_Y = 122;
+  const rightLabels = [
+    {
+      text: trend.currentLabel,
+      fontSize: 13.4,
+      fontWeight: 700,
+      y: lastY + 13,
+    },
+    ...trend.thresholds.map((t) => ({
+      text: t.label,
+      fontSize: 10.5,
+      fontWeight: 400,
+      y: scaleY(t.pct),
+    })),
+  ].sort((a, b) => a.y - b.y);
+  for (let i = 1; i < rightLabels.length; i++) {
+    const minY = rightLabels[i - 1]!.y + LABEL_GAP;
+    if (rightLabels[i]!.y < minY) rightLabels[i]!.y = minY;
+  }
+  const overflow = rightLabels[rightLabels.length - 1]!.y - LABEL_MAX_Y;
+  if (overflow > 0) for (const l of rightLabels) l.y -= overflow;
+
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
@@ -1274,33 +1302,19 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
         role="img"
         aria-label={`CCR trend, currently ${trend.currentLabel}`}
       >
-        {/* Dashed threshold guide lines + right-aligned labels, per loan. */}
-        {trend.thresholds.map((t) => {
-          const y = scaleY(t.pct);
-          return (
-            <g key={t.pct}>
-              <line
-                x1={X0}
-                y1={y}
-                x2={X1}
-                y2={y}
-                stroke={CCR_GUIDE}
-                strokeWidth="1"
-                strokeDasharray="4 4"
-              />
-              <text
-                x={X1 - 2}
-                y={y - 3}
-                textAnchor="end"
-                fontFamily="var(--font-body)"
-                fontSize="10.5"
-                fill={NEGATIVE_RED}
-              >
-                {t.label}
-              </text>
-            </g>
-          );
-        })}
+        {/* Dashed threshold guide lines, drawn at their true scaled y. */}
+        {trend.thresholds.map((t) => (
+          <line
+            key={t.pct}
+            x1={X0}
+            y1={scaleY(t.pct)}
+            x2={X1}
+            y2={scaleY(t.pct)}
+            stroke={CCR_GUIDE}
+            strokeWidth="1"
+            strokeDasharray="4 4"
+          />
+        ))}
         {/* CCR line (or a lone dot for a single point) + current dot. */}
         {polyline.length > 1 && (
           <polyline
@@ -1313,18 +1327,22 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
           />
         )}
         <circle cx={lastX} cy={lastY} r="4" fill={NEGATIVE_RED} />
-        {/* Current value (bold) + series-start caption. */}
-        <text
-          x={lastX - 8}
-          y={lastY + 18}
-          textAnchor="end"
-          fontFamily="var(--font-body)"
-          fontSize="13.4"
-          fontWeight="700"
-          fill={NEGATIVE_RED}
-        >
-          {trend.currentLabel}
-        </text>
+        {/* Current value (bold) + threshold labels, laid out without overlap. */}
+        {rightLabels.map((l, i) => (
+          <text
+            key={i}
+            x={X1 - 2}
+            y={l.y}
+            textAnchor="end"
+            fontFamily="var(--font-body)"
+            fontSize={l.fontSize}
+            fontWeight={l.fontWeight}
+            fill={NEGATIVE_RED}
+          >
+            {l.text}
+          </text>
+        ))}
+        {/* Series-start caption (bottom-left). */}
         <text
           x={X0}
           y="115"
