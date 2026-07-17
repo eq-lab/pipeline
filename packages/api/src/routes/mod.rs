@@ -14,4 +14,5 @@ pub mod portfolio;
 pub mod stats;
 pub mod collateral_valuation;
 pub mod vouchers;
+pub mod waterfall;
 pub mod withdrawal_queue;
