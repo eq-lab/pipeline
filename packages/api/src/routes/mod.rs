@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod auth;
 pub mod capital_allocation;
+pub mod ccr_history;
 pub mod common;
 pub mod dashboard;
 pub mod emails;
