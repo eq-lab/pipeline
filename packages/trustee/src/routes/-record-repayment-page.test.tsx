@@ -268,6 +268,17 @@ describe("Record Repayment route — ready state", () => {
     expect(screen.getByTestId("record-repayment-submit")).toBeDisabled();
   });
 
+  it("prefills the amount with the full remaining owed so it opens ready to pay-all-and-close (#884)", async () => {
+    mockWaterfall(undefined);
+    renderRoute();
+    // offtaker_outstanding "6150.000000" ×1000 (#840) = $6,150,000.
+    await waitFor(() =>
+      expect(screen.getByTestId("record-repayment-amount")).toHaveValue(
+        6150000,
+      ),
+    );
+  });
+
   it("does NOT render the Close-loan action before the loan is fully repaid", () => {
     mockWaterfall(WATERFALL_PARTIAL);
     renderRoute();

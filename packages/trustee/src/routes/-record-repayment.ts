@@ -325,6 +325,23 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     financials.data?.offtaker_outstanding,
   );
 
+  // Prefill the amount with the full remaining owed once financials load, so the
+  // page opens ready to record the final "pay it all & close" repayment (#884).
+  // One-shot: the trustee can still edit it down for a partial payment, and a
+  // later edit (or clearing the field) is never overwritten.
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (
+      !prefilled &&
+      amountInput === "" &&
+      offtakerOutstandingUsd != null &&
+      offtakerOutstandingUsd > 0
+    ) {
+      setAmountInput(String(offtakerOutstandingUsd));
+      setPrefilled(true);
+    }
+  }, [prefilled, amountInput, offtakerOutstandingUsd]);
+
   const finalPeriod = computeFinalPeriod(financials.data?.epoch ?? null);
 
   const seniorPrincipalReturnedUsd = baseUnitsToUsd(
