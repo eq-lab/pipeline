@@ -666,3 +666,238 @@ export async function rollover({
 
   return { hash: sendResult.hash };
 }
+
+// ── Update lifecycle (issue #872) ─────────────────────────────────────────────
+
+/**
+ * Soroban client for the trustee's `update_mutable` on-chain call (issue #872) —
+ * `LoanRegistry.updateMutable`, through the same executor proxy as `draw_loan`:
+ *
+ *   executor.execute(target, function: Symbol("update_mutable"), args, caller)
+ *
+ * Non-economic fields only, no NAV impact. On success the contract emits some of
+ * `status_updated { new_status: LoanStatus }`, `ccr_updated { new_ccr: u32 }`,
+ * `location_updated { new_location: String }` (the fields that changed).
+ *
+ * ⚠️ The method name + positional arg order (`loan_id`, `status`, `ccr`,
+ * `location`, `metadata_uri`) are inferred from the event/state shape and MUST be
+ * confirmed on testnet — see #870's rollover trap for why. The verifying
+ * `simulateTransaction` fails loudly on a wrong encoding before any signature.
+ *
+ * Encodings (verified from the indexer/reader):
+ *   - `status` — a `LoanStatus` unit-variant enum: `ScVal::Vec([Symbol(variant)])`
+ *     (same as `draw_loan`'s `location_type`). On-chain variants: `Performing`,
+ *     `WatchList`, `Default`, `Closed`.
+ *   - `ccr` — `ONE = 1_000_000` fixed-point (100% = 1_000_000), i.e. percent ×
+ *     10_000 (135% → 1_350_000); the indexer reads it back with `/100` → bps.
+ *   - `location` — a plain `String` (the event's `new_location` is a String, not
+ *     a map — matches the single Location field in the S10 form).
+ *   - `metadataUri` — `String`; pass "" when blank.
+ */
+export type UpdateMutableStage = DrawLoanStage;
+
+export interface UpdateMutableParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  /** On-chain `LoanStatus` variant: `Performing` | `WatchList` | `Default` | `Closed`. */
+  status: string;
+  /** New CCR as a percent (e.g. `135` for 135%); scaled to `ONE = 1e6` on encode. */
+  ccrPercent: number;
+  /** New collateral location — the `LocationUpdate` struct (not a bare string). */
+  location: LocationInput;
+  /** Optional metadata URI (assay / offtake hash); pass "" when blank. */
+  metadataUri: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: (
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  onStageChange?: (stage: UpdateMutableStage) => void;
+}
+
+export interface UpdateMutableResult {
+  hash: string;
+}
+
+/**
+ * Encodes `update_mutable`'s positional args, per the actual contract signature
+ * (confirmed against the deployed Rust source):
+ *
+ *   update_mutable(e, loan_id: u32, metadata_uri: String, status: LoanStatus,
+ *                  new_ccr: u32 [ONE=1e6], new_location: LocationUpdate)
+ *
+ * `e: &Env` is implicit (not a wire arg), so the 5 encoded positional args are
+ * `[loan_id, metadata_uri, status, new_ccr, new_location]` — note `metadata_uri`
+ * is SECOND, not last. Exported for unit testing.
+ *
+ * `new_location` is the same `LocationUpdate` map as `draw_loan`'s
+ * `initial_location` — NOT a bare string. A wrong arg ORDER or a mistyped arg
+ * makes the contract's guest-side `TryFromVal` panic (`UnreachableCodeReached`);
+ * that trap is what an out-of-order encoding produced here.
+ */
+export function encodeUpdateMutableArgs(
+  loanId: number,
+  status: string,
+  ccrPercent: number,
+  location: LocationInput,
+  metadataUri: string,
+): xdr.ScVal[] {
+  return [
+    xdr.ScVal.scvU32(loanId),
+    xdr.ScVal.scvString(metadataUri),
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(status)]),
+    xdr.ScVal.scvU32(Math.round(ccrPercent * 10_000)),
+    encodeLocationMap(location),
+  ];
+}
+
+export interface BuildUpdateMutableEnvelopeParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  status: string;
+  ccrPercent: number;
+  location: LocationInput;
+  metadataUri: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+/**
+ * Builds, simulates, and assembles the `execute(target, "update_mutable", args,
+ * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
+ * `buildRolloverEnvelope`.
+ */
+export async function buildUpdateMutableEnvelope({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  status,
+  ccrPercent,
+  location,
+  metadataUri,
+  rpcUrl,
+  networkPassphrase,
+}: BuildUpdateMutableEnvelopeParams): Promise<string> {
+  if (!executorId) {
+    throw new Error("buildUpdateMutableEnvelope: executorId must not be empty");
+  }
+  if (!targetId) {
+    throw new Error("buildUpdateMutableEnvelope: targetId must not be empty");
+  }
+  if (!caller) {
+    throw new Error("buildUpdateMutableEnvelope: caller must not be empty");
+  }
+
+  const contract = new Contract(executorId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(caller);
+
+  const op = contract.call(
+    "execute",
+    new Address(targetId).toScVal(),
+    xdr.ScVal.scvSymbol("update_mutable"),
+    xdr.ScVal.scvVec(
+      encodeUpdateMutableArgs(
+        loanId,
+        status,
+        ccrPercent,
+        location,
+        metadataUri,
+      ),
+    ),
+    new Address(caller).toScVal(),
+  );
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`updateMutable simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+/**
+ * Signs and submits the trustee-wallet-signed `update_mutable` end-to-end: build
+ * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
+ * a terminal status. Mirrors `rollover`.
+ */
+export async function updateMutable({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  status,
+  ccrPercent,
+  location,
+  metadataUri,
+  rpcUrl,
+  networkPassphrase,
+  signTransaction,
+  onStageChange,
+}: UpdateMutableParams): Promise<UpdateMutableResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildUpdateMutableEnvelope({
+    executorId,
+    targetId,
+    caller,
+    loanId,
+    status,
+    ccrPercent,
+    location,
+    metadataUri,
+    rpcUrl,
+    networkPassphrase,
+  });
+
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `updateMutable: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `updateMutable: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return { hash: sendResult.hash };
+}

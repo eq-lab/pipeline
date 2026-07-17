@@ -3,6 +3,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
 import {
+  useUpdateLifecycle,
+  type LocationInput,
+} from "@/api/useUpdateLifecycle";
+import {
   useLoanDetail,
   type HeroView,
   type LabelValueRow,
@@ -578,8 +582,11 @@ function CurrentStageCard({
 
 function OtherActionsCard({
   otherActions,
+  onAction,
 }: {
   otherActions: ReturnType<typeof useLoanDetail>["otherActions"];
+  /** Fired with the button label when clicked; wired actions (e.g. "Update lifecycle") open a modal. */
+  onAction?: (label: string) => void;
 }) {
   return (
     <div
@@ -598,6 +605,8 @@ function OtherActionsCard({
           <button
             key={label}
             type="button"
+            data-testid={`loan-detail-action-${label}`}
+            onClick={() => onAction?.(label)}
             className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
             style={{ borderColor: LINE_COLOR }}
           >
@@ -974,6 +983,239 @@ function RolloverDialog({
   );
 }
 
+/**
+ * The Update-lifecycle modal (S10, Figma node `4116:14087`, issue #872).
+ * Collects the non-economic mutable fields — status, CCR %, location, optional
+ * metadata URI — then submits the on-chain `LoanRegistry.updateMutable` via
+ * `useUpdateLifecycle`. Default/Closed are not offered (they route to the Risk
+ * Council / close flows); Past Due/Matured are derived, not settable here.
+ */
+function UpdateLifecycleDialog({
+  open,
+  loanName,
+  currentStatus,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: {
+  open: boolean;
+  loanName: string;
+  /** On-chain status to default the selector to (`Performing` | `WatchList`). */
+  currentStatus: string;
+  onClose: () => void;
+  onConfirm: (input: {
+    status: string;
+    ccrPercent: number;
+    location: LocationInput;
+    metadataUri: string;
+  }) => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  const [status, setStatus] = useState(currentStatus);
+  const [ccr, setCcr] = useState("");
+  const [locationType, setLocationType] = useState("Vessel");
+  const [locationId, setLocationId] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [metadataUri, setMetadataUri] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setStatus(currentStatus);
+      setCcr("");
+      setLocationType("Vessel");
+      setLocationId("");
+      setTrackingUrl("");
+      setMetadataUri("");
+    }
+  }, [open, currentStatus]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, pending, onClose]);
+
+  if (!open) return null;
+
+  const ccrPercent = Number.parseFloat(ccr);
+  const valid =
+    Number.isFinite(ccrPercent) &&
+    ccrPercent > 0 &&
+    locationId.trim().length > 0;
+
+  const fieldClass =
+    "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
+  const labelClass =
+    "font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]";
+
+  return (
+    <div
+      data-testid="update-lifecycle-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)]"
+      onClick={() => !pending && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-lifecycle-title"
+        data-testid="update-lifecycle-dialog"
+        className="flex w-[600px] max-w-[calc(100vw-32px)] flex-col gap-[12px] rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="update-lifecycle-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
+        >
+          Update lifecycle — {loanName}
+        </h2>
+        <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
+          LoanRegistry.updateMutable · your key · non-economic fields only · no
+          NAV impact. CCR is written only at 130 / 120 / 110% threshold
+          crossings, with its timestamp.
+        </p>
+
+        <label className="flex flex-col gap-[6px] pt-[4px]">
+          <span className={labelClass}>
+            Status (Default and Closed route elsewhere)
+          </span>
+          <select
+            data-testid="update-lifecycle-status"
+            value={status}
+            disabled={pending}
+            onChange={(e) => setStatus(e.target.value)}
+            className={fieldClass}
+          >
+            <option value="Performing">Performing</option>
+            <option value="WatchList">Watchlist</option>
+          </select>
+        </label>
+
+        <div className="flex flex-wrap gap-[16px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>CCR %</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              data-testid="update-lifecycle-ccr"
+              value={ccr}
+              disabled={pending}
+              onChange={(e) => setCcr(e.target.value)}
+              placeholder="e.g. 135"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Location type</span>
+            <select
+              data-testid="update-lifecycle-location-type"
+              value={locationType}
+              disabled={pending}
+              onChange={(e) => setLocationType(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="Vessel">Vessel</option>
+              <option value="Warehouse">Warehouse</option>
+              <option value="TankFarm">Tank farm</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-[16px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Location identifier</span>
+            <input
+              type="text"
+              data-testid="update-lifecycle-location"
+              value={locationId}
+              disabled={pending}
+              onChange={(e) => setLocationId(e.target.value)}
+              placeholder="e.g. MV Andes · IMO 9741205"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Tracking URL (optional)</span>
+            <input
+              type="text"
+              data-testid="update-lifecycle-tracking"
+              value={trackingUrl}
+              disabled={pending}
+              onChange={(e) => setTrackingUrl(e.target.value)}
+              placeholder="https://…"
+              className={fieldClass}
+            />
+          </label>
+        </div>
+
+        <label className="flex flex-col gap-[6px]">
+          <span className={labelClass}>
+            Append metadataURI (assay / offtake hash)
+          </span>
+          <input
+            type="text"
+            data-testid="update-lifecycle-metadata"
+            value={metadataUri}
+            disabled={pending}
+            onChange={(e) => setMetadataUri(e.target.value)}
+            placeholder="ipfs://… (optional)"
+            className={fieldClass}
+          />
+        </label>
+
+        {error && (
+          <p
+            role="alert"
+            data-testid="update-lifecycle-error"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+          >
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-start justify-end gap-[12px] pt-[12px]">
+          <button
+            type="button"
+            data-testid="update-lifecycle-cancel"
+            onClick={onClose}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="update-lifecycle-submit"
+            onClick={() =>
+              onConfirm({
+                status,
+                ccrPercent,
+                location: {
+                  location_type: locationType,
+                  location_identifier: locationId.trim(),
+                  tracking_url: trackingUrl.trim(),
+                  updated_at: Math.floor(Date.now() / 1000),
+                },
+                metadataUri: metadataUri.trim(),
+              })
+            }
+            disabled={!valid || pending}
+            className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            {pending ? "Updating…" : "Update loan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
 
 /**
@@ -1079,6 +1321,15 @@ function LoanDetail() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rolloverMutation = useRollover();
   const [rolloverOpen, setRolloverOpen] = useState(false);
+  const updateLifecycle = useUpdateLifecycle();
+  const [updateOpen, setUpdateOpen] = useState(false);
+
+  const onOtherAction = (label: string) => {
+    if (label === "Update lifecycle") {
+      updateLifecycle.reset();
+      setUpdateOpen(true);
+    }
+  };
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -1126,7 +1377,10 @@ function LoanDetail() {
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
-          <OtherActionsCard otherActions={detail.otherActions} />
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
         </>
       ) : detail.variant === "matured" ? (
         // Matured layout (#866): no stepper, no Registry — a rollover card sits
@@ -1147,7 +1401,10 @@ function LoanDetail() {
               />
             )}
           </div>
-          <OtherActionsCard otherActions={detail.otherActions} />
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
           <RolloverDialog
             open={rolloverOpen}
             loanName={detail.hero.title}
@@ -1184,7 +1441,10 @@ function LoanDetail() {
               }}
             />
           )}
-          <OtherActionsCard otherActions={detail.otherActions} />
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
           <DisbursementConfirmDialog
             open={confirmOpen}
             loanName={detail.hero.title}
@@ -1200,6 +1460,25 @@ function LoanDetail() {
           />
         </>
       )}
+
+      {/* Update-lifecycle modal (#872) — opened by the "Update lifecycle" action
+          in any variant; self-guards on `open`. */}
+      <UpdateLifecycleDialog
+        open={updateOpen}
+        loanName={detail.hero.title}
+        currentStatus={
+          detail.hero.status?.label === "Watchlist" ? "WatchList" : "Performing"
+        }
+        pending={updateLifecycle.isPending}
+        error={updateLifecycle.error?.message ?? null}
+        onClose={() => setUpdateOpen(false)}
+        onConfirm={(input) => {
+          void updateLifecycle
+            .mutateAsync({ loanId: Number(id), ...input })
+            .then(() => setUpdateOpen(false))
+            .catch(() => {});
+        }}
+      />
     </main>
   );
 }

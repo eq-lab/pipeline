@@ -125,4 +125,53 @@ impl LoanAssetPriceRepo {
         .await?;
         Ok(rows)
     }
+
+    /// The single most recent `(timestamp, price_usd)` for `(asset, price_provider)`
+    /// at or before `at`, or `None` when no sample that old exists. Used to *seed* a
+    /// time-series read (the CCR history endpoint) so grid points at the very start of
+    /// the requested window resolve to the last-known price rather than to nothing.
+    pub async fn price_at_or_before(
+        &self,
+        asset: &str,
+        price_provider: &str,
+        at: DateTime<Utc>,
+    ) -> Result<Option<(DateTime<Utc>, BigDecimal)>, sqlx::Error> {
+        let row: Option<(DateTime<Utc>, BigDecimal)> = sqlx::query_as(
+            "SELECT timestamp, price_usd FROM loan_asset_prices \
+             WHERE asset = $1 AND price_provider = $2 AND timestamp <= $3 \
+             ORDER BY timestamp DESC LIMIT 1",
+        )
+        .bind(asset)
+        .bind(price_provider)
+        .bind(at)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Every stored `(timestamp, price_usd)` for `(asset, price_provider)` in the
+    /// half-open window `(after, to]`, ascending by timestamp. Paired with
+    /// [`Self::price_at_or_before`] (the seed at `after`) it yields a gap-free
+    /// as-of walk over an arbitrary sampling grid — the CCR history endpoint steps a
+    /// fixed interval and, at each step, uses the latest price at or before it.
+    pub async fn prices_in_window(
+        &self,
+        asset: &str,
+        price_provider: &str,
+        after: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<(DateTime<Utc>, BigDecimal)>, sqlx::Error> {
+        let rows: Vec<(DateTime<Utc>, BigDecimal)> = sqlx::query_as(
+            "SELECT timestamp, price_usd FROM loan_asset_prices \
+             WHERE asset = $1 AND price_provider = $2 AND timestamp > $3 AND timestamp <= $4 \
+             ORDER BY timestamp ASC",
+        )
+        .bind(asset)
+        .bind(price_provider)
+        .bind(after)
+        .bind(to)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
 }

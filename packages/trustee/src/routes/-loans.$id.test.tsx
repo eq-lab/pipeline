@@ -63,6 +63,22 @@ vi.mock("@/api/useRollover", () => ({
   useRollover: () => mockRollover,
 }));
 
+// `useUpdateLifecycle` also pulls in @pipeline/wallet-connect — mock it too.
+const { mockUpdateLifecycle } = vi.hoisted(() => ({
+  mockUpdateLifecycle: {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(() => Promise.resolve({ hash: "0xhash" })),
+    reset: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    error: null as Error | null,
+    stage: null,
+  },
+}));
+vi.mock("@/api/useUpdateLifecycle", () => ({
+  useUpdateLifecycle: () => mockUpdateLifecycle,
+}));
+
 import { Route } from "./loans.$id";
 
 // `Route.useParams` is the file-route-bound accessor the component calls; patch
@@ -169,6 +185,12 @@ beforeEach(() => {
   mockRollover.reset = vi.fn();
   mockRollover.isPending = false;
   mockRollover.error = null;
+  mockUpdateLifecycle.mutateAsync = vi.fn(() =>
+    Promise.resolve({ hash: "0xhash" }),
+  );
+  mockUpdateLifecycle.reset = vi.fn();
+  mockUpdateLifecycle.isPending = false;
+  mockUpdateLifecycle.error = null;
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -574,6 +596,59 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     expect(screen.getByTestId("disbursement-confirm-error")).toHaveTextContent(
       "not indexed",
     );
+  });
+});
+
+describe("Loan detail route — Update lifecycle (#872)", () => {
+  it("opens the update-lifecycle modal from the Update lifecycle action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    expect(screen.getByTestId("update-lifecycle-dialog")).toBeInTheDocument();
+    // Submit is disabled until CCR + location are entered.
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("submits update_mutable with status + CCR% + location + metadataURI", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "WatchList" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "135" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location-type"), {
+      target: { value: "Vessel" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes · IMO 9741205" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-tracking"), {
+      target: { value: "https://track.example/9741205" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "ipfs://assay" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    // Location is submitted as the on-chain `LocationUpdate` struct (not a bare
+    // string — a string traps the contract; issue #872).
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "WatchList",
+      ccrPercent: 135,
+      location: {
+        location_type: "Vessel",
+        location_identifier: "MV Andes · IMO 9741205",
+        tracking_url: "https://track.example/9741205",
+        updated_at: expect.any(Number),
+      },
+      metadataUri: "ipfs://assay",
+    });
   });
 });
 
