@@ -32,13 +32,21 @@ export interface UseDrawLoanInput {
   loanData: SubmitLoanRequest;
 }
 
+export interface DrawLoanOutcome {
+  hash: string;
+  /** On-chain id of the loan just drawn (#876); `null` if not recoverable. */
+  loanId: number | null;
+}
+
 export interface UseDrawLoanResult {
-  mutateAsync: (input: UseDrawLoanInput) => Promise<{ hash: string }>;
+  mutateAsync: (input: UseDrawLoanInput) => Promise<DrawLoanOutcome>;
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
   /** The in-flight progress stage, or `null` before/after a mint attempt. */
   stage: DrawLoanStage | null;
+  /** Id of the loan drawn in this session, or `null` before success / if not recoverable (#876). */
+  mintedLoanId: number | null;
   reset: () => void;
 }
 
@@ -56,7 +64,7 @@ export function useDrawLoan(): UseDrawLoanResult {
   const { address, isConnected, signTransaction } = useStellarWallet();
   const [stage, setStage] = useState<DrawLoanStage | null>(null);
 
-  const mutation = useMutation<{ hash: string }, Error, UseDrawLoanInput>({
+  const mutation = useMutation<DrawLoanOutcome, Error, UseDrawLoanInput>({
     mutationFn: async ({ loanData }) => {
       setStage(null);
 
@@ -98,6 +106,7 @@ export function useDrawLoan(): UseDrawLoanResult {
     isSuccess: mutation.isSuccess,
     error: mutation.error,
     stage,
+    mintedLoanId: mutation.data?.loanId ?? null,
     reset,
   };
 }
