@@ -167,22 +167,26 @@ function ready() {
   });
 }
 
-/** A representative waterfall preview for a $45,000 interest-only coupon. */
+/**
+ * A representative waterfall preview for a $45,000 interest-only coupon.
+ * ×1000 (3-decimal) base units — the registry scale the endpoint actually uses
+ * (#882): $35,000 = 35_000_000.
+ */
 const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   senior_principal_returned: "0",
-  senior_coupon_net: "350000000000", // $35,000
-  management_fee: "50000000000", // $5,000
-  performance_fee: "30000000000", // $3,000
-  oet_allocation: "20000000000", // $2,000
+  senior_coupon_net: "35000000", // $35,000
+  management_fee: "5000000", // $5,000
+  performance_fee: "3000000", // $3,000
+  oet_allocation: "2000000", // $2,000
 };
 
-/** A terminal coupon that fully repays the $1,840,000 outstanding senior. */
+/** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "18400000000000", // $1,840,000
-  senior_coupon_net: "350000000000",
-  management_fee: "50000000000",
-  performance_fee: "30000000000",
-  oet_allocation: "20000000000",
+  senior_principal_returned: "1840000000", // $1,840,000 ×1000
+  senior_coupon_net: "35000000",
+  management_fee: "5000000",
+  performance_fee: "3000000",
+  oet_allocation: "2000000",
 };
 
 function mockWaterfall(
@@ -236,13 +240,13 @@ describe("Record Coupon route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "450000000000",
+        offtaker_received: "45000000",
         senior_principal_repaid: "0",
-        senior_interest: "350000000000",
+        senior_interest: "35000000",
         equity_distributed: "0",
-        mgmt_fee: "50000000000",
-        perf_fee: "30000000000",
-        oet_alloc: "20000000000",
+        mgmt_fee: "5000000",
+        perf_fee: "3000000",
+        oet_alloc: "2000000",
       },
     });
   });
@@ -305,13 +309,14 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    // $45,000 * 1e7 = 450,000,000,000 base units — the last call's 2nd arg.
+    // $45,000 * 1000 = 45,000,000 base units (×1000 registry scale) — the last
+    // call's 2nd arg.
     const lastCall =
       mockUseLoanWaterfall.mock.calls[
         mockUseLoanWaterfall.mock.calls.length - 1
       ]!;
     expect(lastCall[0]).toBe("4488");
-    expect(lastCall[1]).toBe("450000000000");
+    expect(lastCall[1]).toBe("45000000");
   });
 
   it("renders the waterfall rows from the mocked useLoanWaterfall response", () => {

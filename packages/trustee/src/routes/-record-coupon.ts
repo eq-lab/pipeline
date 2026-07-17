@@ -72,21 +72,31 @@ export function parseUsdInput(input: string): number | null {
 }
 
 /**
+ * On-chain base-unit scale for `/waterfall` + `record_payment` amounts.
+ *
+ * The endpoint doc says "7-decimal", but the live response is the registry's
+ * **×1000 (3-decimal)** scale: `senior_principal_returned = "1000000000"` (1e9)
+ * for a loan whose senior outstanding is $1,000,000 ⇒ $1 = 1000 base units
+ * (verified against a real testnet response, #882). Same 3-decimal convention as
+ * `draw_loan`'s `parseUsdcAmountToU128`.
+ */
+const BASE_UNITS_PER_USD = 1000;
+
+/**
  * Converts a USD dollar amount to the raw on-chain base-unit integer string
- * `useLoanWaterfall`'s `amount` param expects (7-decimal USDC on Stellar —
- * `round(usd * 1e7)`). `null`/non-positive → `"0"` (the hook's own `enabled`
- * guard keeps the query off for `"0"`).
+ * `useLoanWaterfall`'s `amount` param expects. `null`/non-positive → `"0"` (the
+ * hook's own `enabled` guard keeps the query off for `"0"`).
  */
 export function usdToBaseUnits(usd: number | null): string {
   if (usd == null) return "0";
-  return Math.round(usd * 1e7).toString();
+  return Math.round(usd * BASE_UNITS_PER_USD).toString();
 }
 
-/** Parses a whole-base-unit integer string (7-decimal) back to USD dollars. */
+/** Parses a whole-base-unit integer string back to USD dollars. */
 function baseUnitsToUsd(baseUnits: string | undefined): number | null {
   if (baseUnits == null) return null;
   const n = Number(baseUnits);
-  return Number.isFinite(n) ? n / 1e7 : null;
+  return Number.isFinite(n) ? n / BASE_UNITS_PER_USD : null;
 }
 
 /** Sums whole-base-unit integer strings via `BigInt` — exact, no float drift. */
@@ -102,12 +112,18 @@ function usdFull(usd: number | null): string {
 
 /**
  * Builds the on-chain `RepaymentData` (issue #882) from the waterfall preview +
- * the entered offtaker amount (all whole-base-unit integer strings, 7-decimal
- * USDC — the scale `record_payment` expects; passed through unscaled). The five
- * waterfall carve-outs map 1:1; `offtaker_received` is the entered amount; and
- * `equity_distributed` is the **residual** so the six components sum exactly to
- * `offtaker_received` (clamped at 0 — never negative). `null` until a positive
- * amount is entered and the preview resolves. Exported for unit testing.
+ * the entered offtaker amount (all whole-base-unit integer strings — the ×1000
+ * scale `record_payment` expects; passed through unscaled).
+ *
+ * This is the **interest-only coupon** flow (a `recordPayment` with **zero
+ * principal** — the design's info banner): `senior_principal_repaid` is always
+ * `0` (principal stays deployed), regardless of the waterfall's own
+ * `senior_principal_returned` (which is a principal-first `min(amount,
+ * outstanding)` figure, irrelevant to a coupon). The interest + fee carve-outs
+ * map 1:1; `equity_distributed` is the **residual** after interest + fees so the
+ * six components sum exactly to `offtaker_received` (clamped at 0 — never
+ * negative). `null` until a positive amount is entered and the preview resolves.
+ * Exported for unit testing.
  */
 export function buildRepaymentInput(
   amountBaseUnits: string,
@@ -122,8 +138,9 @@ export function buildRepaymentInput(
     | undefined,
 ): RepaymentInput | null {
   if (waterfall == null || amountBaseUnits === "0") return null;
+  // Interest-only: no principal is repaid, so equity absorbs the amount left
+  // after the interest + fee carve-outs.
   const carveouts =
-    BigInt(waterfall.senior_principal_returned) +
     BigInt(waterfall.senior_coupon_net) +
     BigInt(waterfall.management_fee) +
     BigInt(waterfall.performance_fee) +
@@ -131,7 +148,7 @@ export function buildRepaymentInput(
   const residual = BigInt(amountBaseUnits) - carveouts;
   return {
     offtaker_received: amountBaseUnits,
-    senior_principal_repaid: waterfall.senior_principal_returned,
+    senior_principal_repaid: "0",
     senior_interest: waterfall.senior_coupon_net,
     equity_distributed: (residual > 0n ? residual : 0n).toString(),
     mgmt_fee: waterfall.management_fee,
@@ -206,6 +223,8 @@ export interface WaterfallRow {
   value: string;
   /** Muted sub-line under the row (e.g. the interest-only / minted-to-vault notes); `null` when none. */
   sub: string | null;
+  /** Rendered greyed-out / inapplicable (the always-$0 senior-principal row on a coupon). */
+  disabled?: boolean;
 }
 
 export interface RecordCouponView {
@@ -303,12 +322,13 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   const rows: WaterfallRow[] = waterfall.data
     ? [
         {
+          // Interest-only coupon: principal never returns here (it's a zero-
+          // principal recordPayment), so this is always $0 and disabled — the
+          // waterfall's own principal-first figure is not applied (#882).
           label: "Senior principal returned",
-          value: usdFull(seniorPrincipalReturnedUsd),
-          sub:
-            seniorPrincipalReturnedUsd === 0
-              ? "Interest-only coupon — principal stays deployed"
-              : null,
+          value: usdFull(0),
+          sub: "Interest-only coupon — principal stays deployed",
+          disabled: true,
         },
         {
           label: `Gross interest (${couponPeriod.days ?? "—"} / 365 days)`,

@@ -6,9 +6,12 @@
  * OET fees). Read-only preview; the on-chain write is `useRecordPayment`.
  *
  * Mirrors `useLoanFinancials` / `useLoanCcrHistory`: Stellar-scoped (`chain_id`
- * from ENV), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` is
- * **raw on-chain base units** (7-decimal USDC on Stellar) as a string; the query
- * stays disabled until a positive amount is entered.
+ * from ENV), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` is a
+ * **raw on-chain base-unit** integer string. NOTE: despite the endpoint doc
+ * saying "7-decimal", the live response is the registry's **×1000 (3-decimal)**
+ * scale ($1 = 1000 units — verified against a real testnet response, #882); the
+ * caller (`-record-coupon.ts`) converts USD ↔ base units at that scale. The
+ * query stays disabled until a positive amount is entered.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";

@@ -101,7 +101,12 @@ function WaterfallRowView({
     <div
       data-testid="record-coupon-waterfall-row"
       className="flex items-start justify-between gap-[16px] py-[12px]"
-      style={isLast ? undefined : { borderBottom: `1px solid ${LINE_COLOR}` }}
+      style={{
+        ...(isLast ? undefined : { borderBottom: `1px solid ${LINE_COLOR}` }),
+        // Disabled = the always-$0 senior-principal row on an interest-only
+        // coupon (principal stays deployed, #882) — greyed out, not applied.
+        ...(row.disabled ? { opacity: 0.5 } : undefined),
+      }}
     >
       <span
         className="flex items-center gap-[6px] font-[family-name:var(--font-body)] text-[15px] leading-[21px]"

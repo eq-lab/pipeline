@@ -917,9 +917,10 @@ export async function updateMutable({
  *
  * where `RepaymentData` is a struct (NOT the flat 8-arg EVM form the product-spec
  * docs list) — so the two wire args are `[u32 loan_id, map repayment]`. Amounts
- * are `u128` in the on-chain 7-decimal USDC base-unit scale — the same scale the
- * `/waterfall` endpoint returns, so its values pass through unscaled. The struct
- * is a sorted-key `scMap` (like `draw_loan`'s economics/location maps).
+ * are `u128` in the on-chain registry base-unit scale (×1000 / 3-decimal, $1 =
+ * 1000 units — the same scale the `/waterfall` endpoint returns), so its values
+ * pass through unscaled. The struct is a sorted-key `scMap` (like `draw_loan`'s
+ * economics/location maps).
  */
 export type RecordPaymentStage = DrawLoanStage;
 
