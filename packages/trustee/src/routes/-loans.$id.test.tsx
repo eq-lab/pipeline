@@ -714,10 +714,13 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
         note: "",
       },
       ccrTrend: {
-        startLabel: "146% · 1 May",
+        points: [146, 132, 121, 114],
+        startLabel: "146% · 1 May 2026",
         currentLabel: "114%",
-        upperThresholdLabel: "120%",
-        lowerThresholdLabel: "110%",
+        thresholds: [
+          { pct: 120, label: "120%" },
+          { pct: 110, label: "110%" },
+        ],
       },
     });
   }
@@ -727,7 +730,7 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
     renderRoute();
     const chart = screen.getByTestId("loan-detail-ccr-trend");
     expect(chart).toBeInTheDocument();
-    expect(within(chart).getByText("146% · 1 May")).toBeInTheDocument();
+    expect(within(chart).getByText("146% · 1 May 2026")).toBeInTheDocument();
     expect(within(chart).getByText("114%")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("loan-detail-tiles")).getByText(

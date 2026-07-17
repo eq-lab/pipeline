@@ -58,15 +58,50 @@ import {
   LOAN_DETAIL_DISBURSING_OTHER_ACTIONS,
   LOAN_DETAIL_MATURED_MOCK,
   LOAN_DETAIL_WATCHLIST_MOCK,
-  WATCHLIST_CCR_TREND,
-  type CcrTrend,
   type CurrentStage,
   type OtherActions,
   type RolloverCard,
   type SummaryTile,
 } from "./-loanDetailMock";
+import {
+  useLoanCcrHistory,
+  type UseLoanCcrHistoryResult,
+} from "@/api/useLoanCcrHistory";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** A dashed CCR guide-line at a fixed percent (e.g. 120% maintenance margin). */
+export interface CcrThreshold {
+  pct: number;
+  label: string;
+}
+
+/**
+ * The CCR-trend chart view-model (Watchlist variant), built from the real
+ * `/ccr-history` series (#879) — replaces the fixed-geometry mock (#859).
+ * `points` are the CCR percentages oldest → newest; the card derives the
+ * polyline + a per-loan y-scale from them and the thresholds.
+ */
+export interface CcrTrend {
+  /** CCR percentages, oldest → newest (e.g. `146` for 146%). */
+  points: number[];
+  /** Bottom-left caption — series start (`"146% · 1 May 2026"`). */
+  startLabel: string;
+  /** Latest CCR, bold near the end dot (`"114%"`). */
+  currentLabel: string;
+  /** Dashed guide-lines (protocol watchlist thresholds), high → low. */
+  thresholds: CcrThreshold[];
+}
+
+/**
+ * Protocol CCR watchlist thresholds (spec §9.6): 120% maintenance-margin and
+ * 110% margin-call — the two dashed guide-lines the Figma chart shows. These are
+ * protocol-wide defaults; no endpoint serves per-loan overrides yet (#879).
+ */
+const CCR_TREND_THRESHOLDS: CcrThreshold[] = [
+  { pct: 120, label: "120%" },
+  { pct: 110, label: "110%" },
+];
 
 export type StatusBand =
   | "positive"
@@ -580,6 +615,30 @@ export function buildRegistryState(
   return { state: "ready", errorMessage: null, rows: [] };
 }
 
+/**
+ * Builds the CCR-trend view-model from the `/ccr-history` series (#879).
+ * `ccr_bps` (12_000 = 120%) → percent. Returns `null` when the series has no
+ * points (never priced / empty window) so the card is simply omitted rather
+ * than drawing a fabricated line.
+ */
+export function buildCcrTrend(
+  ccrHistory: UseLoanCcrHistoryResult,
+): CcrTrend | null {
+  const points = ccrHistory.data?.points ?? [];
+  if (points.length === 0) return null;
+
+  const first = points[0]!;
+  const last = points[points.length - 1]!;
+  const toPct = (bps: number) => Math.round(bps / 100);
+
+  return {
+    points: points.map((p) => p.ccr_bps / 100),
+    startLabel: `${toPct(first.ccr_bps)}% · ${formatEpochDate(first.timestamp)}`,
+    currentLabel: `${toPct(last.ccr_bps)}%`,
+    thresholds: CCR_TREND_THRESHOLDS,
+  };
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -595,6 +654,13 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
   const financials = useLoanFinancials(loanId);
 
   const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
+
+  // CCR-trend series (#879) — from the loan's origination
+  // (`maturity − duration_days`) through now, daily. The hook self-disables
+  // until `from` is known; we only build the chart for the Watchlist variant.
+  const ccrFrom =
+    entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
+  const ccrHistory = useLoanCcrHistory(loanId, ccrFrom);
 
   const state: LoanDetailState = loanBook.isLoading
     ? "loading"
@@ -654,7 +720,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     currentStage,
     otherActions,
     priceCollateral,
-    ccrTrend: variant === "watchlist" ? WATCHLIST_CCR_TREND : null,
+    ccrTrend: variant === "watchlist" ? buildCcrTrend(ccrHistory) : null,
     rollover: variant === "matured" ? LOAN_DETAIL_MATURED_MOCK.rollover : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
   };
