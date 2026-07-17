@@ -31,6 +31,21 @@ pub struct AssetProvider {
     pub price_provider: String,
 }
 
+/// The per-loan protocol fee schedule, all in basis points (1 bp = 1/10_000).
+///
+/// Consumed by the repayment waterfall (`GET /v1/loan-book/{loan_id}/waterfall`):
+/// `mgmt_fee_rate_bps` / `oet_alloc_rate_bps` are annualised (applied against
+/// `senior_deployed × tenor/365`); `perf_fee_rate_bps` is a plain fraction of
+/// `(gross interest − management fee)` with no tenor factor. Defaults are 0 (see the
+/// `20260717000001_loan_fee_schedule` migration), so an unconfigured loan carves out
+/// no fees and the full gross interest flows to the net senior coupon.
+#[derive(Debug, Clone, Default, PartialEq, Eq, sqlx::FromRow)]
+pub struct FeeScheduleRow {
+    pub mgmt_fee_rate_bps: i32,
+    pub perf_fee_rate_bps: i32,
+    pub oet_alloc_rate_bps: i32,
+}
+
 pub struct LoanParametersRepo {
     pub pool: PgPool,
 }
@@ -61,6 +76,22 @@ impl LoanParametersRepo {
              FROM loan_parameters",
         )
         .fetch_all(&self.pool)
+        .await
+    }
+
+    /// The protocol fee schedule for one loan, or `None` when the loan has no
+    /// `loan_parameters` row. `loan_parameters` is keyed by `loan_id` alone (it
+    /// predates chain sharding), so this lookup is not chain-scoped.
+    pub async fn get_fee_schedule(
+        &self,
+        loan_id: &BigDecimal,
+    ) -> Result<Option<FeeScheduleRow>, sqlx::Error> {
+        sqlx::query_as::<_, FeeScheduleRow>(
+            "SELECT mgmt_fee_rate_bps, perf_fee_rate_bps, oet_alloc_rate_bps \
+             FROM loan_parameters WHERE loan_id = $1",
+        )
+        .bind(loan_id)
+        .fetch_optional(&self.pool)
         .await
     }
 }

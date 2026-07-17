@@ -74,7 +74,7 @@ Trustee never does the arithmetic. Computed components, in priority order:
 `recordPayment` takes `seniorInterest` as the net senior coupon and the three fee carve-outs
 separately. The originator residual settles off-chain through the Trust Company's USD
 account and appears in no on-chain event. Any component the Trustee overrides is revalidated
-against the `sum <= offtakerAmount` invariant before broadcast.
+against the `sum <= offtakerAmount` invariant before broadcast. **Shipped** as the baseline calculator `GET /v1/loan-book/{loan_id}/waterfall?amount=<raw base units>[&as_of][&chain_id]` (`packages/api/src/routes/waterfall.rs`): reads the loan snapshot (genesis rate, senior tranche, principal repaid) and the per-loan fee schedule (`loan_parameters.{mgmt,perf,oet}_*_rate_bps`, migration `20260717000001`), and returns five components — `senior_principal_returned`, `senior_coupon_net` (the net senior coupon → vault leg), `management_fee`, `performance_fee`, `oet_allocation` — each mapping 1:1 to a `recordPayment` argument. Money is raw on-chain base units (`recordPayment` scale, 7-decimal on Soroban); the baseline uses the genesis rate and origination→`as_of` tenor with no epoch folding.
 
 ### Flow note B — origination review
 
