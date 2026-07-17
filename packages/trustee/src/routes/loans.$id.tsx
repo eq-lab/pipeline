@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
 import {
@@ -1361,6 +1361,7 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
 
 function LoanDetail() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const detail = useLoanDetail(id);
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1373,6 +1374,10 @@ function LoanDetail() {
     if (label === "Update lifecycle") {
       updateLifecycle.reset();
       setUpdateOpen(true);
+    } else if (label === "Record coupon") {
+      // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
+      // so this navigates rather than opening a dialog like the other actions.
+      void navigate({ to: "/loans/$id/record-coupon", params: { id } });
     }
   };
 

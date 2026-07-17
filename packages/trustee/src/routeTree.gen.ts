@@ -20,6 +20,7 @@ import { Route as OriginationIndexRouteImport } from './routes/origination.index
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
+import { Route as LoansIdRecordCouponRouteImport } from './routes/loans.$id_.record-coupon'
 
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
@@ -76,6 +77,11 @@ const LoansIdRoute = LoansIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => LoansRoute,
 } as any)
+const LoansIdRecordCouponRoute = LoansIdRecordCouponRouteImport.update({
+  id: '/$id_/record-coupon',
+  path: '/$id/record-coupon',
+  getParentRoute: () => LoansRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/origination/$id': typeof OriginationIdRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
+  '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/origination/$id': typeof OriginationIdRoute
   '/loans': typeof LoansIndexRoute
   '/origination': typeof OriginationIndexRoute
+  '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/origination/$id': typeof OriginationIdRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
+  '/loans/$id_/record-coupon': typeof LoansIdRecordCouponRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/origination/$id'
     | '/loans/'
     | '/origination/'
+    | '/loans/$id/record-coupon'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/origination/$id'
     | '/loans'
     | '/origination'
+    | '/loans/$id/record-coupon'
   id:
     | '__root__'
     | '/'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/origination/$id'
     | '/loans/'
     | '/origination/'
+    | '/loans/$id_/record-coupon'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -244,17 +256,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoansIdRouteImport
       parentRoute: typeof LoansRoute
     }
+    '/loans/$id_/record-coupon': {
+      id: '/loans/$id_/record-coupon'
+      path: '/$id/record-coupon'
+      fullPath: '/loans/$id/record-coupon'
+      preLoaderRoute: typeof LoansIdRecordCouponRouteImport
+      parentRoute: typeof LoansRoute
+    }
   }
 }
 
 interface LoansRouteChildren {
   LoansIdRoute: typeof LoansIdRoute
   LoansIndexRoute: typeof LoansIndexRoute
+  LoansIdRecordCouponRoute: typeof LoansIdRecordCouponRoute
 }
 
 const LoansRouteChildren: LoansRouteChildren = {
   LoansIdRoute: LoansIdRoute,
   LoansIndexRoute: LoansIndexRoute,
+  LoansIdRecordCouponRoute: LoansIdRecordCouponRoute,
 }
 
 const LoansRouteWithChildren = LoansRoute._addFileChildren(LoansRouteChildren)
