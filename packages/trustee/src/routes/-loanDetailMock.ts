@@ -65,22 +65,6 @@ export interface LoanDetailMock {
   otherActions: OtherActions;
 }
 
-/**
- * The CCR-trend chart (Watchlist variant, Figma `4116:10868`). Mock — no CCR
- * time-series endpoint serves this page yet (#859). The chart geometry is a
- * fixed representative decline; these labels are slotted into it.
- */
-export interface CcrTrend {
-  /** Bottom-left caption — the series start, e.g. `"146% · 1 May"`. */
-  startLabel: string;
-  /** Current CCR, bold red near the end dot, e.g. `"114%"`. */
-  currentLabel: string;
-  /** Upper guide-line label, e.g. `"120%"`. */
-  upperThresholdLabel: string;
-  /** Lower guide-line label, e.g. `"110%"`. */
-  lowerThresholdLabel: string;
-}
-
 // ── Fixture ─────────────────────────────────────────────────────────────────
 
 export const LOAN_DETAIL_MOCK: LoanDetailMock = {
@@ -162,14 +146,6 @@ export const LOAN_DETAIL_WATCHLIST_MOCK: LoanDetailMock = {
     actions: ["Update lifecycle", "Record coupon", "Escalate to Risk Council"],
     note: "",
   },
-};
-
-/** CCR-trend chart mock for the Watchlist variant. */
-export const WATCHLIST_CCR_TREND: CcrTrend = {
-  startLabel: "146% · 1 May",
-  currentLabel: "114%",
-  upperThresholdLabel: "120%",
-  lowerThresholdLabel: "110%",
 };
 
 // ── Matured variant (issue #866, Figma node 4116:10969) ───────────────────────

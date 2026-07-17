@@ -14,9 +14,9 @@ import {
   type PriceCollateralView,
   type RegistryView,
   type StatusBand,
+  type CcrTrend,
 } from "./-useLoanDetail";
 import {
-  type CcrTrend,
   type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
@@ -1226,7 +1226,41 @@ function UpdateLifecycleDialog({
  * the 120% threshold, plus the start caption. viewBox is 440×124 (the Figma SVG
  * box) and scales to the card width.
  */
+/**
+ * CCR-trend line chart (Watchlist variant, Figma node `4116:10868`), drawn from
+ * the real `/ccr-history` series (#879). The y-scale is per-loan: it spans the
+ * series' own CCR range widened to include the threshold guide-lines, so the
+ * decline and its distance to the 120% / 110% levels read correctly for each
+ * loan. A single point renders as a dot.
+ */
 function CcrTrendCard({ trend }: { trend: CcrTrend }) {
+  // Plot area within the 440×124 viewBox.
+  const X0 = 10;
+  const X1 = 430;
+  const Y_TOP = 8;
+  const Y_BOTTOM = 92;
+
+  const thresholdPcts = trend.thresholds.map((t) => t.pct);
+  const allPcts = [...trend.points, ...thresholdPcts];
+  const rawMin = Math.min(...allPcts);
+  const rawMax = Math.max(...allPcts);
+  // Pad the range 4% (or a flat 1 when the series is flat) so lines aren't flush
+  // to the edges.
+  const pad = rawMax > rawMin ? (rawMax - rawMin) * 0.08 : 1;
+  const yMin = rawMin - pad;
+  const yMax = rawMax + pad;
+
+  const scaleY = (pct: number) =>
+    Y_BOTTOM - ((pct - yMin) / (yMax - yMin)) * (Y_BOTTOM - Y_TOP);
+  const scaleX = (i: number) =>
+    trend.points.length <= 1
+      ? X1
+      : X0 + (i / (trend.points.length - 1)) * (X1 - X0);
+
+  const polyline = trend.points.map((p, i) => `${scaleX(i)},${scaleY(p)}`);
+  const lastX = scaleX(trend.points.length - 1);
+  const lastY = scaleY(trend.points[trend.points.length - 1]!);
+
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
@@ -1240,57 +1274,50 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
         role="img"
         aria-label={`CCR trend, currently ${trend.currentLabel}`}
       >
-        {/* Dashed threshold guide lines. */}
-        <line
-          x1="10"
-          y1="32.4"
-          x2="430"
-          y2="32.4"
-          stroke={CCR_GUIDE}
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-        <line
-          x1="10"
-          y1="61"
-          x2="430"
-          y2="61"
-          stroke={CCR_GUIDE}
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-        {/* Declining CCR line + current dot. */}
-        <polyline
-          points="10,8 130,11 250,18 330,30 400,42 427,46"
-          fill="none"
-          stroke={NEGATIVE_RED}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="427" cy="46" r="4" fill={NEGATIVE_RED} />
-        {/* Labels. */}
+        {/* Dashed threshold guide lines + right-aligned labels, per loan. */}
+        {trend.thresholds.map((t) => {
+          const y = scaleY(t.pct);
+          return (
+            <g key={t.pct}>
+              <line
+                x1={X0}
+                y1={y}
+                x2={X1}
+                y2={y}
+                stroke={CCR_GUIDE}
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+              <text
+                x={X1 - 2}
+                y={y - 3}
+                textAnchor="end"
+                fontFamily="var(--font-body)"
+                fontSize="10.5"
+                fill={NEGATIVE_RED}
+              >
+                {t.label}
+              </text>
+            </g>
+          );
+        })}
+        {/* CCR line (or a lone dot for a single point) + current dot. */}
+        {polyline.length > 1 && (
+          <polyline
+            points={polyline.join(" ")}
+            fill="none"
+            stroke={NEGATIVE_RED}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        <circle cx={lastX} cy={lastY} r="4" fill={NEGATIVE_RED} />
+        {/* Current value (bold) + series-start caption. */}
         <text
-          x="398"
-          y="28"
-          fontFamily="var(--font-body)"
-          fontSize="10.5"
-          fill={NEGATIVE_RED}
-        >
-          {trend.upperThresholdLabel}
-        </text>
-        <text
-          x="398"
-          y="57"
-          fontFamily="var(--font-body)"
-          fontSize="10.5"
-          fill={NEGATIVE_RED}
-        >
-          {trend.lowerThresholdLabel}
-        </text>
-        <text
-          x="380"
-          y="74"
+          x={lastX - 8}
+          y={lastY + 18}
+          textAnchor="end"
           fontFamily="var(--font-body)"
           fontSize="13.4"
           fontWeight="700"
@@ -1299,7 +1326,7 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
           {trend.currentLabel}
         </text>
         <text
-          x="10"
+          x={X0}
           y="115"
           fontFamily="var(--font-body)"
           fontSize="12.4"
