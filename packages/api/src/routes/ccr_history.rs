@@ -61,22 +61,17 @@ const MAX_POINTS: i64 = 10_000;
 /// Default sampling interval: one day, in seconds.
 const DEFAULT_STEP_SECONDS: i64 = 86_400;
 
-fn default_step() -> i64 {
-    DEFAULT_STEP_SECONDS
-}
-
 /// Query parameters for the CCR history endpoint.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct CcrHistoryQuery {
     /// Series start, Unix epoch **seconds** (inclusive). Required.
     pub from: i64,
-    /// Sampling interval (dt) in **seconds**. Optional — defaults to 86400 (one day);
-    /// must be ≥ 1.
-    #[serde(default = "default_step")]
-    pub step: i64,
     /// Series end, Unix epoch seconds (inclusive). Optional — defaults to now.
     pub to: Option<i64>,
+    /// Sampling interval (dt) in **seconds**. Optional — defaults to 86400 (one day);
+    /// must be ≥ 1.
+    pub step: Option<i64>,
     /// Chain ID (optional — defaults to `DEFAULT_CHAIN_ID`).
     pub chain_id: Option<i64>,
 }
@@ -150,9 +145,10 @@ async fn get_ccr_history(
         .unwrap_or_default()
         .as_secs() as i64;
     let to = query.to.unwrap_or(now);
+    let step = query.step.unwrap_or(DEFAULT_STEP_SECONDS);
 
     // Validate the grid before touching the DB.
-    validate_window(query.from, query.step, to)?;
+    validate_window(query.from, step, to)?;
 
     let repo = &state.collateral_valuation_repo;
     let anchor = repo.get_anchor(chain_id, &loan_id).await?.ok_or_else(|| {
@@ -184,14 +180,14 @@ async fn get_ccr_history(
         .map(|(ts, p)| (ts.timestamp(), p))
         .collect();
 
-    let grid = resolve_grid(query.from, to, query.step, seed, &window);
+    let grid = resolve_grid(query.from, to, step, seed, &window);
 
     build_response(
         &loan_id,
         chain_id,
         query.from,
         to,
-        query.step,
+        step,
         &anchor,
         assay.as_ref(),
         offtake.as_ref(),
@@ -234,9 +230,17 @@ fn unix_to_utc(secs: i64) -> Result<DateTime<chrono::Utc>, ApiError> {
 
 // ── Pure core (testable: no DB, no clock) ──────────────────────────────────────
 
-/// Validate the sampling grid: `step ≥ 1`, `from ≤ to`, and the resulting point count
-/// within `MAX_POINTS`.
+/// Validate the sampling grid: `from`/`to` non-negative, `step ≥ 1`, `from ≤ to`, and
+/// the resulting point count within `MAX_POINTS`. `to - from` uses `checked_sub` so an
+/// extreme `from` can't overflow (debug panic / release wraparound) before the count
+/// check runs.
 pub fn validate_window(from: i64, step: i64, to: i64) -> Result<(), ApiError> {
+    if from < 0 {
+        return Err(ApiError::BadRequest(format!("from ({from}) must be ≥ 0")));
+    }
+    if to < 0 {
+        return Err(ApiError::BadRequest(format!("to ({to}) must be ≥ 0")));
+    }
     if step < 1 {
         return Err(ApiError::BadRequest(format!("step must be ≥ 1 second, got {step}")));
     }
@@ -245,7 +249,10 @@ pub fn validate_window(from: i64, step: i64, to: i64) -> Result<(), ApiError> {
             "from ({from}) must be ≤ to ({to})"
         )));
     }
-    let points = (to - from) / step + 1;
+    let span = to.checked_sub(from).ok_or_else(|| {
+        ApiError::BadRequest(format!("from ({from})/to ({to}) span out of range"))
+    })?;
+    let points = span / step + 1;
     if points > MAX_POINTS {
         return Err(ApiError::BadRequest(format!(
             "range/step yields {points} points (max {MAX_POINTS}); use a larger step or narrower window"

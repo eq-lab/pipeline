@@ -112,6 +112,9 @@ fn openapi_marks_from_required_and_step_to_chain_optional() {
 fn validate_window_rejects_bad_input() {
     assert!(validate_window(0, 0, 100).is_err()); // step < 1
     assert!(validate_window(100, 10, 0).is_err()); // from > to
+    assert!(validate_window(-1, 10, 100).is_err()); // negative from
+    assert!(validate_window(0, 10, -1).is_err()); // negative to
+    assert!(validate_window(i64::MIN, 10, 100).is_err()); // extreme from (no overflow panic)
     assert!(validate_window(0, 1, 1_000_000).is_err()); // too many points
     assert!(validate_window(0, 60, 3600).is_ok()); // 61 points — fine
 }
