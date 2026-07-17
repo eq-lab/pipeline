@@ -17,7 +17,7 @@
  * "Recorded"/"Minted" chips (absent); loading / error / not-found states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
 import type { WaterfallResponse } from "@/api/useLoanWaterfall";
@@ -232,11 +232,14 @@ describe("Record Coupon route — ready state", () => {
   it("records the payment on-chain with the built RepaymentData split (#882)", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
-    // $45,000 → 450_000_000_000 base units; carve-outs sum to it, so equity = 0.
+    // Interest-only $45,000; carve-outs sum to it, so equity = 0.
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    fireEvent.click(screen.getByTestId("record-coupon-submit"));
+    const submit = screen.getByTestId("record-coupon-submit");
+    // The amount is debounced (#882) — the button enables once it settles.
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
@@ -304,18 +307,20 @@ describe("Record Coupon route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("passes the scale-converted base-unit amount to useLoanWaterfall when a USD amount is entered", () => {
+  it("passes the entered amount as-is to useLoanWaterfall (debounced)", async () => {
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    // Amount sent as-is (backend handles USDC decimals) — the last call's 2nd arg.
-    const lastCall =
-      mockUseLoanWaterfall.mock.calls[
-        mockUseLoanWaterfall.mock.calls.length - 1
-      ]!;
-    expect(lastCall[0]).toBe("4488");
-    expect(lastCall[1]).toBe("45000");
+    // Amount sent as-is (backend handles USDC decimals), after the debounce (#882).
+    await waitFor(() => {
+      const lastCall =
+        mockUseLoanWaterfall.mock.calls[
+          mockUseLoanWaterfall.mock.calls.length - 1
+        ]!;
+      expect(lastCall[0]).toBe("4488");
+      expect(lastCall[1]).toBe("45000");
+    });
   });
 
   it("renders the waterfall rows from the mocked useLoanWaterfall response", () => {
@@ -346,14 +351,16 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toHaveTextContent("Minted to sPLUSD — lifts NAV");
   });
 
-  it("renders the green 'Components sum to received $<amount>' summary", () => {
+  it("renders the green 'Components sum to received $<amount>' summary", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
-      "Components sum to received $45,000",
+    await waitFor(() =>
+      expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+        "Components sum to received $45,000",
+      ),
     );
   });
 
@@ -371,16 +378,18 @@ describe("Record Coupon route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the terminal-close hint ONLY when the coupon fully repays the outstanding senior principal", () => {
+  it("renders the terminal-close hint ONLY when the coupon fully repays the outstanding senior principal", async () => {
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     // Outstanding senior is $1,840,000 — enter an amount that covers it.
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "1900000" },
     });
-    expect(
-      screen.getByTestId("record-coupon-terminal-hint"),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("record-coupon-terminal-hint"),
+      ).toBeInTheDocument(),
+    );
   });
 
   it("does NOT render the terminal hint when the waterfall returns full principal but the entered amount doesn't cover it", () => {

@@ -44,7 +44,7 @@
  * drift from the two independent unit conversions). Otherwise no hint renders
  * at all — this is an interest-only coupon page by default.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
@@ -262,7 +262,16 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   const [amountInput, setAmountInput] = useState("");
   const [dateInput, setDateInput] = useState(todayDateInput());
 
-  const enteredUsd = parseUsdInput(amountInput);
+  // Debounce the amount that drives the waterfall query (the input field itself
+  // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
+  // request per keystroke (#882).
+  const [debouncedAmount, setDebouncedAmount] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedAmount(amountInput), 400);
+    return () => clearTimeout(timer);
+  }, [amountInput]);
+
+  const enteredUsd = parseUsdInput(debouncedAmount);
   const amountBaseUnits = usdToBaseUnits(enteredUsd);
   const asOfSeconds = useMemo(() => {
     if (!dateInput) return Math.floor(Date.now() / 1000);
