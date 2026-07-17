@@ -671,6 +671,22 @@ describe("Loan detail route — Record coupon (#882)", () => {
   });
 });
 
+describe("Loan detail route — Close loan (#884)", () => {
+  it("navigates to the full-page Record-repayment route from the Close loan action (does not close the loan directly)", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Close loan"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id/record-repayment",
+      params: { id: "4488" },
+    });
+    // This is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Loan detail route — top-level states", () => {
   it("renders the loading skeleton", () => {
     mockUseLoanDetail.mockReturnValue(makeResult({ state: "loading" }));

@@ -29,6 +29,8 @@ import {
   buildUpdateMutableEnvelope,
   encodeRecordPaymentArgs,
   buildRecordPaymentEnvelope,
+  encodeCloseLoanArgs,
+  buildCloseLoanEnvelope,
   type SubmitLoanRequest,
   type RepaymentInput,
 } from "./loanRegistry";
@@ -757,6 +759,64 @@ describe("buildRecordPaymentEnvelope", () => {
     mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
     await expect(buildRecordPaymentEnvelope(args())).rejects.toThrow(
       "recordPayment simulation error",
+    );
+    expect(mockAssembleTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── encodeCloseLoanArgs / closeLoan (issue #884) ────────────────────────────────
+
+describe("encodeCloseLoanArgs", () => {
+  it("encodes [loan_id: u32, reason: ClosureReason enum]", () => {
+    const args = encodeCloseLoanArgs(4488, "ScheduledMaturity");
+    expect(args).toHaveLength(2);
+    expect(args[0]).toEqual({ t: "u32", v: 4488 });
+    // ClosureReason is a unit-variant enum: vec([symbol]).
+    expect(args[1]).toEqual({
+      t: "vec",
+      v: [{ t: "symbol", v: "ScheduledMaturity" }],
+    });
+  });
+
+  it("encodes the EarlyRepayment variant", () => {
+    const args = encodeCloseLoanArgs(7, "EarlyRepayment");
+    expect(args[1]).toEqual({
+      t: "vec",
+      v: [{ t: "symbol", v: "EarlyRepayment" }],
+    });
+  });
+});
+
+describe("buildCloseLoanEnvelope", () => {
+  function args(overrides: Record<string, unknown> = {}) {
+    return {
+      executorId: EXECUTOR_ID,
+      targetId: TARGET_ID,
+      caller: CALLER,
+      loanId: 4488,
+      reason: "ScheduledMaturity",
+      rpcUrl: RPC_URL,
+      networkPassphrase: PASSPHRASE,
+      ...overrides,
+    };
+  }
+
+  it("calls execute with (target, close_loan symbol, args vec, caller)", async () => {
+    await buildCloseLoanEnvelope(args());
+    expect(mockContractCall).toHaveBeenCalledWith(
+      "execute",
+      { t: "address", v: TARGET_ID },
+      { t: "symbol", v: "close_loan" },
+      expect.objectContaining({ t: "vec" }),
+      { t: "address", v: CALLER },
+    );
+  });
+
+  it("throws a simulation error without assembling", async () => {
+    mockIsSimulationError.mockReturnValue(true);
+    mockSimulateTransaction.mockResolvedValue({ error: "bad encoding" });
+    await expect(buildCloseLoanEnvelope(args())).rejects.toThrow(
+      "closeLoan simulation error",
     );
     expect(mockAssembleTransaction).not.toHaveBeenCalled();
   });

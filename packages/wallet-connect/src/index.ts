@@ -134,6 +134,23 @@ export type {
   RecordPaymentStage,
   BuildRecordPaymentEnvelopeParams,
 } from "./stellar/contracts/loanRegistry";
+
+/**
+ * `close_loan` (issue #884) — trustee-wallet-signed on-chain
+ * `LoanRegistry.closeLoan` through the executor `execute` proxy. Moves the loan
+ * to `Closed` with a `ClosureReason`.
+ */
+export {
+  closeLoan,
+  buildCloseLoanEnvelope,
+  encodeCloseLoanArgs,
+} from "./stellar/contracts/loanRegistry";
+export type {
+  CloseLoanParams,
+  CloseLoanResult,
+  CloseLoanStage,
+  BuildCloseLoanEnvelopeParams,
+} from "./stellar/contracts/loanRegistry";
 export type {
   RolloverParams,
   RolloverResult,
