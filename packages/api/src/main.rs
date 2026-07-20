@@ -11,8 +11,8 @@ use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::HttpLoanMetadataFetcher;
-use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::metadata_fetcher::MetadataFetcher;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
     let auth_user_repo = AuthUserRepo::new(pool.clone());
     let submitted_loan_repo = SubmittedLoanRepo::new(pool.clone());
-    let loan_parameters_repo = LoanParametersRepo::new(pool.clone());
+    let loan_fee_schedule_repo = LoanFeeScheduleRepo::new(pool.clone());
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
         auth_user_repo,
         submitted_loan_repo,
         loan_metadata_fetcher,
-        loan_parameters_repo,
+        loan_fee_schedule_repo,
         loan_asset_price_repo,
         collateral_valuation_repo,
         loan_disbursement_repo,

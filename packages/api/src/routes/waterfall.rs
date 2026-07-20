@@ -43,7 +43,7 @@ use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-use shared::loan_parameters_repo::FeeScheduleRow;
+use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
@@ -162,13 +162,13 @@ async fn get_waterfall(
             ApiError::NotFound(format!("loan {loan_id} not indexed on chain {chain_id}"))
         })?;
 
-    // Per-loan fee schedule (loan_parameters is keyed by loan_id alone). The loan exists
-    // (snapshot found above); a missing loan_parameters row just means no fee schedule has
-    // been configured, so fall back to the all-zero default (every gross-interest base unit
-    // flows to the net senior coupon), matching the migration's default-0 semantics.
+    // Per-loan fee schedule. The loan exists (snapshot found above); a missing
+    // loan_fee_schedule row just means no fee schedule has been configured, so fall back
+    // to the all-zero default (every gross-interest base unit flows to the net senior
+    // coupon), matching the migration's default-0 semantics.
     let fees = state
-        .loan_parameters_repo
-        .get_fee_schedule(&loan_id)
+        .loan_fee_schedule_repo
+        .get_fee_schedule(chain_id, &loan_id)
         .await?
         .unwrap_or_default();
 

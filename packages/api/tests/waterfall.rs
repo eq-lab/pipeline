@@ -9,7 +9,7 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::waterfall::{build_response, compute_waterfall, WaterfallDoc};
-use shared::loan_parameters_repo::FeeScheduleRow;
+use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 use utoipa::OpenApi;
 

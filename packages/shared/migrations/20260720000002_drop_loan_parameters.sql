@@ -1,0 +1,30 @@
+-- Migration: drop loan_parameters.
+--
+-- The table's data has all moved out and nothing reads it any more:
+--   * asset / price_provider / discount  -> loan_collateral_valuations
+--       (backfilled in 20260708000006; the loan-book read and the worker
+--        asset_price_collector now source the anchor there).
+--   * mgmt/perf/oet fee rate bps          -> loan_fee_schedule
+--       (backfilled in 20260720000001; the repayment waterfall reads it there).
+--
+-- Must run AFTER both backfills (20260708000006, 20260720000001), which read FROM
+-- loan_parameters — the timestamp ordering guarantees that on a fresh database.
+--
+-- loan_asset_prices (created in the same original migration, 20260630000001) is a
+-- separate price-series table with its own consumers and is NOT dropped.
+--
+-- Inverse (rollback) SQL — forward-only migrations, provided for reference only.
+-- Recreates the table shape only; the manually/backfilled rows are not restorable:
+--   CREATE TABLE loan_parameters (
+--       loan_id        NUMERIC(78,0) PRIMARY KEY,
+--       discount       NUMERIC       NOT NULL CHECK (discount >= 0 AND discount <= 1),
+--       asset          TEXT          NOT NULL,
+--       price_provider TEXT          NOT NULL,
+--       created_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+--       updated_at     TIMESTAMPTZ   NOT NULL DEFAULT now(),
+--       mgmt_fee_rate_bps  INTEGER NOT NULL DEFAULT 0,
+--       perf_fee_rate_bps  INTEGER NOT NULL DEFAULT 0,
+--       oet_alloc_rate_bps INTEGER NOT NULL DEFAULT 0
+--   );
+
+DROP TABLE loan_parameters;
