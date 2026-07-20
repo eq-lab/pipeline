@@ -8,18 +8,20 @@
  * filter — so the view stays a pure render function and all of this is
  * unit-testable without a DOM (mirrors `-useOriginationTable.ts`).
  *
- * ## Resolved Open Questions (human, issue #843 comments)
+ * ## Resolved Open Questions (human, issue #843 comments; corrected by #888)
  *
- * 1. **CCR is corrected frontend-side: `true_ccr_bps = served_ccr_bps / 1000`.**
- *    The backend computes `ccr_bps = collateral / senior_outstanding`, but
- *    `senior_outstanding` is registry-sourced (1000× too small, #840) while
- *    `collateral` is price-feed correct-scale, so the served ratio is **exactly
- *    1000× too big**. `÷1000` undoes it (`correctCcrBps`) — a member of the
- *    #840 workaround family, to be removed when the backend scale is fixed. The
- *    120% maintenance-margin pre-default threshold (`MAINTENANCE_MARGIN_BPS`) is
- *    then applied to the corrected value. Dormant today: the #706 collateral
- *    feed is mostly null → `ccr_bps` is null → CCR renders `—` and nothing is
- *    flagged.
+ * 1. **CCR is used AS SERVED — no ÷1000 correction.** Issue #843 originally
+ *    assumed `collateral` was price-feed correct-scale while `senior_outstanding`
+ *    was registry-sourced (1000× too small, #840), making the served
+ *    `ccr_bps = collateral / senior_outstanding` exactly 1000× too big. A live
+ *    payload (issue #888) proved that assumption false: `collateral` is ALSO
+ *    registry-sourced and 1000× too small, on the SAME scale as
+ *    `senior_outstanding` — so the ×1000 cancels out of the ratio and the
+ *    served `ccr_bps` is already the true CCR. The former `correctCcrBps`
+ *    ÷1000 helper has been removed (it was silently rendering CCR 1000× too
+ *    small, e.g. 0.21% instead of the true 209.87%). The 120% maintenance-margin
+ *    pre-default threshold (`MAINTENANCE_MARGIN_BPS`) is applied directly to the
+ *    served `ccr_bps`.
  * 2. **Default & Closed tabs render per Figma but stay empty.** `/v1/loan-book`
  *    returns only the active set (Performing + WatchList); defaulted/closed
  *    loans are excluded backend-side, so client-side filtering yields 0 rows
@@ -45,7 +47,6 @@ import type {
   LoanBookSummary,
 } from "@/api/useLoanBook";
 import {
-  formatCompactUsd2dp,
   formatRegistryCompactUsd,
   formatRegistryCompact2dpUsd,
 } from "@/utils/formatUsd";
@@ -55,8 +56,9 @@ import { formatMaturityDate } from "@/utils/formatDate";
 
 /**
  * 120% maintenance margin, in basis points. A loan is **pre-default** when its
- * (corrected — see `correctCcrBps`) CCR is below this. Resolved decision #2:
- * a display threshold on a served figure, NOT a backend "at-risk" flag.
+ * served `ccr_bps` (used as-is, no correction — see the module doc, #888) is
+ * below this. Resolved decision #2: a display threshold on a served figure,
+ * NOT a backend "at-risk" flag.
  */
 export const MAINTENANCE_MARGIN_BPS = 12_000;
 
@@ -112,7 +114,7 @@ export interface SpotLine {
 
 /** The CCR cell view-model. */
 export interface CcrCell {
-  /** e.g. `"114%"` (whole percent, corrected value). */
+  /** e.g. `"210%"` (whole percent, served `ccr_bps` as-is — #888). */
   percent: string;
   /** Colour band, or `null` when CCR is unavailable (renders neutral). */
   band: CcrBand | null;
@@ -132,7 +134,7 @@ export interface LoanTableRow {
   spot: SpotLine | null;
   /** Outstanding senior, #840-scaled two-decimal compact (`$1.84M`). */
   seniorOutstanding: string;
-  /** Collateral, two-decimal compact USD, **unscaled** (price-feed, #706). `$2.10M` / `—`. */
+  /** Collateral, #840-scaled (×1000, registry-sourced — #888) two-decimal compact. `$2.10M` / `—`. */
   collateral: string;
   /** CCR cell, or `null` when `ccr_bps` is unavailable. */
   ccr: CcrCell | null;
@@ -175,28 +177,16 @@ function safeString(value: unknown): string {
 }
 
 /**
- * ⚠️ #840 workaround (issue #843, resolved Open Question 1) — REMOVE with the
- * rest of the #840 family when the backend scale is fixed.
- *
- * Served `ccr_bps` divides correct-scale collateral by registry-1000×-low
- * senior, so the ratio is exactly 1000× too big. `÷1000` restores the true CCR
- * (in bps; `14000` = 140%). `null`/non-finite passes through as `null`.
+ * Classifies a **served** CCR (bps, used as-is — see the module doc, #888)
+ * into a footnote band: `≥130%` healthy · `120–130%` attention · `<120%`
+ * pre-default. `null` CCR → `null` (neutral render, no flag). The `<120%`
+ * band is the resolved decision-#2 pre-default threshold
+ * (`MAINTENANCE_MARGIN_BPS`).
  */
-export function correctCcrBps(servedCcrBps: number | null): number | null {
-  if (servedCcrBps == null || !Number.isFinite(servedCcrBps)) return null;
-  return servedCcrBps / 1000;
-}
-
-/**
- * Classifies a **corrected** CCR (bps; see `correctCcrBps`) into a footnote
- * band: `≥130%` healthy · `120–130%` attention · `<120%` pre-default. `null`
- * CCR → `null` (neutral render, no flag). The `<120%` band is the resolved
- * decision-#2 pre-default threshold (`MAINTENANCE_MARGIN_BPS`).
- */
-export function classifyCcr(correctedBps: number | null): CcrBand | null {
-  if (correctedBps == null || !Number.isFinite(correctedBps)) return null;
-  if (correctedBps >= HEALTHY_MARGIN_BPS) return "healthy";
-  if (correctedBps >= MAINTENANCE_MARGIN_BPS) return "attention";
+export function classifyCcr(servedBps: number | null): CcrBand | null {
+  if (servedBps == null || !Number.isFinite(servedBps)) return null;
+  if (servedBps >= HEALTHY_MARGIN_BPS) return "healthy";
+  if (servedBps >= MAINTENANCE_MARGIN_BPS) return "attention";
   return "pre-default";
 }
 
@@ -281,13 +271,13 @@ export function mapEntryToRow(
   entry: LoanBookEntry,
   nowMs: number,
 ): LoanTableRow {
-  const correctedCcr = correctCcrBps(entry.ccr_bps);
+  const servedCcrBps = entry.ccr_bps;
   const ccr: CcrCell | null =
-    correctedCcr == null
+    servedCcrBps == null || !Number.isFinite(servedCcrBps)
       ? null
       : {
-          percent: `${Math.round(correctedCcr / 100)}%`,
-          band: classifyCcr(correctedCcr),
+          percent: `${Math.round(servedCcrBps / 100)}%`,
+          band: classifyCcr(servedCcrBps),
           age: formatCcrAge(entry.ccr_reported_at, nowMs),
         };
 
@@ -300,8 +290,10 @@ export function mapEntryToRow(
     // #840 workaround: senior_outstanding is registry-sourced ⇒ scale ×1000.
     // Two-decimal compact (e.g. $1.84M) to match the collateral column.
     seniorOutstanding: formatRegistryCompact2dpUsd(entry.senior_outstanding),
-    // collateral is price-feed sourced (#706) ⇒ already correct-scale, unscaled.
-    collateral: formatCompactUsd2dp(entry.collateral),
+    // #888: collateral is ALSO registry-sourced (same 1000×-low scale as
+    // senior_outstanding, not price-feed correct-scale as #843 assumed) ⇒
+    // scale ×1000, same helper as the senior-outstanding column.
+    collateral: formatRegistryCompact2dpUsd(entry.collateral),
     ccr,
     maturity: formatMaturityDate(entry.maturity),
     stage: safeString(entry.status),

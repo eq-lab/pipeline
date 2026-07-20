@@ -1,10 +1,12 @@
 /**
- * Tests for the Loans presenter logic (`-useLoansTable.ts`, issue #843).
+ * Tests for the Loans presenter logic (`-useLoansTable.ts`, issue #843,
+ * corrected by #888).
  *
- * All pure — no DOM, no query layer. Covers the #840 CCR ÷1000 correction,
- * the 120% pre-default classification boundaries, CCR staleness age, the spot
- * sub-line (real 7-day basis, no fabricated `/t`), the row + summary mappings
- * (registry amounts scaled, collateral unscaled, `—` for every null), and the
+ * All pure — no DOM, no query layer. Covers the CCR classification (served
+ * `ccr_bps` used as-is, no ÷1000 correction — #888), the 120% pre-default
+ * classification boundaries, CCR staleness age, the spot sub-line (real
+ * 7-day basis, no fabricated `/t`), the row + summary mappings (registry
+ * amounts AND collateral scaled ×1000, `—` for every null), and the
  * per-status counts + active-tab client-side filter (Default/Closed empty per
  * resolved Open Question 2).
  */
@@ -14,7 +16,6 @@ import { formatMaturityDate } from "@/utils/formatDate";
 import {
   buildLoansView,
   classifyCcr,
-  correctCcrBps,
   formatCcrAge,
   formatSpot,
   mapEntryToRow,
@@ -40,9 +41,9 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     ccr_reported_at: NOW_S - 3600,
     spot_price: "4500.00",
     spot_change_7d: "-0.1800",
-    collateral: "2100000.000000",
+    collateral: "2100.000000",
     ltv: null,
-    ccr_bps: 11_400_000, // served ~1000× too big ⇒ true 114%
+    ccr_bps: 11_400, // served as-is (#888) ⇒ 114%, no ÷1000 correction
     duration_days: 180,
     rate: "0.140000",
     protection: null,
@@ -50,19 +51,6 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     ...overrides,
   };
 }
-
-// ── correctCcrBps (#840 ÷1000 workaround) ─────────────────────────────────────
-
-describe("correctCcrBps", () => {
-  it("divides the served ratio by 1000 (served 1000× too big)", () => {
-    expect(correctCcrBps(11_400_000)).toBe(11_400);
-  });
-
-  it("passes null/undefined/non-finite through as null", () => {
-    expect(correctCcrBps(null)).toBeNull();
-    expect(correctCcrBps(NaN)).toBeNull();
-  });
-});
 
 // ── classifyCcr (120% maintenance-margin bands) ───────────────────────────────
 
@@ -152,7 +140,7 @@ describe("formatSpot", () => {
 // ── mapEntryToRow ─────────────────────────────────────────────────────────────
 
 describe("mapEntryToRow", () => {
-  it("scales registry senior ×1000, leaves collateral unscaled, maps the CCR", () => {
+  it("scales registry senior AND collateral ×1000 (#888), maps the served CCR as-is", () => {
     const row = mapEntryToRow(makeEntry(), NOW_MS);
     // The served loan_id is both the stable list key and the /loans/$id nav param.
     expect(row.key).toBe("4488");
@@ -161,12 +149,13 @@ describe("mapEntryToRow", () => {
     expect(row.commodity).toBe("Coffee");
     // #840: senior_outstanding "1840" ⇒ $1.84M (×1000, two-decimal compact).
     expect(row.seniorOutstanding).toBe("$1.84M");
-    // collateral is price-feed sourced ⇒ unscaled, two-decimal compact.
+    // #888: collateral is ALSO registry-sourced ⇒ ×1000, two-decimal compact.
     expect(row.collateral).toBe("$2.10M");
     expect(row.spot).toEqual({ text: "$4,500 · −18% 7d", negative: true });
     expect(row.maturity).toBe(formatMaturityDate(1_785_000_000));
     expect(row.stage).toBe("WatchList");
     expect(row.status).toBe("WatchList");
+    // ccr_bps 11_400 used as-is (no ÷1000) ⇒ 114%.
     expect(row.ccr).toEqual({
       percent: "114%",
       band: "pre-default",
@@ -188,6 +177,22 @@ describe("mapEntryToRow", () => {
     expect(row.collateral).toBe("—");
     expect(row.spot).toBeNull();
     expect(row.ccr).toBeNull();
+  });
+
+  it("matches issue #888's live payload for loan #1 (senior $1M, collateral $2,098,650, CCR 209.87%)", () => {
+    const row = mapEntryToRow(
+      makeEntry({
+        loan_id: "1",
+        principal: "1200.000000", // ×1000 ⇒ $1.2M (not rendered on this row, sanity only)
+        senior_outstanding: "1000.000000", // ×1000 ⇒ $1M
+        collateral: "2098.65", // ×1000 ⇒ $2,098,650 ⇒ $2.10M compact
+        ccr_bps: 20_987, // served as-is (not ÷1000) ⇒ 209.87%
+      }),
+      NOW_MS,
+    );
+    expect(row.seniorOutstanding).toBe("$1.00M");
+    expect(row.collateral).toBe("$2.10M");
+    expect(row.ccr?.percent).toBe("210%"); // Math.round(20987 / 100)
   });
 });
 

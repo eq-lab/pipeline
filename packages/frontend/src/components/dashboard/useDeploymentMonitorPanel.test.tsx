@@ -54,12 +54,12 @@ vi.mock("@/lib/env", () => ({
 const LOAN_BOOK_KEY = "pipeline.mock.api.GET./v1/loan-book";
 const SUBMISSIONS_KEY = "pipeline.mock.api.GET./v1/loan-book/submissions";
 
-// `total_deployed` and `principal` are registry-sourced fields the backend
-// currently serves at 1e3-too-small scale (#840). These fixtures are pinned
-// at that buggy-backend scale so that, after the client-side ×1000
-// workaround (`formatRegistryCompactUsd`, #841) is applied, the resulting
-// display strings ("$31.6M" / "$8.0M") match reality. `collateral` /
-// `total_collateral` are price-feed-sourced (#706) and stay at correct scale.
+// `total_deployed`/`principal` AND `collateral`/`total_collateral` are all
+// registry-sourced fields the backend currently serves at 1e3-too-small scale
+// (#840, confirmed for collateral too by issue #888's live-payload audit).
+// These fixtures are pinned at that buggy-backend scale so that, after the
+// client-side ×1000 workaround (`formatRegistryCompactUsd`) is applied, the
+// resulting display strings ("$31.6M" / "$8.0M") match reality.
 const FIXTURE_LOAN_BOOK: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
@@ -231,6 +231,47 @@ describe("useDeploymentMonitorPanel — panel state", () => {
       "Open Mineral / Copper Concentrate",
     );
     expect(result.current.rows[0]!.principal).toBe("$8.0M");
+  });
+
+  // ⚠️ Issue #888 regression guard: collateral is registry-sourced (1000×-low
+  // on the wire), same as principal — verify the row, the summary card, and
+  // the table header aggregate all apply the ×1000 correction consistently.
+  it("scales collateral ×1000 like principal, in the row, summary, and header aggregate (#888)", async () => {
+    const fixture: LoanBookResponse = {
+      summary: {
+        total_deployed: "31600.000000", // ×1000 → $31.6M
+        total_collateral: "41973.000000", // ×1000 → $41,973,000 → $42.0M
+        senior_debt_coverage: null,
+        avg_yield: "0.112000",
+        avg_duration_days: 68,
+      },
+      loans: [
+        {
+          originator: "Open Mineral",
+          borrower: "Open Mineral",
+          commodity: "Copper Concentrate",
+          principal: "8000.000000", // ×1000 → $8.0M
+          collateral: "20986.500000", // ×1000 → $20,986,500 → $21.0M
+          ltv: "0.5718",
+          duration_days: 120,
+          rate: "0.112000",
+          protection: "LC at sight",
+          status: "Performing",
+        },
+      ],
+    };
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(fixture));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify([]));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+
+    expect(result.current.rows[0]!.collateral).toBe("$21.0M");
+    expect(result.current.summary.totalCollateral).toBe("$42.0M");
+    expect(result.current.headerAggregates.collateral).toBe("$42.0M");
   });
 });
 

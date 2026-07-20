@@ -16,19 +16,23 @@
  *
  * Data-layer note
  * ---------------
- * `deployed_senior`, `at_risk_wl_and_default_senior`, and per-loan
- * `senior_outstanding`/`principal` are **registry-sourced** base-6 decimal
- * strings (already in human units, e.g. `"1200000.000000"` = $1.2M) that are
- * **1000× too small** on the wire (issue #840) — scale them with
+ * `deployed_senior`, `at_risk_wl_and_default_senior`, per-loan
+ * `senior_outstanding`/`principal`, AND `collateral`/`total_collateral` are
+ * all **registry-sourced** base-6 decimal strings (already in human units,
+ * e.g. `"1200000.000000"` = $1.2M) that are **1000× too small** on the wire
+ * (issue #840) — scale them with
  * `scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryCompact2dpUsd`
- * from `@/utils/formatUsd` before display. `collateral` (and
- * `total_collateral`, not used on this page) is price-feed sourced (#706)
- * and already correct-scale — do NOT scale it. `ccr_bps` and
- * `at_risk_wl_and_default_pct` are backend-computed ratios that mix a
- * registry-scaled value with a correct-scale one, so the ×1000 amount
- * helper cannot repair them directly — see `-useLoansTable.ts` for the
- * CCR-specific ÷1000 display correction (the resolved Open Question 1 for
- * issue #843).
+ * from `@/utils/formatUsd` before display. A live-payload audit (issue #888)
+ * disproved issue #843's original assumption that `collateral` was
+ * price-feed sourced and already correct-scale — it is on the SAME
+ * registry, 1000×-low basis as `senior_outstanding`. Because `ccr_bps` and
+ * `ltv` divide two registry-sourced (both 1000×-low) amounts, the ×1000
+ * cancels out of those ratios — they are served ALREADY CORRECT and must
+ * NOT be scaled or divided (see `-useLoansTable.ts`, which used to apply an
+ * erroneous ÷1000 "correction" to `ccr_bps` before issue #888 fixed it).
+ * `at_risk_wl_and_default_pct` mixes a registry-scaled numerator with a
+ * correct-scale NAV denominator and is rendered as served (no frontend
+ * correction defined).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -56,7 +60,11 @@ export interface LoanBookSummary {
    * backend DTO).
    */
   total_deployed: string;
-  /** Price-feed sourced (#706); `null` until a commodity price is wired. Not scaled. */
+  /**
+   * Registry-sourced ⇒ scale ×1000 (issue #888 — `#843` incorrectly assumed
+   * this was price-feed sourced/correct-scale). `null` until a commodity
+   * price is wired. Not rendered on this page.
+   */
   total_collateral: string | null;
   /** `total_collateral / Σ senior_tranche`, 2-decimal string. Not rendered on this page. */
   senior_debt_coverage: string | null;
@@ -135,21 +143,28 @@ export interface LoanBookEntry {
    */
   spot_change_7d: string | null;
   /**
-   * Collateral value, USDC base-6 decimal string. Price-feed sourced (#706)
-   * ⇒ already correct-scale — do NOT scale. `null` when unpriced. Backs the
-   * **Collateral** column.
+   * Collateral value, USDC base-6 decimal string. **Registry-sourced ⇒
+   * scale ×1000** (issue #888 — `#843` incorrectly assumed this was
+   * price-feed sourced/correct-scale; a live payload proved it is on the
+   * same 1000×-low basis as `senior_outstanding`). `null` when unpriced.
+   * Backs the **Collateral** column.
    */
   collateral: string | null;
-  /** Loan-to-value, 4-decimal fraction string. Not rendered on this page. */
+  /**
+   * Loan-to-value, 4-decimal fraction string = `principal / collateral`.
+   * Both operands are registry-sourced (1000×-low), so the ×1000 cancels
+   * out of the ratio — served ALREADY CORRECT, do NOT scale. Not rendered
+   * on this page.
+   */
   ltv: string | null;
   /**
    * Collateral Coverage Ratio in basis points (`14000` = 140%) =
-   * `collateral / outstanding senior`. Backend-computed ratio that mixes
-   * correct-scale collateral with registry-scaled (1000× low) senior in the
-   * denominator, so this is served **~1000× too big** — see
-   * `-useLoansTable.ts`'s `classifyCcr`/CCR mapping for the ÷1000 display
-   * correction (resolved Open Question 1, issue #843). `null` when
-   * collateral is unavailable. Backs the **CCR** column + pre-default
+   * `collateral / outstanding senior`. Both operands are registry-sourced
+   * (1000×-low), so the ×1000 cancels out of the ratio — served ALREADY
+   * CORRECT (issue #888 corrected the earlier #843 assumption that this was
+   * served ~1000× too big; do NOT ÷1000 it — see `-useLoansTable.ts`'s
+   * `classifyCcr`/CCR mapping, which now uses the served value as-is). `null`
+   * when collateral is unavailable. Backs the **CCR** column + pre-default
    * classification.
    */
   ccr_bps: number | null;

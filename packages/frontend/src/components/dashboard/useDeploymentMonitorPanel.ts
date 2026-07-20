@@ -28,7 +28,6 @@ import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import type { OriginationTableRow } from "./originationRow";
 import { mapSubmissionToRow } from "./originationRow";
 import {
-  formatCompactUsd,
   formatRegistryCompactUsd,
   formatOneDecimalRate,
   formatLtv,
@@ -52,7 +51,8 @@ export interface DeploymentMonitorPanelState {
    *
    * - `principal` — always defined when ready (total_deployed is non-null).
    * - `collateral` — defined only when `total_collateral` is non-null; `undefined`
-   *   while TODO #706 (commodity price feed) is not yet merged.
+   *   while TODO #706 (commodity price feed) is not yet merged. Registry-sourced
+   *   ⇒ ×1000-scaled like `principal` (issue #888).
    * - `ltv` — user-approved average LTV (null → 0), defined only when
    *   loans.length > 0 (seam refs #729 / #765).
    */
@@ -85,8 +85,9 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   return {
     // total_deployed is registry-sourced → 1000× low (#840 workaround).
     totalDeployed: formatRegistryCompactUsd(summary.total_deployed),
-    // collateral comes from the price feed (#706), not the registry — no scale fix.
-    totalCollateral: formatCompactUsd(summary.total_collateral),
+    // total_collateral is ALSO registry-sourced → 1000× low (issue #888
+    // corrected the earlier assumption that this came from the price feed).
+    totalCollateral: formatRegistryCompactUsd(summary.total_collateral),
     seniorDebtCoverage: formatCoverage(summary.senior_debt_coverage),
     avgYield: formatOneDecimalRate(summary.avg_yield),
     avgDuration: formatDurationDays(summary.avg_duration_days, "long"),
@@ -98,7 +99,8 @@ function formatRow(entry: LoanBookEntry): LoanBookRow {
     borrowerCommodity: `${entry.borrower} / ${entry.commodity}`,
     // principal is registry-sourced → 1000× low (#840 workaround).
     principal: formatRegistryCompactUsd(entry.principal),
-    collateral: formatCompactUsd(entry.collateral),
+    // collateral is ALSO registry-sourced → 1000× low (issue #888).
+    collateral: formatRegistryCompactUsd(entry.collateral),
     ltv: formatLtv(entry.ltv),
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
@@ -216,10 +218,11 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     headerAggregates: data
       ? {
           principal: formatRegistryCompactUsd(data.summary.total_deployed),
+          // #888: total_collateral is registry-sourced → ×1000, same as principal.
           collateral:
             data.summary.total_collateral == null
               ? undefined
-              : formatCompactUsd(data.summary.total_collateral),
+              : formatRegistryCompactUsd(data.summary.total_collateral),
           ltv: ltvAggregate,
         }
       : EMPTY_HEADER_AGGREGATES,
