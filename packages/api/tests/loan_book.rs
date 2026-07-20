@@ -331,7 +331,7 @@ fn empty_registry_returns_empty_book() {
 #[test]
 fn collateral_coverage_null_without_prices() {
     // No collateral map → every loan's collateral/ltv and the summary aggregates
-    // serialize as null (no loan_parameters / price rows configured).
+    // serialize as null (no valuation anchor / price rows configured).
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.summary.total_collateral, None);
     assert_eq!(r.summary.senior_debt_coverage, None);

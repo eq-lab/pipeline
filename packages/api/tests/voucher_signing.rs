@@ -76,7 +76,9 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
                 ),
             ),
         ),
-        loan_parameters_repo: shared::loan_parameters_repo::LoanParametersRepo::new(pool.clone()),
+        loan_fee_schedule_repo: shared::loan_fee_schedule_repo::LoanFeeScheduleRepo::new(
+            pool.clone(),
+        ),
         loan_asset_price_repo: shared::loan_asset_price_repo::LoanAssetPriceRepo::new(pool.clone()),
         collateral_valuation_repo: shared::collateral_valuation_repo::CollateralValuationRepo::new(
             pool.clone(),

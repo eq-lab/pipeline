@@ -17,8 +17,8 @@ use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
-use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
@@ -60,8 +60,8 @@ pub struct AppState {
     /// can validate it parses as `LoanMetadataJson` (the same type the indexer parses).
     /// Trait object so tests can inject a mock without an HTTP server.
     pub loan_metadata_fetcher: Arc<dyn LoanMetadataFetcher>,
-    /// Per-loan collateral asset + discount + price provider (`loan_parameters`).
-    pub loan_parameters_repo: LoanParametersRepo,
+    /// Per-loan protocol fee schedule (`loan_fee_schedule`), for the repayment waterfall.
+    pub loan_fee_schedule_repo: LoanFeeScheduleRepo,
     /// Collected per-asset USD prices (`loan_asset_prices`), for collateral valuation.
     pub loan_asset_price_repo: LoanAssetPriceRepo,
     /// Per-loan collateral valuation record (anchor + assay/offtake/quantity).

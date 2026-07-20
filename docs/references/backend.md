@@ -181,7 +181,7 @@ The encoding must match smart-contracts.md byte-for-byte (`abi.encode` is load-b
 - Timeout handling: if custodian does not respond within N minutes, alert ops; Bridge cannot submit without both sigs.
 - Retry semantics: idempotent on `repaymentRef`.
 
-**Waterfall data source.** Implemented as a read-only baseline calculator, `GET /v1/loan-book/{loan_id}/waterfall` (`packages/api/src/routes/waterfall.rs`). Fee rates are stored per loan in `loan_parameters.{mgmt,perf,oet}_*_rate_bps`; the Trustee may still override any component before broadcasting `recordPayment`. See `docs/product-specs/trustee-dashboard.md` flow note A.
+**Waterfall data source.** Implemented as a read-only baseline calculator, `GET /v1/loan-book/{loan_id}/waterfall` (`packages/api/src/routes/waterfall.rs`). Fee rates are stored per loan in `loan_fee_schedule.{mgmt,perf,oet}_*_rate_bps` (keyed `(chain_id, loan_id)`); the Trustee may still override any component before broadcasting `recordPayment`. See `docs/product-specs/trustee-dashboard.md` flow note A.
 
 ### Flow 4: USYC Yield Distribution (lazy, stake/unstake-triggered)
 
@@ -696,7 +696,7 @@ These are not open items — they are **blocking decisions** that affect the imp
 |---|---|---|---|---|
 | 1 | Deposit flow | Atomic DepositManager, no off-chain signer | Resolved (v2.3 spec) | — |
 | 2 | Yield approval | Two-party EIP-712 verified on-chain (Bridge + custodian EIP-1271) | Resolved (v2.3 spec) | — |
-| 3 | Waterfall computation / loan_terms store | Baseline calculator shipped (`GET /v1/loan-book/{loan_id}/waterfall`); fee rates stored per loan in `loan_parameters`. Trustee may override components before broadcast. | Resolved | Product + Trustee |
+| 3 | Waterfall computation / loan_terms store | Baseline calculator shipped (`GET /v1/loan-book/{loan_id}/waterfall`); fee rates stored per loan in `loan_fee_schedule`. Trustee may override components before broadcast. | Resolved | Product + Trustee |
 | 4 | USDC/USYC movements | Managed by Trustee at custodian; Bridge only requests at funding time | Resolved | — |
 | 5 | Yield split parameter | On-chain governance parameter | Resolved (v2.3 spec M6) | — |
 | 6 | Custodian provider | Business decision | No architectural impact | Product |

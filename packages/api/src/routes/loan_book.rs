@@ -92,8 +92,10 @@ pub struct LoanBookSummary {
     /// USDC (6-decimal string).
     pub total_deployed: String,
     /// Total collateral value = Σ per-loan collateral over active loans, USDC
-    /// (6-decimal string). Each loan's collateral is `latest price_usd × discount`
-    /// (`loan_parameters` + newest `loan_asset_prices` row for its asset).
+    /// (6-decimal string). Each loan's collateral is valued from its
+    /// collateral-valuation record (the `loan_collateral_valuations` anchor plus the
+    /// latest assay / offtake / quantity inputs) and the newest `loan_asset_prices`
+    /// row for its asset.
     ///
     /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
@@ -203,11 +205,11 @@ pub struct LoanBookEntry {
     /// (e.g. `"0.0080"` = +0.8 %, `"-0.0120"` = −1.2 %). `null` when a 7-day-prior
     /// price is unavailable or zero.
     pub spot_change_7d: Option<String>,
-    /// Collateral value = `latest price_usd × discount`, USDC (6-decimal string).
-    /// The price is the newest `loan_asset_prices` row for the loan's asset; the
-    /// asset and discount come from `loan_parameters` (keyed by `loan_id`).
+    /// Collateral value in USDC (6-decimal string), computed from the loan's
+    /// collateral-valuation record (`loan_collateral_valuations` anchor + latest
+    /// assay / offtake / quantity) and the newest `loan_asset_prices` row for its asset.
     ///
-    /// `null` when the loan has no `loan_parameters` row or its asset has no price.
+    /// `null` when the loan has no valuation anchor or its asset has no price.
     pub collateral: Option<String>,
     /// Loan-to-value = `principal / collateral`, 4-decimal string (e.g. `"0.8511"`).
     ///
@@ -978,7 +980,7 @@ async fn collateral_by_loan(
 }
 
 /// Canonical map key for a loan id: the `NUMERIC(78,0)` rendered at scale 0, so the
-/// `loan_parameters.loan_id` and the snapshot `loan_id` agree regardless of the
+/// valuation-anchor `loan_id` and the snapshot `loan_id` agree regardless of the
 /// scale each `BigDecimal` happens to carry.
 pub fn loan_key(loan_id: &BigDecimal) -> String {
     loan_id
@@ -1024,8 +1026,8 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// Default" grouping).
 ///
 /// `collateral_by_loan` maps `loan_key(loan_id)` → collateral value in micro-USDC
-/// (`latest price_usd × discount × 1e6`); loans absent from the map have no priced
-/// collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
+/// (the valuation record's collateral value × 1e6); loans absent from the map have no
+/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
 /// `senior_debt_coverage` are `null` when no active loan has a value.
 ///
 /// `disbursement_by_loan` maps `loan_key(loan_id)` → `off_ramp_complete`. Loans absent

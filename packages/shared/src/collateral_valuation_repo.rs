@@ -177,6 +177,18 @@ pub struct QuantityReportRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A distinct `(asset, price_provider)` pairing across all valuation anchors.
+///
+/// Consumed by the worker `asset_price_collector`, which collects a price series per
+/// pair. An asset configured with more than one provider yields multiple rows (one per
+/// provider); the collector detects that conflict and skips the asset rather than
+/// guessing which provider to trust.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct AssetProvider {
+    pub asset: String,
+    pub price_provider: String,
+}
+
 // ── Repo ───────────────────────────────────────────────────────────────────────
 
 pub struct CollateralValuationRepo {
@@ -273,6 +285,19 @@ impl CollateralValuationRepo {
              FROM loan_collateral_valuations WHERE chain_id = $1",
         )
         .bind(chain_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// The distinct set of `(asset, price_provider)` pairs across **all** valuation
+    /// anchors, on every chain. Not chain-scoped: the worker `asset_price_collector`
+    /// collects one price series per pair regardless of which chain's loans reference
+    /// it, so an asset priced on two chains is still collected once.
+    pub async fn distinct_asset_providers(&self) -> Result<Vec<AssetProvider>, sqlx::Error> {
+        sqlx::query_as::<_, AssetProvider>(
+            "SELECT DISTINCT asset, price_provider FROM loan_collateral_valuations \
+             ORDER BY asset, price_provider",
+        )
         .fetch_all(&self.pool)
         .await
     }
