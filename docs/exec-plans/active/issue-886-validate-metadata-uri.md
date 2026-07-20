@@ -64,7 +64,9 @@ _None._ (The three original open questions were resolved by the user before plan
 
 ## Implementation Steps
 
-1. **Create `packages/shared/src/loan_metadata.rs`.** Move from `packages/worker/src/indexer/loan_metadata.rs`:
+_All steps complete (implemented on `feat/886-validate-metadata-uri`)._
+
+1. ✅ **Create `packages/shared/src/loan_metadata.rs`.** Move from `packages/worker/src/indexer/loan_metadata.rs`:
    - the `LoanMetadataJson` struct (with its serde attributes and the `use shared::loan_snapshot::LoanDocument`
      import rewritten as `use crate::loan_snapshot::LoanDocument`),
    - the `LoanMetadataFetcher` trait,
@@ -72,39 +74,39 @@ _None._ (The three original open questions were resolved by the user before plan
    Register the module in `packages/shared/src/lib.rs` (`pub mod loan_metadata;`). Keep `async_trait` available
    (add to shared `Cargo.toml` if not already a dep).
 
-2. **Trim the worker's `loan_metadata.rs` and re-export.** Delete the moved definitions from
+2. ✅ **Trim the worker's `loan_metadata.rs` and re-export.** Delete the moved definitions from
    `packages/worker/src/indexer/loan_metadata.rs`; add
    `pub use shared::loan_metadata::{HttpLoanMetadataFetcher, LoanMetadataFetcher, LoanMetadataJson};`
    near the top so every existing `crate::indexer::loan_metadata::{...}` import (in `mod.rs`,
    `loan_mapper.rs`, `stellar/poller.rs`, `tests/loan_mapper.rs`) continues to resolve. The indexer-specific
    items (`LoanAddress`, `LoanId`, `BlockHint`, resolver traits, `*View` structs) stay in the worker.
 
-3. **Add `reqwest` to the API crate.** In `packages/api/Cargo.toml` add `reqwest = { workspace = true }`.
+3. ✅ **Add `reqwest` to the API crate.** In `packages/api/Cargo.toml` add `reqwest = { workspace = true }`.
 
-4. **Add IPFS-gateway config to the API.** In `packages/api/src/config.rs` read
+4. ✅ **Add IPFS-gateway config to the API.** In `packages/api/src/config.rs` read
    `IPFS_GATEWAY_URL` (env), defaulting to `"https://ipfs.io/ipfs/"` (mirrors the worker's default). Expose
    it however the surrounding config code is structured (a small `pub fn ipfs_gateway_url_from_env() -> String`
    or a field on an existing config struct — match the file's existing pattern).
 
-5. **Add the fetcher to `AppState`.** In `packages/api/src/lib.rs` add a field
+5. ✅ **Add the fetcher to `AppState`.** In `packages/api/src/lib.rs` add a field
    `pub loan_metadata_fetcher: Arc<dyn shared::loan_metadata::LoanMetadataFetcher>,` (trait object so tests
    can inject a mock and the handler stays decoupled). In `packages/api/src/main.rs`, construct it:
    `Arc::new(HttpLoanMetadataFetcher::new(MetadataFetcher::new(reqwest::Client::new(), ipfs_gateway_url).with_backoffs(vec![])))`
    and pass it into the `AppState { .. }` initialiser.
 
-6. **Add a pure error-mapping helper in `loan_book.rs`.** Introduce
+6. ✅ **Add a pure error-mapping helper in `loan_book.rs`.** Introduce
    `async fn validate_metadata_uri(fetcher: &dyn LoanMetadataFetcher, uri: &str) -> Result<(), String>`
    that calls `fetcher.fetch_metadata(uri).await` and maps any `Err` to a user-facing string
    (e.g. `format!("metadata_uri did not resolve to a valid loan-metadata document: {e}")`). Keep it `pub`
    so the unit test can exercise it with a mock fetcher (mirrors the `validate_submission` testability
    convention). Do **not** fold this into `validate_submission` (which stays pure/no-I/O).
 
-7. **Wire it into `submit_loan`.** After the existing `validate_submission(&payload).map_err(ApiError::BadRequest)?;`
+7. ✅ **Wire it into `submit_loan`.** After the existing `validate_submission(&payload).map_err(ApiError::BadRequest)?;`
    line, add:
    `validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri).await.map_err(ApiError::BadRequest)?;`
    (before serialising/persisting). This runs the structural checks first (cheap), then the network fetch.
 
-8. **Clippy + build.** Run `cargo clippy --all -- -D warnings` and build both `api` and `worker`
+8. ✅ **Clippy + build.** Run `cargo clippy --all -- -D warnings` and build both `api` and `worker`
    (`cargo build -p pipeline-api -p worker`) to confirm the type move and re-exports compile everywhere.
 
 ## Test Strategy
