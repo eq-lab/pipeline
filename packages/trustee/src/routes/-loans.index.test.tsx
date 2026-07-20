@@ -59,9 +59,9 @@ const RESPONSE: LoanBookResponse = {
       ccr_reported_at: Math.floor(Date.now() / 1000) - 3600,
       spot_price: "4500.00",
       spot_change_7d: "-0.1800",
-      collateral: "2100000.000000",
+      collateral: "2100.000000", // ×1000 workaround (#888) → $2.10M
       ltv: null,
-      ccr_bps: 11_400_000, // true 114% ⇒ pre-default (<120%)
+      ccr_bps: 11_400, // served as-is (#888, no ÷1000) ⇒ 114% ⇒ pre-default (<120%)
       duration_days: 180,
       rate: "0.140000",
       protection: null,
