@@ -1111,3 +1111,186 @@ export async function recordPayment({
 
   return { hash: sendResult.hash };
 }
+
+// ── Close loan (issue #884) ───────────────────────────────────────────────────
+
+/**
+ * Soroban client for the trustee's `close_loan` on-chain call (issue #884) —
+ * `LoanRegistry.closeLoan`, through the same executor proxy as `draw_loan`:
+ *
+ *   executor.execute(target, function: Symbol("close_loan"), args, caller)
+ *
+ * Moves the loan to `Closed`. Emits `LoanClosed { reason }`. Confirmed against
+ * the deployed Rust source:
+ *
+ *   pub enum ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWriteDown }
+ *   pub fn close_loan(e: &Env, loan_id: u32, reason: ClosureReason)
+ *
+ * so the two wire args are `[u32 loan_id, ClosureReason]`. `ClosureReason` is a
+ * unit-variant enum → `scvVec([scvSymbol(variant)])` (same shape as `LoanStatus`
+ * / `draw_loan`'s `location_type`). TRUSTEE may close with `ScheduledMaturity` or
+ * `EarlyRepayment` (the repayment-close reasons #884 uses).
+ */
+export type CloseLoanStage = DrawLoanStage;
+
+export interface CloseLoanParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  /** A `ClosureReason` variant: `ScheduledMaturity` | `EarlyRepayment` (repayment closes). */
+  reason: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+  signTransaction: (
+    xdrStr: string,
+    opts?: { networkPassphrase?: string; address?: string },
+  ) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  onStageChange?: (stage: CloseLoanStage) => void;
+}
+
+export interface CloseLoanResult {
+  hash: string;
+}
+
+/**
+ * Encodes `close_loan`'s two positional args: `[loan_id: u32, reason:
+ * ClosureReason]`. Exported for unit testing.
+ */
+export function encodeCloseLoanArgs(
+  loanId: number,
+  reason: string,
+): xdr.ScVal[] {
+  return [
+    xdr.ScVal.scvU32(loanId),
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(reason)]),
+  ];
+}
+
+export interface BuildCloseLoanEnvelopeParams {
+  executorId: string;
+  targetId: string;
+  caller: string;
+  loanId: number;
+  reason: string;
+  rpcUrl: string;
+  networkPassphrase: string;
+}
+
+/**
+ * Builds, simulates, and assembles the `execute(target, "close_loan", args,
+ * caller)` transaction — unsigned XDR ready for `signTransaction`. Mirrors
+ * `buildRecordPaymentEnvelope`.
+ */
+export async function buildCloseLoanEnvelope({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  reason,
+  rpcUrl,
+  networkPassphrase,
+}: BuildCloseLoanEnvelopeParams): Promise<string> {
+  if (!executorId) {
+    throw new Error("buildCloseLoanEnvelope: executorId must not be empty");
+  }
+  if (!targetId) {
+    throw new Error("buildCloseLoanEnvelope: targetId must not be empty");
+  }
+  if (!caller) {
+    throw new Error("buildCloseLoanEnvelope: caller must not be empty");
+  }
+
+  const contract = new Contract(executorId);
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+
+  const sourceAccount = await server.getAccount(caller);
+
+  const op = contract.call(
+    "execute",
+    new Address(targetId).toScVal(),
+    xdr.ScVal.scvSymbol("close_loan"),
+    xdr.ScVal.scvVec(encodeCloseLoanArgs(loanId, reason)),
+    new Address(caller).toScVal(),
+  );
+
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(op)
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`closeLoan simulation error: ${simResult.error}`);
+  }
+
+  const assembled = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return assembled.toXDR();
+}
+
+/**
+ * Signs and submits the trustee-wallet-signed `close_loan` end-to-end: build
+ * envelope (incl. the verifying `simulateTransaction`) → sign → submit → poll to
+ * a terminal status. Mirrors `recordPayment`.
+ */
+export async function closeLoan({
+  executorId,
+  targetId,
+  caller,
+  loanId,
+  reason,
+  rpcUrl,
+  networkPassphrase,
+  signTransaction,
+  onStageChange,
+}: CloseLoanParams): Promise<CloseLoanResult> {
+  onStageChange?.("awaiting-signature");
+
+  const assembledXdr = await buildCloseLoanEnvelope({
+    executorId,
+    targetId,
+    caller,
+    loanId,
+    reason,
+    rpcUrl,
+    networkPassphrase,
+  });
+
+  const { signedTxXdr } = await signTransaction(assembledXdr, {
+    networkPassphrase,
+    address: caller,
+  });
+
+  onStageChange?.("submitting");
+
+  const server = new SorobanRpc.Server(rpcUrl, {
+    allowHttp: rpcUrl.startsWith("http://"),
+  });
+  const signedTx = TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
+
+  const sendResult = await server.sendTransaction(signedTx as Transaction);
+
+  if (sendResult.status === "ERROR") {
+    throw new Error(
+      `closeLoan: sendTransaction failed: status=ERROR hash=${sendResult.hash}`,
+    );
+  }
+
+  onStageChange?.("confirming");
+
+  const finalResult = await server.pollTransaction(sendResult.hash);
+
+  if (finalResult.status !== SorobanRpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(
+      `closeLoan: transaction ${sendResult.hash} failed with status ${finalResult.status}`,
+    );
+  }
+
+  return { hash: sendResult.hash };
+}

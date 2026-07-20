@@ -1378,6 +1378,12 @@ function LoanDetail() {
       // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
       // so this navigates rather than opening a dialog like the other actions.
       void navigate({ to: "/loans/$id/record-coupon", params: { id } });
+    } else if (label === "Close loan") {
+      // Full-page destination (issue #884, Figma `4116-11621`) — this action
+      // does NOT close the loan directly; it opens the Record Repayment page,
+      // where the trustee records the final principal repayment and only
+      // then closes the loan from there.
+      void navigate({ to: "/loans/$id/record-repayment", params: { id } });
     }
   };
 
