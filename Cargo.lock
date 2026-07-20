@@ -3023,6 +3023,7 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "anyhow",
+ "async-trait",
  "axum",
  "bigdecimal",
  "chrono",
@@ -3031,6 +3032,7 @@ dependencies = [
  "hex",
  "hmac",
  "jsonwebtoken",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",

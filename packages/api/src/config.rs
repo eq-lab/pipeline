@@ -90,6 +90,16 @@ pub struct TransferAddressSets {
 /// capital-allocation buckets are expressed in.
 pub const CANONICAL_AMOUNT_DECIMALS: u32 = 6;
 
+/// Default IPFS gateway used to resolve `ipfs://` metadata URIs when
+/// `IPFS_GATEWAY_URL` is unset. Mirrors the worker's default.
+const DEFAULT_IPFS_GATEWAY_URL: &str = "https://ipfs.io/ipfs/";
+
+/// IPFS gateway URL used by the loan-submission `metadata_uri` validator to resolve
+/// `ipfs://` documents. Reads `IPFS_GATEWAY_URL`, falling back to the public gateway.
+pub fn ipfs_gateway_url_from_env() -> String {
+    env::var("IPFS_GATEWAY_URL").unwrap_or_else(|_| DEFAULT_IPFS_GATEWAY_URL.to_owned())
+}
+
 impl ChainsConfig {
     pub fn from_env() -> Result<Self> {
         let chains = parse_chains_env()?;

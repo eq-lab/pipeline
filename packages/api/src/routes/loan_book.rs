@@ -24,6 +24,7 @@ use shared::collateral_valuation_repo::{
     AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::loan_metadata::LoanMetadataFetcher;
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
 
 use crate::auth::{AuthClaims, SecurityAddon};
@@ -59,7 +60,12 @@ const STATUS_PAST_DUE: &str = "Past Due";
 /// `Disbursing` outranks `Past Due` (a freshly-drawn loan can't be overdue before its
 /// off-ramp completes). Only `Performing` / `WatchList` are ever overridden — any other
 /// raw status (e.g. an unknown value) passes through unchanged.
-pub fn display_status(raw: &str, off_ramp_complete: bool, now: i64, current_maturity: i64) -> String {
+pub fn display_status(
+    raw: &str,
+    off_ramp_complete: bool,
+    now: i64,
+    current_maturity: i64,
+) -> String {
     match raw {
         "Performing" | "WatchList" if !off_ramp_complete => STATUS_DISBURSING.to_owned(),
         "Performing" | "WatchList" if now > current_maturity => STATUS_PAST_DUE.to_owned(),
@@ -500,6 +506,13 @@ async fn submit_loan(
 
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
 
+    // Structural checks pass; now confirm the on-chain metadata pointer resolves to a
+    // document the indexer will accept. Fetching after validate_submission keeps the cheap
+    // checks first and only pays the network round-trip for otherwise-valid payloads.
+    validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
+        .await
+        .map_err(ApiError::BadRequest)?;
+
     // Persist the payload verbatim; serialization of an owned struct cannot fail.
     let loan_data = serde_json::to_value(&payload)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
@@ -542,7 +555,10 @@ async fn list_submissions(
     let mut ids_by_chain: HashMap<i64, Vec<BigDecimal>> = HashMap::new();
     for r in &rows {
         if let (Some(chain_id), Some(loan_id)) = (r.chain_id, r.loan_id.as_ref()) {
-            ids_by_chain.entry(chain_id).or_default().push(loan_id.clone());
+            ids_by_chain
+                .entry(chain_id)
+                .or_default()
+                .push(loan_id.clone());
         }
     }
     let mut onchain_status: HashMap<(i64, String), String> = HashMap::new();
@@ -765,6 +781,26 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Fetch the document at `uri` and confirm it deserialises into `LoanMetadataJson` —
+/// the exact type the worker's indexer parses. This catches a broken or malformed
+/// metadata pointer at submission time rather than after the loan is drawn on-chain.
+///
+/// Any fetch or parse failure (unreachable URI, non-JSON body, unknown/missing field —
+/// `LoanMetadataJson` is `deny_unknown_fields`) maps to a `BadRequest` message: the
+/// submitter's URI is the input under validation, so the failure is theirs to fix.
+///
+/// Kept separate from the pure [`validate_submission`] (which does no I/O) and `pub` so
+/// the unit test in `packages/api/tests/loan_submission.rs` can exercise it with a mock
+/// fetcher.
+pub async fn validate_metadata_uri(
+    fetcher: &dyn LoanMetadataFetcher,
+    uri: &str,
+) -> Result<(), String> {
+    fetcher.fetch_metadata(uri).await.map(|_| ()).map_err(|e| {
+        format!("`metadata_uri` did not resolve to a valid loan-metadata document: {e}")
+    })
 }
 
 async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookResponse, ApiError> {
@@ -1088,7 +1124,12 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             .get(&loan_key(&loan.loan_id))
             .copied()
             .unwrap_or(false);
-        let status = display_status(&s.status, off_ramp_complete, to, s.current_maturity_timestamp);
+        let status = display_status(
+            &s.status,
+            off_ramp_complete,
+            to,
+            s.current_maturity_timestamp,
+        );
 
         entries.push(LoanBookEntry {
             chain_id: loan.chain_id,

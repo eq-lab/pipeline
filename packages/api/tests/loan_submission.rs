@@ -2,10 +2,12 @@
 //! resolution, status round-trip, and payload serde. Pure — no HTTP/DB layer
 //! (matches the project-wide convention: all tests in `tests/`, no live Postgres).
 
+use async_trait::async_trait;
 use pipeline_api::routes::loan_book::{
-    extract_documents, resolve_review, validate_submission, EconomicsInput, LoanDocumentDto,
-    LocationInput, ReviewDecision, ReviewRequest, SubmitLoanRequest,
+    extract_documents, resolve_review, validate_metadata_uri, validate_submission, EconomicsInput,
+    LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest, SubmitLoanRequest,
 };
+use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
 use shared::submitted_loan_repo::SubmissionStatus;
 
 fn valid_request() -> SubmitLoanRequest {
@@ -275,4 +277,85 @@ fn documents_round_trip_from_submit_request_to_view() {
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].name, "Agreement");
     assert_eq!(docs[0].uri, "ipfs://QmA");
+}
+
+// ── metadata_uri validation ──────────────────────────────────────────────────
+
+/// Stand-in for the HTTP metadata fetch. `ok` returns a valid `LoanMetadataJson`;
+/// otherwise it errors, simulating a 404 / non-JSON / unknown-field document.
+struct MockFetcher {
+    ok: bool,
+}
+
+#[async_trait]
+impl LoanMetadataFetcher for MockFetcher {
+    async fn fetch_metadata(&self, _uri: &str) -> anyhow::Result<LoanMetadataJson> {
+        if self.ok {
+            Ok(serde_json::from_value(serde_json::json!({
+                "originator": "Open Mineral",
+                "borrowerId": "BRW-1",
+                "commodity": "Copper Concentrate",
+                "corridor": "PE-CN",
+                "governingLaw": "EN"
+            }))
+            .expect("valid LoanMetadataJson fixture"))
+        } else {
+            Err(anyhow::anyhow!("HTTP 404 from gateway"))
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_uri_resolving_to_valid_document_passes() {
+    let fetcher = MockFetcher { ok: true };
+    assert!(validate_metadata_uri(&fetcher, "ipfs://Qm_doc")
+        .await
+        .is_ok());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_uri_fetch_failure_is_rejected() {
+    let fetcher = MockFetcher { ok: false };
+    let err = validate_metadata_uri(&fetcher, "ipfs://Qm_bad")
+        .await
+        .unwrap_err();
+    assert!(err.contains("metadata_uri"), "unexpected error: {err}");
+}
+
+// ── LoanMetadataJson contract (shared type the indexer parses) ────────────────
+
+#[test]
+fn loan_metadata_json_parses_indexer_shape() {
+    // The full document shape the indexer accepts (camelCase keys, optional fields).
+    let json = serde_json::json!({
+        "originator": "Open Mineral",
+        "borrowerId": "BRW-1",
+        "commodity": "Copper Concentrate",
+        "corridor": "PE-CN",
+        "governingLaw": "EN",
+        "protection": "LC at sight",
+        "metadataURI": "ipfs://secondary",
+        "documents": [{ "name": "Agreement", "uri": "ipfs://QmA" }]
+    });
+    let doc: LoanMetadataJson = serde_json::from_value(json).expect("parse");
+    assert_eq!(doc.borrower_id, "BRW-1");
+    assert_eq!(doc.governing_law, "EN");
+    assert_eq!(doc.protection, "LC at sight");
+    assert_eq!(doc.metadata_uri.as_deref(), Some("ipfs://secondary"));
+    assert_eq!(doc.documents.len(), 1);
+}
+
+#[test]
+fn loan_metadata_json_rejects_unknown_field() {
+    // `deny_unknown_fields` — a document with an extra key must fail (this is exactly
+    // the class of failure the submission-time check is meant to catch early).
+    let json = serde_json::json!({
+        "originator": "O",
+        "borrowerId": "B",
+        "commodity": "C",
+        "corridor": "X-Y",
+        "governingLaw": "EN",
+        "surpriseField": "nope"
+    });
+    assert!(serde_json::from_value::<LoanMetadataJson>(json).is_err());
 }
