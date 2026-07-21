@@ -6,10 +6,10 @@ Source: https://github.com/eq-lab/pipeline/issues/874
 
 Replace the loan-detail summary tile fixture values with served backend fields:
 
-- `Facility / disbursed`: `LoanBookEntry.principal` plus `principal` when `disbursed = true`, otherwise `—`.
-- `Facility / senior`: `LoanBookEntry.principal` plus `original_senior_tranche`.
+- `Facility / disbursed`: `LoanBookEntry.principal` plus `original_senior_tranche`.
+- `Facility / senior`: `LoanBookEntry.principal` plus `principal` when `disbursed = true`, otherwise `0`.
 - `Repaid to date`: `LoanBookEntry.repaid_to_date`.
-- `Days on watchlist`: `LoanBookEntry.days_on_watchlist` and `watchlist_entered_at`.
+- `Days on watchlist`: `LoanBookEntry.days_on_watchlist`.
 - `Interest to distribute`: `LoanFinancialsResponse.not_minted_yield`.
 - `Rate · epochs`: `LoanFinancialsResponse.epoch.current_apy_bps` and `epoch.number`.
 

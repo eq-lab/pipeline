@@ -378,16 +378,6 @@ function formatCcrPct(ccrPct: string | null | undefined): string {
   return `${ccrPct}%`;
 }
 
-function formatUnixDayMonth(unixSeconds: number | null | undefined): string {
-  if (unixSeconds == null || !Number.isFinite(unixSeconds)) return "—";
-  const date = new Date(unixSeconds * 1000);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-  }).format(date);
-}
-
 /**
  * Builds the hero view-model from the matching loan-book row. When no row is
  * found (e.g. a direct URL to a non-active loan), degrades to the loan id only —
@@ -628,15 +618,18 @@ export function buildSummaryTiles(
 ): SummaryTile[] {
   const facility = formatRegistryCompactUsd(entry?.principal);
   const repaid = formatRegistryCompactUsd(entry?.repaid_to_date);
+  const disbursedAmount =
+    entry == null
+      ? "—"
+      : entry.disbursed
+        ? facility
+        : formatRegistryCompactUsd("0.000000");
 
   const facilityTile: SummaryTile =
     variant === "matured"
       ? {
           label: "Facility / senior",
-          value: tileValuePair(
-            facility,
-            formatRegistryCompactUsd(entry?.original_senior_tranche),
-          ),
+          value: tileValuePair(facility, disbursedAmount),
           sub: "—",
           subTone: "muted",
         }
@@ -644,7 +637,7 @@ export function buildSummaryTiles(
           label: "Facility / disbursed",
           value: tileValuePair(
             facility,
-            entry == null ? "—" : entry.disbursed ? facility : "—",
+            formatRegistryCompactUsd(entry?.original_senior_tranche),
           ),
           sub:
             entry == null
@@ -672,10 +665,7 @@ export function buildSummaryTiles(
           entry?.days_on_watchlist == null
             ? "—"
             : String(entry.days_on_watchlist),
-        sub:
-          entry?.watchlist_entered_at == null
-            ? "—"
-            : `since ${formatUnixDayMonth(entry.watchlist_entered_at)}`,
+        sub: "—",
         subTone: "muted",
       },
     ];

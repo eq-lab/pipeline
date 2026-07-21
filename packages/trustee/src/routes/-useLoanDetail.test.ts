@@ -472,7 +472,7 @@ describe("buildSummaryTiles", () => {
     ).toEqual([
       {
         label: "Facility / disbursed",
-        value: "$4.8M / $4.8M",
+        value: "$4.8M / $3.96M",
         sub: "funded",
         subTone: "positive",
       },
@@ -491,26 +491,38 @@ describe("buildSummaryTiles", () => {
     ]);
   });
 
-  it("renders missing disbursement amount as — when only the boolean is false", () => {
+  it("maps Facility / disbursed as principal / original_senior_tranche", () => {
     const tiles = buildSummaryTiles(
-      makeEntry({ disbursed: false }),
+      makeEntry(),
       makeFinancials(),
-      "disbursing",
+      "performing",
     );
-    expect(tiles[0]).toEqual({
+    expect(tiles[0]).toMatchObject({
       label: "Facility / disbursed",
-      value: "$4.8M / —",
-      sub: "drawned, not yet funded",
-      subTone: "attention",
+      value: "$4.8M / $3.96M",
     });
   });
 
-  it("maps watchlist days and exact since date from backend fields", () => {
+  it("maps Facility / senior as principal / 0 when disbursed is false", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({ disbursed: false }),
+      makeFinancials(),
+      "matured",
+    );
+    expect(tiles[0]).toEqual({
+      label: "Facility / senior",
+      value: "$4.8M / $0",
+      sub: "—",
+      subTone: "muted",
+    });
+  });
+
+  it("maps watchlist days from days_on_watchlist only", () => {
     const tiles = buildSummaryTiles(
       makeEntry({
         status: "WatchList",
         days_on_watchlist: 18,
-        watchlist_entered_at: 1_780_444_800, // 3 Jun 2026
+        watchlist_entered_at: 1_780_444_800,
       }),
       makeFinancials(),
       "watchlist",
@@ -518,7 +530,7 @@ describe("buildSummaryTiles", () => {
     expect(tiles[2]).toEqual({
       label: "Days on watchlist",
       value: "18",
-      sub: "since 3 Jun",
+      sub: "—",
       subTone: "muted",
     });
   });
@@ -528,7 +540,7 @@ describe("buildSummaryTiles", () => {
       [
         {
           label: "Facility / senior",
-          value: "$4.8M / $3.96M",
+          value: "$4.8M / $4.8M",
           sub: "—",
           subTone: "muted",
         },
