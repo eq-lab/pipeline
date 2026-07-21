@@ -26,6 +26,7 @@ import {
   buildPriceCollateral,
   buildPriceCollateralState,
   buildRegistryState,
+  buildSummaryTiles,
   statusToChip,
 } from "./-useLoanDetail";
 import type { UseLoanCcrHistoryResult } from "@/api/useLoanCcrHistory";
@@ -37,8 +38,9 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     originator: "Helios Metals",
     borrower: "b1",
     commodity: "Lithium",
-    principal: "4800000.000000",
-    senior_outstanding: "4950.000000",
+    principal: "4800.000000",
+    senior_outstanding: "3960.000000",
+    original_senior_tranche: "3960.000000",
     maturity: 1_782_777_600, // 2026-06-30
     ccr_reported_at: 0,
     spot_price: "10450",
@@ -50,6 +52,10 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "Performing",
+    repaid_to_date: "6300.000000",
+    disbursed: true,
+    days_on_watchlist: null,
+    watchlist_entered_at: null,
     ...overrides,
   };
 }
@@ -454,6 +460,115 @@ describe("buildFinancials", () => {
   it("renders — for the Epochs row when no epoch is on record (#857)", () => {
     const rows = buildFinancials(makeFinancials({ epoch: null }));
     expect(rows[1]).toEqual({ label: "Epochs", value: "—", tag: "chain" });
+  });
+});
+
+// ── buildSummaryTiles (issue #874) ────────────────────────────────────────────
+
+describe("buildSummaryTiles", () => {
+  it("maps performing tiles from loan-book + financials fields", () => {
+    expect(
+      buildSummaryTiles(makeEntry(), makeFinancials(), "performing"),
+    ).toEqual([
+      {
+        label: "Facility / disbursed",
+        value: "$4.8M / $4.8M",
+        sub: "funded",
+        subTone: "positive",
+      },
+      {
+        label: "Repaid to date",
+        value: "$6.3M",
+        sub: "offtaker received",
+        subTone: "muted",
+      },
+      {
+        label: "Interest to distribute",
+        value: "$115.5K",
+        sub: "not minted yield",
+        subTone: "attention",
+      },
+    ]);
+  });
+
+  it("renders missing disbursement amount as — when only the boolean is false", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({ disbursed: false }),
+      makeFinancials(),
+      "disbursing",
+    );
+    expect(tiles[0]).toEqual({
+      label: "Facility / disbursed",
+      value: "$4.8M / —",
+      sub: "drawned, not yet funded",
+      subTone: "attention",
+    });
+  });
+
+  it("maps watchlist days and exact since date from backend fields", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({
+        status: "WatchList",
+        days_on_watchlist: 18,
+        watchlist_entered_at: 1_780_444_800, // 3 Jun 2026
+      }),
+      makeFinancials(),
+      "watchlist",
+    );
+    expect(tiles[2]).toEqual({
+      label: "Days on watchlist",
+      value: "18",
+      sub: "since 3 Jun",
+      subTone: "muted",
+    });
+  });
+
+  it("maps matured facility/senior and epoch APY", () => {
+    expect(buildSummaryTiles(makeEntry(), makeFinancials(), "matured")).toEqual(
+      [
+        {
+          label: "Facility / senior",
+          value: "$4.8M / $3.96M",
+          sub: "—",
+          subTone: "muted",
+        },
+        {
+          label: "Repaid to date",
+          value: "$6.3M",
+          sub: "offtaker received",
+          subTone: "muted",
+        },
+        {
+          label: "Rate · epochs",
+          value: "10.0% p.a.",
+          sub: "epoch 1",
+          subTone: "muted",
+        },
+      ],
+    );
+  });
+
+  it("renders — when no backend field is available", () => {
+    expect(buildSummaryTiles(undefined, undefined, "matured")).toEqual([
+      {
+        label: "Facility / senior",
+        value: "— / —",
+        sub: "—",
+        subTone: "muted",
+      },
+      {
+        label: "Repaid to date",
+        value: "—",
+        sub: "offtaker received",
+        subTone: "muted",
+      },
+      {
+        label: "Rate · epochs",
+        value: "—",
+        sub: "—",
+        subTone: "muted",
+      },
+    ]);
   });
 });
 

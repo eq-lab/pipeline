@@ -19,8 +19,9 @@
  *     (`buildLifecycle`); no longer a static fixture (design assignment §3.2).
  *   - **Registry state & derived** ← `GET /v1/loan-book/{loan_id}/financials`
  *     (`useLoanFinancials`, issue #852).
- *   - Summary tiles · current stage · other actions ← `LOAN_DETAIL_MOCK` (no
- *     backend source yet).
+ *   - **Summary tiles** ← the matching `/v1/loan-book` row plus
+ *     `/financials` for unminted yield / epoch APY (issue #874).
+ *   - Current stage · other actions ← `LOAN_DETAIL_MOCK` (no backend source yet).
  *
  * ## Never-fabricate (memory: no frontend-computed metrics)
  * The valuation endpoint drives P&C directly; fields it does not serve are NOT
@@ -377,6 +378,16 @@ function formatCcrPct(ccrPct: string | null | undefined): string {
   return `${ccrPct}%`;
 }
 
+function formatUnixDayMonth(unixSeconds: number | null | undefined): string {
+  if (unixSeconds == null || !Number.isFinite(unixSeconds)) return "—";
+  const date = new Date(unixSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+  }).format(date);
+}
+
 /**
  * Builds the hero view-model from the matching loan-book row. When no row is
  * found (e.g. a direct URL to a non-active loan), degrades to the loan id only —
@@ -585,6 +596,107 @@ export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
   ];
 }
 
+function tileValuePair(left: string, right: string): string {
+  return `${left} / ${right}`;
+}
+
+function formatRateWithEpochs(epoch: Epoch | null | undefined): SummaryTile {
+  if (epoch == null) {
+    return {
+      label: "Rate · epochs",
+      value: "—",
+      sub: "—",
+      subTone: "muted",
+    };
+  }
+  return {
+    label: "Rate · epochs",
+    value: `${formatBpsRate(epoch.current_apy_bps)} p.a.`,
+    sub: `epoch ${epoch.number}`,
+    subTone: "muted",
+  };
+}
+
+/**
+ * Builds the three summary tiles from served backend fields. Missing fields
+ * render `—`; the old static fixture is no longer used for these values.
+ */
+export function buildSummaryTiles(
+  entry: LoanBookEntry | undefined,
+  financials: LoanFinancialsResponse | undefined,
+  variant: LoanDetailVariant,
+): SummaryTile[] {
+  const facility = formatRegistryCompactUsd(entry?.principal);
+  const repaid = formatRegistryCompactUsd(entry?.repaid_to_date);
+
+  const facilityTile: SummaryTile =
+    variant === "matured"
+      ? {
+          label: "Facility / senior",
+          value: tileValuePair(
+            facility,
+            formatRegistryCompactUsd(entry?.original_senior_tranche),
+          ),
+          sub: "—",
+          subTone: "muted",
+        }
+      : {
+          label: "Facility / disbursed",
+          value: tileValuePair(
+            facility,
+            entry == null ? "—" : entry.disbursed ? facility : "—",
+          ),
+          sub:
+            entry == null
+              ? "—"
+              : entry.disbursed
+                ? "funded"
+                : "drawned, not yet funded",
+          subTone: entry?.disbursed ? "positive" : "attention",
+        };
+
+  const repaidTile: SummaryTile = {
+    label: "Repaid to date",
+    value: repaid,
+    sub: "offtaker received",
+    subTone: "muted",
+  };
+
+  if (variant === "watchlist") {
+    return [
+      facilityTile,
+      repaidTile,
+      {
+        label: "Days on watchlist",
+        value:
+          entry?.days_on_watchlist == null
+            ? "—"
+            : String(entry.days_on_watchlist),
+        sub:
+          entry?.watchlist_entered_at == null
+            ? "—"
+            : `since ${formatUnixDayMonth(entry.watchlist_entered_at)}`,
+        subTone: "muted",
+      },
+    ];
+  }
+
+  if (variant === "matured") {
+    return [facilityTile, repaidTile, formatRateWithEpochs(financials?.epoch)];
+  }
+
+  return [
+    facilityTile,
+    repaidTile,
+    {
+      label: "Interest to distribute",
+      value: formatRegistryCompactUsd(financials?.not_minted_yield),
+      sub: "not minted yield",
+      subTone: "attention",
+    },
+  ];
+}
+
 /**
  * Maps the financials query's load/error/data states to the Registry view-model.
  * A 404 (`ApiError.status === 404`) — no financials on record for the loan —
@@ -686,12 +798,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
           ? "matured"
           : "performing";
 
-  const tiles =
-    variant === "watchlist"
-      ? LOAN_DETAIL_WATCHLIST_MOCK.tiles
-      : variant === "matured"
-        ? LOAN_DETAIL_MATURED_MOCK.tiles
-        : LOAN_DETAIL_MOCK.tiles;
+  const tiles = buildSummaryTiles(entry, financials.data, variant);
   const otherActions =
     variant === "watchlist"
       ? LOAN_DETAIL_WATCHLIST_MOCK.otherActions

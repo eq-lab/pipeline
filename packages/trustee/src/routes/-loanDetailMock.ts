@@ -14,11 +14,11 @@
  *     (`buildLifecycle` in `-useLoanDetail.ts`, design assignment §3.2).
  *   - **Registry state & derived** → `GET /v1/loan-book/{loan_id}/financials`
  *     (`useLoanFinancials` + `buildFinancials`, issue #852).
- * Still mock (no backend source yet): summary tiles · current stage · other
- * actions. The **Watchlist variant** (issue #859, Figma node `4116:10803`) adds
+ * Still mock (no backend source yet): current stage · other actions. The
+ * **Watchlist variant** (issue #859, Figma node `4116:10803`) adds
  * its own mock slice (`LOAN_DETAIL_WATCHLIST_MOCK`) plus the CCR-trend chart
- * series — no backend source for the trend history / days-on-watchlist /
- * coupon-missed / escalation copy yet, so they are mock until an endpoint lands.
+ * series — no backend source for coupon-missed / escalation copy yet, so they
+ * are mock until an endpoint lands.
  *
  * The copy below matches the Figma reference exactly (a design mock, so the
  * fabricated-detail rules that gate the live build do not apply here).
