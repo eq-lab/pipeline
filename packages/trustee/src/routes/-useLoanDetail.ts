@@ -2,13 +2,11 @@
  * View-model + data wiring for the Trustee **Loan detail** page (issues #845 /
  * #847, Figma node `4116:10549`). Per `docs/FRONTEND.md` Code structure rule 2
  * the `.tsx` route is render-only; this hook owns the live fetches, the
- * value→display mapping, and the composition of live + still-mock sections, so
+ * value→display mapping, and the composition of live data + static actions, so
  * the builders below are unit-testable without a DOM (mirrors `-useLoansTable.ts`).
  *
- * ## Live vs. mock (data-sourcing convention)
- * Now that `GET /v1/loan-book` serves a real `loan_id`, two sections are sourced
- * live for the clicked loan; the rest remain the #847 static mock until a
- * backend source lands (then migrate them the same way):
+ * ## Data sources
+ * Loan-specific facts are sourced from API responses:
  *   - **Hero identity** ← the matching `/v1/loan-book` row (originator, commodity,
  *     on-chain status), keyed by `loan_id`. The status bar carries no dates
  *     (maturity is a key number, not a status field — §S5); the chip maps the
@@ -21,11 +19,12 @@
  *     (`useLoanFinancials`, issue #852).
  *   - **Summary tiles** ← the matching `/v1/loan-book` row plus
  *     `/financials` for unminted yield / epoch APY (issue #874).
- *   - Current stage · other actions ← `LOAN_DETAIL_MOCK` (no backend source yet).
+ *   - **Action availability / explanatory copy** ← static product configuration
+ *     in `-loanDetailStatic.ts`.
  *
  * ## Never-fabricate (memory: no frontend-computed metrics)
  * The valuation endpoint drives P&C directly; fields it does not serve are NOT
- * carried over from the old mock:
+ * carried over from the old fixture:
  *   - the "feed 2h old · recalcs every 60 min" freshness note → replaced by the
  *     real `price_provider` attribution (or dropped when absent);
  *   - the "Last on-chain write: CCR 135% · 12 May" footnote → dropped (no source);
@@ -55,15 +54,17 @@ import {
 } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
-  LOAN_DETAIL_MOCK,
-  LOAN_DETAIL_DISBURSING_OTHER_ACTIONS,
-  LOAN_DETAIL_MATURED_MOCK,
-  LOAN_DETAIL_WATCHLIST_MOCK,
+  DISBURSING_OTHER_ACTIONS,
+  MATURED_OTHER_ACTIONS,
+  MATURED_ROLLOVER_CARD,
+  PERFORMING_OTHER_ACTIONS,
+  WATCHLIST_CURRENT_STAGE,
+  WATCHLIST_OTHER_ACTIONS,
   type CurrentStage,
   type OtherActions,
   type RolloverCard,
   type SummaryTile,
-} from "./-loanDetailMock";
+} from "./-loanDetailStatic";
 import {
   useLoanCcrHistory,
   type UseLoanCcrHistoryResult,
@@ -79,7 +80,7 @@ export interface CcrThreshold {
 
 /**
  * The CCR-trend chart view-model (Watchlist variant), built from the real
- * `/ccr-history` series (#879) — replaces the fixed-geometry mock (#859).
+ * `/ccr-history` series (#879) — replaces the fixed-geometry fixture (#859).
  * `points` are the CCR percentages oldest → newest; the card derives the
  * polyline + a per-loan y-scale from them and the thresholds.
  */
@@ -746,7 +747,7 @@ export function buildCcrTrend(
 /**
  * Wires the loan-book row (hero + lifecycle), the per-loan valuation (Price &
  * collateral), and the per-loan financials (Registry state & derived) for
- * `loanId`, composed with the still-mock sections. The top-level `state` tracks
+ * `loanId`, composed with static action configuration. The top-level `state` tracks
  * the loan-book fetch (hero source); Price & collateral and Registry each carry
  * their own `state` so they load/error independently within the page.
  */
@@ -791,20 +792,17 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
   const tiles = buildSummaryTiles(entry, financials.data, variant);
   const otherActions =
     variant === "watchlist"
-      ? LOAN_DETAIL_WATCHLIST_MOCK.otherActions
+      ? WATCHLIST_OTHER_ACTIONS
       : variant === "matured"
-        ? LOAN_DETAIL_MATURED_MOCK.otherActions
+        ? MATURED_OTHER_ACTIONS
         : variant === "disbursing"
-          ? LOAN_DETAIL_DISBURSING_OTHER_ACTIONS
-          : LOAN_DETAIL_MOCK.otherActions;
+          ? DISBURSING_OTHER_ACTIONS
+          : PERFORMING_OTHER_ACTIONS;
   // Only the Watchlist variant renders a current-stage card (its escalation
   // copy). The Performing "on-ramp in transit" card was removed (#876);
   // Disbursing shows the disbursement-complete action, Matured the rollover
   // card. `null` for every non-watchlist variant.
-  const currentStage =
-    variant === "watchlist"
-      ? (LOAN_DETAIL_WATCHLIST_MOCK.currentStage ?? null)
-      : null;
+  const currentStage = variant === "watchlist" ? WATCHLIST_CURRENT_STAGE : null;
 
   return {
     state,
@@ -818,7 +816,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     otherActions,
     priceCollateral,
     ccrTrend: variant === "watchlist" ? buildCcrTrend(ccrHistory) : null,
-    rollover: variant === "matured" ? LOAN_DETAIL_MATURED_MOCK.rollover : null,
+    rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
   };
 }
