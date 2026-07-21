@@ -119,7 +119,7 @@ function makeResult(
       },
       {
         label: "Disbursing",
-        sub: "minted, not yet funded",
+        sub: "drawned, not yet funded",
         state: "done",
         index: 2,
       },

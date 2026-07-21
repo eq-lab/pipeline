@@ -334,7 +334,7 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
     },
     {
       label: "Disbursing",
-      sub: "minted, not yet funded",
+      sub: "drawned, not yet funded",
       index: 2,
       state: isDisbursing ? "active" : hasStatus ? "done" : "pending",
     },
