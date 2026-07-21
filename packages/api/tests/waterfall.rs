@@ -9,6 +9,7 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::waterfall::{build_response, compute_waterfall, WaterfallDoc};
+use shared::contract_logs_repo::EconomicsEventRow;
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
 use utoipa::OpenApi;
@@ -23,10 +24,37 @@ const ORIGINATION: i64 = 1_700_000_000;
 /// Exactly one 365-day year after origination — makes annualised carve-outs land on
 /// round figures (`tenor_years == 1`).
 const ONE_YEAR_LATER: i64 = ORIGINATION + 365 * 86_400;
+/// Exactly half a 365-day year after origination — the midpoint used by the
+/// rollover tests to split accrual across two epochs at round fractions.
+const HALF_YEAR_LATER: i64 = ORIGINATION + 365 * 86_400 / 2;
 
 /// A loan snapshot with a 1,000,000-base-unit senior tranche at a 12% (1200 bps)
-/// genesis coupon, `senior_principal_repaid` configurable.
+/// genesis coupon, `senior_principal_repaid` configurable and no other cumulative
+/// repayment recorded yet (first repayment). See `snapshot_with_repayment` for a
+/// second-repayment fixture with non-zero recorded interest/fees.
 fn snapshot(senior_tranche: &str, senior_repaid: &str, rate_bps: u32) -> LoanSnapshot {
+    snapshot_with_repayment(
+        senior_tranche,
+        RepaymentSnapshot {
+            offtaker_received: dec("0"),
+            senior_principal_repaid: dec(senior_repaid),
+            senior_interest: dec("0"),
+            equity_distributed: dec("0"),
+            mgmt_fee: dec("0"),
+            perf_fee: dec("0"),
+            oet_alloc: dec("0"),
+        },
+        rate_bps,
+    )
+}
+
+/// Like `snapshot` but with a fully custom `RepaymentSnapshot`, for tests that model a
+/// second (or later) repayment against cumulative counters already partly recorded.
+fn snapshot_with_repayment(
+    senior_tranche: &str,
+    repayment: RepaymentSnapshot,
+    rate_bps: u32,
+) -> LoanSnapshot {
     LoanSnapshot {
         originator: "0xorig".to_owned(),
         borrower_id: "borrower".to_owned(),
@@ -57,15 +85,7 @@ fn snapshot(senior_tranche: &str, senior_repaid: &str, rate_bps: u32) -> LoanSna
             updated_at: 0,
         },
         metadata_uri_onchain: String::new(),
-        repayment: RepaymentSnapshot {
-            offtaker_received: dec("0"),
-            senior_principal_repaid: dec(senior_repaid),
-            senior_interest: dec("0"),
-            equity_distributed: dec("0"),
-            mgmt_fee: dec("0"),
-            perf_fee: dec("0"),
-            oet_alloc: dec("0"),
-        },
+        repayment,
     }
 }
 
@@ -74,6 +94,17 @@ fn fees(mgmt: i32, perf: i32, oet: i32) -> FeeScheduleRow {
         mgmt_fee_rate_bps: mgmt,
         perf_fee_rate_bps: perf,
         oet_alloc_rate_bps: oet,
+    }
+}
+
+/// A `LoanRolledOver`/`EconomicsAmended` event. `new_rate` is the contract's
+/// 1e6-scaled fraction (`240_000` → 2400 bps = 24%), matching
+/// `ContractLogsRepo::list_loan_economics_events`.
+fn econ_event(name: &str, new_rate: i64, new_maturity: i64) -> EconomicsEventRow {
+    EconomicsEventRow {
+        event_name: name.to_owned(),
+        new_rate,
+        new_maturity_timestamp: new_maturity,
     }
 }
 
@@ -87,7 +118,7 @@ fn full_repayment_one_year_with_fees() {
     // Full payment amortises the whole 1,000,000 principal.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1125000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
     assert_eq!(b.senior_coupon_net, dec("88000"));
@@ -108,7 +139,7 @@ fn principal_capped_at_outstanding() {
     // most the 600,000 outstanding as principal.
     let s = snapshot("1000000", "400000", 1200);
     let amount = dec("1000000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("600000"));
 }
@@ -116,13 +147,60 @@ fn principal_capped_at_outstanding() {
 #[test]
 fn principal_capped_at_amount_on_partial() {
     // Only 500,000 arrives — less than outstanding principal alone. Principal returned is
-    // capped at min(amount, outstanding) = 500,000; fees still accrue on the full tranche.
+    // capped at min(amount, outstanding) = 500,000, which consumes the entire payment:
+    // senior principal is top priority in the waterfall cascade, so nothing is left for
+    // the fee/coupon buckets below it.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert_eq!(b.management_fee, dec("0"));
+    assert_eq!(b.senior_coupon_net, dec("0"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+}
+
+#[test]
+fn cascade_caps_lower_priority_buckets_on_partial_amount() {
+    // Full waterfall targets (senior 1,000,000 @ 12% for 1 year, fees 100/2000/50 bps):
+    // principal 1,000,000, mgmt fee 10,000, coupon 88,000, perf fee 22,000, oet 5,000.
+    // A 1,050,000 payment covers principal + mgmt fee in full, only 40,000 of the 88,000
+    // coupon target, and leaves nothing for performance fee or OET — the cascade drains
+    // top-down through the documented priority order (principal → mgmt fee → coupon →
+    // perf fee → OET) rather than reporting the full accrued fees regardless of `amount`.
+    let s = snapshot("1000000", "0", 1200);
+    let amount = dec("1050000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
     assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.senior_coupon_net, dec("40000"));
+    assert_eq!(b.performance_fee, dec("0"));
+    assert_eq!(b.oet_allocation, dec("0"));
+
+    // Cascade invariant: components never sum to more than the incoming amount.
+    let total = &b.senior_principal_returned
+        + &b.senior_coupon_net
+        + &b.management_fee
+        + &b.performance_fee
+        + &b.oet_allocation;
+    assert_eq!(total, amount);
+}
+
+#[test]
+fn cascade_zeroes_lowest_priority_bucket_at_the_boundary() {
+    // 1,120,000 exactly covers principal + mgmt fee + coupon + perf fee (1,000,000 +
+    // 10,000 + 88,000 + 22,000), leaving nothing for the lowest-priority bucket, OET.
+    let s = snapshot("1000000", "0", 1200);
+    let amount = dec("1120000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.senior_coupon_net, dec("88000"));
+    assert_eq!(b.performance_fee, dec("22000"));
+    assert_eq!(b.oet_allocation, dec("0"));
 }
 
 #[test]
@@ -131,7 +209,7 @@ fn fractional_amount_principal_truncated_to_whole_base_unit() {
     // min(amount, outstanding) is truncated toward zero like every other component.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000.9");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("500000"));
 }
@@ -142,7 +220,7 @@ fn zero_fee_schedule_routes_all_interest_to_coupon() {
     // (120,000) flows to the net senior coupon.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1120000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0), &[]).ok().unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("120000"));
     assert_eq!(b.management_fee, dec("0"));
@@ -155,7 +233,7 @@ fn zero_tenor_accrues_no_interest_or_fees() {
     // Repayment at origination → tenor 0 → no interest or fees; principal only.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1000000");
-    let b = compute_waterfall(&s, &amount, ORIGINATION, &fees(100, 2000, 50)).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ORIGINATION, &fees(100, 2000, 50), &[]).ok().unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("0"));
     assert_eq!(b.management_fee, dec("0"));
@@ -166,8 +244,129 @@ fn zero_tenor_accrues_no_interest_or_fees() {
 #[test]
 fn as_of_before_origination_is_rejected() {
     let s = snapshot("1000000", "0", 1200);
-    let err = compute_waterfall(&s, &dec("1000000"), ORIGINATION - 1, &fees(100, 2000, 50));
+    let err = compute_waterfall(&s, &dec("1000000"), ORIGINATION - 1, &fees(100, 2000, 50), &[]);
     assert!(err.is_err(), "as_of before origination must be a 400");
+}
+
+// ── Piecewise epochs (rollovers / rate changes) ─────────────────────────────────
+
+#[test]
+fn rollover_mid_tenor_applies_each_epoch_own_rate() {
+    // Genesis epoch: 12% (1200 bps), maturing at the half-year point. A LoanRolledOver
+    // there opens a new epoch at 24% (2400 bps, contract-scaled `240_000`) for the
+    // second half-year. Naively applying the genesis rate to the whole year would give
+    // 1,000,000 × 12% = 120,000; the piecewise sum instead gives
+    // (1,000,000 × 12% × 0.5) + (1,000,000 × 24% × 0.5) = 60,000 + 120,000 = 180,000.
+    let s = LoanSnapshot {
+        original_maturity_date: HALF_YEAR_LATER,
+        ..snapshot("1000000", "0", 1200)
+    };
+    let events = [econ_event("LoanRolledOver", 240_000, ONE_YEAR_LATER)];
+    let amount = dec("1180000"); // 1,000,000 principal + 180,000 gross interest, no fees.
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0), &events)
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.senior_coupon_net, dec("180000"));
+}
+
+#[test]
+fn as_of_within_first_epoch_ignores_a_later_rollover() {
+    // The same rollover as above, but `as_of` lands at the midpoint — before the
+    // rollover event's own `block_timestamp` cutoff would apply in the handler, and
+    // squarely inside epoch 1. Only the genesis rate should accrue:
+    // 1,000,000 × 12% × 0.5 = 60,000.
+    let s = LoanSnapshot {
+        original_maturity_date: HALF_YEAR_LATER,
+        ..snapshot("1000000", "0", 1200)
+    };
+    let events = [econ_event("LoanRolledOver", 240_000, ONE_YEAR_LATER)];
+    let amount = dec("1060000");
+    let b = compute_waterfall(&s, &amount, HALF_YEAR_LATER, &fees(0, 0, 0), &events)
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_coupon_net, dec("60000"));
+}
+
+#[test]
+fn past_maturity_without_rollover_stops_accruing() {
+    // No rollover recorded. `as_of` is two years past origination — a full year past
+    // the genesis epoch's maturity. Interest still caps at the epoch's own maturity
+    // (1,000,000 × 12% × 1 year = 120,000), matching the on-chain ceiling rather than
+    // continuing to accrue over the full origination→as_of span.
+    let s = snapshot("1000000", "0", 1200);
+    let two_years_later = ORIGINATION + 2 * 365 * 86_400;
+    let amount = dec("1120000");
+    let b = compute_waterfall(&s, &amount, two_years_later, &fees(0, 0, 0), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_coupon_net, dec("120000"));
+}
+
+// ── Second+ repayment: netting out amounts already recorded ────────────────────
+
+#[test]
+fn second_repayment_nets_out_amounts_already_recorded() {
+    // Same full-year targets as `full_repayment_one_year_with_fees` (gross interest
+    // 120,000; mgmt 10,000; perf 22,000; coupon 88,000; oet 5,000), but this snapshot
+    // already carries a first repayment's cumulative counters: 300,000 principal,
+    // 4,000 mgmt fee, 8,000 perf fee, 30,000 net coupon, 2,000 OET recorded. The
+    // waterfall for a *second* repayment must return only what's newly due:
+    // outstanding principal 700,000, mgmt 6,000, coupon 58,000, perf 14,000, oet 3,000.
+    let s = snapshot_with_repayment(
+        "1000000",
+        RepaymentSnapshot {
+            offtaker_received: dec("0"),
+            senior_principal_repaid: dec("300000"),
+            senior_interest: dec("30000"),
+            equity_distributed: dec("0"),
+            mgmt_fee: dec("4000"),
+            perf_fee: dec("8000"),
+            oet_alloc: dec("2000"),
+        },
+        1200,
+    );
+    // 700,000 outstanding principal + 6,000 + 58,000 + 14,000 + 3,000 = 781,000: a full
+    // payment of everything still owed, so no cascade shortfall shrinks any bucket.
+    let amount = dec("781000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("700000"));
+    assert_eq!(b.management_fee, dec("6000"));
+    assert_eq!(b.senior_coupon_net, dec("58000"));
+    assert_eq!(b.performance_fee, dec("14000"));
+    assert_eq!(b.oet_allocation, dec("3000"));
+}
+
+#[test]
+fn already_recorded_amount_exceeding_the_target_clamps_to_zero() {
+    // A prior manual Trustee override recorded more management fee (15,000) than the
+    // freshly computed cumulative target (10,000) — e.g. a negotiated adjustment. The
+    // "still owed" figure must clamp at 0, not go negative.
+    let s = snapshot_with_repayment(
+        "1000000",
+        RepaymentSnapshot {
+            offtaker_received: dec("0"),
+            senior_principal_repaid: dec("0"),
+            senior_interest: dec("0"),
+            equity_distributed: dec("0"),
+            mgmt_fee: dec("15000"),
+            perf_fee: dec("0"),
+            oet_alloc: dec("0"),
+        },
+        1200,
+    );
+    let amount = dec("1000000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.management_fee, dec("0"));
 }
 
 // ── build_response ───────────────────────────────────────────────────────────
@@ -177,7 +376,7 @@ fn response_maps_the_four_components() {
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[]).ok().unwrap();
     let resp = build_response(&b);
 
     assert_eq!(resp.senior_principal_returned, "1000000");

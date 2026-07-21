@@ -298,6 +298,81 @@ impl ContractLogsRepo {
         Ok(result)
     }
 
+    /// The loan's snapshot as of `as_of`, scoped to a single `loan_id`.
+    ///
+    /// Unlike `list_latest_loan_snapshots_for_chain`, this also matches the genesis
+    /// `LoanDrawn` row when no event has `block_timestamp <= as_of` yet. The immutable
+    /// `origination_date` field written at `LoanDrawn` is supplied by whoever built the
+    /// draw payload and can predate the draw transaction's actual `block_timestamp` (e.g.
+    /// it reflects when the trade-finance facility commercially started). Without this
+    /// fallback, an `as_of` in `[origination_date, block_timestamp)` finds no row at all —
+    /// even though the loan's state at that instant is well-defined (nothing on-chain has
+    /// happened yet, so it's exactly the genesis state). Callers still need to check
+    /// `as_of >= origination_date` themselves for the case where `as_of` truly precedes
+    /// origination.
+    pub async fn get_loan_snapshot_as_of<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+        as_of: i64,
+    ) -> anyhow::Result<Option<LoanSnapshotRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let row = sqlx::query(
+            "SELECT chain_id,
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_number,
+                 log_index::bigint AS log_index,
+                 event_name,
+                 block_timestamp,
+                 params->'snapshot' AS snapshot
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND (params->>'loan_id')::numeric = $2
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND (block_timestamp <= $3 OR event_name = 'LoanDrawn')
+             ORDER BY block_number DESC, log_index DESC
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .bind(as_of)
+        .fetch_optional(executor)
+        .await?;
+
+        match row {
+            None => Ok(None),
+            Some(row) => {
+                use sqlx::Row;
+                let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
+                let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+                let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
+                Ok(Some(LoanSnapshotRow {
+                    chain_id: row.try_get("chain_id")?,
+                    loan_id: loan_id_decimal,
+                    block_number: row.try_get("block_number")?,
+                    log_index: row.try_get("log_index")?,
+                    event_name: row.try_get("event_name")?,
+                    block_timestamp: row.try_get("block_timestamp")?,
+                    snapshot,
+                }))
+            }
+        }
+    }
+
     /// Latest on-chain `status` for each of `loan_ids` on `chain_id`, as
     /// `(loan_id, status)` pairs. The "latest" snapshot per loan wins (same ordering as
     /// `list_latest_loan_snapshots_for_chain`). Loans with no indexed events are simply
@@ -570,11 +645,15 @@ impl ContractLogsRepo {
     /// indexer emits — the parser tests in `packages/worker/tests/` lock that
     /// shape. `COALESCE(…, 0)` guards a malformed row missing either field so a
     /// NULL cannot fail-decode the whole query.
+    /// `to_unix` bounds the events to `block_timestamp <= to_unix` so a caller
+    /// reconstructing the epoch timeline as of a past instant (e.g. a backdated
+    /// waterfall repayment) doesn't see a rollover/amendment that happened later.
     pub async fn list_loan_economics_events<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
         loan_id: &BigDecimal,
+        to_unix: i64,
     ) -> anyhow::Result<Vec<EconomicsEventRow>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
@@ -589,10 +668,12 @@ impl ContractLogsRepo {
              WHERE chain_id = $1
                AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
                AND (params->>'loan_id')::numeric = $2
+               AND block_timestamp <= $3
              ORDER BY block_number, log_index",
         )
         .bind(chain_id)
         .bind(loan_id)
+        .bind(to_unix)
         .fetch_all(executor)
         .await?;
         Ok(rows)

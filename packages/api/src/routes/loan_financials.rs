@@ -27,6 +27,7 @@ use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{EconomicsEventRow, LoanSnapshotRow};
+use shared::loan_economics::build_epochs;
 use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
@@ -35,16 +36,6 @@ use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::routes::loan_book::display_status;
 use crate::AppState;
-
-/// Basis points per 100% (`10_000` bps = 100%). Matches `routes::loan_book::BPS_DENOM`.
-const BPS_DENOM: i64 = 10_000;
-
-/// The LoanRegistry contract's fixed-point `ONE` (= 100%). Economics-event rates
-/// (`LoanRolledOver` / `EconomicsAmended` `new_rate`) are scaled by 1e6, so
-/// `new_rate / 100` is bps (`150_000` → `1_500` bps = 15%). This is a *different
-/// scale* from the snapshot's bps origination rate — see `current_epoch`, which
-/// normalises event rates to bps on fold.
-const ECONOMICS_RATE_ONE: i64 = 1_000_000;
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
@@ -180,7 +171,7 @@ async fn get_loan_financials(
 
     let economics_events = state
         .contract_logs_repo
-        .list_loan_economics_events(&state.pool, chain_id, &loan_id)
+        .list_loan_economics_events(&state.pool, chain_id, &loan_id, now)
         .await?;
 
     // USDC off-ramp completion, for the `Disbursing` status override. Absent → false.
@@ -244,51 +235,26 @@ pub fn build_response(
     }
 }
 
-/// Fold the ordered economics events onto epoch 1 (seeded from origination data)
-/// and project the resulting current epoch.
-///
-/// `LoanRolledOver` advances the ordinal and opens a new window starting at the
-/// prior maturity; `EconomicsAmended` overwrites the current window's rate and
-/// maturity without advancing the ordinal (per the loan-epoch model in the module
-/// docs). `events` must be ordered by `(block_number, log_index)`.
+/// Project the resulting current epoch from the full epoch timeline (see
+/// `shared::loan_economics::build_epochs` for the fold rule). The ordinal is the
+/// epoch's 1-based position in the timeline.
 fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
-    let mut number: u32 = 1;
-    let mut start = s.origination_date;
-    let mut maturity = s.original_maturity_date;
-    // Current rate in bps. The origination rate is already bps; event rates are
-    // the contract's 1e6-scaled fraction, normalised to bps on fold so the two
-    // scales are never mixed.
-    let mut rate_bps = s.senior_interest_rate_bps;
-
-    for e in events {
-        match e.event_name.as_str() {
-            "LoanRolledOver" => {
-                number += 1;
-                start = maturity;
-                maturity = e.new_maturity_timestamp;
-                rate_bps = economics_rate_to_bps(e.new_rate);
-            }
-            "EconomicsAmended" => {
-                maturity = e.new_maturity_timestamp;
-                rate_bps = economics_rate_to_bps(e.new_rate);
-            }
-            _ => {}
-        }
-    }
+    let epochs = build_epochs(
+        s.origination_date,
+        s.original_maturity_date,
+        s.senior_interest_rate_bps,
+        events,
+    );
+    // `build_epochs` always seeds at least epoch 1 — never empty.
+    let number = epochs.len() as u32;
+    let current = epochs.last().expect("build_epochs always seeds epoch 1");
 
     EpochView {
         number,
-        current_apy_bps: rate_bps,
-        start_date: iso_utc_from_unix(start),
-        maturity_date: iso_utc_from_unix(maturity),
+        current_apy_bps: current.rate_bps,
+        start_date: iso_utc_from_unix(current.start),
+        maturity_date: iso_utc_from_unix(current.maturity),
     }
-}
-
-/// Contract-1e6-scaled event rate → bps: `new_rate × 10_000 / 1_000_000 = new_rate / 100`,
-/// rounded half-up (`150_000` → `1_500` bps = 15%).
-fn economics_rate_to_bps(new_rate: i64) -> u32 {
-    let bps = (new_rate * BPS_DENOM + ECONOMICS_RATE_ONE / 2) / ECONOMICS_RATE_ONE;
-    bps as u32
 }
 
 /// Project `current_location` to a `LocationView`, or `None` when no location has
