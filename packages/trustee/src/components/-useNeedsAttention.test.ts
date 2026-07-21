@@ -166,6 +166,7 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     commodity: "Lithium",
     principal: "0",
     senior_outstanding: "0",
+    original_senior_tranche: "0",
     maturity: 1_782_777_600,
     ccr_reported_at: 0,
     spot_price: null,
@@ -177,6 +178,10 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "WatchList",
+    repaid_to_date: "0",
+    disbursed: true,
+    days_on_watchlist: 18,
+    watchlist_entered_at: 1_781_222_400,
     ...overrides,
   };
 }

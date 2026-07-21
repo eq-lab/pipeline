@@ -128,6 +128,11 @@ export interface LoanBookEntry {
    * scale ×1000.** Backs the **Senior outst.** column.
    */
   senior_outstanding: string;
+  /**
+   * Original senior tranche, USDC base-6 decimal string. **Registry-sourced ⇒
+   * scale ×1000.** Backs the loan-detail **Facility / senior** tile.
+   */
+  original_senior_tranche: string;
   /** Rollover-aware maturity, Unix seconds. Backs the **Maturity** column. */
   maturity: number;
   /**
@@ -176,6 +181,23 @@ export interface LoanBookEntry {
   protection: string | null;
   /** Loan status from the latest snapshot: `"Performing"`, `"WatchList"`, `"Default"`, `"Closed"`, … */
   status: string;
+  /**
+   * Cumulative offtaker cash received to date, USDC base-6 decimal string.
+   * **Registry-sourced ⇒ scale ×1000.** Backs the loan-detail **Repaid to date** tile.
+   */
+  repaid_to_date: string;
+  /**
+   * Whether the loan's USDC off-ramp has completed. Backs the loan-detail
+   * **Facility / disbursed** tile; there is no partial-disbursement amount.
+   */
+  disbursed: boolean;
+  /**
+   * Days since the latest WatchList transition, or `null` unless the loan is
+   * currently watchlisted and the backend found the transition event.
+   */
+  days_on_watchlist: number | null;
+  /** Unix timestamp of the WatchList transition used for `days_on_watchlist`. */
+  watchlist_entered_at: number | null;
 }
 
 /** Shape of the `GET /v1/loan-book` response (post-#833/#834). */

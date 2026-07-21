@@ -7,13 +7,13 @@
  *
  * Asserts the live hero (identity + band chip), the live Price & collateral card
  * (provider note, two-tone spot, rows, `missing_inputs` note, plus its own
- * loading / error states), the still-mock sections, the back link, and the
+ * loading / error states), the static action sections, the back link, and the
  * top-level loading / error states.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
-import { LOAN_DETAIL_MOCK } from "./-loanDetailMock";
+import { PERFORMING_OTHER_ACTIONS } from "./-loanDetailStatic";
 
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", async () => {
@@ -131,7 +131,26 @@ function makeResult(
       },
       { label: "Closed", sub: "terminal", state: "pending", index: 4 },
     ],
-    tiles: LOAN_DETAIL_MOCK.tiles,
+    tiles: [
+      {
+        label: "Facility / disbursed",
+        value: "$4.8M / $3.96M",
+        sub: "funded",
+        subTone: "positive",
+      },
+      {
+        label: "Repaid to date",
+        value: "$6.3M",
+        sub: "offtaker received",
+        subTone: "muted",
+      },
+      {
+        label: "Interest to distribute",
+        value: "$115.5K",
+        sub: "not minted yield",
+        subTone: "attention",
+      },
+    ],
     registry: {
       state: "ready",
       errorMessage: null,
@@ -158,7 +177,7 @@ function makeResult(
       ],
     },
     currentStage: null,
-    otherActions: LOAN_DETAIL_MOCK.otherActions,
+    otherActions: PERFORMING_OTHER_ACTIONS,
     priceCollateral: {
       state: "ready",
       errorMessage: null,
@@ -381,7 +400,7 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   });
 });
 
-describe("Loan detail route — still-mock sections", () => {
+describe("Loan detail route — static action sections", () => {
   it("renders the 4-node spine and NOT risk states as steps (#854)", () => {
     renderRoute();
     const lifecycle = screen.getByTestId("loan-detail-lifecycle");
@@ -405,7 +424,7 @@ describe("Loan detail route — still-mock sections", () => {
 
   it("does NOT render a current-stage card on a performing loan (#876)", () => {
     renderRoute();
-    // The mock "on-ramp in transit" current-stage card was removed from the
+    // The old "on-ramp in transit" current-stage card was removed from the
     // Performing layout (#876); only the Watchlist variant renders one now.
     expect(
       screen.queryByTestId("loan-detail-current-stage"),
@@ -415,7 +434,7 @@ describe("Loan detail route — still-mock sections", () => {
   it("renders the Other actions buttons + timelock note", () => {
     renderRoute();
     const actions = screen.getByTestId("loan-detail-other-actions");
-    for (const label of LOAN_DETAIL_MOCK.otherActions.actions) {
+    for (const label of PERFORMING_OTHER_ACTIONS.actions) {
       expect(
         within(actions).getByRole("button", { name: label }),
       ).toBeInTheDocument();
@@ -528,7 +547,7 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     });
   }
 
-  it("renders the 'Next Step' card instead of the mock current-stage card", () => {
+  it("renders the 'Next Step' card instead of a current-stage card", () => {
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
     const card = screen.getByTestId("loan-detail-disbursement");

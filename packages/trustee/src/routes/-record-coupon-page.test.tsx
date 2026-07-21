@@ -117,6 +117,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       // Registry-sourced (#840): 1840.000000 on the wire ⇒ ×1000 ⇒ $1,840,000.
       principal: "2200.000000",
       senior_outstanding: "1840.000000",
+      original_senior_tranche: "1840.000000",
       maturity: 1_782_777_600,
       ccr_reported_at: 0,
       spot_price: "10450",
@@ -128,6 +129,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      repaid_to_date: "0.000000",
+      disbursed: true,
+      days_on_watchlist: null,
+      watchlist_entered_at: null,
     },
   ],
 };

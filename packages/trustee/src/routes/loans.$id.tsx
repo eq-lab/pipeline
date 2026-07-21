@@ -20,7 +20,7 @@ import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
-} from "./-loanDetailMock";
+} from "./-loanDetailStatic";
 
 /**
  * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
@@ -42,8 +42,8 @@ import {
  *     (Figma node `4116:10969`, #866). The served `Past Due` status maps here.
  * Shared live sections render in both: Hero + status chip (loan-book row), Price
  * & collateral (`/valuations`), Registry (`/financials`, performing only).
- * Watchlist-only sections with no backend source (CCR-trend series, tiles copy,
- * escalation copy) are mock until an endpoint lands. Action buttons are inert.
+ * Watchlist CCR trend and summary tiles are live; action labels and explanatory
+ * copy are static product configuration unless a branch opens a wired flow below.
  *
  * ## Figma → token / px map
  *   - `‹ Loans` `Besley 18px / #262524`; title `Besley 44px`; both ink.
@@ -766,9 +766,8 @@ function DisbursementConfirmDialog({
 /**
  * The Matured "rollover" card (Figma `4116:10969`, right column). The title
  * interpolates the loan's live maturity date; the `rollover available` tag is an
- * olive/attention pill. The "Roll over →" button is **inert** for now — the S9
- * rollover flow / backend endpoint doesn't exist yet (#866 / #867), so this is a
- * visual placeholder like the other mock action buttons.
+ * olive/attention pill. The "Roll over →" button opens the wired rollover
+ * confirmation flow (#870).
  */
 function MaturedRolloverCard({
   rollover,
@@ -1216,16 +1215,7 @@ function UpdateLifecycleDialog({
   );
 }
 
-// ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
-
-/**
- * CCR-trend line chart (Figma node `4116:10868`, Watchlist variant). Mock — no
- * CCR time-series endpoint feeds this page yet (#859); the geometry is a fixed
- * representative decline and the labels come from the mock fixture. Two dashed
- * red guide lines (120% / 110%), a solid red trend line ending in a dot below
- * the 120% threshold, plus the start caption. viewBox is 440×124 (the Figma SVG
- * box) and scales to the card width.
- */
+// ── CCR trend (Watchlist variant) ────────────────────────────────────────────
 /**
  * CCR-trend line chart (Watchlist variant, Figma node `4116:10868`), drawn from
  * the real `/ccr-history` series (#879). The y-scale is per-loan: it spans the
