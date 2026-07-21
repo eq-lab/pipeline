@@ -178,7 +178,7 @@ const MISSING_FIELD_ROW: OriginationTableRow = {
   rate: "—",
   maturity: "—",
   submitted: "—",
-  status: { kind: "unknown", label: "—" },
+  status: { kind: "approved", label: "Approved · —" },
   submission: { ...SUBMISSION, id: 4 },
 };
 
@@ -312,8 +312,8 @@ describe("Origination route", () => {
     renderRoute();
     const row = await screen.findByTestId("origination-row");
     expect(row.textContent).toContain("—");
-    expect(screen.getByTestId("origination-status-unknown")).toHaveTextContent(
-      "—",
+    expect(screen.getByTestId("origination-status-approved")).toHaveTextContent(
+      "Approved · —",
     );
   });
 

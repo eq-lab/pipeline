@@ -40,8 +40,8 @@ import { ApproveMintDialog } from "./-ApproveMintDialog";
  * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
  *
  * The always-shown `ActionButtons` block below is now rendered only for
- * `InReview` (and any unknown status, as a safe fallback). `Approved` and
- * `Rejected` submissions instead render a colored banner in its place:
+ * `InReview`. `Approved` and `Rejected` submissions instead render a colored
+ * banner in its place:
  *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
  *     "Approved & minted · `<date>`" (restored by #831 — see below). The
  *     Figma's "funded from batch #B-102 →" segment is OMITTED — no `batch`
@@ -446,7 +446,8 @@ function DetailFooter({
   if (statusKind === "rejected") {
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
   }
-  // InReview and unknown both fall back to the (now wired) action buttons.
+  // Only InReview falls back to the (now wired) action buttons. Backend
+  // merged/lifecycle statuses normalize to Approved in the presenter (#892).
   return (
     <ActionButtons
       onApprove={onApprove}

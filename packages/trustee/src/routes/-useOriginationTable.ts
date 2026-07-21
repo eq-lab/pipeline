@@ -45,8 +45,10 @@
  *       this is a Figma-shape placeholder, not a wired action).
  *     - `Rejected`  → red "Rejected" pill; `reason` (if present) is exposed
  *       for the view to show as a tooltip/title on hover.
- *     - Any other/unknown status string → rendered as a neutral fallback
- *       label (the status string itself, or "—" if empty) — never crashes.
+ *     - Any other backend merged/lifecycle status string → displayed as
+ *       `Approved` (issue #892): for Origination, a lifecycle status means the
+ *       request was approved and minted, then moved into its future loan
+ *       lifecycle. Origination keeps only the decision vocabulary.
  *
  * Every field is read defensively: `loan_data` is `serde_json::Value` on the
  * wire (declared as `SubmitLoanRequest` for convenience, but not guaranteed
@@ -54,7 +56,10 @@
  * than fabricating or throwing. See TD-42 (`docs/exec-plans/tech-debt-tracker.md`)
  * for the trustee↔LP extractor duplication this creates.
  */
-import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import {
+  normalizeOriginationSubmissionStatus,
+  useLoanSubmissions,
+} from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
@@ -65,8 +70,7 @@ import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 export type OriginationRowStatus =
   | { kind: "approved"; label: string }
   | { kind: "in-review"; label: string }
-  | { kind: "rejected"; label: string; reason: string | null }
-  | { kind: "unknown"; label: string };
+  | { kind: "rejected"; label: string; reason: string | null };
 
 /** One formatted, display-ready row of the Origination submissions table. */
 export interface OriginationTableRow {
@@ -110,7 +114,7 @@ function safeNumber(value: unknown): number | undefined {
 }
 
 function resolveStatus(submission: SubmissionView): OriginationRowStatus {
-  switch (submission.status) {
+  switch (normalizeOriginationSubmissionStatus(submission.status)) {
     case "Approved":
       // "Approved" only (NOT "Approved & minted") — deliberately kept short
       // in this compact table pill even after #831's real on-chain mint;
@@ -126,11 +130,6 @@ function resolveStatus(submission: SubmissionView): OriginationRowStatus {
         kind: "rejected",
         label: "Rejected",
         reason: submission.reason ?? null,
-      };
-    default:
-      return {
-        kind: "unknown",
-        label: safeString(submission.status),
       };
   }
 }

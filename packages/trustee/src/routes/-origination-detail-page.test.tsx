@@ -19,9 +19,9 @@
  * pending the real mint, #831 shipped it) and NO "funded from batch" text —
  * that segment is deliberately omitted, no backing field; Rejected renders
  * the red "Rejected · <date> — <reason>" banner; both banner cases assert
- * the action buttons are ABSENT. An unknown status falls back to the
- * InReview footer. The inert "Request changes" button (issue #838) no
- * longer exists at all.
+ * the action buttons are ABSENT. Backend merged/lifecycle statuses normalize
+ * to Approved in the presenter (#892). The inert "Request changes" button
+ * (issue #838) no longer exists at all.
  *
  * Approve/Reject wiring (issue #829, extended by #831, gated behind
  * confirmation dialogs by #838): `useOriginationReview` is mocked (like
@@ -410,24 +410,22 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("unknown status: falls back to the InReview action-buttons footer", () => {
+    it("backend lifecycle status: renders the Approved banner, not action buttons (#892)", () => {
       mockDetail({
         ...READY_RESULT,
-        statusChip: { kind: "unknown", label: "—" },
-        statusKind: "unknown",
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
       });
       renderRoute();
       expect(
-        screen.getByTestId("origination-detail-reject"),
-      ).toBeInTheDocument();
+        screen.getByTestId("origination-detail-approved-banner"),
+      ).toHaveTextContent("Approved & drawn · 2 Jan");
       expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("origination-detail-approved-banner"),
+        screen.queryByTestId("origination-detail-reject"),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId("origination-detail-rejected-banner"),
+        screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
     });
   });

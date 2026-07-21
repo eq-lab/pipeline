@@ -10,7 +10,8 @@
  *   - Missing/malformed `loan_data` fields degrade to "—"/omitted segments,
  *     never fabricated, never throwing.
  *   - `state` derivation: loading/error/empty/ready.
- *   - Non-InReview submissions (if any slip through) are excluded.
+ *   - Non-InReview submissions, including backend merged/lifecycle statuses,
+ *     are excluded.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
@@ -314,6 +315,22 @@ describe("useNeedsAttention", () => {
     });
     const { result } = renderHook(() => useNeedsAttention());
     expect(result.current.state).toBe("empty");
+  });
+
+  it("does not treat backend lifecycle statuses as actionable Origination work (#892)", () => {
+    const lifecycleSubmission: SubmissionView = {
+      ...IN_REVIEW_SUBMISSION,
+      status: "WatchList",
+    };
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [lifecycleSubmission],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.state).toBe("empty");
+    expect(result.current.rows).toEqual([]);
   });
 
   it("surfaces Watchlist + Matured loans as Loans-group rows, excluding others (#867)", () => {

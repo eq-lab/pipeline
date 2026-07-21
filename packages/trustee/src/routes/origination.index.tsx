@@ -26,7 +26,9 @@ import {
  *     minted on-chain until the separate blocked issue #831 ships);
  *     `InReview` → a "Review" control that navigates to `/origination/$id`
  *     (issue #821), passing the row's `SubmissionView` as router state;
- *     `Rejected` → red "Rejected" pill with `reason` on hover.
+ *     `Rejected` → red "Rejected" pill with `reason` on hover. Backend
+ *     merged/lifecycle statuses are normalized to the Approved pill before
+ *     they reach this render layer (issue #892).
  *   - The Figma static footer note ("The document set adapts to the
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
@@ -198,15 +200,6 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
           className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(192,57,43,0.3)] bg-[rgba(192,57,43,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[color:var(--color-pipeline-negative)]"
           data-testid="origination-status-rejected"
           title={status.reason ?? undefined}
-        >
-          {status.label}
-        </span>
-      );
-    default:
-      return (
-        <span
-          className="font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-ink-muted)]"
-          data-testid="origination-status-unknown"
         >
           {status.label}
         </span>
