@@ -1,6 +1,6 @@
 //! Pluggable USD price providers for loan-collateral assets.
 //!
-//! Each loan in `loan_parameters` names a `price_provider` key; the
+//! Each loan's collateral-valuation anchor names a `price_provider` key; the
 //! `asset_price_collector` worker job resolves that key to an
 //! `Arc<dyn PriceProvider>` via [`price_provider_for`] and uses it to fetch both
 //! the current price and historical backfill points. Mirrors the existing trait
@@ -43,7 +43,7 @@ pub const STATIC_PROVIDER_KEY: &str = "static";
 /// [`MetalPricePriceProvider`](crate::metal_price::MetalPricePriceProvider).
 pub const METALPRICE_PROVIDER_KEY: &str = "metal_price";
 
-/// Resolve a `price_provider` string key (as stored in `loan_parameters`) to a
+/// Resolve a `price_provider` string key (as stored on the collateral-valuation anchor) to a
 /// concrete provider. Returns an error for unknown keys — and for providers whose
 /// configuration is missing (e.g. an unset API key) — so the caller can log and
 /// skip the affected asset.

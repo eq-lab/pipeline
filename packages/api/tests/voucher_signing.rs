@@ -68,7 +68,17 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         elliptic_enabled: false,
         auth_user_repo: shared::auth_user_repo::AuthUserRepo::new(pool.clone()),
         submitted_loan_repo: shared::submitted_loan_repo::SubmittedLoanRepo::new(pool.clone()),
-        loan_parameters_repo: shared::loan_parameters_repo::LoanParametersRepo::new(pool.clone()),
+        loan_metadata_fetcher: std::sync::Arc::new(
+            shared::loan_metadata::HttpLoanMetadataFetcher::new(
+                shared::metadata_fetcher::MetadataFetcher::new(
+                    reqwest::Client::new(),
+                    "https://ipfs.io/ipfs/".to_owned(),
+                ),
+            ),
+        ),
+        loan_fee_schedule_repo: shared::loan_fee_schedule_repo::LoanFeeScheduleRepo::new(
+            pool.clone(),
+        ),
         loan_asset_price_repo: shared::loan_asset_price_repo::LoanAssetPriceRepo::new(pool.clone()),
         collateral_valuation_repo: shared::collateral_valuation_repo::CollateralValuationRepo::new(
             pool.clone(),

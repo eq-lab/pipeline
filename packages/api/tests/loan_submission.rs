@@ -2,10 +2,13 @@
 //! resolution, status round-trip, and payload serde. Pure — no HTTP/DB layer
 //! (matches the project-wide convention: all tests in `tests/`, no live Postgres).
 
+use async_trait::async_trait;
 use pipeline_api::routes::loan_book::{
-    extract_documents, resolve_review, validate_submission, EconomicsInput, LoanDocumentDto,
-    LocationInput, ReviewDecision, ReviewRequest, SubmitLoanRequest,
+    extract_documents, resolve_review, validate_metadata_uri, validate_submission,
+    CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanDocumentDto, LocationInput,
+    ReviewDecision, ReviewRequest, SubmitLoanRequest,
 };
+use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
 use shared::submitted_loan_repo::SubmissionStatus;
 
 fn valid_request() -> SubmitLoanRequest {
@@ -35,6 +38,17 @@ fn valid_request() -> SubmitLoanRequest {
             location_identifier: "WH-1".to_owned(),
             tracking_url: "https://track.example.com/WH-1".to_owned(),
             updated_at: 1_700_000_000,
+        },
+        collateral_valuation: CollateralValuationInput {
+            valuation_mode: "StandardGoods".to_owned(),
+            asset: "XCU".to_owned(),
+            price_provider: "LME".to_owned(),
+            haircut_pct: "0.20".to_owned(),
+        },
+        fee_schedule: FeeScheduleInput {
+            mgmt_fee_rate_bps: 50,
+            perf_fee_rate_bps: 2000,
+            oet_alloc_rate_bps: 10,
         },
     }
 }
@@ -112,6 +126,54 @@ fn non_decimal_amount_is_rejected() {
     let mut r = valid_request();
     r.economics.original_facility_size = "not-a-number".to_owned();
     assert!(validate_submission(&r).is_err());
+}
+
+#[test]
+fn unknown_valuation_mode_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.valuation_mode = "Moon".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("valuation_mode"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_above_one_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "1.01".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("haircut_pct"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_below_zero_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "-0.01".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("haircut_pct"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_bounds_are_allowed() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "0".to_owned();
+    assert!(validate_submission(&r).is_ok());
+    r.collateral_valuation.haircut_pct = "1".to_owned();
+    assert!(validate_submission(&r).is_ok());
+}
+
+#[test]
+fn perf_fee_rate_above_10000_bps_is_rejected() {
+    let mut r = valid_request();
+    r.fee_schedule.perf_fee_rate_bps = 10_001;
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("perf_fee_rate_bps"), "unexpected error: {err}");
+}
+
+#[test]
+fn perf_fee_rate_at_10000_bps_is_allowed() {
+    let mut r = valid_request();
+    r.fee_schedule.perf_fee_rate_bps = 10_000;
+    assert!(validate_submission(&r).is_ok());
 }
 
 // ── resolve_review ───────────────────────────────────────────────────────────
@@ -229,6 +291,17 @@ fn submit_request_defaults_optional_fields() {
             "location_identifier": "V-1",
             "tracking_url": "https://track/V-1",
             "updated_at": 1_700_000_000_u64
+        },
+        "collateral_valuation": {
+            "valuation_mode": "StandardGoods",
+            "asset": "XCU",
+            "price_provider": "LME",
+            "haircut_pct": "0.20"
+        },
+        "fee_schedule": {
+            "mgmt_fee_rate_bps": 50,
+            "perf_fee_rate_bps": 2000,
+            "oet_alloc_rate_bps": 10
         }
     });
     let req: SubmitLoanRequest = serde_json::from_value(json).expect("deserialize");
@@ -275,4 +348,85 @@ fn documents_round_trip_from_submit_request_to_view() {
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].name, "Agreement");
     assert_eq!(docs[0].uri, "ipfs://QmA");
+}
+
+// ── metadata_uri validation ──────────────────────────────────────────────────
+
+/// Stand-in for the HTTP metadata fetch. `ok` returns a valid `LoanMetadataJson`;
+/// otherwise it errors, simulating a 404 / non-JSON / unknown-field document.
+struct MockFetcher {
+    ok: bool,
+}
+
+#[async_trait]
+impl LoanMetadataFetcher for MockFetcher {
+    async fn fetch_metadata(&self, _uri: &str) -> anyhow::Result<LoanMetadataJson> {
+        if self.ok {
+            Ok(serde_json::from_value(serde_json::json!({
+                "originator": "Open Mineral",
+                "borrowerId": "BRW-1",
+                "commodity": "Copper Concentrate",
+                "corridor": "PE-CN",
+                "governingLaw": "EN"
+            }))
+            .expect("valid LoanMetadataJson fixture"))
+        } else {
+            Err(anyhow::anyhow!("HTTP 404 from gateway"))
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_uri_resolving_to_valid_document_passes() {
+    let fetcher = MockFetcher { ok: true };
+    assert!(validate_metadata_uri(&fetcher, "ipfs://Qm_doc")
+        .await
+        .is_ok());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn metadata_uri_fetch_failure_is_rejected() {
+    let fetcher = MockFetcher { ok: false };
+    let err = validate_metadata_uri(&fetcher, "ipfs://Qm_bad")
+        .await
+        .unwrap_err();
+    assert!(err.contains("metadata_uri"), "unexpected error: {err}");
+}
+
+// ── LoanMetadataJson contract (shared type the indexer parses) ────────────────
+
+#[test]
+fn loan_metadata_json_parses_indexer_shape() {
+    // The full document shape the indexer accepts (camelCase keys, optional fields).
+    let json = serde_json::json!({
+        "originator": "Open Mineral",
+        "borrowerId": "BRW-1",
+        "commodity": "Copper Concentrate",
+        "corridor": "PE-CN",
+        "governingLaw": "EN",
+        "protection": "LC at sight",
+        "metadataURI": "ipfs://secondary",
+        "documents": [{ "name": "Agreement", "uri": "ipfs://QmA" }]
+    });
+    let doc: LoanMetadataJson = serde_json::from_value(json).expect("parse");
+    assert_eq!(doc.borrower_id, "BRW-1");
+    assert_eq!(doc.governing_law, "EN");
+    assert_eq!(doc.protection, "LC at sight");
+    assert_eq!(doc.metadata_uri.as_deref(), Some("ipfs://secondary"));
+    assert_eq!(doc.documents.len(), 1);
+}
+
+#[test]
+fn loan_metadata_json_rejects_unknown_field() {
+    // `deny_unknown_fields` — a document with an extra key must fail (this is exactly
+    // the class of failure the submission-time check is meant to catch early).
+    let json = serde_json::json!({
+        "originator": "O",
+        "borrowerId": "B",
+        "commodity": "C",
+        "corridor": "X-Y",
+        "governingLaw": "EN",
+        "surpriseField": "nope"
+    });
+    assert!(serde_json::from_value::<LoanMetadataJson>(json).is_err());
 }

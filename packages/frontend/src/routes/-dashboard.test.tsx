@@ -94,12 +94,12 @@ vi.stubGlobal("fetch", fetchMock);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-// `total_deployed` and `principal` are registry-sourced fields the backend
-// currently serves at 1e3-too-small scale (#840). These fixtures are pinned
-// at that buggy-backend scale so that, after the client-side ×1000
-// workaround (`formatRegistryCompactUsd`, #841) is applied, the resulting
-// display strings ("$31.6M" / "$8.0M") match reality. `collateral` /
-// `total_collateral` are price-feed-sourced (#706) and stay at correct scale.
+// `total_deployed`/`principal` AND `collateral`/`total_collateral` are all
+// registry-sourced fields the backend currently serves at 1e3-too-small scale
+// (#840, confirmed for collateral too by issue #888's live-payload audit).
+// These fixtures are pinned at that buggy-backend scale so that, after the
+// client-side ×1000 workaround (`formatRegistryCompactUsd`) is applied, the
+// resulting display strings ("$31.6M" / "$8.0M") match reality.
 const FIXTURE_FULL: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
@@ -443,12 +443,12 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
 };
 
 // Fixture: both total_deployed and total_collateral set → both subtitles render.
-// total_deployed / principal at registry (÷1000) scale; total_collateral /
-// collateral are price-feed-sourced (#706) and stay at correct scale.
+// total_deployed / principal AND total_collateral / collateral are ALL
+// registry-sourced (issue #888) ⇒ ALL pinned at registry (÷1000) scale.
 const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
   summary: {
     total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
-    total_collateral: "37600000.000000",
+    total_collateral: "37600.000000", // ×1000 workaround → "$37.6M"
     senior_debt_coverage: "1.50",
     avg_yield: "0.112000",
     avg_duration_days: 68,
@@ -459,7 +459,7 @@ const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
       principal: "8000.000000", // ×1000 workaround → "$8.0M"
-      collateral: "9500000.000000",
+      collateral: "9500.000000", // ×1000 workaround → "$9.5M"
       ltv: "0.8511",
       duration_days: 120,
       rate: "0.112000",

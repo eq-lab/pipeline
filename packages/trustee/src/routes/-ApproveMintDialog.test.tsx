@@ -69,7 +69,7 @@ describe("ApproveMintDialog", () => {
   it("renders the title, subtitle, and preview when open", () => {
     renderDialog();
     expect(
-      screen.getByRole("heading", { name: "Approve & mint loan" }),
+      screen.getByRole("heading", { name: "Approve & draw loan" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Transaction preview — sent from your Trustee key."),
@@ -166,10 +166,10 @@ describe("ApproveMintDialog", () => {
     );
   });
 
-  it("defaults the Mint loan label to 'Mint loan' when mintingLabel is null", () => {
+  it("defaults the confirm label to 'Draw loan' when mintingLabel is null", () => {
     renderDialog();
     expect(screen.getByTestId("approve-mint-confirm")).toHaveTextContent(
-      "Mint loan",
+      "Draw loan",
     );
   });
 });

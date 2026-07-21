@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod auth;
 pub mod capital_allocation;
+pub mod ccr_history;
 pub mod common;
 pub mod dashboard;
 pub mod emails;
@@ -13,4 +14,5 @@ pub mod portfolio;
 pub mod stats;
 pub mod collateral_valuation;
 pub mod vouchers;
+pub mod waterfall;
 pub mod withdrawal_queue;

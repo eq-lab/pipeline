@@ -31,9 +31,11 @@
  *
  * Every field is read defensively: `loan_data` is `serde_json::Value` on the
  * wire, so missing/malformed nested fields degrade to "—" rather than
- * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). Non-
- * `InReview` submissions are filtered out defensively even though the server
- * already applies `?status=InReview`.
+ * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). Only raw
+ * `InReview` submissions are actionable here; backend merged/lifecycle
+ * statuses mean the origination is already approved and are filtered out
+ * defensively even though the server already applies `?status=InReview`
+ * (issue #892).
  */
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";

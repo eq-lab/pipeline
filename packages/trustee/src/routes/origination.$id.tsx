@@ -40,8 +40,8 @@ import { ApproveMintDialog } from "./-ApproveMintDialog";
  * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
  *
  * The always-shown `ActionButtons` block below is now rendered only for
- * `InReview` (and any unknown status, as a safe fallback). `Approved` and
- * `Rejected` submissions instead render a colored banner in its place:
+ * `InReview`. `Approved` and `Rejected` submissions instead render a colored
+ * banner in its place:
  *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
  *     "Approved & minted · `<date>`" (restored by #831 — see below). The
  *     Figma's "funded from batch #B-102 →" segment is OMITTED — no `batch`
@@ -357,19 +357,28 @@ function ActionButtons({
 }
 
 /**
- * Green "Approved & minted · `<date>`" banner (issue #823, Figma node
+ * Green "Approved & drawn · `<date>`" banner (issue #823, Figma node
  * `4116:9656`; copy restored by #831), rendered in place of `ActionButtons`
- * for Approved submissions. The Figma's semibold navy "funded from batch
- * #B-102 →" segment is deliberately omitted — no backing field, never
- * fabricated. "& minted" is no longer aspirational: Approve now performs a
- * real trustee-wallet-signed on-chain `draw_loan` mint before this banner
- * ever renders (issue #831).
+ * for Approved submissions. Approve performs a real trustee-wallet-signed
+ * on-chain `draw_loan` before this banner ever renders (issue #831).
+ *
+ * When the just-drawn `loanId` is known (#876 — captured from the mint tx in
+ * this session), the banner appends a "View loan →" deep-link to the loan's
+ * detail page so the trustee can jump straight there. On a page reload the id
+ * is gone (the mint mutation's data isn't persisted — accepted residual), so
+ * the link is simply omitted.
  */
-function ApprovedBanner({ date }: { date: string }) {
+function ApprovedBanner({
+  date,
+  loanId,
+}: {
+  date: string;
+  loanId: number | null;
+}) {
   return (
     <div
       data-testid="origination-detail-approved-banner"
-      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
+      className="flex flex-wrap items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(32,128,0,0.3)] bg-[rgba(32,128,0,0.08)] px-[17px] py-[11px]"
     >
       <CheckIcon
         width={15}
@@ -377,8 +386,18 @@ function ApprovedBanner({ date }: { date: string }) {
         className="text-[color:var(--color-pipeline-positive-primary)]"
       />
       <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)]">
-        Approved & minted · {date}
+        Approved & drawn · {date}
       </span>
+      {loanId != null && (
+        <Link
+          to="/loans/$id"
+          params={{ id: String(loanId) }}
+          data-testid="origination-detail-view-loan-link"
+          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-positive-primary)] underline"
+        >
+          View loan #{loanId} →
+        </Link>
+      )}
     </div>
   );
 }
@@ -406,6 +425,7 @@ function DetailFooter({
   statusKind,
   reviewedDate,
   rejectionReason,
+  mintedLoanId,
   onApprove,
   onReject,
   isPending,
@@ -414,18 +434,20 @@ function DetailFooter({
   statusKind: StatusChip["kind"];
   reviewedDate: string;
   rejectionReason: string;
+  mintedLoanId: number | null;
   onApprove: () => void;
   onReject: () => void;
   isPending: boolean;
   errorMessage: string | null;
 }) {
   if (statusKind === "approved") {
-    return <ApprovedBanner date={reviewedDate} />;
+    return <ApprovedBanner date={reviewedDate} loanId={mintedLoanId} />;
   }
   if (statusKind === "rejected") {
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
   }
-  // InReview and unknown both fall back to the (now wired) action buttons.
+  // Only InReview falls back to the (now wired) action buttons. Backend
+  // merged/lifecycle statuses normalize to Approved in the presenter (#892).
   return (
     <ActionButtons
       onApprove={onApprove}
@@ -511,6 +533,7 @@ function OriginationDetail() {
           statusKind={detail.statusKind}
           reviewedDate={detail.reviewedDate}
           rejectionReason={detail.rejectionReason}
+          mintedLoanId={review.mintedLoanId}
           onApprove={review.openApprove}
           onReject={review.openReject}
           isPending={review.isPending}

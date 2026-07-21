@@ -10,9 +10,9 @@ use pipeline_worker::price_poller::{
 };
 use pipeline_worker::relayer::config::RelayerSettings;
 use pipeline_worker::relayer::relayer_job::run_relayer_job;
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
-use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::position_repo::PositionRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
@@ -113,12 +113,12 @@ async fn main() -> anyhow::Result<()> {
 
     if env_bool("JOB_ASSET_PRICE_COLLECTOR_ENABLED") {
         let settings = AssetPriceCollectorSettings::from_env()?;
-        let params_repo = Arc::new(LoanParametersRepo::new(pool.clone()));
+        let anchors_repo = Arc::new(CollateralValuationRepo::new(pool.clone()));
         let price_repo = Arc::new(LoanAssetPriceRepo::new(pool.clone()));
 
         tracing::info!("asset price collector job started");
         tokio::spawn(async move {
-            if let Err(e) = run_asset_price_collector_job(settings, params_repo, price_repo).await {
+            if let Err(e) = run_asset_price_collector_job(settings, anchors_repo, price_repo).await {
                 tracing::error!("asset price collector job exited with error: {e:?}");
             }
         });

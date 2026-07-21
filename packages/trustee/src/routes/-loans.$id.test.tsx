@@ -15,6 +15,7 @@ import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import { LOAN_DETAIL_MOCK } from "./-loanDetailMock";
 
+const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
     "@tanstack/react-router",
@@ -24,6 +25,7 @@ vi.mock("@tanstack/react-router", async () => {
     Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
       <a href={to}>{children}</a>
     ),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -61,6 +63,22 @@ const { mockRollover } = vi.hoisted(() => ({
 }));
 vi.mock("@/api/useRollover", () => ({
   useRollover: () => mockRollover,
+}));
+
+// `useUpdateLifecycle` also pulls in @pipeline/wallet-connect — mock it too.
+const { mockUpdateLifecycle } = vi.hoisted(() => ({
+  mockUpdateLifecycle: {
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(() => Promise.resolve({ hash: "0xhash" })),
+    reset: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+    error: null as Error | null,
+    stage: null,
+  },
+}));
+vi.mock("@/api/useUpdateLifecycle", () => ({
+  useUpdateLifecycle: () => mockUpdateLifecycle,
 }));
 
 import { Route } from "./loans.$id";
@@ -101,7 +119,7 @@ function makeResult(
       },
       {
         label: "Disbursing",
-        sub: "minted, not yet funded",
+        sub: "drawned, not yet funded",
         state: "done",
         index: 2,
       },
@@ -139,7 +157,7 @@ function makeResult(
         { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
       ],
     },
-    currentStage: LOAN_DETAIL_MOCK.currentStage,
+    currentStage: null,
     otherActions: LOAN_DETAIL_MOCK.otherActions,
     priceCollateral: {
       state: "ready",
@@ -169,6 +187,13 @@ beforeEach(() => {
   mockRollover.reset = vi.fn();
   mockRollover.isPending = false;
   mockRollover.error = null;
+  mockUpdateLifecycle.mutateAsync = vi.fn(() =>
+    Promise.resolve({ hash: "0xhash" }),
+  );
+  mockUpdateLifecycle.reset = vi.fn();
+  mockUpdateLifecycle.isPending = false;
+  mockUpdateLifecycle.error = null;
+  mockNavigate.mockReset();
 });
 
 describe("Loan detail route — hero (live)", () => {
@@ -378,15 +403,13 @@ describe("Loan detail route — still-mock sections", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the current-stage card + primary action", () => {
+  it("does NOT render a current-stage card on a performing loan (#876)", () => {
     renderRoute();
-    const stage = screen.getByTestId("loan-detail-current-stage");
+    // The mock "on-ramp in transit" current-stage card was removed from the
+    // Performing layout (#876); only the Watchlist variant renders one now.
     expect(
-      within(stage).getByText("Current stage — on-ramp in transit"),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId("loan-detail-primary-action")).toHaveTextContent(
-      "Open on-ramp & mint",
-    );
+      screen.queryByTestId("loan-detail-current-stage"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the Other actions buttons + timelock note", () => {
@@ -579,6 +602,91 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
   });
 });
 
+describe("Loan detail route — Update lifecycle (#872)", () => {
+  it("opens the update-lifecycle modal from the Update lifecycle action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    expect(screen.getByTestId("update-lifecycle-dialog")).toBeInTheDocument();
+    // Submit is disabled until CCR + location are entered.
+    expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("submits update_mutable with status + CCR% + location + metadataURI", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    fireEvent.change(screen.getByTestId("update-lifecycle-status"), {
+      target: { value: "WatchList" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-ccr"), {
+      target: { value: "135" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location-type"), {
+      target: { value: "Vessel" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-location"), {
+      target: { value: "MV Andes · IMO 9741205" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-tracking"), {
+      target: { value: "https://track.example/9741205" },
+    });
+    fireEvent.change(screen.getByTestId("update-lifecycle-metadata"), {
+      target: { value: "ipfs://assay" },
+    });
+    fireEvent.click(screen.getByTestId("update-lifecycle-submit"));
+    // Location is submitted as the on-chain `LocationUpdate` struct (not a bare
+    // string — a string traps the contract; issue #872).
+    expect(mockUpdateLifecycle.mutateAsync).toHaveBeenCalledWith({
+      loanId: 4488,
+      status: "WatchList",
+      ccrPercent: 135,
+      location: {
+        location_type: "Vessel",
+        location_identifier: "MV Andes · IMO 9741205",
+        tracking_url: "https://track.example/9741205",
+        updated_at: expect.any(Number),
+      },
+      metadataUri: "ipfs://assay",
+    });
+  });
+});
+
+describe("Loan detail route — Record coupon (#882)", () => {
+  it("navigates to the full-page Record-coupon route from the Record coupon action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Record coupon"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id/record-coupon",
+      params: { id: "4488" },
+    });
+    // Unlike Update lifecycle, this is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Loan detail route — Close loan (#884)", () => {
+  it("navigates to the full-page Record-repayment route from the Close loan action (does not close the loan directly)", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Close loan"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id/record-repayment",
+      params: { id: "4488" },
+    });
+    // This is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Loan detail route — top-level states", () => {
   it("renders the loading skeleton", () => {
     mockUseLoanDetail.mockReturnValue(makeResult({ state: "loading" }));
@@ -641,10 +749,13 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
         note: "",
       },
       ccrTrend: {
-        startLabel: "146% · 1 May",
+        points: [146, 132, 121, 114],
+        startLabel: "146% · 1 May 2026",
         currentLabel: "114%",
-        upperThresholdLabel: "120%",
-        lowerThresholdLabel: "110%",
+        thresholds: [
+          { pct: 120, label: "120%" },
+          { pct: 110, label: "110%" },
+        ],
       },
     });
   }
@@ -654,7 +765,7 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
     renderRoute();
     const chart = screen.getByTestId("loan-detail-ccr-trend");
     expect(chart).toBeInTheDocument();
-    expect(within(chart).getByText("146% · 1 May")).toBeInTheDocument();
+    expect(within(chart).getByText("146% · 1 May 2026")).toBeInTheDocument();
     expect(within(chart).getByText("114%")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("loan-detail-tiles")).getByText(

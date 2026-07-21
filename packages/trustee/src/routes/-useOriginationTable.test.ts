@@ -6,7 +6,8 @@
  *   - A full fixture submission maps to correctly formatted fields.
  *   - Missing/malformed `loan_data`/`economics` fields render "—" (never
  *     throw, never fabricate).
- *   - Status mapping for InReview / Approved / Rejected / unknown.
+ *   - Status mapping for InReview / Approved / Rejected, plus backend
+ *     merged/lifecycle statuses normalized to Approved.
  *   - The valuation sub-line is not part of the row shape at all (resolved
  *     Open Question — omitted entirely).
  *   - `useOriginationTable`'s state derivation (loading/error/empty/ready).
@@ -160,12 +161,28 @@ describe("mapSubmissionToRow", () => {
     });
   });
 
-  it("maps an unknown status string to a neutral fallback, never throwing", () => {
+  it("maps a backend lifecycle status to Approved for Origination display (#892)", () => {
+    const row = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "Performing",
+      updated_at: "2026-01-02T00:00:00Z",
+    });
+    expect(row.status).toEqual({
+      kind: "approved",
+      label: "Approved · 2 Jan",
+    });
+  });
+
+  it("maps an unexpected non-decision status to Approved for Origination display (#892)", () => {
     const row = mapSubmissionToRow({
       ...FULL_SUBMISSION,
       status: "SomethingNew",
+      updated_at: "2026-01-02T00:00:00Z",
     });
-    expect(row.status).toEqual({ kind: "unknown", label: "SomethingNew" });
+    expect(row.status).toEqual({
+      kind: "approved",
+      label: "Approved · 2 Jan",
+    });
   });
 });
 

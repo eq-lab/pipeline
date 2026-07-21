@@ -23,7 +23,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::types::Json;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use utoipa::ToSchema;
 
 // ── Valuation mode ─────────────────────────────────────────────────────────────
@@ -112,11 +112,21 @@ pub struct PenaltyTierJson {
 
 // ── Row structs ────────────────────────────────────────────────────────────────
 
-/// One row of `loan_collateral_valuations` (the anchor).
+/// One row of `loan_collateral_valuations` (the anchor), joined against its
+/// `submitted_loans` parent.
+///
+/// The table itself is keyed by `submitted_loan_id` only — `chain_id`/`loan_id` are
+/// not physical columns here, they live on `submitted_loans` (set once by
+/// `link_drawn` when the loan is drawn on-chain). `get_anchor`/`all_anchors` join
+/// through that pointer and bind a concrete `chain_id`, so the rows they return are
+/// always on-chain-linked; a submission-authored anchor whose loan hasn't been
+/// linked yet simply isn't visible through this lookup until it is.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct CollateralValuationRow {
     pub chain_id: i64,
     pub loan_id: BigDecimal,
+    /// The originating `submitted_loans` row.
+    pub submitted_loan_id: i64,
     pub commodity: String,
     /// Decoded from the TEXT column into the typed enum.
     #[sqlx(try_from = "String")]
@@ -177,6 +187,18 @@ pub struct QuantityReportRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A distinct `(asset, price_provider)` pairing across all valuation anchors.
+///
+/// Consumed by the worker `asset_price_collector`, which collects a price series per
+/// pair. An asset configured with more than one provider yields multiple rows (one per
+/// provider); the collector detects that conflict and skips the asset rather than
+/// guessing which provider to trust.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct AssetProvider {
+    pub asset: String,
+    pub price_provider: String,
+}
+
 // ── Repo ───────────────────────────────────────────────────────────────────────
 
 pub struct CollateralValuationRepo {
@@ -188,6 +210,38 @@ impl CollateralValuationRepo {
         Self { pool }
     }
 
+    /// Insert a valuation anchor authored by a loan-book submission, keyed by
+    /// `submitted_loan_id`. Reachable via `get_anchor`/`all_anchors` only once the
+    /// loan is drawn on-chain and `submitted_loans.chain_id`/`loan_id` are set by
+    /// `SubmittedLoanRepo::link_drawn`.
+    ///
+    /// Takes a caller-supplied connection so it runs inside the submission endpoint's
+    /// transaction, atomically with the `submitted_loans` insert.
+    pub async fn insert_pending(
+        conn: &mut PgConnection,
+        submitted_loan_id: i64,
+        commodity: &str,
+        valuation_mode: ValuationMode,
+        asset: &str,
+        price_provider: &str,
+        haircut_pct: &BigDecimal,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO loan_collateral_valuations \
+                (submitted_loan_id, commodity, valuation_mode, asset, price_provider, haircut_pct) \
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(submitted_loan_id)
+        .bind(commodity)
+        .bind(valuation_mode.as_str())
+        .bind(asset)
+        .bind(price_provider)
+        .bind(haircut_pct)
+        .execute(conn)
+        .await?;
+        Ok(())
+    }
+
     /// The valuation anchor for a loan, or `None` if the loan has no anchor yet.
     pub async fn get_anchor(
         &self,
@@ -195,9 +249,12 @@ impl CollateralValuationRepo {
         loan_id: &BigDecimal,
     ) -> Result<Option<CollateralValuationRow>, sqlx::Error> {
         sqlx::query_as::<_, CollateralValuationRow>(
-            "SELECT chain_id, loan_id, commodity, valuation_mode, asset, price_provider, \
-                    haircut_pct, created_at, updated_at \
-             FROM loan_collateral_valuations WHERE chain_id = $1 AND loan_id = $2",
+            "SELECT sl.chain_id, sl.loan_id, lcv.submitted_loan_id, lcv.commodity, \
+                    lcv.valuation_mode, lcv.asset, lcv.price_provider, lcv.haircut_pct, \
+                    lcv.created_at, lcv.updated_at \
+             FROM loan_collateral_valuations lcv \
+             JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
+             WHERE sl.chain_id = $1 AND sl.loan_id = $2",
         )
         .bind(chain_id)
         .bind(loan_id)
@@ -268,11 +325,27 @@ impl CollateralValuationRepo {
         chain_id: i64,
     ) -> Result<Vec<CollateralValuationRow>, sqlx::Error> {
         sqlx::query_as::<_, CollateralValuationRow>(
-            "SELECT chain_id, loan_id, commodity, valuation_mode, asset, price_provider, \
-                    haircut_pct, created_at, updated_at \
-             FROM loan_collateral_valuations WHERE chain_id = $1",
+            "SELECT sl.chain_id, sl.loan_id, lcv.submitted_loan_id, lcv.commodity, \
+                    lcv.valuation_mode, lcv.asset, lcv.price_provider, lcv.haircut_pct, \
+                    lcv.created_at, lcv.updated_at \
+             FROM loan_collateral_valuations lcv \
+             JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
+             WHERE sl.chain_id = $1",
         )
         .bind(chain_id)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// The distinct set of `(asset, price_provider)` pairs across **all** valuation
+    /// anchors, on every chain. Not chain-scoped: the worker `asset_price_collector`
+    /// collects one price series per pair regardless of which chain's loans reference
+    /// it, so an asset priced on two chains is still collected once.
+    pub async fn distinct_asset_providers(&self) -> Result<Vec<AssetProvider>, sqlx::Error> {
+        sqlx::query_as::<_, AssetProvider>(
+            "SELECT DISTINCT asset, price_provider FROM loan_collateral_valuations \
+             ORDER BY asset, price_provider",
+        )
         .fetch_all(&self.pool)
         .await
     }

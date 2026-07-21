@@ -58,24 +58,11 @@ export interface OtherActions {
 
 export interface LoanDetailMock {
   tiles: SummaryTile[];
-  currentStage: CurrentStage;
+  /** Escalation/stage card. Only the Watchlist variant renders one now — the
+   *  Performing "on-ramp in transit" card was removed (#876), so this is
+   *  optional. */
+  currentStage?: CurrentStage;
   otherActions: OtherActions;
-}
-
-/**
- * The CCR-trend chart (Watchlist variant, Figma `4116:10868`). Mock — no CCR
- * time-series endpoint serves this page yet (#859). The chart geometry is a
- * fixed representative decline; these labels are slotted into it.
- */
-export interface CcrTrend {
-  /** Bottom-left caption — the series start, e.g. `"146% · 1 May"`. */
-  startLabel: string;
-  /** Current CCR, bold red near the end dot, e.g. `"114%"`. */
-  currentLabel: string;
-  /** Upper guide-line label, e.g. `"120%"`. */
-  upperThresholdLabel: string;
-  /** Lower guide-line label, e.g. `"110%"`. */
-  lowerThresholdLabel: string;
 }
 
 // ── Fixture ─────────────────────────────────────────────────────────────────
@@ -101,12 +88,6 @@ export const LOAN_DETAIL_MOCK: LoanDetailMock = {
       subTone: "attention",
     },
   ],
-  currentStage: {
-    title: "Current stage — on-ramp in transit",
-    tag: "Relayer + custodian mint · monitor only",
-    body: "The senior portion ($4,950,000) is converting back to USDC at the on-ramp provider. Once it lands in the Capital Wallet, the Relayer and custodian mint the $115.5K final coupon into the sPLUSD vault and $34.5K fees to Treasury.",
-    actionLabel: "Open on-ramp & mint →",
-  },
   otherActions: {
     // Record coupon is available in any post-Disbursing status (#867); Roll over
     // is matured-only (gated to the Matured variant), so it is NOT listed here.
@@ -165,14 +146,6 @@ export const LOAN_DETAIL_WATCHLIST_MOCK: LoanDetailMock = {
     actions: ["Update lifecycle", "Record coupon", "Escalate to Risk Council"],
     note: "",
   },
-};
-
-/** CCR-trend chart mock for the Watchlist variant. */
-export const WATCHLIST_CCR_TREND: CcrTrend = {
-  startLabel: "146% · 1 May",
-  currentLabel: "114%",
-  upperThresholdLabel: "120%",
-  lowerThresholdLabel: "110%",
 };
 
 // ── Matured variant (issue #866, Figma node 4116:10969) ───────────────────────

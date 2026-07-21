@@ -7,20 +7,22 @@ mod middleware;
 pub mod routes;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use alloy::signers::local::PrivateKeySigner;
 use shared::auth_user_repo::AuthUserRepo;
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
-use shared::loan_parameters_repo::LoanParametersRepo;
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
+use shared::loan_metadata::LoanMetadataFetcher;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
-use shared::collateral_valuation_repo::CollateralValuationRepo;
 
 use crate::auth::JwtKeys;
 use crate::config::{StellarVoucherChainConfig, TransferAddressSets};
@@ -54,8 +56,12 @@ pub struct AppState {
     pub auth_user_repo: AuthUserRepo,
     /// Originator-submitted loan applications awaiting trustee review.
     pub submitted_loan_repo: SubmittedLoanRepo,
-    /// Per-loan collateral asset + discount + price provider (`loan_parameters`).
-    pub loan_parameters_repo: LoanParametersRepo,
+    /// Fetches the off-chain document at a submission's `metadata_uri` so `submit_loan`
+    /// can validate it parses as `LoanMetadataJson` (the same type the indexer parses).
+    /// Trait object so tests can inject a mock without an HTTP server.
+    pub loan_metadata_fetcher: Arc<dyn LoanMetadataFetcher>,
+    /// Per-loan protocol fee schedule (`loan_fee_schedule`), for the repayment waterfall.
+    pub loan_fee_schedule_repo: LoanFeeScheduleRepo,
     /// Collected per-asset USD prices (`loan_asset_prices`), for collateral valuation.
     pub loan_asset_price_repo: LoanAssetPriceRepo,
     /// Per-loan collateral valuation record (anchor + assay/offtake/quantity).

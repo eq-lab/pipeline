@@ -25,6 +25,8 @@ using the Originator's authenticated session (2FA-confirmed, no wallet popup). T
 request is POSTed to the relayer service, which validates the signature and records the
 request with status `SubmittedAwaitingTrustee`.
 
+On submission the service also fetches the request's `metadata_uri` and confirms it parses into the canonical off-chain loan-metadata shape used at indexing (`LoanMetadataJson`); an unreachable, non-JSON, or wrong-shape URI is rejected with `400`.
+
 The Originator cannot call `LoanRegistry.mintLoan()` directly. All on-chain mints are
 executed by the Trustee key (the sole holder of the `TRUSTEE` role on LoanRegistry),
 exclusively after trustee approval. Relayer has no role on LoanRegistry and does not relay

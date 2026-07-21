@@ -19,9 +19,9 @@
  * pending the real mint, #831 shipped it) and NO "funded from batch" text —
  * that segment is deliberately omitted, no backing field; Rejected renders
  * the red "Rejected · <date> — <reason>" banner; both banner cases assert
- * the action buttons are ABSENT. An unknown status falls back to the
- * InReview footer. The inert "Request changes" button (issue #838) no
- * longer exists at all.
+ * the action buttons are ABSENT. Backend merged/lifecycle statuses normalize
+ * to Approved in the presenter (#892). The inert "Request changes" button
+ * (issue #838) no longer exists at all.
  *
  * Approve/Reject wiring (issue #829, extended by #831, gated behind
  * confirmation dialogs by #838): `useOriginationReview` is mocked (like
@@ -51,9 +51,29 @@ vi.mock("@tanstack/react-router", async () => {
   return {
     ...actual,
     useLocation: () => mockUseLocation(),
-    Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
-      <a href={to}>{children}</a>
-    ),
+    Link: ({
+      children,
+      to,
+      params,
+      ...rest
+    }: {
+      children: React.ReactNode;
+      to: string;
+      params?: Record<string, string>;
+    } & Record<string, unknown>) => {
+      // Interpolate `$id`-style route params so `href` matches the resolved path.
+      const href = params
+        ? Object.entries(params).reduce(
+            (acc, [k, v]) => acc.replace(`$${k}`, v),
+            to,
+          )
+        : to;
+      return (
+        <a href={href} {...rest}>
+          {children}
+        </a>
+      );
+    },
   };
 });
 
@@ -97,6 +117,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     errorMessage: null,
     approveOpen: false,
     rejectOpen: false,
+    mintedLoanId: null,
     ...overrides,
   });
 }
@@ -324,7 +345,7 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("Approved: renders the green 'Approved & minted · <date>' banner (restored, #831); NO action buttons; NO fabricated batch text", () => {
+    it("Approved: renders the green 'Approved & drawn · <date>' banner (#831/#876); NO action buttons; NO fabricated batch text", () => {
       mockDetail({
         ...READY_RESULT,
         statusChip: { kind: "approved", label: "Approved" },
@@ -333,9 +354,13 @@ describe("Origination details route", () => {
       });
       renderRoute();
       const banner = screen.getByTestId("origination-detail-approved-banner");
-      expect(banner).toHaveTextContent("Approved & minted · 2 Jan");
+      expect(banner).toHaveTextContent("Approved & drawn · 2 Jan");
       expect(screen.queryByText(/funded from batch/)).not.toBeInTheDocument();
       expect(screen.queryByText(/#B-102/)).not.toBeInTheDocument();
+      // No minted loan id in this session → no deep-link (#876).
+      expect(
+        screen.queryByTestId("origination-detail-view-loan-link"),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("origination-detail-request-changes"),
       ).not.toBeInTheDocument();
@@ -345,6 +370,20 @@ describe("Origination details route", () => {
       expect(
         screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
+    });
+
+    it("Approved: shows a 'View loan' deep-link when the drawn loan id is known (#876)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
+      });
+      mockReview({ mintedLoanId: 4488 });
+      renderRoute();
+      const link = screen.getByTestId("origination-detail-view-loan-link");
+      expect(link).toHaveTextContent("View loan #4488");
+      expect(link).toHaveAttribute("href", "/loans/4488");
     });
 
     it("Rejected: renders the red 'Rejected · <date> — <reason>' banner; NO action buttons", () => {
@@ -371,24 +410,22 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("unknown status: falls back to the InReview action-buttons footer", () => {
+    it("backend lifecycle status: renders the Approved banner, not action buttons (#892)", () => {
       mockDetail({
         ...READY_RESULT,
-        statusChip: { kind: "unknown", label: "—" },
-        statusKind: "unknown",
+        statusChip: { kind: "approved", label: "Approved" },
+        statusKind: "approved",
+        reviewedDate: "2 Jan",
       });
       renderRoute();
       expect(
-        screen.getByTestId("origination-detail-reject"),
-      ).toBeInTheDocument();
+        screen.getByTestId("origination-detail-approved-banner"),
+      ).toHaveTextContent("Approved & drawn · 2 Jan");
       expect(
-        screen.getByTestId("origination-detail-approve"),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("origination-detail-approved-banner"),
+        screen.queryByTestId("origination-detail-reject"),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId("origination-detail-rejected-banner"),
+        screen.queryByTestId("origination-detail-approve"),
       ).not.toBeInTheDocument();
     });
   });

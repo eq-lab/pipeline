@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCompleteDisbursement } from "@/api/useCompleteDisbursement";
 import { useRollover } from "@/api/useRollover";
+import {
+  useUpdateLifecycle,
+  type LocationInput,
+} from "@/api/useUpdateLifecycle";
 import {
   useLoanDetail,
   type HeroView,
@@ -10,9 +14,9 @@ import {
   type PriceCollateralView,
   type RegistryView,
   type StatusBand,
+  type CcrTrend,
 } from "./-useLoanDetail";
 import {
-  type CcrTrend,
   type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
@@ -528,7 +532,7 @@ function RegistryCard({ registry }: { registry: RegistryView }) {
 function CurrentStageCard({
   stage,
 }: {
-  stage: ReturnType<typeof useLoanDetail>["currentStage"];
+  stage: NonNullable<ReturnType<typeof useLoanDetail>["currentStage"]>;
 }) {
   return (
     <div
@@ -578,8 +582,11 @@ function CurrentStageCard({
 
 function OtherActionsCard({
   otherActions,
+  onAction,
 }: {
   otherActions: ReturnType<typeof useLoanDetail>["otherActions"];
+  /** Fired with the button label when clicked; wired actions (e.g. "Update lifecycle") open a modal. */
+  onAction?: (label: string) => void;
 }) {
   return (
     <div
@@ -598,6 +605,8 @@ function OtherActionsCard({
           <button
             key={label}
             type="button"
+            data-testid={`loan-detail-action-${label}`}
+            onClick={() => onAction?.(label)}
             className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
             style={{ borderColor: LINE_COLOR }}
           >
@@ -974,6 +983,239 @@ function RolloverDialog({
   );
 }
 
+/**
+ * The Update-lifecycle modal (S10, Figma node `4116:14087`, issue #872).
+ * Collects the non-economic mutable fields — status, CCR %, location, optional
+ * metadata URI — then submits the on-chain `LoanRegistry.updateMutable` via
+ * `useUpdateLifecycle`. Default/Closed are not offered (they route to the Risk
+ * Council / close flows); Past Due/Matured are derived, not settable here.
+ */
+function UpdateLifecycleDialog({
+  open,
+  loanName,
+  currentStatus,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: {
+  open: boolean;
+  loanName: string;
+  /** On-chain status to default the selector to (`Performing` | `WatchList`). */
+  currentStatus: string;
+  onClose: () => void;
+  onConfirm: (input: {
+    status: string;
+    ccrPercent: number;
+    location: LocationInput;
+    metadataUri: string;
+  }) => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  const [status, setStatus] = useState(currentStatus);
+  const [ccr, setCcr] = useState("");
+  const [locationType, setLocationType] = useState("Vessel");
+  const [locationId, setLocationId] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [metadataUri, setMetadataUri] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setStatus(currentStatus);
+      setCcr("");
+      setLocationType("Vessel");
+      setLocationId("");
+      setTrackingUrl("");
+      setMetadataUri("");
+    }
+  }, [open, currentStatus]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, pending, onClose]);
+
+  if (!open) return null;
+
+  const ccrPercent = Number.parseFloat(ccr);
+  const valid =
+    Number.isFinite(ccrPercent) &&
+    ccrPercent > 0 &&
+    locationId.trim().length > 0;
+
+  const fieldClass =
+    "w-full rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] text-[#262524]";
+  const labelClass =
+    "font-[family-name:var(--font-body)] text-[13px] text-[rgba(56,55,53,0.6)]";
+
+  return (
+    <div
+      data-testid="update-lifecycle-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)]"
+      onClick={() => !pending && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="update-lifecycle-title"
+        data-testid="update-lifecycle-dialog"
+        className="flex w-[600px] max-w-[calc(100vw-32px)] flex-col gap-[12px] rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="update-lifecycle-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
+        >
+          Update lifecycle — {loanName}
+        </h2>
+        <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
+          LoanRegistry.updateMutable · your key · non-economic fields only · no
+          NAV impact. CCR is written only at 130 / 120 / 110% threshold
+          crossings, with its timestamp.
+        </p>
+
+        <label className="flex flex-col gap-[6px] pt-[4px]">
+          <span className={labelClass}>
+            Status (Default and Closed route elsewhere)
+          </span>
+          <select
+            data-testid="update-lifecycle-status"
+            value={status}
+            disabled={pending}
+            onChange={(e) => setStatus(e.target.value)}
+            className={fieldClass}
+          >
+            <option value="Performing">Performing</option>
+            <option value="WatchList">Watchlist</option>
+          </select>
+        </label>
+
+        <div className="flex flex-wrap gap-[16px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>CCR %</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              data-testid="update-lifecycle-ccr"
+              value={ccr}
+              disabled={pending}
+              onChange={(e) => setCcr(e.target.value)}
+              placeholder="e.g. 135"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Location type</span>
+            <select
+              data-testid="update-lifecycle-location-type"
+              value={locationType}
+              disabled={pending}
+              onChange={(e) => setLocationType(e.target.value)}
+              className={fieldClass}
+            >
+              <option value="Vessel">Vessel</option>
+              <option value="Warehouse">Warehouse</option>
+              <option value="TankFarm">Tank farm</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-[16px]">
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Location identifier</span>
+            <input
+              type="text"
+              data-testid="update-lifecycle-location"
+              value={locationId}
+              disabled={pending}
+              onChange={(e) => setLocationId(e.target.value)}
+              placeholder="e.g. MV Andes · IMO 9741205"
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-1 flex-col gap-[6px]">
+            <span className={labelClass}>Tracking URL (optional)</span>
+            <input
+              type="text"
+              data-testid="update-lifecycle-tracking"
+              value={trackingUrl}
+              disabled={pending}
+              onChange={(e) => setTrackingUrl(e.target.value)}
+              placeholder="https://…"
+              className={fieldClass}
+            />
+          </label>
+        </div>
+
+        <label className="flex flex-col gap-[6px]">
+          <span className={labelClass}>
+            Append metadataURI (assay / offtake hash)
+          </span>
+          <input
+            type="text"
+            data-testid="update-lifecycle-metadata"
+            value={metadataUri}
+            disabled={pending}
+            onChange={(e) => setMetadataUri(e.target.value)}
+            placeholder="ipfs://… (optional)"
+            className={fieldClass}
+          />
+        </label>
+
+        {error && (
+          <p
+            role="alert"
+            data-testid="update-lifecycle-error"
+            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
+          >
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-start justify-end gap-[12px] pt-[12px]">
+          <button
+            type="button"
+            data-testid="update-lifecycle-cancel"
+            onClick={onClose}
+            disabled={pending}
+            className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="update-lifecycle-submit"
+            onClick={() =>
+              onConfirm({
+                status,
+                ccrPercent,
+                location: {
+                  location_type: locationType,
+                  location_identifier: locationId.trim(),
+                  tracking_url: trackingUrl.trim(),
+                  updated_at: Math.floor(Date.now() / 1000),
+                },
+                metadataUri: metadataUri.trim(),
+              })
+            }
+            disabled={!valid || pending}
+            className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: BRAND }}
+          >
+            {pending ? "Updating…" : "Update loan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
 
 /**
@@ -984,7 +1226,69 @@ function RolloverDialog({
  * the 120% threshold, plus the start caption. viewBox is 440×124 (the Figma SVG
  * box) and scales to the card width.
  */
+/**
+ * CCR-trend line chart (Watchlist variant, Figma node `4116:10868`), drawn from
+ * the real `/ccr-history` series (#879). The y-scale is per-loan: it spans the
+ * series' own CCR range widened to include the threshold guide-lines, so the
+ * decline and its distance to the 120% / 110% levels read correctly for each
+ * loan. A single point renders as a dot.
+ */
 function CcrTrendCard({ trend }: { trend: CcrTrend }) {
+  // Plot area within the 440×124 viewBox.
+  const X0 = 10;
+  const X1 = 430;
+  const Y_TOP = 8;
+  const Y_BOTTOM = 92;
+
+  const thresholdPcts = trend.thresholds.map((t) => t.pct);
+  const allPcts = [...trend.points, ...thresholdPcts];
+  const rawMin = Math.min(...allPcts);
+  const rawMax = Math.max(...allPcts);
+  // Pad the range 4% (or a flat 1 when the series is flat) so lines aren't flush
+  // to the edges.
+  const pad = rawMax > rawMin ? (rawMax - rawMin) * 0.08 : 1;
+  const yMin = rawMin - pad;
+  const yMax = rawMax + pad;
+
+  const scaleY = (pct: number) =>
+    Y_BOTTOM - ((pct - yMin) / (yMax - yMin)) * (Y_BOTTOM - Y_TOP);
+  const scaleX = (i: number) =>
+    trend.points.length <= 1
+      ? X1
+      : X0 + (i / (trend.points.length - 1)) * (X1 - X0);
+
+  const polyline = trend.points.map((p, i) => `${scaleX(i)},${scaleY(p)}`);
+  const lastX = scaleX(trend.points.length - 1);
+  const lastY = scaleY(trend.points[trend.points.length - 1]!);
+
+  // Right-edge labels (current value + one per threshold) share the same x, so
+  // when the loan's CCR sits far from the thresholds — squeezing 120% / 110%
+  // together on the per-loan scale — their text would overprint. Lay them out
+  // top→bottom with a minimum vertical gap, then shift the stack up if it would
+  // spill past the viewBox bottom.
+  const LABEL_GAP = 13;
+  const LABEL_MAX_Y = 122;
+  const rightLabels = [
+    {
+      text: trend.currentLabel,
+      fontSize: 13.4,
+      fontWeight: 700,
+      y: lastY + 13,
+    },
+    ...trend.thresholds.map((t) => ({
+      text: t.label,
+      fontSize: 10.5,
+      fontWeight: 400,
+      y: scaleY(t.pct),
+    })),
+  ].sort((a, b) => a.y - b.y);
+  for (let i = 1; i < rightLabels.length; i++) {
+    const minY = rightLabels[i - 1]!.y + LABEL_GAP;
+    if (rightLabels[i]!.y < minY) rightLabels[i]!.y = minY;
+  }
+  const overflow = rightLabels[rightLabels.length - 1]!.y - LABEL_MAX_Y;
+  if (overflow > 0) for (const l of rightLabels) l.y -= overflow;
+
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
@@ -998,66 +1302,49 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
         role="img"
         aria-label={`CCR trend, currently ${trend.currentLabel}`}
       >
-        {/* Dashed threshold guide lines. */}
-        <line
-          x1="10"
-          y1="32.4"
-          x2="430"
-          y2="32.4"
-          stroke={CCR_GUIDE}
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-        <line
-          x1="10"
-          y1="61"
-          x2="430"
-          y2="61"
-          stroke={CCR_GUIDE}
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-        {/* Declining CCR line + current dot. */}
-        <polyline
-          points="10,8 130,11 250,18 330,30 400,42 427,46"
-          fill="none"
-          stroke={NEGATIVE_RED}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="427" cy="46" r="4" fill={NEGATIVE_RED} />
-        {/* Labels. */}
+        {/* Dashed threshold guide lines, drawn at their true scaled y. */}
+        {trend.thresholds.map((t) => (
+          <line
+            key={t.pct}
+            x1={X0}
+            y1={scaleY(t.pct)}
+            x2={X1}
+            y2={scaleY(t.pct)}
+            stroke={CCR_GUIDE}
+            strokeWidth="1"
+            strokeDasharray="4 4"
+          />
+        ))}
+        {/* CCR line (or a lone dot for a single point) + current dot. */}
+        {polyline.length > 1 && (
+          <polyline
+            points={polyline.join(" ")}
+            fill="none"
+            stroke={NEGATIVE_RED}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        <circle cx={lastX} cy={lastY} r="4" fill={NEGATIVE_RED} />
+        {/* Current value (bold) + threshold labels, laid out without overlap. */}
+        {rightLabels.map((l, i) => (
+          <text
+            key={i}
+            x={X1 - 2}
+            y={l.y}
+            textAnchor="end"
+            fontFamily="var(--font-body)"
+            fontSize={l.fontSize}
+            fontWeight={l.fontWeight}
+            fill={NEGATIVE_RED}
+          >
+            {l.text}
+          </text>
+        ))}
+        {/* Series-start caption (bottom-left). */}
         <text
-          x="398"
-          y="28"
-          fontFamily="var(--font-body)"
-          fontSize="10.5"
-          fill={NEGATIVE_RED}
-        >
-          {trend.upperThresholdLabel}
-        </text>
-        <text
-          x="398"
-          y="57"
-          fontFamily="var(--font-body)"
-          fontSize="10.5"
-          fill={NEGATIVE_RED}
-        >
-          {trend.lowerThresholdLabel}
-        </text>
-        <text
-          x="380"
-          y="74"
-          fontFamily="var(--font-body)"
-          fontSize="13.4"
-          fontWeight="700"
-          fill={NEGATIVE_RED}
-        >
-          {trend.currentLabel}
-        </text>
-        <text
-          x="10"
+          x={X0}
           y="115"
           fontFamily="var(--font-body)"
           fontSize="12.4"
@@ -1074,11 +1361,31 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
 
 function LoanDetail() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const detail = useLoanDetail(id);
   const completeDisbursement = useCompleteDisbursement();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const rolloverMutation = useRollover();
   const [rolloverOpen, setRolloverOpen] = useState(false);
+  const updateLifecycle = useUpdateLifecycle();
+  const [updateOpen, setUpdateOpen] = useState(false);
+
+  const onOtherAction = (label: string) => {
+    if (label === "Update lifecycle") {
+      updateLifecycle.reset();
+      setUpdateOpen(true);
+    } else if (label === "Record coupon") {
+      // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
+      // so this navigates rather than opening a dialog like the other actions.
+      void navigate({ to: "/loans/$id/record-coupon", params: { id } });
+    } else if (label === "Close loan") {
+      // Full-page destination (issue #884, Figma `4116-11621`) — this action
+      // does NOT close the loan directly; it opens the Record Repayment page,
+      // where the trustee records the final principal repayment and only
+      // then closes the loan from there.
+      void navigate({ to: "/loans/$id/record-repayment", params: { id } });
+    }
+  };
 
   return (
     <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
@@ -1123,8 +1430,13 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             {detail.ccrTrend && <CcrTrendCard trend={detail.ccrTrend} />}
           </div>
-          <CurrentStageCard stage={detail.currentStage} />
-          <OtherActionsCard otherActions={detail.otherActions} />
+          {detail.currentStage && (
+            <CurrentStageCard stage={detail.currentStage} />
+          )}
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
         </>
       ) : detail.variant === "matured" ? (
         // Matured layout (#866): no stepper, no Registry — a rollover card sits
@@ -1145,7 +1457,10 @@ function LoanDetail() {
               />
             )}
           </div>
-          <OtherActionsCard otherActions={detail.otherActions} />
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
           <RolloverDialog
             open={rolloverOpen}
             loanName={detail.hero.title}
@@ -1173,7 +1488,7 @@ function LoanDetail() {
             <PriceCollateralCard pc={detail.priceCollateral} />
             <RegistryCard registry={detail.registry} />
           </div>
-          {detail.variant === "disbursing" ? (
+          {detail.variant === "disbursing" && (
             <DisbursementActionCard
               loanName={detail.hero.title}
               onRequestComplete={() => {
@@ -1181,10 +1496,11 @@ function LoanDetail() {
                 setConfirmOpen(true);
               }}
             />
-          ) : (
-            <CurrentStageCard stage={detail.currentStage} />
           )}
-          <OtherActionsCard otherActions={detail.otherActions} />
+          <OtherActionsCard
+            otherActions={detail.otherActions}
+            onAction={onOtherAction}
+          />
           <DisbursementConfirmDialog
             open={confirmOpen}
             loanName={detail.hero.title}
@@ -1200,6 +1516,25 @@ function LoanDetail() {
           />
         </>
       )}
+
+      {/* Update-lifecycle modal (#872) — opened by the "Update lifecycle" action
+          in any variant; self-guards on `open`. */}
+      <UpdateLifecycleDialog
+        open={updateOpen}
+        loanName={detail.hero.title}
+        currentStatus={
+          detail.hero.status?.label === "Watchlist" ? "WatchList" : "Performing"
+        }
+        pending={updateLifecycle.isPending}
+        error={updateLifecycle.error?.message ?? null}
+        onClose={() => setUpdateOpen(false)}
+        onConfirm={(input) => {
+          void updateLifecycle
+            .mutateAsync({ loanId: Number(id), ...input })
+            .then(() => setUpdateOpen(false))
+            .catch(() => {});
+        }}
+      />
     </main>
   );
 }

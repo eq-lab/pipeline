@@ -19,6 +19,7 @@ import type {
 } from "@/api/useLoanFinancials";
 import { ApiError } from "@/api/client";
 import {
+  buildCcrTrend,
   buildFinancials,
   buildHero,
   buildLifecycle,
@@ -27,6 +28,7 @@ import {
   buildRegistryState,
   statusToChip,
 } from "./-useLoanDetail";
+import type { UseLoanCcrHistoryResult } from "@/api/useLoanCcrHistory";
 
 function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
   return {
@@ -484,5 +486,51 @@ describe("buildRegistryState", () => {
     );
     expect(view.state).toBe("ready");
     expect(view.rows).toHaveLength(6);
+  });
+});
+
+// ── buildCcrTrend (issue #879) ────────────────────────────────────────────────
+
+describe("buildCcrTrend", () => {
+  function history(
+    points: Array<{ timestamp: string; ccr_bps: number }>,
+  ): UseLoanCcrHistoryResult {
+    return {
+      data:
+        points.length > 0
+          ? {
+              loan_id: "5",
+              chain_id: 1,
+              from: "2026-05-01T00:00:00Z",
+              to: "2026-06-01T00:00:00Z",
+              step_seconds: 86_400,
+              points,
+            }
+          : undefined,
+      isLoading: false,
+      error: null,
+    };
+  }
+
+  it("maps ccr_bps → percent points, derives start/current labels + protocol thresholds", () => {
+    const trend = buildCcrTrend(
+      history([
+        { timestamp: "2026-05-01T00:00:00Z", ccr_bps: 14_600 },
+        { timestamp: "2026-05-15T00:00:00Z", ccr_bps: 12_100 },
+        { timestamp: "2026-06-01T00:00:00Z", ccr_bps: 11_400 },
+      ]),
+    );
+    expect(trend).not.toBeNull();
+    expect(trend!.points).toEqual([146, 121, 114]);
+    expect(trend!.startLabel).toBe("146% · 1 May 2026");
+    expect(trend!.currentLabel).toBe("114%");
+    expect(trend!.thresholds).toEqual([
+      { pct: 120, label: "120%" },
+      { pct: 110, label: "110%" },
+    ]);
+  });
+
+  it("returns null for an empty series (never priced / empty window)", () => {
+    expect(buildCcrTrend(history([]))).toBeNull();
   });
 });

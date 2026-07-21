@@ -3,19 +3,21 @@ use std::sync::Arc;
 
 use axum::Router;
 use pipeline_api::auth::JwtKeys;
-use pipeline_api::config::ChainsConfig;
+use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig};
 use pipeline_api::AppState;
 use shared::auth_user_repo::AuthUserRepo;
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
-use shared::loan_parameters_repo::LoanParametersRepo;
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
+use shared::loan_metadata::HttpLoanMetadataFetcher;
+use shared::metadata_fetcher::MetadataFetcher;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
 use shared::sumsub::config::SumsubSettings;
-use shared::collateral_valuation_repo::CollateralValuationRepo;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -49,10 +51,19 @@ async fn main() -> anyhow::Result<()> {
     let contract_logs_repo = ContractLogsRepo::new(pool.clone());
     let auth_user_repo = AuthUserRepo::new(pool.clone());
     let submitted_loan_repo = SubmittedLoanRepo::new(pool.clone());
-    let loan_parameters_repo = LoanParametersRepo::new(pool.clone());
+    let loan_fee_schedule_repo = LoanFeeScheduleRepo::new(pool.clone());
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
+
+    // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
+    // attempt (no retry backoff) — this is a synchronous write path, so a dead URI
+    // must fail fast rather than block the request for the default ~36s of retries;
+    // the submitter can retry.
+    let loan_metadata_fetcher = Arc::new(HttpLoanMetadataFetcher::new(
+        MetadataFetcher::new(reqwest::Client::new(), ipfs_gateway_url_from_env())
+            .with_backoffs(vec![]),
+    ));
 
     // JWT keys are optional — when unset the auth endpoints are unavailable but
     // the rest of the API still boots (mirrors the Sumsub / per-chain handling).
@@ -106,7 +117,8 @@ async fn main() -> anyhow::Result<()> {
         elliptic_enabled,
         auth_user_repo,
         submitted_loan_repo,
-        loan_parameters_repo,
+        loan_metadata_fetcher,
+        loan_fee_schedule_repo,
         loan_asset_price_repo,
         collateral_valuation_repo,
         loan_disbursement_repo,
@@ -128,6 +140,8 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::dashboard::DashboardDoc::openapi());
     api_docs.merge(pipeline_api::routes::collateral_valuation::CollateralValuationDoc::openapi());
     api_docs.merge(pipeline_api::routes::loan_financials::LoanFinancialsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::ccr_history::CcrHistoryDoc::openapi());
+    api_docs.merge(pipeline_api::routes::waterfall::WaterfallDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -145,6 +159,8 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::dashboard::router())
         .nest("/v1", pipeline_api::routes::collateral_valuation::router())
         .nest("/v1", pipeline_api::routes::loan_financials::router())
+        .nest("/v1", pipeline_api::routes::ccr_history::router())
+        .nest("/v1", pipeline_api::routes::waterfall::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

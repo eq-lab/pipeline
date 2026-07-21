@@ -21,10 +21,13 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
+    AssayRow, CollateralValuationRepo, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
+    ValuationMode,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
-use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
+use shared::loan_metadata::LoanMetadataFetcher;
+use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::error::ApiError;
@@ -59,7 +62,12 @@ const STATUS_PAST_DUE: &str = "Past Due";
 /// `Disbursing` outranks `Past Due` (a freshly-drawn loan can't be overdue before its
 /// off-ramp completes). Only `Performing` / `WatchList` are ever overridden — any other
 /// raw status (e.g. an unknown value) passes through unchanged.
-pub fn display_status(raw: &str, off_ramp_complete: bool, now: i64, current_maturity: i64) -> String {
+pub fn display_status(
+    raw: &str,
+    off_ramp_complete: bool,
+    now: i64,
+    current_maturity: i64,
+) -> String {
     match raw {
         "Performing" | "WatchList" if !off_ramp_complete => STATUS_DISBURSING.to_owned(),
         "Performing" | "WatchList" if now > current_maturity => STATUS_PAST_DUE.to_owned(),
@@ -86,8 +94,10 @@ pub struct LoanBookSummary {
     /// USDC (6-decimal string).
     pub total_deployed: String,
     /// Total collateral value = Σ per-loan collateral over active loans, USDC
-    /// (6-decimal string). Each loan's collateral is `latest price_usd × discount`
-    /// (`loan_parameters` + newest `loan_asset_prices` row for its asset).
+    /// (6-decimal string). Each loan's collateral is valued from its
+    /// collateral-valuation record (the `loan_collateral_valuations` anchor plus the
+    /// latest assay / offtake / quantity inputs) and the newest `loan_asset_prices`
+    /// row for its asset.
     ///
     /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
@@ -183,6 +193,11 @@ pub struct LoanBookEntry {
     /// (6-decimal string). Backs the Trustee Loans table **Senior outst.** column
     /// (distinct from `principal`, which is the original senior + equity).
     pub senior_outstanding: String,
+    /// Original senior tranche (deployed), USDC (6-decimal string) — distinct from
+    /// `senior_outstanding` (net of repayment) and from `LoanBookSummary.deployed_senior`
+    /// (the book-wide Σ *outstanding* senior). Backs the "Facility / senior" tile pairing
+    /// with `principal`.
+    pub original_senior_tranche: String,
     /// Rollover-aware maturity (`current_maturity_timestamp`, Unix seconds). Backs the
     /// **Maturity** column; reflects rollovers, unlike the origination-fixed term
     /// behind `duration_days`.
@@ -197,11 +212,11 @@ pub struct LoanBookEntry {
     /// (e.g. `"0.0080"` = +0.8 %, `"-0.0120"` = −1.2 %). `null` when a 7-day-prior
     /// price is unavailable or zero.
     pub spot_change_7d: Option<String>,
-    /// Collateral value = `latest price_usd × discount`, USDC (6-decimal string).
-    /// The price is the newest `loan_asset_prices` row for the loan's asset; the
-    /// asset and discount come from `loan_parameters` (keyed by `loan_id`).
+    /// Collateral value in USDC (6-decimal string), computed from the loan's
+    /// collateral-valuation record (`loan_collateral_valuations` anchor + latest
+    /// assay / offtake / quantity) and the newest `loan_asset_prices` row for its asset.
     ///
-    /// `null` when the loan has no `loan_parameters` row or its asset has no price.
+    /// `null` when the loan has no valuation anchor or its asset has no price.
     pub collateral: Option<String>,
     /// Loan-to-value = `principal / collateral`, 4-decimal string (e.g. `"0.8511"`).
     ///
@@ -229,6 +244,24 @@ pub struct LoanBookEntry {
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
     /// Empty when the loan's metadata records none.
     pub documents: Vec<LoanDocumentDto>,
+    /// Cumulative offtaker cash received to date, USDC (6-decimal string). Backs the
+    /// "Repaid to date" tile (`RepaymentSnapshot.offtaker_received`).
+    pub repaid_to_date: String,
+    /// Whether the loan's USDC off-ramp has been marked complete. Backs the
+    /// "Facility / disbursed" tile (paired with `principal`, the facility amount).
+    /// Mirrors the flag already used internally to derive the `Disbursing` status
+    /// override (see [`display_status`]) — the protocol tracks only this binary
+    /// flag, no partial-disbursement amount.
+    pub disbursed: bool,
+    /// Days since the loan's most recent transition into `WatchList` status.
+    /// `null` unless the loan's current `status` is `WatchList`, or (rare) no
+    /// matching on-chain transition event is found before `to`.
+    pub days_on_watchlist: Option<i64>,
+    /// Unix timestamp of the loan's most recent transition into `WatchList` status —
+    /// the raw source `days_on_watchlist` is derived from, exposed so the frontend can
+    /// render an exact "since `<date>`" sub-label instead of back-computing an
+    /// approximate date from the day count. Same nullability as `days_on_watchlist`.
+    pub watchlist_entered_at: Option<i64>,
 }
 
 /// A single document reference (name + URI) from the loan metadata document.
@@ -281,6 +314,35 @@ pub struct LocationInput {
     pub updated_at: u64,
 }
 
+/// Per-loan collateral-valuation anchor input — the data behind
+/// `loan_collateral_valuations` (see `docs/product-specs/collateral-valuation.md`).
+/// `commodity` is not repeated here; the anchor reuses `SubmitLoanRequest::commodity`.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct CollateralValuationInput {
+    /// One of `StandardGoods`, `MetalConcentrate`.
+    pub valuation_mode: String,
+    /// Headline symbol for the price feed (e.g. `XAU`).
+    pub asset: String,
+    /// Selects the `PriceProvider` implementation.
+    pub price_provider: String,
+    /// Haircut applied to collateral value — decimal fraction string in `[0, 1]`.
+    pub haircut_pct: String,
+}
+
+/// Per-loan protocol fee schedule input — the data behind `loan_fee_schedule` (see
+/// `docs/product-specs/yield.md` "Waterfall components"). All rates are basis points
+/// (1 bp = 1/10_000).
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct FeeScheduleInput {
+    /// Annualised management fee, applied to `senior_deployed * (tenor / 365)`.
+    pub mgmt_fee_rate_bps: u32,
+    /// Performance fee as a fraction of (gross interest − management fee); e.g. 2000 = 20%.
+    /// Not annualised.
+    pub perf_fee_rate_bps: u32,
+    /// Annualised OET allocation, applied to `senior_deployed * (tenor / 365)`.
+    pub oet_alloc_rate_bps: u32,
+}
+
 /// Request body for `POST /v1/loan-book/loan` — every input required by the
 /// on-chain `draw_loan`, persisted verbatim for trustee review.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -310,6 +372,12 @@ pub struct SubmitLoanRequest {
     pub initial_ccr: u32,
     /// Initial collateral location.
     pub initial_location: LocationInput,
+    /// Collateral-valuation anchor for this loan. Written to
+    /// `loan_collateral_valuations` once the loan is drawn and linked.
+    pub collateral_valuation: CollateralValuationInput,
+    /// Protocol fee schedule for this loan. Written to `loan_fee_schedule` once the
+    /// loan is drawn and linked.
+    pub fee_schedule: FeeScheduleInput,
 }
 
 /// Response for `POST /v1/loan-book/loan`.
@@ -419,6 +487,8 @@ pub struct ReviewRequest {
         SubmitLoanResponse,
         EconomicsInput,
         LocationInput,
+        CollateralValuationInput,
+        FeeScheduleInput,
         SubmissionView,
         ReviewRequest,
         ReviewDecision,
@@ -500,14 +570,54 @@ async fn submit_loan(
 
     validate_submission(&payload).map_err(ApiError::BadRequest)?;
 
+    // Structural checks pass; now confirm the on-chain metadata pointer resolves to a
+    // document the indexer will accept. Fetching after validate_submission keeps the cheap
+    // checks first and only pays the network round-trip for otherwise-valid payloads.
+    validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
+        .await
+        .map_err(ApiError::BadRequest)?;
+
+    // Re-parse fields validate_submission already checked, for the typed writes below.
+    let valuation_mode =
+        ValuationMode::try_from(payload.collateral_valuation.valuation_mode.clone())
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let haircut_pct = BigDecimal::from_str(&payload.collateral_valuation.haircut_pct)
+        .map_err(|_| ApiError::BadRequest(format!(
+            "haircut_pct is not a valid decimal: {}",
+            payload.collateral_valuation.haircut_pct
+        )))?;
+
     // Persist the payload verbatim; serialization of an owned struct cannot fail.
     let loan_data = serde_json::to_value(&payload)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
 
-    let id = state
-        .submitted_loan_repo
-        .insert(&loan_data, &claims.sub)
-        .await?;
+    // One transaction: the submission and its valuation anchor / fee schedule land
+    // together or not at all.
+    let mut tx = state.pool.begin().await?;
+
+    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub).await?;
+
+    CollateralValuationRepo::insert_pending(
+        &mut tx,
+        id,
+        &payload.commodity,
+        valuation_mode,
+        &payload.collateral_valuation.asset,
+        &payload.collateral_valuation.price_provider,
+        &haircut_pct,
+    )
+    .await?;
+
+    LoanFeeScheduleRepo::insert_pending(
+        &mut tx,
+        id,
+        payload.fee_schedule.mgmt_fee_rate_bps as i32,
+        payload.fee_schedule.perf_fee_rate_bps as i32,
+        payload.fee_schedule.oet_alloc_rate_bps as i32,
+    )
+    .await?;
+
+    tx.commit().await?;
 
     Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
 }
@@ -542,7 +652,10 @@ async fn list_submissions(
     let mut ids_by_chain: HashMap<i64, Vec<BigDecimal>> = HashMap::new();
     for r in &rows {
         if let (Some(chain_id), Some(loan_id)) = (r.chain_id, r.loan_id.as_ref()) {
-            ids_by_chain.entry(chain_id).or_default().push(loan_id.clone());
+            ids_by_chain
+                .entry(chain_id)
+                .or_default()
+                .push(loan_id.clone());
         }
     }
     let mut onchain_status: HashMap<(i64, String), String> = HashMap::new();
@@ -764,7 +877,53 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
         }
     }
 
+    match req.collateral_valuation.valuation_mode.as_str() {
+        "StandardGoods" | "MetalConcentrate" => {}
+        other => {
+            return Err(format!(
+                "unknown valuation_mode `{other}` (expected StandardGoods or MetalConcentrate)"
+            ))
+        }
+    }
+    let haircut_pct = parse("haircut_pct", &req.collateral_valuation.haircut_pct)?;
+    // BigDecimal only implements `PartialOrd<i32>` (not the reverse), so
+    // `RangeInclusive::contains` doesn't type-check here.
+    #[allow(clippy::manual_range_contains)]
+    let out_of_range = haircut_pct < 0 || haircut_pct > 1;
+    if out_of_range {
+        return Err(format!(
+            "haircut_pct must be between 0 and 1; got {haircut_pct}"
+        ));
+    }
+
+    if req.fee_schedule.perf_fee_rate_bps > 10_000 {
+        return Err(format!(
+            "perf_fee_rate_bps must be <= 10000 (100%); got {}",
+            req.fee_schedule.perf_fee_rate_bps
+        ));
+    }
+
     Ok(())
+}
+
+/// Fetch the document at `uri` and confirm it deserialises into `LoanMetadataJson` —
+/// the exact type the worker's indexer parses. This catches a broken or malformed
+/// metadata pointer at submission time rather than after the loan is drawn on-chain.
+///
+/// Any fetch or parse failure (unreachable URI, non-JSON body, unknown/missing field —
+/// `LoanMetadataJson` is `deny_unknown_fields`) maps to a `BadRequest` message: the
+/// submitter's URI is the input under validation, so the failure is theirs to fix.
+///
+/// Kept separate from the pure [`validate_submission`] (which does no I/O) and `pub` so
+/// the unit test in `packages/api/tests/loan_submission.rs` can exercise it with a mock
+/// fetcher.
+pub async fn validate_metadata_uri(
+    fetcher: &dyn LoanMetadataFetcher,
+    uri: &str,
+) -> Result<(), String> {
+    fetcher.fetch_metadata(uri).await.map(|_| ()).map_err(|e| {
+        format!("`metadata_uri` did not resolve to a valid loan-metadata document: {e}")
+    })
 }
 
 async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookResponse, ApiError> {
@@ -816,6 +975,16 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .map(|(loan_id, complete)| (loan_key(&loan_id), complete))
         .collect();
 
+    // Per-loan timestamp of the most recent WatchList entry, keyed by loan_key.
+    // Backs `days_on_watchlist` — absent → no known transition (null field).
+    let watchlist_entry_by_loan: HashMap<String, i64> = state
+        .contract_logs_repo
+        .latest_watchlist_entry_by_chain(&state.pool, chain_id, to)
+        .await?
+        .into_iter()
+        .map(|(loan_id, ts)| (loan_key(&loan_id), ts))
+        .collect();
+
     Ok(compute_loan_book(
         &loans,
         &events,
@@ -823,6 +992,7 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         &collateral_by_loan,
         &spot_by_loan,
         &disbursement_by_loan,
+        &watchlist_entry_by_loan,
     ))
 }
 
@@ -942,7 +1112,7 @@ async fn collateral_by_loan(
 }
 
 /// Canonical map key for a loan id: the `NUMERIC(78,0)` rendered at scale 0, so the
-/// `loan_parameters.loan_id` and the snapshot `loan_id` agree regardless of the
+/// valuation-anchor `loan_id` and the snapshot `loan_id` agree regardless of the
 /// scale each `BigDecimal` happens to carry.
 pub fn loan_key(loan_id: &BigDecimal) -> String {
     loan_id
@@ -988,13 +1158,19 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// Default" grouping).
 ///
 /// `collateral_by_loan` maps `loan_key(loan_id)` → collateral value in micro-USDC
-/// (`latest price_usd × discount × 1e6`); loans absent from the map have no priced
-/// collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
+/// (the valuation record's collateral value × 1e6); loans absent from the map have no
+/// priced collateral and serialize `collateral` / `ltv` as `null`. `total_collateral` /
 /// `senior_debt_coverage` are `null` when no active loan has a value.
 ///
 /// `disbursement_by_loan` maps `loan_key(loan_id)` → `off_ramp_complete`. Loans absent
 /// from the map are treated as NOT complete (still `Disbursing`), matching the
 /// "default after draw" semantics.
+///
+/// `watchlist_entry_by_loan` maps `loan_key(loan_id)` → the Unix timestamp of the
+/// loan's most recent `LoanStatusUpdated` transition into `WatchList`. Backs
+/// `days_on_watchlist`; only consulted for loans whose current `status` is
+/// `WatchList` — absent for any other loan, and absent (→ `null`) even for a
+/// currently-`WatchList` loan if no matching transition event is found.
 ///
 /// Public so the compute-layer test in `packages/api/tests/loan_book.rs` can
 /// exercise it without the HTTP/DB layers.
@@ -1005,6 +1181,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     collateral_by_loan: &HashMap<String, BigDecimal, S>,
     spot_by_loan: &HashMap<String, LoanSpot, S>,
     disbursement_by_loan: &HashMap<String, bool, S>,
+    watchlist_entry_by_loan: &HashMap<String, i64, S>,
 ) -> LoanBookResponse {
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
@@ -1088,7 +1265,25 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             .get(&loan_key(&loan.loan_id))
             .copied()
             .unwrap_or(false);
-        let status = display_status(&s.status, off_ramp_complete, to, s.current_maturity_timestamp);
+        let status = display_status(
+            &s.status,
+            off_ramp_complete,
+            to,
+            s.current_maturity_timestamp,
+        );
+
+        // Most recent WatchList-entry timestamp. Only meaningful while the loan is
+        // CURRENTLY WatchList — a stale entry timestamp from a loan that has since
+        // left WatchList must not leak through as a non-null value.
+        let watchlist_entered_at = (s.status == "WatchList")
+            .then(|| {
+                watchlist_entry_by_loan
+                    .get(&loan_key(&loan.loan_id))
+                    .copied()
+            })
+            .flatten();
+        let days_on_watchlist =
+            watchlist_entered_at.map(|entered_at| (to - entered_at) / SECS_PER_DAY);
 
         entries.push(LoanBookEntry {
             chain_id: loan.chain_id,
@@ -1098,6 +1293,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             commodity: s.commodity.clone(),
             principal: base6_to_decimal_string(&principal),
             senior_outstanding: base6_to_decimal_string(&outstanding_senior),
+            original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche),
             maturity: s.current_maturity_timestamp,
             ccr_reported_at: s.last_reported_ccr_timestamp,
             spot_price: spot.and_then(|sp| sp.price.clone()),
@@ -1118,6 +1314,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
                     uri: d.uri.clone(),
                 })
                 .collect(),
+            repaid_to_date: base6_to_decimal_string(&s.repayment.offtaker_received),
+            disbursed: off_ramp_complete,
+            days_on_watchlist,
+            watchlist_entered_at,
         });
     }
 
