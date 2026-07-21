@@ -21,10 +21,11 @@
  *   - No router state → refetch fallback selects the submission by matching
  *     `String(s.id) === id`; absent id → `not-found`; refetch in flight →
  *     `loading`.
- *   - Each status (`InReview`, `Approved`, `Rejected`, unknown) → correct
- *     `statusChip`.
+ *   - Each Origination decision status (`InReview`, `Approved`, `Rejected`)
+ *     → correct `statusChip`; backend merged/lifecycle statuses normalize to
+ *     Approved for this Origination surface (#892).
  *   - Edge cases: empty `documents`, corridor without a hyphen, zero-value
- *     economics (`"$0"` not `—`), unknown status string.
+ *     economics (`"$0"` not `—`), merged lifecycle status string.
  *   - Issue #823: `statusKind`/`reviewedDate`/`rejectionReason` fields that
  *     drive the status-conditional detail footer.
  *   - Issue #838: `transactionPreview` — the Approve & mint dialog's
@@ -193,16 +194,16 @@ describe("useOriginationDetail — status chip", () => {
     });
   });
 
-  it("maps an unknown status string to a neutral fallback, never throwing", () => {
+  it("maps a backend lifecycle status to Approved for Origination display (#892)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      status: "SomethingNew",
+      status: "WatchList",
     };
     mockSubmissions([submission]);
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.statusChip).toEqual({
-      kind: "unknown",
-      label: "SomethingNew",
+      kind: "approved",
+      label: "Approved",
     });
   });
 });
@@ -258,14 +259,14 @@ describe("useOriginationDetail — footer fields (statusKind/reviewedDate/reject
     expect(result.current.rejectionReason).toBe("—");
   });
 
-  it("exposes statusKind 'unknown' for an unrecognized status string", () => {
+  it("exposes statusKind 'approved' for a backend lifecycle status (#892)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      status: "SomethingNew",
+      status: "Default",
     };
     mockSubmissions([submission]);
     const { result } = renderHook(() => useOriginationDetail("7", submission));
-    expect(result.current.statusKind).toBe("unknown");
+    expect(result.current.statusKind).toBe("approved");
   });
 
   it("gives safe '—' defaults for statusKind/reviewedDate/rejectionReason in the not-found state", async () => {

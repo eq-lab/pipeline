@@ -33,11 +33,14 @@
  *   - Documents   → the top-level `submission.documents` (NOT `loan_data.documents`
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
- *   - Status chip → `submission.status` ("Awaiting your review" for
- *     `InReview`; the other two statuses get their own labels). This is the
- *     ONLY chip rendered — the Figma's "Your key · one click" static chip and
- *     "NSR · Net Smelter Return" valuation-mode chip are both dropped (no
- *     backend data source; never fabricate a chip).
+ *   - Status chip → normalized Origination status ("Awaiting your review" for
+ *     `InReview`; `Approved` / `Rejected` for terminal decisions). Backend
+ *     merged/lifecycle statuses are rendered as `Approved` here (issue #892)
+ *     because Origination answers whether the request was approved, not the
+ *     resulting loan's current lifecycle. This is the ONLY chip rendered —
+ *     the Figma's "Your key · one click" static chip and "NSR · Net Smelter
+ *     Return" valuation-mode chip are both dropped (no backend data source;
+ *     never fabricate a chip).
  *   - The "All three mint invariants pass" and "Originator signature
  *     verified" banners are OMITTED entirely (no backend source — do not
  *     fabricate).
@@ -59,8 +62,7 @@
  *     `batch` field exists on `SubmissionView`/`loan_data`; never fabricate
  *     it (resolved via #823's Open Questions).
  *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
- *   - unknown   → falls back to the InReview `ActionButtons` footer, so the
- *     page is never actionless/blank (resolved via Open Questions).
+ *   - Backend merged/lifecycle statuses → the Approved banner (issue #892).
  *
  * `reviewedDate` is `formatSubmittedDate(submission.updated_at)` — NOT
  * `formatMaturityDate` (which takes Unix seconds and adds the year;
@@ -91,7 +93,10 @@
  * is not reproducible and is dropped rather than fabricated.
  */
 import { useMemo } from "react";
-import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import {
+  normalizeOriginationSubmissionStatus,
+  useLoanSubmissions,
+} from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
@@ -217,15 +222,13 @@ const EMPTY_TRANSACTION_PREVIEW: TransactionPreviewDisplay = {
 // ── Status chip ───────────────────────────────────────────────────────────────
 
 function resolveStatusChip(submission: SubmissionView): StatusChip {
-  switch (submission.status) {
+  switch (normalizeOriginationSubmissionStatus(submission.status)) {
     case "InReview":
       return { kind: "in-review", label: "Awaiting your review" };
     case "Approved":
       return { kind: "approved", label: "Approved" };
     case "Rejected":
       return { kind: "rejected", label: "Rejected" };
-    default:
-      return { kind: "unknown", label: safeString(submission.status) };
   }
 }
 

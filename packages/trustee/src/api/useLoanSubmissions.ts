@@ -96,10 +96,31 @@ export interface LoanDocumentDto {
   uri: string;
 }
 
+export type OriginationSubmissionStatus = "InReview" | "Approved" | "Rejected";
+
+/**
+ * Normalizes the backend's merged submission/loan lifecycle status into the
+ * Origination UI vocabulary (issue #892). Once a submission reports a loan
+ * lifecycle status such as `Performing`, `WatchList`, `Past Due`, `Default`,
+ * or `Closed`, the origination decision is already complete, so Origination
+ * surfaces display it as `Approved`.
+ */
+export function normalizeOriginationSubmissionStatus(
+  status: SubmissionView["status"],
+): OriginationSubmissionStatus {
+  if (status === "InReview") return "InReview";
+  if (status === "Rejected") return "Rejected";
+  return "Approved";
+}
+
 /** One submission as returned by `GET /v1/loan-book/submissions`. */
 export interface SubmissionView {
   id: number;
-  /** Lifecycle status: `"InReview"` | `"Approved"` | `"Rejected"`. */
+  /**
+   * Raw backend status. Backend now returns a merged submission/loan lifecycle
+   * status set; use `normalizeOriginationSubmissionStatus` before rendering an
+   * Origination-specific status.
+   */
   status:
     | "InReview"
     | "Approved"
