@@ -184,24 +184,24 @@ function ready() {
 
 /**
  * A terminal waterfall preview: a $6,150,000 final payment that fully repays
- * the $4,800,000 outstanding senior principal (backend-scaled as-is — dollar
- * integers).
+ * the $4,800,000 outstanding senior principal. Backend values are raw
+ * 7-decimal SAC base units.
  */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "4800000", // $4,800,000 — REAL, not $0 (#884)
-  senior_coupon_net: "115500",
-  management_fee: "12000",
-  performance_fee: "15000",
-  oet_allocation: "7500",
+  senior_principal_returned: "48000000000000", // $4,800,000 — REAL, not $0 (#884)
+  senior_coupon_net: "1155000000000",
+  management_fee: "120000000000",
+  performance_fee: "150000000000",
+  oet_allocation: "75000000000",
 };
 
 /** A partial repayment — principal returned is less than the outstanding senior. */
 const WATERFALL_PARTIAL: WaterfallResponse = {
-  senior_principal_returned: "1000000", // $1,000,000 of $4,800,000 outstanding
-  senior_coupon_net: "20000",
-  management_fee: "2000",
-  performance_fee: "3000",
-  oet_allocation: "1000",
+  senior_principal_returned: "10000000000000", // $1,000,000 of $4,800,000 outstanding
+  senior_coupon_net: "200000000000",
+  management_fee: "20000000000",
+  performance_fee: "30000000000",
+  oet_allocation: "10000000000",
 };
 
 function mockWaterfall(
@@ -260,7 +260,7 @@ describe("Record Repayment route — ready state", () => {
     expect(left).toHaveTextContent("Commodity");
     expect(left).toHaveTextContent("Lithium");
     expect(left).toHaveTextContent("Final period");
-    expect(left).toHaveTextContent("31 Mar → 24 Jun · 85 days");
+    expect(left).toHaveTextContent("31 Mar 2026 → 24 Jun 2026 · 85 days");
     expect(left).toHaveTextContent("Senior outstanding before");
     expect(left).toHaveTextContent("$4,800,000");
     expect(left).toHaveTextContent("Offtaker owed");
@@ -381,13 +381,13 @@ describe("Record Repayment route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "6150000",
-        senior_principal_repaid: "4800000",
-        senior_interest: "115500",
-        equity_distributed: "1200000",
-        mgmt_fee: "12000",
-        perf_fee: "15000",
-        oet_alloc: "7500",
+        offtaker_received: "61500000000000",
+        senior_principal_repaid: "48000000000000",
+        senior_interest: "1155000000000",
+        equity_distributed: "12000000000000",
+        mgmt_fee: "120000000000",
+        perf_fee: "150000000000",
+        oet_alloc: "75000000000",
       },
     });
   });
