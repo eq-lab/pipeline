@@ -4,8 +4,9 @@
 
 use async_trait::async_trait;
 use pipeline_api::routes::loan_book::{
-    extract_documents, resolve_review, validate_metadata_uri, validate_submission, EconomicsInput,
-    LoanDocumentDto, LocationInput, ReviewDecision, ReviewRequest, SubmitLoanRequest,
+    extract_documents, resolve_review, validate_metadata_uri, validate_submission,
+    CollateralValuationInput, EconomicsInput, FeeScheduleInput, LoanDocumentDto, LocationInput,
+    ReviewDecision, ReviewRequest, SubmitLoanRequest,
 };
 use shared::loan_metadata::{LoanMetadataFetcher, LoanMetadataJson};
 use shared::submitted_loan_repo::SubmissionStatus;
@@ -37,6 +38,17 @@ fn valid_request() -> SubmitLoanRequest {
             location_identifier: "WH-1".to_owned(),
             tracking_url: "https://track.example.com/WH-1".to_owned(),
             updated_at: 1_700_000_000,
+        },
+        collateral_valuation: CollateralValuationInput {
+            valuation_mode: "StandardGoods".to_owned(),
+            asset: "XCU".to_owned(),
+            price_provider: "LME".to_owned(),
+            haircut_pct: "0.20".to_owned(),
+        },
+        fee_schedule: FeeScheduleInput {
+            mgmt_fee_rate_bps: 50,
+            perf_fee_rate_bps: 2000,
+            oet_alloc_rate_bps: 10,
         },
     }
 }
@@ -114,6 +126,54 @@ fn non_decimal_amount_is_rejected() {
     let mut r = valid_request();
     r.economics.original_facility_size = "not-a-number".to_owned();
     assert!(validate_submission(&r).is_err());
+}
+
+#[test]
+fn unknown_valuation_mode_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.valuation_mode = "Moon".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("valuation_mode"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_above_one_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "1.01".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("haircut_pct"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_below_zero_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "-0.01".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("haircut_pct"), "unexpected error: {err}");
+}
+
+#[test]
+fn haircut_pct_bounds_are_allowed() {
+    let mut r = valid_request();
+    r.collateral_valuation.haircut_pct = "0".to_owned();
+    assert!(validate_submission(&r).is_ok());
+    r.collateral_valuation.haircut_pct = "1".to_owned();
+    assert!(validate_submission(&r).is_ok());
+}
+
+#[test]
+fn perf_fee_rate_above_10000_bps_is_rejected() {
+    let mut r = valid_request();
+    r.fee_schedule.perf_fee_rate_bps = 10_001;
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("perf_fee_rate_bps"), "unexpected error: {err}");
+}
+
+#[test]
+fn perf_fee_rate_at_10000_bps_is_allowed() {
+    let mut r = valid_request();
+    r.fee_schedule.perf_fee_rate_bps = 10_000;
+    assert!(validate_submission(&r).is_ok());
 }
 
 // ── resolve_review ───────────────────────────────────────────────────────────
@@ -231,6 +291,17 @@ fn submit_request_defaults_optional_fields() {
             "location_identifier": "V-1",
             "tracking_url": "https://track/V-1",
             "updated_at": 1_700_000_000_u64
+        },
+        "collateral_valuation": {
+            "valuation_mode": "StandardGoods",
+            "asset": "XCU",
+            "price_provider": "LME",
+            "haircut_pct": "0.20"
+        },
+        "fee_schedule": {
+            "mgmt_fee_rate_bps": 50,
+            "perf_fee_rate_bps": 2000,
+            "oet_alloc_rate_bps": 10
         }
     });
     let req: SubmitLoanRequest = serde_json::from_value(json).expect("deserialize");

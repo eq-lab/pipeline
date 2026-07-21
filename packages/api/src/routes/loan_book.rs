@@ -21,11 +21,13 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
+    AssayRow, CollateralValuationRepo, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
+    ValuationMode,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
+use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
-use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRow};
+use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
 use crate::auth::{AuthClaims, SecurityAddon};
 use crate::error::ApiError;
@@ -289,6 +291,35 @@ pub struct LocationInput {
     pub updated_at: u64,
 }
 
+/// Per-loan collateral-valuation anchor input — the data behind
+/// `loan_collateral_valuations` (see `docs/product-specs/collateral-valuation.md`).
+/// `commodity` is not repeated here; the anchor reuses `SubmitLoanRequest::commodity`.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct CollateralValuationInput {
+    /// One of `StandardGoods`, `MetalConcentrate`.
+    pub valuation_mode: String,
+    /// Headline symbol for the price feed (e.g. `XAU`).
+    pub asset: String,
+    /// Selects the `PriceProvider` implementation.
+    pub price_provider: String,
+    /// Haircut applied to collateral value — decimal fraction string in `[0, 1]`.
+    pub haircut_pct: String,
+}
+
+/// Per-loan protocol fee schedule input — the data behind `loan_fee_schedule` (see
+/// `docs/product-specs/yield.md` "Waterfall components"). All rates are basis points
+/// (1 bp = 1/10_000).
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct FeeScheduleInput {
+    /// Annualised management fee, applied to `senior_deployed * (tenor / 365)`.
+    pub mgmt_fee_rate_bps: u32,
+    /// Performance fee as a fraction of (gross interest − management fee); e.g. 2000 = 20%.
+    /// Not annualised.
+    pub perf_fee_rate_bps: u32,
+    /// Annualised OET allocation, applied to `senior_deployed * (tenor / 365)`.
+    pub oet_alloc_rate_bps: u32,
+}
+
 /// Request body for `POST /v1/loan-book/loan` — every input required by the
 /// on-chain `draw_loan`, persisted verbatim for trustee review.
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
@@ -318,6 +349,12 @@ pub struct SubmitLoanRequest {
     pub initial_ccr: u32,
     /// Initial collateral location.
     pub initial_location: LocationInput,
+    /// Collateral-valuation anchor for this loan. Written to
+    /// `loan_collateral_valuations` once the loan is drawn and linked.
+    pub collateral_valuation: CollateralValuationInput,
+    /// Protocol fee schedule for this loan. Written to `loan_fee_schedule` once the
+    /// loan is drawn and linked.
+    pub fee_schedule: FeeScheduleInput,
 }
 
 /// Response for `POST /v1/loan-book/loan`.
@@ -427,6 +464,8 @@ pub struct ReviewRequest {
         SubmitLoanResponse,
         EconomicsInput,
         LocationInput,
+        CollateralValuationInput,
+        FeeScheduleInput,
         SubmissionView,
         ReviewRequest,
         ReviewDecision,
@@ -515,14 +554,47 @@ async fn submit_loan(
         .await
         .map_err(ApiError::BadRequest)?;
 
+    // Re-parse fields validate_submission already checked, for the typed writes below.
+    let valuation_mode =
+        ValuationMode::try_from(payload.collateral_valuation.valuation_mode.clone())
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let haircut_pct = BigDecimal::from_str(&payload.collateral_valuation.haircut_pct)
+        .map_err(|_| ApiError::BadRequest(format!(
+            "haircut_pct is not a valid decimal: {}",
+            payload.collateral_valuation.haircut_pct
+        )))?;
+
     // Persist the payload verbatim; serialization of an owned struct cannot fail.
     let loan_data = serde_json::to_value(&payload)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
 
-    let id = state
-        .submitted_loan_repo
-        .insert(&loan_data, &claims.sub)
-        .await?;
+    // One transaction: the submission and its valuation anchor / fee schedule land
+    // together or not at all.
+    let mut tx = state.pool.begin().await?;
+
+    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub).await?;
+
+    CollateralValuationRepo::insert_pending(
+        &mut tx,
+        id,
+        &payload.commodity,
+        valuation_mode,
+        &payload.collateral_valuation.asset,
+        &payload.collateral_valuation.price_provider,
+        &haircut_pct,
+    )
+    .await?;
+
+    LoanFeeScheduleRepo::insert_pending(
+        &mut tx,
+        id,
+        payload.fee_schedule.mgmt_fee_rate_bps as i32,
+        payload.fee_schedule.perf_fee_rate_bps as i32,
+        payload.fee_schedule.oet_alloc_rate_bps as i32,
+    )
+    .await?;
+
+    tx.commit().await?;
 
     Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
 }
@@ -780,6 +852,32 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
                 "unknown location_type `{other}` (expected Vessel, Warehouse, TankFarm, or Other)"
             ))
         }
+    }
+
+    match req.collateral_valuation.valuation_mode.as_str() {
+        "StandardGoods" | "MetalConcentrate" => {}
+        other => {
+            return Err(format!(
+                "unknown valuation_mode `{other}` (expected StandardGoods or MetalConcentrate)"
+            ))
+        }
+    }
+    let haircut_pct = parse("haircut_pct", &req.collateral_valuation.haircut_pct)?;
+    // BigDecimal only implements `PartialOrd<i32>` (not the reverse), so
+    // `RangeInclusive::contains` doesn't type-check here.
+    #[allow(clippy::manual_range_contains)]
+    let out_of_range = haircut_pct < 0 || haircut_pct > 1;
+    if out_of_range {
+        return Err(format!(
+            "haircut_pct must be between 0 and 1; got {haircut_pct}"
+        ));
+    }
+
+    if req.fee_schedule.perf_fee_rate_bps > 10_000 {
+        return Err(format!(
+            "perf_fee_rate_bps must be <= 10000 (100%); got {}",
+            req.fee_schedule.perf_fee_rate_bps
+        ));
     }
 
     Ok(())
