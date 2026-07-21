@@ -90,13 +90,21 @@ impl SubmittedLoanRepo {
     }
 
     /// Insert a new submission as `InReview`. Returns the new submission `id`.
-    pub async fn insert(&self, loan_data: &Value, originator: &str) -> Result<i64, sqlx::Error> {
+    ///
+    /// Takes a caller-supplied connection (rather than `&self.pool`) so the submission
+    /// endpoint can run this in the same transaction as its `loan_collateral_valuations` /
+    /// `loan_fee_schedule` inserts — either all three land or none do.
+    pub async fn insert(
+        conn: &mut PgConnection,
+        loan_data: &Value,
+        originator: &str,
+    ) -> Result<i64, sqlx::Error> {
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO submitted_loans (loan_data, originator) VALUES ($1, $2) RETURNING id",
         )
         .bind(loan_data)
         .bind(originator)
-        .fetch_one(&self.pool)
+        .fetch_one(conn)
         .await?;
         Ok(id)
     }

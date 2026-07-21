@@ -23,6 +23,7 @@ fn anchor(haircut: &str) -> CollateralValuationRow {
     CollateralValuationRow {
         chain_id: 1,
         loan_id: BigDecimal::from(42),
+        submitted_loan_id: 1,
         commodity: "Coffee".to_owned(),
         valuation_mode: ValuationMode::StandardGoods,
         asset: "KC".to_owned(),
