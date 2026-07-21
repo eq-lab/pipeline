@@ -27,21 +27,25 @@ describe("parseUsdInput", () => {
     expect(parseUsdInput("0")).toBeNull();
     expect(parseUsdInput("-100")).toBeNull();
     expect(parseUsdInput("abc")).toBeNull();
+    expect(parseUsdInput("1.2.3")).toBeNull();
   });
 });
 
 describe("usdToBaseUnits", () => {
-  it("sends the entered USD amount as-is (backend handles USDC decimals)", () => {
-    expect(usdToBaseUnits(45000)).toBe("45000");
+  it("converts entered USD to 7-decimal SAC base units", () => {
+    expect(usdToBaseUnits("45000")).toBe("450000000000");
+    expect(usdToBaseUnits("123.45678")).toBe("1234567800");
   });
 
-  it("rounds to a whole-dollar integer string", () => {
-    expect(usdToBaseUnits(2.4)).toBe("2");
-    expect(usdToBaseUnits(2.6)).toBe("3");
+  it("truncates beyond the SAC decimal precision", () => {
+    expect(usdToBaseUnits("1.12345678")).toBe("11234567");
   });
 
   it('returns "0" for null (keeps the waterfall query disabled)', () => {
     expect(usdToBaseUnits(null)).toBe("0");
+    expect(usdToBaseUnits("")).toBe("0");
+    expect(usdToBaseUnits("-1")).toBe("0");
+    expect(usdToBaseUnits("1.2.3")).toBe("0");
   });
 });
 
@@ -52,7 +56,7 @@ describe("todayDateInput", () => {
 });
 
 describe("computeCouponPeriod", () => {
-  it('formats the period as "<start> → <maturity> · <days> days"', () => {
+  it('formats the period as "<start year> → <maturity year> · <days> days"', () => {
     const epoch: Epoch = {
       number: 1,
       current_apy_bps: 1000,
@@ -61,7 +65,7 @@ describe("computeCouponPeriod", () => {
     };
     const result = computeCouponPeriod(epoch);
     expect(result.days).toBe(88);
-    expect(result.label).toBe("2 Jan → 31 Mar · 88 days");
+    expect(result.label).toBe("2 Jan 2026 → 31 Mar 2026 · 88 days");
   });
 
   it('returns "—" / null days when no epoch is on record', () => {
@@ -109,28 +113,28 @@ describe("isTerminalRepayment", () => {
 });
 
 describe("buildRepaymentInput (issue #882)", () => {
-  // Backend-scaled as-is (dollar integers). senior_principal_returned is
+  // Backend raw 7-decimal SAC units. senior_principal_returned is
   // deliberately NON-zero to prove the interest-only override forces
   // senior_principal_repaid to "0" regardless.
   const WATERFALL = {
-    senior_principal_returned: "999", // ignored (interest-only)
-    senior_coupon_net: "115500", // $115,500
-    management_fee: "12000", // $12,000
-    performance_fee: "15000", // $15,000
-    oet_allocation: "7500", // $7,500
+    senior_principal_returned: "9990000000", // ignored (interest-only)
+    senior_coupon_net: "1155000000000", // $115,500
+    management_fee: "120000000000", // $12,000
+    performance_fee: "150000000000", // $15,000
+    oet_allocation: "75000000000", // $7,500
   };
 
   it("forces zero principal (interest-only) + equity as the residual (sums to offtaker)", () => {
     // Offtaker $150,000; interest+fees sum to it → equity = 0.
-    const input = buildRepaymentInput("150000", WATERFALL);
+    const input = buildRepaymentInput("1500000000000", WATERFALL);
     expect(input).toEqual({
-      offtaker_received: "150000",
+      offtaker_received: "1500000000000",
       senior_principal_repaid: "0",
-      senior_interest: "115500",
+      senior_interest: "1155000000000",
       equity_distributed: "0",
-      mgmt_fee: "12000",
-      perf_fee: "15000",
-      oet_alloc: "7500",
+      mgmt_fee: "120000000000",
+      perf_fee: "150000000000",
+      oet_alloc: "75000000000",
     });
     // The six components sum exactly to offtaker_received.
     const six =
@@ -145,17 +149,17 @@ describe("buildRepaymentInput (issue #882)", () => {
 
   it("routes the leftover to equity when interest+fees are below the offtaker amount", () => {
     // Offtaker $200,000; interest+fees $150,000 → equity = $50,000.
-    const input = buildRepaymentInput("200000", WATERFALL);
-    expect(input!.equity_distributed).toBe("50000");
+    const input = buildRepaymentInput("2000000000000", WATERFALL);
+    expect(input!.equity_distributed).toBe("500000000000");
   });
 
   it("clamps equity at 0 (never negative) when interest+fees exceed the amount", () => {
-    const input = buildRepaymentInput("100000", WATERFALL);
+    const input = buildRepaymentInput("1000000000000", WATERFALL);
     expect(input!.equity_distributed).toBe("0");
   });
 
   it("returns null before an amount/preview is available", () => {
     expect(buildRepaymentInput("0", WATERFALL)).toBeNull();
-    expect(buildRepaymentInput("150000", undefined)).toBeNull();
+    expect(buildRepaymentInput("1500000000000", undefined)).toBeNull();
   });
 });

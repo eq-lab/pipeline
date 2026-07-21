@@ -174,24 +174,23 @@ function ready() {
 
 /**
  * A representative waterfall preview for a $45,000 interest-only coupon.
- * Backend-scaled as-is (dollar integers) — the frontend applies no decimal
- * scaling (#882): $35,000 = "35000".
+ * Backend values are raw 7-decimal SAC base units: $35,000 = "350000000000".
  */
 const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   senior_principal_returned: "0",
-  senior_coupon_net: "35000", // $35,000
-  management_fee: "5000", // $5,000
-  performance_fee: "3000", // $3,000
-  oet_allocation: "2000", // $2,000
+  senior_coupon_net: "350000000000", // $35,000
+  management_fee: "50000000000", // $5,000
+  performance_fee: "30000000000", // $3,000
+  oet_allocation: "20000000000", // $2,000
 };
 
 /** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "1840000", // $1,840,000 as-is
-  senior_coupon_net: "35000",
-  management_fee: "5000",
-  performance_fee: "3000",
-  oet_allocation: "2000",
+  senior_principal_returned: "18400000000000", // $1,840,000
+  senior_coupon_net: "350000000000",
+  management_fee: "50000000000",
+  performance_fee: "30000000000",
+  oet_allocation: "20000000000",
 };
 
 function mockWaterfall(
@@ -248,13 +247,13 @@ describe("Record Coupon route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "45000",
+        offtaker_received: "450000000000",
         senior_principal_repaid: "0",
-        senior_interest: "35000",
+        senior_interest: "350000000000",
         equity_distributed: "0",
-        mgmt_fee: "5000",
-        perf_fee: "3000",
-        oet_alloc: "2000",
+        mgmt_fee: "50000000000",
+        perf_fee: "30000000000",
+        oet_alloc: "20000000000",
       },
     });
   });
@@ -286,7 +285,7 @@ describe("Record Coupon route — ready state", () => {
     const left = screen.getByTestId("record-coupon-left-card");
     expect(left).toHaveTextContent("Helios Metals");
     expect(left).toHaveTextContent("Coupon period");
-    expect(left).toHaveTextContent("2 Jan → 31 Mar · 88 days");
+    expect(left).toHaveTextContent("2 Jan 2026 → 31 Mar 2026 · 88 days");
     expect(left).toHaveTextContent("Senior outstanding — unchanged");
     expect(left).toHaveTextContent("$1,840,000");
     expect(left).toHaveTextContent("Offtaker still owed after coupon");
@@ -312,19 +311,19 @@ describe("Record Coupon route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("passes the entered amount as-is to useLoanWaterfall (debounced)", async () => {
+  it("passes the entered USD amount as raw SAC base units to useLoanWaterfall (debounced)", async () => {
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "45000" },
+      target: { value: "123.45678" },
     });
-    // Amount sent as-is (backend handles USDC decimals), after the debounce (#882).
+    // Amount is multiplied by 10^7 before the debounced waterfall request.
     await waitFor(() => {
       const lastCall =
         mockUseLoanWaterfall.mock.calls[
           mockUseLoanWaterfall.mock.calls.length - 1
         ]!;
       expect(lastCall[0]).toBe("4488");
-      expect(lastCall[1]).toBe("45000");
+      expect(lastCall[1]).toBe("1234567800");
     });
   });
 

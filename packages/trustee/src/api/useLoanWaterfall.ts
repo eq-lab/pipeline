@@ -7,10 +7,10 @@
  *
  * Mirrors `useLoanFinancials` / `useLoanCcrHistory`: Stellar-scoped (`chain_id`
  * from ENV), `apiFetch` REST call, hand-mirrored DTO (TD-42). `amount` and the
- * response fields are handled **as-is** — the backend already accounts for USDC
- * decimals, so the frontend passes the entered dollar amount verbatim and
- * displays the response integers as dollars directly (no decimal scaling, #882).
- * The query stays disabled until a positive amount is entered.
+ * response fields are raw on-chain base-unit integer strings. Route presenters
+ * convert operator-entered USD to raw units before calling this hook and divide
+ * response fields by the configured decimals for display. The query stays
+ * disabled until a positive raw amount is provided.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/api/client";
