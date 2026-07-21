@@ -8,3 +8,14 @@
    utility classes never make it into the generated stylesheet. */
 @source "../../ui/src/**/*.{ts,tsx}";
 @source "../../wallet-connect/src/**/*.{ts,tsx}";
+
+@layer base {
+  button:not(:disabled):not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  button[aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}
