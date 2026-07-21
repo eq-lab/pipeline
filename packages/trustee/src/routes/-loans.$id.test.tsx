@@ -687,6 +687,24 @@ describe("Loan detail route — Close loan (#884)", () => {
   });
 });
 
+describe("Loan detail route — Escalate to Risk Council (#782)", () => {
+  it("navigates to the full-page Escalate-to-Default route from the Escalate to Risk Council action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(
+      screen.getByTestId("loan-detail-action-Escalate to Risk Council"),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/risk-council/escalate/$id",
+      params: { id: "4488" },
+    });
+    // Unlike Update lifecycle, this is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Loan detail route — top-level states", () => {
   it("renders the loading skeleton", () => {
     mockUseLoanDetail.mockReturnValue(makeResult({ state: "loading" }));

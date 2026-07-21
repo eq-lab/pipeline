@@ -1,30 +1,24 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
 /**
- * Risk Council (placeholder).
+ * Risk Council layout route — a pass-through that renders its child route via
+ * `<Outlet/>` and adds no chrome of its own (issue #782, mirrors the `loans.tsx`
+ * / `origination.tsx` precedent, #821). It exists so sibling pages can both
+ * live under `/risk-council`:
+ *   - `risk-council.index.tsx`         → the placeholder body at `/risk-council`
+ *     (#786's nav taxonomy, pending the Type-3 flow index).
+ *   - `risk-council.escalate.$id.tsx`  → the Escalate-to-Default page at
+ *     `/risk-council/escalate/$id` (#782).
  *
- * See docs/product-specs/trustee-dashboard.md, "Type 3 — RISK_COUNCIL
- * proposals" section, for flows 10-12 (escalate to default, off-cycle
- * re-term, write-down close). Proposal builder + timelock tracker UI lands in
- * a per-flow sub-issue of epic #775 (#786 replaces the #777 scaffold's
- * `/type3-council` route with the Figma nav taxonomy).
+ * Without this layout, TanStack's generated route tree would reference a
+ * `RiskCouncilRoute` parent with no `<Outlet/>`, so `/risk-council/escalate/$id`
+ * would fail to register (renders "not found") — the same fix `loans.tsx`'s
+ * doc comment describes for `/loans/$id`.
  */
-const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/risk-council")!;
-
-function RiskCouncil() {
-  return (
-    <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-12 md:px-8">
-      <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-m)] leading-[var(--text-pipeline-heading-m--line-height)] text-[color:var(--color-pipeline-ink)]">
-        {navItem.heading}
-      </h1>
-      <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink-muted)]">
-        {navItem.description}
-      </p>
-    </main>
-  );
+function RiskCouncilLayout() {
+  return <Outlet />;
 }
 
 export const Route = createFileRoute("/risk-council")({
-  component: RiskCouncil,
+  component: RiskCouncilLayout,
 });

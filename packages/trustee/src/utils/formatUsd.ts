@@ -206,6 +206,24 @@ export function formatRegistryCompact2dpUsd(
   return formatCompactUsd2dp(scaleRegistryAmount(base6Decimal) ?? undefined);
 }
 
+/**
+ * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
+ * comment).
+ *
+ * Fully-expanded whole-dollar form of a registry-sourced amount after
+ * applying the ×1000 `scaleRegistryAmount` correction — the Risk Council
+ * "Escalate to Default" ledger card's style (`formatFullUsd`, e.g.
+ * `$1,840,000`) applied to a registry-sourced amount (`principal`,
+ * `senior_outstanding`, `collateral`, `offtaker` / `offtaker_outstanding` —
+ * issue #782). See `scaleRegistryAmount`'s doc comment for the full
+ * rationale.
+ */
+export function formatRegistryFullUsd(
+  base6Decimal: string | null | undefined,
+): string {
+  return formatFullUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
+}
+
 // ── formatBpsRate ─────────────────────────────────────────────────────────────
 
 /**

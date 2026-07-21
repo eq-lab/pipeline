@@ -39,7 +39,6 @@ Typical sections: **Overview** → **Behavior** → **API Contract** → **Data 
 | [operations-console.md](./operations-console.md) | Operations Console | Overview, shared operator authentication and account lifecycle |
 | [operations-console-team.md](./operations-console-team.md) | Operations Console | Team view, Originator view, security considerations |
 | [trustee-dashboard.md](./trustee-dashboard.md) | Operations Console | Trustee dashboard technical-assignment spec: business flows by signing rail, data layer, API contracts |
-| [trustee-dashboard-v3-design-assignment.md](./trustee-dashboard-v3-design-assignment.md) | Operations Console | Trustee Dashboard **Design Assignment v3** — the source-of-truth design brief: sections S1–S17, the 5 status families + loan-status-chip divergence rules, the per-status action matrix, screen flows, and the component library. The reference for the trustee UI flows (record coupon/repayment, escalate, update-lifecycle, etc.). |
 | [collateral-valuation.md](./collateral-valuation.md) | Collateral Valuation | Price sources and feed budget, standard-goods and NSR concentrate valuation modes, off-chain valuation record, CCR derivation |
 | [price-feed.md](./price-feed.md) | Price Feed & Notifications | CCR monitoring, threshold alerts, notification dispatch |
 | [dashboards.md](./dashboards.md) | Dashboards | LP dashboard + 4-panel Protocol dashboard |

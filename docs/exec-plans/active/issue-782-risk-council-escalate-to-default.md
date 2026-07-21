@@ -14,13 +14,13 @@ Design reference: [Figma node 4116-12953](https://www.figma.com/design/A43rjYYjS
 
 ## In scope
 
-- **Routing restructure** (`packages/trustee/src/routes/`): convert `risk-council.tsx` (currently a placeholder leaf) into a pass-through `<Outlet/>` layout; move its placeholder content to a new `risk-council.index.tsx` (`/risk-council`); add `risk-council.escalate.$id.tsx` → `createFileRoute("/risk-council/escalate/$id")`. Mirrors the `loans.tsx` / `loans.index.tsx` pattern. `vite build` regenerates `routeTree.gen.ts`.
-- **The Escalate-to-Default page** (`risk-council.escalate.$id.tsx`, render-only) + colocated presenter (`-risk-council-escalate.ts`), per `docs/FRONTEND.md` rule 2, mirroring the record-coupon route/presenter split:
+- ✅ **Routing restructure** (`packages/trustee/src/routes/`): convert `risk-council.tsx` (currently a placeholder leaf) into a pass-through `<Outlet/>` layout; move its placeholder content to a new `risk-council.index.tsx` (`/risk-council`); add `risk-council.escalate.$id.tsx` → `createFileRoute("/risk-council/escalate/$id")`. Mirrors the `loans.tsx` / `loans.index.tsx` pattern. `vite build` regenerates `routeTree.gen.ts`.
+- ✅ **The Escalate-to-Default page** (`risk-council.escalate.$id.tsx`, render-only) + colocated presenter (`-risk-council-escalate.ts`), per `docs/FRONTEND.md` rule 2, mirroring the record-coupon route/presenter split:
   - Header: "‹ Risk Council" back link (→ `/risk-council`), title "Escalate to Default — <originator>", chips "Risk Council Safe · 24h timelock" + "Draft".
-  - Left "Loan ledger & deterioration" card: Facility / senior deployed, Repaid to date, Collateral (+ commodity/price sublabel), CCR (+ "next alert at 110%"), Days on watchlist, CCR-trend chart (reuse `CcrTrendCard`/`useLoanCcrHistory`, #879/#880), "Portfolio impact if defaulted" (At-risk `X% → Y%`, commodity concentration).
+  - Left "Loan ledger & deterioration" card: Facility / senior deployed, Repaid to date, Collateral (+ commodity/price sublabel), CCR (+ "next alert at 110%"), Days on watchlist, CCR-trend chart (reuse `CcrTrendCard`/`useLoanCcrHistory`, #879/#880 — extracted the chart SVG into a shared `-CcrTrendChart.tsx` so both `loans.$id.tsx` and this page render it), "Portfolio impact if defaulted" (At-risk `X% → Y%`, commodity concentration).
   - Right "Proposal" card: composed `RiskCouncilSafe.propose(LoanRegistry.setDefault(loanId: #<id> — <originator>))` code block, 3-item checklist, the "You cannot execute this" note, and a mock "Submit to Risk Council Safe" button (flips a local Draft → Submitted state; no network / no wallet).
-- **Entry wiring:** `loans.$id.tsx` `onOtherAction("Escalate to Risk Council")` → navigate to `/risk-council/escalate/$id`.
-- **Tests:** render tests (mock hooks) for the ledger rows (real values), the composed proposal text with the loan id, the "cannot execute" note, and the mock Submit flip; plus the `loans.$id` navigation test.
+- ✅ **Entry wiring:** `loans.$id.tsx` `onOtherAction("Escalate to Risk Council")` → navigate to `/risk-council/escalate/$id`.
+- ✅ **Tests:** render tests (mock hooks) for the ledger rows (real values), the composed proposal text with the loan id, the "cannot execute" note, and the mock Submit flip; plus the `loans.$id` navigation test.
 
 ## Data sourcing (real vs mock)
 

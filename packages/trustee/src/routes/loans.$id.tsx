@@ -21,6 +21,7 @@ import {
   type SummaryTile,
   type TileTone,
 } from "./-loanDetailMock";
+import { CcrTrendChart } from "./-CcrTrendChart";
 
 /**
  * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
@@ -74,9 +75,6 @@ const INK_MUTED = "rgba(56,55,53,0.6)";
 const STEP_DONE_BG = "rgba(32, 128, 0, 0.08)";
 const STEP_DONE_LINE = "rgba(32, 128, 0, 0.3)";
 const STEP_ACTIVE_RING = "0px 0px 0px 4px rgba(0, 0, 128, 0.12)";
-
-/** CCR-trend chart dashed guide-line colour (Watchlist variant, Figma 4116:10868). */
-const CCR_GUIDE = "rgba(178, 0, 0, 0.35)";
 
 function toneColor(tone: TileTone): string {
   switch (tone) {
@@ -1216,79 +1214,16 @@ function UpdateLifecycleDialog({
   );
 }
 
-// ── CCR trend (Watchlist variant, mock) ──────────────────────────────────────
+// ── CCR trend (Watchlist variant) ────────────────────────────────────────────
 
 /**
- * CCR-trend line chart (Figma node `4116:10868`, Watchlist variant). Mock — no
- * CCR time-series endpoint feeds this page yet (#859); the geometry is a fixed
- * representative decline and the labels come from the mock fixture. Two dashed
- * red guide lines (120% / 110%), a solid red trend line ending in a dot below
- * the 120% threshold, plus the start caption. viewBox is 440×124 (the Figma SVG
- * box) and scales to the card width.
- */
-/**
- * CCR-trend line chart (Watchlist variant, Figma node `4116:10868`), drawn from
- * the real `/ccr-history` series (#879). The y-scale is per-loan: it spans the
- * series' own CCR range widened to include the threshold guide-lines, so the
- * decline and its distance to the 120% / 110% levels read correctly for each
- * loan. A single point renders as a dot.
+ * CCR-trend card (Watchlist variant, Figma node `4116:10868`) — the bordered
+ * white card + title wrapping the shared `CcrTrendChart` (extracted to
+ * `-CcrTrendChart.tsx`, issue #782, so the Risk Council "Escalate to Default"
+ * page can reuse the same chart embedded directly in its ledger card, without
+ * this card's own border/title).
  */
 function CcrTrendCard({ trend }: { trend: CcrTrend }) {
-  // Plot area within the 440×124 viewBox.
-  const X0 = 10;
-  const X1 = 430;
-  const Y_TOP = 8;
-  const Y_BOTTOM = 92;
-
-  const thresholdPcts = trend.thresholds.map((t) => t.pct);
-  const allPcts = [...trend.points, ...thresholdPcts];
-  const rawMin = Math.min(...allPcts);
-  const rawMax = Math.max(...allPcts);
-  // Pad the range 4% (or a flat 1 when the series is flat) so lines aren't flush
-  // to the edges.
-  const pad = rawMax > rawMin ? (rawMax - rawMin) * 0.08 : 1;
-  const yMin = rawMin - pad;
-  const yMax = rawMax + pad;
-
-  const scaleY = (pct: number) =>
-    Y_BOTTOM - ((pct - yMin) / (yMax - yMin)) * (Y_BOTTOM - Y_TOP);
-  const scaleX = (i: number) =>
-    trend.points.length <= 1
-      ? X1
-      : X0 + (i / (trend.points.length - 1)) * (X1 - X0);
-
-  const polyline = trend.points.map((p, i) => `${scaleX(i)},${scaleY(p)}`);
-  const lastX = scaleX(trend.points.length - 1);
-  const lastY = scaleY(trend.points[trend.points.length - 1]!);
-
-  // Right-edge labels (current value + one per threshold) share the same x, so
-  // when the loan's CCR sits far from the thresholds — squeezing 120% / 110%
-  // together on the per-loan scale — their text would overprint. Lay them out
-  // top→bottom with a minimum vertical gap, then shift the stack up if it would
-  // spill past the viewBox bottom.
-  const LABEL_GAP = 13;
-  const LABEL_MAX_Y = 122;
-  const rightLabels = [
-    {
-      text: trend.currentLabel,
-      fontSize: 13.4,
-      fontWeight: 700,
-      y: lastY + 13,
-    },
-    ...trend.thresholds.map((t) => ({
-      text: t.label,
-      fontSize: 10.5,
-      fontWeight: 400,
-      y: scaleY(t.pct),
-    })),
-  ].sort((a, b) => a.y - b.y);
-  for (let i = 1; i < rightLabels.length; i++) {
-    const minY = rightLabels[i - 1]!.y + LABEL_GAP;
-    if (rightLabels[i]!.y < minY) rightLabels[i]!.y = minY;
-  }
-  const overflow = rightLabels[rightLabels.length - 1]!.y - LABEL_MAX_Y;
-  if (overflow > 0) for (const l of rightLabels) l.y -= overflow;
-
   return (
     <div
       className={`${CARD_CLASS} flex-1 gap-[14px] p-[26px]`}
@@ -1296,63 +1231,7 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
       data-testid="loan-detail-ccr-trend"
     >
       <CardTitle>CCR trend</CardTitle>
-      <svg
-        viewBox="0 0 440 124"
-        className="w-full"
-        role="img"
-        aria-label={`CCR trend, currently ${trend.currentLabel}`}
-      >
-        {/* Dashed threshold guide lines, drawn at their true scaled y. */}
-        {trend.thresholds.map((t) => (
-          <line
-            key={t.pct}
-            x1={X0}
-            y1={scaleY(t.pct)}
-            x2={X1}
-            y2={scaleY(t.pct)}
-            stroke={CCR_GUIDE}
-            strokeWidth="1"
-            strokeDasharray="4 4"
-          />
-        ))}
-        {/* CCR line (or a lone dot for a single point) + current dot. */}
-        {polyline.length > 1 && (
-          <polyline
-            points={polyline.join(" ")}
-            fill="none"
-            stroke={NEGATIVE_RED}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        <circle cx={lastX} cy={lastY} r="4" fill={NEGATIVE_RED} />
-        {/* Current value (bold) + threshold labels, laid out without overlap. */}
-        {rightLabels.map((l, i) => (
-          <text
-            key={i}
-            x={X1 - 2}
-            y={l.y}
-            textAnchor="end"
-            fontFamily="var(--font-body)"
-            fontSize={l.fontSize}
-            fontWeight={l.fontWeight}
-            fill={NEGATIVE_RED}
-          >
-            {l.text}
-          </text>
-        ))}
-        {/* Series-start caption (bottom-left). */}
-        <text
-          x={X0}
-          y="115"
-          fontFamily="var(--font-body)"
-          fontSize="12.4"
-          fill={INK_MUTED}
-        >
-          {trend.startLabel}
-        </text>
-      </svg>
+      <CcrTrendChart trend={trend} />
     </div>
   );
 }
@@ -1384,6 +1263,11 @@ function LoanDetail() {
       // where the trustee records the final principal repayment and only
       // then closes the loan from there.
       void navigate({ to: "/loans/$id/record-repayment", params: { id } });
+    } else if (label === "Escalate to Risk Council") {
+      // Full-page destination (issue #782, Figma `4116-12953`) — the first of
+      // the three Type-3 RISK_COUNCIL proposal screens (Escalate to Default).
+      // Not a modal: drafting/submitting a Safe proposal is its own page.
+      void navigate({ to: "/risk-council/escalate/$id", params: { id } });
     }
   };
 
