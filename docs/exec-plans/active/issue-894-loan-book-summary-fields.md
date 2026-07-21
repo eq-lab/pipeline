@@ -33,7 +33,9 @@ _None._ The two decisions #874 flagged (repaid-to-date basis, senior original-vs
 
 ## Implementation Steps
 
-1. **Extend `LoanBookEntry`** (`packages/api/src/routes/loan_book.rs`, after the existing `senior_outstanding` field, ~line 193): add
+_All steps complete (implemented on `feat/894-loan-book-summary-fields`). One unplanned call site found during build: `packages/api/src/routes/dashboard.rs`'s `compute_loan_book(...)` call also needed the new 7th argument — noted on the issue._
+
+1. ✅ **Extend `LoanBookEntry`** (`packages/api/src/routes/loan_book.rs`, after the existing `senior_outstanding` field, ~line 193): add
    ```rust
    /// Original senior tranche (deployed), USDC (6-decimal string) — distinct from
    /// `senior_outstanding` (net of repayment) and from `LoanBookSummary.deployed_senior`
@@ -59,7 +61,7 @@ _None._ The two decisions #874 flagged (repaid-to-date basis, senior original-vs
    ```
    Add all four to `LoanBookDoc`'s `components(schemas(...))` list is unnecessary (they're fields of an already-listed schema, `LoanBookEntry` — utoipa picks them up automatically via `ToSchema` derive; no separate registration needed).
 
-2. **Add a new repo query** in `packages/shared/src/contract_logs_repo.rs`, near `latest_status_by_loans` (~line 307): a method that returns, per loan on a chain, the timestamp of the most recent `LoanStatusUpdated → WatchList` transition at or before `to`:
+2. ✅ **Add a new repo query** in `packages/shared/src/contract_logs_repo.rs`, near `latest_status_by_loans` (~line 307): a method that returns, per loan on a chain, the timestamp of the most recent `LoanStatusUpdated → WatchList` transition at or before `to`:
    ```rust
    /// Per-loan timestamp of the most recent `LoanStatusUpdated` transition into
    /// `WatchList`, at or before `to_unix`. Absent for a loan with no such transition.
@@ -95,7 +97,7 @@ _None._ The two decisions #874 flagged (repaid-to-date basis, senior original-vs
    ```
    Follow the file's existing `sqlx::query_as::<_, (Type, Type)>` tuple-row pattern (matches `latest_status_by_loans`'s return shape) rather than introducing a new named row struct, since only two columns are needed.
 
-3. **Wire it into `handle_loan_book`** (`packages/api/src/routes/loan_book.rs`, ~line 847, alongside the existing `disbursement_by_loan` fetch): add
+3. ✅ **Wire it into `handle_loan_book`** (`packages/api/src/routes/loan_book.rs`, ~line 847, alongside the existing `disbursement_by_loan` fetch): add
    ```rust
    // Per-loan timestamp of the most recent WatchList entry, keyed by loan_key.
    // Backs `days_on_watchlist` — absent → no known transition (null field).
@@ -109,21 +111,21 @@ _None._ The two decisions #874 flagged (repaid-to-date basis, senior original-vs
    ```
    and pass `&watchlist_entry_by_loan` as a new final argument to `compute_loan_book(...)`.
 
-4. **Extend `compute_loan_book`'s signature** (~line 1039) with a 7th parameter:
+4. ✅ **Extend `compute_loan_book`'s signature** (~line 1039) with a 7th parameter:
    ```rust
    watchlist_entry_by_loan: &HashMap<String, i64, S>,
    ```
    (matching the existing generic-hasher pattern used by `collateral_by_loan` / `spot_by_loan` / `disbursement_by_loan`).
 
-5. **Populate the four new fields** inside the per-loan entry-building loop (~line 1076–1165):
+5. ✅ **Populate the four new fields** inside the per-loan entry-building loop (~line 1076–1165):
    - `original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche)`
    - `repaid_to_date: base6_to_decimal_string(&s.repayment.offtaker_received)`
    - `disbursed: off_ramp_complete` (reuse the `off_ramp_complete` local already computed a few lines above for the `Disbursing` status derivation — do not recompute).
    - `days_on_watchlist: (s.status == "WatchList").then(|| watchlist_entry_by_loan.get(&loan_key(&loan.loan_id)).map(|&entered_at| (to - entered_at) / SECS_PER_DAY)).flatten()`
 
-6. **Update `empty_response()`** — no change needed; it returns `loans: vec![]`, so no per-loan fields to populate there.
+6. ✅ **Update `empty_response()`** — no change needed; it returns `loans: vec![]`, so no per-loan fields to populate there.
 
-7. **Fix all 9 `compute_loan_book(...)` call sites** in `packages/api/tests/loan_book.rs` (lines 133, 150, 166, 325, 520, 646, 661, 676, 692) to pass a 7th argument — `&HashMap::new()` for tests that don't exercise watchlist timing, or a purpose-built map (see Test Strategy) for the new watchlist-specific tests.
+7. ✅ **Fix all 9 `compute_loan_book(...)` call sites** in `packages/api/tests/loan_book.rs` (lines 133, 150, 166, 325, 520, 646, 661, 676, 692) to pass a 7th argument — `&HashMap::new()` for tests that don't exercise watchlist timing, or a purpose-built map (see Test Strategy) for the new watchlist-specific tests.
 
 ## Test Strategy
 

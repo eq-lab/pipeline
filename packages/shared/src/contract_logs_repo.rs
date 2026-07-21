@@ -343,6 +343,38 @@ impl ContractLogsRepo {
         Ok(rows)
     }
 
+    /// Per-loan timestamp of the most recent `LoanStatusUpdated` transition into
+    /// `WatchList`, at or before `to_unix`. Absent for a loan with no such transition.
+    /// Backs the Loan Book `days_on_watchlist` field — `LoanStatusUpdated.params` is
+    /// FLAT (`params->>'status'`), unlike other event types' nested
+    /// `params->'snapshot'->>'status'` (see `latest_status_by_loans`).
+    pub async fn latest_watchlist_entry_by_chain<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<(bigdecimal::BigDecimal, i64)>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, (bigdecimal::BigDecimal, i64)>(
+            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_timestamp
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'LoanStatusUpdated'
+               AND params->>'status' = 'WatchList'
+               AND block_timestamp <= $2
+             ORDER BY (params->>'loan_id')::numeric, block_timestamp DESC, log_index DESC",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
     /// Earliest `origination_date` (from `params->'snapshot'->>'origination_date'`)
     /// across all loans on a chain. Used by the API to default the "full history"
     /// lookback window. Returns `None` if no loan events have been indexed yet.

@@ -191,6 +191,11 @@ pub struct LoanBookEntry {
     /// (6-decimal string). Backs the Trustee Loans table **Senior outst.** column
     /// (distinct from `principal`, which is the original senior + equity).
     pub senior_outstanding: String,
+    /// Original senior tranche (deployed), USDC (6-decimal string) — distinct from
+    /// `senior_outstanding` (net of repayment) and from `LoanBookSummary.deployed_senior`
+    /// (the book-wide Σ *outstanding* senior). Backs the "Facility / senior" tile pairing
+    /// with `principal`.
+    pub original_senior_tranche: String,
     /// Rollover-aware maturity (`current_maturity_timestamp`, Unix seconds). Backs the
     /// **Maturity** column; reflects rollovers, unlike the origination-fixed term
     /// behind `duration_days`.
@@ -237,6 +242,24 @@ pub struct LoanBookEntry {
     /// Documents referenced in the loan metadata (Agreement, License, T&Cs, …).
     /// Empty when the loan's metadata records none.
     pub documents: Vec<LoanDocumentDto>,
+    /// Cumulative offtaker cash received to date, USDC (6-decimal string). Backs the
+    /// "Repaid to date" tile (`RepaymentSnapshot.offtaker_received`).
+    pub repaid_to_date: String,
+    /// Whether the loan's USDC off-ramp has been marked complete. Backs the
+    /// "Facility / disbursed" tile (paired with `principal`, the facility amount).
+    /// Mirrors the flag already used internally to derive the `Disbursing` status
+    /// override (see [`display_status`]) — the protocol tracks only this binary
+    /// flag, no partial-disbursement amount.
+    pub disbursed: bool,
+    /// Days since the loan's most recent transition into `WatchList` status.
+    /// `null` unless the loan's current `status` is `WatchList`, or (rare) no
+    /// matching on-chain transition event is found before `to`.
+    pub days_on_watchlist: Option<i64>,
+    /// Unix timestamp of the loan's most recent transition into `WatchList` status —
+    /// the raw source `days_on_watchlist` is derived from, exposed so the frontend can
+    /// render an exact "since `<date>`" sub-label instead of back-computing an
+    /// approximate date from the day count. Same nullability as `days_on_watchlist`.
+    pub watchlist_entered_at: Option<i64>,
 }
 
 /// A single document reference (name + URI) from the loan metadata document.
@@ -854,6 +877,16 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         .map(|(loan_id, complete)| (loan_key(&loan_id), complete))
         .collect();
 
+    // Per-loan timestamp of the most recent WatchList entry, keyed by loan_key.
+    // Backs `days_on_watchlist` — absent → no known transition (null field).
+    let watchlist_entry_by_loan: HashMap<String, i64> = state
+        .contract_logs_repo
+        .latest_watchlist_entry_by_chain(&state.pool, chain_id, to)
+        .await?
+        .into_iter()
+        .map(|(loan_id, ts)| (loan_key(&loan_id), ts))
+        .collect();
+
     Ok(compute_loan_book(
         &loans,
         &events,
@@ -861,6 +894,7 @@ async fn handle_loan_book(state: &AppState, chain_id: i64) -> Result<LoanBookRes
         &collateral_by_loan,
         &spot_by_loan,
         &disbursement_by_loan,
+        &watchlist_entry_by_loan,
     ))
 }
 
@@ -1034,6 +1068,12 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// from the map are treated as NOT complete (still `Disbursing`), matching the
 /// "default after draw" semantics.
 ///
+/// `watchlist_entry_by_loan` maps `loan_key(loan_id)` → the Unix timestamp of the
+/// loan's most recent `LoanStatusUpdated` transition into `WatchList`. Backs
+/// `days_on_watchlist`; only consulted for loans whose current `status` is
+/// `WatchList` — absent for any other loan, and absent (→ `null`) even for a
+/// currently-`WatchList` loan if no matching transition event is found.
+///
 /// Public so the compute-layer test in `packages/api/tests/loan_book.rs` can
 /// exercise it without the HTTP/DB layers.
 pub fn compute_loan_book<S: std::hash::BuildHasher>(
@@ -1043,6 +1083,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
     collateral_by_loan: &HashMap<String, BigDecimal, S>,
     spot_by_loan: &HashMap<String, LoanSpot, S>,
     disbursement_by_loan: &HashMap<String, bool, S>,
+    watchlist_entry_by_loan: &HashMap<String, i64, S>,
 ) -> LoanBookResponse {
     // Active loan set, sorted by principal (senior + equity) descending.
     let mut active: Vec<&LoanSnapshotRow> = loans
@@ -1133,6 +1174,19 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             s.current_maturity_timestamp,
         );
 
+        // Most recent WatchList-entry timestamp. Only meaningful while the loan is
+        // CURRENTLY WatchList — a stale entry timestamp from a loan that has since
+        // left WatchList must not leak through as a non-null value.
+        let watchlist_entered_at = (s.status == "WatchList")
+            .then(|| {
+                watchlist_entry_by_loan
+                    .get(&loan_key(&loan.loan_id))
+                    .copied()
+            })
+            .flatten();
+        let days_on_watchlist =
+            watchlist_entered_at.map(|entered_at| (to - entered_at) / SECS_PER_DAY);
+
         entries.push(LoanBookEntry {
             chain_id: loan.chain_id,
             loan_id: loan_key(&loan.loan_id),
@@ -1141,6 +1195,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             commodity: s.commodity.clone(),
             principal: base6_to_decimal_string(&principal),
             senior_outstanding: base6_to_decimal_string(&outstanding_senior),
+            original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche),
             maturity: s.current_maturity_timestamp,
             ccr_reported_at: s.last_reported_ccr_timestamp,
             spot_price: spot.and_then(|sp| sp.price.clone()),
@@ -1161,6 +1216,10 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
                     uri: d.uri.clone(),
                 })
                 .collect(),
+            repaid_to_date: base6_to_decimal_string(&s.repayment.offtaker_received),
+            disbursed: off_ramp_complete,
+            days_on_watchlist,
+            watchlist_entered_at,
         });
     }
 

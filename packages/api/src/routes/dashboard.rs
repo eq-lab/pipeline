@@ -328,11 +328,12 @@ pub fn compute_summary(
     let fp = compute_financial_position(loans, events, to);
     let outstanding_in_loans = fp.assets.deployed.secured_loans_outstanding;
 
-    // Loan book (only avg_yield is needed here; collateral + spot + disbursement maps
-    // are irrelevant — disbursement only affects the per-loan displayed status).
+    // Loan book (only avg_yield is needed here; collateral + spot + disbursement +
+    // watchlist maps are irrelevant — they only affect per-loan display fields).
     let empty_collateral: HashMap<String, BigDecimal> = HashMap::new();
     let empty_spot: HashMap<String, LoanSpot> = HashMap::new();
     let empty_disbursement: HashMap<String, bool> = HashMap::new();
+    let empty_watchlist_entry: HashMap<String, i64> = HashMap::new();
     let lb = compute_loan_book(
         loans,
         events,
@@ -340,6 +341,7 @@ pub fn compute_summary(
         &empty_collateral,
         &empty_spot,
         &empty_disbursement,
+        &empty_watchlist_entry,
     );
     let loan_book_yield = lb.summary.avg_yield.clone();
 

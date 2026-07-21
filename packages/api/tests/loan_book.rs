@@ -137,6 +137,7 @@ fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> LoanBoo
         &HashMap::new(),
         &HashMap::new(),
         &all_complete(loans),
+        &HashMap::new(),
     )
 }
 
@@ -154,6 +155,7 @@ fn at_with(
         collateral,
         &HashMap::new(),
         &all_complete(loans),
+        &HashMap::new(),
     )
 }
 
@@ -170,6 +172,7 @@ fn at_with_spot(
         &HashMap::new(),
         spot,
         &all_complete(loans),
+        &HashMap::new(),
     )
 }
 
@@ -322,7 +325,15 @@ fn no_active_loans_returns_empty_book() {
 
 #[test]
 fn empty_registry_returns_empty_book() {
-    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new(), &HashMap::new());
+    let r = compute_loan_book(
+        &[],
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+    );
     assert!(r.loans.is_empty());
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
@@ -517,7 +528,15 @@ fn top_concentration_aggregates_loans_of_the_same_commodity() {
 
 #[test]
 fn empty_book_defaults_the_trustee_metric_fields() {
-    let r = compute_loan_book(&[], &[], 0, &HashMap::new(), &HashMap::new(), &HashMap::new());
+    let r = compute_loan_book(
+        &[],
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+    );
     assert_eq!(r.summary.deployed_senior, "0.000000");
     assert_eq!(r.summary.at_risk_wl_and_default_senior, "0.000000");
     assert_eq!(r.summary.at_risk_wl_and_default_pct, None);
@@ -650,6 +669,7 @@ fn status_disbursing_when_off_ramp_incomplete() {
         &HashMap::new(),
         &HashMap::new(),
         &HashMap::new(),
+        &HashMap::new(),
     );
     assert_eq!(r.loans[0].status, "Disbursing");
 }
@@ -665,6 +685,7 @@ fn status_reverts_to_onchain_when_off_ramp_complete() {
         &HashMap::new(),
         &HashMap::new(),
         &disbursement(&[1]),
+        &HashMap::new(),
     );
     assert_eq!(r.loans[0].status, "Performing");
 }
@@ -680,6 +701,7 @@ fn status_past_due_when_complete_and_past_current_maturity() {
         &HashMap::new(),
         &HashMap::new(),
         &disbursement(&[1, 2]),
+        &HashMap::new(),
     );
     let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
     assert_eq!(b.status, "Past Due");
@@ -696,6 +718,7 @@ fn status_disbursing_outranks_past_due() {
         &HashMap::new(),
         &HashMap::new(),
         &disbursement(&[1]), // loan 2 left incomplete
+        &HashMap::new(),
     );
     let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
     assert_eq!(b.status, "Disbursing");
@@ -722,4 +745,123 @@ fn display_status_precedence_matrix() {
     assert_eq!(display_status("WatchList", false, 50, 100), "Disbursing");
     // now == maturity is NOT past due (strictly greater).
     assert_eq!(display_status("Performing", true, 100, 100), "Performing");
+}
+
+// ── Summary-tile fields: original_senior_tranche, repaid_to_date, disbursed,
+//    days_on_watchlist ─────────────────────────────────────────────────────────
+
+/// Build a `loan_id → WatchList-entry timestamp` map, keyed like the handler.
+fn watchlist_entry(entries: &[(i64, i64)]) -> HashMap<String, i64> {
+    entries
+        .iter()
+        .map(|(id, ts)| (loan_key(&BigDecimal::from(*id)), *ts))
+        .collect()
+}
+
+#[test]
+fn original_senior_tranche_is_distinct_from_outstanding() {
+    // Loan A senior 80k with 30k repaid → outstanding 50k, original stays 80k.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.senior_principal_repaid = usdc(30_000);
+    let r = at(0, &loans, &[]);
+    assert_eq!(r.loans[0].original_senior_tranche, "80000.000000");
+    assert_eq!(r.loans[0].senior_outstanding, "50000.000000");
+}
+
+#[test]
+fn repaid_to_date_reflects_offtaker_received() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.repayment.offtaker_received = usdc(15_000);
+    let r = at(0, &loans, &[]);
+    assert_eq!(r.loans[0].repaid_to_date, "15000.000000");
+}
+
+#[test]
+fn repaid_to_date_zero_by_default() {
+    let r = at(0, &fixture_loans(), &[]);
+    assert_eq!(r.loans[0].repaid_to_date, "0.000000");
+}
+
+#[test]
+fn disbursed_false_when_off_ramp_incomplete() {
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+    );
+    assert!(!r.loans[0].disbursed);
+}
+
+#[test]
+fn disbursed_true_when_off_ramp_complete() {
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        0,
+        &HashMap::new(),
+        &HashMap::new(),
+        &disbursement(&[1]),
+        &HashMap::new(),
+    );
+    assert!(r.loans[0].disbursed);
+}
+
+#[test]
+fn days_on_watchlist_computed_when_currently_watchlisted() {
+    // Loan A entered WatchList on day 10; "now" is day 28 → 18 days.
+    let mut loans = fixture_loans();
+    loans[0].snapshot.status = "WatchList".to_owned();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        28 * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &all_complete(&loans),
+        &watchlist_entry(&[(1, 10 * DAY)]),
+    );
+    assert_eq!(r.loans[0].days_on_watchlist, Some(18));
+    assert_eq!(r.loans[0].watchlist_entered_at, Some(10 * DAY));
+}
+
+#[test]
+fn days_on_watchlist_none_without_a_known_entry_event() {
+    // Currently WatchList, but no matching transition event indexed (data gap).
+    let mut loans = fixture_loans();
+    loans[0].snapshot.status = "WatchList".to_owned();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        28 * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &all_complete(&loans),
+        &HashMap::new(),
+    );
+    assert_eq!(r.loans[0].days_on_watchlist, None);
+    assert_eq!(r.loans[0].watchlist_entered_at, None);
+}
+
+#[test]
+fn days_on_watchlist_none_when_not_currently_watchlisted() {
+    // A stale WatchList-entry timestamp must not leak through once the loan is
+    // back to Performing (or any other non-WatchList status).
+    let loans = fixture_loans();
+    let r = compute_loan_book(
+        &loans,
+        &[],
+        28 * DAY,
+        &HashMap::new(),
+        &HashMap::new(),
+        &all_complete(&loans),
+        &watchlist_entry(&[(1, 10 * DAY)]),
+    );
+    assert_eq!(r.loans[0].days_on_watchlist, None);
+    assert_eq!(r.loans[0].watchlist_entered_at, None);
 }
