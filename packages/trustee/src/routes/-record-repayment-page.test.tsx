@@ -123,10 +123,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       originator: "Helios Metals",
       borrower: "b1",
       commodity: "Lithium",
-      // Registry-sourced (#840): 4800.000000 on the wire ⇒ ×1000 ⇒ $4,800,000.
-      principal: "5000.000000",
-      senior_outstanding: "4800.000000",
-      original_senior_tranche: "4800.000000",
+      // Served at full USD scale (#906 — displayed as-is, no client rescaling).
+      principal: "5000000.000000",
+      senior_outstanding: "4800000.000000",
+      original_senior_tranche: "4800000.000000",
       // 24 Jun 2026 00:00:00 UTC.
       maturity: 1_782_172_800,
       ccr_reported_at: 0,
@@ -163,8 +163,8 @@ const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   fees: "27.000000",
   minted_yield: "0.000000",
   not_minted_yield: "0.000000",
-  // Registry-sourced (#840): 6150.000000 ⇒ ×1000 ⇒ $6,150,000 still owed.
-  offtaker_outstanding: "6150.000000",
+  // Served at full USD scale (#906 — displayed as-is): $6,150,000 still owed.
+  offtaker_outstanding: "6150000.000000",
 };
 
 function ready() {
@@ -276,7 +276,7 @@ describe("Record Repayment route — ready state", () => {
   it("prefills the amount with the full remaining owed so it opens ready to pay-all-and-close (#884)", async () => {
     mockWaterfall(undefined);
     renderRoute();
-    // offtaker_outstanding "6150.000000" ×1000 (#840) = $6,150,000.
+    // offtaker_outstanding "6150000.000000" displayed as-is (#906) = $6,150,000.
     await waitFor(() =>
       expect(screen.getByTestId("record-repayment-amount")).toHaveValue(
         6150000,

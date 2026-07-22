@@ -11,7 +11,6 @@ import {
   formatCompactUsd,
   formatCompactUsd2dp,
   formatFullUsd,
-  scaleRegistryAmount,
 } from "./formatUsd";
 
 describe("formatCompactUsd", () => {
@@ -111,32 +110,6 @@ describe("formatCompactUsd2dp", () => {
     expect(formatCompactUsd2dp(null)).toBe("—");
     expect(formatCompactUsd2dp(undefined)).toBe("—");
     expect(formatCompactUsd2dp("not-a-number")).toBe("—");
-  });
-});
-
-// ── #840 registry-scale workaround (issue #843) ──────────────────────────────
-
-describe("scaleRegistryAmount (#840 ×1000 workaround)", () => {
-  it("multiplies a registry base-6 amount by 1000 (1000× too small on the wire)", () => {
-    // A $1.2M facility arrives as "1200.000000" — scale to "1200000.000000".
-    expect(scaleRegistryAmount("1200.000000")).toBe("1200000.000000");
-  });
-
-  it("scales the Figma Deployed-senior value ($96M served as 96000)", () => {
-    expect(scaleRegistryAmount("96000.000000")).toBe("96000000.000000");
-  });
-
-  it("preserves fractional cents through the ×1000", () => {
-    expect(scaleRegistryAmount("1840.000000")).toBe("1840000.000000");
-  });
-
-  it("returns null for null/undefined (passthrough — caller decides how to render)", () => {
-    expect(scaleRegistryAmount(null)).toBeNull();
-    expect(scaleRegistryAmount(undefined)).toBeNull();
-  });
-
-  it("returns null for non-finite input", () => {
-    expect(scaleRegistryAmount("not-a-number")).toBeNull();
   });
 });
 

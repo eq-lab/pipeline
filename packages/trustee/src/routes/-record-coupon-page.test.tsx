@@ -114,10 +114,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       originator: "Helios Metals",
       borrower: "b1",
       commodity: "Lithium",
-      // Registry-sourced (#840): 1840.000000 on the wire ⇒ ×1000 ⇒ $1,840,000.
-      principal: "2200.000000",
-      senior_outstanding: "1840.000000",
-      original_senior_tranche: "1840.000000",
+      // Served at full USD scale (#906 — displayed as-is, no client rescaling).
+      principal: "2200000.000000",
+      senior_outstanding: "1840000.000000",
+      original_senior_tranche: "1840000.000000",
       maturity: 1_782_777_600,
       ccr_reported_at: 0,
       spot_price: "10450",
@@ -153,8 +153,8 @@ const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   fees: "5.000000",
   minted_yield: "0.000000",
   not_minted_yield: "45.000000",
-  // Registry-sourced (#840): 2000.000000 ⇒ ×1000 ⇒ $2,000,000 still owed.
-  offtaker_outstanding: "2000.000000",
+  // Served at full USD scale (#906 — displayed as-is): $2,000,000 still owed.
+  offtaker_outstanding: "2000000.000000",
 };
 
 function ready() {

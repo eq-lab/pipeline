@@ -22,10 +22,9 @@
  *     backend response fields by 10^7 for display. The `recordPayment` payload
  *     uses backend raw fields unchanged.
  *   - `senior_outstanding` (`useLoanBook`) and `offtaker_outstanding`
- *     (`useLoanFinancials`) are registry-sourced base-6 decimal strings that
- *     are **1000× too small on the wire** (issue #840) — scaled via
- *     `scaleRegistryAmount` before use, exactly like `-useLoanDetail.ts`'s
- *     `buildFinancials`/`-useLoansTable.ts`'s `seniorOutstanding` column.
+ *     (`useLoanFinancials`) are displayed **exactly as the backend serves
+ *     them** — no client-side rescaling (issue #906; the former ×1000
+ *     `scaleRegistryAmount` workaround has been removed).
  *   - `Gross interest` is derived as `senior_coupon_net + management_fee +
  *     performance_fee` (summed in base units via `BigInt` — no float drift —
  *     then converted once to USD) — the interest before the fee carve-outs,
@@ -50,7 +49,7 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { formatFullUsd, scaleRegistryAmount } from "@/utils/formatUsd";
+import { formatFullUsd } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   parsePositiveUsdInput,
@@ -150,14 +149,13 @@ export function buildRepaymentInput(
 }
 
 /**
- * A registry-sourced (`#840`, ×1000-too-small) base-6 decimal amount, scaled
- * and parsed to a plain USD number. `null` for anything missing/unparseable —
- * never fabricated.
+ * Parses a backend-served base-6 decimal amount to a plain USD number, as-is —
+ * no client-side rescaling (issue #906). `null` for anything missing/
+ * unparseable — never fabricated.
  */
-function scaledUsd(raw: string | null | undefined): number | null {
-  const scaled = scaleRegistryAmount(raw);
-  if (scaled == null) return null;
-  const n = Number.parseFloat(scaled);
+function parseServedUsd(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -293,8 +291,8 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
         ? "not-found"
         : "ready";
 
-  const outstandingSeniorUsd = scaledUsd(entry?.senior_outstanding);
-  const offtakerOutstandingUsd = scaledUsd(
+  const outstandingSeniorUsd = parseServedUsd(entry?.senior_outstanding);
+  const offtakerOutstandingUsd = parseServedUsd(
     financials.data?.offtaker_outstanding,
   );
   const offtakerOwedAfterUsd =
