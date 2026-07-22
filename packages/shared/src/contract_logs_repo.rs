@@ -1,6 +1,7 @@
 use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
+use crate::chains::{normalize_usdc_amount, parse_chain_type};
 use crate::loan_snapshot::LoanSnapshot;
 
 /// A loan-end event row fetched from `contract_logs`.
@@ -215,12 +216,16 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
 
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901), never at indexer write time.
+        let chain_kind = parse_chain_type(chain_id)?;
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
             use sqlx::Row;
             let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
-            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+            let mut snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
                 .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            snapshot.normalize_usdc_for_display(chain_kind);
             let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
             result.push(LoanSnapshotRow {
                 chain_id: row.try_get("chain_id")?,
@@ -278,12 +283,16 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
 
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901), never at indexer write time.
+        let chain_kind = parse_chain_type(chain_id)?;
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
             use sqlx::Row;
             let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
-            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+            let mut snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
                 .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            snapshot.normalize_usdc_for_display(chain_kind);
             let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
             result.push(LoanSnapshotRow {
                 chain_id: row.try_get("chain_id")?,
@@ -310,6 +319,12 @@ impl ContractLogsRepo {
     /// happened yet, so it's exactly the genesis state). Callers still need to check
     /// `as_of >= origination_date` themselves for the case where `as_of` truly precedes
     /// origination.
+    ///
+    /// **Not USDC-normalized** — unlike this repo's other `LoanSnapshot`-returning
+    /// methods. Sole caller is `routes::waterfall`, whose own doc comment states its
+    /// output is deliberately raw on-chain base units (7-decimal on Soroban) meant to be
+    /// handed straight to `recordPayment`; normalizing here would corrupt that on-chain
+    /// call argument, not just a display figure. See #901.
     pub async fn get_loan_snapshot_as_of<'e, E>(
         &self,
         executor: E,
@@ -513,6 +528,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.amount = normalize_usdc_amount(chain_kind, &r.amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -555,6 +580,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.amount = normalize_usdc_amount(chain_kind, &r.amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -590,6 +625,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.s_plusd_amount = normalize_usdc_amount(chain_kind, &r.s_plusd_amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -633,7 +678,9 @@ impl ContractLogsRepo {
         .bind(loan_id)
         .fetch_one(executor)
         .await?;
-        Ok(minted)
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        Ok(normalize_usdc_amount(parse_chain_type(chain_id)?, &minted))
     }
 
     /// The `LoanRolledOver` and `EconomicsAmended` events for a single loan,

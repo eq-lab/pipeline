@@ -9,6 +9,7 @@
 use std::env;
 
 use anyhow::{Context, Result};
+use bigdecimal::{BigDecimal, RoundingMode};
 
 // ─── Chain-kind discriminator ─────────────────────────────────────────────────
 
@@ -30,6 +31,32 @@ pub fn parse_chain_type(chain_id: i64) -> Result<ChainKind> {
         Ok("stellar") => Ok(ChainKind::Stellar),
         Ok("evm") | Err(_) => Ok(ChainKind::Evm),
         Ok(v) => anyhow::bail!("{key} must be 'evm' or 'stellar', got '{v}'"),
+    }
+}
+
+/// Normalize a USDC-denominated amount for **display/API use only**.
+///
+/// `contract_logs` always stores the raw value exactly as read from the chain —
+/// this is never applied at indexer write/carry-forward time, only when a repo
+/// method reads data back out for an API consumer. EVM's on-chain `uint256`
+/// monetary fields are already 6-decimal by the EVM contract's own convention, so
+/// `Evm` is a no-op. Stellar's Soroban contracts (LoanRegistry, DepositManager,
+/// WithdrawalQueue, YieldMinter) store monetary fields at the native USDC-SAC scale
+/// (7 decimals) — confirmed cross-repo against `pipeline-stellar-contracts`, see
+/// issue #901 — so `Stellar` divides by `10^(7-6)`.
+///
+/// Truncated (not rounded) to a whole base-6 unit — `BigDecimal` division does not
+/// floor on its own (`123456789 / 10 = 12345678.9`, not `12345678`), and every raw
+/// on-chain amount is a whole integer at its native scale, so the result must be
+/// too, matching `base6_to_decimal_string`'s own `RoundingMode::Down` and the
+/// integer division EVM's `uint256` fields get "for free". Discovered via code
+/// review after the initial version left the fractional remainder in place.
+pub fn normalize_usdc_amount(kind: ChainKind, amount: &BigDecimal) -> BigDecimal {
+    match kind {
+        ChainKind::Evm => amount.clone(),
+        ChainKind::Stellar => {
+            (amount / BigDecimal::from(10)).with_scale_round(0, RoundingMode::Down)
+        }
     }
 }
 

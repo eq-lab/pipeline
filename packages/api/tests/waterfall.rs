@@ -118,7 +118,9 @@ fn full_repayment_one_year_with_fees() {
     // Full payment amortises the whole 1,000,000 principal.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1125000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
     assert_eq!(b.senior_coupon_net, dec("88000"));
@@ -139,7 +141,9 @@ fn principal_capped_at_outstanding() {
     // most the 600,000 outstanding as principal.
     let s = snapshot("1000000", "400000", 1200);
     let amount = dec("1000000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("600000"));
 }
@@ -152,7 +156,9 @@ fn principal_capped_at_amount_on_partial() {
     // the fee/coupon buckets below it.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("500000"));
     assert_eq!(b.management_fee, dec("0"));
@@ -171,7 +177,9 @@ fn cascade_caps_lower_priority_buckets_on_partial_amount() {
     // perf fee → OET) rather than reporting the full accrued fees regardless of `amount`.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1050000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
     assert_eq!(b.management_fee, dec("10000"));
@@ -194,7 +202,9 @@ fn cascade_zeroes_lowest_priority_bucket_at_the_boundary() {
     // 10,000 + 88,000 + 22,000), leaving nothing for the lowest-priority bucket, OET.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1120000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
     assert_eq!(b.management_fee, dec("10000"));
@@ -209,7 +219,9 @@ fn fractional_amount_principal_truncated_to_whole_base_unit() {
     // min(amount, outstanding) is truncated toward zero like every other component.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000.9");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("500000"));
 }
@@ -220,7 +232,9 @@ fn zero_fee_schedule_routes_all_interest_to_coupon() {
     // (120,000) flows to the net senior coupon.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1120000");
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("120000"));
     assert_eq!(b.management_fee, dec("0"));
@@ -233,7 +247,9 @@ fn zero_tenor_accrues_no_interest_or_fees() {
     // Repayment at origination → tenor 0 → no interest or fees; principal only.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1000000");
-    let b = compute_waterfall(&s, &amount, ORIGINATION, &fees(100, 2000, 50), &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ORIGINATION, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
 
     assert_eq!(b.senior_coupon_net, dec("0"));
     assert_eq!(b.management_fee, dec("0"));
@@ -244,7 +260,13 @@ fn zero_tenor_accrues_no_interest_or_fees() {
 #[test]
 fn as_of_before_origination_is_rejected() {
     let s = snapshot("1000000", "0", 1200);
-    let err = compute_waterfall(&s, &dec("1000000"), ORIGINATION - 1, &fees(100, 2000, 50), &[]);
+    let err = compute_waterfall(
+        &s,
+        &dec("1000000"),
+        ORIGINATION - 1,
+        &fees(100, 2000, 50),
+        &[],
+    );
     assert!(err.is_err(), "as_of before origination must be a 400");
 }
 
@@ -376,7 +398,9 @@ fn response_maps_the_four_components() {
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
-    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[]).ok().unwrap();
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[])
+        .ok()
+        .unwrap();
     let resp = build_response(&b);
 
     assert_eq!(resp.senior_principal_returned, "1000000");

@@ -103,7 +103,11 @@ pub fn piecewise_tenor_years(epochs: &[Epoch], as_of: i64) -> BigDecimal {
 /// `Σ over epochs e of senior_deployed × e.rate_bps × (min(as_of, e.maturity) − e.start) / (365 days × 10_000)`
 ///
 /// Not truncated — callers apply their own rounding/truncation policy to the sum.
-pub fn piecewise_interest(epochs: &[Epoch], senior_deployed: &BigDecimal, as_of: i64) -> BigDecimal {
+pub fn piecewise_interest(
+    epochs: &[Epoch],
+    senior_deployed: &BigDecimal,
+    as_of: i64,
+) -> BigDecimal {
     let mut total = BigDecimal::from(0);
     for e in epochs {
         let seconds = (as_of.min(e.maturity) - e.start).max(0);

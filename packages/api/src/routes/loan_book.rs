@@ -581,11 +581,13 @@ async fn submit_loan(
     let valuation_mode =
         ValuationMode::try_from(payload.collateral_valuation.valuation_mode.clone())
             .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    let haircut_pct = BigDecimal::from_str(&payload.collateral_valuation.haircut_pct)
-        .map_err(|_| ApiError::BadRequest(format!(
-            "haircut_pct is not a valid decimal: {}",
-            payload.collateral_valuation.haircut_pct
-        )))?;
+    let haircut_pct =
+        BigDecimal::from_str(&payload.collateral_valuation.haircut_pct).map_err(|_| {
+            ApiError::BadRequest(format!(
+                "haircut_pct is not a valid decimal: {}",
+                payload.collateral_valuation.haircut_pct
+            ))
+        })?;
 
     // Persist the payload verbatim; serialization of an owned struct cannot fail.
     let loan_data = serde_json::to_value(&payload)

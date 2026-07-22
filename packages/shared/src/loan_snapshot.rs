@@ -68,6 +68,35 @@ pub struct LoanSnapshot {
     pub repayment: RepaymentSnapshot,
 }
 
+impl LoanSnapshot {
+    /// Normalize every USDC-denominated field for **display/API use only** — never
+    /// call this before persisting a row to `contract_logs` (the worker's decode and
+    /// carry-forward paths must keep the raw on-chain value). See
+    /// `crate::chains::normalize_usdc_amount` and issue #901.
+    pub fn normalize_usdc_for_display(&mut self, kind: crate::chains::ChainKind) {
+        use crate::chains::normalize_usdc_amount;
+        self.original_facility_size = normalize_usdc_amount(kind, &self.original_facility_size);
+        self.original_senior_tranche = normalize_usdc_amount(kind, &self.original_senior_tranche);
+        self.original_equity_tranche = normalize_usdc_amount(kind, &self.original_equity_tranche);
+        self.original_offtaker_price = normalize_usdc_amount(kind, &self.original_offtaker_price);
+        self.repayment.normalize_usdc_for_display(kind);
+    }
+}
+
+impl RepaymentSnapshot {
+    /// See `LoanSnapshot::normalize_usdc_for_display`.
+    pub fn normalize_usdc_for_display(&mut self, kind: crate::chains::ChainKind) {
+        use crate::chains::normalize_usdc_amount;
+        self.offtaker_received = normalize_usdc_amount(kind, &self.offtaker_received);
+        self.senior_principal_repaid = normalize_usdc_amount(kind, &self.senior_principal_repaid);
+        self.senior_interest = normalize_usdc_amount(kind, &self.senior_interest);
+        self.equity_distributed = normalize_usdc_amount(kind, &self.equity_distributed);
+        self.mgmt_fee = normalize_usdc_amount(kind, &self.mgmt_fee);
+        self.perf_fee = normalize_usdc_amount(kind, &self.perf_fee);
+        self.oet_alloc = normalize_usdc_amount(kind, &self.oet_alloc);
+    }
+}
+
 /// A single document reference (name + URI) from the loan metadata document.
 /// Deliberately not `deny_unknown_fields` so extra per-document keys in the IPFS
 /// document are tolerated rather than failing the whole fetch.

@@ -67,7 +67,7 @@ Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)
 
 ### Multi-chain `YieldMinted` indexing
 
-`YieldMinted` is indexed on both **EVM** and **Stellar** chains. The `list_yield_mints` repo query (`params->>'s_plusd_amount'`) works identically on both because both chains store `s_plusd_amount` and `treasury_amount` as decimal strings at the top level of `params`.
+`YieldMinted` is indexed on both **EVM** and **Stellar** chains. The `list_yield_mints` repo query (`params->>'s_plusd_amount'`) reads identically on both, but the raw stored scale differs: Stellar's native 7-decimal value is normalized to the canonical 6-decimal scale only when `ContractLogsRepo::list_yield_mints` reads it back out — `contract_logs` itself always keeps the raw on-chain value (#901).
 
 **Stellar leg:** on Stellar today, `YieldMinted` is emitted only on loan repayment (`s_plusd_amount = repayment.senior_interest`, the net senior coupon; `treasury_amount = mgmt_fee + perf_fee + oet_alloc`). There is no T-bill vault leg on Stellar currently. The Stellar YieldMinter is configured via `CHAIN_<id>_STELLAR_YIELD_MINTER_ID` (optional; ships dark when unset).
 

@@ -322,7 +322,12 @@ fn assemble_penalties(
         .0
         .iter()
         .map(|tier| {
-            let level_pct = match assay.deleterious.0.iter().find(|d| d.element == tier.element) {
+            let level_pct = match assay
+                .deleterious
+                .0
+                .iter()
+                .find(|d| d.element == tier.element)
+            {
                 Some(d) => {
                     let level = dec("deleterious.level", &d.level)?;
                     if d.unit == "Ppm" {
