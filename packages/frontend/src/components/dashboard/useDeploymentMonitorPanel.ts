@@ -28,7 +28,7 @@ import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import type { OriginationTableRow } from "./originationRow";
 import { mapSubmissionToRow } from "./originationRow";
 import {
-  formatRegistryCompactUsd,
+  formatCompactUsd,
   formatOneDecimalRate,
   formatLtv,
   formatCoverage,
@@ -51,8 +51,8 @@ export interface DeploymentMonitorPanelState {
    *
    * - `principal` — always defined when ready (total_deployed is non-null).
    * - `collateral` — defined only when `total_collateral` is non-null; `undefined`
-   *   while TODO #706 (commodity price feed) is not yet merged. Registry-sourced
-   *   ⇒ ×1000-scaled like `principal` (issue #888).
+   *   while TODO #706 (commodity price feed) is not yet merged. Displayed as
+   *   served by the backend (issue #906 — no frontend rescaling).
    * - `ltv` — user-approved average LTV (null → 0), defined only when
    *   loans.length > 0 (seam refs #729 / #765).
    */
@@ -83,11 +83,11 @@ export interface DeploymentMonitorPanelState {
 
 function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   return {
-    // total_deployed is registry-sourced → 1000× low (#840 workaround).
-    totalDeployed: formatRegistryCompactUsd(summary.total_deployed),
-    // total_collateral is ALSO registry-sourced → 1000× low (issue #888
-    // corrected the earlier assumption that this came from the price feed).
-    totalCollateral: formatRegistryCompactUsd(summary.total_collateral),
+    // total_deployed is displayed as served by the backend (issue #906 — no
+    // frontend rescaling).
+    totalDeployed: formatCompactUsd(summary.total_deployed),
+    // total_collateral is likewise displayed as served (issue #906).
+    totalCollateral: formatCompactUsd(summary.total_collateral),
     seniorDebtCoverage: formatCoverage(summary.senior_debt_coverage),
     avgYield: formatOneDecimalRate(summary.avg_yield),
     avgDuration: formatDurationDays(summary.avg_duration_days, "long"),
@@ -97,10 +97,10 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     borrowerCommodity: `${entry.borrower} / ${entry.commodity}`,
-    // principal is registry-sourced → 1000× low (#840 workaround).
-    principal: formatRegistryCompactUsd(entry.principal),
-    // collateral is ALSO registry-sourced → 1000× low (issue #888).
-    collateral: formatRegistryCompactUsd(entry.collateral),
+    // principal is displayed as served by the backend (issue #906).
+    principal: formatCompactUsd(entry.principal),
+    // collateral is likewise displayed as served (issue #906).
+    collateral: formatCompactUsd(entry.collateral),
     ltv: formatLtv(entry.ltv),
     duration: formatDurationDays(entry.duration_days, "compact"),
     rate: formatOneDecimalRate(entry.rate),
@@ -217,12 +217,12 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     summary: data ? formatSummary(data.summary) : EMPTY_SUMMARY,
     headerAggregates: data
       ? {
-          principal: formatRegistryCompactUsd(data.summary.total_deployed),
-          // #888: total_collateral is registry-sourced → ×1000, same as principal.
+          principal: formatCompactUsd(data.summary.total_deployed),
+          // #906: total_collateral is displayed as served, same as principal.
           collateral:
             data.summary.total_collateral == null
               ? undefined
-              : formatRegistryCompactUsd(data.summary.total_collateral),
+              : formatCompactUsd(data.summary.total_collateral),
           ltv: ltvAggregate,
         }
       : EMPTY_HEADER_AGGREGATES,

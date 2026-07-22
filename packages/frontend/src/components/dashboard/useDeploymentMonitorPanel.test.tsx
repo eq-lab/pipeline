@@ -54,15 +54,13 @@ vi.mock("@/lib/env", () => ({
 const LOAN_BOOK_KEY = "pipeline.mock.api.GET./v1/loan-book";
 const SUBMISSIONS_KEY = "pipeline.mock.api.GET./v1/loan-book/submissions";
 
-// `total_deployed`/`principal` AND `collateral`/`total_collateral` are all
-// registry-sourced fields the backend currently serves at 1e3-too-small scale
-// (#840, confirmed for collateral too by issue #888's live-payload audit).
-// These fixtures are pinned at that buggy-backend scale so that, after the
-// client-side ×1000 workaround (`formatRegistryCompactUsd`) is applied, the
-// resulting display strings ("$31.6M" / "$8.0M") match reality.
+// Issue #906: the frontend no longer rescales `total_deployed`/`principal`/
+// `collateral`/`total_collateral` (the former ×1000 `formatRegistryCompactUsd`
+// workaround, #840/#888, has been removed) — every value is displayed exactly
+// as served, via plain `formatCompactUsd`.
 const FIXTURE_LOAN_BOOK: LoanBookResponse = {
   summary: {
-    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
+    total_deployed: "31600.000000",
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -73,7 +71,7 @@ const FIXTURE_LOAN_BOOK: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000.000000", // ×1000 workaround → "$8.0M"
+      principal: "8000.000000",
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -230,17 +228,17 @@ describe("useDeploymentMonitorPanel — panel state", () => {
     expect(result.current.rows[0]!.borrowerCommodity).toBe(
       "Open Mineral / Copper Concentrate",
     );
-    expect(result.current.rows[0]!.principal).toBe("$8.0M");
+    expect(result.current.rows[0]!.principal).toBe("$8.0K");
   });
 
-  // ⚠️ Issue #888 regression guard: collateral is registry-sourced (1000×-low
-  // on the wire), same as principal — verify the row, the summary card, and
-  // the table header aggregate all apply the ×1000 correction consistently.
-  it("scales collateral ×1000 like principal, in the row, summary, and header aggregate (#888)", async () => {
+  // Issue #906: collateral and principal are both displayed exactly as
+  // served — verify the row, the summary card, and the table header
+  // aggregate all render the plain-formatted value, with no rescaling.
+  it("displays collateral and principal as served, in the row, summary, and header aggregate (#906)", async () => {
     const fixture: LoanBookResponse = {
       summary: {
-        total_deployed: "31600.000000", // ×1000 → $31.6M
-        total_collateral: "41973.000000", // ×1000 → $41,973,000 → $42.0M
+        total_deployed: "31600.000000",
+        total_collateral: "41973.000000",
         senior_debt_coverage: null,
         avg_yield: "0.112000",
         avg_duration_days: 68,
@@ -250,8 +248,8 @@ describe("useDeploymentMonitorPanel — panel state", () => {
           originator: "Open Mineral",
           borrower: "Open Mineral",
           commodity: "Copper Concentrate",
-          principal: "8000.000000", // ×1000 → $8.0M
-          collateral: "20986.500000", // ×1000 → $20,986,500 → $21.0M
+          principal: "8000.000000",
+          collateral: "20986.500000",
           ltv: "0.5718",
           duration_days: 120,
           rate: "0.112000",
@@ -269,9 +267,9 @@ describe("useDeploymentMonitorPanel — panel state", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
 
-    expect(result.current.rows[0]!.collateral).toBe("$21.0M");
-    expect(result.current.summary.totalCollateral).toBe("$42.0M");
-    expect(result.current.headerAggregates.collateral).toBe("$42.0M");
+    expect(result.current.rows[0]!.collateral).toBe("$21.0K");
+    expect(result.current.summary.totalCollateral).toBe("$42.0K");
+    expect(result.current.headerAggregates.collateral).toBe("$42.0K");
   });
 });
 
@@ -374,8 +372,6 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
   it("computes average LTV correctly for mixed null/valued ltv", async () => {
     const fixture = {
       summary: {
-        // Registry-scale (÷1000 of the real amount) — see FIXTURE_LOAN_BOOK
-        // comment above re: the #840/#841 ×1000 workaround.
         total_deployed: "31600.000000",
         total_collateral: null,
         senior_debt_coverage: null,
@@ -387,7 +383,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           originator: "A",
           borrower: "A",
           commodity: "X",
-          principal: "8000.000000", // registry-scale, see above
+          principal: "8000.000000",
           collateral: null,
           ltv: "0.8000", // → 0.8
           duration_days: 120,
@@ -399,7 +395,7 @@ describe("useDeploymentMonitorPanel — LTV header aggregate", () => {
           originator: "B",
           borrower: "B",
           commodity: "Y",
-          principal: "4000.000000", // registry-scale, see above
+          principal: "4000.000000",
           collateral: null,
           ltv: null, // → 0
           duration_days: 60,

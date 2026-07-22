@@ -56,16 +56,13 @@ vi.mock("@/lib/env", () => ({
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-// `outstanding_in_loans` is registry-sourced and currently served at 1e3-too-small
-// scale (#840). This fixture is pinned at that buggy-backend scale
-// ("31600.000000" instead of the real "31600000.000000") so that, after the
-// client-side ×1000 workaround (`scaleRegistryAmount`, #841) is applied at
-// the source, the resulting display string ("$31.6M") and deployedRatio
-// (~0.7326) match reality. `tvl` is NOT registry-sourced and stays at its
-// correct (unscaled) value.
+// Issue #906: the frontend no longer rescales `outstanding_in_loans` (the
+// former ×1000 `scaleRegistryAmount` workaround, #840/#841, has been
+// removed) — it is displayed exactly as served, via plain `formatCompactUsd`,
+// same as `tvl`.
 const SUMMARY_FIXTURE: DashboardSummary = {
   tvl: "43140000.000000",
-  outstanding_in_loans: "31600.000000", // ×1000 workaround → "$31.6M"
+  outstanding_in_loans: "31600.000000", // displayed as served → "$31.6K"
   current_apy_net_to_splusd: "0.104",
   loan_book_yield: "0.112",
   cumulative_yield_total: "2910000.000000",
@@ -341,14 +338,14 @@ describe("useYieldHistoryPanel — ready state", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    // SUMMARY_FIXTURE outstanding_in_loans = "31600.000000" (registry-scale) →
-    // ×1000 workaround (#840/#841) → 31,600,000 → "$31.6M".
+    // SUMMARY_FIXTURE outstanding_in_loans = "31600.000000" → "$31.6K",
+    // displayed as served (issue #906 — no frontend rescaling).
     expect(result.current.tvlSummary.outstandingInLoans).toMatch(
-      /^\$\d+(\.\d)?M$/,
+      /^\$\d+(\.\d)?K$/,
     );
   });
 
-  it("deployedRatio is computed as (scaled) outstanding_in_loans / tvl", async () => {
+  it("deployedRatio is computed as outstanding_in_loans / tvl", async () => {
     const { result } = renderHook(() => useYieldHistoryPanel(), {
       wrapper: makeWrapper(),
     });
@@ -357,12 +354,11 @@ describe("useYieldHistoryPanel — ready state", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    // Scaled outstanding (31600.000000 × 1000 = 31600000) / tvl (43140000)
-    // ≈ 0.7326 — NOT the raw pre-scale ratio (~0.0007), guarding that the
-    // ×1000 workaround is applied before the ratio is computed (#841).
+    // outstanding (31600) / tvl (43140000) — displayed and computed exactly
+    // as served, no frontend rescaling (issue #906).
     const ratio = result.current.tvlSummary.deployedRatio;
     expect(ratio).not.toBeNull();
-    expect(ratio!).toBeCloseTo(31600000 / 43140000, 4);
+    expect(ratio!).toBeCloseTo(31600 / 43140000, 4);
   });
 });
 

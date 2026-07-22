@@ -11,8 +11,6 @@ import {
   formatCompactUsd,
   formatCompactUsd2dp,
   formatFullUsd,
-  formatRegistryCompactUsd,
-  formatRegistryCompact2dpUsd,
   scaleRegistryAmount,
 } from "./formatUsd";
 
@@ -139,44 +137,6 @@ describe("scaleRegistryAmount (#840 ×1000 workaround)", () => {
 
   it("returns null for non-finite input", () => {
     expect(scaleRegistryAmount("not-a-number")).toBeNull();
-  });
-});
-
-describe("formatRegistryCompactUsd (#840 ×1000 workaround)", () => {
-  it("scales then compact-formats (Figma Deployed senior: $96M)", () => {
-    expect(formatRegistryCompactUsd("96000.000000")).toBe("$96M");
-  });
-
-  it("scales then compact-formats the At-risk sub ($4.85M)", () => {
-    expect(formatRegistryCompactUsd("4850.000000")).toBe("$4.85M");
-  });
-
-  it("returns em-dash for null/undefined", () => {
-    expect(formatRegistryCompactUsd(null)).toBe("—");
-    expect(formatRegistryCompactUsd(undefined)).toBe("—");
-  });
-
-  it("returns em-dash for non-numeric input", () => {
-    expect(formatRegistryCompactUsd("not-a-number")).toBe("—");
-  });
-});
-
-describe("formatRegistryCompact2dpUsd (#840 ×1000 workaround)", () => {
-  it("scales then 2-dp-compact-formats the Senior outst. column ($1.84M)", () => {
-    expect(formatRegistryCompact2dpUsd("1840.000000")).toBe("$1.84M");
-  });
-
-  it("scales the second Figma row ($1.26M)", () => {
-    expect(formatRegistryCompact2dpUsd("1260.000000")).toBe("$1.26M");
-  });
-
-  it("returns em-dash for null/undefined", () => {
-    expect(formatRegistryCompact2dpUsd(null)).toBe("—");
-    expect(formatRegistryCompact2dpUsd(undefined)).toBe("—");
-  });
-
-  it("returns em-dash for non-numeric input", () => {
-    expect(formatRegistryCompact2dpUsd("not-a-number")).toBe("—");
   });
 });
 

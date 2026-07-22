@@ -169,43 +169,6 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
   return `$${formatted}`;
 }
 
-// ── formatRegistryCompactUsd / formatRegistryCompact2dpUsd ────────────────────
-
-/**
- * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
- * comment).
- *
- * Compact-formats a registry-sourced amount after applying the ×1000
- * `scaleRegistryAmount` correction. See that function's doc comment for the
- * full rationale.
- *
- * Apply to registry-economics amounts (Loans page summary cards:
- * `deployed_senior`, `at_risk_wl_and_default_senior`, `total_collateral`
- * — issue #888).
- */
-export function formatRegistryCompactUsd(
-  base6Decimal: string | null | undefined,
-): string {
-  return formatCompactUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
-}
-
-/**
- * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
- * comment).
- *
- * Two-decimal compact form of a registry-sourced amount after applying the
- * ×1000 `scaleRegistryAmount` correction — the Loans page's "Senior outst."
- * and "Collateral" column style (`formatCompactUsd2dp`, e.g. `$1.84M`)
- * applied to a registry-sourced amount (`senior_outstanding`, `collateral`
- * — issue #888). See `scaleRegistryAmount`'s doc comment for the full
- * rationale.
- */
-export function formatRegistryCompact2dpUsd(
-  base6Decimal: string | null | undefined,
-): string {
-  return formatCompactUsd2dp(scaleRegistryAmount(base6Decimal) ?? undefined);
-}
-
 // ── formatBpsRate ─────────────────────────────────────────────────────────────
 
 /**
