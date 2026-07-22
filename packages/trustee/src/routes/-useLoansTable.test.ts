@@ -37,6 +37,7 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     commodity: "Coffee",
     principal: "2000.000000",
     senior_outstanding: "1840.000000",
+    original_senior_tranche: "1840.000000",
     maturity: 1_785_000_000,
     ccr_reported_at: NOW_S - 3600,
     spot_price: "4500.00",
@@ -48,6 +49,10 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.140000",
     protection: null,
     status: "WatchList",
+    repaid_to_date: "0.000000",
+    disbursed: true,
+    days_on_watchlist: 18,
+    watchlist_entered_at: NOW_S - 18 * 86_400,
     ...overrides,
   };
 }

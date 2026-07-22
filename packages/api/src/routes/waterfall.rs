@@ -61,7 +61,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::contract_logs_repo::EconomicsEventRow;
-use shared::loan_economics::{build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest};
+use shared::loan_economics::{
+    build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest,
+};
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
 
@@ -275,7 +277,8 @@ pub fn compute_waterfall(
     // Clamp the base at 0 so a mgmt rate above the senior rate can't yield a negative fee.
     let perf_base = (&senior_gross_interest_cum - &management_fee_cum).max(BigDecimal::zero());
     let performance_fee_cum = trunc(
-        &(perf_base * BigDecimal::from(fees.perf_fee_rate_bps as i64) / BigDecimal::from(BPS_DENOM)),
+        &(perf_base * BigDecimal::from(fees.perf_fee_rate_bps as i64)
+            / BigDecimal::from(BPS_DENOM)),
     );
     let senior_coupon_net_cum =
         &senior_gross_interest_cum - &management_fee_cum - &performance_fee_cum;
@@ -289,11 +292,14 @@ pub fn compute_waterfall(
     // snapshot's `repayment.*` fields are the cumulative counters `recordPayment`
     // maintains, so this is the amount newly due since the last repayment. Clamped at 0:
     // a prior manual override that over-recorded a bucket must not surface as negative.
-    let target_management_fee = (&management_fee_cum - &s.repayment.mgmt_fee).max(BigDecimal::zero());
-    let target_performance_fee = (&performance_fee_cum - &s.repayment.perf_fee).max(BigDecimal::zero());
+    let target_management_fee =
+        (&management_fee_cum - &s.repayment.mgmt_fee).max(BigDecimal::zero());
+    let target_performance_fee =
+        (&performance_fee_cum - &s.repayment.perf_fee).max(BigDecimal::zero());
     let target_senior_coupon_net =
         (&senior_coupon_net_cum - &s.repayment.senior_interest).max(BigDecimal::zero());
-    let target_oet_allocation = (&oet_allocation_cum - &s.repayment.oet_alloc).max(BigDecimal::zero());
+    let target_oet_allocation =
+        (&oet_allocation_cum - &s.repayment.oet_alloc).max(BigDecimal::zero());
 
     // Cascade the incoming `amount` through the priority order — senior coupon → all
     // fees (management → performance → OET) → senior principal — capping each bucket at

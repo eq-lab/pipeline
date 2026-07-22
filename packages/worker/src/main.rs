@@ -118,7 +118,8 @@ async fn main() -> anyhow::Result<()> {
 
         tracing::info!("asset price collector job started");
         tokio::spawn(async move {
-            if let Err(e) = run_asset_price_collector_job(settings, anchors_repo, price_repo).await {
+            if let Err(e) = run_asset_price_collector_job(settings, anchors_repo, price_repo).await
+            {
                 tracing::error!("asset price collector job exited with error: {e:?}");
             }
         });

@@ -135,7 +135,8 @@ pub fn compound_growth(base: &BigDecimal, rate_bps: i64, seconds: i64) -> BigDec
     let tenor_years = seconds as f64 / YEAR_SECONDS as f64;
     let factor = (1.0_f64 + rate).powf(tenor_years) - 1.0;
     let factor = (factor * 1e12).round() / 1e12;
-    let factor = BigDecimal::from_str(&format!("{factor:.12}")).unwrap_or_else(|_| BigDecimal::from(0));
+    let factor =
+        BigDecimal::from_str(&format!("{factor:.12}")).unwrap_or_else(|_| BigDecimal::from(0));
     base * factor
 }
 
@@ -146,7 +147,11 @@ pub fn compound_growth(base: &BigDecimal, rate_bps: i64, seconds: i64) -> BigDec
 /// See `compound_growth` for the per-epoch formula and its precision tradeoff.
 ///
 /// Not truncated — callers apply their own rounding/truncation policy to the sum.
-pub fn piecewise_interest(epochs: &[Epoch], senior_deployed: &BigDecimal, as_of: i64) -> BigDecimal {
+pub fn piecewise_interest(
+    epochs: &[Epoch],
+    senior_deployed: &BigDecimal,
+    as_of: i64,
+) -> BigDecimal {
     let mut total = BigDecimal::from(0);
     for e in epochs {
         let seconds = (as_of.min(e.maturity) - e.start).max(0);

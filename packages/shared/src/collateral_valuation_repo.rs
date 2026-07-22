@@ -365,7 +365,10 @@ impl CollateralValuationRepo {
     }
 
     /// The latest offtake terms per loan on a chain (one row per `loan_id`).
-    pub async fn latest_offtakes(&self, chain_id: i64) -> Result<Vec<OfftakeTermsRow>, sqlx::Error> {
+    pub async fn latest_offtakes(
+        &self,
+        chain_id: i64,
+    ) -> Result<Vec<OfftakeTermsRow>, sqlx::Error> {
         sqlx::query_as::<_, OfftakeTermsRow>(
             "SELECT DISTINCT ON (loan_id) \
                     id, chain_id, loan_id, payable_terms, treatment_charge_per_dmt, \

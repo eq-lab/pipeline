@@ -73,7 +73,7 @@ interface ILoanRegistry {
 ```solidity
 // Genesis economics, written once in mintLoan, never altered. Mirrors epochs[0].
 struct ImmutableLoanData {
-    uint256 originalFacilitySize;     // 6-decimal USDC units
+    uint256 originalFacilitySize;     // 6-decimal USDC units (Stellar's Soroban contract stores this and every other monetary field natively at 7 decimals; `contract_logs` keeps that raw value, `ContractLogsRepo` normalizes to 6 only when read for API/display, #901)
     uint256 originalSeniorTranche;    // Senior portion at origination (the accrual base)
     uint256 originalEquityTranche;    // Equity portion at origination
     uint256 originalOfftakerPrice;    // Total USDC the end buyer is contracted to pay

@@ -17,10 +17,10 @@
  *   - The `/waterfall` `amount` param and all response fields
  *     (`senior_principal_returned`, `senior_coupon_net`, `management_fee`,
  *     `performance_fee`, `oet_allocation`) are **raw base units at 7-decimal
- *     USDC (Stellar SAC) scale** — NOT the base-6 "already human-scale
- *     decimal string" shape `formatFullUsd`/`formatUsd.ts` otherwise assume.
- *     `usdToBaseUnits`/`baseUnitsToUsd` convert between the entered USD
- *     dollar amount and that integer-string wire format.
+ *     USDC (Stellar SAC) scale**. `usdToBaseUnits` multiplies the entered USD
+ *     amount by 10^7 before calling the endpoint; `baseUnitsToUsd` divides
+ *     backend response fields by 10^7 for display. The `recordPayment` payload
+ *     uses backend raw fields unchanged.
  *   - `senior_outstanding` (`useLoanBook`) and `offtaker_outstanding`
  *     (`useLoanFinancials`) are registry-sourced base-6 decimal strings that
  *     are **1000× too small on the wire** (issue #840) — scaled via
@@ -51,7 +51,12 @@ import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
 import { formatFullUsd, scaleRegistryAmount } from "@/utils/formatUsd";
-import { formatSubmittedDate } from "@/utils/formatDate";
+import { formatEpochDate } from "@/utils/formatDate";
+import {
+  parsePositiveUsdInput,
+  sacBaseUnitsToUsdDecimal,
+  usdInputToSacBaseUnits,
+} from "@/utils/stellarSacUnits";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
@@ -66,28 +71,23 @@ export function todayDateInput(): string {
  * disabled and every downstream derived value at its neutral "—"/unset state).
  */
 export function parseUsdInput(input: string): number | null {
-  const n = Number.parseFloat(input);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
+  return parsePositiveUsdInput(input);
 }
 
 /**
- * The `/waterfall` `amount` param and all response fields are handled **as-is**
- * — the backend already accounts for USDC decimals, so the frontend applies NO
- * decimal scaling (#882): the entered USD dollar amount is sent verbatim and the
- * response integers are the dollar amounts to display directly. (Distinct from
- * the registry-sourced senior-outstanding / offtaker-outstanding fields, which
- * DO need the ×1000 #840 correction — see `scaledUsd`.)
+ * Converts the entered USD amount into the raw 7-decimal SAC integer string the
+ * `/waterfall` endpoint expects. Invalid/empty/zero input returns `"0"` so
+ * `useLoanWaterfall` remains disabled.
  */
-export function usdToBaseUnits(usd: number | null): string {
-  if (usd == null) return "0";
-  return Math.round(usd).toString();
+export function usdToBaseUnits(input: string | null): string {
+  return usdInputToSacBaseUnits(input) ?? "0";
 }
 
-/** Parses a waterfall amount (already USD, backend-scaled) to a number. */
+/** Divides a raw 7-decimal SAC waterfall amount into display USD. */
 function baseUnitsToUsd(baseUnits: string | undefined): number | null {
-  if (baseUnits == null) return null;
-  const n = Number(baseUnits);
+  const display = sacBaseUnitsToUsdDecimal(baseUnits);
+  if (display == null) return null;
+  const n = Number(display);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -104,8 +104,8 @@ function usdFull(usd: number | null): string {
 
 /**
  * Builds the on-chain `RepaymentData` (issue #882) from the waterfall preview +
- * the entered offtaker amount (integer strings, backend-scaled as-is — passed
- * through unscaled to `record_payment`).
+ * the entered offtaker amount (raw base-unit integer strings — passed through
+ * unscaled to `record_payment`).
  *
  * This is the **interest-only coupon** flow (a `recordPayment` with **zero
  * principal** — the design's info banner): `senior_principal_repaid` is always
@@ -162,7 +162,7 @@ function scaledUsd(raw: string | null | undefined): number | null {
 }
 
 /**
- * The coupon-period display (`"2 Jan → 31 Mar · 88 days"`) derived from the
+ * The coupon-period display (`"2 Jan 2026 → 31 Mar 2026 · 88 days"`) derived from the
  * loan's current epoch (`start_date` → `maturity_date`). `—` / `null` days
  * when no epoch is on record (never fabricated).
  */
@@ -178,7 +178,7 @@ export function computeCouponPeriod(epoch: Epoch | null): {
   }
   const days = Math.round((maturity.getTime() - start.getTime()) / 86_400_000);
   return {
-    label: `${formatSubmittedDate(epoch.start_date)} → ${formatSubmittedDate(epoch.maturity_date)} · ${days} days`,
+    label: `${formatEpochDate(epoch.start_date)} → ${formatEpochDate(epoch.maturity_date)} · ${days} days`,
     days,
   };
 }
@@ -272,7 +272,7 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   }, [amountInput]);
 
   const enteredUsd = parseUsdInput(debouncedAmount);
-  const amountBaseUnits = usdToBaseUnits(enteredUsd);
+  const amountBaseUnits = usdToBaseUnits(debouncedAmount);
   const asOfSeconds = useMemo(() => {
     if (!dateInput) return Math.floor(Date.now() / 1000);
     const parsed = Math.floor(
