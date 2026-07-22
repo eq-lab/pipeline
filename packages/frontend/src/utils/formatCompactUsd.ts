@@ -125,6 +125,42 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
   return `$${formatted}`;
 }
 
+// ── economicsBaseUnitsToUsdDecimal ───────────────────────────────────────────
+
+/**
+ * Converts one of the `/v1/loan-book/submissions` `loan_data.economics`
+ * monetary fields (`original_facility_size` / `original_senior_tranche` /
+ * `original_equity_tranche` / `original_offtaker_price`) from the on-chain
+ * 7-decimal base-unit scale to a USD decimal string suitable for
+ * `formatCompactUsd`/`formatFullUsd` (issue #912). These fields are served at
+ * base-unit scale (e.g. `"8000000000.000000"` = 8,000,000,000 base units =
+ * $800.00) — NOT human-unit dollars.
+ *
+ * BigInt-safe end to end: values can exceed `2^53`, so this never runs
+ * `Number`/`parseFloat` over the raw base-unit string. The fractional suffix
+ * (always `.000000` for base units) is stripped before the ÷10^7 shift, which
+ * is done by re-inserting the decimal point 7 digits from the right — no
+ * arithmetic division needed.
+ *
+ * Returns `null` for anything not a well-formed non-negative decimal string.
+ *
+ * - `"8000000000.000000"`  (8e9 base units) → `"800.0000000"` ($800.00)
+ * - `"10000000000.000000"` (1e10 base units) → `"1000.0000000"` ($1,000.00)
+ */
+export function economicsBaseUnitsToUsdDecimal(
+  raw: string | null | undefined,
+): string | null {
+  if (raw == null) return null;
+  const intPart = /^(\d+)/.exec(raw.trim())?.[1];
+  if (intPart == null) return null;
+
+  const decimals = 7;
+  const padded = intPart.padStart(decimals + 1, "0");
+  const whole = padded.slice(0, -decimals).replace(/^0+(?=\d)/, "");
+  const frac = padded.slice(-decimals);
+  return `${whole}.${frac}`;
+}
+
 // ── formatLtv ────────────────────────────────────────────────────────────────
 
 /**

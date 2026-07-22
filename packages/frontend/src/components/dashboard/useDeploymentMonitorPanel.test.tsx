@@ -102,10 +102,12 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "West Africa → EU",
       governing_law: "English",
       economics: {
-        original_facility_size: "8000000.000000",
-        original_senior_tranche: "6000000.000000",
-        original_equity_tranche: "2000000.000000",
-        original_offtaker_price: "9000000.000000",
+        // 7-decimal on-chain base-unit strings (issue #912) — displayed
+        // ÷10^7, so this facility value renders "$8.0M".
+        original_facility_size: "80000000000000.000000",
+        original_senior_tranche: "60000000000000.000000",
+        original_equity_tranche: "20000000000000.000000",
+        original_offtaker_price: "90000000000000.000000",
         senior_interest_rate_bps: 1120,
         origination_date: ORIGINATION_DATE,
         original_maturity_date: MATURITY_120D,
@@ -137,10 +139,12 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "DRC → CN",
       governing_law: "English",
       economics: {
-        original_facility_size: "4400000.000000",
-        original_senior_tranche: "3400000.000000",
-        original_equity_tranche: "1000000.000000",
-        original_offtaker_price: "5000000.000000",
+        // 7-decimal on-chain base-unit strings (issue #912) — displayed
+        // ÷10^7, so this facility value renders "$4.4M".
+        original_facility_size: "44000000000000.000000",
+        original_senior_tranche: "34000000000000.000000",
+        original_equity_tranche: "10000000000000.000000",
+        original_offtaker_price: "50000000000000.000000",
         senior_interest_rate_bps: 1170,
         origination_date: ORIGINATION_DATE,
         original_maturity_date: ORIGINATION_DATE + 60 * 86_400,

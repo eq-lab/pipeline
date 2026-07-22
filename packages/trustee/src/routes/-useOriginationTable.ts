@@ -20,8 +20,10 @@
  *     `loan_collateral_valuations`, keyed by an on-chain `loan_id` that
  *     submissions don't have yet). Resolved (human, issue #813 comment):
  *     OMIT the sub-line entirely — do not infer it from the commodity name.
- *   - Facility    → `loan_data.economics.original_facility_size`, formatted
- *     via `formatFullUsd` (fully expanded, e.g. `"$3,500,000"`).
+ *   - Facility    → `loan_data.economics.original_facility_size`, served at
+ *     the on-chain 7-decimal base-unit scale — normalized ÷10^7 via
+ *     `economicsBaseUnitsToUsdDecimal` (issue #912) before `formatFullUsd`
+ *     (fully expanded, e.g. `"$3,500,000"`).
  *   - Corridor    → `loan_data.corridor`, hyphen separator rendered as the
  *     Figma's arrow glyph ("PE-CN" → "PE → CN").
  *   - Rate        → `loan_data.economics.senior_interest_rate_bps`, formatted
@@ -63,6 +65,7 @@ import {
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
+import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -151,7 +154,9 @@ export function mapSubmissionToRow(
     id: submission.id,
     originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
-    facility: formatFullUsd(economics.original_facility_size ?? null),
+    facility: formatFullUsd(
+      economicsBaseUnitsToUsdDecimal(economics.original_facility_size),
+    ),
     // Figma renders the corridor with an arrow separator ("PE → CN"); the
     // stored value uses a hyphen ("PE-CN"). Same data, design-matching glyph.
     corridor: safeString(loanData.corridor).replace(/\s*-\s*/g, " → "),

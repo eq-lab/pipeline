@@ -38,9 +38,11 @@
  *
  * Economics map (Soroban requires map keys in sorted order — see `scMap`):
  *   - `original_facility_size` / `original_senior_tranche` /
- *     `original_equity_tranche` / `original_offtaker_price`: the API's
- *     6-decimal human-unit string (e.g. `"1200000.000000"` = $1,200,000) →
- *     `u128` = `round(decimal_value × 1000)` (see `parseUsdcAmountToU128`).
+ *     `original_equity_tranche` / `original_offtaker_price`: the API already
+ *     serves these at the contract's exact base-unit scale (7-decimal, e.g.
+ *     `"8000000000.000000"` = 8,000,000,000 base units = $800.00) — sent to
+ *     the contract EXACTLY as provided, no client-side re-scaling (see
+ *     `parseUsdcBaseUnitsToU128`, issue #912).
  *   - `senior_interest_rate_bps` (bps) → contract `senior_interest_rate`
  *     `u32` = `bps × 100` (1000 bps → `100000`).
  *   - `origination_date`, `original_maturity_date`: `u64` pass-through (Unix
@@ -81,13 +83,13 @@ import {
 
 /** Mirrors the contract's `ImmutableLoanData` / the API's `EconomicsInput`. */
 export interface EconomicsInput {
-  /** Total facility size, USDC (6-decimal string). */
+  /** Total facility size — exact contract base-unit (7-decimal) string. */
   original_facility_size: string;
-  /** Senior tranche, USDC (6-decimal string). */
+  /** Senior tranche — exact contract base-unit (7-decimal) string. */
   original_senior_tranche: string;
-  /** Equity tranche, USDC (6-decimal string). */
+  /** Equity tranche — exact contract base-unit (7-decimal) string. */
   original_equity_tranche: string;
-  /** Offtaker price, USDC (6-decimal string). */
+  /** Offtaker price — exact contract base-unit (7-decimal) string. */
   original_offtaker_price: string;
   /** Senior interest rate in basis points. */
   senior_interest_rate_bps: number;
@@ -181,29 +183,25 @@ function u64(value: number | bigint): xdr.ScVal {
 }
 
 /**
- * Converts the API's 6-decimal USDC human-unit string (e.g.
- * `"1200000.000000"` = $1,200,000) to the on-chain `u128` base unit
- * `draw_loan`'s economics map expects — 3-decimal scale, i.e. the decimal
- * value × 1000 (`"1200000.000000"` → `1200000000n`).
- *
- * Any precision beyond 3 decimal places is floored (truncated), never
- * rounded up — the API's 6-decimal string can carry cents/sub-cent noise the
- * contract doesn't represent.
+ * Parses the API's economics decimal string (e.g. `"8000000000.000000"`) to
+ * the exact on-chain `u128` base-unit value `draw_loan`'s economics map
+ * expects — NO scaling. The API already serves these at the contract's
+ * base-unit scale (7-decimal), so the integer part IS the base-unit value
+ * (`"8000000000.000000"` → `8000000000n`, `"10000000000.000000"` →
+ * `10000000000n`). The fractional part is always `.000000` for base units —
+ * it is truncated, never multiplied in.
  *
  * @throws if `decimalStr` is not a well-formed non-negative decimal string.
  */
-export function parseUsdcAmountToU128(decimalStr: string): bigint {
+export function parseUsdcBaseUnitsToU128(decimalStr: string): bigint {
   const match = /^(\d+)(?:\.(\d*))?$/.exec(decimalStr.trim());
   if (!match) {
     throw new Error(
-      `parseUsdcAmountToU128: invalid decimal string "${decimalStr}"`,
+      `parseUsdcBaseUnitsToU128: invalid decimal string "${decimalStr}"`,
     );
   }
-  const [, intPart, fracPart = ""] = match;
-  // Shift the decimal point 3 places right (× 1000), flooring anything past
-  // the 3rd fractional digit.
-  const fracTruncated = (fracPart + "000").slice(0, 3);
-  return BigInt(`${intPart}${fracTruncated}`);
+  const [, intPart = "0"] = match;
+  return BigInt(intPart);
 }
 
 /**
@@ -214,20 +212,20 @@ function encodeEconomicsMap(economics: EconomicsInput): xdr.ScVal {
   return scMap([
     [
       "original_equity_tranche",
-      u128(parseUsdcAmountToU128(economics.original_equity_tranche)),
+      u128(parseUsdcBaseUnitsToU128(economics.original_equity_tranche)),
     ],
     [
       "original_facility_size",
-      u128(parseUsdcAmountToU128(economics.original_facility_size)),
+      u128(parseUsdcBaseUnitsToU128(economics.original_facility_size)),
     ],
     ["original_maturity_date", u64(economics.original_maturity_date)],
     [
       "original_offtaker_price",
-      u128(parseUsdcAmountToU128(economics.original_offtaker_price)),
+      u128(parseUsdcBaseUnitsToU128(economics.original_offtaker_price)),
     ],
     [
       "original_senior_tranche",
-      u128(parseUsdcAmountToU128(economics.original_senior_tranche)),
+      u128(parseUsdcBaseUnitsToU128(economics.original_senior_tranche)),
     ],
     ["origination_date", u64(economics.origination_date)],
     [

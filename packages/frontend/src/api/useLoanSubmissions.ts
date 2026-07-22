@@ -22,10 +22,14 @@
  * ---------------
  * `loan_data` is the verbatim submitted payload (backend `SubmissionView.loan_data`
  * is a `serde_json::Value`), returned as a **nested JSON object** — not a
- * JSON-encoded string. Its monetary fields (`economics.original_facility_size`,
- * …) are **base-6 decimal strings already in human units** (e.g.
- * `"8000000.000000"` = $8M USDC), same convention as `/v1/loan-book`. Use
- * `formatCompactUsd` — do NOT call `formatUsdc` / `parseUnits` on them.
+ * JSON-encoded string. Its four monetary fields (`economics.original_facility_size`
+ * / `original_senior_tranche` / `original_equity_tranche` /
+ * `original_offtaker_price`) are served at the on-chain **7-decimal (10^7)
+ * base-unit scale** (e.g. `"80000000000.000000"` = 80,000,000,000 base units
+ * = $8,000.00) — NOT human-unit dollars (issue #912; corrects the prior
+ * assumption here). Normalize ÷10^7 (BigInt-safe — never `Number`/`parseFloat`
+ * on the raw string) via `economicsBaseUnitsToUsdDecimal` (`@/utils/formatCompactUsd`)
+ * before `formatCompactUsd`.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -35,16 +39,18 @@ import { ENV } from "@/lib/env";
 
 /**
  * Loan economics fixed at origination (mirrors the contract's
- * `ImmutableLoanData`). USDC amounts are base-6 decimal strings in human units.
+ * `ImmutableLoanData`). The four monetary fields are decimal strings at the
+ * on-chain 7-decimal base-unit scale (NOT human units — see the module doc's
+ * Data-layer note, issue #912).
  */
 export interface EconomicsInput {
-  /** Total facility size, USDC (6-decimal string). Equals senior + equity. */
+  /** Total facility size — 7-decimal base-unit string. Equals senior + equity. */
   original_facility_size: string;
-  /** Senior tranche, USDC (6-decimal string). */
+  /** Senior tranche — 7-decimal base-unit string. */
   original_senior_tranche: string;
-  /** Equity tranche, USDC (6-decimal string). */
+  /** Equity tranche — 7-decimal base-unit string. */
   original_equity_tranche: string;
-  /** Offtaker price, USDC (6-decimal string). */
+  /** Offtaker price — 7-decimal base-unit string. */
   original_offtaker_price: string;
   /** Senior interest rate in basis points. */
   senior_interest_rate_bps: number;
