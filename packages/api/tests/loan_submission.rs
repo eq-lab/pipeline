@@ -171,10 +171,11 @@ fn quantity_dmt_below_zero_is_rejected() {
 }
 
 #[test]
-fn quantity_dmt_zero_is_allowed() {
+fn quantity_dmt_zero_is_rejected() {
     let mut r = valid_request();
     r.collateral_valuation.quantity_dmt = "0".to_owned();
-    assert!(validate_submission(&r).is_ok());
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("quantity_dmt"), "unexpected error: {err}");
 }
 
 #[test]
