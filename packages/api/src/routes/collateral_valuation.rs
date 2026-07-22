@@ -146,7 +146,10 @@ pub struct Ccr {
 pub struct CollateralValuationDoc;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/loan-book/{loan_id}/valuations", get(get_collateral_valuation))
+    Router::new().route(
+        "/loan-book/{loan_id}/valuations",
+        get(get_collateral_valuation),
+    )
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -176,10 +179,11 @@ async fn get_collateral_valuation(
         .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
 
     let repo = &state.collateral_valuation_repo;
-    let anchor = repo
-        .get_anchor(chain_id, &loan_id)
-        .await?
-        .ok_or_else(|| ApiError::NotFound(format!("no valuation for loan {loan_id} on chain {chain_id}")))?;
+    let anchor = repo.get_anchor(chain_id, &loan_id).await?.ok_or_else(|| {
+        ApiError::NotFound(format!(
+            "no valuation for loan {loan_id} on chain {chain_id}"
+        ))
+    })?;
 
     let assay = repo.latest_assay(chain_id, &loan_id).await?;
     let offtake = repo.latest_offtake(chain_id, &loan_id).await?;
@@ -240,7 +244,8 @@ async fn loan_snapshot_senior_usd(
 
 /// USD amount → 2-decimal string.
 fn usd(v: &BigDecimal) -> String {
-    v.with_scale_round(2, RoundingMode::HalfUp).to_plain_string()
+    v.with_scale_round(2, RoundingMode::HalfUp)
+        .to_plain_string()
 }
 
 fn build_response(
@@ -290,8 +295,8 @@ fn build_response(
 
     // Collateral value + waterfall come from the shared valuation (same code the
     // loan-book list uses). `None` when a required input for the mode is missing.
-    let computation =
-        compute_collateral(anchor, assay, offtake, quantity, reference_price).map_err(ApiError::Internal)?;
+    let computation = compute_collateral(anchor, assay, offtake, quantity, reference_price)
+        .map_err(ApiError::Internal)?;
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation
         .as_ref()

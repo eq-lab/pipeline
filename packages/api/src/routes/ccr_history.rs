@@ -152,7 +152,9 @@ async fn get_ccr_history(
 
     let repo = &state.collateral_valuation_repo;
     let anchor = repo.get_anchor(chain_id, &loan_id).await?.ok_or_else(|| {
-        ApiError::NotFound(format!("no valuation for loan {loan_id} on chain {chain_id}"))
+        ApiError::NotFound(format!(
+            "no valuation for loan {loan_id} on chain {chain_id}"
+        ))
     })?;
 
     // Current (constant across the window) valuation inputs.
@@ -242,7 +244,9 @@ pub fn validate_window(from: i64, step: i64, to: i64) -> Result<(), ApiError> {
         return Err(ApiError::BadRequest(format!("to ({to}) must be ≥ 0")));
     }
     if step < 1 {
-        return Err(ApiError::BadRequest(format!("step must be ≥ 1 second, got {step}")));
+        return Err(ApiError::BadRequest(format!(
+            "step must be ≥ 1 second, got {step}"
+        )));
     }
     if from > to {
         return Err(ApiError::BadRequest(format!(

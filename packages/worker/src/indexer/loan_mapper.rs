@@ -494,7 +494,9 @@ impl<A: LoanAddress, Id: LoanId> LoanEventMapper<A, Id> {
             params: enriched_params,
         };
 
-        self.event_repo.insert_row(conn, &row, self.chain_id).await?;
+        self.event_repo
+            .insert_row(conn, &row, self.chain_id)
+            .await?;
 
         // Thin bridge (Approach A): when a loan is drawn, point its open submission at
         // the new on-chain loan by matching `metadata_uri`. Pointer only — no on-chain

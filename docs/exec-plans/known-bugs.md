@@ -17,6 +17,19 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
+- **Date:** 2026-07-21
+- **Location:** `packages/api/src/routes/capital_allocation.rs` — `normalize_to_canonical` (~line 157-170).
+- **Symptom:** `raw / BigDecimal::from(10i128.pow(asset_decimals - CANON))` (the `asset_decimals > CANON` branch) uses plain `BigDecimal` division, which does not floor to a whole base-unit integer — `BigDecimal::from(123456789) / BigDecimal::from(10) = 12345678.9`, not `12345678`. Every raw on-chain amount is a whole integer at its native scale, so the normalized result should be too.
+- **Root cause:** Same defect class discovered and fixed in `shared::chains::normalize_usdc_amount` during #901's code review (see `normalize_usdc_amount_stellar_truncates_not_rounds` test, `packages/shared/tests/chains.rs`) — that fix appended `.with_scale_round(0, RoundingMode::Down)`. This function needs the identical fix but was out of scope for #901 (pre-existing, untouched code).
+- **Workaround:** None. Impact is likely small (sub-base-unit precision only) but affects Capital Allocation's `in_transit` bucket for any Stellar `AssetTransfer` amount not evenly divisible by the scale factor.
+
+### BUG-9: `KycRepo::GroupedRequest::from_row` formats `amount`/`assets`/`shares` as raw on-chain integers, not dollar strings
+- **Date:** 2026-07-21
+- **Location:** `packages/shared/src/kyc_repo.rs` — `GroupedRequest::from_row` (~line 122-127).
+- **Symptom:** `amount: row.amount.map(|a| a.to_string()).unwrap_or_default()` (and the equivalent for `assets`/`shares`) calls `.to_string()` directly on the raw `BigDecimal` pulled from `contract_logs.params`, never through `base6_to_decimal_string`. If ever consumed by an API response, this would render e.g. `"1200000000"` instead of `"1200.000000"` — for both EVM and Stellar rows, unrelated to the #901 decimal-scale fix.
+- **Root cause:** Missing `base6_to_decimal_string` call. Discovered while auditing every `base6_to_decimal_string` consumer for #901's Stellar-scale bug; `GroupedRequest` is currently unused by any API route or worker consumer (confirmed via repo-wide grep) so there is no live user-visible impact today.
+- **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
 ### BUG-8: `-deposit.test.tsx` Stellar voucher mocks nest `signatureBytes` under `data` instead of top-level
 - **Date:** 2026-07-09

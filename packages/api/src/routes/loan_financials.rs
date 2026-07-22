@@ -222,7 +222,12 @@ pub fn build_response(
 
     LoanFinancialsResponse {
         loan_id: row.loan_id.to_string(),
-        status: display_status(&s.status, off_ramp_complete, now, s.current_maturity_timestamp),
+        status: display_status(
+            &s.status,
+            off_ramp_complete,
+            now,
+            s.current_maturity_timestamp,
+        ),
         location: location_view(s),
         offtaker: base6_to_decimal_string(&s.original_offtaker_price),
         principal: base6_to_decimal_string(&principal),
@@ -271,4 +276,3 @@ fn location_view(s: &LoanSnapshot) -> Option<LocationView> {
         updated_at: iso_utc_from_unix(loc.updated_at),
     })
 }
-

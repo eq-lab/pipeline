@@ -632,6 +632,33 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `loan_data`-parsing package suggested by TD-42's fix, extended to also host the ScVal-encoding
   transform matrix, if a third on-chain consumer ever needs it.
 
+### TD-44: Stellar vault `assets`/`shares` (`StakingDeposit`/`StakingWithdrawal`) have no read-time USDC normalization yet
+
+- **Date:** 2026-07-21 (revised same day — see #901's read-time-not-write-time architecture correction)
+- **Location:** `contract_logs` rows for `StakingDeposit`/`StakingWithdrawal` (raw, correctly
+  unmodified — Stellar's native 7-decimal scale, per the worker's `parse_vault_deposit`/
+  `parse_vault_withdraw`). No `ContractLogsRepo` method currently reads these events at all.
+- **Gap:** #901 added `shared::chains::normalize_usdc_amount`/`LoanSnapshot::normalize_usdc_for_display`
+  and wired them into every `ContractLogsRepo` method an API route actually consumes
+  (loan-registry economics, withdrawal-queue, flow-events, yield-mints). No repo method reads
+  `StakingDeposit`/`StakingWithdrawal` today — the only place these events are touched at all is
+  `kyc_repo.rs`'s `GroupedRequest`/`RequestEventRow` (BUG-9), which is unused dead code. So
+  neither `assets` (USDC — would need the same `normalize_usdc_amount` treatment once a real
+  consumer exists) nor `shares` (the vault's own share-token amount — ERC-4626 `decimals_offset`
+  convention, `staked-pipeline-usd/src/lib.rs`: `decimals() = ASSET_DECIMALS + decimals_offset`,
+  not necessarily 7-decimal parity with USDC, needs separate confirmation) have any normalization
+  path yet. No live impact today since nothing reads them.
+- **Impact:** If either field is ever surfaced as a displayed/computed figure (e.g. a "your vault
+  shares" balance or a fixed deposit/withdraw amount), `assets` will read 10× too large (same bug
+  class as #901) and `shares` will be wrong by whatever the actual `decimals_offset` turns out to
+  be — not necessarily the same factor.
+- **Suggested fix:** When a real consumer of `StakingDeposit`/`StakingWithdrawal` amounts is
+  added, add the corresponding `ContractLogsRepo` method and call
+  `shared::chains::normalize_usdc_amount` on `assets` at **read time** (mirroring #901's other six
+  methods — never at indexer decode/write time). For `shares`, first confirm the deployed
+  `StakedPipelineUSD` contract's actual `decimals_offset` (check `pipeline-stellar-contracts`
+  deployment config or query `staked_pl_usd.decimals()` directly) before normalizing it.
+
 ---
 
 ## Post-MVP
