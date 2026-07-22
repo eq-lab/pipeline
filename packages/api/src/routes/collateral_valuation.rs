@@ -1,9 +1,9 @@
 //! Per-loan collateral valuation endpoint
 //! (`GET /v1/loan-book/{loan_id}/valuations`).
 //!
-//! Read-only. Loads the loan's valuation record (anchor + latest assay / offtake /
-//! quantity), the latest reference price, and the loan snapshot (for the CCR
-//! denominator), then recomputes collateral value and CCR on demand via
+//! Read-only. Loads the loan's valuation record (anchor, which carries quantity, plus
+//! the latest assay / offtake), the latest reference price, and the loan snapshot (for
+//! the CCR denominator), then recomputes collateral value and CCR on demand via
 //! `shared::valuation`. There is no cached state — the numbers are always derived
 //! from the current inputs (see docs/product-specs/collateral-valuation.md).
 //!
@@ -23,7 +23,7 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral, ConcentrateValuation};
 use shared::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow, ValuationMode,
+    AssayRow, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
 };
 
 use crate::auth::SecurityAddon;
@@ -69,7 +69,9 @@ pub struct CollateralValuationInputs {
     pub price_provider: String,
     /// Latest reference price (USD), or `null` when no price is on record.
     pub reference_price: Option<String>,
-    pub quantity_dmt: Option<String>,
+    /// Current collateral quantity in dry metric tonnes — always known, since it is
+    /// authored on the anchor at submission time.
+    pub quantity_dmt: String,
     pub moisture_pct: Option<String>,
     /// Payable metals (concentrate mode); empty for standard goods.
     pub metals: Vec<MetalInput>,
@@ -187,7 +189,6 @@ async fn get_collateral_valuation(
 
     let assay = repo.latest_assay(chain_id, &loan_id).await?;
     let offtake = repo.latest_offtake(chain_id, &loan_id).await?;
-    let quantity = repo.latest_quantity(chain_id, &loan_id).await?;
 
     // Latest reference price for this loan's (asset, provider) pair.
     let reference_price = state
@@ -206,7 +207,6 @@ async fn get_collateral_valuation(
         &anchor,
         assay.as_ref(),
         offtake.as_ref(),
-        quantity.as_ref(),
         reference_price.as_ref(),
         outstanding_senior.as_ref(),
     )
@@ -252,16 +252,12 @@ fn build_response(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    quantity: Option<&QuantityReportRow>,
     reference_price: Option<&BigDecimal>,
     outstanding_senior: Option<&BigDecimal>,
 ) -> Result<CollateralValuationResponse, ApiError> {
     let mut missing = Vec::new();
     if reference_price.is_none() {
         missing.push("reference_price".to_owned());
-    }
-    if quantity.is_none() {
-        missing.push("quantity".to_owned());
     }
     let is_concentrate = anchor.valuation_mode == ValuationMode::MetalConcentrate;
     if is_concentrate {
@@ -278,7 +274,7 @@ fn build_response(
         reference_price_asset: anchor.asset.clone(),
         price_provider: anchor.price_provider.clone(),
         reference_price: reference_price.map(BigDecimal::to_plain_string),
-        quantity_dmt: quantity.map(|q| q.quantity_dmt.to_plain_string()),
+        quantity_dmt: anchor.quantity_dmt.to_plain_string(),
         moisture_pct: assay
             .and_then(|a| a.moisture_pct.as_ref())
             .map(BigDecimal::to_plain_string),
@@ -295,7 +291,7 @@ fn build_response(
 
     // Collateral value + waterfall come from the shared valuation (same code the
     // loan-book list uses). `None` when a required input for the mode is missing.
-    let computation = compute_collateral(anchor, assay, offtake, quantity, reference_price)
+    let computation = compute_collateral(anchor, assay, offtake, reference_price)
         .map_err(ApiError::Internal)?;
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation

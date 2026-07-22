@@ -11,7 +11,7 @@ use chrono::Utc;
 use pipeline_api::routes::ccr_history::{
     build_response, resolve_grid, validate_window, CcrHistoryDoc,
 };
-use shared::collateral_valuation_repo::{CollateralValuationRow, QuantityReportRow, ValuationMode};
+use shared::collateral_valuation_repo::{CollateralValuationRow, ValuationMode};
 use utoipa::OpenApi;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ fn dec(s: &str) -> BigDecimal {
 }
 
 /// A StandardGoods anchor: `collateral = price * quantity * (1 - haircut)`.
-fn anchor(haircut: &str) -> CollateralValuationRow {
+fn anchor(haircut: &str, quantity_dmt: &str) -> CollateralValuationRow {
     CollateralValuationRow {
         chain_id: 1,
         loan_id: BigDecimal::from(42),
@@ -31,21 +31,9 @@ fn anchor(haircut: &str) -> CollateralValuationRow {
         asset: "KC".to_owned(),
         price_provider: "ICE".to_owned(),
         haircut_pct: dec(haircut),
+        quantity_dmt: dec(quantity_dmt),
         created_at: Utc::now(),
         updated_at: Utc::now(),
-    }
-}
-
-fn quantity(qty: &str) -> QuantityReportRow {
-    QuantityReportRow {
-        id: 1,
-        chain_id: 1,
-        loan_id: BigDecimal::from(42),
-        quantity_dmt: dec(qty),
-        location: None,
-        reported_at: Utc::now(),
-        recorded_by: "test".to_owned(),
-        created_at: Utc::now(),
     }
 }
 
@@ -137,8 +125,7 @@ fn build_response_computes_ccr_series_for_standard_goods() {
     // ccr_bps = collateral / senior * 10_000.
     //   price 1000 -> collateral 800_000 -> 800_000/500_000 = 1.6 -> 16_000 bps
     //   price  750 -> collateral 600_000 -> 1.2                 -> 12_000 bps
-    let anchor = anchor("0.20");
-    let quantity = quantity("1000");
+    let anchor = anchor("0.20", "1000");
     let senior = dec("500000");
     let grid = vec![(0i64, Some(dec("1000"))), (3600, Some(dec("750")))];
 
@@ -151,7 +138,6 @@ fn build_response_computes_ccr_series_for_standard_goods() {
         &anchor,
         None,
         None,
-        Some(&quantity),
         Some(&senior),
         &grid,
     )
@@ -166,8 +152,7 @@ fn build_response_computes_ccr_series_for_standard_goods() {
 
 #[test]
 fn build_response_skips_points_without_a_price() {
-    let anchor = anchor("0.00");
-    let quantity = quantity("1000");
+    let anchor = anchor("0.00", "1000");
     let senior = dec("1000000");
     // First point has no price yet; second does.
     let grid = vec![(0i64, None), (10, Some(dec("1000")))];
@@ -181,7 +166,6 @@ fn build_response_skips_points_without_a_price() {
         &anchor,
         None,
         None,
-        Some(&quantity),
         Some(&senior),
         &grid,
     )
@@ -195,10 +179,10 @@ fn build_response_skips_points_without_a_price() {
 
 #[test]
 fn build_response_empty_when_structural_inputs_missing() {
-    let anchor = anchor("0.20");
+    let anchor = anchor("0.20", "1000");
     let grid = vec![(0i64, Some(dec("1000")))];
 
-    // Quantity absent → no valuation possible; senior absent → no denominator.
+    // Senior absent → no denominator, so no CCR is computable.
     let resp = build_response(
         &BigDecimal::from(42),
         1,
@@ -208,7 +192,6 @@ fn build_response_empty_when_structural_inputs_missing() {
         &anchor,
         None,
         None,
-        None, // quantity
         None, // senior_usd
         &grid,
     )

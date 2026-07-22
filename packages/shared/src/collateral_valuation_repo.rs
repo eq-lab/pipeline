@@ -1,17 +1,17 @@
 //! Read access to the per-loan collateral valuation record
 //! (docs/product-specs/collateral-valuation.md).
 //!
-//! One aggregate spread over four tables, all keyed by `(chain_id, loan_id)`:
+//! One aggregate spread over three tables, all keyed by `(chain_id, loan_id)`:
 //!
-//! - `loan_collateral_valuations`         — the anchor (mode, commodity, asset, provider, haircut)
+//! - `loan_collateral_valuations`         — the anchor (mode, commodity, asset, provider,
+//!   haircut, quantity), authored once at loan-submission time
 //! - `loan_assays`             — append-only lab assays; the latest by `effective_at`
 //! - `loan_offtake_terms`      — append-only offtake terms; the latest by `effective_at`
-//! - `loan_quantity_reports`   — append-only trustee feed; the latest by `reported_at`
 //!
-//! This repo is **read-only**: it fetches the current inputs so a caller (the API
-//! read, or the worker recompute) can assemble [`crate::collateral_valuation`] inputs and
-//! recompute collateral value / CCR on demand. Writes arrive later with the
-//! operator-input endpoints.
+//! This repo is mostly **read-only**: besides `insert_pending` (called from the
+//! submission endpoint's transaction), it fetches the current inputs so a caller (the
+//! API read, or the worker recompute) can assemble [`crate::collateral_valuation`]
+//! inputs and recompute collateral value / CCR on demand.
 //!
 //! JSONB array columns are decoded into typed rows whose numeric fields are
 //! **decimal strings** — the codebase convention for JSON-encoded numbers (see
@@ -21,7 +21,6 @@
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sqlx::types::Json;
 use sqlx::{PgConnection, PgPool};
 use utoipa::ToSchema;
@@ -134,6 +133,9 @@ pub struct CollateralValuationRow {
     pub asset: String,
     pub price_provider: String,
     pub haircut_pct: BigDecimal,
+    /// Current collateral quantity in dry metric tonnes (original less delivered),
+    /// authored once at submission time alongside the rest of the anchor.
+    pub quantity_dmt: BigDecimal,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -174,19 +176,6 @@ pub struct OfftakeTermsRow {
     pub created_at: DateTime<Utc>,
 }
 
-/// The latest row of `loan_quantity_reports` for a loan.
-#[derive(Debug, Clone, sqlx::FromRow)]
-pub struct QuantityReportRow {
-    pub id: i64,
-    pub chain_id: i64,
-    pub loan_id: BigDecimal,
-    pub quantity_dmt: BigDecimal,
-    pub location: Option<Value>,
-    pub reported_at: DateTime<Utc>,
-    pub recorded_by: String,
-    pub created_at: DateTime<Utc>,
-}
-
 /// A distinct `(asset, price_provider)` pairing across all valuation anchors.
 ///
 /// Consumed by the worker `asset_price_collector`, which collects a price series per
@@ -217,6 +206,7 @@ impl CollateralValuationRepo {
     ///
     /// Takes a caller-supplied connection so it runs inside the submission endpoint's
     /// transaction, atomically with the `submitted_loans` insert.
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert_pending(
         conn: &mut PgConnection,
         submitted_loan_id: i64,
@@ -225,11 +215,13 @@ impl CollateralValuationRepo {
         asset: &str,
         price_provider: &str,
         haircut_pct: &BigDecimal,
+        quantity_dmt: &BigDecimal,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO loan_collateral_valuations \
-                (submitted_loan_id, commodity, valuation_mode, asset, price_provider, haircut_pct) \
-             VALUES ($1, $2, $3, $4, $5, $6)",
+                (submitted_loan_id, commodity, valuation_mode, asset, price_provider, \
+                 haircut_pct, quantity_dmt) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(submitted_loan_id)
         .bind(commodity)
@@ -237,6 +229,7 @@ impl CollateralValuationRepo {
         .bind(asset)
         .bind(price_provider)
         .bind(haircut_pct)
+        .bind(quantity_dmt)
         .execute(conn)
         .await?;
         Ok(())
@@ -251,7 +244,7 @@ impl CollateralValuationRepo {
         sqlx::query_as::<_, CollateralValuationRow>(
             "SELECT sl.chain_id, sl.loan_id, lcv.submitted_loan_id, lcv.commodity, \
                     lcv.valuation_mode, lcv.asset, lcv.price_provider, lcv.haircut_pct, \
-                    lcv.created_at, lcv.updated_at \
+                    lcv.quantity_dmt, lcv.created_at, lcv.updated_at \
              FROM loan_collateral_valuations lcv \
              JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
              WHERE sl.chain_id = $1 AND sl.loan_id = $2",
@@ -299,24 +292,6 @@ impl CollateralValuationRepo {
         .await
     }
 
-    /// The most recent quantity report for a loan (by `reported_at`), or `None`.
-    pub async fn latest_quantity(
-        &self,
-        chain_id: i64,
-        loan_id: &BigDecimal,
-    ) -> Result<Option<QuantityReportRow>, sqlx::Error> {
-        sqlx::query_as::<_, QuantityReportRow>(
-            "SELECT id, chain_id, loan_id, quantity_dmt, location, reported_at, recorded_by, \
-                    created_at \
-             FROM loan_quantity_reports WHERE chain_id = $1 AND loan_id = $2 \
-             ORDER BY reported_at DESC LIMIT 1",
-        )
-        .bind(chain_id)
-        .bind(loan_id)
-        .fetch_optional(&self.pool)
-        .await
-    }
-
     // ── Bulk loaders (chain-scoped) — for valuing every loan in the loan book ──
 
     /// Every valuation anchor on a chain.
@@ -327,7 +302,7 @@ impl CollateralValuationRepo {
         sqlx::query_as::<_, CollateralValuationRow>(
             "SELECT sl.chain_id, sl.loan_id, lcv.submitted_loan_id, lcv.commodity, \
                     lcv.valuation_mode, lcv.asset, lcv.price_provider, lcv.haircut_pct, \
-                    lcv.created_at, lcv.updated_at \
+                    lcv.quantity_dmt, lcv.created_at, lcv.updated_at \
              FROM loan_collateral_valuations lcv \
              JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
              WHERE sl.chain_id = $1",
@@ -382,20 +357,4 @@ impl CollateralValuationRepo {
         .await
     }
 
-    /// The latest quantity report per loan on a chain (one row per `loan_id`).
-    pub async fn latest_quantities(
-        &self,
-        chain_id: i64,
-    ) -> Result<Vec<QuantityReportRow>, sqlx::Error> {
-        sqlx::query_as::<_, QuantityReportRow>(
-            "SELECT DISTINCT ON (loan_id) \
-                    id, chain_id, loan_id, quantity_dmt, location, reported_at, recorded_by, \
-                    created_at \
-             FROM loan_quantity_reports WHERE chain_id = $1 \
-             ORDER BY loan_id, reported_at DESC",
-        )
-        .bind(chain_id)
-        .fetch_all(&self.pool)
-        .await
-    }
 }

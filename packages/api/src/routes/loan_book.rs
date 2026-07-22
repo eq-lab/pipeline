@@ -21,8 +21,7 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
 use shared::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRepo, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
-    ValuationMode,
+    AssayRow, CollateralValuationRepo, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
 };
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
@@ -95,9 +94,9 @@ pub struct LoanBookSummary {
     pub total_deployed: String,
     /// Total collateral value = Σ per-loan collateral over active loans, USDC
     /// (6-decimal string). Each loan's collateral is valued from its
-    /// collateral-valuation record (the `loan_collateral_valuations` anchor plus the
-    /// latest assay / offtake / quantity inputs) and the newest `loan_asset_prices`
-    /// row for its asset.
+    /// collateral-valuation record (the `loan_collateral_valuations` anchor, which
+    /// carries quantity, plus the latest assay / offtake inputs) and the newest
+    /// `loan_asset_prices` row for its asset.
     ///
     /// `null` when no active loan has a configured asset with a stored price.
     pub total_collateral: Option<String>,
@@ -213,8 +212,9 @@ pub struct LoanBookEntry {
     /// price is unavailable or zero.
     pub spot_change_7d: Option<String>,
     /// Collateral value in USDC (6-decimal string), computed from the loan's
-    /// collateral-valuation record (`loan_collateral_valuations` anchor + latest
-    /// assay / offtake / quantity) and the newest `loan_asset_prices` row for its asset.
+    /// collateral-valuation record (`loan_collateral_valuations` anchor, which carries
+    /// quantity, plus latest assay / offtake) and the newest `loan_asset_prices` row
+    /// for its asset.
     ///
     /// `null` when the loan has no valuation anchor or its asset has no price.
     pub collateral: Option<String>,
@@ -327,6 +327,9 @@ pub struct CollateralValuationInput {
     pub price_provider: String,
     /// Haircut applied to collateral value — decimal fraction string in `[0, 1]`.
     pub haircut_pct: String,
+    /// Current collateral quantity in dry metric tonnes (original less delivered) —
+    /// non-negative decimal string.
+    pub quantity_dmt: String,
 }
 
 /// Per-loan protocol fee schedule input — the data behind `loan_fee_schedule` (see
@@ -588,6 +591,13 @@ async fn submit_loan(
                 payload.collateral_valuation.haircut_pct
             ))
         })?;
+    let quantity_dmt =
+        BigDecimal::from_str(&payload.collateral_valuation.quantity_dmt).map_err(|_| {
+            ApiError::BadRequest(format!(
+                "quantity_dmt is not a valid decimal: {}",
+                payload.collateral_valuation.quantity_dmt
+            ))
+        })?;
 
     // Persist the payload verbatim; serialization of an owned struct cannot fail.
     let loan_data = serde_json::to_value(&payload)
@@ -607,6 +617,7 @@ async fn submit_loan(
         &payload.collateral_valuation.asset,
         &payload.collateral_valuation.price_provider,
         &haircut_pct,
+        &quantity_dmt,
     )
     .await?;
 
@@ -897,6 +908,12 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
             "haircut_pct must be between 0 and 1; got {haircut_pct}"
         ));
     }
+    let quantity_dmt = parse("quantity_dmt", &req.collateral_valuation.quantity_dmt)?;
+    if quantity_dmt <= 0 {
+        return Err(format!(
+            "quantity_dmt must be > 0; got {quantity_dmt}"
+        ));
+    }
 
     if req.fee_schedule.perf_fee_rate_bps > 10_000 {
         return Err(format!(
@@ -1056,14 +1073,15 @@ async fn spot_by_loan(
 }
 
 /// Build the per-loan collateral map: `loan_id → collateral in micro-USDC`, valued
-/// from the collateral-valuation record (anchor + latest assay / offtake / quantity)
-/// and the latest reference price via [`compute_collateral`]. Collateral comes out
-/// in USD; the `×1e6` scales it to the base-6 units of the on-chain tranche amounts
-/// so `compute_loan_book` can format and ratio it against principal.
+/// from the collateral-valuation record (anchor, which carries quantity, plus latest
+/// assay / offtake) and the latest reference price via [`compute_collateral`].
+/// Collateral comes out in USD; the `×1e6` scales it to the base-6 units of the
+/// on-chain tranche amounts so `compute_loan_book` can format and ratio it against
+/// principal.
 ///
 /// `anchors` and `latest_prices` are pre-fetched by the handler (shared with
-/// `spot_by_loan`). Loans whose record is incomplete (missing assay/offtake/quantity/
-/// price for their mode) are simply absent from the map (→ `null`).
+/// `spot_by_loan`). Loans whose record is incomplete (missing assay/offtake/price for
+/// their mode) are simply absent from the map (→ `null`).
 async fn collateral_by_loan(
     state: &AppState,
     chain_id: i64,
@@ -1087,25 +1105,13 @@ async fn collateral_by_loan(
         .into_iter()
         .map(|r| (loan_key(&r.loan_id), r))
         .collect();
-    let quantities: HashMap<String, QuantityReportRow> = repo
-        .latest_quantities(chain_id)
-        .await?
-        .into_iter()
-        .map(|r| (loan_key(&r.loan_id), r))
-        .collect();
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
     for anchor in anchors {
         let key = loan_key(&anchor.loan_id);
         let price = latest_prices.get(&(anchor.asset.clone(), anchor.price_provider.clone()));
-        let computed = compute_collateral(
-            anchor,
-            assays.get(&key),
-            offtakes.get(&key),
-            quantities.get(&key),
-            price,
-        )
-        .map_err(ApiError::Internal)?;
+        let computed = compute_collateral(anchor, assays.get(&key), offtakes.get(&key), price)
+            .map_err(ApiError::Internal)?;
         if let Some(c) = computed {
             map.insert(key, c.collateral_value * &scale);
         }

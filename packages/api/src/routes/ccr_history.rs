@@ -36,9 +36,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
-use shared::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow,
-};
+use shared::collateral_valuation_repo::{AssayRow, CollateralValuationRow, OfftakeTermsRow};
 
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
@@ -157,10 +155,10 @@ async fn get_ccr_history(
         ))
     })?;
 
-    // Current (constant across the window) valuation inputs.
+    // Current (constant across the window) valuation inputs. Quantity is not fetched
+    // separately — it lives on `anchor` itself.
     let assay = repo.latest_assay(chain_id, &loan_id).await?;
     let offtake = repo.latest_offtake(chain_id, &loan_id).await?;
-    let quantity = repo.latest_quantity(chain_id, &loan_id).await?;
 
     // CCR denominator: current outstanding senior principal, in USD.
     let senior_usd = loan_snapshot_senior_usd(&state, chain_id, &loan_id, now).await?;
@@ -193,7 +191,6 @@ async fn get_ccr_history(
         &anchor,
         assay.as_ref(),
         offtake.as_ref(),
-        quantity.as_ref(),
         senior_usd.as_ref(),
         &grid,
     )
@@ -298,7 +295,7 @@ pub fn resolve_grid(
 /// takes CCR against the fixed senior-principal denominator.
 ///
 /// `Err` only propagates a malformed-stored-number data-integrity failure from
-/// `compute_collateral`. When a structural input (quantity/assay/offtake) or the
+/// `compute_collateral`. When a structural input (assay/offtake) or the
 /// senior-principal denominator is missing, no CCR is computable and `points` is empty.
 #[allow(clippy::too_many_arguments)]
 pub fn build_response(
@@ -310,7 +307,6 @@ pub fn build_response(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    quantity: Option<&QuantityReportRow>,
     senior_usd: Option<&BigDecimal>,
     grid: &[(i64, Option<BigDecimal>)],
 ) -> Result<CcrHistoryResponse, ApiError> {
@@ -318,9 +314,8 @@ pub fn build_response(
     if let Some(senior) = senior_usd {
         for (ts, price) in grid {
             let Some(price) = price else { continue }; // no price known yet at this point
-            let Some(computation) =
-                compute_collateral(anchor, assay, offtake, quantity, Some(price))
-                    .map_err(ApiError::Internal)?
+            let Some(computation) = compute_collateral(anchor, assay, offtake, Some(price))
+                .map_err(ApiError::Internal)?
             else {
                 // Structural input missing → None for every point; stop cheaply.
                 break;
