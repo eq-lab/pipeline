@@ -145,39 +145,39 @@ fn principal_capped_at_outstanding() {
 }
 
 #[test]
-fn principal_capped_at_amount_on_partial() {
-    // Only 500,000 arrives — less than outstanding principal alone. Principal returned is
-    // capped at min(amount, outstanding) = 500,000, which consumes the entire payment:
-    // senior principal is top priority in the waterfall cascade, so nothing is left for
-    // the fee/coupon buckets below it.
+fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
+    // Full waterfall targets (senior 1,000,000 @ 12% for 1 year, fees 100/2000/50 bps):
+    // coupon 88,000, mgmt fee 10,000, perf fee 22,000, oet 5,000, principal 1,000,000.
+    // Priority order is now coupon → mgmt → perf → oet → principal, so a 500,000
+    // payment — enough to cover coupon + all fees (125,000) but not full principal —
+    // pays coupon and every fee bucket in full and leaves principal to absorb the
+    // shortfall: 500,000 − 125,000 = 375,000.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000");
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
-    assert_eq!(b.senior_principal_returned, dec("500000"));
-    assert_eq!(b.management_fee, dec("0"));
-    assert_eq!(b.senior_coupon_net, dec("0"));
-    assert_eq!(b.performance_fee, dec("0"));
-    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_coupon_net, dec("88000"));
+    assert_eq!(b.management_fee, dec("10000"));
+    assert_eq!(b.performance_fee, dec("22000"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+    assert_eq!(b.senior_principal_returned, dec("375000"));
 }
 
 #[test]
-fn cascade_caps_lower_priority_buckets_on_partial_amount() {
-    // Full waterfall targets (senior 1,000,000 @ 12% for 1 year, fees 100/2000/50 bps):
-    // principal 1,000,000, mgmt fee 10,000, coupon 88,000, perf fee 22,000, oet 5,000.
-    // A 1,050,000 payment covers principal + mgmt fee in full, only 40,000 of the 88,000
-    // coupon target, and leaves nothing for performance fee or OET — the cascade drains
-    // top-down through the documented priority order (principal → mgmt fee → coupon →
-    // perf fee → OET) rather than reporting the full accrued fees regardless of `amount`.
+fn principal_shrinks_last_when_amount_falls_short() {
+    // Same full-year targets as above. A 1,050,000 payment covers coupon + all fees in
+    // full (125,000) and leaves 925,000 for principal — short of the full 1,000,000
+    // outstanding by 75,000. Principal is dead-last in the cascade, so it's the one that
+    // shrinks, not any of the higher-priority buckets.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("1050000");
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
-    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.senior_coupon_net, dec("88000"));
     assert_eq!(b.management_fee, dec("10000"));
-    assert_eq!(b.senior_coupon_net, dec("40000"));
-    assert_eq!(b.performance_fee, dec("0"));
-    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.performance_fee, dec("22000"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+    assert_eq!(b.senior_principal_returned, dec("925000"));
 
     // Cascade invariant: components never sum to more than the incoming amount.
     let total = &b.senior_principal_returned
@@ -189,29 +189,32 @@ fn cascade_caps_lower_priority_buckets_on_partial_amount() {
 }
 
 #[test]
-fn cascade_zeroes_lowest_priority_bucket_at_the_boundary() {
-    // 1,120,000 exactly covers principal + mgmt fee + coupon + perf fee (1,000,000 +
-    // 10,000 + 88,000 + 22,000), leaving nothing for the lowest-priority bucket, OET.
+fn principal_reduced_to_zero_when_amount_exactly_covers_coupon_and_fees() {
+    // 125,000 exactly covers coupon + mgmt fee + perf fee + oet (88,000 + 10,000 +
+    // 22,000 + 5,000), leaving nothing at all for principal — the lowest-priority
+    // bucket, now that it's last in the cascade.
     let s = snapshot("1000000", "0", 1200);
-    let amount = dec("1120000");
+    let amount = dec("125000");
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
-    assert_eq!(b.senior_principal_returned, dec("1000000"));
-    assert_eq!(b.management_fee, dec("10000"));
     assert_eq!(b.senior_coupon_net, dec("88000"));
+    assert_eq!(b.management_fee, dec("10000"));
     assert_eq!(b.performance_fee, dec("22000"));
-    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.oet_allocation, dec("5000"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
 }
 
 #[test]
 fn fractional_amount_principal_truncated_to_whole_base_unit() {
-    // A sub-base-unit `amount` must not leak fractional precision into the principal:
-    // min(amount, outstanding) is truncated toward zero like every other component.
+    // A sub-base-unit `amount` must not leak fractional precision into principal — the
+    // last bucket in the cascade, and the one that ends up holding the fractional
+    // remainder after coupon + fees (125,000 total) are subtracted from 500,000.9:
+    // min(outstanding, remaining) is truncated toward zero like every other component.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000.9");
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[]).ok().unwrap();
 
-    assert_eq!(b.senior_principal_returned, dec("500000"));
+    assert_eq!(b.senior_principal_returned, dec("375000"));
 }
 
 #[test]
@@ -254,21 +257,23 @@ fn as_of_before_origination_is_rejected() {
 fn rollover_mid_tenor_applies_each_epoch_own_rate() {
     // Genesis epoch: 12% (1200 bps), maturing at the half-year point. A LoanRolledOver
     // there opens a new epoch at 24% (2400 bps, contract-scaled `240_000`) for the
-    // second half-year. Naively applying the genesis rate to the whole year would give
-    // 1,000,000 × 12% = 120,000; the piecewise sum instead gives
-    // (1,000,000 × 12% × 0.5) + (1,000,000 × 24% × 0.5) = 60,000 + 120,000 = 180,000.
+    // second half-year. Compound growth per epoch, `(1+rate)^0.5 - 1`:
+    // epoch 1: 1,000,000 × ((1.12)^0.5 - 1) ≈ 58,300.524
+    // epoch 2: 1,000,000 × ((1.24)^0.5 - 1) ≈ 113,552.873
+    // sum ≈ 171,853.397, truncated toward zero → 171,853. (The simple-interest baseline
+    // this replaced would have given 60,000 + 120,000 = 180,000 instead.)
     let s = LoanSnapshot {
         original_maturity_date: HALF_YEAR_LATER,
         ..snapshot("1000000", "0", 1200)
     };
     let events = [econ_event("LoanRolledOver", 240_000, ONE_YEAR_LATER)];
-    let amount = dec("1180000"); // 1,000,000 principal + 180,000 gross interest, no fees.
+    let amount = dec("1180000"); // Comfortably covers principal + compound interest.
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 0), &events)
         .ok()
         .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("1000000"));
-    assert_eq!(b.senior_coupon_net, dec("180000"));
+    assert_eq!(b.senior_coupon_net, dec("171853"));
 }
 
 #[test]
@@ -276,7 +281,7 @@ fn as_of_within_first_epoch_ignores_a_later_rollover() {
     // The same rollover as above, but `as_of` lands at the midpoint — before the
     // rollover event's own `block_timestamp` cutoff would apply in the handler, and
     // squarely inside epoch 1. Only the genesis rate should accrue:
-    // 1,000,000 × 12% × 0.5 = 60,000.
+    // 1,000,000 × ((1.12)^0.5 - 1) ≈ 58,300.524, truncated → 58,300.
     let s = LoanSnapshot {
         original_maturity_date: HALF_YEAR_LATER,
         ..snapshot("1000000", "0", 1200)
@@ -287,7 +292,48 @@ fn as_of_within_first_epoch_ignores_a_later_rollover() {
         .ok()
         .unwrap();
 
-    assert_eq!(b.senior_coupon_net, dec("60000"));
+    assert_eq!(b.senior_coupon_net, dec("58300"));
+}
+
+#[test]
+fn fees_compound_too_at_fractional_tenor() {
+    // Management fee also compounds via `(1+rate)^tenor - 1`, not just gross interest.
+    // At 200 bps for exactly half a year: 1,000,000 × ((1.02)^0.5 - 1) ≈ 9,950.494,
+    // truncated → 9,950 — short of the 10,000 a linear `rate × tenor` approximation
+    // would give (1,000,000 × 2% × 0.5 = 10,000), because compounding over less than a
+    // full period grows slower than the linear approximation.
+    let s = LoanSnapshot {
+        original_maturity_date: HALF_YEAR_LATER,
+        ..snapshot("1000000", "0", 1200)
+    };
+    let amount = dec("1010000"); // 1,000,000 principal + headroom above the ~9,950 fee.
+    let b = compute_waterfall(&s, &amount, HALF_YEAR_LATER, &fees(200, 0, 0), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.management_fee, dec("9950"));
+}
+
+#[test]
+fn exact_result_is_not_lost_to_float_truncation_noise() {
+    // Regression for a real float-precision hazard: `f64::powf` doesn't guarantee an
+    // exact result even when the true answer is a whole number. At 50 bps for exactly
+    // 1 year, `(1.005f64).powf(1.0) - 1.0` evaluates to `0.00499999999999989…`, not
+    // `0.005` — negligible on its own, but truncate-toward-zero turns a value sitting a
+    // hair below the 5,000-base-unit boundary into 4,999. `compound_growth` rounds the
+    // factor to 12 decimal places first specifically to catch this before truncation
+    // does; this test locks that fix in on a value that's easy to get subtly wrong.
+    // OET is last in the cascade priority order, behind the (zero-fee) senior coupon —
+    // so `amount` must cover principal + the full 120,000 gross-interest coupon ahead of
+    // it too, or the cascade would zero OET out for an unrelated reason (shortfall, not
+    // the float-truncation bug this test is isolating).
+    let s = snapshot("1000000", "0", 1200);
+    let amount = dec("1125000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(0, 0, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.oet_allocation, dec("5000"));
 }
 
 #[test]
