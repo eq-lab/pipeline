@@ -44,6 +44,7 @@ fn valid_request() -> SubmitLoanRequest {
             asset: "XCU".to_owned(),
             price_provider: "LME".to_owned(),
             haircut_pct: "0.20".to_owned(),
+            quantity_dmt: "1000".to_owned(),
         },
         fee_schedule: FeeScheduleInput {
             mgmt_fee_rate_bps: 50,
@@ -159,6 +160,29 @@ fn haircut_pct_bounds_are_allowed() {
     assert!(validate_submission(&r).is_ok());
     r.collateral_valuation.haircut_pct = "1".to_owned();
     assert!(validate_submission(&r).is_ok());
+}
+
+#[test]
+fn quantity_dmt_below_zero_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.quantity_dmt = "-0.01".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("quantity_dmt"), "unexpected error: {err}");
+}
+
+#[test]
+fn quantity_dmt_zero_is_allowed() {
+    let mut r = valid_request();
+    r.collateral_valuation.quantity_dmt = "0".to_owned();
+    assert!(validate_submission(&r).is_ok());
+}
+
+#[test]
+fn quantity_dmt_non_decimal_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.quantity_dmt = "not-a-number".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("quantity_dmt"), "unexpected error: {err}");
 }
 
 #[test]
@@ -296,7 +320,8 @@ fn submit_request_defaults_optional_fields() {
             "valuation_mode": "StandardGoods",
             "asset": "XCU",
             "price_provider": "LME",
-            "haircut_pct": "0.20"
+            "haircut_pct": "0.20",
+            "quantity_dmt": "1000"
         },
         "fee_schedule": {
             "mgmt_fee_rate_bps": 50,
