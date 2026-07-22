@@ -12,29 +12,36 @@
 //! three stages:
 //!
 //! 1. **Cumulative targets, origination → `as_of`.** Gross interest is the maturity-capped,
-//!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`),
-//!    mirroring YieldMinter's on-chain `ceiling(loanId)` (`docs/product-specs/yield.md`
-//!    §"Per-loan mint cap") — a rollover or economics amendment changes the rate/maturity
-//!    from that point on, and accrual stops at each epoch's own maturity if it isn't rolled
-//!    over. `senior_deployed = originalSeniorTranche` throughout (the accrual base never
-//!    changes). Fees use the same piecewise-capped tenor at their single (non-epoch) rate:
-//!    - `senior_gross_interest = Σ epochs: senior_deployed × epoch.rate × epoch.capped_ty`
-//!    - `management_fee_cum    = senior_deployed × mgmt_rate × ty`
+//!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`) —
+//!    a rollover or economics amendment changes the rate/maturity from that point on, and
+//!    accrual stops at each epoch's own maturity if it isn't rolled over.
+//!    `senior_deployed = originalSeniorTranche` throughout (the accrual base never changes).
+//!    Each rate compounds via real exponentiation (`compound_growth` — `(1 + rate) ^ tenor
+//!    − 1`), **not** the linear/simple-interest formula the waterfall spec
+//!    (`docs/product-specs/yield.md` §"Waterfall components") and YieldMinter's on-chain
+//!    `ceiling(loanId)` (§"Per-loan mint cap") both document — a deliberate choice, so this
+//!    endpoint's figures no longer match either of those by construction; see
+//!    `compound_growth`'s doc comment for why and its precision tradeoff. Fees compound the
+//!    same way, over the same piecewise-capped tenor, at their single (non-epoch) rate:
+//!    - `senior_gross_interest = Σ epochs: compound_growth(senior_deployed, epoch.rate, epoch.capped_seconds)`
+//!    - `management_fee_cum    = compound_growth(senior_deployed, mgmt_rate, capped_seconds)`
 //!    - `performance_fee_cum   = (senior_gross_interest − management_fee_cum) × perf_rate`
 //!    - `senior_coupon_net_cum = senior_gross_interest − management_fee_cum − performance_fee_cum`
-//!    - `oet_allocation_cum    = senior_deployed × oet_rate × ty`
+//!    - `oet_allocation_cum    = compound_growth(senior_deployed, oet_rate, capped_seconds)`
 //! 2. **Subtract what's already been recorded** (the snapshot's cumulative `repayment.*`
 //!    counters — the running totals `recordPayment` maintains on-chain across every prior
 //!    repayment for this loan) to get what's *newly* due since the last repayment, clamped
 //!    at 0 so a prior over-record can't surface as a negative "still owed" figure:
 //!    `target_x = max(0, x_cum − repayment.x)`.
-//! 3. **Cascade `amount` through the buckets** in the spec's priority order — senior
-//!    principal → management fee → senior coupon → performance fee → OET allocation —
-//!    capping each bucket at its step-2 target so a shortfall shrinks lower-priority
-//!    buckets instead of reporting more than the incoming payment can cover:
-//!    `senior_principal_returned = min(amount, outstanding_senior_principal)`, then each
-//!    subsequent bucket = `min(target_x, remaining)` where `remaining` is `amount` less
-//!    whatever higher-priority buckets already consumed.
+//! 3. **Cascade `amount` through the buckets** in priority order — senior coupon → all
+//!    fees (management → performance → OET) → senior principal — capping each bucket at
+//!    its step-2 target so a shortfall shrinks lower-priority buckets instead of
+//!    reporting more than the incoming payment can cover. This order is a deliberate
+//!    departure from `docs/product-specs/yield.md` §"Waterfall components", which puts
+//!    senior principal first; here the vault (LP) and Treasury legs are paid ahead of
+//!    principal return. Each bucket = `min(target_x, remaining)`, `senior_principal_returned
+//!    = min(outstanding_senior_principal, remaining)` last, where `remaining` is `amount`
+//!    less whatever higher-priority buckets already consumed.
 //!
 //! **Units.** All monetary values — the `amount` input and every output — are **raw
 //! on-chain base units**, the same scale as the loan snapshot and `recordPayment`
@@ -54,7 +61,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::contract_logs_repo::EconomicsEventRow;
-use shared::loan_economics::{build_epochs, piecewise_interest, piecewise_tenor_years};
+use shared::loan_economics::{
+    build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest,
+};
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
 
@@ -90,13 +99,13 @@ pub struct WaterfallQuery {
 /// integer string (see the module docs on units) and maps 1:1 to a `recordPayment` argument.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WaterfallResponse {
-    /// Portion amortising outstanding senior principal
-    /// (`min(amount, outstanding_senior_principal)`). → `recordPayment.seniorPrincipal`.
+    /// Portion amortising outstanding senior principal: `min(outstanding_senior_principal,
+    /// remaining)`, last in the cascade priority order (see module docs) — cascade-capped
+    /// by `amount` behind every other bucket on a shortfall. → `recordPayment.seniorPrincipal`.
     pub senior_principal_returned: String,
     /// Net senior coupon destined for the sPLUSD **vault** (accretes NAV for LP stakers):
-    /// `senior_gross_interest − management_fee − performance_fee`, cascade-capped by
-    /// `amount` behind higher-priority buckets on a shortfall (see module docs). →
-    /// `recordPayment.seniorInterest`.
+    /// `senior_gross_interest − management_fee − performance_fee`, first in the cascade
+    /// priority order (see module docs). → `recordPayment.seniorInterest`.
     pub senior_coupon_net: String,
     /// Management fee carve-out, cascade-capped by `amount`. → `recordPayment.mgmtFee`.
     pub management_fee: String,
@@ -216,12 +225,6 @@ fn trunc(v: &BigDecimal) -> BigDecimal {
     v.with_scale_round(0, RoundingMode::Down)
 }
 
-/// `base × (rate_bps / 10_000) × tenor_years`, truncated to a whole base unit. Used for
-/// the annualised carve-outs (gross interest, management fee, OET allocation).
-fn annualised(base: &BigDecimal, rate_bps: i64, tenor_years: &BigDecimal) -> BigDecimal {
-    trunc(&(base * BigDecimal::from(rate_bps) / BigDecimal::from(BPS_DENOM) * tenor_years))
-}
-
 /// Compute the waterfall from a loan snapshot, an incoming `amount` (raw base units),
 /// the repayment instant `as_of` (Unix seconds), the per-loan fee schedule, and the
 /// loan's `LoanRolledOver` / `EconomicsAmended` events (chronologically ordered, already
@@ -244,34 +247,32 @@ pub fn compute_waterfall(
     }
 
     // Epoch timeline (genesis + any rollovers/amendments) and its piecewise-capped
-    // accrual tenor — an epoch past its own maturity without a rollover stops accruing
-    // there, mirroring the on-chain interest ceiling instead of a single origination→
-    // as_of span at a single (possibly stale) rate.
+    // accrual seconds — an epoch past its own maturity without a rollover stops accruing
+    // there, instead of a single origination→as_of span at a single (possibly stale) rate.
     let epochs = build_epochs(
         s.origination_date,
         s.original_maturity_date,
         s.senior_interest_rate_bps,
         economics_events,
     );
-    let tenor_years = piecewise_tenor_years(&epochs, as_of);
+    let capped_seconds = piecewise_capped_seconds(&epochs, as_of);
 
     // Accrual base is always the original senior tranche (per spec).
     let senior_deployed = &s.original_senior_tranche;
     let outstanding_senior = &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
-
-    // Senior principal: capped at what's still outstanding (never negative — the
-    // on-chain repaid counter can't exceed the tranche) and truncated to a whole base
-    // unit like every other component, so a fractional `amount` can't leak sub-base-unit
-    // precision into the output.
+    // Never negative — the on-chain repaid counter can't exceed the tranche.
     let outstanding = outstanding_senior.max(BigDecimal::zero());
-    let senior_principal_returned = trunc(amount.min(&outstanding));
 
     // Cumulative targets, origination → `as_of` (stage 1 — see module docs). Gross
-    // interest is the piecewise sum across epochs (rate-change-aware); fees use the
-    // same piecewise-capped tenor at their single (non-epoch) rate.
+    // interest is the piecewise sum across epochs (rate-change-aware, each epoch
+    // compounding independently — see `piecewise_interest`); fees compound the same way
+    // over the same piecewise-capped tenor at their single (non-epoch) rate.
     let senior_gross_interest_cum = trunc(&piecewise_interest(&epochs, senior_deployed, as_of));
-    let management_fee_cum =
-        annualised(senior_deployed, fees.mgmt_fee_rate_bps as i64, &tenor_years);
+    let management_fee_cum = trunc(&compound_growth(
+        senior_deployed,
+        fees.mgmt_fee_rate_bps as i64,
+        capped_seconds,
+    ));
 
     // Clamp the base at 0 so a mgmt rate above the senior rate can't yield a negative fee.
     let perf_base = (&senior_gross_interest_cum - &management_fee_cum).max(BigDecimal::zero());
@@ -281,11 +282,11 @@ pub fn compute_waterfall(
     );
     let senior_coupon_net_cum =
         &senior_gross_interest_cum - &management_fee_cum - &performance_fee_cum;
-    let oet_allocation_cum = annualised(
+    let oet_allocation_cum = trunc(&compound_growth(
         senior_deployed,
         fees.oet_alloc_rate_bps as i64,
-        &tenor_years,
-    );
+        capped_seconds,
+    ));
 
     // Subtract what's already been recorded on-chain by prior repayments (stage 2). The
     // snapshot's `repayment.*` fields are the cumulative counters `recordPayment`
@@ -300,21 +301,27 @@ pub fn compute_waterfall(
     let target_oet_allocation =
         (&oet_allocation_cum - &s.repayment.oet_alloc).max(BigDecimal::zero());
 
-    // Cascade the incoming `amount` through the documented priority order — senior
-    // principal → management fee → senior coupon → performance fee → OET allocation
-    // (docs/product-specs/yield.md §"Waterfall components") — capping each bucket at its
-    // still-owed target (stage 3). A full/on-time payment (`amount` ≥ the sum of all
-    // targets) reproduces the targets exactly; a shortfall drains `remaining` top-down so
-    // lower-priority buckets shrink toward zero instead of the response reporting
-    // interest/fees the incoming payment can't actually cover.
-    let mut remaining = (amount - &senior_principal_returned).max(BigDecimal::zero());
-    let management_fee = trunc(&target_management_fee.min(remaining.clone()));
-    remaining -= &management_fee;
+    // Cascade the incoming `amount` through the priority order — senior coupon → all
+    // fees (management → performance → OET) → senior principal — capping each bucket at
+    // its still-owed target (stage 3). This is a deliberate departure from
+    // docs/product-specs/yield.md §"Waterfall components", which puts senior principal
+    // first; here the vault (LP) and Treasury legs are paid out ahead of principal
+    // return. A full/on-time payment (`amount` ≥ the sum of all targets) reproduces the
+    // targets exactly; a shortfall drains `remaining` top-down so lower-priority buckets
+    // shrink toward zero instead of the response reporting more than the incoming
+    // payment can actually cover.
+    let mut remaining = amount.clone();
     let senior_coupon_net = trunc(&target_senior_coupon_net.min(remaining.clone()));
     remaining -= &senior_coupon_net;
+    let management_fee = trunc(&target_management_fee.min(remaining.clone()));
+    remaining -= &management_fee;
     let performance_fee = trunc(&target_performance_fee.min(remaining.clone()));
     remaining -= &performance_fee;
-    let oet_allocation = trunc(&target_oet_allocation.min(remaining));
+    let oet_allocation = trunc(&target_oet_allocation.min(remaining.clone()));
+    remaining -= &oet_allocation;
+    // Truncated to a whole base unit like every other component, so a fractional
+    // `amount` can't leak sub-base-unit precision into the output.
+    let senior_principal_returned = trunc(&outstanding.min(remaining));
 
     Ok(WaterfallBreakdown {
         senior_principal_returned,
