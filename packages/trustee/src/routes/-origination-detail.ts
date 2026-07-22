@@ -25,7 +25,9 @@
  *     sources, carried over from #816's resolved decision.
  *   - Start date  → `economics.origination_date`.
  *   - Maturity    → `economics.original_maturity_date`.
- *   - Facility/tranches/offtaker price → `economics.*`, `formatFullUsd`.
+ *   - Facility/tranches/offtaker price → `economics.*` (served at the
+ *     on-chain 7-decimal base-unit scale — normalized ÷10^7 via
+ *     `formatEconomicsUsd` before `formatFullUsd`, issue #912).
  *   - Rate        → `economics.senior_interest_rate_bps`, `formatBpsRate`
  *     (+ " p.a." suffix per Figma "14.0% p.a.").
  *   - Corridor    → `loan_data.corridor`, arrow-formatted (same regex as #813).
@@ -100,6 +102,7 @@ import {
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
+import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -136,6 +139,21 @@ function safeNumber(value: unknown): number | undefined {
 /** Renders the corridor hyphen as the Figma arrow glyph ("PE-CN" → "PE → CN"). */
 function formatCorridor(value: unknown): string {
   return safeString(value).replace(/\s*-\s*/g, " → ");
+}
+
+/**
+ * Formats one of the submission's four monetary economics fields
+ * (`original_facility_size` / `original_senior_tranche` /
+ * `original_equity_tranche` / `original_offtaker_price`) for display.
+ *
+ * These are served at the on-chain 7-decimal base-unit scale (e.g.
+ * `"8000000000.000000"` = 8,000,000,000 base units = $800.00) — NOT
+ * human-unit dollars. `economicsBaseUnitsToUsdDecimal` is BigInt-safe (÷10^7
+ * — never `Number`/`parseFloat` on the raw base-unit string, values can
+ * exceed 2^53); the result is handed to `formatFullUsd` (issue #912).
+ */
+function formatEconomicsUsd(value: unknown): string {
+  return formatFullUsd(economicsBaseUnitsToUsdDecimal(value));
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -241,10 +259,10 @@ function mapLoanTerms(submission: SubmissionView): LoanTermsDisplay {
     loanData.economics ?? {};
 
   return {
-    facility: formatFullUsd(economics.original_facility_size ?? null),
-    senior: formatFullUsd(economics.original_senior_tranche ?? null),
-    equity: formatFullUsd(economics.original_equity_tranche ?? null),
-    offtakerPrice: formatFullUsd(economics.original_offtaker_price ?? null),
+    facility: formatEconomicsUsd(economics.original_facility_size),
+    senior: formatEconomicsUsd(economics.original_senior_tranche),
+    equity: formatEconomicsUsd(economics.original_equity_tranche),
+    offtakerPrice: formatEconomicsUsd(economics.original_offtaker_price),
     rate: (() => {
       const formatted = formatBpsRate(
         safeNumber(economics.senior_interest_rate_bps),
@@ -289,9 +307,10 @@ function mapHeading(submission: SubmissionView): string {
  * preview's `economics:` row, e.g.
  * `"{ facility $3,500,000 · senior $2,800,000 · equity $700,000 · offtaker
  * $3,750,000 · 14.0% · 10 Jul 2026 → 15 Dec 2026 }"`. Reuses the same
- * formatters as `mapLoanTerms` — this is a passthrough re-composition, not a
- * derived/computed metric. Individual missing fields fall back to `—`
- * in-line rather than dropping the whole row.
+ * `formatEconomicsUsd` normalization (÷10^7 off the 7-decimal on-chain
+ * base-unit scale, issue #912) as `mapLoanTerms` — this is a passthrough
+ * re-composition, not a derived/computed metric. Individual missing fields
+ * fall back to `—` in-line rather than dropping the whole row.
  */
 function formatEconomicsSummary(
   loanData: Partial<SubmissionView["loan_data"]>,
@@ -299,10 +318,10 @@ function formatEconomicsSummary(
   const economics: Partial<SubmissionView["loan_data"]["economics"]> =
     loanData.economics ?? {};
 
-  const facility = formatFullUsd(economics.original_facility_size ?? null);
-  const senior = formatFullUsd(economics.original_senior_tranche ?? null);
-  const equity = formatFullUsd(economics.original_equity_tranche ?? null);
-  const offtaker = formatFullUsd(economics.original_offtaker_price ?? null);
+  const facility = formatEconomicsUsd(economics.original_facility_size);
+  const senior = formatEconomicsUsd(economics.original_senior_tranche);
+  const equity = formatEconomicsUsd(economics.original_equity_tranche);
+  const offtaker = formatEconomicsUsd(economics.original_offtaker_price);
   const rate = formatBpsRate(safeNumber(economics.senior_interest_rate_bps));
   const start = formatMaturityDate(safeNumber(economics.origination_date));
   const maturity = formatMaturityDate(

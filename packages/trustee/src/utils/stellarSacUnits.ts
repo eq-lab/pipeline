@@ -44,3 +44,28 @@ export function parsePositiveUsdInput(input: string): number | null {
   const n = Number(sacBaseUnitsToUsdDecimal(decimal));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+/**
+ * Strips a decimal string's fractional suffix (base units always carry
+ * `".000000"`) and converts the integer part from the on-chain 7-decimal
+ * base-unit scale to a USD decimal string, via `sacBaseUnitsToUsdDecimal`.
+ * BigInt-safe end to end — never `Number`/`parseFloat` on the raw base-unit
+ * string, which can exceed `2^53`. Returns `null` for anything not a
+ * well-formed non-negative decimal string.
+ *
+ * Used for the `/v1/loan-book/submissions` `loan_data.economics` monetary
+ * fields (`original_facility_size` / `original_senior_tranche` /
+ * `original_equity_tranche` / `original_offtaker_price`), which are served at
+ * this 7-decimal base-unit scale (issue #912) — e.g. `"8000000000.000000"`
+ * (8,000,000,000 base units) → `"800.0000000"` → formatted `$800` by
+ * `formatFullUsd`.
+ */
+export function economicsBaseUnitsToUsdDecimal(
+  raw: unknown,
+  decimals: number = SAC_DECIMALS,
+): string | null {
+  if (typeof raw !== "string") return null;
+  const intPart = /^(\d+)/.exec(raw.trim())?.[1];
+  if (intPart == null) return null;
+  return sacBaseUnitsToUsdDecimal(intPart, decimals);
+}

@@ -18,12 +18,19 @@
  * ---------------
  * `loan_data` is the verbatim submitted payload (backend `SubmissionView.loan_data`
  * is a `serde_json::Value`), returned as a **nested JSON object** — not a
- * JSON-encoded string. Its monetary fields (`economics.original_facility_size`,
- * …) are **base-6 decimal strings already in human units** (e.g.
- * `"3500000.000000"` = $3,500,000), same convention as `/v1/loan-book`. Use
- * `formatFullUsd` — do NOT call `formatUsdc` / `parseUnits` on them. Because
- * the wire type is `serde_json::Value`, callers must defensively handle
- * missing/malformed nested fields and render `—` (never fabricate).
+ * JSON-encoded string. Its four monetary fields (`economics.original_facility_size`
+ * / `original_senior_tranche` / `original_equity_tranche` /
+ * `original_offtaker_price`) are served at the on-chain **7-decimal
+ * (10^7) base-unit scale** (e.g. `"8000000000.000000"` = 8,000,000,000 base
+ * units = $800.00) — NOT human-unit dollars (issue #912; corrects the prior
+ * assumption here). Display consumers must normalize ÷10^7 (BigInt-safe —
+ * never `Number`/`parseFloat` on the raw string) before `formatFullUsd`; see
+ * `economicsBaseUnitsToUsdDecimal` in `@/utils/stellarSacUnits`. The
+ * `draw_loan` on-chain write sends these fields to the contract EXACTLY as
+ * served, with NO re-scaling (see `@pipeline/wallet-connect`'s
+ * `parseUsdcBaseUnitsToU128`). Because the wire type is `serde_json::Value`,
+ * callers must defensively handle missing/malformed nested fields and render
+ * `—` (never fabricate).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -33,18 +40,19 @@ import { ENV } from "@/lib/env";
 
 /**
  * Loan economics fixed at origination (mirrors the contract's
- * `ImmutableLoanData`). USDC amounts are base-6 decimal strings in human
- * units. `senior_interest_rate_bps` is basis points; the two date fields are
- * Unix seconds.
+ * `ImmutableLoanData`). The four monetary fields are decimal strings at the
+ * on-chain 7-decimal base-unit scale (NOT human units — see the module doc's
+ * Data-layer note, issue #912). `senior_interest_rate_bps` is basis points;
+ * the two date fields are Unix seconds.
  */
 export interface EconomicsInput {
-  /** Total facility size, USDC (6-decimal string). Equals senior + equity. */
+  /** Total facility size — 7-decimal base-unit string. Equals senior + equity. */
   original_facility_size: string;
-  /** Senior tranche, USDC (6-decimal string). */
+  /** Senior tranche — 7-decimal base-unit string. */
   original_senior_tranche: string;
-  /** Equity tranche, USDC (6-decimal string). */
+  /** Equity tranche — 7-decimal base-unit string. */
   original_equity_tranche: string;
-  /** Offtaker price, USDC (6-decimal string). */
+  /** Offtaker price — 7-decimal base-unit string. */
   original_offtaker_price: string;
   /** Senior interest rate in basis points. */
   senior_interest_rate_bps: number;
