@@ -18,21 +18,19 @@
  * ---------------
  * `deployed_senior`, `at_risk_wl_and_default_senior`, per-loan
  * `senior_outstanding`/`principal`, AND `collateral`/`total_collateral` are
- * all **registry-sourced** base-6 decimal strings (already in human units,
- * e.g. `"1200000.000000"` = $1.2M) that are **1000× too small** on the wire
- * (issue #840) — scale them with
- * `scaleRegistryAmount`/`formatRegistryCompactUsd`/`formatRegistryCompact2dpUsd`
- * from `@/utils/formatUsd` before display. A live-payload audit (issue #888)
- * disproved issue #843's original assumption that `collateral` was
- * price-feed sourced and already correct-scale — it is on the SAME
- * registry, 1000×-low basis as `senior_outstanding`. Because `ccr_bps` and
- * `ltv` divide two registry-sourced (both 1000×-low) amounts, the ×1000
- * cancels out of those ratios — they are served ALREADY CORRECT and must
- * NOT be scaled or divided (see `-useLoansTable.ts`, which used to apply an
- * erroneous ÷1000 "correction" to `ccr_bps` before issue #888 fixed it).
- * `at_risk_wl_and_default_pct` mixes a registry-scaled numerator with a
- * correct-scale NAV denominator and is rendered as served (no frontend
- * correction defined).
+ * **registry-sourced** base-6 decimal strings (already in human units, e.g.
+ * `"1200000.000000"` = $1.2M). The frontend no longer rescales these — the
+ * former ×1000 `scaleRegistryAmount`/`formatRegistryCompactUsd`/
+ * `formatRegistryCompact2dpUsd` workaround (issue #840) has been removed
+ * (issue #906); they are displayed exactly as served, via plain
+ * `formatCompactUsd`/`formatCompactUsd2dp` from `@/utils/formatUsd`. Because
+ * `ccr_bps` and `ltv` divide two registry-sourced amounts at the same scale,
+ * the scale cancels out of those ratios regardless — they are served
+ * ALREADY CORRECT and must NOT be scaled or divided (see `-useLoansTable.ts`,
+ * which used to apply an erroneous ÷1000 "correction" to `ccr_bps` before
+ * issue #888 fixed it). `at_risk_wl_and_default_pct` mixes a registry-scaled
+ * numerator with a correct-scale NAV denominator and is rendered as served
+ * (no frontend correction defined).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -61,9 +59,8 @@ export interface LoanBookSummary {
    */
   total_deployed: string;
   /**
-   * Registry-sourced ⇒ scale ×1000 (issue #888 — `#843` incorrectly assumed
-   * this was price-feed sourced/correct-scale). `null` until a commodity
-   * price is wired. Not rendered on this page.
+   * Registry-sourced; displayed as served (issue #906). `null` until a
+   * commodity price is wired. Not rendered on this page.
    */
   total_collateral: string | null;
   /** `total_collateral / Σ senior_tranche`, 2-decimal string. Not rendered on this page. */
@@ -74,8 +71,8 @@ export interface LoanBookSummary {
   avg_duration_days: number | null;
   /**
    * Σ **outstanding** senior over active loans, USDC base-6 decimal string.
-   * **Registry-sourced ⇒ scale ×1000** (`formatRegistryCompactUsd`). Backs
-   * the **Deployed senior** tile.
+   * Registry-sourced; displayed as served (issue #906). Backs the
+   * **Deployed senior** tile.
    */
   deployed_senior: string;
   /**
@@ -88,8 +85,8 @@ export interface LoanBookSummary {
   weighted_tenor_days: number | null;
   /**
    * Σ outstanding senior of at-risk (WatchList/Default) loans, USDC base-6
-   * decimal string. **Registry-sourced ⇒ scale ×1000.** Backs the
-   * **At-risk (WL + Default)** tile's dollar sub-line.
+   * decimal string. Registry-sourced; displayed as served (issue #906).
+   * Backs the **At-risk (WL + Default)** tile's dollar sub-line.
    */
   at_risk_wl_and_default_senior: string;
   /**
@@ -124,13 +121,14 @@ export interface LoanBookEntry {
   /** Principal = senior + equity tranche, USDC base-6 decimal string. Not rendered on this page. */
   principal: string;
   /**
-   * Outstanding senior, USDC base-6 decimal string. **Registry-sourced ⇒
-   * scale ×1000.** Backs the **Senior outst.** column.
+   * Outstanding senior, USDC base-6 decimal string. Registry-sourced;
+   * displayed as served (issue #906). Backs the **Senior outst.** column.
    */
   senior_outstanding: string;
   /**
-   * Original senior tranche, USDC base-6 decimal string. **Registry-sourced ⇒
-   * scale ×1000.** Backs the loan-detail **Facility / senior** tile.
+   * Original senior tranche, USDC base-6 decimal string. Registry-sourced;
+   * displayed as served (issue #906). Backs the loan-detail
+   * **Facility / senior** tile.
    */
   original_senior_tranche: string;
   /** Rollover-aware maturity, Unix seconds. Backs the **Maturity** column. */
@@ -148,11 +146,9 @@ export interface LoanBookEntry {
    */
   spot_change_7d: string | null;
   /**
-   * Collateral value, USDC base-6 decimal string. **Registry-sourced ⇒
-   * scale ×1000** (issue #888 — `#843` incorrectly assumed this was
-   * price-feed sourced/correct-scale; a live payload proved it is on the
-   * same 1000×-low basis as `senior_outstanding`). `null` when unpriced.
-   * Backs the **Collateral** column.
+   * Collateral value, USDC base-6 decimal string. Registry-sourced;
+   * displayed as served (issue #906 — the former ×1000 workaround has been
+   * removed). `null` when unpriced. Backs the **Collateral** column.
    */
   collateral: string | null;
   /**
@@ -183,7 +179,8 @@ export interface LoanBookEntry {
   status: string;
   /**
    * Cumulative offtaker cash received to date, USDC base-6 decimal string.
-   * **Registry-sourced ⇒ scale ×1000.** Backs the loan-detail **Repaid to date** tile.
+   * Registry-sourced; displayed as served (issue #906). Backs the
+   * loan-detail **Repaid to date** tile.
    */
   repaid_to_date: string;
   /**

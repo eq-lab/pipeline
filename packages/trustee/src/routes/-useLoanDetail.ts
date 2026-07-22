@@ -50,7 +50,7 @@ import { ApiError } from "@/api/client";
 import {
   formatBpsRate,
   formatFullUsd,
-  formatRegistryCompactUsd,
+  formatCompactUsd,
 } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import {
@@ -526,13 +526,11 @@ function placeholderPc(
 // ── Registry state & derived (issue #852) ────────────────────────────────────
 
 /**
- * ⚠️ #840 workaround (issue #852 open question a) — the financials money fields
- * are registry/loan-snapshot-sourced, so they are treated as **1000× too small on
- * the wire** and scaled ×1000 (`formatRegistryCompactUsd`), the same family as the
- * loan-book `senior_outstanding` correction. **Verify against real data**; if this
- * endpoint serves correct-scale amounts, swap to `formatCompactUsd`.
+ * The financials money fields are displayed exactly as served by the backend
+ * (issue #906 — the former `formatRegistryCompactUsd` ×1000 workaround has
+ * been removed).
  */
-const fmtRegistryUsd = formatRegistryCompactUsd;
+const fmtRegistryUsd = formatCompactUsd;
 
 /**
  * Builds the "Registry state & derived" rows from the financials response.
@@ -617,14 +615,14 @@ export function buildSummaryTiles(
   financials: LoanFinancialsResponse | undefined,
   variant: LoanDetailVariant,
 ): SummaryTile[] {
-  const facility = formatRegistryCompactUsd(entry?.principal);
-  const repaid = formatRegistryCompactUsd(entry?.repaid_to_date);
+  const facility = formatCompactUsd(entry?.principal);
+  const repaid = formatCompactUsd(entry?.repaid_to_date);
   const disbursedAmount =
     entry == null
       ? "—"
       : entry.disbursed
         ? facility
-        : formatRegistryCompactUsd("0.000000");
+        : formatCompactUsd("0.000000");
 
   const facilityTile: SummaryTile =
     variant === "matured"
@@ -638,7 +636,7 @@ export function buildSummaryTiles(
           label: "Facility / disbursed",
           value: tileValuePair(
             facility,
-            formatRegistryCompactUsd(entry?.original_senior_tranche),
+            formatCompactUsd(entry?.original_senior_tranche),
           ),
           sub:
             entry == null
@@ -681,7 +679,7 @@ export function buildSummaryTiles(
     repaidTile,
     {
       label: "Interest to distribute",
-      value: formatRegistryCompactUsd(financials?.not_minted_yield),
+      value: formatCompactUsd(financials?.not_minted_yield),
       sub: "not minted yield",
       subTone: "attention",
     },

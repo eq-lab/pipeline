@@ -60,7 +60,7 @@ const RESPONSE: LoanBookResponse = {
       ccr_reported_at: Math.floor(Date.now() / 1000) - 3600,
       spot_price: "4500.00",
       spot_change_7d: "-0.1800",
-      collateral: "2100.000000", // ×1000 workaround (#888) → $2.10M
+      collateral: "2100.000000", // displayed as served (issue #906) → $2.10K
       ltv: null,
       ccr_bps: 11_400, // served as-is (#888, no ÷1000) ⇒ 114% ⇒ pre-default (<120%)
       duration_days: 180,
@@ -149,9 +149,9 @@ describe("Loans list route (ready)", () => {
 
   it("renders the five summary cards with the Figma values", () => {
     renderRoute();
-    expect(screen.getByText("$96M")).toBeInTheDocument();
+    expect(screen.getByText("$96K")).toBeInTheDocument();
     expect(screen.getByText("4.3%")).toBeInTheDocument();
-    expect(screen.getByText("$4.85M")).toBeInTheDocument();
+    expect(screen.getByText("$4.85K")).toBeInTheDocument();
     expect(screen.getByText("13.1%")).toBeInTheDocument();
     expect(screen.getByText("148d")).toBeInTheDocument();
     expect(screen.getByText("7.2%")).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("Loans list route (ready)", () => {
     const rows = screen.getAllByTestId("loans-row");
     expect(rows).toHaveLength(1);
     expect(screen.getByText("Delta Commodities")).toBeInTheDocument();
-    expect(screen.getByText("$1.84M")).toBeInTheDocument();
+    expect(screen.getByText("$1.84K")).toBeInTheDocument();
     const ccr = screen.getByTestId("loans-ccr");
     expect(ccr).toHaveTextContent("114%");
     expect(ccr).toHaveAttribute("data-band", "pre-default");
@@ -229,7 +229,7 @@ describe("Loans list route (empty book)", () => {
   it("renders summary + a per-tab empty message when no loans are active", () => {
     ready({ ...RESPONSE, loans: [] });
     renderRoute();
-    expect(screen.getByText("$96M")).toBeInTheDocument();
+    expect(screen.getByText("$96K")).toBeInTheDocument();
     expect(screen.getByTestId("loans-empty")).toHaveTextContent(
       "No performing loans.",
     );

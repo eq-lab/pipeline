@@ -35,10 +35,7 @@ import {
   useStellarUsdcCustodyBalance,
 } from "@/wallet/stellar/useStellarFinancialPositionReads";
 import { sacRawToDisplay } from "@/wallet/stellar/useStellarSacToken";
-import {
-  formatCompactUsd,
-  scaleRegistryAmount,
-} from "@/utils/formatCompactUsd";
+import { formatCompactUsd } from "@/utils/formatCompactUsd";
 import { convertUsycToUsdc } from "./usycNav";
 import type { PanelState } from "./PanelContainer";
 
@@ -224,16 +221,11 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
 
   // REST rows (base-6 decimal strings → parseFloat → human numbers).
   //
-  // #840 workaround — remove when backend scale fixed: `secured_loans_outstanding`
-  // is registry-sourced and arrives 1000× too small (issue #841). Scale it ONCE
-  // here, at the source, so both the displayed value and the assets-total
-  // aggregation below use the same corrected number. Do NOT scale
-  // `accrued_interest_receivable` — it is not registry-derived and is already
-  // at the correct scale.
-  const securedLoansScaled = scaleRegistryAmount(
-    rest?.assets.deployed.secured_loans_outstanding,
-  );
-  const securedLoans = parseHuman(securedLoansScaled);
+  // `secured_loans_outstanding` is displayed exactly as served by the backend
+  // (issue #906 — the former `scaleRegistryAmount` ×1000 workaround has been
+  // removed; the backend now serves the corrected value directly).
+  const securedLoansRaw = rest?.assets.deployed.secured_loans_outstanding;
+  const securedLoans = parseHuman(securedLoansRaw);
   const accruedInterest = parseHuman(
     rest?.assets.deployed.accrued_interest_receivable,
   );
@@ -298,13 +290,10 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     deployed: [
       {
         label: "Secured loans outstanding",
-        // #840 workaround — remove when backend scale fixed: format the
-        // already-scaled value (securedLoansScaled), not the raw REST string,
-        // so the display matches the scaled figure summed into assetsTotal.
+        // Displayed as served (issue #906) — matches the raw figure summed
+        // into assetsTotal.
         value:
-          securedLoans !== undefined
-            ? formatCompactUsd(securedLoansScaled!)
-            : "—",
+          securedLoans !== undefined ? formatCompactUsd(securedLoansRaw!) : "—",
         testId: "bs-secured-loans",
       },
       {

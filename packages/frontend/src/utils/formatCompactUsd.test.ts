@@ -8,8 +8,6 @@
 import { describe, it, expect } from "vitest";
 import {
   formatCompactUsd,
-  formatRegistryCompactUsd,
-  scaleRegistryAmount,
   formatOneDecimalRate,
   formatBpsRate,
   formatLtv,
@@ -77,81 +75,6 @@ describe("formatCompactUsd", () => {
 
   it("returns em-dash for empty string", () => {
     expect(formatCompactUsd("")).toBe("—");
-  });
-});
-
-// ── formatRegistryCompactUsd ──────────────────────────────────────────────────
-
-describe("formatRegistryCompactUsd", () => {
-  // ⚠️ Temporary #840/#841 workaround — multiplies by 1000 before compact
-  // formatting to correct the registry indexer's 1e3-too-small scale bug.
-  it("multiplies by 1000 then compact-formats (registry-scale input)", () => {
-    expect(formatRegistryCompactUsd("31600.000000")).toBe("$31.6M");
-  });
-
-  it("handles a registry-scale principal value", () => {
-    expect(formatRegistryCompactUsd("8000.000000")).toBe("$8.0M");
-  });
-
-  it("handles a value that lands in the thousands range after scaling", () => {
-    expect(formatRegistryCompactUsd("1.2")).toBe("$1.2K");
-  });
-
-  it("handles zero", () => {
-    expect(formatRegistryCompactUsd("0.000000")).toBe("$0");
-    expect(formatRegistryCompactUsd("0")).toBe("$0");
-  });
-
-  it("returns em-dash for null", () => {
-    expect(formatRegistryCompactUsd(null)).toBe("—");
-  });
-
-  it("returns em-dash for undefined", () => {
-    expect(formatRegistryCompactUsd(undefined)).toBe("—");
-  });
-
-  it("returns em-dash for non-numeric input", () => {
-    expect(formatRegistryCompactUsd("not-a-number")).toBe("—");
-  });
-
-  it("returns em-dash for empty string", () => {
-    expect(formatRegistryCompactUsd("")).toBe("—");
-  });
-});
-
-// ── scaleRegistryAmount ────────────────────────────────────────────────────────
-
-describe("scaleRegistryAmount", () => {
-  // ⚠️ Temporary #840/#841 workaround — the shared ×1000 core used by
-  // `formatRegistryCompactUsd` and applied at-source in `useBalanceSheetPanel`
-  // / `useYieldHistoryPanel` so aggregations and ratios stay consistent.
-  it("multiplies a registry-scale base-6 string by 1000", () => {
-    expect(scaleRegistryAmount("7300.000000")).toBe("7300000.000000");
-  });
-
-  it("handles a non-round value", () => {
-    expect(scaleRegistryAmount("31600.000000")).toBe("31600000.000000");
-  });
-
-  it("handles zero", () => {
-    expect(scaleRegistryAmount("0.000000")).toBe("0.000000");
-    expect(scaleRegistryAmount("0")).toBe("0.000000");
-  });
-
-  it("returns null for null", () => {
-    expect(scaleRegistryAmount(null)).toBeNull();
-  });
-
-  it("returns null for undefined", () => {
-    expect(scaleRegistryAmount(undefined)).toBeNull();
-  });
-
-  it("returns null for non-numeric input", () => {
-    expect(scaleRegistryAmount("not-a-number")).toBeNull();
-  });
-
-  it("returns null for empty string", () => {
-    expect(scaleRegistryAmount("")).toBeNull();
   });
 });
 

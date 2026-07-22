@@ -399,7 +399,7 @@ function makeFinancials(
       start_date: "2026-06-18T18:17:37Z",
       maturity_date: "2029-08-19T04:04:17Z",
     },
-    // Registry-sourced ⇒ 1000× low on the wire (#840); ×1000 helpers restore scale.
+    // Displayed exactly as served (issue #906 — no frontend rescaling).
     offtaker: "6300.000000",
     principal: "4800.000000",
     interest: "231.000000",
@@ -424,7 +424,7 @@ function makeFinancialsQuery(
 }
 
 describe("buildFinancials", () => {
-  it("maps the financials to registry rows (registry amounts scaled ×1000)", () => {
+  it("maps the financials to registry rows (amounts displayed as served)", () => {
     const rows = buildFinancials(makeFinancials());
     expect(rows).toEqual([
       {
@@ -439,11 +439,11 @@ describe("buildFinancials", () => {
       },
       {
         label: "Recorded counters",
-        value: "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
+        value: "offtaker $6.3K · principal $4.8K · interest $231 · fees $69",
         tag: "chain",
       },
-      { label: "Offtaker still owed", value: "$0 of $6.3M", tag: "computed" },
-      { label: "Unminted yield", value: "$115.5K", tag: "computed" },
+      { label: "Offtaker still owed", value: "$0 of $6.3K", tag: "computed" },
+      { label: "Unminted yield", value: "$115.5", tag: "computed" },
       { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
     ]);
   });
@@ -472,19 +472,19 @@ describe("buildSummaryTiles", () => {
     ).toEqual([
       {
         label: "Facility / disbursed",
-        value: "$4.8M / $3.96M",
+        value: "$4.8K / $3.96K",
         sub: "funded",
         subTone: "positive",
       },
       {
         label: "Repaid to date",
-        value: "$6.3M",
+        value: "$6.3K",
         sub: "offtaker received",
         subTone: "muted",
       },
       {
         label: "Interest to distribute",
-        value: "$115.5K",
+        value: "$115.5",
         sub: "not minted yield",
         subTone: "attention",
       },
@@ -499,7 +499,7 @@ describe("buildSummaryTiles", () => {
     );
     expect(tiles[0]).toMatchObject({
       label: "Facility / disbursed",
-      value: "$4.8M / $3.96M",
+      value: "$4.8K / $3.96K",
     });
   });
 
@@ -511,7 +511,7 @@ describe("buildSummaryTiles", () => {
     );
     expect(tiles[0]).toEqual({
       label: "Facility / senior",
-      value: "$4.8M / $0",
+      value: "$4.8K / $0",
       sub: "—",
       subTone: "muted",
     });
@@ -540,13 +540,13 @@ describe("buildSummaryTiles", () => {
       [
         {
           label: "Facility / senior",
-          value: "$4.8M / $4.8M",
+          value: "$4.8K / $4.8K",
           sub: "—",
           subTone: "muted",
         },
         {
           label: "Repaid to date",
-          value: "$6.3M",
+          value: "$6.3K",
           sub: "offtaker received",
           subTone: "muted",
         },

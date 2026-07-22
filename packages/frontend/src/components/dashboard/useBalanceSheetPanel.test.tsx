@@ -80,13 +80,10 @@ function makeWrapper() {
 // sourced leaves only (see `sumRows` in useBalanceSheetPanel.ts), so these
 // two fields are unused fixture noise here.
 //
-// `secured_loans_outstanding` is registry-sourced and currently served at
-// 1e3-too-small scale (#840). This fixture is pinned at that buggy-backend
-// scale ("8000.000000" instead of the real "8000000.000000") so that, after
-// the client-side ×1000 workaround (`scaleRegistryAmount`, #841) is applied
-// at the source, both the displayed row ("$8.0M") and the assets total
-// (see "assets total" test below) reflect the corrected figure.
-// `accrued_interest_receivable` is NOT registry-derived and stays unscaled.
+// Issue #906: the frontend no longer rescales `secured_loans_outstanding`
+// (the former ×1000 `scaleRegistryAmount` workaround, #840/#841, has been
+// removed) — it is displayed exactly as served, via plain `formatCompactUsd`,
+// same as `accrued_interest_receivable`.
 const REST_FIXTURE = {
   assets: {
     total: "8100000.000000",
@@ -98,7 +95,7 @@ const REST_FIXTURE = {
     },
     deployed: {
       total: "8100000.000000",
-      secured_loans_outstanding: "8000.000000", // ×1000 workaround → "$8.0M"
+      secured_loans_outstanding: "8000.000000", // displayed as served → "$8.0K"
       accrued_interest_receivable: "100000.000000",
     },
   },
@@ -193,23 +190,21 @@ describe("useBalanceSheetPanel — blended ready state", () => {
       (r) => r.testId === "bs-accrued-interest",
     );
 
-    expect(secured?.value).toBe("$8.0M");
+    expect(secured?.value).toBe("$8.0K");
     expect(accrued?.value).toBe("$100.0K");
   });
 
-  // #840/#841 — the assets total must be computed from the SCALED secured-loans
-  // figure, not the raw registry-scale REST value, so the displayed row and
-  // the total stay consistent with each other.
-  it("assets total sums the scaled secured-loans figure, not the raw registry value", () => {
+  // Issue #906 — the assets total is computed from the secured-loans figure
+  // exactly as served (no frontend rescaling), so the displayed row and the
+  // total stay consistent with each other.
+  it("assets total sums the secured-loans figure as served", () => {
     const { result } = renderHook(() => useBalanceSheetPanel(), {
       wrapper: makeWrapper(),
     });
 
-    // usdcCustody ($10.0K = 10,000) + secured loans scaled (8000.000000 × 1000
-    // = 8,000,000) + accrued interest (100,000) = 8,110,000 → "$8.1M".
-    // If the total instead summed the raw unscaled REST value (8,000), it
-    // would come out ~1000× too small ("$118.0K" territory).
-    expect(result.current.assets.total).toBe("$8.1M");
+    // usdcCustody ($10.0K = 10,000) + secured loans (8,000) + accrued
+    // interest (100,000) = 118,000 → "$118.0K".
+    expect(result.current.assets.total).toBe("$118.0K");
   });
 
   it("PLUSD outstanding renders from Horizon total supply string (NOT —)", () => {
@@ -304,7 +299,7 @@ describe("useBalanceSheetPanel — unconfigured on-chain reads (graceful degrada
       (r) => r.testId === "bs-secured-loans",
     );
     expect(secured?.value).not.toBe("—");
-    expect(secured?.value).toBe("$8.0M");
+    expect(secured?.value).toBe("$8.0K");
   });
 
   it("panel is still in ready state", () => {

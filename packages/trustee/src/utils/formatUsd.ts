@@ -16,58 +16,6 @@
  * backend). Do not pass raw sub-unit bigints.
  */
 
-// ── scaleRegistryAmount ───────────────────────────────────────────────────────
-
-/**
- * ⚠️ #840 PERMANENT WORKAROUND — #840 is CLOSED won't-fix ("no backend scale
- * change planned"), so this ×1000 correction is durable, client-side
- * behaviour, not a stopgap awaiting a backend fix.
- *
- * The Stellar loan-registry stores economics amounts at **1e3 scale** (a
- * `$1.2M` facility is `1_200_000_000` on-chain — see the `draw_loan` encoding,
- * issue #831). Several backend surfaces read those back and serve them as if
- * they were plain 6-decimal USDC, so they arrive **1000× too small**
- * (`"1200.000000"` instead of `"1200000.000000"`). Confirmed (#841) on
- * `GET /v1/loan-book`'s registry-sourced amounts (`summary.deployed_senior`,
- * `summary.at_risk_wl_and_default_senior`, per-loan `senior_outstanding`) —
- * the Trustee Loans page (issue #843) — and, per a live-payload audit
- * (issue #888), on `collateral` / `total_collateral` too: issue #843's
- * assumption that collateral was price-feed correct-scale was FALSE — it is
- * registry-sourced and 1000× too small on the same basis as
- * `senior_outstanding`.
- *
- * Hand-mirrored, byte-for-byte, from the LP frontend's
- * `packages/frontend/src/utils/formatCompactUsd.ts::scaleRegistryAmount`
- * (issue #842) — the two apps stay separate per epic #775, so this is a
- * deliberate duplicate, not a shared import. See TD-42
- * (`docs/exec-plans/tech-debt-tracker.md`).
- *
- * This is the shared ×1000 core: scale the raw base-6 decimal string **at the
- * source**, before it is formatted, summed into a total, or used in a ratio —
- * so every downstream consumer (display string, aggregation, progress-bar
- * ratio) sees a consistent, already-correct value.
- *
- * Apply to registry-economics amounts, INCLUDING `collateral` /
- * `total_collateral` (issue #888 — do NOT skip these). Do NOT apply to
- * `ccr_bps` (already correct as served — both its numerator and denominator
- * are registry-sourced 1000×-low amounts, so the ×1000 cancels out of the
- * ratio, see the Loans page's `-useLoansTable.ts`), `ltv` /
- * `at_risk_wl_and_default_pct` / `top_concentration.share` (same
- * scale-invariant-ratio reasoning), or `tvl` / `accrued_interest_receivable`
- * (already correct scale, not registry-derived).
- *
- * @returns the scaled base-6 decimal string, or `null` for null/undefined/
- *   non-finite input (passthrough — callers decide how to render "missing").
- */
-export function scaleRegistryAmount(
-  base6Decimal: string | null | undefined,
-): string | null {
-  if (base6Decimal == null) return null;
-  const num = parseFloat(base6Decimal);
-  if (!Number.isFinite(num)) return null;
-  return (num * 1000).toFixed(6);
-}
-
 // ── formatCompactUsd ─────────────────────────────────────────────────────────
 
 /**
@@ -167,43 +115,6 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
     maximumFractionDigits: 0,
   }).format(num);
   return `$${formatted}`;
-}
-
-// ── formatRegistryCompactUsd / formatRegistryCompact2dpUsd ────────────────────
-
-/**
- * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
- * comment).
- *
- * Compact-formats a registry-sourced amount after applying the ×1000
- * `scaleRegistryAmount` correction. See that function's doc comment for the
- * full rationale.
- *
- * Apply to registry-economics amounts (Loans page summary cards:
- * `deployed_senior`, `at_risk_wl_and_default_senior`, `total_collateral`
- * — issue #888).
- */
-export function formatRegistryCompactUsd(
-  base6Decimal: string | null | undefined,
-): string {
-  return formatCompactUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
-}
-
-/**
- * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
- * comment).
- *
- * Two-decimal compact form of a registry-sourced amount after applying the
- * ×1000 `scaleRegistryAmount` correction — the Loans page's "Senior outst."
- * and "Collateral" column style (`formatCompactUsd2dp`, e.g. `$1.84M`)
- * applied to a registry-sourced amount (`senior_outstanding`, `collateral`
- * — issue #888). See `scaleRegistryAmount`'s doc comment for the full
- * rationale.
- */
-export function formatRegistryCompact2dpUsd(
-  base6Decimal: string | null | undefined,
-): string {
-  return formatCompactUsd2dp(scaleRegistryAmount(base6Decimal) ?? undefined);
 }
 
 // ── formatBpsRate ─────────────────────────────────────────────────────────────

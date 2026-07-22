@@ -11,13 +11,15 @@
  * rather than an import — a fifth hand-mirroring alongside TD-42's existing
  * trustee/LP pairs (see `docs/exec-plans/tech-debt-tracker.md`).
  *
- * ## Scale note (differs from `/v1/loan-book`)
- * This endpoint recomputes collateral value and CCR in **plain USD** (not the
- * base-6/registry scale the loan-book list serves), so its money fields
- * (`collateral_value`, `ccr.collateral_value`, `ccr.outstanding_senior_principal`)
- * are already correct-scale decimal strings — do NOT apply the #840 ×1000
- * `scaleRegistryAmount` workaround here. `inputs.haircut_pct` is a fraction in
- * `[0,1]` (e.g. `"0.10"` = 10%). `ccr.ccr_pct` is a percent string (`"178.00"`).
+ * ## Scale note
+ * This endpoint recomputes collateral value and CCR in **plain USD**, so its
+ * money fields (`collateral_value`, `ccr.collateral_value`,
+ * `ccr.outstanding_senior_principal`) are correct-scale decimal strings —
+ * display them as served, via plain `formatCompactUsd`. (The frontend no
+ * longer rescales any endpoint's amounts — the ×1000 `scaleRegistryAmount`
+ * workaround was removed project-wide in issue #906.) `inputs.haircut_pct`
+ * is a fraction in `[0,1]` (e.g. `"0.10"` = 10%). `ccr.ccr_pct` is a percent
+ * string (`"178.00"`).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
