@@ -244,7 +244,9 @@ pub fn compose_lifecycle_snapshot(
 
 /// Compare the prior and current on-chain metadata URIs. If they differ, fetch
 /// the IPFS document at `current_onchain_uri` and return `Some(json)`. If the
-/// URIs are equal, return `None` (no re-fetch needed).
+/// URIs are equal, or `current_onchain_uri` is empty (on-chain metadata_uri was
+/// cleared — not a document to fetch), return `None` (no re-fetch needed); the
+/// prior IPFS-sourced fields carry forward unchanged.
 ///
 /// Extracted as a free function so it can be unit-tested without a database or
 /// live RPC connection.
@@ -253,7 +255,7 @@ pub async fn maybe_fetch_refreshed_json(
     prior_onchain_uri: &str,
     current_onchain_uri: &str,
 ) -> anyhow::Result<Option<LoanMetadataJson>> {
-    if prior_onchain_uri == current_onchain_uri {
+    if prior_onchain_uri == current_onchain_uri || current_onchain_uri.is_empty() {
         Ok(None)
     } else {
         let json = fetcher
