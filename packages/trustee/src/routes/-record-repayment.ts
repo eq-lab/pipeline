@@ -110,14 +110,16 @@ function usdFull(usd: number | null): string {
 
 /**
  * Maps a `/waterfall` query error to friendly, user-facing copy — never the
- * raw backend message, and no numbers (#916). A client error (4xx, e.g. the
- * `404` when the entered amount exceeds what's left to pay) maps to the
- * "amount too big" line; anything else gets a generic retry message.
+ * raw backend message, and no numbers (#916). The backend's extended waterfall
+ * validates the amount against the loan's terms and returns a client error
+ * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
+ * rate / outstanding); that maps to the "too high" line. Anything else gets a
+ * generic retry message.
  */
 export function mapWaterfallError(error: Error | null): string | null {
   if (error == null) return null;
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-    return "This amount is more than what's left to pay. Enter a smaller amount.";
+    return "This amount is too high for this loan. Enter a smaller amount.";
   }
   return "Couldn't preview this payment. Please try again.";
 }
