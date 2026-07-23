@@ -280,7 +280,7 @@ describe("Record Coupon route — ready state", () => {
     expect(banner).toHaveTextContent("Deferred interest");
   });
 
-  it("renders the left card's coupon period, senior outstanding, and offtaker-owed rows", () => {
+  it("renders the coupon-period and senior-outstanding rows", () => {
     renderRoute();
     const left = screen.getByTestId("record-coupon-left-card");
     expect(left).toHaveTextContent("Helios Metals");
@@ -288,9 +288,94 @@ describe("Record Coupon route — ready state", () => {
     expect(left).toHaveTextContent("2 Jan 2026 → 31 Mar 2026 · 88 days");
     expect(left).toHaveTextContent("Senior outstanding — unchanged");
     expect(left).toHaveTextContent("$1,840,000");
+  });
+
+  it("shows the 'Scheduled coupon' third row when a coupon is due (at/after maturity)", () => {
+    // Freeze now at the epoch maturity (2026-03-31) → a coupon is due.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-03-31T00:00:00Z").getTime());
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
+    // Scheduled coupon = 10.0% p.a. × $1,840,000 × 88/365 ≈ $44,362 (client-side
+    // projection, not backend-served — see -record-coupon.ts).
+    expect(left).toHaveTextContent("Scheduled coupon (10.0% p.a.)");
+    expect(left).toHaveTextContent("$44,362");
+    expect(left).not.toHaveTextContent("Offtaker still owed after coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("shows the 'Offtaker still owed after coupon' third row for a simply-performing loan with no payment due", () => {
+    // Freeze now well before maturity (mid-Jan, > 7 days out); the loan is
+    // Performing → nothing due, so the owed row shows instead.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
     expect(left).toHaveTextContent("Offtaker still owed after coupon");
-    // No amount entered yet ⇒ unchanged from the served offtaker_outstanding.
+    // offtaker_outstanding "2000000.000000" displayed as-is (#906); no amount entered.
     expect(left).toHaveTextContent("$2,000,000");
+    expect(left).not.toHaveTextContent("Scheduled coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("subtracts the entered amount from the 'Offtaker still owed after coupon' row in real time", () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    renderRoute();
+    // No debounce wait — the owed row tracks the live input immediately.
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "500000" },
+    });
+    const left = screen.getByTestId("record-coupon-left-card");
+    // 2,000,000 − 500,000 = 1,500,000.
+    expect(left).toHaveTextContent("$1,500,000");
+    nowSpy.mockRestore();
+  });
+
+  it("shows the 'Scheduled coupon' third row for a non-performing loan even when nothing is due", () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, status: "WatchList" }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
+    expect(left).toHaveTextContent("Scheduled coupon (10.0% p.a.)");
+    expect(left).not.toHaveTextContent("Offtaker still owed after coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("renders the in-card 'Record on the ledger' button and the recordPayment footer (node 4116-11295)", () => {
+    renderRoute();
+    const right = screen.getByTestId("record-coupon-right-card");
+    const submit = screen.getByTestId("record-coupon-submit");
+    // The primary action lives inside the right card, not a separate bottom row.
+    expect(right).toContainElement(submit);
+    expect(submit).toHaveTextContent("Record on the ledger");
+    expect(right).toHaveTextContent(
+      "recordPayment is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
+    );
+    // The old bottom Cancel action is gone (a back link at the top remains).
+    expect(
+      screen.queryByRole("link", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the bank-wire check note on the left card", () => {
+    renderRoute();
+    expect(screen.getByTestId("record-coupon-left-card")).toHaveTextContent(
+      "Check the amount against the correspondent bank wire before recording — there is no automatic bank feed.",
+    );
   });
 
   it("renders the amount input and a read-only date fixed to today (#916)", () => {
@@ -353,7 +438,7 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toHaveTextContent("$2,000");
     expect(right).toHaveTextContent("Net senior coupon → vault");
     expect(right).toHaveTextContent("$35,000");
-    expect(right).toHaveTextContent("Minted to sPLUSD — lifts NAV");
+    expect(right).toHaveTextContent("Mints to sPLUSD once the on-ramp lands");
   });
 
   it("renders the green 'Components sum to received $<amount>' summary", async () => {
