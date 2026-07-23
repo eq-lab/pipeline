@@ -54,6 +54,7 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
+import { ApiError } from "@/api/client";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
@@ -105,6 +106,20 @@ function sumBaseUnits(values: (string | undefined)[]): string | null {
 /** `$X` (whole dollars, per `formatFullUsd`) for a USD number; `—` for `null`. */
 function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
+}
+
+/**
+ * Maps a `/waterfall` query error to user-facing copy. The endpoint returns
+ * `404` when the entered amount exceeds what's left to pay, so we show a clear
+ * "amount too big" message rather than a raw "Not Found" (#916). Any other
+ * failure keeps its original message.
+ */
+export function mapWaterfallError(error: Error | null): string | null {
+  if (error == null) return null;
+  if (error instanceof ApiError && error.status === 404) {
+    return "Amount exceeds the outstanding balance — enter an amount no greater than what's left to pay.";
+  }
+  return error.message;
 }
 
 /**
@@ -452,7 +467,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
-      errorMessage: waterfall.error?.message ?? null,
+      errorMessage: mapWaterfallError(waterfall.error),
       rows,
     },
     summaryText,

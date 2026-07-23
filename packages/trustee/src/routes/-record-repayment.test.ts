@@ -8,15 +8,33 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Epoch } from "@/api/useLoanFinancials";
+import { ApiError } from "@/api/client";
 import {
   buildRepaymentInput,
   closureReason,
   computeFinalPeriod,
   isTerminalRepayment,
+  mapWaterfallError,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
 } from "./-record-repayment";
+
+describe("mapWaterfallError", () => {
+  it("maps a 404 to the 'amount exceeds outstanding' message (#916)", () => {
+    const msg = mapWaterfallError(new ApiError("Not Found", 404));
+    expect(msg).toMatch(/exceeds the outstanding balance/i);
+  });
+
+  it("keeps the original message for other errors", () => {
+    expect(mapWaterfallError(new ApiError("boom", 500))).toBe("boom");
+    expect(mapWaterfallError(new Error("network"))).toBe("network");
+  });
+
+  it("returns null when there is no error", () => {
+    expect(mapWaterfallError(null)).toBeNull();
+  });
+});
 
 describe("parseUsdInput", () => {
   it("parses a positive numeric string", () => {
