@@ -910,9 +910,7 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
     }
     let quantity_dmt = parse("quantity_dmt", &req.collateral_valuation.quantity_dmt)?;
     if quantity_dmt <= 0 {
-        return Err(format!(
-            "quantity_dmt must be > 0; got {quantity_dmt}"
-        ));
+        return Err(format!("quantity_dmt must be > 0; got {quantity_dmt}"));
     }
 
     if req.fee_schedule.perf_fee_rate_bps > 10_000 {
