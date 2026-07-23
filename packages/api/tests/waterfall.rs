@@ -67,7 +67,11 @@ fn snapshot_with_repayment(
         original_facility_size: dec(senior_tranche),
         original_senior_tranche: dec(senior_tranche),
         original_equity_tranche: dec("0"),
-        original_offtaker_price: dec(senior_tranche),
+        // Comfortably above every `amount` used in this file's existing fixtures (which
+        // cover principal + interest + fees, so a realistic offtaker price must exceed the
+        // tranche alone) — dedicated tests below override this to exercise the offtaker
+        // ceiling itself.
+        original_offtaker_price: dec("100000000"),
         senior_interest_rate_bps: rate_bps,
         origination_date: ORIGINATION,
         original_maturity_date: ONE_YEAR_LATER,
@@ -152,9 +156,10 @@ fn principal_capped_at_outstanding() {
 fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
     // Full waterfall targets (senior 1,000,000 @ 12% for 1 year, fees 100/2000/50 bps):
     // coupon 88,000, mgmt fee 10,000, perf fee 22,000, oet 5,000, principal 1,000,000.
-    // Priority order is now coupon → mgmt → perf → oet → principal, so a 500,000
-    // payment — enough to cover coupon + all fees (125,000) but not full principal —
-    // pays coupon and every fee bucket in full and leaves principal to absorb the
+    // Priority order is the interest tier (coupon+mgmt+perf) → oet → principal, so a
+    // 500,000 payment — enough to cover the interest tier + oet (125,000) but not full
+    // principal — fully satisfies the interest tier (no proportional shortfall here, it's
+    // not short against *that* tier) and every fee bucket, leaving principal to absorb the
     // shortfall: 500,000 − 125,000 = 375,000.
     let s = snapshot("1000000", "0", 1200);
     let amount = dec("500000");
@@ -167,6 +172,55 @@ fn coupon_and_fees_paid_in_full_before_principal_on_shortfall() {
     assert_eq!(b.performance_fee, dec("22000"));
     assert_eq!(b.oet_allocation, dec("5000"));
     assert_eq!(b.senior_principal_returned, dec("375000"));
+}
+
+// ── Interest tier: proportional split on a genuine shortfall ───────────────────
+
+#[test]
+fn interest_tier_shortfall_splits_coupon_and_fees_proportionally() {
+    // Full-year targets: coupon 88,000, mgmt 10,000, perf 22,000 (interest tier total
+    // 120,000). A 60,000 payment — exactly half the tier — must give every component
+    // its own 50% share, not pay coupon in full and leave the fees at 0: coupon 44,000,
+    // mgmt 5,000, perf 11,000 (each exactly half its full target). Nothing is left for
+    // OET/principal/equity.
+    let s = snapshot("1000000", "0", 1200);
+    let amount = dec("60000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_coupon_net, dec("44000"));
+    assert_eq!(b.management_fee, dec("5000"));
+    assert_eq!(b.performance_fee, dec("11000"));
+    assert_eq!(b.oet_allocation, dec("0"));
+    assert_eq!(b.senior_principal_returned, dec("0"));
+    assert_eq!(b.equity_distributed, dec("0"));
+
+    let total = &b.senior_coupon_net + &b.management_fee + &b.performance_fee;
+    assert_eq!(total, amount);
+}
+
+#[test]
+fn interest_tier_shortfall_dust_flows_to_the_next_tier_not_lost() {
+    // Same full-year targets/ratios as above (coupon 88,000 : mgmt 10,000 : perf 22,000,
+    // total 120,000). A 61-unit payment doesn't divide evenly by that ratio — each
+    // component's proportional share truncates down (44.7¯3 → 44, 5.08¯3 → 5,
+    // 11.18¯3 → 11 — summing to 60, one unit short of the full 61 paid in). That one unit
+    // of truncation dust is not lost: it flows into `remaining` and is picked up by OET,
+    // the next tier down, rather than vanishing from the accounting entirely.
+    let s = snapshot("1000000", "0", 1200);
+    let amount = dec("61");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_coupon_net, dec("44"));
+    assert_eq!(b.management_fee, dec("5"));
+    assert_eq!(b.performance_fee, dec("11"));
+    assert_eq!(b.oet_allocation, dec("1"));
+
+    let total = &b.senior_coupon_net + &b.management_fee + &b.performance_fee + &b.oet_allocation;
+    assert_eq!(total, amount);
 }
 
 #[test]
@@ -437,11 +491,167 @@ fn already_recorded_amount_exceeding_the_target_clamps_to_zero() {
     assert_eq!(b.management_fee, dec("0"));
 }
 
+// ── Equity residual (stage 4) ───────────────────────────────────────────────────
+
+#[test]
+fn equity_absorbs_the_remainder_after_principal() {
+    // Same full-year targets as `full_repayment_one_year_with_fees` (coupon 88,000, fees
+    // 37,000, principal 1,000,000 — 1,125,000 total). A 1,200,000 payment covers all of
+    // that with 75,000 left over, which lands entirely in `equity_distributed`, last and
+    // uncapped in the cascade.
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1300000"),
+        ..snapshot("1000000", "0", 1200)
+    };
+    let amount = dec("1200000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("1000000"));
+    assert_eq!(b.equity_distributed, dec("75000"));
+    assert!(b.senior_principal_fully_repaid);
+    // Offtaker price is 1,300,000; only 1,200,000 has been received so far.
+    assert!(!b.offtaker_fully_received);
+
+    // Full accounting: every base unit of `amount` is attributed to exactly one bucket.
+    let total = &b.senior_principal_returned
+        + &b.senior_coupon_net
+        + &b.management_fee
+        + &b.performance_fee
+        + &b.oet_allocation
+        + &b.equity_distributed;
+    assert_eq!(total, amount);
+}
+
+#[test]
+fn equity_is_zero_when_amount_exactly_covers_every_other_bucket() {
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1125000"),
+        ..snapshot("1000000", "0", 1200)
+    };
+    let amount = dec("1125000");
+    let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.equity_distributed, dec("0"));
+    assert!(b.senior_principal_fully_repaid);
+    assert!(b.offtaker_fully_received);
+}
+
+// ── Offtaker ceiling (stage 3) ───────────────────────────────────────────────────
+
+#[test]
+fn amount_exceeding_outstanding_offtaker_is_rejected() {
+    // `original_offtaker_price` (1,000,000) is fixed and never rewritten — an `amount`
+    // that would push cumulative `offtaker_received` past it (here, the same 1,125,000
+    // that a *higher*-priced loan happily absorbs in the test above) must be rejected,
+    // not silently cascaded into an inflated `equity_distributed`.
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1000000"),
+        ..snapshot("1000000", "0", 1200)
+    };
+    let err = compute_waterfall(
+        &s,
+        &dec("1125000"),
+        ONE_YEAR_LATER,
+        &fees(100, 2000, 50),
+        &[],
+    );
+    assert!(
+        err.is_err(),
+        "amount beyond the offtaker ceiling must be a 400"
+    );
+}
+
+#[test]
+fn offtaker_ceiling_accounts_for_amounts_already_received() {
+    // A prior repayment already recorded 900,000 of the 1,000,000 offtaker price — only
+    // 100,000 of headroom remains. A 100,001 request must be rejected even though it's
+    // far below the genesis price itself.
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1000000"),
+        ..snapshot_with_repayment(
+            "1000000",
+            RepaymentSnapshot {
+                offtaker_received: dec("900000"),
+                senior_principal_repaid: dec("900000"),
+                senior_interest: dec("0"),
+                equity_distributed: dec("0"),
+                mgmt_fee: dec("0"),
+                perf_fee: dec("0"),
+                oet_alloc: dec("0"),
+            },
+            1200,
+        )
+    };
+    assert!(compute_waterfall(&s, &dec("100001"), ONE_YEAR_LATER, &fees(0, 0, 0), &[]).is_err());
+    // Exactly the remaining headroom is fine.
+    assert!(compute_waterfall(&s, &dec("100000"), ONE_YEAR_LATER, &fees(0, 0, 0), &[]).is_ok());
+}
+
+#[test]
+fn already_over_received_loan_rejects_every_further_amount_including_zero() {
+    // A loan whose `offtaker_received` (5,081) already exceeds `original_offtaker_price`
+    // (105) — the exact shape of loan 9's bogus test repayment. `outstanding_offtaker` is
+    // deliberately not clamped at 0 here: it goes negative, so the loan stays visibly
+    // broken (every waterfall call for it fails loudly) instead of quietly reporting
+    // "nothing outstanding," which would look identical to a healthy, fully-repaid loan.
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("105"),
+        ..snapshot_with_repayment(
+            "80",
+            RepaymentSnapshot {
+                offtaker_received: dec("5081"),
+                senior_principal_repaid: dec("79.982247"),
+                senior_interest: dec("0"),
+                equity_distributed: dec("5000.98"),
+                mgmt_fee: dec("0"),
+                perf_fee: dec("0"),
+                oet_alloc: dec("0"),
+            },
+            1200,
+        )
+    };
+    assert!(
+        compute_waterfall(&s, &dec("0"), ONE_YEAR_LATER, &fees(0, 0, 0), &[]).is_err(),
+        "even a zero-amount request against an already over-received loan must be rejected"
+    );
+    assert!(compute_waterfall(&s, &dec("1"), ONE_YEAR_LATER, &fees(0, 0, 0), &[]).is_err());
+}
+
+// ── Senior principal ceiling ─────────────────────────────────────────────────────
+
+#[test]
+fn principal_ceiling_holds_even_against_a_wildly_oversized_amount() {
+    // 900,000 of the 1,000,000 tranche already repaid → 100,000 outstanding. A payment of
+    // 5,000,000 (comparable in spirit to loan 9's mismatched real-world figures) must
+    // still cap principal at exactly the 100,000 remaining — never a cent more — with the
+    // entire 4,900,000 overage flowing to equity, not to over-repaying the tranche.
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("10000000"),
+        ..snapshot("1000000", "900000", 1200)
+    };
+    let amount = dec("5000000");
+    // At origination: zero interest/fees, isolating principal-only behavior.
+    let b = compute_waterfall(&s, &amount, ORIGINATION, &fees(0, 0, 0), &[])
+        .ok()
+        .unwrap();
+
+    assert_eq!(b.senior_principal_returned, dec("100000"));
+    assert_eq!(b.equity_distributed, dec("4900000"));
+    assert!(b.senior_principal_fully_repaid);
+}
+
 // ── build_response ───────────────────────────────────────────────────────────
 
 #[test]
-fn response_maps_the_four_components() {
-    let s = snapshot("1000000", "0", 1200);
+fn response_maps_the_components() {
+    let s = LoanSnapshot {
+        original_offtaker_price: dec("1125000"),
+        ..snapshot("1000000", "0", 1200)
+    };
     let amount = dec("1125000");
     let f = fees(100, 2000, 50);
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &f, &[])
@@ -454,6 +664,9 @@ fn response_maps_the_four_components() {
     assert_eq!(resp.management_fee, "10000");
     assert_eq!(resp.performance_fee, "22000");
     assert_eq!(resp.oet_allocation, "5000");
+    assert_eq!(resp.equity_distributed, "0");
+    assert!(resp.senior_principal_fully_repaid);
+    assert!(resp.offtaker_fully_received);
 }
 
 // ── OpenAPI ────────────────────────────────────────────────────────────────────
