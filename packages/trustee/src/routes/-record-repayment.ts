@@ -109,17 +109,17 @@ function usdFull(usd: number | null): string {
 }
 
 /**
- * Maps a `/waterfall` query error to user-facing copy. The endpoint returns
- * `404` when the entered amount exceeds what's left to pay, so we show a clear
- * "amount too big" message rather than a raw "Not Found" (#916). Any other
- * failure keeps its original message.
+ * Maps a `/waterfall` query error to friendly, user-facing copy — never the
+ * raw backend message, and no numbers (#916). A client error (4xx, e.g. the
+ * `404` when the entered amount exceeds what's left to pay) maps to the
+ * "amount too big" line; anything else gets a generic retry message.
  */
 export function mapWaterfallError(error: Error | null): string | null {
   if (error == null) return null;
-  if (error instanceof ApiError && error.status === 404) {
-    return "Amount exceeds the outstanding balance — enter an amount no greater than what's left to pay.";
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return "This amount is more than what's left to pay. Enter a smaller amount.";
   }
-  return error.message;
+  return "Couldn't preview this payment. Please try again.";
 }
 
 /**

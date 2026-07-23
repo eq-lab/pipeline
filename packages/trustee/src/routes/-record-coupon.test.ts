@@ -19,14 +19,22 @@ import {
 } from "./-record-coupon";
 
 describe("mapWaterfallError", () => {
-  it("maps a 404 to the 'amount exceeds outstanding' message (#916)", () => {
-    const msg = mapWaterfallError(new ApiError("Not Found", 404));
-    expect(msg).toMatch(/exceeds the outstanding balance/i);
+  it("maps a client error (4xx, e.g. 404) to the friendly 'amount too big' copy (#916)", () => {
+    const msg = mapWaterfallError(new ApiError("amount 999 exceeds 15", 404));
+    expect(msg).toBe(
+      "This amount is more than what's left to pay. Enter a smaller amount.",
+    );
+    // Never the raw backend text, and no digits.
+    expect(msg).not.toMatch(/\d/);
   });
 
-  it("keeps the original message for other errors", () => {
-    expect(mapWaterfallError(new ApiError("boom", 500))).toBe("boom");
-    expect(mapWaterfallError(new Error("network"))).toBe("network");
+  it("uses a generic friendly message for server/other errors — never the backend text", () => {
+    expect(mapWaterfallError(new ApiError("boom 500", 500))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+    expect(mapWaterfallError(new Error("network 12"))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
   });
 
   it("returns null when there is no error", () => {
