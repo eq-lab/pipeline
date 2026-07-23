@@ -15,8 +15,12 @@
 //!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`) —
 //!    a rollover or economics amendment changes the rate/maturity from that point on, and
 //!    accrual stops at each epoch's own maturity if it isn't rolled over.
-//!    `senior_deployed = originalSeniorTranche` throughout (the accrual base never changes).
-//!    Each rate compounds via real exponentiation (`compound_growth` — `(1 + rate) ^ tenor
+//!    `senior_deployed = originalSeniorTranche − senior_principal_repaid` (the outstanding
+//!    balance, declining as principal is repaid) — matching the on-chain
+//!    `calculate_max_interest`'s declining-balance model; see the `senior_deployed`
+//!    binding below for the approximation this implies for a loan repaid across
+//!    multiple rollovers instead of one bullet payment. Each rate compounds via real
+//!    exponentiation (`compound_growth` — `(1 + rate) ^ tenor
 //!    − 1`), **not** the linear/simple-interest formula the waterfall spec
 //!    (`docs/product-specs/yield.md` §"Waterfall components") and YieldMinter's on-chain
 //!    `ceiling(loanId)` (§"Per-loan mint cap") both document — a deliberate choice, so this
@@ -334,11 +338,24 @@ pub fn compute_waterfall(
     );
     let capped_seconds = piecewise_capped_seconds(&epochs, as_of);
 
-    // Accrual base is always the original senior tranche (per spec).
-    let senior_deployed = &s.original_senior_tranche;
+    // Accrual base is the outstanding senior principal (original tranche less what's
+    // already been repaid) — matching the on-chain `calculate_max_interest`'s
+    // declining-balance model, not a fixed original-tranche base held for the loan's
+    // whole life. Applies to interest, management fee, and OET alike, since all three
+    // compound off the same `senior_deployed` variable.
+    //
+    // Approximation: this repo always recomputes gross interest from scratch (no
+    // stored per-epoch checkpoint the way the contract's `epoch.accrued_interest`
+    // is), so today's outstanding is applied uniformly across the *whole* piecewise
+    // recompute, not just the currently-open epoch. Exact for the common case
+    // (principal repaid in one bullet payment — outstanding is either the full
+    // tranche or already near-final for every historical epoch); would understate
+    // older epochs' interest for a loan whose principal was repaid incrementally
+    // across multiple rollovers, a pattern this product doesn't currently exercise.
     let outstanding_senior = &s.original_senior_tranche - &s.repayment.senior_principal_repaid;
     // Never negative — the on-chain repaid counter can't exceed the tranche.
     let outstanding = outstanding_senior.max(BigDecimal::zero());
+    let senior_deployed = &outstanding;
 
     // Cumulative targets, origination → `as_of` (stage 1 — see module docs). Gross
     // interest is the piecewise sum across epochs (rate-change-aware, each epoch

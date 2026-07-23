@@ -432,12 +432,16 @@ fn past_maturity_without_rollover_stops_accruing() {
 
 #[test]
 fn second_repayment_nets_out_amounts_already_recorded() {
-    // Same full-year targets as `full_repayment_one_year_with_fees` (gross interest
-    // 120,000; mgmt 10,000; perf 22,000; coupon 88,000; oet 5,000), but this snapshot
-    // already carries a first repayment's cumulative counters: 300,000 principal,
-    // 4,000 mgmt fee, 8,000 perf fee, 30,000 net coupon, 2,000 OET recorded. The
-    // waterfall for a *second* repayment must return only what's newly due:
-    // outstanding principal 700,000, mgmt 6,000, coupon 58,000, perf 14,000, oet 3,000.
+    // `senior_deployed` is the *outstanding* balance (1,000,000 − 300,000 already repaid
+    // = 700,000 — see the `senior_deployed` binding in `compute_waterfall`), not the full
+    // original tranche, so this second repayment's full-year targets are recomputed off
+    // 700,000: gross interest 700,000×12% = 84,000; mgmt 700,000×1% = 7,000; perf
+    // 20%×(84,000−7,000) = 15,400; coupon 84,000−7,000−15,400 = 61,600; oet
+    // 700,000×0.5% = 3,500. Netting out what a first repayment already recorded
+    // (4,000 mgmt, 8,000 perf, 30,000 coupon, 2,000 oet) leaves: mgmt 3,000, perf 7,400,
+    // coupon 31,600, oet 1,500 still due — plus the 700,000 outstanding principal itself
+    // (unaffected by the `senior_deployed` change: it's always
+    // `original_senior_tranche − senior_principal_repaid` directly).
     let s = snapshot_with_repayment(
         "1000000",
         RepaymentSnapshot {
@@ -451,18 +455,19 @@ fn second_repayment_nets_out_amounts_already_recorded() {
         },
         1200,
     );
-    // 700,000 outstanding principal + 6,000 + 58,000 + 14,000 + 3,000 = 781,000: a full
+    // 700,000 outstanding principal + 3,000 + 31,600 + 7,400 + 1,500 = 743,500: a full
     // payment of everything still owed, so no cascade shortfall shrinks any bucket.
-    let amount = dec("781000");
+    let amount = dec("743500");
     let b = compute_waterfall(&s, &amount, ONE_YEAR_LATER, &fees(100, 2000, 50), &[])
         .ok()
         .unwrap();
 
     assert_eq!(b.senior_principal_returned, dec("700000"));
-    assert_eq!(b.management_fee, dec("6000"));
-    assert_eq!(b.senior_coupon_net, dec("58000"));
-    assert_eq!(b.performance_fee, dec("14000"));
-    assert_eq!(b.oet_allocation, dec("3000"));
+    assert_eq!(b.management_fee, dec("3000"));
+    assert_eq!(b.senior_coupon_net, dec("31600"));
+    assert_eq!(b.performance_fee, dec("7400"));
+    assert_eq!(b.oet_allocation, dec("1500"));
+    assert_eq!(b.equity_distributed, dec("0"));
 }
 
 #[test]
