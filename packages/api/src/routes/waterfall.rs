@@ -2,14 +2,14 @@
 //!
 //! Read-only. Given an incoming offtaker payment (`amount`), computes the carve-outs the
 //! Trustee records with `recordPayment`: senior principal returned, the net senior coupon
-//! (the vault leg), and the three fee carve-outs (management / performance / OET). This is
-//! the server-side twin of the client-side waterfall the Operations Console shows before
-//! the Trustee broadcasts — a *baseline* the Trustee may then adjust for waivers, partials,
-//! or early-repayment fees.
+//! (the vault leg), the three fee carve-outs (management / performance / OET), and the
+//! Equity-tranche residual. This is the server-side twin of the client-side waterfall the
+//! Operations Console shows before the Trustee broadcasts — a *baseline* the Trustee may
+//! then adjust for waivers, partials, or early-repayment fees.
 //!
 //! The algorithm is the documented waterfall (`docs/product-specs/yield.md` §"Waterfall
 //! components" and `docs/product-specs/trustee-dashboard.md` flow note A), computed in
-//! three stages:
+//! four stages:
 //!
 //! 1. **Cumulative targets, origination → `as_of`.** Gross interest is the maturity-capped,
 //!    piecewise sum across the loan's economics-epoch timeline (`shared::loan_economics`) —
@@ -33,15 +33,48 @@
 //!    repayment for this loan) to get what's *newly* due since the last repayment, clamped
 //!    at 0 so a prior over-record can't surface as a negative "still owed" figure:
 //!    `target_x = max(0, x_cum − repayment.x)`.
-//! 3. **Cascade `amount` through the buckets** in priority order — senior coupon → all
-//!    fees (management → performance → OET) → senior principal — capping each bucket at
-//!    its step-2 target so a shortfall shrinks lower-priority buckets instead of
-//!    reporting more than the incoming payment can cover. This order is a deliberate
-//!    departure from `docs/product-specs/yield.md` §"Waterfall components", which puts
-//!    senior principal first; here the vault (LP) and Treasury legs are paid ahead of
-//!    principal return. Each bucket = `min(target_x, remaining)`, `senior_principal_returned
-//!    = min(outstanding_senior_principal, remaining)` last, where `remaining` is `amount`
-//!    less whatever higher-priority buckets already consumed.
+//! 3. **Reject an `amount` that would overpay the offtaker leg.** `original_offtaker_price`
+//!    is the fixed, genesis-set total the offtaker is contracted to pay over the loan's
+//!    life (`docs/product-specs/loans.md` §"Genesis economics") — it is never rewritten, so
+//!    `outstanding_offtaker = original_offtaker_price − repayment.offtaker_received`
+//!    is a hard ceiling: nothing legitimate can cause the offtaker to pay more than the
+//!    contracted price. `amount > outstanding_offtaker` is rejected with `400 Bad Request`
+//!    rather than silently accepted and cascaded — an over-large `amount` is a data-entry
+//!    error (or worse), not a valid repayment, and letting it through would let a bogus
+//!    figure land in `equity_distributed` (stage 4) with no trace of the mistake.
+//!    Deliberately **not** clamped at 0: if `repayment.offtaker_received` already exceeds
+//!    `original_offtaker_price` (a prior over-record already landed on-chain), every
+//!    further `amount` — including `0` — is rejected until that's corrected, rather than
+//!    reporting a healthy-looking "nothing outstanding" for a loan that is already in a
+//!    bad state.
+//! 4. **Cascade `amount` through the tiers** in priority order — the interest tier
+//!    (senior coupon + management fee + performance fee) → OET → senior principal →
+//!    Equity residual — capping each tier at its step-2 target so a shortfall shrinks
+//!    lower-priority tiers instead of reporting more than the incoming payment can cover.
+//!    This order is a deliberate departure from `docs/product-specs/yield.md`
+//!    §"Waterfall components", which puts senior principal first; here the vault (LP) and
+//!    Treasury legs are paid out ahead of principal return.
+//!
+//!    The interest tier is **proportional, not sequential**: coupon, management fee, and
+//!    performance fee are three slices of the *same* gross-interest pool
+//!    (`gross_interest = mgmt + perf + net_coupon`, `docs/product-specs/loans.md:171`,
+//!    "the fees are carried inside that interest"), so a payment that falls short of the
+//!    tier's full target is split across the three in the same ratio as their full-period
+//!    targets, rather than the coupon/vault leg draining the payment first and leaving
+//!    the fees at 0 — a small interest payment still carries its proportional share of
+//!    fees, the same way a full one does. OET is *not* part of this pool (it accrues
+//!    independently off `senior_deployed`, never netted out of gross interest), so it
+//!    remains a separate, lower-priority tier, cascaded `min(target, remaining)` same as
+//!    before.
+//!
+//!    `senior_principal_returned = min(outstanding_senior_principal, remaining)` is
+//!    second to last, where `remaining` is `amount` less whatever higher-priority tiers
+//!    already consumed — this cap is what keeps cumulative `senior_principal_repaid` from
+//!    ever exceeding `original_senior_tranche`, the same ceiling principle as stage 3,
+//!    just against a different genesis field. `equity_distributed` is last and uncapped
+//!    (per `docs/product-specs/loans.md`, "The Equity tranche has no fixed rate and
+//!    receives the residual") — it simply absorbs whatever remains, which stage 3's
+//!    rejection has already bounded from running away.
 //!
 //! **Units.** All monetary values — the `amount` input and every output — are **raw
 //! on-chain base units**, the same scale as the loan snapshot and `recordPayment`
@@ -113,6 +146,25 @@ pub struct WaterfallResponse {
     pub performance_fee: String,
     /// OET allocation carve-out, cascade-capped by `amount`. → `recordPayment.oetAlloc`.
     pub oet_allocation: String,
+    /// Equity-tranche residual: whatever remains of `amount` after every higher-priority
+    /// bucket above, last in the cascade and uncapped (see module docs stage 4).
+    /// → `recordPayment.equityAmount`.
+    pub equity_distributed: String,
+    /// `true` when this payment's `senior_principal_returned` brings cumulative
+    /// `senior_principal_repaid` to (or past) `original_senior_tranche` — the senior debt
+    /// is fully retired by this payment.
+    pub senior_principal_fully_repaid: bool,
+    /// `true` when this payment's `amount` brings cumulative `offtaker_received` to (or
+    /// past — never past, per stage 3's rejection) `original_offtaker_price` — the
+    /// offtaker has now paid the full contracted price for the cargo.
+    ///
+    /// Surfaced independently from `senior_principal_fully_repaid` rather than collapsed
+    /// into one "fully repaid" flag: a payment that closes out the senior debt while this
+    /// is still `false` means the loan is being closed from a smaller offtaker settlement
+    /// than genesis contracted for (a discount, a renegotiation, an early payoff from other
+    /// capital, ...) — worth a second look before closing the loan, but not necessarily
+    /// invalid, so it is surfaced for the Trustee to weigh rather than rejected outright.
+    pub offtaker_fully_received: bool,
 }
 
 /// OpenAPI doc bundle for the waterfall route.
@@ -139,7 +191,7 @@ pub fn router() -> Router<Arc<AppState>> {
     ),
     responses(
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
-        (status = 400, description = "Malformed loan id / amount"),
+        (status = 400, description = "Malformed loan id / amount, or amount exceeds the loan's outstanding offtaker balance"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
         (status = 500, description = "Internal server error"),
     ),
@@ -218,6 +270,10 @@ pub struct WaterfallBreakdown {
     pub management_fee: BigDecimal,
     pub performance_fee: BigDecimal,
     pub oet_allocation: BigDecimal,
+    /// Equity-tranche residual — last in the cascade, uncapped (see module docs stage 4).
+    pub equity_distributed: BigDecimal,
+    pub senior_principal_fully_repaid: bool,
+    pub offtaker_fully_received: bool,
 }
 
 /// Truncate a value toward zero to a whole base unit.
@@ -243,6 +299,27 @@ pub fn compute_waterfall(
         return Err(ApiError::BadRequest(format!(
             "as_of ({as_of}) is before loan origination ({})",
             s.origination_date
+        )));
+    }
+
+    // Stage 3 (see module docs): `original_offtaker_price` is fixed at genesis and never
+    // rewritten, so the offtaker can never legitimately pay more than it over the loan's
+    // life. Reject an `amount` that would push cumulative `offtaker_received` past that
+    // ceiling, rather than silently cascading it — an over-large `amount` here is a
+    // data-entry error, not a valid repayment.
+    //
+    // Deliberately NOT clamped at 0: if `offtaker_received` already exceeds
+    // `original_offtaker_price` (a prior over-record — this is exactly how loan 9's bogus
+    // test repayment was found), `outstanding_offtaker` goes negative and every further
+    // `amount` is rejected, loudly, until someone fixes the underlying record. Flooring
+    // this at 0 would report "nothing outstanding" for an already-corrupted loan — the
+    // same silent-masking failure mode as reporting a healthy-looking CCR.
+    let outstanding_offtaker = &s.original_offtaker_price - &s.repayment.offtaker_received;
+    if amount > &outstanding_offtaker {
+        return Err(ApiError::BadRequest(format!(
+            "amount ({amount}) exceeds the loan's outstanding offtaker balance \
+             ({outstanding_offtaker} = original_offtaker_price {} − offtaker_received {})",
+            s.original_offtaker_price, s.repayment.offtaker_received
         )));
     }
 
@@ -301,27 +378,54 @@ pub fn compute_waterfall(
     let target_oet_allocation =
         (&oet_allocation_cum - &s.repayment.oet_alloc).max(BigDecimal::zero());
 
-    // Cascade the incoming `amount` through the priority order — senior coupon → all
-    // fees (management → performance → OET) → senior principal — capping each bucket at
-    // its still-owed target (stage 3). This is a deliberate departure from
-    // docs/product-specs/yield.md §"Waterfall components", which puts senior principal
-    // first; here the vault (LP) and Treasury legs are paid out ahead of principal
-    // return. A full/on-time payment (`amount` ≥ the sum of all targets) reproduces the
-    // targets exactly; a shortfall drains `remaining` top-down so lower-priority buckets
-    // shrink toward zero instead of the response reporting more than the incoming
-    // payment can actually cover.
+    // Cascade the incoming `amount` through the priority order — the interest tier
+    // (senior coupon + management + performance fee, together) → OET → senior principal
+    // — capping each tier at its still-owed target (stage 3). This is a deliberate
+    // departure from docs/product-specs/yield.md §"Waterfall components", which puts
+    // senior principal first; here the vault (LP) and Treasury legs are paid out ahead of
+    // principal return. A full/on-time payment (`amount` ≥ the sum of all targets)
+    // reproduces the targets exactly; a shortfall drains `remaining` top-down so
+    // lower-priority tiers shrink toward zero instead of the response reporting more
+    // than the incoming payment can actually cover.
+    //
+    // The interest tier is **proportional**, not cascaded bucket-by-bucket: coupon,
+    // management fee, and performance fee are carved from the *same* gross-interest pool
+    // (`gross_interest = mgmt + perf + net_coupon`, `docs/product-specs/loans.md:171`), so
+    // a payment that falls short of the full tier is split across all three in the same
+    // ratio as their full-period targets — a partial interest payment still pays its share
+    // of fees, rather than the coupon/vault leg draining the payment first and leaving
+    // fees at 0. OET is *not* part of this pool (it accrues independently off
+    // `senior_deployed`, not carved out of gross interest), so it stays a separate,
+    // lower-priority tier, cascaded the same way as before.
     let mut remaining = amount.clone();
-    let senior_coupon_net = trunc(&target_senior_coupon_net.min(remaining.clone()));
+    let target_total_interest =
+        &target_senior_coupon_net + &target_management_fee + &target_performance_fee;
+    let interest_payment = target_total_interest.clone().min(remaining.clone());
+    let (senior_coupon_net, management_fee, performance_fee) = if target_total_interest.is_zero()
+    {
+        (BigDecimal::zero(), BigDecimal::zero(), BigDecimal::zero())
+    } else {
+        (
+            trunc(&(&interest_payment * &target_senior_coupon_net / &target_total_interest)),
+            trunc(&(&interest_payment * &target_management_fee / &target_total_interest)),
+            trunc(&(&interest_payment * &target_performance_fee / &target_total_interest)),
+        )
+    };
     remaining -= &senior_coupon_net;
-    let management_fee = trunc(&target_management_fee.min(remaining.clone()));
     remaining -= &management_fee;
-    let performance_fee = trunc(&target_performance_fee.min(remaining.clone()));
     remaining -= &performance_fee;
     let oet_allocation = trunc(&target_oet_allocation.min(remaining.clone()));
     remaining -= &oet_allocation;
     // Truncated to a whole base unit like every other component, so a fractional
     // `amount` can't leak sub-base-unit precision into the output.
-    let senior_principal_returned = trunc(&outstanding.min(remaining));
+    let senior_principal_returned = trunc(&outstanding.clone().min(remaining.clone()));
+    remaining -= &senior_principal_returned;
+    // Last in the cascade and uncapped (stage 4) — whatever's left goes to equity. Stage
+    // 3's rejection already bounds this from absorbing an implausible, unvalidated figure.
+    let equity_distributed = trunc(&remaining);
+
+    let senior_principal_fully_repaid = &outstanding - &senior_principal_returned <= BigDecimal::zero();
+    let offtaker_fully_received = &outstanding_offtaker - amount <= BigDecimal::zero();
 
     Ok(WaterfallBreakdown {
         senior_principal_returned,
@@ -329,6 +433,9 @@ pub fn compute_waterfall(
         management_fee,
         performance_fee,
         oet_allocation,
+        equity_distributed,
+        senior_principal_fully_repaid,
+        offtaker_fully_received,
     })
 }
 
@@ -340,5 +447,8 @@ pub fn build_response(b: &WaterfallBreakdown) -> WaterfallResponse {
         management_fee: b.management_fee.to_plain_string(),
         performance_fee: b.performance_fee.to_plain_string(),
         oet_allocation: b.oet_allocation.to_plain_string(),
+        equity_distributed: b.equity_distributed.to_plain_string(),
+        senior_principal_fully_repaid: b.senior_principal_fully_repaid,
+        offtaker_fully_received: b.offtaker_fully_received,
     }
 }
