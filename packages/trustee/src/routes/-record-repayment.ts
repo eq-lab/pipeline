@@ -40,13 +40,16 @@
  *     `scaleRegistryAmount` workaround has been removed).
  *
  * ## Close-loan gating (issue #884 open question 3, resolved on start)
- * The Close-loan action shows once the loan is fully repaid: either the
- * entered amount is terminal (`isTerminalRepayment` — same cent-precision
- * detection as #882) OR the loan-book's outstanding senior is already `0`
- * (e.g. the trustee reloads this page after already recording the final
- * payment). `closureReason` picks `ScheduledMaturity` when `now >= maturity`
- * (the loan-book's rollover-aware `maturity`), else `EarlyRepayment` — per
- * the issue's resolved on-chain `ClosureReason` mapping.
+ * The Close-loan action always renders as the full-width "Next step — close
+ * loan" item, but only ENABLES once the final payment is actually complete:
+ * `showCloseLoan` marks that closing is applicable (the entered amount is
+ * terminal — `isTerminalRepayment`, same cent-precision detection as #882 — or
+ * the outstanding senior is already `0`), while the page keeps the button
+ * disabled until the `record_payment` write has succeeded (`record.isSuccess`)
+ * or the loan was already fully repaid on load (`alreadyRepaid`). Entering a
+ * terminal amount is no longer enough on its own — the trustee must record the
+ * payment first. `closureReason` picks `ScheduledMaturity` when `now >=
+ * maturity` (the loan-book's rollover-aware `maturity`), else `EarlyRepayment`.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -54,6 +57,7 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
+import { ApiError } from "@/api/client";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
@@ -105,6 +109,22 @@ function sumBaseUnits(values: (string | undefined)[]): string | null {
 /** `$X` (whole dollars, per `formatFullUsd`) for a USD number; `—` for `null`. */
 function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
+}
+
+/**
+ * Maps a `/waterfall` query error to friendly, user-facing copy — never the
+ * raw backend message, and no numbers (#916). The backend's extended waterfall
+ * validates the amount against the loan's terms and returns a client error
+ * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
+ * rate / outstanding); that maps to the "too high" line. Anything else gets a
+ * generic retry message.
+ */
+export function mapWaterfallError(error: Error | null): string | null {
+  if (error == null) return null;
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return "This amount is too high for this loan. Enter a smaller amount.";
+  }
+  return "Couldn't preview this payment. Please try again.";
 }
 
 /**
@@ -249,8 +269,8 @@ export interface RecordRepaymentView {
   offtakerOwed: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Fixed to today (read-only) — the repayment is always recorded as of today (#916). */
   dateInput: string;
-  onDateChange: (value: string) => void;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -266,11 +286,18 @@ export interface RecordRepaymentView {
    */
   recordPaymentInput: RepaymentInput | null;
   /**
-   * `true` once the loan is fully repaid — the terminal entered amount OR the
-   * loan-book's outstanding senior is already `0` — and the Close-loan action
-   * should be shown.
+   * `true` once closing is applicable — the terminal entered amount would fully
+   * repay the loan OR the loan-book's outstanding senior is already `0`. Gates
+   * whether the Close-loan action can ever enable (it still stays disabled until
+   * the payment is actually complete — see `alreadyRepaid` / `record.isSuccess`).
    */
   showCloseLoan: boolean;
+  /**
+   * `true` when the loan-book's outstanding senior is already `0` on load — the
+   * final payment is already complete (e.g. the trustee reloads after recording
+   * it), so the Close-loan action may enable without recording again.
+   */
+  alreadyRepaid: boolean;
   /** The `ClosureReason` to pass to `useCloseLoan`; `null` while the loan's maturity is unknown. */
   closureReason: "ScheduledMaturity" | "EarlyRepayment" | null;
 }
@@ -287,7 +314,8 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
-  const [dateInput, setDateInput] = useState(todayDateInput());
+  // Date is fixed to today and not editable (#916) — no calendar/date picker.
+  const dateInput = todayDateInput();
 
   // Debounce the amount that drives the waterfall query (the input field itself
   // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
@@ -325,10 +353,10 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     financials.data?.offtaker_outstanding,
   );
 
-  // Prefill the amount with the full remaining owed once financials load, so the
-  // page opens ready to record the final "pay it all & close" repayment (#884).
-  // One-shot: the trustee can still edit it down for a partial payment, and a
-  // later edit (or clearing the field) is never overwritten.
+  // Set the amount to the full remaining owed once financials load — a
+  // principal repayment always pays it ALL (the input is read-only on the page,
+  // no partial principal repayments). One-shot so a later refetch never
+  // clobbers it; the field is disabled, so the trustee can't edit it down.
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
     if (
@@ -427,8 +455,9 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       seniorPrincipalReturnedUsd,
     );
 
-  const showCloseLoan =
-    isTerminal || (outstandingSeniorUsd != null && outstandingSeniorUsd <= 0);
+  const alreadyRepaid =
+    outstandingSeniorUsd != null && outstandingSeniorUsd <= 0;
+  const showCloseLoan = isTerminal || alreadyRepaid;
 
   const maturity = entry?.maturity ?? null;
   const reason =
@@ -449,15 +478,15 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
-    onDateChange: setDateInput,
     waterfall: {
       ready: waterfall.data != null,
-      errorMessage: waterfall.error?.message ?? null,
+      errorMessage: mapWaterfallError(waterfall.error),
       rows,
     },
     summaryText,
     recordPaymentInput,
     showCloseLoan,
+    alreadyRepaid,
     closureReason: reason,
   };
 }

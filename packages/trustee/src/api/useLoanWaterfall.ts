@@ -64,6 +64,10 @@ export function useLoanWaterfall(
           (asOf != null ? `&as_of=${asOf}` : ""),
       ),
     enabled,
+    // Don't retry: a `/waterfall` failure is a definitive client error (a 404
+    // when the amount exceeds what's left, #916) — retrying just delays the
+    // error message. Surface it immediately so the form can explain it.
+    retry: false,
   });
 
   return {

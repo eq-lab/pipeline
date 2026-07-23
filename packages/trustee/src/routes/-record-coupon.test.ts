@@ -7,14 +7,43 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Epoch } from "@/api/useLoanFinancials";
+import { ApiError } from "@/api/client";
 import {
   buildRepaymentInput,
   computeCouponPeriod,
+  computeScheduledCoupon,
+  DUE_SOON_DAYS,
+  hasCouponDue,
   isTerminalRepayment,
+  mapWaterfallError,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
 } from "./-record-coupon";
+
+describe("mapWaterfallError", () => {
+  it("maps a client error (4xx, e.g. 404) to the friendly 'amount too big' copy (#916)", () => {
+    const msg = mapWaterfallError(new ApiError("amount 999 exceeds 15", 404));
+    expect(msg).toBe(
+      "This amount is too high for this loan. Enter a smaller amount.",
+    );
+    // Never the raw backend text, and no digits.
+    expect(msg).not.toMatch(/\d/);
+  });
+
+  it("uses a generic friendly message for server/other errors — never the backend text", () => {
+    expect(mapWaterfallError(new ApiError("boom 500", 500))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+    expect(mapWaterfallError(new Error("network 12"))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+  });
+
+  it("returns null when there is no error", () => {
+    expect(mapWaterfallError(null)).toBeNull();
+  });
+});
 
 describe("parseUsdInput", () => {
   it("parses a positive numeric string", () => {
@@ -80,6 +109,63 @@ describe("computeCouponPeriod", () => {
       maturity_date: "2026-03-31T00:00:00Z",
     };
     expect(computeCouponPeriod(epoch)).toEqual({ label: "—", days: null });
+  });
+});
+
+describe("computeScheduledCoupon", () => {
+  it("projects APY × outstanding senior × (days / 365)", () => {
+    // 10.0% p.a. × $1,840,000 × 88/365 = 44,361.64…
+    expect(computeScheduledCoupon(1000, 1_840_000, 88)).toBeCloseTo(
+      44_361.64,
+      2,
+    );
+    // 12.0% p.a. × $2,200,000 × 138/365 = 99,813.70… (the Figma mock's numbers).
+    expect(computeScheduledCoupon(1200, 2_200_000, 138)).toBeCloseTo(
+      99_813.7,
+      1,
+    );
+  });
+
+  it("returns null when the rate, outstanding senior, or period is unknown (never fabricates)", () => {
+    expect(computeScheduledCoupon(null, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(undefined, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(NaN, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(1000, null, 88)).toBeNull();
+    expect(computeScheduledCoupon(1000, 1_840_000, null)).toBeNull();
+  });
+});
+
+describe("hasCouponDue", () => {
+  const MATURITY = "2026-03-31T00:00:00Z";
+  const maturityMs = new Date(MATURITY).getTime();
+  const day = 86_400_000;
+
+  it("is true past due (on/after the epoch maturity)", () => {
+    expect(hasCouponDue(MATURITY, maturityMs)).toBe(true); // exactly at maturity
+    expect(hasCouponDue(MATURITY, maturityMs + 10 * day)).toBe(true);
+  });
+
+  it("is true when upcoming — within DUE_SOON_DAYS before maturity", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - 1 * day)).toBe(true);
+    expect(hasCouponDue(MATURITY, maturityMs - DUE_SOON_DAYS * day)).toBe(true);
+  });
+
+  it("is false when the payment is still far off (more than DUE_SOON_DAYS away)", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - (DUE_SOON_DAYS + 1) * day)).toBe(
+      false,
+    );
+    expect(hasCouponDue(MATURITY, maturityMs - 60 * day)).toBe(false);
+  });
+
+  it("honours a custom window", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - 20 * day, 30)).toBe(true);
+    expect(hasCouponDue(MATURITY, maturityMs - 20 * day, 7)).toBe(false);
+  });
+
+  it("is false when the maturity is missing or unparseable (never fabricated)", () => {
+    expect(hasCouponDue(null, maturityMs)).toBe(false);
+    expect(hasCouponDue(undefined, maturityMs)).toBe(false);
+    expect(hasCouponDue("not-a-date", maturityMs)).toBe(false);
   });
 });
 

@@ -21,10 +21,17 @@
  *     amount by 10^7 before calling the endpoint; `baseUnitsToUsd` divides
  *     backend response fields by 10^7 for display. The `recordPayment` payload
  *     uses backend raw fields unchanged.
- *   - `senior_outstanding` (`useLoanBook`) and `offtaker_outstanding`
+ *   - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding`
  *     (`useLoanFinancials`) are displayed **exactly as the backend serves
  *     them** — no client-side rescaling (issue #906; the former ×1000
  *     `scaleRegistryAmount` workaround has been removed).
+ *   - The left card's third row is **context-dependent** (`hasCouponDue`): a
+ *     simply-performing loan with no upcoming/past-due payment shows the
+ *     backend-served **"Offtaker still owed after coupon"** (`offtaker_
+ *     outstanding − entered`); otherwise it shows the **"Scheduled coupon"** —
+ *     a **client-side projection** (`current_apy_bps × senior_outstanding ×
+ *     (days / 365)`, `computeScheduledCoupon`; the backend serves no scheduled-
+ *     coupon figure), shown for reference only and never recorded on the ledger.
  *   - `Gross interest` is derived as `senior_coupon_net + management_fee +
  *     performance_fee` (summed in base units via `BigInt` — no float drift —
  *     then converted once to USD) — the interest before the fee carve-outs,
@@ -49,7 +56,8 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { formatFullUsd } from "@/utils/formatUsd";
+import { ApiError } from "@/api/client";
+import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   parsePositiveUsdInput,
@@ -99,6 +107,22 @@ function sumBaseUnits(values: (string | undefined)[]): string | null {
 /** `$X` (whole dollars, per `formatFullUsd`) for a USD number; `—` for `null`. */
 function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
+}
+
+/**
+ * Maps a `/waterfall` query error to friendly, user-facing copy — never the
+ * raw backend message, and no numbers (#916). The backend's extended waterfall
+ * validates the amount against the loan's terms and returns a client error
+ * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
+ * rate / outstanding); that maps to the "too high" line. Anything else gets a
+ * generic retry message.
+ */
+export function mapWaterfallError(error: Error | null): string | null {
+  if (error == null) return null;
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return "This amount is too high for this loan. Enter a smaller amount.";
+  }
+  return "Couldn't preview this payment. Please try again.";
 }
 
 /**
@@ -182,6 +206,52 @@ export function computeCouponPeriod(epoch: Epoch | null): {
 }
 
 /**
+ * The scheduled coupon for the current period — the interest the loan is
+ * expected to pay this coupon: `senior APY × outstanding senior × (days /
+ * 365)`. A **client-side projection** shown as a reference row only (the
+ * backend serves no scheduled-coupon figure, and this is never recorded on the
+ * ledger). `null` whenever the rate, outstanding senior, or period length is
+ * unknown — never fabricated.
+ */
+export function computeScheduledCoupon(
+  apyBps: number | null | undefined,
+  outstandingSeniorUsd: number | null,
+  days: number | null,
+): number | null {
+  if (
+    apyBps == null ||
+    !Number.isFinite(apyBps) ||
+    outstandingSeniorUsd == null ||
+    days == null
+  ) {
+    return null;
+  }
+  return (apyBps / 10_000) * outstandingSeniorUsd * (days / 365);
+}
+
+/** Days before an epoch's maturity within which its coupon counts as "upcoming". */
+export const DUE_SOON_DAYS = 7;
+
+/**
+ * Whether a coupon payment is currently relevant for this loan — **upcoming**
+ * (today is within `dueSoonDays` before the epoch's maturity) or **past due**
+ * (today is on/after maturity). Drives whether the left card's third row shows
+ * the "Scheduled coupon" line (a payment is due) rather than "Offtaker still
+ * owed after coupon" (nothing due yet). `false` when the maturity date is
+ * missing/unparseable — never fabricated. Pure — exported for unit testing.
+ */
+export function hasCouponDue(
+  maturityDate: string | null | undefined,
+  nowMs: number,
+  dueSoonDays: number = DUE_SOON_DAYS,
+): boolean {
+  if (maturityDate == null) return false;
+  const maturity = new Date(maturityDate);
+  if (Number.isNaN(maturity.getTime())) return false;
+  return nowMs >= maturity.getTime() - dueSoonDays * 86_400_000;
+}
+
+/**
  * Terminal-close detection (issue #882 explicit scope note) — see the module
  * doc comment. `false` whenever any input is unknown or the loan has no
  * outstanding senior on record.
@@ -224,11 +294,21 @@ export interface RecordCouponView {
   backLabel: string;
   couponPeriod: string;
   seniorOutstanding: string;
-  offtakerOwedAfter: string;
+  /**
+   * `true` when the left card's third row shows the **"Scheduled coupon"** line
+   * — a payment is due (upcoming/past due) OR the loan isn't cleanly performing.
+   * `false` shows **"Offtaker still owed after coupon"** (a simply-performing
+   * loan with nothing due).
+   */
+  showScheduledCoupon: boolean;
+  /** Third left-card row label — the scheduled-coupon line or "Offtaker still owed after coupon". */
+  thirdRowLabel: string;
+  /** Third left-card row value — the projected coupon (APY × outstanding × days/365) or the remaining offtaker owed. */
+  thirdRowValue: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Fixed to today (read-only) — the coupon is always recorded as of today (#916). */
   dateInput: string;
-  onDateChange: (value: string) => void;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -258,7 +338,8 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
-  const [dateInput, setDateInput] = useState(todayDateInput());
+  // Date is fixed to today and not editable (#916) — no calendar/date picker.
+  const dateInput = todayDateInput();
 
   // Debounce the amount that drives the waterfall query (the input field itself
   // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
@@ -295,12 +376,43 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   const offtakerOutstandingUsd = parseServedUsd(
     financials.data?.offtaker_outstanding,
   );
+  // Subtract the amount as it's typed (the LIVE input, not the debounced value
+  // that throttles the waterfall query) so "still owed after coupon" tracks the
+  // input in real time.
+  const enteredUsdLive = parseUsdInput(amountInput);
   const offtakerOwedAfterUsd =
     offtakerOutstandingUsd == null
       ? null
-      : Math.max(0, offtakerOutstandingUsd - (enteredUsd ?? 0));
+      : Math.max(0, offtakerOutstandingUsd - (enteredUsdLive ?? 0));
 
   const couponPeriod = computeCouponPeriod(financials.data?.epoch ?? null);
+
+  const apyBps = financials.data?.epoch?.current_apy_bps ?? null;
+  const scheduledCouponUsd = computeScheduledCoupon(
+    apyBps,
+    outstandingSeniorUsd,
+    couponPeriod.days,
+  );
+  const scheduledCouponLabel =
+    apyBps == null
+      ? "Scheduled coupon"
+      : `Scheduled coupon (${formatBpsRate(apyBps)} p.a.)`;
+
+  // Third left-card row: surface the "Scheduled coupon" when a payment is due
+  // (upcoming or past due) OR the loan isn't cleanly performing; a simply-
+  // performing loan with nothing due shows "Offtaker still owed after coupon".
+  const isPerforming = (entry?.status ?? null) === "Performing";
+  const couponDue = hasCouponDue(
+    financials.data?.epoch?.maturity_date,
+    Date.now(),
+  );
+  const showScheduledCoupon = couponDue || !isPerforming;
+  const thirdRowLabel = showScheduledCoupon
+    ? scheduledCouponLabel
+    : "Offtaker still owed after coupon";
+  const thirdRowValue = showScheduledCoupon
+    ? usdFull(scheduledCouponUsd)
+    : usdFull(offtakerOwedAfterUsd);
 
   const seniorPrincipalReturnedUsd = baseUnitsToUsd(
     waterfall.data?.senior_principal_returned,
@@ -352,7 +464,7 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
         {
           label: "Net senior coupon → vault",
           value: usdFull(netSeniorCouponUsd),
-          sub: "Minted to sPLUSD — lifts NAV",
+          sub: "Mints to sPLUSD once the on-ramp lands",
         },
       ]
     : [];
@@ -378,14 +490,15 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
       entry != null ? `‹ ${entry.originator} · ${entry.commodity}` : "‹ Loan",
     couponPeriod: couponPeriod.label,
     seniorOutstanding: usdFull(outstandingSeniorUsd),
-    offtakerOwedAfter: usdFull(offtakerOwedAfterUsd),
+    showScheduledCoupon,
+    thirdRowLabel,
+    thirdRowValue,
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
-    onDateChange: setDateInput,
     waterfall: {
       ready: waterfall.data != null,
-      errorMessage: waterfall.error?.message ?? null,
+      errorMessage: mapWaterfallError(waterfall.error),
       rows,
     },
     summaryText,
