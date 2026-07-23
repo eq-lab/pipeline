@@ -293,12 +293,13 @@ describe("Record Coupon route — ready state", () => {
     expect(left).toHaveTextContent("$2,000,000");
   });
 
-  it("renders the amount/date inputs, date defaulting to today", () => {
+  it("renders the amount input and a read-only date fixed to today (#916)", () => {
     renderRoute();
     expect(screen.getByTestId("record-coupon-amount")).toHaveValue(null);
     const dateInput = screen.getByTestId("record-coupon-date");
     const today = new Date().toISOString().slice(0, 10);
     expect(dateInput).toHaveValue(today);
+    expect(dateInput).toBeDisabled();
   });
 
   it("shows the 'enter an amount' placeholder before any amount is entered", () => {

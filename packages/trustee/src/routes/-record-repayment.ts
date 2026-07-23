@@ -249,8 +249,8 @@ export interface RecordRepaymentView {
   offtakerOwed: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Fixed to today (read-only) — the repayment is always recorded as of today (#916). */
   dateInput: string;
-  onDateChange: (value: string) => void;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -287,7 +287,8 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
-  const [dateInput, setDateInput] = useState(todayDateInput());
+  // Date is fixed to today and not editable (#916) — no calendar/date picker.
+  const dateInput = todayDateInput();
 
   // Debounce the amount that drives the waterfall query (the input field itself
   // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
@@ -449,7 +450,6 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
-    onDateChange: setDateInput,
     waterfall: {
       ready: waterfall.data != null,
       errorMessage: waterfall.error?.message ?? null,

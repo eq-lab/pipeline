@@ -253,6 +253,14 @@ describe("Record Repayment route — ready state", () => {
     expect(screen.queryByText(/Recorded ·/)).not.toBeInTheDocument();
   });
 
+  it("renders a read-only date fixed to today (#916)", () => {
+    renderRoute();
+    const dateInput = screen.getByTestId("record-repayment-date");
+    const today = new Date().toISOString().slice(0, 10);
+    expect(dateInput).toHaveValue(today);
+    expect(dateInput).toBeDisabled();
+  });
+
   it("renders the left card's commodity, final period, senior outstanding, and offtaker-owed rows", () => {
     renderRoute();
     const left = screen.getByTestId("record-repayment-left-card");

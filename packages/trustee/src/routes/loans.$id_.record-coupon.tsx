@@ -297,7 +297,7 @@ function RecordCoupon() {
               type="date"
               data-testid="record-coupon-date"
               value={view.dateInput}
-              onChange={(e) => view.onDateChange(e.target.value)}
+              disabled
               className={FIELD_CLASS}
             />
           </label>

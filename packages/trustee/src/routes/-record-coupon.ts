@@ -227,8 +227,8 @@ export interface RecordCouponView {
   offtakerOwedAfter: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Fixed to today (read-only) — the coupon is always recorded as of today (#916). */
   dateInput: string;
-  onDateChange: (value: string) => void;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -258,7 +258,8 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
-  const [dateInput, setDateInput] = useState(todayDateInput());
+  // Date is fixed to today and not editable (#916) — no calendar/date picker.
+  const dateInput = todayDateInput();
 
   // Debounce the amount that drives the waterfall query (the input field itself
   // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
@@ -382,7 +383,6 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
-    onDateChange: setDateInput,
     waterfall: {
       ready: waterfall.data != null,
       errorMessage: waterfall.error?.message ?? null,
