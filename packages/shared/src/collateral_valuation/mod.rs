@@ -26,7 +26,9 @@ use std::str::FromStr;
 
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive, Zero};
 
-use crate::collateral_valuation_repo::{AssayRow, CollateralValuationRow, OfftakeTermsRow, ValuationMode};
+use crate::collateral_valuation_repo::{
+    AssayRow, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
+};
 
 /// Grams per troy ounce — converts a grade in g/t over a tonnage into troy ounces
 /// (`grade_g_per_t * tonnes / 31.1035`). Precious-metal prices are quoted per troy oz.

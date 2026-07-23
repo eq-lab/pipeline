@@ -659,6 +659,28 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `StakedPipelineUSD` contract's actual `decimals_offset` (check `pipeline-stellar-contracts`
   deployment config or query `staked_pl_usd.decimals()` directly) before normalizing it.
 
+### TD-45: `loan_assays`/`loan_offtake_terms` still allow UPDATE/DELETE at the DB level
+
+- **Date:** 2026-07-22 (#914)
+- **Location:** `packages/shared/migrations/20260708000003_loan_assays.sql`,
+  `20260708000004_loan_offtake_terms.sql`.
+- **Gap:** Both tables are append-only **by application convention only** — #914's new
+  `CollateralValuationRepo::insert_assay`/`insert_offtake` only ever `INSERT`, never
+  `UPDATE`, and no route exposes an update/delete path. But the migrations' own
+  comments call out that "DB-level REVOKE of UPDATE/DELETE is deferred to a
+  follow-up migration" — that follow-up was never logged here and never landed.
+  Nothing at the database layer actually prevents a row from being altered or
+  removed outside the API (a manual `UPDATE`/`DELETE`, a future careless endpoint,
+  direct DB access).
+- **Impact:** The append-only audit guarantee the spec calls for — *"no silent edit
+  or hard delete, because document fraud is a primary loss driver in commodity
+  finance"* (`docs/product-specs/collateral-valuation.md:106`) — is enforced only by
+  convention, not by the database. A bug or a compromised DB credential could alter
+  or erase assay/offtake history undetected.
+- **Suggested fix:** A migration that `REVOKE UPDATE, DELETE ON loan_assays,
+  loan_offtake_terms FROM <api role>` (or similar), so the guarantee holds even if
+  application code regresses.
+
 ---
 
 ## Post-MVP

@@ -8,8 +8,10 @@
 //! - `loan_assays`             — append-only lab assays; the latest by `effective_at`
 //! - `loan_offtake_terms`      — append-only offtake terms; the latest by `effective_at`
 //!
-//! This repo is mostly **read-only**: besides `insert_pending` (called from the
-//! submission endpoint's transaction), it fetches the current inputs so a caller (the
+//! Besides `insert_pending` (called from the submission endpoint's transaction),
+//! `insert_assay`/`insert_offtake` (called from the Operations Console assay/offtake
+//! submission endpoints, `routes::collateral_valuation`) append new rows to the two
+//! append-only tables. Every other method fetches the current inputs so a caller (the
 //! API read, or the worker recompute) can assemble [`crate::collateral_valuation`]
 //! inputs and recompute collateral value / CCR on demand.
 //!
@@ -235,6 +237,89 @@ impl CollateralValuationRepo {
         Ok(())
     }
 
+    /// Append a new assay record for a loan. A new certificate is a new row — never
+    /// an update — so `latest_assay` (`ORDER BY effective_at DESC`) picks it up once
+    /// its `effective_at` is the newest. `recorded_by` is the audit trail; callers
+    /// must pass the authenticated operator identity, never a client-supplied value.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_assay(
+        &self,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+        assay_status: &str,
+        moisture_pct: Option<&BigDecimal>,
+        assays: &[AssayMetalJson],
+        deleterious: &[DeleteriousJson],
+        certificate_uri: Option<&str>,
+        effective_at: DateTime<Utc>,
+        recorded_by: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let (id,) = sqlx::query_as::<_, (i64,)>(
+            "INSERT INTO loan_assays \
+                (chain_id, loan_id, assay_status, moisture_pct, assays, deleterious, \
+                 certificate_uri, effective_at, recorded_by) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             RETURNING id",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .bind(assay_status)
+        .bind(moisture_pct)
+        .bind(Json(assays))
+        .bind(Json(deleterious))
+        .bind(certificate_uri)
+        .bind(effective_at)
+        .bind(recorded_by)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Append a new offtake-terms record for a loan. A new/amended offtake is a new
+    /// row — never an update — so `latest_offtake` picks up the newest by
+    /// `effective_at`. `recorded_by` is the audit trail; callers must pass the
+    /// authenticated operator identity, never a client-supplied value.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_offtake(
+        &self,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+        payable_terms: &[PayableTermJson],
+        treatment_charge_per_dmt: &BigDecimal,
+        refining_charges: &[RefiningChargeJson],
+        penalty_schedule: &[PenaltyTierJson],
+        realisation_costs: &BigDecimal,
+        quotational_period: Option<&str>,
+        pricing_reference: Option<&str>,
+        incoterm: Option<&str>,
+        effective_at: DateTime<Utc>,
+        recorded_by: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let (id,) = sqlx::query_as::<_, (i64,)>(
+            "INSERT INTO loan_offtake_terms \
+                (chain_id, loan_id, payable_terms, treatment_charge_per_dmt, \
+                 refining_charges, penalty_schedule, realisation_costs, quotational_period, \
+                 pricing_reference, incoterm, effective_at, recorded_by) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
+             RETURNING id",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .bind(Json(payable_terms))
+        .bind(treatment_charge_per_dmt)
+        .bind(Json(refining_charges))
+        .bind(Json(penalty_schedule))
+        .bind(realisation_costs)
+        .bind(quotational_period)
+        .bind(pricing_reference)
+        .bind(incoterm)
+        .bind(effective_at)
+        .bind(recorded_by)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
     /// The valuation anchor for a loan, or `None` if the loan has no anchor yet.
     pub async fn get_anchor(
         &self,
@@ -356,5 +441,4 @@ impl CollateralValuationRepo {
         .fetch_all(&self.pool)
         .await
     }
-
 }
