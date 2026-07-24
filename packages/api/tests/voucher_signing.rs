@@ -83,8 +83,11 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
         collateral_valuation_repo: shared::collateral_valuation_repo::CollateralValuationRepo::new(
             pool.clone(),
         ),
-        loan_disbursement_repo: shared::loan_disbursement_repo::LoanDisbursementRepo::new(pool),
+        loan_disbursement_repo: shared::loan_disbursement_repo::LoanDisbursementRepo::new(
+            pool.clone(),
+        ),
         jwt_keys: None,
+        bank_transaction_repo: shared::bank_transaction_repo::BankTransactionRepo::new(pool),
     }
 }
 

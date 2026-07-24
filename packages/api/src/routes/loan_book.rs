@@ -28,16 +28,11 @@ use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
-use crate::auth::{AuthClaims, SecurityAddon};
+use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::AppState;
-
-/// Role required to submit loan data via `POST /v1/loan-book/loan`.
-const ORIGINATOR_ROLE: &str = "originator";
-/// Role required to list and review submissions (trustee-only endpoints).
-const TRUSTEE_ROLE: &str = "trustee";
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
 /// initial CCR must be at least 100 % (`>= ONE`), mirroring `draw_loan`.
 const CCR_ONE: u32 = 1_000_000;
