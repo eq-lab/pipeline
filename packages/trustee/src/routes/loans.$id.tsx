@@ -1364,6 +1364,12 @@ function LoanDetail() {
     if (label === "Update lifecycle") {
       updateLifecycle.reset();
       setUpdateOpen(true);
+    } else if (label === "Roll over") {
+      // Opens the same wired RolloverDialog as the Matured variant's rollover
+      // widget (#923) — the "Roll over" other-action was previously unhandled,
+      // so clicking it in the actions card did nothing.
+      rolloverMutation.reset();
+      setRolloverOpen(true);
     } else if (label === "Record coupon") {
       // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
       // so this navigates rather than opening a dialog like the other actions.

@@ -13,7 +13,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
-import { PERFORMING_OTHER_ACTIONS } from "./-loanDetailStatic";
+import {
+  MATURED_OTHER_ACTIONS,
+  PERFORMING_OTHER_ACTIONS,
+} from "./-loanDetailStatic";
 
 const mockNavigate = vi.fn();
 vi.mock("@tanstack/react-router", async () => {
@@ -461,6 +464,7 @@ describe("Loan detail route — Matured variant (#866)", () => {
         body: "now ≥ currentMaturityDate and status is not Default or Closed — the instant post-maturity rollover from your key is available.",
         actionLabel: "Roll over →",
       },
+      otherActions: MATURED_OTHER_ACTIONS,
     });
   }
 
@@ -504,6 +508,17 @@ describe("Loan detail route — Matured variant (#866)", () => {
     fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
     const dialog = screen.getByTestId("rollover-dialog");
     expect(dialog).toBeInTheDocument();
+  });
+
+  it("opens the rollover modal from the 'Roll over' Other-actions button too — not only the rollover widget (#923)", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    expect(screen.queryByTestId("rollover-dialog")).not.toBeInTheDocument();
+    // Click the "Roll over" entry in the Other actions card at the bottom of
+    // the page (distinct from the rollover widget's "Roll over →" button).
+    const actions = screen.getByTestId("loan-detail-other-actions");
+    fireEvent.click(within(actions).getByRole("button", { name: "Roll over" }));
+    expect(screen.getByTestId("rollover-dialog")).toBeInTheDocument();
     // Guard banner shows the matured date; submit is disabled until the form is filled.
     expect(screen.getByTestId("rollover-guard")).toHaveTextContent(
       "matured 15 Jun 2026",
