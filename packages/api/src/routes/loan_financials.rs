@@ -258,7 +258,11 @@ fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
         number,
         current_apy_bps: current.rate_bps,
         start_date: iso_utc_from_unix(current.start),
-        maturity_date: iso_utc_from_unix(current.maturity),
+        // Not `current.maturity`: this endpoint always evaluates "now" (no backdating),
+        // so the snapshot's block-pinned, rollover-aware on-chain read is authoritative —
+        // unlike the folded event param, it can't fall back to a defensive `0` (see
+        // `ContractLogsRepo::list_loan_economics_events`).
+        maturity_date: iso_utc_from_unix(s.current_maturity_timestamp),
     }
 }
 

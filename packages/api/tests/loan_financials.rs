@@ -189,6 +189,9 @@ fn epoch_folds_rollover_then_amendment() {
         econ_event("LoanRolledOver", 150_000, jul1),
         econ_event("EconomicsAmended", 160_000, jul2),
     ];
+    // `maturity_date` is sourced from the snapshot's on-chain read, not the folded
+    // event params — set it to what the amendment above actually produced on-chain.
+    snap.current_maturity_timestamp = jul2;
 
     let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
     // Rollover advanced the ordinal; the amendment did not.
@@ -199,6 +202,35 @@ fn epoch_folds_rollover_then_amendment() {
     assert_eq!(resp.epoch.start_date, "2026-04-01T00:00:00Z");
     // Amendment overwrote the maturity → jul1 + 1 day.
     assert_eq!(resp.epoch.maturity_date, "2026-07-02T00:00:00Z");
+}
+
+#[test]
+fn epoch_maturity_date_uses_snapshot_not_malformed_event_param() {
+    // A `LoanRolledOver` event with a missing/malformed `new_maturity_timestamp`
+    // decodes to `0` (see `ContractLogsRepo::list_loan_economics_events`'s
+    // `COALESCE(..., 0)` guard) — the folded epoch's `.maturity` would be `0`.
+    // The snapshot's block-pinned `current_maturity_timestamp` is the authoritative
+    // on-chain read and must be what the response reports, regardless.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
+    let jul1 = 1_782_864_000; // 2026-07-01T00:00:00Z
+    snap.origination_date = jan1;
+    snap.original_maturity_date = jul1;
+    snap.senior_interest_rate_bps = 1_000;
+    snap.current_maturity_timestamp = jul1 + 86_400; // real on-chain value
+
+    let events = [econ_event("LoanRolledOver", 150_000, 0)];
+
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
+    assert_eq!(resp.epoch.maturity_date, "2026-07-02T00:00:00Z");
+    assert_ne!(resp.epoch.maturity_date, "1970-01-01T00:00:00Z");
 }
 
 #[test]
@@ -252,6 +284,9 @@ fn epoch_amendment_without_rollover_keeps_ordinal() {
     snap.origination_date = jan1;
     snap.original_maturity_date = apr1;
     snap.senior_interest_rate_bps = 800;
+    // `maturity_date` is sourced from the snapshot's on-chain read, not the folded
+    // event params — set it to what the amendment above actually produced on-chain.
+    snap.current_maturity_timestamp = may1;
 
     let events = [econ_event("EconomicsAmended", 95_000, may1)];
 
