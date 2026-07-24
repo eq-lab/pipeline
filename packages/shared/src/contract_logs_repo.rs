@@ -121,6 +121,11 @@ pub struct EconomicsEventRow {
     pub new_rate: i64,
     /// New maturity timestamp (Unix seconds).
     pub new_maturity_timestamp: i64,
+    /// The event's own on-chain block timestamp (Unix seconds) — lets a caller look
+    /// up the loan's on-chain snapshot immediately before this event fired (via
+    /// `ContractLogsRepo::get_loan_snapshot_as_of`), independent of this row's own
+    /// (possibly `COALESCE`-defaulted) `new_maturity_timestamp`/`new_rate` params.
+    pub block_timestamp: i64,
 }
 
 pub struct ContractLogsRepo {
@@ -710,7 +715,8 @@ impl ContractLogsRepo {
                  event_name,
                  COALESCE((params->>'new_rate')::numeric, 0)::bigint AS new_rate,
                  COALESCE((params->>'new_maturity_timestamp')::numeric, 0)::bigint
-                     AS new_maturity_timestamp
+                     AS new_maturity_timestamp,
+                 block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
                AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
