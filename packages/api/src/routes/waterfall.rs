@@ -418,8 +418,7 @@ pub fn compute_waterfall(
     let target_total_interest =
         &target_senior_coupon_net + &target_management_fee + &target_performance_fee;
     let interest_payment = target_total_interest.clone().min(remaining.clone());
-    let (senior_coupon_net, management_fee, performance_fee) = if target_total_interest.is_zero()
-    {
+    let (senior_coupon_net, management_fee, performance_fee) = if target_total_interest.is_zero() {
         (BigDecimal::zero(), BigDecimal::zero(), BigDecimal::zero())
     } else {
         (
@@ -441,7 +440,8 @@ pub fn compute_waterfall(
     // 3's rejection already bounds this from absorbing an implausible, unvalidated figure.
     let equity_distributed = trunc(&remaining);
 
-    let senior_principal_fully_repaid = &outstanding - &senior_principal_returned <= BigDecimal::zero();
+    let senior_principal_fully_repaid =
+        &outstanding - &senior_principal_returned <= BigDecimal::zero();
     let offtaker_fully_received = &outstanding_offtaker - amount <= BigDecimal::zero();
 
     Ok(WaterfallBreakdown {

@@ -6,6 +6,7 @@ use pipeline_api::auth::JwtKeys;
 use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig};
 use pipeline_api::AppState;
 use shared::auth_user_repo::AuthUserRepo;
+use shared::bank_transaction_repo::BankTransactionRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
@@ -55,6 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
+    let bank_transaction_repo = BankTransactionRepo::new(pool.clone());
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
     // attempt (no retry backoff) — this is a synchronous write path, so a dead URI
@@ -123,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
         collateral_valuation_repo,
         loan_disbursement_repo,
         jwt_keys,
+        bank_transaction_repo,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
@@ -142,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::loan_financials::LoanFinancialsDoc::openapi());
     api_docs.merge(pipeline_api::routes::ccr_history::CcrHistoryDoc::openapi());
     api_docs.merge(pipeline_api::routes::waterfall::WaterfallDoc::openapi());
+    api_docs.merge(pipeline_api::routes::bank_transactions::BankTransactionsDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -161,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::loan_financials::router())
         .nest("/v1", pipeline_api::routes::ccr_history::router())
         .nest("/v1", pipeline_api::routes::waterfall::router())
+        .nest("/v1", pipeline_api::routes::bank_transactions::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

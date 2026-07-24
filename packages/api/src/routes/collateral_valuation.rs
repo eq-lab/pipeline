@@ -29,7 +29,7 @@ use shared::collateral_valuation_repo::{
     PayableTermJson, PenaltyTierJson, RefiningChargeJson, ValuationMode,
 };
 
-use crate::auth::{AuthClaims, SecurityAddon};
+use crate::auth::{AuthClaims, SecurityAddon, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::AppState;
@@ -38,13 +38,6 @@ use crate::AppState;
 /// collateral value is computed in plain USD, so the senior principal is divided
 /// by this before the CCR ratio.
 const USDC_SCALE: i64 = 1_000_000;
-
-/// Role required to submit an assay or offtake-terms record. The spec (see
-/// `docs/product-specs/collateral-valuation.md` §"Per-loan valuation record") says
-/// "the Team and Trustee enter... the human inputs" — but this codebase has no
-/// separate `team`/`operations` role yet (only `originator` and `trustee`, defined
-/// in `routes::loan_book`), so both endpoints are trustee-only for now.
-const TRUSTEE_ROLE: &str = "trustee";
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 

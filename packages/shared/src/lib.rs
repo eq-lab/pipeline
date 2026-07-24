@@ -1,4 +1,5 @@
 pub mod auth_user_repo;
+pub mod bank_transaction_repo;
 pub mod bitgo;
 pub mod chains;
 pub mod collateral_valuation;

@@ -83,7 +83,7 @@ Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)
 - USDC balance (units and USD value).
 - USYC holding (units and current USD value at issuer's published NAV), shown as a separate line.
 - USDC deployed on active loans (from the trustee feed).
-- USDC in transit (on-ramp leg in either direction). `GET /v1/capital-allocation` `in_transit` = net custody→ramp flow of the tracked asset over indexed `AssetTransfer` events (`Σ(custody→ramp) − Σ(ramp→custody)`, 6-decimal-normalized, clamped at 0); `null` unless custody/ramp sets are configured. Approximation — see route module docs.
+- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation`: `in_transit` = net custody→ramp flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, 6-decimal-normalized, clamped at 0, `null` unless custody/ramp sets are configured); `trust_account` = `sum(deposits) − sum(withdrawals) − sum(fees)` over a manually-entered ledger (`POST /v1/bank-transactions`, trustee-only, append-only, global not per-chain, not clamped — see route module docs).
 
 **Liquidity ratio**
 - Current USDC ratio vs 15% target, with upper band (20%) and lower band (10%) indicators.

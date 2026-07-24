@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use alloy::signers::local::PrivateKeySigner;
 use shared::auth_user_repo::AuthUserRepo;
+use shared::bank_transaction_repo::BankTransactionRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
@@ -70,4 +71,7 @@ pub struct AppState {
     pub loan_disbursement_repo: LoanDisbursementRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
+    /// Manually-entered bank-account ledger (`bank_transactions`), backing
+    /// `capital-allocation`'s `trust_account` bucket. Global, not chain-scoped.
+    pub bank_transaction_repo: BankTransactionRepo,
 }
