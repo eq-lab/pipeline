@@ -109,6 +109,7 @@ fn econ_event(name: &str, new_rate: i64, new_maturity: i64) -> EconomicsEventRow
         event_name: name.to_owned(),
         new_rate,
         new_maturity_timestamp: new_maturity,
+        block_timestamp: 0,
     }
 }
 
