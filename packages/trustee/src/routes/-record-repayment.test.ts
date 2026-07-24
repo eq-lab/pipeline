@@ -8,15 +8,41 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Epoch } from "@/api/useLoanFinancials";
+import { ApiError } from "@/api/client";
 import {
   buildRepaymentInput,
   closureReason,
   computeFinalPeriod,
   isTerminalRepayment,
+  mapWaterfallError,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
 } from "./-record-repayment";
+
+describe("mapWaterfallError", () => {
+  it("maps a client error (4xx, e.g. 404) to the friendly 'amount too big' copy (#916)", () => {
+    const msg = mapWaterfallError(new ApiError("amount 999 exceeds 15", 404));
+    expect(msg).toBe(
+      "This amount is too high for this loan. Enter a smaller amount.",
+    );
+    // Never the raw backend text, and no digits.
+    expect(msg).not.toMatch(/\d/);
+  });
+
+  it("uses a generic friendly message for server/other errors — never the backend text", () => {
+    expect(mapWaterfallError(new ApiError("boom 500", 500))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+    expect(mapWaterfallError(new Error("network 12"))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+  });
+
+  it("returns null when there is no error", () => {
+    expect(mapWaterfallError(null)).toBeNull();
+  });
+});
 
 describe("parseUsdInput", () => {
   it("parses a positive numeric string", () => {
@@ -29,21 +55,25 @@ describe("parseUsdInput", () => {
     expect(parseUsdInput("0")).toBeNull();
     expect(parseUsdInput("-100")).toBeNull();
     expect(parseUsdInput("abc")).toBeNull();
+    expect(parseUsdInput("1.2.3")).toBeNull();
   });
 });
 
 describe("usdToBaseUnits", () => {
-  it("sends the entered USD amount as-is (backend handles USDC decimals)", () => {
-    expect(usdToBaseUnits(6150000)).toBe("6150000");
+  it("converts entered USD to 7-decimal SAC base units", () => {
+    expect(usdToBaseUnits("6150000")).toBe("61500000000000");
+    expect(usdToBaseUnits("123.45678")).toBe("1234567800");
   });
 
-  it("rounds to a whole-dollar integer string", () => {
-    expect(usdToBaseUnits(2.4)).toBe("2");
-    expect(usdToBaseUnits(2.6)).toBe("3");
+  it("truncates beyond the SAC decimal precision", () => {
+    expect(usdToBaseUnits("1.12345678")).toBe("11234567");
   });
 
   it('returns "0" for null (keeps the waterfall query disabled)', () => {
     expect(usdToBaseUnits(null)).toBe("0");
+    expect(usdToBaseUnits("")).toBe("0");
+    expect(usdToBaseUnits("-1")).toBe("0");
+    expect(usdToBaseUnits("1.2.3")).toBe("0");
   });
 });
 
@@ -54,7 +84,7 @@ describe("todayDateInput", () => {
 });
 
 describe("computeFinalPeriod", () => {
-  it('formats the period as "<start> → <maturity> · <days> days"', () => {
+  it('formats the period as "<start year> → <maturity year> · <days> days"', () => {
     const epoch: Epoch = {
       number: 1,
       current_apy_bps: 1000,
@@ -63,7 +93,7 @@ describe("computeFinalPeriod", () => {
     };
     const result = computeFinalPeriod(epoch);
     expect(result.days).toBe(85);
-    expect(result.label).toBe("31 Mar → 24 Jun · 85 days");
+    expect(result.label).toBe("31 Mar 2026 → 24 Jun 2026 · 85 days");
   });
 
   it('returns "—" / null days when no epoch is on record', () => {
@@ -125,27 +155,27 @@ describe("closureReason (issue #884)", () => {
 });
 
 describe("buildRepaymentInput (issue #884 — REAL principal, unlike #882)", () => {
-  // Backend-scaled as-is (dollar integers). senior_principal_returned is the
+  // Backend raw 7-decimal SAC units. senior_principal_returned is the
   // REAL waterfall figure here (unlike #882's interest-only override to "0").
   const WATERFALL = {
-    senior_principal_returned: "4800000", // $4,800,000
-    senior_coupon_net: "115500", // $115,500
-    management_fee: "12000", // $12,000
-    performance_fee: "15000", // $15,000
-    oet_allocation: "7500", // $7,500
+    senior_principal_returned: "48000000000000", // $4,800,000
+    senior_coupon_net: "1155000000000", // $115,500
+    management_fee: "120000000000", // $12,000
+    performance_fee: "150000000000", // $15,000
+    oet_allocation: "75000000000", // $7,500
   };
 
   it("carries the real senior_principal_returned into senior_principal_repaid + equity as the residual (sums to offtaker)", () => {
     // Offtaker $4,950,000; principal+interest+fees sum to it → equity = 0.
-    const input = buildRepaymentInput("4950000", WATERFALL);
+    const input = buildRepaymentInput("49500000000000", WATERFALL);
     expect(input).toEqual({
-      offtaker_received: "4950000",
-      senior_principal_repaid: "4800000",
-      senior_interest: "115500",
+      offtaker_received: "49500000000000",
+      senior_principal_repaid: "48000000000000",
+      senior_interest: "1155000000000",
       equity_distributed: "0",
-      mgmt_fee: "12000",
-      perf_fee: "15000",
-      oet_alloc: "7500",
+      mgmt_fee: "120000000000",
+      perf_fee: "150000000000",
+      oet_alloc: "75000000000",
     });
     // The six components sum exactly to offtaker_received.
     const six =
@@ -160,17 +190,17 @@ describe("buildRepaymentInput (issue #884 — REAL principal, unlike #882)", () 
 
   it("routes the leftover to equity (originator residual) when the offtaker amount exceeds principal+interest+fees", () => {
     // Offtaker $6,150,000; principal+interest+fees $4,950,000 → equity = $1,200,000.
-    const input = buildRepaymentInput("6150000", WATERFALL);
-    expect(input!.equity_distributed).toBe("1200000");
+    const input = buildRepaymentInput("61500000000000", WATERFALL);
+    expect(input!.equity_distributed).toBe("12000000000000");
   });
 
   it("clamps equity at 0 (never negative) when principal+interest+fees exceed the amount", () => {
-    const input = buildRepaymentInput("4000000", WATERFALL);
+    const input = buildRepaymentInput("40000000000000", WATERFALL);
     expect(input!.equity_distributed).toBe("0");
   });
 
   it("returns null before an amount/preview is available", () => {
     expect(buildRepaymentInput("0", WATERFALL)).toBeNull();
-    expect(buildRepaymentInput("6150000", undefined)).toBeNull();
+    expect(buildRepaymentInput("61500000000000", undefined)).toBeNull();
   });
 });

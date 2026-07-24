@@ -58,68 +58,6 @@ export function formatCompactUsd(
   })}`;
 }
 
-// ── scaleRegistryAmount ───────────────────────────────────────────────────────
-
-/**
- * ⚠️ #840 PERMANENT WORKAROUND — #840 is CLOSED won't-fix ("no backend scale
- * change planned"), so this ×1000 correction is durable, client-side
- * behaviour, not a stopgap awaiting a backend fix.
- *
- * The Stellar loan-registry stores economics amounts at **1e3 scale** (a
- * `$1.2M` facility is `1_200_000_000` on-chain — see the `draw_loan` encoding,
- * issue #831). Several backend surfaces read those back and serve them as if
- * they were plain 6-decimal USDC, so they arrive **1000× too small**
- * (`"1200.000000"` instead of `"1200000.000000"`). Confirmed (#841) on:
- *   - loan-book `principal` / `total_deployed`
- *   - `GET /v1/financial-position` → `assets.deployed.secured_loans_outstanding`
- *   - `GET /v1/dashboard/summary` → `outstanding_in_loans`
- * — and, per a live-payload audit (issue #888), on loan-book `collateral` /
- * `total_collateral` too: the original assumption that these came from the
- * price feed (#706) at correct scale was FALSE — they are registry-sourced
- * and 1000× too small on the same basis as `principal`.
- *
- * This is the shared ×1000 core: scale the raw base-6 decimal string **at the
- * source**, before it is formatted, summed into a total, or used in a ratio —
- * so every downstream consumer (display string, aggregation, progress-bar
- * ratio) sees a consistent, already-correct value.
- *
- * Apply to registry-economics amounts, INCLUDING `collateral` /
- * `total_collateral` (issue #888 — do NOT skip these). Do NOT apply to `ltv`
- * (both operands are registry-sourced 1000×-low amounts, so the ×1000
- * cancels out of the ratio — served already correct) or `tvl` /
- * `accrued_interest_receivable` (already correct scale, not registry-derived).
- *
- * @returns the scaled base-6 decimal string, or `null` for null/undefined/
- *   non-finite input (passthrough — callers decide how to render "missing").
- */
-export function scaleRegistryAmount(
-  base6Decimal: string | null | undefined,
-): string | null {
-  if (base6Decimal == null) return null;
-  const num = parseFloat(base6Decimal);
-  if (!Number.isFinite(num)) return null;
-  return (num * 1000).toFixed(6);
-}
-
-// ── formatRegistryCompactUsd ──────────────────────────────────────────────────
-
-/**
- * ⚠️ #840 permanent workaround (won't-fix — see `scaleRegistryAmount`'s doc
- * comment).
- *
- * Compact-formats a registry-sourced amount after applying the ×1000
- * `scaleRegistryAmount` correction. See that function's doc comment for the
- * full rationale.
- *
- * Apply to registry-economics amounts (`principal`, `total_deployed`,
- * `collateral`, `total_collateral` — issue #888).
- */
-export function formatRegistryCompactUsd(
-  base6Decimal: string | null | undefined,
-): string {
-  return formatCompactUsd(scaleRegistryAmount(base6Decimal) ?? undefined);
-}
-
 // ── formatOneDecimalRate ──────────────────────────────────────────────────────
 
 /**
@@ -185,6 +123,42 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
     maximumFractionDigits: 0,
   }).format(num);
   return `$${formatted}`;
+}
+
+// ── economicsBaseUnitsToUsdDecimal ───────────────────────────────────────────
+
+/**
+ * Converts one of the `/v1/loan-book/submissions` `loan_data.economics`
+ * monetary fields (`original_facility_size` / `original_senior_tranche` /
+ * `original_equity_tranche` / `original_offtaker_price`) from the on-chain
+ * 7-decimal base-unit scale to a USD decimal string suitable for
+ * `formatCompactUsd`/`formatFullUsd` (issue #912). These fields are served at
+ * base-unit scale (e.g. `"8000000000.000000"` = 8,000,000,000 base units =
+ * $800.00) — NOT human-unit dollars.
+ *
+ * BigInt-safe end to end: values can exceed `2^53`, so this never runs
+ * `Number`/`parseFloat` over the raw base-unit string. The fractional suffix
+ * (always `.000000` for base units) is stripped before the ÷10^7 shift, which
+ * is done by re-inserting the decimal point 7 digits from the right — no
+ * arithmetic division needed.
+ *
+ * Returns `null` for anything not a well-formed non-negative decimal string.
+ *
+ * - `"8000000000.000000"`  (8e9 base units) → `"800.0000000"` ($800.00)
+ * - `"10000000000.000000"` (1e10 base units) → `"1000.0000000"` ($1,000.00)
+ */
+export function economicsBaseUnitsToUsdDecimal(
+  raw: string | null | undefined,
+): string | null {
+  if (raw == null) return null;
+  const intPart = /^(\d+)/.exec(raw.trim())?.[1];
+  if (intPart == null) return null;
+
+  const decimals = 7;
+  const padded = intPart.padStart(decimals + 1, "0");
+  const whole = padded.slice(0, -decimals).replace(/^0+(?=\d)/, "");
+  const frac = padded.slice(-decimals);
+  return `${whole}.${frac}`;
 }
 
 // ── formatLtv ────────────────────────────────────────────────────────────────

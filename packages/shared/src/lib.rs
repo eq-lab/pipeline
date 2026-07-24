@@ -1,4 +1,5 @@
 pub mod auth_user_repo;
+pub mod bank_transaction_repo;
 pub mod bitgo;
 pub mod chains;
 pub mod collateral_valuation;
@@ -14,8 +15,9 @@ pub mod json_numeric;
 pub mod kyc_repo;
 pub mod loan_asset_price_repo;
 pub mod loan_disbursement_repo;
+pub mod loan_economics;
+pub mod loan_fee_schedule_repo;
 pub mod loan_metadata;
-pub mod loan_parameters_repo;
 pub mod loan_snapshot;
 pub mod log_mapper;
 pub mod metadata_fetcher;

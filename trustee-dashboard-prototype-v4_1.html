@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline — Trustee Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Besley:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#000080; --navy-deep:#000066; --paper:#F8F7F6; --card:#ffffff;
+  --line:rgba(56,55,53,.18);
+  --ink:#262524; --ink-soft:rgba(56,55,53,.6); --label:rgba(56,55,53,.6); --title-ghost:rgba(56,55,53,.3);
+  --green:#208000; --green-soft:rgba(32,128,0,.08); --green-line:rgba(32,128,0,.3);
+  --red:#B20000; --red-soft:rgba(178,0,0,.07);
+  --amber:#6e6400; --amber-bg:rgba(211,235,117,.16); --amber-line:rgba(56,55,53,.18);
+  --fill-soft:rgba(191,189,187,.12); --fill-mid:rgba(191,189,187,.24);
+  --dark-btn:#000080;
+  --serif:'Besley', Georgia, 'Times New Roman', serif;
+  --sans:'Inter', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --r:4px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.4;-webkit-font-smoothing:antialiased}
+button{font-family:var(--sans);cursor:pointer}
+input,select{font-family:var(--sans)}
+
+/* ---------- layout ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{width:320px;min-width:320px;background:var(--navy);color:#fff;display:flex;flex-direction:column;padding:24px 16px;position:sticky;top:0;height:100vh}
+.logo{padding:0 0 26px}
+.logo svg{width:116px;height:32px;display:block}
+.nav-sec{border-top:1px solid rgba(235,233,230,.25);margin:12px 0;padding-top:12px}
+.nav-item{display:flex;align-items:center;gap:14px;width:100%;background:transparent;border:0;color:#fff;font-size:16px;font-weight:400;padding:0 16px;height:56px;border-radius:var(--r);text-align:left;transition:background .12s}
+.nav-item:hover{background:rgba(255,255,255,.08)}
+.nav-item.active{background:#fff;color:var(--navy);font-weight:400}
+.nav-item .nico{width:20px;height:20px;flex:none;display:flex;align-items:center;justify-content:center}
+.nav-item .nico svg{width:20px;height:20px;fill:currentColor}
+.nav-item .badge{margin-left:auto;background:var(--fill-mid);border-radius:var(--r);font-size:12px;font-weight:400;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;padding:2px 4px;color:#fff}
+.nav-item.active .badge{background:var(--fill-mid);color:var(--ink-soft)}
+.sidebar .spacer{flex:1}
+.who{display:flex;align-items:center;gap:12px;padding:10px 8px;border-top:1px solid rgba(235,233,230,.25)}
+.who .avatar{width:28px;height:28px;border-radius:50%;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center}
+.who .avatar svg{width:15px;height:15px;fill:#fff}
+.who b{display:block;font-size:16px;font-weight:400}
+.who span{font-size:12px;color:rgba(235,233,230,.7)}
+
+.main{flex:1;min-width:0;padding:40px 56px 80px}
+.content{max-width:1100px;margin:0 auto}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:30px}
+.page-title{font-family:var(--serif);font-weight:400;font-size:64px;line-height:1;color:var(--title-ghost)}
+.page-time{color:var(--ink-soft);font-size:16px;padding-top:22px;white-space:nowrap}
+.crumb{font-family:var(--serif);font-size:18px;color:var(--label);margin-bottom:8px}
+.crumb a{color:var(--ink);text-decoration:none;cursor:pointer}
+.crumb a:hover{text-decoration:underline}
+.detail-title{font-family:var(--serif);font-weight:400;font-size:44px;line-height:1.1;color:var(--ink);margin-bottom:12px}
+
+/* ---------- cards & type ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r)}
+.card.pad{padding:24px 26px}
+.panel{background:var(--card);border-radius:var(--r);padding:32px 32px}
+.eyebrow{font-size:12px;font-weight:400;letter-spacing:.08em;text-transform:uppercase;color:var(--label)}
+.card-title{font-family:var(--serif);font-weight:400;font-size:28px;line-height:1.28;margin-bottom:6px}
+.big-serif{font-family:var(--serif);font-weight:400}
+.muted{color:var(--ink-soft)} .lbl{color:var(--label)}
+.row-line{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row-line:last-child{border-bottom:0}
+.row-line .k{color:var(--label);font-size:15px}
+.row-line .v{font-weight:400;text-align:right}
+
+/* chips / tags */
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:400;border-radius:var(--r);padding:2px 6px;border:1px solid transparent;color:var(--ink-soft);background:var(--fill-soft)}
+.chip.green{color:var(--green);background:var(--green-soft);border-color:var(--green-line)}
+.chip.amber{color:var(--amber);background:var(--amber-bg);border-color:var(--amber-line)}
+.chip.red{color:var(--red);background:var(--red-soft);border-color:rgba(178,0,0,.3)}
+.chip.navy{color:var(--navy);background:rgba(0,0,128,.06);border-color:rgba(0,0,128,.25)}
+.typetag{display:none}
+.chiprow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:24px}
+
+/* buttons */
+.btn{border:0;border-radius:var(--r);font-weight:400;font-size:16px;padding:0 16px;height:40px;transition:filter .12s, transform .05s}
+.btn:active{transform:translateY(1px)}
+.btn-navy{background:var(--navy);color:#fff}
+.btn-dark{background:var(--navy);color:#fff}
+.btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn:hover{filter:brightness(1.25)}
+.btn-ghost:hover{filter:none;background:var(--fill-soft)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn-lg{font-size:16px;height:48px;padding:0 28px}
+.btn-sm{height:36px;padding:0 12px;font-size:15px}
+
+/* alerts */
+.alert{display:flex;align-items:center;justify-content:space-between;gap:14px;border-radius:var(--r);padding:14px 18px;font-size:16px}
+.alert.amber{background:var(--amber-bg);border:1px solid var(--line);color:var(--ink)}
+.alert.green{background:var(--green-soft);border:1px solid var(--green-line);color:var(--green)}
+.alert.info{background:var(--fill-soft);border:1px solid var(--line);color:var(--ink)}
+.note-green{border-left:2px solid var(--green);background:var(--green-soft);color:var(--green);border-radius:0 var(--r) var(--r) 0;padding:10px 14px;font-size:14px}
+
+/* stat tiles */
+.tiles{display:grid;gap:14px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.tile.dashed{border-style:dashed;background:#fdfdfc}
+.tile h4{font-family:var(--serif);font-weight:400;font-size:20px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.tile .num{font-family:var(--serif);font-size:34px;font-weight:400}
+.tile .num.red{color:var(--red)} .tile .num.green{color:var(--green)}
+.tile .sub{color:var(--ink-soft);font-size:13px;margin-top:6px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.dot.g{background:var(--green)} .dot.a{background:#c9a200} .dot.n{background:var(--navy)} .dot.r{background:var(--red)} .dot.grey{background:rgba(56,55,53,.3)}
+
+/* tables */
+table.tbl{width:100%;border-collapse:collapse}
+.tbl thead th{font-size:14px;font-weight:400;color:var(--label);text-align:left;padding:0 16px 12px}
+.tbl tbody{background:#fff}
+.tbl tbody td{padding:20px 16px;border-top:1px solid var(--line);font-size:16px}
+.tbl .strong{font-weight:600}
+.tbl tr.click{cursor:pointer}
+.tbl tr.click:hover td{background:var(--fill-soft)}
+.tblwrap{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.risknum.ok{color:var(--green);font-weight:600}.risknum.bad{color:var(--red);font-weight:600}
+
+/* tabs */
+.tabs{display:inline-flex;background:var(--fill-soft);border:1px solid var(--line);border-radius:var(--r);padding:3px;gap:2px;margin-bottom:30px}
+.tab{border:0;background:transparent;border-radius:var(--r);font-size:16px;font-weight:400;color:var(--ink-soft);padding:9px 16px;display:flex;gap:8px;align-items:center}
+.tab .cnt{font-weight:400;color:var(--label);font-size:14px}
+.tab.active{background:#fff;color:var(--ink)}
+
+/* attention rows */
+.attn{display:flex;align-items:center;gap:16px;background:var(--amber-bg);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-height:72px;margin-bottom:12px}
+.attn .aico{width:36px;height:36px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.attn .aico svg{width:18px;height:18px;fill:#fff}
+.attn b{font-size:16px;font-weight:400;display:block}
+.attn span{color:var(--ink-soft);font-size:12px}
+.attn .act{margin-left:auto}
+.attn.done{background:var(--green-soft);border-color:var(--green-line)}
+
+/* steppers */
+.stepper{display:flex;align-items:flex-start}
+.stepper .snode{flex:1;text-align:center;position:relative;cursor:pointer;padding:0 4px}
+.stepper .snode.nolink{cursor:default}
+.stepper .sdot{width:28px;height:28px;border-radius:50%;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:400;background:#fff;border:1px solid var(--line);color:var(--label);position:relative;z-index:2}
+.stepper .snode.done .sdot{background:var(--green-soft);border-color:var(--green-line);color:var(--green)}
+.stepper .snode.current .sdot{background:var(--navy);border-color:var(--navy);color:#fff;box-shadow:0 0 0 4px rgba(0,0,128,.12)}
+.stepper .snode::before{content:"";position:absolute;top:14px;left:-50%;width:100%;height:1px;background:var(--line)}
+.stepper .snode.done::before,.stepper .snode.current::before{background:var(--green-line)}
+.stepper .snode:first-child::before{display:none}
+.stepper .slab{font-size:14px;font-weight:400}
+.stepper .ssub{font-size:12px;color:var(--label);margin-top:2px}
+.stepper .snode.current .slab{color:var(--navy);font-weight:600}
+.stepper .snode:not(.done):not(.current) .slab{color:var(--label)}
+.stepper .snode:not(.nolink):hover .slab{text-decoration:underline}
+
+/* segmented progress */
+.seg{display:flex;gap:5px;align-items:center}
+.seg i{height:5px;border-radius:2px;flex:1;background:var(--fill-mid);min-width:34px}
+.seg i.on{background:var(--green)}
+.seg i.cur{background:repeating-linear-gradient(90deg,var(--green) 0 6px,rgba(32,128,0,.3) 6px 12px)}
+
+/* movement rows */
+.mrow{display:flex;align-items:center;gap:22px;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:16px 20px;min-height:72px;margin-bottom:12px}
+.mrow.click{cursor:pointer}.mrow.click:hover{background:var(--fill-soft)}
+.mrow .mc1{width:230px;flex:none}
+.mrow .mc2{width:230px;flex:none}
+.mrow b{font-size:16px;font-weight:400}
+.mrow .sub{color:var(--ink-soft);font-size:12px;margin-top:2px}
+.mrow .mprog{flex:1;min-width:160px}
+.mrow .chev{color:var(--label);font-size:20px}
+
+/* forms */
+.field{background:var(--fill-soft);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.field label{display:block;font-size:12px;color:var(--label);margin-bottom:2px}
+.field input{border:0;background:transparent;outline:none;font-size:17px;font-weight:400;width:100%;color:var(--ink)}
+.toggle{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--fill-soft)}
+.toggle button{border:0;background:transparent;font-weight:400;font-size:15px;padding:9px 14px;color:var(--ink-soft)}
+.toggle button.on{background:#fff;color:var(--ink)}
+select.sel{width:100%;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:10px 12px;font-size:15px;outline:none}
+input.txt{width:100%;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:10px 12px;font-size:15px;outline:none}
+input.txt:focus,select.sel:focus{border-color:var(--navy)}
+.flabel{font-size:13px;color:var(--label);margin:14px 0 6px;font-weight:400}
+
+/* waterfall */
+.wf{counter-reset:wf}
+.wf .wrow{display:flex;align-items:baseline;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.wf .wrow:last-child{border-bottom:0}
+.wf .wnum{counter-increment:wf;flex:none;width:22px;height:22px;border-radius:50%;background:var(--fill-soft);color:var(--label);font-size:12px;font-weight:400;display:flex;align-items:center;justify-content:center;align-self:center}
+.wf .wnum::before{content:counter(wf)}
+.wf .wk{flex:1}
+.wf .wk small{display:block;color:var(--label);font-size:12px}
+.wf .wv{font-weight:600}
+.wf .wrow.ghost{opacity:.5}
+
+/* mono call preview */
+.callbox{font-family:var(--mono);font-size:13px;background:#000040;color:#e2e2f5;border-radius:var(--r);padding:14px 16px;line-height:1.7;overflow:auto}
+.callbox .fn{color:#9fd0ff}.callbox .arg{color:#c8e6a0}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,64,.45);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px}
+.modal{background:#fff;border-radius:6px;max-width:640px;width:100%;max-height:90vh;overflow:auto;padding:28px 30px;box-shadow:0 20px 60px rgba(0,0,40,.35)}
+.modal h3{font-family:var(--serif);font-weight:400;font-size:26px;margin-bottom:4px}
+.modal .msub{color:var(--ink-soft);font-size:14px;margin-bottom:18px}
+.modal .mactions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}
+.check-line{display:flex;gap:10px;align-items:center;font-size:14px;padding:6px 0;color:var(--ink-soft)}
+.check-line.ok{color:var(--green)}
+.check-line.fail{color:var(--red)}
+
+/* signer list */
+.signer{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line)}
+.signer:last-child{border-bottom:0}
+.signer .sdot2{width:9px;height:9px;border-radius:50%;background:var(--fill-mid);flex:none}
+.signer.ok .sdot2{background:var(--green)}
+.signer b{font-weight:400;font-size:15px}
+.signer .st{margin-left:auto;font-size:13px;color:var(--label)}
+.signer.ok .st{color:var(--green);font-weight:600}
+
+/* toast */
+.toasts{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px;z-index:80}
+.toast{background:var(--navy);color:#fff;border-radius:var(--r);padding:12px 16px;font-size:14px;box-shadow:0 8px 30px rgba(0,0,40,.3);display:flex;gap:10px;align-items:center;animation:tin .18s ease-out}
+.toast.green{background:#1a5c00}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* mint monitor */
+.monrow{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+.monrow:last-child{border-bottom:0}
+.monrow .mk{color:var(--ink-soft)}
+.monrow .mv{font-weight:600}
+.monrow .mv.pending{color:var(--amber)}
+.monrow .mv.ok{color:var(--green)}
+
+/* misc */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.grid3{grid-template-columns:repeat(3,1fr)} .grid4{grid-template-columns:repeat(4,1fr)} .grid5{grid-template-columns:repeat(5,1fr)}
+.sec-label{display:flex;align-items:center;justify-content:space-between;margin:30px 0 12px}
+.linkish{color:var(--navy);font-weight:600;cursor:pointer;font-size:14px}
+.linkish:hover{text-decoration:underline}
+.allocbar{display:flex;height:8px;border-radius:2px;overflow:hidden;gap:3px;margin:18px 0 12px}
+.allocbar i{height:100%}
+.legend{display:flex;gap:22px;flex-wrap:wrap;align-items:center;font-size:16px}
+.legend .pct{color:var(--ink-soft);font-size:12px;font-weight:400;border-radius:var(--r);padding:0 4px;background:var(--fill-soft);display:inline-flex;align-items:center;gap:5px}
+.legend .pct::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--sw,transparent);display:inline-block}
+.docline{display:flex;gap:12px;align-items:center;padding:8px 0;color:var(--ink);font-size:15px}
+.docline .dico{width:32px;height:32px;border-radius:var(--r);background:rgba(0,0,128,.06);color:var(--navy);display:flex;align-items:center;justify-content:center}
+.footnote{color:var(--label);font-size:13px}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:1100px){.grid2,.grid3,.grid4,.grid5{grid-template-columns:1fr}.main{padding:32px 24px}.page-title{font-size:44px}.sidebar{width:250px;min-width:250px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main"><div class="content" id="main"></div></main>
+</div>
+<div id="modalRoot"></div>
+<div class="toasts" id="toasts"></div>
+<script>
+/* ============================================================
+   Pipeline Trustee Dashboard — interactive prototype v2
+   Navigate by business function. One home per event.
+   Valuation per issue #739: standard = price × qty,
+   gold pyrite concentrate = NSR waterfall. CCR = collateral /
+   outstanding senior, thresholds 130 / 120 / 110%.
+   ============================================================ */
+
+const S = {
+  screen:'overview', loansTab:'performing', cashTab:'ramp', origSel:'auric',
+  helios:{
+    id:'#4488', name:'Helios Metals — Lithium', short:'Helios Metals',
+    status:'Performing', ccr:135, ccrAge:'2h', lifecycleNote:null,
+    usdcLanded:false, custodianSigned:false, minted:false, retriggering:false,
+  },
+  delta:{ id:'#4471', status:'Watchlist' },
+  auric:{ approved:false, disb:'none' },   // disb: none | pending | transit
+  andes:{ recorded:false },                 // live coupon intake
+  volta:{ rolled:false },                   // live rollover (past maturity)
+  refund:{ done:false },                    // KYT soft-fail deposit refund
+  props:[],                                 // extra Risk Council proposals
+  loanSel:'andes',
+  // treasury baseline
+  cw:8400000, transit:4950000, trust:1200000, deployed:96000000, tb:4640000,
+  toppedUp:false, swapDone:false,
+  proposal:{ submitted:false, sigs:0, safeRef:null, secondsLeft:24*3600 },
+  audit:[
+    {t:'24 Jun 07:12', a:'Repayment recorded — principal + final interest', l:'Helios Metals — Lithium', r:'0xabc…123'},
+    {t:'20 Jun 14:05', a:'CCR 114% written on-chain — 120% threshold crossing · status → Watchlist', l:'Delta Commodities — Coffee', r:'0xabc…123'},
+    {t:'2 Apr 10:02', a:'Coupon minted — $115.5K vault + $34.5K treasury', l:'Helios Metals — Lithium', r:'0xabc…123'},
+    {t:'31 Mar 09:40', a:'Coupon recorded — interest only, principal unchanged', l:'Helios Metals — Lithium', r:'0xabc…123'},
+    {t:'5 Jan 14:20', a:'Loan distributions wired (fiat) — 5 loans from batch #B-102', l:'Batch #B-102', r:'0xabc…123'},
+    {t:'5 Jan 11:08', a:'Batch off-ramp co-signed — $10,000,000', l:'Batch #B-102', r:'0xabc…123'},
+    {t:'2 Jan 09:30', a:'Loan approved & minted', l:'Helios Metals — Lithium', r:'0xabc…123'},
+  ],
+};
+
+/* ---------- loan catalog (LoanRegistry view + off-chain valuation record) ---------- */
+const LOANS = [
+  { key:'helios', tab:'performing', click:"go('loan-helios')",
+    name:'Helios Metals', commodity:'Lithium carbonate', spot:'$10,450/t', d:'−1.2% 7d', dBad:false,
+    outst:()=>0, collateral:'$5.83M', ccr:()=>null, ccrAge:'2h',
+    maturity:'30 Jun 2026', stage:()=> S.helios.minted ? 'Complete — repaid, interest minted' : 'On-ramp, interest minting' },
+  { key:'andes', tab:'performing', click:"go('loan-generic',{loanSel:'andes'})",
+    name:'Andes Copper', commodity:'Copper concentrate', spot:'$9,120/t', d:'+0.8% 7d',
+    outst:()=>2200000, collateral:'$3.12M', ccr:()=>142, ccrAge:'1h',
+    maturity:'15 Sep 2026', stage:()=> S.andes.recorded ? 'Coupon recorded · on-ramp queued' : 'Coupon due 20 Jun — overdue' },
+  { key:'volta', tab:'performing', click:"go('loan-generic',{loanSel:'volta'})",
+    name:'Volta Cashew', commodity:'Cashew', spot:'$1,410/t', d:'+0.3% 7d',
+    outst:()=>900000, collateral:'$1.19M', ccr:()=>132, ccrAge:'1h',
+    maturity:'matured 15 Jun', stage:()=> S.volta.rolled ? 'Performing · rolled to 30 Sep' : 'Matured — rollover available' },
+  { key:'nile', tab:'performing', click:"go('loan-generic',{loanSel:'nile'})",
+    name:'Nile Cotton', commodity:'Cotton', spot:'$1,830/t', d:'+2.4% 7d',
+    outst:()=>1000000, collateral:'$1.56M', ccr:()=>156, ccrAge:'50m',
+    maturity:'30 Oct 2026', stage:()=>'Performing' },
+  { key:'baltic', tab:'performing', click:"go('loan-generic',{loanSel:'baltic'})",
+    name:'Baltic Timber', commodity:'Sawn timber', spot:'$312/m³', d:'−0.4% 7d',
+    outst:()=>800000, collateral:'$1.15M', ccr:()=>144, ccrAge:'1h',
+    maturity:'20 Nov 2026', stage:()=>'Performing' },
+  { key:'auric', tab:'performing', onlyIfApproved:true, click:"go('loan-generic',{loanSel:'auric'})",
+    name:'Auric Andes', commodity:'Gold pyrite conc. · NSR', spot:'Au $2,410/oz', d:'+0.6% 7d',
+    outst:()=>0, collateral:'$4.97M', ccr:()=>178, ccrAge:'42m',
+    maturity:'15 Dec 2026', stage:()=> S.auric.disb==='transit' ? 'Funding — off-ramp converting' : 'Approved · awaiting disbursement' },
+  { key:'delta', tab:'watchlist', click:"go('loan-delta')",
+    name:'Delta Commodi…', commodity:'Coffee', spot:'$4,500/t', d:'−18% 30d', dBad:true,
+    outst:()=>1840000, collateral:'$2.10M', ccr:()=>114, ccrAge:'1h',
+    maturity:'1 Aug 2026', stage:()=> S.proposal.submitted ? 'Default proposal in timelock' : 'Watchlist · Risk Council' },
+  { key:'sahel', tab:'watchlist', click:"go('loan-generic',{loanSel:'sahel'})",
+    name:'Sahel Cocoa', commodity:'Cocoa', spot:'$6,900/t', d:'−9% 30d', dBad:true,
+    outst:()=>1260000, collateral:'$1.49M', ccr:()=>118, ccrAge:'26h', ageStale:true,
+    maturity:'12 Sep 2026', stage:()=>'Watchlist · feed stale' },
+  { key:'meridian', tab:'default', click:"go('loan-generic',{loanSel:'meridian'})",
+    name:'Meridian Agro', commodity:'Cocoa', spot:'$6,100/t', d:'−22% 90d', dBad:true,
+    outst:()=>1750000, collateral:'$1.04M', ccr:()=>60, ccrAge:'3h',
+    maturity:'12 Mar 2026', stage:()=>'Default — recovery in progress' },
+  { key:'atlas', tab:'closed', click:"go('loan-generic',{loanSel:'atlas'})",
+    name:'Atlas Grain', commodity:'Wheat', spot:'—', d:'',
+    outst:()=>0, collateral:'—', ccr:()=>null,
+    maturity:'closed 4 May', stage:()=>'Closed — ScheduledMaturity' },
+  { key:'kivu', tab:'closed', click:"go('loan-generic',{loanSel:'kivu'})",
+    name:'Kivu Coltan', commodity:'Coltan', spot:'—', d:'',
+    outst:()=>0, collateral:'—', ccr:()=>null,
+    maturity:'closed 20 Feb', stage:()=>'Closed — EarlyRepayment' },
+];
+
+/* ---------- origination requests ---------- */
+const REQS = {
+  helios:{ approvedFlag:()=>true, // walkthrough replay — approved 2 Jan
+    name:'Helios Metals — Lithium', originator:'Helios Metals Ltd', commodity:'Lithium carbonate',
+    corridor:'Chile → Korea', cor:'CL → KR', law:'England & Wales', mode:'Standard · price × quantity',
+    facility:6000000, senior:4800000, equity:1200000, offtaker:6300000, rate:'13.0', start:'2 Jan 2026', maturity:'30 Jun 2026', submitted:'2 Jan',
+    docs:['Offtake agreement.pdf','Bill of lading.pdf'],
+  },
+  auric:{ approvedFlag:()=>S.auric.approved,
+    name:'Auric Andes — Gold Pyrite Concentrate', originator:'Auric Andes S.A.C.', commodity:'Gold pyrite concentrate',
+    corridor:'Peru → China', cor:'PE → CN', law:'England & Wales', mode:'NSR · Net Smelter Return',
+    facility:3500000, senior:2800000, equity:700000, offtaker:3750000, rate:'14.0', start:'10 Jul 2026', maturity:'15 Dec 2026', submitted:'18 Jun',
+    docs:['Offtake agreement — payable %, TC/RC, QP.pdf','Assay certificate — Au 32 g/t · Ag 180 g/t · As 0.18%.pdf','Moisture certificate — 8.2%.pdf','SGS inspection report.pdf','Export permit (MINEM, Peru).pdf'],
+  },
+};
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+const fmtM = n => '$' + (n/1e6).toLocaleString('en-US',{maximumFractionDigits:2}) + 'M';
+const NOW = '21 Jun 2026, 14:32 UTC';
+function audit(action, loan){ S.audit.unshift({t:'21 Jun ' + new Date().toTimeString().slice(0,5), a:action, l:loan, r:'0x'+Math.random().toString(16).slice(2,5)+'…'+Math.random().toString(16).slice(2,5)}); }
+function toast(msg, green){ const t=document.createElement('div'); t.className='toast'+(green?' green':''); t.innerHTML=(green?icon('check','#fff',16)+' ':'')+msg; $('#toasts').appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),350)},3800); }
+function go(screen, extra){ S.screen=screen; if(extra) Object.assign(S,extra); render(); window.scrollTo({top:0}); }
+
+function icon(name, color, size){
+  const c = color||'currentColor', s=size||20;
+  const p = {
+    pie:'M11 2v9h9a9 9 0 1 1-9-9zm2 0a9 9 0 0 1 7 7h-7V2z',
+    bulb:'M12 2a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2zm-2 18h4v1a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-1z',
+    dollar:'M12 1a11 11 0 1 0 0 22 11 11 0 0 0 0-22zm1 5v1.2c1.6.2 2.8 1.1 3 2.6h-2c-.2-.7-.8-1-1.8-1-1.1 0-1.7.5-1.7 1.1 0 .6.5.9 2 1.3 2.1.5 3.6 1.1 3.6 3 0 1.6-1.2 2.6-3.1 2.9V18h-2v-1.1c-1.8-.3-3-1.3-3.1-2.9h2c.1.9.9 1.3 2.1 1.3 1.2 0 1.9-.5 1.9-1.2 0-.7-.6-1-2.2-1.4-1.9-.5-3.4-1.1-3.4-2.9 0-1.5 1.2-2.5 2.7-2.7V6h2z',
+    case:'M9 4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2h4a2 2 0 0 1 2 2v3H3V6a2 2 0 0 1 2-2h4zm2 0h2v0h-2v0zM3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-8zm8 1v2h2v-2h-2z',
+    shield:'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5.7-5.7-1.4-1.4-4.3 4.3-1.9-1.9-1.4 1.4 3.3 3.3z',
+    list:'M4 5h2v2H4V5zm4 0h12v2H8V5zM4 11h2v2H4v-2zm4 0h12v2H8v-2zM4 17h2v2H4v-2zm4 0h12v2H8v-2z',
+    user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-4 0-7 2-7 4.5V20h14v-1.5C19 16 16 14 12 14z',
+    check:'M9.6 16.2l-4-4L4.2 13.6l5.4 5.4 10.2-10.2-1.4-1.4z',
+    doc:'M6 2h8l4 4v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V7h3.5L13 3.5z',
+    warn:'M12 2L1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z',
+  }[name];
+  return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="${c}"><path d="${p}"/></svg>`;
+}
+
+/* CCR chip: thresholds 130 / 120 / 110% per credit framework */
+function ccrChip(v, age, stale){
+  if(v==null) return '<span class="muted">—</span>';
+  const cls = v>=130?'ok':(v>=120?'mid':'bad');
+  const col = v>=130?'var(--green)':(v>=120?'var(--amber)':'var(--red)');
+  return `<span style="font-weight:700;color:${col};font-size:16.5px">${v}%</span><div class="sub" style="font-size:12px;color:${stale?'var(--amber)':'var(--label)'}">${stale?'feed stale · ':''}${age||''}</div>`;
+}
+
+/* ---------- money buckets — single source shared by Overview & Cash ---------- */
+function buckets(){
+  let cw=S.cw, tr=S.transit, tb=S.tb;
+  if(S.helios.minted){ cw+=4946300; tr-=4950000; }
+  if(S.toppedUp) cw-=1200000;
+  if(S.swapDone){ cw+=1500000; tb-=1500000; }
+  if(S.auric.disb==='transit'){ cw-=2800000; tr+=2800000; }
+  return [
+    {k:'Capital Wallet', v:cw, c:'var(--navy)', sub:'USDC, idle'},
+    {k:'In transit', v:Math.max(tr,0), c:'#c9a200', sub:'converting at providers', dash:true},
+    {k:'Trust account', v:S.trust, c:'rgba(56,55,53,.35)', sub:'USD, residuals', dash:true},
+    {k:'Deployed', v:S.deployed, c:'#208000', sub:'senior on active loans'},
+    {k:'T-Bills (USYC)', v:tb, c:'#6666B3', sub:'held in Capital Wallet'},
+  ];
+}
+function moneyBar(withAmounts){
+  const B=buckets(), total=B.reduce((a,b)=>a+b.v,0);
+  const bar = B.map(b=>`<i title="${b.k} ${fmt(b.v)}" style="flex:${Math.max(b.v/total*100,0.6)};background:${b.c};border-radius:${b.dash?'0':'0'}"></i>`).join('');
+  const legend = B.map(b=>{
+    const pct = Math.round(b.v/total*100);
+    return `<span title="${b.sub}"><span class="pct" style="--sw:${b.c}">${pct}%</span> ${b.k} ${withAmounts?`<b>${fmtM(b.v)}</b>`:fmtM(b.v)}</span>`;
+  }).join('');
+  return {total, html:`<div class="allocbar">${bar}</div><div class="legend" style="font-size:14px">${legend}</div>`};
+}
+
+/* ---------- badges / nav ---------- */
+function badgeCounts(){
+  return {
+    origination: S.auric.approved?0:1,
+    loans: (S.helios.minted?0:1) + (S.proposal.submitted?0:1) + (S.andes.recorded?0:1) + (S.volta.rolled?0:1),
+    cash: (S.helios.minted?0:1) + (S.toppedUp?0:1) + (S.auric.disb==='pending'?1:0) + (S.refund.done?0:1),
+  };
+}
+const NAV = [
+  {id:'overview', label:'Overview', ico:'pie', sec:0},
+  {id:'origination', label:'Origination', ico:'bulb', sec:1, badge:'origination'},
+  {id:'loans', label:'Loans', ico:'dollar', sec:1, badge:'loans'},
+  {id:'cash', label:'Cash Management', ico:'case', sec:1, badge:'cash'},
+  {id:'risk', label:'Risk Council', ico:'shield', sec:2},
+  {id:'audit', label:'Audit Log', ico:'list', sec:2},
+];
+const SCREEN_HOME = {
+  'overview':'overview','origination':'origination','origination-detail':'origination',
+  'loans':'loans','loan-helios':'loans','loan-delta':'loans','loan-generic':'loans','repayment':'loans','coupon':'loans','record-coupon':'loans',
+  'cash':'cash','batch':'cash','onramp':'cash',
+  'risk':'risk','risk-proposal':'risk','audit':'audit'
+};
+function renderSidebar(){
+  const b = badgeCounts();
+  let html = `<div class="logo"><svg viewBox="0 0 116 32" fill="none" preserveAspectRatio="xMinYMid meet"><g><path clip-rule="evenodd" d="M39.6667 8.20605C44.1768 8.20605 46.9687 12.0294 46.9688 16.9261C46.9688 22.3084 44.045 26.1322 38.9471 26.1322C37.2577 26.1322 35.5388 25.7206 34.29 24.8236V27.8235C34.2901 28.9555 34.4957 29.4113 34.7747 29.6907C35.1126 30.0289 35.5387 30.2055 36.8461 30.2055H37.3308V32H27.7817V30.2055H28.09C29.2653 30.2055 29.6772 30.0289 29.9857 29.6907C30.2941 29.4113 30.4993 28.97 30.4993 27.8235V12.7208C30.4993 11.5885 30.2942 11.1323 29.9857 10.8529C29.6772 10.5146 29.2653 10.338 28.09 10.338H27.7817V8.54432H33.9818V11.7208C34.9807 9.54448 37.1106 8.20613 39.6667 8.20605ZM38.3157 10.9708C37.0376 10.9708 35.9796 11.4856 35.2157 12.5591C34.5546 13.559 34.1871 14.9999 34.187 16.8379V17.1761C34.187 19.0732 34.5254 21.2497 35.5685 22.6909C36.2589 23.6614 37.2138 24.3088 38.6388 24.3088C41.665 24.3086 42.6637 21.4409 42.6637 18.2058C42.6637 13.8679 41.0481 10.9711 38.3157 10.9708Z" fill="white" fill-rule="evenodd"/><path clip-rule="evenodd" d="M55.4588 8.20605C60.0128 8.20624 62.6867 11.8241 62.6867 16.4121H51.1834C51.1835 20.2059 53.1083 22.6909 56.4578 22.6909C58.8963 22.6907 60.5267 21.1468 61.1437 18.7941H62.6867C62.3488 22.794 59.9977 26.1322 55.7226 26.1322C51.0068 26.132 47.8039 22.5435 47.8039 17.3379C47.8041 12.1323 50.9046 8.20605 55.4588 8.20605ZM55.2824 10.074C53.2844 10.074 51.5656 11.8383 51.2864 14.691H58.896C58.8959 11.6619 57.4859 10.0741 55.2824 10.074Z" fill="white" fill-rule="evenodd"/><path clip-rule="evenodd" d="M108.771 8.20605C113.326 8.20605 116 11.824 116 16.4121H104.497C104.497 20.2058 106.421 22.6907 109.77 22.6909C112.209 22.6909 113.84 21.1469 114.457 18.7941H116C115.662 22.794 113.311 26.1322 109.036 26.1322C104.32 26.1321 101.117 22.5436 101.117 17.3379C101.117 12.1324 104.217 8.20621 108.771 8.20605ZM108.61 10.074C106.612 10.0741 104.893 11.8384 104.614 14.691H112.224C112.224 11.6618 110.813 10.074 108.61 10.074Z" fill="white" fill-rule="evenodd"/><path d="M69.4167 21.6174C69.4167 22.7497 69.6223 23.206 69.9014 23.4854C70.2393 23.8236 70.666 23.9994 71.7972 23.9994H72.3529C73.5279 23.9994 73.9394 23.8235 74.2479 23.4854C74.5564 23.206 74.7622 22.7645 74.7622 21.6174V12.7208C74.7622 11.5885 74.5564 11.1323 74.2479 10.8529C73.9394 10.5147 73.5279 10.3381 72.3529 10.338H72.0735V8.54432H78.5522V21.6174C78.5522 22.7498 78.758 23.206 79.0665 23.4854C79.375 23.8235 79.7865 23.9994 80.9615 23.9994H81.2409V25.7939H62.9084V23.9994H63.2175C64.3924 23.9994 64.804 23.8235 65.1124 23.4854C65.421 23.206 65.6268 22.7645 65.6268 21.6174V5.82408C65.6268 4.69178 65.4209 4.23556 65.1124 3.95615C64.8039 3.61795 64.3926 3.44135 63.2175 3.44132H62.9084V1.64762H69.4167V21.6174Z" fill="white"/><path d="M93.1291 8.19121C94.5394 8.19121 96.0527 8.63257 97.0517 9.70601C97.9772 10.706 98.5065 12.1177 98.5065 14.3676V21.6026C98.5065 22.7349 98.7123 23.1911 99.0208 23.4705C99.3293 23.8086 99.7407 23.9854 100.739 23.9854H100.974V25.7791H92.468V23.9854H92.6444C93.4671 23.9854 93.9226 23.8526 94.2311 23.5291C94.5396 23.2203 94.7158 22.7349 94.7158 21.6026V14.9856C94.7158 13.2944 94.4365 12.5439 93.9517 12.0146C93.3934 11.3971 92.6441 11.1177 91.7187 11.1177C90.4849 11.1178 89.4418 11.6764 88.7514 12.4997C88.0609 13.3673 87.7227 14.5739 87.7227 16.9121V21.6026C87.7227 22.7347 87.899 23.2203 88.2074 23.5291C88.5159 23.8379 88.9717 23.9854 89.8238 23.9854H89.9557V25.7791H81.244V23.9994H81.5234C82.6984 23.9994 83.1099 23.8235 83.4184 23.4854C83.7269 23.206 83.9327 22.7645 83.9327 21.6174V12.7208C83.9327 11.5885 83.7269 11.1323 83.4184 10.8529C83.1099 10.5147 82.6985 10.3381 81.5234 10.338H81.244V8.54432H87.4441V11.7497C88.3109 9.77943 90.1618 8.19129 93.1291 8.19121Z" fill="white"/><path d="M37.7889 0.162496H50.8782V0.249994H58.2685V0.426552H50.8782V0.499988H37.7889V0.676546H25.3942C25.6263 0.865736 25.8296 1.08878 25.9967 1.33825H39.1547V1.51481H52.2448V1.58824H59.6343V1.7648H52.2448V1.83824H39.1547V2.01479H26.3347C26.4088 2.2257 26.4605 2.44708 26.4861 2.6765H39.449V2.85306H52.539V2.94133H59.9285V3.10305H52.539V3.19133H39.449V3.35304H26.4861C26.4599 3.5878 26.4069 3.81429 26.33 4.02959H39.1547V4.1913H52.2448V4.27958H59.6343V4.4413H52.2448V4.52958H39.1547V4.69129H25.9975C25.826 4.94743 25.616 5.17542 25.3763 5.36784H37.7889V5.52955H50.8782V5.61783H58.2685V5.77955H50.8782V5.86783H37.7889V6.04438H23.1855V6.01392C21.667 5.85939 20.4819 4.57553 20.4819 3.01477C20.482 1.4541 21.667 0.170125 23.1855 0.0156246V0H37.7889V0.162496Z" fill="white"/><path d="M76.5713 0C78.2346 0 79.583 1.34994 79.5832 3.01477C79.5832 4.67971 78.2347 6.02954 76.5713 6.02954C74.9081 6.02941 73.5595 4.67963 73.5595 3.01477C73.5596 1.35002 74.9082 0.000126037 76.5713 0Z" fill="white"/><path clip-rule="evenodd" d="M10.5044 1.66246C13.854 1.66246 15.4704 2.35334 16.7044 3.38273C17.9646 4.49171 18.8976 6.38471 19.0006 8.54432H25.4746V21.6174C25.4746 22.7498 25.6804 23.206 25.9889 23.4854C26.2974 23.8234 26.7089 23.9994 27.8839 23.9994H28.1633V25.7939H18.9959V23.9994H19.2745C20.4498 23.9994 20.8618 23.8236 21.1703 23.4854C21.4788 23.206 21.6839 22.7644 21.6839 21.6174V12.7208C21.6839 11.5886 21.4788 11.1323 21.1703 10.8529C20.8618 10.5146 20.4498 10.338 19.2745 10.338H18.9069C18.3426 14.0723 15.4363 16.7644 10.0494 16.7644C8.8448 16.7644 7.8457 16.6323 6.97898 16.4558V21.3526C6.97898 22.5583 7.18438 23.0143 7.52219 23.3526C7.86009 23.6908 8.31561 23.8674 9.69658 23.8674H10.2109V25.7939H0V23.8674H0.337944C1.54255 23.8674 1.99806 23.6907 2.33595 23.3526C2.64447 23.0143 2.85028 22.5585 2.85028 21.3526V6.10298C2.85026 4.89727 2.64445 4.44123 2.33595 4.10302C1.99808 3.76497 1.54232 3.58819 0.337944 3.58819H0V1.66246H10.5044ZM6.99303 14.4559L6.97898 14.4411V3.51476H8.74129C10.8421 3.51476 12.1207 4.02954 13.1197 5.103C13.9718 6.00002 14.4567 7.41191 14.4567 9.27946C14.4567 12.4558 12.6056 14.6909 9.22674 14.691C8.40403 14.691 7.63944 14.5882 6.99303 14.4559Z" fill="white" fill-rule="evenodd"/></g></svg></div>`, lastSec=0;
+  NAV.forEach(n=>{
+    if(n.sec!==lastSec){ html += `<div class="nav-sec"></div>`; lastSec=n.sec; }
+    const active = SCREEN_HOME[S.screen]===n.id;
+    const cnt = n.badge ? b[n.badge] : 0;
+    html += `<button class="nav-item ${active?'active':''}" onclick="go('${n.id}')">
+      <span class="nico">${icon(n.ico)}</span>${n.label}
+      ${cnt?`<span class="badge">${cnt}</span>`:''}</button>`;
+  });
+  html += `<div class="spacer"></div><div class="who"><span class="avatar">${icon('user')}</span><div><b>0x4c7f…2a1b</b><span>Trustee</span></div></div>`;
+  $('#sidebar').innerHTML = html;
+}
+
+/* ============================================================
+   OVERVIEW — same money bar as Cash Management
+   ============================================================ */
+function screenOverview(){
+  const h=S.helios, mb=moneyBar(false);
+  const attn=[];
+  if(!S.auric.approved) attn.push(`
+    <div class="eyebrow" style="margin:10px 0 12px">Origination</div>
+    <div class="attn"><span class="aico">${icon('bulb')}</span>
+      <div><b>Auric Andes — Gold Pyrite Concentrate: new request</b><span>NSR valuation · assay &amp; offtake docs attached · submitted 18 Jun</span></div>
+      <button class="btn btn-navy act" onclick="go('origination-detail',{origSel:'auric'})">Review</button></div>`);
+  const lw=[];
+  if(!S.andes.recorded) lw.push(`
+    <div class="attn"><span class="aico">${icon('dollar')}</span>
+      <div><b>Andes Copper: coupon $100,000 due 20 Jun — overdue 1 day</b><span>No matching recordPayment yet · reconcile against the bank wire</span></div>
+      <button class="btn btn-navy act" onclick="go('record-coupon')">Record coupon</button></div>`);
+  if(!S.volta.rolled) lw.push(`
+    <div class="attn"><span class="aico">${icon('dollar')}</span>
+      <div><b>Volta Cashew: matured 15 Jun without full repayment</b><span>Rollover available — appends an epoch, returns status to Performing</span></div>
+      <button class="btn btn-navy act" onclick="go('loan-generic',{loanSel:'volta'})">Roll over</button></div>`);
+  const loansSec = lw.length ? `<div class="eyebrow" style="margin:26px 0 12px">Loans — payments due</div>${lw.join('')}` : '';
+  const cash=[];
+  if(!h.minted) cash.push(`
+    <div class="attn"><span class="aico">${icon('dollar')}</span>
+      <div><b>Helios Metals — Lithium: repayment converting to USDC</b><span>$115.5K interest mints when the USDC lands · ~3h</span></div>
+      <button class="btn btn-navy act" onclick="go('onramp')">Track</button></div>`);
+  if(S.auric.disb==='pending') cash.push(`
+    <div class="attn"><span class="aico">${icon('case')}</span>
+      <div><b>Auric Andes: disbursement awaiting your co-signature</b><span>$2,800,000 senior · Capital Wallet MPC 3-of-5</span></div>
+      <button class="btn btn-navy act" onclick="go('cash',{cashTab:'ramp'})">Co-sign</button></div>`);
+  if(!S.toppedUp) cash.push(`
+    <div class="attn"><span class="aico">${icon('dollar')}</span>
+      <div><b>Withdrawal Reserve below target</b><span>Coverage 70% — top-up recommended</span></div>
+      <button class="btn btn-navy act" onclick="go('cash',{cashTab:'wq'})">Top up</button></div>`);
+  if(!S.refund.done) cash.push(`
+    <div class="attn"><span class="aico">${icon('case')}</span>
+      <div><b>Deposit DEP-8812: KYT soft-fail — refund to record</b><span>$250,000 USDC sent off-chain 19 Jun · markRefunded pending</span></div>
+      <button class="btn btn-navy act" onclick="go('cash',{cashTab:'refunds'})">Review</button></div>`);
+  const cashSec = cash.length
+    ? `<div class="eyebrow" style="margin:26px 0 12px">Cash management</div>${cash.join('')}`
+    : `<div class="eyebrow" style="margin:26px 0 12px">Cash management</div><div class="attn done"><span class="aico" style="background:var(--green)">${icon('check')}</span><div><b>Cash management is clear</b><span>No items need your decision</span></div></div>`;
+  const riskSec = S.proposal.submitted
+    ? `<div class="attn done"><span class="aico" style="background:var(--green)">${icon('shield')}</span><div><b>Delta Commodities — Coffee: default proposal in timelock</b><span>Risk Council Safe · executes after 24h unless GUARDIAN cancels</span></div><button class="btn btn-ghost act" onclick="go('risk-proposal')">Track</button></div>`
+    : `<div class="attn"><span class="aico shield">${icon('shield')}</span><div><b>Delta Commodities — Coffee: Escalate to default</b><span>CCR 114% — below the 120% threshold · decision pending</span></div><button class="btn btn-navy act" onclick="go('risk-proposal')">Review</button></div>`;
+  return `
+  <div class="page-head"><div class="page-title">Overview</div><div class="page-time">${NOW}</div></div>
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap">
+      <div style="font-size:16px">Capital Allocation</div>
+      <span style="color:var(--green);font-weight:700;font-size:12.5px;letter-spacing:.06em">RECONCILES TO PLUSD BACKING · DRIFT &lt; 0.01%</span>
+    </div>
+    <div class="big-serif" style="font-size:58px;letter-spacing:.5px">${fmt(mb.total)}</div>
+    ${mb.html}
+
+    <div class="grid2" style="margin-top:30px">
+      <div class="card pad">
+        <div class="card-title">Cash in Transit</div>
+        <div class="mrow click" style="margin:14px 0 0;background:#fafaf8" onclick="go('cash',{cashTab:'ramp'})">
+          <div><b>${fmt(buckets()[1].v)}</b><div class="sub">${h.minted ? (S.auric.disb==='transit'?'Auric Andes disbursement converting':'Nothing converting — Helios settled') : 'Helios on-ramp'+(S.auric.disb==='transit'?' + Auric off-ramp':'')}</div></div>
+          <span class="chev" style="margin-left:auto">›</span>
+        </div>
+      </div>
+      <div class="card pad">
+        <div class="card-title">Active Deal</div>
+        <div class="mrow click" style="margin:14px 0 0;background:#fafaf8" onclick="go('loan-helios')">
+          <div><b>Helios Metals — Lithium</b><div class="sub">${h.minted?'Complete':'On-ramp'}</div></div>
+          <span class="muted" style="margin-left:auto">${h.minted?'6 of 6 ✓':'Step 5 of 6'}</span><span class="chev">›</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-title" style="font-size:36px;margin:40px 0 8px">Needs Attention</div>
+    ${attn.join('')}
+    ${loansSec}
+    ${cashSec}
+    <div class="eyebrow" style="margin:26px 0 12px">Risk council</div>
+    ${riskSec}
+  </div>`;
+}
+
+/* ============================================================
+   ORIGINATION — flexible per-commodity document sets
+   ============================================================ */
+function screenOrigination(){
+  const rows = [
+    origRow('auric'),
+    origRow('helios'),
+  ].join('');
+  return `
+  <div class="page-head"><div class="page-title">Origination</div></div>
+  <div class="panel">
+    <table class="tbl"><thead><tr><th style="width:20%">Originator</th><th style="width:17%">Commodity · valuation</th><th style="width:12%">Facility</th><th style="width:10%">Corridor</th><th style="width:8%">Rate</th><th style="width:12%">Maturity</th><th style="width:9%">Submitted</th><th></th></tr></thead></table>
+    <div class="tblwrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
+    <p class="footnote" style="margin-top:18px">The document set adapts to the commodity: gold pyrite concentrate carries an assay certificate, moisture certificate and export permit alongside the offtake — the assay + offtake excerpt are hashed to IPFS behind metadataURI.</p>
+  </div>`;
+}
+function origRow(key){
+  const r=REQS[key], approved=r.approvedFlag();
+  const action = approved
+    ? `<span class="chip green">${icon('check','var(--green)',13)} Approved &amp; minted${key==='helios'?' · 2 Jan':''}</span>`
+    : `<button class="btn btn-dark btn-sm" onclick="go('origination-detail',{origSel:'${key}'})">Review</button>`;
+  return `<tr class="click" onclick="go('origination-detail',{origSel:'${key}'})">
+    <td class="strong">${r.originator.replace(' Ltd','').replace(' S.A.C.','')}</td>
+    <td>${r.commodity}<div class="sub" style="font-size:12px;color:var(--label)">${r.mode}</div></td>
+    <td>${fmt(r.facility)}</td><td>${r.cor}</td><td>${r.rate}%</td><td>${r.maturity}</td>
+    <td class="muted">${r.submitted}</td>
+    <td style="text-align:right" onclick="event.stopPropagation()">${action}</td></tr>`;
+}
+
+function screenOriginationDetail(){
+  const key=S.origSel, r=REQS[key], approved=r.approvedFlag();
+  const docs = r.docs.map(d=>`<div class="docline click-doc" onclick="openDocModal('${d.replace(/'/g,"\\'")}')" style="cursor:pointer"><span class="dico">${icon('doc','var(--navy)',16)}</span><span style="border-bottom:1px dashed var(--line)">${d}</span></div>`).join('');
+  const nsrCard = key==='auric' ? `
+    <div class="card pad" style="margin-top:24px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap">
+        <div class="card-title">Collateral valuation — NSR</div>
+        <span class="chip navy">recomputed off-chain every 60 min · feed 42 min old</span>
+      </div>
+      <div class="grid2" style="gap:28px;margin-top:8px">
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px">Inputs — offtake · assay · trustee feed</div>
+          <div class="row-line"><span class="k">Au grade / payable / min deduction</span><span class="v">32 g/t · 92% · 1 g/t</span></div>
+          <div class="row-line"><span class="k">Quantity (updates as shipped)</span><span class="v">3,400 dmt</span></div>
+          <div class="row-line"><span class="k">Moisture · arsenic</span><span class="v">8.2% · 0.18% (penalty)</span></div>
+          <div class="row-line"><span class="k">TC / RC</span><span class="v">$145/dmt · $6.5/oz</span></div>
+          <div class="row-line"><span class="k">Au reference price</span><span class="v">$2,410/oz <span class="lbl" style="font-size:12px">off-chain API</span></span></div>
+          <div class="row-line"><span class="k">Quotation period</span><span class="v">M+1</span></div>
+        </div>
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px">NSR waterfall → CCR</div>
+          <div class="row-line"><span class="k">Payable metal (grade × 92% − 1 g/t) × qty</span><span class="v">3,109 oz</span></div>
+          <div class="row-line"><span class="k">Gross value × $2,410/oz</span><span class="v">$7,491,700</span></div>
+          <div class="row-line"><span class="k">− TC − RC − penalties</span><span class="v">− $554,000</span></div>
+          <div class="row-line"><span class="k">− realisation costs → mine-gate value</span><span class="v">$6,627,700</span></div>
+          <div class="row-line"><span class="k">× (1 − haircut 25%) → collateral value</span><span class="v">$4,970,800</span></div>
+          <div class="row-line"><span class="k">CCR = collateral / senior $2.8M</span><span class="v" style="color:var(--green);font-weight:700">178% — above 130% ✓</span></div>
+        </div>
+      </div>
+      <p class="footnote" style="margin-top:14px">On-chain nothing changes on price ticks — you write CCR + timestamp to LoanRegistry only when it crosses 130 / 120 / 110%. The Relayer never writes on-chain.</p>
+    </div>` : `
+    <div class="card pad" style="margin-top:24px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap">
+        <div class="card-title">Collateral valuation — Standard</div>
+        <span class="chip navy">price × quantity · concentrate fields empty</span>
+      </div>
+      <div class="grid2" style="gap:28px;margin-top:8px">
+        <div>
+          <div class="row-line"><span class="k">Spot Li₂CO₃ (off-chain API)</span><span class="v">$10,450/t · −1.2% 7d</span></div>
+          <div class="row-line"><span class="k">Quantity (trustee feed)</span><span class="v">620 t</span></div>
+        </div>
+        <div>
+          <div class="row-line"><span class="k">× (1 − haircut 10%) → collateral value</span><span class="v">$5,831,100</span></div>
+          <div class="row-line"><span class="k">CCR at approval = collateral / senior $4.8M</span><span class="v" style="color:var(--green);font-weight:700">121% → 135% ✓</span></div>
+        </div>
+      </div>
+    </div>`;
+  const footer = approved
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:28px;flex-wrap:wrap">
+        <span class="footnote">Approval minted the loan NFT. Disbursement is the separate Cash Management stage you co-sign next.</span>
+        <span class="chip green" style="font-size:14px;padding:10px 16px">${icon('check','var(--green)',15)} Approved &amp; minted ${key==='helios'?'· 2 Jan — <a class="linkish" onclick="go(\'batch\')" style="margin-left:4px">funded from batch #B-102 →</a>':'— <a class="linkish" onclick="go(\'cash\',{cashTab:\'ramp\'})" style="margin-left:4px">co-sign the disbursement →</a>'}</span></div>`
+    : `<div style="display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:28px;flex-wrap:wrap">
+        <span class="footnote">Approval mints the loan NFT from your Trustee key. Disbursement is the separate Cash Management stage you co-sign next.</span>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost" onclick="openOrigFeedback('changes','${key}')">Request changes</button>
+          <button class="btn btn-ghost" onclick="openOrigFeedback('reject','${key}')">Reject</button>
+          <button class="btn btn-navy btn-lg" onclick="openMintModal('${key}')">Approve</button>
+        </div></div>`;
+  return `
+  <div class="crumb"><a onclick="go('origination')">Origination</a> / ${r.name}</div>
+  <div class="detail-title" style="font-size:48px">${r.name}</div>
+  <div class="chiprow"><span class="chip">Your key · one click</span><span class="chip">${r.mode}</span>${approved?'<span class="chip green">Approved &amp; minted</span>':'<span class="chip amber">Awaiting your review</span>'}</div>
+  <div class="panel">
+    <div class="grid2">
+      <div class="card pad">
+        <div class="card-title">Loan Terms</div>
+        <div class="row-line"><span class="k">Facility size</span><span class="v">${fmt(r.facility)}</span></div>
+        <div class="row-line"><span class="k">Senior tranche</span><span class="v">${fmt(r.senior)}</span></div>
+        <div class="row-line"><span class="k">Equity tranche</span><span class="v">${fmt(r.equity)}</span></div>
+        <div class="row-line"><span class="k">Offtaker price</span><span class="v">${fmt(r.offtaker)}</span></div>
+        <div class="row-line"><span class="k">Rate</span><span class="v">${r.rate}% p.a.</span></div>
+        <div class="row-line"><span class="k">Start date</span><span class="v">${r.start}</span></div>
+        <div class="row-line"><span class="k">Maturity date</span><span class="v">${r.maturity}</span></div>
+        <div class="alert green" style="margin-top:16px">All three mint invariants pass ${icon('check','var(--green)',20)}</div>
+      </div>
+      <div class="card pad">
+        <div class="card-title">Deal Details</div>
+        <div class="row-line"><span class="k">Originator</span><span class="v">${r.originator}</span></div>
+        <div class="row-line"><span class="k">Commodity</span><span class="v">${r.commodity}</span></div>
+        <div class="row-line"><span class="k">Corridor</span><span class="v">${r.corridor}</span></div>
+        <div class="row-line"><span class="k">Governing law</span><span class="v">${r.law}</span></div>
+        <div style="margin-top:10px">${docs}</div>
+        <div class="alert green" style="margin-top:16px">Originator signature verified ${icon('check','var(--green)',20)}</div>
+      </div>
+    </div>
+    ${nsrCard}
+    ${footer}
+  </div>`;
+}
+function openMintModal(key){
+  const r=REQS[key];
+  openModal(`
+    <h3>Approve &amp; mint loan</h3>
+    <div class="msub">Transaction preview — sent from your Trustee key.</div>
+    <div class="callbox"><span class="fn">LoanRegistry.mintLoan</span>(<br>
+      &nbsp;&nbsp;originator: <span class="arg">${r.originator}</span>,<br>
+      &nbsp;&nbsp;economics: <span class="arg">{ facility ${fmt(r.facility)} · senior ${fmt(r.senior)} · equity ${fmt(r.equity)} · offtaker ${fmt(r.offtaker)} · ${r.rate}% · ${r.start} → ${r.maturity} }</span>,<br>
+      &nbsp;&nbsp;metadataURI: <span class="arg">ipfs://auric-assay-offtake-hash</span>,<br>
+      &nbsp;&nbsp;initialLocation: <span class="arg">Callao warehouse, PE</span>)</div>
+    <div style="margin-top:16px">
+      <div class="check-line ok">${icon('check','var(--green)',16)} senior + equity == facility size</div>
+      <div class="check-line ok">${icon('check','var(--green)',16)} offtaker price ≥ facility size</div>
+      <div class="check-line ok">${icon('check','var(--green)',16)} maturity &gt; origination</div>
+      <div class="check-line ok">${icon('check','var(--green)',16)} assay + offtake excerpt hashed into metadataURI</div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" id="mBtn" onclick="doMint('${key}',this)">Mint loan</button>
+    </div>`);
+}
+function openOrigFeedback(kind,key){
+  const isRej = kind==='reject';
+  openModal(`
+    <h3>${isRej?'Reject request':'Request changes'} — ${REQS[key].originator}</h3>
+    <div class="msub">${isRej?'The request closes and the originator sees your reason.':'The request stays open — the originator sees your comment and can resubmit.'}</div>
+    <div class="flabel">${isRej?'Reason':'What should change'}</div>
+    <input class="txt" id="ofText" placeholder="${isRej?'e.g. offtaker price below facility covenant':'e.g. attach the updated assay certificate'}">
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="doOrigFeedback('${kind}','${key}',this)">Send to originator</button>
+    </div>`);
+}
+function doOrigFeedback(kind,key,btn){
+  const txt=$('#ofText').value||'\u2014';
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Sending\u2026';
+  setTimeout(()=>{
+    audit((kind==='reject'?'Origination rejected — ':'Changes requested — ')+txt, REQS[key].name);
+    closeModal(); toast(kind==='reject'?'Rejected — the originator sees your reason':'Sent — the originator sees your comment', true);
+  },700);
+}
+function doMint(key,btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  setTimeout(()=>{
+    if(key==='auric'){ S.auric.approved=true; S.auric.disb='pending'; }
+    audit('Loan approved & minted', REQS[key].name);
+    closeModal(); toast('Loan minted — <b>LoanMinted</b> emitted. Co-sign the disbursement in Cash Management.', true);
+    render();
+  },1000);
+}
+
+/* ============================================================
+   LOANS — every status visible, price-driven columns
+   ============================================================ */
+function screenLoans(){
+  const list = LOANS.filter(l=>l.tab===S.loansTab && (!l.onlyIfApproved || S.auric.approved));
+  const counts = t => LOANS.filter(l=>l.tab===t && (!l.onlyIfApproved || S.auric.approved)).length;
+  const tabs=[['performing','Performing'],['watchlist','Watchlist'],['default','Default'],['closed','Closed']];
+  const tabHtml = tabs.map(t=>`<button class="tab ${S.loansTab===t[0]?'active':''}" onclick="go('loans',{loansTab:'${t[0]}'})">${t[1]} <span class="cnt">${counts(t[0])}</span></button>`).join('');
+  const rows = list.map(l=>{
+    const out=l.outst();
+    return `<tr class="${l.click?'click':''}" ${l.click?`onclick="${l.click}"`:''}>
+      <td class="strong" style="width:16%">${l.name}</td>
+      <td style="width:19%">${l.commodity}<div class="sub" style="font-size:12.5px;color:${l.dBad?'var(--red)':'var(--label)'}">${l.spot}${l.d?' · '+l.d:''}</div></td>
+      <td style="width:13%">${out?fmt(out):'$0'}</td>
+      <td style="width:11%">${l.collateral}</td>
+      <td style="width:10%">${ccrChip(l.ccr(), l.ccrAge, l.ageStale)}</td>
+      <td style="width:12%">${l.maturity}</td>
+      <td class="muted">${l.stage()}</td>
+      <td style="text-align:right;color:var(--label)">${l.click?'›':''}</td></tr>`;
+  }).join('');
+  const due = S.andes.recorded ? '' : `
+    <div class="attn" style="margin:0 0 22px"><span class="aico">${icon('dollar')}</span>
+      <div><b>Payments due — 1 item</b><span>Andes Copper: coupon $100,000 due 20 Jun, overdue 1 day · no matching recordPayment</span></div>
+      <button class="btn btn-navy act" onclick="go('record-coupon')">Record coupon</button></div>`;
+  return `
+  <div class="page-head"><div class="page-title">Loans</div></div>
+  <div class="grid5 tiles" style="margin-bottom:26px">
+    <div class="tile"><div class="lbl" style="font-size:12.5px">Deployed senior</div><div class="num" style="font-size:26px">$96M</div></div>
+    <div class="tile"><div class="lbl" style="font-size:12.5px">At-risk (WL + Default)</div><div class="num red" style="font-size:26px">4.3%</div><div class="sub" style="font-size:12.5px">$4.85M</div></div>
+    <div class="tile"><div class="lbl" style="font-size:12.5px">Weighted rate</div><div class="num" style="font-size:26px">13.1%</div></div>
+    <div class="tile"><div class="lbl" style="font-size:12.5px">Weighted tenor</div><div class="num" style="font-size:26px">148d</div></div>
+    <div class="tile"><div class="lbl" style="font-size:12.5px">Top concentration</div><div class="num" style="font-size:26px">7.2%</div><div class="sub" style="font-size:12.5px">Cocoa · limit 10%</div></div>
+  </div>
+  <div class="tabs">${tabHtml}</div>
+  <div class="panel">
+    ${due}
+    <table class="tbl"><thead><tr><th style="width:16%">Originator</th><th style="width:19%">Commodity · spot</th><th style="width:13%">Senior outst.</th><th style="width:11%">Collateral</th><th style="width:10%">CCR</th><th style="width:12%">Maturity</th><th>Stage</th><th></th></tr></thead></table>
+    <div class="tblwrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
+    <p class="footnote" style="margin-top:18px">CCR = collateral value / outstanding senior, recomputed off-chain every 60 min. <span style="color:var(--green);font-weight:600">≥130%</span> healthy · <span style="color:var(--amber);font-weight:600">120–130%</span> attention · <span style="color:var(--red);font-weight:600">&lt;120%</span> watchlist, &lt;110% escalate. Written on-chain only at threshold crossings.</p>
+  </div>`;
+}
+
+/* ---- deal journey: funding comes from a batch, coupon is its own stage ---- */
+function dealStepper(){
+  const h=S.helios;
+  const steps=[
+    ['Origination','2 Jan','origination-detail',{origSel:'helios'}],
+    ['Funding','5 Jan · batch #B-102','batch',null],
+    ['Coupon · interest','31 Mar · minted','coupon',null],
+    ['Repayment · principal','24 Jun · recorded','repayment',null],
+    ['On-ramp', h.minted?'settled':'in transit','onramp',null],
+    ['Interest distribution', h.minted?'minted':'mint pending','onramp',null],
+  ];
+  const cur = h.minted ? 7 : 5;
+  return `<div class="stepper">` + steps.map((s,i)=>{
+    const n=i+1, cls = n<cur?'done':(n===cur?'current':'');
+    const dot = n<cur?icon('check','var(--green)',14):n;
+    const onc = s[3]?`go('${s[2]}',${JSON.stringify(s[3]).replace(/"/g,"'")})`:`go('${s[2]}')`;
+    return `<div class="snode ${cls}" onclick="${onc}"><div class="sdot">${dot}</div><div class="slab">${s[0]}</div><div class="ssub">${s[1]}</div></div>`;
+  }).join('') + `</div>`;
+}
+
+/* ---- price & collateral card (valuation record per issue #739) ---- */
+function priceCard(cfg){
+  return `<div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <div class="card-title" style="font-size:24px">Price &amp; collateral</div>
+      <span class="chip ${cfg.stale?'amber':''}">feed ${cfg.age} old · recalcs every 60 min</span>
+    </div>
+    <div class="row-line"><span class="k">Spot (off-chain API)</span><span class="v">${cfg.spot} <span style="color:${cfg.dBad?'var(--red)':'var(--green)'};font-weight:600">${cfg.d}</span></span></div>
+    <div class="row-line"><span class="k">Quantity (trustee feed)</span><span class="v">${cfg.qty}</span></div>
+    <div class="row-line"><span class="k">Collateral value (after ${cfg.haircut} haircut)</span><span class="v">${cfg.coll}</span></div>
+    <div class="row-line"><span class="k">Senior outstanding</span><span class="v">${cfg.outst}</span></div>
+    <div class="row-line"><span class="k">CCR</span><span class="v">${cfg.ccrHtml}</span></div>
+    ${cfg.note?`<p class="footnote" style="margin-top:12px">${cfg.note}</p>`:''}
+  </div>`;
+}
+
+function screenLoanHelios(){
+  const h=S.helios;
+  const interestTile = h.minted
+    ? `<div class="lbl" style="font-size:13px">Interest distributed</div><div class="num" style="font-size:30px">$265.5K</div><div class="sub" style="color:var(--green);font-weight:600">coupon + final · minted ✓</div>`
+    : `<div class="lbl" style="font-size:13px">Interest to distribute</div><div class="num" style="font-size:30px">$115.5K</div><div class="sub" style="color:var(--amber);font-weight:600">final coupon · mint pending</div>`;
+  const stageCard = h.minted
+    ? `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+        <div><div class="card-title" style="font-size:24px">Deal complete — all six stages settled</div>
+        <p class="muted" style="max-width:640px">The senior portion landed in the Capital Wallet and the Relayer plus custodian minted $115.5K to the sPLUSD vault and $34.5K fees to Treasury. The loan is ready for benign close.</p>
+        <div style="margin-top:16px"><button class="btn btn-navy" onclick="openCloseModal()">Close loan</button></div></div>
+        <span class="chip green" style="white-space:nowrap">settled</span></div>`
+    : `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+        <div><div class="card-title" style="font-size:24px">Current stage — on-ramp in transit</div>
+        <p class="muted" style="max-width:680px">The senior portion ($4,950,000) is converting back to USDC at the on-ramp provider. Once it lands in the Capital Wallet, the Relayer and custodian mint the $115.5K final coupon into the sPLUSD vault and $34.5K fees to Treasury.</p>
+        <div style="margin-top:16px"><button class="btn btn-navy" onclick="go('onramp')">Open on-ramp &amp; mint →</button></div></div>
+        <span class="chip" style="white-space:nowrap">Relayer + custodian mint · monitor only</span></div>`;
+  return `
+  <div class="crumb"><a onclick="go('loans')">‹ Loans</a></div>
+  <div class="detail-title">Helios Metals · Lithium</div>
+  <div class="chiprow">
+    <span class="chip ${h.status==='Closed'?'':'green'}">${h.status}</span>
+    <span class="muted">Loan ${h.id} · Chile → Korea · matures 30 Jun 2026 · 9 days left</span>
+    ${h.lifecycleNote?`<span class="chip navy">${h.lifecycleNote}</span>`:''}
+  </div>
+  <div class="panel" style="margin-bottom:22px">
+    <div class="eyebrow" style="margin-bottom:20px">Deal journey — click any stage to open it</div>
+    ${dealStepper()}
+  </div>
+  <div class="grid3 tiles" style="margin-bottom:22px">
+    <div class="tile"><div class="lbl" style="font-size:13px">Facility / disbursed</div><div class="num" style="font-size:30px">$4.8M / $4.8M</div><div class="sub" style="color:var(--green);font-weight:600">funded from batch #B-102</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Repaid to date</div><div class="num" style="font-size:30px">$6.30M</div><div class="sub">$150K coupon · 31 Mar + $6.15M final · 24 Jun</div></div>
+    <div class="tile">${interestTile}</div>
+  </div>
+  <div class="grid2" style="margin-bottom:22px">
+    ${priceCard({spot:'Li₂CO₃ $10,450/t', d:'−1.2% 7d', dBad:true, qty:'620 t', haircut:'10%', coll:'$5,831,100',
+      outst:'$0 — principal repaid 24 Jun', ccrHtml:'<span class="muted">n/a — price risk closed</span>', age:'2h',
+      note:'Last on-chain write: CCR 135% · 12 May (130% threshold crossing).'})}
+    <div class="card pad">
+      <div class="card-title" style="font-size:24px">Registry state &amp; derived</div>
+      <div class="row-line"><span class="k">Status / location <span class="lbl" style="font-size:11px">chain</span></span><span class="v">${h.status} · MV Andes, IMO 9741205</span></div>
+      <div class="row-line"><span class="k">Epochs <span class="lbl" style="font-size:11px">chain</span></span><span class="v">1 · 13.0% · 2 Jan → 30 Jun</span></div>
+      <div class="row-line"><span class="k">Recorded counters <span class="lbl" style="font-size:11px">chain</span></span><span class="v">offtaker $6.30M · principal $4.8M · interest $231K · fees $69K</span></div>
+      <div class="row-line"><span class="k">Offtaker still owed <span class="lbl" style="font-size:11px">computed</span></span><span class="v">$0 of $6.30M</span></div>
+      <div class="row-line"><span class="k">Unminted — vault / treasury <span class="lbl" style="font-size:11px">computed</span></span><span class="v">${h.minted?'$0 / $0 ✓':'$115.5K / $34.5K'}</span></div>
+      <div class="row-line"><span class="k">Custodian co-sig on mint <span class="lbl" style="font-size:11px">relayer</span></span><span class="v">${h.minted?'verified':'awaiting USDC'}</span></div>
+    </div>
+  </div>
+  <div class="card pad" style="margin-bottom:22px">${stageCard}</div>
+  <div class="card pad">
+    <div class="eyebrow" style="margin-bottom:16px">Other actions on this loan</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="openLifecycleModal('helios')">Update lifecycle</button>
+      <button class="btn btn-ghost" onclick="openRolloverModal('helios')">Roll over</button>
+      <button class="btn btn-ghost" onclick="openCloseModal()">Close loan</button>
+      <button class="btn btn-ghost" onclick="go('risk')">Escalate to Risk Council</button>
+    </div>
+    <p class="footnote" style="margin-top:14px">Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.</p>
+  </div>`;
+}
+
+function screenLoanDelta(){
+  const stageCard = S.proposal.submitted
+    ? `<div><div class="card-title" style="font-size:24px">Default proposal in timelock</div>
+       <p class="muted" style="max-width:680px">setDefault(#4471) is queued in the Risk Council Safe. It executes after the 24h timelock unless GUARDIAN cancels. You cannot execute it.</p>
+       <div style="margin-top:16px"><button class="btn btn-navy" onclick="go('risk-proposal')">Track the timelock →</button></div></div>`
+    : `<div><div class="card-title" style="font-size:24px">Current stage — escalation decision pending</div>
+       <p class="muted" style="max-width:680px">Coffee is down 18% in 30 days: CCR crossed the 120% threshold on 20 Jun and sits at 114%. The 15 Jun coupon was missed. If the loan is past recovery on the performing path, draft a setDefault proposal.</p>
+       <div style="margin-top:16px"><button class="btn btn-navy" onclick="go('risk-proposal')">Open escalation →</button></div></div>`;
+  return `
+  <div class="crumb"><a onclick="go('loans')">‹ Loans</a></div>
+  <div class="detail-title">Delta Commodities · Coffee</div>
+  <div class="chiprow">
+    <span class="chip amber">Watchlist</span>
+    <span class="muted">Loan #4471 · Colombia → Italy · matures 1 Aug 2026</span>
+  </div>
+  <div class="grid3 tiles" style="margin-bottom:22px">
+    <div class="tile"><div class="lbl" style="font-size:13px">Facility / disbursed</div><div class="num" style="font-size:30px">$1.84M / $1.84M</div><div class="sub">funded from batch #B-097 · 12 Feb</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Repaid to date</div><div class="num" style="font-size:30px">$0</div><div class="sub" style="color:var(--red);font-weight:600">coupon missed · 15 Jun</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Days on watchlist</div><div class="num" style="font-size:30px">18</div><div class="sub">since 3 Jun</div></div>
+  </div>
+  <div class="grid2" style="margin-bottom:22px">
+    ${priceCard({spot:'Coffee $4,500/t', d:'−18% 30d', dBad:true, qty:'520 t', haircut:'10%', coll:'$2,106,000',
+      outst:'$1,840,000', ccrHtml:'<span style="color:var(--red);font-weight:700">114% — below the 120% threshold</span>', age:'1h',
+      note:'On-chain writes at threshold crossings only: 128% · 2 Jun → 119% · 20 Jun (status → Watchlist). Next alert at 110% — escalation trigger.'})}
+    <div class="card pad">
+      <div class="card-title" style="font-size:24px">CCR trend</div>
+      <svg viewBox="0 0 460 130" style="width:100%;margin-top:8px">
+        <line x1="10" y1="34" x2="450" y2="34" stroke="#e2c9c9" stroke-dasharray="4 4"/>
+        <text x="414" y="30" font-size="11" fill="var(--red)">120%</text>
+        <line x1="10" y1="64" x2="450" y2="64" stroke="#e2c9c9" stroke-dasharray="4 4"/>
+        <text x="414" y="60" font-size="11" fill="var(--red)">110%</text>
+        <polyline points="10,8 90,12 170,18 250,26 330,40 450,52" fill="none" stroke="var(--red)" stroke-width="2.5"/>
+        <circle cx="450" cy="52" r="4" fill="var(--red)"/>
+        <text x="10" y="122" font-size="13" fill="var(--label)">146% · 1 May</text>
+        <text x="396" y="76" font-size="14" font-weight="700" fill="var(--red)">114%</text>
+      </svg>
+    </div>
+  </div>
+  <div class="card pad" style="margin-bottom:22px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start">
+    ${stageCard}
+    <span class="chip red" style="white-space:nowrap">Risk Council · 24h timelock</span>
+  </div>
+  <div class="card pad">
+    <div class="eyebrow" style="margin-bottom:16px">Other actions on this loan</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="openLifecycleModal('delta')">Update lifecycle</button>
+      <button class="btn btn-ghost" onclick="openRolloverModal('delta')">Roll over</button>
+      <button class="btn btn-ghost" onclick="go('risk-proposal')">Escalate to Risk Council</button>
+    </div>
+  </div>`;
+}
+
+/* ---- Type 1 modals ---- */
+function openLifecycleModal(which){
+  const map={helios:{short:'Helios Metals',status:S.helios.status,ccr:S.helios.ccr},delta:{short:'Delta Commodities',status:'Watchlist',ccr:114},
+    andes:{short:'Andes Copper',status:'Performing',ccr:142},nile:{short:'Nile Cotton',status:'Performing',ccr:156},
+    baltic:{short:'Baltic Timber',status:'Performing',ccr:144},sahel:{short:'Sahel Cocoa',status:'Watchlist',ccr:118},
+    volta:{short:'Volta Cashew',status:S.volta.rolled?'Performing':'Matured',ccr:132},auric:{short:'Auric Andes',status:'Performing',ccr:178}};
+  const L = map[which]||map.helios;
+  openModal(`
+    <h3>Update lifecycle — ${L.short}</h3>
+    <div class="msub">LoanRegistry.updateMutable · your key · non-economic fields only · no NAV impact. CCR is written only at 130 / 120 / 110% threshold crossings, with its timestamp.</div>
+    <div class="flabel">Status <span style="font-weight:400">(Default and Closed are not selectable here — they route elsewhere)</span></div>
+    <select class="sel" id="lcStatus">
+      <option ${L.status==='Performing'?'selected':''}>Performing</option>
+      <option ${L.status==='Watchlist'?'selected':''}>Watchlist</option>
+      <option>Matured</option>
+    </select>
+    <div class="grid2" style="gap:14px;margin-top:4px">
+      <div><div class="flabel">CCR % — current ${L.ccr}%, feed 1h old</div><input class="txt" id="lcCcr" value="${L.ccr}"></div>
+      <div><div class="flabel">Location</div><input class="txt" id="lcLoc" value="Vessel MV Andes · IMO 9741205"></div>
+    </div>
+    <div class="flabel">Append metadataURI (assay / offtake hash)</div>
+    <input class="txt" id="lcMeta" placeholder="ipfs://… (optional)">
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="doLifecycle('${which}',this)">Update loan</button>
+    </div>`);
+}
+function doLifecycle(which,btn){
+  const st=$('#lcStatus').value, ccr=parseInt($('#lcCcr').value||'0',10);
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  const nm={helios:'Helios Metals — Lithium',delta:'Delta Commodities — Coffee',andes:'Andes Copper — Copper conc.',nile:'Nile Cotton — Cotton',baltic:'Baltic Timber — Sawn timber',sahel:'Sahel Cocoa — Cocoa',volta:'Volta Cashew — Cashew',auric:'Auric Andes — Gold Pyrite'};
+  setTimeout(()=>{
+    if(which==='helios'){ S.helios.status=st; S.helios.ccr=ccr; S.helios.lifecycleNote='Lifecycle updated just now'; }
+    audit('Lifecycle updated — '+st+' · CCR '+ccr+'%', nm[which]||which);
+    closeModal(); toast('Loan updated — status event emitted', true); render();
+  },900);
+}
+function openRolloverModal(which){
+  const names={helios:'Helios Metals',delta:'Delta Commodities',volta:'Volta Cashew',andes:'Andes Copper',nile:'Nile Cotton',baltic:'Baltic Timber',sahel:'Sahel Cocoa',auric:'Auric Andes'};
+  const mats={helios:'30 Jun 2026',delta:'1 Aug 2026',andes:'15 Sep 2026',nile:'30 Oct 2026',baltic:'20 Nov 2026',sahel:'12 Sep 2026',auric:'15 Dec 2026'};
+  const live = which==='volta' && !S.volta.rolled;
+  const guard = live
+    ? `<div class="alert green" style="margin-bottom:18px">Guard passes: matured <b>15 Jun 2026</b>, 6 days past, not fully repaid ($900,000 senior outstanding). ${icon('check','var(--green)',18)}</div>`
+    : `<div class="alert amber" style="margin-bottom:18px">${icon('warn','var(--amber)',18)} <span style="flex:1">Guard: now &lt; currentMaturityDate. Rollover unlocks on <b>${mats[which]||'—'}</b> if the loan is not fully repaid. Off-cycle re-terms are a Risk Council proposal (amendEconomics).</span></div>`;
+  openModal(`
+    <h3>Rollover — ${names[which]}</h3>
+    <div class="msub">LoanRegistry.rollover · your key · appends an epoch from the prior maturity, sets currentMaturityDate, returns status to Performing. Raises the mint ceiling only — mints nothing.</div>
+    ${guard}
+    <div class="grid2" style="gap:14px">
+      <div><div class="flabel">New rate (bps)</div><input class="txt" id="roRate" value="1450" ${live?'':'disabled'}></div>
+      <div><div class="flabel">New maturity</div><input class="txt" id="roMat" value="30 Sep 2026" ${live?'':'disabled'}></div>
+    </div>
+    ${live?'<div class="row-line" style="margin-top:8px"><span class="k">Mint-ceiling delta the new epoch implies</span><span class="v">+ $32,400 (interest headroom)</span></div>':''}
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      <button class="btn btn-navy" ${live?'onclick="doRollover(this)"':'disabled'}>Roll over loan</button>
+    </div>`);
+}
+function doRollover(btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  const rate=$('#roRate').value, mat=$('#roMat').value;
+  setTimeout(()=>{
+    S.volta.rolled=true;
+    audit('Rollover — epoch 2 appended · '+(rate/100).toFixed(2)+'% → '+mat,'Volta Cashew');
+    closeModal(); toast('Loan rolled over — status back to Performing, mint ceiling raised', true);
+    render();
+  },900);
+}
+function openCloseModal(){
+  const ready = S.helios.minted;
+  openModal(`
+    <h3>Close loan — Helios Metals</h3>
+    <div class="msub">LoanRegistry.closeLoan · your key · benign closure only. Write-down closes route to Risk Council.</div>
+    <div class="row-line"><span class="k">Final repayment ledger</span><span class="v">$6,300,000 · coupon + final</span></div>
+    <div class="row-line"><span class="k">Realised senior interest</span><span class="v">$231,000 net</span></div>
+    <div class="row-line"><span class="k">Outstanding balances</span><span class="v" style="color:${ready?'var(--green)':'var(--amber)'}">${ready?'zero ✓':'final interest mint still pending'}</span></div>
+    <div class="flabel">Closure reason</div>
+    <select class="sel" id="clReason"><option>ScheduledMaturity</option><option>EarlyRepayment</option></select>
+    ${ready?'':`<div class="alert amber" style="margin-top:16px">${icon('warn','var(--amber)',18)} <span style="flex:1">Close after the interest mint settles — the mint queue still shows $150K unminted on this loan.</span></div>`}
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" ${ready?'':'disabled'} onclick="doClose(this)">Close loan</button>
+    </div>`);
+}
+function doClose(btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  const reason=$('#clReason').value;
+  setTimeout(()=>{
+    S.helios.status='Closed'; audit('Loan closed — '+reason,'Helios Metals — Lithium');
+    closeModal(); toast('Loan closed — '+reason, true); render();
+  },900);
+}
+
+/* ============================================================
+   COUPON — interest only, principal unchanged (stage 3)
+   ============================================================ */
+function screenCoupon(){
+  return `
+  <div class="crumb"><a onclick="go('loan-helios')">‹ Helios Metals · Lithium</a></div>
+  <div class="detail-title">Record Coupon — Interest Only</div>
+  <div class="chiprow"><span class="chip">Your key · no cash moves</span><span class="chip green">Recorded · 31 Mar</span><span class="chip green">Minted · 2 Apr</span></div>
+  <div class="alert info" style="margin-bottom:22px"><span>A scheduled coupon is a <b>recordPayment with zero principal</b> — the same waterfall, senior principal stays deployed. Deferred interest (all-zero components) is also allowed.</span></div>
+  <div class="grid2">
+    <div class="card pad">
+      <div class="card-title">Helios Metals</div>
+      <div class="row-line"><span class="k">Coupon period</span><span class="v">2 Jan → 31 Mar · 88 days</span></div>
+      <div class="row-line"><span class="k">Senior outstanding — unchanged</span><span class="v">$4,800,000</span></div>
+      <div class="row-line"><span class="k">Offtaker still owed after coupon</span><span class="v">$6,150,000</span></div>
+      <div class="field" style="margin-top:18px"><label>Coupon received (USD, Trust account)</label><input value="$150,000" readonly></div>
+      <div class="field" style="margin-top:12px"><label>Date received</label><input value="31 / 03 / 2026" readonly></div>
+    </div>
+    <div class="card pad">
+      <div class="card-title">Waterfall Breakdown</div>
+      <div class="wf">
+        <div class="wrow ghost"><span class="wnum"></span><span class="wk">Senior principal returned<small>Interest-only coupon — principal stays deployed</small></span><span class="wv">$0</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Gross interest (88 / 365 days)</span><span class="wv">$150,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Management fee</span><span class="wv">$12,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Performance fee</span><span class="wv">$15,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">OET allocation</span><span class="wv">$7,500</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Net senior coupon → vault<small>Minted to sPLUSD 2 Apr — lifted NAV</small></span><span class="wv">$115,500</span></div>
+      </div>
+      <div class="alert green" style="margin-top:16px">Components sum to received $150,000 · on-ramped &amp; minted 2 Apr ${icon('check','var(--green)',18)}</div>
+      <button class="btn btn-ghost btn-lg" style="width:100%;margin-top:16px" onclick="go('repayment')">Next stage: principal repayment →</button>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   REPAYMENT — principal + final interest (stage 4)
+   ============================================================ */
+function screenRepayment(){
+  return `
+  <div class="crumb"><a onclick="go('loan-helios')">‹ Helios Metals · Lithium</a></div>
+  <div class="detail-title">Record Repayment — Principal</div>
+  <div class="chiprow"><span class="chip">Your key · no cash moves</span><span class="chip green">Recorded · 24 Jun</span></div>
+  <div class="grid2">
+    <div class="card pad">
+      <div class="card-title">Helios Metals</div>
+      <div class="row-line"><span class="k">Commodity</span><span class="v">Lithium carbonate</span></div>
+      <div class="row-line"><span class="k">Final period</span><span class="v">31 Mar → 24 Jun · 85 days</span></div>
+      <div class="row-line"><span class="k">Senior outstanding before</span><span class="v">$4,800,000</span></div>
+      <div class="row-line"><span class="k">Offtaker owed (after 31 Mar coupon)</span><span class="v">$6,150,000</span></div>
+      <div class="field" style="margin-top:18px"><label>Offtaker payment received (USD, Trust account)</label><input value="$6,150,000" readonly></div>
+      <div class="field" style="margin-top:12px"><label>Date received</label><input value="24 / 06 / 2026" readonly></div>
+      <p class="footnote" style="margin-top:16px">Check the amount against the correspondent bank wire before recording — there is no automatic bank feed.</p>
+    </div>
+    <div class="card pad">
+      <div class="card-title">Waterfall Breakdown</div>
+      <div class="wf">
+        <div class="wrow"><span class="wnum"></span><span class="wk">Senior principal returned<small>On-ramped, no mint (rebalances backing)</small></span><span class="wv">$4,800,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Gross interest (final period)</span><span class="wv">$150,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Management fee</span><span class="wv">$12,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Performance fee</span><span class="wv">$15,000</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">OET allocation</span><span class="wv">$7,500</span></div>
+        <div class="wrow"><span class="wnum"></span><span class="wk">Net senior coupon → vault<small>Mints to sPLUSD, lifts NAV</small></span><span class="wv">$115,500</span></div>
+        <div class="wrow ghost"><span class="wnum"></span><span class="wk">Originator residual<small>Stays USD off-chain, not on-ramped</small></span><span class="wv">$1,200,000</span></div>
+      </div>
+      <div class="alert green" style="margin-top:16px">Components sum to received $6,150,000 ${icon('check','var(--green)',18)}</div>
+      <button class="btn btn-navy btn-lg" style="width:100%;margin-top:16px" onclick="go('onramp')">Next stage: on-ramp →</button>
+      <p class="footnote" style="margin-top:12px;text-align:center">Recorded. No cash moved, no PLUSD minted. The senior portion goes to the on-ramp in Cash Management.</p>
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   CASH MANAGEMENT
+   ============================================================ */
+function screenCash(){
+  const tabs=[['ramp','On / Off-ramp'],['tbills','T-Bills'],['wq','Withdrawal Queue'],['refunds','Refunds (KYT)']];
+  const tabHtml=tabs.map(t=>`<button class="tab ${S.cashTab===t[0]?'active':''}" onclick="go('cash',{cashTab:'${t[0]}'})">${t[1]}${t[0]==='refunds'&&!S.refund.done?' <span class="cnt">1</span>':''}</button>`).join('');
+  const body = S.cashTab==='ramp'?cashRamp() : S.cashTab==='tbills'?cashTbills() : S.cashTab==='wq'?cashWQ() : cashRefunds();
+  return `<div class="page-head"><div class="page-title">Cash Management</div></div><div class="tabs">${tabHtml}</div>${body}`;
+}
+function segbar(done,total,cur){
+  let s=''; for(let i=1;i<=total;i++){ s+=`<i class="${i<=done?'on':(cur&&i===done+1?'cur':'')}"></i>`; } return s;
+}
+
+function cashRamp(){
+  const h=S.helios, mb=moneyBar(true);
+  const inbound = h.minted
+    ? `<div class="mrow click" onclick="go('onramp')"><div class="mc1"><b>Helios Metals — Lithium</b><div class="sub">loan #4488</div></div>
+        <div class="mc2"><b>$4,950,000</b><div class="sub">senior portion · $150K minted</div></div>
+        <div class="mprog"><div class="seg">${segbar(5,5)}</div><div class="sub" style="color:var(--green);font-weight:600;margin-top:6px">Minted (vault + treasury) · settled ✓</div></div>
+        <span class="chev">›</span></div>`
+    : `<div class="mrow click" onclick="go('onramp')"><div class="mc1"><b>Helios Metals — Lithium</b><div class="sub">loan #4488</div></div>
+        <div class="mc2"><b>$4,950,000</b><div class="sub">Senior portion, $115.5K to mint</div></div>
+        <div class="mprog"><div class="seg">${segbar(2,5,true)}</div><div class="sub" style="margin-top:6px">Converting USD to USDC · 3h</div></div>
+        <span class="chev">›</span></div>`;
+  let auricRow='';
+  if(S.auric.disb==='pending') auricRow = `
+    <div class="mrow" style="border-color:var(--amber-line);background:var(--amber-bg)">
+      <div class="mc1"><b>Auric Andes — Gold Pyrite</b><div class="sub">loan #4512 · approved today</div></div>
+      <div class="mc2"><b>$2,800,000</b><div class="sub">senior to disburse</div></div>
+      <div class="mprog"><div class="seg">${segbar(0,5)}</div><div class="sub" style="color:var(--amber);font-weight:600;margin-top:6px">Awaiting your MPC co-signature</div></div>
+      <button class="btn btn-navy btn-sm" onclick="startAuricMPC()">Co-sign off-ramp</button></div>`;
+  else if(S.auric.disb==='transit') auricRow = `
+    <div class="mrow"><div class="mc1"><b>Auric Andes — Gold Pyrite</b><div class="sub">loan #4512</div></div>
+      <div class="mc2"><b>$2,800,000</b><div class="sub">$2,797,200 net of fee</div></div>
+      <div class="mprog"><div class="seg">${segbar(2,5,true)}</div><div class="sub" style="margin-top:6px">At provider, converting USDC → USD · 1h</div></div>
+      <span class="chev" style="opacity:.3">›</span></div>`;
+  const andesRow = S.andes.recorded ? `
+    <div class="mrow click" onclick="go('loan-generic',{loanSel:'andes'})"><div class="mc1"><b>Andes Copper — Copper conc.</b><div class="sub">loan #4492 · coupon</div></div>
+      <div class="mc2"><b>$100,000</b><div class="sub">interest only, $77K to mint</div></div>
+      <div class="mprog"><div class="seg">${segbar(1,5,true)}</div><div class="sub" style="margin-top:6px">Received in Trust account · recorded just now</div></div>
+      <span class="chev">›</span></div>` : '';
+  return `
+  <div class="panel">
+    <div class="sec-label" style="margin-top:0"><span class="eyebrow">Capital Allocation</span>
+      <span style="color:var(--green);font-weight:700;font-size:12.5px;letter-spacing:.06em">RECONCILES TO PLUSD BACKING · DRIFT &lt; 0.01%</span></div>
+    <div class="big-serif" style="font-size:34px;margin:2px 0 4px">${fmt(mb.total)}</div>
+    ${mb.html}
+    <div class="sec-label"><span class="eyebrow">Inbound: repayment on-ramps</span><span class="chip">Relayer + custodian mint · you monitor</span></div>
+    ${inbound}
+    ${andesRow}
+    <div class="sec-label"><span class="eyebrow">Outbound: batch off-ramps &amp; facility allocations</span><span class="chip">MPC 3-of-5</span></div>
+    ${auricRow}
+    <div class="mrow click" onclick="go('batch')" style="opacity:.9">
+      <div class="mc1"><b>Batch #B-102</b><div class="sub">5 loans funded from one conversion</div></div>
+      <div class="mc2"><b>$10,000,000</b><div class="sub">$9,990,000 wired net of fee</div></div>
+      <div class="mprog"><div class="seg">${segbar(5,5)}</div><div class="sub" style="color:var(--green);font-weight:600;margin-top:6px">All 5 wires sent · Completed 5 Jan ✓</div></div>
+      <span class="chev">›</span></div>
+    <p class="footnote">One off-ramp can fund many loans — the conversion is a treasury operation, the per-loan allocation is tagged by loanId inside it.</p>
+  </div>`;
+}
+function startAuricMPC(){
+  openMpcModal({
+    title:'Disbursement off-ramp — Auric Andes',
+    rows:[['From','Capital Wallet (USDC)'],['Amount','$2,800,000 senior'],['Route','off-ramp provider → Trust account → wire to borrower'],['Tagged to loan','#4512'],['Backing projection','invariant holds · deployed +$2.8M when wired'],['Note','can join the next batch if other approvals queue up']],
+    onDone(){ S.auric.disb='transit'; audit('Disbursement off-ramp co-signed — $2,800,000','Auric Andes — Gold Pyrite'); toast('Off-ramp co-signed — converting at the provider', true); }
+  });
+}
+
+function cashTbills(){
+  const swapped=S.swapDone;
+  return `
+  <div class="panel">
+    <div class="grid2">
+      <div class="card pad">
+        <div class="card-title">USDC share: ${swapped?'57%':'48%'}</div>
+        <svg viewBox="0 0 520 170" style="width:100%;margin:10px 0 4px">
+          <text x="2" y="14" font-size="13" fill="var(--green)">75%</text>
+          <text x="2" y="150" font-size="13" fill="var(--green)">55%</text>
+          <rect x="34" y="8" width="470" height="118" fill="#e8f3ea"/>
+          <line x1="34" y1="67" x2="504" y2="67" stroke="#8bbf98" stroke-width="1.5"/>
+          <polyline points="34,60 90,80 140,52 200,74 260,58 320,72 380,60 420,88 ${swapped?'470,96 504,72':'470,120 504,150'}" fill="none" stroke="#1c1c1c" stroke-width="2"/>
+          <circle cx="504" cy="${swapped?72:150}" r="4" fill="#1c1c1c"/>
+          <rect x="448" y="${swapped?58:136}" width="46" height="22" rx="4" fill="${swapped?'#e8f3ea':'#fbeaea'}"/>
+          <text x="471" y="${swapped?73:151}" font-size="13" font-weight="700" text-anchor="middle" fill="${swapped?'var(--green)':'var(--red)'}">${swapped?'57%':'48%'}</text>
+        </svg>
+        ${swapped
+          ? `<div class="alert green">Back inside the 55–75% band ${icon('check','var(--green)',18)}</div>`
+          : `<div class="alert amber"><span>USDC share below the 55–75% band — swap T-Bills to USDC suggested</span>${icon('warn','var(--amber)',20)}</div>`}
+      </div>
+      <div class="card pad">
+        <div class="card-title">Forward strip</div>
+        <div class="muted" style="margin-bottom:10px">Upcoming cash needs — the decision input for sizing the swap</div>
+        <div class="row-line"><span class="k">Queued withdrawals</span><span class="v">${S.toppedUp?'$0':'$1,200,000'}</span></div>
+        <div class="row-line"><span class="k">Approved loans, not yet disbursed</span><span class="v">${S.auric.disb==='pending'?'$2,800,000':'$0'}</span></div>
+        <div class="row-line"><span class="k">Exp. repayments this month</span><span class="v" style="color:var(--green)">$4,950,000</span></div>
+      </div>
+    </div>
+    <div class="card pad" style="margin-top:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">Swap direction and size</div>
+        <div class="toggle"><button id="swA" onclick="swapDir(0)">USDC to T-Bills</button><button id="swB" class="on" onclick="swapDir(1)">T-Bills to USDC</button></div>
+      </div>
+      <div style="display:flex;gap:16px;align-items:center;margin-top:18px;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:240px"><label>Amount</label><input id="swAmt" value="$1,500,000"></div>
+        <button class="btn btn-dark btn-lg" onclick="startSwapMPC()" ${swapped?'disabled':''}>${swapped?'Rebalanced ✓':'Co-sign swap'}</button>
+      </div>
+      <p class="footnote" style="margin-top:14px">Every swap is a Capital Wallet MPC co-signature. Manual overrides outside the band need Trustee + Team regardless of amount. The Relayer never manages this ratio.</p>
+    </div>
+  </div>`;
+}
+let swapDirection = 1;
+function swapDir(d){ swapDirection=d; $('#swA').classList.toggle('on',d===0); $('#swB').classList.toggle('on',d===1); }
+function startSwapMPC(){
+  const amt = $('#swAmt').value || '$1,500,000';
+  const dir = swapDirection===1 ? 'USYC → USDC (sell T-Bills)' : 'USDC → USYC (buy T-Bills)';
+  openMpcModal({
+    title:'T-Bill allocation swap',
+    rows:[['Direction',dir],['Amount',amt],['Band','55–75% USDC · currently 48%'],['Forward strip check','withdrawals + Auric disbursement covered after swap']],
+    onDone(){ S.swapDone=true; audit('T-Bill swap co-signed — '+dir,'Capital Wallet'); toast('Swap settled — USDC share back inside the band', true); }
+  });
+}
+
+function cashWQ(){
+  const done=S.toppedUp;
+  return `
+  <div class="panel">
+    ${done
+      ? `<div class="alert green" style="margin-bottom:26px">Coverage restored to 105% — user-pulled claims are covered. ${icon('check','var(--green)',20)}</div>`
+      : `<div class="alert amber" style="margin-bottom:26px"><span>Reserve coverage at 70% — below 100% threshold. Top-up recommended before next batch settles.</span>${icon('warn','var(--amber)',20)}</div>`}
+    <div class="tiles grid4">
+      <div class="tile"><h4>Queue depth</h4><div class="num">$3,400,000</div></div>
+      <div class="tile"><h4>Reserve balance</h4><div class="num ${done?'':'red'}">${fmt(done?3590000:2390000)}</div></div>
+      <div class="tile"><h4>Coverage</h4><div class="num ${done?'green':'red'}">${done?'105%':'70%'}</div></div>
+      <div class="tile"><h4>Oldest request</h4><div class="num">4d 6h</div></div>
+    </div>
+    <div class="card pad" style="margin-top:24px">
+      <div class="card-title" style="margin:0 0 18px">Top up withdrawal reserve</div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:240px"><label>Amount — Capital Wallet → Withdrawal Queue Wallet</label><input id="tuAmt" value="$1,200,000" ${done?'readonly':''}></div>
+        <button class="btn btn-dark btn-lg" onclick="startTopupMPC()" ${done?'disabled':''}>${done?'Settled ✓':'Co-sign top-up'}</button>
+      </div>
+      <p class="muted" style="margin-top:14px">Coverage after top-up: <b>70% → 105%</b></p>
+      <p class="footnote" style="margin-top:6px">The queue contract settles claims itself via pre-approved allowance — this transfer only keeps it covered.</p>
+    </div>
+  </div>`;
+}
+function startTopupMPC(){
+  openMpcModal({
+    title:'Withdrawal Queue Wallet top-up',
+    rows:[['From','Capital Wallet (USDC)'],['To','Withdrawal Queue Wallet'],['Amount',$('#tuAmt')?$('#tuAmt').value:'$1,200,000'],['Coverage after','70% → 105%'],['Oldest pending request','4d 6h']],
+    onDone(){ S.toppedUp=true; audit('Withdrawal reserve top-up co-signed — $1,200,000','Capital Wallet'); toast('Top-up settled — coverage 105%', true); }
+  });
+}
+
+function cashRefunds(){
+  const done=S.refund.done;
+  return `
+  <div class="panel">
+    ${done
+      ? `<div class="alert green" style="margin-bottom:26px">DEP-8812 marked refunded on-chain — ticket closed. ${icon('check','var(--green)',20)}</div>`
+      : `<div class="alert amber" style="margin-bottom:26px"><span>1 deposit failed KYT screening and is owed a refund off the standard claim path.</span>${icon('warn','var(--amber)',20)}</div>`}
+    <div class="card pad">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+        <div class="card-title">Held deposit — DEP-8812</div>
+        ${done?'<span class="chip green">Refunded ✓</span>':'<span class="chip amber">Refund pending on-chain mark</span>'}
+      </div>
+      <div class="grid2" style="gap:28px;margin-top:8px">
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px">Deposit &amp; KYT result</div>
+          <div class="row-line"><span class="k">Depositor</span><span class="v" style="font-family:var(--mono)">0x8fe2…19c4</span></div>
+          <div class="row-line"><span class="k">Amount</span><span class="v">$250,000 USDC</span></div>
+          <div class="row-line"><span class="k">Intake reference</span><span class="v">DEP-8812 · 17 Jun</span></div>
+          <div class="row-line"><span class="k">KYT screening</span><span class="v" style="color:var(--red)">soft-fail — fuzzy sanctions match</span></div>
+          <div class="row-line"><span class="k">Manual review</span><span class="v" style="color:var(--green)">cleared for refund · 18 Jun</span></div>
+        </div>
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px">Off-chain transfer record — Trustee + Team</div>
+          <div class="row-line"><span class="k">USDC sent back</span><span class="v">$250,000 · 19 Jun 11:32</span></div>
+          <div class="row-line"><span class="k">Via</span><span class="v">Capital Wallet MPC (Trustee + Team co-signed)</span></div>
+          <div class="row-line"><span class="k">Transfer reference</span><span class="v" style="font-family:var(--mono)">0x77ab…c1e9</span></div>
+          <div class="note-green" style="margin-top:14px">✓ The transfer itself was the MPC wallet movement. markRefunded only records that it happened and closes the ticket.</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:22px">
+        <button class="btn btn-navy btn-lg" ${done?'disabled':''} onclick="openRefundModal()">${done?'Marked refunded ✓':'Mark refunded on-chain'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function openRefundModal(){
+  openModal(`
+    <h3>Mark deposit refunded</h3>
+    <div class="msub">Transaction preview — sent from your Trustee key (TRUSTEE_REFUNDER on DepositManager).</div>
+    <div class="callbox"><span class="fn">DepositManager.markRefunded</span>(<br>&nbsp;&nbsp;depositRef: <span class="arg">DEP-8812</span>,<br>&nbsp;&nbsp;depositor: <span class="arg">0x8fe2…19c4</span>,<br>&nbsp;&nbsp;amount: <span class="arg">250,000 USDC</span>)</div>
+    <div style="margin-top:16px">
+      <div class="check-line ok">${icon('check','var(--green)',16)} Off-chain USDC transfer confirmed — 19 Jun · 0x77ab…c1e9</div>
+      <div class="check-line ok">${icon('check','var(--green)',16)} Manual KYT review cleared the refund</div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="doRefund(this)">Mark refunded</button>
+    </div>`);
+}
+function doRefund(btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  setTimeout(()=>{
+    S.refund.done=true;
+    audit('Deposit marked refunded — DEP-8812 · $250,000','DepositManager');
+    closeModal(); toast('Refund recorded on-chain — ticket closed', true); render();
+  },900);
+}
+
+/* ---- generic MPC modal ---- */
+function openMpcModal(cfg){
+  const rows = cfg.rows.map(r=>`<div class="row-line"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`).join('');
+  openModal(`
+    <h3>${cfg.title}</h3>
+    <div class="msub">Capital Wallet MPC · 3-of-5 policy · Trustee + Team mandatory. The dashboard never holds your MPC key — it builds the request and tracks signatures.</div>
+    ${rows}
+    <div class="eyebrow" style="margin:20px 0 6px">Signature collection — <span id="mpcCnt">0</span> of 3 required</div>
+    <div id="mpcSigners">
+      ${mpcSigner('Trustee (you)','mandatory')}${mpcSigner('Team','mandatory')}${mpcSigner('Custodian','')}${mpcSigner('Counterparty A','')}${mpcSigner('Counterparty B','')}
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" id="mpcBtn" onclick="mpcSign(this)">Co-sign in MPC</button>
+    </div>`);
+  window._mpcDone = cfg.onDone;
+}
+function mpcSigner(name,tag){ return `<div class="signer" data-n="${name}"><span class="sdot2"></span><b>${name}</b>${tag?`<span class="chip" style="font-size:11px">${tag}</span>`:''}<span class="st">not signed</span></div>`; }
+function mpcMark(name){
+  const el=document.querySelector(`.signer[data-n="${name}"]`); if(!el) return;
+  el.classList.add('ok'); el.querySelector('.st').textContent='signed · just now';
+  const n=document.querySelectorAll('.signer.ok').length; const c=$('#mpcCnt'); if(c) c.textContent=Math.min(n,3);
+}
+function mpcSign(btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Waiting for the MPC…';
+  setTimeout(()=>{ mpcMark('Trustee (you)'); },500);
+  setTimeout(()=>{ mpcMark('Team'); },1700);
+  setTimeout(()=>{ mpcMark('Custodian'); btn.innerHTML='Policy met — settling…'; },2900);
+  setTimeout(()=>{ closeModal(); if(window._mpcDone) window._mpcDone(); render(); },3900);
+}
+
+/* ============================================================
+   BATCH OFF-RAMP #B-102 — one conversion, five loans
+   ============================================================ */
+function screenBatch(){
+  const alloc=[
+    ['Helios Metals — Lithium','#4488','$4,800,000',"go('loan-helios')"],
+    ['Andes Copper — Copper conc.','#4492','$2,200,000',"go('loan-generic',{loanSel:'andes'})"],
+    ['Sahel Cocoa — Cocoa','#4487','$1,200,000',"go('loan-generic',{loanSel:'sahel'})"],
+    ['Nile Cotton — Cotton','#4495','$1,000,000',"go('loan-generic',{loanSel:'nile'})"],
+    ['Baltic Timber — Sawn timber','#4498','$800,000',"go('loan-generic',{loanSel:'baltic'})"],
+  ].map(a=>`<div class="mrow ${a[3]?'click':''}" ${a[3]?`onclick="${a[3]}"`:''} style="padding:15px 20px;margin-bottom:10px">
+      <div class="mc1" style="width:300px"><b>${a[0]}</b><div class="sub">loan ${a[1]}</div></div>
+      <div class="mc2"><b>${a[2]}</b><div class="sub">senior tranche</div></div>
+      <div style="flex:1;color:var(--green);font-weight:600;font-size:14px">Wired to borrower · marked sent 5 Jan ✓</div>
+      ${a[3]?'<span class="chev">›</span>':''}</div>`).join('');
+  return `
+  <div class="crumb"><a onclick="go('cash')">‹ Cash Management</a></div>
+  <div class="detail-title">Batch Off-ramp #B-102</div>
+  <div class="chiprow"><span class="chip">MPC 3-of-5</span><span class="chip green">Completed · 5 Jan</span><span class="chip">5 loans · 1 conversion</span></div>
+  <div class="alert info" style="margin-bottom:22px"><span>The off-ramp is a <b>treasury operation, not a loan stage</b>: this batch converted $10M once and funded five approved loans. Each allocation is tagged to its loanId — the loan side only sees "Funding · batch #B-102".</span></div>
+  <div class="grid3 tiles" style="margin-bottom:22px">
+    <div class="tile"><div class="lbl" style="font-size:13px">Converted in one off-ramp</div><div class="num" style="font-size:30px">$10,000,000</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Provider fee</div><div class="num" style="font-size:30px">$10,000</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Net USD wired · 5 loans</div><div class="num" style="font-size:30px">$9,990,000</div></div>
+  </div>
+  <div class="card pad" style="margin-bottom:22px">
+    <div class="eyebrow" style="margin-bottom:22px">Route of funds — one conversion for the whole batch</div>
+    <div class="stepper">
+      <div class="snode done nolink"><div class="sdot">${icon('check','var(--green)',14)}</div><div class="slab">Wallet → provider</div><div class="ssub">MPC 3-of-5</div></div>
+      <div class="snode done nolink"><div class="sdot">${icon('check','var(--green)',14)}</div><div class="slab">At provider</div><div class="ssub">converting USDC → USD</div></div>
+      <div class="snode done nolink"><div class="sdot">${icon('check','var(--green)',14)}</div><div class="slab">In Trust account</div><div class="ssub">USD</div></div>
+      <div class="snode done nolink"><div class="sdot">${icon('check','var(--green)',14)}</div><div class="slab" style="color:var(--navy)">5 wires sent ✓</div><div class="ssub">5 Jan 14:20</div></div>
+    </div>
+  </div>
+  <div class="card pad" style="margin-bottom:22px">
+    <div class="eyebrow" style="margin-bottom:14px">Allocations — physical wires, tagged by loanId</div>
+    ${alloc}
+    <div class="note-green" style="margin-top:8px">✓ Fiat wires have no on-chain marker. You confirm each one and it lands in the audit log.</div>
+  </div>
+  <div class="card pad">
+    <div class="eyebrow" style="margin-bottom:10px">MPC approvals — 3 of 5 collected · one signature set for the whole batch</div>
+    <div class="signer ok"><span class="sdot2"></span><b>Trustee (you)</b><span class="chip" style="font-size:11px">mandatory</span><span class="st">signed · 5 Jan 10:44</span></div>
+    <div class="signer ok"><span class="sdot2"></span><b>Team</b><span class="chip" style="font-size:11px">mandatory</span><span class="st">signed · 5 Jan 10:58</span></div>
+    <div class="signer ok"><span class="sdot2"></span><b>Custodian</b><span class="st">signed · 5 Jan 11:08</span></div>
+    <div class="signer"><span class="sdot2"></span><b>Counterparty A</b><span class="st">not required</span></div>
+    <div class="signer"><span class="sdot2"></span><b>Counterparty B</b><span class="st">not required</span></div>
+  </div>`;
+}
+
+/* ============================================================
+   ON-RAMP & INTEREST DISTRIBUTION (stages 5–6, live)
+   ============================================================ */
+function screenOnramp(){
+  const h=S.helios;
+  const statusChip = h.minted ? '<span class="chip green">Minted · vault + treasury</span>' : '<span class="chip amber">In transit · mint pending</span>';
+  const step = h.minted?6:(h.usdcLanded?5:3);
+  const cashSteps=[['Received,','recorded'],['Trust → provider',''],['At provider,', h.minted||h.usdcLanded?'converted':'converting · 3h'],['In Capital','Wallet (USDC)'],['Minted','(vault + treasury)']];
+  const stepperHtml = cashSteps.map((s,i)=>{
+    const n=i+1, cls = n<step?'done':(n===step&&!h.minted?'current':(h.minted?'done':''));
+    const dot = (n<step||h.minted)?icon('check','var(--green)',14):n;
+    return `<div class="snode nolink ${cls}"><div class="sdot">${dot}</div><div class="slab">${s[0]}</div><div class="ssub">${s[1]}</div></div>`;
+  }).join('');
+  const mon = h.minted ? [
+    ['USDC landed in Capital Wallet','$4,946,300 · landed','ok'],
+    ['Vault leg (sPLUSD)','$115,500 — minted ✓','ok'],
+    ['Treasury leg (fees)','$34,500 — minted ✓','ok'],
+    ['Relayer signature','Verified','ok'],
+    ['Custodian co-signature','Verified (EIP-1271)','ok'],
+  ] : h.retriggering ? [
+    ['USDC landed in Capital Wallet', h.usdcLanded?'$4,946,300 · landed ✓':'Landing…','pending'],
+    ['Vault leg (sPLUSD)','$115,500 — '+(h.usdcLanded?'minting…':'queued'),'pending'],
+    ['Treasury leg (fees)','$34,500 — '+(h.usdcLanded?'minting…':'queued'),'pending'],
+    ['Relayer signature','Ready','ok'],
+    ['Custodian co-signature', h.custodianSigned?'Signed ✓':'Verifying USDC…','pending'],
+  ] : [
+    ['USDC landed in Capital Wallet','Not yet — ETA 3h','pending'],
+    ['Vault leg (sPLUSD)','$115,500 — queued','pending'],
+    ['Treasury leg (fees)','$34,500 — queued','pending'],
+    ['Relayer signature','Ready','ok'],
+    ['Custodian co-signature','Awaiting USDC','pending'],
+  ];
+  const monRows = mon.map(m=>`<div class="monrow"><span class="mk">${m[0]}</span><span class="mv ${m[2]}">${m[1]}</span></div>`).join('');
+  const retriggerBtn = h.minted
+    ? `<span class="chip green" style="font-size:14px;padding:10px 14px">${icon('check','var(--green)',15)} Mint settled — sPLUSD NAV lifted by the vault leg</span>`
+    : `<button class="btn btn-ghost" id="rtBtn" onclick="retrigger(this)" ${h.retriggering?'disabled':''}>${h.retriggering?'<span class="spin" style="border-color:#bbb;border-top-color:#555"></span> Retrying…':'Retry mint'}</button>
+       <span class="footnote" style="flex:1">Monitor only: the mint fires automatically once the USDC lands and both signatures verify. Your key can’t mint PLUSD.</span>`;
+  return `
+  <div class="crumb"><a onclick="go('loan-helios')">‹ Helios Metals · Lithium</a></div>
+  <div class="detail-title">On-ramp &amp; Interest Distribution</div>
+  <div class="chiprow"><span class="chip">Relayer + custodian mint · you monitor</span>${statusChip}</div>
+  <div class="alert info" style="margin-bottom:22px"><span>Helios final repayment is <b>recorded on the ledger</b>. Only the senior portion converts — the originator residual stays as USD. The 31 Mar coupon already went through this path and minted 2 Apr.</span></div>
+  <div class="grid3 tiles" style="margin-bottom:22px">
+    <div class="tile"><div class="lbl" style="font-size:13px">Senior portion on-ramping</div><div class="num" style="font-size:30px">$4,950,000</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Residual kept as USD</div><div class="num" style="font-size:30px">$1,200,000</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">New PLUSD to mint</div><div class="num" style="font-size:30px">$150,000</div><div class="sub">$115.5K vault + $34.5K treasury</div></div>
+  </div>
+  <div class="card pad" style="margin-bottom:22px">
+    <div class="eyebrow" style="margin-bottom:22px">Cash leg</div>
+    <div class="stepper">${stepperHtml}</div>
+    <div style="margin-top:24px">
+      <div class="row-line"><span class="k">Provider fee (est.)</span><span class="v">$3,700</span></div>
+      <div class="row-line"><span class="k">Net USDC into Capital Wallet</span><span class="v">$4,946,300</span></div>
+    </div>
+  </div>
+  <div class="card pad">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span class="eyebrow">Mint monitor — ${h.minted?'settled':'waiting for USDC to land'}</span>
+      ${h.minted?'<span class="chip green">Minted</span>':'<span class="chip amber">Pending</span>'}
+    </div>
+    ${monRows}
+    <div style="display:flex;gap:16px;align-items:center;margin-top:18px">${retriggerBtn}</div>
+  </div>`;
+}
+function retrigger(btn){
+  const h=S.helios; h.retriggering=true; render();
+  toast('Retry sent — the Relayer is re-attempting the mint');
+  setTimeout(()=>{ h.usdcLanded=true; render(); },1600);
+  setTimeout(()=>{ h.custodianSigned=true; render(); },2800);
+  setTimeout(()=>{
+    h.minted=true; h.retriggering=false;
+    audit('Final interest minted — $115.5K vault + $34.5K treasury','Helios Metals — Lithium');
+    audit('On-ramp settled — $4,946,300 into Capital Wallet','Helios Metals — Lithium');
+    toast('Mint settled — $115.5K → sPLUSD vault, $34.5K → Treasury. Backing invariant reconciles.', true);
+    render();
+  },4200);
+}
+
+/* ============================================================
+   RISK COUNCIL
+   ============================================================ */
+function screenRisk(){
+  const p=S.proposal;
+  const status = p.submitted ? `<span class="chip navy">In timelock · ${fmtClock(p.secondsLeft)} left</span>` : `<span class="chip amber">Decision pending</span>`;
+  return `
+  <div class="page-head"><div class="page-title">Risk Council</div></div>
+  <div class="alert info" style="margin-bottom:24px"><span><b>You draft and track — you cannot execute.</b> Proposals execute via the 3-of-5 Risk Council Safe after a 24h timelock, and GUARDIAN can cancel during the window. Default, off-cycle re-term, and write-down close have no Trustee-key path.</span></div>
+  <div class="panel">
+    <div class="eyebrow" style="margin-bottom:16px">Open proposals</div>
+    <div class="mrow click" onclick="go('risk-proposal')">
+      <span style="width:38px;height:38px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;flex:none">${icon('shield','#fff',19)}</span>
+      <div><b>Delta Commodities — Coffee: Escalate to default</b><div class="sub">setDefault(#4471) · CCR 114% — below the 120% threshold · coupon missed 15 Jun</div></div>
+      <div style="margin-left:auto">${status}</div><span class="chev">›</span>
+    </div>
+    ${S.props.map((pr,i)=>`
+    <div class="mrow click" onclick="openPropTracker(${i})">
+      <span style="width:38px;height:38px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;flex:none">${icon('shield','#fff',19)}</span>
+      <div><b>${pr.title}</b><div class="sub">${pr.sub}</div></div>
+      <div style="margin-left:auto"><span class="chip navy">In timelock · <span class="tlv" data-i="${i}">${fmtClock(pr.secondsLeft)}</span> left</span></div><span class="chev">›</span>
+    </div>`).join('')}
+    <div class="eyebrow" style="margin:28px 0 16px">Draft a new proposal</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="openRetermModal()">Off-cycle re-term — amendEconomics</button>
+      <button class="btn btn-ghost" onclick="openWritedownModal()">Write-down close — closeLoan</button>
+    </div>
+    <p class="footnote" style="margin-top:14px">Distinct from your rollover, which is post-maturity and instant. Benign closures stay on your key under Loans.</p>
+  </div>`;
+}
+function openRetermModal(){
+  openModal(`
+    <h3>Off-cycle re-term</h3>
+    <div class="msub">RiskCouncilSafe.propose( LoanRegistry.amendEconomics(…) ) · appends an epoch from now, mints nothing · 24h timelock, GUARDIAN-cancelable.</div>
+    <div class="flabel">Loan</div>
+    <select class="sel" id="rtLoan">
+      <option value="Delta Commodities — Coffee · #4471">Delta Commodities — Coffee · #4471 (Watchlist)</option>
+      <option value="Sahel Cocoa — Cocoa · #4487">Sahel Cocoa — Cocoa · #4487 (Watchlist)</option>
+      <option value="Meridian Agro — Cocoa · #4460">Meridian Agro — Cocoa · #4460 (Default)</option>
+    </select>
+    <div class="grid2" style="gap:14px;margin-top:4px">
+      <div><div class="flabel">New rate (bps) — penalty</div><input class="txt" id="rtRate" value="1600"></div>
+      <div><div class="flabel">New maturity</div><input class="txt" id="rtMat" value="1 Nov 2026"></div>
+    </div>
+    <div class="row-line" style="margin-top:8px"><span class="k">Mint-ceiling delta the new epoch implies</span><span class="v">+ $41,900</span></div>
+    <div class="alert info" style="margin:16px 0"><span><b>You cannot execute this.</b> The 3-of-5 Risk Council Safe executes after the timelock.</span></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="submitExtraProp(this,'reterm')">Submit to Risk Council Safe</button>
+    </div>`);
+}
+function openWritedownModal(){
+  openModal(`
+    <h3>Write-down close</h3>
+    <div class="msub">RiskCouncilSafe.propose( LoanRegistry.closeLoan(Default | OtherWriteDown) ) · 24h timelock, GUARDIAN-cancelable. Benign closures (ScheduledMaturity, EarlyRepayment) are not routed here.</div>
+    <div class="flabel">Loan</div>
+    <select class="sel" id="wdLoan">
+      <option value="Meridian Agro — Cocoa · #4460">Meridian Agro — Cocoa · #4460 (Default)</option>
+    </select>
+    <div class="grid2" style="gap:14px;margin-top:4px">
+      <div><div class="flabel">Closure reason</div><select class="sel" id="wdReason"><option>Default</option><option>OtherWriteDown</option></select></div>
+      <div><div class="flabel">Realised loss</div><input class="txt" id="wdLoss" value="$710,000"></div>
+    </div>
+    <div class="row-line" style="margin-top:8px"><span class="k">Final ledger</span><span class="v">recovered $1,040,000 of $1,750,000 senior</span></div>
+    <div class="alert info" style="margin:16px 0"><span><b>You cannot execute this.</b> The 3-of-5 Risk Council Safe executes after the timelock.</span></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="submitExtraProp(this,'writedown')">Submit to Risk Council Safe</button>
+    </div>`);
+}
+function submitExtraProp(btn,kind){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Sending to the Safe…';
+  const pr = kind==='reterm'
+    ? {title:'Off-cycle re-term — '+$('#rtLoan').value.split(' · ')[0], sub:'amendEconomics · '+($('#rtRate').value/100).toFixed(2)+'% → '+$('#rtMat').value+' · appends epoch, mints nothing', call:'amendEconomics', sigs:1, secondsLeft:24*3600}
+    : {title:'Write-down close — '+$('#wdLoan').value.split(' · ')[0], sub:'closeLoan('+$('#wdReason').value+') · realised loss '+$('#wdLoss').value, call:'closeLoan', sigs:1, secondsLeft:24*3600};
+  setTimeout(()=>{
+    S.props.push(pr);
+    audit('Risk Council proposal submitted — '+pr.title, pr.title.split('— ')[1]||'');
+    closeModal(); toast('Proposal in the Safe — 24h timelock started. GUARDIAN can cancel.', true); render();
+    const idx=S.props.length-1;
+    setTimeout(()=>{ if(S.props[idx]){S.props[idx].sigs=2; render();} }, 7000);
+    setTimeout(()=>{ if(S.props[idx]){S.props[idx].sigs=3; render(); toast('Council quorum reached — executes when the timelock lapses', true);} }, 14000);
+  },900);
+}
+function openPropTracker(i){
+  const pr=S.props[i];
+  openModal(`
+    <h3>${pr.title}</h3>
+    <div class="msub">${pr.sub}</div>
+    <div class="row-line"><span class="k">Safe reference</span><span class="v" style="font-family:var(--mono)">0xSafe…${(7100+i*13).toString(16)}</span></div>
+    <div class="row-line"><span class="k">Council signatures</span><span class="v">${pr.sigs} of 3 required (3-of-5 Safe)</span></div>
+    <div class="row-line"><span class="k">Timelock remaining</span><span class="v big-serif" style="font-size:24px"><span class="tlv" data-i="${i}">${fmtClock(pr.secondsLeft)}</span></span></div>
+    <div class="row-line"><span class="k">GUARDIAN</span><span class="v">may cancel during the window</span></div>
+    <div class="alert info" style="margin-top:16px"><span><b>No execute button exists here.</b> Execution happens in the Risk Council Safe.</span></div>
+    <div class="mactions"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>`);
+}
+function screenRiskProposal(){
+  const p=S.proposal;
+  const right = p.submitted ? `
+    <div class="card pad">
+      <div class="card-title">Timelock tracker</div>
+      <div class="row-line"><span class="k">Safe reference</span><span class="v" style="font-family:var(--mono)">${p.safeRef}</span></div>
+      <div class="row-line"><span class="k">Council signatures</span><span class="v">${p.sigs} of 3 required (3-of-5 Safe)</span></div>
+      <div class="row-line"><span class="k">Timelock remaining</span><span class="v big-serif" style="font-size:26px" id="tlClock">${fmtClock(p.secondsLeft)}</span></div>
+      <div class="row-line"><span class="k">GUARDIAN</span><span class="v">may cancel during the window</span></div>
+      <div class="seg" style="margin:18px 0 8px"><i class="on"></i><i class="${p.sigs>=2?'on':''}"></i><i class="${p.sigs>=3?'on':''}"></i><i></i><i></i></div>
+      <p class="footnote">Once executed, all loan-tied mints on #4471 are blocked. Status flips to Default on-chain.</p>
+      <div class="alert info" style="margin-top:16px"><span><b>No execute button exists here.</b> Execution happens in the Risk Council Safe, not on this dashboard.</span></div>
+    </div>` : `
+    <div class="card pad">
+      <div class="card-title">Proposal</div>
+      <div class="msub" style="margin-bottom:14px">Composed for the 3-of-5 RISK_COUNCIL Safe · 24h timelock · GUARDIAN-cancelable</div>
+      <div class="callbox"><span class="fn">RiskCouncilSafe.propose</span>(<br>&nbsp;&nbsp;<span class="fn">LoanRegistry.setDefault</span>(loanId: <span class="arg">#4471 — Delta Commodities</span>))</div>
+      <div style="margin-top:16px">
+        <div class="check-line">${icon('check','var(--label)',16)} Blocks all loan-tied mints once executed</div>
+        <div class="check-line">${icon('check','var(--label)',16)} 24h timelock starts at submission</div>
+        <div class="check-line">${icon('check','var(--label)',16)} GUARDIAN can cancel during the window</div>
+      </div>
+      <div class="alert info" style="margin:18px 0"><span><b>You cannot execute this.</b> You are drafting for the Risk Council — the Safe executes after the timelock.</span></div>
+      <button class="btn btn-navy btn-lg" style="width:100%" onclick="submitProposal(this)">Submit to Risk Council Safe</button>
+    </div>`;
+  return `
+  <div class="crumb"><a onclick="go('risk')">‹ Risk Council</a></div>
+  <div class="detail-title">Escalate to Default — Delta Commodities</div>
+  <div class="chiprow"><span class="chip">Risk Council Safe · 24h timelock</span>${p.submitted?'<span class="chip navy">Submitted · in timelock</span>':'<span class="chip amber">Draft</span>'}</div>
+  <div class="grid2">
+    <div class="card pad">
+      <div class="card-title">Loan ledger &amp; deterioration</div>
+      <div class="row-line"><span class="k">Facility / senior deployed</span><span class="v">$2,300,000 / $1,840,000</span></div>
+      <div class="row-line"><span class="k">Repaid to date</span><span class="v">$0 · coupon missed 15 Jun</span></div>
+      <div class="row-line"><span class="k">Collateral (coffee −18% 30d)</span><span class="v">$2,106,000</span></div>
+      <div class="row-line"><span class="k">CCR</span><span class="v" style="color:var(--red);font-weight:700">114% — next alert at 110%</span></div>
+      <div class="row-line"><span class="k">Days on watchlist</span><span class="v">18</span></div>
+      <div class="eyebrow" style="margin:18px 0 8px">CCR trend — thresholds 130 / 120 / 110%</div>
+      <svg viewBox="0 0 460 110" style="width:100%">
+        <line x1="10" y1="34" x2="450" y2="34" stroke="#e2c9c9" stroke-dasharray="4 4"/><text x="416" y="30" font-size="11" fill="var(--red)">120%</text>
+        <line x1="10" y1="64" x2="450" y2="64" stroke="#e2c9c9" stroke-dasharray="4 4"/><text x="416" y="60" font-size="11" fill="var(--red)">110%</text>
+        <polyline points="10,8 90,12 170,18 250,26 330,40 450,50" fill="none" stroke="var(--red)" stroke-width="2.5"/>
+        <circle cx="450" cy="50" r="4" fill="var(--red)"/>
+        <text x="10" y="102" font-size="13" fill="var(--label)">146% · 1 May</text>
+        <text x="398" y="74" font-size="14" font-weight="700" fill="var(--red)">114%</text>
+      </svg>
+      <div class="eyebrow" style="margin:14px 0 8px">Portfolio impact if defaulted</div>
+      <div class="row-line"><span class="k">At-risk (Watchlist + Default)</span><span class="v">2.1% → <span style="color:var(--red)">4.3%</span> of deployed</span></div>
+      <div class="row-line"><span class="k">Coffee concentration</span><span class="v">unchanged · 3.9%</span></div>
+    </div>
+    ${right}
+  </div>`;
+}
+function fmtClock(s){ const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60; const z=n=>String(n).padStart(2,'0'); return `${z(h)}:${z(m)}:${z(ss)}`; }
+function submitProposal(btn){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Sending to the Safe…';
+  setTimeout(()=>{
+    const p=S.proposal;
+    p.submitted=true; p.safeRef='0xSafe…9d42'; p.sigs=1; p.secondsLeft=24*3600-2;
+    audit('Default proposal submitted — setDefault(#4471)','Delta Commodities — Coffee');
+    toast('Proposal in the Safe — 24h timelock started. GUARDIAN can cancel.', true);
+    render();
+    setTimeout(()=>{ p.sigs=2; render(); toast('Council member 2 of 3 signed'); }, 6000);
+    setTimeout(()=>{ p.sigs=3; render(); toast('Council quorum reached — executes when the timelock lapses', true); }, 12000);
+  },900);
+}
+setInterval(()=>{
+  const p=S.proposal;
+  if(p.submitted && p.secondsLeft>0){ p.secondsLeft--; const el=$('#tlClock'); if(el) el.textContent=fmtClock(p.secondsLeft); }
+  S.props.forEach((pr,i)=>{ if(pr.secondsLeft>0) pr.secondsLeft--; });
+  document.querySelectorAll('.tlv').forEach(el=>{ const i=+el.dataset.i; if(S.props[i]) el.textContent=fmtClock(S.props[i].secondsLeft); });
+},1000);
+
+/* ============================================================
+   AUDIT LOG
+   ============================================================ */
+function screenAudit(){
+  const rows = S.audit.map(e=>`<tr><td class="muted" style="width:13%">${e.t}</td><td style="width:44%">${e.a}</td><td style="width:26%">${e.l}</td><td class="muted" style="font-family:var(--mono);font-size:14px">${e.r}</td></tr>`).join('');
+  return `
+  <div class="page-head"><div class="page-title">Audit Log</div></div>
+  <div class="panel">
+    <table class="tbl"><thead><tr><th style="width:13%">Time</th><th style="width:44%">Action</th><th style="width:26%">Loan / scope</th><th>Reference</th></tr></thead></table>
+    <div class="tblwrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
+    <p class="footnote" style="margin-top:16px">Append-only stream of every Trustee action. CCR threshold-crossing writes, fiat wire confirmations, and MPC co-signatures all land here. Try an action anywhere — it appears at the top.</p>
+  </div>`;
+}
+
+/* ============================================================
+   GENERIC LOAN DETAIL — every loan gets a home
+   ============================================================ */
+const DET = {
+  andes:{ full:'Andes Copper · Copper Concentrate', id:'#4492', status:()=>'Performing', chip:'green',
+    corr:'Peru → Germany', facility:'$2,750,000', senior:'$2,200,000', rate:'12.0% p.a.', mat:'15 Sep 2026', batch:'batch #B-102 · 5 Jan',
+    spot:'Copper conc. $9,120/t', d:'+0.8% 7d', dBad:false, qty:'340 t', haircut:'10%', coll:'$3,120,000', outst:'$2,200,000',
+    ccrHtml:'<span style="color:var(--green);font-weight:700">142% — above 130% ✓</span>', age:'1h',
+    note:'Last on-chain write: 138% · 3 Apr (no threshold crossed since).',
+    repaid:()=> S.andes.recorded?'$100,000':'$0', repaidSub:()=> S.andes.recorded?'coupon · 21 Jun':'first coupon due 20 Jun',
+    stage(){ return S.andes.recorded
+      ? {t:'Coupon recorded — on-ramp queued', p:'The $100K interest-only coupon is recorded on the ledger. The senior portion is queued for on-ramp; $77K net coupon mints to the vault once USDC lands.', b:`<button class="btn btn-navy" onclick="go('cash',{cashTab:'ramp'})">Track the on-ramp →</button>`, chip:'recorded ✓', chipCls:'green'}
+      : {t:'Coupon due 20 Jun — overdue 1 day', p:'The repayment-due worklist flagged this loan: a scheduled interest-only coupon of $100,000 with no matching recordPayment. Reconcile against the correspondent bank wire, then record.', b:`<button class="btn btn-navy" onclick="go('record-coupon')">Record coupon →</button>`, chip:'payment due', chipCls:'amber'}; } },
+  nile:{ full:'Nile Cotton · Cotton', id:'#4495', status:()=>'Performing', chip:'green',
+    corr:'Egypt → Turkey', facility:'$1,250,000', senior:'$1,000,000', rate:'12.5% p.a.', mat:'30 Oct 2026', batch:'batch #B-102 · 5 Jan',
+    spot:'Cotton $1,830/t', d:'+2.4% 7d', dBad:false, qty:'950 t', haircut:'10%', coll:'$1,560,000', outst:'$1,000,000',
+    ccrHtml:'<span style="color:var(--green);font-weight:700">156% — above 130% ✓</span>', age:'50m',
+    note:'Last on-chain write: 149% · 12 Mar.', repaid:()=>'$0', repaidSub:()=>'first coupon due 30 Jul',
+    stage(){ return {t:'No action due', p:'Performing inside all thresholds. Next event: coupon 30 Jul.', b:'', chip:'healthy', chipCls:'green'}; } },
+  baltic:{ full:'Baltic Timber · Sawn Timber', id:'#4498', status:()=>'Performing', chip:'green',
+    corr:'Latvia → UK', facility:'$1,000,000', senior:'$800,000', rate:'13.5% p.a.', mat:'20 Nov 2026', batch:'batch #B-102 · 5 Jan',
+    spot:'Sawn timber $312/m³', d:'−0.4% 7d', dBad:true, qty:'4,100 m³', haircut:'10%', coll:'$1,150,000', outst:'$800,000',
+    ccrHtml:'<span style="color:var(--green);font-weight:700">144% — above 130% ✓</span>', age:'1h',
+    note:'Last on-chain write: 140% · 20 Feb.', repaid:()=>'$0', repaidSub:()=>'first coupon due 20 Aug',
+    stage(){ return {t:'No action due', p:'Performing inside all thresholds. Next event: coupon 20 Aug.', b:'', chip:'healthy', chipCls:'green'}; } },
+  volta:{ full:'Volta Cashew · Cashew', id:'#4483', status:()=> S.volta.rolled?'Performing':'Matured', chip:'amber',
+    corr:'Ghana → Vietnam', facility:'$1,125,000', senior:'$900,000', rate:()=> S.volta.rolled?'14.5% p.a. (epoch 2)':'12.5% p.a.', mat:()=> S.volta.rolled?'30 Sep 2026':'15 Jun 2026 — passed', batch:'batch #B-097 · 12 Feb',
+    spot:'Cashew $1,410/t', d:'+0.3% 7d', dBad:false, qty:'940 t', haircut:'10%', coll:'$1,190,000', outst:'$900,000',
+    ccrHtml:'<span style="color:var(--green);font-weight:700">132% — above 130% ✓</span>', age:'1h',
+    note:'Collateral holds; the miss is timing, not price — the offtaker vessel is 3 weeks late.',
+    repaid:()=>'$0', repaidSub:()=>'full repayment expected mid-Jul',
+    stage(){ return S.volta.rolled
+      ? {t:'Rolled over — epoch 2 appended', p:'New epoch from prior maturity: 14.50% to 30 Sep 2026. Status back to Performing, LoanRolledOver emitted. Mint ceiling raised only — nothing minted.', b:'', chip:'rolled ✓', chipCls:'green'}
+      : {t:'Matured 15 Jun without full repayment', p:'now ≥ currentMaturityDate and status is not Default or Closed — the instant post-maturity rollover from your key is available. A penalty re-term outside this fast-path would be a Risk Council amendEconomics.', b:`<button class="btn btn-navy" onclick="openRolloverModal('volta')">Roll over →</button>`, chip:'rollover available', chipCls:'amber'}; } },
+  sahel:{ full:'Sahel Cocoa · Cocoa', id:'#4487', status:()=>'Watchlist', chip:'amber',
+    corr:'Ghana → Netherlands', facility:'$1,575,000', senior:'$1,260,000', rate:'14.0% p.a.', mat:'12 Sep 2026', batch:'batch #B-102 · 5 Jan',
+    spot:'Cocoa $6,900/t', d:'−9% 30d', dBad:true, qty:'240 t', haircut:'10%', coll:'$1,490,000', outst:'$1,260,000',
+    ccrHtml:'<span style="color:var(--red);font-weight:700">118% — below the 120% threshold</span>', age:'26h', stale:true,
+    note:'On-chain write at crossing: 119% · 19 Jun (status → Watchlist). Feed is 26h old — refresh before deciding anything.',
+    repaid:()=>'$44,100', repaidSub:()=>'coupon · 12 Apr', 
+    stage(){ return {t:'Price feed stale — 26h old', p:'The valuation record has not recomputed in 26 hours; the 118% CCR may be off in either direction. Request a feed refresh before lifecycle or escalation decisions.', b:`<button class="btn btn-ghost" onclick="toast('Feed refresh requested from the Relayer — expect a recompute within minutes')">Request feed refresh</button> <button class="btn btn-ghost" onclick="openLifecycleModal('sahel')">Update lifecycle</button>`, chip:'feed stale', chipCls:'amber'}; } },
+  meridian:{ full:'Meridian Agro · Cocoa', id:'#4460', status:()=>'Default', chip:'red',
+    corr:'Ghana → Netherlands', facility:'$2,190,000', senior:'$1,750,000', rate:'14.0% p.a.', mat:'12 Mar 2026 — defaulted 20 Mar', batch:'batch #B-089 · 4 Nov',
+    spot:'Cocoa $6,100/t', d:'−22% 90d', dBad:true, qty:'190 t', haircut:'10%', coll:'$1,040,000', outst:'$1,750,000',
+    ccrHtml:'<span style="color:var(--red);font-weight:700">60% — defaulted</span>', age:'3h',
+    note:'All loan-tied mints blocked since the Risk Council executed setDefault on 20 Mar.',
+    repaid:()=>'$1,040,000', repaidSub:()=>'recovered via cargo sale · 2 Jun',
+    stage(){ return {t:'Default — recovery in progress', p:'Cargo was resold for $1.04M against $1.75M senior. Once recovery closes, the write-down close (realised loss ≈ $710K) is a Risk Council proposal — there is no Trustee-key path.', b:`<button class="btn btn-navy" onclick="openWritedownModal()">Draft write-down close →</button>`, chip:'Risk Council owns closure', chipCls:'red'}; } },
+  auric:{ full:'Auric Andes · Gold Pyrite Concentrate', id:'#4512', status:()=>'Performing', chip:'green',
+    corr:'Peru → China', facility:'$3,500,000', senior:'$2,800,000', rate:'14.0% p.a.', mat:'15 Dec 2026', batch:()=> S.auric.disb==='transit'?'off-ramp converting now':'awaiting disbursement co-sign',
+    spot:'Au $2,410/oz · NSR', d:'+0.6% 7d', dBad:false, qty:'3,400 dmt', haircut:'25% (NSR mine-gate)', coll:'$4,970,800', outst:'$2,800,000 committed',
+    ccrHtml:'<span style="color:var(--green);font-weight:700">178% — above 130% ✓</span>', age:'42m',
+    note:'NSR valuation: payable metal → gross − TC/RC/penalties − realisation → haircut. See the origination record for the full waterfall.',
+    repaid:()=>'$0', repaidSub:()=>'not yet disbursed',
+    stage(){ return S.auric.disb==='transit'
+      ? {t:'Funding — off-ramp converting', p:'The $2.8M senior disbursement is at the provider converting USDC → USD. Next: USD lands in the Trust account and you wire it to the borrower.', b:`<button class="btn btn-navy" onclick="go('cash',{cashTab:'ramp'})">Track in Cash Management →</button>`, chip:'converting', chipCls:'amber'}
+      : {t:'Approved — disbursement awaiting your co-signature', p:'The loan NFT is minted. Funding is the separate Cash Management stage: co-sign the $2.8M off-ramp in the Capital Wallet MPC.', b:`<button class="btn btn-navy" onclick="go('cash',{cashTab:'ramp'})">Co-sign in Cash Management →</button>`, chip:'awaiting co-sign', chipCls:'amber'}; } },
+  atlas:{ full:'Atlas Grain · Wheat', id:'#4432', status:()=>'Closed', chip:'', 
+    corr:'Ukraine → Egypt', facility:'$3,875,000', senior:'$3,100,000', rate:'11.5% p.a.', mat:'closed 4 May 2026', batch:'batch #B-084 · 2 Oct',
+    spot:'—', d:'', dBad:false, qty:'—', haircut:'—', coll:'—', outst:'$0',
+    ccrHtml:'<span class="muted">n/a — closed</span>', age:'—',
+    note:'Closure reason: ScheduledMaturity. Realised senior interest $214K net; all legs minted.',
+    repaid:()=>'$3,940,000', repaidSub:()=>'full ledger settled',
+    stage(){ return {t:'Closed — ScheduledMaturity', p:'Repaid at scheduled maturity, LoanClosed emitted 4 May. Read-only.', b:'', chip:'closed', chipCls:''}; } },
+  kivu:{ full:'Kivu Coltan · Coltan', id:'#4419', status:()=>'Closed', chip:'',
+    corr:'DRC → Belgium', facility:'$1,500,000', senior:'$1,200,000', rate:'15.0% p.a.', mat:'closed 20 Feb 2026', batch:'batch #B-076 · 18 Aug',
+    spot:'—', d:'', dBad:false, qty:'—', haircut:'—', coll:'—', outst:'$0',
+    ccrHtml:'<span class="muted">n/a — closed</span>', age:'—',
+    note:'Closure reason: EarlyRepayment. Early-repayment fee $9K applied in the final waterfall.',
+    repaid:()=>'$1,338,000', repaidSub:()=>'repaid 34 days early',
+    stage(){ return {t:'Closed — EarlyRepayment', p:'Offtaker prepaid 20 Feb; early-repayment fee recorded, LoanClosed emitted. Read-only.', b:'', chip:'closed', chipCls:''}; } },
+};
+function screenLoanGeneric(){
+  const k=S.loanSel, d=DET[k]; if(!d) return screenLoans();
+  const st=d.stage();
+  const val = v => typeof v==='function'?v():v;
+  const closed = k==='atlas'||k==='kivu';
+  return `
+  <div class="crumb"><a onclick="go('loans')">‹ Loans</a></div>
+  <div class="detail-title" style="font-size:48px">${d.full}</div>
+  <div class="chiprow">
+    <span class="chip ${d.chip}">${d.status()}</span>
+    <span class="muted">Loan ${d.id} · ${d.corr} · ${val(d.mat)}</span>
+  </div>
+  <div class="grid3 tiles" style="margin-bottom:22px">
+    <div class="tile"><div class="lbl" style="font-size:13px">Facility / senior</div><div class="num" style="font-size:28px">${d.facility} / ${d.senior}</div><div class="sub">funded from ${val(d.batch)}</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Repaid to date</div><div class="num" style="font-size:28px">${d.repaid()}</div><div class="sub">${d.repaidSub()}</div></div>
+    <div class="tile"><div class="lbl" style="font-size:13px">Rate · epochs</div><div class="num" style="font-size:28px">${val(d.rate)}</div><div class="sub">${k==='volta'&&S.volta.rolled?'epoch 2 of 2':'epoch 1'}</div></div>
+  </div>
+  <div class="grid2" style="margin-bottom:22px">
+    ${priceCard({spot:d.spot, d:d.d, dBad:d.dBad, qty:d.qty, haircut:d.haircut, coll:d.coll, outst:d.outst, ccrHtml:d.ccrHtml, age:d.age, stale:d.stale, note:d.note})}
+    <div class="card pad">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+        <div class="card-title" style="font-size:24px">${st.t}</div>
+        <span class="chip ${st.chipCls}" style="white-space:nowrap">${st.chip}</span>
+      </div>
+      <p class="muted" style="margin-top:4px">${st.p}</p>
+      ${st.b?`<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">${st.b}</div>`:''}
+    </div>
+  </div>
+  ${closed?'':`<div class="card pad">
+    <div class="eyebrow" style="margin-bottom:16px">Other actions on this loan</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="openLifecycleModal('${k}')">Update lifecycle</button>
+      <button class="btn btn-ghost" onclick="openRolloverModal('${k}')">Roll over</button>
+      <button class="btn btn-ghost" onclick="go('risk')">Escalate to Risk Council</button>
+    </div>
+    <p class="footnote" style="margin-top:14px">Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.</p>
+  </div>`}`;
+}
+
+/* ============================================================
+   RECORD COUPON — LIVE Type 1 intake (Andes Copper)
+   ============================================================ */
+function screenRecordCoupon(){
+  const rec=S.andes.recorded;
+  return `
+  <div class="crumb"><a onclick="go('loan-generic',{loanSel:'andes'})">‹ Andes Copper · Copper Concentrate</a></div>
+  <div class="detail-title">Record Coupon — Andes Copper</div>
+  <div class="chiprow"><span class="chip">Your key · no cash moves · nothing mints</span>${rec?'<span class="chip green">Recorded · 21 Jun</span>':'<span class="chip amber">Due 20 Jun — overdue 1 day</span>'}</div>
+  <div class="alert info" style="margin-bottom:22px"><span>The dashboard computes the waterfall — you never do the arithmetic. Adjust components for waivers or partials; the <b>sum ≤ received</b> invariant revalidates before broadcast. Deferred interest (all-zero) is allowed.</span></div>
+  <div class="grid2">
+    <div class="card pad">
+      <div class="card-title">Andes Copper</div>
+      <div class="row-line"><span class="k">Coupon period</span><span class="v">2 Feb → 20 Jun · 138 days</span></div>
+      <div class="row-line"><span class="k">Senior outstanding — unchanged</span><span class="v">$2,200,000</span></div>
+      <div class="row-line"><span class="k">Scheduled coupon (12.0% p.a.)</span><span class="v">$100,000</span></div>
+      <div class="field" style="margin-top:18px"><label>Offtaker payment received (USD, Trust account)</label><input id="cpAmt" value="100000" ${rec?'readonly':''} oninput="recalcCoupon()"></div>
+      <div class="field" style="margin-top:12px"><label>Date received</label><input value="21 / 06 / 2026" ${rec?'readonly':''}></div>
+      <p class="footnote" style="margin-top:16px">Check the amount against the correspondent bank wire before recording — there is no automatic bank feed.</p>
+    </div>
+    <div class="card pad">
+      <div class="card-title">Waterfall Breakdown — computed</div>
+      <div class="wf" id="cpWf">${couponWfRows(100000)}</div>
+      <div class="alert green" id="cpCheck" style="margin-top:16px">Components sum to received $100,000 ${icon('check','var(--green)',18)}</div>
+      ${rec
+        ? `<button class="btn btn-navy btn-lg" style="width:100%;margin-top:16px" onclick="go('cash',{cashTab:'ramp'})">Track the on-ramp →</button>
+           <p class="footnote" style="margin-top:12px;text-align:center">Recorded. No cash moved, no PLUSD minted — the senior portion is queued for the on-ramp.</p>`
+        : `<button class="btn btn-navy btn-lg" id="cpBtn" style="width:100%;margin-top:16px" onclick="openCouponTx()">Record on the ledger</button>
+           <p class="footnote" style="margin-top:12px;text-align:center">recordPayment is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.</p>`}
+    </div>
+  </div>`;
+}
+function couponSplit(a){
+  return { principal:0, gross:a, mgmt:Math.round(a*0.08), perf:Math.round(a*0.10), oet:Math.round(a*0.05), net:a-Math.round(a*0.08)-Math.round(a*0.10)-Math.round(a*0.05) };
+}
+function couponWfRows(a){
+  const w=couponSplit(a);
+  return `
+    <div class="wrow ghost"><span class="wnum"></span><span class="wk">Senior principal returned<small>Interest-only coupon — principal stays deployed</small></span><span class="wv">$0</span></div>
+    <div class="wrow"><span class="wnum"></span><span class="wk">Gross interest (138 / 365 days)</span><span class="wv">${fmt(w.gross)}</span></div>
+    <div class="wrow"><span class="wnum"></span><span class="wk">Management fee</span><span class="wv">${fmt(w.mgmt)}</span></div>
+    <div class="wrow"><span class="wnum"></span><span class="wk">Performance fee</span><span class="wv">${fmt(w.perf)}</span></div>
+    <div class="wrow"><span class="wnum"></span><span class="wk">OET allocation</span><span class="wv">${fmt(w.oet)}</span></div>
+    <div class="wrow"><span class="wnum"></span><span class="wk">Net senior coupon → vault<small>Mints to sPLUSD once the on-ramp lands</small></span><span class="wv">${fmt(w.net)}</span></div>`;
+}
+function recalcCoupon(){
+  const a=parseInt(($('#cpAmt').value||'0').replace(/[^0-9]/g,''),10)||0;
+  $('#cpWf').innerHTML=couponWfRows(a);
+  const ok=a>0;
+  $('#cpCheck').className='alert '+(ok?'green':'amber');
+  $('#cpCheck').innerHTML= ok?`Components sum to received ${fmt(a)} ${icon('check','var(--green)',18)}`:`Enter the received amount ${icon('warn','var(--amber)',18)}`;
+  $('#cpBtn').disabled=!ok;
+}
+function openCouponTx(){
+  const a=parseInt(($('#cpAmt').value||'0').replace(/[^0-9]/g,''),10)||0;
+  const w=couponSplit(a);
+  openModal(`
+    <h3>Record coupon — Andes Copper</h3>
+    <div class="msub">Transaction preview — sent from your Trustee key. Pure accounting: no USDC moves, no PLUSD mints.</div>
+    <div class="callbox"><span class="fn">LoanRegistry.recordPayment</span>(<br>
+      &nbsp;&nbsp;loanId: <span class="arg">#4492</span>, offtakerAmount: <span class="arg">${fmt(a)}</span>,<br>
+      &nbsp;&nbsp;seniorPrincipal: <span class="arg">$0</span>, seniorInterest: <span class="arg">${fmt(w.net)}</span>,<br>
+      &nbsp;&nbsp;mgmtFee: <span class="arg">${fmt(w.mgmt)}</span>, perfFee: <span class="arg">${fmt(w.perf)}</span>, oetAlloc: <span class="arg">${fmt(w.oet)}</span>,<br>
+      &nbsp;&nbsp;equityAmount: <span class="arg">$0</span>)</div>
+    <div style="margin-top:16px">
+      <div class="check-line ok">${icon('check','var(--green)',16)} Loan status in {Performing, Watchlist}</div>
+      <div class="check-line ok">${icon('check','var(--green)',16)} Six split components sum ≤ offtakerAmount (${fmt(w.net+w.mgmt+w.perf+w.oet)} ≤ ${fmt(a)})</div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-navy" onclick="doCoupon(this,${a})">Record payment</button>
+    </div>`);
+}
+function doCoupon(btn,a){
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Broadcasting…';
+  setTimeout(()=>{
+    S.andes.recorded=true;
+    audit('Coupon recorded — '+fmt(a)+' interest only, principal unchanged','Andes Copper — Copper conc.');
+    closeModal(); toast('Payment recorded. Next: instruct the on-ramp — the Relayer matches the inflow.', true);
+    go('loan-generic',{loanSel:'andes'});
+  },900);
+}
+
+/* ---------- document preview ---------- */
+function openDocModal(name){
+  const hash='0x'+Math.abs([...name].reduce((a,c)=>a*31+c.charCodeAt(0)|0,7)).toString(16).slice(0,6);
+  openModal(`
+    <h3 style="font-size:22px;display:flex;gap:12px;align-items:center"><span class="dico" style="width:40px;height:40px;border-radius:8px;background:#f0f0fa;display:flex;align-items:center;justify-content:center">${icon('doc','var(--navy)',20)}</span>${name}</h3>
+    <div class="msub">Hashed into the IPFS document behind metadataURI — the on-chain loan points at this set.</div>
+    <div class="row-line"><span class="k">sha256</span><span class="v" style="font-family:var(--mono)">${hash}…9e2c</span></div>
+    <div class="row-line"><span class="k">Pinned</span><span class="v">ipfs://…${hash.slice(2)} · 3 replicas</span></div>
+    <div class="row-line"><span class="k">Uploaded</span><span class="v">18 Jun 2026 · by the originator, verified by Relayer</span></div>
+    <div style="margin-top:18px;border:1px solid var(--line);border-radius:8px;background:#fafaf8;padding:22px">
+      ${[92,100,78,96,60,88,40].map(w=>`<div style="height:9px;border-radius:4px;background:#e6e4de;width:${w}%;margin-bottom:10px"></div>`).join('')}
+      <div class="footnote" style="text-align:center;margin-top:6px">Preview unavailable in the prototype</div>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      <button class="btn btn-navy" onclick="toast('In production this opens the original from IPFS')">Open original</button>
+    </div>`);
+}
+
+/* ---------- plumbing ---------- */
+function openModal(inner){ $('#modalRoot').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${inner}</div></div>`; }
+function closeModal(){ $('#modalRoot').innerHTML=''; }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+const SCREENS = {
+  'overview':screenOverview,'origination':screenOrigination,'origination-detail':screenOriginationDetail,
+  'loans':screenLoans,'loan-helios':screenLoanHelios,'loan-delta':screenLoanDelta,'loan-generic':screenLoanGeneric,'repayment':screenRepayment,'coupon':screenCoupon,'record-coupon':screenRecordCoupon,
+  'cash':screenCash,'batch':screenBatch,'onramp':screenOnramp,
+  'risk':screenRisk,'risk-proposal':screenRiskProposal,'audit':screenAudit,
+};
+function render(){ renderSidebar(); $('#main').innerHTML = SCREENS[S.screen](); }
+render();
+</script>
+</body>
+</html>

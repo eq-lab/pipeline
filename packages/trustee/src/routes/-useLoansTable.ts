@@ -46,10 +46,7 @@ import type {
   LoanBookResponse,
   LoanBookSummary,
 } from "@/api/useLoanBook";
-import {
-  formatRegistryCompactUsd,
-  formatRegistryCompact2dpUsd,
-} from "@/utils/formatUsd";
+import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
 
 // ── Named constants ─────────────────────────────────────────────────────────
@@ -132,9 +129,9 @@ export interface LoanTableRow {
   commodity: string;
   /** Spot sub-line, or `null` when the asset is unpriced (no sub-line). */
   spot: SpotLine | null;
-  /** Outstanding senior, #840-scaled two-decimal compact (`$1.84M`). */
+  /** Outstanding senior, displayed as served, two-decimal compact (e.g. `$1.84M`). */
   seniorOutstanding: string;
-  /** Collateral, #840-scaled (×1000, registry-sourced — #888) two-decimal compact. `$2.10M` / `—`. */
+  /** Collateral, displayed as served (issue #906 — no frontend rescaling), two-decimal compact. `$2.10M` / `—`. */
   collateral: string;
   /** CCR cell, or `null` when `ccr_bps` is unavailable. */
   ccr: CcrCell | null;
@@ -287,13 +284,12 @@ export function mapEntryToRow(
     originator: safeString(entry.originator),
     commodity: safeString(entry.commodity),
     spot: formatSpot(entry.spot_price, entry.spot_change_7d),
-    // #840 workaround: senior_outstanding is registry-sourced ⇒ scale ×1000.
-    // Two-decimal compact (e.g. $1.84M) to match the collateral column.
-    seniorOutstanding: formatRegistryCompact2dpUsd(entry.senior_outstanding),
-    // #888: collateral is ALSO registry-sourced (same 1000×-low scale as
-    // senior_outstanding, not price-feed correct-scale as #843 assumed) ⇒
-    // scale ×1000, same helper as the senior-outstanding column.
-    collateral: formatRegistryCompact2dpUsd(entry.collateral),
+    // Displayed as served by the backend (issue #906 — no frontend
+    // rescaling). Two-decimal compact (e.g. $1.84M) to match the collateral
+    // column.
+    seniorOutstanding: formatCompactUsd2dp(entry.senior_outstanding),
+    // collateral is likewise displayed as served (issue #906).
+    collateral: formatCompactUsd2dp(entry.collateral),
     ccr,
     maturity: formatMaturityDate(entry.maturity),
     stage: safeString(entry.status),
@@ -305,12 +301,11 @@ export function mapEntryToRow(
 export function mapSummary(summary: LoanBookSummary): LoansSummaryView {
   const top = summary.top_concentration;
   return {
-    // #840 workaround: deployed_senior / at_risk_..._senior are registry-sourced ⇒ scale ×1000.
-    deployedSenior: formatRegistryCompactUsd(summary.deployed_senior),
+    // deployed_senior / at_risk_..._senior are displayed as served by the
+    // backend (issue #906 — no frontend rescaling).
+    deployedSenior: formatCompactUsd(summary.deployed_senior),
     atRiskPct: formatFractionPct(summary.at_risk_wl_and_default_pct),
-    atRiskSenior: formatRegistryCompactUsd(
-      summary.at_risk_wl_and_default_senior,
-    ),
+    atRiskSenior: formatCompactUsd(summary.at_risk_wl_and_default_senior),
     weightedRate: formatFractionPct(summary.weighted_rate),
     weightedTenor: formatTenor(summary.weighted_tenor_days),
     topConcentrationPct: top ? formatFractionPct(top.share) : "—",

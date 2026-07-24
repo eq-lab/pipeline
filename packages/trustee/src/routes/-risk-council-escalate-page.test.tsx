@@ -89,15 +89,16 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       originator: "Delta Commodities",
       borrower: "b1",
       commodity: "Coffee",
-      // Registry-sourced (#840): ×1000 ⇒ $2,300,000 / $1,840,000.
-      principal: "2300.000000",
-      senior_outstanding: "1840.000000",
+      // Served display-scale (#906): $2,300,000 / $1,840,000 as-is.
+      principal: "2300000.000000",
+      senior_outstanding: "1840000.000000",
+      original_senior_tranche: "1840000.000000",
       maturity: 1_782_777_600,
       ccr_reported_at: 0,
       spot_price: "4500",
       spot_change_7d: "-0.18",
-      // Registry-sourced (#840): ×1000 ⇒ $2,106,000.
-      collateral: "2106.000000",
+      // Served display-scale (#906): $2,106,000 as-is.
+      collateral: "2106000.000000",
       ltv: null,
       // 114% — between the 110% margin-call and 120% maintenance-margin bands.
       ccr_bps: 11_400,
@@ -105,6 +106,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "WatchList",
+      repaid_to_date: "0.000000",
+      disbursed: true,
+      days_on_watchlist: null,
+      watchlist_entered_at: null,
     },
   ],
 };
@@ -114,14 +119,14 @@ const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   status: "WatchList",
   location: null,
   epoch: null,
-  offtaker: "2000.000000",
-  principal: "1800.000000",
+  offtaker: "2000000.000000",
+  principal: "1800000.000000",
   interest: "40.000000",
   fees: "5.000000",
   minted_yield: "0.000000",
   not_minted_yield: "45.000000",
   // Nothing repaid yet ⇒ offtaker − offtaker_outstanding = $0.
-  offtaker_outstanding: "2000.000000",
+  offtaker_outstanding: "2000000.000000",
 };
 
 const CCR_HISTORY_RESPONSE: CcrHistoryResponse = {

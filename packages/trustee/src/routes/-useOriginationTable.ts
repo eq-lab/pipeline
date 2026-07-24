@@ -20,8 +20,10 @@
  *     `loan_collateral_valuations`, keyed by an on-chain `loan_id` that
  *     submissions don't have yet). Resolved (human, issue #813 comment):
  *     OMIT the sub-line entirely — do not infer it from the commodity name.
- *   - Facility    → `loan_data.economics.original_facility_size`, formatted
- *     via `formatFullUsd` (fully expanded, e.g. `"$3,500,000"`).
+ *   - Facility    → `loan_data.economics.original_facility_size`, served at
+ *     the on-chain 7-decimal base-unit scale — normalized ÷10^7 via
+ *     `economicsBaseUnitsToUsdDecimal` (issue #912) before `formatFullUsd`
+ *     (fully expanded, e.g. `"$3,500,000"`).
  *   - Corridor    → `loan_data.corridor`, hyphen separator rendered as the
  *     Figma's arrow glyph ("PE-CN" → "PE → CN").
  *   - Rate        → `loan_data.economics.senior_interest_rate_bps`, formatted
@@ -45,8 +47,10 @@
  *       this is a Figma-shape placeholder, not a wired action).
  *     - `Rejected`  → red "Rejected" pill; `reason` (if present) is exposed
  *       for the view to show as a tooltip/title on hover.
- *     - Any other/unknown status string → rendered as a neutral fallback
- *       label (the status string itself, or "—" if empty) — never crashes.
+ *     - Any other backend merged/lifecycle status string → displayed as
+ *       `Approved` (issue #892): for Origination, a lifecycle status means the
+ *       request was approved and minted, then moved into its future loan
+ *       lifecycle. Origination keeps only the decision vocabulary.
  *
  * Every field is read defensively: `loan_data` is `serde_json::Value` on the
  * wire (declared as `SubmitLoanRequest` for convenience, but not guaranteed
@@ -54,10 +58,14 @@
  * than fabricating or throwing. See TD-42 (`docs/exec-plans/tech-debt-tracker.md`)
  * for the trustee↔LP extractor duplication this creates.
  */
-import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import {
+  normalizeOriginationSubmissionStatus,
+  useLoanSubmissions,
+} from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
+import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,8 +73,7 @@ import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 export type OriginationRowStatus =
   | { kind: "approved"; label: string }
   | { kind: "in-review"; label: string }
-  | { kind: "rejected"; label: string; reason: string | null }
-  | { kind: "unknown"; label: string };
+  | { kind: "rejected"; label: string; reason: string | null };
 
 /** One formatted, display-ready row of the Origination submissions table. */
 export interface OriginationTableRow {
@@ -110,7 +117,7 @@ function safeNumber(value: unknown): number | undefined {
 }
 
 function resolveStatus(submission: SubmissionView): OriginationRowStatus {
-  switch (submission.status) {
+  switch (normalizeOriginationSubmissionStatus(submission.status)) {
     case "Approved":
       // "Approved" only (NOT "Approved & minted") — deliberately kept short
       // in this compact table pill even after #831's real on-chain mint;
@@ -126,11 +133,6 @@ function resolveStatus(submission: SubmissionView): OriginationRowStatus {
         kind: "rejected",
         label: "Rejected",
         reason: submission.reason ?? null,
-      };
-    default:
-      return {
-        kind: "unknown",
-        label: safeString(submission.status),
       };
   }
 }
@@ -152,7 +154,9 @@ export function mapSubmissionToRow(
     id: submission.id,
     originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
-    facility: formatFullUsd(economics.original_facility_size ?? null),
+    facility: formatFullUsd(
+      economicsBaseUnitsToUsdDecimal(economics.original_facility_size),
+    ),
     // Figma renders the corridor with an arrow separator ("PE → CN"); the
     // stored value uses a hyphen ("PE-CN"). Same data, design-matching glyph.
     corridor: safeString(loanData.corridor).replace(/\s*-\s*/g, " → "),

@@ -96,18 +96,20 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> CapitalAllocationResponse {
-    // Default: no asset transfers and no custody/ramp config → in_transit is null.
-    compute_capital_allocation(loans, events, t_day * DAY, &[], None)
+    // Default: no asset transfers, no custody/ramp config (in_transit null), and an
+    // empty bank-transaction ledger (trust_account = 0).
+    compute_capital_allocation(loans, events, t_day * DAY, &[], None, &BigDecimal::from(0))
 }
 
-// ── Null buckets ───────────────────────────────────────────────────────────────
+// ── Null / zero buckets ──────────────────────────────────────────────────────────
 
 #[test]
-fn non_deployed_buckets_are_always_null() {
+fn unsourced_buckets_are_null_trust_account_is_zero() {
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.buckets.capital_wallet, None);
     assert_eq!(r.buckets.in_transit, None);
-    assert_eq!(r.buckets.trust_account, None);
+    // trust_account is always sourced now (#924) — an empty ledger reads 0, not null.
+    assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
     assert_eq!(r.buckets.tbills, None);
 }
 
@@ -166,6 +168,52 @@ fn no_active_loans_yields_zero_deployed_and_null_buckets() {
     assert_eq!(r.buckets.tbills, None);
 }
 
+// ── trust_account: sum(deposits) − sum(withdrawals) − sum(fees) (#924) ──────────
+
+#[test]
+fn trust_account_zero_ledger_reads_zero() {
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, &BigDecimal::from(0));
+    assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn trust_account_reflects_positive_balance() {
+    // Deposits exceed withdrawals + fees → positive balance, passed straight through.
+    // trust_account is a *plain dollar* figure — not base-6 units, unlike usdc().
+    let balance = BigDecimal::from(500) - BigDecimal::from(120) - BigDecimal::from(30); // $350
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, &balance);
+    assert_eq!(r.buckets.trust_account, Some("350.000000".to_owned()));
+}
+
+#[test]
+fn trust_account_negative_balance_is_not_clamped() {
+    // Withdrawals + fees exceed deposits → negative balance surfaces as-is (a real
+    // bookkeeping error should be visible, unlike in_transit's clamp-at-zero).
+    let balance = BigDecimal::from(10) - BigDecimal::from(50); // -$40
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, &balance);
+    assert_eq!(r.buckets.trust_account, Some("-40.000000".to_owned()));
+}
+
+#[test]
+fn trust_account_folds_into_total_alongside_deployed_and_in_transit() {
+    let transfers = vec![transfer(CUSTODY, RAMP, 100)];
+    let sets = addr_sets();
+    let balance = BigDecimal::from(50); // $50, plain — scaled to base-6 only for `total`.
+                                        // Day 60: deployed 120k, in_transit 100, trust_account 50 → total 120150.
+    let r = compute_capital_allocation(
+        &fixture_loans(),
+        &[],
+        60 * DAY,
+        &transfers,
+        Some(&sets),
+        &balance,
+    );
+    assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.buckets.trust_account, Some("50.000000".to_owned()));
+    assert_eq!(r.total, Some("120150.000000".to_owned()));
+}
+
 // ── in_transit: net custody→ramp flow ──────────────────────────────────────────
 
 const CUSTODY: &str = "GAFB7IYPCYZCODQBB5BR5JO45JC4PPVLARUAXQSFHWTLH2KMHPWJ36GD";
@@ -203,7 +251,7 @@ fn in_transit_nets_custody_to_ramp_flow() {
         transfer(CUSTODY, EXTERNAL, 999), // untracked counterparty: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, Some("70.000000".to_owned()));
     // deployed 0 (no loans) + in_transit 70.
     assert_eq!(r.total, Some("70.000000".to_owned()));
@@ -214,7 +262,7 @@ fn in_transit_clamps_negative_to_zero() {
     // More returned from ramp than sent → raw net negative → clamped to 0.
     let transfers = vec![transfer(RAMP, CUSTODY, 50)];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
 }
 
@@ -222,7 +270,7 @@ fn in_transit_clamps_negative_to_zero() {
 fn in_transit_is_null_when_unconfigured() {
     // Transfers present but no custody/ramp config → in_transit stays null.
     let transfers = vec![transfer(CUSTODY, RAMP, 100)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, None);
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, None, &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
 }
@@ -232,7 +280,14 @@ fn in_transit_adds_to_total_alongside_deployed() {
     let transfers = vec![transfer(CUSTODY, RAMP, 100)];
     let sets = addr_sets();
     // Day 60: both fixture loans active → deployed 120k; in_transit 100.
-    let r = compute_capital_allocation(&fixture_loans(), &[], 60 * DAY, &transfers, Some(&sets));
+    let r = compute_capital_allocation(
+        &fixture_loans(),
+        &[],
+        60 * DAY,
+        &transfers,
+        Some(&sets),
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.total, Some("120100.000000".to_owned()));
@@ -250,7 +305,7 @@ fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
         amount: raw_7dec,
     }];
     let sets = addr_sets_with_decimals(7);
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets));
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.total, Some("100.000000".to_owned()));
 }

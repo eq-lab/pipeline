@@ -7,6 +7,8 @@
  *   - Success path returns the parsed SubmissionView[].
  *   - Error path populates `error`.
  *   - refetchInterval is set to 30 s.
+ *   - (#892) `normalizeOriginationSubmissionStatus` keeps the Origination
+ *     decision vocabulary when the backend returns merged lifecycle statuses.
  *   - (#818) The optional `status` filter appends `&status=<value>` to the
  *     URL and is included in the query key; omitting it preserves the
  *     pre-#818 no-`status` behavior (backwards-compat guard for #813's
@@ -16,7 +18,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useLoanSubmissions } from "./useLoanSubmissions";
+import {
+  normalizeOriginationSubmissionStatus,
+  useLoanSubmissions,
+} from "./useLoanSubmissions";
 import type { SubmissionView } from "./useLoanSubmissions";
 
 // ── Mock @/lib/env ────────────────────────────────────────────────────────────
@@ -103,6 +108,22 @@ afterEach(() => {
 });
 
 // ── useLoanSubmissions ────────────────────────────────────────────────────────
+
+describe("normalizeOriginationSubmissionStatus", () => {
+  it("preserves Origination decision statuses", () => {
+    expect(normalizeOriginationSubmissionStatus("InReview")).toBe("InReview");
+    expect(normalizeOriginationSubmissionStatus("Approved")).toBe("Approved");
+    expect(normalizeOriginationSubmissionStatus("Rejected")).toBe("Rejected");
+  });
+
+  it("maps merged loan lifecycle statuses to Approved for Origination surfaces", () => {
+    expect(normalizeOriginationSubmissionStatus("Performing")).toBe("Approved");
+    expect(normalizeOriginationSubmissionStatus("WatchList")).toBe("Approved");
+    expect(normalizeOriginationSubmissionStatus("Past Due")).toBe("Approved");
+    expect(normalizeOriginationSubmissionStatus("Default")).toBe("Approved");
+    expect(normalizeOriginationSubmissionStatus("Closed")).toBe("Approved");
+  });
+});
 
 describe("useLoanSubmissions", () => {
   it("calls fetch with /v1/loan-book/submissions and chain_id=99000001", async () => {

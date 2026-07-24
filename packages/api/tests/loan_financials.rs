@@ -84,10 +84,14 @@ fn row(snapshot: LoanSnapshot) -> LoanSnapshotRow {
 }
 
 fn econ_event(name: &str, new_rate: i64, new_maturity: i64) -> EconomicsEventRow {
+    // `block_timestamp` only matters to the handler's `get_loan_snapshot_as_of`
+    // lookup (see `current_epoch_start_override` in the route), never to the pure
+    // `build_response`/`current_epoch` logic these tests exercise — 0 is fine here.
     EconomicsEventRow {
         event_name: name.to_owned(),
         new_rate,
         new_maturity_timestamp: new_maturity,
+        block_timestamp: 0,
     }
 }
 
@@ -107,7 +111,14 @@ fn derives_realized_figures_and_outstanding() {
         empty_location(),
     );
     // off_ramp complete + now == maturity(0) → the raw on-chain status shows through.
-    let resp = build_response(&row(snap), &BigDecimal::from(40_000_000), &[], true, 0);
+    let resp = build_response(
+        &row(snap),
+        &BigDecimal::from(40_000_000),
+        &[],
+        true,
+        0,
+        None,
+    );
 
     assert_eq!(resp.loan_id, "42");
     assert_eq!(resp.status, "Performing");
@@ -137,7 +148,14 @@ fn not_minted_yield_clamps_at_zero() {
         empty_location(),
     );
     // minted (25) exceeds realized interest+fees (10) → clamp to 0.
-    let resp = build_response(&row(snap), &BigDecimal::from(25_000_000), &[], true, 0);
+    let resp = build_response(
+        &row(snap),
+        &BigDecimal::from(25_000_000),
+        &[],
+        true,
+        0,
+        None,
+    );
     assert_eq!(resp.not_minted_yield, "0.000000");
 }
 
@@ -156,7 +174,7 @@ fn location_projected_when_reported() {
             updated_at: 0,
         },
     );
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 0);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 0, None);
     let loc = resp.location.expect("location present");
     assert_eq!(loc.location_type, "Vessel");
     assert_eq!(loc.location_identifier, "MV Example");
@@ -189,8 +207,13 @@ fn epoch_folds_rollover_then_amendment() {
         econ_event("LoanRolledOver", 150_000, jul1),
         econ_event("EconomicsAmended", 160_000, jul2),
     ];
+    // `maturity_date` is sourced from the snapshot's on-chain read, not the folded
+    // event params — set it to what the amendment above actually produced on-chain.
+    snap.current_maturity_timestamp = jul2;
 
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
+    // No override available here (simulates the on-chain lookup finding nothing
+    // unusual) — falls back to the folded start, which is correct in this case.
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0, None);
     // Rollover advanced the ordinal; the amendment did not.
     assert_eq!(resp.epoch.number, 2);
     // Amendment overwrote the rate in place → 160_000 / 100 = 1_600 bps (16%).
@@ -199,6 +222,77 @@ fn epoch_folds_rollover_then_amendment() {
     assert_eq!(resp.epoch.start_date, "2026-04-01T00:00:00Z");
     // Amendment overwrote the maturity → jul1 + 1 day.
     assert_eq!(resp.epoch.maturity_date, "2026-07-02T00:00:00Z");
+}
+
+#[test]
+fn epoch_maturity_date_uses_snapshot_not_malformed_event_param() {
+    // A `LoanRolledOver` event with a missing/malformed `new_maturity_timestamp`
+    // decodes to `0` (see `ContractLogsRepo::list_loan_economics_events`'s
+    // `COALESCE(..., 0)` guard) — the folded epoch's `.maturity` would be `0`.
+    // The snapshot's block-pinned `current_maturity_timestamp` is the authoritative
+    // on-chain read and must be what the response reports, regardless.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
+    let jul1 = 1_782_864_000; // 2026-07-01T00:00:00Z
+    snap.origination_date = jan1;
+    snap.original_maturity_date = jul1;
+    snap.senior_interest_rate_bps = 1_000;
+    snap.current_maturity_timestamp = jul1 + 86_400; // real on-chain value
+
+    let events = [econ_event("LoanRolledOver", 150_000, 0)];
+
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0, None);
+    assert_eq!(resp.epoch.maturity_date, "2026-07-02T00:00:00Z");
+    assert_ne!(resp.epoch.maturity_date, "1970-01-01T00:00:00Z");
+}
+
+#[test]
+fn epoch_start_date_uses_override_not_malformed_amendment() {
+    // An `EconomicsAmended` on epoch 1 with a missing/malformed `new_maturity_timestamp`
+    // (decodes to `0`) corrupts the folded epoch 1 maturity in place — which becomes
+    // epoch 2's folded `start` once the loan rolls over. The caller's
+    // `current_epoch_start_override` (sourced from `get_loan_snapshot_as_of` just
+    // before the rollover, independent of the malformed param) must win instead.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    let jan1 = 1_767_225_600; // 2026-01-01T00:00:00Z
+    let apr1 = 1_775_001_600; // 2026-04-01T00:00:00Z
+    let jul1 = 1_782_864_000; // 2026-07-01T00:00:00Z
+    snap.origination_date = jan1;
+    snap.original_maturity_date = apr1;
+    snap.current_maturity_timestamp = jul1;
+
+    let events = [
+        econ_event("EconomicsAmended", 100_000, 0), // corrupts epoch 1's maturity to 0
+        econ_event("LoanRolledOver", 150_000, jul1), // opens epoch 2 at the corrupted start
+    ];
+
+    // The on-chain lookup as of just before the rollover reports the real prior
+    // maturity (apr1), unaffected by the amendment event's malformed param.
+    let resp = build_response(
+        &row(snap),
+        &BigDecimal::from(0),
+        &events,
+        true,
+        0,
+        Some(apr1),
+    );
+    assert_eq!(resp.epoch.number, 2);
+    assert_eq!(resp.epoch.start_date, "2026-04-01T00:00:00Z");
+    assert_ne!(resp.epoch.start_date, "1970-01-01T00:00:00Z");
 }
 
 #[test]
@@ -212,7 +306,7 @@ fn status_is_disbursing_when_off_ramp_incomplete() {
         repayment(0, 0, 0, 0),
         empty_location(),
     );
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], false, 0, None);
     assert_eq!(resp.status, "Disbursing");
 }
 
@@ -228,7 +322,7 @@ fn status_is_past_due_when_complete_and_past_maturity() {
         empty_location(),
     );
     snap.current_maturity_timestamp = 1_000;
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 2_000, None);
     assert_eq!(resp.status, "Past Due");
 }
 
@@ -252,10 +346,13 @@ fn epoch_amendment_without_rollover_keeps_ordinal() {
     snap.origination_date = jan1;
     snap.original_maturity_date = apr1;
     snap.senior_interest_rate_bps = 800;
+    // `maturity_date` is sourced from the snapshot's on-chain read, not the folded
+    // event params — set it to what the amendment above actually produced on-chain.
+    snap.current_maturity_timestamp = may1;
 
     let events = [econ_event("EconomicsAmended", 95_000, may1)];
 
-    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0);
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &events, true, 0, None);
     // No rollover → still epoch 1, still starting at origination.
     assert_eq!(resp.epoch.number, 1);
     assert_eq!(resp.epoch.start_date, "2026-01-01T00:00:00Z");

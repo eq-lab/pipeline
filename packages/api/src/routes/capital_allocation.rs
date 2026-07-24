@@ -21,7 +21,15 @@
 //!   `null`. NOTE: an approximation — disbursed funds that leave the ramp to
 //!   borrowers off-chain are not observed, so this can over-state true in-transit.
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
-//! - **`trust_account`** — `null`. TODO: fetch from the bank API.
+//! - **`trust_account`** — `sum(deposits) - sum(withdrawals) - sum(fees)` over the
+//!   manually-entered `bank_transactions` ledger (`POST /v1/bank-transactions`, #924).
+//!   Global (not chain-scoped) — the trust account is one real-world bank account
+//!   for the whole protocol. Not clamped at zero: a negative value means recorded
+//!   withdrawals/fees exceed recorded deposits, a real bookkeeping error that should
+//!   be visible rather than hidden. Stored/returned by the ledger as a **plain
+//!   dollar figure** (no base-6 scaling — a bank transaction has no on-chain native
+//!   scale); this endpoint scales it to base-6 units only when folding it into
+//!   `total` alongside `deployed`/`in_transit`.
 //! - **`tbills`** — `null`. TODO: index the USYC / T-Bills holding.
 
 use std::sync::Arc;
@@ -29,13 +37,13 @@ use std::sync::Arc;
 use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, RoundingMode};
 use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
 
-use crate::config::TransferAddressSets;
+use crate::config::{TransferAddressSets, CANONICAL_AMOUNT_DECIMALS};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
 use crate::routes::common::{resolve_chain, ChainQuery};
@@ -54,8 +62,9 @@ pub struct CapitalBuckets {
     /// tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0). `null`
     /// when custody/ramp address sets are not configured for the chain.
     pub in_transit: Option<String>,
-    /// USD residuals held in the trust account. `null` — not indexed.
-    /// TODO: fetch from the bank API and populate this.
+    /// USD residuals held in the trust account: `sum(deposits) - sum(withdrawals) -
+    /// sum(fees)` over the manually-entered bank-transaction ledger. Not clamped at
+    /// zero (see module docs).
     pub trust_account: Option<String>,
     /// Σ senior tranche over active loans, USDC (6-decimal string). Senior-only —
     /// distinct from `financial-position.secured_loans_outstanding` (senior + equity).
@@ -68,7 +77,8 @@ pub struct CapitalBuckets {
 /// Response for `GET /v1/capital-allocation`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CapitalAllocationResponse {
-    /// Σ of the available buckets (`deployed` only, while the rest are `null`).
+    /// Σ of the available buckets (`deployed`, `in_transit` when present, and
+    /// `trust_account`; the rest are `null` until sourced).
     pub total: Option<String>,
     pub buckets: CapitalBuckets,
 }
@@ -127,9 +137,15 @@ async fn get_capital_allocation(
         .list_asset_transfers(&state.pool, chain_id, to)
         .await?;
     let addr = state.transfer_addresses.get(&chain_id);
+    let trust_account = state.bank_transaction_repo.trust_account_balance().await?;
 
     Ok(Json(compute_capital_allocation(
-        &loans, &events, to, &transfers, addr,
+        &loans,
+        &events,
+        to,
+        &transfers,
+        addr,
+        &trust_account,
     )))
 }
 
@@ -170,12 +186,15 @@ fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
 }
 
 /// Pure computation: no DB calls. Builds the capital allocation from pre-fetched
-/// loan snapshots, lifecycle events, and asset transfers as-of `to`.
+/// loan snapshots, lifecycle events, asset transfers, and the bank-transaction-ledger
+/// balance, as-of `to`.
 ///
 /// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
 /// `deployed` = Σ senior tranche over the active set. `in_transit` = net custody→ramp
 /// flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0),
-/// sourced only when `addr` is `Some`. Remaining buckets are `null`.
+/// sourced only when `addr` is `Some`. `trust_account` = `trust_account_balance`, a
+/// **plain dollar figure** (not clamped — see module docs) — displayed as-is, and
+/// scaled to base-6 units only when folded into `total`. Remaining buckets are `null`.
 ///
 /// Public so the compute-layer test in `packages/api/tests/capital_allocation.rs` can
 /// exercise it without the HTTP/DB layers.
@@ -185,6 +204,7 @@ pub fn compute_capital_allocation(
     to: i64,
     transfers: &[AssetTransferRow],
     addr: Option<&TransferAddressSets>,
+    trust_account_balance: &BigDecimal,
 ) -> CapitalAllocationResponse {
     let mut deployed = BigDecimal::from(0);
 
@@ -216,18 +236,26 @@ pub fn compute_capital_allocation(
         net.max(BigDecimal::from(0))
     });
 
-    // Total = Σ of the sourced buckets (deployed + in_transit when present).
+    // Total = Σ of the sourced buckets (deployed + in_transit when present + trust_account).
+    // trust_account is a plain dollar figure (see module docs) — scale to base-6
+    // units here, the one place it needs to combine with the other (already
+    // base-6) buckets.
     let mut total = deployed.clone();
     if let Some(it) = &in_transit {
         total += it;
     }
+    total += trust_account_balance * BigDecimal::from(10i128.pow(CANONICAL_AMOUNT_DECIMALS));
 
     CapitalAllocationResponse {
         total: Some(base6_to_decimal_string(&total)),
         buckets: CapitalBuckets {
             capital_wallet: None,
             in_transit: in_transit.as_ref().map(base6_to_decimal_string),
-            trust_account: None,
+            trust_account: Some(
+                trust_account_balance
+                    .with_scale_round(6, RoundingMode::Down)
+                    .to_plain_string(),
+            ),
             deployed: Some(base6_to_decimal_string(&deployed)),
             tbills: None,
         },

@@ -1135,6 +1135,21 @@ async fn maybe_fetch_refreshed_json_returns_none_when_uri_unchanged() {
 }
 
 #[tokio::test]
+async fn maybe_fetch_refreshed_json_skips_fetch_when_new_uri_is_empty() {
+    // On-chain metadata_uri can be cleared to "" by an update_mutable call (see #loan_id=9
+    // incident). An empty new URI is not a document to fetch — carry forward the prior
+    // IPFS-sourced fields instead of attempting an HTTP fetch of "".
+    let result = maybe_fetch_refreshed_json(&PanickingFetcher, "ipfs://Qm_old_uri", "")
+        .await
+        .expect("empty-new-URI path should never fail");
+
+    assert!(
+        result.is_none(),
+        "expected None when new URI is empty, got Some"
+    );
+}
+
+#[tokio::test]
 async fn maybe_fetch_refreshed_json_returns_some_when_uri_changed() {
     let result = maybe_fetch_refreshed_json(
         &MockMetadataFetcher,

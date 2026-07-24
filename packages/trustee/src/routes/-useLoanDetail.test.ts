@@ -26,6 +26,7 @@ import {
   buildPriceCollateral,
   buildPriceCollateralState,
   buildRegistryState,
+  buildSummaryTiles,
   statusToChip,
 } from "./-useLoanDetail";
 import type { UseLoanCcrHistoryResult } from "@/api/useLoanCcrHistory";
@@ -37,8 +38,9 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     originator: "Helios Metals",
     borrower: "b1",
     commodity: "Lithium",
-    principal: "4800000.000000",
-    senior_outstanding: "4950.000000",
+    principal: "4800.000000",
+    senior_outstanding: "3960.000000",
+    original_senior_tranche: "3960.000000",
     maturity: 1_782_777_600, // 2026-06-30
     ccr_reported_at: 0,
     spot_price: "10450",
@@ -50,6 +52,10 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "Performing",
+    repaid_to_date: "6300.000000",
+    disbursed: true,
+    days_on_watchlist: null,
+    watchlist_entered_at: null,
     ...overrides,
   };
 }
@@ -393,7 +399,7 @@ function makeFinancials(
       start_date: "2026-06-18T18:17:37Z",
       maturity_date: "2029-08-19T04:04:17Z",
     },
-    // Registry-sourced ⇒ 1000× low on the wire (#840); ×1000 helpers restore scale.
+    // Displayed exactly as served (issue #906 — no frontend rescaling).
     offtaker: "6300.000000",
     principal: "4800.000000",
     interest: "231.000000",
@@ -418,7 +424,7 @@ function makeFinancialsQuery(
 }
 
 describe("buildFinancials", () => {
-  it("maps the financials to registry rows (registry amounts scaled ×1000)", () => {
+  it("maps the financials to registry rows (amounts displayed as served)", () => {
     const rows = buildFinancials(makeFinancials());
     expect(rows).toEqual([
       {
@@ -433,11 +439,11 @@ describe("buildFinancials", () => {
       },
       {
         label: "Recorded counters",
-        value: "offtaker $6.3M · principal $4.8M · interest $231K · fees $69K",
+        value: "offtaker $6.3K · principal $4.8K · interest $231 · fees $69",
         tag: "chain",
       },
-      { label: "Offtaker still owed", value: "$0 of $6.3M", tag: "computed" },
-      { label: "Unminted yield", value: "$115.5K", tag: "computed" },
+      { label: "Offtaker still owed", value: "$0 of $6.3K", tag: "computed" },
+      { label: "Unminted yield", value: "$115.5", tag: "computed" },
       { label: "Custodian co-sig on mint", value: "—", tag: "relayer" },
     ]);
   });
@@ -454,6 +460,127 @@ describe("buildFinancials", () => {
   it("renders — for the Epochs row when no epoch is on record (#857)", () => {
     const rows = buildFinancials(makeFinancials({ epoch: null }));
     expect(rows[1]).toEqual({ label: "Epochs", value: "—", tag: "chain" });
+  });
+});
+
+// ── buildSummaryTiles (issue #874) ────────────────────────────────────────────
+
+describe("buildSummaryTiles", () => {
+  it("maps performing tiles from loan-book + financials fields", () => {
+    expect(
+      buildSummaryTiles(makeEntry(), makeFinancials(), "performing"),
+    ).toEqual([
+      {
+        label: "Facility / disbursed",
+        value: "$4.8K / $3.96K",
+        sub: "funded",
+        subTone: "positive",
+      },
+      {
+        label: "Repaid to date",
+        value: "$6.3K",
+        sub: "offtaker received",
+        subTone: "muted",
+      },
+      {
+        label: "Interest to distribute",
+        value: "$115.5",
+        sub: "not minted yield",
+        subTone: "attention",
+      },
+    ]);
+  });
+
+  it("maps Facility / disbursed as principal / original_senior_tranche", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry(),
+      makeFinancials(),
+      "performing",
+    );
+    expect(tiles[0]).toMatchObject({
+      label: "Facility / disbursed",
+      value: "$4.8K / $3.96K",
+    });
+  });
+
+  it("maps Facility / senior as principal / 0 when disbursed is false", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({ disbursed: false }),
+      makeFinancials(),
+      "matured",
+    );
+    expect(tiles[0]).toEqual({
+      label: "Facility / senior",
+      value: "$4.8K / $0",
+      sub: "—",
+      subTone: "muted",
+    });
+  });
+
+  it("maps watchlist days from days_on_watchlist only", () => {
+    const tiles = buildSummaryTiles(
+      makeEntry({
+        status: "WatchList",
+        days_on_watchlist: 18,
+        watchlist_entered_at: 1_780_444_800,
+      }),
+      makeFinancials(),
+      "watchlist",
+    );
+    expect(tiles[2]).toEqual({
+      label: "Days on watchlist",
+      value: "18",
+      sub: "—",
+      subTone: "muted",
+    });
+  });
+
+  it("maps matured facility/senior and epoch APY", () => {
+    expect(buildSummaryTiles(makeEntry(), makeFinancials(), "matured")).toEqual(
+      [
+        {
+          label: "Facility / senior",
+          value: "$4.8K / $4.8K",
+          sub: "—",
+          subTone: "muted",
+        },
+        {
+          label: "Repaid to date",
+          value: "$6.3K",
+          sub: "offtaker received",
+          subTone: "muted",
+        },
+        {
+          label: "Rate · epochs",
+          value: "10.0% p.a.",
+          sub: "epoch 1",
+          subTone: "muted",
+        },
+      ],
+    );
+  });
+
+  it("renders — when no backend field is available", () => {
+    expect(buildSummaryTiles(undefined, undefined, "matured")).toEqual([
+      {
+        label: "Facility / senior",
+        value: "— / —",
+        sub: "—",
+        subTone: "muted",
+      },
+      {
+        label: "Repaid to date",
+        value: "—",
+        sub: "offtaker received",
+        subTone: "muted",
+      },
+      {
+        label: "Rate · epochs",
+        value: "—",
+        sub: "—",
+        subTone: "muted",
+      },
+    ]);
   });
 });
 

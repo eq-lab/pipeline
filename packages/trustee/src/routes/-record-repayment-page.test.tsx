@@ -123,9 +123,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       originator: "Helios Metals",
       borrower: "b1",
       commodity: "Lithium",
-      // Registry-sourced (#840): 4800.000000 on the wire ⇒ ×1000 ⇒ $4,800,000.
-      principal: "5000.000000",
-      senior_outstanding: "4800.000000",
+      // Served at full USD scale (#906 — displayed as-is, no client rescaling).
+      principal: "5000000.000000",
+      senior_outstanding: "4800000.000000",
+      original_senior_tranche: "4800000.000000",
       // 24 Jun 2026 00:00:00 UTC.
       maturity: 1_782_172_800,
       ccr_reported_at: 0,
@@ -138,6 +139,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      repaid_to_date: "0.000000",
+      disbursed: true,
+      days_on_watchlist: null,
+      watchlist_entered_at: null,
     },
   ],
 };
@@ -158,8 +163,8 @@ const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   fees: "27.000000",
   minted_yield: "0.000000",
   not_minted_yield: "0.000000",
-  // Registry-sourced (#840): 6150.000000 ⇒ ×1000 ⇒ $6,150,000 still owed.
-  offtaker_outstanding: "6150.000000",
+  // Served at full USD scale (#906 — displayed as-is): $6,150,000 still owed.
+  offtaker_outstanding: "6150000.000000",
 };
 
 function ready() {
@@ -179,24 +184,15 @@ function ready() {
 
 /**
  * A terminal waterfall preview: a $6,150,000 final payment that fully repays
- * the $4,800,000 outstanding senior principal (backend-scaled as-is — dollar
- * integers).
+ * the $4,800,000 outstanding senior principal. Backend values are raw
+ * 7-decimal SAC base units.
  */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "4800000", // $4,800,000 — REAL, not $0 (#884)
-  senior_coupon_net: "115500",
-  management_fee: "12000",
-  performance_fee: "15000",
-  oet_allocation: "7500",
-};
-
-/** A partial repayment — principal returned is less than the outstanding senior. */
-const WATERFALL_PARTIAL: WaterfallResponse = {
-  senior_principal_returned: "1000000", // $1,000,000 of $4,800,000 outstanding
-  senior_coupon_net: "20000",
-  management_fee: "2000",
-  performance_fee: "3000",
-  oet_allocation: "1000",
+  senior_principal_returned: "48000000000000", // $4,800,000 — REAL, not $0 (#884)
+  senior_coupon_net: "1155000000000",
+  management_fee: "120000000000",
+  performance_fee: "150000000000",
+  oet_allocation: "75000000000",
 };
 
 function mockWaterfall(
@@ -248,6 +244,14 @@ describe("Record Repayment route — ready state", () => {
     expect(screen.queryByText(/Recorded ·/)).not.toBeInTheDocument();
   });
 
+  it("renders a read-only date fixed to today (#916)", () => {
+    renderRoute();
+    const dateInput = screen.getByTestId("record-repayment-date");
+    const today = new Date().toISOString().slice(0, 10);
+    expect(dateInput).toHaveValue(today);
+    expect(dateInput).toBeDisabled();
+  });
+
   it("renders the left card's commodity, final period, senior outstanding, and offtaker-owed rows", () => {
     renderRoute();
     const left = screen.getByTestId("record-repayment-left-card");
@@ -255,7 +259,7 @@ describe("Record Repayment route — ready state", () => {
     expect(left).toHaveTextContent("Commodity");
     expect(left).toHaveTextContent("Lithium");
     expect(left).toHaveTextContent("Final period");
-    expect(left).toHaveTextContent("31 Mar → 24 Jun · 85 days");
+    expect(left).toHaveTextContent("31 Mar 2026 → 24 Jun 2026 · 85 days");
     expect(left).toHaveTextContent("Senior outstanding before");
     expect(left).toHaveTextContent("$4,800,000");
     expect(left).toHaveTextContent("Offtaker owed");
@@ -268,26 +272,14 @@ describe("Record Repayment route — ready state", () => {
     expect(screen.getByTestId("record-repayment-submit")).toBeDisabled();
   });
 
-  it("prefills the amount with the full remaining owed so it opens ready to pay-all-and-close (#884)", async () => {
+  it("prefills the amount with the full remaining owed and locks it read-only — no partial principal repayment (#884)", async () => {
     mockWaterfall(undefined);
     renderRoute();
-    // offtaker_outstanding "6150.000000" ×1000 (#840) = $6,150,000.
-    await waitFor(() =>
-      expect(screen.getByTestId("record-repayment-amount")).toHaveValue(
-        6150000,
-      ),
-    );
-  });
-
-  it("does NOT render the Close-loan action before the loan is fully repaid", () => {
-    mockWaterfall(WATERFALL_PARTIAL);
-    renderRoute();
-    fireEvent.change(screen.getByTestId("record-repayment-amount"), {
-      target: { value: "1000000" },
-    });
-    expect(
-      screen.queryByTestId("record-repayment-close-submit"),
-    ).not.toBeInTheDocument();
+    const amount = screen.getByTestId("record-repayment-amount");
+    // offtaker_outstanding "6150000.000000" displayed as-is (#906) = $6,150,000.
+    await waitFor(() => expect(amount).toHaveValue(6150000));
+    // A principal repayment always pays it ALL — the input is disabled.
+    expect(amount).toBeDisabled();
   });
 
   it("renders the waterfall rows with the REAL (non-zero, non-disabled) senior-principal row", async () => {
@@ -357,11 +349,14 @@ describe("Record Repayment route — ready state", () => {
     );
   });
 
-  it("renders the 'Next step — move loan to closed' card instead of the coupon's on-ramp button", () => {
+  it("renders the Close-loan action as a full-width 'Next step — close loan' button (the old static box is gone)", () => {
     renderRoute();
-    expect(screen.getByTestId("record-repayment-next-step")).toHaveTextContent(
-      "Next step — move loan to closed",
-    );
+    expect(
+      screen.getByTestId("record-repayment-close-submit"),
+    ).toHaveTextContent("Next step — close loan");
+    expect(
+      screen.queryByTestId("record-repayment-next-step"),
+    ).not.toBeInTheDocument();
   });
 
   it("records the payment on-chain with the REAL principal carried into senior_principal_repaid (#884)", async () => {
@@ -376,18 +371,34 @@ describe("Record Repayment route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "6150000",
-        senior_principal_repaid: "4800000",
-        senior_interest: "115500",
-        equity_distributed: "1200000",
-        mgmt_fee: "12000",
-        perf_fee: "15000",
-        oet_alloc: "7500",
+        offtaker_received: "61500000000000",
+        senior_principal_repaid: "48000000000000",
+        senior_interest: "1155000000000",
+        equity_distributed: "12000000000000",
+        mgmt_fee: "120000000000",
+        perf_fee: "150000000000",
+        oet_alloc: "75000000000",
       },
     });
   });
 
-  it("shows the Close-loan action once the entered amount fully repays the outstanding senior (terminal)", async () => {
+  it("keeps Close-loan DISABLED after a terminal amount until the payment is recorded (#884 gating)", async () => {
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-repayment-amount"), {
+      target: { value: "6150000" },
+    });
+    // The record action is ready…
+    await waitFor(() =>
+      expect(screen.getByTestId("record-repayment-submit")).toBeEnabled(),
+    );
+    // …but a terminal amount alone no longer enables close — the payment must
+    // actually be recorded first.
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeDisabled();
+  });
+
+  it("ENABLES Close-loan once the terminal payment has been recorded (record.isSuccess)", async () => {
+    mockRecord.isSuccess = true;
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-repayment-amount"), {
@@ -396,11 +407,16 @@ describe("Record Repayment route — ready state", () => {
     await waitFor(() =>
       expect(
         screen.getByTestId("record-repayment-close-submit"),
-      ).toBeInTheDocument(),
+      ).toBeEnabled(),
     );
+    // The record button now reads as complete and is locked to prevent a
+    // double-record.
+    const submit = screen.getByTestId("record-repayment-submit");
+    expect(submit).toHaveTextContent("Payment recorded");
+    expect(submit).toBeDisabled();
   });
 
-  it("shows the Close-loan action when the outstanding senior is already 0 (revisiting an already-repaid loan)", () => {
+  it("ENABLES Close-loan immediately when the outstanding senior is already 0 (revisiting an already-repaid loan)", () => {
     mockUseLoanBook.mockReturnValue({
       data: {
         ...LOAN_BOOK_RESPONSE,
@@ -411,9 +427,7 @@ describe("Record Repayment route — ready state", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(
-      screen.getByTestId("record-repayment-close-submit"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
   });
 
   it("calls useCloseLoan with ScheduledMaturity when now is at/after the loan's maturity, and navigates on success", async () => {
@@ -421,16 +435,15 @@ describe("Record Repayment route — ready state", () => {
     // instant without touching real timers (the amount debounce still needs to
     // fire on the real clock).
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
+    // The payment is recorded, so the close action can enable.
+    mockRecord.isSuccess = true;
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-repayment-amount"), {
       target: { value: "6150000" },
     });
-    const closeBtn = await screen.findByTestId(
-      "record-repayment-close-submit",
-      {},
-      { timeout: 2000 },
-    );
+    const closeBtn = screen.getByTestId("record-repayment-close-submit");
+    await waitFor(() => expect(closeBtn).toBeEnabled(), { timeout: 2000 });
     fireEvent.click(closeBtn);
     await waitFor(() =>
       expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
@@ -451,16 +464,15 @@ describe("Record Repayment route — ready state", () => {
     const nowSpy = vi
       .spyOn(Date, "now")
       .mockReturnValue(1_782_172_800 * 1000 - 86_400_000);
+    // The payment is recorded, so the close action can enable.
+    mockRecord.isSuccess = true;
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-repayment-amount"), {
       target: { value: "6150000" },
     });
-    const closeBtn = await screen.findByTestId(
-      "record-repayment-close-submit",
-      {},
-      { timeout: 2000 },
-    );
+    const closeBtn = screen.getByTestId("record-repayment-close-submit");
+    await waitFor(() => expect(closeBtn).toBeEnabled(), { timeout: 2000 });
     fireEvent.click(closeBtn);
     await waitFor(() =>
       expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({

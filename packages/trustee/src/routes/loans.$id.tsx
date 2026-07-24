@@ -20,7 +20,7 @@ import {
   type RolloverCard as RolloverCardData,
   type SummaryTile,
   type TileTone,
-} from "./-loanDetailMock";
+} from "./-loanDetailStatic";
 import { CcrTrendChart } from "./-CcrTrendChart";
 
 /**
@@ -43,8 +43,8 @@ import { CcrTrendChart } from "./-CcrTrendChart";
  *     (Figma node `4116:10969`, #866). The served `Past Due` status maps here.
  * Shared live sections render in both: Hero + status chip (loan-book row), Price
  * & collateral (`/valuations`), Registry (`/financials`, performing only).
- * Watchlist-only sections with no backend source (CCR-trend series, tiles copy,
- * escalation copy) are mock until an endpoint lands. Action buttons are inert.
+ * Watchlist CCR trend and summary tiles are live; action labels and explanatory
+ * copy are static product configuration unless a branch opens a wired flow below.
  *
  * ## Figma → token / px map
  *   - `‹ Loans` `Besley 18px / #262524`; title `Besley 44px`; both ink.
@@ -764,9 +764,8 @@ function DisbursementConfirmDialog({
 /**
  * The Matured "rollover" card (Figma `4116:10969`, right column). The title
  * interpolates the loan's live maturity date; the `rollover available` tag is an
- * olive/attention pill. The "Roll over →" button is **inert** for now — the S9
- * rollover flow / backend endpoint doesn't exist yet (#866 / #867), so this is a
- * visual placeholder like the other mock action buttons.
+ * olive/attention pill. The "Roll over →" button opens the wired rollover
+ * confirmation flow (#870).
  */
 function MaturedRolloverCard({
   rollover,
@@ -1218,10 +1217,12 @@ function UpdateLifecycleDialog({
 
 /**
  * CCR-trend card (Watchlist variant, Figma node `4116:10868`) — the bordered
- * white card + title wrapping the shared `CcrTrendChart` (extracted to
- * `-CcrTrendChart.tsx`, issue #782, so the Risk Council "Escalate to Default"
- * page can reuse the same chart embedded directly in its ledger card, without
- * this card's own border/title).
+ * white card + title wrapping the shared `CcrTrendChart`, extracted to
+ * `-CcrTrendChart.tsx` (issue #782) so the Risk Council "Escalate to Default"
+ * page can reuse the same chart embedded directly in its ledger card (without
+ * this card's own border/title). The chart itself is drawn from the real
+ * `/ccr-history` series (#879), per-loan y-scale spanning the series' CCR range
+ * widened to the 120% / 110% guide-lines; a single point renders as a dot.
  */
 function CcrTrendCard({ trend }: { trend: CcrTrend }) {
   return (
@@ -1253,6 +1254,12 @@ function LoanDetail() {
     if (label === "Update lifecycle") {
       updateLifecycle.reset();
       setUpdateOpen(true);
+    } else if (label === "Roll over") {
+      // Opens the same wired RolloverDialog as the Matured variant's rollover
+      // widget (#923) — the "Roll over" other-action was previously unhandled,
+      // so clicking it in the actions card did nothing.
+      rolloverMutation.reset();
+      setRolloverOpen(true);
     } else if (label === "Record coupon") {
       // Full-page destination (issue #882, Figma `4116-11452`) — not a modal,
       // so this navigates rather than opening a dialog like the other actions.

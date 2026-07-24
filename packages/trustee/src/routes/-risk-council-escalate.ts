@@ -13,10 +13,10 @@
  * **Real** (sourced live, per-loan):
  *   - Originator / Facility (`principal`) / senior deployed
  *     (`senior_outstanding`) / Collateral — the matching `useLoanBook` entry.
- *     Registry-sourced ⇒ `formatRegistryFullUsd` (×1000, #840); `ccr_bps` is
- *     used AS-IS (the ×1000 cancels out of that ratio — #888).
+ *     Served display-scale ⇒ formatted AS-IS via `formatFullUsd` (the ×1000
+ *     registry rescale was removed in #906); `ccr_bps` is used as-is.
  *   - Repaid to date — `useLoanFinancials` (`offtaker − offtaker_outstanding`,
- *     both registry-scaled).
+ *     both served display-scale as-is).
  *   - CCR trend — `useLoanCcrHistory` + `buildCcrTrend` (reused from
  *     `-useLoanDetail.ts`, #879).
  *   - Current at-risk % — loan-book `summary.at_risk_wl_and_default_pct`.
@@ -60,7 +60,7 @@ import {
   MAINTENANCE_MARGIN_BPS,
   HEALTHY_MARGIN_BPS,
 } from "./-useLoansTable";
-import { formatRegistryFullUsd, scaleRegistryAmount } from "@/utils/formatUsd";
+import { formatFullUsd } from "@/utils/formatUsd";
 
 // ── Mock constants (see module doc — no backend source, not per-loan) ───────
 
@@ -104,25 +104,25 @@ export function formatCcrLine(ccrBps: number | null): string {
   return alert != null ? `${pct}% — next alert at ${alert}%` : `${pct}%`;
 }
 
-/** `"$2,300,000 / $1,840,000"` — Facility / senior deployed, both registry-scaled (#840). */
+/** `"$2,300,000 / $1,840,000"` — Facility / senior deployed, served display-scale as-is (#906). */
 export function formatFacilityLine(
   principal: string | null | undefined,
   seniorOutstanding: string | null | undefined,
 ): string {
-  return `${formatRegistryFullUsd(principal)} / ${formatRegistryFullUsd(seniorOutstanding)}`;
+  return `${formatFullUsd(principal)} / ${formatFullUsd(seniorOutstanding)}`;
 }
 
 /**
- * Repaid to date = `offtaker − offtaker_outstanding` (both registry-scaled,
- * #840), clamped at 0. `—` when either financials field is unavailable —
+ * Repaid to date = `offtaker − offtaker_outstanding` (both served display-scale
+ * as-is, #906), clamped at 0. `—` when either financials field is unavailable —
  * never fabricated.
  */
 export function buildRepaidToDate(
   offtaker: string | null | undefined,
   offtakerOutstanding: string | null | undefined,
 ): string {
-  const total = scaleRegistryAmount(offtaker);
-  const outstanding = scaleRegistryAmount(offtakerOutstanding);
+  const total = offtaker;
+  const outstanding = offtakerOutstanding;
   if (total == null || outstanding == null) return "—";
   const totalNum = parseFloat(total);
   const outstandingNum = parseFloat(outstanding);
@@ -320,7 +320,7 @@ export function useRiskCouncilEscalate(
         entry?.commodity ?? "—",
         entry?.spot_change_7d,
       ),
-      collateralValue: formatRegistryFullUsd(entry?.collateral),
+      collateralValue: formatFullUsd(entry?.collateral),
       ccrLine: formatCcrLine(entry?.ccr_bps ?? null),
       ccrBand: classifyCcr(entry?.ccr_bps ?? null),
       daysOnWatchlist: MOCK_DAYS_ON_WATCHLIST,

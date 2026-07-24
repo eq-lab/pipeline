@@ -27,7 +27,7 @@ use std::str::FromStr;
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive, Zero};
 
 use crate::collateral_valuation_repo::{
-    AssayRow, CollateralValuationRow, OfftakeTermsRow, QuantityReportRow, ValuationMode,
+    AssayRow, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
 };
 
 /// Grams per troy ounce — converts a grade in g/t over a tonnage into troy ounces
@@ -214,12 +214,15 @@ pub struct CollateralComputation {
 }
 
 /// Value a loan's collateral from its stored record rows and the latest reference
-/// price, dispatching on the anchor's valuation mode.
+/// price, dispatching on the anchor's valuation mode. Quantity is read straight off
+/// the anchor (`anchor.quantity_dmt`) — it is authored once at submission time
+/// alongside the rest of the anchor, unlike assay/offtake which are append-only and
+/// may not have arrived yet.
 ///
 /// Returns `Ok(None)` when a required input for the mode is missing (concentrate
-/// needs assay + offtake + quantity + price; standard goods needs quantity +
-/// price), so callers can surface "unpriced" without an error. `Err` only for
-/// malformed stored numbers (a data-integrity problem).
+/// needs assay + offtake + price; standard goods needs price only), so callers can
+/// surface "unpriced" without an error. `Err` only for malformed stored numbers (a
+/// data-integrity problem).
 ///
 /// The single reference price is applied to every payable metal — correct for a
 /// single-metal concentrate; multi-metal per-metal feeds are a follow-up.
@@ -227,18 +230,16 @@ pub fn compute_collateral(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    quantity: Option<&QuantityReportRow>,
     reference_price: Option<&BigDecimal>,
 ) -> anyhow::Result<Option<CollateralComputation>> {
     match anchor.valuation_mode {
         ValuationMode::MetalConcentrate => {
-            let (Some(assay), Some(offtake), Some(quantity), Some(price)) =
-                (assay, offtake, quantity, reference_price)
+            let (Some(assay), Some(offtake), Some(price)) = (assay, offtake, reference_price)
             else {
                 return Ok(None);
             };
             let valuation = ConcentrateInputs {
-                quantity_dmt: quantity.quantity_dmt.clone(),
+                quantity_dmt: anchor.quantity_dmt.clone(),
                 metals: assemble_metals(assay, offtake, price)?,
                 treatment_charge_per_dmt: offtake.treatment_charge_per_dmt.clone(),
                 penalties: assemble_penalties(assay, offtake)?,
@@ -252,12 +253,12 @@ pub fn compute_collateral(
             }))
         }
         ValuationMode::StandardGoods => {
-            let (Some(quantity), Some(price)) = (quantity, reference_price) else {
+            let Some(price) = reference_price else {
                 return Ok(None);
             };
             let collateral_value = StandardGoodsInputs {
                 reference_price: price.clone(),
-                quantity: quantity.quantity_dmt.clone(),
+                quantity: anchor.quantity_dmt.clone(),
                 haircut: anchor.haircut_pct.clone(),
             }
             .collateral_value();
@@ -322,7 +323,12 @@ fn assemble_penalties(
         .0
         .iter()
         .map(|tier| {
-            let level_pct = match assay.deleterious.0.iter().find(|d| d.element == tier.element) {
+            let level_pct = match assay
+                .deleterious
+                .0
+                .iter()
+                .find(|d| d.element == tier.element)
+            {
                 Some(d) => {
                     let level = dec("deleterious.level", &d.level)?;
                     if d.unit == "Ppm" {

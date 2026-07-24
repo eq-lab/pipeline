@@ -30,21 +30,26 @@
  * so the six components still sum exactly to `offtaker_received`.
  *
  * ## Scale handling (identical to #882 — see `-record-coupon.ts`)
- *   - The `/waterfall` `amount` param and response fields are raw base units
- *     handled **as-is** (backend already accounts for USDC decimals) —
- *     `usdToBaseUnits`/`baseUnitsToUsd` are the identity conversions.
+ *   - The `/waterfall` `amount` param and response fields are raw 7-decimal
+ *     SAC base units. Entered USD is multiplied by 10^7 before the preview
+ *     request, response fields are divided by 10^7 for display, and
+ *     `recordPayment` carries backend raw fields unchanged.
  *   - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding`
- *     (`useLoanFinancials`) are registry-sourced (#840, ×1000-too-small) —
- *     scaled via `scaleRegistryAmount` before use.
+ *     (`useLoanFinancials`) are displayed exactly as the backend serves them —
+ *     no client-side rescaling (issue #906; the former ×1000
+ *     `scaleRegistryAmount` workaround has been removed).
  *
  * ## Close-loan gating (issue #884 open question 3, resolved on start)
- * The Close-loan action shows once the loan is fully repaid: either the
- * entered amount is terminal (`isTerminalRepayment` — same cent-precision
- * detection as #882) OR the loan-book's outstanding senior is already `0`
- * (e.g. the trustee reloads this page after already recording the final
- * payment). `closureReason` picks `ScheduledMaturity` when `now >= maturity`
- * (the loan-book's rollover-aware `maturity`), else `EarlyRepayment` — per
- * the issue's resolved on-chain `ClosureReason` mapping.
+ * The Close-loan action always renders as the full-width "Next step — close
+ * loan" item, but only ENABLES once the final payment is actually complete:
+ * `showCloseLoan` marks that closing is applicable (the entered amount is
+ * terminal — `isTerminalRepayment`, same cent-precision detection as #882 — or
+ * the outstanding senior is already `0`), while the page keeps the button
+ * disabled until the `record_payment` write has succeeded (`record.isSuccess`)
+ * or the loan was already fully repaid on load (`alreadyRepaid`). Entering a
+ * terminal amount is no longer enough on its own — the trustee must record the
+ * payment first. `closureReason` picks `ScheduledMaturity` when `now >=
+ * maturity` (the loan-book's rollover-aware `maturity`), else `EarlyRepayment`.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -52,8 +57,14 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { formatFullUsd, scaleRegistryAmount } from "@/utils/formatUsd";
-import { formatSubmittedDate } from "@/utils/formatDate";
+import { ApiError } from "@/api/client";
+import { formatFullUsd } from "@/utils/formatUsd";
+import { formatEpochDate } from "@/utils/formatDate";
+import {
+  parsePositiveUsdInput,
+  sacBaseUnitsToUsdDecimal,
+  usdInputToSacBaseUnits,
+} from "@/utils/stellarSacUnits";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
@@ -69,29 +80,23 @@ export function todayDateInput(): string {
  * "—"/unset state).
  */
 export function parseUsdInput(input: string): number | null {
-  const n = Number.parseFloat(input);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
+  return parsePositiveUsdInput(input);
 }
 
 /**
- * The `/waterfall` `amount` param and all response fields are handled **as-is**
- * — the backend already accounts for USDC decimals, so the frontend applies NO
- * decimal scaling (mirrors #882): the entered USD dollar amount is sent
- * verbatim and the response integers are the dollar amounts to display
- * directly. (Distinct from the registry-sourced senior-outstanding /
- * offtaker-outstanding fields, which DO need the ×1000 #840 correction — see
- * `scaledUsd`.)
+ * Converts the entered USD amount into the raw 7-decimal SAC integer string the
+ * `/waterfall` endpoint expects. Invalid/empty/zero input returns `"0"` so
+ * `useLoanWaterfall` remains disabled.
  */
-export function usdToBaseUnits(usd: number | null): string {
-  if (usd == null) return "0";
-  return Math.round(usd).toString();
+export function usdToBaseUnits(input: string | null): string {
+  return usdInputToSacBaseUnits(input) ?? "0";
 }
 
-/** Parses a waterfall amount (already USD, backend-scaled) to a number. */
+/** Divides a raw 7-decimal SAC waterfall amount into display USD. */
 function baseUnitsToUsd(baseUnits: string | undefined): number | null {
-  if (baseUnits == null) return null;
-  const n = Number(baseUnits);
+  const display = sacBaseUnitsToUsdDecimal(baseUnits);
+  if (display == null) return null;
+  const n = Number(display);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -107,9 +112,25 @@ function usdFull(usd: number | null): string {
 }
 
 /**
+ * Maps a `/waterfall` query error to friendly, user-facing copy — never the
+ * raw backend message, and no numbers (#916). The backend's extended waterfall
+ * validates the amount against the loan's terms and returns a client error
+ * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
+ * rate / outstanding); that maps to the "too high" line. Anything else gets a
+ * generic retry message.
+ */
+export function mapWaterfallError(error: Error | null): string | null {
+  if (error == null) return null;
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+    return "This amount is too high for this loan. Enter a smaller amount.";
+  }
+  return "Couldn't preview this payment. Please try again.";
+}
+
+/**
  * Builds the on-chain `RepaymentData` (issue #884) from the waterfall preview +
- * the entered offtaker amount (integer strings, backend-scaled as-is — passed
- * through unscaled to `record_payment`).
+ * the entered offtaker amount (raw base-unit integer strings — passed through
+ * unscaled to `record_payment`).
  *
  * This is the **principal repayment** flow: `senior_principal_repaid` carries
  * the waterfall's real `senior_principal_returned` (unlike the coupon flow's
@@ -151,19 +172,18 @@ export function buildRepaymentInput(
 }
 
 /**
- * A registry-sourced (`#840`, ×1000-too-small) base-6 decimal amount, scaled
- * and parsed to a plain USD number. `null` for anything missing/unparseable —
- * never fabricated.
+ * Parses a backend-served base-6 decimal amount to a plain USD number, as-is —
+ * no client-side rescaling (issue #906). `null` for anything missing/
+ * unparseable — never fabricated.
  */
-function scaledUsd(raw: string | null | undefined): number | null {
-  const scaled = scaleRegistryAmount(raw);
-  if (scaled == null) return null;
-  const n = Number.parseFloat(scaled);
+function parseServedUsd(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : null;
 }
 
 /**
- * The final-period display (`"31 Mar → 24 Jun · 85 days"`) derived from the
+ * The final-period display (`"31 Mar 2026 → 24 Jun 2026 · 85 days"`) derived from the
  * loan's current epoch (`start_date` → `maturity_date`) — same computation as
  * #882's `computeCouponPeriod`, renamed for this page's "Final period" row.
  * `—` / `null` days when no epoch is on record (never fabricated).
@@ -180,7 +200,7 @@ export function computeFinalPeriod(epoch: Epoch | null): {
   }
   const days = Math.round((maturity.getTime() - start.getTime()) / 86_400_000);
   return {
-    label: `${formatSubmittedDate(epoch.start_date)} → ${formatSubmittedDate(epoch.maturity_date)} · ${days} days`,
+    label: `${formatEpochDate(epoch.start_date)} → ${formatEpochDate(epoch.maturity_date)} · ${days} days`,
     days,
   };
 }
@@ -249,8 +269,8 @@ export interface RecordRepaymentView {
   offtakerOwed: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Fixed to today (read-only) — the repayment is always recorded as of today (#916). */
   dateInput: string;
-  onDateChange: (value: string) => void;
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
@@ -266,11 +286,18 @@ export interface RecordRepaymentView {
    */
   recordPaymentInput: RepaymentInput | null;
   /**
-   * `true` once the loan is fully repaid — the terminal entered amount OR the
-   * loan-book's outstanding senior is already `0` — and the Close-loan action
-   * should be shown.
+   * `true` once closing is applicable — the terminal entered amount would fully
+   * repay the loan OR the loan-book's outstanding senior is already `0`. Gates
+   * whether the Close-loan action can ever enable (it still stays disabled until
+   * the payment is actually complete — see `alreadyRepaid` / `record.isSuccess`).
    */
   showCloseLoan: boolean;
+  /**
+   * `true` when the loan-book's outstanding senior is already `0` on load — the
+   * final payment is already complete (e.g. the trustee reloads after recording
+   * it), so the Close-loan action may enable without recording again.
+   */
+  alreadyRepaid: boolean;
   /** The `ClosureReason` to pass to `useCloseLoan`; `null` while the loan's maturity is unknown. */
   closureReason: "ScheduledMaturity" | "EarlyRepayment" | null;
 }
@@ -287,7 +314,8 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
-  const [dateInput, setDateInput] = useState(todayDateInput());
+  // Date is fixed to today and not editable (#916) — no calendar/date picker.
+  const dateInput = todayDateInput();
 
   // Debounce the amount that drives the waterfall query (the input field itself
   // stays fully responsive) so holding/typing doesn't fire a `/waterfall`
@@ -299,7 +327,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   }, [amountInput]);
 
   const enteredUsd = parseUsdInput(debouncedAmount);
-  const amountBaseUnits = usdToBaseUnits(enteredUsd);
+  const amountBaseUnits = usdToBaseUnits(debouncedAmount);
   const asOfSeconds = useMemo(() => {
     if (!dateInput) return Math.floor(Date.now() / 1000);
     const parsed = Math.floor(
@@ -320,15 +348,15 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
         ? "not-found"
         : "ready";
 
-  const outstandingSeniorUsd = scaledUsd(entry?.senior_outstanding);
-  const offtakerOutstandingUsd = scaledUsd(
+  const outstandingSeniorUsd = parseServedUsd(entry?.senior_outstanding);
+  const offtakerOutstandingUsd = parseServedUsd(
     financials.data?.offtaker_outstanding,
   );
 
-  // Prefill the amount with the full remaining owed once financials load, so the
-  // page opens ready to record the final "pay it all & close" repayment (#884).
-  // One-shot: the trustee can still edit it down for a partial payment, and a
-  // later edit (or clearing the field) is never overwritten.
+  // Set the amount to the full remaining owed once financials load — a
+  // principal repayment always pays it ALL (the input is read-only on the page,
+  // no partial principal repayments). One-shot so a later refetch never
+  // clobbers it; the field is disabled, so the trustee can't edit it down.
   const [prefilled, setPrefilled] = useState(false);
   useEffect(() => {
     if (
@@ -427,8 +455,9 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       seniorPrincipalReturnedUsd,
     );
 
-  const showCloseLoan =
-    isTerminal || (outstandingSeniorUsd != null && outstandingSeniorUsd <= 0);
+  const alreadyRepaid =
+    outstandingSeniorUsd != null && outstandingSeniorUsd <= 0;
+  const showCloseLoan = isTerminal || alreadyRepaid;
 
   const maturity = entry?.maturity ?? null;
   const reason =
@@ -449,15 +478,15 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     amountInput,
     onAmountChange: setAmountInput,
     dateInput,
-    onDateChange: setDateInput,
     waterfall: {
       ready: waterfall.data != null,
-      errorMessage: waterfall.error?.message ?? null,
+      errorMessage: mapWaterfallError(waterfall.error),
       rows,
     },
     summaryText,
     recordPaymentInput,
     showCloseLoan,
+    alreadyRepaid,
     closureReason: reason,
   };
 }

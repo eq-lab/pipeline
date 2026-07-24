@@ -7,14 +7,43 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Epoch } from "@/api/useLoanFinancials";
+import { ApiError } from "@/api/client";
 import {
   buildRepaymentInput,
   computeCouponPeriod,
+  computeScheduledCoupon,
+  DUE_SOON_DAYS,
+  hasCouponDue,
   isTerminalRepayment,
+  mapWaterfallError,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
 } from "./-record-coupon";
+
+describe("mapWaterfallError", () => {
+  it("maps a client error (4xx, e.g. 404) to the friendly 'amount too big' copy (#916)", () => {
+    const msg = mapWaterfallError(new ApiError("amount 999 exceeds 15", 404));
+    expect(msg).toBe(
+      "This amount is too high for this loan. Enter a smaller amount.",
+    );
+    // Never the raw backend text, and no digits.
+    expect(msg).not.toMatch(/\d/);
+  });
+
+  it("uses a generic friendly message for server/other errors — never the backend text", () => {
+    expect(mapWaterfallError(new ApiError("boom 500", 500))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+    expect(mapWaterfallError(new Error("network 12"))).toBe(
+      "Couldn't preview this payment. Please try again.",
+    );
+  });
+
+  it("returns null when there is no error", () => {
+    expect(mapWaterfallError(null)).toBeNull();
+  });
+});
 
 describe("parseUsdInput", () => {
   it("parses a positive numeric string", () => {
@@ -27,21 +56,25 @@ describe("parseUsdInput", () => {
     expect(parseUsdInput("0")).toBeNull();
     expect(parseUsdInput("-100")).toBeNull();
     expect(parseUsdInput("abc")).toBeNull();
+    expect(parseUsdInput("1.2.3")).toBeNull();
   });
 });
 
 describe("usdToBaseUnits", () => {
-  it("sends the entered USD amount as-is (backend handles USDC decimals)", () => {
-    expect(usdToBaseUnits(45000)).toBe("45000");
+  it("converts entered USD to 7-decimal SAC base units", () => {
+    expect(usdToBaseUnits("45000")).toBe("450000000000");
+    expect(usdToBaseUnits("123.45678")).toBe("1234567800");
   });
 
-  it("rounds to a whole-dollar integer string", () => {
-    expect(usdToBaseUnits(2.4)).toBe("2");
-    expect(usdToBaseUnits(2.6)).toBe("3");
+  it("truncates beyond the SAC decimal precision", () => {
+    expect(usdToBaseUnits("1.12345678")).toBe("11234567");
   });
 
   it('returns "0" for null (keeps the waterfall query disabled)', () => {
     expect(usdToBaseUnits(null)).toBe("0");
+    expect(usdToBaseUnits("")).toBe("0");
+    expect(usdToBaseUnits("-1")).toBe("0");
+    expect(usdToBaseUnits("1.2.3")).toBe("0");
   });
 });
 
@@ -52,7 +85,7 @@ describe("todayDateInput", () => {
 });
 
 describe("computeCouponPeriod", () => {
-  it('formats the period as "<start> → <maturity> · <days> days"', () => {
+  it('formats the period as "<start year> → <maturity year> · <days> days"', () => {
     const epoch: Epoch = {
       number: 1,
       current_apy_bps: 1000,
@@ -61,7 +94,7 @@ describe("computeCouponPeriod", () => {
     };
     const result = computeCouponPeriod(epoch);
     expect(result.days).toBe(88);
-    expect(result.label).toBe("2 Jan → 31 Mar · 88 days");
+    expect(result.label).toBe("2 Jan 2026 → 31 Mar 2026 · 88 days");
   });
 
   it('returns "—" / null days when no epoch is on record', () => {
@@ -76,6 +109,63 @@ describe("computeCouponPeriod", () => {
       maturity_date: "2026-03-31T00:00:00Z",
     };
     expect(computeCouponPeriod(epoch)).toEqual({ label: "—", days: null });
+  });
+});
+
+describe("computeScheduledCoupon", () => {
+  it("projects APY × outstanding senior × (days / 365)", () => {
+    // 10.0% p.a. × $1,840,000 × 88/365 = 44,361.64…
+    expect(computeScheduledCoupon(1000, 1_840_000, 88)).toBeCloseTo(
+      44_361.64,
+      2,
+    );
+    // 12.0% p.a. × $2,200,000 × 138/365 = 99,813.70… (the Figma mock's numbers).
+    expect(computeScheduledCoupon(1200, 2_200_000, 138)).toBeCloseTo(
+      99_813.7,
+      1,
+    );
+  });
+
+  it("returns null when the rate, outstanding senior, or period is unknown (never fabricates)", () => {
+    expect(computeScheduledCoupon(null, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(undefined, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(NaN, 1_840_000, 88)).toBeNull();
+    expect(computeScheduledCoupon(1000, null, 88)).toBeNull();
+    expect(computeScheduledCoupon(1000, 1_840_000, null)).toBeNull();
+  });
+});
+
+describe("hasCouponDue", () => {
+  const MATURITY = "2026-03-31T00:00:00Z";
+  const maturityMs = new Date(MATURITY).getTime();
+  const day = 86_400_000;
+
+  it("is true past due (on/after the epoch maturity)", () => {
+    expect(hasCouponDue(MATURITY, maturityMs)).toBe(true); // exactly at maturity
+    expect(hasCouponDue(MATURITY, maturityMs + 10 * day)).toBe(true);
+  });
+
+  it("is true when upcoming — within DUE_SOON_DAYS before maturity", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - 1 * day)).toBe(true);
+    expect(hasCouponDue(MATURITY, maturityMs - DUE_SOON_DAYS * day)).toBe(true);
+  });
+
+  it("is false when the payment is still far off (more than DUE_SOON_DAYS away)", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - (DUE_SOON_DAYS + 1) * day)).toBe(
+      false,
+    );
+    expect(hasCouponDue(MATURITY, maturityMs - 60 * day)).toBe(false);
+  });
+
+  it("honours a custom window", () => {
+    expect(hasCouponDue(MATURITY, maturityMs - 20 * day, 30)).toBe(true);
+    expect(hasCouponDue(MATURITY, maturityMs - 20 * day, 7)).toBe(false);
+  });
+
+  it("is false when the maturity is missing or unparseable (never fabricated)", () => {
+    expect(hasCouponDue(null, maturityMs)).toBe(false);
+    expect(hasCouponDue(undefined, maturityMs)).toBe(false);
+    expect(hasCouponDue("not-a-date", maturityMs)).toBe(false);
   });
 });
 
@@ -109,28 +199,28 @@ describe("isTerminalRepayment", () => {
 });
 
 describe("buildRepaymentInput (issue #882)", () => {
-  // Backend-scaled as-is (dollar integers). senior_principal_returned is
+  // Backend raw 7-decimal SAC units. senior_principal_returned is
   // deliberately NON-zero to prove the interest-only override forces
   // senior_principal_repaid to "0" regardless.
   const WATERFALL = {
-    senior_principal_returned: "999", // ignored (interest-only)
-    senior_coupon_net: "115500", // $115,500
-    management_fee: "12000", // $12,000
-    performance_fee: "15000", // $15,000
-    oet_allocation: "7500", // $7,500
+    senior_principal_returned: "9990000000", // ignored (interest-only)
+    senior_coupon_net: "1155000000000", // $115,500
+    management_fee: "120000000000", // $12,000
+    performance_fee: "150000000000", // $15,000
+    oet_allocation: "75000000000", // $7,500
   };
 
   it("forces zero principal (interest-only) + equity as the residual (sums to offtaker)", () => {
     // Offtaker $150,000; interest+fees sum to it → equity = 0.
-    const input = buildRepaymentInput("150000", WATERFALL);
+    const input = buildRepaymentInput("1500000000000", WATERFALL);
     expect(input).toEqual({
-      offtaker_received: "150000",
+      offtaker_received: "1500000000000",
       senior_principal_repaid: "0",
-      senior_interest: "115500",
+      senior_interest: "1155000000000",
       equity_distributed: "0",
-      mgmt_fee: "12000",
-      perf_fee: "15000",
-      oet_alloc: "7500",
+      mgmt_fee: "120000000000",
+      perf_fee: "150000000000",
+      oet_alloc: "75000000000",
     });
     // The six components sum exactly to offtaker_received.
     const six =
@@ -145,17 +235,17 @@ describe("buildRepaymentInput (issue #882)", () => {
 
   it("routes the leftover to equity when interest+fees are below the offtaker amount", () => {
     // Offtaker $200,000; interest+fees $150,000 → equity = $50,000.
-    const input = buildRepaymentInput("200000", WATERFALL);
-    expect(input!.equity_distributed).toBe("50000");
+    const input = buildRepaymentInput("2000000000000", WATERFALL);
+    expect(input!.equity_distributed).toBe("500000000000");
   });
 
   it("clamps equity at 0 (never negative) when interest+fees exceed the amount", () => {
-    const input = buildRepaymentInput("100000", WATERFALL);
+    const input = buildRepaymentInput("1000000000000", WATERFALL);
     expect(input!.equity_distributed).toBe("0");
   });
 
   it("returns null before an amount/preview is available", () => {
     expect(buildRepaymentInput("0", WATERFALL)).toBeNull();
-    expect(buildRepaymentInput("150000", undefined)).toBeNull();
+    expect(buildRepaymentInput("1500000000000", undefined)).toBeNull();
   });
 });

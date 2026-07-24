@@ -1,7 +1,7 @@
 //! Asset price collector job.
 //!
 //! Maintains a rolling, retained window of USD prices for each distinct collateral
-//! asset named in `loan_parameters`. Separate from the on-chain vault `price_poller`
+//! asset named by the loan collateral-valuation anchors. Separate from the on-chain vault `price_poller`
 //! — this deals with external USD asset prices sourced through the pluggable
 //! [`PriceProvider`](shared::price_provider::PriceProvider) abstraction.
 //!
@@ -29,8 +29,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 
+use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
-use shared::loan_parameters_repo::LoanParametersRepo;
 use shared::price_provider::price_provider_for;
 
 pub use config::{AssetPriceCollectorSettings, PriceInterval};
@@ -131,7 +131,7 @@ pub fn latest_is_live(now: DateTime<Utc>, latest: DateTime<Utc>) -> bool {
 /// inside a cycle are logged and the loop continues.
 pub async fn run_asset_price_collector_job(
     settings: AssetPriceCollectorSettings,
-    params_repo: Arc<LoanParametersRepo>,
+    anchors_repo: Arc<CollateralValuationRepo>,
     price_repo: Arc<LoanAssetPriceRepo>,
 ) -> anyhow::Result<()> {
     tracing::info!(
@@ -141,7 +141,7 @@ pub async fn run_asset_price_collector_job(
     );
 
     loop {
-        if let Err(e) = cycle(&settings, &params_repo, &price_repo, Utc::now()).await {
+        if let Err(e) = cycle(&settings, &anchors_repo, &price_repo, Utc::now()).await {
             tracing::error!(error = ?e, "asset price collector cycle error");
         }
         tokio::time::sleep(CYCLE_DELAY).await;
@@ -154,13 +154,13 @@ pub async fn run_asset_price_collector_job(
 /// deterministic in tests and consistent across all assets in a single pass.
 async fn cycle(
     settings: &AssetPriceCollectorSettings,
-    params_repo: &LoanParametersRepo,
+    anchors_repo: &CollateralValuationRepo,
     price_repo: &LoanAssetPriceRepo,
     now: DateTime<Utc>,
 ) -> anyhow::Result<()> {
     // The query already returns the distinct set of pairs; each is collected
     // independently against its own `(asset, provider)` series.
-    let pairs = params_repo.distinct_asset_providers().await?;
+    let pairs = anchors_repo.distinct_asset_providers().await?;
 
     for pair in &pairs {
         let (asset, provider_key) = (&pair.asset, &pair.price_provider);

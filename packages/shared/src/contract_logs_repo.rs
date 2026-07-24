@@ -1,6 +1,7 @@
 use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
+use crate::chains::{normalize_usdc_amount, parse_chain_type};
 use crate::loan_snapshot::LoanSnapshot;
 
 /// A loan-end event row fetched from `contract_logs`.
@@ -120,6 +121,11 @@ pub struct EconomicsEventRow {
     pub new_rate: i64,
     /// New maturity timestamp (Unix seconds).
     pub new_maturity_timestamp: i64,
+    /// The event's own on-chain block timestamp (Unix seconds) — lets a caller look
+    /// up the loan's on-chain snapshot immediately before this event fired (via
+    /// `ContractLogsRepo::get_loan_snapshot_as_of`), independent of this row's own
+    /// (possibly `COALESCE`-defaulted) `new_maturity_timestamp`/`new_rate` params.
+    pub block_timestamp: i64,
 }
 
 pub struct ContractLogsRepo {
@@ -215,12 +221,16 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
 
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901), never at indexer write time.
+        let chain_kind = parse_chain_type(chain_id)?;
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
             use sqlx::Row;
             let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
-            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+            let mut snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
                 .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            snapshot.normalize_usdc_for_display(chain_kind);
             let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
             result.push(LoanSnapshotRow {
                 chain_id: row.try_get("chain_id")?,
@@ -278,12 +288,16 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
 
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901), never at indexer write time.
+        let chain_kind = parse_chain_type(chain_id)?;
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
             use sqlx::Row;
             let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
-            let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+            let mut snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
                 .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+            snapshot.normalize_usdc_for_display(chain_kind);
             let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
             result.push(LoanSnapshotRow {
                 chain_id: row.try_get("chain_id")?,
@@ -296,6 +310,87 @@ impl ContractLogsRepo {
             });
         }
         Ok(result)
+    }
+
+    /// The loan's snapshot as of `as_of`, scoped to a single `loan_id`.
+    ///
+    /// Unlike `list_latest_loan_snapshots_for_chain`, this also matches the genesis
+    /// `LoanDrawn` row when no event has `block_timestamp <= as_of` yet. The immutable
+    /// `origination_date` field written at `LoanDrawn` is supplied by whoever built the
+    /// draw payload and can predate the draw transaction's actual `block_timestamp` (e.g.
+    /// it reflects when the trade-finance facility commercially started). Without this
+    /// fallback, an `as_of` in `[origination_date, block_timestamp)` finds no row at all —
+    /// even though the loan's state at that instant is well-defined (nothing on-chain has
+    /// happened yet, so it's exactly the genesis state). Callers still need to check
+    /// `as_of >= origination_date` themselves for the case where `as_of` truly precedes
+    /// origination.
+    ///
+    /// **Not USDC-normalized** — unlike this repo's other `LoanSnapshot`-returning
+    /// methods. Sole caller is `routes::waterfall`, whose own doc comment states its
+    /// output is deliberately raw on-chain base units (7-decimal on Soroban) meant to be
+    /// handed straight to `recordPayment`; normalizing here would corrupt that on-chain
+    /// call argument, not just a display figure. See #901.
+    pub async fn get_loan_snapshot_as_of<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        loan_id: &BigDecimal,
+        as_of: i64,
+    ) -> anyhow::Result<Option<LoanSnapshotRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let row = sqlx::query(
+            "SELECT chain_id,
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_number,
+                 log_index::bigint AS log_index,
+                 event_name,
+                 block_timestamp,
+                 params->'snapshot' AS snapshot
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND (params->>'loan_id')::numeric = $2
+               AND event_name IN (
+                   'LoanDrawn',
+                   'LoanStatusUpdated',
+                   'LoanCCRUpdated',
+                   'LoanLocationUpdated',
+                   'LoanDefaulted',
+                   'LoanClosed',
+                   'PaymentRecorded',
+                   'LoanRolledOver',
+                   'EconomicsAmended'
+               )
+               AND (block_timestamp <= $3 OR event_name = 'LoanDrawn')
+             ORDER BY block_number DESC, log_index DESC
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(loan_id)
+        .bind(as_of)
+        .fetch_optional(executor)
+        .await?;
+
+        match row {
+            None => Ok(None),
+            Some(row) => {
+                use sqlx::Row;
+                let snapshot_json: serde_json::Value = row.try_get("snapshot")?;
+                let snapshot: LoanSnapshot = serde_json::from_value(snapshot_json)
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize LoanSnapshot: {e}"))?;
+                let loan_id_decimal: bigdecimal::BigDecimal = row.try_get("loan_id")?;
+                Ok(Some(LoanSnapshotRow {
+                    chain_id: row.try_get("chain_id")?,
+                    loan_id: loan_id_decimal,
+                    block_number: row.try_get("block_number")?,
+                    log_index: row.try_get("log_index")?,
+                    event_name: row.try_get("event_name")?,
+                    block_timestamp: row.try_get("block_timestamp")?,
+                    snapshot,
+                }))
+            }
+        }
     }
 
     /// Latest on-chain `status` for each of `loan_ids` on `chain_id`, as
@@ -338,6 +433,38 @@ impl ContractLogsRepo {
         )
         .bind(chain_id)
         .bind(loan_ids)
+        .fetch_all(executor)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Per-loan timestamp of the most recent `LoanStatusUpdated` transition into
+    /// `WatchList`, at or before `to_unix`. Absent for a loan with no such transition.
+    /// Backs the Loan Book `days_on_watchlist` field — `LoanStatusUpdated.params` is
+    /// FLAT (`params->>'status'`), unlike other event types' nested
+    /// `params->'snapshot'->>'status'` (see `latest_status_by_loans`).
+    pub async fn latest_watchlist_entry_by_chain<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        to_unix: i64,
+    ) -> anyhow::Result<Vec<(bigdecimal::BigDecimal, i64)>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let rows = sqlx::query_as::<_, (bigdecimal::BigDecimal, i64)>(
+            "SELECT DISTINCT ON ((params->>'loan_id')::numeric)
+                 (params->>'loan_id')::numeric AS loan_id,
+                 block_timestamp
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'LoanStatusUpdated'
+               AND params->>'status' = 'WatchList'
+               AND block_timestamp <= $2
+             ORDER BY (params->>'loan_id')::numeric, block_timestamp DESC, log_index DESC",
+        )
+        .bind(chain_id)
+        .bind(to_unix)
         .fetch_all(executor)
         .await?;
         Ok(rows)
@@ -406,6 +533,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.amount = normalize_usdc_amount(chain_kind, &r.amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -448,6 +585,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.amount = normalize_usdc_amount(chain_kind, &r.amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -483,6 +630,16 @@ impl ContractLogsRepo {
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        let chain_kind = parse_chain_type(chain_id)?;
+        let rows = rows
+            .into_iter()
+            .map(|mut r| {
+                r.s_plusd_amount = normalize_usdc_amount(chain_kind, &r.s_plusd_amount);
+                r
+            })
+            .collect();
         Ok(rows)
     }
 
@@ -526,7 +683,9 @@ impl ContractLogsRepo {
         .bind(loan_id)
         .fetch_one(executor)
         .await?;
-        Ok(minted)
+        // `contract_logs` stores the raw on-chain value; normalize to the canonical
+        // 6-decimal scale here (read time only — see #901).
+        Ok(normalize_usdc_amount(parse_chain_type(chain_id)?, &minted))
     }
 
     /// The `LoanRolledOver` and `EconomicsAmended` events for a single loan,
@@ -538,11 +697,15 @@ impl ContractLogsRepo {
     /// indexer emits — the parser tests in `packages/worker/tests/` lock that
     /// shape. `COALESCE(…, 0)` guards a malformed row missing either field so a
     /// NULL cannot fail-decode the whole query.
+    /// `to_unix` bounds the events to `block_timestamp <= to_unix` so a caller
+    /// reconstructing the epoch timeline as of a past instant (e.g. a backdated
+    /// waterfall repayment) doesn't see a rollover/amendment that happened later.
     pub async fn list_loan_economics_events<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
         loan_id: &BigDecimal,
+        to_unix: i64,
     ) -> anyhow::Result<Vec<EconomicsEventRow>>
     where
         E: sqlx::Executor<'e, Database = sqlx::Postgres>,
@@ -552,15 +715,18 @@ impl ContractLogsRepo {
                  event_name,
                  COALESCE((params->>'new_rate')::numeric, 0)::bigint AS new_rate,
                  COALESCE((params->>'new_maturity_timestamp')::numeric, 0)::bigint
-                     AS new_maturity_timestamp
+                     AS new_maturity_timestamp,
+                 block_timestamp
              FROM contract_logs
              WHERE chain_id = $1
                AND event_name IN ('LoanRolledOver', 'EconomicsAmended')
                AND (params->>'loan_id')::numeric = $2
+               AND block_timestamp <= $3
              ORDER BY block_number, log_index",
         )
         .bind(chain_id)
         .bind(loan_id)
+        .bind(to_unix)
         .fetch_all(executor)
         .await?;
         Ok(rows)

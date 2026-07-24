@@ -27,12 +27,9 @@
  *   - Progress bar fill → `outstanding_in_loans / tvl` (approved exception
  *     to "no frontend-computed metrics" for ratio-of-served-values; null/zero
  *     tvl → null, render empty bar + "—%").
- *   - ⚠️ #840/#841 workaround: `outstanding_in_loans` is registry-sourced and
- *     currently served 1000× too small. It is scaled via `scaleRegistryAmount`
- *     ONCE at the source (see `outstandingInLoansScaled` below) so the
- *     displayed value and the ratio above both use the corrected number.
- *     `tvl` is NOT scaled — it is already at the correct scale. Remove this
- *     workaround (and its call site) once #840 lands.
+ *   - `outstanding_in_loans` is displayed exactly as served by the backend
+ *     (issue #906 — the former `scaleRegistryAmount` ×1000 workaround has been
+ *     removed; the backend now serves the corrected value directly).
  */
 import { ENV } from "@/lib/env";
 import { useDashboardSummary } from "@/api/useDashboardSummary";
@@ -42,7 +39,6 @@ import { pointsToBars } from "@/utils/yieldSeries";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
-  scaleRegistryAmount,
 } from "@/utils/formatCompactUsd";
 import type { PanelState } from "./PanelContainer";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
@@ -215,24 +211,19 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
 
   // ── TVL summary ─────────────────────────────────────────────────────────────
 
-  // #840 workaround — remove when backend scale fixed: `outstanding_in_loans`
-  // is registry-sourced and arrives 1000× too small (issue #841). Scale it
-  // ONCE here, at the source, so both the displayed value and the
-  // progress-bar ratio below use the same corrected number. Do NOT scale
-  // `tvl` — it is already at the correct scale.
-  const outstandingInLoansScaled = scaleRegistryAmount(
-    summary?.outstanding_in_loans ?? null,
-  );
+  // Displayed exactly as served by the backend (issue #906 — no frontend
+  // rescaling).
+  const outstandingInLoansRaw = summary?.outstanding_in_loans ?? null;
 
   const headlineTvl = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
-  const outstandingInLoans = formatCompactUsd(outstandingInLoansScaled);
+  const outstandingInLoans = formatCompactUsd(outstandingInLoansRaw);
 
   // Deployment ratio — approved client-side computation (ratio of two served values).
   // Guard against null/zero tvl to avoid divide-by-zero.
   let deployedRatio: number | null = null;
-  if (summary?.tvl != null && outstandingInLoansScaled != null) {
+  if (summary?.tvl != null && outstandingInLoansRaw != null) {
     const tvlNum = parseFloat(summary.tvl);
-    const outstandingNum = parseFloat(outstandingInLoansScaled);
+    const outstandingNum = parseFloat(outstandingInLoansRaw);
     if (
       Number.isFinite(tvlNum) &&
       Number.isFinite(outstandingNum) &&

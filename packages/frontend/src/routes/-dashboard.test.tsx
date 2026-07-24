@@ -94,15 +94,13 @@ vi.stubGlobal("fetch", fetchMock);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-// `total_deployed`/`principal` AND `collateral`/`total_collateral` are all
-// registry-sourced fields the backend currently serves at 1e3-too-small scale
-// (#840, confirmed for collateral too by issue #888's live-payload audit).
-// These fixtures are pinned at that buggy-backend scale so that, after the
-// client-side ×1000 workaround (`formatRegistryCompactUsd`) is applied, the
-// resulting display strings ("$31.6M" / "$8.0M") match reality.
+// Issue #906: the frontend no longer rescales `total_deployed`/`principal`/
+// `collateral`/`total_collateral` (the former ×1000 `formatRegistryCompactUsd`
+// workaround, #840/#888, has been removed) — every value is displayed exactly
+// as served, via plain `formatCompactUsd`.
 const FIXTURE_FULL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
+    total_deployed: "31600.000000", // displayed as served → "$31.6K"
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -113,7 +111,7 @@ const FIXTURE_FULL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000.000000", // ×1000 workaround → "$8.0M"
+      principal: "8000.000000", // displayed as served → "$8.0K"
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -125,7 +123,7 @@ const FIXTURE_FULL: LoanBookResponse = {
       originator: "Trafalgar",
       borrower: "Trafalgar",
       commodity: "Alumina",
-      principal: "5200.000000", // ×1000 workaround → "$5.2M"
+      principal: "5200.000000", // displayed as served → "$5.2K"
       collateral: null,
       ltv: null,
       duration_days: 150,
@@ -165,10 +163,12 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
       corridor: "PE-CN",
       governing_law: "England",
       economics: {
-        original_facility_size: "3500000.000000",
-        original_senior_tranche: "3000000.000000",
-        original_equity_tranche: "500000.000000",
-        original_offtaker_price: "3500000.000000",
+        // 7-decimal on-chain base-unit strings (issue #912) — displayed
+        // ÷10^7, so this facility value renders "$3.5M".
+        original_facility_size: "35000000000000.000000",
+        original_senior_tranche: "30000000000000.000000",
+        original_equity_tranche: "5000000000000.000000",
+        original_offtaker_price: "35000000000000.000000",
         senior_interest_rate_bps: 1400,
         origination_date: 1_750_000_000,
         original_maturity_date: 1_797_292_800, // 2026-12-15T00:00:00Z
@@ -417,10 +417,10 @@ describe("#749 — YieldHistoryPanel mobile layout", () => {
 // ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
 
 // Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.
-// total_deployed / principal at registry (÷1000) scale — see FIXTURE_FULL comment above.
+// Displayed as served (issue #906) — see FIXTURE_FULL comment above.
 const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
+    total_deployed: "31600.000000", // displayed as served → "$31.6K"
     total_collateral: null,
     senior_debt_coverage: null,
     avg_yield: "0.112000",
@@ -431,7 +431,7 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000.000000", // ×1000 workaround → "$8.0M"
+      principal: "8000.000000", // displayed as served → "$8.0K"
       collateral: null,
       ltv: null,
       duration_days: 120,
@@ -443,12 +443,11 @@ const FIXTURE_WITH_DEPLOYED_NULL_COLLATERAL: LoanBookResponse = {
 };
 
 // Fixture: both total_deployed and total_collateral set → both subtitles render.
-// total_deployed / principal AND total_collateral / collateral are ALL
-// registry-sourced (issue #888) ⇒ ALL pinned at registry (÷1000) scale.
+// All amounts are displayed exactly as served (issue #906) — no frontend rescaling.
 const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
   summary: {
-    total_deployed: "31600.000000", // ×1000 workaround → "$31.6M"
-    total_collateral: "37600.000000", // ×1000 workaround → "$37.6M"
+    total_deployed: "31600.000000", // displayed as served → "$31.6K"
+    total_collateral: "37600.000000", // displayed as served → "$37.6K"
     senior_debt_coverage: "1.50",
     avg_yield: "0.112000",
     avg_duration_days: 68,
@@ -458,8 +457,8 @@ const FIXTURE_WITH_COLLATERAL: LoanBookResponse = {
       originator: "Open Mineral",
       borrower: "Open Mineral",
       commodity: "Copper Concentrate",
-      principal: "8000.000000", // ×1000 workaround → "$8.0M"
-      collateral: "9500.000000", // ×1000 workaround → "$9.5M"
+      principal: "8000.000000", // displayed as served → "$8.0K"
+      collateral: "9500.000000", // displayed as served → "$9.5K"
       ltv: "0.8511",
       duration_days: 120,
       rate: "0.112000",
@@ -494,10 +493,10 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
       ).toBeInTheDocument();
     });
 
-    // Principal subtitle renders $31.6M
+    // Principal subtitle renders $31.6K
     expect(
       screen.getByTestId("loan-book-header-principal-aggregate"),
-    ).toHaveTextContent("$31.6M");
+    ).toHaveTextContent("$31.6K");
 
     // Collateral subtitle is absent when total_collateral is null
     expect(
@@ -521,11 +520,11 @@ describe("DeploymentMonitorPanel — column header aggregates (issue #729)", () 
 
     expect(
       screen.getByTestId("loan-book-header-principal-aggregate"),
-    ).toHaveTextContent("$31.6M");
+    ).toHaveTextContent("$31.6K");
 
     expect(
       screen.getByTestId("loan-book-header-collateral-aggregate"),
-    ).toHaveTextContent("$37.6M");
+    ).toHaveTextContent("$37.6K");
   });
 
   it("LTV column header shows the average-LTV marker (user-approved frontend calc)", async () => {
@@ -674,7 +673,7 @@ describe("DeploymentMonitorPanel — ready state", () => {
 
     // Formatted values from FIXTURE_FULL (use getAllByText where values appear
     // in both summary cards and table rows).
-    expect(screen.getAllByText("$31.6M").length).toBeGreaterThanOrEqual(1); // total_deployed
+    expect(screen.getAllByText("$31.6K").length).toBeGreaterThanOrEqual(1); // total_deployed
     expect(screen.getAllByText("11.2%").length).toBeGreaterThanOrEqual(1); // avg_yield (one decimal)
     expect(screen.getByText("68 days")).toBeInTheDocument(); // avg_duration_days (summary only)
 
@@ -698,7 +697,7 @@ describe("DeploymentMonitorPanel — ready state", () => {
     });
 
     // Principal formatted as compact USD
-    const principals = screen.getAllByText("$8.0M");
+    const principals = screen.getAllByText("$8.0K");
     expect(principals.length).toBeGreaterThanOrEqual(1);
 
     // Row with null protection shows "—"

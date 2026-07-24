@@ -114,9 +114,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       originator: "Helios Metals",
       borrower: "b1",
       commodity: "Lithium",
-      // Registry-sourced (#840): 1840.000000 on the wire ⇒ ×1000 ⇒ $1,840,000.
-      principal: "2200.000000",
-      senior_outstanding: "1840.000000",
+      // Served at full USD scale (#906 — displayed as-is, no client rescaling).
+      principal: "2200000.000000",
+      senior_outstanding: "1840000.000000",
+      original_senior_tranche: "1840000.000000",
       maturity: 1_782_777_600,
       ccr_reported_at: 0,
       spot_price: "10450",
@@ -128,6 +129,10 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "Performing",
+      repaid_to_date: "0.000000",
+      disbursed: true,
+      days_on_watchlist: null,
+      watchlist_entered_at: null,
     },
   ],
 };
@@ -148,8 +153,8 @@ const FINANCIALS_RESPONSE: LoanFinancialsResponse = {
   fees: "5.000000",
   minted_yield: "0.000000",
   not_minted_yield: "45.000000",
-  // Registry-sourced (#840): 2000.000000 ⇒ ×1000 ⇒ $2,000,000 still owed.
-  offtaker_outstanding: "2000.000000",
+  // Served at full USD scale (#906 — displayed as-is): $2,000,000 still owed.
+  offtaker_outstanding: "2000000.000000",
 };
 
 function ready() {
@@ -169,24 +174,23 @@ function ready() {
 
 /**
  * A representative waterfall preview for a $45,000 interest-only coupon.
- * Backend-scaled as-is (dollar integers) — the frontend applies no decimal
- * scaling (#882): $35,000 = "35000".
+ * Backend values are raw 7-decimal SAC base units: $35,000 = "350000000000".
  */
 const WATERFALL_INTEREST_ONLY: WaterfallResponse = {
   senior_principal_returned: "0",
-  senior_coupon_net: "35000", // $35,000
-  management_fee: "5000", // $5,000
-  performance_fee: "3000", // $3,000
-  oet_allocation: "2000", // $2,000
+  senior_coupon_net: "350000000000", // $35,000
+  management_fee: "50000000000", // $5,000
+  performance_fee: "30000000000", // $3,000
+  oet_allocation: "20000000000", // $2,000
 };
 
 /** A terminal coupon whose principal-first waterfall fully repays the $1,840,000 outstanding senior. */
 const WATERFALL_TERMINAL: WaterfallResponse = {
-  senior_principal_returned: "1840000", // $1,840,000 as-is
-  senior_coupon_net: "35000",
-  management_fee: "5000",
-  performance_fee: "3000",
-  oet_allocation: "2000",
+  senior_principal_returned: "18400000000000", // $1,840,000
+  senior_coupon_net: "350000000000",
+  management_fee: "50000000000",
+  performance_fee: "30000000000",
+  oet_allocation: "20000000000",
 };
 
 function mockWaterfall(
@@ -243,13 +247,13 @@ describe("Record Coupon route — ready state", () => {
     expect(mockRecord.mutateAsync).toHaveBeenCalledWith({
       loanId: 4488,
       repayment: {
-        offtaker_received: "45000",
+        offtaker_received: "450000000000",
         senior_principal_repaid: "0",
-        senior_interest: "35000",
+        senior_interest: "350000000000",
         equity_distributed: "0",
-        mgmt_fee: "5000",
-        perf_fee: "3000",
-        oet_alloc: "2000",
+        mgmt_fee: "50000000000",
+        perf_fee: "30000000000",
+        oet_alloc: "20000000000",
       },
     });
   });
@@ -276,25 +280,111 @@ describe("Record Coupon route — ready state", () => {
     expect(banner).toHaveTextContent("Deferred interest");
   });
 
-  it("renders the left card's coupon period, senior outstanding, and offtaker-owed rows", () => {
+  it("renders the coupon-period and senior-outstanding rows", () => {
     renderRoute();
     const left = screen.getByTestId("record-coupon-left-card");
     expect(left).toHaveTextContent("Helios Metals");
     expect(left).toHaveTextContent("Coupon period");
-    expect(left).toHaveTextContent("2 Jan → 31 Mar · 88 days");
+    expect(left).toHaveTextContent("2 Jan 2026 → 31 Mar 2026 · 88 days");
     expect(left).toHaveTextContent("Senior outstanding — unchanged");
     expect(left).toHaveTextContent("$1,840,000");
-    expect(left).toHaveTextContent("Offtaker still owed after coupon");
-    // No amount entered yet ⇒ unchanged from the served offtaker_outstanding.
-    expect(left).toHaveTextContent("$2,000,000");
   });
 
-  it("renders the amount/date inputs, date defaulting to today", () => {
+  it("shows the 'Scheduled coupon' third row when a coupon is due (at/after maturity)", () => {
+    // Freeze now at the epoch maturity (2026-03-31) → a coupon is due.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-03-31T00:00:00Z").getTime());
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
+    // Scheduled coupon = 10.0% p.a. × $1,840,000 × 88/365 ≈ $44,362 (client-side
+    // projection, not backend-served — see -record-coupon.ts).
+    expect(left).toHaveTextContent("Scheduled coupon (10.0% p.a.)");
+    expect(left).toHaveTextContent("$44,362");
+    expect(left).not.toHaveTextContent("Offtaker still owed after coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("shows the 'Offtaker still owed after coupon' third row for a simply-performing loan with no payment due", () => {
+    // Freeze now well before maturity (mid-Jan, > 7 days out); the loan is
+    // Performing → nothing due, so the owed row shows instead.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
+    expect(left).toHaveTextContent("Offtaker still owed after coupon");
+    // offtaker_outstanding "2000000.000000" displayed as-is (#906); no amount entered.
+    expect(left).toHaveTextContent("$2,000,000");
+    expect(left).not.toHaveTextContent("Scheduled coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("subtracts the entered amount from the 'Offtaker still owed after coupon' row in real time", () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    renderRoute();
+    // No debounce wait — the owed row tracks the live input immediately.
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "500000" },
+    });
+    const left = screen.getByTestId("record-coupon-left-card");
+    // 2,000,000 − 500,000 = 1,500,000.
+    expect(left).toHaveTextContent("$1,500,000");
+    nowSpy.mockRestore();
+  });
+
+  it("shows the 'Scheduled coupon' third row for a non-performing loan even when nothing is due", () => {
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date("2026-01-15T00:00:00Z").getTime());
+    mockUseLoanBook.mockReturnValue({
+      data: {
+        ...LOAN_BOOK_RESPONSE,
+        loans: [{ ...LOAN_BOOK_RESPONSE.loans[0]!, status: "WatchList" }],
+      },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    renderRoute();
+    const left = screen.getByTestId("record-coupon-left-card");
+    expect(left).toHaveTextContent("Scheduled coupon (10.0% p.a.)");
+    expect(left).not.toHaveTextContent("Offtaker still owed after coupon");
+    nowSpy.mockRestore();
+  });
+
+  it("renders the in-card 'Record on the ledger' button and the recordPayment footer (node 4116-11295)", () => {
+    renderRoute();
+    const right = screen.getByTestId("record-coupon-right-card");
+    const submit = screen.getByTestId("record-coupon-submit");
+    // The primary action lives inside the right card, not a separate bottom row.
+    expect(right).toContainElement(submit);
+    expect(submit).toHaveTextContent("Record on the ledger");
+    expect(right).toHaveTextContent(
+      "recordPayment is pure accounting — increments the per-loan counters, emits PaymentRecorded, moves no USDC.",
+    );
+    // The old bottom Cancel action is gone (a back link at the top remains).
+    expect(
+      screen.queryByRole("link", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the bank-wire check note on the left card", () => {
+    renderRoute();
+    expect(screen.getByTestId("record-coupon-left-card")).toHaveTextContent(
+      "Check the amount against the correspondent bank wire before recording — there is no automatic bank feed.",
+    );
+  });
+
+  it("renders the amount input and a read-only date fixed to today (#916)", () => {
     renderRoute();
     expect(screen.getByTestId("record-coupon-amount")).toHaveValue(null);
     const dateInput = screen.getByTestId("record-coupon-date");
     const today = new Date().toISOString().slice(0, 10);
     expect(dateInput).toHaveValue(today);
+    expect(dateInput).toBeDisabled();
   });
 
   it("shows the 'enter an amount' placeholder before any amount is entered", () => {
@@ -307,19 +397,19 @@ describe("Record Coupon route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("passes the entered amount as-is to useLoanWaterfall (debounced)", async () => {
+  it("passes the entered USD amount as raw SAC base units to useLoanWaterfall (debounced)", async () => {
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
-      target: { value: "45000" },
+      target: { value: "123.45678" },
     });
-    // Amount sent as-is (backend handles USDC decimals), after the debounce (#882).
+    // Amount is multiplied by 10^7 before the debounced waterfall request.
     await waitFor(() => {
       const lastCall =
         mockUseLoanWaterfall.mock.calls[
           mockUseLoanWaterfall.mock.calls.length - 1
         ]!;
       expect(lastCall[0]).toBe("4488");
-      expect(lastCall[1]).toBe("45000");
+      expect(lastCall[1]).toBe("1234567800");
     });
   });
 
@@ -348,7 +438,7 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toHaveTextContent("$2,000");
     expect(right).toHaveTextContent("Net senior coupon → vault");
     expect(right).toHaveTextContent("$35,000");
-    expect(right).toHaveTextContent("Minted to sPLUSD — lifts NAV");
+    expect(right).toHaveTextContent("Mints to sPLUSD once the on-ramp lands");
   });
 
   it("renders the green 'Components sum to received $<amount>' summary", async () => {

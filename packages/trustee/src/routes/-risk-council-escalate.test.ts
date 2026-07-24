@@ -65,9 +65,9 @@ describe("formatCcrLine", () => {
 });
 
 describe("formatFacilityLine", () => {
-  it("scales both amounts ×1000 (#840) and formats as full USD", () => {
-    // 2300.000000 / 1840.000000 on the wire ⇒ ×1000 ⇒ $2,300,000 / $1,840,000.
-    expect(formatFacilityLine("2300.000000", "1840.000000")).toBe(
+  it("formats served display-scale amounts as full USD (#906, as-is)", () => {
+    // Served display-scale ⇒ $2,300,000 / $1,840,000 as-is (no ×1000, #906).
+    expect(formatFacilityLine("2300000.000000", "1840000.000000")).toBe(
       "$2,300,000 / $1,840,000",
     );
   });
@@ -78,18 +78,20 @@ describe("formatFacilityLine", () => {
 });
 
 describe("buildRepaidToDate", () => {
-  it("computes offtaker − offtaker_outstanding, both registry-scaled (#840)", () => {
-    // 2000.000000 / 1200.000000 on the wire ⇒ ×1000 ⇒ $2,000,000 − $1,200,000.
-    expect(buildRepaidToDate("2000.000000", "1200.000000")).toBe("$800,000");
+  it("computes offtaker − offtaker_outstanding, both served display-scale (#906)", () => {
+    // $2,000,000 − $1,200,000 as-is.
+    expect(buildRepaidToDate("2000000.000000", "1200000.000000")).toBe(
+      "$800,000",
+    );
   });
 
   it("clamps at $0 (never negative)", () => {
-    expect(buildRepaidToDate("1000.000000", "1500.000000")).toBe("$0");
+    expect(buildRepaidToDate("1000000.000000", "1500000.000000")).toBe("$0");
   });
 
   it('returns "—" when either financials field is unavailable', () => {
-    expect(buildRepaidToDate(null, "1200.000000")).toBe("—");
-    expect(buildRepaidToDate("2000.000000", undefined)).toBe("—");
+    expect(buildRepaidToDate(null, "1200000.000000")).toBe("—");
+    expect(buildRepaidToDate("2000000.000000", undefined)).toBe("—");
   });
 });
 

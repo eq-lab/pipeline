@@ -6,8 +6,9 @@
  *
  * Covers:
  *   - A full `SubmissionView` maps to the expected display strings
- *     (facility/senior/equity/offtaker via `formatFullUsd`, rate via
- *     `formatBpsRate` + " p.a.", start + maturity dates via
+ *     (facility/senior/equity/offtaker — served at the on-chain 7-decimal
+ *     base-unit scale, normalized ÷10^7 before `formatFullUsd`, issue #912 —
+ *     rate via `formatBpsRate` + " p.a.", start + maturity dates via
  *     `formatMaturityDate`, corridor arrow, originator = `loan_data.originator`
  *     (friendly name, NOT the submitter address), commodity, governing law,
  *     documents list).
@@ -21,10 +22,11 @@
  *   - No router state → refetch fallback selects the submission by matching
  *     `String(s.id) === id`; absent id → `not-found`; refetch in flight →
  *     `loading`.
- *   - Each status (`InReview`, `Approved`, `Rejected`, unknown) → correct
- *     `statusChip`.
+ *   - Each Origination decision status (`InReview`, `Approved`, `Rejected`)
+ *     → correct `statusChip`; backend merged/lifecycle statuses normalize to
+ *     Approved for this Origination surface (#892).
  *   - Edge cases: empty `documents`, corridor without a hyphen, zero-value
- *     economics (`"$0"` not `—`), unknown status string.
+ *     economics (`"$0"` not `—`), merged lifecycle status string.
  *   - Issue #823: `statusKind`/`reviewedDate`/`rejectionReason` fields that
  *     drive the status-conditional detail footer.
  *   - Issue #838: `transactionPreview` — the Approve & mint dialog's
@@ -69,10 +71,14 @@ const FULL_SUBMISSION: SubmissionView = {
     corridor: "PE-CN",
     governing_law: "England & Wales",
     economics: {
-      original_facility_size: "3500000.000000",
-      original_senior_tranche: "2800000.000000",
-      original_equity_tranche: "700000.000000",
-      original_offtaker_price: "3750000.000000",
+      // 7-decimal on-chain base-unit strings (issue #912) — senior + equity
+      // = facility (8e9 + 2e9 = 10e9), same convention as the observed live
+      // payload. Displayed ÷10^7: facility $1,000 / senior $800 / equity
+      // $200 / offtaker $1,550.
+      original_facility_size: "10000000000.000000",
+      original_senior_tranche: "8000000000.000000",
+      original_equity_tranche: "2000000000.000000",
+      original_offtaker_price: "15500000000.000000",
       senior_interest_rate_bps: 1400,
       origination_date: 1_783_929_600,
       original_maturity_date: 1_765_756_800,
@@ -116,10 +122,10 @@ describe("useOriginationDetail — ready state with router-state submission", ()
     expect(result.current.breadcrumb).toBe(
       "Auric Andes S.A.C. — Gold pyrite concentrate",
     );
-    expect(result.current.loanTerms.facility).toBe("$3,500,000");
-    expect(result.current.loanTerms.senior).toBe("$2,800,000");
-    expect(result.current.loanTerms.equity).toBe("$700,000");
-    expect(result.current.loanTerms.offtakerPrice).toBe("$3,750,000");
+    expect(result.current.loanTerms.facility).toBe("$1,000");
+    expect(result.current.loanTerms.senior).toBe("$800");
+    expect(result.current.loanTerms.equity).toBe("$200");
+    expect(result.current.loanTerms.offtakerPrice).toBe("$1,550");
     expect(result.current.loanTerms.rate).toBe("14.0% p.a.");
     expect(result.current.loanTerms.startDate).not.toBe("—");
     expect(result.current.loanTerms.maturityDate).not.toBe("—");
@@ -193,16 +199,16 @@ describe("useOriginationDetail — status chip", () => {
     });
   });
 
-  it("maps an unknown status string to a neutral fallback, never throwing", () => {
+  it("maps a backend lifecycle status to Approved for Origination display (#892)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      status: "SomethingNew",
+      status: "WatchList",
     };
     mockSubmissions([submission]);
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.statusChip).toEqual({
-      kind: "unknown",
-      label: "SomethingNew",
+      kind: "approved",
+      label: "Approved",
     });
   });
 });
@@ -258,14 +264,14 @@ describe("useOriginationDetail — footer fields (statusKind/reviewedDate/reject
     expect(result.current.rejectionReason).toBe("—");
   });
 
-  it("exposes statusKind 'unknown' for an unrecognized status string", () => {
+  it("exposes statusKind 'approved' for a backend lifecycle status (#892)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
-      status: "SomethingNew",
+      status: "Default",
     };
     mockSubmissions([submission]);
     const { result } = renderHook(() => useOriginationDetail("7", submission));
-    expect(result.current.statusKind).toBe("unknown");
+    expect(result.current.statusKind).toBe("approved");
   });
 
   it("gives safe '—' defaults for statusKind/reviewedDate/rejectionReason in the not-found state", async () => {
@@ -353,6 +359,25 @@ describe("useOriginationDetail — defensive reads", () => {
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.loanTerms.facility).toBe("$0");
   });
+
+  it("divides economics by the FULL 10^7 (issue #912 regression) — 10000000000 base units -> $1,000, not $1,000,000", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      loan_data: {
+        ...FULL_SUBMISSION.loan_data,
+        economics: {
+          ...FULL_SUBMISSION.loan_data.economics,
+          original_facility_size: "10000000000.000000",
+        },
+      },
+    };
+    mockSubmissions([submission]);
+
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    // 10000000000 / 10^7 = 1000 -> formatFullUsd("1000.0000000") = "$1,000".
+    // A partial (e.g. 10^4) divisor would wrongly produce "$1,000,000".
+    expect(result.current.loanTerms.facility).toBe("$1,000");
+  });
 });
 
 // ── Transaction preview (issue #838) ─────────────────────────────────────────
@@ -372,10 +397,10 @@ describe("useOriginationDetail — transactionPreview", () => {
       "Auric Andes S.A.C.",
     );
     const economics = rows.find((r) => r.label === "economics")?.value;
-    expect(economics).toContain("$3,500,000");
-    expect(economics).toContain("$2,800,000");
-    expect(economics).toContain("$700,000");
-    expect(economics).toContain("$3,750,000");
+    expect(economics).toContain("$1,000");
+    expect(economics).toContain("$800");
+    expect(economics).toContain("$200");
+    expect(economics).toContain("$1,550");
     expect(economics).toContain("14.0%");
     expect(rows.find((r) => r.label === "metadataURI")?.value).toBe(
       "ipfs://...",

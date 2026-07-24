@@ -20,13 +20,10 @@
  * `total_deployed`, `total_collateral`, `principal`, and `collateral` are
  * **base-6 decimal strings already in human units** (e.g. `"8000000.000000"`
  * = $8M USDC) — they are NOT raw sub-unit bigints, so never call `formatUsdc`
- * / `parseUnits` on them. They ARE, however, **registry-sourced and served
- * 1000× too small on the wire** (issue #840, confirmed for `collateral` /
- * `total_collateral` too by a live-payload audit in issue #888 — the earlier
- * assumption that these two came from the price feed at correct scale was
- * false). Use `formatRegistryCompactUsd` from `@/utils/formatCompactUsd`
- * (NOT plain `formatCompactUsd`) to apply the required ×1000 correction
- * before display.
+ * / `parseUnits` on them. The frontend no longer rescales these values — the
+ * former ×1000 `scaleRegistryAmount`/`formatRegistryCompactUsd` workaround
+ * (issue #840) has been removed (issue #906); they are displayed exactly as
+ * served, via plain `formatCompactUsd` from `@/utils/formatCompactUsd`.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -40,9 +37,8 @@ export interface LoanBookSummary {
   total_deployed: string;
   /**
    * Total collateral value, USDC — base-6 decimal string (human units).
-   * `null` until a commodity price feed is wired (TODO #706). Registry-sourced
-   * ⇒ **scale ×1000** (`formatRegistryCompactUsd`) — issue #888 corrected the
-   * earlier assumption that this was already correct-scale.
+   * `null` until a commodity price feed is wired (TODO #706). Displayed
+   * exactly as served by the backend (issue #906 — no frontend rescaling).
    */
   total_collateral: string | null;
   /**
@@ -74,16 +70,14 @@ export interface LoanBookEntry {
   principal: string;
   /**
    * Collateral value, USDC — base-6 decimal string (human units).
-   * `null` until a price feed is available (TODO #706). Registry-sourced ⇒
-   * **scale ×1000** (`formatRegistryCompactUsd`) — issue #888 corrected the
-   * earlier assumption that this was already correct-scale.
+   * `null` until a price feed is available (TODO #706). Displayed exactly as
+   * served by the backend (issue #906 — no frontend rescaling).
    */
   collateral: string | null;
   /**
    * Loan-to-value — 4-decimal fraction string (e.g. `"0.8511"`) =
    * `principal / collateral`. `null` while `collateral` is unavailable
-   * (TODO #706). Both operands are registry-sourced (1000×-low), so the
-   * ×1000 cancels out of the ratio — served ALREADY CORRECT, do NOT scale.
+   * (TODO #706). Served ALREADY CORRECT — do NOT scale.
    */
   ltv: string | null;
   /** Original loan term in days (`maturity − origination`). */

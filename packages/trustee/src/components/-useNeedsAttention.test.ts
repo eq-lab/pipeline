@@ -10,7 +10,8 @@
  *   - Missing/malformed `loan_data` fields degrade to "—"/omitted segments,
  *     never fabricated, never throwing.
  *   - `state` derivation: loading/error/empty/ready.
- *   - Non-InReview submissions (if any slip through) are excluded.
+ *   - Non-InReview submissions, including backend merged/lifecycle statuses,
+ *     are excluded.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
@@ -165,6 +166,7 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     commodity: "Lithium",
     principal: "0",
     senior_outstanding: "0",
+    original_senior_tranche: "0",
     maturity: 1_782_777_600,
     ccr_reported_at: 0,
     spot_price: null,
@@ -176,6 +178,10 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "WatchList",
+    repaid_to_date: "0",
+    disbursed: true,
+    days_on_watchlist: 18,
+    watchlist_entered_at: 1_781_222_400,
     ...overrides,
   };
 }
@@ -314,6 +320,22 @@ describe("useNeedsAttention", () => {
     });
     const { result } = renderHook(() => useNeedsAttention());
     expect(result.current.state).toBe("empty");
+  });
+
+  it("does not treat backend lifecycle statuses as actionable Origination work (#892)", () => {
+    const lifecycleSubmission: SubmissionView = {
+      ...IN_REVIEW_SUBMISSION,
+      status: "WatchList",
+    };
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [lifecycleSubmission],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.state).toBe("empty");
+    expect(result.current.rows).toEqual([]);
   });
 
   it("surfaces Watchlist + Matured loans as Loans-group rows, excluding others (#867)", () => {

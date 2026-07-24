@@ -27,6 +27,7 @@ use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{EconomicsEventRow, LoanSnapshotRow};
+use shared::loan_economics::build_epochs;
 use shared::loan_snapshot::LoanSnapshot;
 
 use crate::auth::SecurityAddon;
@@ -35,16 +36,6 @@ use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
 use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::routes::loan_book::display_status;
 use crate::AppState;
-
-/// Basis points per 100% (`10_000` bps = 100%). Matches `routes::loan_book::BPS_DENOM`.
-const BPS_DENOM: i64 = 10_000;
-
-/// The LoanRegistry contract's fixed-point `ONE` (= 100%). Economics-event rates
-/// (`LoanRolledOver` / `EconomicsAmended` `new_rate`) are scaled by 1e6, so
-/// `new_rate / 100` is bps (`150_000` → `1_500` bps = 15%). This is a *different
-/// scale* from the snapshot's bps origination rate — see `current_epoch`, which
-/// normalises event rates to bps on fold.
-const ECONOMICS_RATE_ONE: i64 = 1_000_000;
 
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
@@ -180,8 +171,33 @@ async fn get_loan_financials(
 
     let economics_events = state
         .contract_logs_repo
-        .list_loan_economics_events(&state.pool, chain_id, &loan_id)
+        .list_loan_economics_events(&state.pool, chain_id, &loan_id, now)
         .await?;
+
+    // The current epoch's `start` should be the prior epoch's real on-chain maturity.
+    // The folded `LoanRolledOver` event's own `new_maturity_timestamp` param can be
+    // wrong (see `ContractLogsRepo::list_loan_economics_events`'s `COALESCE(…, 0)`
+    // guard), so instead look up the loan's on-chain-read snapshot from just before
+    // that rollover fired — its `current_maturity_timestamp` is the real prior-epoch
+    // maturity, independent of the possibly-malformed event param.
+    let current_epoch_start_override = if let Some(rollover) = economics_events
+        .iter()
+        .rev()
+        .find(|e| e.event_name == "LoanRolledOver")
+    {
+        state
+            .contract_logs_repo
+            .get_loan_snapshot_as_of(
+                &state.pool,
+                chain_id,
+                &loan_id,
+                rollover.block_timestamp - 1,
+            )
+            .await?
+            .map(|r| r.snapshot.current_maturity_timestamp)
+    } else {
+        None
+    };
 
     // USDC off-ramp completion, for the `Disbursing` status override. Absent → false.
     let off_ramp_complete = state
@@ -195,6 +211,7 @@ async fn get_loan_financials(
         &economics_events,
         off_ramp_complete,
         now,
+        current_epoch_start_override,
     )))
 }
 
@@ -208,12 +225,19 @@ async fn get_loan_financials(
 /// `off_ramp_complete` is the loan's USDC-off-ramp flag and `now` the reference clock;
 /// together with the snapshot's maturity they drive the displayed `status` (the
 /// `Disbursing` / `Past Due` overrides — see `display_status`).
+///
+/// `current_epoch_start_override`, when present, is the on-chain-read maturity of
+/// the epoch prior to the current one (see `current_epoch`) — sourced by the caller
+/// from `ContractLogsRepo::get_loan_snapshot_as_of` just before the current epoch's
+/// opening `LoanRolledOver`, independent of that event's own possibly-malformed
+/// `new_maturity_timestamp` param.
 pub fn build_response(
     row: &LoanSnapshotRow,
     minted_yield: &BigDecimal,
     economics_events: &[EconomicsEventRow],
     off_ramp_complete: bool,
     now: i64,
+    current_epoch_start_override: Option<i64>,
 ) -> LoanFinancialsResponse {
     let s: &LoanSnapshot = &row.snapshot;
 
@@ -231,7 +255,12 @@ pub fn build_response(
 
     LoanFinancialsResponse {
         loan_id: row.loan_id.to_string(),
-        status: display_status(&s.status, off_ramp_complete, now, s.current_maturity_timestamp),
+        status: display_status(
+            &s.status,
+            off_ramp_complete,
+            now,
+            s.current_maturity_timestamp,
+        ),
         location: location_view(s),
         offtaker: base6_to_decimal_string(&s.original_offtaker_price),
         principal: base6_to_decimal_string(&principal),
@@ -240,55 +269,48 @@ pub fn build_response(
         minted_yield: base6_to_decimal_string(minted_yield),
         not_minted_yield: base6_to_decimal_string(&not_minted),
         offtaker_outstanding: base6_to_decimal_string(&offtaker_outstanding),
-        epoch: current_epoch(s, economics_events),
+        epoch: current_epoch(s, economics_events, current_epoch_start_override),
     }
 }
 
-/// Fold the ordered economics events onto epoch 1 (seeded from origination data)
-/// and project the resulting current epoch.
+/// Project the resulting current epoch from the full epoch timeline (see
+/// `shared::loan_economics::build_epochs` for the fold rule). The ordinal is the
+/// epoch's 1-based position in the timeline.
 ///
-/// `LoanRolledOver` advances the ordinal and opens a new window starting at the
-/// prior maturity; `EconomicsAmended` overwrites the current window's rate and
-/// maturity without advancing the ordinal (per the loan-epoch model in the module
-/// docs). `events` must be ordered by `(block_number, log_index)`.
-fn current_epoch(s: &LoanSnapshot, events: &[EconomicsEventRow]) -> EpochView {
-    let mut number: u32 = 1;
-    let mut start = s.origination_date;
-    let mut maturity = s.original_maturity_date;
-    // Current rate in bps. The origination rate is already bps; event rates are
-    // the contract's 1e6-scaled fraction, normalised to bps on fold so the two
-    // scales are never mixed.
-    let mut rate_bps = s.senior_interest_rate_bps;
-
-    for e in events {
-        match e.event_name.as_str() {
-            "LoanRolledOver" => {
-                number += 1;
-                start = maturity;
-                maturity = e.new_maturity_timestamp;
-                rate_bps = economics_rate_to_bps(e.new_rate);
-            }
-            "EconomicsAmended" => {
-                maturity = e.new_maturity_timestamp;
-                rate_bps = economics_rate_to_bps(e.new_rate);
-            }
-            _ => {}
-        }
-    }
+/// `start_override`, when present, replaces the folded `start` for a rolled-over
+/// epoch (`number > 1`) — see `build_response`'s doc comment. Epoch 1 never needs
+/// it: its start is `origination_date`, an immutable genesis field, not derived
+/// from a fallible event param.
+fn current_epoch(
+    s: &LoanSnapshot,
+    events: &[EconomicsEventRow],
+    start_override: Option<i64>,
+) -> EpochView {
+    let epochs = build_epochs(
+        s.origination_date,
+        s.original_maturity_date,
+        s.senior_interest_rate_bps,
+        events,
+    );
+    // `build_epochs` always seeds at least epoch 1 — never empty.
+    let number = epochs.len() as u32;
+    let current = epochs.last().expect("build_epochs always seeds epoch 1");
+    let start = if number > 1 {
+        start_override.unwrap_or(current.start)
+    } else {
+        current.start
+    };
 
     EpochView {
         number,
-        current_apy_bps: rate_bps,
+        current_apy_bps: current.rate_bps,
         start_date: iso_utc_from_unix(start),
-        maturity_date: iso_utc_from_unix(maturity),
+        // Not `current.maturity`: this endpoint always evaluates "now" (no backdating),
+        // so the snapshot's block-pinned, rollover-aware on-chain read is authoritative —
+        // unlike the folded event param, it can't fall back to a defensive `0` (see
+        // `ContractLogsRepo::list_loan_economics_events`).
+        maturity_date: iso_utc_from_unix(s.current_maturity_timestamp),
     }
-}
-
-/// Contract-1e6-scaled event rate → bps: `new_rate × 10_000 / 1_000_000 = new_rate / 100`,
-/// rounded half-up (`150_000` → `1_500` bps = 15%).
-fn economics_rate_to_bps(new_rate: i64) -> u32 {
-    let bps = (new_rate * BPS_DENOM + ECONOMICS_RATE_ONE / 2) / ECONOMICS_RATE_ONE;
-    bps as u32
 }
 
 /// Project `current_location` to a `LocationView`, or `None` when no location has
@@ -305,4 +327,3 @@ fn location_view(s: &LoanSnapshot) -> Option<LocationView> {
         updated_at: iso_utc_from_unix(loc.updated_at),
     })
 }
-
