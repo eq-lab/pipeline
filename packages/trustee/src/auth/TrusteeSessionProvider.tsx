@@ -27,9 +27,12 @@
  *      `signMessage`). If the user rejects the signature, the flow returns to
  *      `unauthenticated` silently (not an error — a user choice).
  *   4. `POST /v1/auth/verify { chain_id, address, signature }`. On success the
- *      token is stored (`sessionStore`, sessionStorage-backed) and the caller
- *      is redirected to `/`. A `401` here is rare (nonce race / signature
- *      mismatch) and surfaces as a verification-failed error.
+ *      token is stored (`sessionStore`, sessionStorage-backed) and `status`
+ *      flips to `authenticated`; leaving `/sign-in` is then handled
+ *      declaratively by `RouteGate` (NOT an imperative navigate here — that
+ *      raced the redirect and stranded the URL on `/sign-in`, #921). A `401`
+ *      here is rare (nonce race / signature mismatch) and surfaces as a
+ *      verification-failed error.
  *
  * `signOut()` clears the stored token and disconnects the wallet — there is
  * no server logout endpoint (bearer-token transport, see the exec plan's
@@ -145,7 +148,15 @@ export function TrusteeSessionProvider({
           chainId,
           expiresAt: Date.now() + verified.expiresIn * 1000,
         });
-        void navigate({ to: "/" });
+        // Do NOT imperatively navigate here (#921). Leaving `/sign-in` is
+        // handled declaratively by `RouteGate` reacting to `status →
+        // authenticated`. An imperative `navigate({ to: "/" })` here RACES that
+        // store update: on the first sign-in it pushes the URL to "/" in a
+        // render where `RouteGate` still reads a stale, non-authenticated
+        // status and bounces straight back to `/sign-in` — stranding the URL on
+        // `/sign-in` with BOTH the dashboard content and the sign-in overlay
+        // mounted until a reload. `RouteGate` is the single source of truth for
+        // auth redirects; a page reload already relies on exactly that path.
       } catch {
         // A 401 here is rare on the happy path (nonce expired / signature
         // mismatch / already consumed) — unlike the challenge step, a 401
@@ -158,7 +169,9 @@ export function TrusteeSessionProvider({
         );
       }
     },
-    [navigate],
+    // No `navigate` dependency — `runSignIn` no longer imperatively redirects
+    // (#921); `RouteGate` handles leaving `/sign-in` on `status → authenticated`.
+    [],
   );
 
   // Reactively watch for a wallet connection while a sign-in is in progress.

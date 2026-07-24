@@ -211,7 +211,11 @@ describe("TrusteeSessionProvider — signIn() happy path (EVM)", () => {
     await waitFor(() => {
       expect(getSessionToken()).toBe("jwt-token");
     });
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
+    expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
+    // (#921) The provider no longer imperatively navigates on sign-in — leaving
+    // `/sign-in` is delegated to RouteGate (reacting to status → authenticated).
+    // An imperative navigate here raced that redirect and stranded the URL.
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 
