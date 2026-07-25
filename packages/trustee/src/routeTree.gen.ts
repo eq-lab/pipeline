@@ -21,6 +21,7 @@ import { Route as OriginationIndexRouteImport } from './routes/origination.index
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
+import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
 import { Route as RiskCouncilRetermIdRouteImport } from './routes/risk-council.reterm.$id'
 import { Route as RiskCouncilEscalateIdRouteImport } from './routes/risk-council.escalate.$id'
 import { Route as LoansIdRecordRepaymentRouteImport } from './routes/loans.$id_.record-repayment'
@@ -86,6 +87,11 @@ const LoansIdRoute = LoansIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => LoansRoute,
 } as any)
+const RiskCouncilWritedownIdRoute = RiskCouncilWritedownIdRouteImport.update({
+  id: '/writedown/$id',
+  path: '/writedown/$id',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
 const RiskCouncilRetermIdRoute = RiskCouncilRetermIdRouteImport.update({
   id: '/reterm/$id',
   path: '/reterm/$id',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/loans/$id_/record-repayment': typeof LoansIdRecordRepaymentRoute
   '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
   '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/loans/$id/record-repayment'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/loans/$id/record-repayment'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   id:
     | '__root__'
     | '/'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/loans/$id_/record-repayment'
     | '/risk-council/escalate/$id'
     | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -309,6 +321,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoansIdRouteImport
       parentRoute: typeof LoansRoute
     }
+    '/risk-council/writedown/$id': {
+      id: '/risk-council/writedown/$id'
+      path: '/writedown/$id'
+      fullPath: '/risk-council/writedown/$id'
+      preLoaderRoute: typeof RiskCouncilWritedownIdRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
     '/risk-council/reterm/$id': {
       id: '/risk-council/reterm/$id'
       path: '/reterm/$id'
@@ -374,12 +393,14 @@ interface RiskCouncilRouteChildren {
   RiskCouncilIndexRoute: typeof RiskCouncilIndexRoute
   RiskCouncilEscalateIdRoute: typeof RiskCouncilEscalateIdRoute
   RiskCouncilRetermIdRoute: typeof RiskCouncilRetermIdRoute
+  RiskCouncilWritedownIdRoute: typeof RiskCouncilWritedownIdRoute
 }
 
 const RiskCouncilRouteChildren: RiskCouncilRouteChildren = {
   RiskCouncilIndexRoute: RiskCouncilIndexRoute,
   RiskCouncilEscalateIdRoute: RiskCouncilEscalateIdRoute,
   RiskCouncilRetermIdRoute: RiskCouncilRetermIdRoute,
+  RiskCouncilWritedownIdRoute: RiskCouncilWritedownIdRoute,
 }
 
 const RiskCouncilRouteWithChildren = RiskCouncilRoute._addFileChildren(
