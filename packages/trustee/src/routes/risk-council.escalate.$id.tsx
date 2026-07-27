@@ -317,23 +317,6 @@ function ProposalBuilderCard({
         ))}
       </ul>
 
-      <div
-        data-testid="risk-council-escalate-cannot-execute-note"
-        className="rounded-[4px] border border-solid px-[19px] py-[15px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]"
-        style={{
-          backgroundColor: "rgba(191,189,187,0.12)",
-          borderColor: LINE_COLOR,
-        }}
-      >
-        <span className="font-bold" style={{ color: "#262524" }}>
-          You cannot execute this.
-        </span>{" "}
-        <span style={{ color: "#262524" }}>
-          You are drafting for the Risk Council — the Safe executes after the
-          timelock.
-        </span>
-      </div>
-
       <button
         type="button"
         data-testid="risk-council-escalate-submit"

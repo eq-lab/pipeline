@@ -281,7 +281,7 @@ describe("Risk Council Escalate route — ready state", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the guardrail list and the cannot-execute note", () => {
+  it("renders the guardrail list (no 'cannot execute' block)", () => {
     renderRoute();
     const checklist = screen.getByTestId("risk-council-escalate-checklist");
     expect(checklist).toHaveTextContent("Goes to the 3-of-5 RISK_COUNCIL Safe");
@@ -290,8 +290,8 @@ describe("Risk Council Escalate route — ready state", () => {
       "GUARDIAN can cancel during the window",
     );
     expect(
-      screen.getByTestId("risk-council-escalate-cannot-execute-note"),
-    ).toHaveTextContent("You cannot execute this.");
+      screen.queryByTestId("risk-council-escalate-cannot-execute-note"),
+    ).not.toBeInTheDocument();
   });
 
   it("gates Submit until name + text are filled, then flips Draft → Submitted (mock, local state)", () => {
