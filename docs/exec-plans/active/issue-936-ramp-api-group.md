@@ -2,15 +2,17 @@
 
 Source: https://github.com/eq-lab/pipeline/issues/936
 
+**Note:** see the "Amendment (2026-07-27)" section at the end — the review endpoint below is `POST /v1/ramp/on-ramp/{id}/review` (Approve **or** Reject with a reason), not the plain `/approve` endpoint this Scope section originally described. The table is `on_ramp_reviews`, not `on_ramp_approvals`.
+
 ## Scope
 
 New `/v1/ramp` route group (`packages/api/src/routes/ramp.rs`) with three endpoints:
 
 1. `GET /v1/ramp/addresses` — the chain's configured custody/ramp Stellar addresses (from `TransferAddressSets`).
-2. `GET /v1/ramp/on-ramp` — lists **pending** (not yet approved) on-ramp (`ramp → custody`) `AssetTransfer` events: `id`, `to`, `from`, `amount`, `created_at`.
-3. `POST /v1/ramp/on-ramp/{id}/approve` — Trustee-only, records approval for one event by its `contract_logs.id`.
+2. `GET /v1/ramp/on-ramp` — lists **pending** (not yet reviewed) on-ramp (`ramp → custody`) `AssetTransfer` events: `id`, `to`, `from`, `amount`, `created_at`.
+3. `POST /v1/ramp/on-ramp/{id}/review` — Trustee-only, records an Approve/Reject decision (Reject requires a `reason`) for one event by its `contract_logs.id`.
 
-New table `on_ramp_approvals` records approvals, keyed by `contract_logs.id`. `ContractLogsRepo::list_asset_transfers` is extended to return `id`/`block_timestamp`/`approved_at` (via `LEFT JOIN`), and `capital_allocation.rs`'s `in_transit` computation is updated so the on-ramp leg (`ramp→custody`, subtracted) only counts approved transfers; the off-ramp leg (`custody→ramp`, added) is untouched.
+New table `on_ramp_reviews` records review decisions, keyed by `contract_logs.id`. `ContractLogsRepo::list_asset_transfers` is extended to return `id`/`block_timestamp`/`review_decision`/`review_reason`/`reviewed_at` (via `LEFT JOIN`), and `capital_allocation.rs`'s `in_transit` computation is updated so the on-ramp leg (`ramp→custody`, subtracted) only counts **Approved** transfers; the off-ramp leg (`custody→ramp`, added) is untouched.
 
 Out of scope (per the Issue): EVM ramp/custody tracking, any frontend/UI work, off-ramp approval.
 
@@ -103,3 +105,30 @@ Actual test files: `packages/api/tests/ramp.rs` (3 new tests: direction/approval
 - `docs/product-specs/trustee-dashboard.md`: add a short row/note describing the new Trustee on-ramp approval action (near the existing "Repayment intake" flow note at line 53, which already references the manual USD→USDC on-ramp step) — this is new Trustee-facing behavior, not pure plumbing.
 - `packages/api/src/routes/capital_allocation.rs`: update the module doc comment's `in_transit` description (lines ~17-22) to mention the approval gate, so the doc stays accurate to the new behavior.
 - OpenAPI/Swagger docs are generated from `#[utoipa::path]` annotations — no separate manual doc file to update beyond the `RampDoc` bundle itself.
+
+## Amendment (2026-07-27): reject endpoint added
+
+Scope change requested after initial implementation, before merge: the Trustee also needs to **reject** an on-ramp event with a required reason, not just approve it — modeled explicitly on the existing `POST /v1/loan-book/submissions/{id}/review` pattern (`routes::loan_book::{ReviewDecision, ReviewRequest, review_submission, resolve_review}`).
+
+Changes made:
+- `POST /v1/ramp/on-ramp/{id}/approve` renamed to **`POST /v1/ramp/on-ramp/{id}/review`**, taking `RampReviewRequest { decision: RampReviewDecision::{Approved, Rejected}, reason: Option<String> }`. Same validation split as `loan_book`: a new pure `resolve_ramp_review` function requires a non-empty `reason` for `Rejected` and forbids one for `Approved`. Response is now a bare `200 OK` (matching `review_submission`'s contract exactly) rather than a JSON body.
+- Migration/table renamed `on_ramp_approvals` → **`on_ramp_reviews`** (file renamed too, since nothing had merged or run this migration outside the branch yet): `contract_log_id` PK unchanged, `approved_at`/`approved_by` replaced with `decision TEXT CHECK (IN ('Approved','Rejected'))`, `reason TEXT`, `reviewed_at`, `reviewed_by`, plus a `CHECK` constraint requiring `reason` iff `decision = 'Rejected'` — mirrors `submitted_loans`' own reason-CHECK convention exactly.
+- `AssetTransferRow.approved_at: Option<DateTime<Utc>>` replaced with `review_decision: Option<String>`, `review_reason: Option<String>`, `reviewed_at: Option<DateTime<Utc>>`, plus `is_approved()`/`is_pending_review()` helper methods. `ContractLogsRepo::approve_on_ramp_transfer` renamed to `review_on_ramp_transfer(contract_log_id, decision, reason, reviewed_by)`.
+- `compute_capital_allocation`'s on-ramp (`back`) leg now checks `t.is_approved()` instead of `approved_at.is_some()` — a Rejected event nets out exactly like a pending one (neither counts), only Approved counts. New test `in_transit_ignores_rejected_on_ramp` covers this.
+- `filter_pending_on_ramp_events`'s "pending" definition is unchanged in spirit (`review_decision.is_none()`) — a Rejected event now also drops off the list, same as an Approved one.
+
+All existing acceptance criteria still hold; this amendment only adds a second decision path to the review endpoint. Full test suite (`cargo test --all`, `clippy -D warnings`, doc lint, frontend `tsc --noEmit`) re-verified green after this change.
+
+## Amendment 2 (2026-07-27): off-ramp events also require Trustee review
+
+Second scope change requested after the first amendment, still before merge: **both** legs of the custody/ramp boundary need Trustee review, not just on-ramp inflows — off-ramp (`custody→ramp`) events must also be listed and reviewed, and `in_transit`'s off-ramp leg must also gate on an Approved decision. Additionally, each returned event now carries an explicit `type` field (`OnRamp` / `OffRamp`) rather than leaving the direction implicit in `from`/`to`.
+
+Changes made:
+- `GET /v1/ramp/on-ramp` → **`GET /v1/ramp/events`**: now returns pending events in *either* direction. `POST /v1/ramp/on-ramp/{id}/review` → **`POST /v1/ramp/events/{id}/review`** — same request/response contract, now accepts either an on-ramp or off-ramp id.
+- New `RampEventType` enum (`OnRamp` | `OffRamp`) on the response DTO (renamed `OnRampEvent` → `RampEvent`), serialized as `"type"` (`#[serde(rename = "type")]` on the `event_type` field, since `type` is a Rust keyword).
+- Table renamed again: `on_ramp_reviews` → **`ramp_reviews`** (same shape: `contract_log_id` PK, `decision`, `reason`, `reviewed_at`, `reviewed_by`) — still pre-merge, so renamed in place rather than layering another migration. Repo method `review_on_ramp_transfer` → `review_ramp_transfer` (unchanged signature).
+- `ramp.rs`'s direction check (`is_on_ramp`) replaced with `ramp_event_type(&AssetTransferRow, &TransferAddressSets) -> Option<RampEventType>`, classifying `ramp→custody` as `OnRamp`, `custody→ramp` as `OffRamp`, and anything else (shuffles, untracked counterparties) as `None`. `filter_pending_on_ramp_events` → `filter_pending_ramp_events`, now yielding both directions.
+- `compute_capital_allocation`'s **`out` leg (`custody→ramp`, off-ramp) now also requires `t.is_approved()`** — previously off-ramp counted unconditionally; now both legs are symmetric: pending or Rejected on either leg contributes nothing. Two new tests, `in_transit_ignores_unapproved_off_ramp` / `in_transit_ignores_rejected_off_ramp`, mirror the existing on-ramp gating tests. Every pre-existing test with an off-ramp (`custody→ramp`) fixture transfer was updated to use `approved_transfer(...)` so its original assertions (which predate any review concept) still hold under the new gating.
+- Module docs (`ramp.rs`, `capital_allocation.rs`, `trustee-dashboard.md`) updated to describe symmetric on-ramp/off-ramp review.
+
+Full test suite re-verified green after this change (see report to the human for the exact commands/results).
