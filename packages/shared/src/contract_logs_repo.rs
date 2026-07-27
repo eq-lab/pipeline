@@ -86,16 +86,30 @@ pub struct YieldMintRow {
 /// Emitted by the worker's Stellar indexer for transfers of the tracked asset
 /// where **both** endpoints are custody/ramp addresses (see the worker's
 /// `transfer_between_tracked`). Used by the Capital Allocation API to compute the
-/// `in_transit` bucket as net custody→ramp flow. `amount` is in USDC base units
+/// `in_transit` bucket as net custody→ramp flow, and by the `/v1/ramp` endpoints
+/// (#936) to list and approve on-ramp events. `amount` is in USDC base units
 /// (6-decimal), matching the other `contract_logs` amounts.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AssetTransferRow {
+    /// `contract_logs.id` — the primary key of the underlying log row, and the key
+    /// the `on_ramp_approvals` table (#936) references.
+    pub id: i64,
+    /// The chain this transfer was indexed on. Needed by `get_asset_transfer_by_id`
+    /// (#936) so the approve handler can look up the *correct* chain's custody/ramp
+    /// address sets to validate direction — the id alone doesn't imply a chain.
+    pub chain_id: i64,
     /// Sender Strkey (`params->>'from'`).
     pub from_addr: String,
     /// Recipient Strkey (`params->>'to'`).
     pub to_addr: String,
     /// Transfer amount in base units (`params->>'amount'`).
     pub amount: BigDecimal,
+    /// Unix seconds the transfer was recorded on-chain.
+    pub block_timestamp: i64,
+    /// When a Trustee approved this event as an on-ramp inflow (#936). `None` while
+    /// pending. Always `None` for off-ramp (custody→ramp) transfers, which need no
+    /// approval — `on_ramp_approvals` only ever gains rows for on-ramp events.
+    pub approved_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// One `LoanRolledOver` or `EconomicsAmended` event for a single loan, projected
@@ -735,9 +749,12 @@ impl ContractLogsRepo {
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
     ///
     /// Used by the Capital Allocation API to compute the `in_transit` bucket as the
-    /// net custody→ramp flow. Only transfers between tracked (custody ∪ ramp)
-    /// accounts are indexed, so callers classify `from`/`to` against the configured
-    /// address sets.
+    /// net custody→ramp flow, and by the `/v1/ramp` endpoints (#936) to list on-ramp
+    /// events. Only transfers between tracked (custody ∪ ramp) accounts are indexed,
+    /// so callers classify `from`/`to` against the configured address sets.
+    /// `approved_at` is populated via a `LEFT JOIN` against `on_ramp_approvals`
+    /// (#936) — `NULL` for any event that hasn't been approved (including every
+    /// off-ramp event, which never gains a row there).
     pub async fn list_asset_transfers<'e, E>(
         &self,
         executor: E,
@@ -749,21 +766,88 @@ impl ContractLogsRepo {
     {
         let rows = sqlx::query_as::<_, AssetTransferRow>(
             "SELECT
-                 params->>'from' AS from_addr,
-                 params->>'to'   AS to_addr,
+                 contract_logs.id,
+                 contract_logs.chain_id,
+                 contract_logs.params->>'from' AS from_addr,
+                 contract_logs.params->>'to'   AS to_addr,
                  -- COALESCE guards a malformed row missing `amount`: a NULL would
                  -- otherwise fail-decode the whole query (non-Option BigDecimal).
-                 COALESCE((params->>'amount')::numeric, 0) AS amount
+                 COALESCE((contract_logs.params->>'amount')::numeric, 0) AS amount,
+                 contract_logs.block_timestamp,
+                 on_ramp_approvals.approved_at
              FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = 'AssetTransfer'
-               AND block_timestamp <= $2",
+             LEFT JOIN on_ramp_approvals
+                 ON on_ramp_approvals.contract_log_id = contract_logs.id
+             WHERE contract_logs.chain_id = $1
+               AND contract_logs.event_name = 'AssetTransfer'
+               AND contract_logs.block_timestamp <= $2",
         )
         .bind(chain_id)
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
         Ok(rows)
+    }
+
+    /// Fetch a single `AssetTransfer` event by its `contract_logs.id`, joined against
+    /// `on_ramp_approvals` the same way `list_asset_transfers` is. Used by the
+    /// `/v1/ramp/on-ramp/{id}/approve` handler (#936) to validate the target id
+    /// before recording an approval. `None` when `id` doesn't exist or isn't an
+    /// `AssetTransfer` event.
+    pub async fn get_asset_transfer_by_id<'e, E>(
+        &self,
+        executor: E,
+        id: i64,
+    ) -> anyhow::Result<Option<AssetTransferRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let row = sqlx::query_as::<_, AssetTransferRow>(
+            "SELECT
+                 contract_logs.id,
+                 contract_logs.chain_id,
+                 contract_logs.params->>'from' AS from_addr,
+                 contract_logs.params->>'to'   AS to_addr,
+                 COALESCE((contract_logs.params->>'amount')::numeric, 0) AS amount,
+                 contract_logs.block_timestamp,
+                 on_ramp_approvals.approved_at
+             FROM contract_logs
+             LEFT JOIN on_ramp_approvals
+                 ON on_ramp_approvals.contract_log_id = contract_logs.id
+             WHERE contract_logs.id = $1
+               AND contract_logs.event_name = 'AssetTransfer'",
+        )
+        .bind(id)
+        .fetch_optional(executor)
+        .await?;
+        Ok(row)
+    }
+
+    /// Record a Trustee's approval of one on-ramp `AssetTransfer` event (#936).
+    /// Inserts a row into `on_ramp_approvals` keyed by `contract_log_id` and returns
+    /// the row's `approved_at`. The table's primary key means approving the same id
+    /// twice returns `sqlx::Error::Database` with Postgres SQLSTATE `23505` (unique
+    /// violation) — callers map that to `409 Conflict` ("already approved") rather
+    /// than treating it as an unexpected failure.
+    pub async fn approve_on_ramp_transfer<'e, E>(
+        &self,
+        executor: E,
+        contract_log_id: i64,
+        approved_by: &str,
+    ) -> Result<chrono::DateTime<chrono::Utc>, sqlx::Error>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let (approved_at,): (chrono::DateTime<chrono::Utc>,) = sqlx::query_as(
+            "INSERT INTO on_ramp_approvals (contract_log_id, approved_by)
+             VALUES ($1, $2)
+             RETURNING approved_at",
+        )
+        .bind(contract_log_id)
+        .bind(approved_by)
+        .fetch_one(executor)
+        .await?;
+        Ok(approved_at)
     }
 
     /// Connection-scoped fetch of the latest snapshot for a given loan, for use

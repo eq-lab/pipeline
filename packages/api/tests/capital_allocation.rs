@@ -222,9 +222,23 @@ const EXTERNAL: &str = "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ
 
 fn transfer(from: &str, to: &str, whole: i64) -> AssetTransferRow {
     AssetTransferRow {
+        id: 0,
+        chain_id: 1,
         from_addr: from.to_owned(),
         to_addr: to.to_owned(),
         amount: usdc(whole),
+        block_timestamp: 0,
+        approved_at: None,
+    }
+}
+
+/// A transfer that has been Trustee-approved (#936) — only relevant for on-ramp
+/// (ramp→custody) events, which `compute_capital_allocation`'s `back` leg now only
+/// nets out when approved.
+fn approved_transfer(from: &str, to: &str, whole: i64) -> AssetTransferRow {
+    AssetTransferRow {
+        approved_at: Some(chrono::Utc::now()),
+        ..transfer(from, to, whole)
     }
 }
 
@@ -245,10 +259,10 @@ fn addr_sets() -> TransferAddressSets {
 #[test]
 fn in_transit_nets_custody_to_ramp_flow() {
     let transfers = vec![
-        transfer(CUSTODY, RAMP, 100),     // out: +100
-        transfer(RAMP, CUSTODY, 30),      // back: -30
-        transfer(CUSTODY, CUSTODY, 5),    // internal shuffle: ignored
-        transfer(CUSTODY, EXTERNAL, 999), // untracked counterparty: ignored
+        transfer(CUSTODY, RAMP, 100),         // out: +100
+        approved_transfer(RAMP, CUSTODY, 30), // back, approved: -30
+        transfer(CUSTODY, CUSTODY, 5),        // internal shuffle: ignored
+        transfer(CUSTODY, EXTERNAL, 999),     // untracked counterparty: ignored
     ];
     let sets = addr_sets();
     let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
@@ -260,10 +274,23 @@ fn in_transit_nets_custody_to_ramp_flow() {
 #[test]
 fn in_transit_clamps_negative_to_zero() {
     // More returned from ramp than sent → raw net negative → clamped to 0.
-    let transfers = vec![transfer(RAMP, CUSTODY, 50)];
+    let transfers = vec![approved_transfer(RAMP, CUSTODY, 50)];
     let sets = addr_sets();
     let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn in_transit_ignores_unapproved_on_ramp() {
+    // The on-ramp (ramp→custody) leg only nets out when Trustee-approved (#936) —
+    // an unapproved on-ramp transfer must not reduce in_transit at all.
+    let transfers = vec![
+        transfer(CUSTODY, RAMP, 100), // out: +100
+        transfer(RAMP, CUSTODY, 30),  // back, NOT approved: ignored
+    ];
+    let sets = addr_sets();
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
 }
 
 #[test]
@@ -300,9 +327,13 @@ fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
     // → "100.000000", i.e. divided by 10 relative to the 6-decimal reading.
     let raw_7dec = BigDecimal::from(1_000_000_000_i64); // 100.0000000 at 7 decimals
     let transfers = vec![AssetTransferRow {
+        id: 0,
+        chain_id: 1,
         from_addr: CUSTODY.to_owned(),
         to_addr: RAMP.to_owned(),
         amount: raw_7dec,
+        block_timestamp: 0,
+        approved_at: None,
     }];
     let sets = addr_sets_with_decimals(7);
     let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
