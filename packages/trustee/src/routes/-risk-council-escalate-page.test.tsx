@@ -1,5 +1,5 @@
 /**
- * Render tests for the Risk Council "Escalate to Default" full-page route
+ * Render tests for the Risk Council "Escalate" proposal-builder route
  * (`risk-council.escalate.$id.tsx`, issue #782, Figma node `4116-12953`).
  *
  * Mocks the raw API hooks (`useLoanBook`, `useLoanFinancials`,
@@ -174,7 +174,7 @@ describe("Risk Council Escalate route — ready state", () => {
     renderRoute();
     expect(
       screen.getByRole("heading", {
-        name: "Escalate to Default — Delta Commodities",
+        name: "Escalate to Risk Council — Delta Commodities",
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("‹ Risk Council").closest("a")).toHaveAttribute(
@@ -267,20 +267,24 @@ describe("Risk Council Escalate route — ready state", () => {
     ).toHaveTextContent("—");
   });
 
-  it("renders the composed proposal code block with the real loan id + originator", () => {
+  it("renders the proposal builder — free-form name + text inputs (not a fixed setDefault payload)", () => {
     renderRoute();
-    const code = screen.getByTestId("risk-council-escalate-proposal-code");
-    expect(code).toHaveTextContent("RiskCouncilSafe.propose(");
-    expect(code).toHaveTextContent("LoanRegistry.setDefault");
-    expect(code).toHaveTextContent("#4471 — Delta Commodities");
+    expect(
+      screen.getByTestId("risk-council-escalate-name"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("risk-council-escalate-text"),
+    ).toBeInTheDocument();
+    // The old fixed setDefault code block is gone (proposal-builder model).
+    expect(
+      screen.queryByTestId("risk-council-escalate-proposal-code"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders the checklist and the cannot-execute note", () => {
+  it("renders the guardrail list and the cannot-execute note", () => {
     renderRoute();
     const checklist = screen.getByTestId("risk-council-escalate-checklist");
-    expect(checklist).toHaveTextContent(
-      "Blocks all loan-tied mints once executed",
-    );
+    expect(checklist).toHaveTextContent("Goes to the 3-of-5 RISK_COUNCIL Safe");
     expect(checklist).toHaveTextContent("24h timelock starts at submission");
     expect(checklist).toHaveTextContent(
       "GUARDIAN can cancel during the window",
@@ -290,19 +294,29 @@ describe("Risk Council Escalate route — ready state", () => {
     ).toHaveTextContent("You cannot execute this.");
   });
 
-  it("flips Draft → Submitted (mock, local state only) on Submit, and disables re-submission", () => {
+  it("gates Submit until name + text are filled, then flips Draft → Submitted (mock, local state)", () => {
     renderRoute();
     expect(
       screen.getByTestId("risk-council-escalate-status-chip"),
     ).toHaveTextContent("Draft");
     const submit = screen.getByTestId("risk-council-escalate-submit");
-    expect(submit).toHaveTextContent("Submit to Risk Council Safe");
+    expect(submit).toHaveTextContent("Escalate to council");
+    // Disabled until BOTH fields have content.
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByTestId("risk-council-escalate-name"), {
+      target: { value: "Escalate to Default — recovery exhausted" },
+    });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByTestId("risk-council-escalate-text"), {
+      target: { value: "Collateral gone, no recovery path; move to Default." },
+    });
+    expect(submit).toBeEnabled();
     fireEvent.click(submit);
     expect(
       screen.getByTestId("risk-council-escalate-status-chip"),
     ).toHaveTextContent("Submitted");
     expect(submit).toBeDisabled();
-    expect(submit).toHaveTextContent("Submitted to Risk Council Safe");
+    expect(submit).toHaveTextContent("Submitted · 24h timelock");
   });
 });
 

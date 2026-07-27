@@ -1,13 +1,18 @@
 /**
- * View-model + data wiring for the Trustee **Risk Council — Escalate to
- * Default** page (`risk-council.escalate.$id.tsx`, issue #782, Figma node
- * `4116-12953`). Per `docs/FRONTEND.md` Code structure rule 2 the `.tsx`
- * route is JSX/styling only; this hook owns the live fetches and the
- * value→display mapping (mirrors `-useLoanDetail.ts` / `-record-coupon.ts`).
+ * View-model + data wiring for the Trustee **Risk Council — Escalate**
+ * page (`risk-council.escalate.$id.tsx`, issue #782; Figma `4116-12953` for
+ * styling). Per `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is
+ * JSX/styling only; this hook owns the live fetches and the value→display
+ * mapping (mirrors `-useLoanDetail.ts` / `-record-coupon.ts`).
  *
- * ## Scope (issue #782 exec plan — this round is Escalate-to-Default ONLY)
- * The other two Type-3 RISK_COUNCIL frames (amend-economics `4116-13481`,
- * write-down close `4116-13625`) are deferred to a follow-up issue.
+ * ## Model — proposal builder (docs/product-specs/trustee-risk-watchlist.md)
+ * Per the Risk & Watchlist spec (docs are the source of truth, Figma is
+ * styling), escalation is a **generic proposal builder**: the Trustee reviews
+ * the loan's risk evidence (below) and writes a proposal **name + text** for
+ * the Risk Council — NOT a type-specific `setDefault` payload composed by the
+ * dashboard. The 3-of-5 Safe executes the underlying action after the 24h
+ * timelock; the Trustee cannot execute. The proposal Figma frames
+ * `4116-13481` / `4116-13625` are the read-only Risk-Council DISPLAY screens.
  *
  * ## Real vs. mock (data-sourcing convention)
  * **Real** (sourced live, per-loan):
@@ -24,7 +29,6 @@
  *     loan's own commodity (the endpoint serves a single portfolio-wide top
  *     concentration, not a per-commodity share) — `—` otherwise, never
  *     fabricated.
- *   - The composed `setDefault` proposal text — the real loan id + originator.
  *
  * **Mock** (no backend source; flagged here, not per-loan):
  *   - "Days on watchlist" — no "watchlist since" timestamp is served anywhere
@@ -36,10 +40,10 @@
  *     already on Watchlist barely moves that combined figure — there is no
  *     real formula to derive the Figma's forward-looking delta from served
  *     data. Static Figma literal.
- *   - The entire Safe proposal lifecycle (Draft → Submitted, checklist,
- *     "Submit to Risk Council Safe") — no Safe/proposal/voting/timelock
- *     backend exists yet (`RiskCouncilSafe.propose` is RISK_COUNCIL-only,
- *     not Trustee-callable). Local UI state only, no network / no wallet.
+ *   - The proposal builder itself (name + text form, Draft → Submitted, the
+ *     24h-timelock timer) — no Safe/proposal/voting/timelock backend exists
+ *     yet (`RiskCouncilSafe.propose` is RISK_COUNCIL-only, not Trustee-
+ *     callable). Local UI state only, no network / no wallet.
  *
  * The Figma's collateral sub-label reads "coffee −18% 30d"; like the Loans
  * page (exec-plan RISK 3, `-useLoansTable.ts`'s `formatSpot`), the only
@@ -251,6 +255,14 @@ export interface RiskCouncilEscalateView {
   portfolioImpact: PortfolioImpactView;
   /** Mock Draft/Submitted proposal state — local UI only, no network/wallet. */
   status: ProposalStatus;
+  /** Free-form proposal name (`Risk UX.md` proposal-builder — the Trustee's ask, not composed calldata). */
+  proposalName: string;
+  /** Free-form proposal text / rationale. */
+  proposalText: string;
+  onNameChange: (value: string) => void;
+  onTextChange: (value: string) => void;
+  /** `true` once both name and text are non-empty — the submit control's gate. */
+  canSubmit: boolean;
   onSubmit: () => void;
 }
 
@@ -269,6 +281,10 @@ export function useRiskCouncilEscalate(
   const loanBook = useLoanBook();
   const financials = useLoanFinancials(loanId);
   const [status, setStatus] = useState<ProposalStatus>("draft");
+  const [proposalName, setProposalName] = useState("");
+  const [proposalText, setProposalText] = useState("");
+  const canSubmit =
+    proposalName.trim().length > 0 && proposalText.trim().length > 0;
 
   const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
 
@@ -290,8 +306,8 @@ export function useRiskCouncilEscalate(
   const originator = entry?.originator ?? "";
   const title =
     entry != null
-      ? `Escalate to Default — ${originator}`
-      : `Escalate to Default — Loan #${loanId}`;
+      ? `Escalate to Risk Council — ${originator}`
+      : `Escalate to Risk Council — Loan #${loanId}`;
 
   const atRisk = buildAtRiskLine(
     loanBook.data?.summary.at_risk_wl_and_default_pct,
@@ -333,6 +349,13 @@ export function useRiskCouncilEscalate(
       concentrationValue: concentration.value,
     },
     status,
-    onSubmit: () => setStatus("submitted"),
+    proposalName,
+    proposalText,
+    onNameChange: setProposalName,
+    onTextChange: setProposalText,
+    canSubmit,
+    onSubmit: () => {
+      if (canSubmit) setStatus("submitted");
+    },
   };
 }

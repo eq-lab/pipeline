@@ -9,16 +9,17 @@ import type { CcrTrend } from "./-useLoanDetail";
 import { CcrTrendChart } from "./-CcrTrendChart";
 
 /**
- * Risk Council — Escalate to Default (issue #782, Figma node `4116-12953`) —
- * the destination opened by clicking the existing "Escalate to Risk Council"
- * other-action on the loan-detail page (`loans.$id.tsx`, available in every
- * variant per `LOAN_DETAIL_MOCK`/`LOAN_DETAIL_WATCHLIST_MOCK`/etc.).
+ * Risk Council — Escalate (issue #782; Figma node `4116-12953` for styling) —
+ * the destination opened by clicking the "Escalate to Risk Council"
+ * other-action on the loan-detail page (`loans.$id.tsx`).
  *
- * This is the FIRST of the three Type-3 RISK_COUNCIL proposal screens (spec
- * `docs/product-specs/trustee-dashboard.md` §"Type 3", flow 10). The other
- * two (off-cycle re-term / amend-economics, write-down close) are deferred
- * follow-ups — see `-risk-council-escalate.ts`'s module doc for the full
- * real-vs-mock data-sourcing breakdown.
+ * This is the **proposal builder** (`docs/product-specs/trustee-risk-watchlist.md`):
+ * the Trustee reviews the loan's risk evidence (left card) and writes a
+ * free-form proposal name + text for the Risk Council (right card), rather than
+ * a type-specific `setDefault` payload — see `-risk-council-escalate.ts`'s
+ * module doc for the full real-vs-mock breakdown. The read-only re-term /
+ * write-down frames (`4116-13481` / `4116-13625`) are the Risk-Council display
+ * screens (`risk-council.reterm.$id.tsx` / `risk-council.writedown.$id.tsx`).
  *
  * Registered as a child of the `/risk-council` pass-through layout
  * (`risk-council.tsx`'s `<Outlet/>`) at `/risk-council/escalate/$id` — no
@@ -219,23 +220,38 @@ function CheckIcon(props: React.SVGAttributes<SVGSVGElement>) {
   );
 }
 
-const CHECKLIST = [
-  "Blocks all loan-tied mints once executed",
+const GUARDRAILS = [
+  "Goes to the 3-of-5 RISK_COUNCIL Safe",
   "24h timelock starts at submission",
   "GUARDIAN can cancel during the window",
 ];
 
-function ProposalCard({
-  loanId,
-  originator,
+const FIELD_CLASS =
+  "w-full rounded-[4px] border border-solid px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[#262524] outline-none disabled:cursor-not-allowed disabled:opacity-70";
+
+/**
+ * The proposal builder (Risk & Watchlist spec) — the Trustee writes a free-form
+ * proposal name + text for the Risk Council; the Safe composes/executes the
+ * actual on-chain action. Local mock Draft → Submitted state, no wallet/network.
+ */
+function ProposalBuilderCard({
+  proposalName,
+  proposalText,
+  onNameChange,
+  onTextChange,
+  canSubmit,
   status,
   onSubmit,
 }: {
-  loanId: string;
-  originator: string;
+  proposalName: string;
+  proposalText: string;
+  onNameChange: (value: string) => void;
+  onTextChange: (value: string) => void;
+  canSubmit: boolean;
   status: "draft" | "submitted";
   onSubmit: () => void;
 }) {
+  const submitted = status === "submitted";
   return (
     <div
       data-testid="risk-council-escalate-proposal"
@@ -244,30 +260,52 @@ function ProposalCard({
     >
       <CardTitle>Proposal</CardTitle>
       <p className="font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]">
-        Composed for the 3-of-5 RISK_COUNCIL Safe · 24h timelock ·
-        GUARDIAN-cancelable
+        For the 3-of-5 RISK_COUNCIL Safe · 24h timelock · GUARDIAN-cancelable
       </p>
 
-      <pre
-        data-testid="risk-council-escalate-proposal-code"
-        className="overflow-auto rounded-[4px] bg-[#000040] px-[16px] pt-[21px] pb-[14px] font-mono text-[12.7px] leading-[22.1px] whitespace-pre-wrap"
-      >
-        <span style={{ color: "#9fd0ff" }}>RiskCouncilSafe.propose</span>
-        <span style={{ color: "#e2e2f5" }}>(</span>
-        {"\n  "}
-        <span style={{ color: "#9fd0ff" }}>LoanRegistry.setDefault</span>
-        <span style={{ color: "#e2e2f5" }}>{"(loanId: "}</span>
-        <span style={{ color: "#c8e6a0" }}>
-          #{loanId} — {originator}
+      <label className="flex flex-col gap-[6px]">
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_MUTED }}
+        >
+          Proposal name
         </span>
-        <span style={{ color: "#e2e2f5" }}>{"))"}</span>
-      </pre>
+        <input
+          type="text"
+          data-testid="risk-council-escalate-name"
+          value={proposalName}
+          onChange={(e) => onNameChange(e.target.value)}
+          disabled={submitted}
+          placeholder="e.g. Escalate to Default — recovery exhausted"
+          className={FIELD_CLASS}
+          style={{ borderColor: LINE_COLOR }}
+        />
+      </label>
+
+      <label className="flex flex-col gap-[6px]">
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_MUTED }}
+        >
+          Proposal text
+        </span>
+        <textarea
+          data-testid="risk-council-escalate-text"
+          value={proposalText}
+          onChange={(e) => onTextChange(e.target.value)}
+          disabled={submitted}
+          rows={5}
+          placeholder="Describe the condition and the action you are asking the Risk Council to take…"
+          className={`${FIELD_CLASS} min-h-[110px] resize-y`}
+          style={{ borderColor: LINE_COLOR }}
+        />
+      </label>
 
       <ul
         data-testid="risk-council-escalate-checklist"
-        className="flex flex-col gap-0 pt-[10px] pb-[12px]"
+        className="flex flex-col gap-0"
       >
-        {CHECKLIST.map((item) => (
+        {GUARDRAILS.map((item) => (
           <li
             key={item}
             className="flex items-center gap-[10px] py-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
@@ -300,13 +338,11 @@ function ProposalCard({
         type="button"
         data-testid="risk-council-escalate-submit"
         onClick={onSubmit}
-        disabled={status === "submitted"}
+        disabled={submitted || !canSubmit}
         className="flex h-[48px] items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-70"
         style={{ backgroundColor: BRAND }}
       >
-        {status === "submitted"
-          ? "Submitted to Risk Council Safe"
-          : "Submit to Risk Council Safe"}
+        {submitted ? "Submitted · 24h timelock" : "Escalate to council"}
       </button>
     </div>
   );
@@ -424,9 +460,12 @@ function RiskCouncilEscalate() {
           portfolioImpact={view.portfolioImpact}
           ccrTrend={view.ccrTrend}
         />
-        <ProposalCard
-          loanId={view.loanId}
-          originator={view.originator}
+        <ProposalBuilderCard
+          proposalName={view.proposalName}
+          proposalText={view.proposalText}
+          onNameChange={view.onNameChange}
+          onTextChange={view.onTextChange}
+          canSubmit={view.canSubmit}
           status={view.status}
           onSubmit={view.onSubmit}
         />
