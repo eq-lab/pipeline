@@ -13,6 +13,7 @@ pub mod loan_book;
 pub mod loan_financials;
 pub mod pnl;
 pub mod portfolio;
+pub mod ramp;
 pub mod stats;
 pub mod vouchers;
 pub mod waterfall;

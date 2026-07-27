@@ -15,11 +15,15 @@
 //!   senior + equity). The active-loan set (`origination_date ≤ now < effective_end`)
 //!   mirrors `routes::financial_position` / `routes::loan_book`.
 //! - **`in_transit`** — net custody→ramp flow of the tracked asset:
-//!   `Σ(custody→ramp) − Σ(ramp→custody)` over indexed `AssetTransfer` events
-//!   (clamped at 0). Sourced only when both custody and ramp address sets are
+//!   `Σ(custody→ramp) − Σ(approved ramp→custody)` over indexed `AssetTransfer`
+//!   events (clamped at 0). Sourced only when both custody and ramp address sets are
 //!   configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`); otherwise
-//!   `null`. NOTE: an approximation — disbursed funds that leave the ramp to
-//!   borrowers off-chain are not observed, so this can over-state true in-transit.
+//!   `null`. The on-ramp leg (`ramp→custody`) only nets out once a Trustee has
+//!   approved the event via `POST /v1/ramp/on-ramp/{id}/approve` (#936) — an
+//!   unapproved on-ramp transfer does not reduce `in_transit`. The off-ramp leg
+//!   (`custody→ramp`) needs no approval. NOTE: an approximation — disbursed funds
+//!   that leave the ramp to borrowers off-chain are not observed, so this can
+//!   over-state true in-transit.
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
 //! - **`trust_account`** — `sum(deposits) - sum(withdrawals) - sum(fees)` over the
 //!   manually-entered `bank_transactions` ledger (`POST /v1/bank-transactions`, #924).
@@ -174,7 +178,10 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// canonical 6-decimal base units. A 7-decimal USDC SAC amount is divided by 10;
 /// a 6-decimal amount is returned unchanged. Config bounds `asset_decimals ≤ 18`,
 /// so the exponent stays small and the `10i128.pow` cannot overflow.
-fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
+///
+/// `pub(crate)` so `routes::ramp` (#936) can present `AssetTransferRow.amount` in
+/// the same canonical scale this endpoint uses, rather than duplicating the logic.
+pub(crate) fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
     use std::cmp::Ordering;
 
     use crate::config::CANONICAL_AMOUNT_DECIMALS as CANON;
@@ -223,7 +230,11 @@ pub fn compute_capital_allocation(
         let mut net = BigDecimal::from(0);
         for t in transfers {
             let out = sets.custody.contains(&t.from_addr) && sets.ramp.contains(&t.to_addr);
-            let back = sets.ramp.contains(&t.from_addr) && sets.custody.contains(&t.to_addr);
+            // The on-ramp leg only nets out once a Trustee has approved it (#936) —
+            // an unapproved ramp→custody transfer does not reduce in_transit.
+            let back = sets.ramp.contains(&t.from_addr)
+                && sets.custody.contains(&t.to_addr)
+                && t.approved_at.is_some();
             if out {
                 net += &t.amount;
             } else if back {

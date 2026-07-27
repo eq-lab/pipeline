@@ -29,7 +29,7 @@ Out of scope (per the Issue): EVM ramp/custody tracking, any frontend/UI work, o
 
 ## Implementation Steps
 
-### 1. Migration — `on_ramp_approvals` table
+### 1. Migration — `on_ramp_approvals` table — ✅ Done
 
 New file `packages/shared/migrations/20260727000001_on_ramp_approvals.sql`, modeled on `20260724000001_bank_transactions.sql` (header comment naming this issue, forward-only, rollback SQL in a comment):
 
@@ -43,7 +43,7 @@ CREATE TABLE on_ramp_approvals (
 
 No `chain_id` column — `contract_log_id` already uniquely identifies the chain via `contract_logs`, same rationale `bank_transactions` used to omit chain scoping where it wasn't needed.
 
-### 2. Extend `AssetTransferRow` and `list_asset_transfers`
+### 2. Extend `AssetTransferRow` and `list_asset_transfers` — ✅ Done
 
 `packages/shared/src/contract_logs_repo.rs`:
 
@@ -52,7 +52,9 @@ No `chain_id` column — `contract_log_id` already uniquely identifies the chain
 - Add `pub async fn approve_on_ramp_transfer(&self, contract_log_id: i64, approved_by: &str) -> Result<(), sqlx::Error>` — `INSERT INTO on_ramp_approvals (contract_log_id, approved_by) VALUES ($1, $2)`; a PK-violation error (`sqlx::Error::Database` with Postgres code `23505`) is mapped to `ApiError::Conflict` in the route handler, not swallowed here.
 - Add `pub async fn get_asset_transfer_by_id(&self, id: i64) -> Result<Option<AssetTransferRow>, sqlx::Error>` (or extend the existing row shape) — used by the approve handler to fetch `chain_id`/`from_addr`/`to_addr` for the id before validating direction. Simplest: `SELECT chain_id, params->>'from' AS from_addr, params->>'to' AS to_addr, ... FROM contract_logs WHERE id = $1 AND event_name = 'AssetTransfer'`.
 
-### 3. Update `capital_allocation.rs`'s `in_transit` computation
+**Deviation:** also added a `chain_id: i64` field to `AssetTransferRow` (not called out in the plan). The approve handler needs the *correct* chain's `TransferAddressSets` to validate an event's direction, and a bare `contract_logs.id` doesn't imply which chain it belongs to — `resolve_chain(&state, None)` would have silently used the wrong chain's address sets for any non-default chain. Both `list_asset_transfers` and `get_asset_transfer_by_id` now select `contract_logs.chain_id` alongside the other columns; `approve_on_ramp_transfer` also now returns the inserted `approved_at` (via `RETURNING`) instead of `()`, since the approve response needs a real timestamp and `utoipa`'s lack of a `chrono` feature ruled out putting `DateTime<Utc>` straight into the response DTO. Noted on the Issue as a comment.
+
+### 3. Update `capital_allocation.rs`'s `in_transit` computation — ✅ Done
 
 `packages/api/src/routes/capital_allocation.rs`, `compute_capital_allocation` (lines ~222-237):
 
@@ -60,7 +62,7 @@ No `chain_id` column — `contract_log_id` already uniquely identifies the chain
 - The `out` branch (`custody→ramp`, added) is unchanged.
 - Update the module doc comment (lines ~17-22) to state that `in_transit`'s on-ramp leg only counts Trustee-approved transfers.
 
-### 4. New route module `packages/api/src/routes/ramp.rs`
+### 4. New route module `packages/api/src/routes/ramp.rs` — ✅ Done
 
 Follow the `capital_allocation.rs` structure (module doc, DTOs, `#[derive(OpenApi)]` doc bundle, `router()` fn, handlers):
 
@@ -73,17 +75,17 @@ Follow the `capital_allocation.rs` structure (module doc, DTOs, `#[derive(OpenAp
 - **`POST /v1/ramp/on-ramp/{id}/approve`**: takes `AuthClaims`, checks `claims.has_role(TRUSTEE_ROLE)` (else `403`, exact pattern from `collateral_valuation.rs:396-407`). Fetches the transfer by id; `404` if absent or not an `AssetTransfer` event; `400` if its direction isn't `ramp→custody` for its chain's configured address sets. Calls `approve_on_ramp_transfer(id, &claims.sub)`; maps a PK conflict to `409 Conflict` ("already approved"). Returns `201`/`200` with `{ "contract_log_id": id, "approved_at": ... }`.
 - Add `pub mod ramp;` to `packages/api/src/routes/mod.rs`.
 
-### 5. Wire into `main.rs`
+### 5. Wire into `main.rs` — ✅ Done
 
 `packages/api/src/main.rs`:
 - `.nest("/v1", pipeline_api::routes::ramp::router())` alongside the other `/v1` nests (~line 168).
 - `api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());` alongside the other doc merges (~line 148).
 
-### 6. AppState
+### 6. AppState — ✅ Done (no change needed)
 
-No new repo struct needed — everything is served through the existing `contract_logs_repo` and `transfer_addresses` fields already on `AppState`/`ChainsConfig`. Confirm this at implementation time; if a dedicated `RampApprovalRepo` proves cleaner in practice (mirroring `BankTransactionRepo`'s standalone-file precedent), that's an acceptable substitution as long as it wraps the same `on_ramp_approvals` table and doesn't duplicate `list_asset_transfers`.
+No new repo struct needed — everything is served through the existing `contract_logs_repo` and `transfer_addresses` fields already on `AppState`/`ChainsConfig`. Confirmed at implementation time: kept everything on `ContractLogsRepo` rather than introducing a `RampApprovalRepo`, since `on_ramp_approvals` has no meaning independent of `contract_logs`.
 
-## Test Strategy
+## Test Strategy — ✅ Done
 
 Per this codebase's convention (no DB-backed tests; pure compute functions are unit-tested in `packages/api/tests/`, `packages/shared` tests, etc. — no `#[cfg(test)]` modules in `src/`, no env-var DB gating):
 
@@ -92,9 +94,11 @@ Per this codebase's convention (no DB-backed tests; pure compute functions are u
   - Unit-test any pure direction/role validation helper used by the approve handler (e.g. "id belongs to a ramp→custody transfer") with fixture `AssetTransferRow`s.
 - `packages/api/tests/capital_allocation.rs` (extend existing): add cases to the `compute_capital_allocation` fixtures where some `AssetTransferRow`s carry `approved_at: Some(...)` and others `None`, asserting the on-ramp (`back`) leg only nets out approved ones while the off-ramp (`out`) leg is unaffected by approval state.
 - No new test touches a live Postgres connection or reads `DATABASE_URL`/`POSTGRES_URL` — matches the project's pure-unit-test convention for DB-adjacent code.
-- Manual/integration verification (documented for the coder, not automated): run the API locally against a seeded DB, hit `GET /v1/ramp/addresses`, insert a synthetic on-ramp `AssetTransfer` row, confirm it appears in `GET /v1/ramp/on-ramp`, approve it as a `trustee`-role token, confirm it disappears from the list and `capital_allocation`'s `in_transit` picks it up.
+- Manual/integration verification (documented for the coder, not automated): run the API locally against a seeded DB, hit `GET /v1/ramp/addresses`, insert a synthetic on-ramp `AssetTransfer` row, confirm it appears in `GET /v1/ramp/on-ramp`, approve it as a `trustee`-role token, confirm it disappears from the list and `capital_allocation`'s `in_transit` picks it up. **Not run** — left for manual/QA verification against a live DB; automated coverage is the pure-function tests above, per this codebase's no-DB-tests convention.
 
-## Docs to Update
+Actual test files: `packages/api/tests/ramp.rs` (3 new tests: direction/approval filtering, empty input, 7-decimal normalization) and `packages/api/tests/capital_allocation.rs` (1 new test `in_transit_ignores_unapproved_on_ramp`, plus the 2 pre-existing `in_transit_*` tests updated to mark their on-ramp leg approved so their original intent still holds under the new gating). `cargo test --all`, `cargo clippy --all -- -D warnings`, `npx tsx scripts/lint-docs.ts`, and `packages/frontend`'s `npx tsc --noEmit` all pass.
+
+## Docs to Update — ✅ Done
 
 - `docs/product-specs/trustee-dashboard.md`: add a short row/note describing the new Trustee on-ramp approval action (near the existing "Repayment intake" flow note at line 53, which already references the manual USD→USDC on-ramp step) — this is new Trustee-facing behavior, not pure plumbing.
 - `packages/api/src/routes/capital_allocation.rs`: update the module doc comment's `in_transit` description (lines ~17-22) to mention the approval gate, so the doc stays accurate to the new behavior.
