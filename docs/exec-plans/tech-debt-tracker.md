@@ -681,6 +681,24 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   loan_offtake_terms FROM <api role>` (or similar), so the guarantee holds even if
   application code regresses.
 
+### TD-46: Trustee `formatFractionPct` (decimal-fraction → 1dp percent) is duplicated across two route presenters
+
+- **Date:** 2026-07-20
+- **Location:** `packages/trustee/src/routes/-useLoansTable.ts` (private `formatFractionPct`,
+  issue #843) and `packages/trustee/src/routes/-risk-council-escalate.ts` (private
+  `formatFractionPct`, issue #782) — byte-identical logic, hand-mirrored rather than shared
+  because the original wasn't exported.
+- **Gap:** Both format the same `at_risk_wl_and_default_pct` / `top_concentration.share`-shaped
+  decimal-fraction strings (e.g. `"0.0430"` → `"4.3%"`), but neither file exports the helper, so
+  the second usage (the Risk Council Escalate-to-Default page) re-implements it locally instead
+  of importing it — the same class of duplication TD-38/TD-42 already track for money formatters.
+- **Impact:** Low — the function is 5 lines and stable (protocol ratio formatting), but a third
+  consumer would make the drift risk (e.g. rounding-mode changes only applied in one copy) worth
+  fixing before it repeats again.
+- **Suggested fix:** Export `formatFractionPct` from `-useLoansTable.ts` (or lift it into
+  `src/utils/` alongside `formatUsd.ts`'s money formatters, per `docs/FRONTEND.md` rule 3) and
+  have both presenters import the shared copy.
+
 ---
 
 ## Post-MVP

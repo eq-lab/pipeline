@@ -27,3 +27,4 @@ What this enables and what it constrains.
 | [relayer-security-model.md](./relayer-security-model.md) | Relayer MPC permission scoping | ✅ Current |
 | [whitelist-enforcement-model.md](./whitelist-enforcement-model.md) | PLUSD transfer restriction design | ✅ Current |
 | [multi-chain-kyc-sharding.md](./multi-chain-kyc-sharding.md) | Per-chain sharding of `lp_profiles` and `kyc_outbox` | ✅ Current |
+| [trustee-dashboard-v3-design-assignment.md](./trustee-dashboard-v3-design-assignment.md) | Trustee Dashboard Design Assignment v3 source brief | ✅ Current |

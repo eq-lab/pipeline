@@ -114,10 +114,10 @@ managed by the custodian MPC policy engine and the Trustee, never by the Relayer
 
 ## Type 3 — RISK_COUNCIL proposals
 
-Default management. The Trustee identifies the condition and composes the proposal. The
-3-of-5 RISK_COUNCIL Safe executes it under a 24h timelock, GUARDIAN-cancelable. The
-dashboard is a proposal builder and a timelock tracker. It must make unmistakable that the
-Trustee cannot execute these.
+Default management. From the loan card, **Escalate to council** opens a **Proposal builder** (a
+form for the proposal's name + text), then a 24h timer, then display in the Risk Council section
+— see [Trustee Risk & Watchlist](./trustee-risk-watchlist.md). The 3-of-5 RISK_COUNCIL Safe
+executes it (a flow below) under the 24h timelock, GUARDIAN-cancelable; Trustee cannot execute.
 
 | # | Flow | Trigger | Data presented | Proposal composed | Guardrail |
 |---|---|---|---|---|---|
