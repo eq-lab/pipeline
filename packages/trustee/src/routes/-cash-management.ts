@@ -20,6 +20,8 @@ import {
   useReviewRampEvent,
   type ReviewRampEventInput,
 } from "@/api/useReviewRampEvent";
+import { useRampAddresses } from "@/api/useRampAddresses";
+import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { formatFullUsd } from "@/utils/formatUsd";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
@@ -50,6 +52,14 @@ export function formatRelativeAge(
   return `${days}d ago`;
 }
 
+/** Plain USDC amount with thousands separators (`"8,400,000"`); `"—"` when unknown. */
+export function formatUsdcAmount(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
+    value,
+  );
+}
+
 // ── View types ──────────────────────────────────────────────────────────────
 
 export interface RampEventRow {
@@ -74,6 +84,14 @@ export interface CashManagementView {
   /** The event id currently being reviewed (per-row pending state), or `null`. */
   reviewPendingId: number | null;
   reviewErrorMessage: string | null;
+
+  // ── Swap-form data (UI shell — #943 chose B; execution/quote have no backend) ──
+  /** Capital Wallet on-chain USDC balance (`useCapitalWalletBalance`); `null` when unavailable. */
+  usdcBalanceValue: number | null;
+  /** The same balance formatted, or `"—"`. */
+  usdcBalanceDisplay: string;
+  /** The off-ramp destination — first configured ramp address, truncated; `"—"` when none. */
+  rampAddressDisplay: string;
 }
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
@@ -93,9 +111,16 @@ function mapEvent(event: RampEvent, nowSec: number): RampEventRow {
 export function useCashManagement(): CashManagementView {
   const rampEvents = useRampEvents();
   const review = useReviewRampEvent();
+  const balance = useCapitalWalletBalance();
+  const addresses = useRampAddresses();
 
   const nowSec = Math.floor(Date.now() / 1000);
   const events = rampEvents.data?.events ?? [];
+
+  const balanceNum = balance.data != null ? Number(balance.data) : null;
+  const usdcBalanceValue =
+    balanceNum != null && Number.isFinite(balanceNum) ? balanceNum : null;
+  const rampAddress = addresses.data?.ramp_addresses[0];
 
   const state: CashManagementView["state"] = rampEvents.isLoading
     ? "loading"
@@ -119,5 +144,8 @@ export function useCashManagement(): CashManagementView {
     review: review.review,
     reviewPendingId: review.pendingId,
     reviewErrorMessage: review.error?.message ?? null,
+    usdcBalanceValue,
+    usdcBalanceDisplay: formatUsdcAmount(usdcBalanceValue),
+    rampAddressDisplay: truncateStrkey(rampAddress),
   };
 }
