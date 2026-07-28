@@ -20,6 +20,13 @@
 //!   configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`); otherwise
 //!   `null`. NOTE: an approximation — disbursed funds that leave the ramp to
 //!   borrowers off-chain are not observed, so this can over-state true in-transit.
+//! - **`withdrawal_queue`** — the Withdrawal Queue Wallet's current USDC balance
+//!   (Issue #933), read from the running `params.wallet_balance_after` the indexer
+//!   computes on each tracked `AssetTransfer` (`ContractLogsRepo::get_wallet_balance_as_of`).
+//!   Sourced only when `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` is
+//!   configured; otherwise `null`. Not clamped at zero — like `trust_account`, a
+//!   negative reading is a real tracking gap that should be visible, not hidden
+//!   (e.g. the indexer started tracking after the wallet already held a balance).
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
 //! - **`trust_account`** — `sum(deposits) - sum(withdrawals) - sum(fees)` over the
 //!   manually-entered `bank_transactions` ledger (`POST /v1/bank-transactions`, #924).
@@ -62,6 +69,10 @@ pub struct CapitalBuckets {
     /// tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0). `null`
     /// when custody/ramp address sets are not configured for the chain.
     pub in_transit: Option<String>,
+    /// The Withdrawal Queue Wallet's current USDC balance (Issue #933). `null`
+    /// when no wallet is configured for the chain. Not clamped at zero (see
+    /// module docs).
+    pub withdrawal_queue: Option<String>,
     /// USD residuals held in the trust account: `sum(deposits) - sum(withdrawals) -
     /// sum(fees)` over the manually-entered bank-transaction ledger. Not clamped at
     /// zero (see module docs).
@@ -77,8 +88,9 @@ pub struct CapitalBuckets {
 /// Response for `GET /v1/capital-allocation`.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CapitalAllocationResponse {
-    /// Σ of the available buckets (`deployed`, `in_transit` when present, and
-    /// `trust_account`; the rest are `null` until sourced).
+    /// Σ of the available buckets (`deployed`, `in_transit` when present,
+    /// `withdrawal_queue` when present, and `trust_account`; the rest are `null`
+    /// until sourced).
     pub total: Option<String>,
     pub buckets: CapitalBuckets,
 }
@@ -137,6 +149,16 @@ async fn get_capital_allocation(
         .list_asset_transfers(&state.pool, chain_id, to)
         .await?;
     let addr = state.transfer_addresses.get(&chain_id);
+    let asset_decimals = state.asset_decimals.get(&chain_id).copied().unwrap_or(7);
+    let withdrawal_queue_balance = match state.withdrawal_queue_wallets.get(&chain_id) {
+        Some(wallet) => {
+            state
+                .contract_logs_repo
+                .get_wallet_balance_as_of(&state.pool, chain_id, wallet, to)
+                .await?
+        }
+        None => None,
+    };
     let trust_account = state.bank_transaction_repo.trust_account_balance().await?;
 
     Ok(Json(compute_capital_allocation(
@@ -145,6 +167,8 @@ async fn get_capital_allocation(
         to,
         &transfers,
         addr,
+        asset_decimals,
+        withdrawal_queue_balance.as_ref(),
         &trust_account,
     )))
 }
@@ -186,24 +210,31 @@ fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
 }
 
 /// Pure computation: no DB calls. Builds the capital allocation from pre-fetched
-/// loan snapshots, lifecycle events, asset transfers, and the bank-transaction-ledger
-/// balance, as-of `to`.
+/// loan snapshots, lifecycle events, asset transfers, the Withdrawal Queue
+/// Wallet's raw balance, and the bank-transaction-ledger balance, as-of `to`.
 ///
 /// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
 /// `deployed` = Σ senior tranche over the active set. `in_transit` = net custody→ramp
 /// flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0),
-/// sourced only when `addr` is `Some`. `trust_account` = `trust_account_balance`, a
-/// **plain dollar figure** (not clamped — see module docs) — displayed as-is, and
-/// scaled to base-6 units only when folded into `total`. Remaining buckets are `null`.
+/// sourced only when `addr` is `Some`. `withdrawal_queue` = `withdrawal_queue_balance`
+/// normalized to canonical scale, **not** clamped (see module docs) — sourced only
+/// when `withdrawal_queue_balance` is `Some`. `trust_account` = `trust_account_balance`,
+/// a **plain dollar figure** (not clamped — see module docs) — displayed as-is, and
+/// scaled to base-6 units only when folded into `total`. `asset_decimals` is the
+/// tracked asset's on-chain decimal scale, shared by `in_transit` and
+/// `withdrawal_queue` for normalization. Remaining buckets are `null`.
 ///
 /// Public so the compute-layer test in `packages/api/tests/capital_allocation.rs` can
 /// exercise it without the HTTP/DB layers.
+#[allow(clippy::too_many_arguments)]
 pub fn compute_capital_allocation(
     loans: &[LoanSnapshotRow],
     events: &[LifecycleRow],
     to: i64,
     transfers: &[AssetTransferRow],
     addr: Option<&TransferAddressSets>,
+    asset_decimals: u32,
+    withdrawal_queue_balance: Option<&BigDecimal>,
     trust_account_balance: &BigDecimal,
 ) -> CapitalAllocationResponse {
     let mut deployed = BigDecimal::from(0);
@@ -231,18 +262,29 @@ pub fn compute_capital_allocation(
             }
             // custody↔custody / ramp↔ramp shuffles net to zero — ignored.
         }
-        let net = normalize_to_canonical(net, sets.asset_decimals);
+        let net = normalize_to_canonical(net, asset_decimals);
         // A displayed in-transit balance shouldn't be negative.
         net.max(BigDecimal::from(0))
     });
 
-    // Total = Σ of the sourced buckets (deployed + in_transit when present + trust_account).
-    // trust_account is a plain dollar figure (see module docs) — scale to base-6
-    // units here, the one place it needs to combine with the other (already
-    // base-6) buckets.
+    // withdrawal_queue = the Withdrawal Queue Wallet's raw running balance,
+    // normalized to canonical scale. Deliberately NOT clamped at zero — unlike
+    // in_transit's approximation, this is a literal tracked balance; a negative
+    // reading means tracking started after the wallet already held funds, and
+    // that gap should be visible (mirrors `trust_account`'s no-clamp rationale).
+    let withdrawal_queue =
+        withdrawal_queue_balance.map(|b| normalize_to_canonical(b.clone(), asset_decimals));
+
+    // Total = Σ of the sourced buckets (deployed + in_transit when present +
+    // withdrawal_queue when present + trust_account). trust_account is a plain
+    // dollar figure (see module docs) — scale to base-6 units here, the one
+    // place it needs to combine with the other (already base-6) buckets.
     let mut total = deployed.clone();
     if let Some(it) = &in_transit {
         total += it;
+    }
+    if let Some(wq) = &withdrawal_queue {
+        total += wq;
     }
     total += trust_account_balance * BigDecimal::from(10i128.pow(CANONICAL_AMOUNT_DECIMALS));
 
@@ -251,6 +293,7 @@ pub fn compute_capital_allocation(
         buckets: CapitalBuckets {
             capital_wallet: None,
             in_transit: in_transit.as_ref().map(base6_to_decimal_string),
+            withdrawal_queue: withdrawal_queue.as_ref().map(base6_to_decimal_string),
             trust_account: Some(
                 trust_account_balance
                     .with_scale_round(6, RoundingMode::Down)

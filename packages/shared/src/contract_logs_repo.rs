@@ -775,11 +775,14 @@ impl ContractLogsRepo {
     /// Issue #933). Returns `None` when no transfer touching `wallet` has been
     /// indexed yet on or before `as_of` — callers should treat that as "unknown",
     /// not zero. Pass `as_of = now` for the current balance.
+    ///
+    /// No `contract_address` filter — matches `list_asset_transfers`'s existing
+    /// assumption that only one asset is tracked per chain (`event_name =
+    /// 'AssetTransfer'` plus `chain_id` is already unambiguous today).
     pub async fn get_wallet_balance_as_of<'e, E>(
         &self,
         executor: E,
         chain_id: i64,
-        contract_address: &str,
         wallet: &str,
         as_of: i64,
     ) -> anyhow::Result<Option<BigDecimal>>
@@ -790,16 +793,14 @@ impl ContractLogsRepo {
             "SELECT params->>'wallet_balance_after'
              FROM contract_logs
              WHERE chain_id = $1
-               AND contract_address = $2
                AND event_name = 'AssetTransfer'
-               AND (params->>'from' = $3 OR params->>'to' = $3)
+               AND (params->>'from' = $2 OR params->>'to' = $2)
                AND params ? 'wallet_balance_after'
-               AND block_timestamp <= $4
+               AND block_timestamp <= $3
              ORDER BY block_number DESC, log_index DESC
              LIMIT 1",
         )
         .bind(chain_id)
-        .bind(contract_address)
         .bind(wallet)
         .bind(as_of)
         .fetch_optional(executor)

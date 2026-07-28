@@ -53,6 +53,11 @@ pub struct StellarVoucherChainConfig {
 /// CHAIN_<id>_API_STELLAR_DM_CONTRACT_ID=C...
 /// CHAIN_<id>_API_STELLAR_WQ_CONTRACT_ID=C...
 /// CHAIN_<id>_API_STELLAR_NETWORK_PASSPHRASE=...
+/// # Capital Allocation bucket sourcing (optional, per Stellar chain):
+/// CHAIN_<id>_API_STELLAR_CUSTODY_ADDRESSES=G...,C...              # in_transit
+/// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...                 # in_transit
+/// CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID=G...          # withdrawal_queue
+/// CHAIN_<id>_API_STELLAR_ASSET_DECIMALS=7                         # shared, default 7
 /// ```
 pub struct ChainsConfig {
     pub default_chain_id: i64,
@@ -63,6 +68,18 @@ pub struct ChainsConfig {
     /// Custody + ramp address sets keyed by chain_id, for the Capital Allocation
     /// `in_transit` bucket. Only present for chains where BOTH lists are configured.
     pub transfer_addresses: HashMap<i64, TransferAddressSets>,
+    /// Withdrawal Queue Wallet Strkey (`G…`) keyed by chain_id, for the Capital
+    /// Allocation `withdrawal_queue` bucket (Issue #933). Only present for chains
+    /// where `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` is configured;
+    /// independent of `transfer_addresses` (custody/ramp).
+    pub withdrawal_queue_wallets: HashMap<i64, String>,
+    /// The tracked asset's on-chain decimal scale (e.g. 7 for the Stellar USDC
+    /// SAC), keyed by chain_id — shared by the `in_transit` and `withdrawal_queue`
+    /// buckets to normalize raw on-chain amounts to the endpoint's canonical
+    /// 6-decimal USD base units. Read from `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS`
+    /// for every Stellar chain (default 7), independent of whether custody/ramp or
+    /// the withdrawal queue wallet are configured.
+    pub asset_decimals: HashMap<i64, u32>,
 }
 
 /// Custody + ramp Stellar address sets used to classify indexed `AssetTransfer`
@@ -75,15 +92,11 @@ pub struct ChainsConfig {
 /// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...
 /// ```
 /// Both address lists must be set for `in_transit` to be sourced; otherwise it
-/// stays `null`. `asset_decimals` is the tracked asset's on-chain decimal scale
-/// (e.g. 7 for the Stellar USDC SAC) — transfer amounts are normalized from this
-/// scale to the endpoint's canonical 6-decimal USD base units before being summed
-/// with `deployed`. Read from `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` (default 7).
+/// stays `null`.
 #[derive(Debug)]
 pub struct TransferAddressSets {
     pub custody: HashSet<String>,
     pub ramp: HashSet<String>,
-    pub asset_decimals: u32,
 }
 
 /// The endpoint-canonical amount scale (6-decimal USDC base units) that all
@@ -108,6 +121,8 @@ impl ChainsConfig {
         let mut voucher = HashMap::new();
         let mut stellar_voucher = HashMap::new();
         let mut transfer_addresses = HashMap::new();
+        let mut withdrawal_queue_wallets = HashMap::new();
+        let mut asset_decimals = HashMap::new();
 
         // Lazily read the flat STELLAR_VERIFIER_SECRET seed once (only if a Stellar chain is found).
         let mut stellar_seed_cache: Option<[u8; 32]> = None;
@@ -121,6 +136,8 @@ impl ChainsConfig {
                 }
                 ChainKind::Stellar => {
                     load_transfer_addresses(chain_id, &mut transfer_addresses)?;
+                    load_withdrawal_queue_wallet(chain_id, &mut withdrawal_queue_wallets)?;
+                    asset_decimals.insert(chain_id, load_asset_decimals(chain_id)?);
                     // Load STELLAR_VERIFIER_SECRET once and cache the raw seed bytes.
                     if stellar_seed_cache.is_none() {
                         let secret = env::var("STELLAR_VERIFIER_SECRET").with_context(|| {
@@ -156,6 +173,8 @@ impl ChainsConfig {
             voucher,
             stellar_voucher,
             transfer_addresses,
+            withdrawal_queue_wallets,
+            asset_decimals,
         })
     }
 }
@@ -170,32 +189,12 @@ fn load_transfer_addresses(
 ) -> Result<()> {
     let custody_key = format!("CHAIN_{chain_id}_API_STELLAR_CUSTODY_ADDRESSES");
     let ramp_key = format!("CHAIN_{chain_id}_API_STELLAR_RAMP_ADDRESSES");
-    let decimals_key = format!("CHAIN_{chain_id}_API_STELLAR_ASSET_DECIMALS");
     let custody = parse_stellar_address_csv(&custody_key)?;
     let ramp = parse_stellar_address_csv(&ramp_key)?;
 
-    // Default 7 = Stellar USDC SAC. Override per chain if the tracked asset differs.
-    let asset_decimals: u32 = match env::var(&decimals_key) {
-        Ok(v) => v
-            .trim()
-            .parse()
-            .with_context(|| format!("{decimals_key} must be a non-negative integer"))?,
-        Err(_) => 7,
-    };
-    if asset_decimals > 18 {
-        anyhow::bail!("{decimals_key} must be ≤ 18 (got {asset_decimals})");
-    }
-
     match (custody.is_empty(), ramp.is_empty()) {
         (false, false) => {
-            out.insert(
-                chain_id,
-                TransferAddressSets {
-                    custody,
-                    ramp,
-                    asset_decimals,
-                },
-            );
+            out.insert(chain_id, TransferAddressSets { custody, ramp });
         }
         (true, true) => { /* not configured — in_transit stays null */ }
         _ => {
@@ -206,6 +205,39 @@ fn load_transfer_addresses(
         }
     }
     Ok(())
+}
+
+/// Load the Withdrawal Queue Wallet address for one Stellar chain from
+/// `CHAIN_<id>_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` (optional; parallel to the
+/// worker's `CHAIN_<id>_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID` — API and worker are
+/// decoupled). Unset → the `withdrawal_queue` bucket stays `null` for this chain.
+fn load_withdrawal_queue_wallet(chain_id: i64, out: &mut HashMap<i64, String>) -> Result<()> {
+    let key = format!("CHAIN_{chain_id}_API_STELLAR_WITHDRAWAL_QUEUE_WALLET_ID");
+    if let Ok(raw) = env::var(&key) {
+        if !raw.trim().is_empty() {
+            out.insert(chain_id, validate_stellar_address(&key, raw)?);
+        }
+    }
+    Ok(())
+}
+
+/// The tracked asset's on-chain decimal scale for one Stellar chain, from
+/// `CHAIN_<id>_API_STELLAR_ASSET_DECIMALS` (default 7 = Stellar USDC SAC).
+/// Independent of custody/ramp/withdrawal-queue-wallet configuration — always
+/// resolved for every Stellar chain so either bucket can normalize amounts.
+fn load_asset_decimals(chain_id: i64) -> Result<u32> {
+    let decimals_key = format!("CHAIN_{chain_id}_API_STELLAR_ASSET_DECIMALS");
+    let asset_decimals: u32 = match env::var(&decimals_key) {
+        Ok(v) => v
+            .trim()
+            .parse()
+            .with_context(|| format!("{decimals_key} must be a non-negative integer"))?,
+        Err(_) => 7,
+    };
+    if asset_decimals > 18 {
+        anyhow::bail!("{decimals_key} must be ≤ 18 (got {asset_decimals})");
+    }
+    Ok(asset_decimals)
 }
 
 /// Parse an optional CSV of Stellar addresses (`G…` or `C…`) from `key`, validated
