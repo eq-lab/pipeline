@@ -50,8 +50,9 @@ Welcome to Pipeline! Sign this message to authenticate. This request will not tr
 | `GET`  | `/v1/auth/challenge?chain_id&address` | none | Returns `{ message, nonce }` for an allow-listed address; rotates the stored nonce. `401` if the address is not authorized. |
 | `POST` | `/v1/auth/verify` | none | Body `{ chain_id?, address, signature }` (`signature`: hex for EVM, base64 or hex for Stellar). Returns `{ token, expires_in }` on a valid signature. `401` for unknown address, no outstanding challenge, or bad signature. |
 | `POST` | `/v1/loan-book/loan` | bearer + `originator` role | Submit a loan application (all `draw_loan` inputs; see [Loan submission](#loan-submission)). Validated against the on-chain `draw_loan` invariants, then persisted as `InReview`. `201 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role. |
-| `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`); omit for all. `400` on an unknown status value. |
-| `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected", reason? }`; a rejection requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission was already decided. |
+| `GET`  | `/v1/loan-book/submissions?status` | bearer + `trustee` role | List submissions, newest first. Optional `status` filter (`InReview`/`Approved`/`Rejected`/`ChangesRequested`); omit for all. `400` on an unknown status value. |
+| `POST` | `/v1/loan-book/submissions/{id}/review` | bearer + `trustee` role | Apply a trustee decision. Body `{ decision: "Approved"｜"Rejected"｜"ChangesRequested", reason? }`; a rejection or a changes-requested decision requires a non-empty `reason`, an approval must omit it. `200` on success, `400` on a malformed decision, `404` if the id is unknown, `409` if the submission is already `Approved`/`Rejected` (terminal). |
+| `POST` | `/v1/loan-book/submissions/{id}/resubmit` | bearer + `originator` role | Resubmit a `ChangesRequested` submission with a corrected payload (same body as `/v1/loan-book/loan`), reopening it for review. Full replace: overwrites `loan_data` plus the valuation anchor and fee schedule, resets `status` to `InReview`, and clears `reason`. `200 { id }` on success, `400` on validation failure, `401` without a valid token, `403` without the `originator` role, `404` if the id is unknown, `409` if the submission is not in `ChangesRequested` or the new `metadata_uri` collides with another undrawn submission. |
 
 Tokens are **ES256** (P-256) signed, expire **24 hours** after issuance
 (`expires_in = 86400`), and contain the claims `sub` (address), `chain_id`,
@@ -84,16 +85,37 @@ on-chain. The flow is intentionally two-staged: submission only **persists and
 validates** the application; calling `draw_loan` on an approved submission is a
 separate, later step (not yet wired).
 
-**Lifecycle.** A submission is `InReview` on insert and transitions exactly once
-to a terminal state:
+**Lifecycle.** A submission is `InReview` on insert. `Approved` and `Rejected`
+are terminal — no further review is accepted once either is reached.
+`ChangesRequested` is **non-final**: a submission left `ChangesRequested` can be
+reviewed again, moving to `Approved`, `Rejected`, or another round of
+`ChangesRequested`.
 
 ```
-InReview ──approve──▶ Approved
-         ──reject───▶ Rejected (carries a reason)
+InReview ──────────approve──────────▶ Approved (terminal)
+         ──────────reject───────────▶ Rejected (terminal, carries a reason)
+         ──request changes──▶ ChangesRequested (carries a reason) ─┐
+              ▲                                                    │
+              └───────────── request changes again ────────────────┘
+ChangesRequested ──approve─────────▶ Approved (terminal)
+                 ──reject──────────▶ Rejected (terminal, carries a reason)
+                 ──resubmit────────▶ InReview (originator replaces the payload)
 ```
 
-Decisions are final — only `InReview` submissions can be reviewed; reviewing an
-already-decided submission returns `409 Conflict`.
+Only `InReview` or `ChangesRequested` submissions can be reviewed; reviewing a
+submission already `Approved`/`Rejected` returns `409 Conflict`. Each new review
+decision overwrites the single `reason` column — there is no history of prior
+`ChangesRequested` feedback text.
+
+**Resubmission.** When a trustee requests changes, the originator acts on the
+feedback via `POST /v1/loan-book/submissions/{id}/resubmit` — the counterpart to
+the trustee's review action. It carries the full submission payload (same shape as
+`POST /v1/loan-book/loan`), re-runs the same validation, and does a full replace of
+`loan_data`, the valuation anchor, and the fee schedule, then resets the submission
+to `InReview` (clearing `reason`) for another review round. Only `ChangesRequested`
+submissions may be resubmitted: `InReview` is already open, and the terminal
+`Approved`/`Rejected` states return `409 Conflict`. There is no partial edit — a
+resubmission is a complete new payload.
 
 **Payload.** `POST /v1/loan-book/loan` carries every input to the on-chain
 `draw_loan`: the holder `to`, the on-chain `metadata_uri`, the off-chain metadata
@@ -115,8 +137,8 @@ is at least `1_000_000` (100 %), and `location_type` is one of
 |--------|------|-------|
 | `id` | `BIGINT` (identity) | surrogate PK — the submission id used by the review endpoint. **Not** the on-chain `loan_id`, which does not exist until the loan is drawn |
 | `loan_data` | `JSONB` | the full submitted payload, verbatim |
-| `status` | `TEXT` | `InReview` \| `Approved` \| `Rejected` (CHECK-constrained) |
-| `reason` | `TEXT` | rejection reason; present **iff** `status = Rejected` (CHECK-enforced) |
+| `status` | `TEXT` | `InReview` \| `Approved` \| `Rejected` \| `ChangesRequested` (CHECK-constrained) |
+| `reason` | `TEXT` | rejection/feedback reason; present **iff** `status IN (Rejected, ChangesRequested)` (CHECK-enforced) |
 | `originator` | `TEXT` | the submitter's authenticated address (JWT `sub`) |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | bookkeeping |
 

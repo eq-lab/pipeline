@@ -237,6 +237,22 @@ impl CollateralValuationRepo {
         Ok(())
     }
 
+    /// Delete a submission's valuation anchor (PK'd on `submitted_loan_id`). Used when
+    /// an originator resubmits a `ChangesRequested` submission: the prior anchor is
+    /// dropped so the replacement payload's anchor can be inserted fresh. Runs on the
+    /// caller's connection to stay inside the resubmit transaction; a no-op if no row
+    /// exists. Safe for an undrawn submission — no assay/offtake rows reference it yet.
+    pub async fn delete_for_submission(
+        conn: &mut PgConnection,
+        submitted_loan_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM loan_collateral_valuations WHERE submitted_loan_id = $1")
+            .bind(submitted_loan_id)
+            .execute(conn)
+            .await?;
+        Ok(())
+    }
+
     /// Append a new assay record for a loan. A new certificate is a new row — never
     /// an update — so `latest_assay` (`ORDER BY effective_at DESC`) picks it up once
     /// its `effective_at` is the newest. `recorded_by` is the audit trail; callers

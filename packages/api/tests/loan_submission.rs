@@ -249,6 +249,35 @@ fn approve_with_reason_is_rejected() {
     assert!(resolve_review(&req).is_err());
 }
 
+#[test]
+fn changes_requested_without_reason_is_rejected() {
+    let req = ReviewRequest {
+        decision: ReviewDecision::ChangesRequested,
+        reason: None,
+    };
+    assert!(resolve_review(&req).is_err());
+
+    let req = ReviewRequest {
+        decision: ReviewDecision::ChangesRequested,
+        reason: Some("   ".to_owned()),
+    };
+    assert!(resolve_review(&req).is_err());
+}
+
+#[test]
+fn changes_requested_with_reason_resolves_to_changes_requested() {
+    let req = ReviewRequest {
+        decision: ReviewDecision::ChangesRequested,
+        reason: Some("please add the missing collateral valuation doc".to_owned()),
+    };
+    let (status, reason) = resolve_review(&req).unwrap();
+    assert_eq!(status, SubmissionStatus::ChangesRequested);
+    assert_eq!(
+        reason,
+        Some("please add the missing collateral valuation doc")
+    );
+}
+
 // ── SubmissionStatus round-trip ──────────────────────────────────────────────
 
 #[test]
@@ -257,6 +286,7 @@ fn submission_status_round_trips() {
         SubmissionStatus::InReview,
         SubmissionStatus::Approved,
         SubmissionStatus::Rejected,
+        SubmissionStatus::ChangesRequested,
     ] {
         let parsed: SubmissionStatus = s.as_str().parse().unwrap();
         assert_eq!(parsed, s);
@@ -267,6 +297,14 @@ fn submission_status_round_trips() {
 fn submission_status_rejects_unknown() {
     assert!("Pending".parse::<SubmissionStatus>().is_err());
     assert!("".parse::<SubmissionStatus>().is_err());
+}
+
+#[test]
+fn submission_status_parses_changes_requested() {
+    assert_eq!(
+        "ChangesRequested".parse::<SubmissionStatus>().unwrap(),
+        SubmissionStatus::ChangesRequested
+    );
 }
 
 // ── payload serde ────────────────────────────────────────────────────────────
