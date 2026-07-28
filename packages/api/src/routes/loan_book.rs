@@ -199,6 +199,13 @@ pub struct LoanBookEntry {
     /// Timestamp the current CCR was last reported on-chain (`last_reported_ccr_timestamp`,
     /// Unix seconds) — backs the CCR staleness/age chip. `0` when never reported.
     pub ccr_reported_at: i64,
+    /// Collateral Coverage Ratio in basis points as last reported on-chain
+    /// (`LoanSnapshot.ccr_bps`, written from a block-pinned contract read whenever a
+    /// `LoanCCRUpdated`-family event is indexed — see `LoanEventMapper` in
+    /// `packages/worker/src/indexer/loan_mapper.rs`). Distinct from `ccr_bps` below,
+    /// which is computed off-chain from the latest collateral valuation and price feed
+    /// and can be fresher. `0` when never reported (see `ccr_reported_at`).
+    pub reported_ccr_bps: u32,
     /// Latest spot price of the loan's underlying asset (USD, decimal string), from the
     /// loan's configured price provider. `null` when the loan has no priced asset.
     pub spot_price: Option<String>,
@@ -219,7 +226,8 @@ pub struct LoanBookEntry {
     pub ltv: Option<String>,
     /// Collateral Coverage Ratio in basis points (`14000` = 140 %) =
     /// `collateral / outstanding senior principal`. `null` when collateral is
-    /// unavailable or the senior principal is fully repaid.
+    /// unavailable or the senior principal is fully repaid. Off-chain computed — see
+    /// `reported_ccr_bps` for the value the contract itself last reported.
     pub ccr_bps: Option<u32>,
     /// Original loan term in days (`maturity − origination`).
     pub duration_days: i64,
@@ -1297,6 +1305,7 @@ pub fn compute_loan_book<S: std::hash::BuildHasher>(
             original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche),
             maturity: s.current_maturity_timestamp,
             ccr_reported_at: s.last_reported_ccr_timestamp,
+            reported_ccr_bps: s.ccr_bps,
             spot_price: spot.and_then(|sp| sp.price.clone()),
             spot_change_7d: spot.and_then(|sp| sp.change_7d.clone()),
             collateral,

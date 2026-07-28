@@ -681,6 +681,28 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   loan_offtake_terms FROM <api role>` (or similar), so the guarantee holds even if
   application code regresses.
 
+### TD-46: `packages/frontend` has pre-existing Prettier formatting drift blocking the pre-commit hook
+
+- **Date:** 2026-07-28 (#947)
+- **Location:** At minimum `src/api/README.md`, `src/api/useStatsYield.ts`,
+  `src/components/ConnectWalletModal.test.tsx`, `src/components/TopBar.test.tsx`,
+  `src/components/TopBar.tsx`, `src/wallet/ConnectModalProvider.test.tsx`,
+  `src/wallet/README.md`, `src/wallet/stellar/connectionStore.ts`,
+  `src/wallet/stellar/contracts/stakedPlusd.test.ts` (per `yarn --cwd packages/frontend lint`
+  at the time of #947; the list may grow before this is fixed).
+- **Gap:** `.husky/pre-commit`'s "frontend lint" step runs `yarn --cwd packages/frontend lint`
+  unscoped (whole workspace, not just staged files) via Prettier's `--check`. These 9 files
+  fail that check even though none of them were touched by #947 — the drift predates this
+  change and was not introduced by it. This blocked a backend-only commit (Rust + docs, no
+  frontend files) until bypassed with `--no-verify` after explicit user approval.
+- **Impact:** Any commit — even one that never touches `packages/frontend` — currently fails
+  the pre-commit hook's frontend-lint step, forcing either an unrelated formatting fix bundled
+  into an unrelated PR, or a `--no-verify` bypass (which also skips every other pre-commit
+  check, not just this one).
+- **Suggested fix:** Run `yarn --cwd packages/frontend format` (Prettier `--write`) across the
+  9 files above in a dedicated formatting-only commit/PR, then confirm `yarn --cwd
+  packages/frontend lint` passes clean so the hook stops blocking unrelated work.
+
 ---
 
 ## Post-MVP
