@@ -16,10 +16,14 @@ import { Route as LoansRouteImport } from './routes/loans'
 import { Route as CashManagementRouteImport } from './routes/cash-management'
 import { Route as AuditLogRouteImport } from './routes/audit-log'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as RiskCouncilIndexRouteImport } from './routes/risk-council.index'
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
+import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
+import { Route as RiskCouncilRetermIdRouteImport } from './routes/risk-council.reterm.$id'
+import { Route as RiskCouncilEscalateIdRouteImport } from './routes/risk-council.escalate.$id'
 import { Route as LoansIdRecordRepaymentRouteImport } from './routes/loans.$id_.record-repayment'
 import { Route as LoansIdRecordCouponRouteImport } from './routes/loans.$id_.record-coupon'
 
@@ -58,6 +62,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RiskCouncilIndexRoute = RiskCouncilIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
 const OriginationIndexRoute = OriginationIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -78,6 +87,21 @@ const LoansIdRoute = LoansIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => LoansRoute,
 } as any)
+const RiskCouncilWritedownIdRoute = RiskCouncilWritedownIdRouteImport.update({
+  id: '/writedown/$id',
+  path: '/writedown/$id',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
+const RiskCouncilRetermIdRoute = RiskCouncilRetermIdRouteImport.update({
+  id: '/reterm/$id',
+  path: '/reterm/$id',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
+const RiskCouncilEscalateIdRoute = RiskCouncilEscalateIdRouteImport.update({
+  id: '/escalate/$id',
+  path: '/escalate/$id',
+  getParentRoute: () => RiskCouncilRoute,
+} as any)
 const LoansIdRecordRepaymentRoute = LoansIdRecordRepaymentRouteImport.update({
   id: '/$id_/record-repayment',
   path: '/$id/record-repayment',
@@ -95,27 +119,34 @@ export interface FileRoutesByFullPath {
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
-  '/risk-council': typeof RiskCouncilRoute
+  '/risk-council': typeof RiskCouncilRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
+  '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
+  '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit-log': typeof AuditLogRoute
   '/cash-management': typeof CashManagementRoute
-  '/risk-council': typeof RiskCouncilRoute
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/loans': typeof LoansIndexRoute
   '/origination': typeof OriginationIndexRoute
+  '/risk-council': typeof RiskCouncilIndexRoute
   '/loans/$id/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
+  '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,14 +155,18 @@ export interface FileRoutesById {
   '/cash-management': typeof CashManagementRoute
   '/loans': typeof LoansRouteWithChildren
   '/origination': typeof OriginationRouteWithChildren
-  '/risk-council': typeof RiskCouncilRoute
+  '/risk-council': typeof RiskCouncilRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
+  '/risk-council/': typeof RiskCouncilIndexRoute
   '/loans/$id_/record-coupon': typeof LoansIdRecordCouponRoute
   '/loans/$id_/record-repayment': typeof LoansIdRecordRepaymentRoute
+  '/risk-council/escalate/$id': typeof RiskCouncilEscalateIdRoute
+  '/risk-council/reterm/$id': typeof RiskCouncilRetermIdRoute
+  '/risk-council/writedown/$id': typeof RiskCouncilWritedownIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -147,21 +182,28 @@ export interface FileRouteTypes {
     | '/origination/$id'
     | '/loans/'
     | '/origination/'
+    | '/risk-council/'
     | '/loans/$id/record-coupon'
     | '/loans/$id/record-repayment'
+    | '/risk-council/escalate/$id'
+    | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/audit-log'
     | '/cash-management'
-    | '/risk-council'
     | '/sign-in'
     | '/loans/$id'
     | '/origination/$id'
     | '/loans'
     | '/origination'
+    | '/risk-council'
     | '/loans/$id/record-coupon'
     | '/loans/$id/record-repayment'
+    | '/risk-council/escalate/$id'
+    | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   id:
     | '__root__'
     | '/'
@@ -175,8 +217,12 @@ export interface FileRouteTypes {
     | '/origination/$id'
     | '/loans/'
     | '/origination/'
+    | '/risk-council/'
     | '/loans/$id_/record-coupon'
     | '/loans/$id_/record-repayment'
+    | '/risk-council/escalate/$id'
+    | '/risk-council/reterm/$id'
+    | '/risk-council/writedown/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -185,7 +231,7 @@ export interface RootRouteChildren {
   CashManagementRoute: typeof CashManagementRoute
   LoansRoute: typeof LoansRouteWithChildren
   OriginationRoute: typeof OriginationRouteWithChildren
-  RiskCouncilRoute: typeof RiskCouncilRoute
+  RiskCouncilRoute: typeof RiskCouncilRouteWithChildren
   SignInRoute: typeof SignInRoute
 }
 
@@ -240,6 +286,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/risk-council/': {
+      id: '/risk-council/'
+      path: '/'
+      fullPath: '/risk-council/'
+      preLoaderRoute: typeof RiskCouncilIndexRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
     '/origination/': {
       id: '/origination/'
       path: '/'
@@ -267,6 +320,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/loans/$id'
       preLoaderRoute: typeof LoansIdRouteImport
       parentRoute: typeof LoansRoute
+    }
+    '/risk-council/writedown/$id': {
+      id: '/risk-council/writedown/$id'
+      path: '/writedown/$id'
+      fullPath: '/risk-council/writedown/$id'
+      preLoaderRoute: typeof RiskCouncilWritedownIdRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
+    '/risk-council/reterm/$id': {
+      id: '/risk-council/reterm/$id'
+      path: '/reterm/$id'
+      fullPath: '/risk-council/reterm/$id'
+      preLoaderRoute: typeof RiskCouncilRetermIdRouteImport
+      parentRoute: typeof RiskCouncilRoute
+    }
+    '/risk-council/escalate/$id': {
+      id: '/risk-council/escalate/$id'
+      path: '/escalate/$id'
+      fullPath: '/risk-council/escalate/$id'
+      preLoaderRoute: typeof RiskCouncilEscalateIdRouteImport
+      parentRoute: typeof RiskCouncilRoute
     }
     '/loans/$id_/record-repayment': {
       id: '/loans/$id_/record-repayment'
@@ -315,13 +389,31 @@ const OriginationRouteWithChildren = OriginationRoute._addFileChildren(
   OriginationRouteChildren,
 )
 
+interface RiskCouncilRouteChildren {
+  RiskCouncilIndexRoute: typeof RiskCouncilIndexRoute
+  RiskCouncilEscalateIdRoute: typeof RiskCouncilEscalateIdRoute
+  RiskCouncilRetermIdRoute: typeof RiskCouncilRetermIdRoute
+  RiskCouncilWritedownIdRoute: typeof RiskCouncilWritedownIdRoute
+}
+
+const RiskCouncilRouteChildren: RiskCouncilRouteChildren = {
+  RiskCouncilIndexRoute: RiskCouncilIndexRoute,
+  RiskCouncilEscalateIdRoute: RiskCouncilEscalateIdRoute,
+  RiskCouncilRetermIdRoute: RiskCouncilRetermIdRoute,
+  RiskCouncilWritedownIdRoute: RiskCouncilWritedownIdRoute,
+}
+
+const RiskCouncilRouteWithChildren = RiskCouncilRoute._addFileChildren(
+  RiskCouncilRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditLogRoute: AuditLogRoute,
   CashManagementRoute: CashManagementRoute,
   LoansRoute: LoansRouteWithChildren,
   OriginationRoute: OriginationRouteWithChildren,
-  RiskCouncilRoute: RiskCouncilRoute,
+  RiskCouncilRoute: RiskCouncilRouteWithChildren,
   SignInRoute: SignInRoute,
 }
 export const routeTree = rootRouteImport

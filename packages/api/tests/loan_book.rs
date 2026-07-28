@@ -419,10 +419,23 @@ fn ccr_bps_is_collateral_over_outstanding_senior() {
     let collateral = collateral_map(&[(1, usdc(125_000))]);
     let r = at_with(0, &fixture_loans(), &[], &collateral);
     assert_eq!(r.loans[0].ccr_bps, Some(15_625));
+    // reported_ccr_bps is the fixture's on-chain snapshot value (11_750), independent
+    // of the freshly computed 15_625 above — the two fields are allowed to diverge.
+    assert_eq!(r.loans[0].reported_ccr_bps, 11_750);
 
-    // Loan without collateral → CCR null.
+    // Loan without collateral → computed CCR null; reported_ccr_bps still present.
     let r2 = at(0, &fixture_loans(), &[]);
     assert_eq!(r2.loans[0].ccr_bps, None);
+    assert_eq!(r2.loans[0].reported_ccr_bps, 11_750);
+}
+
+#[test]
+fn entry_exposes_reported_ccr_bps_from_snapshot() {
+    let mut loans = fixture_loans();
+    loans[0].snapshot.ccr_bps = 13_200;
+    let r = at(0, &loans, &[]); // no collateral map → computed ccr_bps is None
+    assert_eq!(r.loans[0].reported_ccr_bps, 13_200);
+    assert_eq!(r.loans[0].ccr_bps, None); // confirms the two fields are independent
 }
 
 #[test]

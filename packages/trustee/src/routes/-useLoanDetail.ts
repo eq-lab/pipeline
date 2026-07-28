@@ -58,7 +58,6 @@ import {
   MATURED_OTHER_ACTIONS,
   MATURED_ROLLOVER_CARD,
   PERFORMING_OTHER_ACTIONS,
-  WATCHLIST_CURRENT_STAGE,
   WATCHLIST_OTHER_ACTIONS,
   type CurrentStage,
   type OtherActions,
@@ -800,7 +799,14 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
   // copy). The Performing "on-ramp in transit" card was removed (#876);
   // Disbursing shows the disbursement-complete action, Matured the rollover
   // card. `null` for every non-watchlist variant.
-  const currentStage = variant === "watchlist" ? WATCHLIST_CURRENT_STAGE : null;
+  //
+  // The Watchlist escalation current-stage card is HIDDEN for now (#938): its
+  // real behavior is proposal-aware — a plain "decision pending" title only
+  // once a Risk-Council proposal is submitted for the loan, otherwise a warning
+  // + prompt to open an escalation — which needs a per-loan proposal-status
+  // feed the backend doesn't serve yet. The static `WATCHLIST_CURRENT_STAGE`
+  // mock is not rendered until that lands.
+  const currentStage: CurrentStage | null = null;
 
   return {
     state,

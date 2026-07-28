@@ -63,6 +63,21 @@ impl LoanFeeScheduleRepo {
         Ok(())
     }
 
+    /// Delete a submission's fee-schedule row (PK'd on `submitted_loan_id`). Used when
+    /// an originator resubmits a `ChangesRequested` submission: the prior row is dropped
+    /// so the replacement payload's schedule can be inserted fresh. Runs on the caller's
+    /// connection to stay inside the resubmit transaction; a no-op if no row exists.
+    pub async fn delete_for_submission(
+        conn: &mut PgConnection,
+        submitted_loan_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM loan_fee_schedule WHERE submitted_loan_id = $1")
+            .bind(submitted_loan_id)
+            .execute(conn)
+            .await?;
+        Ok(())
+    }
+
     /// The protocol fee schedule for one loan, or `None` when the loan has no
     /// `loan_fee_schedule` row (i.e. no schedule configured — the waterfall falls back
     /// to the all-zero default).

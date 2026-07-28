@@ -92,11 +92,15 @@ pub struct ChainsConfig {
 /// CHAIN_<id>_API_STELLAR_RAMP_ADDRESSES=G...,C...
 /// ```
 /// Both address lists must be set for `in_transit` to be sourced; otherwise it
-/// stays `null`.
+/// stays `null`. `asset_decimals` mirrors `ChainsConfig::asset_decimals` for this
+/// chain (same value, populated from the same independent parse) — kept here too
+/// so `routes::ramp` (#936) can read it straight off the address sets it already
+/// has in hand, without needing a second lookup into `AppState::asset_decimals`.
 #[derive(Debug)]
 pub struct TransferAddressSets {
     pub custody: HashSet<String>,
     pub ramp: HashSet<String>,
+    pub asset_decimals: u32,
 }
 
 /// The endpoint-canonical amount scale (6-decimal USDC base units) that all
@@ -135,9 +139,10 @@ impl ChainsConfig {
                     load_evm_voucher_config(chain_id, &mut voucher)?;
                 }
                 ChainKind::Stellar => {
-                    load_transfer_addresses(chain_id, &mut transfer_addresses)?;
+                    let decimals = load_asset_decimals(chain_id)?;
+                    load_transfer_addresses(chain_id, decimals, &mut transfer_addresses)?;
                     load_withdrawal_queue_wallet(chain_id, &mut withdrawal_queue_wallets)?;
-                    asset_decimals.insert(chain_id, load_asset_decimals(chain_id)?);
+                    asset_decimals.insert(chain_id, decimals);
                     // Load STELLAR_VERIFIER_SECRET once and cache the raw seed bytes.
                     if stellar_seed_cache.is_none() {
                         let secret = env::var("STELLAR_VERIFIER_SECRET").with_context(|| {
@@ -185,6 +190,7 @@ impl ChainsConfig {
 /// (matches the worker's all-or-nothing behaviour for the same real accounts).
 fn load_transfer_addresses(
     chain_id: i64,
+    asset_decimals: u32,
     out: &mut HashMap<i64, TransferAddressSets>,
 ) -> Result<()> {
     let custody_key = format!("CHAIN_{chain_id}_API_STELLAR_CUSTODY_ADDRESSES");
@@ -194,7 +200,14 @@ fn load_transfer_addresses(
 
     match (custody.is_empty(), ramp.is_empty()) {
         (false, false) => {
-            out.insert(chain_id, TransferAddressSets { custody, ramp });
+            out.insert(
+                chain_id,
+                TransferAddressSets {
+                    custody,
+                    ramp,
+                    asset_decimals,
+                },
+            );
         }
         (true, true) => { /* not configured — in_transit stays null */ }
         _ => {

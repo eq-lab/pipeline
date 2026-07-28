@@ -17,6 +17,7 @@ use axum::{Json, Router};
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::PgConnection;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 use shared::collateral_valuation::{ccr_bps, compute_collateral};
@@ -199,6 +200,13 @@ pub struct LoanBookEntry {
     /// Timestamp the current CCR was last reported on-chain (`last_reported_ccr_timestamp`,
     /// Unix seconds) — backs the CCR staleness/age chip. `0` when never reported.
     pub ccr_reported_at: i64,
+    /// Collateral Coverage Ratio in basis points as last reported on-chain
+    /// (`LoanSnapshot.ccr_bps`, written from a block-pinned contract read whenever a
+    /// `LoanCCRUpdated`-family event is indexed — see `LoanEventMapper` in
+    /// `packages/worker/src/indexer/loan_mapper.rs`). Distinct from `ccr_bps` below,
+    /// which is computed off-chain from the latest collateral valuation and price feed
+    /// and can be fresher. `0` when never reported (see `ccr_reported_at`).
+    pub reported_ccr_bps: u32,
     /// Latest spot price of the loan's underlying asset (USD, decimal string), from the
     /// loan's configured price provider. `null` when the loan has no priced asset.
     pub spot_price: Option<String>,
@@ -219,7 +227,8 @@ pub struct LoanBookEntry {
     pub ltv: Option<String>,
     /// Collateral Coverage Ratio in basis points (`14000` = 140 %) =
     /// `collateral / outstanding senior principal`. `null` when collateral is
-    /// unavailable or the senior principal is fully repaid.
+    /// unavailable or the senior principal is fully repaid. Off-chain computed — see
+    /// `reported_ccr_bps` for the value the contract itself last reported.
     pub ccr_bps: Option<u32>,
     /// Original loan term in days (`maturity − origination`).
     pub duration_days: i64,
@@ -393,7 +402,8 @@ pub struct SubmitLoanResponse {
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct SubmissionsQuery {
-    /// Filter by lifecycle status (`InReview`, `Approved`, `Rejected`). Omit for all.
+    /// Filter by lifecycle status (`InReview`, `Approved`, `Rejected`,
+    /// `ChangesRequested`). Omit for all.
     pub status: Option<String>,
 }
 
@@ -402,12 +412,14 @@ pub struct SubmissionsQuery {
 pub struct SubmissionView {
     pub id: i64,
     /// Lifecycle status. While pre-drawn this is the trustee **review** state
-    /// (`InReview` | `Approved` | `Rejected`). Once the loan is drawn (`loan_id` set),
-    /// it is the loan's **live on-chain** status (`Performing` | `WatchList` |
-    /// `Default` | `Closed`), derived at read time from `contract_logs` — the weak
-    /// bridge never copies on-chain state onto the submission row.
+    /// (`InReview` | `Approved` | `Rejected` | `ChangesRequested`). Once the loan is
+    /// drawn (`loan_id` set), it is the loan's **live on-chain** status (`Performing`
+    /// | `WatchList` | `Default` | `Closed`), derived at read time from
+    /// `contract_logs` — the weak bridge never copies on-chain state onto the
+    /// submission row.
     pub status: String,
-    /// Rejection reason; present iff the (stored review) status is `Rejected`.
+    /// Rejection/feedback reason; present iff the (stored review) status is
+    /// `Rejected` or `ChangesRequested`.
     pub reason: Option<String>,
     /// The submitter (authenticated address).
     pub originator: String,
@@ -458,18 +470,25 @@ impl From<SubmittedLoanRow> for SubmissionView {
 }
 
 /// The trustee decision in `POST /v1/loan-book/submissions/{id}/review`.
+///
+/// `Approved` and `Rejected` are terminal — no further review is accepted once a
+/// submission reaches either. `ChangesRequested` is non-final: the submission stays
+/// open for a later review that can move it to `Approved`, `Rejected`, or another
+/// round of `ChangesRequested`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 pub enum ReviewDecision {
     Approved,
     Rejected,
+    ChangesRequested,
 }
 
 /// Request body for `POST /v1/loan-book/submissions/{id}/review`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReviewRequest {
-    /// `Approved` or `Rejected`.
+    /// `Approved`, `Rejected`, or `ChangesRequested`.
     pub decision: ReviewDecision,
-    /// Required when `decision = Rejected`; must be omitted/empty otherwise.
+    /// Required when `decision` is `Rejected` or `ChangesRequested`; must be
+    /// omitted/empty when `Approved`.
     #[serde(default)]
     pub reason: Option<String>,
 }
@@ -477,7 +496,14 @@ pub struct ReviewRequest {
 /// OpenAPI doc bundle for the loan-book route.
 #[derive(OpenApi)]
 #[openapi(
-    paths(get_loan_book, submit_loan, list_submissions, review_submission, complete_disbursement),
+    paths(
+        get_loan_book,
+        submit_loan,
+        resubmit_loan,
+        list_submissions,
+        review_submission,
+        complete_disbursement
+    ),
     components(schemas(
         LoanBookResponse,
         LoanBookSummary,
@@ -505,6 +531,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/loan-book", get(get_loan_book))
         .route("/loan-book/loan", post(submit_loan))
+        .route("/loan-book/submissions/{id}/resubmit", post(resubmit_loan))
         .route("/loan-book/submissions", get(list_submissions))
         .route(
             "/loan-book/submissions/{id}/review",
@@ -578,7 +605,32 @@ async fn submit_loan(
         .await
         .map_err(ApiError::BadRequest)?;
 
-    // Re-parse fields validate_submission already checked, for the typed writes below.
+    // Persist the payload verbatim; serialization of an owned struct cannot fail.
+    let loan_data = serde_json::to_value(&payload)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
+
+    // One transaction: the submission and its valuation anchor / fee schedule land
+    // together or not at all.
+    let mut tx = state.pool.begin().await?;
+
+    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub).await?;
+    insert_valuation_and_fee_rows(&mut tx, id, &payload).await?;
+
+    tx.commit().await?;
+
+    Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
+}
+
+/// Parse a validated submission's typed valuation / fee fields and write its
+/// `loan_collateral_valuations` + `loan_fee_schedule` rows on the caller's transaction.
+/// Shared by [`submit_loan`] (fresh submission) and [`resubmit_loan`] (after the prior
+/// rows are deleted). Re-parses the decimal/enum fields `validate_submission` already
+/// checked so the typed writes below can bind them.
+async fn insert_valuation_and_fee_rows(
+    tx: &mut PgConnection,
+    submitted_loan_id: i64,
+    payload: &SubmitLoanRequest,
+) -> Result<(), ApiError> {
     let valuation_mode =
         ValuationMode::try_from(payload.collateral_valuation.valuation_mode.clone())
             .map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -597,19 +649,9 @@ async fn submit_loan(
             ))
         })?;
 
-    // Persist the payload verbatim; serialization of an owned struct cannot fail.
-    let loan_data = serde_json::to_value(&payload)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
-
-    // One transaction: the submission and its valuation anchor / fee schedule land
-    // together or not at all.
-    let mut tx = state.pool.begin().await?;
-
-    let id = SubmittedLoanRepo::insert(&mut tx, &loan_data, &claims.sub).await?;
-
     CollateralValuationRepo::insert_pending(
-        &mut tx,
-        id,
+        &mut *tx,
+        submitted_loan_id,
         &payload.commodity,
         valuation_mode,
         &payload.collateral_valuation.asset,
@@ -620,17 +662,99 @@ async fn submit_loan(
     .await?;
 
     LoanFeeScheduleRepo::insert_pending(
-        &mut tx,
-        id,
+        &mut *tx,
+        submitted_loan_id,
         payload.fee_schedule.mgmt_fee_rate_bps as i32,
         payload.fee_schedule.perf_fee_rate_bps as i32,
         payload.fee_schedule.oet_alloc_rate_bps as i32,
     )
     .await?;
 
+    Ok(())
+}
+
+/// Resubmit a `ChangesRequested` submission with a corrected payload, reopening it for
+/// trustee review. Originator-only. Full replace: the entire `SubmitLoanRequest` is
+/// re-validated (identically to [`submit_loan`]) and overwrites `loan_data`, the
+/// valuation anchor, and the fee schedule; `status` resets to `InReview` and `reason`
+/// clears. Only `ChangesRequested` submissions may be resubmitted — `InReview` (already
+/// open) and the terminal `Approved`/`Rejected` states return `409`.
+#[utoipa::path(
+    post,
+    path = "/v1/loan-book/submissions/{id}/resubmit",
+    params(("id" = i64, Path, description = "Submission id")),
+    request_body = SubmitLoanRequest,
+    responses(
+        (status = 200, description = "Resubmission accepted; submission reopened as InReview", body = SubmitLoanResponse),
+        (status = 400, description = "Payload failed validation"),
+        (status = 401, description = "Missing, invalid, or expired token"),
+        (status = 403, description = "Caller lacks the `originator` role"),
+        (status = 404, description = "No submission with that id"),
+        (status = 409, description = "Submission is not in ChangesRequested, or metadata_uri collides with another undrawn submission"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "LoanBook"
+)]
+async fn resubmit_loan(
+    AuthClaims(claims): AuthClaims,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+    Json(payload): Json<SubmitLoanRequest>,
+) -> Result<(StatusCode, Json<SubmitLoanResponse>), ApiError> {
+    if !claims.has_role(ORIGINATOR_ROLE) {
+        return Err(ApiError::Forbidden(format!(
+            "this endpoint requires the `{ORIGINATOR_ROLE}` role"
+        )));
+    }
+
+    validate_submission(&payload).map_err(ApiError::BadRequest)?;
+    validate_metadata_uri(state.loan_metadata_fetcher.as_ref(), &payload.metadata_uri)
+        .await
+        .map_err(ApiError::BadRequest)?;
+
+    // Distinguish "not found" (404) from "not resubmittable" (409): the guarded UPDATE
+    // in `resubmit` only touches `ChangesRequested` rows, so a `false` result on an
+    // existing row means the submission is InReview/Approved/Rejected.
+    if state.submitted_loan_repo.find(id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("no submission with id {id}")));
+    }
+
+    let loan_data = serde_json::to_value(&payload)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialize payload: {e}")))?;
+
+    // One transaction: the payload swap and its rewritten valuation anchor / fee schedule
+    // land together or not at all.
+    let mut tx = state.pool.begin().await?;
+
+    // A unique violation here means the new `metadata_uri` collides with another undrawn
+    // submission (partial unique index `submitted_loans_metadata_uri_unlinked_uk`) —
+    // surface it as a 409, not a 500.
+    let reopened = SubmittedLoanRepo::resubmit(&mut tx, id, &loan_data)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(ref db) if db.code().as_deref() == Some("23505") => {
+                ApiError::Conflict(format!(
+                    "metadata_uri `{}` is already used by another undrawn submission",
+                    payload.metadata_uri
+                ))
+            }
+            other => ApiError::from(other),
+        })?;
+    if !reopened {
+        return Err(ApiError::Conflict(format!(
+            "submission {id} is not in ChangesRequested and cannot be resubmitted"
+        )));
+    }
+
+    // Full replace: drop the prior valuation / fee rows (each PK'd on submitted_loan_id)
+    // and rewrite them from the new payload.
+    CollateralValuationRepo::delete_for_submission(&mut tx, id).await?;
+    LoanFeeScheduleRepo::delete_for_submission(&mut tx, id).await?;
+    insert_valuation_and_fee_rows(&mut tx, id, &payload).await?;
+
     tx.commit().await?;
 
-    Ok((StatusCode::CREATED, Json(SubmitLoanResponse { id })))
+    Ok((StatusCode::OK, Json(SubmitLoanResponse { id })))
 }
 
 /// List loan submissions. Public — no authentication required. Optionally filter
@@ -695,21 +819,24 @@ async fn list_submissions(
     Ok(Json(views))
 }
 
-/// Approve or reject a submission. Trustee-only. A rejection must carry a
-/// non-empty `reason`; an approval must not. Only `InReview` submissions can be
-/// reviewed — reviewing an already-decided submission returns `409 Conflict`.
+/// Approve, reject, or request changes on a submission. Trustee-only. A rejection
+/// or a changes-requested decision must carry a non-empty `reason`; an approval
+/// must not. `Approved` and `Rejected` are terminal. `ChangesRequested` is
+/// non-final — the submission stays open for review from `InReview` or
+/// `ChangesRequested`; reviewing a submission already `Approved`/`Rejected`
+/// returns `409 Conflict`.
 #[utoipa::path(
     post,
     path = "/v1/loan-book/submissions/{id}/review",
     params(("id" = i64, Path, description = "Submission id")),
     request_body = ReviewRequest,
     responses(
-        (status = 200, description = "Decision applied"),
-        (status = 400, description = "Reject without a reason, or approve with one"),
+        (status = 200, description = "Decision applied (Approved/Rejected are terminal; ChangesRequested remains open for another review)"),
+        (status = 400, description = "Reject/ChangesRequested without a reason, or approve with one"),
         (status = 401, description = "Missing, invalid, or expired token"),
         (status = 403, description = "Caller lacks the `trustee` role"),
         (status = 404, description = "No submission with that id"),
-        (status = 409, description = "Submission has already been decided"),
+        (status = 409, description = "Submission is already Approved or Rejected (terminal)"),
     ),
     security(("bearer_auth" = [])),
     tag = "LoanBook"
@@ -729,7 +856,8 @@ async fn review_submission(
     let (new_status, reason) = resolve_review(&req).map_err(ApiError::BadRequest)?;
 
     // Distinguish "not found" (404) from "already decided" (409): the conditional
-    // UPDATE only touches `InReview` rows, so a `false` result means either.
+    // UPDATE only touches `InReview`/`ChangesRequested` rows, so a `false` result
+    // means either "no such row" or "row exists but is terminal (Approved/Rejected)".
     if state.submitted_loan_repo.find(id).await?.is_none() {
         return Err(ApiError::NotFound(format!("no submission with id {id}")));
     }
@@ -804,23 +932,16 @@ async fn complete_disbursement(
 }
 
 /// Validate a review request and map it to the `(status, reason)` the repo expects.
-/// Pure (no I/O) so it is unit-testable. Reject ⇒ a non-empty `reason` is required;
-/// Approve ⇒ no reason may be supplied.
+/// Pure (no I/O) so it is unit-testable. Reject/ChangesRequested ⇒ a non-empty
+/// `reason` is required; Approve ⇒ no reason may be supplied.
 ///
 /// Public so the unit test in `packages/api/tests/loan_submission.rs` can exercise
 /// it without the HTTP/DB layers.
 pub fn resolve_review(req: &ReviewRequest) -> Result<(SubmissionStatus, Option<&str>), String> {
     match req.decision {
-        ReviewDecision::Rejected => {
-            let reason = req
-                .reason
-                .as_deref()
-                .map(str::trim)
-                .filter(|r| !r.is_empty())
-                .ok_or_else(|| {
-                    "a non-empty `reason` is required to reject a submission".to_owned()
-                })?;
-            Ok((SubmissionStatus::Rejected, Some(reason)))
+        ReviewDecision::Rejected => resolve_reason_required(req, SubmissionStatus::Rejected),
+        ReviewDecision::ChangesRequested => {
+            resolve_reason_required(req, SubmissionStatus::ChangesRequested)
         }
         ReviewDecision::Approved => {
             if req.reason.as_deref().is_some_and(|r| !r.trim().is_empty()) {
@@ -829,6 +950,24 @@ pub fn resolve_review(req: &ReviewRequest) -> Result<(SubmissionStatus, Option<&
             Ok((SubmissionStatus::Approved, None))
         }
     }
+}
+
+/// Shared branch for the two decisions (`Rejected`, `ChangesRequested`) that
+/// require a non-empty `reason`.
+fn resolve_reason_required(
+    req: &ReviewRequest,
+    status: SubmissionStatus,
+) -> Result<(SubmissionStatus, Option<&str>), String> {
+    let reason = req
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| {
+            "a non-empty `reason` is required to reject or request changes on a submission"
+                .to_owned()
+        })?;
+    Ok((status, Some(reason)))
 }
 
 /// Validate a loan submission against the same invariants `draw_loan` enforces.
@@ -1282,6 +1421,7 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche),
         maturity: s.current_maturity_timestamp,
         ccr_reported_at: s.last_reported_ccr_timestamp,
+        reported_ccr_bps: s.ccr_bps,
         spot_price: spot.and_then(|sp| sp.price.clone()),
         spot_change_7d: spot.and_then(|sp| sp.change_7d.clone()),
         collateral,
