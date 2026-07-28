@@ -127,21 +127,70 @@ fn dark_when_none_set() {
 }
 
 #[test]
-fn disabled_on_partial_config() {
+fn asset_id_alone_enables_tracking_without_custody_ramp() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id = 99_000_057_i64;
+    set_base(id);
+    // Only asset id set — sufficient on its own (withdrawal-queue tracking
+    // needs no custody/ramp pairing).
+    unsafe {
+        std::env::set_var(ASSET_KEY, ASSET_ID);
+    }
+
+    let s = StellarIndexerSettings::from_chain_env(id).expect("should succeed");
+    assert_eq!(s.asset_id.as_deref(), Some(ASSET_ID));
+    assert!(s.custody_addresses.is_empty());
+    assert!(s.ramp_addresses.is_empty());
+
+    clear(id);
+}
+
+#[test]
+fn custody_ramp_pair_disabled_on_partial_config_but_asset_id_still_enabled() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id = 99_000_053_i64;
     set_base(id);
-    // Asset id + custody set, ramp missing → partial → disabled (no error).
+    // Asset id + custody set, ramp missing → the custody/ramp pair disables,
+    // but asset_id (and therefore withdrawal-queue tracking) is independent
+    // and stays enabled.
     unsafe {
         std::env::set_var(ASSET_KEY, ASSET_ID);
         std::env::set_var(CUSTODY_KEY, CUSTODY_G);
     }
 
     let s = StellarIndexerSettings::from_chain_env(id)
-        .expect("partial config should not error, just disable");
-    assert!(s.asset_id.is_none(), "partial config disables tracking");
+        .expect("partial custody/ramp pairing should not error, just disable that pair");
+    assert_eq!(
+        s.asset_id.as_deref(),
+        Some(ASSET_ID),
+        "asset_id is independent of the custody/ramp pairing"
+    );
+    assert!(s.custody_addresses.is_empty());
+    assert!(s.ramp_addresses.is_empty());
+
+    clear(id);
+}
+
+#[test]
+fn custody_ramp_without_asset_id_ignored() {
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let id = 99_000_058_i64;
+    set_base(id);
+    // Custody + ramp set, but no asset id at all — inert, since there is
+    // nothing for them to filter without asset-transfer tracking enabled.
+    unsafe {
+        std::env::set_var(CUSTODY_KEY, CUSTODY_G);
+        std::env::set_var(RAMP_KEY, RAMP_G);
+    }
+
+    let s = StellarIndexerSettings::from_chain_env(id).expect("should succeed (ships dark)");
+    assert!(s.asset_id.is_none());
     assert!(s.custody_addresses.is_empty());
     assert!(s.ramp_addresses.is_empty());
 
@@ -202,23 +251,24 @@ fn fully_configured_rejects_invalid_address() {
 }
 
 #[test]
-fn partial_config_with_malformed_address_disables_without_error() {
+fn partial_custody_ramp_with_malformed_address_disables_pair_without_error() {
     let _guard = ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let id = 99_000_056_i64;
     set_base(id);
     unsafe {
-        // Custody malformed, but ramp absent → partial config. Validation is
-        // deferred to the fully-configured case, so this disables (no crash)
-        // rather than failing worker startup on a typo.
+        // Custody malformed, but ramp absent → partial pairing. Validation is
+        // deferred to the fully-paired case, so this disables that pair (no
+        // crash) rather than failing worker startup on a typo. asset_id is
+        // independent and still validates/enables normally.
         std::env::set_var(ASSET_KEY, ASSET_ID);
         std::env::set_var(CUSTODY_KEY, "NOTASTRKEY");
     }
 
     let s = StellarIndexerSettings::from_chain_env(id)
-        .expect("partial config must not error even with a malformed address");
-    assert!(s.asset_id.is_none(), "partial config disables tracking");
+        .expect("partial custody/ramp pairing must not error even with a malformed address");
+    assert_eq!(s.asset_id.as_deref(), Some(ASSET_ID));
     assert!(s.custody_addresses.is_empty());
     assert!(s.ramp_addresses.is_empty());
 
