@@ -46,3 +46,6 @@ packages/ui/storybook-static/
 packages/frontend/.tanstack/
 packages/trustee/.tanstack/
 docs.local/
+
+# Local working doc — folded into docs/product-specs/trustee-risk-watchlist.md
+Risk UX.md

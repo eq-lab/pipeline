@@ -15,11 +15,14 @@
 //!   senior + equity). The active-loan set (`origination_date ≤ now < effective_end`)
 //!   mirrors `routes::financial_position` / `routes::loan_book`.
 //! - **`in_transit`** — net custody→ramp flow of the tracked asset:
-//!   `Σ(custody→ramp) − Σ(ramp→custody)` over indexed `AssetTransfer` events
-//!   (clamped at 0). Sourced only when both custody and ramp address sets are
-//!   configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`); otherwise
-//!   `null`. NOTE: an approximation — disbursed funds that leave the ramp to
-//!   borrowers off-chain are not observed, so this can over-state true in-transit.
+//!   `Σ(approved custody→ramp) − Σ(approved ramp→custody)` over indexed
+//!   `AssetTransfer` events (clamped at 0). Sourced only when both custody and ramp
+//!   address sets are configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`);
+//!   otherwise `null`. **Both legs** only net once a Trustee has reviewed the event
+//!   and Approved it via `POST /v1/ramp/events/{id}/review` (#936) — a pending or
+//!   Rejected transfer, on either leg, does not move `in_transit` at all. NOTE: an
+//!   approximation — disbursed funds that leave the ramp to borrowers off-chain are
+//!   not observed, so this can over-state true in-transit.
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
 //! - **`trust_account`** — `sum(deposits) - sum(withdrawals) - sum(fees)` over the
 //!   manually-entered `bank_transactions` ledger (`POST /v1/bank-transactions`, #924).
@@ -59,8 +62,9 @@ pub struct CapitalBuckets {
     /// TODO: index the Capital-Wallet USDC balance and populate this.
     pub capital_wallet: Option<String>,
     /// Funds in transit on the on/off-ramp leg — net custody→ramp flow of the
-    /// tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0). `null`
-    /// when custody/ramp address sets are not configured for the chain.
+    /// tracked asset (`Σ(approved custody→ramp) − Σ(approved ramp→custody)`,
+    /// clamped at 0). `null` when custody/ramp address sets are not configured for
+    /// the chain.
     pub in_transit: Option<String>,
     /// USD residuals held in the trust account: `sum(deposits) - sum(withdrawals) -
     /// sum(fees)` over the manually-entered bank-transaction ledger. Not clamped at
@@ -174,7 +178,10 @@ fn effective_end(loan: &LoanSnapshotRow, events: &[LifecycleRow]) -> i64 {
 /// canonical 6-decimal base units. A 7-decimal USDC SAC amount is divided by 10;
 /// a 6-decimal amount is returned unchanged. Config bounds `asset_decimals ≤ 18`,
 /// so the exponent stays small and the `10i128.pow` cannot overflow.
-fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
+///
+/// `pub(crate)` so `routes::ramp` (#936) can present `AssetTransferRow.amount` in
+/// the same canonical scale this endpoint uses, rather than duplicating the logic.
+pub(crate) fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
     use std::cmp::Ordering;
 
     use crate::config::CANONICAL_AMOUNT_DECIMALS as CANON;
@@ -191,8 +198,8 @@ fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> BigDecimal {
 ///
 /// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
 /// `deployed` = Σ senior tranche over the active set. `in_transit` = net custody→ramp
-/// flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, clamped at 0),
-/// sourced only when `addr` is `Some`. `trust_account` = `trust_account_balance`, a
+/// flow of the tracked asset (`Σ(approved custody→ramp) − Σ(approved ramp→custody)`,
+/// clamped at 0), sourced only when `addr` is `Some`. `trust_account` = `trust_account_balance`, a
 /// **plain dollar figure** (not clamped — see module docs) — displayed as-is, and
 /// scaled to base-6 units only when folded into `total`. Remaining buckets are `null`.
 ///
@@ -222,8 +229,15 @@ pub fn compute_capital_allocation(
     let in_transit = addr.map(|sets| {
         let mut net = BigDecimal::from(0);
         for t in transfers {
-            let out = sets.custody.contains(&t.from_addr) && sets.ramp.contains(&t.to_addr);
-            let back = sets.ramp.contains(&t.from_addr) && sets.custody.contains(&t.to_addr);
+            // Both legs only net once a Trustee has reviewed the event and
+            // Approved it (#936) — a pending or Rejected transfer, on either leg,
+            // does not move in_transit.
+            let out = sets.custody.contains(&t.from_addr)
+                && sets.ramp.contains(&t.to_addr)
+                && t.is_approved();
+            let back = sets.ramp.contains(&t.from_addr)
+                && sets.custody.contains(&t.to_addr)
+                && t.is_approved();
             if out {
                 net += &t.amount;
             } else if back {

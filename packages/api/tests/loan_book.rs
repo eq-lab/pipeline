@@ -237,10 +237,16 @@ fn weighted_rate_and_tenor_mirror_avg_fields() {
 #[test]
 fn weighted_rate_and_tenor_null_when_no_active_loans() {
     // Both loans closed (past maturity alone no longer removes a loan — it becomes
-    // Past Due and stays active; only close/default empties the book).
+    // Past Due and stays active; only close/default empties the active set). Both
+    // still show up as terminal rows, just with no active loans to weight over.
+    let loans: Vec<LoanSnapshotRow> = fixture_loans()
+        .into_iter()
+        .map(|l| with_status(l, "Closed"))
+        .collect();
     let events = vec![event("LoanClosed", 1, 181), event("LoanClosed", 2, 121)];
-    let r = at(500, &fixture_loans(), &events);
-    assert!(r.loans.is_empty());
+    let r = at(500, &loans, &events);
+    assert_eq!(r.loans.len(), 2);
+    assert!(r.loans.iter().all(|e| e.status == "Closed"));
     assert_eq!(r.summary.weighted_rate, None);
     assert_eq!(r.summary.weighted_tenor_days, None);
 }
@@ -250,6 +256,25 @@ fn loans_sorted_by_principal_descending() {
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.loans[0].originator, "Open Mineral"); // 100k
     assert_eq!(r.loans[1].originator, "Trafalgar"); // 50k
+}
+
+#[test]
+fn terminal_loans_sort_after_active_even_with_larger_principal() {
+    // Loan 3 (Closed, 500k senior) dwarfs both active loans, but terminal rows always
+    // sort after active rows — the two groups aren't merged into one principal sort.
+    let mut loans = fixture_loans();
+    loans.push(with_status(
+        make_loan(3, 500, 0, 1000, 0, 200, "HugeCo", "Cocoa", ""),
+        "Closed",
+    ));
+    let events = vec![event("LoanClosed", 3, 10)];
+
+    let r = at(60, &loans, &events);
+    assert_eq!(r.loans.len(), 3);
+    assert_eq!(r.loans[0].originator, "Open Mineral"); // active, 100k
+    assert_eq!(r.loans[1].originator, "Trafalgar"); // active, 50k
+    assert_eq!(r.loans[2].originator, "HugeCo"); // terminal, 500k — still last
+    assert_eq!(r.loans[2].status, "Closed");
 }
 
 #[test]
@@ -299,25 +324,46 @@ fn matured_loan_stays_active_as_past_due() {
 }
 
 #[test]
-fn closed_loan_excluded_via_lifecycle_event() {
+fn closed_loan_visible_but_excluded_from_active_aggregates() {
     // LoanClosed for A at day 100 → effective_end = 100 (the close event).
-    // At day 110: A closed, B still active (30–120).
+    // At day 110: A closed (terminal, still visible), B still active (30–120).
+    let mut loans = fixture_loans();
+    loans[0] = with_status(loans[0].clone(), "Closed"); // A: Open Mineral
     let events = vec![LifecycleRow {
         event_name: "LoanClosed".to_owned(),
         block_timestamp: 100 * DAY,
         loan_id: BigDecimal::from(1_i64),
     }];
-    let r = at(110, &fixture_loans(), &events);
-    assert_eq!(r.loans.len(), 1);
-    assert_eq!(r.loans[0].originator, "Trafalgar");
+    let r = at(110, &loans, &events);
+    assert_eq!(r.loans.len(), 2);
+    let a = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Open Mineral")
+        .unwrap();
+    let b = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "Trafalgar")
+        .unwrap();
+    assert_eq!(a.status, "Closed");
+    assert_eq!(b.status, "Performing");
+    // Only the still-active loan (B, 50k) counts toward the aggregate.
+    assert_eq!(r.summary.total_deployed, "50000.000000");
 }
 
 #[test]
-fn no_active_loans_returns_empty_book() {
-    // Day 500: both loans closed (past maturity alone keeps them as Past Due).
+fn no_active_loans_still_shows_terminal_loans() {
+    // Day 500: both loans closed (past maturity alone keeps them as Past Due) —
+    // no active loans, but both still show up as terminal rows.
+    let loans: Vec<LoanSnapshotRow> = fixture_loans()
+        .into_iter()
+        .map(|l| with_status(l, "Closed"))
+        .collect();
     let events = vec![event("LoanClosed", 1, 181), event("LoanClosed", 2, 121)];
-    let r = at(500, &fixture_loans(), &events);
-    assert!(r.loans.is_empty());
+    let r = at(500, &loans, &events);
+    assert_eq!(r.loans.len(), 2);
+    assert!(r.loans.iter().all(|e| e.status == "Closed"));
     assert_eq!(r.summary.total_deployed, "0.000000");
     assert_eq!(r.summary.avg_yield, None);
     assert_eq!(r.summary.avg_duration_days, None);
@@ -471,9 +517,16 @@ fn at_risk_includes_defaulted_loan_excluded_from_active_set() {
     let events = vec![event("LoanDefaulted", 3, 50)];
 
     let r = at(60, &loans, &events);
-    // Not in the active table…
-    assert!(r.loans.iter().all(|e| e.originator != "DefaultCo"));
-    // …but its outstanding senior (30k) counts as at-risk.
+    // Visible as a terminal row with its raw status…
+    let defaulted = r
+        .loans
+        .iter()
+        .find(|e| e.originator == "DefaultCo")
+        .unwrap();
+    assert_eq!(defaulted.status, "Default");
+    // …but excluded from the active-set aggregate (100k A + 50k B, not +30k).
+    assert_eq!(r.summary.total_deployed, "150000.000000");
+    // …and its outstanding senior (30k) still counts as at-risk.
     assert_eq!(r.summary.at_risk_wl_and_default_senior, "30000.000000");
 }
 

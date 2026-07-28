@@ -146,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::ccr_history::CcrHistoryDoc::openapi());
     api_docs.merge(pipeline_api::routes::waterfall::WaterfallDoc::openapi());
     api_docs.merge(pipeline_api::routes::bank_transactions::BankTransactionsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
 
     let app = Router::new()
         .nest("/v1/emails", pipeline_api::routes::emails::router())
@@ -166,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::ccr_history::router())
         .nest("/v1", pipeline_api::routes::waterfall::router())
         .nest("/v1", pipeline_api::routes::bank_transactions::router())
+        .nest("/v1", pipeline_api::routes::ramp::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))
         .layer(CorsLayer::very_permissive())
         .layer(

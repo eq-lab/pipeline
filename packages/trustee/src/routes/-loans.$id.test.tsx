@@ -721,6 +721,24 @@ describe("Loan detail route — Close loan (#884)", () => {
   });
 });
 
+describe("Loan detail route — Escalate to Risk Council (#782)", () => {
+  it("navigates to the full-page Escalate-to-Default route from the Escalate to Risk Council action", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(
+      screen.getByTestId("loan-detail-action-Escalate to Risk Council"),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/risk-council/escalate/$id",
+      params: { id: "4488" },
+    });
+    // Unlike Update lifecycle, this is a full-page destination — no modal opens.
+    expect(
+      screen.queryByTestId("update-lifecycle-dialog"),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Loan detail route — top-level states", () => {
   it("renders the loading skeleton", () => {
     mockUseLoanDetail.mockReturnValue(makeResult({ state: "loading" }));
@@ -771,13 +789,8 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
           subTone: "muted",
         },
       ],
-      currentStage: {
-        title: "Current stage — escalation decision pending",
-        tag: "Risk Council · 24h timelock",
-        tagTone: "risk",
-        body: "Coffee is down 18% in 30 days…",
-        actionLabel: "Open escalation →",
-      },
+      // Watchlist escalation current-stage card is hidden for now (#938).
+      currentStage: null,
       otherActions: {
         actions: ["Update lifecycle", "Roll over", "Escalate to Risk Council"],
         note: "",
@@ -819,14 +832,11 @@ describe("Loan detail route — Watchlist variant (#859)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the escalation stage with the risk-toned tag pill", () => {
+  it("does NOT render the escalation current-stage card — hidden until proposal-aware (#938)", () => {
     mockUseLoanDetail.mockReturnValue(watchlistResult());
     renderRoute();
-    expect(screen.getByTestId("loan-detail-stage-tag")).toHaveTextContent(
-      "Risk Council · 24h timelock",
-    );
-    expect(screen.getByTestId("loan-detail-primary-action")).toHaveTextContent(
-      "Open escalation",
-    );
+    expect(
+      screen.queryByTestId("loan-detail-current-stage"),
+    ).not.toBeInTheDocument();
   });
 });

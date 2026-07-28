@@ -86,16 +86,51 @@ pub struct YieldMintRow {
 /// Emitted by the worker's Stellar indexer for transfers of the tracked asset
 /// where **both** endpoints are custody/ramp addresses (see the worker's
 /// `transfer_between_tracked`). Used by the Capital Allocation API to compute the
-/// `in_transit` bucket as net custody→ramp flow. `amount` is in USDC base units
-/// (6-decimal), matching the other `contract_logs` amounts.
+/// `in_transit` bucket as net custody→ramp flow, and by the `/v1/ramp` endpoints
+/// (#936) to list and review (approve/reject) on-ramp **and** off-ramp events —
+/// every ramp-boundary transfer needs Trustee review, not just inflows. `amount` is
+/// in USDC base units (6-decimal), matching the other `contract_logs` amounts.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AssetTransferRow {
+    /// `contract_logs.id` — the primary key of the underlying log row, and the key
+    /// the `ramp_reviews` table (#936) references.
+    pub id: i64,
+    /// The chain this transfer was indexed on. Needed by `get_asset_transfer_by_id`
+    /// (#936) so the review handler can look up the *correct* chain's custody/ramp
+    /// address sets to validate direction — the id alone doesn't imply a chain.
+    pub chain_id: i64,
     /// Sender Strkey (`params->>'from'`).
     pub from_addr: String,
     /// Recipient Strkey (`params->>'to'`).
     pub to_addr: String,
     /// Transfer amount in base units (`params->>'amount'`).
     pub amount: BigDecimal,
+    /// Unix seconds the transfer was recorded on-chain.
+    pub block_timestamp: i64,
+    /// `"Approved"` or `"Rejected"` once a Trustee has reviewed this ramp-boundary
+    /// event (#936), in either direction; `None` while pending. Always `None` for
+    /// transfers that don't cross the custody/ramp boundary at all (custody↔custody
+    /// or ramp↔ramp shuffles) — `ramp_reviews` only ever gains rows for on-ramp or
+    /// off-ramp events.
+    pub review_decision: Option<String>,
+    /// Rejection reason; `Some` iff `review_decision == Some("Rejected")`.
+    pub review_reason: Option<String>,
+    /// When the review was recorded. `Some` iff `review_decision.is_some()`.
+    pub reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl AssetTransferRow {
+    /// Whether this event has been reviewed and Approved — the only decision that
+    /// counts toward `capital_allocation`'s `in_transit` bucket, on either leg (#936).
+    pub fn is_approved(&self) -> bool {
+        self.review_decision.as_deref() == Some("Approved")
+    }
+
+    /// Whether this event is still awaiting Trustee review (neither Approved nor
+    /// Rejected) — the definition `routes::ramp`'s pending-events list uses (#936).
+    pub fn is_pending_review(&self) -> bool {
+        self.review_decision.is_none()
+    }
 }
 
 /// One `LoanRolledOver` or `EconomicsAmended` event for a single loan, projected
@@ -735,9 +770,12 @@ impl ContractLogsRepo {
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
     ///
     /// Used by the Capital Allocation API to compute the `in_transit` bucket as the
-    /// net custody→ramp flow. Only transfers between tracked (custody ∪ ramp)
-    /// accounts are indexed, so callers classify `from`/`to` against the configured
-    /// address sets.
+    /// net custody→ramp flow, and by the `/v1/ramp` endpoints (#936) to list on-ramp
+    /// and off-ramp events. Only transfers between tracked (custody ∪ ramp) accounts
+    /// are indexed, so callers classify `from`/`to` against the configured address
+    /// sets. `review_decision`/`review_reason`/`reviewed_at` are populated via a
+    /// `LEFT JOIN` against `ramp_reviews` (#936) — all `NULL` for any event that
+    /// hasn't been reviewed yet.
     pub async fn list_asset_transfers<'e, E>(
         &self,
         executor: E,
@@ -749,21 +787,100 @@ impl ContractLogsRepo {
     {
         let rows = sqlx::query_as::<_, AssetTransferRow>(
             "SELECT
-                 params->>'from' AS from_addr,
-                 params->>'to'   AS to_addr,
+                 contract_logs.id,
+                 contract_logs.chain_id,
+                 contract_logs.params->>'from' AS from_addr,
+                 contract_logs.params->>'to'   AS to_addr,
                  -- COALESCE guards a malformed row missing `amount`: a NULL would
                  -- otherwise fail-decode the whole query (non-Option BigDecimal).
-                 COALESCE((params->>'amount')::numeric, 0) AS amount
+                 COALESCE((contract_logs.params->>'amount')::numeric, 0) AS amount,
+                 contract_logs.block_timestamp,
+                 ramp_reviews.decision AS review_decision,
+                 ramp_reviews.reason AS review_reason,
+                 ramp_reviews.reviewed_at
              FROM contract_logs
-             WHERE chain_id = $1
-               AND event_name = 'AssetTransfer'
-               AND block_timestamp <= $2",
+             LEFT JOIN ramp_reviews
+                 ON ramp_reviews.contract_log_id = contract_logs.id
+             WHERE contract_logs.chain_id = $1
+               AND contract_logs.event_name = 'AssetTransfer'
+               AND contract_logs.block_timestamp <= $2",
         )
         .bind(chain_id)
         .bind(to_unix)
         .fetch_all(executor)
         .await?;
         Ok(rows)
+    }
+
+    /// Fetch a single `AssetTransfer` event by its `contract_logs.id`, joined against
+    /// `ramp_reviews` the same way `list_asset_transfers` is. Used by the
+    /// `/v1/ramp/events/{id}/review` handler (#936) to validate the target id
+    /// before recording a review decision. `None` when `id` doesn't exist or isn't
+    /// an `AssetTransfer` event.
+    pub async fn get_asset_transfer_by_id<'e, E>(
+        &self,
+        executor: E,
+        id: i64,
+    ) -> anyhow::Result<Option<AssetTransferRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let row = sqlx::query_as::<_, AssetTransferRow>(
+            "SELECT
+                 contract_logs.id,
+                 contract_logs.chain_id,
+                 contract_logs.params->>'from' AS from_addr,
+                 contract_logs.params->>'to'   AS to_addr,
+                 COALESCE((contract_logs.params->>'amount')::numeric, 0) AS amount,
+                 contract_logs.block_timestamp,
+                 ramp_reviews.decision AS review_decision,
+                 ramp_reviews.reason AS review_reason,
+                 ramp_reviews.reviewed_at
+             FROM contract_logs
+             LEFT JOIN ramp_reviews
+                 ON ramp_reviews.contract_log_id = contract_logs.id
+             WHERE contract_logs.id = $1
+               AND contract_logs.event_name = 'AssetTransfer'",
+        )
+        .bind(id)
+        .fetch_optional(executor)
+        .await?;
+        Ok(row)
+    }
+
+    /// Record a Trustee's Approve/Reject decision for one ramp-boundary
+    /// `AssetTransfer` event (#936, either on-ramp or off-ramp). Inserts a row into
+    /// `ramp_reviews` keyed by `contract_log_id`
+    /// and returns the row's `reviewed_at`. `decision` is `"Approved"` or
+    /// `"Rejected"`; `reason` must be `Some` iff `decision == "Rejected"` — the DB
+    /// CHECK constraint enforces the same, matching `SubmittedLoanRepo::review`'s
+    /// convention. The table's primary key means reviewing the same id twice returns
+    /// `sqlx::Error::Database` with Postgres SQLSTATE `23505` (unique violation) —
+    /// callers map that to `409 Conflict` ("already reviewed") rather than treating
+    /// it as an unexpected failure.
+    pub async fn review_ramp_transfer<'e, E>(
+        &self,
+        executor: E,
+        contract_log_id: i64,
+        decision: &str,
+        reason: Option<&str>,
+        reviewed_by: &str,
+    ) -> Result<chrono::DateTime<chrono::Utc>, sqlx::Error>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let (reviewed_at,): (chrono::DateTime<chrono::Utc>,) = sqlx::query_as(
+            "INSERT INTO ramp_reviews (contract_log_id, decision, reason, reviewed_by)
+             VALUES ($1, $2, $3, $4)
+             RETURNING reviewed_at",
+        )
+        .bind(contract_log_id)
+        .bind(decision)
+        .bind(reason)
+        .bind(reviewed_by)
+        .fetch_one(executor)
+        .await?;
+        Ok(reviewed_at)
     }
 
     /// Connection-scoped fetch of the latest snapshot for a given loan, for use
