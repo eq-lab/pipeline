@@ -24,6 +24,9 @@ pub enum SubmissionStatus {
     Approved,
     /// Rejected by a trustee (always carries a `reason`).
     Rejected,
+    /// Sent back to the originator with feedback; non-final — may still be
+    /// reviewed to Approved/Rejected. Always carries a `reason`.
+    ChangesRequested,
 }
 
 impl SubmissionStatus {
@@ -33,6 +36,7 @@ impl SubmissionStatus {
             SubmissionStatus::InReview => "InReview",
             SubmissionStatus::Approved => "Approved",
             SubmissionStatus::Rejected => "Rejected",
+            SubmissionStatus::ChangesRequested => "ChangesRequested",
         }
     }
 }
@@ -51,8 +55,9 @@ impl FromStr for SubmissionStatus {
             "InReview" => Ok(SubmissionStatus::InReview),
             "Approved" => Ok(SubmissionStatus::Approved),
             "Rejected" => Ok(SubmissionStatus::Rejected),
+            "ChangesRequested" => Ok(SubmissionStatus::ChangesRequested),
             other => Err(format!(
-                "unknown submission status `{other}` (expected InReview, Approved, or Rejected)"
+                "unknown submission status `{other}` (expected InReview, Approved, Rejected, or ChangesRequested)"
             )),
         }
     }
@@ -64,9 +69,10 @@ pub struct SubmittedLoanRow {
     pub id: i64,
     /// The full submitted loan payload (all `draw_loan` inputs), stored verbatim.
     pub loan_data: Value,
-    /// `InReview` | `Approved` | `Rejected`.
+    /// `InReview` | `Approved` | `Rejected` | `ChangesRequested`.
     pub status: String,
-    /// Rejection reason; `Some` iff `status = Rejected`.
+    /// Rejection/feedback reason; `Some` iff `status` is `Rejected` or
+    /// `ChangesRequested`.
     pub reason: Option<String>,
     /// The authenticated submitter (JWT `sub`).
     pub originator: String,
@@ -155,11 +161,12 @@ impl SubmittedLoanRepo {
         .await
     }
 
-    /// Apply a trustee decision to an `InReview` submission. Only rows still in
-    /// `InReview` are updated (decisions are final), so the returned bool lets the
-    /// caller distinguish "already decided" (`false`) from a successful review
-    /// (`true`). `reason` must be `Some` when `new_status` is `Rejected` and `None`
-    /// otherwise — the DB CHECK constraint enforces the same.
+    /// Apply a trustee decision to a submission still open for review. Only rows in
+    /// `InReview` or `ChangesRequested` are updated — `Approved`/`Rejected` are
+    /// terminal — so the returned bool lets the caller distinguish "already decided"
+    /// (`false`) from a successful review (`true`). `reason` must be `Some` when
+    /// `new_status` is `Rejected` or `ChangesRequested`, and `None` otherwise — the
+    /// DB CHECK constraint enforces the same.
     pub async fn review(
         &self,
         id: i64,
@@ -168,12 +175,42 @@ impl SubmittedLoanRepo {
     ) -> Result<bool, sqlx::Error> {
         let affected = sqlx::query(
             "UPDATE submitted_loans SET status = $2, reason = $3, updated_at = now() \
-             WHERE id = $1 AND status = 'InReview'",
+             WHERE id = $1 AND status IN ('InReview', 'ChangesRequested')",
         )
         .bind(id)
         .bind(new_status.as_str())
         .bind(reason)
         .execute(&self.pool)
+        .await?
+        .rows_affected();
+        Ok(affected > 0)
+    }
+
+    /// Replace an originator's `ChangesRequested` submission and reopen it for review.
+    /// Overwrites `loan_data`, resets `status` to `InReview`, and clears `reason` — but
+    /// only when the row is currently `ChangesRequested`, the sole state an originator
+    /// may resubmit from. `InReview`/`Approved`/`Rejected` rows are left untouched, so
+    /// the returned bool lets the caller return `409` for a non-resubmittable state
+    /// (the same pattern as [`review`](Self::review)).
+    ///
+    /// Takes a caller-supplied connection so it shares the transaction that also rewrites
+    /// the submission's `loan_collateral_valuations` / `loan_fee_schedule` rows — either
+    /// the whole replacement lands or none of it does. May surface a unique violation
+    /// (`23505`) on `submitted_loans_metadata_uri_unlinked_uk` if the new `metadata_uri`
+    /// collides with another undrawn submission; the caller maps that to `409`.
+    pub async fn resubmit(
+        conn: &mut PgConnection,
+        id: i64,
+        loan_data: &Value,
+    ) -> Result<bool, sqlx::Error> {
+        let affected = sqlx::query(
+            "UPDATE submitted_loans \
+                SET loan_data = $2, status = 'InReview', reason = NULL, updated_at = now() \
+              WHERE id = $1 AND status = 'ChangesRequested'",
+        )
+        .bind(id)
+        .bind(loan_data)
+        .execute(conn)
         .await?
         .rows_affected();
         Ok(affected > 0)

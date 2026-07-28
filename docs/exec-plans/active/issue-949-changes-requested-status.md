@@ -23,14 +23,19 @@ In scope:
 6. Product spec update in `docs/product-specs/api-authorization.md`.
 7. Pure unit tests in `packages/api/tests/loan_submission.rs`.
 
+Added after the initial plan (same branch): **originator resubmit** of a
+`ChangesRequested` submission — `POST /v1/loan-book/submissions/{id}/resubmit`. The
+`ChangesRequested` state was otherwise a dead-end for the originator (no way to act
+on the feedback). See the "Resubmit endpoint" section below.
+
 Out of scope (per issue body):
 
 - Frontend Trustee Origination UI changes to display `ChangesRequested` — tracked
   as a separate dependent frontend issue. The existing normalization logic (#892)
   maps any status outside `InReview`/`Approved`/`Rejected` to `Approved` for
   display and would misrepresent `ChangesRequested` until that issue lands.
-- Originator edit/resubmit of `loan_data` while in `ChangesRequested`.
 - Multi-round audit trail / reason history (single `reason` column is retained).
+- Partial edit of `loan_data` — resubmit is a full-payload replace only.
 
 ## Assumptions and Risks
 
@@ -66,7 +71,15 @@ table is in scope.
 
 ## Implementation Steps
 
-1. **`packages/shared/src/submitted_loan_repo.rs`**
+Status: all steps implemented and verified (clippy clean, `cargo test --all`
+green, `tsc --noEmit` clean, `lint-docs.ts` 0 errors). Migration manually
+verified against a throwaway local Postgres database (created and dropped by
+the coder, not by any test): applied cleanly on top of the original table,
+`\d submitted_loans` showed both CHECK constraints updated as expected, and an
+INSERT with `status = 'ChangesRequested', reason = NULL` was correctly
+rejected by `submitted_loans_reason_ck`.
+
+1. **`packages/shared/src/submitted_loan_repo.rs`** — done.
    - Add `ChangesRequested` variant to `enum SubmissionStatus` (doc comment: "Sent
      back to the originator with feedback; non-final — may still be reviewed to
      Approved/Rejected. Always carries a `reason`.").
@@ -80,7 +93,7 @@ table is in scope.
      Update the doc comment to describe the two non-terminal source states and the
      reason rule (`Some` iff new_status is `Rejected` or `ChangesRequested`).
 
-2. **New migration `packages/shared/migrations/20260728000001_submitted_loans_changes_requested.sql`**
+2. **New migration `packages/shared/migrations/20260728000001_submitted_loans_changes_requested.sql`** — done.
    - Drop the existing inline `status IN (...)` CHECK (by its generated name; use a
      `DO` block that discovers the constraint name on `submitted_loans` for the
      `status` column to be robust) and add a new CHECK
@@ -97,7 +110,9 @@ table is in scope.
      lifecycle and the non-final nature of `ChangesRequested`, plus the rollback
      reference SQL.
 
-3. **`packages/api/src/routes/loan_book.rs`**
+3. **`packages/api/src/routes/loan_book.rs`** — done. (`resolve_review` factored
+   the shared reason-required logic into a small helper `resolve_reason_required`
+   instead of an inline duplicated match arm, to avoid an `unreachable!()`.)
    - Add `ChangesRequested` variant to `enum ReviewDecision`.
    - `resolve_review()`: fold `ChangesRequested` into the reason-required branch.
      Cleanest shape: match `ReviewDecision::Rejected | ReviewDecision::ChangesRequested`
@@ -115,7 +130,7 @@ table is in scope.
      accepts `ChangesRequested` (it parses via `SubmissionStatus::from_str`, so
      step 1 covers it — just update the doc string listing valid filter values).
 
-4. **Docs — `docs/product-specs/api-authorization.md`**
+4. **Docs — `docs/product-specs/api-authorization.md`** — done.
    - Update the endpoints table rows (L52–54) for the `status` filter values and
      the `review` body decision values.
    - Update the **Lifecycle** section (L87–96): add the `ChangesRequested` state,
@@ -124,6 +139,33 @@ table is in scope.
      only from a terminal state.
    - Update the `status` and `reason` rows in the `submitted_loans` table (L118–119):
      `reason` present iff `status IN (Rejected, ChangesRequested)`.
+
+## Resubmit endpoint (added on this branch)
+
+`POST /v1/loan-book/submissions/{id}/resubmit` — originator-only. Lets an originator
+act on `ChangesRequested` feedback by resubmitting a corrected payload; without it the
+`ChangesRequested` state has no "fix" step.
+
+- **Behavior:** full replace. Reuses the exact `submit_loan` validation
+  (`validate_submission` + `validate_metadata_uri`) and body type (`SubmitLoanRequest`).
+  On success overwrites `loan_data`, resets `status` to `InReview`, clears `reason`, and
+  rewrites the valuation anchor + fee schedule. Returns `200 { id }`.
+- **State guard:** only `ChangesRequested` is resubmittable. `SubmittedLoanRepo::resubmit`
+  runs a guarded UPDATE `WHERE id = $1 AND status = 'ChangesRequested'` returning a bool
+  (mirrors `review()`); `find()` first distinguishes `404` (unknown id) from `409`
+  (`InReview`/`Approved`/`Rejected`).
+- **Child rows:** `loan_collateral_valuations` and `loan_fee_schedule` are each PK'd on
+  `submitted_loan_id`, so the handler deletes both (new `delete_for_submission` on each
+  repo) and re-inserts via the existing `insert_pending`, all inside one transaction with
+  the `submitted_loans` UPDATE. `submit_loan` and `resubmit_loan` share the parse +
+  child-write path via a new `insert_valuation_and_fee_rows` helper.
+- **metadata_uri collision:** changing `metadata_uri` to one already held by another
+  undrawn submission violates the partial unique index
+  `submitted_loans_metadata_uri_unlinked_uk`; the handler maps SQLSTATE `23505` to a
+  `409` (pattern borrowed from `routes::ramp`) instead of a `500`.
+- **Tests:** no new pure unit tests — the resubmit logic is the SQL guard (same as
+  `review()`, untestable without a DB per the project convention) plus reused validation
+  already covered in `loan_submission.rs`. The refactor keeps all 37 existing tests green.
 
 ## Test Strategy
 
