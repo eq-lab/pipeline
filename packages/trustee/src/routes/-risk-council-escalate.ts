@@ -74,7 +74,7 @@ export const MOCK_DAYS_ON_WATCHLIST = "18";
 /** MOCK — no if-defaulted portfolio-impact projection endpoint exists. */
 export const MOCK_AT_RISK_PROJECTED_PCT = "4.3%";
 
-/** Protocol margin-call floor (spec §9.6), in whole percent — the lowest of the three CCR bands. */
+/** Protocol hard-margin-call floor (110%), in whole percent — the lowest CCR band (#939). */
 const MARGIN_CALL_PCT = 110;
 const MAINTENANCE_MARGIN_PCT = MAINTENANCE_MARGIN_BPS / 100;
 const HEALTHY_MARGIN_PCT = HEALTHY_MARGIN_BPS / 100;

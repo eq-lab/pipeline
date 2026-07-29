@@ -62,7 +62,7 @@ const RESPONSE: LoanBookResponse = {
       spot_change_7d: "-0.1800",
       collateral: "2100.000000", // displayed as served (issue #906) → $2.10K
       ltv: null,
-      ccr_bps: 11_400, // served as-is (#888, no ÷1000) ⇒ 114% ⇒ pre-default (<120%)
+      ccr_bps: 11_400, // served as-is (#888, no ÷1000) ⇒ 114% ⇒ margin-call (110–120%, #939)
       duration_days: 180,
       rate: "0.140000",
       protection: null,
@@ -174,7 +174,7 @@ describe("Loans list route (ready)", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the active (Performing) row with a pre-default red CCR", () => {
+  it("shows the active (Performing) row with a margin-call orange CCR (114%)", () => {
     renderRoute();
     const rows = screen.getAllByTestId("loans-row");
     expect(rows).toHaveLength(1);
@@ -182,8 +182,9 @@ describe("Loans list route (ready)", () => {
     expect(screen.getByText("$1.84K")).toBeInTheDocument();
     const ccr = screen.getByTestId("loans-ccr");
     expect(ccr).toHaveTextContent("114%");
-    expect(ccr).toHaveAttribute("data-band", "pre-default");
-    expect(ccr).toHaveStyle({ color: "#b20000" });
+    // 114% is in the 110–120% margin-call band (orange) under the 4-band scheme (#939).
+    expect(ccr).toHaveAttribute("data-band", "margin-call");
+    expect(ccr).toHaveStyle({ color: "#b35900" });
   });
 
   it("filters to the Watchlist tab and renders — for the null collateral/CCR cells", () => {
@@ -208,9 +209,12 @@ describe("Loans list route (ready)", () => {
   it("renders the CCR-band footnote", () => {
     renderRoute();
     const footnote = screen.getByTestId("loans-footnote");
+    // The spec's 4 bands (#939): ≥130 healthy · 120–130 watchlist · 110–120 margin call · <110 hard.
     expect(footnote).toHaveTextContent("≥130%");
     expect(footnote).toHaveTextContent("120–130%");
-    expect(footnote).toHaveTextContent("<120%");
+    expect(footnote).toHaveTextContent("110–120%");
+    expect(footnote).toHaveTextContent("<110%");
+    expect(footnote).toHaveTextContent("margin call");
     expect(footnote).toHaveTextContent(
       "Written on-chain only at threshold crossings.",
     );

@@ -38,6 +38,8 @@ const INK = "var(--color-pipeline-ink)";
 const INK_MUTED = "rgba(56,55,53,0.6)";
 const NEGATIVE_RED = "#b20000";
 const ATTENTION_AMBER = "#6e6400";
+/** CCR margin-call/orange band (110–120%) — one-off, matches the Loans table (#939). */
+const MARGIN_CALL_ORANGE = "#b35900";
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 const BRAND = "var(--color-pipeline-brand)";
 
@@ -55,6 +57,8 @@ function ccrBandColor(band: CcrBand | null): string {
       return POSITIVE_GREEN;
     case "attention":
       return ATTENTION_AMBER;
+    case "margin-call":
+      return MARGIN_CALL_ORANGE;
     case "pre-default":
       return NEGATIVE_RED;
     default:
