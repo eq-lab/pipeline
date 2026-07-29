@@ -167,6 +167,19 @@ describe("mapSubmissionToRow", () => {
     });
   });
 
+  it("maps ChangesRequested to its own pill carrying the reason (#950), not Approved", () => {
+    const row = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "ChangesRequested",
+      reason: "Attach the amended offtake agreement",
+    });
+    expect(row.status).toEqual({
+      kind: "changes-requested",
+      label: "Changes requested",
+      reason: "Attach the amended offtake agreement",
+    });
+  });
+
   it("maps Rejected with a null reason gracefully", () => {
     const row = mapSubmissionToRow({
       ...FULL_SUBMISSION,

@@ -26,9 +26,10 @@ import {
  *     minted on-chain until the separate blocked issue #831 ships);
  *     `InReview` → a "Review" control that navigates to `/origination/$id`
  *     (issue #821), passing the row's `SubmissionView` as router state;
- *     `Rejected` → red "Rejected" pill with `reason` on hover. Backend
- *     merged/lifecycle statuses are normalized to the Approved pill before
- *     they reach this render layer (issue #892).
+ *     `Rejected` → red "Rejected" pill with `reason` on hover;
+ *     `ChangesRequested` → sweet-orange "Changes requested" pill with `reason` on
+ *     hover (#950). Backend merged/lifecycle statuses are normalized to the
+ *     Approved pill before they reach this render layer (issue #892).
  *   - The Figma static footer note ("The document set adapts to the
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
@@ -199,6 +200,20 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
         <span
           className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(192,57,43,0.3)] bg-[rgba(192,57,43,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[color:var(--color-pipeline-negative)]"
           data-testid="origination-status-rejected"
+          title={status.reason ?? undefined}
+        >
+          {status.label}
+        </span>
+      );
+    case "changes-requested":
+      // Sweet-orange caution pill (#950) — a non-final "waiting on originator"
+      // state. Mirrors the Rejected pill's shape + reason-on-hover, but a
+      // distinct, readable orange one-off (`#c2500a`, no token): not the red of
+      // Rejected, the olive of InReview, or the green of Approved.
+      return (
+        <span
+          className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#c2500a]"
+          data-testid="origination-status-changes-requested"
           title={status.reason ?? undefined}
         >
           {status.label}

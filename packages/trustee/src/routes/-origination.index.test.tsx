@@ -169,6 +169,23 @@ const REJECTED_ROW: OriginationTableRow = {
   submission: { ...SUBMISSION, id: 3 },
 };
 
+const CHANGES_REQUESTED_ROW: OriginationTableRow = {
+  id: 5,
+  originator: "Epsilon Grain",
+  commodity: "Wheat",
+  facility: "$800,000",
+  corridor: "UA → EG",
+  rate: "10.0%",
+  maturity: "1 Apr 2027",
+  submitted: "6 May",
+  status: {
+    kind: "changes-requested",
+    label: "Changes requested",
+    reason: "Attach the amended offtake agreement",
+  },
+  submission: { ...SUBMISSION, id: 5 },
+};
+
 const MISSING_FIELD_ROW: OriginationTableRow = {
   id: 4,
   originator: "—",
@@ -241,11 +258,11 @@ describe("Origination route", () => {
     mockTable({
       state: "ready",
       errorMessage: null,
-      rows: [IN_REVIEW_ROW, APPROVED_ROW, REJECTED_ROW],
+      rows: [IN_REVIEW_ROW, APPROVED_ROW, REJECTED_ROW, CHANGES_REQUESTED_ROW],
     });
     renderRoute();
 
-    expect(await screen.findAllByTestId("origination-row")).toHaveLength(3);
+    expect(await screen.findAllByTestId("origination-row")).toHaveLength(4);
 
     // InReview -> live "Review" link to the detail page.
     const reviewLink = screen.getByTestId("origination-status-review");
@@ -262,6 +279,16 @@ describe("Origination route", () => {
     const rejectedPill = screen.getByTestId("origination-status-rejected");
     expect(rejectedPill).toHaveTextContent("Rejected");
     expect(rejectedPill).toHaveAttribute("title", "Missing export permit");
+
+    // ChangesRequested -> amber pill with the reason on hover (#950), NOT Approved.
+    const changesPill = screen.getByTestId(
+      "origination-status-changes-requested",
+    );
+    expect(changesPill).toHaveTextContent("Changes requested");
+    expect(changesPill).toHaveAttribute(
+      "title",
+      "Attach the amended offtake agreement",
+    );
   });
 
   it("clicking the Review link navigates to /origination/$id with the row's SubmissionView as state", async () => {

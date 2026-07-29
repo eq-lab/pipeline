@@ -186,6 +186,16 @@ function StatusPill({ status }: { status: StatusChip }) {
       </span>
     );
   }
+  if (status.kind === "changes-requested") {
+    return (
+      <span
+        data-testid="origination-detail-status-chip"
+        className="inline-flex items-center rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#c2500a]"
+      >
+        {status.label}
+      </span>
+    );
+  }
   return (
     <span
       data-testid="origination-detail-status-chip"
@@ -421,6 +431,32 @@ function RejectedBanner({ date, reason }: { date: string; reason: string }) {
   );
 }
 
+/**
+ * Sweet-orange "Changes requested · `<date>` — `<reason>`" banner (#950), rendered in
+ * place of `ActionButtons` for ChangesRequested submissions. A non-final state —
+ * the trustee already asked for changes and is waiting on the originator to
+ * resubmit — so no action buttons. Mirrors `RejectedBanner`'s shape in the
+ * sweet-orange `#c2500a` one-off (no token; matches the `StatusPill` chip).
+ */
+function ChangesRequestedBanner({
+  date,
+  reason,
+}: {
+  date: string;
+  reason: string;
+}) {
+  return (
+    <div
+      data-testid="origination-detail-changes-requested-banner"
+      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[17px] py-[11px]"
+    >
+      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#c2500a]">
+        Changes requested · {date} — {reason}
+      </span>
+    </div>
+  );
+}
+
 function DetailFooter({
   statusKind,
   reviewedDate,
@@ -445,6 +481,12 @@ function DetailFooter({
   }
   if (statusKind === "rejected") {
     return <RejectedBanner date={reviewedDate} reason={rejectionReason} />;
+  }
+  if (statusKind === "changes-requested") {
+    // Non-final: waiting on the originator to resubmit, so no action buttons (#950).
+    return (
+      <ChangesRequestedBanner date={reviewedDate} reason={rejectionReason} />
+    );
   }
   // Only InReview falls back to the (now wired) action buttons. Backend
   // merged/lifecycle statuses normalize to Approved in the presenter (#892).

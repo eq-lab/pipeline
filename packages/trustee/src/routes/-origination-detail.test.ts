@@ -199,6 +199,24 @@ describe("useOriginationDetail — status chip", () => {
     });
   });
 
+  it("maps ChangesRequested to its chip + exposes the reason (#950)", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      status: "ChangesRequested",
+      reason: "Attach the amended offtake agreement",
+    };
+    mockSubmissions([submission]);
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.statusChip).toEqual({
+      kind: "changes-requested",
+      label: "Changes requested",
+    });
+    expect(result.current.statusKind).toBe("changes-requested");
+    expect(result.current.rejectionReason).toBe(
+      "Attach the amended offtake agreement",
+    );
+  });
+
   it("maps a backend lifecycle status to Approved for Origination display (#892)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
