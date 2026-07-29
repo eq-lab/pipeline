@@ -304,6 +304,15 @@ pub fn transfer_between_tracked<S: std::hash::BuildHasher>(
     tracked.contains(from) && tracked.contains(to)
 }
 
+/// True when a transfer's `from` **or** `to` matches a single tracked contract
+/// — one-sided, any counterparty. Used for the WithdrawalQueue (Issue #933):
+/// every USDC movement in or out is of interest, not just movements between two
+/// already-tracked accounts (contrast `transfer_between_tracked`, which is AND).
+/// Pure helper so the poller's filter is unit-testable.
+pub fn transfer_touches_address(from: &str, to: &str, address: &str) -> bool {
+    from == address || to == address
+}
+
 // ── ScVal helpers (exposed for unit tests) ────────────────────────────────────
 
 /// Decode a base64-encoded XDR `ScVal::U128` into a `u128`.
@@ -407,10 +416,11 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// this chain. When set, `YieldMinted` events are collected and routed to `StellarLogMapper`
 /// (contract_logs), matching the EVM path. Loan-repayment-only on Stellar today.
 ///
-/// `asset_id` is `Some` only when asset-transfer tracking is fully configured
-/// (asset id + custody + ramp addresses). When set, `transfer` events from the
-/// asset contract are decoded to `"AssetTransfer"` logs; the poller then filters
-/// them against the custody/ramp address set before persisting.
+/// `asset_id` is `Some` when asset-transfer tracking is configured (Issue #789 /
+/// #933). When set, `transfer` events from the asset contract are decoded to
+/// `"AssetTransfer"` logs; the poller then filters them — one-sided against the
+/// WithdrawalQueue, and/or both-sides against the custody/ramp set — before
+/// persisting.
 pub fn dispatch_parser(
     raw: &RawEvent,
     deposit_manager_id: &str,

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use pipeline_worker::indexer::stellar::parsers::{
     dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_request_claimed,
     parse_vault_deposit, parse_vault_withdraw, parse_withdrawal_requested,
-    transfer_between_tracked,
+    transfer_between_tracked, transfer_touches_address,
 };
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
 use stellar_xdr::curr::{
@@ -848,6 +848,15 @@ fn transfer_between_tracked_requires_both_sides() {
         OPERATOR_G,
         &HashSet::new()
     )); // empty set
+}
+
+// ── transfer_touches_address ──────────────────────────────────────────────────
+
+#[test]
+fn transfer_touches_address_matches_either_side() {
+    assert!(transfer_touches_address(WQ_CONTRACT, USER_G, WQ_CONTRACT)); // from matches
+    assert!(transfer_touches_address(USER_G, WQ_CONTRACT, WQ_CONTRACT)); // to matches
+    assert!(!transfer_touches_address(USER_G, OPERATOR_G, WQ_CONTRACT)); // neither matches
 }
 
 // ── dispatch_parser: asset_id routing ─────────────────────────────────────────

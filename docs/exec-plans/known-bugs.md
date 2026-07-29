@@ -17,12 +17,26 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-11: pre-commit `frontend lint` stage fails on pre-existing prettier debt
+### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
 - **Date:** 2026-07-29
 - **Location:** `packages/frontend` — 9 committed files fail `yarn lint` (prettier `--check`): `src/api/README.md`, `src/api/useStatsYield.ts`, `src/components/ConnectWalletModal.test.tsx`, `src/components/TopBar.test.tsx`, `src/components/TopBar.tsx`, `src/wallet/ConnectModalProvider.test.tsx`, `src/wallet/README.md`, `src/wallet/stellar/connectionStore.ts`, `src/wallet/stellar/contracts/stakedPlusd.test.ts`.
 - **Symptom:** The husky pre-commit hook's `frontend lint` stage exits 1 for **any** commit, because these already-committed files are not prettier-conformant (each is byte-identical to `HEAD` — the debt predates the commit under way). Blocks committing unrelated (e.g. backend-only) changes through the hook.
 - **Root cause:** Formatting debt landed on `main` without prettier being applied; the pre-commit `frontend lint` runs a repo-wide `prettier --check`, so it fails regardless of what the commit touches.
 - **Workaround:** Run `cd packages/frontend && yarn lint --write` (or `prettier --write`) on the 9 files in a dedicated formatting-only PR. Discovered while committing #953 (backend-only); that commit bypassed the stale stage with `--no-verify` after manually verifying `cargo fmt`, `yarn codegen` (no changes), clippy, `cargo test --all`, `tsc`, and doc lint all pass.
+
+### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
+- **Date:** 2026-07-29
+- **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
+- **Symptom:** The Stellar phase was fixed (`skip_nothing_to_mint_stellar`, discovered 2026-07-29) to skip pure-principal repayments before submit, because `yield_minter.mint_yield` reverts with `ZeroAmounts` when there is no yield to distribute, and that revert also rolls back the in-tx `consume_yield` mark, so the row retries every cycle forever. The EVM path has **no equivalent skip** — a `pending` row for a zero-yield repayment would submit repeatedly.
+- **Root cause:** The fix was scoped to Stellar (the confirmed live symptom). Whether EVM actually loops depends on the EVM `YieldMinter` contract's behaviour on zero amounts (separate contract, not confirmed here). The EVM `PaymentRecorded` params carry the same fields, so the same worker-side sweep is portable if needed.
+- **Workaround:** None. If EVM zero-yield repayments appear stuck in `pending`, port `skip_nothing_to_mint_stellar` to the EVM discover path (checksum-address variant).
+
+### BUG-12: Stellar yield-mint nothing-to-mint skip has no on-chain backstop
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/yield_mint_outbox_repo.rs::skip_nothing_to_mint_stellar`.
+- **Symptom:** The nothing-to-mint detection is now **worker-side only** (SQL over the `PaymentRecorded` event in `contract_logs`); the earlier contract-error fallback (`Error(Contract, #1)` → skip at submit) was intentionally removed. If a zero-yield row is ever *not* caught by the sweep — a NULL/missing amount field in the event, a `loan_registry` address mismatch, or the event field names drifting from `senior_interest / mgmt_fee / perf_fee / oet_alloc` — the row stays `pending` and retries forever with no backstop. The sweep is conservative (`NULL = 0` is unknown → not skipped), so the failure mode is "loops" not "wrongly skipped".
+- **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
+- **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
 
 ### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
 - **Date:** 2026-07-21

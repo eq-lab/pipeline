@@ -96,9 +96,19 @@ fn fixture_loans() -> Vec<LoanSnapshotRow> {
 }
 
 fn at(t_day: i64, loans: &[LoanSnapshotRow], events: &[LifecycleRow]) -> CapitalAllocationResponse {
-    // Default: no asset transfers, no custody/ramp config (in_transit null), and an
-    // empty bank-transaction ledger (trust_account = 0).
-    compute_capital_allocation(loans, events, t_day * DAY, &[], None, &BigDecimal::from(0))
+    // Default: no asset transfers, no custody/ramp config (in_transit null), no
+    // withdrawal-queue wallet configured (withdrawal_queue null), canonical
+    // 6-decimal asset scale, and an empty bank-transaction ledger (trust_account = 0).
+    compute_capital_allocation(
+        loans,
+        events,
+        t_day * DAY,
+        &[],
+        None,
+        6,
+        None,
+        &BigDecimal::from(0),
+    )
 }
 
 // ── Null / zero buckets ──────────────────────────────────────────────────────────
@@ -108,6 +118,7 @@ fn unsourced_buckets_are_null_trust_account_is_zero() {
     let r = at(60, &fixture_loans(), &[]);
     assert_eq!(r.buckets.capital_wallet, None);
     assert_eq!(r.buckets.in_transit, None);
+    assert_eq!(r.buckets.withdrawal_queue, None);
     // trust_account is always sourced now (#924) — an empty ledger reads 0, not null.
     assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
     assert_eq!(r.buckets.tbills, None);
@@ -172,7 +183,7 @@ fn no_active_loans_yields_zero_deployed_and_null_buckets() {
 
 #[test]
 fn trust_account_zero_ledger_reads_zero() {
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, &BigDecimal::from(0));
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &BigDecimal::from(0));
     assert_eq!(r.buckets.trust_account, Some("0.000000".to_owned()));
 }
 
@@ -181,7 +192,7 @@ fn trust_account_reflects_positive_balance() {
     // Deposits exceed withdrawals + fees → positive balance, passed straight through.
     // trust_account is a *plain dollar* figure — not base-6 units, unlike usdc().
     let balance = BigDecimal::from(500) - BigDecimal::from(120) - BigDecimal::from(30); // $350
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, &balance);
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &balance);
     assert_eq!(r.buckets.trust_account, Some("350.000000".to_owned()));
 }
 
@@ -190,7 +201,7 @@ fn trust_account_negative_balance_is_not_clamped() {
     // Withdrawals + fees exceed deposits → negative balance surfaces as-is (a real
     // bookkeeping error should be visible, unlike in_transit's clamp-at-zero).
     let balance = BigDecimal::from(10) - BigDecimal::from(50); // -$40
-    let r = compute_capital_allocation(&[], &[], 0, &[], None, &balance);
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &balance);
     assert_eq!(r.buckets.trust_account, Some("-40.000000".to_owned()));
 }
 
@@ -206,6 +217,8 @@ fn trust_account_folds_into_total_alongside_deployed_and_in_transit() {
         60 * DAY,
         &transfers,
         Some(&sets),
+        6,
+        None,
         &balance,
     );
     assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
@@ -256,18 +269,17 @@ fn rejected_transfer(from: &str, to: &str, whole: i64) -> AssetTransferRow {
     }
 }
 
-/// Address sets with a given asset decimal scale. The other tests use 6-decimal
-/// (canonical, no normalization) so their round `usdc()` fixtures read directly.
-fn addr_sets_with_decimals(asset_decimals: u32) -> TransferAddressSets {
+/// Custody/ramp address sets. `asset_decimals` is now a separate top-level
+/// argument to `compute_capital_allocation` (shared with `withdrawal_queue`),
+/// not part of `TransferAddressSets` — pass it alongside these sets.
+fn addr_sets() -> TransferAddressSets {
     TransferAddressSets {
         custody: [CUSTODY.to_owned()].into_iter().collect::<HashSet<_>>(),
         ramp: [RAMP.to_owned()].into_iter().collect::<HashSet<_>>(),
-        asset_decimals,
+        // Unused by compute_capital_allocation (asset_decimals is passed as its
+        // own argument) — only routes::ramp reads this field.
+        asset_decimals: 6,
     }
-}
-
-fn addr_sets() -> TransferAddressSets {
-    addr_sets_with_decimals(6)
 }
 
 #[test]
@@ -279,7 +291,16 @@ fn in_transit_nets_custody_to_ramp_flow() {
         transfer(CUSTODY, EXTERNAL, 999),      // untracked counterparty: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("70.000000".to_owned()));
     // deployed 0 (no loans) + in_transit 70.
     assert_eq!(r.total, Some("70.000000".to_owned()));
@@ -290,7 +311,16 @@ fn in_transit_clamps_negative_to_zero() {
     // More returned from ramp than sent → raw net negative → clamped to 0.
     let transfers = vec![approved_transfer(RAMP, CUSTODY, 50)];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
 }
 
@@ -303,7 +333,16 @@ fn in_transit_ignores_unapproved_on_ramp() {
         transfer(RAMP, CUSTODY, 30),           // back, pending: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
 }
 
@@ -315,7 +354,16 @@ fn in_transit_ignores_rejected_on_ramp() {
         rejected_transfer(RAMP, CUSTODY, 30),  // back, rejected: ignored
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
 }
 
@@ -329,7 +377,16 @@ fn in_transit_ignores_unapproved_off_ramp() {
         approved_transfer(RAMP, CUSTODY, 30), // back, approved: -30
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     // 0 - 30 clamped to 0, not -30.
     assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
 }
@@ -341,7 +398,16 @@ fn in_transit_ignores_rejected_off_ramp() {
         approved_transfer(RAMP, CUSTODY, 30),  // back, approved: -30
     ];
     let sets = addr_sets();
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        6,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("0.000000".to_owned()));
 }
 
@@ -349,7 +415,7 @@ fn in_transit_ignores_rejected_off_ramp() {
 fn in_transit_is_null_when_unconfigured() {
     // Transfers present but no custody/ramp config → in_transit stays null.
     let transfers = vec![transfer(CUSTODY, RAMP, 100)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, None, &BigDecimal::from(0));
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, None, 6, None, &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
 }
@@ -365,6 +431,8 @@ fn in_transit_adds_to_total_alongside_deployed() {
         60 * DAY,
         &transfers,
         Some(&sets),
+        6,
+        None,
         &BigDecimal::from(0),
     );
     assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
@@ -389,8 +457,100 @@ fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
         review_reason: None,
         reviewed_at: Some(chrono::Utc::now()),
     }];
-    let sets = addr_sets_with_decimals(7);
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), &BigDecimal::from(0));
+    let sets = addr_sets();
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &transfers,
+        Some(&sets),
+        7,
+        None,
+        &BigDecimal::from(0),
+    );
     assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
     assert_eq!(r.total, Some("100.000000".to_owned()));
+}
+
+// ── withdrawal_queue: Withdrawal Queue Wallet running balance (Issue #933) ──────
+
+#[test]
+fn withdrawal_queue_is_null_when_unconfigured() {
+    let r = compute_capital_allocation(&[], &[], 0, &[], None, 6, None, &BigDecimal::from(0));
+    assert_eq!(r.buckets.withdrawal_queue, None);
+    assert_eq!(r.total, Some("0.000000".to_owned()));
+}
+
+#[test]
+fn withdrawal_queue_reads_through_at_canonical_scale() {
+    let balance = usdc(250); // already 6-decimal base units
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[],
+        None,
+        6,
+        Some(&balance),
+        &BigDecimal::from(0),
+    );
+    assert_eq!(r.buckets.withdrawal_queue, Some("250.000000".to_owned()));
+}
+
+#[test]
+fn withdrawal_queue_normalizes_7_decimal_usdc_sac_to_6_decimal() {
+    // Same 7-decimal SAC normalization as in_transit, applied to the wallet balance.
+    let raw_7dec = BigDecimal::from(1_000_000_000_i64); // 100.0000000 at 7 decimals
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[],
+        None,
+        7,
+        Some(&raw_7dec),
+        &BigDecimal::from(0),
+    );
+    assert_eq!(r.buckets.withdrawal_queue, Some("100.000000".to_owned()));
+}
+
+#[test]
+fn withdrawal_queue_negative_balance_is_not_clamped() {
+    // Unlike in_transit, a negative wallet balance is a real tracking gap and must
+    // surface as-is, not be floored at zero (mirrors trust_account's rationale).
+    let balance = usdc(-30);
+    let r = compute_capital_allocation(
+        &[],
+        &[],
+        0,
+        &[],
+        None,
+        6,
+        Some(&balance),
+        &BigDecimal::from(0),
+    );
+    assert_eq!(r.buckets.withdrawal_queue, Some("-30.000000".to_owned()));
+    assert_eq!(r.total, Some("-30.000000".to_owned()));
+}
+
+#[test]
+fn withdrawal_queue_adds_to_total_alongside_deployed_and_in_transit() {
+    let transfers = vec![approved_transfer(CUSTODY, RAMP, 100)];
+    let sets = addr_sets();
+    let wq_balance = usdc(50);
+    // Day 60: deployed 120k, in_transit 100, withdrawal_queue 50 → total 120150.
+    let r = compute_capital_allocation(
+        &fixture_loans(),
+        &[],
+        60 * DAY,
+        &transfers,
+        Some(&sets),
+        6,
+        Some(&wq_balance),
+        &BigDecimal::from(0),
+    );
+    assert_eq!(r.buckets.deployed, Some("120000.000000".to_owned()));
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.buckets.withdrawal_queue, Some("50.000000".to_owned()));
+    assert_eq!(r.total, Some("120150.000000".to_owned()));
 }
