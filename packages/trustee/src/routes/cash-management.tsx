@@ -1,25 +1,386 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { TRUSTEE_NAV_ITEMS } from "@/lib/nav";
+import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
+import {
+  useCashManagement,
+  type RampEventRow as RampEventRowData,
+} from "./-cash-management";
 
 /**
- * Cash Management (placeholder).
+ * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
+ * the #786 placeholder. Source of truth: `docs/product-specs/trustee-dashboard.md`
+ * (§Type 1 flow 2, §Type 4) + the Cash Management working doc.
  *
- * See docs/product-specs/trustee-dashboard.md, "Type 2 — Capital Wallet MPC
- * co-signature" section, for flows 8-9 (T-Bill allocation swap, Withdrawal
- * Queue Wallet top-up). MPC request assembly + signature tracking UI lands in
- * a per-flow sub-issue of epic #775 (#786 replaces the #777 scaffold's
- * `/type2-mpc` route with the Figma nav taxonomy).
+ * This round builds the page shell (shared Capital Allocation + tab nav) and the
+ * **On/Off-ramp** tab's review queue — the pending ramp-boundary events
+ * (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
+ * (`POST …/review`). The **T-Bills** (#944) and **Withdrawal Queue** (#945)
+ * tabs are placeholders here. (No Refunds tab — the working doc has no such
+ * section; docs are the source of truth, Figma is styling only.)
+ *
+ * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; the fetch +
+ * value→display mapping live in `-cash-management.ts`.
  */
-const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/cash-management")!;
+
+const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
+const INK = "#262524";
+const INK_MUTED = "rgba(56,55,53,0.6)";
+const INK_SUBTLE = "rgba(56,55,53,0.3)";
+const NEGATIVE_RED = "#b20000";
+const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
+const BRAND = "var(--color-pipeline-brand)";
+
+type TabKey = "onofframp" | "tbills" | "withdrawals";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "onofframp", label: "On / Off-ramp" },
+  { key: "tbills", label: "T-Bills" },
+  { key: "withdrawals", label: "Withdrawal Queue" },
+];
+
+const PLACEHOLDER_COPY: Record<Exclude<TabKey, "onofframp">, string> = {
+  tbills: "Buy / Sell USYC — lands in #944.",
+  withdrawals:
+    "Withdrawal-queue balance, top-up alert, and MPC transfer — lands in #945.",
+};
+
+// ── Tab bar ───────────────────────────────────────────────────────────────────
+
+function TabBar({
+  active,
+  onChange,
+}: {
+  active: TabKey;
+  onChange: (key: TabKey) => void;
+}) {
+  return (
+    <div
+      data-testid="cash-management-tabs"
+      className="flex flex-wrap items-center gap-[4px] rounded-[6px] p-[4px]"
+      style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+    >
+      {TABS.map((tab) => {
+        const isActive = tab.key === active;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            data-testid={`cash-management-tab-${tab.key}`}
+            aria-pressed={isActive}
+            onClick={() => onChange(tab.key)}
+            className="rounded-[4px] px-[14px] py-[7px] font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
+            style={
+              isActive
+                ? {
+                    backgroundColor: "#ffffff",
+                    color: INK,
+                    border: `1px solid ${LINE_COLOR}`,
+                  }
+                : { color: INK_MUTED }
+            }
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── On/Off-ramp review queue ──────────────────────────────────────────────────
+
+function ReviewButtons({
+  id,
+  pending,
+  onReview,
+}: {
+  id: number;
+  pending: boolean;
+  onReview: (decision: "Approved" | "Rejected", reason?: string) => void;
+}) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+
+  if (rejecting) {
+    return (
+      <div className="flex flex-col items-end gap-[8px]">
+        <input
+          type="text"
+          data-testid={`cash-management-reject-reason-${id}`}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Reason for rejecting"
+          className="w-[240px] max-w-full rounded-[4px] border border-solid px-[11px] py-[8px] font-[family-name:var(--font-body)] text-[14px] outline-none"
+          style={{ borderColor: LINE_COLOR, color: INK }}
+        />
+        <div className="flex items-center gap-[8px]">
+          <button
+            type="button"
+            onClick={() => setRejecting(false)}
+            disabled={pending}
+            className="rounded-[4px] border border-solid px-[13px] py-[7px] font-[family-name:var(--font-body)] text-[14px] disabled:opacity-50"
+            style={{ borderColor: LINE_COLOR, color: INK }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid={`cash-management-confirm-reject-${id}`}
+            onClick={() => onReview("Rejected", reason)}
+            disabled={pending || reason.trim().length === 0}
+            className="rounded-[4px] px-[13px] py-[7px] font-[family-name:var(--font-body)] text-[14px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ backgroundColor: NEGATIVE_RED }}
+          >
+            {pending ? "…" : "Confirm reject"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-[8px]">
+      <button
+        type="button"
+        data-testid={`cash-management-reject-${id}`}
+        onClick={() => setRejecting(true)}
+        disabled={pending}
+        className="rounded-[4px] border border-solid px-[14px] py-[8px] font-[family-name:var(--font-body)] text-[14px] disabled:opacity-50"
+        style={{ borderColor: LINE_COLOR, color: INK }}
+      >
+        Reject
+      </button>
+      <button
+        type="button"
+        data-testid={`cash-management-approve-${id}`}
+        onClick={() => onReview("Approved")}
+        disabled={pending}
+        className="rounded-[4px] px-[14px] py-[8px] font-[family-name:var(--font-body)] text-[14px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ backgroundColor: BRAND }}
+      >
+        {pending ? "…" : "Approve"}
+      </button>
+    </div>
+  );
+}
+
+function RampEventRow({
+  event,
+  pending,
+  onReview,
+}: {
+  event: RampEventRowData;
+  pending: boolean;
+  onReview: (
+    id: number,
+    decision: "Approved" | "Rejected",
+    reason?: string,
+  ) => void;
+}) {
+  return (
+    <div
+      data-testid="cash-management-ramp-event"
+      className="flex flex-col gap-[12px] py-[16px] sm:flex-row sm:items-center sm:justify-between"
+      style={{ borderTop: `1px solid ${LINE_COLOR}` }}
+    >
+      <div className="flex flex-col gap-[2px]">
+        <span className="font-[family-name:var(--font-body)] text-[17px] leading-[23.8px] font-semibold text-[#262524]">
+          {event.amount}
+        </span>
+        <span
+          className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+          style={{ color: INK_MUTED }}
+        >
+          {event.from} → {event.to} · {event.age}
+        </span>
+      </div>
+      <ReviewButtons
+        id={event.id}
+        pending={pending}
+        onReview={(decision, reason) => onReview(event.id, decision, reason)}
+      />
+    </div>
+  );
+}
+
+function RampSection({
+  title,
+  note,
+  events,
+  reviewPendingId,
+  onReview,
+  testId,
+}: {
+  title: string;
+  note: string;
+  events: RampEventRowData[];
+  reviewPendingId: number | null;
+  onReview: (
+    id: number,
+    decision: "Approved" | "Rejected",
+    reason?: string,
+  ) => void;
+  testId: string;
+}) {
+  return (
+    <div data-testid={testId} className="flex flex-col">
+      <div className="flex items-baseline justify-between gap-[16px] pb-[4px]">
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] tracking-[0.96px] uppercase"
+          style={{ color: INK_MUTED }}
+        >
+          {title}
+        </span>
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_SUBTLE }}
+        >
+          {note}
+        </span>
+      </div>
+      {events.length === 0 ? (
+        <p
+          className="py-[12px] font-[family-name:var(--font-body)] text-[14px]"
+          style={{ color: INK_MUTED }}
+        >
+          Nothing pending.
+        </p>
+      ) : (
+        events.map((event) => (
+          <RampEventRow
+            key={event.id}
+            event={event}
+            pending={reviewPendingId === event.id}
+            onReview={onReview}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 function CashManagement() {
+  const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
+  const view = useCashManagement();
+
+  const onReview = (
+    id: number,
+    decision: "Approved" | "Rejected",
+    reason?: string,
+  ) => view.review({ id, decision, reason });
+
   return (
-    <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 py-12 md:px-8">
-      <h1 className="font-[family-name:var(--font-display)] text-[length:var(--text-pipeline-heading-m)] leading-[var(--text-pipeline-heading-m--line-height)] text-[color:var(--color-pipeline-ink)]">
-        {navItem.heading}
+    <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[105px]">
+      <h1
+        className="font-[family-name:var(--font-display)] text-[44px] leading-[48.4px]"
+        style={{ color: INK_SUBTLE }}
+      >
+        Cash Management
       </h1>
-      <p className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink-muted)]">
-        {navItem.description}
+
+      <TabBar active={activeTab} onChange={setActiveTab} />
+
+      {/* Shared Capital Allocation — same block as the Overview page. */}
+      <CapitalAllocationCard />
+
+      {activeTab === "onofframp" ? (
+        <div
+          data-testid="cash-management-onofframp"
+          className="flex w-full flex-col gap-[24px] rounded-[4px] bg-white px-[27px] py-[25px]"
+          style={{ border: `1px solid ${LINE_COLOR}` }}
+        >
+          {view.state === "loading" && (
+            <div
+              data-testid="cash-management-loading"
+              className="flex w-full flex-col gap-3"
+              aria-busy="true"
+              aria-label="Loading ramp events"
+            >
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="h-[64px] w-full animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)]"
+                />
+              ))}
+            </div>
+          )}
+
+          {view.state === "error" && (
+            <div
+              role="alert"
+              data-testid="cash-management-error"
+              className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
+            >
+              {view.errorMessage ?? "Failed to load ramp events."}
+            </div>
+          )}
+
+          {view.state === "ready" && (
+            <>
+              {view.isEmpty && (
+                <p
+                  data-testid="cash-management-empty"
+                  className="font-[family-name:var(--font-body)] text-[15px]"
+                  style={{ color: INK_MUTED }}
+                >
+                  No ramp transfers awaiting review.
+                </p>
+              )}
+              {!view.isEmpty && (
+                <>
+                  <RampSection
+                    testId="cash-management-inbound"
+                    title="Inbound · repayment on-ramps"
+                    note="Relayer + custodian mint · you review"
+                    events={view.inbound}
+                    reviewPendingId={view.reviewPendingId}
+                    onReview={onReview}
+                  />
+                  <RampSection
+                    testId="cash-management-outbound"
+                    title="Outbound · off-ramps & facility allocations"
+                    note="MPC 3-of-5"
+                    events={view.outbound}
+                    reviewPendingId={view.reviewPendingId}
+                    onReview={onReview}
+                  />
+                </>
+              )}
+              {view.reviewErrorMessage && (
+                <p
+                  role="alert"
+                  data-testid="cash-management-review-error"
+                  className="font-[family-name:var(--font-body)] text-[14px]"
+                  style={{ color: NEGATIVE_RED }}
+                >
+                  {view.reviewErrorMessage}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <div
+          data-testid={`cash-management-placeholder-${activeTab}`}
+          className="flex w-full flex-col gap-[8px] rounded-[4px] bg-white px-[27px] py-[25px]"
+          style={{ border: `1px solid ${LINE_COLOR}` }}
+        >
+          <p
+            className="font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
+            style={{ color: INK_MUTED }}
+          >
+            {PLACEHOLDER_COPY[activeTab]}
+          </p>
+        </div>
+      )}
+
+      <p
+        className="text-center font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+        style={{ color: POSITIVE_GREEN }}
+      >
+        A reviewed transfer counts toward Capital Allocation only once Approved.
       </p>
     </main>
   );
