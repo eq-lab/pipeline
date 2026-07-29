@@ -47,6 +47,9 @@
  *       this is a Figma-shape placeholder, not a wired action).
  *     - `Rejected`  → red "Rejected" pill; `reason` (if present) is exposed
  *       for the view to show as a tooltip/title on hover.
+ *     - `ChangesRequested` → amber "Changes requested" pill with `reason` on
+ *       hover (#949/#950). A genuine pre-decision, non-final outcome — NOT
+ *       folded into `Approved`.
  *     - Any other backend merged/lifecycle status string → displayed as
  *       `Approved` (issue #892): for Origination, a lifecycle status means the
  *       request was approved and minted, then moved into its future loan
@@ -73,7 +76,8 @@ import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
 export type OriginationRowStatus =
   | { kind: "approved"; label: string }
   | { kind: "in-review"; label: string }
-  | { kind: "rejected"; label: string; reason: string | null };
+  | { kind: "rejected"; label: string; reason: string | null }
+  | { kind: "changes-requested"; label: string; reason: string | null };
 
 /** One formatted, display-ready row of the Origination submissions table. */
 export interface OriginationTableRow {
@@ -132,6 +136,15 @@ function resolveStatus(submission: SubmissionView): OriginationRowStatus {
       return {
         kind: "rejected",
         label: "Rejected",
+        reason: submission.reason ?? null,
+      };
+    case "ChangesRequested":
+      // Non-final origination outcome (#949/#950): the trustee asked for
+      // changes and is waiting on the originator to resubmit. Mirrors the
+      // Rejected pill's reason exposure.
+      return {
+        kind: "changes-requested",
+        label: "Changes requested",
         reason: submission.reason ?? null,
       };
   }

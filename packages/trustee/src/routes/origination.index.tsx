@@ -26,9 +26,10 @@ import {
  *     minted on-chain until the separate blocked issue #831 ships);
  *     `InReview` → a "Review" control that navigates to `/origination/$id`
  *     (issue #821), passing the row's `SubmissionView` as router state;
- *     `Rejected` → red "Rejected" pill with `reason` on hover. Backend
- *     merged/lifecycle statuses are normalized to the Approved pill before
- *     they reach this render layer (issue #892).
+ *     `Rejected` → red "Rejected" pill with `reason` on hover;
+ *     `ChangesRequested` → amber "Changes requested" pill with `reason` on
+ *     hover (#950). Backend merged/lifecycle statuses are normalized to the
+ *     Approved pill before they reach this render layer (issue #892).
  *   - The Figma static footer note ("The document set adapts to the
  *     commodity…") is deliberately OMITTED per human review follow-up on
  *     this issue — kept out of the page even though it's present in the
@@ -199,6 +200,19 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
         <span
           className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(192,57,43,0.3)] bg-[rgba(192,57,43,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[color:var(--color-pipeline-negative)]"
           data-testid="origination-status-rejected"
+          title={status.reason ?? undefined}
+        >
+          {status.label}
+        </span>
+      );
+    case "changes-requested":
+      // Amber caution pill (not red) — a non-final "waiting on originator"
+      // state (#950). Mirrors the Rejected pill's shape + reason-on-hover; the
+      // `#6e6400` amber matches the CCR "attention" one-off (no token exists).
+      return (
+        <span
+          className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(110,100,0,0.3)] bg-[rgba(110,100,0,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#6e6400]"
+          data-testid="origination-status-changes-requested"
           title={status.reason ?? undefined}
         >
           {status.label}

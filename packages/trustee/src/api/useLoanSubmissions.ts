@@ -104,7 +104,11 @@ export interface LoanDocumentDto {
   uri: string;
 }
 
-export type OriginationSubmissionStatus = "InReview" | "Approved" | "Rejected";
+export type OriginationSubmissionStatus =
+  | "InReview"
+  | "Approved"
+  | "Rejected"
+  | "ChangesRequested";
 
 /**
  * Normalizes the backend's merged submission/loan lifecycle status into the
@@ -112,12 +116,18 @@ export type OriginationSubmissionStatus = "InReview" | "Approved" | "Rejected";
  * lifecycle status such as `Performing`, `WatchList`, `Past Due`, `Default`,
  * or `Closed`, the origination decision is already complete, so Origination
  * surfaces display it as `Approved`.
+ *
+ * `ChangesRequested` (backend #949) is a genuine **pre-decision** origination
+ * outcome — non-final, the submission stays open for the originator to resubmit
+ * — so it is preserved, not folded into `Approved` (issue #950). Only the true
+ * post-approval loan-lifecycle statuses fall through to `Approved`.
  */
 export function normalizeOriginationSubmissionStatus(
   status: SubmissionView["status"],
 ): OriginationSubmissionStatus {
   if (status === "InReview") return "InReview";
   if (status === "Rejected") return "Rejected";
+  if (status === "ChangesRequested") return "ChangesRequested";
   return "Approved";
 }
 
@@ -133,8 +143,12 @@ export interface SubmissionView {
     | "InReview"
     | "Approved"
     | "Rejected"
+    | "ChangesRequested"
     | (string & Record<never, never>);
-  /** Rejection reason; present iff `status === "Rejected"`. */
+  /**
+   * Reviewer reason; present iff `status === "Rejected"` or
+   * `status === "ChangesRequested"` (backend requires a reason for both, #949).
+   */
   reason: string | null;
   /** The submitter (authenticated address). */
   originator: string;
@@ -171,7 +185,11 @@ export interface UseLoanSubmissionsResult {
  * `SubmissionsQuery.status` 400s on unknown values, so widening this would
  * let a bad filter silently reach the API.
  */
-export type SubmissionStatusFilter = "InReview" | "Approved" | "Rejected";
+export type SubmissionStatusFilter =
+  | "InReview"
+  | "Approved"
+  | "Rejected"
+  | "ChangesRequested";
 
 /** Options accepted by `useLoanSubmissions`. */
 export interface UseLoanSubmissionsOptions {

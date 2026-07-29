@@ -35,7 +35,9 @@
  * `InReview` submissions are actionable here; backend merged/lifecycle
  * statuses mean the origination is already approved and are filtered out
  * defensively even though the server already applies `?status=InReview`
- * (issue #892).
+ * (issue #892). `ChangesRequested` (#949/#950) is likewise excluded — it is
+ * originator-actionable (waiting on a resubmit), not trustee-actionable — so it
+ * stays out of Needs Attention until it returns to `InReview` on resubmit.
  */
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";

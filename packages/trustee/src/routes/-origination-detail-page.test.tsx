@@ -410,6 +410,30 @@ describe("Origination details route", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("ChangesRequested: renders the amber 'Changes requested · <date> — <reason>' banner; NO action buttons (#950)", () => {
+      mockDetail({
+        ...READY_RESULT,
+        statusChip: { kind: "changes-requested", label: "Changes requested" },
+        statusKind: "changes-requested",
+        reviewedDate: "6 May",
+        rejectionReason: "Attach the amended offtake agreement",
+      });
+      renderRoute();
+      const banner = screen.getByTestId(
+        "origination-detail-changes-requested-banner",
+      );
+      expect(banner).toHaveTextContent(
+        "Changes requested · 6 May — Attach the amended offtake agreement",
+      );
+      // Non-final, waiting on the originator → no trustee action buttons.
+      expect(
+        screen.queryByTestId("origination-detail-reject"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("origination-detail-approve"),
+      ).not.toBeInTheDocument();
+    });
+
     it("backend lifecycle status: renders the Approved banner, not action buttons (#892)", () => {
       mockDetail({
         ...READY_RESULT,

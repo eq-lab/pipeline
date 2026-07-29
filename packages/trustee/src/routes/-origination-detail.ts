@@ -36,7 +36,8 @@
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
  *   - Status chip → normalized Origination status ("Awaiting your review" for
- *     `InReview`; `Approved` / `Rejected` for terminal decisions). Backend
+ *     `InReview`; `Approved` / `Rejected` for terminal decisions; "Changes
+ *     requested" for the non-final `ChangesRequested`, #950). Backend
  *     merged/lifecycle statuses are rendered as `Approved` here (issue #892)
  *     because Origination answers whether the request was approved, not the
  *     resulting loan's current lifecycle. This is the ONLY chip rendered —
@@ -64,6 +65,9 @@
  *     `batch` field exists on `SubmissionView`/`loan_data`; never fabricate
  *     it (resolved via #823's Open Questions).
  *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
+ *   - ChangesRequested → an amber banner: "Changes requested ·
+ *     `<reviewedDate>` — `<reason>`" (#950). Non-final (waiting on the
+ *     originator to resubmit), so no action buttons.
  *   - Backend merged/lifecycle statuses → the Approved banner (issue #892).
  *
  * `reviewedDate` is `formatSubmittedDate(submission.updated_at)` — NOT
@@ -165,6 +169,7 @@ export type StatusChip =
   | { kind: "in-review"; label: string }
   | { kind: "approved"; label: string }
   | { kind: "rejected"; label: string }
+  | { kind: "changes-requested"; label: string }
   | { kind: "unknown"; label: string };
 
 export interface LoanTermsDisplay {
@@ -221,7 +226,10 @@ export interface OriginationDetailResult {
   statusKind: StatusChip["kind"];
   /** `formatSubmittedDate(submission.updated_at)`, e.g. "2 Jan". "—" if absent. */
   reviewedDate: string;
-  /** `safeString(submission.reason)` — "—" when not Rejected / no reason given. */
+  /**
+   * `safeString(submission.reason)` — the reviewer reason shown on the Rejected
+   * **and** Changes-requested banners (#950); "—" when absent / no reason given.
+   */
   rejectionReason: string;
   /** The Approve & mint dialog's transaction-preview code block (issue #838). */
   transactionPreview: TransactionPreviewDisplay;
@@ -247,6 +255,8 @@ function resolveStatusChip(submission: SubmissionView): StatusChip {
       return { kind: "approved", label: "Approved" };
     case "Rejected":
       return { kind: "rejected", label: "Rejected" };
+    case "ChangesRequested":
+      return { kind: "changes-requested", label: "Changes requested" };
   }
 }
 
