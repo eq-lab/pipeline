@@ -4,9 +4,12 @@
 //! charting on the loan-detail page. The series is **price-derived**: it reuses the
 //! exact valuation machinery of `routes::collateral_valuation`
 //! (`shared::collateral_valuation::compute_collateral` + `ccr_bps`) and re-evaluates
-//! it at each point of a fixed sampling grid, varying **only** the reference price —
-//! sampled from the stored `loan_asset_prices` history for the loan's
-//! `(asset, price_provider)` pair.
+//! it at each point of a fixed sampling grid, varying **only** the reference prices —
+//! sampled from the stored `loan_asset_prices` history. A concentrate prices each
+//! payable metal independently, so one price series is walked **per metal-asset**
+//! (gold→XAU, silver→XAG) under the loan's `price_provider`; standard goods walks the
+//! single headline asset. A grid point is emitted only once every required asset has a
+//! known price at or before it.
 //!
 //! The caller supplies a `from` timestamp and a `step` (dt) in seconds; the grid is
 //! `from, from+step, …` up to `to` (default: now). At each grid point the price is the
@@ -24,6 +27,7 @@
 //! Thresholds (`watchlist` / `default` guide-lines) are protocol-wide config, echoed
 //! for chart annotation — see `AppState::ccr_watchlist_bps` / `ccr_default_bps`.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -35,8 +39,10 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-use shared::collateral_valuation::{ccr_bps, compute_collateral};
-use shared::collateral_valuation_repo::{AssayRow, CollateralValuationRow, OfftakeTermsRow};
+use shared::collateral_valuation::{asset_for_metal, ccr_bps, compute_collateral};
+use shared::collateral_valuation_repo::{
+    AssayRow, CollateralValuationRow, OfftakeTermsRow, ValuationMode,
+};
 
 use crate::auth::SecurityAddon;
 use crate::error::ApiError;
@@ -163,24 +169,36 @@ async fn get_ccr_history(
     // CCR denominator: current outstanding senior principal, in USD.
     let senior_usd = loan_snapshot_senior_usd(&state, chain_id, &loan_id, now).await?;
 
-    // Price series for this loan's (asset, provider) pair: a seed at `from` plus every
-    // sample in (from, to], resolved to a per-grid-point as-of price.
+    // The assets this loan must price: each payable metal's own asset for a concentrate
+    // (gold→XAU, silver→XAG), or the headline asset for standard goods. All share the
+    // anchor's provider.
+    let required_assets = required_assets(&anchor, offtake.as_ref());
+
+    // One as-of price series per required asset: a seed at `from` plus every sample in
+    // (from, to]. Merged into a per-grid-point price map keyed by asset.
     let from_dt = unix_to_utc(query.from)?;
     let to_dt = unix_to_utc(to)?;
-    let seed = state
-        .loan_asset_price_repo
-        .price_at_or_before(&anchor.asset, &anchor.price_provider, from_dt)
-        .await?
-        .map(|(ts, p)| (ts.timestamp(), p));
-    let window: Vec<(i64, BigDecimal)> = state
-        .loan_asset_price_repo
-        .prices_in_window(&anchor.asset, &anchor.price_provider, from_dt, to_dt)
-        .await?
-        .into_iter()
-        .map(|(ts, p)| (ts.timestamp(), p))
-        .collect();
+    let mut per_asset = Vec::with_capacity(required_assets.len());
+    for asset in &required_assets {
+        let seed = state
+            .loan_asset_price_repo
+            .price_at_or_before(asset, &anchor.price_provider, from_dt)
+            .await?
+            .map(|(ts, p)| (ts.timestamp(), p));
+        let window: Vec<(i64, BigDecimal)> = state
+            .loan_asset_price_repo
+            .prices_in_window(asset, &anchor.price_provider, from_dt, to_dt)
+            .await?
+            .into_iter()
+            .map(|(ts, p)| (ts.timestamp(), p))
+            .collect();
+        per_asset.push((
+            asset.clone(),
+            resolve_grid(query.from, to, step, seed, &window),
+        ));
+    }
 
-    let grid = resolve_grid(query.from, to, step, seed, &window);
+    let points = merge_price_grids(query.from, to, step, &per_asset);
 
     build_response(
         &loan_id,
@@ -192,7 +210,7 @@ async fn get_ccr_history(
         assay.as_ref(),
         offtake.as_ref(),
         senior_usd.as_ref(),
-        &grid,
+        &points,
     )
     .map(Json)
 }
@@ -289,16 +307,79 @@ pub fn resolve_grid(
     out
 }
 
+/// The assets a loan must price over the window: each payable metal's own asset for a
+/// concentrate (resolved via [`asset_for_metal`], deduplicated), or the anchor's headline
+/// asset for standard goods. A concentrate with no offtake yet, or a metal that maps to no
+/// known symbol, yields fewer (or zero) assets — the loan then reads unpriced and the
+/// series is empty, which `compute_collateral` enforces per point anyway.
+pub fn required_assets(
+    anchor: &CollateralValuationRow,
+    offtake: Option<&OfftakeTermsRow>,
+) -> Vec<String> {
+    match anchor.valuation_mode {
+        ValuationMode::MetalConcentrate => {
+            let mut assets: Vec<String> = offtake
+                .map(|o| {
+                    o.payable_terms
+                        .0
+                        .iter()
+                        .filter_map(|t| asset_for_metal(&t.metal))
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default();
+            assets.sort();
+            assets.dedup();
+            assets
+        }
+        ValuationMode::StandardGoods => vec![anchor.asset.clone()],
+    }
+}
+
+/// One asset's resolved as-of price series: its symbol paired with the per-grid-point
+/// price (`None` before its first known sample), as produced by [`resolve_grid`].
+pub type AssetPriceGrid = (String, Vec<(i64, Option<BigDecimal>)>);
+
+/// Merge per-asset as-of grids (each aligned to the same `from`/`to`/`step`) into one
+/// price map per grid point. Only assets with a known price at a point appear in that
+/// point's map, so a point where some required asset is not yet priced yields an
+/// incomplete map — which `compute_collateral` treats as unpriced. Pure/testable.
+pub fn merge_price_grids(
+    from: i64,
+    to: i64,
+    step: i64,
+    per_asset: &[AssetPriceGrid],
+) -> Vec<(i64, HashMap<String, BigDecimal>)> {
+    let mut out = Vec::new();
+    let mut t = from;
+    let mut i = 0usize;
+    while t <= to {
+        let mut prices = HashMap::new();
+        for (asset, grid) in per_asset {
+            if let Some((_, Some(p))) = grid.get(i) {
+                prices.insert(asset.clone(), p.clone());
+            }
+        }
+        out.push((t, prices));
+        t += step;
+        i += 1;
+    }
+    out
+}
+
 /// Assemble the response from the (constant) valuation inputs and the resolved
-/// per-grid-point prices. Pure and unit-testable — no DB, no clock. Re-runs
-/// `compute_collateral` per priced grid point (only the reference price differs) and
-/// takes CCR against the fixed senior-principal denominator.
+/// per-grid-point price maps. Pure and unit-testable — no DB, no clock. Re-runs
+/// `compute_collateral` per grid point (only the prices differ) and takes CCR against the
+/// fixed senior-principal denominator.
 ///
-/// `Err` only propagates a malformed-stored-number data-integrity failure from
-/// `compute_collateral`. When a structural input (assay/offtake) or the
-/// senior-principal denominator is missing, no CCR is computable and `points` is empty.
+/// A point whose price map is incomplete for the loan's required assets (an early point
+/// before a metal's first sample) makes `compute_collateral` return `None` and is skipped
+/// — so, unlike the single-price case, we cannot short-circuit on the first `None`: a
+/// later point may become fully priced. `Err` only propagates a malformed-stored-number
+/// data-integrity failure. When a structural input (assay/offtake) or the senior-principal
+/// denominator is missing, no CCR is computable and `points` is empty.
 #[allow(clippy::too_many_arguments)]
-pub fn build_response(
+pub fn build_response<S: std::hash::BuildHasher>(
     loan_id: &BigDecimal,
     chain_id: i64,
     from: i64,
@@ -308,17 +389,17 @@ pub fn build_response(
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
     senior_usd: Option<&BigDecimal>,
-    grid: &[(i64, Option<BigDecimal>)],
+    grid: &[(i64, HashMap<String, BigDecimal, S>)],
 ) -> Result<CcrHistoryResponse, ApiError> {
     let mut points = Vec::new();
     if let Some(senior) = senior_usd {
-        for (ts, price) in grid {
-            let Some(price) = price else { continue }; // no price known yet at this point
-            let Some(computation) = compute_collateral(anchor, assay, offtake, Some(price))
-                .map_err(ApiError::Internal)?
+        for (ts, prices) in grid {
+            // `None` ⇒ price map incomplete at this point (or structurally unpriceable);
+            // skip and keep walking — a later point may be fully priced.
+            let Some(computation) =
+                compute_collateral(anchor, assay, offtake, prices).map_err(ApiError::Internal)?
             else {
-                // Structural input missing → None for every point; stop cheaply.
-                break;
+                continue;
             };
             points.push(CcrPoint {
                 timestamp: iso_utc_from_unix(*ts),

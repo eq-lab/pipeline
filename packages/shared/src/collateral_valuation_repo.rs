@@ -426,6 +426,30 @@ impl CollateralValuationRepo {
         .await
     }
 
+    /// Distinct `(payable-metal name, price_provider)` across **all** concentrate loans,
+    /// on every chain — each loan's offtake payable metals joined to its anchor's provider.
+    ///
+    /// A concentrate prices each payable metal by that metal's own price-feed asset (e.g.
+    /// silver→XAG), not just the anchor's headline asset, so the `asset_price_collector`
+    /// must poll every payable metal's asset. The caller resolves each metal name to its
+    /// asset symbol (`collateral_valuation::asset_for_metal`) and unions the result with
+    /// [`Self::distinct_asset_providers`]. Metals are read from every offtake row (a
+    /// harmless superset if a metal was later amended out) since the collector only needs
+    /// to know which price series to keep warm.
+    pub async fn concentrate_metal_providers(&self) -> Result<Vec<(String, String)>, sqlx::Error> {
+        sqlx::query_as::<_, (String, String)>(
+            "SELECT DISTINCT term ->> 'metal' AS metal, lcv.price_provider \
+             FROM loan_collateral_valuations lcv \
+             JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
+             JOIN loan_offtake_terms lot ON lot.chain_id = sl.chain_id AND lot.loan_id = sl.loan_id \
+             CROSS JOIN LATERAL jsonb_array_elements(lot.payable_terms) AS term \
+             WHERE lcv.valuation_mode = 'MetalConcentrate' \
+               AND term ->> 'metal' IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
     /// The latest assay per loan on a chain (one row per `loan_id`).
     pub async fn latest_assays(&self, chain_id: i64) -> Result<Vec<AssayRow>, sqlx::Error> {
         sqlx::query_as::<_, AssayRow>(

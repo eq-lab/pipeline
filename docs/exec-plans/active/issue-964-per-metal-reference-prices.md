@@ -82,12 +82,15 @@ _None_ — resolved with the human before implementation:
 Steps assume the **recommended** design (canonical code map, shared provider, no
 migration). If Open Question 1/3 flips, adjust the data-model steps accordingly.
 
-1. **`shared` — metal→asset resolver.** In
+**Status: all steps complete.** ✅ clippy (`--all --all-targets -D warnings`), ✅ doc lint
+(0 errors), ✅ `cargo test --all` (all green, 9 new tests), ✅ frontend `tsc --noEmit`.
+
+1. ✅ **`shared` — metal→asset resolver.** In
    `packages/shared/src/collateral_valuation/mod.rs`, add a pure
    `pub fn asset_for_metal(metal: &str) -> Option<&'static str>` (case-insensitive match
    on the confirmed vocabulary → XAU/XAG/XPT/XPD). Document it.
 
-2. **`shared` — per-metal price plumbing.** Change the signature:
+2. ✅ **`shared` — per-metal price plumbing.** Change the signature:
    ```rust
    pub fn compute_collateral(
        anchor: &CollateralValuationRow,
@@ -108,7 +111,7 @@ migration). If Open Question 1/3 flips, adjust the data-model steps accordingly.
    - Remove the now-inaccurate doc line about "single reference price applied to every
      payable metal / multi-metal is a follow-up."
 
-3. **API detail endpoint** (`packages/api/src/routes/collateral_valuation.rs`):
+3. ✅ **API detail endpoint** (`packages/api/src/routes/collateral_valuation.rs`):
    - In `get_collateral_valuation`, replace the single-price lookup with a
      `HashMap<String, BigDecimal>` built from `latest_prices()` filtered to
      `provider == anchor.price_provider` (asset → price). Pass it to `build_response`.
@@ -121,12 +124,12 @@ migration). If Open Question 1/3 flips, adjust the data-model steps accordingly.
      metal's own resolved asset price (falling back to `"0"` when absent), replacing the
      single-price copy.
 
-4. **API loan-book bulk** (`packages/api/src/routes/loan_book.rs`, `collateral_by_loan`):
+4. ✅ **API loan-book bulk** (`packages/api/src/routes/loan_book.rs`, `collateral_by_loan`):
    for each anchor, build the asset→price map from the pre-fetched
    `latest_prices: &HashMap<(String,String), BigDecimal>` filtered to the anchor's
    provider, and pass it to `compute_collateral`.
 
-5. **API CCR history** (`packages/api/src/routes/ccr_history.rs`):
+5. ✅ **API CCR history** (`packages/api/src/routes/ccr_history.rs`):
    - Determine the loan's required assets: standard goods → `[anchor.asset]`; concentrate →
      the resolved asset of every payable metal in the latest offtake.
    - Fetch a price series per required asset (`price_at_or_before` seed +
@@ -136,7 +139,7 @@ migration). If Open Question 1/3 flips, adjust the data-model steps accordingly.
      today's "no price known yet" skip). Call `compute_collateral(anchor, assay, offtake,
      &map)`.
 
-6. **Worker price discovery** (`packages/shared/src/collateral_valuation_repo.rs` +
+6. ✅ **Worker price discovery** (`packages/shared/src/collateral_valuation_repo.rs` +
    `packages/worker/src/asset_price_collector/mod.rs`):
    - Ensure every payable metal's asset gets collected, not just anchor headline assets.
      Add a repo loader (e.g. `all_anchors_with_offtakes` or reuse `distinct_asset_providers`
@@ -147,7 +150,7 @@ migration). If Open Question 1/3 flips, adjust the data-model steps accordingly.
    - Collect each distinct pair as today. Keep the "skip asset configured with conflicting
      providers" behaviour intact.
 
-7. **Lint/build.** `cargo clippy --all -- -D warnings`; `cargo build`.
+7. ✅ **Lint/build.** `cargo clippy --all -- -D warnings`; `cargo build`.
 
 ## Test Strategy
 

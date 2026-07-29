@@ -22,6 +22,7 @@
 //! All monetary/quantity inputs are [`BigDecimal`] to match the rest of the
 //! codebase's fixed-point money math and avoid binary-float drift.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use bigdecimal::{BigDecimal, RoundingMode, ToPrimitive, Zero};
@@ -34,6 +35,21 @@ use crate::collateral_valuation_repo::{
 /// (`grade_g_per_t * tonnes / 31.1035`). Precious-metal prices are quoted per troy oz.
 fn grams_per_troy_oz() -> BigDecimal {
     BigDecimal::from_str("31.1035").expect("31.1035 is a valid decimal literal")
+}
+
+/// Map a payable-metal name (as stored in `payable_terms`/`assays`, e.g. `"gold"`) to
+/// its price-feed asset symbol — the MetalpriceAPI / Chainlink code, e.g. `"XAU"`.
+/// Case-insensitive. Returns `None` for a metal outside the known precious-metal set:
+/// its collateral cannot be priced, so the loan reads "unpriced" rather than being
+/// silently mispriced against another metal's feed.
+pub fn asset_for_metal(metal: &str) -> Option<&'static str> {
+    match metal.to_ascii_lowercase().as_str() {
+        "gold" => Some("XAU"),
+        "silver" => Some("XAG"),
+        "platinum" => Some("XPT"),
+        "palladium" => Some("XPD"),
+        _ => None,
+    }
 }
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────
@@ -220,27 +236,32 @@ pub struct CollateralComputation {
 /// may not have arrived yet.
 ///
 /// Returns `Ok(None)` when a required input for the mode is missing (concentrate
-/// needs assay + offtake + price; standard goods needs price only), so callers can
-/// surface "unpriced" without an error. `Err` only for malformed stored numbers (a
-/// data-integrity problem).
+/// needs assay + offtake + a price for every payable metal; standard goods needs the
+/// headline asset's price only), so callers can surface "unpriced" without an error.
+/// `Err` only for malformed stored numbers (a data-integrity problem).
 ///
-/// The single reference price is applied to every payable metal — correct for a
-/// single-metal concentrate; multi-metal per-metal feeds are a follow-up.
-pub fn compute_collateral(
+/// `prices` is the latest USD price keyed by price-feed asset symbol (e.g.
+/// `{"XAU": .., "XAG": ..}`). Each payable metal is priced independently by resolving
+/// its metal name to an asset symbol via [`asset_for_metal`]; standard goods uses the
+/// anchor's headline `asset`. A metal whose asset has no price — or that maps to no
+/// known symbol — leaves the loan unpriced (`Ok(None)`) rather than mispriced.
+pub fn compute_collateral<S: std::hash::BuildHasher>(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    reference_price: Option<&BigDecimal>,
+    prices: &HashMap<String, BigDecimal, S>,
 ) -> anyhow::Result<Option<CollateralComputation>> {
     match anchor.valuation_mode {
         ValuationMode::MetalConcentrate => {
-            let (Some(assay), Some(offtake), Some(price)) = (assay, offtake, reference_price)
-            else {
+            let (Some(assay), Some(offtake)) = (assay, offtake) else {
+                return Ok(None);
+            };
+            let Some(metals) = assemble_metals(assay, offtake, prices)? else {
                 return Ok(None);
             };
             let valuation = ConcentrateInputs {
                 quantity_dmt: anchor.quantity_dmt.clone(),
-                metals: assemble_metals(assay, offtake, price)?,
+                metals,
                 treatment_charge_per_dmt: offtake.treatment_charge_per_dmt.clone(),
                 penalties: assemble_penalties(assay, offtake)?,
                 realisation_costs: offtake.realisation_costs.clone(),
@@ -253,7 +274,7 @@ pub fn compute_collateral(
             }))
         }
         ValuationMode::StandardGoods => {
-            let Some(price) = reference_price else {
+            let Some(price) = prices.get(&anchor.asset) else {
                 return Ok(None);
             };
             let collateral_value = StandardGoodsInputs {
@@ -276,39 +297,43 @@ fn dec(field: &str, value: &str) -> anyhow::Result<BigDecimal> {
         .map_err(|e| anyhow::anyhow!("collateral valuation field `{field}` = `{value}`: {e}"))
 }
 
-/// Join offtake payable terms with assay grades and refining charges. A metal
-/// absent from the assay/refining list defaults to grade/charge 0.
-fn assemble_metals(
+/// Join offtake payable terms with assay grades, refining charges, and each metal's own
+/// reference price. A metal absent from the assay/refining list defaults to grade/charge
+/// 0. Each metal is priced by resolving its name to a price-feed asset symbol
+/// ([`asset_for_metal`]) and looking that symbol up in `prices`. Returns `Ok(None)` when
+/// any payable metal maps to no known symbol or has no price yet — the loan is unpriced,
+/// not mispriced. `Err` only for malformed stored numbers.
+fn assemble_metals<S: std::hash::BuildHasher>(
     assay: &AssayRow,
     offtake: &OfftakeTermsRow,
-    reference_price: &BigDecimal,
-) -> anyhow::Result<Vec<PayableMetal>> {
-    offtake
-        .payable_terms
-        .0
-        .iter()
-        .map(|term| {
-            let grade = assay
-                .assays
-                .0
-                .iter()
-                .find(|m| m.metal == term.metal)
-                .map_or("0", |m| m.grade_g_per_t.as_str());
-            let rc = offtake
-                .refining_charges
-                .0
-                .iter()
-                .find(|r| r.metal == term.metal)
-                .map_or("0", |r| r.rc_per_oz.as_str());
-            Ok(PayableMetal {
-                grade_g_per_t: dec("grade_g_per_t", grade)?,
-                payable_pct: dec("payable_pct", &term.payable_pct)?,
-                min_deduction_g_per_t: dec("min_deduction_g_per_t", &term.min_deduction_g_per_t)?,
-                reference_price: reference_price.clone(),
-                rc_per_oz: dec("rc_per_oz", rc)?,
-            })
-        })
-        .collect()
+    prices: &HashMap<String, BigDecimal, S>,
+) -> anyhow::Result<Option<Vec<PayableMetal>>> {
+    let mut metals = Vec::with_capacity(offtake.payable_terms.0.len());
+    for term in &offtake.payable_terms.0 {
+        let Some(reference_price) = asset_for_metal(&term.metal).and_then(|a| prices.get(a)) else {
+            return Ok(None);
+        };
+        let grade = assay
+            .assays
+            .0
+            .iter()
+            .find(|m| m.metal == term.metal)
+            .map_or("0", |m| m.grade_g_per_t.as_str());
+        let rc = offtake
+            .refining_charges
+            .0
+            .iter()
+            .find(|r| r.metal == term.metal)
+            .map_or("0", |r| r.rc_per_oz.as_str());
+        metals.push(PayableMetal {
+            grade_g_per_t: dec("grade_g_per_t", grade)?,
+            payable_pct: dec("payable_pct", &term.payable_pct)?,
+            min_deduction_g_per_t: dec("min_deduction_g_per_t", &term.min_deduction_g_per_t)?,
+            reference_price: reference_price.clone(),
+            rc_per_oz: dec("rc_per_oz", rc)?,
+        });
+    }
+    Ok(Some(metals))
 }
 
 /// Join the offtake penalty schedule with assayed deleterious levels. A tier whose
