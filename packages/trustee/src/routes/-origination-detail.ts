@@ -65,7 +65,7 @@
  *     `batch` field exists on `SubmissionView`/`loan_data`; never fabricate
  *     it (resolved via #823's Open Questions).
  *   - Rejected  → a red banner: "Rejected · `<reviewedDate>` — `<rejectionReason>`".
- *   - ChangesRequested → an amber banner: "Changes requested ·
+ *   - ChangesRequested → a sweet-orange banner: "Changes requested ·
  *     `<reviewedDate>` — `<reason>`" (#950). Non-final (waiting on the
  *     originator to resubmit), so no action buttons.
  *   - Backend merged/lifecycle statuses → the Approved banner (issue #892).

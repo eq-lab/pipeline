@@ -27,7 +27,7 @@ import {
  *     `InReview` → a "Review" control that navigates to `/origination/$id`
  *     (issue #821), passing the row's `SubmissionView` as router state;
  *     `Rejected` → red "Rejected" pill with `reason` on hover;
- *     `ChangesRequested` → amber "Changes requested" pill with `reason` on
+ *     `ChangesRequested` → sweet-orange "Changes requested" pill with `reason` on
  *     hover (#950). Backend merged/lifecycle statuses are normalized to the
  *     Approved pill before they reach this render layer (issue #892).
  *   - The Figma static footer note ("The document set adapts to the
@@ -206,12 +206,13 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
         </span>
       );
     case "changes-requested":
-      // Amber caution pill (not red) — a non-final "waiting on originator"
-      // state (#950). Mirrors the Rejected pill's shape + reason-on-hover; the
-      // `#6e6400` amber matches the CCR "attention" one-off (no token exists).
+      // Sweet-orange caution pill (#950) — a non-final "waiting on originator"
+      // state. Mirrors the Rejected pill's shape + reason-on-hover, but a
+      // distinct, readable orange one-off (`#c2500a`, no token): not the red of
+      // Rejected, the olive of InReview, or the green of Approved.
       return (
         <span
-          className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(110,100,0,0.3)] bg-[rgba(110,100,0,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#6e6400]"
+          className="inline-flex h-[22.8px] items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[8px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#c2500a]"
           data-testid="origination-status-changes-requested"
           title={status.reason ?? undefined}
         >

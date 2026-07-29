@@ -190,7 +190,7 @@ function StatusPill({ status }: { status: StatusChip }) {
     return (
       <span
         data-testid="origination-detail-status-chip"
-        className="inline-flex items-center rounded-[4px] border border-solid border-[rgba(110,100,0,0.3)] bg-[rgba(110,100,0,0.08)] px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#6e6400]"
+        className="inline-flex items-center rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[7px] py-[3px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] whitespace-nowrap text-[#c2500a]"
       >
         {status.label}
       </span>
@@ -432,11 +432,11 @@ function RejectedBanner({ date, reason }: { date: string; reason: string }) {
 }
 
 /**
- * Amber "Changes requested · `<date>` — `<reason>`" banner (#950), rendered in
+ * Sweet-orange "Changes requested · `<date>` — `<reason>`" banner (#950), rendered in
  * place of `ActionButtons` for ChangesRequested submissions. A non-final state —
  * the trustee already asked for changes and is waiting on the originator to
  * resubmit — so no action buttons. Mirrors `RejectedBanner`'s shape in the
- * `#6e6400` amber one-off (no token; matches the `StatusPill` chip).
+ * sweet-orange `#c2500a` one-off (no token; matches the `StatusPill` chip).
  */
 function ChangesRequestedBanner({
   date,
@@ -448,9 +448,9 @@ function ChangesRequestedBanner({
   return (
     <div
       data-testid="origination-detail-changes-requested-banner"
-      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(110,100,0,0.3)] bg-[rgba(110,100,0,0.08)] px-[17px] py-[11px]"
+      className="flex items-center gap-[6px] rounded-[4px] border border-solid border-[rgba(194,80,10,0.3)] bg-[rgba(194,80,10,0.08)] px-[17px] py-[11px]"
     >
-      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#6e6400]">
+      <span className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#c2500a]">
         Changes requested · {date} — {reason}
       </span>
     </div>

@@ -47,7 +47,7 @@
  *       this is a Figma-shape placeholder, not a wired action).
  *     - `Rejected`  → red "Rejected" pill; `reason` (if present) is exposed
  *       for the view to show as a tooltip/title on hover.
- *     - `ChangesRequested` → amber "Changes requested" pill with `reason` on
+ *     - `ChangesRequested` → sweet-orange "Changes requested" pill with `reason` on
  *       hover (#949/#950). A genuine pre-decision, non-final outcome — NOT
  *       folded into `Approved`.
  *     - Any other backend merged/lifecycle status string → displayed as
