@@ -1237,6 +1237,69 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
   );
 }
 
+/**
+ * Past-Due attention notice (#940). A past-maturity loan renders under the
+ * Matured variant; its derived `Past Due` status is an attention signal, not a
+ * lock — per the backend, it exists "to draw the Trustee's attention that they
+ * either need to record the payment or escalate to default". This banner
+ * surfaces those two paths directly, wired to the existing Record coupon /
+ * Escalate actions. Amber (attention) tokens — not red, which is Default.
+ */
+function PastDueNotice({
+  onRecord,
+  onEscalate,
+}: {
+  onRecord: () => void;
+  onEscalate: () => void;
+}) {
+  return (
+    <div
+      data-testid="loan-detail-past-due-notice"
+      className="flex w-full flex-col gap-[12px] rounded-[4px] border border-solid px-[21px] py-[18px]"
+      style={{
+        borderColor: "rgba(110,100,0,0.3)",
+        backgroundColor: "rgba(110,100,0,0.06)",
+      }}
+    >
+      <div className="flex flex-col gap-[4px]">
+        <span
+          className="font-[family-name:var(--font-display)] text-[18px] leading-[25.2px]"
+          style={{ color: ATTENTION_AMBER }}
+        >
+          Past due — this loan needs a decision
+        </span>
+        <span
+          className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{ color: INK_MUTED }}
+        >
+          Maturity has passed. If the payment arrived, record it. If it didn’t,
+          escalate the loan to default.
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-[10px]">
+        <button
+          type="button"
+          data-testid="loan-detail-past-due-record"
+          onClick={onRecord}
+          className="h-[40px] rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[15px] text-white"
+          style={{ backgroundColor: BRAND }}
+        >
+          Record payment
+        </button>
+        <button
+          type="button"
+          data-testid="loan-detail-past-due-escalate"
+          onClick={onEscalate}
+          className="h-[40px] rounded-[4px] border border-solid px-[16px] font-[family-name:var(--font-body)] text-[15px]"
+          style={{ borderColor: LINE_COLOR, color: INK }}
+        >
+          Escalate to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function LoanDetail() {
@@ -1332,8 +1395,14 @@ function LoanDetail() {
       ) : detail.variant === "matured" ? (
         // Matured layout (#866): no stepper, no Registry — a rollover card sits
         // beside Price & collateral (rollover is the matured-only fast-path).
+        // The past-maturity/Past-Due state is an attention prompt (#940): record
+        // the payment, or escalate to default.
         <>
           <Hero hero={detail.hero} />
+          <PastDueNotice
+            onRecord={() => onOtherAction("Record coupon")}
+            onEscalate={() => onOtherAction("Escalate to Risk Council")}
+          />
           <SummaryTiles tiles={detail.tiles} />
           <div className="flex w-full flex-col gap-[16px] lg:flex-row">
             <PriceCollateralCard pc={detail.priceCollateral} />
