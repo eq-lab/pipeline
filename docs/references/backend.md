@@ -415,11 +415,20 @@ Yield mint intents in the outbox carry the full `(YieldAttestation, bridgeSig, c
 #### Stellar yield-mint phase
 
 The Stellar relayer runs a yield-mint phase parallel to EVM Phase 4. It reuses
-the `yield_mint_outbox` table (discover → submit → confirm) but signs
-`yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
+the `yield_mint_outbox` table (discover → skip-nothing-to-mint → submit → confirm)
+but signs `yield_minter.mint_yield(caller, loan_id, repayment_id)` directly with the
 relayer ed25519 keypair — no BitGo. Double-mint is prevented on-chain by
 `loan_registry.consume_yield`; the `can_yield_be_minted` view is a pre-submit
 optimization. On-chain `FAILED` is terminal (`failed`, operator review).
+
+Between discover and submit, `skip_nothing_to_mint_stellar` sweeps `pending` rows
+for pure-principal repayments (no yield to distribute) into the terminal
+`skipped_nothing_to_mint` state, computed entirely from the originating
+`PaymentRecorded` event in `contract_logs` — no on-chain call. This mirrors the
+contract's `mint_yield` `ZeroAmounts` guard (`senior_interest == 0` and
+`mgmt_fee + perf_fee + oet_alloc == 0`). Without it such a repayment would fail
+`mint_yield` forever, because that revert also rolls back the in-tx
+`consume_yield` mark, so `can_yield_be_minted` never flips to false.
 
 The phase is enabled only when both contract ids are configured:
 

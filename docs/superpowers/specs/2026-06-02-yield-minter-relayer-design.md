@@ -135,7 +135,7 @@ CREATE INDEX yield_mint_outbox_submitted_idx
     WHERE status = 'submitted';
 ```
 
-Status values are constrained to: `pending | submitted | confirmed | failed | skipped_already_minted` (enforced in Rust, not via a CHECK constraint — keeps schema flexible if new states are added).
+Status values are constrained to: `pending | submitted | confirmed | failed | skipped_already_minted | skipped_nothing_to_mint` (enforced in Rust, not via a CHECK constraint — keeps schema flexible if new states are added). `skipped_nothing_to_mint` is a terminal state for the Stellar phase: a pure-principal repayment with no yield to distribute, detected worker-side before submit (see the Stellar yield-mint phase in `docs/references/backend.md`).
 
 ### `packages/shared/src/yield_mint_outbox_repo.rs`
 
@@ -454,7 +454,7 @@ Test cases:
 2. Set: `JOB_RELAYER_ENABLED=true`, `JOB_RELAYER_YIELD_MINTER_ADDRESS`, `JOB_RELAYER_LOAN_REGISTRY_ADDRESS`, `BITGO_NATIVE_SYMBOL=hteth`.
 3. Trigger an on-chain `recordPayment` (or rely on a pre-existing `PaymentRecorded` row in `contract_logs`).
 4. Wait one relayer cycle (≤ 60s by default). Verify:
-   - `SELECT * FROM yield_mint_outbox WHERE status NOT IN ('confirmed', 'skipped_already_minted')` is empty.
+   - `SELECT * FROM yield_mint_outbox WHERE status NOT IN ('confirmed', 'skipped_already_minted', 'skipped_nothing_to_mint')` is empty.
    - On-chain `YieldMinted` event present at the recorded `tx_hash`.
    - `canYieldBeMinted(loanId, repaymentId)` now returns `false`.
    - Treasury and stakedPlUSD balances increased by the expected amounts.
