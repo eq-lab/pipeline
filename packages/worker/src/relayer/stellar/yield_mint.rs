@@ -208,7 +208,7 @@ fn key_of(row: &shared::yield_mint_outbox_repo::YieldMintOutboxRow) -> OutboxKey
     }
 }
 
-/// Run one Stellar yield-mint cycle: discover → submit → confirm.
+/// Run one Stellar yield-mint cycle: discover → skip-nothing-to-mint → submit → confirm.
 ///
 /// Per-row errors are logged and skipped. Only a DB list failure aborts the
 /// cycle (returns `Err`); the relayer loop and other phases are unaffected.
@@ -227,6 +227,20 @@ pub async fn phase_yield_mint_stellar(
         tracing::info!(
             count = inserted,
             "stellar yield_mint: discovered new pending rows"
+        );
+    }
+
+    // Worker-side skip: pure-principal repayments (no senior interest, no fees) can never be
+    // minted (the contract reverts with ZeroAmounts, which also rolls back consume_yield, so
+    // they would retry forever). Detect them from the PaymentRecorded event and skip before
+    // submit — no on-chain call. Also clears any rows already stuck in `pending`.
+    let skipped = outbox
+        .skip_nothing_to_mint_stellar(settings.chain_id, &minter_addr, &registry_addr)
+        .await?;
+    if skipped > 0 {
+        tracing::info!(
+            count = skipped,
+            "stellar yield_mint: skipped pending rows with nothing to mint"
         );
     }
 

@@ -184,6 +184,54 @@ impl YieldMintOutboxRepo {
 
         Ok(result.rows_affected() as usize)
     }
+
+    /// Sweep `pending` Stellar rows that carry no yield to mint into
+    /// `skipped_nothing_to_mint`, computed entirely from the originating
+    /// `PaymentRecorded` event in `contract_logs` — no on-chain call.
+    ///
+    /// This mirrors the `yield_minter.mint_yield` contract's `ZeroAmounts` guard:
+    /// a repayment is skippable when `senior_interest == 0` **and**
+    /// `mgmt_fee + perf_fee + oet_alloc == 0` (pure principal, nothing to distribute).
+    /// Such a repayment can never be minted, and the contract's revert also rolls
+    /// back its `consume_yield` mark, so it would otherwise be retried forever.
+    ///
+    /// Runs each cycle before submit, so it clears both newly-discovered rows and
+    /// any already-stuck `pending` rows. Missing/NULL amount fields do not match
+    /// (`NULL = 0` is unknown), so an unparseable event is left `pending` rather
+    /// than wrongly skipped. Returns the number of rows swept.
+    pub async fn skip_nothing_to_mint_stellar(
+        &self,
+        chain_id: i64,
+        yield_minter_address: &str,
+        loan_registry_contract_id: &str,
+    ) -> Result<usize> {
+        let result = sqlx::query(
+            r"
+            UPDATE yield_mint_outbox o
+               SET status = 'skipped_nothing_to_mint'
+              FROM contract_logs cl
+             WHERE o.chain_id = $2
+               AND o.yield_minter_address = $1
+               AND o.status = 'pending'
+               AND cl.chain_id = o.chain_id
+               AND cl.contract_address = $3
+               AND cl.event_name = 'PaymentRecorded'
+               AND (cl.params->>'loan_id')::numeric = o.loan_id
+               AND (cl.params->'event'->>'repayment_id')::numeric = o.repayment_id
+               AND (cl.params->'event'->>'senior_interest')::numeric = 0
+               AND (cl.params->'event'->>'mgmt_fee')::numeric
+                 + (cl.params->'event'->>'perf_fee')::numeric
+                 + (cl.params->'event'->>'oet_alloc')::numeric = 0
+            ",
+        )
+        .bind(yield_minter_address)
+        .bind(chain_id)
+        .bind(loan_registry_contract_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() as usize)
+    }
 }
 
 #[async_trait]
