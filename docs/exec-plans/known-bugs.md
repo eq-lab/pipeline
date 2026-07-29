@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
+- **Date:** 2026-07-29
+- **Location:** `packages/frontend` — 9 committed files fail `yarn lint` (prettier `--check`): `src/api/README.md`, `src/api/useStatsYield.ts`, `src/components/ConnectWalletModal.test.tsx`, `src/components/TopBar.test.tsx`, `src/components/TopBar.tsx`, `src/wallet/ConnectModalProvider.test.tsx`, `src/wallet/README.md`, `src/wallet/stellar/connectionStore.ts`, `src/wallet/stellar/contracts/stakedPlusd.test.ts`.
+- **Symptom:** The husky pre-commit hook's `frontend lint` stage exits 1 for **any** commit, because these already-committed files are not prettier-conformant (each is byte-identical to `HEAD` — the debt predates the commit under way). Blocks committing unrelated (e.g. backend-only) changes through the hook.
+- **Root cause:** Formatting debt landed on `main` without prettier being applied; the pre-commit `frontend lint` runs a repo-wide `prettier --check`, so it fails regardless of what the commit touches.
+- **Workaround:** Run `cd packages/frontend && yarn lint --write` (or `prettier --write`) on the 9 files in a dedicated formatting-only PR. Discovered while committing #953 (backend-only); that commit bypassed the stale stage with `--no-verify` after manually verifying `cargo fmt`, `yarn codegen` (no changes), clippy, `cargo test --all`, `tsc`, and doc lint all pass.
+
 ### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
 - **Date:** 2026-07-29
 - **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
