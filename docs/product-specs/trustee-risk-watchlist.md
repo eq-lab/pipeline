@@ -25,17 +25,16 @@ This spec is the source of truth for the risk/watchlist behavior below. Figma go
 1. CCR fell below 130%.
 2. A coupon was missed while maturity has not yet passed — surfaced in Needs Attention with an overdue counter.
 
-## Past Due is not Watchlist
+## Past Due — an attention state, not a settable status
 
-If the maturity date has passed and the money has not arrived, the status is **Past Due**. A Past Due loan is effectively locked: recording payments and minting against it are not allowed.
+When a loan's maturity date passes, it shows as **Past Due**. This is a **derived** display status (`now > maturity`), not something the Trustee sets: there is no on-chain "Past Due" status, and the label does not lock the loan. It exists to draw the Trustee's attention that the loan needs a decision.
 
-Past Due is set **only when the money genuinely did not arrive**. If the money came in but the Trustee simply has not recorded the payment yet, the correct action is to go record the payment — not to change the status.
+Past Due is not Watchlist, and it is not Default — it points the Trustee to one of two existing actions:
 
-Because Past Due is destructive and hard to reverse, selecting it opens a **confirmation dialog** that shows:
+- **Record the payment** — if the money arrived and simply has not been recorded yet, go record the coupon / repayment. Recording is still allowed; the on-chain status is unchanged.
+- **Escalate to default** — if the money genuinely did not arrive, escalate the loan to Default via the Risk Council (24h timelock). This is the destructive, hard-to-reverse path, and it carries its own confirmation on the escalation flow.
 
-- A warning that recording and mints will be locked once the loan is Past Due.
-- The list of incoming transfers matched to this loan (so the Trustee can confirm nothing is unrecorded).
-- The text: *"WARNING! Past Due Loans are effectively locked for any changes and interest intakes. Make sure there are no unrecorded payments related to this Loan before changing its status to Past Due."*
+The Trustee never flips a status to "lock" a Past Due loan; the response is always one of those two actions. The loan card surfaces both directly so the choice is obvious.
 
 ## Return to Performing
 

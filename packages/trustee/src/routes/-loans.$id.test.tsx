@@ -547,6 +547,27 @@ describe("Loan detail route — Matured variant (#866)", () => {
       newMaturity: Math.floor(Date.parse("2026-09-30T00:00:00Z") / 1000),
     });
   });
+
+  it("surfaces the Past-Due attention notice with the record + escalate paths (#940)", () => {
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    const notice = screen.getByTestId("loan-detail-past-due-notice");
+    expect(notice).toHaveTextContent("Past due");
+
+    // "Record payment" → the existing full-page Record-coupon route.
+    fireEvent.click(screen.getByTestId("loan-detail-past-due-record"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/loans/$id/record-coupon",
+      params: { id: "4488" },
+    });
+
+    // "Escalate to default" → the existing Escalate-to-Default route.
+    fireEvent.click(screen.getByTestId("loan-detail-past-due-escalate"));
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/risk-council/escalate/$id",
+      params: { id: "4488" },
+    });
+  });
 });
 
 describe("Loan detail route — Disbursing variant (#862)", () => {
