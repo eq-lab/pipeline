@@ -10,7 +10,7 @@ This spec is the source of truth for the risk/watchlist behavior below. Figma go
 
 1. **Status** — the loan's lifecycle status.
 2. **CCR** — the value and its color band (below).
-3. **Nearest payment** — the next payment's date, or, when overdue, how many days late.
+3. **Nearest payment** — the next payment's date, or, when overdue, how many days late. Served by the backend as `next_payment_timestamp` (the next scheduled payment — the current rollover-adjusted maturity for today's bullet loans) and `days_overdue` (whole days past it; `null` until then) on `GET /v1/loan-book` and `.../financials` — the frontend renders these directly and never derives the day count client-side. `days_overdue` here is pure date math off `next_payment_timestamp`; the cross-rollover *"a coupon was missed while maturity has not yet passed"* case below is tracked separately in #961.
 
 ## CCR color bands
 

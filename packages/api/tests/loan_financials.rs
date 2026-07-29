@@ -360,3 +360,45 @@ fn epoch_amendment_without_rollover_keeps_ordinal() {
     assert_eq!(resp.epoch.current_apy_bps, 950);
     assert_eq!(resp.epoch.maturity_date, "2026-05-01T00:00:00Z");
 }
+
+#[test]
+fn next_payment_equals_current_maturity_and_not_overdue_before_it() {
+    // Next payment is the current (rollover-adjusted) maturity; `now` before it →
+    // days_overdue is null.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    snap.current_maturity_timestamp = 5_000;
+    let resp = build_response(&row(snap), &BigDecimal::from(0), &[], true, 1_000, None);
+    assert_eq!(resp.next_payment_timestamp, 5_000);
+    assert_eq!(resp.days_overdue, None);
+}
+
+#[test]
+fn days_overdue_counts_whole_days_past_the_payment() {
+    // current maturity at day 1 (86_400s); now at day 4 → 3 whole days overdue.
+    let mut snap = snapshot(
+        "Performing",
+        100_000_000,
+        0,
+        100_000_000,
+        repayment(0, 0, 0, 0),
+        empty_location(),
+    );
+    snap.current_maturity_timestamp = 86_400;
+    let resp = build_response(
+        &row(snap),
+        &BigDecimal::from(0),
+        &[],
+        true,
+        4 * 86_400,
+        None,
+    );
+    assert_eq!(resp.next_payment_timestamp, 86_400);
+    assert_eq!(resp.days_overdue, Some(3));
+}

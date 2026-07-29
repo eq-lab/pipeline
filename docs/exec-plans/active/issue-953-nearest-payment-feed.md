@@ -74,6 +74,8 @@ _None_ — both resolved by the issue owner:
 
 ## Implementation Steps
 
+_Status: all steps implemented (loan_book.rs + loan_financials.rs DTOs & compute, tests in both `tests/*.rs`, docs updated). Lint/build/test results in the coder report._
+
 1. **`packages/api/src/routes/loan_book.rs` — extend `LoanBookEntry`.** Add, after the
    existing `maturity` field (keep the doc comments in the module's established style):
    - `pub next_payment_timestamp: i64,` — doc: next scheduled payment (Unix s). Bullet

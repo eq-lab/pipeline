@@ -197,6 +197,17 @@ pub struct LoanBookEntry {
     /// **Maturity** column; reflects rollovers, unlike the origination-fixed term
     /// behind `duration_days`.
     pub maturity: i64,
+    /// Next scheduled payment (Unix seconds). For today's **bullet loans** this equals
+    /// the current rollover-adjusted maturity (`current_maturity_timestamp`, the same
+    /// value as `maturity`); it is a distinct field so a future intra-loan schedule can
+    /// diverge without a breaking change. Backs the Trustee **Nearest payment** value.
+    pub next_payment_timestamp: i64,
+    /// Whole days past `next_payment_timestamp`, or `null` when `now <=
+    /// next_payment_timestamp`. Pure date math — non-null whenever past the next payment
+    /// date, independent of loan status (a terminal `Closed`/`Default` loan past its
+    /// maturity still reports a count). Computed server-side, same precedent as
+    /// `days_on_watchlist`; backs the "N days late" form of **Nearest payment**.
+    pub days_overdue: Option<i64>,
     /// Timestamp the current CCR was last reported on-chain (`last_reported_ccr_timestamp`,
     /// Unix seconds) — backs the CCR staleness/age chip. `0` when never reported.
     pub ccr_reported_at: i64,
@@ -1410,6 +1421,13 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         .flatten();
     let days_on_watchlist = watchlist_entered_at.map(|entered_at| (to - entered_at) / SECS_PER_DAY);
 
+    // Next scheduled payment: for bullet loans, the current rollover-adjusted maturity.
+    // `days_overdue` is pure date math — whole days past it, `null` until then, with no
+    // dependency on status (see the field docs on `LoanBookEntry`).
+    let next_payment_timestamp = s.current_maturity_timestamp;
+    let days_overdue =
+        (to > next_payment_timestamp).then(|| (to - next_payment_timestamp) / SECS_PER_DAY);
+
     let entry = LoanBookEntry {
         chain_id: loan.chain_id,
         loan_id: loan_key(&loan.loan_id),
@@ -1420,6 +1438,8 @@ fn build_loan_entry<S: std::hash::BuildHasher>(
         senior_outstanding: base6_to_decimal_string(&outstanding_senior),
         original_senior_tranche: base6_to_decimal_string(&s.original_senior_tranche),
         maturity: s.current_maturity_timestamp,
+        next_payment_timestamp,
+        days_overdue,
         ccr_reported_at: s.last_reported_ccr_timestamp,
         reported_ccr_bps: s.ccr_bps,
         spot_price: spot.and_then(|sp| sp.price.clone()),

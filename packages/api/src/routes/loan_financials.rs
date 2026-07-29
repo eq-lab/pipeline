@@ -37,6 +37,10 @@ use crate::routes::common::{resolve_chain, ChainQuery};
 use crate::routes::loan_book::display_status;
 use crate::AppState;
 
+/// Seconds per day, for the whole-day `days_overdue` count. Matches
+/// `routes::loan_book::SECS_PER_DAY`.
+const SECS_PER_DAY: i64 = 86_400;
+
 // ── Response DTOs ──────────────────────────────────────────────────────────────
 
 /// Response for `GET /v1/loan-book/{loan_id}/financials`.
@@ -71,6 +75,16 @@ pub struct LoanFinancialsResponse {
 
     /// Offtaker amount still owed: `offtaker − repayment.offtaker_received`.
     pub offtaker_outstanding: String,
+
+    /// Next scheduled payment (Unix seconds). For today's **bullet loans** this equals
+    /// the current rollover-adjusted maturity (`current_maturity_timestamp`); a distinct
+    /// field future-proofs any intra-loan schedule. Mirrors the loan-book
+    /// `next_payment_timestamp`.
+    pub next_payment_timestamp: i64,
+    /// Whole days past `next_payment_timestamp`, or `null` when `now <=
+    /// next_payment_timestamp`. Pure date math, independent of loan status. Mirrors the
+    /// loan-book `days_overdue`.
+    pub days_overdue: Option<i64>,
 
     /// Current economics epoch (rate + date window + ordinal).
     pub epoch: EpochView,
@@ -253,6 +267,12 @@ pub fn build_response(
 
     let offtaker_outstanding = &s.original_offtaker_price - &s.repayment.offtaker_received;
 
+    // Next scheduled payment: the current rollover-adjusted maturity for a bullet loan.
+    // `days_overdue` is pure date math — whole days past it, `null` until then.
+    let next_payment_timestamp = s.current_maturity_timestamp;
+    let days_overdue =
+        (now > next_payment_timestamp).then(|| (now - next_payment_timestamp) / SECS_PER_DAY);
+
     LoanFinancialsResponse {
         loan_id: row.loan_id.to_string(),
         status: display_status(
@@ -269,6 +289,8 @@ pub fn build_response(
         minted_yield: base6_to_decimal_string(minted_yield),
         not_minted_yield: base6_to_decimal_string(&not_minted),
         offtaker_outstanding: base6_to_decimal_string(&offtaker_outstanding),
+        next_payment_timestamp,
+        days_overdue,
         epoch: current_epoch(s, economics_events, current_epoch_start_override),
     }
 }

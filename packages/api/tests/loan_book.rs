@@ -931,3 +931,70 @@ fn days_on_watchlist_none_when_not_currently_watchlisted() {
     assert_eq!(r.loans[0].days_on_watchlist, None);
     assert_eq!(r.loans[0].watchlist_entered_at, None);
 }
+
+// ── Nearest payment (next_payment_timestamp + days_overdue) ─────────────────────
+
+/// Override a loan's rollover-aware `current_maturity_timestamp` (in days), leaving the
+/// immutable `original_maturity_date` untouched — models a rolled-over loan.
+fn with_current_maturity(mut row: LoanSnapshotRow, maturity_day: i64) -> LoanSnapshotRow {
+    row.snapshot.current_maturity_timestamp = maturity_day * DAY;
+    row
+}
+
+#[test]
+fn next_payment_equals_current_maturity_and_not_overdue_before_it() {
+    // Day 60: loan A active (0–180). Next payment = current maturity = the `maturity`
+    // field; not yet reached → days_overdue is null.
+    let r = at(60, &fixture_loans(), &[]);
+    let a = r.loans.iter().find(|e| e.loan_id == "1").unwrap();
+    assert_eq!(a.next_payment_timestamp, 180 * DAY);
+    assert_eq!(a.next_payment_timestamp, a.maturity);
+    assert_eq!(a.days_overdue, None);
+}
+
+#[test]
+fn days_overdue_null_at_the_payment_boundary() {
+    // Exactly at loan B's maturity (day 120): `now == next_payment` is not past it.
+    let r = at(120, &fixture_loans(), &[]);
+    let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
+    assert_eq!(b.next_payment_timestamp, 120 * DAY);
+    assert_eq!(b.days_overdue, None);
+}
+
+#[test]
+fn days_overdue_counts_whole_days_past_the_payment() {
+    // Day 150: loan B (maturity day 120) is 30 whole days past its next payment.
+    let r = at(150, &fixture_loans(), &[]);
+    let b = r.loans.iter().find(|e| e.loan_id == "2").unwrap();
+    assert_eq!(b.days_overdue, Some(30));
+}
+
+#[test]
+fn days_overdue_is_status_independent_for_terminal_loans() {
+    // Pure date math: a Closed loan past its maturity still reports a count (day 500,
+    // loan A maturity day 180 → 320 days). Documents the accepted consequence of the
+    // status-independent rule.
+    let loans: Vec<LoanSnapshotRow> = fixture_loans()
+        .into_iter()
+        .map(|l| with_status(l, "Closed"))
+        .collect();
+    let events = vec![event("LoanClosed", 1, 181), event("LoanClosed", 2, 121)];
+    let r = at(500, &loans, &events);
+    let a = r.loans.iter().find(|e| e.loan_id == "1").unwrap();
+    assert_eq!(a.status, "Closed");
+    assert_eq!(a.days_overdue, Some(320));
+}
+
+#[test]
+fn next_payment_tracks_rollover_adjusted_maturity() {
+    // Loan A rolled over: original maturity day 180, current maturity day 250. At day
+    // 200 the next payment is the *current* maturity (250), still in the future — so the
+    // base feed does not flag it overdue (the missed-prior-epoch case is #961, deferred).
+    let mut loans = fixture_loans();
+    loans[0] = with_current_maturity(loans[0].clone(), 250);
+    let r = at(200, &loans, &[]);
+    let a = r.loans.iter().find(|e| e.loan_id == "1").unwrap();
+    assert_eq!(a.next_payment_timestamp, 250 * DAY);
+    assert_eq!(a.next_payment_timestamp, a.maturity);
+    assert_eq!(a.days_overdue, None);
+}
