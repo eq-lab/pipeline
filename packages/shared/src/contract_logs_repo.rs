@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use bigdecimal::BigDecimal;
 use sqlx::PgPool;
 
@@ -810,6 +812,53 @@ impl ContractLogsRepo {
         .fetch_all(executor)
         .await?;
         Ok(rows)
+    }
+
+    /// The Withdrawal Queue Wallet's running USDC balance as of `as_of` (unix
+    /// seconds) — the `wallet_balance_after` field the indexer computes on each
+    /// `AssetTransfer` that touches `wallet` (see
+    /// `packages/worker/src/indexer/stellar/mappers.rs::compute_wallet_balance_field`,
+    /// Issue #933). Returns `None` when no transfer touching `wallet` has been
+    /// indexed yet on or before `as_of` — callers should treat that as "unknown",
+    /// not zero. Pass `as_of = now` for the current balance.
+    ///
+    /// No `contract_address` filter — matches `list_asset_transfers`'s existing
+    /// assumption that only one asset is tracked per chain (`event_name =
+    /// 'AssetTransfer'` plus `chain_id` is already unambiguous today).
+    pub async fn get_wallet_balance_as_of<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        wallet: &str,
+        as_of: i64,
+    ) -> anyhow::Result<Option<BigDecimal>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        let balance: Option<String> = sqlx::query_scalar(
+            "SELECT params->>'wallet_balance_after'
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = 'AssetTransfer'
+               AND (params->>'from' = $2 OR params->>'to' = $2)
+               AND params ? 'wallet_balance_after'
+               AND block_timestamp <= $3
+             ORDER BY block_number DESC, log_index DESC
+             LIMIT 1",
+        )
+        .bind(chain_id)
+        .bind(wallet)
+        .bind(as_of)
+        .fetch_optional(executor)
+        .await?;
+
+        Ok(match balance {
+            Some(s) => Some(
+                BigDecimal::from_str(&s)
+                    .map_err(|e| anyhow::anyhow!("malformed wallet_balance_after {s}: {e}"))?,
+            ),
+            None => None,
+        })
     }
 
     /// Fetch a single `AssetTransfer` event by its `contract_logs.id`, joined against

@@ -27,7 +27,7 @@ use crate::indexer::{
         loan_registry_parsers::stellar_log_to_loan_event,
         loan_registry_reader::{StellarAddress, StellarLoanRegistryReader},
         mappers::StellarLogMapper,
-        parsers::{dispatch_parser, transfer_between_tracked},
+        parsers::{dispatch_parser, transfer_between_tracked, transfer_touches_address},
         rpc::{EventFilter, StellarRpc},
     },
 };
@@ -68,6 +68,11 @@ pub struct StellarEventPoller {
     repo: Arc<EventRepo>,
     deposit_manager_id: String,
     withdrawal_queue_id: String,
+    /// Withdrawal Queue Wallet — the MPC custody address that holds USDC for
+    /// queue settlement (distinct from `withdrawal_queue_id`, the accounting
+    /// contract). `Some` only when configured for this chain; used one-sided
+    /// (either side, any counterparty) in the `AssetTransfer` filter.
+    withdrawal_queue_wallet_id: Option<String>,
     staked_plusd_id: String,
     loan_registry_id: Option<String>,
     yield_minter_id: Option<String>,
@@ -88,6 +93,7 @@ impl StellarEventPoller {
         repo: Arc<EventRepo>,
         deposit_manager_id: String,
         withdrawal_queue_id: String,
+        withdrawal_queue_wallet_id: Option<String>,
         staked_plusd_id: String,
         loan_registry_id: Option<String>,
         yield_minter_id: Option<String>,
@@ -101,6 +107,7 @@ impl StellarEventPoller {
             repo,
             deposit_manager_id,
             withdrawal_queue_id,
+            withdrawal_queue_wallet_id,
             staked_plusd_id,
             loan_registry_id,
             yield_minter_id,
@@ -148,9 +155,14 @@ impl ChainEventPoller for StellarEventPoller {
                 self.yield_minter_id.as_deref(),
                 self.asset_id.as_deref(),
             ) {
-                // Asset transfers are only persisted when BOTH endpoints are
-                // tracked (custody ∪ ramp) — internal movements only; external
-                // inflows/outflows are skipped.
+                // Asset transfers are persisted when either:
+                // - one side is the Withdrawal Queue Wallet — the MPC custody
+                //   address that actually holds the USDC, not the accounting
+                //   contract (one-sided — any counterparty, Issue #933), or
+                // - BOTH endpoints are tracked (custody ∪ ramp) — internal
+                //   movements between tracked accounts (Issue #789).
+                // Everything else (external inflows/outflows not touching the
+                // Withdrawal Queue Wallet) is skipped.
                 if log.event_name == "AssetTransfer" {
                     let from = log
                         .params
@@ -158,14 +170,18 @@ impl ChainEventPoller for StellarEventPoller {
                         .and_then(|v| v.as_str())
                         .unwrap_or("");
                     let to = log.params.get("to").and_then(|v| v.as_str()).unwrap_or("");
-                    if !transfer_between_tracked(from, to, &self.tracked_addresses) {
+                    let tracked = self
+                        .withdrawal_queue_wallet_id
+                        .as_deref()
+                        .is_some_and(|wallet| transfer_touches_address(from, to, wallet))
+                        || transfer_between_tracked(from, to, &self.tracked_addresses);
+                    if !tracked {
                         continue;
                     }
-                    mappers.push(Box::new(StellarLogMapper::new(
-                        log,
-                        self.chain_id,
-                        self.repo.clone(),
-                    )));
+                    mappers.push(Box::new(
+                        StellarLogMapper::new(log, self.chain_id, self.repo.clone())
+                            .with_withdrawal_queue_wallet(self.withdrawal_queue_wallet_id.clone()),
+                    ));
                 } else if is_loan_registry_event(&log.event_name) {
                     if let Some(deps) = &self.loan_mapper_deps {
                         let loan_event = stellar_log_to_loan_event(log);
@@ -274,9 +290,10 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         tracing::info!(
             asset_id = %asset_id,
             chain_id,
+            withdrawal_queue_wallet_id = ?settings.withdrawal_queue_wallet_id,
             custody = settings.custody_addresses.len(),
             ramp = settings.ramp_addresses.len(),
-            "Stellar asset-transfer tracking enabled"
+            "Stellar asset-transfer tracking enabled (withdrawal queue wallet: one-sided; custody/ramp: internal movements)"
         );
     }
 
@@ -286,6 +303,7 @@ pub async fn run_stellar_indexer_job(settings: StellarIndexerSettings, pool: PgP
         repo.clone(),
         settings.deposit_manager_id.clone(),
         settings.withdrawal_queue_id.clone(),
+        settings.withdrawal_queue_wallet_id.clone(),
         settings.staked_plusd_id.clone(),
         settings.loan_registry_id.clone(),
         settings.yield_minter_id.clone(),

@@ -48,6 +48,13 @@ pub struct AppState {
     /// Custody + ramp address sets keyed by chain_id, for the Capital Allocation
     /// `in_transit` bucket. Absent for chains without both lists configured.
     pub transfer_addresses: HashMap<i64, TransferAddressSets>,
+    /// Withdrawal Queue Wallet Strkey keyed by chain_id, for the Capital
+    /// Allocation `withdrawal_queue` bucket (Issue #933). Absent for chains
+    /// without a configured wallet.
+    pub withdrawal_queue_wallets: HashMap<i64, String>,
+    /// Tracked asset's on-chain decimal scale keyed by chain_id, shared by the
+    /// `in_transit` and `withdrawal_queue` buckets for normalization.
+    pub asset_decimals: HashMap<i64, u32>,
     /// EVM KYT (Crystal) toggle — gates the EVM voucher KYT check.
     pub crystal_enabled: bool,
     /// Stellar KYT (Elliptic) toggle — gates the Stellar voucher KYT check.

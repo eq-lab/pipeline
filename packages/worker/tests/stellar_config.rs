@@ -484,3 +484,132 @@ fn loan_registry_id_rejects_duplicate_of_dm() {
         std::env::remove_var(format!("{p}LOAN_REGISTRY_ID"));
     }
 }
+
+// ── withdrawal_queue_wallet_id field (Issue #933) ─────────────────────────────
+
+#[test]
+fn withdrawal_queue_wallet_id_unset_yields_none() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_022_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}DEPOSIT_MANAGER_ID"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+    }
+
+    let s = StellarIndexerSettings::from_chain_env(id)
+        .expect("should succeed when withdrawal_queue_wallet_id is unset");
+    assert!(
+        s.withdrawal_queue_wallet_id.is_none(),
+        "withdrawal_queue_wallet_id should be None when env var is absent"
+    );
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+    }
+}
+
+#[test]
+fn withdrawal_queue_wallet_id_parses_g_account() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_023_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+    let wallet = "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU";
+
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}DEPOSIT_MANAGER_ID"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        std::env::set_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"), wallet);
+    }
+
+    let s = StellarIndexerSettings::from_chain_env(id).expect("should succeed");
+    assert_eq!(s.withdrawal_queue_wallet_id.as_deref(), Some(wallet));
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+    }
+}
+
+#[test]
+fn withdrawal_queue_wallet_id_rejects_malformed_address() {
+    use pipeline_worker::indexer::config::StellarIndexerSettings;
+
+    let id = 99_000_024_i64;
+    let p = format!("CHAIN_{id}_STELLAR_");
+
+    unsafe {
+        std::env::set_var(format!("{p}RPC_URL"), "https://soroban-testnet.stellar.org");
+        std::env::set_var(
+            format!("{p}NETWORK_PASSPHRASE"),
+            "Test SDF Network ; September 2015",
+        );
+        std::env::set_var(
+            format!("{p}DEPOSIT_MANAGER_ID"),
+            "CB62UZDTBJOQWTLTQCHQUJJAYO4BSZC6QHVDHCJWD3XOPWP4M3ALJCOO",
+        );
+        std::env::set_var(
+            format!("{p}WITHDRAWAL_QUEUE_ID"),
+            "CB5CTBW2GALG7CT2FU3AEIHHWPYMME6WWIZWQ6M3V4VJO5JJ6CMOG2SL",
+        );
+        std::env::set_var(
+            format!("{p}STAKED_PLUSD_ID"),
+            "CDO4X3HCPR44UGXJ5PE35JBB4SYVDRQETXXOPQZLB7THN6FOTBTRKLW5",
+        );
+        std::env::set_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"), "NOTASTRKEY");
+    }
+
+    let err = StellarIndexerSettings::from_chain_env(id);
+    assert!(err.is_err(), "malformed wallet address should fail");
+
+    unsafe {
+        std::env::remove_var(format!("{p}RPC_URL"));
+        std::env::remove_var(format!("{p}NETWORK_PASSPHRASE"));
+        std::env::remove_var(format!("{p}DEPOSIT_MANAGER_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_ID"));
+        std::env::remove_var(format!("{p}STAKED_PLUSD_ID"));
+        std::env::remove_var(format!("{p}WITHDRAWAL_QUEUE_WALLET_ID"));
+    }
+}
