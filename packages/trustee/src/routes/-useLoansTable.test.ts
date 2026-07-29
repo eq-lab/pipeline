@@ -22,6 +22,7 @@ import {
   mapSummary,
   MAINTENANCE_MARGIN_BPS,
   HEALTHY_MARGIN_BPS,
+  HARD_MARGIN_CALL_BPS,
   CONCENTRATION_LIMIT_PCT,
 } from "./-useLoansTable";
 
@@ -57,28 +58,33 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
   };
 }
 
-// ── classifyCcr (120% maintenance-margin bands) ───────────────────────────────
+// ── classifyCcr (4-level 130/120/110 bands, spec §CCR color bands, #939) ───────
 
 describe("classifyCcr", () => {
-  it("uses MAINTENANCE_MARGIN_BPS = 12000 (120%) and HEALTHY_MARGIN_BPS = 13000 (130%)", () => {
-    expect(MAINTENANCE_MARGIN_BPS).toBe(12_000);
+  it("uses the 130 / 120 / 110% thresholds in bps", () => {
     expect(HEALTHY_MARGIN_BPS).toBe(13_000);
+    expect(MAINTENANCE_MARGIN_BPS).toBe(12_000);
+    expect(HARD_MARGIN_CALL_BPS).toBe(11_000);
   });
 
-  it("119.99% → pre-default", () => {
-    expect(classifyCcr(11_999)).toBe("pre-default");
+  it("≥130% → healthy (boundary inclusive)", () => {
+    expect(classifyCcr(13_000)).toBe("healthy");
+    expect(classifyCcr(20_987)).toBe("healthy");
   });
 
-  it("120% → attention (boundary is inclusive of the maintenance margin)", () => {
+  it("120–130% → attention / yellow (120 inclusive, <130)", () => {
+    expect(classifyCcr(12_999)).toBe("attention");
     expect(classifyCcr(12_000)).toBe("attention");
   });
 
-  it("129.99% → attention", () => {
-    expect(classifyCcr(12_999)).toBe("attention");
+  it("110–120% → margin-call / orange (110 inclusive, <120)", () => {
+    expect(classifyCcr(11_999)).toBe("margin-call");
+    expect(classifyCcr(11_000)).toBe("margin-call");
   });
 
-  it("130% → healthy", () => {
-    expect(classifyCcr(13_000)).toBe("healthy");
+  it("<110% → pre-default / red", () => {
+    expect(classifyCcr(10_999)).toBe("pre-default");
+    expect(classifyCcr(5_000)).toBe("pre-default");
   });
 
   it("null → null (no flag)", () => {
@@ -160,10 +166,10 @@ describe("mapEntryToRow", () => {
     expect(row.maturity).toBe(formatMaturityDate(1_785_000_000));
     expect(row.stage).toBe("WatchList");
     expect(row.status).toBe("WatchList");
-    // ccr_bps 11_400 used as-is (no ÷1000) ⇒ 114%.
+    // ccr_bps 11_400 used as-is (no ÷1000) ⇒ 114% → margin-call band (110–120%, #939).
     expect(row.ccr).toEqual({
       percent: "114%",
-      band: "pre-default",
+      band: "margin-call",
       age: "1h",
     });
   });

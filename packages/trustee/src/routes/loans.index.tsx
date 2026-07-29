@@ -52,14 +52,14 @@ import {
  *     `px-[21px] py-[19px]`. Label `Inter 12.5px / rgba(56,55,53,0.6)`
  *     (`--color-pipeline-ink-muted`, exact). Value `Besley 26px / #262524`
  *     (`--color-pipeline-ink`, exact). Sub `Inter 12.5px` ink-muted, `pt-[6px]`.
- *   - At-risk value + negative spot + `<120%` CCR + footnote `<120%` span:
- *     `NEGATIVE_RED` (`#b20000`) — a documented one-off, NOT
- *     `--color-pipeline-negative` (`#c0392b`), to match the Figma exactly
- *     (same precedent as the Origination pills' alpha one-offs).
- *   - CCR attention band + footnote `120–130%` span: `ATTENTION_AMBER`
- *     (`#6e6400`) — one-off, no token.
- *   - CCR healthy band + footnote `≥130%` span: `--color-pipeline-positive-primary`
- *     (`#208000`, exact token match).
+ *   - CCR bands (spec's 4-level scheme, #939) + their footnote spans:
+ *       · `≥130%` healthy → `--color-pipeline-positive-primary` (`#208000`, token).
+ *       · `120–130%` attention/yellow → `ATTENTION_AMBER` (`#6e6400`), one-off.
+ *       · `110–120%` margin-call/orange → `MARGIN_CALL_ORANGE` (`#b35900`), one-off.
+ *       · `<110%` pre-default/red → `NEGATIVE_RED` (`#b20000`), a documented
+ *         one-off (NOT `--color-pipeline-negative` `#c0392b`) — matches the Figma
+ *         exactly, same precedent as the Origination pills' alpha one-offs. Also
+ *         used for the At-risk headline value + negative spot.
  *   - Tab-bar container `bg rgba(191,189,187,0.12)`, `LINE_COLOR` border,
  *     `p-[4px] gap-[2px] rounded-[4px]`; buttons `px-[16px] py-[9px] gap-[8px]`;
  *     active `bg-white` + ink text, inactive ink-muted; count `14px` ink-muted
@@ -88,14 +88,22 @@ const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
 
 /**
  * Figma loan-page red (`#b20000`) for the At-risk headline, negative spot, the
- * `<120%` CCR band, and the footnote `<120%` span. Deliberately a documented
- * one-off — it differs from `--color-pipeline-negative` (`#c0392b`) — to match
- * the Figma exactly (same precedent as the Origination pills' alpha one-offs).
+ * `<110%` pre-default CCR band, and the footnote `<110%` span. Deliberately a
+ * documented one-off — it differs from `--color-pipeline-negative` (`#c0392b`) —
+ * to match the Figma exactly (same precedent as the Origination pills' one-offs).
  */
 const NEGATIVE_RED = "#b20000";
 
-/** Figma CCR "attention" amber (`#6e6400`) — a documented one-off, no token. */
+/** CCR "attention"/yellow band (120–130%) — a documented one-off, no token. */
 const ATTENTION_AMBER = "#6e6400";
+
+/**
+ * CCR "margin-call"/orange band (110–120%) — a documented one-off, no token.
+ * The spec's 4-band scheme (#939) needs an orange the prior 3-band scheme
+ * lacked; a distinct hue between the yellow `ATTENTION_AMBER` and red
+ * `NEGATIVE_RED`.
+ */
+const MARGIN_CALL_ORANGE = "#b35900";
 
 /** Green healthy band — exact match for `--color-pipeline-positive-primary`. */
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
@@ -141,6 +149,8 @@ function ccrBandColor(band: CcrBand | null): string {
       return POSITIVE_GREEN;
     case "attention":
       return ATTENTION_AMBER;
+    case "margin-call":
+      return MARGIN_CALL_ORANGE;
     case "pre-default":
       return NEGATIVE_RED;
     default:
@@ -459,9 +469,9 @@ function LoansTable({
 }
 
 /**
- * CCR-band footnote (Figma node `4116:10111`). Static explanatory text with
- * three coloured band spans. The "<110% escalate" clause is footnote copy only
- * — the classifier bands are the three colours below.
+ * CCR-band footnote (Figma node `4116:10111`). Static explanatory text with the
+ * spec's four coloured band spans (#939): ≥130% healthy · 120–130% watchlist ·
+ * 110–120% margin call · <110% hard margin call.
  */
 function CcrFootnote() {
   return (
@@ -479,11 +489,15 @@ function CcrFootnote() {
         <span className="font-semibold" style={{ color: ATTENTION_AMBER }}>
           120–130%
         </span>{" "}
-        attention ·{" "}
-        <span className="font-semibold" style={{ color: NEGATIVE_RED }}>
-          &lt;120%
+        watchlist ·{" "}
+        <span className="font-semibold" style={{ color: MARGIN_CALL_ORANGE }}>
+          110–120%
         </span>{" "}
-        watchlist, &lt;110% escalate.
+        margin call ·{" "}
+        <span className="font-semibold" style={{ color: NEGATIVE_RED }}>
+          &lt;110%
+        </span>{" "}
+        hard margin call.
       </p>
       <p>Written on-chain only at threshold crossings.</p>
     </div>

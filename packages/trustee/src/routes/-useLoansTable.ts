@@ -52,15 +52,22 @@ import { formatMaturityDate } from "@/utils/formatDate";
 // ── Named constants ─────────────────────────────────────────────────────────
 
 /**
- * 120% maintenance margin, in basis points. A loan is **pre-default** when its
- * served `ccr_bps` (used as-is, no correction — see the module doc, #888) is
- * below this. Resolved decision #2: a display threshold on a served figure,
- * NOT a backend "at-risk" flag.
+ * 120% maintenance margin, in basis points — the **margin-call** threshold. A
+ * loan below 130% but at/above this is `attention` (yellow); dropping below it
+ * is a `margin-call` (orange). Frontend-owned policy constant (no backend flag —
+ * resolved decision #2 / #931); the served `ccr_bps` is used as-is (#888).
  */
 export const MAINTENANCE_MARGIN_BPS = 12_000;
 
 /** 130% healthy floor, in basis points (footnote band `≥130% healthy`). */
 export const HEALTHY_MARGIN_BPS = 13_000;
+
+/**
+ * 110% hard-margin-call threshold, in basis points. Below this a loan is
+ * `pre-default` (red — the spec's hard margin call); at/above it but below 120%
+ * it is a `margin-call` (orange). Frontend-owned policy constant (#931, #939).
+ */
+export const HARD_MARGIN_CALL_BPS = 11_000;
 
 /**
  * Top-concentration policy limit, percent. Frontend-owned per the backend doc
@@ -99,7 +106,7 @@ const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
 };
 
 /** CCR footnote band → determines the CCR cell colour. */
-export type CcrBand = "healthy" | "attention" | "pre-default";
+export type CcrBand = "healthy" | "attention" | "margin-call" | "pre-default";
 
 /** The commodity + 7-day spot sub-line, pre-formatted for the view. */
 export interface SpotLine {
@@ -174,16 +181,17 @@ function safeString(value: unknown): string {
 }
 
 /**
- * Classifies a **served** CCR (bps, used as-is — see the module doc, #888)
- * into a footnote band: `≥130%` healthy · `120–130%` attention · `<120%`
- * pre-default. `null` CCR → `null` (neutral render, no flag). The `<120%`
- * band is the resolved decision-#2 pre-default threshold
- * (`MAINTENANCE_MARGIN_BPS`).
+ * Classifies a **served** CCR (bps, used as-is — see the module doc, #888) into
+ * the spec's 4-level band (trustee-risk-watchlist.md §CCR color bands, #939):
+ * `≥130%` healthy (green) · `120–130%` attention (yellow) · `110–120%`
+ * margin-call (orange) · `<110%` pre-default (red). `null` CCR → `null` (neutral
+ * render, no flag). Stale-gray is handled separately (CCR staleness / `age`).
  */
 export function classifyCcr(servedBps: number | null): CcrBand | null {
   if (servedBps == null || !Number.isFinite(servedBps)) return null;
   if (servedBps >= HEALTHY_MARGIN_BPS) return "healthy";
   if (servedBps >= MAINTENANCE_MARGIN_BPS) return "attention";
+  if (servedBps >= HARD_MARGIN_CALL_BPS) return "margin-call";
   return "pre-default";
 }
 
