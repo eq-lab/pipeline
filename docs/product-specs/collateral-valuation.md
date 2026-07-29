@@ -12,7 +12,7 @@ Ongoing price-data feeds stay at or below US$1,000 per year in aggregate. The pr
 
 ## Price sources
 
-- **Headline metal price.** Read off-chain by the relayer from a low-cost commodity data API (working assumption: a metals and commodities REST API in the US$50 to US$320 per year range). An optional free cross-check reads an on-chain oracle off-chain (Chainlink or Pyth over RPC or the Hermes API, billed only per request).
+- **Metal prices.** Read off-chain by the relayer from a low-cost commodity data API (working assumption: a metals and commodities REST API in the US$50 to US$320 per year range). Each payable metal is priced independently by its own asset symbol (gold `XAU`, silver `XAG`), so a multi-metal concentrate is priced correctly per metal — both are served by the same API and by Chainlink. An optional free cross-check reads an on-chain oracle off-chain (Chainlink or Pyth over RPC or the Hermes API, billed only per request).
 - **Concentrate commercial terms.** From the signed offtake for each deal. Payable percentages, treatment and refining charges, penalties, quotational period, and incoterm are not a market feed.
 - **Grades and quality.** From the independent assay certificate for each cargo.
 - **Collateral quantity.** From the trustee feed, original quantity minus any delivered portions.
@@ -38,11 +38,13 @@ The first deal, gold-pyrite concentrate, uses this mode. A concentrate is not wo
 
 ```
 payable_metal    = (grade * payable_pct - min_deduction) * quantity
-gross_value      = payable_metal * reference_price
+gross_value      = Σ over metals of payable_metal * reference_price(metal)
 nsr              = gross_value - treatment_charge - refining_charge - penalties
 mine_gate_value  = nsr - realisation_costs
 collateral_value = mine_gate_value * (1 - haircut)
 ```
+
+**Each payable metal is priced by its own reference price.** A gold-pyrite concentrate with a payable silver credit values the silver at the silver price and the gold at the gold price — never one metal's price applied to both. Each metal name resolves to its own price-feed asset symbol (gold → `XAU`, silver → `XAG`), and the price collector keeps a series for every payable metal's asset, not just the loan's headline asset. If any payable metal has no price yet, the loan reads *unpriced* rather than being valued against another metal's feed. `gross_value` then sums `payable_metal * reference_price(metal)` across the metals.
 
 `payable_pct` and `haircut` are multiplicative and scale with price and quantity. `treatment_charge`, `refining_charge`, `penalties`, and `realisation_costs` are fixed dollar amounts that do not move with the metal price, so collateral value falls faster than the headline price when the metal price drops. `mine_gate_value` is the NSR after the seller's own costs of getting the cargo to the buyer (freight, insurance, superintendence, marketing). The haircut then absorbs residual risks such as quotational-period price drift, assay dispersion, a narrow buyer pool, smelter counterparty performance, and collateral perfection.
 
@@ -97,7 +99,7 @@ The relayer keeps one valuation record per active loan in its Postgres store, th
 | quotational_period | offtake | For example 2 MAMA |
 | pricing_reference | offtake | For example LBMA Gold PM averaged over the quotational period |
 | incoterm | offtake | FOB, CFR, or CIF. Sets delivery and risk, not title |
-| reference_price | price feed | Last headline price read |
+| reference_price | price feed | Last price read, **per payable metal** — each metal keyed by its own price-feed asset symbol (gold → XAU, silver → XAG) under the loan's price provider |
 | haircut_pct | credit framework | By commodity and grade |
 | nsr, mine_gate_value, collateral_value | computed | Waterfall outputs |
 | ccr_bps | computed | Live CCR, 14000 means 140% |

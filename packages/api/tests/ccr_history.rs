@@ -5,19 +5,33 @@
 //! `tests/`, feature-named, no inline `#[cfg(test)]` in `src/`). Pure unit tests — no
 //! `DATABASE_URL` / Postgres connection.
 
+use std::collections::HashMap;
+
 use bigdecimal::BigDecimal;
 use chrono::Utc;
 
 use pipeline_api::routes::ccr_history::{
-    build_response, resolve_grid, validate_window, CcrHistoryDoc,
+    build_response, merge_price_grids, required_assets, resolve_grid, validate_window,
+    CcrHistoryDoc,
 };
-use shared::collateral_valuation_repo::{CollateralValuationRow, ValuationMode};
+use shared::collateral_valuation_repo::{
+    CollateralValuationRow, OfftakeTermsRow, PayableTermJson, ValuationMode,
+};
+use sqlx::types::Json;
 use utoipa::OpenApi;
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
 fn dec(s: &str) -> BigDecimal {
     s.parse().unwrap()
+}
+
+/// A one-asset price map for a grid point (the standard-goods anchor prices on `KC`).
+fn price_map(pairs: &[(&str, &str)]) -> HashMap<String, BigDecimal> {
+    pairs
+        .iter()
+        .map(|(a, p)| ((*a).to_owned(), dec(p)))
+        .collect()
 }
 
 /// A StandardGoods anchor: `collateral = price * quantity * (1 - haircut)`.
@@ -127,7 +141,10 @@ fn build_response_computes_ccr_series_for_standard_goods() {
     //   price  750 -> collateral 600_000 -> 1.2                 -> 12_000 bps
     let anchor = anchor("0.20", "1000");
     let senior = dec("500000");
-    let grid = vec![(0i64, Some(dec("1000"))), (3600, Some(dec("750")))];
+    let grid = vec![
+        (0i64, price_map(&[("KC", "1000")])),
+        (3600, price_map(&[("KC", "750")])),
+    ];
 
     let resp = build_response(
         &BigDecimal::from(42),
@@ -154,8 +171,8 @@ fn build_response_computes_ccr_series_for_standard_goods() {
 fn build_response_skips_points_without_a_price() {
     let anchor = anchor("0.00", "1000");
     let senior = dec("1000000");
-    // First point has no price yet; second does.
-    let grid = vec![(0i64, None), (10, Some(dec("1000")))];
+    // First point has no price yet (empty map); second does.
+    let grid = vec![(0i64, HashMap::new()), (10, price_map(&[("KC", "1000")]))];
 
     let resp = build_response(
         &BigDecimal::from(42),
@@ -180,7 +197,7 @@ fn build_response_skips_points_without_a_price() {
 #[test]
 fn build_response_empty_when_structural_inputs_missing() {
     let anchor = anchor("0.20", "1000");
-    let grid = vec![(0i64, Some(dec("1000")))];
+    let grid = vec![(0i64, price_map(&[("KC", "1000")]))];
 
     // Senior absent → no denominator, so no CCR is computable.
     let resp = build_response(
@@ -199,4 +216,89 @@ fn build_response_empty_when_structural_inputs_missing() {
     .expect("build_response should succeed");
 
     assert!(resp.points.is_empty());
+}
+
+// ── required_assets / merge_price_grids (per-metal, issue #964) ─────────────────
+
+fn concentrate_anchor() -> CollateralValuationRow {
+    let mut a = anchor("0.40", "100");
+    a.valuation_mode = ValuationMode::MetalConcentrate;
+    "XAU".clone_into(&mut a.asset);
+    a
+}
+
+fn gold_silver_offtake() -> OfftakeTermsRow {
+    OfftakeTermsRow {
+        id: 1,
+        chain_id: 1,
+        loan_id: BigDecimal::from(42),
+        payable_terms: Json(vec![
+            PayableTermJson {
+                metal: "gold".to_owned(),
+                payable_pct: "0.80".to_owned(),
+                min_deduction_g_per_t: "1".to_owned(),
+            },
+            PayableTermJson {
+                metal: "silver".to_owned(),
+                payable_pct: "0.90".to_owned(),
+                min_deduction_g_per_t: "5".to_owned(),
+            },
+        ]),
+        treatment_charge_per_dmt: dec("220"),
+        refining_charges: Json(vec![]),
+        penalty_schedule: Json(vec![]),
+        realisation_costs: dec("0"),
+        quotational_period: None,
+        pricing_reference: None,
+        incoterm: None,
+        effective_at: Utc::now(),
+        recorded_by: "test".to_owned(),
+        created_at: Utc::now(),
+    }
+}
+
+#[test]
+fn required_assets_are_per_metal_for_concentrate_and_headline_for_standard() {
+    // Standard goods → the anchor's headline asset only.
+    assert_eq!(required_assets(&anchor("0.20", "1000"), None), vec!["KC"]);
+
+    // Concentrate → each payable metal's own asset, sorted + deduped.
+    let offtake = gold_silver_offtake();
+    assert_eq!(
+        required_assets(&concentrate_anchor(), Some(&offtake)),
+        vec!["XAG".to_owned(), "XAU".to_owned()]
+    );
+
+    // Concentrate with no offtake yet → nothing to price.
+    assert!(required_assets(&concentrate_anchor(), None).is_empty());
+}
+
+#[test]
+fn merge_price_grids_yields_full_map_only_when_every_asset_is_priced() {
+    // Two assets on the same [0, 20]/step-10 axis. XAU is known from t=0; XAG only from t=10.
+    let per_asset = vec![
+        (
+            "XAU".to_owned(),
+            vec![
+                (0, Some(dec("4000"))),
+                (10, Some(dec("4000"))),
+                (20, Some(dec("4200"))),
+            ],
+        ),
+        (
+            "XAG".to_owned(),
+            vec![(0, None), (10, Some(dec("50"))), (20, Some(dec("55")))],
+        ),
+    ];
+    let merged = merge_price_grids(0, 20, 10, &per_asset);
+
+    assert_eq!(merged.len(), 3);
+    // t=0: XAG not yet priced ⇒ map has only XAU (incomplete → the loan reads unpriced).
+    assert_eq!(merged[0].0, 0);
+    assert_eq!(merged[0].1.get("XAU"), Some(&dec("4000")));
+    assert!(!merged[0].1.contains_key("XAG"));
+    // t=10 and t=20: both assets present.
+    assert_eq!(merged[1].1.get("XAG"), Some(&dec("50")));
+    assert_eq!(merged[2].1.get("XAU"), Some(&dec("4200")));
+    assert_eq!(merged[2].1.get("XAG"), Some(&dec("55")));
 }

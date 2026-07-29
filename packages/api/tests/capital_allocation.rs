@@ -415,7 +415,8 @@ fn in_transit_ignores_rejected_off_ramp() {
 fn in_transit_is_null_when_unconfigured() {
     // Transfers present but no custody/ramp config → in_transit stays null.
     let transfers = vec![transfer(CUSTODY, RAMP, 100)];
-    let r = compute_capital_allocation(&[], &[], 0, &transfers, None, 6, None, &BigDecimal::from(0));
+    let r =
+        compute_capital_allocation(&[], &[], 0, &transfers, None, 6, None, &BigDecimal::from(0));
     assert_eq!(r.buckets.in_transit, None);
     assert_eq!(r.total, Some("0.000000".to_owned()));
 }

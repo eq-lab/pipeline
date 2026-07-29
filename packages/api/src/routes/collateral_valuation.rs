@@ -11,6 +11,7 @@
 //! sections `null` and `missing_inputs` naming what is absent — mirroring how
 //! `routes::loan_book` serializes `collateral: null` for unpriced loans.
 
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -23,7 +24,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
-use shared::collateral_valuation::{ccr_bps, compute_collateral, ConcentrateValuation};
+use shared::collateral_valuation::{
+    asset_for_metal, ccr_bps, compute_collateral, ConcentrateValuation,
+};
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
     PayableTermJson, PenaltyTierJson, RefiningChargeJson, ValuationMode,
@@ -316,14 +319,17 @@ async fn get_collateral_valuation(
     let assay = repo.latest_assay(chain_id, &loan_id).await?;
     let offtake = repo.latest_offtake(chain_id, &loan_id).await?;
 
-    // Latest reference price for this loan's (asset, provider) pair.
-    let reference_price = state
+    // Latest reference price per asset for this loan's provider. Each payable metal is
+    // priced independently by its own asset symbol (gold→XAU, silver→XAG); standard goods
+    // uses the anchor's headline asset. All metals of a loan share the anchor's provider.
+    let prices: HashMap<String, BigDecimal> = state
         .loan_asset_price_repo
         .latest_prices()
         .await?
         .into_iter()
-        .find(|(asset, provider, _)| *asset == anchor.asset && *provider == anchor.price_provider)
-        .map(|(_, _, price)| price);
+        .filter(|(_, provider, _)| *provider == anchor.price_provider)
+        .map(|(asset, _, price)| (asset, price))
+        .collect();
 
     // Outstanding senior principal (USD) from the loan snapshot, for the CCR
     // denominator. `None` when the loan has not been indexed.
@@ -333,7 +339,7 @@ async fn get_collateral_valuation(
         &anchor,
         assay.as_ref(),
         offtake.as_ref(),
-        reference_price.as_ref(),
+        &prices,
         outstanding_senior.as_ref(),
     )
     .map(Json)
@@ -735,14 +741,28 @@ fn build_response(
     anchor: &CollateralValuationRow,
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    reference_price: Option<&BigDecimal>,
+    prices: &HashMap<String, BigDecimal>,
     outstanding_senior: Option<&BigDecimal>,
 ) -> Result<CollateralValuationResponse, ApiError> {
+    let is_concentrate = anchor.valuation_mode == ValuationMode::MetalConcentrate;
+
+    // Headline price (the anchor's asset) for the top-level display echo.
+    let headline_price = prices.get(&anchor.asset);
+
     let mut missing = Vec::new();
-    if reference_price.is_none() {
+    // A price is "missing" when a required feed has no value yet: for a concentrate, any
+    // payable metal's own asset (gold→XAU, silver→XAG); otherwise the headline asset.
+    let price_missing = match (is_concentrate, offtake) {
+        (true, Some(o)) => o.payable_terms.0.iter().any(|t| {
+            asset_for_metal(&t.metal)
+                .and_then(|a| prices.get(a))
+                .is_none()
+        }),
+        _ => headline_price.is_none(),
+    };
+    if price_missing {
         missing.push("reference_price".to_owned());
     }
-    let is_concentrate = anchor.valuation_mode == ValuationMode::MetalConcentrate;
     if is_concentrate {
         if assay.is_none() {
             missing.push("assay".to_owned());
@@ -756,12 +776,12 @@ fn build_response(
         haircut_pct: anchor.haircut_pct.to_plain_string(),
         reference_price_asset: anchor.asset.clone(),
         price_provider: anchor.price_provider.clone(),
-        reference_price: reference_price.map(BigDecimal::to_plain_string),
+        reference_price: headline_price.map(BigDecimal::to_plain_string),
         quantity_dmt: anchor.quantity_dmt.to_plain_string(),
         moisture_pct: assay
             .and_then(|a| a.moisture_pct.as_ref())
             .map(BigDecimal::to_plain_string),
-        metals: build_metals(assay, offtake, reference_price, is_concentrate),
+        metals: build_metals(assay, offtake, prices, is_concentrate),
         penalties: build_penalties(assay, offtake, is_concentrate),
         treatment_charge_per_dmt: offtake.map(|o| o.treatment_charge_per_dmt.to_plain_string()),
         realisation_costs: offtake.map(|o| o.realisation_costs.to_plain_string()),
@@ -775,7 +795,7 @@ fn build_response(
     // Collateral value + waterfall come from the shared valuation (same code the
     // loan-book list uses). `None` when a required input for the mode is missing.
     let computation =
-        compute_collateral(anchor, assay, offtake, reference_price).map_err(ApiError::Internal)?;
+        compute_collateral(anchor, assay, offtake, prices).map_err(ApiError::Internal)?;
     let collateral_value = computation.as_ref().map(|c| c.collateral_value.clone());
     let waterfall = computation
         .as_ref()
@@ -820,7 +840,7 @@ fn build_response(
 fn build_metals(
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
-    reference_price: Option<&BigDecimal>,
+    prices: &HashMap<String, BigDecimal>,
     is_concentrate: bool,
 ) -> Vec<MetalInput> {
     if !is_concentrate {
@@ -829,7 +849,6 @@ fn build_metals(
     let (Some(offtake), Some(assay)) = (offtake, assay) else {
         return Vec::new();
     };
-    let price = reference_price.map_or_else(|| "0".to_owned(), BigDecimal::to_plain_string);
 
     offtake
         .payable_terms
@@ -845,7 +864,11 @@ fn build_metals(
                 .map_or_else(|| "0".to_owned(), |m| m.grade_g_per_t.clone()),
             payable_pct: term.payable_pct.clone(),
             min_deduction_g_per_t: term.min_deduction_g_per_t.clone(),
-            reference_price: price.clone(),
+            // Each metal echoes its own asset's price (gold→XAU, silver→XAG); "0" when
+            // that feed has no value yet.
+            reference_price: asset_for_metal(&term.metal)
+                .and_then(|a| prices.get(a))
+                .map_or_else(|| "0".to_owned(), BigDecimal::to_plain_string),
             rc_per_oz: offtake
                 .refining_charges
                 .0

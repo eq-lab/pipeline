@@ -29,7 +29,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 
-use shared::collateral_valuation_repo::CollateralValuationRepo;
+use shared::collateral_valuation::asset_for_metal;
+use shared::collateral_valuation_repo::{AssetProvider, CollateralValuationRepo};
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::price_provider::price_provider_for;
 
@@ -158,9 +159,25 @@ async fn cycle(
     price_repo: &LoanAssetPriceRepo,
     now: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    // The query already returns the distinct set of pairs; each is collected
-    // independently against its own `(asset, provider)` series.
-    let pairs = anchors_repo.distinct_asset_providers().await?;
+    // The query returns the distinct set of anchor (headline-asset, provider) pairs; each
+    // is collected independently against its own `(asset, provider)` series.
+    let mut pairs = anchors_repo.distinct_asset_providers().await?;
+
+    // A concentrate prices each payable metal by that metal's own asset (silver→XAG), not
+    // just the anchor's headline asset — so every payable metal's asset needs its own price
+    // series. Resolve each `(metal, provider)` to `(asset, provider)` and union it in.
+    for (metal, provider) in anchors_repo.concentrate_metal_providers().await? {
+        let Some(asset) = asset_for_metal(&metal) else {
+            continue; // unknown metal → not priceable; nothing to collect
+        };
+        let pair = AssetProvider {
+            asset: asset.to_owned(),
+            price_provider: provider,
+        };
+        if !pairs.contains(&pair) {
+            pairs.push(pair);
+        }
+    }
 
     for pair in &pairs {
         let (asset, provider_key) = (&pair.asset, &pair.price_provider);

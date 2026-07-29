@@ -1251,12 +1251,27 @@ async fn collateral_by_loan(
         .into_iter()
         .map(|r| (loan_key(&r.loan_id), r))
         .collect();
+    // Regroup the flat (asset, provider)→price table into provider→(asset→price), so each
+    // loan can be priced against every asset its provider serves. A concentrate prices
+    // each payable metal by its own asset (gold→XAU, silver→XAG); standard goods uses the
+    // anchor's headline asset. All metals of a loan share the anchor's provider.
+    let mut prices_by_provider: HashMap<&str, HashMap<String, BigDecimal>> = HashMap::new();
+    for ((asset, provider), price) in latest_prices {
+        prices_by_provider
+            .entry(provider.as_str())
+            .or_default()
+            .insert(asset.clone(), price.clone());
+    }
+    let empty = HashMap::new();
+
     let scale = BigDecimal::from(1_000_000);
     let mut map = HashMap::new();
     for anchor in anchors {
         let key = loan_key(&anchor.loan_id);
-        let price = latest_prices.get(&(anchor.asset.clone(), anchor.price_provider.clone()));
-        let computed = compute_collateral(anchor, assays.get(&key), offtakes.get(&key), price)
+        let prices = prices_by_provider
+            .get(anchor.price_provider.as_str())
+            .unwrap_or(&empty);
+        let computed = compute_collateral(anchor, assays.get(&key), offtakes.get(&key), prices)
             .map_err(ApiError::Internal)?;
         if let Some(c) = computed {
             map.insert(key, c.collateral_value * &scale);
