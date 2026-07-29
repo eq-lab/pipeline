@@ -21,6 +21,7 @@ Planning & tracking:
 - [`docs/exec-plans/active/`](./docs/exec-plans/active/) — in-flight work with progress and decision logs
 - [`docs/exec-plans/completed/`](./docs/exec-plans/completed/) — archived execution plans
 - [`docs/exec-plans/known-bugs.md`](./docs/exec-plans/known-bugs.md) — bugs found during development, not yet fixed
+- [`docs/fixtures/gold-pyrite-001/TEST-CASE.md`](./docs/fixtures/gold-pyrite-001/TEST-CASE.md) — end-to-end integration test case: one concentrate loan through origination, funding, monitoring, repayment and close, across every UI
 - [`docs/exec-plans/tech-debt-tracker.md`](./docs/exec-plans/tech-debt-tracker.md) — known gaps and cleanup work
 
 Product & design:

@@ -1,0 +1,210 @@
+{
+  "_self": {
+    "cid": "bafkreifnycoo2ifncxcz3mhirsea3dn6o4mz3jupacmuocwbbjfllwhh54",
+    "sha256": "adc09ced20ad15c59db0e88c880d8dbe77199da68f0099470ac10a4ab5d8e7ef"
+  },
+  "borrower_hash": "0x1808b204b3e139e7344e7307018feea58509c80df2dabd8f90e9fc0e054e45e1",
+  "commodity": "gold_pyrite_concentrate",
+  "corridor": "Peru (Callao) -> China (Fangchenggang, Guangxi)",
+  "documents": [
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreicwr6wbiq7vsa5rdqkrdstpyzym34iijubhy353kxaw4i6gy3p274",
+      "id": "D21",
+      "releasable_without_redaction": true,
+      "sha256": "568fac1443f5903b11c1511ca6fc670cdf1084d027c6fbb55c16e23c6c6dfaff",
+      "stage": "origination",
+      "title": "Stockpile Composite Certificate of Analysis and Weight"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreihnuseu7ru4f37bvfkp7w3ap7wpjebwjs5shkv5a6fob5ebfjjdme",
+      "id": "D02",
+      "releasable_without_redaction": false,
+      "sha256": "eda4894fc69c2efe1a954ffdb607fecf490364cbb23aabd078ae0f4812a52361",
+      "stage": "origination",
+      "title": "Offtake Contract (commercial terms extract)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreid43byy33zmgbudwep37lmbb2awkvtuoamu7bvj7htabih3ag4akq",
+      "id": "D01",
+      "releasable_without_redaction": false,
+      "sha256": "7cd8718def2c30683b11fbfad810e8165567470194f86a9f9e600a0fb01b8054",
+      "stage": "origination",
+      "title": "Facility Agreement (extract)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreihlqmbez7u6gds36eriyxhk52euwsneavq6j53arxu7tv5fwapwyi",
+      "id": "D15",
+      "releasable_without_redaction": true,
+      "sha256": "eb83024cfe9e30e5bf1228c5ceaee894b49a40561e4f7608de9f9d7a5b01f6c2",
+      "stage": "origination",
+      "title": "Collateral Management Agreement (CMA)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreifw7ox7r6p75yg7zotrwzgbtortyxkuyqritav222m6uln4yzzzke",
+      "id": "D16",
+      "releasable_without_redaction": true,
+      "sha256": "b6fbaff8f9ffee0dfcba71b64c19ba33c5d54c4228982bad699ea2dbcc673951",
+      "stage": "origination",
+      "title": "Warehouse Receipt under CMA"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreia2fzre2tnt775durh6qarbu2gihqtxbj2nxxu43b53f5yelfpohm",
+      "id": "D17",
+      "releasable_without_redaction": false,
+      "sha256": "1a2e624d4db3fffa3a44fe80221a68c83c2770a74dbde9cd87bb2f704595ee3b",
+      "stage": "origination",
+      "title": "Deed of Assignment of Receivable + Notice and Acknowledgement"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreidj5kqoxatqsg6m47pc5sbhneypveivph3aiorybmoa3bnf45l25i",
+      "id": "D18",
+      "releasable_without_redaction": false,
+      "sha256": "69eaa0eb827091bcce7de2ec8276930fa911579f6043a380b1c0d85a5e757aea",
+      "stage": "origination",
+      "title": "Security Agreement / Pledge to the Collateral Trust"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreih4cid7l3zxa55orctcs35f37jdevrryckmi4wwo7gxh7cm7nu4kq",
+      "id": "D19",
+      "releasable_without_redaction": false,
+      "sha256": "fc1207f5ef37077ae88a6296fa5dfd2325631c094c472d677cd73fc4cfb69c54",
+      "stage": "origination",
+      "title": "KYB / Sanctions Screening Summary"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreifoezoc43ruk2f36aibgy4pyo6xkpxvvdfivytjqzzwl2j7uirw2e",
+      "id": "D14",
+      "releasable_without_redaction": true,
+      "sha256": "ae265c2e6e34568bbf01013638fc3bd753ef5a8ca8ae269867365e93fa2236d1",
+      "stage": "origination",
+      "title": "Export Declaration and Mineral Export Permit"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreicfmnmvfxugovab7xb7w4wkxomj2qtdr5hen2cccuatrdsjjvykva",
+      "id": "D13",
+      "releasable_without_redaction": false,
+      "sha256": "45635952de8675401fdc3fb72cabb989d42638f4e46e8421501388e494d70aa8",
+      "stage": "shipment",
+      "title": "Irrevocable Documentary Letter of Credit"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreidatfmo5xe2o3hccx3jzhawtazmhyd57igh6ta2ialllpkun25z2y",
+      "id": "D03",
+      "releasable_without_redaction": true,
+      "sha256": "609958eedc9a76ce215f69c9c169832c3e07dfa0c7f4c1a4016b5bd546ebb9d6",
+      "stage": "shipment",
+      "title": "Certificate of Analysis - Lot A (load port)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreidd7ynl2spvmldcjys4lthv7erylsimdw7s2gpmocxi7m6b2nwbxq",
+      "id": "D04",
+      "releasable_without_redaction": true,
+      "sha256": "63fe1abd49f562c624e25c5ccf5f92385c90c1dbf2d19ec70ae8fb3c1d36c1bc",
+      "stage": "shipment",
+      "title": "Certificate of Analysis - Lot B (load port)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreid2m5zlstkivajvkyynqiofb6u26j66vwffhufq7nrsmwse5erepm",
+      "id": "D05",
+      "releasable_without_redaction": true,
+      "sha256": "7a6772b94d48a81355630d821c50fa9af27dead8a53d0b0fb63265a44e92247b",
+      "stage": "shipment",
+      "title": "Certificate of Weight and Moisture (draft survey)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreifuntqfglrkdygs245b3vvcu4ndayfcwyziozw4dbxhmddaqwa2gy",
+      "id": "D06",
+      "releasable_without_redaction": true,
+      "sha256": "b46ce0532e2a1e0d2d73a1dd6a2a71a3060a2b6328766dc186e760c608581a36",
+      "stage": "shipment",
+      "title": "IMSBC / Transportable Moisture Limit Certificate"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreid7gu3md6u2tue2eg5ebicnjtynl2xvgazp4sq237efucsco6te5y",
+      "id": "D07",
+      "releasable_without_redaction": true,
+      "sha256": "7f3536c1fa9a9d09a21ba40a04d4cf0d5eaf53032fe4a1adfc85a0a4277a64ee",
+      "stage": "shipment",
+      "title": "Pre-shipment Inspection and Superintendence Report"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreihfhghef6jsn3iymzqfwvpnmpwky4ocvsftlscfwscye7wpd4fidy",
+      "id": "D12",
+      "releasable_without_redaction": true,
+      "sha256": "e5398e42f9326ed1866605b55ed63ecac71c2ac8b35c845b485827ecf1f0a81e",
+      "stage": "shipment",
+      "title": "Marine Cargo Insurance Certificate (ICC A)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreiaa6eazaudjkigokvu7l646k5ncsh3indcf6r6vjjz6fhoxyn5iam",
+      "id": "D08",
+      "releasable_without_redaction": true,
+      "sha256": "00f101905069520ce5569f5fb9e575a291f6868c45f47d54a73e29dd7c37a803",
+      "stage": "post",
+      "title": "Bill of Lading (negotiable, 3/3 originals)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreied5btzbpe2dmbg36szpsiwsqyc7sti5utipg4ojc6vl75kghxkm4",
+      "id": "D09",
+      "releasable_without_redaction": true,
+      "sha256": "83e86790bc9a1b026dfa597c91694302fca68ed26879b8e48bd55ffaa31eea67",
+      "stage": "post",
+      "title": "Packing List and Lot Manifest"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreigs2qgrxrqepivdvbfparpbpix4lsemvths5b44hl5gimih4owlca",
+      "id": "D10",
+      "releasable_without_redaction": false,
+      "sha256": "d2d40d1bc6047a2a3a84af045e17a2fc5c88caccf2e879c3afa643107e3acb10",
+      "stage": "post",
+      "title": "Commercial Invoices (provisional and final)"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreiamfu6sog67ecajw67or2qwy4clxc75zk4ldxcmksibq27pimrmxu",
+      "id": "D11",
+      "releasable_without_redaction": true,
+      "sha256": "0c2d3d271bdf20809b7bee8ea16c704bb8bfdcab8b1dc4c5490186bef4322cbd",
+      "stage": "post",
+      "title": "Certificate of Origin"
+    },
+    {
+      "body_on_ipfs": false,
+      "cid": "bafkreicro3atyyq3qilubthihzrh7ppxvy3xwgtghfbshpgh7atj37rgha",
+      "id": "D20",
+      "releasable_without_redaction": true,
+      "sha256": "5176c13c621b821740cce83e627fbdf7ae377b1a66394323bcc7f8269dfe2638",
+      "stage": "post",
+      "title": "Umpire Appointment and Settlement Assay"
+    }
+  ],
+  "governing_law": "English law, LCIA London",
+  "incoterm": "CFR Fangchenggang (Incoterms 2020)",
+  "ipfs_rule": "This manifest is the ONLY object published. No document body is pinned. sha256 is the integrity anchor; bodies live in the private document store and are released to auditors on request.",
+  "loan_ref": "PIPE-GPC-001",
+  "note": "Descriptive evidence only. Nothing here drives on-chain money math. Document bodies are not published; sha256 is the integrity anchor.",
+  "originator": "Open Mineral AG",
+  "payment_protection": "Irrevocable documentary LC at sight, confirmed",
+  "schema": "pipeline/loan-metadata/1",
+  "valuation_mode": "MetalConcentrate",
+  "version": 3
+}

@@ -17,6 +17,41 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-13: Waterfall rejects a legitimate QP-repriced final settlement (issue #963)
+- **Date:** 2026-07-29
+- **Location:** `packages/api/src/routes/waterfall.rs::compute_waterfall`, stage 3.
+- **Symptom:** Any `amount` above `original_offtaker_price - offtaker_received` returns 400. On a concentrate loan priced on a quotational-period average, a metal price rise makes the final settlement exceed the genesis estimate, so the last payment of the loan cannot be recorded. Fixture PIPE-GPC-001: final 1,764,807.37 against an outstanding 1,096,690.92.
+- **Root cause:** The check assumes `original_offtaker_price` is a debt ceiling. For QP pricing it is an estimate written before the price that determines it exists. The Soroban `validate_repayment` imposes no such ceiling — only the API does.
+- **Workaround:** None. Splitting the payment does not help; the ceiling is cumulative.
+
+### BUG-14: Collateral valuation applies one reference price to every payable metal (issue #964)
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/collateral_valuation/mod.rs::compute_collateral` / `assemble_metals`.
+- **Symptom:** On a multi-metal concentrate the silver credit is valued at the gold price. Fixture PIPE-GPC-001 reports CCR 193.62% against a true 147.98% — 45.64 points high, in the direction that hides undercollateralisation.
+- **Root cause:** `compute_collateral` takes a single `reference_price` and copies it onto every `PayableMetal`. Acknowledged in the function's doc comment as a follow-up.
+- **Workaround:** Use a single-metal (gold-only) valuation record until per-metal feeds land. The fixture ships that variant; expected CCR 147.45%.
+
+### BUG-15: Payable grade is not floored at zero (issue #965)
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/collateral_valuation/mod.rs::ConcentrateInputs::valuate`.
+- **Symptom:** A metal whose grade falls below its minimum deduction produces a negative payable mass, which **subtracts** from `gross_value` and credits a negative refining charge. Silver at 35.00 g/dmt under 85%-less-30 g/dmt terms takes 175,542.95 off a 5,200 dmt NSR.
+- **Root cause:** `grade * payable_pct - min_deduction` is never clamped. The offtake pays zero, never negative. The penalty loop immediately below already clamps its own `steps` at zero.
+- **Workaround:** Author the valuation record with the payable percentage set to zero for any metal below its minimum deduction.
+
+### BUG-16: Penalty threshold/step units for ppm elements silently score zero (issue #966)
+- **Date:** 2026-07-29
+- **Location:** `packages/shared/src/collateral_valuation/mod.rs::assemble_penalties`.
+- **Symptom:** Penalties for mercury, bismuth and cadmium evaluate to zero when the offtake schedule is authored with ppm thresholds, overstating collateral value. Nothing errors.
+- **Root cause:** The assayed level is converted ppm to percent (`level / 10_000`) but `threshold` and `step` are read verbatim from the offtake row, so the comparison is only consistent if the thresholds were authored in percent. Fixture PIPE-GPC-001 mercury: 2.40 USD/dmt over 5,200 dmt = 12,480 lost.
+- **Workaround:** Store ppm-scheduled thresholds and steps in percent (mercury 10 ppm becomes `0.0010`, step 5 ppm becomes `0.0005`).
+
+### BUG-17: On-chain interest accrual has no maturity cap (issue #967)
+- **Date:** 2026-07-29
+- **Location:** `contracts/loan-registry/src/storage.rs::last_epoch_interest_factor` (repo `pipeline-stellar-contracts`).
+- **Symptom:** Interest accrues past maturity on an unrolled loan, so `calculate_max_interest` — the cap `validate_repayment` enforces — grows without bound. The API's `piecewise_capped_seconds` does cap, so contract and API report different accrued interest for the same overdue loan.
+- **Root cause:** `timestamp - epoch.effective_from` with no `min()` against `epoch.maturity_date`. Both `loans-data.md` and `yield.md` specify the cap and state the property "a loan past maturity without a rollover cannot accrue beyond its contracted term".
+- **Workaround:** Roll over or close overdue loans promptly. Note `record_payment` also appends an epoch on every payment, which interacts with any fix.
+
 ### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
 - **Date:** 2026-07-29
 - **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).
