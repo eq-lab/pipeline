@@ -17,13 +17,25 @@ vi.mock("@/components/CapitalAllocationCard", () => ({
 }));
 vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
 vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
+// The T-Bills tab's useTbillsSwap wires these directly (on-chain USDC + the
+// capital-allocation tbills bucket); mock them so the page renders end-to-end.
+vi.mock("@/api/useCapitalWalletBalance", () => ({
+  useCapitalWalletBalance: vi.fn(),
+}));
+vi.mock("@/api/useCapitalAllocation", () => ({
+  useCapitalAllocation: vi.fn(),
+}));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
+import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
 const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
+const mockUseCapitalWalletBalance = vi.mocked(useCapitalWalletBalance);
+const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockReview = vi.fn();
 
 function renderRoute() {
@@ -79,8 +91,31 @@ function readyEvents(data: RampEventsResponse = EVENTS) {
 beforeEach(() => {
   mockUseRampEvents.mockReset();
   mockUseReviewRampEvent.mockReset();
+  mockUseCapitalWalletBalance.mockReset();
+  mockUseCapitalAllocation.mockReset();
   mockReview.mockReset();
   mockUseReviewRampEvent.mockReturnValue(reviewHook());
+  // USDC balance real; tbills bucket null (hardcoded None server-side, #931).
+  mockUseCapitalWalletBalance.mockReturnValue({
+    data: "8400000.0000000",
+    isLoading: false,
+    error: null,
+  });
+  mockUseCapitalAllocation.mockReturnValue({
+    data: {
+      total: null,
+      buckets: {
+        capital_wallet: null,
+        in_transit: null,
+        trust_account: null,
+        deployed: null,
+        tbills: null,
+      },
+    },
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+  });
 });
 
 describe("Cash Management route — shell", () => {
@@ -97,21 +132,60 @@ describe("Cash Management route — shell", () => {
         within(tabs).getByTestId(`cash-management-tab-${key}`),
       ).toBeInTheDocument();
     }
-    expect(
-      screen.getByTestId("capital-allocation-stub"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("capital-allocation-stub")).toBeInTheDocument();
   });
 
-  it("switches to a placeholder tab and hides the On/Off-ramp panel", () => {
+  it("switches to a placeholder tab (Withdrawal Queue) and hides the On/Off-ramp panel", () => {
     renderRoute();
     expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
+    fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
     expect(
-      screen.getByTestId("cash-management-placeholder-tbills"),
-    ).toHaveTextContent("#944");
+      screen.getByTestId("cash-management-placeholder-withdrawals"),
+    ).toHaveTextContent("#945");
     expect(
       screen.queryByTestId("cash-management-onofframp"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — T-Bills swap form (#944)", () => {
+  beforeEach(() => readyEvents());
+
+  function openTbills() {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
+  }
+
+  it("shows the Buy side spending real USDC, with a disabled submit and — receive/fee", () => {
+    openTbills();
+    const panel = screen.getByTestId("cash-management-tbills");
+    // Buy is the default mode → spends USDC (the real Capital-Wallet balance).
+    expect(panel).toHaveTextContent("Balance: 8,400,000 USDC");
+    expect(screen.getByTestId("cash-management-tbills-submit")).toBeDisabled();
+    // No USYC price served → receive + fee stay "—" (never fabricated).
+    expect(
+      screen.getByTestId("cash-management-tbills-receive"),
+    ).toHaveTextContent("—");
+  });
+
+  it("Sell side shows the T-Bills (USYC) value as — while buckets.tbills is null, and Max is disabled", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-mode-sell"));
+    const panel = screen.getByTestId("cash-management-tbills");
+    expect(panel).toHaveTextContent("Balance: — USYC");
+    // No sell balance → Max cannot fill anything.
+    expect(screen.getByTestId("cash-management-tbills-max")).toBeDisabled();
+    expect(
+      screen.getByTestId("cash-management-tbills-submit"),
+    ).toHaveTextContent("Sell USYC");
+  });
+
+  it("Max fills the amount from the USDC balance on the Buy side", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-max"));
+    expect(screen.getByTestId("cash-management-tbills-amount")).toHaveValue(
+      8400000,
+    );
   });
 });
 

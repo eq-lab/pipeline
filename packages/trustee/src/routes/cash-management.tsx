@@ -5,6 +5,7 @@ import {
   useCashManagement,
   type RampEventRow as RampEventRowData,
 } from "./-cash-management";
+import { useTbillsSwap, type TbillsSwapView } from "./-cash-management-tbills";
 
 /**
  * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
@@ -14,9 +15,10 @@ import {
  * This round builds the page shell (shared Capital Allocation + tab nav) and the
  * **On/Off-ramp** tab's review queue — the pending ramp-boundary events
  * (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
- * (`POST …/review`). The **T-Bills** (#944) and **Withdrawal Queue** (#945)
- * tabs are placeholders here. (No Refunds tab — the working doc has no such
- * section; docs are the source of truth, Figma is styling only.)
+ * (`POST …/review`). The **T-Bills** tab (#944) is a Buy/Sell USYC swap-form UI
+ * shell (see `TbillsSwapForm`; submit disabled, MPC execution not yet backed).
+ * The **Withdrawal Queue** (#945) tab is still a placeholder. (No Refunds tab —
+ * the working doc has no such section; docs are source of truth, Figma styling.)
  *
  * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; the fetch +
  * value→display mapping live in `-cash-management.ts`.
@@ -38,8 +40,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "withdrawals", label: "Withdrawal Queue" },
 ];
 
-const PLACEHOLDER_COPY: Record<Exclude<TabKey, "onofframp">, string> = {
-  tbills: "Buy / Sell USYC — lands in #944.",
+const PLACEHOLDER_COPY: Record<
+  Exclude<TabKey, "onofframp" | "tbills">,
+  string
+> = {
   withdrawals:
     "Withdrawal-queue balance, top-up alert, and MPC transfer — lands in #945.",
 };
@@ -259,11 +263,154 @@ function RampSection({
   );
 }
 
+// ── T-Bills tab: Buy / Sell USYC swap form (#944) ─────────────────────────────
+//
+// Same swap UX as the On/Off-ramp form. UI shell: Buy spends real USDC
+// (Capital-Wallet balance), Sell spends USYC valued at the T-Bills bucket
+// (`buckets.tbills`, currently null → "—"). Buying/selling USYC is a
+// Capital-Wallet MPC action (3-of-5, Type 2, flow 8) with no backend path yet,
+// so submit is disabled and the received amount / fee show "—" (no USYC price
+// served — never fabricated). Backend follow-up filed with #944.
+
+function TbillsSwapForm({ tbills }: { tbills: TbillsSwapView }) {
+  const [mode, setMode] = useState<"buy" | "sell">("buy");
+  const [amount, setAmount] = useState("");
+  const isBuy = mode === "buy";
+  // Buy spends USDC; Sell spends USYC (valued at the T-Bills NAV bucket).
+  const spendAsset = isBuy ? "USDC" : "USYC";
+  const balanceValue = isBuy ? tbills.usdcValue : tbills.tbillsValue;
+  const balanceDisplay = isBuy ? tbills.usdcDisplay : tbills.tbillsDisplay;
+
+  return (
+    <div
+      data-testid="cash-management-tbills"
+      className="flex w-full flex-col gap-[16px] rounded-[4px] bg-white px-[27px] py-[25px]"
+      style={{ border: `1px solid ${LINE_COLOR}` }}
+    >
+      {/* Buy / Sell toggle. */}
+      <div
+        className="flex items-center gap-[4px] self-start rounded-[6px] p-[4px]"
+        style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+      >
+        {(["buy", "sell"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            data-testid={`cash-management-tbills-mode-${m}`}
+            aria-pressed={mode === m}
+            onClick={() => setMode(m)}
+            className="rounded-[4px] px-[14px] py-[6px] font-[family-name:var(--font-body)] text-[14px]"
+            style={
+              mode === m
+                ? {
+                    backgroundColor: "#ffffff",
+                    color: INK,
+                    border: `1px solid ${LINE_COLOR}`,
+                  }
+                : { color: INK_MUTED }
+            }
+          >
+            {m === "buy" ? "Buy" : "Sell"}
+          </button>
+        ))}
+      </div>
+
+      {/* Amount + balance/max. */}
+      <label className="flex flex-col gap-[6px]">
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_MUTED }}
+        >
+          {isBuy ? "You spend" : "You sell"}
+        </span>
+        <div
+          className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+          style={{ borderColor: LINE_COLOR }}
+        >
+          <input
+            type="number"
+            inputMode="decimal"
+            data-testid="cash-management-tbills-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+            className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none"
+          />
+          <span
+            className="font-[family-name:var(--font-body)] text-[14px]"
+            style={{ color: INK_MUTED }}
+          >
+            {spendAsset}
+          </span>
+          <button
+            type="button"
+            data-testid="cash-management-tbills-max"
+            onClick={() =>
+              balanceValue != null && setAmount(String(balanceValue))
+            }
+            disabled={balanceValue == null}
+            className="rounded-[4px] border border-solid px-[9px] py-[4px] font-[family-name:var(--font-body)] text-[12px] disabled:opacity-40"
+            style={{ borderColor: LINE_COLOR, color: INK_MUTED }}
+          >
+            Max
+          </button>
+        </div>
+        <span
+          className="font-[family-name:var(--font-body)] text-[12px]"
+          style={{ color: INK_MUTED }}
+        >
+          Balance: {balanceDisplay} {spendAsset}
+        </span>
+      </label>
+
+      {/* Deal summary — no USYC price/NAV served, so values stay "—". */}
+      <div
+        className="flex flex-col gap-[8px] rounded-[4px] px-[15px] py-[13px]"
+        style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+      >
+        <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
+          <span style={{ color: INK_MUTED }}>
+            You receive {isBuy ? "USYC" : "USDC"}
+          </span>
+          <span
+            data-testid="cash-management-tbills-receive"
+            className="text-[#262524]"
+          >
+            —
+          </span>
+        </div>
+        <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
+          <span style={{ color: INK_MUTED }}>Fee</span>
+          <span className="text-[#262524]">—</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        data-testid="cash-management-tbills-submit"
+        disabled
+        className="flex h-[48px] items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ backgroundColor: BRAND }}
+      >
+        {isBuy ? "Buy USYC" : "Sell USYC"}
+      </button>
+      <p
+        className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+        style={{ color: INK_MUTED }}
+      >
+        Buying / selling USYC is a Capital-Wallet MPC transfer (3-of-5) —
+        execution not yet available.
+      </p>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function CashManagement() {
   const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
   const view = useCashManagement();
+  const tbills = useTbillsSwap();
 
   const onReview = (
     id: number,
@@ -361,6 +508,8 @@ function CashManagement() {
             </>
           )}
         </div>
+      ) : activeTab === "tbills" ? (
+        <TbillsSwapForm tbills={tbills} />
       ) : (
         <div
           data-testid={`cash-management-placeholder-${activeTab}`}
