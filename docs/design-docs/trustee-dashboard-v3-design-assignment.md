@@ -99,7 +99,7 @@ Benign close checklist, all three green before the Close button enables:
 
 2. Nothing left to mint on either leg. Hard gate, no manual override.
 
-3. Remaining offtaker balance acknowledged. Auto-green when received covers the contracted price. On early payoff or waiver the Trustee ticks it manually.
+3. Remaining offtaker balance acknowledged. Auto-green when received covers the contracted price **and the final settlement did not exceed it** — i.e. the waterfall reports `offtaker_fully_received` **and not** `offtaker_overpaid` (issue #963). On early payoff or waiver, **or when a quotational-period settlement came in above the genesis price** (`offtaker_overpaid` is set, legitimate for a concentrate deal), the Trustee ticks it manually rather than auto-greening — so a QP overage is a deliberate acknowledgement, not silently green.
 
 ![Loan status diagram][image1]
 

@@ -61,8 +61,8 @@ It holds seven numeric fields:
 
 - `originalFacilitySize`, `originalSeniorTranche`, `originalEquityTranche`
 - `originalOfftakerPrice`, the total USDC the end buyer is contracted to pay for the cargo.
-  This is the gross cash inflow the loan expects to see over its life. Outstanding offtaker
-  balance is derived as `originalOfftakerPrice − offtakerReceivedTotal`.
+  Outstanding offtaker balance is `originalOfftakerPrice − offtakerReceivedTotal` — a hard
+  ceiling for fixed-price deals only; a quotational (concentrate) settlement may exceed it and is then flagged, not rejected (see [yield.md](./yield.md), issue #963).
 - `seniorInterestRateBps`, the genesis annualised coupon rate for the Senior tranche in
   basis points (e.g. 1200 = 12%). The Equity tranche has no fixed rate and receives the
   residual.

@@ -78,6 +78,11 @@ Resolved with the human before implementation:
 
 ## Implementation Steps
 
+**Status: all steps complete.** ✅ clippy (`--all --all-targets -D warnings`), ✅ doc lint
+(0 errors), ✅ `cargo test --all` (57 blocks green; new: QP-accept, within-price, basis
+mapping). S15 follow-up issue filed. Steps 1–6 implemented as written; `PricingBasis` lives
+in `waterfall.rs`.
+
 1. **Pricing-basis type.** Add a small enum — `PricingBasis { Fixed, Quotational }` — in
    `packages/api/src/routes/waterfall.rs` (or `shared` if cleaner), with a helper mapping a
    `ValuationMode` to it: `MetalConcentrate ⇒ Quotational`, `StandardGoods ⇒ Fixed`.
@@ -144,4 +149,4 @@ All in `packages/api/tests/waterfall.rs` (pure, no DB — matches the file's con
   only when `offtaker_fully_received && !offtaker_overpaid`; a QP overage requires an explicit
   Trustee tick rather than auto-greening. (Spec change only; S15 UI is a follow-up.)
 - Update the `waterfall.rs` module + stage-3 doc comments (covered in Step 2).
-- File a follow-up issue: build screen S15 (close-loan checklist) consuming `offtaker_overpaid`.
+- Follow-up issue filed: **#982** — build screen S15 (close-loan checklist) consuming `offtaker_overpaid`.

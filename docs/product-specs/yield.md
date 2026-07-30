@@ -58,6 +58,8 @@ OET allocation → originator residual (junior yield). The originator residual i
 directly through the Trust Company's USD bank account and does not appear in any on-chain
 event.
 
+**Offtaker-price ceiling (pricing basis).** The waterfall rejects a payment above the contracted offtaker price only for fixed-price loans; for a quotational loan (concentrate on a QP average) a settlement above it is accepted and reported via an `offtaker_overpaid` flag (overage → Equity residual), derived from the collateral `valuation_mode`. See issue #963.
+
 ### Repayment on-chain delivery
 
 Once the trustee confirms the waterfall breakdown, they broadcast `recordPayment` on
