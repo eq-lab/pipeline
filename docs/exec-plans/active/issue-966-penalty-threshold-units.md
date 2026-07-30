@@ -77,6 +77,12 @@ Out of scope:
 
 ## Implementation Steps
 
+**Status: all steps implemented (2026-07-30).** `unit` added to `PenaltyTierJson` and
+`PenaltyTierInput` (serde-default `Pct`); `assemble_penalties` normalises both sides via a
+new shared `to_pct` helper; the read endpoint echoes percent-normalised penalty inputs;
+`validate_offtake` enforces `unit ∈ {Pct, Ppm}` and rejects a `Pct` threshold/step `> 100`.
+Tests added in both `tests/` files; spec updated; `escalating` gap logged as TD-48.
+
 1. **Storage shape — `packages/shared/src/collateral_valuation_repo.rs`.**
    - Add `pub unit: String` to `PenaltyTierJson` with a serde default:
      ```rust

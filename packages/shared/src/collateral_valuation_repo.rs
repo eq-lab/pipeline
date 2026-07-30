@@ -106,9 +106,21 @@ pub struct PenaltyTierJson {
     pub element: String,
     pub threshold: String,
     pub step: String,
+    /// `Pct` or `Ppm` — the unit of `threshold` and `step`. Both are normalised to
+    /// percent at valuation time to match the assayed level (see
+    /// [`crate::collateral_valuation`]). Defaults to `Pct` for rows authored before the
+    /// unit was tracked, all of which were stored in percent.
+    #[serde(default = "default_penalty_unit")]
+    pub unit: String,
     pub rate_per_dmt: String,
     #[serde(default)]
     pub escalating: bool,
+}
+
+/// Serde default for [`PenaltyTierJson::unit`]: percent, matching every row authored
+/// before the unit field existed.
+fn default_penalty_unit() -> String {
+    "Pct".to_owned()
 }
 
 // ── Row structs ────────────────────────────────────────────────────────────────

@@ -721,6 +721,22 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   9 files above in a dedicated formatting-only commit/PR, then confirm `yarn --cwd
   packages/frontend lint` passes clean so the hook stops blocking unrelated work.
 
+### TD-48: Penalty `escalating` flag is stored but never applied
+
+- **Date:** 2026-07-30 (#966)
+- **Location:** `packages/shared/src/collateral_valuation_repo.rs` (`PenaltyTierJson.escalating`),
+  `packages/shared/src/collateral_valuation/mod.rs` (`assemble_penalties` / `ConcentrateInputs::valuate`)
+- **Gap:** The offtake penalty schedule carries an `escalating` boolean (also accepted by the
+  `POST /offtake` endpoint), but the waterfall math treats every tier as flat — `escalating`
+  is never read. Escalating penalties (a per-step rate that ramps with the excess) are not
+  implemented.
+- **Impact:** A deal authored with an escalating penalty basis is under-penalised — the
+  collateral value and CCR read higher than the offtake terms intend. Silent, like the ppm
+  units bug (#966) it sits next to.
+- **Suggested fix:** Decide the escalation formula with the credit team, thread `escalating`
+  into `PenaltyTier`, and branch the per-tier charge in `valuate`; add a spec worked example
+  and round-trip test. Until then, treat `escalating: true` schedules as unsupported.
+
 ---
 
 ## Post-MVP

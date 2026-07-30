@@ -41,6 +41,7 @@ fn valid_offtake() -> SubmitOfftakeRequest {
             element: "arsenic".to_owned(),
             threshold: "0.2".to_owned(),
             step: "0.1".to_owned(),
+            unit: "Pct".to_owned(),
             rate_per_dmt: "5".to_owned(),
             escalating: false,
         }],
@@ -282,4 +283,53 @@ fn non_decimal_treatment_charge_is_rejected() {
     let mut r = valid_offtake();
     r.treatment_charge_per_dmt = "not-a-number".to_owned();
     assert!(validate_offtake(&r).is_err());
+}
+
+// ── Penalty threshold/step units (issue #966) ──────────────────────────────────
+
+#[test]
+fn penalty_unit_ppm_is_allowed() {
+    // A ppm-authored schedule (the natural reading) is valid — the trap this issue
+    // fixes was that it silently scored zero, not that it was rejected.
+    let mut r = valid_offtake();
+    r.penalty_schedule[0].unit = "Ppm".to_owned();
+    r.penalty_schedule[0].threshold = "10".to_owned();
+    r.penalty_schedule[0].step = "5".to_owned();
+    assert!(validate_offtake(&r).is_ok());
+}
+
+#[test]
+fn unknown_penalty_unit_is_rejected() {
+    let mut r = valid_offtake();
+    r.penalty_schedule[0].unit = "mg/kg".to_owned();
+    let err = validate_offtake(&r).unwrap_err();
+    assert!(err.contains("unit"), "unexpected error: {err}");
+}
+
+#[test]
+fn pct_penalty_threshold_over_100_is_rejected() {
+    // Order-of-magnitude guard: a ppm figure left under the default Pct unit.
+    let mut r = valid_offtake();
+    r.penalty_schedule[0].unit = "Pct".to_owned();
+    r.penalty_schedule[0].threshold = "500".to_owned();
+    let err = validate_offtake(&r).unwrap_err();
+    // Assert on the >100-guard message specifically — "Ppm" alone would also match the
+    // unknown-unit error, so it wouldn't prove we hit the order-of-magnitude branch.
+    assert!(err.contains("exceed 100"), "unexpected error: {err}");
+}
+
+#[test]
+fn penalty_unit_defaults_to_pct_when_omitted() {
+    // Backward compatibility: a client that omits `unit` deserializes to "Pct", so
+    // existing (percent) schedules keep their meaning.
+    let body = r#"{
+        "payable_terms": [{"metal":"gold","payable_pct":"0.80","min_deduction_g_per_t":"1"}],
+        "treatment_charge_per_dmt": "220",
+        "penalty_schedule": [{"element":"arsenic","threshold":"0.2","step":"0.1","rate_per_dmt":"5"}],
+        "realisation_costs": "12000",
+        "effective_at": 1700000000
+    }"#;
+    let req: SubmitOfftakeRequest = serde_json::from_str(body).expect("valid offtake body");
+    assert_eq!(req.penalty_schedule[0].unit, "Pct");
+    assert!(validate_offtake(&req).is_ok());
 }

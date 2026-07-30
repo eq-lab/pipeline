@@ -73,6 +73,10 @@ pub struct PayableMetal {
 
 /// A penalty schedule tier for a deleterious element (e.g. arsenic). Charged per
 /// dry tonne for each `step_pct` the assayed `level_pct` exceeds `threshold_pct`.
+///
+/// All three quantities are in **percent**: [`assemble_penalties`] normalises the
+/// assayed level and the offtake tier's threshold/step from their stored units
+/// (`Pct`/`Ppm`) to percent before constructing this, so the comparison is unit-safe.
 #[derive(Debug, Clone)]
 pub struct PenaltyTier {
     /// Assayed level of the element, in percent.
@@ -336,9 +340,23 @@ fn assemble_metals<S: std::hash::BuildHasher>(
     Ok(Some(metals))
 }
 
+/// Normalise a deleterious quantity to percent given its stored unit. `Ppm` divides by
+/// 10,000 (1% = 10,000 ppm); anything else (`Pct`) is already percent. Applied to both
+/// the assayed level *and* the offtake tier's threshold/step so all three sides of the
+/// penalty comparison share the same unit. Exposed so the read endpoint can echo the
+/// display inputs in the same percent unit the math uses.
+pub fn to_pct(value: BigDecimal, unit: &str) -> BigDecimal {
+    if unit == "Ppm" {
+        value / BigDecimal::from(10_000)
+    } else {
+        value
+    }
+}
+
 /// Join the offtake penalty schedule with assayed deleterious levels. A tier whose
-/// element is not in the assay gets level 0 (no penalty); `Ppm` levels convert to
-/// percent to match the pct-based schedule.
+/// element is not in the assay gets level 0 (no penalty). Both the assayed level and the
+/// tier's `threshold`/`step` are normalised to percent by their own stored unit, so a
+/// schedule authored in ppm no longer silently scores zero against a percent level.
 fn assemble_penalties(
     assay: &AssayRow,
     offtake: &OfftakeTermsRow,
@@ -354,20 +372,13 @@ fn assemble_penalties(
                 .iter()
                 .find(|d| d.element == tier.element)
             {
-                Some(d) => {
-                    let level = dec("deleterious.level", &d.level)?;
-                    if d.unit == "Ppm" {
-                        level / BigDecimal::from(10_000)
-                    } else {
-                        level
-                    }
-                }
+                Some(d) => to_pct(dec("deleterious.level", &d.level)?, &d.unit),
                 None => BigDecimal::zero(),
             };
             Ok(PenaltyTier {
                 level_pct,
-                threshold_pct: dec("penalty.threshold", &tier.threshold)?,
-                step_pct: dec("penalty.step", &tier.step)?,
+                threshold_pct: to_pct(dec("penalty.threshold", &tier.threshold)?, &tier.unit),
+                step_pct: to_pct(dec("penalty.step", &tier.step)?, &tier.unit),
                 rate_per_dmt: dec("penalty.rate_per_dmt", &tier.rate_per_dmt)?,
             })
         })

@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{OpenApi, ToSchema};
 
 use shared::collateral_valuation::{
-    asset_for_metal, ccr_bps, compute_collateral, ConcentrateValuation,
+    asset_for_metal, ccr_bps, compute_collateral, to_pct, ConcentrateValuation,
 };
 use shared::collateral_valuation_repo::{
     AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
@@ -235,10 +235,20 @@ pub struct PenaltyTierInput {
     /// the assayed excess by this value (`excess / step_pct`); a `0` would produce
     /// a division by zero the next time this loan's valuation is computed.
     pub step: String,
+    /// `Pct` or `Ppm` — the unit of `threshold` and `step`, normalised to percent at
+    /// valuation time to match the assayed level. Defaults to `Pct` when omitted.
+    #[serde(default = "default_penalty_unit")]
+    pub unit: String,
     /// Decimal string, `>= 0`.
     pub rate_per_dmt: String,
     #[serde(default)]
     pub escalating: bool,
+}
+
+/// Serde default for [`PenaltyTierInput::unit`]: percent, so existing clients that omit
+/// the field keep the historical (percent) behaviour.
+fn default_penalty_unit() -> String {
+    "Pct".to_owned()
 }
 
 /// Response for `POST /v1/loan-book/{loan_id}/offtake`.
@@ -556,6 +566,7 @@ async fn submit_offtake(
             element: p.element.clone(),
             threshold: p.threshold.clone(),
             step: p.step.clone(),
+            unit: p.unit.clone(),
             rate_per_dmt: p.rate_per_dmt.clone(),
             escalating: p.escalating,
         })
@@ -712,6 +723,26 @@ pub fn validate_offtake(req: &SubmitOfftakeRequest) -> Result<(), String> {
         if rate < 0 {
             return Err(format!(
                 "rate_per_dmt must be >= 0 for element `{}`; got {rate}",
+                p.element
+            ));
+        }
+        match p.unit.as_str() {
+            "Pct" | "Ppm" => {}
+            other => {
+                return Err(format!(
+                    "unknown unit `{other}` for element `{}` (expected Pct or Ppm)",
+                    p.element
+                ))
+            }
+        }
+        // Order-of-magnitude guard: a deleterious mass-fraction threshold/step cannot
+        // exceed 100%. A `Pct` tier above 100 is almost certainly a ppm figure authored
+        // under the wrong unit — the trap this issue closes — so reject it rather than
+        // let it silently distort the waterfall.
+        if p.unit == "Pct" && (threshold > 100 || step > 100) {
+            return Err(format!(
+                "threshold/step for element `{}` exceed 100 with unit Pct; \
+                 did you mean unit Ppm? (threshold {threshold}, step {step})",
                 p.element
             ));
         }
@@ -879,8 +910,11 @@ fn build_metals(
         .collect()
 }
 
-/// Echo of the penalty-tier inputs for display, with the assayed level filled in
-/// (raw, as recorded). Empty for standard goods or when offtake is absent.
+/// Echo of the penalty-tier inputs for display, with the assayed level filled in.
+/// The assayed level and the tier's threshold/step are normalised to **percent** by
+/// their own stored unit (`Pct`/`Ppm`) — the same normalisation the waterfall math
+/// applies — so the `*_pct` fields are internally consistent. Empty for standard goods
+/// or when offtake is absent.
 fn build_penalties(
     assay: Option<&AssayRow>,
     offtake: Option<&OfftakeTermsRow>,
@@ -901,12 +935,23 @@ fn build_penalties(
             element: tier.element.clone(),
             level_pct: assay
                 .and_then(|a| a.deleterious.0.iter().find(|d| d.element == tier.element))
-                .map_or_else(|| "0".to_owned(), |d| d.level.clone()),
-            threshold_pct: tier.threshold.clone(),
-            step_pct: tier.step.clone(),
+                .map_or_else(|| "0".to_owned(), |d| pct_display(&d.level, &d.unit)),
+            threshold_pct: pct_display(&tier.threshold, &tier.unit),
+            step_pct: pct_display(&tier.step, &tier.unit),
             rate_per_dmt: tier.rate_per_dmt.clone(),
         })
         .collect()
+}
+
+/// Format a stored decimal string as a percent-normalised display string, using the
+/// same `Ppm`→percent conversion as the waterfall math. A value that fails to parse is
+/// echoed verbatim — display stays infallible, and write-time validation already
+/// guarantees well-formed numbers.
+fn pct_display(value: &str, unit: &str) -> String {
+    match BigDecimal::from_str(value) {
+        Ok(v) => to_pct(v, unit).to_plain_string(),
+        Err(_) => value.to_owned(),
+    }
 }
 
 /// Format the concentrate waterfall for the response. Realisation costs are the gap
