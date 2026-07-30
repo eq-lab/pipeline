@@ -96,12 +96,52 @@ function isExpired(s: StoredSession): boolean {
   return Date.now() >= s.expiresAt;
 }
 
+// ── Reactive expiry ───────────────────────────────────────────────────────────
+//
+// A stored token is valid for ~24h. Without a timer, an idle trustee (whose
+// protected routes make no `apiFetch` calls) keeps seeing the protected UI past
+// `expiresAt` — the stale session is only evicted on the next authenticated
+// fetch (#795). Arm a timer on every `setSession` (and at hydrate) that evicts
+// the session the instant its token expires, so `RouteGate` re-gates on its own.
+
+let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+
+function clearExpiryTimer(): void {
+  if (expiryTimer !== undefined) {
+    clearTimeout(expiryTimer);
+    expiryTimer = undefined;
+  }
+}
+
+/** Timer callback — evict iff the token has actually expired; re-arm on early fire. */
+function evictIfExpired(): void {
+  expiryTimer = undefined;
+  if (!session) return;
+  if (isExpired(session)) {
+    setSession(undefined, "unauthenticated");
+  } else {
+    // Fired early (clock skew / timer coalescing) — re-arm for the remainder.
+    armExpiryTimer();
+  }
+}
+
+/** (Re)arm the eviction timer for the current session; clears it when none. */
+function armExpiryTimer(): void {
+  clearExpiryTimer();
+  if (typeof window === "undefined" || !session) return;
+  // `setTimeout` clamps huge delays, but 24h (< the ~24.8-day max) is safe. A
+  // non-positive delay (already expired) evicts on the next tick.
+  const delay = Math.max(0, session.expiresAt - Date.now());
+  expiryTimer = setTimeout(evictIfExpired, delay);
+}
+
 /** Hydrate in-memory state from `sessionStorage` exactly once, at module load. */
 function hydrate(): void {
   const stored = readStorage();
   if (stored && !isExpired(stored)) {
     session = stored;
     status = "authenticated";
+    armExpiryTimer();
   } else if (stored) {
     // Expired — drop it.
     writeStorage(undefined);
@@ -112,13 +152,16 @@ hydrate();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Non-reactive: the current bearer token, or `undefined` if unauthenticated/expired. */
+/**
+ * Non-reactive **and pure**: the current bearer token, or `undefined` when
+ * unauthenticated / expired. Eviction of an expired session is handled
+ * reactively by the expiry timer (`armExpiryTimer`), NOT here — this accessor
+ * performs no writes or notifications, so `apiFetch` reading the token never
+ * triggers a re-render as a side effect (#795).
+ */
 export function getSessionToken(): string | undefined {
-  if (session && isExpired(session)) {
-    setSession(undefined, "unauthenticated");
-    return undefined;
-  }
-  return session?.token;
+  if (session && !isExpired(session)) return session.token;
+  return undefined;
 }
 
 // `useSyncExternalStore` requires `getSnapshot()` to return a referentially
@@ -171,6 +214,7 @@ export function setSession(
   writeStorage(next);
   status = nextStatus ?? (next ? "authenticated" : "unauthenticated");
   error = undefined;
+  armExpiryTimer();
   notify();
 }
 
@@ -200,6 +244,7 @@ export function useSessionState(): SessionState {
 
 /** Test helper — resets all module state. FOR TESTS ONLY. */
 export function _resetSessionStoreForTests(): void {
+  clearExpiryTimer();
   session = undefined;
   status = "unauthenticated";
   error = undefined;

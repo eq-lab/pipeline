@@ -5,7 +5,7 @@
  * and the reactive/non-reactive accessor contract that `apiFetch` and
  * `TrusteeSessionProvider` depend on.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   getSessionToken,
   getSessionState,
@@ -127,5 +127,80 @@ describe("sessionStore — subscription", () => {
     setSession({ ...SAMPLE, expiresAt: Date.now() + 60_000 });
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("sessionStore — reactive expiry timer (#795)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetSessionStoreForTests();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("evicts an idle session the moment its token expires — no fetch needed", () => {
+    const listener = vi.fn();
+    subscribeSession(listener);
+    setSession({ ...SAMPLE, expiresAt: Date.now() + 60_000 });
+    listener.mockClear();
+    expect(getSessionState().status).toBe("authenticated");
+
+    // Idle: no apiFetch calls — only the timer advances.
+    vi.advanceTimersByTime(60_000);
+
+    expect(getSessionState().status).toBe("unauthenticated");
+    expect(getSessionToken()).toBeUndefined();
+    // The notify is what makes RouteGate re-gate to /sign-in on its own.
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("re-arms on setSession so the latest expiry wins", () => {
+    setSession({ ...SAMPLE, expiresAt: Date.now() + 30_000 });
+    setSession({ ...SAMPLE, expiresAt: Date.now() + 120_000 });
+
+    // Past the first (superseded) expiry, before the second.
+    vi.advanceTimersByTime(60_000);
+    expect(getSessionState().status).toBe("authenticated");
+
+    vi.advanceTimersByTime(60_000);
+    expect(getSessionState().status).toBe("unauthenticated");
+  });
+
+  it("clears the timer on setSession(undefined) — no stray eviction fires", () => {
+    setSession({ ...SAMPLE, expiresAt: Date.now() + 60_000 });
+    setSession(undefined);
+    const listener = vi.fn();
+    subscribeSession(listener);
+
+    vi.advanceTimersByTime(120_000);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(getSessionState().status).toBe("unauthenticated");
+  });
+});
+
+describe("sessionStore — getSessionToken is a pure read (#795)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetSessionStoreForTests();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns undefined for an expired token WITHOUT evicting or notifying", () => {
+    const start = Date.now();
+    setSession({ ...SAMPLE, expiresAt: start + 1_000 });
+    const listener = vi.fn();
+    subscribeSession(listener);
+
+    // Move the clock past expiry but do NOT run the timer.
+    vi.setSystemTime(start + 2_000);
+
+    expect(getSessionToken()).toBeUndefined(); // pure: reflects expiry
+    // …but performs no write/notify side effect (the timer owns eviction).
+    expect(listener).not.toHaveBeenCalled();
+    expect(getSessionState().status).toBe("authenticated");
   });
 });
