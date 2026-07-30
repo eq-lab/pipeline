@@ -66,6 +66,8 @@ A lot of 100 dry metric tonnes at 50 g/t gold and 2% arsenic, with gold at US$4,
 
 Against an outstanding senior principal of US$200,000, CCR = 274,709 / 200,000 = 137%, above the 130% watchlist threshold. A refractory gold-pyrite concentrate typically realises 55% to 75% of its contained-gold value before the haircut, which is why the payable percentage and the charges matter more than the headline gold price.
 
+Penalty arithmetic compares three quantities — the assayed level, the schedule threshold, and the step — so all three must share a unit. The assay level and the schedule threshold/step each carry their own `unit` (`Pct` or `Ppm`) and are normalised to percent before the comparison, so a trace element scheduled in ppm (e.g. mercury at 10 ppm) is handled correctly whether the assay reports percent or ppm.
+
 ## On-chain and off-chain split
 
 | Layer | Holds | Notes |
@@ -94,7 +96,7 @@ The relayer keeps one valuation record per active loan in its Postgres store, th
 | payable_terms | offtake | Per metal payable percentage and minimum deduction |
 | treatment_charge_per_dmt | offtake | Treatment charge in US$ per dry tonne |
 | refining_charges | offtake | Refining charge per payable ounce, per metal |
-| penalty_schedule | offtake | Per element threshold, rate, and flat or escalating basis |
+| penalty_schedule | offtake | Per element threshold, step, rate, and flat or escalating basis. Threshold and step carry a `unit` (`Pct` or `Ppm`, default `Pct`) and are normalised to percent for the waterfall, the same as the assay `deleterious` level — so a ppm-authored schedule is compared like-for-like against a ppm assay and never silently scores zero |
 | realisation_costs | offtake and logistics | Freight, insurance, superintendence, marketing |
 | quotational_period | offtake | For example 2 MAMA |
 | pricing_reference | offtake | For example LBMA Gold PM averaged over the quotational period |

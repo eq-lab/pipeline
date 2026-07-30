@@ -11,8 +11,8 @@ use shared::collateral_valuation::{
     StandardGoodsInputs,
 };
 use shared::collateral_valuation_repo::{
-    AssayMetalJson, AssayRow, CollateralValuationRow, OfftakeTermsRow, PayableTermJson,
-    RefiningChargeJson, ValuationMode,
+    AssayMetalJson, AssayRow, CollateralValuationRow, DeleteriousJson, OfftakeTermsRow,
+    PayableTermJson, PenaltyTierJson, RefiningChargeJson, ValuationMode,
 };
 use sqlx::types::Json;
 
@@ -297,4 +297,125 @@ fn compute_collateral_standard_goods_uses_anchor_asset() {
     // No price for the anchor's asset ⇒ unpriced.
     let unpriced = compute_collateral(&anchor, None, None, &prices(&[("XAG", "50")])).unwrap();
     assert!(unpriced.is_none());
+}
+
+// ── Penalty threshold/step units (issue #966) ──────────────────────────────────
+
+/// A minimal single-gold concentrate carrying a mercury deleterious level and one
+/// caller-supplied penalty tier, for exercising `assemble_penalties` end-to-end via
+/// `compute_collateral`. Charges other than the penalty are zeroed so the waterfall's
+/// `penalties` line isolates the unit handling.
+fn mercury_concentrate(
+    quantity_dmt: &str,
+    mercury_level: &str,
+    mercury_unit: &str,
+    tier: PenaltyTierJson,
+) -> (CollateralValuationRow, AssayRow, OfftakeTermsRow) {
+    let mut anchor = concentrate_anchor();
+    anchor.quantity_dmt = bd(quantity_dmt);
+
+    let assay = AssayRow {
+        id: 1,
+        chain_id: 1,
+        loan_id: BigDecimal::from(1),
+        assay_status: "Final".to_owned(),
+        moisture_pct: None,
+        assays: Json(vec![AssayMetalJson {
+            metal: "gold".to_owned(),
+            grade_g_per_t: "50".to_owned(),
+        }]),
+        deleterious: Json(vec![DeleteriousJson {
+            element: "mercury".to_owned(),
+            level: mercury_level.to_owned(),
+            unit: mercury_unit.to_owned(),
+        }]),
+        certificate_uri: None,
+        effective_at: Utc::now(),
+        recorded_by: "test".to_owned(),
+        created_at: Utc::now(),
+    };
+
+    let offtake = OfftakeTermsRow {
+        id: 1,
+        chain_id: 1,
+        loan_id: BigDecimal::from(1),
+        payable_terms: Json(vec![PayableTermJson {
+            metal: "gold".to_owned(),
+            payable_pct: "0.80".to_owned(),
+            min_deduction_g_per_t: "1".to_owned(),
+        }]),
+        treatment_charge_per_dmt: bd("0"),
+        refining_charges: Json(vec![]),
+        penalty_schedule: Json(vec![tier]),
+        realisation_costs: bd("0"),
+        quotational_period: None,
+        pricing_reference: None,
+        incoterm: None,
+        effective_at: Utc::now(),
+        recorded_by: "test".to_owned(),
+        created_at: Utc::now(),
+    };
+
+    (anchor, assay, offtake)
+}
+
+fn mercury_tier(threshold: &str, step: &str, unit: &str) -> PenaltyTierJson {
+    PenaltyTierJson {
+        element: "mercury".to_owned(),
+        threshold: threshold.to_owned(),
+        step: step.to_owned(),
+        unit: unit.to_owned(),
+        rate_per_dmt: "1".to_owned(),
+        escalating: false,
+    }
+}
+
+fn penalties_of(
+    anchor: &CollateralValuationRow,
+    assay: &AssayRow,
+    offtake: &OfftakeTermsRow,
+) -> BigDecimal {
+    compute_collateral(
+        anchor,
+        Some(assay),
+        Some(offtake),
+        &prices(&[("XAU", "4000")]),
+    )
+    .expect("valuation should not error")
+    .expect("gold priced ⇒ Some")
+    .concentrate
+    .expect("concentrate waterfall present")
+    .penalties
+}
+
+#[test]
+fn ppm_penalty_threshold_scores_nonzero() {
+    // Issue #966: mercury assay 22 ppm, offtake threshold 10 ppm, step 5 ppm, $1/dmt,
+    // over 5200 dmt. Both sides normalise to percent: (0.0022 - 0.0010)/0.0005 = 2.4
+    // steps × $1 × 5200 dmt = $12,480 — previously silently dropped to zero.
+    let (anchor, assay, offtake) =
+        mercury_concentrate("5200", "22", "Ppm", mercury_tier("10", "5", "Ppm"));
+    approx(&penalties_of(&anchor, &assay, &offtake), 12_480.0, 0.01);
+}
+
+#[test]
+fn pct_and_ppm_tiers_agree() {
+    // The same physical schedule authored two ways must produce the same penalty:
+    //   ppm:     level 22,      threshold 10,     step 5
+    //   percent: level 0.0022,  threshold 0.0010, step 0.0005
+    let (a1, s1, o1) = mercury_concentrate("5200", "22", "Ppm", mercury_tier("10", "5", "Ppm"));
+    let ppm = penalties_of(&a1, &s1, &o1);
+
+    let (a2, s2, o2) = mercury_concentrate(
+        "5200",
+        "0.0022",
+        "Pct",
+        mercury_tier("0.0010", "0.0005", "Pct"),
+    );
+    let pct = penalties_of(&a2, &s2, &o2);
+
+    // Compare numerically (BigDecimal equality is scale-sensitive; the two paths differ
+    // in scale but not value).
+    approx(&(&ppm - &pct), 0.0, 0.000_001);
+    approx(&ppm, 12_480.0, 0.01);
 }
