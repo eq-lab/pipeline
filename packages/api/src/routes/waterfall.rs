@@ -37,20 +37,28 @@
 //!    repayment for this loan) to get what's *newly* due since the last repayment, clamped
 //!    at 0 so a prior over-record can't surface as a negative "still owed" figure:
 //!    `target_x = max(0, x_cum − repayment.x)`.
-//! 3. **Reject an `amount` that would overpay the offtaker leg.** `original_offtaker_price`
-//!    is the fixed, genesis-set total the offtaker is contracted to pay over the loan's
-//!    life (`docs/product-specs/loans.md` §"Genesis economics") — it is never rewritten, so
-//!    `outstanding_offtaker = original_offtaker_price − repayment.offtaker_received`
-//!    is a hard ceiling: nothing legitimate can cause the offtaker to pay more than the
-//!    contracted price. `amount > outstanding_offtaker` is rejected with `400 Bad Request`
-//!    rather than silently accepted and cascaded — an over-large `amount` is a data-entry
-//!    error (or worse), not a valid repayment, and letting it through would let a bogus
-//!    figure land in `equity_distributed` (stage 4) with no trace of the mistake.
-//!    Deliberately **not** clamped at 0: if `repayment.offtaker_received` already exceeds
-//!    `original_offtaker_price` (a prior over-record already landed on-chain), every
-//!    further `amount` — including `0` — is rejected until that's corrected, rather than
-//!    reporting a healthy-looking "nothing outstanding" for a loan that is already in a
-//!    bad state.
+//! 3. **Bound the offtaker leg — conditionally, by pricing basis (issue #963).**
+//!    `original_offtaker_price` is the genesis-set total the offtaker is contracted to pay
+//!    (`docs/product-specs/loans.md` §"Genesis economics") and is never rewritten, so
+//!    `outstanding_offtaker = original_offtaker_price − repayment.offtaker_received`.
+//!    Whether that is a *hard ceiling* depends on `PricingBasis`:
+//!    - **`Fixed`** (refined metal, grain, exchange-deliverable goods): the offtaker cannot
+//!      legitimately pay more than the contracted price, so `amount > outstanding_offtaker`
+//!      is rejected with `400 Bad Request` rather than silently cascaded — an over-large
+//!      `amount` is a data-entry error, not a valid repayment, and letting it through would
+//!      land a bogus figure in `equity_distributed` (stage 4) with no trace. Deliberately
+//!      **not** clamped at 0: if `repayment.offtaker_received` already exceeds
+//!      `original_offtaker_price` (a prior over-record on-chain), every further `amount` —
+//!      including `0` — is rejected until that's corrected, rather than reporting a
+//!      healthy-looking "nothing outstanding" for a loan already in a bad state.
+//!    - **`Quotational`** (a metal concentrate settling on a quotational-period average):
+//!      `original_offtaker_price` is a genesis *estimate*, not a debt ceiling — a metal-price
+//!      rise over the QP legitimately lifts the final settlement above it. The payment is
+//!      accepted, the overage cascades into the equity residual (stage 4), and it is surfaced
+//!      via `offtaker_overpaid` for the Trustee to weigh, rather than blocked with a 400 the
+//!      Soroban `validate_repayment` never imposes. The pricing basis is derived from the
+//!      loan's collateral `valuation_mode` (concentrate ⇒ quotational); a loan with no
+//!      valuation anchor defaults to `Fixed`.
 //! 4. **Cascade `amount` through the tiers** in priority order — the interest tier
 //!    (senior coupon + management fee + performance fee) → OET → senior principal →
 //!    Equity residual — capping each tier at its step-2 target so a shortfall shrinks
@@ -97,6 +105,7 @@ use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
+use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::EconomicsEventRow;
 use shared::loan_economics::{
     build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest,
@@ -111,6 +120,36 @@ use crate::AppState;
 
 /// Basis-points denominator (`10_000` bps = 100%).
 const BPS_DENOM: i64 = 10_000;
+
+/// How the loan's offtaker price behaves as a repayment ceiling (issue #963).
+///
+/// `original_offtaker_price` is fixed at genesis, but whether it is a hard ceiling depends
+/// on how the deal is priced:
+/// - **`Fixed`** — refined metal, grain, exchange-deliverable material priced at a reference.
+///   The offtaker can never legitimately pay more than the contracted price, so an `amount`
+///   above the outstanding offtaker balance is rejected (stage 3).
+/// - **`Quotational`** — a metal concentrate settling on a quotational-period average (e.g.
+///   2 MAMA). `original_offtaker_price` is a genesis *estimate*; if the metal price rises
+///   over the QP the offtaker legitimately pays more, so the ceiling is not enforced — the
+///   overage is surfaced via `offtaker_overpaid` for the Trustee to weigh instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PricingBasis {
+    Fixed,
+    Quotational,
+}
+
+impl PricingBasis {
+    /// Derive the pricing basis from the loan's collateral valuation mode: a metal
+    /// concentrate settles on a quotational-period average, everything else is a fixed
+    /// reference price. Loans with no valuation anchor resolve to `Fixed` (the strict,
+    /// pre-#963 behaviour).
+    pub fn from_valuation_mode(mode: ValuationMode) -> Self {
+        match mode {
+            ValuationMode::MetalConcentrate => PricingBasis::Quotational,
+            ValuationMode::StandardGoods => PricingBasis::Fixed,
+        }
+    }
+}
 
 // ── Query ────────────────────────────────────────────────────────────────────
 
@@ -169,6 +208,16 @@ pub struct WaterfallResponse {
     /// capital, ...) — worth a second look before closing the loan, but not necessarily
     /// invalid, so it is surfaced for the Trustee to weigh rather than rejected outright.
     pub offtaker_fully_received: bool,
+    /// `true` when this payment's `amount` takes cumulative `offtaker_received` **past**
+    /// `original_offtaker_price` — the offtaker paid more than the genesis-contracted price.
+    ///
+    /// Only reachable for a `Quotational` (concentrate) loan, where a rise in the metal
+    /// price over the quotational period legitimately lifts the final settlement above the
+    /// genesis estimate; the overage cascades into the equity residual. For a `Fixed` loan
+    /// such an `amount` is rejected upstream (stage 3), so this is always `false`. Surfaced
+    /// (not rejected) so the Trustee — and the benign-close checklist — can weigh the QP
+    /// overage explicitly rather than auto-greening on `received ≥ contracted price`.
+    pub offtaker_overpaid: bool,
 }
 
 /// OpenAPI doc bundle for the waterfall route.
@@ -195,7 +244,7 @@ pub fn router() -> Router<Arc<AppState>> {
     ),
     responses(
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
-        (status = 400, description = "Malformed loan id / amount, or amount exceeds the loan's outstanding offtaker balance"),
+        (status = 400, description = "Malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
         (status = 500, description = "Internal server error"),
     ),
@@ -257,7 +306,26 @@ async fn get_waterfall(
         .list_loan_economics_events(&state.pool, chain_id, &loan_id, as_of)
         .await?;
 
-    let breakdown = compute_waterfall(&row.snapshot, &amount, as_of, &fees, &economics_events)?;
+    // Pricing basis (issue #963): a metal concentrate settles on a quotational-period
+    // average, so its genesis `original_offtaker_price` is an estimate, not a hard ceiling.
+    // Derive it from the loan's collateral valuation mode; a loan with no valuation anchor
+    // defaults to `Fixed` (the strict, pre-#963 offtaker ceiling).
+    let pricing_basis = state
+        .collateral_valuation_repo
+        .get_anchor(chain_id, &loan_id)
+        .await?
+        .map_or(PricingBasis::Fixed, |anchor| {
+            PricingBasis::from_valuation_mode(anchor.valuation_mode)
+        });
+
+    let breakdown = compute_waterfall(
+        &row.snapshot,
+        &amount,
+        as_of,
+        &fees,
+        &economics_events,
+        pricing_basis,
+    )?;
 
     Ok(Json(build_response(&breakdown)))
 }
@@ -278,6 +346,9 @@ pub struct WaterfallBreakdown {
     pub equity_distributed: BigDecimal,
     pub senior_principal_fully_repaid: bool,
     pub offtaker_fully_received: bool,
+    /// `amount` takes cumulative `offtaker_received` past `original_offtaker_price` — only
+    /// reachable for a `Quotational` loan (a `Fixed` loan rejects it at stage 3).
+    pub offtaker_overpaid: bool,
 }
 
 /// Truncate a value toward zero to a whole base unit.
@@ -291,13 +362,15 @@ fn trunc(v: &BigDecimal) -> BigDecimal {
 /// cut off at `as_of` by the caller — see `ContractLogsRepo::list_loan_economics_events`).
 /// Pure and unit-testable — no DB, no clock.
 ///
-/// `Err(BadRequest)` when `as_of` precedes the loan's origination (negative tenor).
+/// `Err(BadRequest)` when `as_of` precedes the loan's origination (negative tenor), or when
+/// `amount` exceeds the outstanding offtaker balance **on a `Fixed`-priced loan** (stage 3).
 pub fn compute_waterfall(
     s: &LoanSnapshot,
     amount: &BigDecimal,
     as_of: i64,
     fees: &FeeScheduleRow,
     economics_events: &[EconomicsEventRow],
+    pricing_basis: PricingBasis,
 ) -> Result<WaterfallBreakdown, ApiError> {
     if as_of < s.origination_date {
         return Err(ApiError::BadRequest(format!(
@@ -306,20 +379,28 @@ pub fn compute_waterfall(
         )));
     }
 
-    // Stage 3 (see module docs): `original_offtaker_price` is fixed at genesis and never
-    // rewritten, so the offtaker can never legitimately pay more than it over the loan's
-    // life. Reject an `amount` that would push cumulative `offtaker_received` past that
-    // ceiling, rather than silently cascading it — an over-large `amount` here is a
-    // data-entry error, not a valid repayment.
+    // Stage 3 (see module docs): whether `original_offtaker_price` is a hard ceiling depends
+    // on the loan's pricing basis (issue #963).
     //
-    // Deliberately NOT clamped at 0: if `offtaker_received` already exceeds
-    // `original_offtaker_price` (a prior over-record — this is exactly how loan 9's bogus
-    // test repayment was found), `outstanding_offtaker` goes negative and every further
-    // `amount` is rejected, loudly, until someone fixes the underlying record. Flooring
-    // this at 0 would report "nothing outstanding" for an already-corrupted loan — the
-    // same silent-masking failure mode as reporting a healthy-looking CCR.
+    // For a `Fixed`-priced deal (refined metal, grain, exchange-deliverable material) the
+    // offtaker can never legitimately pay more than the contracted price, so an `amount`
+    // that would push cumulative `offtaker_received` past it is rejected — an over-large
+    // `amount` is a data-entry error, not a valid repayment. Deliberately NOT clamped at 0:
+    // if `offtaker_received` already exceeds `original_offtaker_price` (a prior over-record —
+    // this is exactly how loan 9's bogus test repayment was found), `outstanding_offtaker`
+    // goes negative and every further `amount` is rejected, loudly, until someone fixes the
+    // underlying record. Flooring this at 0 would report "nothing outstanding" for an
+    // already-corrupted loan — the same silent-masking failure mode as a healthy-looking CCR.
+    //
+    // For a `Quotational` deal (a metal concentrate settling on a quotational-period average)
+    // `original_offtaker_price` is a genesis *estimate*, not a debt ceiling: a metal-price
+    // rise over the QP legitimately lifts the final settlement above it. We accept the
+    // payment, let the overage cascade into the equity residual, and surface it via
+    // `offtaker_overpaid` for the Trustee to weigh — rather than blocking the loan's final
+    // repayment with a 400 the Soroban contract itself does not impose.
     let outstanding_offtaker = &s.original_offtaker_price - &s.repayment.offtaker_received;
-    if amount > &outstanding_offtaker {
+    let offtaker_overpaid = amount > &outstanding_offtaker;
+    if offtaker_overpaid && pricing_basis == PricingBasis::Fixed {
         return Err(ApiError::BadRequest(format!(
             "amount ({amount}) exceeds the loan's outstanding offtaker balance \
              ({outstanding_offtaker} = original_offtaker_price {} − offtaker_received {})",
@@ -453,6 +534,7 @@ pub fn compute_waterfall(
         equity_distributed,
         senior_principal_fully_repaid,
         offtaker_fully_received,
+        offtaker_overpaid,
     })
 }
 
@@ -467,5 +549,6 @@ pub fn build_response(b: &WaterfallBreakdown) -> WaterfallResponse {
         equity_distributed: b.equity_distributed.to_plain_string(),
         senior_principal_fully_repaid: b.senior_principal_fully_repaid,
         offtaker_fully_received: b.offtaker_fully_received,
+        offtaker_overpaid: b.offtaker_overpaid,
     }
 }
