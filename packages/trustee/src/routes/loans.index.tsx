@@ -24,7 +24,7 @@ import {
  * senior · At-risk (WL + Default) · Weighted rate · Weighted tenor · Top
  * concentration) · a status tab-bar with per-status counts · a white card
  * holding the active-loan table (Originator · Commodity·spot · Senior outst. ·
- * Collateral · CCR · Maturity · Stage + a trailing chevron cell) and the
+ * Collateral · CCR · Nearest payment · Stage + a trailing chevron cell) and the
  * CCR-band footnote.
  *
  * ## Resolved Open Questions (human, issue #843 comments)
@@ -124,7 +124,7 @@ const COLUMN_HEADERS = [
   "Senior outst.",
   "Collateral",
   "CCR",
-  "Maturity",
+  "Nearest payment",
   "Stage",
 ] as const;
 
@@ -380,10 +380,17 @@ function LoanRow({
       <CcrCellView row={row} />
       <div
         role="cell"
-        title={row.maturity}
-        className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-ellipsis text-[color:var(--color-pipeline-ink)]`}
+        data-testid="loans-nearest-payment"
+        data-overdue={row.nearestPayment.overdue}
+        title={row.nearestPayment.text}
+        className={`${BODY_CELL_CLASS} text-[16px] leading-[22.4px] text-ellipsis`}
+        style={{
+          color: row.nearestPayment.overdue
+            ? NEGATIVE_RED
+            : "var(--color-pipeline-ink)",
+        }}
       >
-        {row.maturity}
+        {row.nearestPayment.text}
       </div>
       <div
         role="cell"

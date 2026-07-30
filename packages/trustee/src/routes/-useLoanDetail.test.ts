@@ -42,6 +42,8 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     senior_outstanding: "3960.000000",
     original_senior_tranche: "3960.000000",
     maturity: 1_782_777_600, // 2026-06-30
+    next_payment_timestamp: 1_782_777_600,
+    days_overdue: null,
     ccr_reported_at: 0,
     spot_price: "10450",
     spot_change_7d: "-0.012",
@@ -158,19 +160,22 @@ describe("statusToChip", () => {
 // ── buildHero ───────────────────────────────────────────────────────────────
 
 describe("buildHero", () => {
-  it("builds the identity + mapped chip; meta shows the maturity date (#859)", () => {
+  it("builds the identity + mapped chip; meta shows the nearest payment date (#859/#941)", () => {
     const hero = buildHero("4488", makeEntry());
     expect(hero.title).toBe("Helios Metals · Lithium");
     expect(hero.status).toEqual({ label: "Performing", band: "positive" });
-    // Maturity date in the hero for both variants (entry.maturity = 30 Jun 2026).
-    expect(hero.meta).toBe("Loan #4488 · matures 30 Jun 2026");
+    // Not overdue → the next-payment date (next_payment_timestamp = 30 Jun 2026).
+    expect(hero.meta).toBe("Loan #4488 · next payment 30 Jun 2026");
     expect(hero.backLabel).toBe("‹ Loans");
   });
 
-  it("renders a matured loan with the Matured chip and '— passed' maturity (#866)", () => {
-    const hero = buildHero("4488", makeEntry({ status: "Matured" }));
+  it("shows the overdue clause when days_overdue is set — 'payment N days late' (#941)", () => {
+    const hero = buildHero(
+      "4488",
+      makeEntry({ status: "Matured", days_overdue: 5 }),
+    );
     expect(hero.status).toEqual({ label: "Matured", band: "attention" });
-    expect(hero.meta).toBe("Loan #4488 · 30 Jun 2026 — passed");
+    expect(hero.meta).toBe("Loan #4488 · payment 5 days late");
   });
 
   it("degrades to the loan id only when no row is found (never fabricates)", () => {
@@ -180,8 +185,8 @@ describe("buildHero", () => {
     expect(hero.meta).toBe("Loan #999");
   });
 
-  it("omits the maturity clause when the date is unavailable (no fabrication)", () => {
-    const hero = buildHero("4488", makeEntry({ maturity: NaN }));
+  it("omits the payment clause when no next-payment timestamp is served (no fabrication)", () => {
+    const hero = buildHero("4488", makeEntry({ next_payment_timestamp: 0 }));
     expect(hero.meta).toBe("Loan #4488");
   });
 });

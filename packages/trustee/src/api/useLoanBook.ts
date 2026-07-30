@@ -134,6 +134,19 @@ export interface LoanBookEntry {
   /** Rollover-aware maturity, Unix seconds. Backs the **Maturity** column. */
   maturity: number;
   /**
+   * Next scheduled payment, Unix seconds (backend #953). For today's bullet
+   * loans this equals the current rollover-aware maturity, but it is a distinct
+   * field so the schedule can diverge later without a breaking change. Backs the
+   * **Nearest payment** column/card (#941).
+   */
+  next_payment_timestamp: number;
+  /**
+   * Whole days past `next_payment_timestamp`, or `null` when not yet due
+   * (server-computed, like `days_on_watchlist`). Non-null → the "N days late"
+   * form of **Nearest payment** (#941/#953).
+   */
+  days_overdue: number | null;
+  /**
    * Timestamp the current CCR was last reported on-chain, Unix seconds; `0`
    * when never reported. Backs the CCR staleness age chip.
    */

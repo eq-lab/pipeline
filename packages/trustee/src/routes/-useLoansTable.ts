@@ -142,8 +142,8 @@ export interface LoanTableRow {
   collateral: string;
   /** CCR cell, or `null` when `ccr_bps` is unavailable. */
   ccr: CcrCell | null;
-  /** Rollover-aware maturity, `"1 Aug 2026"`. */
-  maturity: string;
+  /** Nearest payment: the next payment's date, or "N days late" when overdue (#941). */
+  nearestPayment: NearestPayment;
   /** Stage = the served status label only (no fabricated suffix). */
   stage: string;
   /** Raw served status, retained for the client-side tab filter/counts. */
@@ -193,6 +193,39 @@ export function classifyCcr(servedBps: number | null): CcrBand | null {
   if (servedBps >= MAINTENANCE_MARGIN_BPS) return "attention";
   if (servedBps >= HARD_MARGIN_CALL_BPS) return "margin-call";
   return "pre-default";
+}
+
+/** The **Nearest payment** cell — next payment date, or "N days late" when overdue. */
+export interface NearestPayment {
+  /** `"1 Aug 2026"` (upcoming) · `"5 days late"` / `"Due today"` (overdue) · `"—"` when unknown. */
+  text: string;
+  /** Past the next payment (`days_overdue` non-null) → the view paints it red. */
+  overdue: boolean;
+}
+
+/**
+ * Builds the **Nearest payment** cell (#941) from the served `next_payment_timestamp`
+ * + server-computed `days_overdue` (#953). Overdue (`days_overdue` non-null) shows how
+ * late — "Due today" within the first day, else "N days late". Otherwise the payment
+ * date; `"—"` when the timestamp is missing/zero (never fabricated).
+ */
+export function formatNearestPayment(
+  nextPaymentUnix: number | null | undefined,
+  daysOverdue: number | null | undefined,
+): NearestPayment {
+  if (daysOverdue != null && Number.isFinite(daysOverdue)) {
+    const d = Math.max(0, Math.trunc(daysOverdue));
+    const text = d === 0 ? "Due today" : `${d} day${d === 1 ? "" : "s"} late`;
+    return { text, overdue: true };
+  }
+  if (
+    nextPaymentUnix == null ||
+    !Number.isFinite(nextPaymentUnix) ||
+    nextPaymentUnix <= 0
+  ) {
+    return { text: "—", overdue: false };
+  }
+  return { text: formatMaturityDate(nextPaymentUnix), overdue: false };
 }
 
 /**
@@ -299,7 +332,10 @@ export function mapEntryToRow(
     // collateral is likewise displayed as served (issue #906).
     collateral: formatCompactUsd2dp(entry.collateral),
     ccr,
-    maturity: formatMaturityDate(entry.maturity),
+    nearestPayment: formatNearestPayment(
+      entry.next_payment_timestamp,
+      entry.days_overdue,
+    ),
     stage: safeString(entry.status),
     status: entry.status,
   };

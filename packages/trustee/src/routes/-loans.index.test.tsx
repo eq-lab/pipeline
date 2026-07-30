@@ -57,6 +57,8 @@ const RESPONSE: LoanBookResponse = {
       senior_outstanding: "1840.000000",
       original_senior_tranche: "1840.000000",
       maturity: 1_785_000_000,
+      next_payment_timestamp: 1_785_000_000,
+      days_overdue: null,
       ccr_reported_at: Math.floor(Date.now() / 1000) - 3600,
       spot_price: "4500.00",
       spot_change_7d: "-0.1800",
@@ -82,6 +84,8 @@ const RESPONSE: LoanBookResponse = {
       senior_outstanding: "1260.000000",
       original_senior_tranche: "1260.000000",
       maturity: 1_789_000_000,
+      next_payment_timestamp: 1_789_000_000,
+      days_overdue: null,
       ccr_reported_at: 0,
       spot_price: null,
       spot_change_7d: null,
@@ -185,6 +189,24 @@ describe("Loans list route (ready)", () => {
     // 114% is in the 110–120% margin-call band (orange) under the 4-band scheme (#939).
     expect(ccr).toHaveAttribute("data-band", "margin-call");
     expect(ccr).toHaveStyle({ color: "#b35900" });
+    // Nearest payment: not overdue (days_overdue null) → the date, no red (#941).
+    expect(screen.getByTestId("loans-nearest-payment")).toHaveAttribute(
+      "data-overdue",
+      "false",
+    );
+  });
+
+  it("renders an overdue loan's Nearest payment as 'N days late' in red (#941)", () => {
+    const [firstLoan] = RESPONSE.loans;
+    ready({
+      ...RESPONSE,
+      loans: [{ ...firstLoan!, days_overdue: 3 }],
+    });
+    renderRoute();
+    const nearest = screen.getByTestId("loans-nearest-payment");
+    expect(nearest).toHaveTextContent("3 days late");
+    expect(nearest).toHaveAttribute("data-overdue", "true");
+    expect(nearest).toHaveStyle({ color: "#b20000" });
   });
 
   it("filters to the Watchlist tab and renders — for the null collateral/CCR cells", () => {
