@@ -53,6 +53,7 @@ import {
   formatCompactUsd,
 } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
+import { formatNearestPayment } from "./-useLoansTable";
 import {
   DISBURSING_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
@@ -401,16 +402,20 @@ export function buildHero(
     };
   }
   const chip = statusToChip(entry.status);
-  const maturityDate = formatMaturityDate(entry.maturity);
-  // A matured loan's maturity has passed → "<date> — passed"; otherwise
-  // "matures <date>". Dropped entirely when the date is unavailable.
-  const maturityClause =
-    maturityDate === "—"
+  // The **Nearest payment** (#941/#953): "next payment <date>" when upcoming, or
+  // "payment N days late" / "payment due today" when overdue. Dropped entirely
+  // when no next-payment timestamp is served.
+  const np = formatNearestPayment(
+    entry.next_payment_timestamp,
+    entry.days_overdue,
+  );
+  const paymentClause =
+    np.text === "—"
       ? null
-      : chip.label === "Matured"
-        ? `${maturityDate} — passed`
-        : `matures ${maturityDate}`;
-  const metaParts = [`Loan #${entry.loan_id}`, maturityClause].filter(
+      : np.overdue
+        ? `payment ${np.text.toLowerCase()}`
+        : `next payment ${np.text}`;
+  const metaParts = [`Loan #${entry.loan_id}`, paymentClause].filter(
     (p): p is string => p != null,
   );
   return {

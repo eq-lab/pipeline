@@ -168,6 +168,8 @@ function makeLoanEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     senior_outstanding: "0",
     original_senior_tranche: "0",
     maturity: 1_782_777_600,
+    next_payment_timestamp: 1_782_777_600,
+    days_overdue: null,
     ccr_reported_at: 0,
     spot_price: null,
     spot_change_7d: null,

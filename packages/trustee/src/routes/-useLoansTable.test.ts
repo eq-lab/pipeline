@@ -17,6 +17,7 @@ import {
   buildLoansView,
   classifyCcr,
   formatCcrAge,
+  formatNearestPayment,
   formatSpot,
   mapEntryToRow,
   mapSummary,
@@ -40,6 +41,8 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     senior_outstanding: "1840.000000",
     original_senior_tranche: "1840.000000",
     maturity: 1_785_000_000,
+    next_payment_timestamp: 1_785_000_000,
+    days_overdue: null,
     ccr_reported_at: NOW_S - 3600,
     spot_price: "4500.00",
     spot_change_7d: "-0.1800",
@@ -89,6 +92,43 @@ describe("classifyCcr", () => {
 
   it("null → null (no flag)", () => {
     expect(classifyCcr(null)).toBeNull();
+  });
+});
+
+// ── formatNearestPayment (#941) ───────────────────────────────────────────────
+
+describe("formatNearestPayment", () => {
+  it("shows the payment date when not overdue (days_overdue null)", () => {
+    expect(formatNearestPayment(1_785_000_000, null)).toEqual({
+      text: formatMaturityDate(1_785_000_000),
+      overdue: false,
+    });
+  });
+
+  it('shows "N days late" (plural/singular) when overdue', () => {
+    expect(formatNearestPayment(1_785_000_000, 5)).toEqual({
+      text: "5 days late",
+      overdue: true,
+    });
+    expect(formatNearestPayment(1_785_000_000, 1)).toEqual({
+      text: "1 day late",
+      overdue: true,
+    });
+  });
+
+  it('shows "Due today" for the first day overdue (days_overdue 0)', () => {
+    expect(formatNearestPayment(1_785_000_000, 0)).toEqual({
+      text: "Due today",
+      overdue: true,
+    });
+  });
+
+  it('returns "—" when the next-payment timestamp is missing/zero (never fabricated)', () => {
+    expect(formatNearestPayment(0, null)).toEqual({ text: "—", overdue: false });
+    expect(formatNearestPayment(null, null)).toEqual({
+      text: "—",
+      overdue: false,
+    });
   });
 });
 
@@ -163,7 +203,11 @@ describe("mapEntryToRow", () => {
     // collateral "2100.000000" ⇒ $2.10K, two-decimal compact, as served.
     expect(row.collateral).toBe("$2.10K");
     expect(row.spot).toEqual({ text: "$4,500 · −18% 7d", negative: true });
-    expect(row.maturity).toBe(formatMaturityDate(1_785_000_000));
+    // next_payment_timestamp = maturity, not overdue ⇒ the payment date.
+    expect(row.nearestPayment).toEqual({
+      text: formatMaturityDate(1_785_000_000),
+      overdue: false,
+    });
     expect(row.stage).toBe("WatchList");
     expect(row.status).toBe("WatchList");
     // ccr_bps 11_400 used as-is (no ÷1000) ⇒ 114% → margin-call band (110–120%, #939).

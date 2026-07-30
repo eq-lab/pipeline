@@ -119,6 +119,8 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       senior_outstanding: "1840000.000000",
       original_senior_tranche: "1840000.000000",
       maturity: 1_782_777_600,
+      next_payment_timestamp: 1_782_777_600,
+      days_overdue: null,
       ccr_reported_at: 0,
       spot_price: "10450",
       spot_change_7d: null,

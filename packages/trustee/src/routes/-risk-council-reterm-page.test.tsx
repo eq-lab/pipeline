@@ -80,6 +80,8 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       original_senior_tranche: "1840000.000000",
       // 15 Aug 2026 00:00:00 UTC.
       maturity: 1_786_838_400,
+      next_payment_timestamp: 1_786_838_400,
+      days_overdue: null,
       ccr_reported_at: 0,
       spot_price: "4500",
       spot_change_7d: "-0.18",
