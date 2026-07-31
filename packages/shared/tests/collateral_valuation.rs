@@ -103,6 +103,65 @@ fn fixed_charges_make_collateral_fall_faster_than_price() {
 }
 
 #[test]
+fn metal_below_min_deduction_contributes_zero() {
+    // Issue #965: a metal whose payable grade goes negative must pay nothing, never a
+    // negative gross value or a credited (negative) refining charge. Repro from the issue:
+    // grade 35.00, payable 85%, min deduction 30 ⇒ payable grade = 35*0.85 - 30 = -0.25.
+    let below_floor = ConcentrateInputs {
+        quantity_dmt: bd("5200"),
+        metals: vec![PayableMetal {
+            grade_g_per_t: bd("35.00"),
+            payable_pct: bd("0.85"),
+            min_deduction_g_per_t: bd("30"),
+            reference_price: bd("4200"),
+            rc_per_oz: bd("6"),
+        }],
+        treatment_charge_per_dmt: bd("0"),
+        penalties: vec![],
+        realisation_costs: bd("0"),
+        haircut: bd("0"),
+    };
+    let v = below_floor.valuate();
+    // Floored, not the buggy -175,542.95 gross and -16.72 refining credit.
+    approx(&v.gross_value, 0.0, 0.000_001);
+    approx(&v.refining_charge, 0.0, 0.000_001);
+
+    // Per-metal (not summed) clamp: a floored metal must not net against a paying one.
+    // Add a positive gold term and confirm its contribution is unchanged from valuing it
+    // alone — the below-floor silver-like metal adds exactly zero, never a subtraction.
+    let mut with_paying_metal = below_floor.clone();
+    with_paying_metal.metals.push(PayableMetal {
+        grade_g_per_t: bd("50"),
+        payable_pct: bd("0.80"),
+        min_deduction_g_per_t: bd("1"),
+        reference_price: bd("4000"),
+        rc_per_oz: bd("6"),
+    });
+    let combined = with_paying_metal.valuate();
+
+    let mut gold_only = below_floor.clone();
+    gold_only.metals = vec![PayableMetal {
+        grade_g_per_t: bd("50"),
+        payable_pct: bd("0.80"),
+        min_deduction_g_per_t: bd("1"),
+        reference_price: bd("4000"),
+        rc_per_oz: bd("6"),
+    }];
+    let gold = gold_only.valuate();
+
+    approx(
+        &combined.gross_value,
+        gold.gross_value.to_f64().unwrap(),
+        0.000_001,
+    );
+    approx(
+        &combined.refining_charge,
+        gold.refining_charge.to_f64().unwrap(),
+        0.000_001,
+    );
+}
+
+#[test]
 fn standard_goods_applies_price_quantity_haircut() {
     // 4000/oz * 160.75 oz * (1 - 0.10) = 578,700.
     let inputs = StandardGoodsInputs {
