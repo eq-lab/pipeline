@@ -109,6 +109,7 @@ use shared::collateral_valuation_repo::ValuationMode;
 use shared::contract_logs_repo::EconomicsEventRow;
 use shared::loan_economics::{
     build_epochs, compound_growth, piecewise_capped_seconds, piecewise_interest,
+    validate_epochs_for_accrual,
 };
 use shared::loan_fee_schedule_repo::FeeScheduleRow;
 use shared::loan_snapshot::LoanSnapshot;
@@ -246,6 +247,7 @@ pub fn router() -> Router<Arc<AppState>> {
         (status = 200, description = "Repayment waterfall breakdown", body = WaterfallResponse),
         (status = 400, description = "Malformed loan id / amount, or (fixed-price loans only) amount exceeds the loan's outstanding offtaker balance"),
         (status = 404, description = "Loan not indexed as of the repayment instant"),
+        (status = 422, description = "The loan's economics epoch timeline is corrupt (e.g. a rolled-over epoch with a zero maturity) and cannot be used for accrual"),
         (status = 500, description = "Internal server error"),
     ),
     tag = "LoanBook"
@@ -417,6 +419,12 @@ pub fn compute_waterfall(
         s.senior_interest_rate_bps,
         economics_events,
     );
+    // Refuse rather than silently understate: a corrupt (`0`/malformed) epoch maturity
+    // would make the piecewise accrual below contribute zero interest/fees for that
+    // epoch's whole duration (issue #930). Fail loudly so a bad repayment can't be minted.
+    validate_epochs_for_accrual(&epochs).map_err(|e| {
+        ApiError::UnprocessableEntity(format!("refusing to compute repayment accrual: {e}"))
+    })?;
     let capped_seconds = piecewise_capped_seconds(&epochs, as_of);
 
     // Accrual base is the outstanding senior principal (original tranche less what's

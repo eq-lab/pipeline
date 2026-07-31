@@ -26,6 +26,10 @@ pub enum ApiError {
     /// 409 Conflict. The request conflicts with the resource's current state
     /// (e.g. reviewing a submission that has already been decided).
     Conflict(String),
+    /// 422 Unprocessable Entity. The request is well-formed, but the server-side data it
+    /// references cannot be processed — e.g. a repayment whose loan carries a corrupt
+    /// economics epoch (see `routes::waterfall`). The String is the user-visible message.
+    UnprocessableEntity(String),
     /// 500 Internal Server Error. The wrapped `anyhow::Error` is logged but never
     /// returned to the caller — the response body is a generic `"internal error"`.
     Internal(anyhow::Error),
@@ -68,6 +72,11 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::Conflict(msg) => (
                 StatusCode::CONFLICT,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response(),
+            Self::UnprocessableEntity(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
                 Json(serde_json::json!({"error": msg})),
             )
                 .into_response(),
