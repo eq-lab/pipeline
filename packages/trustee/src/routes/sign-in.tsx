@@ -11,10 +11,10 @@ import { SignInCard } from "@/components/SignInCard";
  *
  * Wired to the real sign-in flow (#791): `SignInCard` calls
  * `useTrusteeSession().signIn()`, which drives wallet-connect → backend
- * signature challenge → sign → verify → session. Route gating
- * (`TrusteeShell` → `RouteGate`) renders this route standalone — the sidebar
- * nav (#786) is hidden while unauthenticated — and redirects an
- * already-authenticated visitor away from `/sign-in` to `/`.
+ * signature challenge → sign → verify → session. The root `beforeLoad` auth
+ * guard redirects an already-authenticated visitor away from `/sign-in` to `/`;
+ * `TrusteeShell` renders this route standalone — the sidebar nav (#786) is
+ * hidden while unauthenticated.
  *
  * Out of scope here: the "Overview" heading + timestamp header row visible
  * behind the overlay in the Figma frame is the dashboard shell's content,

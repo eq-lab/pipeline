@@ -28,11 +28,12 @@
  *      `unauthenticated` silently (not an error — a user choice).
  *   4. `POST /v1/auth/verify { chain_id, address, signature }`. On success the
  *      token is stored (`sessionStore`, sessionStorage-backed) and `status`
- *      flips to `authenticated`; leaving `/sign-in` is then handled
- *      declaratively by `RouteGate` (NOT an imperative navigate here — that
- *      raced the redirect and stranded the URL on `/sign-in`, #921). A `401`
- *      here is rare (nonce race / signature mismatch) and surfaces as a
- *      verification-failed error.
+ *      flips to `authenticated`; leaving `/sign-in` is then handled by the root
+ *      route's `beforeLoad` guard, re-run on the session change via
+ *      `router.invalidate()` (`__root.tsx`) — NOT an imperative navigate here,
+ *      and not a render-phase `<Navigate>`, both of which raced the redirect and
+ *      stranded the URL on `/sign-in` (#921). A `401` here is rare (nonce race /
+ *      signature mismatch) and surfaces as a verification-failed error.
  *
  * `signOut()` clears the stored token and disconnects the wallet — there is
  * no server logout endpoint (bearer-token transport, see the exec plan's
@@ -149,14 +150,14 @@ export function TrusteeSessionProvider({
           expiresAt: Date.now() + verified.expiresIn * 1000,
         });
         // Do NOT imperatively navigate here (#921). Leaving `/sign-in` is
-        // handled declaratively by `RouteGate` reacting to `status →
-        // authenticated`. An imperative `navigate({ to: "/" })` here RACES that
-        // store update: on the first sign-in it pushes the URL to "/" in a
-        // render where `RouteGate` still reads a stale, non-authenticated
-        // status and bounces straight back to `/sign-in` — stranding the URL on
-        // `/sign-in` with BOTH the dashboard content and the sign-in overlay
-        // mounted until a reload. `RouteGate` is the single source of truth for
-        // auth redirects; a page reload already relies on exactly that path.
+        // handled by the root `beforeLoad` auth guard, re-run on this session
+        // change via `router.invalidate()` (`__root.tsx`). An imperative
+        // `navigate({ to: "/" })` here RACES the store update (pushes "/" before
+        // the guard sees `authenticated`, bouncing back to `/sign-in`), and the
+        // earlier render-phase `<Navigate>` raced React's commit in production —
+        // both stranded the URL on `/sign-in` with BOTH the dashboard and the
+        // sign-in gate mounted. The router's navigation lifecycle is the single,
+        // race-free source of truth for auth redirects.
       } catch {
         // A 401 here is rare on the happy path (nonce expired / signature
         // mismatch / already consumed) — unlike the challenge step, a 401
@@ -170,7 +171,8 @@ export function TrusteeSessionProvider({
       }
     },
     // No `navigate` dependency — `runSignIn` no longer imperatively redirects
-    // (#921); `RouteGate` handles leaving `/sign-in` on `status → authenticated`.
+    // (#921); the root `beforeLoad` guard (re-run via `router.invalidate()` on
+    // the session change) handles leaving `/sign-in` on `status → authenticated`.
     [],
   );
 
