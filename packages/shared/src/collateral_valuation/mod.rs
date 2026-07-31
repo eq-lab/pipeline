@@ -152,7 +152,9 @@ impl StandardGoodsInputs {
 impl ConcentrateInputs {
     /// Metal-concentrate valuation: the Net Smelter Return waterfall.
     ///
-    /// Per metal: `payable_oz = (grade * payable_pct - min_deduction) * quantity / 31.1035`.
+    /// Per metal: `payable_oz = max(0, grade * payable_pct - min_deduction) * quantity / 31.1035`.
+    /// The grade floors at zero: a metal below its minimum deduction pays nothing, never
+    /// a negative contribution (matching the offtake, and the penalty `steps` floor below).
     /// Gross value and refining charge sum across metals; treatment charge and penalties
     /// are cargo-level fixed dollars; then realisation costs and the haircut apply.
     pub fn valuate(&self) -> ConcentrateValuation {
@@ -161,7 +163,8 @@ impl ConcentrateInputs {
         let mut gross_value = BigDecimal::zero();
         let mut refining_charge = BigDecimal::zero();
         for m in &self.metals {
-            let payable_grade = &m.grade_g_per_t * &m.payable_pct - &m.min_deduction_g_per_t;
+            let payable_grade = (&m.grade_g_per_t * &m.payable_pct - &m.min_deduction_g_per_t)
+                .max(BigDecimal::zero());
             let payable_mass = &payable_grade * &self.quantity_dmt;
             let payable_oz = payable_mass / &g_per_oz;
             gross_value += &payable_oz * &m.reference_price;

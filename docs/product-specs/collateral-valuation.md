@@ -37,12 +37,14 @@ collateral_value = reference_price * quantity * (1 - haircut)
 The first deal, gold-pyrite concentrate, uses this mode. A concentrate is not worth price times quantity. It is worth its Net Smelter Return (NSR), the amount the seller receives after the smelter's payable terms and charges. The relayer runs the waterfall per payable metal, then sums.
 
 ```
-payable_metal    = (grade * payable_pct - min_deduction) * quantity
+payable_metal    = max(0, grade * payable_pct - min_deduction) * quantity
 gross_value      = Σ over metals of payable_metal * reference_price(metal)
 nsr              = gross_value - treatment_charge - refining_charge - penalties
 mine_gate_value  = nsr - realisation_costs
 collateral_value = mine_gate_value * (1 - haircut)
 ```
+
+**Payable metal floors at zero.** A metal whose grade is below its minimum deduction pays nothing, never a negative amount — the physical offtake never charges back a metal it does not pay for. The `max(0, …)` on each metal keeps a below-floor metal from subtracting value from the others, the same way the penalty `steps` floor at zero.
 
 **Each payable metal is priced by its own reference price.** A gold-pyrite concentrate with a payable silver credit values the silver at the silver price and the gold at the gold price — never one metal's price applied to both. Each metal name resolves to its own price-feed asset symbol (gold → `XAU`, silver → `XAG`), and the price collector keeps a series for every payable metal's asset, not just the loan's headline asset. If any payable metal has no price yet, the loan reads *unpriced* rather than being valued against another metal's feed. `gross_value` then sums `payable_metal * reference_price(metal)` across the metals.
 
