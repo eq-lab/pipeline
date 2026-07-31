@@ -40,7 +40,17 @@ export interface MetalInput {
   rc_per_oz: string;
 }
 
-/** One penalty-tier input line (concentrate mode). */
+/**
+ * One penalty-tier input line (concentrate mode).
+ *
+ * `level_pct` / `threshold_pct` / `step_pct` are **percent-normalised** by the
+ * backend (#966) — always in percent regardless of whether the tier was authored
+ * in percent or ppm (a `10` ppm tier echoes as `0.001`, not `10`). So whoever
+ * renders these should treat them as percent (append a `%`, no scaling and no
+ * ppm conversion). Not currently surfaced anywhere in the Console (#986
+ * verification: no penalty display and no offtake-authoring form yet) — this
+ * note documents the contract for when they are.
+ */
 export interface PenaltyInput {
   element: string;
   level_pct: string;
