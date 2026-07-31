@@ -134,11 +134,32 @@ describe("Cash Management route — shell", () => {
   });
 });
 
-describe("Cash Management route — swap form", () => {
+describe("Cash Management route — swap dialog", () => {
   beforeEach(() => readyEvents());
 
-  it("renders the balance, ramp destination, a disabled submit, and the fee as —", () => {
+  function openSwap() {
     renderRoute();
+    // The form is not inline — it opens from the "New swap" button.
+    expect(
+      screen.queryByTestId("cash-management-swap"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
+  }
+
+  it("is closed by default and opens a modal swap form from the New-swap button", () => {
+    renderRoute();
+    expect(
+      screen.queryByTestId("cash-management-swap"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
+    expect(screen.getByTestId("cash-management-swap")).toHaveAttribute(
+      "role",
+      "dialog",
+    );
+  });
+
+  it("renders the balance, ramp destination, a disabled submit, and the fee as —", () => {
+    openSwap();
     const swap = screen.getByTestId("cash-management-swap");
     expect(swap).toHaveTextContent("Balance: 8,400,000 USDC");
     expect(swap).toHaveTextContent("GRAM…WXYZ");
@@ -149,7 +170,7 @@ describe("Cash Management route — swap form", () => {
   });
 
   it("Max fills the amount and the 1:1 receive summary updates", () => {
-    renderRoute();
+    openSwap();
     fireEvent.click(screen.getByTestId("cash-management-swap-max"));
     expect(screen.getByTestId("cash-management-swap-amount")).toHaveValue(
       8400000,
@@ -160,7 +181,7 @@ describe("Cash Management route — swap form", () => {
   });
 
   it("toggling to On-ramp hides the ramp destination row", () => {
-    renderRoute();
+    openSwap();
     expect(screen.getByTestId("cash-management-swap")).toHaveTextContent(
       "To (ramp)",
     );
@@ -168,6 +189,14 @@ describe("Cash Management route — swap form", () => {
     expect(screen.getByTestId("cash-management-swap")).not.toHaveTextContent(
       "To (ramp)",
     );
+  });
+
+  it("closes the dialog via the × button", () => {
+    openSwap();
+    fireEvent.click(screen.getByTestId("cash-management-swap-close"));
+    expect(
+      screen.queryByTestId("cash-management-swap"),
+    ).not.toBeInTheDocument();
   });
 });
 
