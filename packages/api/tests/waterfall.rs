@@ -8,6 +8,7 @@
 
 use bigdecimal::BigDecimal;
 
+use pipeline_api::error::ApiError;
 use pipeline_api::routes::waterfall::{
     build_response, compute_waterfall, PricingBasis, WaterfallDoc,
 };
@@ -386,6 +387,34 @@ fn zero_tenor_accrues_no_interest_or_fees() {
     assert_eq!(b.management_fee, dec("0"));
     assert_eq!(b.performance_fee, dec("0"));
     assert_eq!(b.oet_allocation, dec("0"));
+}
+
+#[test]
+fn corrupt_current_epoch_maturity_is_rejected_not_silently_zeroed() {
+    // Genesis epoch matures at ONE_YEAR_LATER; a `LoanRolledOver` whose
+    // `new_maturity_timestamp` is the `0` COALESCE corruption (issue #930) opens a second
+    // epoch {start: ONE_YEAR_LATER, maturity: 0}. Without the guard, `piecewise_interest`
+    // would contribute zero interest for that epoch and silently understate the repayment;
+    // with it, the endpoint fails loudly instead.
+    let s = snapshot("1000000", "0", 1200);
+    let result = compute_waterfall(
+        &s,
+        &dec("1000000"),
+        ONE_YEAR_LATER + 100,
+        &fees(100, 2000, 50),
+        &[econ_event("LoanRolledOver", 240_000, 0)],
+        PricingBasis::Fixed,
+    );
+    match result {
+        Ok(_) => panic!("corrupt epoch maturity must be rejected, not silently accrued as zero"),
+        Err(ApiError::UnprocessableEntity(msg)) => {
+            assert!(
+                msg.contains("epoch"),
+                "message should name the epoch: {msg}"
+            );
+        }
+        _ => panic!("expected UnprocessableEntity, got a different ApiError variant"),
+    }
 }
 
 #[test]

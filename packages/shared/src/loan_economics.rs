@@ -91,6 +91,53 @@ pub fn economics_rate_to_bps(new_rate: i64) -> u32 {
     bps as u32
 }
 
+/// A structurally-invalid epoch found in a timeline about to be used for accrual math:
+/// its `maturity` does not lie strictly after its `start`. The canonical cause is a
+/// `LoanRolledOver`/`EconomicsAmended` event whose `new_maturity_timestamp` param is
+/// missing/malformed and resolves to `0` (defensively `COALESCE`d in
+/// `ContractLogsRepo::list_loan_economics_events`) — see issue #930. `ordinal` is the
+/// epoch's 1-based position in the timeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidEpoch {
+    pub ordinal: usize,
+    pub start: i64,
+    pub maturity: i64,
+}
+
+impl std::fmt::Display for InvalidEpoch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "epoch {} has invalid maturity {} (must be after its start {})",
+            self.ordinal, self.maturity, self.start
+        )
+    }
+}
+
+/// Reject an epoch timeline that cannot be trusted for accrual math. Every epoch must
+/// have `maturity > start`; a `maturity <= start` (in particular the `0` corruption
+/// described in `InvalidEpoch`) would make `piecewise_capped_seconds` /
+/// `piecewise_interest` silently contribute **zero** accrual for that epoch's whole
+/// duration — understating a repayment's interest/fees rather than failing. Callers doing
+/// accrual (the repayment waterfall) must call this first and refuse on `Err`.
+///
+/// `build_epochs` deliberately stays infallible: the per-loan financials endpoint reads
+/// the current epoch's maturity from the authoritative block-pinned snapshot, not from
+/// the folded (fallibly-defaulted) event param, so it tolerates this corruption by design
+/// (issue #928). Only the accrual path needs the guard.
+pub fn validate_epochs_for_accrual(epochs: &[Epoch]) -> Result<(), InvalidEpoch> {
+    for (i, e) in epochs.iter().enumerate() {
+        if e.maturity <= e.start {
+            return Err(InvalidEpoch {
+                ordinal: i + 1,
+                start: e.start,
+                maturity: e.maturity,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Total accrual time across the epoch schedule, capped at each epoch's own maturity
 /// and at `as_of`, in whole seconds. An epoch that hasn't started yet as of `as_of`
 /// (possible when `as_of` predates a later rollover) contributes zero; a loan past its
@@ -99,7 +146,16 @@ pub fn economics_rate_to_bps(new_rate: i64) -> u32 {
 pub fn piecewise_capped_seconds(epochs: &[Epoch], as_of: i64) -> i64 {
     epochs
         .iter()
-        .map(|e| (as_of.min(e.maturity) - e.start).max(0))
+        .map(|e| {
+            debug_assert!(
+                e.maturity > e.start,
+                "epoch (start={}, maturity={}) must pass validate_epochs_for_accrual \
+                 before accrual — a maturity <= start silently zeroes this epoch (issue #930)",
+                e.start,
+                e.maturity
+            );
+            (as_of.min(e.maturity) - e.start).max(0)
+        })
         .sum()
 }
 
@@ -154,6 +210,13 @@ pub fn piecewise_interest(
 ) -> BigDecimal {
     let mut total = BigDecimal::from(0);
     for e in epochs {
+        debug_assert!(
+            e.maturity > e.start,
+            "epoch (start={}, maturity={}) must pass validate_epochs_for_accrual \
+             before accrual — a maturity <= start silently zeroes this epoch (issue #930)",
+            e.start,
+            e.maturity
+        );
         let seconds = (as_of.min(e.maturity) - e.start).max(0);
         if seconds == 0 {
             continue;
