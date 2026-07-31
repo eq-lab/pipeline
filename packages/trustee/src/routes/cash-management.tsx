@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
 import {
@@ -16,7 +16,8 @@ import { useTbillsSwap, type TbillsSwapView } from "./-cash-management-tbills";
  * **On/Off-ramp** tab's review queue — the pending ramp-boundary events
  * (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
  * (`POST …/review`). The **T-Bills** tab (#944) is a Buy/Sell USYC swap-form UI
- * shell (see `TbillsSwapForm`; submit disabled, MPC execution not yet backed).
+ * shell — a "New swap" button opens the `TbillsSwapDialog` modal; submit
+ * disabled, MPC execution not yet backed.
  * The **Withdrawal Queue** (#945) tab is still a placeholder. (No Refunds tab —
  * the working doc has no such section; docs are source of truth, Figma styling.)
  *
@@ -263,144 +264,223 @@ function RampSection({
   );
 }
 
-// ── T-Bills tab: Buy / Sell USYC swap form (#944) ─────────────────────────────
+// ── T-Bills tab: Buy / Sell USYC swap dialog (#944) ───────────────────────────
 //
-// Same swap UX as the On/Off-ramp form. UI shell: Buy spends real USDC
-// (Capital-Wallet balance), Sell spends USYC valued at the T-Bills bucket
-// (`buckets.tbills`, currently null → "—"). Buying/selling USYC is a
-// Capital-Wallet MPC action (3-of-5, Type 2, flow 8) with no backend path yet,
-// so submit is disabled and the received amount / fee show "—" (no USYC price
-// served — never fabricated). Backend follow-up filed with #944.
+// Same UX as the On/Off-ramp swap: opened from the tab's "New swap" button into
+// a modal (backdrop, Escape/backdrop/× close, reset on open). UI shell — Buy
+// spends real USDC (Capital-Wallet balance), Sell spends USYC valued at the
+// T-Bills bucket (`buckets.tbills`, currently null → "—"). Buying/selling USYC
+// is a Capital-Wallet MPC action (3-of-5, Type 2, flow 8) with no backend path
+// yet, so submit is disabled; "You receive" is a disabled twin of the amount
+// input that stays empty (no USYC price/NAV served — never fabricated), and the
+// fee shows "—". Backend follow-up filed with #944.
 
-function TbillsSwapForm({ tbills }: { tbills: TbillsSwapView }) {
+function TbillsSwapDialog({
+  open,
+  onClose,
+  tbills,
+}: {
+  open: boolean;
+  onClose: () => void;
+  tbills: TbillsSwapView;
+}) {
   const [mode, setMode] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
+
+  // Reset the form each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setMode("buy");
+      setAmount("");
+    }
+  }, [open]);
+
+  // Escape closes.
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
   const isBuy = mode === "buy";
-  // Buy spends USDC; Sell spends USYC (valued at the T-Bills NAV bucket).
+  // Buy spends USDC → receives USYC; Sell spends USYC → receives USDC.
   const spendAsset = isBuy ? "USDC" : "USYC";
+  const receiveAsset = isBuy ? "USYC" : "USDC";
   const balanceValue = isBuy ? tbills.usdcValue : tbills.tbillsValue;
   const balanceDisplay = isBuy ? tbills.usdcDisplay : tbills.tbillsDisplay;
 
   return (
     <div
-      data-testid="cash-management-tbills"
-      className="flex w-full flex-col gap-[16px] rounded-[4px] bg-white px-[27px] py-[25px]"
-      style={{ border: `1px solid ${LINE_COLOR}` }}
+      data-testid="cash-management-tbills-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)] px-4"
+      onClick={onClose}
     >
-      {/* Buy / Sell toggle. */}
       <div
-        className="flex items-center gap-[4px] self-start rounded-[6px] p-[4px]"
-        style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-management-tbills-title"
+        data-testid="cash-management-tbills"
+        className="flex w-[440px] max-w-[calc(100vw-32px)] flex-col gap-[16px] rounded-[6px] bg-white px-[27px] py-[25px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
       >
-        {(["buy", "sell"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            data-testid={`cash-management-tbills-mode-${m}`}
-            aria-pressed={mode === m}
-            onClick={() => setMode(m)}
-            className="rounded-[4px] px-[14px] py-[6px] font-[family-name:var(--font-body)] text-[14px]"
-            style={
-              mode === m
-                ? {
-                    backgroundColor: "#ffffff",
-                    color: INK,
-                    border: `1px solid ${LINE_COLOR}`,
-                  }
-                : { color: INK_MUTED }
-            }
+        {/* Header: title + close. */}
+        <div className="flex items-center justify-between">
+          <h2
+            id="cash-management-tbills-title"
+            className="font-[family-name:var(--font-display)] text-[24px] leading-[33.6px] text-[#262524]"
           >
-            {m === "buy" ? "Buy" : "Sell"}
-          </button>
-        ))}
-      </div>
-
-      {/* Amount + balance/max. */}
-      <label className="flex flex-col gap-[6px]">
-        <span
-          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-          style={{ color: INK_MUTED }}
-        >
-          {isBuy ? "You spend" : "You sell"}
-        </span>
-        <div
-          className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
-          style={{ borderColor: LINE_COLOR }}
-        >
-          <input
-            type="number"
-            inputMode="decimal"
-            data-testid="cash-management-tbills-amount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0"
-            className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none"
-          />
-          <span
-            className="font-[family-name:var(--font-body)] text-[14px]"
+            New swap
+          </h2>
+          <button
+            type="button"
+            data-testid="cash-management-tbills-close"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-[4px] text-[20px] leading-none"
             style={{ color: INK_MUTED }}
           >
-            {spendAsset}
-          </span>
-          <button
-            type="button"
-            data-testid="cash-management-tbills-max"
-            onClick={() =>
-              balanceValue != null && setAmount(String(balanceValue))
-            }
-            disabled={balanceValue == null}
-            className="rounded-[4px] border border-solid px-[9px] py-[4px] font-[family-name:var(--font-body)] text-[12px] disabled:opacity-40"
-            style={{ borderColor: LINE_COLOR, color: INK_MUTED }}
-          >
-            Max
+            ×
           </button>
         </div>
-        <span
-          className="font-[family-name:var(--font-body)] text-[12px]"
-          style={{ color: INK_MUTED }}
-        >
-          Balance: {balanceDisplay} {spendAsset}
-        </span>
-      </label>
 
-      {/* Deal summary — no USYC price/NAV served, so values stay "—". */}
-      <div
-        className="flex flex-col gap-[8px] rounded-[4px] px-[15px] py-[13px]"
-        style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
-      >
-        <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
-          <span style={{ color: INK_MUTED }}>
-            You receive {isBuy ? "USYC" : "USDC"}
-          </span>
-          <span
-            data-testid="cash-management-tbills-receive"
-            className="text-[#262524]"
-          >
-            —
-          </span>
+        {/* Buy / Sell toggle. */}
+        <div
+          className="flex items-center gap-[4px] self-start rounded-[6px] p-[4px]"
+          style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+        >
+          {(["buy", "sell"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              data-testid={`cash-management-tbills-mode-${m}`}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+              className="rounded-[4px] px-[14px] py-[6px] font-[family-name:var(--font-body)] text-[14px]"
+              style={
+                mode === m
+                  ? {
+                      backgroundColor: "#ffffff",
+                      color: INK,
+                      border: `1px solid ${LINE_COLOR}`,
+                    }
+                  : { color: INK_MUTED }
+              }
+            >
+              {m === "buy" ? "Buy" : "Sell"}
+            </button>
+          ))}
         </div>
+
+        {/* Amount + balance/max. */}
+        <label className="flex flex-col gap-[6px]">
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            {isBuy ? "You spend" : "You sell"}
+          </span>
+          <div
+            className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+            style={{ borderColor: LINE_COLOR }}
+          >
+            <input
+              type="number"
+              inputMode="decimal"
+              data-testid="cash-management-tbills-amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none"
+            />
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              {spendAsset}
+            </span>
+            <button
+              type="button"
+              data-testid="cash-management-tbills-max"
+              onClick={() =>
+                balanceValue != null && setAmount(String(balanceValue))
+              }
+              disabled={balanceValue == null}
+              className="rounded-[4px] border border-solid px-[9px] py-[4px] font-[family-name:var(--font-body)] text-[12px] disabled:opacity-40"
+              style={{ borderColor: LINE_COLOR, color: INK_MUTED }}
+            >
+              Max
+            </button>
+          </div>
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px]"
+            style={{ color: INK_MUTED }}
+          >
+            Balance: {balanceDisplay} {spendAsset}
+          </span>
+        </label>
+
+        {/* You receive — a disabled twin of the amount input; stays empty (no
+            USYC price/NAV served, so the quote is never fabricated). */}
+        <label className="flex flex-col gap-[6px]">
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            You receive
+          </span>
+          <div
+            className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+            style={{
+              borderColor: LINE_COLOR,
+              backgroundColor: "rgba(191,189,187,0.12)",
+            }}
+          >
+            <input
+              type="text"
+              data-testid="cash-management-tbills-receive"
+              value=""
+              readOnly
+              disabled
+              placeholder="—"
+              className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none disabled:opacity-100"
+            />
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              {receiveAsset}
+            </span>
+          </div>
+        </label>
+
+        {/* Fee — no USYC quote endpoint, so never fabricated. */}
         <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
           <span style={{ color: INK_MUTED }}>Fee</span>
           <span className="text-[#262524]">—</span>
         </div>
-      </div>
 
-      <button
-        type="button"
-        data-testid="cash-management-tbills-submit"
-        disabled
-        className="flex h-[48px] items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
-        style={{ backgroundColor: BRAND }}
-      >
-        {isBuy ? "Buy USYC" : "Sell USYC"}
-      </button>
-      <p
-        className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
-        style={{ color: INK_MUTED }}
-      >
-        Buying / selling USYC is a Capital-Wallet MPC transfer (3-of-5) —
-        execution not yet available.
-      </p>
+        <button
+          type="button"
+          data-testid="cash-management-tbills-submit"
+          disabled
+          className="flex h-[48px] items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ backgroundColor: BRAND }}
+        >
+          {isBuy ? "Buy USYC" : "Sell USYC"}
+        </button>
+        <p
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_MUTED }}
+        >
+          Buying / selling USYC is a Capital-Wallet MPC transfer (3-of-5) —
+          execution not yet available.
+        </p>
+      </div>
     </div>
   );
 }
@@ -409,6 +489,7 @@ function TbillsSwapForm({ tbills }: { tbills: TbillsSwapView }) {
 
 function CashManagement() {
   const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
+  const [tbillsSwapOpen, setTbillsSwapOpen] = useState(false);
   const view = useCashManagement();
   const tbills = useTbillsSwap();
 
@@ -427,7 +508,13 @@ function CashManagement() {
         Cash Management
       </h1>
 
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar
+        active={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          setTbillsSwapOpen(false);
+        }}
+      />
 
       {/* Shared Capital Allocation — same block as the Overview page. */}
       <CapitalAllocationCard />
@@ -509,7 +596,34 @@ function CashManagement() {
           )}
         </div>
       ) : activeTab === "tbills" ? (
-        <TbillsSwapForm tbills={tbills} />
+        <div
+          className="flex flex-wrap items-center justify-between gap-[12px] rounded-[4px] bg-white px-[27px] py-[25px]"
+          style={{ border: `1px solid ${LINE_COLOR}` }}
+        >
+          <div className="flex flex-col gap-[2px]">
+            <span
+              className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+              style={{ color: INK }}
+            >
+              T-Bills
+            </span>
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+              style={{ color: INK_MUTED }}
+            >
+              Buy or sell USYC against the Capital Allocation above.
+            </span>
+          </div>
+          <button
+            type="button"
+            data-testid="cash-management-tbills-open"
+            onClick={() => setTbillsSwapOpen(true)}
+            className="flex h-[44px] items-center justify-center rounded-[4px] px-[20px] font-[family-name:var(--font-body)] text-[15px] text-white"
+            style={{ backgroundColor: BRAND }}
+          >
+            New swap
+          </button>
+        </div>
       ) : (
         <div
           data-testid={`cash-management-placeholder-${activeTab}`}
@@ -531,6 +645,12 @@ function CashManagement() {
       >
         A reviewed transfer counts toward Capital Allocation only once Approved.
       </p>
+
+      <TbillsSwapDialog
+        open={tbillsSwapOpen}
+        onClose={() => setTbillsSwapOpen(false)}
+        tbills={tbills}
+      />
     </main>
   );
 }

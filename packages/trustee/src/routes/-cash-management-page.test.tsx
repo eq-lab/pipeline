@@ -148,24 +148,32 @@ describe("Cash Management route — shell", () => {
   });
 });
 
-describe("Cash Management route — T-Bills swap form (#944)", () => {
+describe("Cash Management route — T-Bills swap dialog (#944)", () => {
   beforeEach(() => readyEvents());
 
   function openTbills() {
     renderRoute();
     fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
+    // The form opens from the "New swap" button (modal) — not inline.
+    expect(
+      screen.queryByTestId("cash-management-tbills"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-open"));
   }
 
-  it("shows the Buy side spending real USDC, with a disabled submit and — receive/fee", () => {
+  it("opens a modal from New swap: Buy spends real USDC, submit disabled, receive twin empty + fee —", () => {
     openTbills();
     const panel = screen.getByTestId("cash-management-tbills");
+    expect(panel).toHaveAttribute("role", "dialog");
     // Buy is the default mode → spends USDC (the real Capital-Wallet balance).
     expect(panel).toHaveTextContent("Balance: 8,400,000 USDC");
     expect(screen.getByTestId("cash-management-tbills-submit")).toBeDisabled();
-    // No USYC price served → receive + fee stay "—" (never fabricated).
-    expect(
-      screen.getByTestId("cash-management-tbills-receive"),
-    ).toHaveTextContent("—");
+    // No USYC price served → the "You receive" twin input is disabled + empty
+    // (never fabricated); the fee stays "—".
+    const receive = screen.getByTestId("cash-management-tbills-receive");
+    expect(receive).toBeDisabled();
+    expect(receive).toHaveValue("");
+    expect(panel).toHaveTextContent("Fee");
   });
 
   it("Sell side shows the T-Bills (USYC) value as — while buckets.tbills is null, and Max is disabled", () => {
@@ -186,6 +194,14 @@ describe("Cash Management route — T-Bills swap form (#944)", () => {
     expect(screen.getByTestId("cash-management-tbills-amount")).toHaveValue(
       8400000,
     );
+  });
+
+  it("closes the dialog via the × button", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-close"));
+    expect(
+      screen.queryByTestId("cash-management-tbills"),
+    ).not.toBeInTheDocument();
   });
 });
 
