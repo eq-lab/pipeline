@@ -62,6 +62,14 @@ These rules apply to everything under `packages/frontend/` and `packages/ui/`. T
 
 5. **Catalogue every reused hook.** Each hook used by two or more components (or intended for reuse) is listed in [`docs/frontend/hooks.md`](./frontend/hooks.md) with its import path and a one-line description. Component-local hooks following rule 2 (e.g. `useStakeCard`) stay out of this list; the catalogue is for genuinely shared hooks.
 
+6. **Comments describe code; specs describe behavior.** An inline comment exists to explain a non-obvious piece of *code* — a workaround, a subtle ordering constraint, a why-not, a browser/chain quirk. It stays short. Anything that describes *what the feature or flow must do* — architecture, layout/typography rules, Figma bindings, state machines, business logic, cross-chain flow shape — is a **spec**, and specs live in docs, not in a docblock. The test: if you could hand the comment to a designer or PM as a description of intended behavior, it belongs in a doc.
+
+   - **Cross-cutting design/token behavior** → this file (`docs/FRONTEND.md`), e.g. the "Typography token responsive behavior" note below.
+   - **Per-area architecture and flow specs** → a topic doc under `docs/frontend/` (e.g. [`wallet-flows.md`](./frontend/wallet-flows.md), [`dashboard-components.md`](./frontend/dashboard-components.md), [`trustee-flows.md`](./frontend/trustee-flows.md)), linked from [`docs/frontend/index.md`](./frontend/index.md).
+   - **Shared helpers / hooks** → already covered by rules 3–5 (`utils.md` / `hooks.md`).
+
+   When you move a spec out of the source, leave at most a one-line pointer to the doc (e.g. `// spec: docs/frontend/wallet-flows.md#deposit-adapter`), and extract-then-trim — a comment is only deleted once its content lives in a doc, never trimmed on the hope of documenting it later.
+
 See [`docs/frontend/index.md`](./frontend/index.md) for the catalogue index.
 
 ## Toast notifications

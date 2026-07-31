@@ -5,6 +5,14 @@ Internal catalogues of shared frontend code. The rules that govern what belongs 
 - [Utils](./utils.md) — shared helpers (formatters, parsers, predicates, mock resolvers, etc.). Every entry is unit-tested.
 - [Hooks](./hooks.md) — reused React hooks. Component-local hooks (one component owner, e.g. `useStakeCard`) are intentionally excluded.
 
+## Area specs
+
+Architecture and behavior specs extracted from source comments per [`docs/FRONTEND.md` → Code structure rules, rule 6](../FRONTEND.md#code-structure-rules). Source hooks/components keep only code-level comments plus a one-line pointer into these docs.
+
+- [Wallet flows](./wallet-flows.md) — chain-agnostic deposit / withdraw / stake adapters (`packages/frontend/src/wallet/**`).
+- [Dashboard & LP components](./dashboard-components.md) — LP-facing components and routes (`packages/frontend/src/components|routes/**`).
+- [Trustee flows](./trustee-flows.md) — Trustee admin panel modules (`packages/trustee/src/**`).
+
 ## How to add an entry
 
 1. Land the util or hook in code with its test(s).
