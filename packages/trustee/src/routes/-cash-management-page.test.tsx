@@ -169,15 +169,16 @@ describe("Cash Management route — swap dialog", () => {
     expect(swap).toHaveTextContent("—");
   });
 
-  it("Max fills the amount and the 1:1 receive summary updates", () => {
+  it("Max fills the amount and the 1:1 receive field mirrors it (disabled)", () => {
     openSwap();
     fireEvent.click(screen.getByTestId("cash-management-swap-max"));
     expect(screen.getByTestId("cash-management-swap-amount")).toHaveValue(
       8400000,
     );
-    expect(
-      screen.getByTestId("cash-management-swap-receive"),
-    ).toHaveTextContent("~$8,400,000 USD");
+    // "You receive" is a disabled twin of the amount input — 1:1, so equal.
+    const receive = screen.getByTestId("cash-management-swap-receive");
+    expect(receive).toBeDisabled();
+    expect(receive).toHaveValue("8400000");
   });
 
   it("toggling to On-ramp hides the ramp destination row", () => {

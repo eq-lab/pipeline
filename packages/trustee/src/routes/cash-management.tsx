@@ -5,7 +5,6 @@ import {
   useCashManagement,
   type RampEventRow as RampEventRowData,
 } from "./-cash-management";
-import { formatFullUsd } from "@/utils/formatUsd";
 
 /**
  * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
@@ -313,10 +312,9 @@ function SwapDialog({
 
   const isOff = mode === "off";
   const amountNum = Number.parseFloat(amount);
-  // USDC ↔ USD is 1:1; the provider fee has no quote endpoint, so it stays "—".
-  const receiveUsd = Number.isFinite(amountNum)
-    ? formatFullUsd(String(amountNum))
-    : "—";
+  // USDC ↔ USD is 1:1, so "You receive" mirrors the amount — a disabled twin of
+  // the amount input. The provider fee has no quote endpoint, so it stays "—".
+  const receiveValue = Number.isFinite(amountNum) ? String(amountNum) : "";
 
   return (
     <div
@@ -428,6 +426,39 @@ function SwapDialog({
           </span>
         </label>
 
+        {/* You receive — a disabled twin of the amount input (1:1). */}
+        <label className="flex flex-col gap-[6px]">
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            You receive (1:1)
+          </span>
+          <div
+            className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+            style={{
+              borderColor: LINE_COLOR,
+              backgroundColor: "rgba(191,189,187,0.12)",
+            }}
+          >
+            <input
+              type="text"
+              data-testid="cash-management-swap-receive"
+              value={receiveValue}
+              readOnly
+              disabled
+              placeholder="0"
+              className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none disabled:opacity-100"
+            />
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              USD
+            </span>
+          </div>
+        </label>
+
         {/* Receive method + destination. */}
         <div className="flex flex-col gap-[8px]">
           <div className="flex items-center justify-between">
@@ -456,25 +487,10 @@ function SwapDialog({
           )}
         </div>
 
-        {/* Transaction summary. */}
-        <div
-          className="flex flex-col gap-[8px] rounded-[4px] px-[15px] py-[13px]"
-          style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
-        >
-          <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
-            <span style={{ color: INK_MUTED }}>You receive (1:1)</span>
-            <span
-              data-testid="cash-management-swap-receive"
-              className="text-[#262524]"
-            >
-              {receiveUsd === "—" ? "—" : `~${receiveUsd} USD`}
-            </span>
-          </div>
-          <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
-            <span style={{ color: INK_MUTED }}>Fee</span>
-            {/* No ramp-quote endpoint — never fabricated. */}
-            <span className="text-[#262524]">—</span>
-          </div>
+        {/* Fee — no ramp-quote endpoint, so never fabricated. */}
+        <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
+          <span style={{ color: INK_MUTED }}>Fee</span>
+          <span className="text-[#262524]">—</span>
         </div>
 
         <button
