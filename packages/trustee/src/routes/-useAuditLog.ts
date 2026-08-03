@@ -10,20 +10,13 @@ import { useAuditLog, type AuditLogItem } from "@/api/useAuditLog";
 import { useLoanBook } from "@/api/useLoanBook";
 import { formatAuditTimestamp } from "@/utils/formatDate";
 
-/** One rendered row of the Audit Log table. */
 export interface AuditRow {
-  /** Stable React key. */
   key: string;
-  /** Time column, e.g. `"24 Jun 07:12"`. */
   time: string;
-  /** Action column — the server-rendered human-readable description. */
   action: string;
-  /** Loan / scope column — friendly loan name, or the server fallback label. */
   scopeLabel: string;
-  /** Reference column — truncated tx hash, e.g. `"0xabc12…f4d9"`. */
   reference: string;
-  /** Full tx hash, for the cell's `title` (hover) attribute. */
-  referenceFull: string;
+  referenceFull: string; // full tx hash, for the cell's `title` hover
 }
 
 export type AuditState = "loading" | "error" | "ready";
@@ -40,11 +33,7 @@ export function truncateReference(reference: string): string {
   return `${reference.slice(0, 6)}…${reference.slice(-4)}`;
 }
 
-/**
- * Resolve a row's Loan / scope label: the friendly `"Originator — Commodity"`
- * name when the loan id is known, else the server-supplied fallback
- * (`"Loan #<id>"` for an unresolved loan, `"Protocol"` for a protocol event).
- */
+/** Friendly loan name when the id is known, else the server fallback label. */
 export function resolveScopeLabel(
   item: AuditLogItem,
   loanNames: Map<string, string>,
@@ -53,7 +42,6 @@ export function resolveScopeLabel(
   return loanNames.get(item.scope.loan_id) ?? item.scope.label;
 }
 
-/** Pure mapping from feed items (+ a loan-id→name map) to display rows. */
 export function buildAuditRows(
   items: AuditLogItem[],
   loanNames: Map<string, string>,
@@ -72,7 +60,6 @@ export function useAuditLogView(): UseAuditLogView {
   const audit = useAuditLog();
   const loanBook = useLoanBook();
 
-  /** loan_id → "Originator — Commodity" (the friendly name the design shows). */
   const loanNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const loan of loanBook.data?.loans ?? []) {

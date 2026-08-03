@@ -9,14 +9,9 @@ import { useAuditLogView, type AuditRow } from "./-useAuditLog";
  * scope, unpaginated-feed rendering, Figma → token mapping).
  */
 
-/** Figma body/card border literal, applied via inline `style` so it always paints
- * regardless of Tailwind v4 utility ordering (loans-page precedent). */
+// Inline `style` (not a Tailwind class) so it always paints under v4 utility ordering.
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
-
-/** Monospace stack for the Reference (tx hash) column — Figma uses SF Mono. */
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, monospace";
-
-/** Column tracks in the Figma's relative proportions (Time · Action · Loan/scope · Reference). */
 const GRID_TEMPLATE_COLUMNS =
   "minmax(0,1.1fr) minmax(0,3.6fr) minmax(0,2.2fr) minmax(0,1.4fr)";
 
@@ -28,14 +23,9 @@ const HEADER_CELL_CLASS =
 const BODY_CELL_CLASS =
   "flex flex-col justify-center px-[14px] py-[20px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]";
 
-/** Newest rows rendered before the "Show older" reveal — bounds the DOM, not the
- * payload. spec: docs/frontend/trustee-flows.md#rendering-unpaginated-feed. */
 const AUDIT_PAGE_SIZE = 50;
 
-// ── Table ───────────────────────────────────────────────────────────────────
-
-// Memoized so the 30 s poll doesn't re-render unchanged rows (structural sharing
-// keeps `row` identity stable). spec: docs/frontend/trustee-flows.md#rendering-unpaginated-feed.
+// memo: skip re-rendering unchanged rows on the 30 s poll (Query structural-shares data).
 const AuditRowView = memo(function AuditRowView({
   row,
   isFirst,
@@ -114,8 +104,7 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
           No audit events yet.
         </p>
       ) : (
-        // Bordered body box — the ONLY border in the table: a rounded box around
-        // the rows + horizontal separators. Top edge 2px (box + first row stack).
+        // Body box — the table's only border (rounded box + row separators).
         <div
           className="rounded-[4px]"
           style={{ border: `1px solid ${LINE_COLOR}`, borderTopWidth: "2px" }}
@@ -129,8 +118,6 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
   );
 }
 
-// Caption adapted from the Figma copy to describe what the v1 endpoint actually
-// serves (on-chain only). spec: docs/frontend/trustee-flows.md#audit-log.
 function AuditCaption() {
   return (
     <p
@@ -143,15 +130,11 @@ function AuditCaption() {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-
 function AuditLog() {
   const { state, errorMessage, rows } = useAuditLogView();
   const [visibleCount, setVisibleCount] = useState(AUDIT_PAGE_SIZE);
 
-  // Cap rendered rows to the newest `visibleCount`; the feed is already newest
-  // first, so slicing from the top keeps the ordering. New rows from the poll
-  // stay within the cap without resetting the user's reveal.
+  // Newest `visibleCount` only — feed is newest-first, so slice from the top.
   const visibleRows = rows.slice(0, visibleCount);
   const hiddenCount = rows.length - visibleRows.length;
 
