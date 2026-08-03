@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod audit_log;
 pub mod auth;
 pub mod bank_transactions;
 pub mod capital_allocation;

@@ -165,6 +165,26 @@ pub struct EconomicsEventRow {
     pub block_timestamp: i64,
 }
 
+/// One `contract_logs` row projected for the Trustee **Audit Log** feed
+/// (`GET /v1/audit-log`). Deliberately raw: the human-readable "Action" string and the
+/// scope label are derived in the API layer (`routes::audit_log`) from `event_name` +
+/// `params`, keeping this repo free of presentation concerns.
+///
+/// `id` is the table's `BIGSERIAL` primary key — a monotonic insertion order used as the
+/// stable keyset cursor and tiebreak for the reverse-chronological page (rather than
+/// `block_timestamp`, which is not unique across events in the same block).
+#[derive(Debug, Clone)]
+pub struct AuditLogRow {
+    pub id: i64,
+    pub event_name: String,
+    pub block_timestamp: i64,
+    pub tx_hash: String,
+    /// `params->>'loan_id'` — `None` for protocol-scoped events (e.g. `YieldMinted`).
+    pub loan_id: Option<String>,
+    /// The full event `params` JSONB, passed to the action formatter.
+    pub params: serde_json::Value,
+}
+
 pub struct ContractLogsRepo {
     pub pool: PgPool,
 }
@@ -978,5 +998,51 @@ impl ContractLogsRepo {
                 Ok(Some(snapshot))
             }
         }
+    }
+
+    /// The full Trustee Audit Log feed for a chain, filtered to `event_names` and ordered
+    /// newest-first (`id DESC`, i.e. insertion order — `block_timestamp` is not unique
+    /// across events in the same block). Returns every matching row; the feed is not
+    /// paginated.
+    pub async fn list_audit_log<'e, E>(
+        &self,
+        executor: E,
+        chain_id: i64,
+        event_names: &[&str],
+    ) -> anyhow::Result<Vec<AuditLogRow>>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        use sqlx::Row;
+        let rows = sqlx::query(
+            "SELECT
+                 id,
+                 event_name,
+                 block_timestamp,
+                 tx_hash,
+                 params->>'loan_id' AS loan_id,
+                 params
+             FROM contract_logs
+             WHERE chain_id = $1
+               AND event_name = ANY($2)
+             ORDER BY id DESC",
+        )
+        .bind(chain_id)
+        .bind(event_names)
+        .fetch_all(executor)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(AuditLogRow {
+                    id: row.try_get("id")?,
+                    event_name: row.try_get("event_name")?,
+                    block_timestamp: row.try_get("block_timestamp")?,
+                    tx_hash: row.try_get("tx_hash")?,
+                    loan_id: row.try_get("loan_id")?,
+                    params: row.try_get("params")?,
+                })
+            })
+            .collect()
     }
 }
