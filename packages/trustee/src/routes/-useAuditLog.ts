@@ -1,17 +1,9 @@
 /**
- * Presentation hook for the Audit Log page (issue #1004). Keeps `audit-log.tsx`
- * JSX-only per `docs/FRONTEND.md` rule 2 (view/logic split).
+ * Presentation hook for the Audit Log page (issue #1004) — keeps `audit-log.tsx`
+ * JSX-only per `docs/FRONTEND.md` rule 2. Joins the feed (`useAuditLog`) with the
+ * loan book (`useLoanBook`) for friendly scope names and maps items to rows.
  *
- * Joins the raw feed (`useAuditLog` → `GET /v1/audit-log`) with the loan book
- * (`useLoanBook`) so a loan-scoped row can show the friendly `"Originator —
- * Commodity"` name the design uses, and maps each item to a display row:
- * formatted time, resolved scope label, and a truncated tx-hash reference.
- *
- * The feed is the source of truth for state; the loan book is enrichment only —
- * until it loads (or when a loan id isn't in it) the row falls back to the
- * server-supplied `scope.label` (`"Loan #<id>"` / `"Protocol"`). Rows are never
- * fabricated: the page renders exactly what the endpoint serves (on-chain events
- * only in v1).
+ * spec: docs/frontend/trustee-flows.md#audit-log (state/enrichment model).
  */
 import { useMemo } from "react";
 import { useAuditLog, type AuditLogItem } from "@/api/useAuditLog";

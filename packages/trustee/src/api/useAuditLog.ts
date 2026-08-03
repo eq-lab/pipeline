@@ -1,19 +1,10 @@
 /**
- * React Query hook — fetches the Trustee Audit Log feed from the Pipeline API
- * (`GET /v1/audit-log`) for the **Audit Log** page (issue #1004, Figma node
- * `4116:13770`), Surface 17 of epic #775.
+ * React Query hook over `GET /v1/audit-log` for the Trustee Audit Log page
+ * (issue #1004). The DTOs below are a self-contained hand-mirror of the backend
+ * shape (`packages/api/src/routes/audit_log.rs`, #1000) — TD-42 convention, the
+ * trustee app deliberately does not depend on `@pipeline/frontend`.
  *
- * Mirrors `useLoanBook.ts`'s conventions (queryKey shape, `apiFetch`,
- * `refetchInterval`, Stellar-scoped `chain_id`). The trustee app deliberately
- * does NOT depend on `@pipeline/frontend` (epic #775 keeps the two apps
- * separate), so the DTOs below are a self-contained port of the backend shape
- * (`packages/api/src/routes/audit_log.rs`, #1000) rather than an import — a
- * hand-mirroring alongside TD-42's existing trustee/LP pairs.
- *
- * On-chain only (v1): the endpoint serves indexed on-chain loan-lifecycle and
- * yield events only. Off-chain actions (fiat wire confirmations, MPC
- * co-signatures) are a backend follow-up and do not appear yet — the page
- * renders exactly what is served, never a fabricated row.
+ * spec: docs/frontend/trustee-flows.md#audit-log.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";

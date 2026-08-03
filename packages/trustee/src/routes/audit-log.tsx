@@ -3,56 +3,20 @@ import { memo, useState } from "react";
 import { useAuditLogView, type AuditRow } from "./-useAuditLog";
 
 /**
- * Audit Log — the real Trustee page (issue #1004, Figma node `4116:13770`),
- * Surface 17 of epic #775, replacing the #786 placeholder body. Driven by live
- * `GET /v1/audit-log` data (via `useAuditLogView` → `useAuditLog`, Stellar-scoped
- * `chain_id`, 30 s poll), enriched with loan names from `useLoanBook`.
+ * Audit Log — the real Trustee page for `/audit-log` (Surface 17, issue #1004).
  *
- * Layout (top → bottom): the `Audit Log` heading · a white card holding the
- * append-only, reverse-chronological table (Time · Action · Loan / scope ·
- * Reference) · a caption. Mirrors the `loans.index.tsx` design language (shell,
- * heading, card, header-above-bordered-box table, tokens).
- *
- * ## On-chain only (resolved with the issue author)
- * The endpoint serves on-chain loan-lifecycle + yield events only. The rows are
- * whatever it returns — never fabricated. Two consequences vs. the Figma mock:
- *   - The mock's off-chain rows ("Batch off-ramp co-signed", "Loan
- *     distributions wired (fiat)") and non-loan "Batch #B-102" scopes will not
- *     appear until the backend off-chain-audit follow-up lands (#1000 header).
- *   - The caption is adapted from the Figma copy (which promises fiat wire
- *     confirmations + MPC co-signatures "all land here") to describe what is
- *     actually served today — no over-claiming, matching the loans-page
- *     "never fabricate" precedent.
- *
- * ## Figma → token / px mapping (matches the `loans.index.tsx` precedent)
- *   - Heading: `font-display text-[64px] leading-[64px] rgba(56,55,53,0.3)`.
- *   - Card: `bg-[--color-pipeline-surface] rounded-[4px] p-[32px]`.
- *   - Header cells `14px / ink-muted`, `pb-[12px] px-[14px]`; table draws
- *     borders ONLY around the body box + inter-row separators (`LINE_COLOR`),
- *     header row unbordered above the box.
- *   - Body cells `16px`, `py-[20px] px-[14px]`: Time + Reference ink-muted,
- *     Action + scope `#262524` ink. Reference is monospace 14px.
- *   - Action + Loan/scope wrap (a deliberate deviation from the Figma's
- *     single-line `nowrap` cells): audit actions run long and must stay fully
- *     readable — never truncate served data.
- *   - Caption `13px / ink-muted`, `leading-[18.2px]`, `pt-[16px]`.
+ * spec: docs/frontend/trustee-flows.md#audit-log (architecture, on-chain-only
+ * scope, unpaginated-feed rendering, Figma → token mapping).
  */
 
-/**
- * The exact Figma body/card border literal (`rgba(56,55,53,0.18)`), applied via
- * inline `style` so it always paints regardless of Tailwind v4 utility ordering —
- * same precedent as `loans.index.tsx`.
- */
+/** Figma body/card border literal, applied via inline `style` so it always paints
+ * regardless of Tailwind v4 utility ordering (loans-page precedent). */
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
 
 /** Monospace stack for the Reference (tx hash) column — Figma uses SF Mono. */
 const MONO_FONT = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
-/**
- * Column tracks in the Figma's relative proportions (Time 123 · Action 415 ·
- * Loan/scope 245 · Reference 160), flexible `minmax(0,Nfr)` so the table fills
- * the card width and cells shrink rather than overflow. No horizontal scroll.
- */
+/** Column tracks in the Figma's relative proportions (Time · Action · Loan/scope · Reference). */
 const GRID_TEMPLATE_COLUMNS =
   "minmax(0,1.1fr) minmax(0,3.6fr) minmax(0,2.2fr) minmax(0,1.4fr)";
 
@@ -64,22 +28,14 @@ const HEADER_CELL_CLASS =
 const BODY_CELL_CLASS =
   "flex flex-col justify-center px-[14px] py-[20px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]";
 
-/**
- * How many newest rows to render before the "Show older" reveal. The endpoint
- * returns the full unpaginated feed (#1004), so this caps the DOM row count to
- * keep first paint cheap regardless of feed size — a visible cap, never a silent
- * truncation. A backend `limit`/`cursor` follow-up would let us trim the payload
- * itself (see #1000's pagination open question); this only bounds rendering.
- */
+/** Newest rows rendered before the "Show older" reveal — bounds the DOM, not the
+ * payload. spec: docs/frontend/trustee-flows.md#rendering-unpaginated-feed. */
 const AUDIT_PAGE_SIZE = 50;
 
 // ── Table ───────────────────────────────────────────────────────────────────
 
-/**
- * Memoized so the 30 s background poll (`useAuditLog`) does not re-render every
- * row. TanStack Query structural-shares unchanged data, so `row` keeps its
- * identity across polls when nothing changed and `memo` skips the re-render.
- */
+// Memoized so the 30 s poll doesn't re-render unchanged rows (structural sharing
+// keeps `row` identity stable). spec: docs/frontend/trustee-flows.md#rendering-unpaginated-feed.
 const AuditRowView = memo(function AuditRowView({
   row,
   isFirst,
@@ -173,10 +129,8 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
   );
 }
 
-/**
- * Caption — adapted from the Figma copy to describe what the v1 endpoint
- * actually serves (on-chain events), not the eventual off-chain feed.
- */
+// Caption adapted from the Figma copy to describe what the v1 endpoint actually
+// serves (on-chain only). spec: docs/frontend/trustee-flows.md#audit-log.
 function AuditCaption() {
   return (
     <p
