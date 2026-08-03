@@ -21,17 +21,23 @@ vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
 vi.mock("@/api/useCapitalWalletBalance", () => ({
   useCapitalWalletBalance: vi.fn(),
 }));
+// The T-Bills tab's useTbillsSwap wires the capital-allocation tbills bucket.
+vi.mock("@/api/useCapitalAllocation", () => ({
+  useCapitalAllocation: vi.fn(),
+}));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
 import { useRampAddresses } from "@/api/useRampAddresses";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
+import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
 const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
 const mockUseRampAddresses = vi.mocked(useRampAddresses);
 const mockUseCapitalWalletBalance = vi.mocked(useCapitalWalletBalance);
+const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockReview = vi.fn();
 
 function renderRoute() {
@@ -89,6 +95,7 @@ beforeEach(() => {
   mockUseReviewRampEvent.mockReset();
   mockUseRampAddresses.mockReset();
   mockUseCapitalWalletBalance.mockReset();
+  mockUseCapitalAllocation.mockReset();
   mockReview.mockReset();
   mockUseReviewRampEvent.mockReturnValue(reviewHook());
   mockUseRampAddresses.mockReturnValue({
@@ -97,10 +104,26 @@ beforeEach(() => {
     error: null,
     refetch: () => {},
   });
+  // USDC balance real; tbills bucket null (hardcoded None server-side, #931).
   mockUseCapitalWalletBalance.mockReturnValue({
     data: "8400000.0000000",
     isLoading: false,
     error: null,
+  });
+  mockUseCapitalAllocation.mockReturnValue({
+    data: {
+      total: null,
+      buckets: {
+        capital_wallet: null,
+        in_transit: null,
+        trust_account: null,
+        deployed: null,
+        tbills: null,
+      },
+    },
+    isLoading: false,
+    error: null,
+    refetch: () => {},
   });
 });
 
@@ -121,15 +144,72 @@ describe("Cash Management route — shell", () => {
     expect(screen.getByTestId("capital-allocation-stub")).toBeInTheDocument();
   });
 
-  it("switches to a placeholder tab and hides the On/Off-ramp panel", () => {
+  it("switches to a placeholder tab (Withdrawal Queue) and hides the On/Off-ramp panel", () => {
     renderRoute();
     expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
+    fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
     expect(
-      screen.getByTestId("cash-management-placeholder-tbills"),
-    ).toHaveTextContent("#944");
+      screen.getByTestId("cash-management-placeholder-withdrawals"),
+    ).toHaveTextContent("#945");
     expect(
       screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — T-Bills swap dialog (#944)", () => {
+  beforeEach(() => readyEvents());
+
+  function openTbills() {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-tbills"));
+    // The form opens from the "New swap" button (modal) — not inline.
+    expect(
+      screen.queryByTestId("cash-management-tbills"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-open"));
+  }
+
+  it("opens a modal from New swap: Buy spends real USDC, submit disabled, receive twin empty + fee —", () => {
+    openTbills();
+    const panel = screen.getByTestId("cash-management-tbills");
+    expect(panel).toHaveAttribute("role", "dialog");
+    // Buy is the default mode → spends USDC (the real Capital-Wallet balance).
+    expect(panel).toHaveTextContent("Balance: 8,400,000 USDC");
+    expect(screen.getByTestId("cash-management-tbills-submit")).toBeDisabled();
+    // No USYC price served → the "You receive" twin input is disabled + empty
+    // (never fabricated); the fee stays "—".
+    const receive = screen.getByTestId("cash-management-tbills-receive");
+    expect(receive).toBeDisabled();
+    expect(receive).toHaveValue("");
+    expect(panel).toHaveTextContent("Fee");
+  });
+
+  it("Sell side shows the T-Bills (USYC) value as — while buckets.tbills is null, and Max is disabled", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-mode-sell"));
+    const panel = screen.getByTestId("cash-management-tbills");
+    expect(panel).toHaveTextContent("Balance: — USYC");
+    // No sell balance → Max cannot fill anything.
+    expect(screen.getByTestId("cash-management-tbills-max")).toBeDisabled();
+    expect(
+      screen.getByTestId("cash-management-tbills-submit"),
+    ).toHaveTextContent("Sell USYC");
+  });
+
+  it("Max fills the amount from the USDC balance on the Buy side", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-max"));
+    expect(screen.getByTestId("cash-management-tbills-amount")).toHaveValue(
+      8400000,
+    );
+  });
+
+  it("closes the dialog via the × button", () => {
+    openTbills();
+    fireEvent.click(screen.getByTestId("cash-management-tbills-close"));
+    expect(
+      screen.queryByTestId("cash-management-tbills"),
     ).not.toBeInTheDocument();
   });
 });
