@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CapitalAllocationCard } from "@/components/CapitalAllocationCard";
 import {
@@ -11,12 +11,21 @@ import {
  * the #786 placeholder. Source of truth: `docs/product-specs/trustee-dashboard.md`
  * (§Type 1 flow 2, §Type 4) + the Cash Management working doc.
  *
- * This round builds the page shell (shared Capital Allocation + tab nav) and the
- * **On/Off-ramp** tab's review queue — the pending ramp-boundary events
- * (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
- * (`POST …/review`). The **T-Bills** (#944) and **Withdrawal Queue** (#945)
- * tabs are placeholders here. (No Refunds tab — the working doc has no such
- * section; docs are the source of truth, Figma is styling only.)
+ * The **On/Off-ramp** tab has two parts:
+ *   1. a **"New swap" button** that opens the doc's swap form in a modal
+ *      (`SwapDialog`, Transak-style) — off/on-ramp toggle, USDC amount + real
+ *      on-chain balance (`useCapitalWalletBalance`), bank-wire method, ramp
+ *      destination (`GET /v1/ramp/addresses`), and a 1:1 receive summary. This is
+ *      a UI shell: off-ramp execution is a Capital-Wallet MPC 3-of-5 transfer with
+ *      no backend endpoint yet (#781), and there is no ramp-quote endpoint, so
+ *      submit is disabled and the fee shows `—` (never fabricated).
+ *   2. the **review queue** below it — the pending ramp-boundary events
+ *      (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
+ *      (`POST …/review`), which is what actually moves the on-chain state.
+ *
+ * The **T-Bills** (#944) and **Withdrawal Queue** (#945) tabs are placeholders
+ * here. (No Refunds tab — the working doc has no such section; docs are the
+ * source of truth, Figma is styling only.)
  *
  * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; the fetch +
  * value→display mapping live in `-cash-management.ts`.
@@ -259,10 +268,258 @@ function RampSection({
   );
 }
 
+// ── On/Off-ramp swap dialog (UI shell — #943, execution blocked on Type-2 MPC #781) ──
+//
+// Opened from the tab's "New swap" button (Transak-style). Mirrors the app's
+// dialog shell (RolloverDialog / UpdateLifecycleDialog): backdrop, centered
+// panel, Escape/backdrop close, form reset on open.
+
+function SwapDialog({
+  open,
+  onClose,
+  usdcBalanceValue,
+  usdcBalanceDisplay,
+  rampAddressDisplay,
+}: {
+  open: boolean;
+  onClose: () => void;
+  usdcBalanceValue: number | null;
+  usdcBalanceDisplay: string;
+  rampAddressDisplay: string;
+}) {
+  const [mode, setMode] = useState<"off" | "on">("off");
+  const [amount, setAmount] = useState("");
+
+  // Reset the form each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setMode("off");
+      setAmount("");
+    }
+  }, [open]);
+
+  // Escape closes.
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const isOff = mode === "off";
+  const amountNum = Number.parseFloat(amount);
+  // USDC ↔ USD is 1:1, so "You receive" mirrors the amount — a disabled twin of
+  // the amount input. The provider fee has no quote endpoint, so it stays "—".
+  const receiveValue = Number.isFinite(amountNum) ? String(amountNum) : "";
+
+  return (
+    <div
+      data-testid="cash-management-swap-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)] px-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-management-swap-title"
+        data-testid="cash-management-swap"
+        className="flex w-[440px] max-w-[calc(100vw-32px)] flex-col gap-[16px] rounded-[6px] bg-white px-[27px] py-[25px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header: title + close. */}
+        <div className="flex items-center justify-between">
+          <h2
+            id="cash-management-swap-title"
+            className="font-[family-name:var(--font-display)] text-[24px] leading-[33.6px] text-[#262524]"
+          >
+            New swap
+          </h2>
+          <button
+            type="button"
+            data-testid="cash-management-swap-close"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-[4px] text-[20px] leading-none"
+            style={{ color: INK_MUTED }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Off-ramp / On-ramp toggle (top of the swap form). */}
+        <div
+          className="flex items-center gap-[4px] self-start rounded-[6px] p-[4px]"
+          style={{ backgroundColor: "rgba(191,189,187,0.12)" }}
+        >
+          {(["off", "on"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              data-testid={`cash-management-swap-mode-${m}`}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+              className="rounded-[4px] px-[14px] py-[6px] font-[family-name:var(--font-body)] text-[14px]"
+              style={
+                mode === m
+                  ? {
+                      backgroundColor: "#ffffff",
+                      color: INK,
+                      border: `1px solid ${LINE_COLOR}`,
+                    }
+                  : { color: INK_MUTED }
+              }
+            >
+              {m === "off" ? "Off-ramp" : "On-ramp"}
+            </button>
+          ))}
+        </div>
+
+        {/* Amount + balance/max. */}
+        <label className="flex flex-col gap-[6px]">
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            {isOff ? "You off-ramp" : "You on-ramp"}
+          </span>
+          <div
+            className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+            style={{ borderColor: LINE_COLOR }}
+          >
+            <input
+              type="number"
+              inputMode="decimal"
+              data-testid="cash-management-swap-amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none"
+            />
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              USDC
+            </span>
+            <button
+              type="button"
+              data-testid="cash-management-swap-max"
+              onClick={() =>
+                usdcBalanceValue != null && setAmount(String(usdcBalanceValue))
+              }
+              disabled={usdcBalanceValue == null}
+              className="rounded-[4px] border border-solid px-[9px] py-[4px] font-[family-name:var(--font-body)] text-[12px] disabled:opacity-40"
+              style={{ borderColor: LINE_COLOR, color: INK_MUTED }}
+            >
+              Max
+            </button>
+          </div>
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px]"
+            style={{ color: INK_MUTED }}
+          >
+            Balance: {usdcBalanceDisplay} USDC
+          </span>
+        </label>
+
+        {/* You receive — a disabled twin of the amount input (1:1). */}
+        <label className="flex flex-col gap-[6px]">
+          <span
+            className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            You receive (1:1)
+          </span>
+          <div
+            className="flex items-center gap-[10px] rounded-[4px] border border-solid px-[13px] py-[10px]"
+            style={{
+              borderColor: LINE_COLOR,
+              backgroundColor: "rgba(191,189,187,0.12)",
+            }}
+          >
+            <input
+              type="text"
+              data-testid="cash-management-swap-receive"
+              value={receiveValue}
+              readOnly
+              disabled
+              placeholder="0"
+              className="w-full bg-transparent font-[family-name:var(--font-body)] text-[20px] text-[#262524] outline-none disabled:opacity-100"
+            />
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              USD
+            </span>
+          </div>
+        </label>
+
+        {/* Receive method + destination. */}
+        <div className="flex flex-col gap-[8px]">
+          <div className="flex items-center justify-between">
+            <span
+              className="font-[family-name:var(--font-body)] text-[14px]"
+              style={{ color: INK_MUTED }}
+            >
+              {isOff ? "Receive method" : "Pay method"}
+            </span>
+            <span className="font-[family-name:var(--font-body)] text-[14px] text-[#262524]">
+              Bank wire
+            </span>
+          </div>
+          {isOff && (
+            <div className="flex items-center justify-between">
+              <span
+                className="font-[family-name:var(--font-body)] text-[14px]"
+                style={{ color: INK_MUTED }}
+              >
+                To (ramp)
+              </span>
+              <span className="font-[family-name:var(--font-body)] text-[14px] text-[#262524]">
+                {rampAddressDisplay}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Fee — no ramp-quote endpoint, so never fabricated. */}
+        <div className="flex items-center justify-between font-[family-name:var(--font-body)] text-[14px]">
+          <span style={{ color: INK_MUTED }}>Fee</span>
+          <span className="text-[#262524]">—</span>
+        </div>
+
+        <button
+          type="button"
+          data-testid="cash-management-swap-submit"
+          disabled
+          className="flex h-[48px] items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ backgroundColor: BRAND }}
+        >
+          {isOff ? "Off-ramp now" : "On-ramp now"}
+        </button>
+        <p
+          className="font-[family-name:var(--font-body)] text-[12px] leading-[16.8px]"
+          style={{ color: INK_MUTED }}
+        >
+          {isOff
+            ? "Off-ramp is a Capital-Wallet MPC transfer (3-of-5) — execution not yet available (#781)."
+            : "On-ramp USDC arrivals are detected on-chain and reviewed below."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function CashManagement() {
   const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
+  const [swapOpen, setSwapOpen] = useState(false);
   const view = useCashManagement();
 
   const onReview = (
@@ -280,86 +537,121 @@ function CashManagement() {
         Cash Management
       </h1>
 
-      <TabBar active={activeTab} onChange={setActiveTab} />
+      <TabBar
+        active={activeTab}
+        onChange={(key) => {
+          setActiveTab(key);
+          setSwapOpen(false);
+        }}
+      />
 
       {/* Shared Capital Allocation — same block as the Overview page. */}
       <CapitalAllocationCard />
 
       {activeTab === "onofframp" ? (
-        <div
-          data-testid="cash-management-onofframp"
-          className="flex w-full flex-col gap-[24px] rounded-[4px] bg-white px-[27px] py-[25px]"
-          style={{ border: `1px solid ${LINE_COLOR}` }}
-        >
-          {view.state === "loading" && (
-            <div
-              data-testid="cash-management-loading"
-              className="flex w-full flex-col gap-3"
-              aria-busy="true"
-              aria-label="Loading ramp events"
-            >
-              {[0, 1].map((i) => (
-                <div
-                  key={i}
-                  className="h-[64px] w-full animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)]"
-                />
-              ))}
+        <div className="flex w-full flex-col gap-[16px]">
+          {/* Header + "New swap" trigger — opens the swap form in a dialog. */}
+          <div className="flex flex-wrap items-center justify-between gap-[12px]">
+            <div className="flex flex-col gap-[2px]">
+              <span
+                className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+                style={{ color: INK }}
+              >
+                On / Off-ramp
+              </span>
+              <span
+                className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+                style={{ color: INK_MUTED }}
+              >
+                Move USDC in and out of the Capital Wallet; arrivals are
+                reviewed below.
+              </span>
             </div>
-          )}
-
-          {view.state === "error" && (
-            <div
-              role="alert"
-              data-testid="cash-management-error"
-              className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
+            <button
+              type="button"
+              data-testid="cash-management-swap-open"
+              onClick={() => setSwapOpen(true)}
+              className="flex h-[44px] items-center justify-center rounded-[4px] px-[20px] font-[family-name:var(--font-body)] text-[15px] text-white"
+              style={{ backgroundColor: BRAND }}
             >
-              {view.errorMessage ?? "Failed to load ramp events."}
-            </div>
-          )}
+              New swap
+            </button>
+          </div>
+          <div
+            data-testid="cash-management-onofframp"
+            className="flex w-full flex-col gap-[24px] rounded-[4px] bg-white px-[27px] py-[25px]"
+            style={{ border: `1px solid ${LINE_COLOR}` }}
+          >
+            {view.state === "loading" && (
+              <div
+                data-testid="cash-management-loading"
+                className="flex w-full flex-col gap-3"
+                aria-busy="true"
+                aria-label="Loading ramp events"
+              >
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="h-[64px] w-full animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)]"
+                  />
+                ))}
+              </div>
+            )}
 
-          {view.state === "ready" && (
-            <>
-              {view.isEmpty && (
-                <p
-                  data-testid="cash-management-empty"
-                  className="font-[family-name:var(--font-body)] text-[15px]"
-                  style={{ color: INK_MUTED }}
-                >
-                  No ramp transfers awaiting review.
-                </p>
-              )}
-              {!view.isEmpty && (
-                <>
-                  <RampSection
-                    testId="cash-management-inbound"
-                    title="Inbound · repayment on-ramps"
-                    note="Relayer + custodian mint · you review"
-                    events={view.inbound}
-                    reviewPendingId={view.reviewPendingId}
-                    onReview={onReview}
-                  />
-                  <RampSection
-                    testId="cash-management-outbound"
-                    title="Outbound · off-ramps & facility allocations"
-                    note="MPC 3-of-5"
-                    events={view.outbound}
-                    reviewPendingId={view.reviewPendingId}
-                    onReview={onReview}
-                  />
-                </>
-              )}
-              {view.reviewErrorMessage && (
-                <p
-                  role="alert"
-                  data-testid="cash-management-review-error"
-                  className="font-[family-name:var(--font-body)] text-[14px]"
-                  style={{ color: NEGATIVE_RED }}
-                >
-                  {view.reviewErrorMessage}
-                </p>
-              )}
-            </>
-          )}
+            {view.state === "error" && (
+              <div
+                role="alert"
+                data-testid="cash-management-error"
+                className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
+              >
+                {view.errorMessage ?? "Failed to load ramp events."}
+              </div>
+            )}
+
+            {view.state === "ready" && (
+              <>
+                {view.isEmpty && (
+                  <p
+                    data-testid="cash-management-empty"
+                    className="font-[family-name:var(--font-body)] text-[15px]"
+                    style={{ color: INK_MUTED }}
+                  >
+                    No ramp transfers awaiting review.
+                  </p>
+                )}
+                {!view.isEmpty && (
+                  <>
+                    <RampSection
+                      testId="cash-management-inbound"
+                      title="Inbound · repayment on-ramps"
+                      note="Relayer + custodian mint · you review"
+                      events={view.inbound}
+                      reviewPendingId={view.reviewPendingId}
+                      onReview={onReview}
+                    />
+                    <RampSection
+                      testId="cash-management-outbound"
+                      title="Outbound · off-ramps & facility allocations"
+                      note="MPC 3-of-5"
+                      events={view.outbound}
+                      reviewPendingId={view.reviewPendingId}
+                      onReview={onReview}
+                    />
+                  </>
+                )}
+                {view.reviewErrorMessage && (
+                  <p
+                    role="alert"
+                    data-testid="cash-management-review-error"
+                    className="font-[family-name:var(--font-body)] text-[14px]"
+                    style={{ color: NEGATIVE_RED }}
+                  >
+                    {view.reviewErrorMessage}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </div>
       ) : (
         <div
@@ -382,6 +674,14 @@ function CashManagement() {
       >
         A reviewed transfer counts toward Capital Allocation only once Approved.
       </p>
+
+      <SwapDialog
+        open={swapOpen}
+        onClose={() => setSwapOpen(false)}
+        usdcBalanceValue={view.usdcBalanceValue}
+        usdcBalanceDisplay={view.usdcBalanceDisplay}
+        rampAddressDisplay={view.rampAddressDisplay}
+      />
     </main>
   );
 }
