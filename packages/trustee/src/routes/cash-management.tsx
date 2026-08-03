@@ -740,15 +740,8 @@ function TbillsSwapDialog({
   );
 }
 
-// ── Withdrawal Queue tab: Capital-Wallet → WQ-wallet top-up dialog (#945) ─────
-//
-// Figma 4116-13974 (design only; behavior from Cash management.md §Withdrawal
-// queue). UI shell: the Trustee specifies an amount and would sign as the first
-// of a Capital-Wallet MPC 3-of-5 (Type 2, flow 9, #781) — no backend path yet,
-// so the signature rows are static "not signed" and Co-sign is disabled.
-// Coverage-after / oldest-pending have no served source → "—" (never fabricated).
-
-/** MPC signers, per the doc's 3-of-5 policy (Trustee + Team mandatory). */
+// Withdrawal Queue top-up dialog (#945; Figma 4116-13974) — a disabled MPC
+// shell. spec: docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
 const MPC_SIGNERS: { name: string; mandatory: boolean }[] = [
   { name: "Trustee (you)", mandatory: true },
   { name: "Team", mandatory: true },
@@ -828,7 +821,7 @@ function WithdrawalTopUpDialog({
           </span>
           <span className={rowValue}>Withdrawal Queue Wallet</span>
         </div>
-        {/* Amount — the Trustee specifies it (doc). Cosmetic in the shell: submit is disabled. */}
+        {/* Amount — Trustee-specified (doc); cosmetic while submit is disabled. */}
         <div className={row} style={{ borderColor: LINE_COLOR }}>
           <label className={rowLabel} style={{ color: INK_MUTED }}>
             Amount
@@ -843,7 +836,7 @@ function WithdrawalTopUpDialog({
             className={`${rowValue} w-[200px] bg-transparent outline-none`}
           />
         </div>
-        {/* Coverage after / oldest pending — no served source → "—" (never fabricated). */}
+        {/* Coverage / oldest-pending: no served source → "—". */}
         <div className={row} style={{ borderColor: LINE_COLOR }}>
           <span className={rowLabel} style={{ color: INK_MUTED }}>
             Coverage after
@@ -930,9 +923,8 @@ function WithdrawalTopUpDialog({
   );
 }
 
-// The Withdrawal Queue tab body: balance / total-claimable / requests + a
-// top-up alert (doc §Withdrawal queue) and a "Top up" button opening the dialog.
-// `walletBalanceDisplay` is "—" (no served source), so the alert never shows.
+// Withdrawal Queue tab body — summary + "Top up" button.
+// spec: docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
 function WithdrawalQueueSection({
   withdrawals,
   onTopUp,

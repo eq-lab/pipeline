@@ -1,21 +1,9 @@
 /**
- * View-model for the Cash Management **Withdrawal Queue** tab (#945). Behavior
- * from the working doc (`Cash management.md` §Withdrawal queue); per
- * `docs/FRONTEND.md` rule 2 the `.tsx` is JSX/styling only and this hook owns
- * the wiring.
+ * View-model for the Cash Management Withdrawal Queue tab (#945) — keeps the
+ * `.tsx` JSX-only (FRONTEND.md rule 2). Total-claimable / requests are served;
+ * the wallet balance is unserved (`"—"`), so the top-up alert is never fabricated.
  *
- * Doc wants: the WithdrawalQueue **wallet balance**, the **total claimable**
- * (`totalClaimable`), and a **top-up alert** when `balance < totalClaimable +
- * reserve`. Of these, `GET /v1/withdrawal-queue` serves the queue total
- * (`in_queue_usd`) and request count — but NOT the wallet's on-chain USDC
- * balance. So:
- *   - total claimable / requests → served, shown.
- *   - wallet balance → no served source → `"—"`.
- *   - top-up alert → needs the wallet balance to compare, which is not served,
- *     so it is never shown (an alert is never fabricated from missing data).
- *
- * The top-up transfer itself is a Capital-Wallet MPC action (3-of-5, Type 2,
- * flow 9, #781) with no backend path yet — the dialog is a disabled shell.
+ * spec: docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
  */
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
 import { formatFullUsd } from "@/utils/formatUsd";
@@ -25,17 +13,10 @@ export type WithdrawalQueueState = "loading" | "error" | "ready";
 export interface WithdrawalQueueView {
   state: WithdrawalQueueState;
   errorMessage: string | null;
-  /** WithdrawalQueue wallet USDC balance — no served source yet → `"—"`. */
   walletBalanceDisplay: string;
-  /** Total claimable in the queue (`in_queue_usd`), full USD, or `"—"`. */
   totalClaimableDisplay: string;
-  /** Number of withdrawal requests, or `"—"`. */
   requestsDisplay: string;
-  /**
-   * Whether to surface the top-up alert. Always `false` until the wallet
-   * balance is served — the alert compares balance against claimable + reserve,
-   * and that comparison is never fabricated from missing data.
-   */
+  /** Always `false` until the wallet balance is served — never a fabricated alert. */
   needsTopUp: boolean;
 }
 
