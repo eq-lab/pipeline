@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  formatAuditTimestamp,
   formatEpochDate,
   formatMaturityDate,
   formatSubmittedDate,
@@ -61,5 +62,22 @@ describe("formatEpochDate", () => {
     expect(formatEpochDate(null)).toBe("—");
     expect(formatEpochDate(undefined)).toBe("—");
     expect(formatEpochDate("not-a-date")).toBe("—");
+  });
+});
+
+describe("formatAuditTimestamp", () => {
+  it("formats an ISO-8601 timestamp as day + short month + 24h time (Figma: 24 Jun 07:12)", () => {
+    // Rendered in UTC regardless of the runner's timezone.
+    expect(formatAuditTimestamp("2026-06-24T07:12:00Z")).toBe("24 Jun 07:12");
+  });
+
+  it("zero-pads the hour and uses no year", () => {
+    expect(formatAuditTimestamp("2026-01-02T09:30:00Z")).toBe("2 Jan 09:30");
+  });
+
+  it("returns em-dash for null/undefined/unparseable", () => {
+    expect(formatAuditTimestamp(null)).toBe("—");
+    expect(formatAuditTimestamp(undefined)).toBe("—");
+    expect(formatAuditTimestamp("not-a-date")).toBe("—");
   });
 });
