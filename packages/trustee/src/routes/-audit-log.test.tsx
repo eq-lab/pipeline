@@ -7,8 +7,8 @@
  * error / empty branches.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
-import type { UseAuditLogView } from "./-useAuditLog";
+import { fireEvent, render, screen } from "@testing-library/react";
+import type { AuditRow, UseAuditLogView } from "./-useAuditLog";
 import { Route } from "./audit-log";
 
 const mockView = vi.fn<() => UseAuditLogView>();
@@ -85,5 +85,31 @@ describe("Audit Log page", () => {
     });
     renderRoute();
     expect(screen.getByRole("alert")).toHaveTextContent("boom");
+  });
+
+  it("caps rendered rows at the page size and reveals more on click", () => {
+    const rows: AuditRow[] = Array.from({ length: 120 }, (_, i) => ({
+      key: `k${i}`,
+      time: "24 Jun 07:12",
+      action: `Action ${i}`,
+      scopeLabel: "Protocol",
+      reference: "0xabc1…f4d9",
+      referenceFull: "0xabc1234567890def4d9",
+    }));
+    mockView.mockReturnValue({ state: "ready", errorMessage: null, rows });
+    renderRoute();
+
+    // First paint caps the DOM at the page size (50), not all 120 rows.
+    expect(screen.getAllByTestId("audit-row")).toHaveLength(50);
+    const showMore = screen.getByTestId("audit-show-more");
+    expect(showMore).toHaveTextContent("Show older (70 more)");
+
+    // Each click reveals another page.
+    fireEvent.click(showMore);
+    expect(screen.getAllByTestId("audit-row")).toHaveLength(100);
+    fireEvent.click(screen.getByTestId("audit-show-more"));
+    expect(screen.getAllByTestId("audit-row")).toHaveLength(120);
+    // Fully revealed — the control disappears.
+    expect(screen.queryByTestId("audit-show-more")).not.toBeInTheDocument();
   });
 });

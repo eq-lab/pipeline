@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { memo, useState } from "react";
 import { useAuditLogView, type AuditRow } from "./-useAuditLog";
 
 /**
@@ -63,9 +64,29 @@ const HEADER_CELL_CLASS =
 const BODY_CELL_CLASS =
   "flex flex-col justify-center px-[14px] py-[20px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]";
 
+/**
+ * How many newest rows to render before the "Show older" reveal. The endpoint
+ * returns the full unpaginated feed (#1004), so this caps the DOM row count to
+ * keep first paint cheap regardless of feed size — a visible cap, never a silent
+ * truncation. A backend `limit`/`cursor` follow-up would let us trim the payload
+ * itself (see #1000's pagination open question); this only bounds rendering.
+ */
+const AUDIT_PAGE_SIZE = 50;
+
 // ── Table ───────────────────────────────────────────────────────────────────
 
-function AuditRowView({ row, isFirst }: { row: AuditRow; isFirst: boolean }) {
+/**
+ * Memoized so the 30 s background poll (`useAuditLog`) does not re-render every
+ * row. TanStack Query structural-shares unchanged data, so `row` keeps its
+ * identity across polls when nothing changed and `memo` skips the re-render.
+ */
+const AuditRowView = memo(function AuditRowView({
+  row,
+  isFirst,
+}: {
+  row: AuditRow;
+  isFirst: boolean;
+}) {
   return (
     <div
       data-testid="audit-row"
@@ -105,7 +126,7 @@ function AuditRowView({ row, isFirst }: { row: AuditRow; isFirst: boolean }) {
       </div>
     </div>
   );
-}
+});
 
 function AuditTable({ rows }: { rows: AuditRow[] }) {
   return (
@@ -172,6 +193,13 @@ function AuditCaption() {
 
 function AuditLog() {
   const { state, errorMessage, rows } = useAuditLogView();
+  const [visibleCount, setVisibleCount] = useState(AUDIT_PAGE_SIZE);
+
+  // Cap rendered rows to the newest `visibleCount`; the feed is already newest
+  // first, so slicing from the top keeps the ordering. New rows from the poll
+  // stay within the cap without resetting the user's reveal.
+  const visibleRows = rows.slice(0, visibleCount);
+  const hiddenCount = rows.length - visibleRows.length;
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-[26px] px-4 py-12 md:px-8">
@@ -203,7 +231,18 @@ function AuditLog() {
         </div>
       ) : (
         <div className="flex w-full flex-col rounded-[4px] bg-[color:var(--color-pipeline-surface)] p-[32px]">
-          <AuditTable rows={rows} />
+          <AuditTable rows={visibleRows} />
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              data-testid="audit-show-more"
+              onClick={() => setVisibleCount((c) => c + AUDIT_PAGE_SIZE)}
+              className="mt-[16px] self-start rounded-[4px] px-[14px] py-[9px] font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-ink-muted)]"
+              style={{ border: `1px solid ${LINE_COLOR}` }}
+            >
+              Show older ({hiddenCount} more)
+            </button>
+          )}
           <AuditCaption />
         </div>
       )}
