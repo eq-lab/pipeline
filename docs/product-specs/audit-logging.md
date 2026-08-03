@@ -58,3 +58,11 @@ Retention period is the lifetime of the protocol. No entries are deleted or arch
 ## Scope
 
 The audit log covers relayer service actions only. Operator actions taken by team members, trustees, and originators inside the Operations Console are also logged to the same append-only store, with the actor's authenticated session identifier, the target resource, and the outcome recorded for each action.
+
+## Trustee dashboard feed (`GET /v1/audit-log`)
+
+The Trustee dashboard's Audit Log page (Surface 17, see [trustee-dashboard](./trustee-dashboard.md)) is backed by the read-only `GET /v1/audit-log` endpoint. This endpoint is **not** a mirror of the full protocol audit log described above — that store (with `action_type`, `trigger`, `invariant_before/after`, `input_parameters`) is append-only and mirrored to an external sink, and is not queryable from the API's Postgres.
+
+Instead, the endpoint serves the **on-chain subset** of auditable activity, sourced from indexed `contract_logs` events — the same substrate as the other Trustee reads. In v1 it surfaces loan-lifecycle and yield events: `LoanDrawn`, `PaymentRecorded`, `YieldMinted`, `LoanCCRUpdated`, `LoanStatusUpdated`, `LoanClosed`, `LoanDefaulted`, `LoanRolledOver`, `EconomicsAmended`, `LoanLocationUpdated`. It returns the full feed, newest first (not paginated); each entry carries a rendered `action` string, the raw `event_name`, the loan/protocol `scope`, an ISO-8601 `timestamp`, and the on-chain `tx_hash` as its `reference`.
+
+Off-chain entries visible in the design prototype — fiat wire confirmations, MPC co-signatures, USDC↔USYC swaps, and Operations Console operator actions — are **not** included in v1, because they live only in the non-queryable audit store. Serving them (by persisting the protocol audit log to a queryable table) is tracked as a follow-up.

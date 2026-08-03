@@ -138,7 +138,7 @@ retrigger control because the Relayer plus custodian execute the mint, not the T
 | 14 | Reserves and invariants | Backing invariant (PLUSD totalSupply versus USDC plus USYC NAV plus deployed plus in-transit), PLUSD ledger invariant, USYC NAV versus band | Relayer-published reconciliation, the PLUSD ledger-invariant view, Hashnote NAV | Whether reserves reconcile before any cash movement | Green < 0.01%, Amber 0.01–1%, Red > 1% drift |
 | 15 | T-Bill band and forward strip | USDC/USYC ratio versus band, the forward strip, recent swaps | Capital Wallet balances on-chain, Relayer-projected strip | Whether and how much to swap (feeds Flow 8) | Ratio outside the lower or upper band |
 | 16 | Portfolio aggregates | Deployed senior principal, at-risk (Watchlist plus Default), weighted tenor and rate, commodity / corridor / originator concentration, cumulative minted per leg | Sums and weighted aggregates over LoanRegistry views plus YieldMinter mint totals | Concentration and at-risk posture for origination and escalation | Concentration limits set with risk |
-| 17 | Audit log | Append-only stream of every Trustee action across all types | The protocol audit log | After-the-fact review and reconciliation | n/a |
+| 17 | Audit log | Append-only stream of every Trustee action across all types | The protocol audit log (see [audit-logging](./audit-logging.md)). Served today by `GET /v1/audit-log`, which sources the **on-chain** subset from indexed `contract_logs` events (loan lifecycle + yield mints); off-chain relayer/operator entries are a follow-up | After-the-fact review and reconciliation | n/a |
 
 ---
 

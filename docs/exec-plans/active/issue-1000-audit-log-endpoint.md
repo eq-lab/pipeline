@@ -62,6 +62,14 @@ _None outstanding._
 
 ## Implementation Steps
 
+_Status: all steps complete (2026-08-03). Deviations noted in the report / issue comment:
+the feed is returned **in full, newest-first — no pagination/cursor** (per user request),
+so the repo method is `list_audit_log(chain_id, event_names)` and the response is just
+`{ items }`; scope label is `"Loan #<id>"` + raw `loan_id` (frontend resolves the friendly
+name) rather than a metadata-fetched company name; `LoanCCRUpdated` action stays generic
+("CCR written on-chain") with the raw value in `details` because the on-chain CCR scale is
+ambiguous._
+
 1. **Repo query** — add `AuditLogRepo` (or a method on the existing `contract_logs` repo) in
    `packages/shared/src/contract_logs_repo.rs`:
    - `async fn audit_log_page(pool, chain_id, event_names: &[&str], limit, before_id: Option<i64>) -> Vec<AuditLogRow>`.
