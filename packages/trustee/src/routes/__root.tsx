@@ -1,9 +1,9 @@
-import { useEffect } from "react";
-import { createRootRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createRootRoute, redirect } from "@tanstack/react-router";
 import { TrusteeShell } from "@/components/TrusteeShell";
 import { TrusteeSessionProvider } from "@/auth/TrusteeSessionProvider";
-import { getSessionState, subscribeSession } from "@/auth/sessionStore";
+import { getSessionState } from "@/auth/sessionStore";
 import { resolveAuthRedirect } from "@/auth/authGate";
+import { useAuthRedirect } from "@/auth/useAuthRedirect";
 
 /**
  * Root layout — wraps every route with the Trustee session (auth) and topbar
@@ -11,19 +11,16 @@ import { resolveAuthRedirect } from "@/auth/authGate";
  * `<RouterProvider>`), not in `main.tsx`, because it calls `useNavigate()`
  * for the sign-out redirect, which needs router context (#791).
  *
- * Auth gating (redirect unauthenticated → `/sign-in`, authenticated on
- * `/sign-in` → `/`) runs in the router's `beforeLoad` (below), NOT a
- * render-phase `<Navigate>`. The render-phase redirect raced React's
- * render/commit in production builds and stranded the URL on `/sign-in` with
- * both the dashboard and the sign-in gate mounted (#921) — dev never showed it
- * because StrictMode's double-invoke masked the race. `beforeLoad` runs in the
- * router navigation lifecycle (race-free); `getSessionState()` is the non-hook
- * accessor built for exactly this. The `useEffect` re-runs the guard on every
- * session change (sign-in completes, sign-out, expiry) via `router.invalidate()`.
+ * Auth gating runs in two race-free places, NOT a render-phase `<Navigate>`
+ * (which raced React's commit in production and stranded the URL on `/sign-in`
+ * with both the dashboard and the gate mounted, #921):
+ *   - `beforeLoad` (below) guards every hard navigation in the router lifecycle.
+ *   - `useAuthRedirect()` reacts to mid-session status changes (sign-in, sign-out,
+ *     expiry) that `beforeLoad` can't see — the case the #988 `router.invalidate()`
+ *     approach missed, which left `/sign-in` stranded after sign-in (#1008).
  */
 function RootComponent() {
-  const router = useRouter();
-  useEffect(() => subscribeSession(() => void router.invalidate()), [router]);
+  useAuthRedirect();
   return (
     <TrusteeSessionProvider>
       <TrusteeShell />
