@@ -1,34 +1,9 @@
 /**
- * Chain-agnostic deposit/withdraw flow adapter.
+ * Chain-agnostic deposit/withdraw flow adapter — exposes a unified `FlowState`
+ * so the deposit/withdraw route consumes one shape instead of chain-specific hooks.
  *
- * Provides a unified `FlowState` shape that the deposit/withdraw route
- * (`src/routes/deposit.tsx`) consumes instead of calling EVM hooks directly.
- *
- * Architecture
- * ------------
- * All hooks (both EVM and Stellar, both deposit and withdraw directions) are
- * called unconditionally inside `useDepositFlow` — just as the original
- * `deposit.tsx` called both deposit and withdraw hooks unconditionally and
- * branched by direction. At the end, the active-chain / active-direction
- * values are selected and returned as `FlowState`.
- *
- * FlowState shape
- * ---------------
- * The component reads ONLY from `FlowState`. Chain-specific details are hidden
- * inside this hook. Toast state helpers (`step1IsPending`, `step1IsSuccess`,
- * `step1Error`, etc.) are included so the component can emit toasts without
- * knowing the chain.
- *
- * Design choices
- * --------------
- * - `amountBig` is passed in from the component (parsed from the text input).
- * - All hooks are called unconditionally; inactive-chain/direction hooks are
- *   disabled via their own `enabled`/`requestId === undefined` guards.
- * - Stellar balance arrives as a Horizon human-decimal string (e.g. `"1.5"`);
- *   we convert to bigint at 7 dp (`sacDisplayToRaw`) for amount comparisons.
- * - On Stellar, `trustlines` always contains two entries: PLUSD (index 0) and
- *   USDC (index 1). Both are shown in the StepsCard as steps 1 and 2 regardless
- *   of direction. On EVM, `trustlines` is always empty.
+ * spec: docs/frontend/wallet-flows.md#deposit--withdraw-adapter-usedepositflow
+ * (architecture, FlowState contract, business rules, request state model, step model).
  */
 
 import { useCallback, useEffect } from "react";
@@ -98,11 +73,8 @@ export interface StepTxState {
 }
 
 /**
- * Per-asset Stellar trustline descriptor.
- *
- * On Stellar, `FlowState.trustlines` always contains two entries:
- *   [0] PLUSD, [1] USDC — regardless of direction.
- * On EVM, `FlowState.trustlines` is always empty ([]).
+ * Per-asset Stellar trustline descriptor. (`FlowState.trustlines` array invariant:
+ * spec: docs/frontend/wallet-flows.md#design-choices--invariants.)
  */
 export interface TrustlineInfo {
   /** Protocol asset code. */
@@ -164,12 +136,9 @@ export interface FlowState {
 
   // ── Completed (claimed) deposit reset signal ──────────────────────────
   /**
-   * True (deposit direction only) when the latest deposit request has settled
-   * to `Completed` and has not been dismissed. The page reacts by resetting the
-   * form back to its initial state (clears the input, resets the request/claim
-   * mutations) so a fresh deposit can start — there is no terminal "done"
-   * layout. Gated by `depositCompletedRequestId` to fire once per completed
-   * deposit.
+   * True (deposit direction only) when the latest deposit has settled to
+   * `Completed` and not been dismissed — the page resets the form. Fires once
+   * per completed deposit. spec: docs/frontend/wallet-flows.md#request-state-model.
    */
   isDepositCompleted: boolean;
   /** `request_id` of the completed deposit that triggered the reset (for dismissal). */
@@ -215,11 +184,8 @@ export interface FlowState {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 /**
- * Frontend minimum deposit for Stellar in tokens at 7 decimals.
- * $1,000 at 7 dp = 1000 × 10^7 = 10_000_000_000n.
- * Soroban exposes no on-chain minimum getter; keep this Stellar-specific
- * frontend rule until the contract or API provides a network value.
- * Reverts #598 (which lowered this to $1); restored to $1,000 by #641.
+ * Frontend-owned Stellar minimum deposit ($1,000 at 7 dp) — Soroban has no
+ * on-chain minimum getter. spec: docs/frontend/wallet-flows.md#business-rules.
  */
 const STELLAR_MIN_DEPOSIT = 1000n * 10n ** BigInt(SAC_DECIMALS);
 
@@ -320,11 +286,8 @@ export function useDepositFlow(
 
   const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
 
-  // USDC balance — deposit input on Stellar.
-  // Use the same source as the TopBar wallet pill (`useStellarToken`) so the
-  // deposit page's balance check can never disagree with the balance shown in
-  // the header. (The SAC hook reads a separate mock key / issuer and would
-  // diverge — surfacing a false "Add funds" banner when the user holds USDC.)
+  // USDC balance (Stellar deposit input) via the same source as the TopBar pill
+  // so the two can't disagree. spec: docs/frontend/wallet-flows.md#design-choices--invariants.
   const usdcToken = useStellarToken();
   // PLUSD SAC — withdraw input on Stellar
   const plusdSac = useStellarSacToken({
@@ -514,14 +477,9 @@ export function useDepositFlow(
   );
 
   // ── Reconcile stale in-flight records against on-chain claimed state ───────
-  // The in-flight localStorage record is written when `request_deposit` succeeds
-  // and is otherwise only cleared by a successful claim through this app/browser.
-  // If the request was claimed any other way (different device, the API-driven
-  // `Completed` reset, etc.), the record lingers and pins the form as "confirmed"
-  // forever — disabling the amount input with no escape hatch. When the on-chain
-  // request reads back as already claimed, drop the record so a fresh
-  // deposit/withdrawal can start. (A claimed request is terminal, so this never
-  // races with a genuinely in-flight one.)
+  // Drop a lingering localStorage in-flight record once the request reads back as
+  // claimed on-chain, so it can't pin the form as "confirmed" forever.
+  // spec: docs/frontend/wallet-flows.md#request-state-model.
   const stellarDepositClaimedOnChain =
     stellarDepositOnChainReq.request?.claimed === true;
   const stellarWithdrawClaimedOnChain =

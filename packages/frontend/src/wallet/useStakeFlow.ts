@@ -1,33 +1,10 @@
 /**
- * Chain-agnostic stake/unstake flow adapter.
+ * Chain-agnostic stake/unstake flow adapter — exposes a unified `StakeFlowState`
+ * so the stake/unstake route consumes one shape instead of chain-specific hooks.
+ * Mirrors `useDepositFlow`.
  *
- * Provides a unified `StakeFlowState` shape that the stake/unstake route
- * (`src/routes/stake.tsx`) consumes instead of calling EVM hooks directly.
- *
- * Architecture
- * ------------
- * All hooks (both EVM and Stellar, both stake and unstake directions) are
- * called unconditionally inside `useStakeFlow` — mirroring `useDepositFlow`.
- * At the end, the active-chain / active-tab values are selected and returned
- * as `StakeFlowState`.
- *
- * StakeFlowState shape
- * --------------------
- * The component reads ONLY from `StakeFlowState`. Chain-specific details are
- * hidden inside this hook. Toast state helpers (`step1Tx`, `step2Tx`) are
- * included so the component can emit toasts without knowing the chain.
- *
- * Design choices
- * --------------
- * - `amountBig` is passed in from the component (parsed from the text input).
- * - All hooks are called unconditionally; inactive-chain/direction hooks are
- *   disabled via their own `enabled`/`requestId === undefined` guards.
- * - On Stellar, `convertDecimals` is 7 (SAC scale), not 18 (EVM scale).
- * - Steps shape by (chain, tab):
- *     EVM Stake:      [approve, stake]    (StepsCard 2 rows)
- *     EVM Unstake:    [unstake]           (StepsCard 1 row)
- *     Stellar Stake:  [enableSplusd, stake] (StepsCard 2 rows)
- *     Stellar Unstake:[enablePlusd, unstake] (StepsCard 2 rows)
+ * spec: docs/frontend/wallet-flows.md#stake--unstake-adapter-usestakeflow
+ * (architecture, convert-scale design choices, per-(chain,tab) steps, trustline model).
  */
 
 import { useCallback } from "react";
@@ -418,11 +395,8 @@ export function useStakeFlow(
     amountBig > 0n &&
     amountBig <= (stellarInputBalance ?? 0n);
 
-  // Trustline states.
-  //
-  // sPLUSD: use the fail-safe `trustlineStatus` discriminator so that
-  // "success" is shown ONLY when the trustline is confirmed present, never
-  // when the share asset is still loading or errored.
+  // Trustline states — sPLUSD uses the fail-safe `trustlineStatus` discriminator.
+  // spec: docs/frontend/wallet-flows.md#trustline-model.
   const stellarSplusdTrustlineStatus = splusdTrustline.trustlineStatus;
   const stellarSplusdTrustlineSatisfied =
     stellarSplusdTrustlineStatus === "satisfied" ||
@@ -446,11 +420,8 @@ export function useStakeFlow(
     stellarPlusdNeedsTrustline &&
     !plusdTrustline.isPending;
 
-  // Step 2 (stake/unstake) — gated on trustline being present.
-  //
-  // canStellarStake: permit staking only when the classic trustline is
-  // satisfied or the vault reports Soroban-native shares that need no trustline.
-  // Loading/error/needed states block staking.
+  // Step 2 (stake/unstake) — gated on trustline being satisfied/not-required;
+  // loading/error/needed all block. spec: docs/frontend/wallet-flows.md#trustline-model.
   const canStellarStake =
     isStake &&
     isStellarConnected &&
@@ -467,11 +438,8 @@ export function useStakeFlow(
     !stellarUnstake.isPending &&
     !stellarUnstake.isSuccess;
 
-  // Step states.
-  //
-  // stellarSplusdTrustlineState: "success" only when the classic trustline is
-  // satisfied or no classic trustline is required. Loading/needed/error all
-  // stay "idle".
+  // Step states — sPLUSD trustline step is "success" only when satisfied/not-required.
+  // spec: docs/frontend/wallet-flows.md#trustline-model.
   const stellarSplusdTrustlineState: StakeStepState =
     stellarSplusdTrustlineSatisfied && isStellarConnected ? "success" : "idle";
   const stellarPlusdTrustlineState: StakeStepState =
