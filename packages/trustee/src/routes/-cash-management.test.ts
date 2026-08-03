@@ -2,8 +2,22 @@
  * Unit tests for the Cash Management presenter's pure helpers
  * (`-cash-management.ts`, issue #943). All pure — no DOM, no query layer.
  */
-import { describe, it, expect } from "vitest";
-import { truncateStrkey, formatRelativeAge } from "./-cash-management";
+import { describe, it, expect, vi } from "vitest";
+
+// The presenter statically imports the balance/address hooks, whose module
+// graph reaches `@stellar/freighter-api` (CommonJS) and breaks under Vitest's
+// ESM loader. These pure-helper tests never touch the hooks — stub the modules
+// so importing `./-cash-management` doesn't pull that graph in.
+vi.mock("@/api/useCapitalWalletBalance", () => ({
+  useCapitalWalletBalance: vi.fn(),
+}));
+vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
+
+import {
+  truncateStrkey,
+  formatRelativeAge,
+  formatUsdcAmount,
+} from "./-cash-management";
 
 describe("truncateStrkey", () => {
   it("keeps the first 4 + last 4 with an ellipsis for a full Strkey", () => {
@@ -42,5 +56,18 @@ describe("formatRelativeAge", () => {
     expect(formatRelativeAge(null, now)).toBe("—");
     expect(formatRelativeAge(undefined, now)).toBe("—");
     expect(formatRelativeAge(NaN, now)).toBe("—");
+  });
+});
+
+describe("formatUsdcAmount", () => {
+  it("adds thousands separators", () => {
+    expect(formatUsdcAmount(8400000)).toBe("8,400,000");
+    expect(formatUsdcAmount(1234.5)).toBe("1,234.5");
+  });
+
+  it('returns "—" for null / non-finite (never fabricated)', () => {
+    expect(formatUsdcAmount(null)).toBe("—");
+    expect(formatUsdcAmount(undefined)).toBe("—");
+    expect(formatUsdcAmount(NaN)).toBe("—");
   });
 });

@@ -17,23 +17,25 @@ vi.mock("@/components/CapitalAllocationCard", () => ({
 }));
 vi.mock("@/api/useRampEvents", () => ({ useRampEvents: vi.fn() }));
 vi.mock("@/api/useReviewRampEvent", () => ({ useReviewRampEvent: vi.fn() }));
-// The T-Bills tab's useTbillsSwap wires these directly (on-chain USDC + the
-// capital-allocation tbills bucket); mock them so the page renders end-to-end.
+vi.mock("@/api/useRampAddresses", () => ({ useRampAddresses: vi.fn() }));
 vi.mock("@/api/useCapitalWalletBalance", () => ({
   useCapitalWalletBalance: vi.fn(),
 }));
+// The T-Bills tab's useTbillsSwap wires the capital-allocation tbills bucket.
 vi.mock("@/api/useCapitalAllocation", () => ({
   useCapitalAllocation: vi.fn(),
 }));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
+import { useRampAddresses } from "@/api/useRampAddresses";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
 const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
+const mockUseRampAddresses = vi.mocked(useRampAddresses);
 const mockUseCapitalWalletBalance = vi.mocked(useCapitalWalletBalance);
 const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
 const mockReview = vi.fn();
@@ -91,10 +93,17 @@ function readyEvents(data: RampEventsResponse = EVENTS) {
 beforeEach(() => {
   mockUseRampEvents.mockReset();
   mockUseReviewRampEvent.mockReset();
+  mockUseRampAddresses.mockReset();
   mockUseCapitalWalletBalance.mockReset();
   mockUseCapitalAllocation.mockReset();
   mockReview.mockReset();
   mockUseReviewRampEvent.mockReturnValue(reviewHook());
+  mockUseRampAddresses.mockReturnValue({
+    data: { ramp_addresses: ["GRAMP1234567890WXYZ"] },
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+  });
   // USDC balance real; tbills bucket null (hardcoded None server-side, #931).
   mockUseCapitalWalletBalance.mockReturnValue({
     data: "8400000.0000000",
@@ -201,6 +210,73 @@ describe("Cash Management route — T-Bills swap dialog (#944)", () => {
     fireEvent.click(screen.getByTestId("cash-management-tbills-close"));
     expect(
       screen.queryByTestId("cash-management-tbills"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — swap dialog", () => {
+  beforeEach(() => readyEvents());
+
+  function openSwap() {
+    renderRoute();
+    // The form is not inline — it opens from the "New swap" button.
+    expect(
+      screen.queryByTestId("cash-management-swap"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
+  }
+
+  it("is closed by default and opens a modal swap form from the New-swap button", () => {
+    renderRoute();
+    expect(
+      screen.queryByTestId("cash-management-swap"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-swap-open"));
+    expect(screen.getByTestId("cash-management-swap")).toHaveAttribute(
+      "role",
+      "dialog",
+    );
+  });
+
+  it("renders the balance, ramp destination, a disabled submit, and the fee as —", () => {
+    openSwap();
+    const swap = screen.getByTestId("cash-management-swap");
+    expect(swap).toHaveTextContent("Balance: 8,400,000 USDC");
+    expect(swap).toHaveTextContent("GRAM…WXYZ");
+    expect(screen.getByTestId("cash-management-swap-submit")).toBeDisabled();
+    // Fee has no quote endpoint — never fabricated.
+    expect(swap).toHaveTextContent("Fee");
+    expect(swap).toHaveTextContent("—");
+  });
+
+  it("Max fills the amount and the 1:1 receive field mirrors it (disabled)", () => {
+    openSwap();
+    fireEvent.click(screen.getByTestId("cash-management-swap-max"));
+    expect(screen.getByTestId("cash-management-swap-amount")).toHaveValue(
+      8400000,
+    );
+    // "You receive" is a disabled twin of the amount input — 1:1, so equal.
+    const receive = screen.getByTestId("cash-management-swap-receive");
+    expect(receive).toBeDisabled();
+    expect(receive).toHaveValue("8400000");
+  });
+
+  it("toggling to On-ramp hides the ramp destination row", () => {
+    openSwap();
+    expect(screen.getByTestId("cash-management-swap")).toHaveTextContent(
+      "To (ramp)",
+    );
+    fireEvent.click(screen.getByTestId("cash-management-swap-mode-on"));
+    expect(screen.getByTestId("cash-management-swap")).not.toHaveTextContent(
+      "To (ramp)",
+    );
+  });
+
+  it("closes the dialog via the × button", () => {
+    openSwap();
+    fireEvent.click(screen.getByTestId("cash-management-swap-close"));
+    expect(
+      screen.queryByTestId("cash-management-swap"),
     ).not.toBeInTheDocument();
   });
 });
