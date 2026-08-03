@@ -25,12 +25,15 @@ vi.mock("@/api/useCapitalWalletBalance", () => ({
 vi.mock("@/api/useCapitalAllocation", () => ({
   useCapitalAllocation: vi.fn(),
 }));
+// The Withdrawal Queue tab's useWithdrawalQueueView reads the queue endpoint.
+vi.mock("@/api/useWithdrawalQueue", () => ({ useWithdrawalQueue: vi.fn() }));
 
 import { useRampEvents } from "@/api/useRampEvents";
 import { useReviewRampEvent } from "@/api/useReviewRampEvent";
 import { useRampAddresses } from "@/api/useRampAddresses";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
+import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
 import { Route } from "./cash-management";
 
 const mockUseRampEvents = vi.mocked(useRampEvents);
@@ -38,6 +41,7 @@ const mockUseReviewRampEvent = vi.mocked(useReviewRampEvent);
 const mockUseRampAddresses = vi.mocked(useRampAddresses);
 const mockUseCapitalWalletBalance = vi.mocked(useCapitalWalletBalance);
 const mockUseCapitalAllocation = vi.mocked(useCapitalAllocation);
+const mockUseWithdrawalQueue = vi.mocked(useWithdrawalQueue);
 const mockReview = vi.fn();
 
 function renderRoute() {
@@ -125,6 +129,21 @@ beforeEach(() => {
     error: null,
     refetch: () => {},
   });
+  mockUseWithdrawalQueue.mockReset();
+  mockUseWithdrawalQueue.mockReturnValue({
+    data: {
+      summary: {
+        in_queue_usd: "1200000.000000",
+        requests_count: 6,
+        estimated_wait_days: "3.2",
+        liquid_cover: null,
+      },
+      items: [],
+    },
+    isLoading: false,
+    error: null,
+    refetch: () => {},
+  });
 });
 
 describe("Cash Management route — shell", () => {
@@ -144,15 +163,67 @@ describe("Cash Management route — shell", () => {
     expect(screen.getByTestId("capital-allocation-stub")).toBeInTheDocument();
   });
 
-  it("switches to a placeholder tab (Withdrawal Queue) and hides the On/Off-ramp panel", () => {
+  it("switches to the Withdrawal Queue tab and hides the On/Off-ramp panel", () => {
     renderRoute();
     expect(screen.getByTestId("cash-management-onofframp")).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
     expect(
-      screen.getByTestId("cash-management-placeholder-withdrawals"),
-    ).toHaveTextContent("#945");
+      screen.getByTestId("cash-management-withdrawals"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByTestId("cash-management-onofframp"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("Cash Management route — Withdrawal Queue tab (#945)", () => {
+  beforeEach(() => readyEvents());
+
+  function openWithdrawals() {
+    renderRoute();
+    fireEvent.click(screen.getByTestId("cash-management-tab-withdrawals"));
+  }
+
+  it("shows served total-claimable + requests, wallet balance —, and no top-up alert", () => {
+    openWithdrawals();
+    const panel = screen.getByTestId("cash-management-withdrawals");
+    expect(
+      screen.getByTestId("cash-management-withdrawals-claimable"),
+    ).toHaveTextContent("$1,200,000");
+    expect(panel).toHaveTextContent("Requests");
+    // No served wallet balance → "—", and the top-up alert is never fabricated.
+    expect(panel).toHaveTextContent("Withdrawal Queue wallet balance");
+    expect(panel).toHaveTextContent("—");
+    expect(
+      screen.queryByTestId("cash-management-withdrawals-topup-alert"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the top-up MPC dialog from Top up: signers static, Co-sign disabled", () => {
+    openWithdrawals();
+    expect(
+      screen.queryByTestId("cash-management-withdrawals-dialog"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("cash-management-withdrawals-open"));
+    const dialog = screen.getByTestId("cash-management-withdrawals-dialog");
+    expect(dialog).toHaveAttribute("role", "dialog");
+    expect(dialog).toHaveTextContent("Capital Wallet (USDC)");
+    expect(dialog).toHaveTextContent("Withdrawal Queue Wallet");
+    // Signature collection is a static shell; Co-sign is disabled (no MPC path).
+    const signers = screen.getByTestId("cash-management-withdrawals-signers");
+    expect(signers).toHaveTextContent("Trustee (you)");
+    expect(signers).toHaveTextContent("Counterparty B");
+    expect(
+      screen.getByTestId("cash-management-withdrawals-submit"),
+    ).toBeDisabled();
+  });
+
+  it("closes the dialog via Cancel", () => {
+    openWithdrawals();
+    fireEvent.click(screen.getByTestId("cash-management-withdrawals-open"));
+    fireEvent.click(screen.getByTestId("cash-management-withdrawals-cancel"));
+    expect(
+      screen.queryByTestId("cash-management-withdrawals-dialog"),
     ).not.toBeInTheDocument();
   });
 });

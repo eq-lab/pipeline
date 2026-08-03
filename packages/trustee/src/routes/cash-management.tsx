@@ -6,6 +6,10 @@ import {
   type RampEventRow as RampEventRowData,
 } from "./-cash-management";
 import { useTbillsSwap, type TbillsSwapView } from "./-cash-management-tbills";
+import {
+  useWithdrawalQueueView,
+  type WithdrawalQueueView,
+} from "./-cash-management-withdrawals";
 
 /**
  * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
@@ -26,12 +30,15 @@ import { useTbillsSwap, type TbillsSwapView } from "./-cash-management-tbills";
  *
  * The **T-Bills** tab (#944) has the same "New swap" modal UX — a Buy/Sell USYC
  * swap-form UI shell (`TbillsSwapDialog`; submit disabled, MPC execution not yet
- * backed). The **Withdrawal Queue** (#945) tab is still a placeholder. (No
- * Refunds tab — the working doc has no such section; docs are the source of
- * truth, Figma is styling only.)
+ * backed). The **Withdrawal Queue** tab (#945) shows the queue's total-claimable
+ * / requests (served) with the wallet balance `—` (unserved), and a "Top up"
+ * button opening `WithdrawalTopUpDialog` — a Capital-Wallet MPC 3-of-5 shell
+ * (Co-sign disabled). (No Refunds tab — the working doc has no such section;
+ * docs are the source of truth, Figma is styling only.)
  *
  * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; the fetch +
- * value→display mapping live in `-cash-management.ts`.
+ * value→display mapping live in `-cash-management.ts` / `-cash-management-tbills.ts`
+ * / `-cash-management-withdrawals.ts`.
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -49,14 +56,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "tbills", label: "T-Bills" },
   { key: "withdrawals", label: "Withdrawal Queue" },
 ];
-
-const PLACEHOLDER_COPY: Record<
-  Exclude<TabKey, "onofframp" | "tbills">,
-  string
-> = {
-  withdrawals:
-    "Withdrawal-queue balance, top-up alert, and MPC transfer — lands in #945.",
-};
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -741,14 +740,322 @@ function TbillsSwapDialog({
   );
 }
 
+// ── Withdrawal Queue tab: Capital-Wallet → WQ-wallet top-up dialog (#945) ─────
+//
+// Figma 4116-13974 (design only; behavior from Cash management.md §Withdrawal
+// queue). UI shell: the Trustee specifies an amount and would sign as the first
+// of a Capital-Wallet MPC 3-of-5 (Type 2, flow 9, #781) — no backend path yet,
+// so the signature rows are static "not signed" and Co-sign is disabled.
+// Coverage-after / oldest-pending have no served source → "—" (never fabricated).
+
+/** MPC signers, per the doc's 3-of-5 policy (Trustee + Team mandatory). */
+const MPC_SIGNERS: { name: string; mandatory: boolean }[] = [
+  { name: "Trustee (you)", mandatory: true },
+  { name: "Team", mandatory: true },
+  { name: "Custodian", mandatory: false },
+  { name: "Counterparty A", mandatory: false },
+  { name: "Counterparty B", mandatory: false },
+];
+
+function WithdrawalTopUpDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState("");
+
+  // Reset on open; Escape closes.
+  useEffect(() => {
+    if (open) setAmount("");
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const row = "flex items-end justify-between border-b pb-[13px] pt-[12px]";
+  const rowLabel =
+    "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
+  const rowValue =
+    "text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]";
+
+  return (
+    <div
+      data-testid="cash-management-withdrawals-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(38,37,36,0.4)] px-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-management-withdrawals-title"
+        data-testid="cash-management-withdrawals-dialog"
+        className="flex max-h-[calc(100vh-64px)] w-[640px] max-w-[calc(100vw-32px)] flex-col overflow-auto rounded-[6px] bg-white px-[30px] py-[28px] shadow-[0px_10px_40px_0px_rgba(0,0,40,0.25)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2
+          id="cash-management-withdrawals-title"
+          className="font-[family-name:var(--font-display)] text-[26px] leading-[36.4px] text-[#262524]"
+        >
+          Withdrawal Queue Wallet top-up
+        </h2>
+        <p
+          className="pt-[3px] pb-[18px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+          style={{ color: INK_MUTED }}
+        >
+          Capital Wallet MPC · 3-of-5 policy · Trustee + Team mandatory. The
+          dashboard never holds your MPC key — it builds the request and tracks
+          signatures.
+        </p>
+
+        <div className={row} style={{ borderColor: LINE_COLOR }}>
+          <span className={rowLabel} style={{ color: INK_MUTED }}>
+            From
+          </span>
+          <span className={rowValue}>Capital Wallet (USDC)</span>
+        </div>
+        <div className={row} style={{ borderColor: LINE_COLOR }}>
+          <span className={rowLabel} style={{ color: INK_MUTED }}>
+            To
+          </span>
+          <span className={rowValue}>Withdrawal Queue Wallet</span>
+        </div>
+        {/* Amount — the Trustee specifies it (doc). Cosmetic in the shell: submit is disabled. */}
+        <div className={row} style={{ borderColor: LINE_COLOR }}>
+          <label className={rowLabel} style={{ color: INK_MUTED }}>
+            Amount
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            data-testid="cash-management-withdrawals-amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+            className={`${rowValue} w-[200px] bg-transparent outline-none`}
+          />
+        </div>
+        {/* Coverage after / oldest pending — no served source → "—" (never fabricated). */}
+        <div className={row} style={{ borderColor: LINE_COLOR }}>
+          <span className={rowLabel} style={{ color: INK_MUTED }}>
+            Coverage after
+          </span>
+          <span className={rowValue}>—</span>
+        </div>
+        <div className={row} style={{ borderColor: LINE_COLOR }}>
+          <span className={rowLabel} style={{ color: INK_MUTED }}>
+            Oldest pending request
+          </span>
+          <span className={rowValue}>—</span>
+        </div>
+
+        <p
+          className="pt-[19px] pb-[1px] font-[family-name:var(--font-body)] text-[12px] leading-[16.8px] tracking-[0.96px] uppercase"
+          style={{ color: INK_MUTED }}
+        >
+          Signature collection — 0 of 3 required
+        </p>
+        <div
+          className="pt-[6px]"
+          data-testid="cash-management-withdrawals-signers"
+        >
+          {MPC_SIGNERS.map((signer, i) => (
+            <div
+              key={signer.name}
+              className="flex items-center gap-[12px] px-[4px] pt-[11px] pb-[12px]"
+              style={
+                i < MPC_SIGNERS.length - 1
+                  ? { borderBottom: `1px solid ${LINE_COLOR}` }
+                  : undefined
+              }
+            >
+              <span
+                className="h-[9px] w-[9px] shrink-0 rounded-[4.5px]"
+                style={{ backgroundColor: "rgba(191,189,187,0.24)" }}
+              />
+              <span className="font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[#262524]">
+                {signer.name}
+              </span>
+              {signer.mandatory && (
+                <span
+                  className="rounded-[4px] px-[7px] pt-[2px] pb-[3px] font-[family-name:var(--font-body)] text-[11px] leading-[15.4px]"
+                  style={{
+                    backgroundColor: "rgba(191,189,187,0.12)",
+                    color: INK_MUTED,
+                  }}
+                >
+                  mandatory
+                </span>
+              )}
+              <span
+                className="ml-auto font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                style={{ color: INK_MUTED }}
+              >
+                not signed
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-[12px] pt-[24px]">
+          <button
+            type="button"
+            data-testid="cash-management-withdrawals-cancel"
+            onClick={onClose}
+            className="flex h-[40px] items-center justify-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
+            style={{ borderColor: LINE_COLOR }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="cash-management-withdrawals-submit"
+            disabled
+            className="flex h-[40px] items-center justify-center rounded-[4px] px-[16px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ backgroundColor: BRAND }}
+          >
+            Co-sign in MPC
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The Withdrawal Queue tab body: balance / total-claimable / requests + a
+// top-up alert (doc §Withdrawal queue) and a "Top up" button opening the dialog.
+// `walletBalanceDisplay` is "—" (no served source), so the alert never shows.
+function WithdrawalQueueSection({
+  withdrawals,
+  onTopUp,
+}: {
+  withdrawals: WithdrawalQueueView;
+  onTopUp: () => void;
+}) {
+  const summaryRow =
+    "flex items-end justify-between border-b pb-[13px] pt-[12px]";
+  const summaryLabel =
+    "font-[family-name:var(--font-body)] text-[15px] leading-[21px]";
+  const summaryValue =
+    "text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] text-[#262524]";
+
+  return (
+    <div
+      data-testid="cash-management-withdrawals"
+      className="flex w-full flex-col gap-[16px] rounded-[4px] bg-white px-[27px] py-[25px]"
+      style={{ border: `1px solid ${LINE_COLOR}` }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-[12px]">
+        <div className="flex flex-col gap-[2px]">
+          <span
+            className="font-[family-name:var(--font-display)] text-[20px] leading-[28px]"
+            style={{ color: INK }}
+          >
+            Withdrawal Queue
+          </span>
+          <span
+            className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
+            style={{ color: INK_MUTED }}
+          >
+            Keep the Withdrawal Queue wallet funded to cover claimable requests;
+            top up from the Capital Wallet.
+          </span>
+        </div>
+        <button
+          type="button"
+          data-testid="cash-management-withdrawals-open"
+          onClick={onTopUp}
+          className="flex h-[44px] items-center justify-center rounded-[4px] px-[20px] font-[family-name:var(--font-body)] text-[15px] text-white"
+          style={{ backgroundColor: BRAND }}
+        >
+          Top up
+        </button>
+      </div>
+
+      {withdrawals.state === "error" ? (
+        <p
+          role="alert"
+          data-testid="cash-management-withdrawals-error"
+          className="font-[family-name:var(--font-body)] text-[14px]"
+          style={{ color: NEGATIVE_RED }}
+        >
+          {withdrawals.errorMessage ?? "Failed to load the withdrawal queue."}
+        </p>
+      ) : (
+        <div className="flex flex-col">
+          <div className={summaryRow} style={{ borderColor: LINE_COLOR }}>
+            <span className={summaryLabel} style={{ color: INK_MUTED }}>
+              Withdrawal Queue wallet balance
+            </span>
+            <span className={summaryValue}>
+              {withdrawals.walletBalanceDisplay}
+            </span>
+          </div>
+          <div className={summaryRow} style={{ borderColor: LINE_COLOR }}>
+            <span className={summaryLabel} style={{ color: INK_MUTED }}>
+              Total claimable
+            </span>
+            <span
+              className={summaryValue}
+              data-testid="cash-management-withdrawals-claimable"
+            >
+              {withdrawals.state === "loading"
+                ? "…"
+                : withdrawals.totalClaimableDisplay}
+            </span>
+          </div>
+          <div
+            className="flex items-end justify-between pt-[12px]"
+            style={{ borderColor: LINE_COLOR }}
+          >
+            <span className={summaryLabel} style={{ color: INK_MUTED }}>
+              Requests
+            </span>
+            <span className={summaryValue}>
+              {withdrawals.state === "loading"
+                ? "…"
+                : withdrawals.requestsDisplay}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {withdrawals.needsTopUp && (
+        <p
+          role="alert"
+          data-testid="cash-management-withdrawals-topup-alert"
+          className="rounded-[4px] px-[15px] py-[13px] font-[family-name:var(--font-body)] text-[14px]"
+          style={{
+            backgroundColor: "rgba(178,0,0,0.06)",
+            color: NEGATIVE_RED,
+          }}
+        >
+          Balance is below the claimable total — top up the Withdrawal Queue
+          wallet.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function CashManagement() {
   const [activeTab, setActiveTab] = useState<TabKey>("onofframp");
   const [swapOpen, setSwapOpen] = useState(false);
   const [tbillsSwapOpen, setTbillsSwapOpen] = useState(false);
+  const [withdrawalTopUpOpen, setWithdrawalTopUpOpen] = useState(false);
   const view = useCashManagement();
   const tbills = useTbillsSwap();
+  const withdrawals = useWithdrawalQueueView();
 
   const onReview = (
     id: number,
@@ -771,6 +1078,7 @@ function CashManagement() {
           setActiveTab(key);
           setSwapOpen(false);
           setTbillsSwapOpen(false);
+          setWithdrawalTopUpOpen(false);
         }}
       />
 
@@ -912,18 +1220,10 @@ function CashManagement() {
           </button>
         </div>
       ) : (
-        <div
-          data-testid={`cash-management-placeholder-${activeTab}`}
-          className="flex w-full flex-col gap-[8px] rounded-[4px] bg-white px-[27px] py-[25px]"
-          style={{ border: `1px solid ${LINE_COLOR}` }}
-        >
-          <p
-            className="font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
-            style={{ color: INK_MUTED }}
-          >
-            {PLACEHOLDER_COPY[activeTab]}
-          </p>
-        </div>
+        <WithdrawalQueueSection
+          withdrawals={withdrawals}
+          onTopUp={() => setWithdrawalTopUpOpen(true)}
+        />
       )}
 
       <p
@@ -945,6 +1245,11 @@ function CashManagement() {
         open={tbillsSwapOpen}
         onClose={() => setTbillsSwapOpen(false)}
         tbills={tbills}
+      />
+
+      <WithdrawalTopUpDialog
+        open={withdrawalTopUpOpen}
+        onClose={() => setWithdrawalTopUpOpen(false)}
       />
     </main>
   );
