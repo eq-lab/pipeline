@@ -28,12 +28,13 @@
  *      `unauthenticated` silently (not an error — a user choice).
  *   4. `POST /v1/auth/verify { chain_id, address, signature }`. On success the
  *      token is stored (`sessionStore`, sessionStorage-backed) and `status`
- *      flips to `authenticated`; leaving `/sign-in` is then handled by the root
- *      route's `beforeLoad` guard, re-run on the session change via
- *      `router.invalidate()` (`__root.tsx`) — NOT an imperative navigate here,
- *      and not a render-phase `<Navigate>`, both of which raced the redirect and
- *      stranded the URL on `/sign-in` (#921). A `401` here is rare (nonce race /
- *      signature mismatch) and surfaces as a verification-failed error.
+ *      flips to `authenticated`; leaving `/sign-in` is then handled by the
+ *      reactive `useAuthRedirect` effect + the root `beforeLoad` guard
+ *      (#921/#1008) — NOT an imperative navigate here. A `401` here is rare
+ *      (nonce race / signature mismatch) and surfaces as a verification-failed
+ *      error. All three failure paths `console.warn` the raw error (#1008
+ *      staging diagnosability); only a deliberate signature rejection stays
+ *      silent.
  *
  * `signOut()` clears the stored token and disconnects the wallet — there is
  * no server logout endpoint (bearer-token transport, see the exec plan's
@@ -84,6 +85,28 @@ function isNotAuthorized(err: unknown): boolean {
   return err instanceof Error && err.name === "ApiUnauthorizedError";
 }
 
+/**
+ * Heuristic: did the user deliberately reject/cancel the signature request?
+ * EIP-1193 uses code 4001 / `UserRejectedRequestError`; Freighter and the
+ * Stellar kit surface free-text "declined"/"rejected" messages. Only a
+ * deliberate rejection stays silent (#791 decision) — any other wallet error
+ * is surfaced, because swallowing it made staging sign-in failures invisible
+ * (#1008: "signed and nothing happened").
+ */
+function isUserRejection(err: unknown): boolean {
+  if (typeof err !== "object" || err == null) return false;
+  const { code, name, message } = err as {
+    code?: unknown;
+    name?: unknown;
+    message?: unknown;
+  };
+  if (code === 4001) return true;
+  if (typeof name === "string" && name.includes("UserRejected")) return true;
+  return (
+    typeof message === "string" && /reject|declin|denied|cancel/i.test(message)
+  );
+}
+
 export function TrusteeSessionProvider({
   children,
 }: {
@@ -121,6 +144,7 @@ export function TrusteeSessionProvider({
       try {
         challenge = await getAuthChallenge(address, chainId);
       } catch (err) {
+        console.warn("[trustee-auth] challenge failed", err);
         setSessionStatus(
           "unauthorized",
           isNotAuthorized(err)
@@ -134,10 +158,19 @@ export function TrusteeSessionProvider({
       try {
         const result = await sign(challenge.message);
         signature = result.signature;
-      } catch {
-        // User rejected the signature (or the wallet errored) — not a hard
-        // error, just return to unauthenticated silently.
-        setSessionStatus("unauthenticated");
+      } catch (err) {
+        console.warn("[trustee-auth] signing failed", err);
+        if (isUserRejection(err)) {
+          // A deliberate rejection is a user choice, not an error — silent.
+          setSessionStatus("unauthenticated");
+          return;
+        }
+        // A wallet error must be visible — swallowing it silently left the
+        // card looking like nothing happened (#1008).
+        setSessionStatus(
+          "unauthorized",
+          "The wallet could not sign the authentication message. Please try again.",
+        );
         return;
       }
 
@@ -158,7 +191,8 @@ export function TrusteeSessionProvider({
         // both stranded the URL on `/sign-in` with BOTH the dashboard and the
         // sign-in gate mounted. The router's navigation lifecycle is the single,
         // race-free source of truth for auth redirects.
-      } catch {
+      } catch (err) {
+        console.warn("[trustee-auth] verify failed", err);
         // A 401 here is rare on the happy path (nonce expired / signature
         // mismatch / already consumed) — unlike the challenge step, a 401
         // from /v1/auth/verify does not distinguish "unknown address" from

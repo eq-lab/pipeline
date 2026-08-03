@@ -256,6 +256,43 @@ describe("TrusteeSessionProvider — signature rejected", () => {
     expect(screen.getByTestId("error")).toHaveTextContent("");
     expect(mockPostAuthVerify).not.toHaveBeenCalled();
   });
+
+  it("stays silent for an EIP-1193 code-4001 rejection (no message match needed)", async () => {
+    mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
+    const rejection = Object.assign(new Error("boom"), { code: 4001 });
+    mockEvmSignMessage.mockRejectedValue(rejection);
+    evmState = { isConnected: true, address: "0xabc" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthenticated");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent("");
+  });
+});
+
+describe("TrusteeSessionProvider — wallet signing error (#1008)", () => {
+  it("surfaces a non-rejection wallet error on the card instead of silently resetting", async () => {
+    mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
+    // A real wallet failure (not a rejection): must NOT be swallowed.
+    mockEvmSignMessage.mockRejectedValue(new Error("internal wallet error"));
+    evmState = { isConnected: true, address: "0xabc" };
+
+    renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("evm"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "The wallet could not sign the authentication message.",
+    );
+    expect(mockPostAuthVerify).not.toHaveBeenCalled();
+  });
 });
 
 describe("TrusteeSessionProvider — 401 on verify", () => {
