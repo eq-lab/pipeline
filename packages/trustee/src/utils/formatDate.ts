@@ -22,6 +22,12 @@ const DAY_MONTH: Intl.DateTimeFormatOptions = {
   month: "short",
 };
 
+const HOUR_MINUTE_24H: Intl.DateTimeFormatOptions = {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+};
+
 /**
  * Formats a Unix-seconds timestamp (`loan_data.economics.original_maturity_date`)
  * as `"15 Dec 2026"`.
@@ -70,4 +76,27 @@ export function formatEpochDate(rfc3339: string | null | undefined): string {
   const date = new Date(rfc3339);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH_YEAR).format(date);
+}
+
+/**
+ * Formats an ISO-8601 timestamp as `"24 Jun 07:12"` (day + short month + 24h,
+ * UTC) for the Audit Log Time column (#1004); `"—"` for missing/unparseable.
+ */
+export function formatAuditTimestamp(
+  rfc3339: string | null | undefined,
+): string {
+  if (rfc3339 == null) return "—";
+  const date = new Date(rfc3339);
+  if (Number.isNaN(date.getTime())) return "—";
+  // Format day+month and time separately, then join — a single en-GB call
+  // inserts a comma ("24 Jun, 07:12").
+  const dayMonth = new Intl.DateTimeFormat("en-GB", {
+    ...DAY_MONTH,
+    timeZone: "UTC",
+  }).format(date);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    ...HOUR_MINUTE_24H,
+    timeZone: "UTC",
+  }).format(date);
+  return `${dayMonth} ${time}`;
 }
