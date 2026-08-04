@@ -151,7 +151,8 @@ describe("sessionStore — reactive expiry timer (#795)", () => {
 
     expect(getSessionState().status).toBe("unauthenticated");
     expect(getSessionToken()).toBeUndefined();
-    // The notify is what makes RouteGate re-gate to /sign-in on its own.
+    // The notify is what makes TrusteeShell re-render into the sign-in
+    // overlay on its own (#1008 render-level gating).
     expect(listener).toHaveBeenCalled();
   });
 

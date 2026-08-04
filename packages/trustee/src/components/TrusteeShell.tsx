@@ -1,29 +1,29 @@
 import { Outlet } from "@tanstack/react-router";
 import { TrusteeSidebar } from "@/components/TrusteeSidebar";
+import { SignInOverlay } from "@/components/SignInOverlay";
 import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
 
 /**
  * TrusteeShell — root layout for the Trustee admin panel.
  *
  * Reworked from the #777 scaffold's topbar into the persistent left-sidebar
- * app shell from Figma node `4116:8855` ("Aside") — issue #786. Authenticated
- * routes render `TrusteeSidebar` alongside a `flex-1` main region hosting the
- * `<Outlet/>`; `/sign-in` stays standalone with no sidebar while
- * unauthenticated (preserves the #791 behavior). The shell wrapper here is a
- * plain `<div>`, not a `<main>` — the per-flow route components already own
- * their own `<main>` landmark, so nesting `<main>` inside `<main>` is avoided.
+ * app shell from Figma node `4116:8855` ("Aside") — issue #786. The shell
+ * wrapper here is a plain `<div>`, not a `<main>` — the per-flow route
+ * components already own their own `<main>` landmark.
  *
- * This component only chooses the layout (sidebar or not) from the session
- * status. The auth *redirects* (unauthenticated → `/sign-in`, authenticated on
- * `/sign-in` → `/`) live in the root route's `beforeLoad` (`__root.tsx`), NOT a
- * render-phase `<Navigate>` — see that file for the #921 race rationale.
+ * Auth gating is **render-level, not URL-level** (#1008): while the session
+ * is not authenticated, the shell renders `SignInOverlay` on whatever URL the
+ * user visited — no `/sign-in` route, no redirects, so no navigation race can
+ * strand the URL (the #921 / #988 / #1009 bug class). Protected route content
+ * (`<Outlet/>`) is not mounted at all until `status === "authenticated"`, so
+ * no authenticated API calls fire while signed out.
  */
 export function TrusteeShell() {
   const { status } = useTrusteeSession();
   const isAuthenticated = status === "authenticated";
 
   if (!isAuthenticated) {
-    return <Outlet />;
+    return <SignInOverlay />;
   }
 
   return (

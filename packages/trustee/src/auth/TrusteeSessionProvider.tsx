@@ -28,16 +28,16 @@
  *      `unauthenticated` silently (not an error — a user choice).
  *   4. `POST /v1/auth/verify { chain_id, address, signature }`. On success the
  *      token is stored (`sessionStore`, sessionStorage-backed) and `status`
- *      flips to `authenticated`; leaving `/sign-in` is then handled by the root
- *      route's `beforeLoad` guard, re-run on the session change via
- *      `router.invalidate()` (`__root.tsx`) — NOT an imperative navigate here,
- *      and not a render-phase `<Navigate>`, both of which raced the redirect and
- *      stranded the URL on `/sign-in` (#921). A `401` here is rare (nonce race /
- *      signature mismatch) and surfaces as a verification-failed error.
+ *      flips to `authenticated` — no navigation happens anywhere in this flow:
+ *      auth gating is render-level (`TrusteeShell` swaps the sign-in overlay
+ *      for the app on the same URL, #1008), which retired the whole
+ *      redirect-race bug class (#921/#988/#1009). A `401` here is rare (nonce
+ *      race / signature mismatch) and surfaces as a verification-failed error.
  *
  * `signOut()` clears the stored token and disconnects the wallet — there is
  * no server logout endpoint (bearer-token transport, see the exec plan's
- * Decision Log), so sign-out is purely client-side.
+ * Decision Log), so sign-out is purely client-side; the overlay re-appears on
+ * the current URL via the same render-level gate.
  */
 import React, {
   createContext,
@@ -46,7 +46,6 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   useEvmWallet,
   useStellarWallet,
@@ -97,7 +96,6 @@ export function TrusteeSessionProvider({
     onCancel: onModalCancel,
     onWalletSelect: onModalWalletSelect,
   } = useConnectModal();
-  const navigate = useNavigate();
 
   // Guards against re-running the challenge/verify orchestration more than
   // once for the same connect (e.g. re-renders while awaiting the backend).
@@ -149,15 +147,8 @@ export function TrusteeSessionProvider({
           chainId,
           expiresAt: Date.now() + verified.expiresIn * 1000,
         });
-        // Do NOT imperatively navigate here (#921). Leaving `/sign-in` is
-        // handled by the root `beforeLoad` auth guard, re-run on this session
-        // change via `router.invalidate()` (`__root.tsx`). An imperative
-        // `navigate({ to: "/" })` here RACES the store update (pushes "/" before
-        // the guard sees `authenticated`, bouncing back to `/sign-in`), and the
-        // earlier render-phase `<Navigate>` raced React's commit in production —
-        // both stranded the URL on `/sign-in` with BOTH the dashboard and the
-        // sign-in gate mounted. The router's navigation lifecycle is the single,
-        // race-free source of truth for auth redirects.
+        // No navigation: TrusteeShell swaps the overlay for the app on the
+        // same URL when `status` flips (#1008 render-level gating).
       } catch {
         // A 401 here is rare on the happy path (nonce expired / signature
         // mismatch / already consumed) — unlike the challenge step, a 401
@@ -170,9 +161,6 @@ export function TrusteeSessionProvider({
         );
       }
     },
-    // No `navigate` dependency — `runSignIn` no longer imperatively redirects
-    // (#921); the root `beforeLoad` guard (re-run via `router.invalidate()` on
-    // the session change) handles leaving `/sign-in` on `status → authenticated`.
     [],
   );
 
@@ -321,8 +309,9 @@ export function TrusteeSessionProvider({
     setSession(undefined);
     if (evmWallet.isConnected) evmWallet.disconnect();
     if (stellarWallet.isConnected) stellarWallet.disconnect();
-    void navigate({ to: "/sign-in" });
-  }, [evmWallet, stellarWallet, navigate]);
+    // No navigation — clearing the session re-renders TrusteeShell into the
+    // sign-in overlay on the current URL (#1008).
+  }, [evmWallet, stellarWallet]);
 
   const value: TrusteeSessionContextValue = {
     ...sessionState,

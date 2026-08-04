@@ -1,16 +1,15 @@
 /**
- * Tests for the Trustee sign-in gate route (Figma node 4174-31660).
+ * Tests for the Trustee sign-in gate overlay (Figma node 4174-31660).
  *
- * Rewritten for #791 — the previous version asserted the SignInCard's
- * "Connect Wallet" click was a no-op (the #778/#787-deferred contract). That
- * contract is now inverted: clicking "Connect Wallet" invokes
- * `useTrusteeSession().signIn()`. This suite mocks `useTrusteeSession` (per
- * the exec plan's test strategy) rather than mounting the full wallet/router
- * provider stack, so it stays a focused unit test of the card + route render.
+ * Moved from the retired `/sign-in` route (#1008): the gate is now
+ * `SignInOverlay`, rendered by `TrusteeShell` on the current URL whenever the
+ * session is not authenticated — no auth route, no redirects. This suite mocks
+ * `useTrusteeSession` rather than mounting the full wallet/router provider
+ * stack, so it stays a focused unit test of the card + overlay render.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { Route } from "./sign-in";
+import { SignInOverlay } from "./SignInOverlay";
 
 const mockSignIn = vi.fn();
 const mockSignOut = vi.fn();
@@ -29,9 +28,8 @@ vi.mock("@/auth/TrusteeSessionProvider", () => ({
   }),
 }));
 
-function renderRoute() {
-  const Page = Route.options.component as React.ComponentType;
-  return render(<Page />);
+function renderOverlay() {
+  return render(<SignInOverlay />);
 }
 
 beforeEach(() => {
@@ -44,13 +42,13 @@ beforeEach(() => {
   };
 });
 
-describe("Trustee sign-in route", () => {
+describe("Trustee sign-in overlay", () => {
   it("renders without throwing", () => {
-    expect(() => renderRoute()).not.toThrow();
+    expect(() => renderOverlay()).not.toThrow();
   });
 
   it("shows the sign-in heading and subtext", () => {
-    renderRoute();
+    renderOverlay();
     expect(
       screen.getByRole("heading", { name: "Sign in to access Pipeline" }),
     ).toBeInTheDocument();
@@ -62,7 +60,7 @@ describe("Trustee sign-in route", () => {
   });
 
   it("shows the Connect Wallet button and footer caption", () => {
-    renderRoute();
+    renderOverlay();
     expect(
       screen.getByRole("button", { name: "Connect Wallet" }),
     ).toBeInTheDocument();
@@ -72,13 +70,13 @@ describe("Trustee sign-in route", () => {
   });
 
   it("renders the sign-in card and overlay test hooks", () => {
-    renderRoute();
+    renderOverlay();
     expect(screen.getByTestId("sign-in-overlay")).toBeInTheDocument();
     expect(screen.getByTestId("sign-in-card")).toBeInTheDocument();
   });
 
   it("clicking Connect Wallet invokes useTrusteeSession().signIn()", () => {
-    renderRoute();
+    renderOverlay();
 
     fireEvent.click(screen.getByRole("button", { name: "Connect Wallet" }));
 
@@ -91,7 +89,7 @@ describe("Trustee sign-in route", () => {
       address: undefined,
       error: undefined,
     };
-    renderRoute();
+    renderOverlay();
 
     const button = screen.getByRole("button", { name: "Connecting…" });
     expect(button).toBeDisabled();
@@ -104,7 +102,7 @@ describe("Trustee sign-in route", () => {
       error:
         "This wallet is not authorized to sign in. Contact your administrator.",
     };
-    renderRoute();
+    renderOverlay();
 
     expect(screen.getByTestId("sign-in-error")).toHaveTextContent(
       "This wallet is not authorized to sign in. Contact your administrator.",
@@ -121,7 +119,7 @@ describe("Trustee sign-in route", () => {
       error:
         "This wallet is not authorized to sign in. Contact your administrator.",
     };
-    renderRoute();
+    renderOverlay();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Try a different wallet" }),

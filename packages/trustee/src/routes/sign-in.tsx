@@ -1,42 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { SignInCard } from "@/components/SignInCard";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
 /**
- * Trustee sign-in gate (Figma node `4174-31660`, "Unauthenticated Overlay").
- *
- * Renders the wallet-connect "Login Prompt" card centered over a full-bleed
- * translucent/blurred overlay, matching the Figma frame. The overlay's own
- * tint (`rgba(246,248,248,0.8)`) has no equivalent design token today, so it
- * is a documented one-off arbitrary value scoped to this route.
- *
- * Wired to the real sign-in flow (#791): `SignInCard` calls
- * `useTrusteeSession().signIn()`, which drives wallet-connect → backend
- * signature challenge → sign → verify → session. The root `beforeLoad` auth
- * guard redirects an already-authenticated visitor away from `/sign-in` to `/`;
- * `TrusteeShell` renders this route standalone — the sidebar nav (#786) is
- * hidden while unauthenticated.
- *
- * Out of scope here: the "Overview" heading + timestamp header row visible
- * behind the overlay in the Figma frame is the dashboard shell's content,
- * tracked by #786 — this route renders only the gate itself on the standard
- * paper background.
+ * Legacy-URL shim (#1008): the sign-in gate is no longer a route — it renders
+ * as an overlay on the current URL (`TrusteeShell` → `SignInOverlay`). This
+ * route exists only so stale `/sign-in` bookmarks and open tabs from before
+ * the change land on `/` instead of a 404; the overlay shows there when the
+ * visitor is unauthenticated.
  */
-function SignIn() {
-  return (
-    <main
-      className={[
-        // No sidebar/topbar on this standalone route (#786), so the overlay
-        // is a full viewport height rather than offset by chrome.
-        "flex min-h-screen w-full items-center justify-center p-4",
-        "bg-[rgba(246,248,248,0.8)] backdrop-blur-[6px]",
-      ].join(" ")}
-      data-testid="sign-in-overlay"
-    >
-      <SignInCard />
-    </main>
-  );
-}
-
 export const Route = createFileRoute("/sign-in")({
-  component: SignIn,
+  beforeLoad: () => {
+    throw redirect({ to: "/" });
+  },
 });
