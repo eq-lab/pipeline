@@ -186,7 +186,7 @@ export interface LoanBookEntry {
   duration_days: number;
   /** Senior interest rate, decimal-fraction string. Not rendered on this page. */
   rate: string;
-  /** Trade-finance protection instrument. Not rendered on this page. */
+  /** Trade-finance protection instrument. Backs the loan-detail Protection registry row (#1014). */
   protection: string | null;
   /** Loan status from the latest snapshot: `"Performing"`, `"WatchList"`, `"Default"`, `"Closed"`, … */
   status: string;

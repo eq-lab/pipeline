@@ -16,7 +16,8 @@
  *   - **Loan-lifecycle stepper** ← derived from the on-chain status
  *     (`buildLifecycle`); no longer a static fixture (design assignment §3.2).
  *   - **Registry state & derived** ← `GET /v1/loan-book/{loan_id}/financials`
- *     (`useLoanFinancials`, issue #852).
+ *     (`useLoanFinancials`, issue #852), plus the loan-book row's `protection`
+ *     for the Protection row (#1014).
  *   - **Summary tiles** ← the matching `/v1/loan-book` row plus
  *     `/financials` for unminted yield / epoch APY (issue #874).
  *   - **Action availability / explanatory copy** ← static product configuration
@@ -556,7 +557,10 @@ function formatEpoch(epoch: Epoch | null): string {
   );
 }
 
-export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
+export function buildFinancials(
+  data: LoanFinancialsResponse,
+  protection: string | null = null,
+): RegistryRow[] {
   const loc = data.location;
   const statusLocation = loc
     ? `${data.status} · ${loc.location_type} ${loc.location_identifier}`.trim()
@@ -564,6 +568,13 @@ export function buildFinancials(data: LoanFinancialsResponse): RegistryRow[] {
 
   return [
     { label: "Status / location", value: statusLocation, tag: "chain" },
+    // Deal-level trade-finance protection instrument (#1014) — served on the
+    // loan-book row (relayer DB, from the submission payload; never on-chain).
+    {
+      label: "Protection",
+      value: protection != null && protection.length > 0 ? protection : "—",
+      tag: "relayer",
+    },
     { label: "Epochs", value: formatEpoch(data.epoch), tag: "chain" },
     {
       label: "Recorded counters",
@@ -697,6 +708,7 @@ export function buildSummaryTiles(
  */
 export function buildRegistryState(
   financials: UseLoanFinancialsResult,
+  protection: string | null = null,
 ): RegistryView {
   if (financials.isLoading) {
     return { state: "loading", errorMessage: null, rows: [] };
@@ -714,7 +726,7 @@ export function buildRegistryState(
     return {
       state: "ready",
       errorMessage: null,
-      rows: buildFinancials(financials.data),
+      rows: buildFinancials(financials.data, protection),
     };
   }
   return { state: "ready", errorMessage: null, rows: [] };
@@ -820,7 +832,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),
     tiles,
-    registry: buildRegistryState(financials),
+    registry: buildRegistryState(financials, entry?.protection ?? null),
     currentStage,
     otherActions,
     priceCollateral,

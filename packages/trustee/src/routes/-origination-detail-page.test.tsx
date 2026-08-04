@@ -150,6 +150,9 @@ const READY_RESULT: OriginationDetailResult = {
     commodity: "Gold pyrite concentrate",
     corridor: "Peru → China",
     governingLaw: "England & Wales",
+    protection: "LC at sight",
+    locationLabel: "Warehouse",
+    locationValue: "SGS bonded stockpile, Callao, Peru",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
@@ -216,7 +219,7 @@ describe("Origination details route", () => {
     expect(loanTerms.textContent).toContain("15 Dec 2026");
   });
 
-  it("renders the Deal Details card's four rows plus the documents list", () => {
+  it("renders the Deal Details card's six rows plus the documents list", () => {
     mockDetail(READY_RESULT);
     renderRoute();
     const dealDetails = screen.getByTestId("origination-detail-deal-details");
@@ -228,7 +231,22 @@ describe("Origination details route", () => {
     expect(dealDetails.textContent).toContain("Peru → China");
     expect(dealDetails.textContent).toContain("Governing law");
     expect(dealDetails.textContent).toContain("England & Wales");
+    expect(dealDetails.textContent).toContain("Protection");
+    expect(dealDetails.textContent).toContain("LC at sight");
+    // #1014: the location row's LABEL is the location_type itself.
+    expect(dealDetails.textContent).toContain("Warehouse");
+    expect(dealDetails.textContent).toContain(
+      "SGS bonded stockpile, Callao, Peru",
+    );
+    expect(dealDetails.textContent).not.toContain("Location");
     expect(dealDetails.textContent).toContain("Offtake agreement.pdf");
+    // #1014: the two new rows sit directly after Governing law.
+    expect(dealDetails.textContent!.indexOf("Governing law")).toBeLessThan(
+      dealDetails.textContent!.indexOf("Protection"),
+    );
+    expect(dealDetails.textContent!.indexOf("Protection")).toBeLessThan(
+      dealDetails.textContent!.indexOf("Warehouse"),
+    );
   });
 
   it("renders the empty-documents state as 'No documents provided.'", () => {

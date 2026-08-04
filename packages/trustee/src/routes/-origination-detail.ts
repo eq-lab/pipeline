@@ -32,6 +32,11 @@
  *     (+ " p.a." suffix per Figma "14.0% p.a.").
  *   - Corridor    → `loan_data.corridor`, arrow-formatted (same regex as #813).
  *   - Governing law → `loan_data.governing_law`.
+ *   - Protection  → `loan_data.protection` (optional on the wire — `—` when absent).
+ *   - Location    → `loan_data.initial_location` (#1014): the row LABEL is
+ *     `location_type` itself (e.g. "Warehouse"), falling back to the generic
+ *     "Location" when absent; the value is `location_identifier` (`—` when
+ *     absent).
  *   - Documents   → the top-level `submission.documents` (NOT `loan_data.documents`
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
@@ -146,6 +151,24 @@ function formatCorridor(value: unknown): string {
 }
 
 /**
+ * Splits `loan_data.initial_location` into the Location row's label/value pair
+ * (#1014): the label is `location_type` itself (e.g. "Warehouse"), falling
+ * back to the generic "Location" when absent; the value is
+ * `location_identifier` (`"—"` when absent). Never fabricates either half.
+ */
+function mapLocation(value: unknown): { label: string; value: string } {
+  const location =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const type = location.location_type;
+  return {
+    label: typeof type === "string" && type.length > 0 ? type : "Location",
+    value: safeString(location.location_identifier),
+  };
+}
+
+/**
  * Formats one of the submission's four monetary economics fields
  * (`original_facility_size` / `original_senior_tranche` /
  * `original_equity_tranche` / `original_offtaker_price`) for display.
@@ -192,6 +215,11 @@ export interface DealDetailsDisplay {
   commodity: string;
   corridor: string;
   governingLaw: string;
+  protection: string;
+  /** Row label = `initial_location.location_type` ("Location" when absent). */
+  locationLabel: string;
+  /** Row value = `initial_location.location_identifier` (`—` when absent). */
+  locationValue: string;
   documents: DocumentDisplay[];
 }
 
@@ -289,12 +317,16 @@ function mapLoanTerms(submission: SubmissionView): LoanTermsDisplay {
 function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
   const loanData: Partial<SubmissionView["loan_data"]> =
     submission.loan_data ?? {};
+  const location = mapLocation(loanData.initial_location);
 
   return {
     originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
     corridor: formatCorridor(loanData.corridor),
     governingLaw: safeString(loanData.governing_law),
+    protection: safeString(loanData.protection),
+    locationLabel: location.label,
+    locationValue: location.value,
     documents: Array.isArray(submission.documents)
       ? submission.documents.map((doc) => ({
           name: safeString(doc?.name),
@@ -423,6 +455,9 @@ export function useOriginationDetail(
           commodity: "—",
           corridor: "—",
           governingLaw: "—",
+          protection: "—",
+          locationLabel: "Location",
+          locationValue: "—",
           documents: [],
         },
         statusKind: "unknown",
