@@ -47,6 +47,7 @@ const CAPITAL_ALLOCATION_RESPONSE = {
   buckets: {
     capital_wallet: "8400000.000000",
     in_transit: "4950000.000000",
+    withdrawal_queue: null,
     trust_account: "1200000.000000",
     deployed: "96000000.000000",
     tbills: "4640000.000000",

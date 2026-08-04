@@ -120,6 +120,7 @@ beforeEach(() => {
       buckets: {
         capital_wallet: null,
         in_transit: null,
+        withdrawal_queue: null,
         trust_account: null,
         deployed: null,
         tbills: null,

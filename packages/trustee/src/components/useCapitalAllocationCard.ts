@@ -102,7 +102,12 @@ export interface UseCapitalAllocationCardResult {
   errorMessage: string | null;
   /** Fully-expanded whole-dollar total, e.g. "$115,190,000"; "—" when null. */
   totalDisplay: string;
-  /** Five legend rows in Figma order: Capital Wallet, In transit, Trust account, Deployed, T-Bills (USYC). */
+  /**
+   * Six legend rows: Capital Wallet, In transit, Trust account, Withdrawal
+   * queue, Deployed, T-Bills (USYC) — the Figma's five buckets plus the
+   * `withdrawal_queue` bucket the backend added later (#933, rendered per
+   * #1020).
+   */
   legend: AllocationLegendRow[];
 }
 
@@ -257,6 +262,19 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
         totalNum,
       ),
       barFraction: computeBarFraction(data?.buckets.trust_account, totalNum),
+    },
+    {
+      key: "withdrawal_queue",
+      label: "Withdrawal queue",
+      value: formatCompactUsd(data?.buckets.withdrawal_queue),
+      // Not in the Figma frame (the bucket postdates it, #933/#1020) — a
+      // distinct scoped one-off alongside the other non-token legend colors.
+      color: "#3d8f8f",
+      percentDisplay: computePercentDisplay(
+        data?.buckets.withdrawal_queue,
+        totalNum,
+      ),
+      barFraction: computeBarFraction(data?.buckets.withdrawal_queue, totalNum),
     },
     {
       key: "deployed",
