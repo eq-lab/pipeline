@@ -6,6 +6,7 @@
  * Covers:
  *   - Approve sends `{ decision: "Approved" }` with NO `reason` key at all.
  *   - Reject sends `{ decision: "Rejected", reason }`.
+ *   - Request changes sends `{ decision: "ChangesRequested", reason }` (#1017).
  *   - POST method + `Content-Type: application/json` header.
  *   - On success, `invalidateQueries(["loan-submissions"])` fires.
  *   - On error, the thrown `ApiError` (with `.status`) propagates.
@@ -76,6 +77,27 @@ describe("useReviewSubmission", () => {
     expect(body).toEqual({
       decision: "Rejected",
       reason: "Missing export permit",
+    });
+  });
+
+  it("sends { decision: 'ChangesRequested', reason } on request changes (#1017)", async () => {
+    mockApiFetch.mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useReviewSubmission(), { wrapper });
+
+    result.current.mutate({
+      id: 7,
+      decision: "ChangesRequested",
+      reason: "Assay certificate missing the moisture figure",
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const [path, init] = mockApiFetch.mock.calls[0]!;
+    expect(path).toBe("/v1/loan-book/submissions/7/review");
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body).toEqual({
+      decision: "ChangesRequested",
+      reason: "Assay certificate missing the moisture figure",
     });
   });
 

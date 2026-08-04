@@ -4,13 +4,16 @@
  * `POST /v1/loan-book/submissions/{id}/review`.
  *
  * Contract source of truth: `packages/api/src/routes/loan_book.rs`,
- * `review_submission` (unchanged by this issue):
+ * `review_submission`:
  *   - Approve → `{ decision: "Approved" }`, **no** `reason` key at all
  *     (sending one → `400`).
  *   - Reject  → `{ decision: "Rejected", reason: "<non-empty>" }`
  *     (missing/empty → `400`).
- *   - Only `InReview` submissions are reviewable — an already-decided one
- *     → `409 Conflict`.
+ *   - Request changes → `{ decision: "ChangesRequested", reason: "<non-empty>" }`
+ *     (missing/empty → `400`, backend #949 / frontend #1017). Non-final: the
+ *     submission stays open and may be reviewed again.
+ *   - Only `InReview` and `ChangesRequested` submissions are reviewable — an
+ *     already-`Approved`/`Rejected` one → `409 Conflict`.
  *   - `401` missing/invalid/expired token (`ApiUnauthorizedError`); `403`
  *     caller lacks the `trustee` role; `200` on success with an empty body.
  *
@@ -26,12 +29,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
-export type ReviewDecision = "Approved" | "Rejected";
+export type ReviewDecision = "Approved" | "Rejected" | "ChangesRequested";
 
 export interface ReviewSubmissionInput {
   id: number;
   decision: ReviewDecision;
-  /** Required (non-empty) when `decision === "Rejected"`; must be omitted for "Approved". */
+  /**
+   * Required (non-empty) when `decision` is `"Rejected"` or
+   * `"ChangesRequested"`; must be omitted for `"Approved"`.
+   */
   reason?: string;
 }
 
@@ -44,7 +50,7 @@ async function postReview(input: ReviewSubmissionInput): Promise<void> {
   const body: { decision: ReviewDecision; reason?: string } = {
     decision: input.decision,
   };
-  if (input.decision === "Rejected") {
+  if (input.decision === "Rejected" || input.decision === "ChangesRequested") {
     body.reason = input.reason;
   }
 

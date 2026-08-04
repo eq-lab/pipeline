@@ -1,9 +1,12 @@
 /**
- * Page orchestration hook for the Origination details page's Approve/Reject
- * controls. Co-located with the route per `docs/FRONTEND.md` rule 2 —
- * `origination.$id.tsx` stays JSX-only; this hook owns the reject-dialog AND
- * (as of issue #838) the approve-mint-confirmation-dialog open/close state,
- * and maps mutation errors to user-facing copy.
+ * Page orchestration hook for the Origination details page's
+ * Approve/Reject/Request-changes controls. Co-located with the route per
+ * `docs/FRONTEND.md` rule 2 — `origination.$id.tsx` stays JSX-only; this hook
+ * owns the reject-dialog, the request-changes-dialog (#1017) AND (as of issue
+ * #838) the approve-mint-confirmation-dialog open/close state, and maps
+ * mutation errors to user-facing copy. Request changes mirrors Reject: a pure
+ * DB review call (`{ decision: "ChangesRequested", reason }`, backend #949) —
+ * no on-chain step, non-final (the submission stays open for re-review).
  *
  * ## Approve confirmation gate (issue #838, Figma node `4116:13943`)
  *
@@ -100,6 +103,15 @@ export interface UseOriginationReviewResult {
   cancelReject: () => void;
   /** Fires the Reject mutation with the given (already-trimmed) reason. */
   submitReject: (reason: string) => void;
+  /** Opens the request-changes reason dialog (#1017). */
+  openRequestChanges: () => void;
+  /** Closes the request-changes dialog without submitting. */
+  cancelRequestChanges: () => void;
+  /**
+   * Fires the ChangesRequested review mutation with the given
+   * (already-trimmed) reason — a pure DB call, no on-chain step (#1017).
+   */
+  submitRequestChanges: (reason: string) => void;
   /** True while the mint, the review call, or Reject is in flight. */
   isPending: boolean;
   /**
@@ -115,6 +127,8 @@ export interface UseOriginationReviewResult {
   approveOpen: boolean;
   /** Whether the reject-reason dialog is open. */
   rejectOpen: boolean;
+  /** Whether the request-changes reason dialog is open (#1017). */
+  requestChangesOpen: boolean;
   /**
    * On-chain id of the loan drawn in this session (#876) — lets the Approved
    * banner deep-link to `/loans/{id}`. `null` before a successful mint, or if
@@ -194,6 +208,7 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
   const drawLoanMutation = useDrawLoan();
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [requestChangesOpen, setRequestChangesOpen] = useState(false);
   const submissionId = Number(id);
 
   // Shares the `["loan-submissions", ...]` query cache with
@@ -281,6 +296,27 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     );
   }
 
+  // Request-changes trio (#1017) — mirrors the reject trio exactly: a pure DB
+  // review call (no mint, no wallet), sharing `reviewMutation` and its
+  // error mapping; the footer flips to the #950 Changes-requested banner via
+  // the same list-invalidation refetch.
+  function openRequestChanges() {
+    reviewMutation.reset();
+    setRequestChangesOpen(true);
+  }
+
+  function cancelRequestChanges() {
+    setRequestChangesOpen(false);
+    reviewMutation.reset();
+  }
+
+  function submitRequestChanges(reason: string) {
+    reviewMutation.mutate(
+      { id: submissionId, decision: "ChangesRequested", reason },
+      { onSuccess: () => setRequestChangesOpen(false) },
+    );
+  }
+
   const errorMessage = drawLoanMutation.error
     ? mapMintError(drawLoanMutation.error)
     : reviewMutation.error
@@ -304,11 +340,15 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     openReject,
     cancelReject,
     submitReject,
+    openRequestChanges,
+    cancelRequestChanges,
+    submitRequestChanges,
     isPending: drawLoanMutation.isPending || reviewMutation.isPending,
     mintingLabel,
     errorMessage,
     approveOpen,
     rejectOpen,
+    requestChangesOpen,
     mintedLoanId: drawLoanMutation.mintedLoanId,
   };
 }
