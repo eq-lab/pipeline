@@ -105,15 +105,17 @@ const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/origination")!;
  * scroll/clip.
  *
  * The proportions were rebalanced by #1015 (they previously followed the
- * Figma's relative widths): Rate ("17.5%") and Submitted ("4 Aug") are
- * `max-content` tracks — their values are short and bounded, so they take
- * exactly what they need and are NEVER truncated — while the reclaimed space
- * flows to Commodity and especially Corridor
- * ("Peru (Callao) → China (Fangchenggang)"), whose real values were
- * truncating while Submitted sat mostly empty.
+ * Figma's relative widths). The header row and each body row are SEPARATE
+ * grid containers, so every track must resolve identically in all of them —
+ * content-driven sizes (`max-content`/`auto`) would compute per-container
+ * and misalign the columns. Hence: the bounded-content columns — Facility
+ * (compact "$6.5M"), Rate ("17.5%"), Maturity ("13 Feb 2027"), Submitted
+ * ("4 Aug") — get FIXED pixel tracks wide enough for their worst case and
+ * are never truncated, while Originator/Commodity/Corridor split the
+ * remaining width and ellipsis-truncate when space runs out.
  */
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.3fr) minmax(0,1.8fr) minmax(0,0.9fr) minmax(0,1.5fr) max-content minmax(0,0.9fr) max-content 210px";
+  "minmax(0,1.2fr) minmax(0,1.6fr) 100px minmax(0,1.6fr) 80px 120px 100px 210px";
 
 /**
  * Row/table border color — the exact Figma literal (`rgba(56,55,53,0.18)`,
