@@ -170,6 +170,13 @@ Auth is enforced in two independent layers:
    `useAuthRedirect` enforces it on **mid-session** status changes (sign-in completing, sign-out,
    token expiry) that `beforeLoad` never sees. `signOut()` navigates to `/sign-in` explicitly. The
    `/sign-in` route itself renders `null` — the gate UI always comes from the shell.
+   `useAuthRedirect` also **self-heals the address bar**: external history writes (observed on
+   staging — e.g. the wallet modal restoring its pre-open URL on close) can overwrite
+   `window.location` without the router noticing, leaving the URL on `/sign-in` while the app
+   renders `/`. No router/React state reflects that divergence, so the hook compares
+   `window.location.pathname` against router state on every status/path change (plus short delayed
+   re-checks for late clobbers) and re-stamps the address bar via `history.replaceState` — router
+   state is the source of truth.
 
 If a redirect misfires, the failure mode is a briefly-wrong address bar — never wrong or blank
 content. **History:** three URL-synchronization approaches raced in production builds and stranded
