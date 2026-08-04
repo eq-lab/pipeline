@@ -90,6 +90,7 @@ const FULL_SUBMISSION: SubmissionView = {
       tracking_url: "https://example.com",
       updated_at: 1_750_000_000,
     },
+    protection: "LC at sight",
   },
 };
 
@@ -135,6 +136,8 @@ describe("useOriginationDetail — ready state with router-state submission", ()
     );
     expect(result.current.dealDetails.corridor).toBe("PE → CN");
     expect(result.current.dealDetails.governingLaw).toBe("England & Wales");
+    expect(result.current.dealDetails.protection).toBe("LC at sight");
+    expect(result.current.dealDetails.location).toBe("Vessel — MV Example");
     expect(result.current.dealDetails.documents).toEqual([
       { name: "Offtake agreement.pdf", uri: "ipfs://doc1" },
     ]);
@@ -327,6 +330,43 @@ describe("useOriginationDetail — defensive reads", () => {
     expect(result.current.loanTerms.rate).toBe("—");
     expect(result.current.loanTerms.startDate).toBe("—");
     expect(result.current.loanTerms.maturityDate).toBe("—");
+  });
+
+  it("renders '—' for a missing protection and a malformed initial_location (#1014)", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      loan_data: {
+        ...FULL_SUBMISSION.loan_data,
+        protection: undefined,
+        // @ts-expect-error — intentionally malformed for the defensive-read test
+        initial_location: undefined,
+      },
+    };
+    mockSubmissions([submission]);
+
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.dealDetails.protection).toBe("—");
+    expect(result.current.dealDetails.location).toBe("—");
+  });
+
+  it("renders a lone location half alone — no dash fabricated (#1014)", () => {
+    const submission: SubmissionView = {
+      ...FULL_SUBMISSION,
+      loan_data: {
+        ...FULL_SUBMISSION.loan_data,
+        initial_location: {
+          ...FULL_SUBMISSION.loan_data.initial_location,
+          location_type: "",
+          location_identifier: "SGS bonded stockpile, Callao, Peru",
+        },
+      },
+    };
+    mockSubmissions([submission]);
+
+    const { result } = renderHook(() => useOriginationDetail("7", submission));
+    expect(result.current.dealDetails.location).toBe(
+      "SGS bonded stockpile, Callao, Peru",
+    );
   });
 
   it("renders an empty documents state gracefully when documents is []", () => {

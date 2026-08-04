@@ -430,13 +430,14 @@ function makeFinancialsQuery(
 
 describe("buildFinancials", () => {
   it("maps the financials to registry rows (amounts displayed as served)", () => {
-    const rows = buildFinancials(makeFinancials());
+    const rows = buildFinancials(makeFinancials(), "LC at sight");
     expect(rows).toEqual([
       {
         label: "Status / location",
         value: "Performing · Vessel MV Andes",
         tag: "chain",
       },
+      { label: "Protection", value: "LC at sight", tag: "relayer" },
       {
         label: "Epochs",
         value: "1 · 10.0% · 18 Jun 2026 → 19 Aug 2029",
@@ -464,7 +465,17 @@ describe("buildFinancials", () => {
 
   it("renders — for the Epochs row when no epoch is on record (#857)", () => {
     const rows = buildFinancials(makeFinancials({ epoch: null }));
-    expect(rows[1]).toEqual({ label: "Epochs", value: "—", tag: "chain" });
+    expect(rows[2]).toEqual({ label: "Epochs", value: "—", tag: "chain" });
+  });
+
+  it("renders — for the Protection row when the loan-book row serves none (#1014)", () => {
+    const rows = buildFinancials(makeFinancials());
+    expect(rows[1]).toEqual({
+      label: "Protection",
+      value: "—",
+      tag: "relayer",
+    });
+    expect(buildFinancials(makeFinancials(), "")[1]?.value).toBe("—");
   });
 });
 
@@ -617,7 +628,17 @@ describe("buildRegistryState", () => {
       makeFinancialsQuery({ data: makeFinancials() }),
     );
     expect(view.state).toBe("ready");
-    expect(view.rows).toHaveLength(6);
+    expect(view.rows).toHaveLength(7);
+  });
+
+  it("threads the loan-book protection value into the Protection row (#1014)", () => {
+    const view = buildRegistryState(
+      makeFinancialsQuery({ data: makeFinancials() }),
+      "CIF Incoterms 2020",
+    );
+    expect(view.rows.find((r) => r.label === "Protection")?.value).toBe(
+      "CIF Incoterms 2020",
+    );
   });
 });
 

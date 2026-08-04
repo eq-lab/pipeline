@@ -32,6 +32,10 @@
  *     (+ " p.a." suffix per Figma "14.0% p.a.").
  *   - Corridor    → `loan_data.corridor`, arrow-formatted (same regex as #813).
  *   - Governing law → `loan_data.governing_law`.
+ *   - Protection  → `loan_data.protection` (optional on the wire — `—` when absent).
+ *   - Location    → `loan_data.initial_location`, rendered
+ *     `{location_type} — {location_identifier}` (#1014); a half missing on the
+ *     wire renders alone, both missing renders `—`.
  *   - Documents   → the top-level `submission.documents` (NOT `loan_data.documents`
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
@@ -146,6 +150,23 @@ function formatCorridor(value: unknown): string {
 }
 
 /**
+ * Formats `loan_data.initial_location` as
+ * `"{location_type} — {location_identifier}"` (e.g. "Warehouse — SGS bonded
+ * stockpile, Callao, Peru", #1014). Either half may be absent on the wire —
+ * the present half renders alone; `"—"` when neither is a non-empty string.
+ */
+function formatLocation(value: unknown): string {
+  const location =
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const parts = [location.location_type, location.location_identifier].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+  return parts.length > 0 ? parts.join(" — ") : "—";
+}
+
+/**
  * Formats one of the submission's four monetary economics fields
  * (`original_facility_size` / `original_senior_tranche` /
  * `original_equity_tranche` / `original_offtaker_price`) for display.
@@ -192,6 +213,8 @@ export interface DealDetailsDisplay {
   commodity: string;
   corridor: string;
   governingLaw: string;
+  protection: string;
+  location: string;
   documents: DocumentDisplay[];
 }
 
@@ -295,6 +318,8 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
     commodity: safeString(loanData.commodity),
     corridor: formatCorridor(loanData.corridor),
     governingLaw: safeString(loanData.governing_law),
+    protection: safeString(loanData.protection),
+    location: formatLocation(loanData.initial_location),
     documents: Array.isArray(submission.documents)
       ? submission.documents.map((doc) => ({
           name: safeString(doc?.name),
@@ -423,6 +448,8 @@ export function useOriginationDetail(
           commodity: "—",
           corridor: "—",
           governingLaw: "—",
+          protection: "—",
+          location: "—",
           documents: [],
         },
         statusKind: "unknown",
