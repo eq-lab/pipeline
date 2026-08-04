@@ -21,7 +21,9 @@
  * the red "Rejected · <date> — <reason>" banner; both banner cases assert
  * the action buttons are ABSENT. Backend merged/lifecycle statuses normalize
  * to Approved in the presenter (#892). The inert "Request changes" button
- * (issue #838) no longer exists at all.
+ * #838 removed is back as a WIRED control (#1017): it opens the
+ * `RequestChangesDialog` (`review.openRequestChanges`), whose Cancel/Submit
+ * call the mocked `cancelRequestChanges`/`submitRequestChanges`.
  *
  * Approve/Reject wiring (issue #829, extended by #831, gated behind
  * confirmation dialogs by #838): `useOriginationReview` is mocked (like
@@ -112,11 +114,15 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     openReject: vi.fn(),
     cancelReject: vi.fn(),
     submitReject: vi.fn(),
+    openRequestChanges: vi.fn(),
+    cancelRequestChanges: vi.fn(),
+    submitRequestChanges: vi.fn(),
     isPending: false,
     mintingLabel: null,
     errorMessage: null,
     approveOpen: false,
     rejectOpen: false,
+    requestChangesOpen: false,
     mintedLoanId: null,
     ...overrides,
   });
@@ -151,8 +157,7 @@ const READY_RESULT: OriginationDetailResult = {
     corridor: "Peru → China",
     governingLaw: "England & Wales",
     protection: "LC at sight",
-    locationLabel: "Warehouse",
-    locationValue: "SGS bonded stockpile, Callao, Peru",
+    location: "Warehouse — SGS bonded stockpile, Callao, Peru",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
@@ -233,19 +238,18 @@ describe("Origination details route", () => {
     expect(dealDetails.textContent).toContain("England & Wales");
     expect(dealDetails.textContent).toContain("Protection");
     expect(dealDetails.textContent).toContain("LC at sight");
-    // #1014: the location row's LABEL is the location_type itself.
-    expect(dealDetails.textContent).toContain("Warehouse");
+    expect(dealDetails.textContent).toContain("Location");
+    // #1014: the location TYPE leads the value under the fixed "Location" label.
     expect(dealDetails.textContent).toContain(
-      "SGS bonded stockpile, Callao, Peru",
+      "Warehouse — SGS bonded stockpile, Callao, Peru",
     );
-    expect(dealDetails.textContent).not.toContain("Location");
     expect(dealDetails.textContent).toContain("Offtake agreement.pdf");
     // #1014: the two new rows sit directly after Governing law.
     expect(dealDetails.textContent!.indexOf("Governing law")).toBeLessThan(
       dealDetails.textContent!.indexOf("Protection"),
     );
     expect(dealDetails.textContent!.indexOf("Protection")).toBeLessThan(
-      dealDetails.textContent!.indexOf("Warehouse"),
+      dealDetails.textContent!.indexOf("Location"),
     );
   });
 
@@ -333,17 +337,18 @@ describe("Origination details route", () => {
   // ── Status-conditional detail footer (issue #823) ─────────────────────────
 
   describe("status-conditional footer", () => {
-    it("InReview: Reject/Approve are enabled; no Request changes button; NO banner", () => {
+    it("InReview: Reject/Request changes/Approve are enabled (#1017); NO banner", () => {
       mockDetail(READY_RESULT); // statusKind: "in-review"
       renderRoute();
 
-      expect(
-        screen.queryByTestId("origination-detail-request-changes"),
-      ).not.toBeInTheDocument();
-
       const rejectButton = screen.getByTestId("origination-detail-reject");
+      const requestChangesButton = screen.getByTestId(
+        "origination-detail-request-changes",
+      );
       const approveButton = screen.getByTestId("origination-detail-approve");
       expect(rejectButton).not.toBeDisabled();
+      expect(requestChangesButton).not.toBeDisabled();
+      expect(requestChangesButton).toHaveTextContent("Request changes");
       expect(approveButton).not.toBeDisabled();
       expect(approveButton).toHaveTextContent("Approve");
 
@@ -497,12 +502,25 @@ describe("Origination details route", () => {
       expect(openReject).toHaveBeenCalledTimes(1);
     });
 
-    it("disables Reject/Approve while isPending", () => {
+    it("clicking Request changes calls review.openRequestChanges() (#1017)", () => {
+      const openRequestChanges = vi.fn();
+      mockReview({ openRequestChanges });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.click(screen.getByTestId("origination-detail-request-changes"));
+      expect(openRequestChanges).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables Reject/Request changes/Approve while isPending", () => {
       mockReview({ isPending: true });
       mockDetail(READY_RESULT);
       renderRoute();
 
       expect(screen.getByTestId("origination-detail-reject")).toBeDisabled();
+      expect(
+        screen.getByTestId("origination-detail-request-changes"),
+      ).toBeDisabled();
       expect(screen.getByTestId("origination-detail-approve")).toBeDisabled();
     });
 
@@ -551,6 +569,66 @@ describe("Origination details route", () => {
       expect(screen.getByTestId("approve-mint-error")).toHaveTextContent(
         "Signature cancelled. Click Approve again to retry.",
       );
+    });
+
+    it("does NOT render the inline error while the request-changes dialog is open (the dialog owns it, #1017)", () => {
+      mockReview({
+        errorMessage: "This submission has already been reviewed.",
+        requestChangesOpen: true,
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      expect(
+        screen.queryByTestId("origination-detail-review-error"),
+      ).not.toBeInTheDocument();
+      // ...it renders inside the dialog instead.
+      expect(screen.getByTestId("request-changes-error")).toHaveTextContent(
+        "This submission has already been reviewed.",
+      );
+    });
+
+    it("renders the RequestChangesDialog when requestChangesOpen is true, and NOT when false (#1017)", () => {
+      mockReview({ requestChangesOpen: false });
+      mockDetail(READY_RESULT);
+      const { unmount } = renderRoute();
+      expect(
+        screen.queryByTestId("request-changes-dialog"),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      mockReview({ requestChangesOpen: true });
+      renderRoute();
+      expect(screen.getByTestId("request-changes-dialog")).toBeInTheDocument();
+      // The originator flows through to the dialog title.
+      expect(
+        screen.getByRole("heading", {
+          name: "Request changes — Auric Andes S.A.C.",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("Cancel/Submit in the request-changes dialog call the review handlers (#1017)", () => {
+      const cancelRequestChanges = vi.fn();
+      const submitRequestChanges = vi.fn();
+      mockReview({
+        requestChangesOpen: true,
+        cancelRequestChanges,
+        submitRequestChanges,
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      fireEvent.change(screen.getByTestId("request-changes-input"), {
+        target: { value: "  Assay certificate incomplete  " },
+      });
+      fireEvent.click(screen.getByTestId("request-changes-submit"));
+      expect(submitRequestChanges).toHaveBeenCalledWith(
+        "Assay certificate incomplete",
+      );
+
+      fireEvent.click(screen.getByTestId("request-changes-cancel"));
+      expect(cancelRequestChanges).toHaveBeenCalledTimes(1);
     });
 
     it("renders the RejectReasonDialog when rejectOpen is true, and NOT when false", () => {

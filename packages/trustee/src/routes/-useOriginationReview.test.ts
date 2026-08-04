@@ -400,6 +400,58 @@ describe("useOriginationReview", () => {
     expect(result.current.rejectOpen).toBe(true);
   });
 
+  it("openRequestChanges()/cancelRequestChanges() toggle requestChangesOpen (#1017)", () => {
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.requestChangesOpen).toBe(false);
+
+    act(() => result.current.openRequestChanges());
+    expect(result.current.requestChangesOpen).toBe(true);
+
+    act(() => result.current.cancelRequestChanges());
+    expect(result.current.requestChangesOpen).toBe(false);
+    expect(mockReset).toHaveBeenCalled();
+  });
+
+  it("submitRequestChanges(reason) fires { id, decision: 'ChangesRequested', reason }, closes on success, and never touches the mint (#1017)", () => {
+    mockMutate.mockImplementation((_input, opts) => {
+      opts?.onSuccess?.();
+    });
+    const { result } = renderHook(() => useOriginationReview("7"));
+
+    act(() => result.current.openRequestChanges());
+    expect(result.current.requestChangesOpen).toBe(true);
+
+    act(() =>
+      result.current.submitRequestChanges("Assay certificate incomplete"),
+    );
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      {
+        id: 7,
+        decision: "ChangesRequested",
+        reason: "Assay certificate incomplete",
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(result.current.requestChangesOpen).toBe(false);
+    // Pure DB call — the on-chain mint must never be involved.
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("request-changes dialog stays open when the mutation does not call onSuccess (error case, #1017)", () => {
+    mockMutate.mockImplementation(() => {
+      // Simulates a failure: onSuccess is never invoked.
+    });
+    const { result } = renderHook(() => useOriginationReview("7"));
+
+    act(() => result.current.openRequestChanges());
+    act(() =>
+      result.current.submitRequestChanges("Assay certificate incomplete"),
+    );
+
+    expect(result.current.requestChangesOpen).toBe(true);
+  });
+
   it("maps a 409 ApiError to the 'already reviewed' copy", () => {
     mockReviewState = {
       isPending: false,

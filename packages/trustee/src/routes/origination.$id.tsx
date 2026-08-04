@@ -2,6 +2,7 @@ import { createFileRoute, Link, useLocation } from "@tanstack/react-router";
 import { useOriginationDetail, type StatusChip } from "./-origination-detail";
 import { useOriginationReview } from "./-useOriginationReview";
 import { RejectReasonDialog } from "./-RejectReasonDialog";
+import { RequestChangesDialog } from "./-RequestChangesDialog";
 import { ApproveMintDialog } from "./-ApproveMintDialog";
 
 /**
@@ -81,7 +82,11 @@ import { ApproveMintDialog } from "./-ApproveMintDialog";
  *   - **Reject** is unchanged: opens `RejectReasonDialog` (re-skinned to
  *     Figma `4116:14123` by #838 — same min-5-trimmed-chars-reason logic,
  *     "Send to originator" + Cancel), a pure DB review call.
- *   - Both the page-level Reject/Approve buttons disable while any mutation
+ *   - **Request changes** (#1017): opens `RequestChangesDialog` (textarea
+ *     reason, same min-5-trimmed-chars validation) and posts the non-final
+ *     `{decision:"ChangesRequested", reason}` review — a pure DB call, no
+ *     mint; the footer then flips to the #950 Changes-requested banner.
+ *   - All three page-level buttons disable while any mutation
  *     is in flight; a mapped error (mint failure, or the #829 review errors:
  *     409 "already reviewed", 403 "not authorized", 401 session-expired,
  *     other generic) renders inside whichever dialog is open, or inline near
@@ -209,7 +214,7 @@ function StatusPill({ status }: { status: StatusChip }) {
 function TermRow({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex items-end justify-between py-[12px]"
+      className="flex items-baseline justify-between gap-[16px] py-[12px]"
       style={{ borderBottom: `1px solid ${LINE_COLOR}` }}
     >
       <span className="font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[rgba(56,55,53,0.6)]">
@@ -267,10 +272,7 @@ function DealDetailsCard({
         <TermRow label="Corridor" value={dealDetails.corridor} />
         <TermRow label="Governing law" value={dealDetails.governingLaw} />
         <TermRow label="Protection" value={dealDetails.protection} />
-        <TermRow
-          label={dealDetails.locationLabel}
-          value={dealDetails.locationValue}
-        />
+        <TermRow label="Location" value={dealDetails.location} />
       </div>
       <div
         data-testid="origination-detail-documents"
@@ -315,6 +317,8 @@ interface ActionButtonsProps {
   /** Opens the approve & mint confirmation dialog (issue #838). */
   onApprove: () => void;
   onReject: () => void;
+  /** Opens the request-changes reason dialog (#1017). */
+  onRequestChanges: () => void;
   isPending: boolean;
   errorMessage: string | null;
 }
@@ -324,14 +328,16 @@ interface ActionButtonsProps {
  * `-ApproveMintDialog` confirmation dialog (issue #838) — the chain-first
  * mint-then-review flow (issue #831) now runs only from that dialog's "Mint
  * loan" action, not directly from this button. `onReject` opens the
- * reject-reason dialog (owned by the caller). Both buttons disable while any
- * mutation is in flight. The inert "Request changes" button and the
- * "Approval mints the loan NFT…" footer note were both removed by issue
- * #838.
+ * reject-reason dialog (owned by the caller). All buttons disable while any
+ * mutation is in flight. The inert "Request changes" button #838 removed is
+ * back as a WIRED control (#1017): `onRequestChanges` opens the
+ * request-changes reason dialog, which submits the non-final
+ * `ChangesRequested` review decision (a pure DB call, no mint).
  */
 function ActionButtons({
   onApprove,
   onReject,
+  onRequestChanges,
   isPending,
   errorMessage,
 }: ActionButtonsProps) {
@@ -350,6 +356,16 @@ function ActionButtons({
           type="button"
           disabled={isPending}
           aria-disabled={isPending}
+          onClick={onApprove}
+          data-testid="origination-detail-approve"
+          className="h-[40px] rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          aria-disabled={isPending}
           onClick={onReject}
           data-testid="origination-detail-reject"
           className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
@@ -360,11 +376,11 @@ function ActionButtons({
           type="button"
           disabled={isPending}
           aria-disabled={isPending}
-          onClick={onApprove}
-          data-testid="origination-detail-approve"
-          className="h-[48px] rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={onRequestChanges}
+          data-testid="origination-detail-request-changes"
+          className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Approve
+          Request changes
         </button>
       </div>
     </div>
@@ -469,6 +485,7 @@ function DetailFooter({
   mintedLoanId,
   onApprove,
   onReject,
+  onRequestChanges,
   isPending,
   errorMessage,
 }: {
@@ -478,6 +495,7 @@ function DetailFooter({
   mintedLoanId: number | null;
   onApprove: () => void;
   onReject: () => void;
+  onRequestChanges: () => void;
   isPending: boolean;
   errorMessage: string | null;
 }) {
@@ -499,6 +517,7 @@ function DetailFooter({
     <ActionButtons
       onApprove={onApprove}
       onReject={onReject}
+      onRequestChanges={onRequestChanges}
       isPending={isPending}
       errorMessage={errorMessage}
     />
@@ -583,11 +602,14 @@ function OriginationDetail() {
           mintedLoanId={review.mintedLoanId}
           onApprove={review.openApprove}
           onReject={review.openReject}
+          onRequestChanges={review.openRequestChanges}
           isPending={review.isPending}
-          // While either dialog is open, its own error surface (below) owns
+          // While any dialog is open, its own error surface (below) owns
           // the mutation error — avoid rendering it twice.
           errorMessage={
-            review.approveOpen || review.rejectOpen ? null : review.errorMessage
+            review.approveOpen || review.rejectOpen || review.requestChangesOpen
+              ? null
+              : review.errorMessage
           }
         />
       </div>
@@ -609,6 +631,15 @@ function OriginationDetail() {
         onSubmit={review.submitReject}
         isSubmitting={review.isPending}
         errorMessage={review.rejectOpen ? review.errorMessage : null}
+      />
+
+      <RequestChangesDialog
+        open={review.requestChangesOpen}
+        originator={detail.dealDetails.originator}
+        onCancel={review.cancelRequestChanges}
+        onSubmit={review.submitRequestChanges}
+        isSubmitting={review.isPending}
+        errorMessage={review.requestChangesOpen ? review.errorMessage : null}
       />
     </main>
   );
