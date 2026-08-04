@@ -267,7 +267,10 @@ function DealDetailsCard({
         <TermRow label="Corridor" value={dealDetails.corridor} />
         <TermRow label="Governing law" value={dealDetails.governingLaw} />
         <TermRow label="Protection" value={dealDetails.protection} />
-        <TermRow label="Location" value={dealDetails.location} />
+        <TermRow
+          label={dealDetails.locationLabel}
+          value={dealDetails.locationValue}
+        />
       </div>
       <div
         data-testid="origination-detail-documents"

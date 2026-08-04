@@ -33,9 +33,10 @@
  *   - Corridor    → `loan_data.corridor`, arrow-formatted (same regex as #813).
  *   - Governing law → `loan_data.governing_law`.
  *   - Protection  → `loan_data.protection` (optional on the wire — `—` when absent).
- *   - Location    → `loan_data.initial_location`, rendered
- *     `{location_type} — {location_identifier}` (#1014); a half missing on the
- *     wire renders alone, both missing renders `—`.
+ *   - Location    → `loan_data.initial_location` (#1014): the row LABEL is
+ *     `location_type` itself (e.g. "Warehouse"), falling back to the generic
+ *     "Location" when absent; the value is `location_identifier` (`—` when
+ *     absent).
  *   - Documents   → the top-level `submission.documents` (NOT `loan_data.documents`
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
@@ -150,20 +151,21 @@ function formatCorridor(value: unknown): string {
 }
 
 /**
- * Formats `loan_data.initial_location` as
- * `"{location_type} — {location_identifier}"` (e.g. "Warehouse — SGS bonded
- * stockpile, Callao, Peru", #1014). Either half may be absent on the wire —
- * the present half renders alone; `"—"` when neither is a non-empty string.
+ * Splits `loan_data.initial_location` into the Location row's label/value pair
+ * (#1014): the label is `location_type` itself (e.g. "Warehouse"), falling
+ * back to the generic "Location" when absent; the value is
+ * `location_identifier` (`"—"` when absent). Never fabricates either half.
  */
-function formatLocation(value: unknown): string {
+function mapLocation(value: unknown): { label: string; value: string } {
   const location =
     typeof value === "object" && value !== null
       ? (value as Record<string, unknown>)
       : {};
-  const parts = [location.location_type, location.location_identifier].filter(
-    (part): part is string => typeof part === "string" && part.length > 0,
-  );
-  return parts.length > 0 ? parts.join(" — ") : "—";
+  const type = location.location_type;
+  return {
+    label: typeof type === "string" && type.length > 0 ? type : "Location",
+    value: safeString(location.location_identifier),
+  };
 }
 
 /**
@@ -214,7 +216,10 @@ export interface DealDetailsDisplay {
   corridor: string;
   governingLaw: string;
   protection: string;
-  location: string;
+  /** Row label = `initial_location.location_type` ("Location" when absent). */
+  locationLabel: string;
+  /** Row value = `initial_location.location_identifier` (`—` when absent). */
+  locationValue: string;
   documents: DocumentDisplay[];
 }
 
@@ -312,6 +317,7 @@ function mapLoanTerms(submission: SubmissionView): LoanTermsDisplay {
 function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
   const loanData: Partial<SubmissionView["loan_data"]> =
     submission.loan_data ?? {};
+  const location = mapLocation(loanData.initial_location);
 
   return {
     originator: safeString(loanData.originator),
@@ -319,7 +325,8 @@ function mapDealDetails(submission: SubmissionView): DealDetailsDisplay {
     corridor: formatCorridor(loanData.corridor),
     governingLaw: safeString(loanData.governing_law),
     protection: safeString(loanData.protection),
-    location: formatLocation(loanData.initial_location),
+    locationLabel: location.label,
+    locationValue: location.value,
     documents: Array.isArray(submission.documents)
       ? submission.documents.map((doc) => ({
           name: safeString(doc?.name),
@@ -449,7 +456,8 @@ export function useOriginationDetail(
           corridor: "—",
           governingLaw: "—",
           protection: "—",
-          location: "—",
+          locationLabel: "Location",
+          locationValue: "—",
           documents: [],
         },
         statusKind: "unknown",

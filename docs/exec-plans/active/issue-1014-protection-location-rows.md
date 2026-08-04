@@ -7,10 +7,12 @@ Source: https://github.com/eq-lab/pipeline/issues/1014
 Add two display rows to the trustee app:
 
 1. **Origination detail** (`/origination/$id`, Deal Details card): a **Protection** row
-   (`loan_data.protection`, optional string, e.g. `"LC at sight"`) and a **Location** row
-   (`loan_data.initial_location`, displayed `{location_type} — {location_identifier}`,
-   e.g. `Warehouse — SGS bonded stockpile, Callao, Peru`), inserted directly after the
-   existing **Governing law** `TermRow`.
+   (`loan_data.protection`, optional string, e.g. `"LC at sight"`) and a location row
+   (`loan_data.initial_location`), inserted directly after the existing
+   **Governing law** `TermRow`. *(Amended in-session during testing:)* the row's
+   **label** is `location_type` itself (e.g. "Warehouse", falling back to the generic
+   "Location" when absent) and its value is `location_identifier` — not a combined
+   `{type} — {identifier}` value under a fixed "Location" label.
 2. **Loan detail** (`/loans/$id`): surface the same two facts from the fields the page's
    existing endpoints already serve — `protection` from the loan's `/v1/loan-book` row
    (`LoanBookEntry.protection`, currently typed but unrendered,
