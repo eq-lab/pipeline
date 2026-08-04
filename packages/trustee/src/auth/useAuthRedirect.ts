@@ -1,16 +1,10 @@
 /**
- * Reactive auth redirect for the Trustee app (#1008).
+ * Reactive auth-URL redirect for mid-session status changes (sign-in
+ * completing, sign-out, token expiry) — the transitions the root `beforeLoad`
+ * never sees because they happen without a navigation. URL convention only;
+ * correctness is the render-level gate in TrusteeShell.
  *
- * The root route's `beforeLoad` guard (`routes/__root.tsx`) covers hard
- * navigations, but it does NOT re-run on a **mid-session** status change
- * (sign-in completing, sign-out, token expiry) — and `router.invalidate()`
- * (the #988 approach) does not reliably re-run the root `beforeLoad`'s redirect
- * in production, which stranded the URL on `/sign-in` after a successful
- * sign-in. This hook closes that gap: it reacts to the committed session
- * `status` + current pathname and navigates imperatively.
- *
- * Being a post-commit effect keyed on committed state, it avoids the
- * render-phase `<Navigate>` / in-flow `navigate()` races that #921 removed.
+ * spec: docs/frontend/trustee-flows.md#two-layer-gating-1008.
  */
 import { useEffect } from "react";
 import { useRouter, useRouterState } from "@tanstack/react-router";

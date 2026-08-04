@@ -1,19 +1,11 @@
 import { SignInCard } from "@/components/SignInCard";
 
 /**
- * Trustee sign-in gate (Figma node `4174-31660`, "Unauthenticated Overlay").
+ * Sign-in gate overlay (Figma `4174-31660`) — rendered by TrusteeShell on any
+ * URL while the session is not authenticated. The overlay tint
+ * (`rgba(246,248,248,0.8)`) has no design token; documented one-off.
  *
- * Renders the wallet-connect "Login Prompt" card centered over a full-bleed
- * translucent/blurred overlay, matching the Figma frame. The overlay's own
- * tint (`rgba(246,248,248,0.8)`) has no equivalent design token today, so it
- * is a documented one-off arbitrary value scoped to this component.
- *
- * Rendered by `TrusteeShell` whenever the session is not authenticated — the
- * gate is **render-level**, not URL-level (#1008), so it shows on any URL and
- * cannot be stranded by a navigation race (the #921/#988/#1009 bug class).
- * `/sign-in` remains the canonical logged-out URL via the root redirects, but
- * nothing about the gate depends on it. `SignInCard` drives the real sign-in
- * flow (#791); on `status → authenticated` the shell re-renders into the app.
+ * spec: docs/frontend/trustee-flows.md#session--auth.
  */
 export function SignInOverlay() {
   return (

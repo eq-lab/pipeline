@@ -1,26 +1,10 @@
 /**
- * Trustee session store — module-level state for the backend-issued JWT.
+ * Trustee session store — module-level external store for the backend-issued
+ * JWT, persisted in sessionStorage (must not outlive the tab). Exposes the
+ * reactive `useSessionState()` plus non-hook accessors for code that runs
+ * outside React (`apiFetch`, the router guard).
  *
- * Per the #791 exec plan Decision Log: the backend
- * (`packages/api/src/routes/auth.rs`) issues a client-held bearer token —
- * there is no `Set-Cookie`, no cookie/session middleware, and no
- * `me`/`refresh`/`logout` endpoint. The client stores the token itself and
- * attaches it as `Authorization: Bearer <token>`. Sign-out is purely
- * client-side (drop the stored token); there is no server logout to call.
- *
- * This module is the single source of truth for the session, persisted in
- * `sessionStorage` (not `localStorage` — the JWT should not outlive the
- * browser tab, see the exec plan's storage-choice rationale) under one key.
- * It exposes:
- *   - A reactive `useSessionState()` hook (via `useSyncExternalStore`) for
- *     `TrusteeSessionProvider` and any component that needs to re-render on
- *     session changes.
- *   - Non-hook accessors (`getSessionToken()`, `getSessionState()`) so
- *     `apiFetch` (a plain function, not a hook) and the router's `beforeLoad`
- *     guard (which runs outside React) can read the session synchronously.
- *
- * Mirrors the module-level external-store pattern already used by
- * `@pipeline/wallet-connect`'s Stellar `connectionStore.ts`.
+ * spec: docs/frontend/trustee-flows.md#session-store-sessionstorets.
  */
 import { useSyncExternalStore } from "react";
 
@@ -97,12 +81,8 @@ function isExpired(s: StoredSession): boolean {
 }
 
 // ── Reactive expiry ───────────────────────────────────────────────────────────
-//
-// A stored token is valid for ~24h. Without a timer, an idle trustee (whose
-// protected routes make no `apiFetch` calls) keeps seeing the protected UI past
-// `expiresAt` — the stale session is only evicted on the next authenticated
-// fetch (#795). Arm a timer on every `setSession` (and at hydrate) that evicts
-// the session the instant its token expires, so `RouteGate` re-gates on its own.
+// Evicts the session the instant the token expires so an idle trustee is
+// re-gated without a failed API call (spec).
 
 let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -153,11 +133,8 @@ hydrate();
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Non-reactive **and pure**: the current bearer token, or `undefined` when
- * unauthenticated / expired. Eviction of an expired session is handled
- * reactively by the expiry timer (`armExpiryTimer`), NOT here — this accessor
- * performs no writes or notifications, so `apiFetch` reading the token never
- * triggers a re-render as a side effect (#795).
+ * Non-reactive AND pure — no writes/notifications, so `apiFetch` reading the
+ * token never triggers a re-render (#795). Expiry eviction is the timer's job.
  */
 export function getSessionToken(): string | undefined {
   if (session && !isExpired(session)) return session.token;
@@ -188,10 +165,7 @@ export function getSessionState(): SessionState {
   return computeSnapshot();
 }
 
-/**
- * Set the session status (and optional error). Does not touch the stored
- * token — use `setSession` for that.
- */
+/** Set status (+ optional error) without touching the stored token. */
 export function setSessionStatus(
   next: SessionStatus,
   nextError?: string,
@@ -201,11 +175,7 @@ export function setSessionStatus(
   notify();
 }
 
-/**
- * Set (or clear) the authenticated session. Persists to `sessionStorage` and
- * updates `status` to `authenticated` when a session is provided, or
- * `unauthenticated` when cleared.
- */
+/** Set (or clear) the session; persists and derives `status`. */
 export function setSession(
   next: StoredSession | undefined,
   nextStatus?: SessionStatus,

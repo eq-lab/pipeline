@@ -1,45 +1,9 @@
 /**
- * TrusteeSessionProvider — orchestrates the #791 sign-in flow and exposes
- * `useTrusteeSession()` to the rest of the app.
+ * TrusteeSessionProvider — orchestrates the sign-in flow (modal pick →
+ * challenge → sign → verify → store) and exposes `useTrusteeSession()`.
  *
- * Flow (see docs/exec-plans/active/issue-791-trustee-sign-in-flow.md, step 6):
- *   1. `signIn()` ALWAYS sets `status = "connecting"` and opens the
- *      wallet-connect modal (`useConnectModal().open()`) — this is a
- *      separate app with its own explicit login, so sign-in must always be
- *      driven by the user's deliberate pick in the modal, never by ambient
- *      wallet state (#795: wagmi auto-reconnects a persisted EVM session on
- *      page load, which used to hijack `signIn()` into signing that wallet
- *      directly and skipping the modal — Freighter/Soroban was never
- *      offered). Once the user picks a chain (`onModalWalletSelect`), that
- *      chain becomes the sole driver of the rest of the flow: if it's
- *      already connected, sign-in runs immediately; otherwise the watch
- *      effect below runs it once that specific chain connects. A wallet on
- *      the *other* chain connecting (or already being connected) never
- *      triggers sign-in. If the modal is dismissed with no wallet chosen,
- *      `onCancel` resets `status` back to `unauthenticated` (#793 — no more
- *      stuck "Connecting…").
- *   2. `GET /v1/auth/challenge?address=&chain_id=`. A `401` means the address
- *      is not on the server allow-list → `status = "unauthorized"` with an
- *      explanatory error; the flow stops there (no client-side role read —
- *      authorization is entirely server-side).
- *   3. The connected wallet signs the returned `message` (EVM `personal_sign`
- *      hex / Stellar SEP-0053 base64, both via `@pipeline/wallet-connect`'s
- *      `signMessage`). If the user rejects the signature, the flow returns to
- *      `unauthenticated` silently (not an error — a user choice).
- *   4. `POST /v1/auth/verify { chain_id, address, signature }`. On success the
- *      token is stored (`sessionStore`, sessionStorage-backed) and `status`
- *      flips to `authenticated` — no navigation happens anywhere in this flow:
- *      auth gating is render-level (`TrusteeShell` swaps the sign-in overlay
- *      for the app on the same URL, #1008), which retired the whole
- *      redirect-race bug class (#921/#988/#1009). A `401` here is rare (nonce
- *      race / signature mismatch) and surfaces as a verification-failed error.
- *
- * `signOut()` clears the stored token, disconnects the wallet, and navigates
- * to `/sign-in` (the canonical logged-out URL) — there is no server logout
- * endpoint (bearer-token transport, see the exec plan's Decision Log), so
- * sign-out is purely client-side. The navigation is a URL convention only:
- * the render-level gate (`TrusteeShell`) shows the overlay regardless of URL,
- * so nothing depends on it landing (#1008).
+ * spec: docs/frontend/trustee-flows.md#session--auth (flow steps, explicit-pick
+ * rule, error taxonomy, no-navigation invariant, signOut).
  */
 import React, {
   createContext,
@@ -101,14 +65,11 @@ export function TrusteeSessionProvider({
   } = useConnectModal();
   const navigate = useNavigate();
 
-  // Guards against re-running the challenge/verify orchestration more than
-  // once for the same connect (e.g. re-renders while awaiting the backend).
+  // Single-flight guard for the challenge/verify orchestration.
   const orchestratingRef = useRef(false);
 
-  // (#795) Which chain to drive the sign-in with — set ONLY by the user's
-  // explicit pick in the modal (`onModalWalletSelect`), never inferred from
-  // ambient wallet state. "undecided" until the user picks a row; the watch
-  // effect below stays inert until this is a concrete chain.
+  // Set ONLY by the user's explicit modal pick — never ambient wallet state
+  // (#795). spec: trustee-flows.md#sign-in-flow-791-hardened-793794795.
   const preferredChainRef = useRef<"evm" | "stellar" | "undecided">(
     "undecided",
   );
@@ -137,8 +98,7 @@ export function TrusteeSessionProvider({
         const result = await sign(challenge.message);
         signature = result.signature;
       } catch {
-        // User rejected the signature (or the wallet errored) — not a hard
-        // error, just return to unauthenticated silently.
+        // Rejection is a user choice, not an error — silent (spec).
         setSessionStatus("unauthenticated");
         return;
       }
@@ -151,14 +111,10 @@ export function TrusteeSessionProvider({
           chainId,
           expiresAt: Date.now() + verified.expiresIn * 1000,
         });
-        // No navigation: TrusteeShell swaps the overlay for the app on the
-        // same URL when `status` flips (#1008 render-level gating).
+        // No navigation — the render-level gate swaps the UI (#1008).
       } catch {
-        // A 401 here is rare on the happy path (nonce expired / signature
-        // mismatch / already consumed) — unlike the challenge step, a 401
-        // from /v1/auth/verify does not distinguish "unknown address" from
-        // "bad signature", so it is always framed as a verification failure
-        // rather than repeating the "not authorized" copy.
+        // A verify 401 can't distinguish unknown-address from bad-signature,
+        // so it is framed as a verification failure, not "not authorized".
         setSessionStatus(
           "unauthorized",
           "Sign-in verification failed. Please try again.",
@@ -168,18 +124,8 @@ export function TrusteeSessionProvider({
     [],
   );
 
-  // Reactively watch for a wallet connection while a sign-in is in progress.
-  // The connect modal resolves asynchronously via wagmi / the Stellar kit's
-  // own callbacks, so rather than coupling this provider to those internals,
-  // it watches the already-reactive `useEvmWallet()` / `useStellarWallet()`
-  // state.
-  //
-  // (#795) This only ever acts for the chain the user explicitly picked in
-  // the modal (`preferredChainRef`, set by `onModalWalletSelect`). There is
-  // deliberately NO "whichever connects first" fallback for the "undecided"
-  // case — wagmi auto-reconnects a persisted EVM session on page load, so an
-  // ambient/already-connected wallet must never be treated as the user's
-  // choice. Until the user picks a row, this effect stays inert.
+  // Watch effect: runs sign-in once the explicitly-picked chain connects.
+  // Deliberately NO "whichever connects first" fallback (#795, spec).
   useEffect(() => {
     if (sessionState.status !== "connecting") return;
     if (orchestratingRef.current) return;
@@ -221,9 +167,8 @@ export function TrusteeSessionProvider({
     runSignIn,
   ]);
 
-  // (#793) Reset the busy state when the modal is cancelled with no wallet
-  // chosen — `onCancel` never fires for a wallet-row selection (see
-  // `ConnectModalProvider`), so this can't race a real connect attempt.
+  // Modal cancelled with no pick → back to unauthenticated (#793). `onCancel`
+  // never fires for a wallet-row selection, so this can't race a real connect.
   useEffect(() => {
     return onModalCancel(() => {
       preferredChainRef.current = "undecided";
@@ -233,19 +178,9 @@ export function TrusteeSessionProvider({
     });
   }, [onModalCancel]);
 
-  // (#794, tightened by #795) The ONLY place `preferredChainRef` is set: the
-  // user explicitly picking a chain tab/row in the modal. Ambient connection
-  // state (a wallet already connected, or auto-reconnected by wagmi on page
-  // load) never sets it — see the watch effect above and `signIn()` below.
-  // Recorded as a ref, so a plain re-render is enough for the watch effect to
-  // pick it up for a wallet that connects (or reconnects) AFTER this fires.
-  //
-  // One case the watch effect alone can't cover: the user picks a wallet
-  // that is ALREADY connected (e.g. a persisted Freighter session) — the
-  // kit/wagmi treat reconnecting to the same address as a no-op, so no
-  // `isConnected`/`address` change follows and no re-render would otherwise
-  // pick it up. Kick off `runSignIn` directly here when that's the case —
-  // this is still gated on the user's explicit pick, not ambient state.
+  // The ONLY place `preferredChainRef` is set. An already-connected pick must
+  // run sign-in directly here: same-address reconnect is a no-op in the
+  // kit/wagmi, so the watch effect would never fire (#794/#795, spec).
   useEffect(() => {
     return onModalWalletSelect((chain) => {
       const preferred = chain === "soroban" ? "stellar" : "evm";
@@ -279,9 +214,7 @@ export function TrusteeSessionProvider({
           orchestratingRef.current = false;
         });
       }
-      // Otherwise the picked wallet is not connected yet (fresh connect) —
-      // the watch effect above will pick it up once `isConnected`/`address`
-      // update and trigger a re-render.
+      // Fresh connect: the watch effect picks it up once the chain connects.
     });
   }, [
     onModalWalletSelect,
@@ -294,15 +227,8 @@ export function TrusteeSessionProvider({
     runSignIn,
   ]);
 
-  // (#795) ALWAYS opens the modal — this is a separate app with its own
-  // explicit login, so sign-in must always be an explicit connect+sign, never
-  // driven by ambient wallet state. Previously this skipped the modal and
-  // signed in directly when exactly one wallet was "already connected"
-  // (#794), but wagmi auto-reconnects a persisted EVM session on page load,
-  // so that ambient EVM connection would hijack every sign-in attempt — no
-  // modal, a direct EVM sign that stalls, and Freighter/Soroban never
-  // offered. `preferredChainRef` resets to "undecided" here; only the user's
-  // explicit pick in the modal (`onModalWalletSelect`) can set it.
+  // ALWAYS opens the modal — never sign an ambient/auto-reconnected wallet
+  // (#795, spec).
   const signIn = useCallback(() => {
     setSessionStatus("connecting");
     preferredChainRef.current = "undecided";
@@ -313,8 +239,7 @@ export function TrusteeSessionProvider({
     setSession(undefined);
     if (evmWallet.isConnected) evmWallet.disconnect();
     if (stellarWallet.isConnected) stellarWallet.disconnect();
-    // URL convention: /sign-in is the logged-out URL. The overlay gate shows
-    // regardless of URL, so this navigation is not load-bearing (#1008).
+    // URL convention only — the overlay gate doesn't depend on it (#1008).
     void navigate({ to: "/sign-in" });
   }, [evmWallet, stellarWallet, navigate]);
 

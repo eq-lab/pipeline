@@ -149,4 +149,88 @@ _To be migrated from `packages/trustee/src/routes/-record-*.ts`._
 
 ## Session & auth
 
-_To be migrated from `packages/trustee/src/auth/**`._
+**Sources:** `packages/trustee/src/auth/**` (`TrusteeSessionProvider.tsx`, `sessionStore.ts`,
+`authGate.ts`, `useAuthRedirect.ts`), `components/TrusteeShell.tsx`, `components/SignInOverlay.tsx`,
+`components/SignInCard.tsx`, `routes/__root.tsx`, `routes/sign-in.tsx`.
+Issues: #791 (flow), #793/#794/#795 (modal hardening), #921/#988/#1009 → **#1008** (gating
+architecture). Backend contract: `docs/product-specs/api-authorization.md` /
+`packages/api/src/routes/auth.rs`.
+
+### Two-layer gating (#1008)
+
+Auth is enforced in two independent layers:
+
+1. **Correctness — render-level gate (cannot race).** `TrusteeShell` renders `SignInOverlay`
+   (Figma `4174-31660`) whenever the session is not authenticated, **on any URL**, and never mounts
+   protected route content (`<Outlet/>`) while signed out — so no authenticated API calls fire
+   either. Whatever the address bar says, the content is always right.
+2. **URL convention — redirects (not load-bearing).** `/sign-in` is the canonical logged-out URL.
+   The root route's `beforeLoad` (`resolveAuthRedirect`) enforces it on hard navigations
+   (unauthenticated on a protected path → `/sign-in`; authenticated on `/sign-in` → `/`), and
+   `useAuthRedirect` enforces it on **mid-session** status changes (sign-in completing, sign-out,
+   token expiry) that `beforeLoad` never sees. `signOut()` navigates to `/sign-in` explicitly. The
+   `/sign-in` route itself renders `null` — the gate UI always comes from the shell.
+
+If a redirect misfires, the failure mode is a briefly-wrong address bar — never wrong or blank
+content. **History:** three URL-synchronization approaches raced in production builds and stranded
+the URL on `/sign-in` — a render-phase `<Navigate>` (#921), `beforeLoad` + `router.invalidate()`
+(#988, `invalidate()` does not re-run the root guard and `beforeLoad` only runs during
+navigations), and a reactive navigate alone (#1009). The trigger — "status flipped while parked on
+`/sign-in` with no navigation in flight" — is inherently racy to convert into a navigation, which
+is why correctness no longer depends on one.
+
+| Scenario | URL | Content |
+|---|---|---|
+| Visit `/` signed out | `/sign-in` | overlay |
+| Deep-link `/loans` signed out | `/sign-in` | overlay |
+| Sign in from `/sign-in` | `/` | dashboard |
+| Logout from any page | `/sign-in` | overlay |
+| Token expiry mid-session | `/sign-in` | overlay |
+
+### Sign-in flow (#791, hardened #793/#794/#795)
+
+`TrusteeSessionProvider` orchestrates; `SignInCard` is the UI (idle / "Connecting…" /
+unauthorized-error states).
+
+1. `signIn()` sets `status = "connecting"` and **always opens the wallet-connect modal** — sign-in
+   must be driven by the user's deliberate chain pick, never ambient wallet state (#795: wagmi
+   auto-reconnects a persisted EVM session on page load, which used to hijack sign-in and skip the
+   modal, so Freighter/Soroban was never offered). The picked chain (`onWalletSelect`) becomes the
+   sole driver: already connected → sign-in runs immediately (the kit treats same-address reconnect
+   as a no-op, so a watch effect alone would miss this case, #794); not yet connected → a watch
+   effect on the reactive wallet hooks runs it once that specific chain connects. A wallet on the
+   *other* chain never triggers sign-in. Dismissing the modal with no pick resets to
+   `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
+   challenge/verify orchestration single-flight.
+2. `GET /v1/auth/challenge?address=&chain_id=` — `401` = address not on the server allow-list →
+   `unauthorized` + explanatory error (authorization is entirely server-side); other failures →
+   "could not reach the sign-in service".
+3. The wallet signs the challenge `message` (EVM `personal_sign` hex / Stellar SEP-0053 base64 via
+   `@pipeline/wallet-connect`). A rejection returns to `unauthenticated` **silently** — a user
+   choice, not an error.
+4. `POST /v1/auth/verify` — on success the token is stored (`setSession`) and `status` flips to
+   `authenticated`; **no navigation happens anywhere in the flow** (layer 1 swaps the UI, layer 2
+   tidies the URL). A `401` here (nonce race / signature mismatch) surfaces as
+   "verification failed".
+
+`signOut()` clears the stored token, disconnects both wallets, and navigates to `/sign-in`. There
+is no server logout endpoint (bearer-token transport, per the #791 Decision Log) — sign-out is
+purely client-side.
+
+### Session store (`sessionStore.ts`)
+
+Module-level external store (the same pattern as `@pipeline/wallet-connect`'s Stellar
+`connectionStore`), single source of truth for the backend-issued JWT:
+
+- Persisted in **`sessionStorage`** (not `localStorage`) under `pipeline.trustee.session` — the JWT
+  must not outlive the browser tab (#791 storage-choice rationale). Hydrated once at module load;
+  expired stored sessions are dropped on hydrate.
+- Exposes the reactive `useSessionState()` (via `useSyncExternalStore`) plus **non-hook accessors**
+  (`getSessionToken()`, `getSessionState()`) for `apiFetch` and the router guard, which run outside
+  React. `getSessionToken()` is deliberately pure — no writes/notifications, so a fetch reading the
+  token never triggers a re-render (#795).
+- **Reactive expiry:** a timer armed on every `setSession` (and at hydrate) evicts the session the
+  instant its ~24 h token expires, so an idle trustee is re-gated without needing a failed API call
+  (#795). Statuses: `unauthenticated | connecting | authenticated | unauthorized`.
+
+## Loan book & tables
