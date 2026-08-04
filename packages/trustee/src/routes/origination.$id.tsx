@@ -381,7 +381,7 @@ function ActionButtons({
           aria-disabled={isPending}
           onClick={onApprove}
           data-testid="origination-detail-approve"
-          className="h-[48px] rounded-[4px] bg-[#000080] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-[40px] rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           Approve
         </button>
