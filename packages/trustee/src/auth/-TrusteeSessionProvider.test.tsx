@@ -6,12 +6,12 @@
  *   - Initial state is `unauthenticated`.
  *   - `signIn()` ALWAYS opens the connect modal, then once the user's
  *     explicitly-picked chain connects, drives challenge → sign → verify →
- *     `authenticated`, storing a token (verified via the session store) and
- *     redirecting to `/`.
+ *     `authenticated`, storing a token (verified via the session store) —
+ *     with NO navigation (#1008: the shell swaps the overlay in place).
  *   - `401` on the challenge → `unauthorized` with an explanatory error.
  *   - The user rejecting the signature → back to `unauthenticated`, no error.
- *   - `signOut()` clears the token and disconnects both wallets, then
- *     navigates to `/sign-in`.
+ *   - `signOut()` clears the token, disconnects both wallets, and navigates
+ *     to `/sign-in` (URL convention — the overlay gate doesn't depend on it).
  *   - Hydration from an existing valid token → `authenticated` (covered by
  *     `-sessionStore.test.ts`; this file focuses on the orchestration).
  *   - (#793) Cancelling the connect modal (no wallet chosen) resets `status`
@@ -25,8 +25,7 @@
  *     explicit `onModalWalletSelect` pick drives the flow.
  *
  * Wallet hooks (`useEvmWallet`, `useStellarWallet`, `useConnectModal`) and
- * the auth API wrappers are mocked; `useNavigate` is mocked to capture
- * redirects without needing a real router tree.
+ * the auth API wrappers are mocked.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -212,9 +211,8 @@ describe("TrusteeSessionProvider — signIn() happy path (EVM)", () => {
       expect(getSessionToken()).toBe("jwt-token");
     });
     expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
-    // (#921) The provider no longer imperatively navigates on sign-in — leaving
-    // `/sign-in` is delegated to RouteGate (reacting to status → authenticated).
-    // An imperative navigate here raced that redirect and stranded the URL.
+    // (#1008) Sign-IN never navigates — the shell swaps the overlay for the
+    // app on the same URL. (Only signOut resets the URL, cosmetically.)
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
@@ -301,7 +299,6 @@ describe("TrusteeSessionProvider — signOut()", () => {
 
     expect(mockEvmDisconnect).toHaveBeenCalledTimes(1);
     expect(mockStellarDisconnect).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
   });
 });
 
