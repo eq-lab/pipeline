@@ -98,15 +98,24 @@ const navItem = TRUSTEE_NAV_ITEMS.find((t) => t.path === "/origination")!;
  * that sum wider than the card (its body cells total ~1038px inside a 945px
  * box — an export artifact), so reproducing them literally overflowed the
  * card and clipped the right edge / action column. Instead the table fills
- * 100% of the card width: the seven data columns are flexible tracks in the
- * Figma's relative proportions (`minmax(0, Nfr)` so they can shrink and
- * ellipsis-truncate rather than overflow), and the action column is a fixed
- * 210px (matching Figma) so the "Approved · <date>" pill / Review button
- * always fit and are never cut. Total = exactly 100%, no horizontal
+ * 100% of the card width with flexible tracks (`minmax(0, Nfr)` so they can
+ * shrink and ellipsis-truncate rather than overflow), and the action column
+ * is a fixed 210px (matching Figma) so the "Approved · <date>" pill / Review
+ * button always fit and are never cut. Total = exactly 100%, no horizontal
  * scroll/clip.
+ *
+ * The proportions were rebalanced by #1015 (they previously followed the
+ * Figma's relative widths). The header row and each body row are SEPARATE
+ * grid containers, so every track must resolve identically in all of them —
+ * content-driven sizes (`max-content`/`auto`) would compute per-container
+ * and misalign the columns. Hence: the bounded-content columns — Facility
+ * (compact "$6.5M"), Rate ("17.5%"), Maturity ("13 Feb 2027"), Submitted
+ * ("4 Aug") — get FIXED pixel tracks wide enough for their worst case and
+ * are never truncated, while Originator/Commodity/Corridor split the
+ * remaining width and ellipsis-truncate when space runs out.
  */
 const GRID_TEMPLATE_COLUMNS =
-  "minmax(0,1.4fr) minmax(0,1.7fr) minmax(0,1fr) minmax(0,0.9fr) minmax(0,0.7fr) minmax(0,1fr) minmax(0,0.8fr) 210px";
+  "minmax(0,1.2fr) minmax(0,1.6fr) 100px minmax(0,1.6fr) 80px 120px 100px 210px";
 
 /**
  * Row/table border color — the exact Figma literal (`rgba(56,55,53,0.18)`,
@@ -129,11 +138,15 @@ const COLUMN_HEADERS = [
   "Submitted",
 ] as const;
 
+// Cells must be BLOCK-level (not flex) for `text-overflow: ellipsis` to
+// apply — on a flex container it silently does nothing and long values
+// hard-clip mid-character (#1015). Single-line text centers vertically via
+// the symmetric padding alone, so flex was never load-bearing here.
 const HEADER_CELL_CLASS =
-  "flex flex-col items-start overflow-hidden px-[14px] pb-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)] whitespace-nowrap text-ellipsis";
+  "overflow-hidden px-[14px] pb-[12px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink-muted)] whitespace-nowrap text-ellipsis";
 
 const BODY_CELL_CLASS =
-  "flex flex-col items-start justify-center overflow-hidden px-[14px] py-[28px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] whitespace-nowrap text-ellipsis";
+  "overflow-hidden px-[14px] py-[28px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] whitespace-nowrap text-ellipsis";
 
 /**
  * CheckIcon — small circular checkmark glyph used inside the Approved pill
@@ -386,7 +399,9 @@ function OriginationTable() {
               <div
                 role="cell"
                 data-testid={`origination-status-cell-${row.id}`}
-                className={`${BODY_CELL_CLASS} items-end`}
+                // The one flex cell: holds elements (pill/button), not
+                // truncatable text, and needs the right-alignment.
+                className={`${BODY_CELL_CLASS} flex flex-col items-end justify-center`}
               >
                 <StatusCell row={row} />
               </div>

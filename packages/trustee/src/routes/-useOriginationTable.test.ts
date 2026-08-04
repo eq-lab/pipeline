@@ -38,7 +38,7 @@ const FULL_SUBMISSION: SubmissionView = {
     governing_law: "England",
     economics: {
       // 7-decimal on-chain base-unit strings (issue #912) — displayed ÷10^7,
-      // so this facility value renders "$3,500,000".
+      // so this facility value renders "$3.5M" (compact, #1015).
       original_facility_size: "35000000000000.000000",
       original_senior_tranche: "30000000000000.000000",
       original_equity_tranche: "5000000000000.000000",
@@ -62,7 +62,7 @@ describe("mapSubmissionToRow", () => {
     const row = mapSubmissionToRow(FULL_SUBMISSION);
     expect(row.originator).toBe("Auric Andes");
     expect(row.commodity).toBe("Gold pyrite concentrate");
-    expect(row.facility).toBe("$3,500,000");
+    expect(row.facility).toBe("$3.5M");
     expect(row.corridor).toBe("PE → CN");
     expect(row.rate).toBe("14.0%");
     expect(row.maturity).toBe("15 Dec 2026");
@@ -81,9 +81,9 @@ describe("mapSubmissionToRow", () => {
       },
     };
     const row = mapSubmissionToRow(submission);
-    // 10000000000 / 10^7 = 1000 -> formatFullUsd("1000.0000000") = "$1,000".
-    // A partial (e.g. 10^4) divisor would wrongly produce "$1,000,000".
-    expect(row.facility).toBe("$1,000");
+    // 10000000000 / 10^7 = 1000 -> formatCompactUsd("1000.0000000") = "$1K".
+    // A partial (e.g. 10^4) divisor would wrongly produce "$1M".
+    expect(row.facility).toBe("$1K");
   });
 
   it("does not include a valuation sub-line field on the row (resolved: omitted)", () => {
