@@ -137,8 +137,7 @@ describe("useOriginationDetail — ready state with router-state submission", ()
     expect(result.current.dealDetails.corridor).toBe("PE → CN");
     expect(result.current.dealDetails.governingLaw).toBe("England & Wales");
     expect(result.current.dealDetails.protection).toBe("LC at sight");
-    expect(result.current.dealDetails.locationLabel).toBe("Location Vessel");
-    expect(result.current.dealDetails.locationValue).toBe("MV Example");
+    expect(result.current.dealDetails.location).toBe("Vessel — MV Example");
     expect(result.current.dealDetails.documents).toEqual([
       { name: "Offtake agreement.pdf", uri: "ipfs://doc1" },
     ]);
@@ -347,11 +346,10 @@ describe("useOriginationDetail — defensive reads", () => {
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
     expect(result.current.dealDetails.protection).toBe("—");
-    expect(result.current.dealDetails.locationLabel).toBe("Location");
-    expect(result.current.dealDetails.locationValue).toBe("—");
+    expect(result.current.dealDetails.location).toBe("—");
   });
 
-  it("falls back to the generic 'Location' label when location_type is absent (#1014)", () => {
+  it("renders a lone location half alone — no dash fabricated (#1014)", () => {
     const submission: SubmissionView = {
       ...FULL_SUBMISSION,
       loan_data: {
@@ -366,8 +364,7 @@ describe("useOriginationDetail — defensive reads", () => {
     mockSubmissions([submission]);
 
     const { result } = renderHook(() => useOriginationDetail("7", submission));
-    expect(result.current.dealDetails.locationLabel).toBe("Location");
-    expect(result.current.dealDetails.locationValue).toBe(
+    expect(result.current.dealDetails.location).toBe(
       "SGS bonded stockpile, Callao, Peru",
     );
   });

@@ -157,8 +157,7 @@ const READY_RESULT: OriginationDetailResult = {
     corridor: "Peru → China",
     governingLaw: "England & Wales",
     protection: "LC at sight",
-    locationLabel: "Location Warehouse",
-    locationValue: "SGS bonded stockpile, Callao, Peru",
+    location: "Warehouse — SGS bonded stockpile, Callao, Peru",
     documents: [{ name: "Offtake agreement.pdf", uri: "ipfs://doc1" }],
   },
   statusKind: "in-review",
@@ -239,10 +238,10 @@ describe("Origination details route", () => {
     expect(dealDetails.textContent).toContain("England & Wales");
     expect(dealDetails.textContent).toContain("Protection");
     expect(dealDetails.textContent).toContain("LC at sight");
-    // #1014: the location row's LABEL is "Location {location_type}".
-    expect(dealDetails.textContent).toContain("Location Warehouse");
+    expect(dealDetails.textContent).toContain("Location");
+    // #1014: the location TYPE leads the value under the fixed "Location" label.
     expect(dealDetails.textContent).toContain(
-      "SGS bonded stockpile, Callao, Peru",
+      "Warehouse — SGS bonded stockpile, Callao, Peru",
     );
     expect(dealDetails.textContent).toContain("Offtake agreement.pdf");
     // #1014: the two new rows sit directly after Governing law.
@@ -250,7 +249,7 @@ describe("Origination details route", () => {
       dealDetails.textContent!.indexOf("Protection"),
     );
     expect(dealDetails.textContent!.indexOf("Protection")).toBeLessThan(
-      dealDetails.textContent!.indexOf("Location Warehouse"),
+      dealDetails.textContent!.indexOf("Location"),
     );
   });
 
