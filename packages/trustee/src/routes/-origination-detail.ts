@@ -34,9 +34,9 @@
  *   - Governing law → `loan_data.governing_law`.
  *   - Protection  → `loan_data.protection` (optional on the wire — `—` when absent).
  *   - Location    → `loan_data.initial_location` (#1014): the row LABEL is
- *     `location_type` itself (e.g. "Warehouse"), falling back to the generic
- *     "Location" when absent; the value is `location_identifier` (`—` when
- *     absent).
+ *     `"Location {location_type}"` (e.g. "Location Warehouse"), dropping to
+ *     the plain "Location" when the type is absent; the value is
+ *     `location_identifier` (`—` when absent).
  *   - Documents   → the top-level `submission.documents` (NOT `loan_data.documents`
  *     directly — the backend already lifts it); `[]` renders a graceful empty
  *     state.
@@ -152,9 +152,10 @@ function formatCorridor(value: unknown): string {
 
 /**
  * Splits `loan_data.initial_location` into the Location row's label/value pair
- * (#1014): the label is `location_type` itself (e.g. "Warehouse"), falling
- * back to the generic "Location" when absent; the value is
- * `location_identifier` (`"—"` when absent). Never fabricates either half.
+ * (#1014): the label is `"Location {location_type}"` (e.g.
+ * "Location Warehouse"), dropping down to the plain "Location" when the type
+ * is absent; the value is `location_identifier` (`"—"` when absent). Never
+ * fabricates either half.
  */
 function mapLocation(value: unknown): { label: string; value: string } {
   const location =
@@ -163,7 +164,10 @@ function mapLocation(value: unknown): { label: string; value: string } {
       : {};
   const type = location.location_type;
   return {
-    label: typeof type === "string" && type.length > 0 ? type : "Location",
+    label:
+      typeof type === "string" && type.length > 0
+        ? `Location ${type}`
+        : "Location",
     value: safeString(location.location_identifier),
   };
 }
@@ -216,7 +220,7 @@ export interface DealDetailsDisplay {
   corridor: string;
   governingLaw: string;
   protection: string;
-  /** Row label = `initial_location.location_type` ("Location" when absent). */
+  /** Row label = `"Location {location_type}"` ("Location" when the type is absent). */
   locationLabel: string;
   /** Row value = `initial_location.location_identifier` (`—` when absent). */
   locationValue: string;

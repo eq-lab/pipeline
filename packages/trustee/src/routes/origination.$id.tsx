@@ -214,7 +214,7 @@ function StatusPill({ status }: { status: StatusChip }) {
 function TermRow({ label, value }: { label: string; value: string }) {
   return (
     <div
-      className="flex items-end justify-between py-[12px]"
+      className="flex items-baseline justify-between gap-[16px] py-[12px]"
       style={{ borderBottom: `1px solid ${LINE_COLOR}` }}
     >
       <span className="font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[rgba(56,55,53,0.6)]">
@@ -359,6 +359,16 @@ function ActionButtons({
           type="button"
           disabled={isPending}
           aria-disabled={isPending}
+          onClick={onApprove}
+          data-testid="origination-detail-approve"
+          className="h-[40px] rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          aria-disabled={isPending}
           onClick={onReject}
           data-testid="origination-detail-reject"
           className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
@@ -374,16 +384,6 @@ function ActionButtons({
           className="h-[40px] rounded-[4px] border border-solid border-[rgba(56,55,53,0.18)] bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Request changes
-        </button>
-        <button
-          type="button"
-          disabled={isPending}
-          aria-disabled={isPending}
-          onClick={onApprove}
-          data-testid="origination-detail-approve"
-          className="h-[40px] rounded-[4px] bg-[#000080] px-[17px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Approve
         </button>
       </div>
     </div>

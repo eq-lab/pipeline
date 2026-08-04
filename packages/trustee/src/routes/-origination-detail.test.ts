@@ -137,7 +137,7 @@ describe("useOriginationDetail — ready state with router-state submission", ()
     expect(result.current.dealDetails.corridor).toBe("PE → CN");
     expect(result.current.dealDetails.governingLaw).toBe("England & Wales");
     expect(result.current.dealDetails.protection).toBe("LC at sight");
-    expect(result.current.dealDetails.locationLabel).toBe("Vessel");
+    expect(result.current.dealDetails.locationLabel).toBe("Location Vessel");
     expect(result.current.dealDetails.locationValue).toBe("MV Example");
     expect(result.current.dealDetails.documents).toEqual([
       { name: "Offtake agreement.pdf", uri: "ipfs://doc1" },
