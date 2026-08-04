@@ -11,12 +11,14 @@ import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
  * wrapper here is a plain `<div>`, not a `<main>` — the per-flow route
  * components already own their own `<main>` landmark.
  *
- * Auth gating is **render-level, not URL-level** (#1008): while the session
- * is not authenticated, the shell renders `SignInOverlay` on whatever URL the
- * user visited — no `/sign-in` route, no redirects, so no navigation race can
- * strand the URL (the #921 / #988 / #1009 bug class). Protected route content
- * (`<Outlet/>`) is not mounted at all until `status === "authenticated"`, so
- * no authenticated API calls fire while signed out.
+ * Auth **correctness** is render-level (#1008): while the session is not
+ * authenticated, the shell renders `SignInOverlay` — regardless of URL — and
+ * protected route content (`<Outlet/>`) is not mounted at all, so no
+ * authenticated API calls fire while signed out. This layer cannot race (the
+ * #921/#988/#1009 stranded-URL class). The URL *convention* (`/sign-in` is the
+ * canonical logged-out URL; authenticated users never see it) is enforced
+ * separately by the root route's redirects (`__root.tsx`) — if those ever
+ * misfire, only the address bar is briefly wrong, never the content.
  */
 export function TrusteeShell() {
   const { status } = useTrusteeSession();

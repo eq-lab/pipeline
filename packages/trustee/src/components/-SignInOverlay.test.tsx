@@ -3,7 +3,8 @@
  *
  * Moved from the retired `/sign-in` route (#1008): the gate is now
  * `SignInOverlay`, rendered by `TrusteeShell` on the current URL whenever the
- * session is not authenticated — no auth route, no redirects. This suite mocks
+ * session is not authenticated (render-level gate; /sign-in remains only as the
+ * canonical logged-out URL). This suite mocks
  * `useTrusteeSession` rather than mounting the full wallet/router provider
  * stack, so it stays a focused unit test of the card + overlay render.
  */

@@ -34,10 +34,12 @@
  *      redirect-race bug class (#921/#988/#1009). A `401` here is rare (nonce
  *      race / signature mismatch) and surfaces as a verification-failed error.
  *
- * `signOut()` clears the stored token and disconnects the wallet — there is
- * no server logout endpoint (bearer-token transport, see the exec plan's
- * Decision Log), so sign-out is purely client-side; the overlay re-appears on
- * the current URL via the same render-level gate.
+ * `signOut()` clears the stored token, disconnects the wallet, and navigates
+ * to `/sign-in` (the canonical logged-out URL) — there is no server logout
+ * endpoint (bearer-token transport, see the exec plan's Decision Log), so
+ * sign-out is purely client-side. The navigation is a URL convention only:
+ * the render-level gate (`TrusteeShell`) shows the overlay regardless of URL,
+ * so nothing depends on it landing (#1008).
  */
 import React, {
   createContext,
@@ -46,6 +48,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   useEvmWallet,
   useStellarWallet,
@@ -96,6 +99,7 @@ export function TrusteeSessionProvider({
     onCancel: onModalCancel,
     onWalletSelect: onModalWalletSelect,
   } = useConnectModal();
+  const navigate = useNavigate();
 
   // Guards against re-running the challenge/verify orchestration more than
   // once for the same connect (e.g. re-renders while awaiting the backend).
@@ -309,9 +313,10 @@ export function TrusteeSessionProvider({
     setSession(undefined);
     if (evmWallet.isConnected) evmWallet.disconnect();
     if (stellarWallet.isConnected) stellarWallet.disconnect();
-    // No navigation — clearing the session re-renders TrusteeShell into the
-    // sign-in overlay on the current URL (#1008).
-  }, [evmWallet, stellarWallet]);
+    // URL convention: /sign-in is the logged-out URL. The overlay gate shows
+    // regardless of URL, so this navigation is not load-bearing (#1008).
+    void navigate({ to: "/sign-in" });
+  }, [evmWallet, stellarWallet, navigate]);
 
   const value: TrusteeSessionContextValue = {
     ...sessionState,

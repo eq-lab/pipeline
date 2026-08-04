@@ -6,12 +6,12 @@
  *   - Initial state is `unauthenticated`.
  *   - `signIn()` ALWAYS opens the connect modal, then once the user's
  *     explicitly-picked chain connects, drives challenge → sign → verify →
- *     `authenticated`, storing a token (verified via the session store) and
- *     redirecting to `/`.
+ *     `authenticated`, storing a token (verified via the session store) —
+ *     with NO navigation (#1008: the shell swaps the overlay in place).
  *   - `401` on the challenge → `unauthorized` with an explanatory error.
  *   - The user rejecting the signature → back to `unauthenticated`, no error.
- *   - `signOut()` clears the token and disconnects both wallets — no
- *     navigation (#1008: the shell re-renders the overlay on the current URL).
+ *   - `signOut()` clears the token, disconnects both wallets, and navigates
+ *     to `/sign-in` (URL convention — the overlay gate doesn't depend on it).
  *   - Hydration from an existing valid token → `authenticated` (covered by
  *     `-sessionStore.test.ts`; this file focuses on the orchestration).
  *   - (#793) Cancelling the connect modal (no wallet chosen) resets `status`
@@ -36,6 +36,11 @@ import {
 import { _resetSessionStoreForTests, getSessionToken } from "./sessionStore";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
+
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
 
 const mockOpenConnectModal = vi.fn();
 let evmState = { isConnected: false, address: undefined as string | undefined };
@@ -135,6 +140,7 @@ function renderProvider() {
 
 beforeEach(() => {
   _resetSessionStoreForTests();
+  mockNavigate.mockClear();
   mockOpenConnectModal.mockClear();
   mockEvmSignMessage.mockReset();
   mockStellarSignMessage.mockReset();
@@ -205,8 +211,9 @@ describe("TrusteeSessionProvider — signIn() happy path (EVM)", () => {
       expect(getSessionToken()).toBe("jwt-token");
     });
     expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
-    // (#1008) The provider never navigates — auth gating is render-level
-    // (TrusteeShell swaps the overlay for the app on the same URL).
+    // (#1008) Sign-IN never navigates — the shell swaps the overlay for the
+    // app on the same URL. (Only signOut resets the URL, cosmetically.)
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });
 
@@ -272,7 +279,7 @@ describe("TrusteeSessionProvider — 401 on verify", () => {
 });
 
 describe("TrusteeSessionProvider — signOut()", () => {
-  it("clears the token and disconnects connected wallets (no navigation — #1008)", () => {
+  it("clears the token, disconnects connected wallets, and navigates to /sign-in", () => {
     evmState = { isConnected: true, address: "0xabc" };
     renderProvider();
 
@@ -280,6 +287,7 @@ describe("TrusteeSessionProvider — signOut()", () => {
 
     expect(getSessionToken()).toBeUndefined();
     expect(mockEvmDisconnect).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/sign-in" });
   });
 
   it("disconnects BOTH wallets when both are connected, so no stale connection lingers", () => {

@@ -8,12 +8,12 @@ import { SignInCard } from "@/components/SignInCard";
  * tint (`rgba(246,248,248,0.8)`) has no equivalent design token today, so it
  * is a documented one-off arbitrary value scoped to this component.
  *
- * Rendered by `TrusteeShell` whenever the session is not authenticated —
- * the gate is an **overlay on the current URL**, not a route (#1008): there
- * is no `/sign-in` path, so no auth redirect can ever strand the URL (the
- * #921 / #988 / #1009 bug class). `SignInCard` drives the real sign-in flow
- * (#791); on `status → authenticated` the shell simply re-renders into the
- * dashboard at the same URL.
+ * Rendered by `TrusteeShell` whenever the session is not authenticated — the
+ * gate is **render-level**, not URL-level (#1008), so it shows on any URL and
+ * cannot be stranded by a navigation race (the #921/#988/#1009 bug class).
+ * `/sign-in` remains the canonical logged-out URL via the root redirects, but
+ * nothing about the gate depends on it. `SignInCard` drives the real sign-in
+ * flow (#791); on `status → authenticated` the shell re-renders into the app.
  */
 export function SignInOverlay() {
   return (

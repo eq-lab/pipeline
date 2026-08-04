@@ -1,14 +1,18 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * Legacy-URL shim (#1008): the sign-in gate is no longer a route — it renders
- * as an overlay on the current URL (`TrusteeShell` → `SignInOverlay`). This
- * route exists only so stale `/sign-in` bookmarks and open tabs from before
- * the change land on `/` instead of a 404; the overlay shows there when the
- * visitor is unauthenticated.
+ * `/sign-in` — the canonical logged-out URL (#1008). The route renders nothing
+ * itself: the sign-in UI is the render-level gate (`TrusteeShell` →
+ * `SignInOverlay`), which shows whenever the session is unauthenticated —
+ * on this URL or any other. Redirects keep the URL convention (`__root.tsx`):
+ * signed-out visitors land here; an authenticated visitor here is sent to `/`.
  */
+function SignIn() {
+  // Only reachable in the brief window between authenticating on /sign-in and
+  // the redirect to "/" — render nothing rather than flash stale gate UI.
+  return null;
+}
+
 export const Route = createFileRoute("/sign-in")({
-  beforeLoad: () => {
-    throw redirect({ to: "/" });
-  },
+  component: SignIn,
 });
