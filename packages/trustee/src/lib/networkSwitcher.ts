@@ -9,12 +9,13 @@ import {
   networkIdFromPassphrase,
   parseNetworkLinks,
   navigateToNetworkLink,
+  shouldConfirmNetworkSwitch,
 } from "@pipeline/wallet-connect";
 import type { NetworkIdentity, NetworkLink } from "@pipeline/wallet-connect";
 import { ENV } from "./env";
 
 export type { NetworkIdentity, NetworkLink };
-export { navigateToNetworkLink };
+export { navigateToNetworkLink, shouldConfirmNetworkSwitch };
 
 export interface NetworkSwitcherState {
   /** This deployment's own network, derived from its Stellar passphrase config. */

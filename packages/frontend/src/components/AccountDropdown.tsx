@@ -5,7 +5,7 @@
  * (network row above the namespace tabs, issue #1032).
  */
 import { useEffect, useRef } from "react";
-import { CoinIcon } from "@pipeline/ui";
+import { CoinIcon, NetworkSwitchDialog } from "@pipeline/ui";
 import { useAccountDropdown } from "./useAccountDropdown";
 import type { WalletViewKind, NetworkIdentity, NetworkLink } from "@/wallet";
 
@@ -381,6 +381,7 @@ export function AccountDropdown({
     currentNetwork,
     otherNetworks,
     selectNetwork,
+    networkSwitch,
   } = useAccountDropdown({
     onClose,
     address: address ?? "",
@@ -412,6 +413,14 @@ export function AccountDropdown({
         currentNetwork={currentNetwork}
         otherNetworks={otherNetworks}
         onSelectNetwork={selectNetwork}
+      />
+
+      <NetworkSwitchDialog
+        open={networkSwitch.pendingLink !== null}
+        targetLabel={networkSwitch.pendingLink?.label ?? ""}
+        isMainnet={networkSwitch.pendingLink?.id === "mainnet"}
+        onCancel={networkSwitch.cancelSwitch}
+        onConfirm={networkSwitch.confirmSwitch}
       />
 
       {/* Namespace segmented control */}

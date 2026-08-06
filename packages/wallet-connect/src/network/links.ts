@@ -90,18 +90,20 @@ export function parseNetworkLinks(raw: string | undefined): NetworkLink[] {
   return links;
 }
 
-/** Copy for the mainnet-bound confirm (real funds; Design §4, resolved Q7). */
-export const MAINNET_CONFIRM_MESSAGE =
-  "Switch to Mainnet? You'll leave this testnet environment.";
+/**
+ * Whether switching to `link` must be confirmed by the user first (real
+ * funds; Design §4, resolved Q7). The apps render the styled
+ * `@pipeline/ui` `NetworkSwitchDialog` for it — never `window.confirm`.
+ */
+export function shouldConfirmNetworkSwitch(link: NetworkLink): boolean {
+  return link.id === "mainnet";
+}
 
 /**
- * Navigates to a sibling deployment. Mainnet links ask for confirmation
- * first (real funds); confirmed elsewhere is a full-page, cross-origin
- * navigation — no in-app state carries over by design.
+ * Navigates to a sibling deployment — a full-page, cross-origin navigation;
+ * no in-app state carries over by design. Callers gate this behind the
+ * confirm dialog when `shouldConfirmNetworkSwitch(link)` is true.
  */
 export function navigateToNetworkLink(link: NetworkLink): void {
-  if (link.id === "mainnet" && !window.confirm(MAINNET_CONFIRM_MESSAGE)) {
-    return;
-  }
   window.location.assign(link.url);
 }

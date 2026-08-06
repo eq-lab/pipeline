@@ -5,10 +5,13 @@ import { useRouterState } from "@tanstack/react-router";
 import { truncateAddress } from "@/utils/truncateAddress";
 import {
   getNetworkSwitcherState,
-  navigateToNetworkLink,
   type NetworkIdentity,
   type NetworkLink,
 } from "@/wallet";
+import {
+  useNetworkSwitch,
+  type UseNetworkSwitchResult,
+} from "@/wallet/useNetworkSwitch";
 
 export { truncateAddress };
 
@@ -25,6 +28,8 @@ export interface UseAccountDropdownResult {
   currentNetwork: NetworkIdentity;
   otherNetworks: NetworkLink[];
   selectNetwork: (link: NetworkLink) => void;
+  /** Confirm-dialog state for mainnet-bound switches (issue #1032). */
+  networkSwitch: UseNetworkSwitchResult;
 }
 
 export function useAccountDropdown({
@@ -87,6 +92,7 @@ export function useAccountDropdown({
   }, [pathname, onClose]);
 
   const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+  const networkSwitch = useNetworkSwitch();
 
   return {
     rootRef,
@@ -95,6 +101,7 @@ export function useAccountDropdown({
     truncated,
     currentNetwork,
     otherNetworks,
-    selectNetwork: navigateToNetworkLink,
+    selectNetwork: networkSwitch.requestSwitch,
+    networkSwitch,
   };
 }

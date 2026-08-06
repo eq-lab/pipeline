@@ -5,8 +5,8 @@
  *   - `networkIdFromPassphrase`: testnet / mainnet / unknown passphrases.
  *   - `parseNetworkLinks`: happy path, empty/unset, malformed entries
  *     dropped, order preserved.
- *   - `navigateToNetworkLink`: mainnet asks `window.confirm` before
- *     navigating; non-mainnet navigates directly; declining the confirm
+ *   - `navigateToNetworkLink`: raw cross-origin navigation — the confirm
+ *     gate lives in the apps' styled `NetworkSwitchDialog`; declining there
  *     does not navigate.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -14,7 +14,7 @@ import {
   networkIdFromPassphrase,
   parseNetworkLinks,
   navigateToNetworkLink,
-  MAINNET_CONFIRM_MESSAGE,
+  shouldConfirmNetworkSwitch,
   type NetworkLink,
 } from "./links";
 
@@ -164,32 +164,20 @@ describe("navigateToNetworkLink", () => {
     });
   });
 
-  it("navigates directly for a non-mainnet link (no confirm)", () => {
+  it("navigates without any window.confirm involvement (dialog owns the gate)", () => {
     const confirmSpy = vi.spyOn(window, "confirm");
     const assignSpy = mockLocationAssign();
 
     navigateToNetworkLink(testnetLink);
+    navigateToNetworkLink(mainnetLink);
 
     expect(confirmSpy).not.toHaveBeenCalled();
-    expect(assignSpy).toHaveBeenCalledWith(testnetLink.url);
+    expect(assignSpy).toHaveBeenNthCalledWith(1, testnetLink.url);
+    expect(assignSpy).toHaveBeenNthCalledWith(2, mainnetLink.url);
   });
 
-  it("asks for confirmation before navigating to a mainnet link", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    const assignSpy = mockLocationAssign();
-
-    navigateToNetworkLink(mainnetLink);
-
-    expect(confirmSpy).toHaveBeenCalledWith(MAINNET_CONFIRM_MESSAGE);
-    expect(assignSpy).toHaveBeenCalledWith(mainnetLink.url);
-  });
-
-  it("does not navigate when the mainnet confirm is declined", () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
-    const assignSpy = mockLocationAssign();
-
-    navigateToNetworkLink(mainnetLink);
-
-    expect(assignSpy).not.toHaveBeenCalled();
+  it("shouldConfirmNetworkSwitch is true only for mainnet", () => {
+    expect(shouldConfirmNetworkSwitch(mainnetLink)).toBe(true);
+    expect(shouldConfirmNetworkSwitch(testnetLink)).toBe(false);
   });
 });

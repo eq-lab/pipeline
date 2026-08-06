@@ -35,12 +35,13 @@
  */
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Logo } from "@pipeline/ui";
+import { Logo, NetworkSwitchDialog } from "@pipeline/ui";
 import { TRUSTEE_NAV_ITEMS, type TrusteeNavItem } from "@/lib/nav";
 import { truncateAddress } from "@/lib/truncateAddress";
 import {
   getNetworkSwitcherState,
   navigateToNetworkLink,
+  shouldConfirmNetworkSwitch,
   type NetworkLink,
 } from "@/lib/networkSwitcher";
 import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
@@ -164,6 +165,8 @@ function AccountMenu({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Mainnet-bound switches confirm via the styled dialog (#1032).
+  const [pendingLink, setPendingLink] = useState<NetworkLink | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -218,7 +221,11 @@ function AccountMenu({
                     role="menuitem"
                     onClick={() => {
                       setOpen(false);
-                      navigateToNetworkLink(link);
+                      if (shouldConfirmNetworkSwitch(link)) {
+                        setPendingLink(link);
+                      } else {
+                        navigateToNetworkLink(link);
+                      }
                     }}
                     data-testid={`trustee-network-link-${link.id}`}
                     className="flex w-full cursor-pointer items-center gap-2 bg-transparent px-3 py-2 text-left font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink)] hover:bg-[color:var(--color-pipeline-surface-muted)]"
@@ -251,6 +258,15 @@ function AccountMenu({
           </button>
         </div>
       ) : null}
+      <NetworkSwitchDialog
+        open={pendingLink !== null}
+        targetLabel={pendingLink?.label ?? ""}
+        isMainnet={pendingLink?.id === "mainnet"}
+        onCancel={() => setPendingLink(null)}
+        onConfirm={() => {
+          if (pendingLink) navigateToNetworkLink(pendingLink);
+        }}
+      />
     </div>
   );
 }
@@ -288,11 +304,18 @@ function AccountChip() {
         >
           Trustee · connected
         </span>
-        {/* Static current-network label — always visible, no menu required
-            (issue #1032 acceptance: "active network always labeled"). */}
+        {/* Current-network pill — always visible, no menu required
+            (issue #1032 acceptance: "active network always labeled").
+            Tinted pill (not muted caption text) so the active network is
+            unmissable on the navy sidebar; mainnet gets the amber accent. */}
         <span
-          className="mt-0.5 flex items-center gap-1.5 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]"
-          style={{ color: SUBTITLE_COLOR }}
+          className={[
+            "mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5",
+            "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] font-[var(--font-weight-medium)]",
+            currentNetwork.id === "mainnet"
+              ? "bg-[color:var(--color-pipeline-warning)]/20 text-[color:var(--color-pipeline-warning)]"
+              : "bg-white/12 text-white/85",
+          ].join(" ")}
           data-testid="trustee-network-badge"
         >
           <span

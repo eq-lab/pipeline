@@ -192,6 +192,6 @@ export {
   networkIdFromPassphrase,
   parseNetworkLinks,
   navigateToNetworkLink,
-  MAINNET_CONFIRM_MESSAGE,
+  shouldConfirmNetworkSwitch,
 } from "./network/links";
 export type { NetworkIdentity, NetworkLink } from "./network/links";

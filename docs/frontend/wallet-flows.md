@@ -185,23 +185,33 @@ isolates everything else (a fresh page load, a wallet that must reconnect on the
    remains after excluding self, the switcher renders as a static network label with no menu** —
    this is the "hidden when unconfigured" behavior the issue requires, and it is also the default
    dev/local experience (the var defaults to the empty string).
-3. **UI.** Both apps render the current network as an always-visible static label (a colored dot +
-   the network label) **outside** any menu, so the active network never requires opening a menu to
-   see (`TopBar`'s `topbar-network-badge` in the LP app; the account chip's `trustee-network-badge`
-   in the trustee app). Each app's account menu additionally gets a switch-network section — rows
-   for every configured sibling network, rendered only when `otherNetworks` is non-empty — above
-   the LP `AccountDropdown`'s namespace tabs, and above "Sign out" in the trustee `⋯` popover. The
-   testnet dot is a muted on-dark tone; the mainnet dot uses the amber `--color-pipeline-warning`
-   token rather than the literal brand navy, since a navy dot would be invisible against these
-   apps' navy/dark-ink surfaces.
-4. **Mainnet confirm.** Clicking a mainnet sibling link asks for confirmation first — real funds are
-   at stake once you cross onto mainnet. `navigateToNetworkLink` (`@pipeline/wallet-connect`) calls
-   `window.confirm("Switch to Mainnet? You'll leave this testnet environment.")`; declining does not
-   navigate. Any other network navigates immediately via `window.location.assign(url)` — a full-page,
-   cross-origin navigation, so no in-app state carries over by design.
-5. **Shared vs. per-app.** The parsing/identity/navigate logic (`parseNetworkLinks`,
-   `networkIdFromPassphrase`, `navigateToNetworkLink`) lives once in `@pipeline/wallet-connect` so
-   both apps run the same implementation. The thin composition that reads each app's own `ENV` and
+3. **UI.** Both apps render the current network as an always-visible **pill** (tinted background,
+   colored dot + network label) outside any menu, so the active network never requires opening a
+   menu to see:
+   - LP app: `TopBar`'s `topbar-network-badge` is the `NetworkSwitcher` component
+     (`packages/frontend/src/components/NetworkSwitcher.tsx`). With siblings configured it is a
+     button with a chevron that opens its own small popover (`topbar-network-menu`) listing
+     "Switch to …" rows; with none it renders as a non-interactive pill. The LP `AccountDropdown`
+     keeps its network row too (same behavior, both routes through the confirm flow).
+   - Trustee: the account chip's `trustee-network-badge` pill (white-tint for testnet, amber-tint
+     for mainnet on the navy sidebar); switch rows live in the `⋯` `AccountMenu` popover above
+     "Sign out".
+   - The testnet pill dot is green (LP) / muted (menus); the mainnet dot uses the amber
+     `--color-pipeline-warning` token rather than the literal brand navy, since a navy dot would
+     be invisible against these apps' navy/dark-ink surfaces.
+4. **Mainnet confirm.** Clicking a mainnet sibling link opens the shared styled
+   `NetworkSwitchDialog` (`@pipeline/ui`) — real funds are at stake once you cross onto mainnet.
+   The dialog states that the wallet must be reconnected on the other origin; Cancel/Escape/
+   backdrop close without navigating. The gate is decided by `shouldConfirmNetworkSwitch(link)`
+   (`@pipeline/wallet-connect`; true only for `mainnet`) — `window.confirm` is not used. Any other
+   network navigates immediately via `navigateToNetworkLink` → `window.location.assign(url)` — a
+   full-page, cross-origin navigation, so no in-app state carries over by design. The LP app wraps
+   the pending-link state in `useNetworkSwitch()` (`packages/frontend/src/wallet/useNetworkSwitch.ts`);
+   the trustee inlines the same two-state flow in `AccountMenu`.
+5. **Shared vs. per-app.** The parsing/identity/navigate/gate logic (`parseNetworkLinks`,
+   `networkIdFromPassphrase`, `navigateToNetworkLink`, `shouldConfirmNetworkSwitch`) and the
+   confirm dialog (`NetworkSwitchDialog`, `@pipeline/ui`) live once in shared packages so both
+   apps run the same implementation. The thin composition that reads each app's own `ENV` and
    combines it with those helpers (`getNetworkSwitcherState`) is duplicated per app (mirrors the
    trustee/LP util-duplication precedent in `docs/frontend/utils.md` — the trustee app does not
    depend on `@pipeline/frontend`, epic #775) — each app's version is a handful of lines and is unit

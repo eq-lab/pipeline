@@ -672,7 +672,7 @@ describe("AccountDropdown — network switcher row", () => {
     ).toBeInTheDocument();
   });
 
-  it("clicking a non-mainnet other-network row navigates directly, without confirm", async () => {
+  it("clicking a non-mainnet other-network row navigates directly, without a dialog", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "futurenet",
@@ -680,7 +680,6 @@ describe("AccountDropdown — network switcher row", () => {
         url: "https://futurenet.example.com",
       },
     ];
-    const confirmSpy = vi.spyOn(window, "confirm");
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -689,11 +688,13 @@ describe("AccountDropdown — network switcher row", () => {
 
     await user.click(screen.getByTestId("topbar-network-link-futurenet"));
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("network-switch-dialog"),
+    ).not.toBeInTheDocument();
     expect(assignSpy).toHaveBeenCalledWith("https://futurenet.example.com");
   });
 
-  it("clicking a mainnet other-network row asks for confirmation before navigating", async () => {
+  it("clicking a mainnet other-network row opens the confirm dialog; confirming navigates", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "mainnet",
@@ -701,7 +702,6 @@ describe("AccountDropdown — network switcher row", () => {
         url: "https://app.pipeline.one",
       },
     ];
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -710,11 +710,18 @@ describe("AccountDropdown — network switcher row", () => {
 
     await user.click(screen.getByTestId("topbar-network-link-mainnet"));
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // No navigation yet — the styled dialog gates it.
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("network-switch-dialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Switch to Mainnet?" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("network-switch-confirm"));
     expect(assignSpy).toHaveBeenCalledWith("https://app.pipeline.one");
   });
 
-  it("does not navigate when the mainnet confirm is declined", async () => {
+  it("cancelling the mainnet dialog does not navigate and closes it", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "mainnet",
@@ -722,7 +729,6 @@ describe("AccountDropdown — network switcher row", () => {
         url: "https://app.pipeline.one",
       },
     ];
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -730,7 +736,11 @@ describe("AccountDropdown — network switcher row", () => {
     await openDropdown(user);
 
     await user.click(screen.getByTestId("topbar-network-link-mainnet"));
+    await user.click(screen.getByTestId("network-switch-cancel"));
 
     expect(assignSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("network-switch-dialog"),
+    ).not.toBeInTheDocument();
   });
 });

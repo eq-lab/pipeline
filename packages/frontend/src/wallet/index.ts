@@ -211,6 +211,7 @@ export type {
 export {
   getNetworkSwitcherState,
   navigateToNetworkLink,
+  shouldConfirmNetworkSwitch,
 } from "./networkSwitcher";
 export type {
   NetworkSwitcherState,

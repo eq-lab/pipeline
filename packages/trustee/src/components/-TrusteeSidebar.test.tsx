@@ -9,8 +9,9 @@
  *
  * Also covers the network switcher (issue #1032): the static badge in the
  * account chip, the `⋯` popover's switch-network rows, and the mainnet
- * confirm — `getNetworkSwitcherState` is stubbed (controllable per test)
- * while the real `navigateToNetworkLink` (confirm + navigate) runs unmocked.
+ * confirm dialog — `getNetworkSwitcherState` is stubbed (controllable per
+ * test) while the real `navigateToNetworkLink` runs unmocked; the mainnet
+ * gate is the styled `NetworkSwitchDialog` (#1032 polish).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -275,7 +276,7 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
     ).toBeInTheDocument();
   });
 
-  it("clicking a non-mainnet other-network row navigates directly, without confirm", async () => {
+  it("clicking a non-mainnet other-network row navigates directly, without a dialog", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "futurenet",
@@ -283,7 +284,6 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
         url: "https://futurenet.example.com",
       },
     ];
-    const confirmSpy = vi.spyOn(window, "confirm");
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -296,11 +296,13 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
       await screen.findByTestId("trustee-network-link-futurenet"),
     );
 
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("network-switch-dialog"),
+    ).not.toBeInTheDocument();
     expect(assignSpy).toHaveBeenCalledWith("https://futurenet.example.com");
   });
 
-  it("clicking a mainnet other-network row asks for confirmation before navigating", async () => {
+  it("clicking a mainnet other-network row opens the confirm dialog; confirming navigates", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "mainnet",
@@ -308,7 +310,6 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
         url: "https://dashboard.pipeline.one",
       },
     ];
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -319,11 +320,16 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
     );
     await user.click(await screen.findByTestId("trustee-network-link-mainnet"));
 
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(
+      await screen.findByTestId("network-switch-dialog"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("network-switch-confirm"));
     expect(assignSpy).toHaveBeenCalledWith("https://dashboard.pipeline.one");
   });
 
-  it("does not navigate when the mainnet confirm is declined", async () => {
+  it("cancelling the mainnet dialog does not navigate and closes it", async () => {
     mockNetworkSwitcherState.otherNetworks = [
       {
         id: "mainnet",
@@ -331,7 +337,6 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
         url: "https://dashboard.pipeline.one",
       },
     ];
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const assignSpy = mockLocationAssign();
 
     const user = userEvent.setup();
@@ -341,7 +346,11 @@ describe("TrusteeSidebar — network switcher (issue #1032)", () => {
       await screen.findByRole("button", { name: "Account menu" }),
     );
     await user.click(await screen.findByTestId("trustee-network-link-mainnet"));
+    await user.click(screen.getByTestId("network-switch-cancel"));
 
+    expect(
+      screen.queryByTestId("network-switch-dialog"),
+    ).not.toBeInTheDocument();
     expect(assignSpy).not.toHaveBeenCalled();
   });
 });
