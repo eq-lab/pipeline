@@ -108,3 +108,55 @@ fn negative_trust_withdrawal_is_rejected() {
     let err = validate_loan_transfers(&req).unwrap_err();
     assert!(err.contains("must be >= 0"), "got: {err}");
 }
+
+// Magnitude and scale are bounded so out-of-range entries fail as 400s instead
+// of surfacing as INSERT-time Postgres NUMERIC overflows (500) or absurd stored
+// values that break the Trustee dashboard's float parsing.
+
+#[test]
+fn amount_above_magnitude_bound_is_rejected() {
+    // 1e131000 parses as a valid BigDecimal but must not pass validation.
+    let req = UpsertLoanTransfersRequest {
+        on_ramp_transferred: "1e131000".to_owned(),
+        ..valid_request()
+    };
+    let err = validate_loan_transfers(&req).unwrap_err();
+    assert!(err.contains("must be <="), "got: {err}");
+}
+
+#[test]
+fn amount_at_magnitude_bound_is_accepted() {
+    let req = UpsertLoanTransfersRequest {
+        on_ramp_transferred: "1000000000000000".to_owned(), // exactly 10^15
+        ..valid_request()
+    };
+    assert!(validate_loan_transfers(&req).is_ok());
+}
+
+#[test]
+fn amount_with_excessive_scale_is_rejected() {
+    // A pathological scale (would overflow NUMERIC's scale limit at INSERT time).
+    let req = UpsertLoanTransfersRequest {
+        trust_account_deposit: "1e-131000".to_owned(),
+        ..valid_request()
+    };
+    let err = validate_loan_transfers(&req).unwrap_err();
+    assert!(err.contains("decimal places"), "got: {err}");
+
+    let req = UpsertLoanTransfersRequest {
+        trust_account_deposit: "0.1234567".to_owned(), // 7 dp
+        ..valid_request()
+    };
+    let err = validate_loan_transfers(&req).unwrap_err();
+    assert!(err.contains("decimal places"), "got: {err}");
+}
+
+#[test]
+fn trailing_zeros_do_not_count_toward_scale() {
+    // "1.500000000" normalizes to 1.5 — trailing zeros must not trip the bound.
+    let req = UpsertLoanTransfersRequest {
+        trust_account_deposit: "1.500000000".to_owned(),
+        ..valid_request()
+    };
+    assert!(validate_loan_transfers(&req).is_ok());
+}

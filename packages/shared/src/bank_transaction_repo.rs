@@ -1,19 +1,21 @@
 //! Manually-entered bank-account ledger (`bank_transactions`).
 //!
-//! Backs `trust_account` on `GET /v1/capital-allocation` (#924):
-//! `trust_account = sum(deposits) - sum(withdrawals) - sum(fees)`. The trust account
-//! is a single real-world bank account for the whole protocol, not a per-chain
-//! concept, so this table (and this repo) is deliberately **not** chain-scoped —
-//! mirrors `loan_asset_prices`, which is global for the same reason.
+//! Originally backed `trust_account` on `GET /v1/capital-allocation` (#924):
+//! `trust_account = sum(deposits) - sum(withdrawals) - sum(fees)`. **Decoupled by
+//! #1027** — capital-allocation now sources `trust_account` from the per-loan
+//! `loan_capital_transfers` table instead, so `trust_account_balance()` has no
+//! remaining callers. This ledger (endpoint, repo, and table) is kept only until
+//! its removal, tracked in #1029. The trust account is a single real-world bank
+//! account for the whole protocol, not a per-chain concept, so this table (and
+//! this repo) is deliberately **not** chain-scoped — mirrors `loan_asset_prices`,
+//! which is global for the same reason.
 //!
 //! Append-only: `insert` is the only write. A bookkeeping correction is posted as a
 //! new offsetting entry, never an edit — same audit rationale as `loan_assays`/
 //! `loan_offtake_terms` (#914).
 //!
 //! `amount` is a **plain dollar figure**, not base-6/on-chain-scaled — a bank
-//! transaction has no on-chain native scale to normalize against. The API-facing
-//! `routes::capital_allocation` handler is responsible for scaling
-//! `trust_account_balance()`'s result when combining it with other, base-6 buckets.
+//! transaction has no on-chain native scale to normalize against.
 
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};

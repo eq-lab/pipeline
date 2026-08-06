@@ -88,10 +88,11 @@ pub struct YieldMintRow {
 /// Emitted by the worker's Stellar indexer for transfers of the tracked asset
 /// where **both** endpoints are custody/ramp addresses (see the worker's
 /// `transfer_between_tracked`). Used by the Capital Allocation API to compute the
-/// `in_transit` bucket as net custody→ramp flow, and by the `/v1/ramp` endpoints
-/// (#936) to list and review (approve/reject) on-ramp **and** off-ramp events —
-/// every ramp-boundary transfer needs Trustee review, not just inflows. `amount` is
-/// in USDC base units (6-decimal), matching the other `contract_logs` amounts.
+/// `in_transit` bucket's gross approved ramp flow (both legs, absolute — #1027),
+/// and by the `/v1/ramp` endpoints (#936) to list and review (approve/reject)
+/// on-ramp **and** off-ramp events — every ramp-boundary transfer needs Trustee
+/// review, not just inflows. `amount` is in USDC base units (6-decimal), matching
+/// the other `contract_logs` amounts.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct AssetTransferRow {
     /// `contract_logs.id` — the primary key of the underlying log row, and the key
@@ -791,8 +792,9 @@ impl ContractLogsRepo {
 
     /// All `AssetTransfer` events for a chain with `block_timestamp <= to_unix`.
     ///
-    /// Used by the Capital Allocation API to compute the `in_transit` bucket as the
-    /// net custody→ramp flow, and by the `/v1/ramp` endpoints (#936) to list on-ramp
+    /// Used by the Capital Allocation API to compute the `in_transit` bucket's
+    /// gross approved ramp flow (both legs, absolute — #1027), and by the
+    /// `/v1/ramp` endpoints (#936) to list on-ramp
     /// and off-ramp events. Only transfers between tracked (custody ∪ ramp) accounts
     /// are indexed, so callers classify `from`/`to` against the configured address
     /// sets. `review_decision`/`review_reason`/`reviewed_at` are populated via a

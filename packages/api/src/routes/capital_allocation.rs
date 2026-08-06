@@ -151,33 +151,51 @@ async fn get_capital_allocation(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let loans = state
-        .contract_logs_repo
-        .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
-        .await?;
-    let events = state
-        .contract_logs_repo
-        .list_loan_lifecycle_events(&state.pool, chain_id, to)
-        .await?;
-    let transfers = state
-        .contract_logs_repo
-        .list_asset_transfers(&state.pool, chain_id, to)
-        .await?;
-    let addr = state.transfer_addresses.get(&chain_id);
-    let asset_decimals = state.asset_decimals.get(&chain_id).copied().unwrap_or(7);
-    let withdrawal_queue_balance = match state.withdrawal_queue_wallets.get(&chain_id) {
-        Some(wallet) => {
+    // The five reads are independent of each other — run them concurrently
+    // rather than as a serial chain of round-trips (this endpoint is polled by
+    // the Trustee Overview card).
+    let (loans, events, transfers, withdrawal_queue_balance, capital_transfers) = tokio::try_join!(
+        async {
             state
                 .contract_logs_repo
-                .get_wallet_balance_as_of(&state.pool, chain_id, wallet, to)
-                .await?
-        }
-        None => None,
-    };
-    let capital_transfers = state
-        .loan_capital_transfers_repo
-        .list_for_chain(chain_id)
-        .await?;
+                .list_latest_loan_snapshots_for_chain(&state.pool, chain_id, to)
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            state
+                .contract_logs_repo
+                .list_loan_lifecycle_events(&state.pool, chain_id, to)
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            state
+                .contract_logs_repo
+                .list_asset_transfers(&state.pool, chain_id, to)
+                .await
+                .map_err(ApiError::from)
+        },
+        async {
+            match state.withdrawal_queue_wallets.get(&chain_id) {
+                Some(wallet) => state
+                    .contract_logs_repo
+                    .get_wallet_balance_as_of(&state.pool, chain_id, wallet, to)
+                    .await
+                    .map_err(ApiError::from),
+                None => Ok(None),
+            }
+        },
+        async {
+            state
+                .loan_capital_transfers_repo
+                .list_for_chain(chain_id)
+                .await
+                .map_err(ApiError::from)
+        },
+    )?;
+    let addr = state.transfer_addresses.get(&chain_id);
+    let asset_decimals = state.asset_decimals.get(&chain_id).copied().unwrap_or(7);
 
     Ok(Json(compute_capital_allocation(
         &loans,

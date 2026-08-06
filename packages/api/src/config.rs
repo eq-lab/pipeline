@@ -83,7 +83,8 @@ pub struct ChainsConfig {
 }
 
 /// Custody + ramp Stellar address sets used to classify indexed `AssetTransfer`
-/// events into the `in_transit` bucket (net custody→ramp flow).
+/// events into the `in_transit` bucket's gross approved ramp flow (both legs,
+/// absolute — #1027).
 ///
 /// Parsed from per-chain, API-specific env vars (parallel to the worker's
 /// job-level `JOB_INDEXER_STELLAR_*` vars — the API and worker are decoupled):

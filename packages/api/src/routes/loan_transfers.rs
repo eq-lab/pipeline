@@ -28,9 +28,10 @@ use utoipa::{OpenApi, ToSchema};
 
 use shared::loan_capital_transfers_repo::{LoanCapitalTransfersRow, LoanCapitalTransfersValues};
 
-use crate::auth::{AuthClaims, SecurityAddon, TRUSTEE_ROLE};
+use crate::auth::{AuthClaims, SecurityAddon};
 use crate::error::ApiError;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::formatting::iso_utc;
+use crate::routes::common::{trustee_indexed_loan_guard, ChainQuery};
 use crate::AppState;
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -81,10 +82,7 @@ impl LoanTransfersResponse {
             trust_account_deposit: row.trust_account_deposit.to_plain_string(),
             trust_account_withdrawal: row.trust_account_withdrawal.to_plain_string(),
             recorded_by: Some(row.recorded_by),
-            updated_at: Some(
-                row.updated_at
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-            ),
+            updated_at: Some(iso_utc(&row.updated_at)),
         }
     }
 
@@ -150,7 +148,7 @@ async fn get_loan_transfers(
     Path(loan_id): Path<String>,
     Query(query): Query<ChainQuery>,
 ) -> Result<Json<LoanTransfersResponse>, ApiError> {
-    let (chain_id, loan_id) = authorize_and_resolve(&claims, &state, &loan_id, &query).await?;
+    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
 
     let row = state
         .loan_capital_transfers_repo
@@ -188,7 +186,7 @@ async fn upsert_loan_transfers(
     Query(query): Query<ChainQuery>,
     Json(payload): Json<UpsertLoanTransfersRequest>,
 ) -> Result<Json<LoanTransfersResponse>, ApiError> {
-    let (chain_id, loan_id) = authorize_and_resolve(&claims, &state, &loan_id, &query).await?;
+    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
 
     let values = validate_loan_transfers(&payload).map_err(ApiError::BadRequest)?;
 
@@ -200,44 +198,24 @@ async fn upsert_loan_transfers(
     Ok(Json(LoanTransfersResponse::from_row(row)))
 }
 
-/// Shared guard for both handlers: trustee role → 403, malformed loan id → 400,
-/// loan not indexed on the chain → 404 (reuses the latest-status lookup exactly
-/// like `routes::loan_book::complete_disbursement`).
-async fn authorize_and_resolve(
-    claims: &crate::auth::Claims,
-    state: &Arc<AppState>,
-    loan_id: &str,
-    query: &ChainQuery,
-) -> Result<(i64, BigDecimal), ApiError> {
-    if !claims.has_role(TRUSTEE_ROLE) {
-        return Err(ApiError::Forbidden(format!(
-            "this endpoint requires the `{TRUSTEE_ROLE}` role"
-        )));
-    }
-
-    let chain_id = resolve_chain(state, query.chain_id);
-    let loan_id = BigDecimal::from_str(loan_id.trim())
-        .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
-
-    let indexed = state
-        .contract_logs_repo
-        .latest_status_by_loans(&state.pool, chain_id, std::slice::from_ref(&loan_id))
-        .await?;
-    if indexed.is_empty() {
-        return Err(ApiError::NotFound(format!(
-            "loan {loan_id} not indexed on chain {chain_id}"
-        )));
-    }
-
-    Ok((chain_id, loan_id))
-}
-
 // ── Validation (pure) ────────────────────────────────────────────────────────
+
+/// Upper bound for a single entered amount: one quadrillion dollars. Far above
+/// any real cash-rail movement, but safely inside Postgres `NUMERIC` limits and
+/// float-parseable by the Trustee frontend — an out-of-range entry is rejected
+/// as a 400 instead of surfacing as an INSERT-time 500 or an absurd stored value.
+const MAX_AMOUNT_DOLLARS: i64 = 1_000_000_000_000_000;
+
+/// Maximum decimal places for an entered amount. Cash-rail figures are dollars
+/// and cents; 6 leaves headroom while keeping pathological scales (e.g.
+/// `1e-131000`, which would overflow `NUMERIC`'s scale limit at INSERT time) out.
+const MAX_AMOUNT_SCALE: i64 = 6;
 
 /// Pure validation for [`UpsertLoanTransfersRequest`] — no I/O, unit-tested
 /// directly (`packages/api/tests/loan_transfers.rs`). Each amount must parse as
-/// a non-negative decimal; sign is implied entirely by the field name (derived
-/// bucket values may go negative, individual entries may not).
+/// a non-negative decimal no greater than [`MAX_AMOUNT_DOLLARS`] with at most
+/// [`MAX_AMOUNT_SCALE`] decimal places; sign is implied entirely by the field
+/// name (derived bucket values may go negative, individual entries may not).
 pub fn validate_loan_transfers(
     req: &UpsertLoanTransfersRequest,
 ) -> Result<LoanCapitalTransfersValues, String> {
@@ -246,6 +224,20 @@ pub fn validate_loan_transfers(
             .map_err(|_| format!("`{label}` is not a valid decimal: {s}"))?;
         if amount < 0 {
             return Err(format!("`{label}` must be >= 0; got {amount}"));
+        }
+        if amount > MAX_AMOUNT_DOLLARS {
+            return Err(format!(
+                "`{label}` must be <= {MAX_AMOUNT_DOLLARS}; got {amount}"
+            ));
+        }
+        // `normalized()` drops trailing zeros so "1.50" (scale 2) and "1.500000"
+        // (scale 6) both pass; the exponent of the normalized value is its
+        // effective decimal-place count.
+        let (_, scale) = amount.normalized().as_bigint_and_exponent();
+        if scale > MAX_AMOUNT_SCALE {
+            return Err(format!(
+                "`{label}` must have at most {MAX_AMOUNT_SCALE} decimal places; got {amount}"
+            ));
         }
         Ok(amount)
     };

@@ -32,7 +32,7 @@ use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, Submitted
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
 use crate::error::ApiError;
 use crate::formatting::base6_to_decimal_string;
-use crate::routes::common::{resolve_chain, ChainQuery};
+use crate::routes::common::{resolve_chain, trustee_indexed_loan_guard, ChainQuery};
 use crate::AppState;
 /// Fixed-point scale for CCR / monetary amounts on-chain (`ONE = 1e6`). The
 /// initial CCR must be at least 100 % (`>= ONE`), mirroring `draw_loan`.
@@ -912,27 +912,9 @@ async fn complete_disbursement(
     Path(loan_id): Path<String>,
     Query(query): Query<ChainQuery>,
 ) -> Result<StatusCode, ApiError> {
-    if !claims.has_role(TRUSTEE_ROLE) {
-        return Err(ApiError::Forbidden(format!(
-            "this endpoint requires the `{TRUSTEE_ROLE}` role"
-        )));
-    }
-
-    let chain_id = resolve_chain(&state, query.chain_id);
-    let loan_id = BigDecimal::from_str(loan_id.trim())
-        .map_err(|_| ApiError::BadRequest(format!("invalid loan_id: {loan_id}")))?;
-
-    // 404 when the loan isn't indexed on this chain (no on-chain snapshot). Reuses the
-    // latest-status lookup: an empty result means the loan has no indexed events.
-    let indexed = state
-        .contract_logs_repo
-        .latest_status_by_loans(&state.pool, chain_id, std::slice::from_ref(&loan_id))
-        .await?;
-    if indexed.is_empty() {
-        return Err(ApiError::NotFound(format!(
-            "loan {loan_id} not indexed on chain {chain_id}"
-        )));
-    }
+    // Trustee 403 / malformed-id 400 / not-indexed 404 — shared with
+    // `routes::loan_transfers` so the guard semantics cannot drift (#1027).
+    let (chain_id, loan_id) = trustee_indexed_loan_guard(&claims, &state, &loan_id, &query).await?;
 
     state
         .loan_disbursement_repo
