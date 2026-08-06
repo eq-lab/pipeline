@@ -1,27 +1,5 @@
-/**
- * /test — Diagnostic page.
- *
- * Three-tab layout driven by a TanStack Router search param
- * (`?tab=status|mocks|toasts`):
- *
- *   - **Status** (default) — the existing read-only sections surfacing runtime
- *     state: ENV, Wallet, DepositManager, USDC balance, ERC-20 approval. No
- *     buttons. This is the live observability surface.
- *
- *   - **Mocks** — a global "Clear mocks" button + one scenario card per
- *     meaningful app state. Clicking Enable wipes all `pipeline.mock.*` keys,
- *     seeds only the scenario's keys, and reloads the page.
- *
- *   - **Toasts** — trigger buttons for every toast flavour (tones,
- *     actionable, pending→resolved lifecycle, custom icon) so the restyled
- *     toasts can be eyeballed on the real site.
- *
- * The active tab is reflected in the URL. Reloading preserves the tab.
- * Invalid `?tab=` values fall back to `"status"`.
- *
- * The page is intentionally NOT linked from `TopBar`; it is a developer /
- * manual-QA tool only.
- */
+// spec: docs/frontend/dashboard-components.md#diagnostics-route
+// (tab layout, mocks activation flow, scope).
 import React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";

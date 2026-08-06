@@ -1,21 +1,8 @@
 /**
  * TvlCard — Protocol Dashboard TVL card (left column of the Figma "Top" row).
  *
- * Renders from data already fetched by `useYieldHistoryPanel`:
- *   - "TVL" eyebrow + headline value (e.g. "$43.1M")
- *   - "Outstanding in Loans" label + value (muted, right-aligned), or "—" when null
- *   - Horizontal progress bar + "X.X% deployed" caption — ratio of two backend-served
- *     values (`outstanding_in_loans / tvl`). Approved exception to the
- *     "no frontend-computed metrics" rule for this ratio-of-served-values visualisation
- *     (issue #760 open-question resolution). Guard: null/zero tvl → empty bar + "—%".
- *   - Dark TVL bar chart (`fill="var(--color-pipeline-ink)"`)
- *
- * One file = one component (FRONTEND.md rule 1). No data fetching — purely
- * presentational (logic lives in `useYieldHistoryPanel`).
- *
- * Figma:
- *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67622
- *   Tokens: eyebrow/caption = Caption (Graphik LC 12/16); headline = Heading M (Besley 28/36).
+ * spec: docs/frontend/dashboard-components.md#tvlcard
+ * (content, deployed-ratio business rule, Figma tokens).
  */
 import { YieldBarChart } from "./YieldBarChart";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
@@ -27,11 +14,7 @@ export interface TvlCardProps {
   headlineTvl: string;
   /** Formatted outstanding in loans, e.g. "$31.6M". "—" when null. */
   outstandingInLoans: string;
-  /**
-   * Deployment ratio (0–1) for the progress bar.
-   * `null` when tvl is null/zero (divide-by-zero guard) or outstanding is null.
-   * Approved client-side computation: ratio of two backend-served values.
-   */
+  /** Deployment ratio (0–1) for the progress bar. spec: docs/frontend/dashboard-components.md#tvlcard */
   deployedRatio: number | null;
   /** Pre-computed TVL bar chart data, or null when empty. */
   tvlBars: YieldBarPoint[] | null;
@@ -69,8 +52,6 @@ export function TvlCard({
   deployedRatio,
   tvlBars,
 }: TvlCardProps) {
-  // Format the deployed percentage caption.
-  // `deployedRatio` is null when tvl is null/zero (divide-by-zero guard).
   const deployedCaption =
     deployedRatio !== null
       ? `${(deployedRatio * 100).toFixed(1)}% deployed`
@@ -92,17 +73,12 @@ export function TvlCard({
         "border-r-[3px] border-b-[3px]",
         "border-b-[color:var(--color-pipeline-line)]",
         "border-r-[color:var(--color-pipeline-line)]",
-        // Mobile: fixed 404px (Figma 3283:71059). Desktop: fills the 460px row.
         "h-[404px] md:h-[460px] md:flex-1",
       ].join(" ")}
       data-testid="dashboard-tvl-card"
       data-node-id="3283:67622"
     >
-      {/*
-       * Header: "TVL" eyebrow + headline on left, "Outstanding in Loans" + value
-       * muted right-aligned on right. Figma node 3283:67623 (528×56, two halves
-       * each 264 wide).
-       */}
+      {/* Header row — spec: docs/frontend/dashboard-components.md#tvlcard (Figma 3283:67623) */}
       <div className="flex items-start justify-between gap-4">
         {/* Left half: eyebrow + headline */}
         <div className="flex flex-col gap-1">
@@ -135,14 +111,7 @@ export function TvlCard({
         </div>
       </div>
 
-      {/*
-       * Progress bar — track + fill (Figma instance 3380:1410, y=64, 528×4).
-       * Fill width is `outstanding_in_loans / tvl` (approved exception to the
-       * "no frontend-computed metrics" rule — ratio of two backend-served values).
-       * When deployedRatio is null (zero/null tvl), the bar shows an empty track.
-       *
-       * Track: bg-pipeline-line; Fill: bg-pipeline-ink.
-       */}
+      {/* Progress bar — spec: docs/frontend/dashboard-components.md#tvlcard (deployed-ratio rule) */}
       <div className="flex flex-col gap-1">
         <div
           className="h-[4px] w-full overflow-hidden rounded-full bg-[color:var(--color-pipeline-line)]"
@@ -158,7 +127,7 @@ export function TvlCard({
           />
         </div>
 
-        {/* "X.X% deployed" caption — Caption token, muted, centred (Figma 3380:1895) */}
+        {/* "X.X% deployed" caption (Figma 3380:1895) */}
         <span
           className={[captionClasses, "text-center"].join(" ")}
           data-testid="dashboard-tvl-deployed-caption"
@@ -168,12 +137,7 @@ export function TvlCard({
         </span>
       </div>
 
-      {/*
-       * TVL bar chart — dark (ink) bars, fixed 240px tall anchored to the bottom
-       * (`mt-auto`), matching Figma chart container 3283:67630 (240h) on both
-       * desktop (3283:67622, 460-tall card) and mobile (3283:71067, 404-tall card).
-       * Uses YieldBarChart with fill="var(--color-pipeline-ink)".
-       */}
+      {/* TVL bar chart — spec: docs/frontend/dashboard-components.md#tvlcard (Figma 3283:67630) */}
       {tvlBars !== null && tvlBars.length > 0 ? (
         <div
           className="mt-auto h-[240px] overflow-hidden"

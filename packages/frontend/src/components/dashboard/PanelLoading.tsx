@@ -2,14 +2,7 @@ import React from "react";
 
 /**
  * PanelLoading — shared "loading" body for Protocol Dashboard panels.
- *
- * Muted "Loading…" copy, mirroring the loading treatment used by the
- * Transactions page (`routes/transactions.tsx`). Pure presentational; the
- * panel that owns the data decides when to render it (via `PanelContainer`'s
- * `state="loading"`). All four panels reuse this so the loading affordance is
- * identical across the dashboard.
- *
- * Token discipline: muted-ink + body type tokens only — no raw colors/sizes.
+ * spec: docs/frontend/dashboard-components.md#panel-states
  */
 export type PanelLoadingProps = React.HTMLAttributes<HTMLDivElement>;
 

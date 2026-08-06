@@ -1,28 +1,4 @@
-/**
- * FirstConnectionModal — "Before you continue" jurisdiction self-attestation
- * modal that gates wallet connect.
- *
- * Shown the first time a user clicks Connect Wallet (when
- * `pipeline.wallet.termsAcknowledged.<address>` is not yet set in localStorage).
- *
- * Visual specs (Figma):
- *   - Init state  (toggle off, Continue disabled): node 1572:123328
- *   - Ready state (toggle on, Continue enabled):  node 1582:69059
- *
- * Width: 420px. Max-height: 80vh desktop / 90vh mobile.
- * Scrim:    rgba(56,55,53,0.6)
- * Modal bg: #f8f7f6
- * Padding:  24px
- * Radius:   32px (radius-3xl)
- *
- * Accessibility:
- *   - `role="dialog" aria-modal="true"` on the panel.
- *   - Focus trap: Tab / Shift+Tab cycle among focusable elements inside the panel.
- *   - Escape and scrim click both call `onDismiss`.
- *   - On open, focus moves to the toggle.
- *   - On close, focus is restored to the element that triggered the modal
- *     (handled by the caller via `triggerRef`).
- */
+// spec: docs/frontend/dashboard-components.md#firstconnectionmodal (visual specs, accessibility, Figma nodes 1572:123328 / 1582:69059).
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -116,14 +92,7 @@ interface ToggleProps {
   id: string;
 }
 
-/**
- * Inline Toggle Switch — no `@pipeline/ui` primitive yet (see tech-debt-tracker.md).
- *
- * Track colours:
- *   off → rgba(56,55,53,0.18)
- *   on  → #208000 (positive primary)
- * Thumb: white circle.
- */
+// spec: docs/frontend/dashboard-components.md#firstconnectionmodal (inline Toggle switch).
 function Toggle({ checked, onChange, id }: ToggleProps) {
   function handleClick() {
     onChange(!checked);
@@ -244,14 +213,12 @@ export function FirstConnectionModal({
   const toggleId = "first-connection-modal-toggle";
   const headingId = "first-connection-modal-heading";
 
-  // Reset toggle state every time the modal opens.
   useEffect(() => {
     if (open) {
       setToggled(false);
     }
   }, [open]);
 
-  // Focus the toggle on open.
   useEffect(() => {
     if (open) {
       // Let the DOM paint before moving focus.
@@ -262,7 +229,6 @@ export function FirstConnectionModal({
     }
   }, [open]);
 
-  // Escape key closes the modal.
   useEffect(() => {
     if (!open) return;
 
@@ -277,7 +243,6 @@ export function FirstConnectionModal({
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [open, onDismiss]);
 
-  // Focus trap.
   useEffect(() => {
     if (!open) return;
 
@@ -291,7 +256,6 @@ export function FirstConnectionModal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  // Prevent body scroll while the modal is open.
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";

@@ -7,26 +7,10 @@ import { PanelEmpty } from "./PanelEmpty";
 /**
  * PanelContainer — shared surface for the four Protocol Dashboard panels
  * (A Balance Sheet, B Deployment Monitor, C Withdrawal Queue, D Yield
- * History). Wraps the `@pipeline/ui` `Card` (`white` variant) with an optional
- * panel title header and a body region.
+ * History).
  *
- * State handling: a single `state` discriminator selects which body renders,
- * so all four panels share one loading/empty/error treatment:
- *   - `"ready"` (default) — renders `children` (the panel's real content).
- *   - `"loading"`        — renders `<PanelLoading/>`.
- *   - `"empty"`          — renders `<PanelEmpty caption={emptyCaption}/>`.
- *   - `"error"`          — renders `<PanelError onRetry={onRetry}/>`.
- *
- * In #716 the panels are placeholders that pass `state="empty"`; follow-up
- * sub-issues of #712 flip them to `"loading"`/`"error"`/`"ready"` as they wire
- * real data. Pure/presentational — no data fetching here.
- *
- * `title` is optional: panels that correspond to a Figma section with no
- * heading (e.g. Panel D Yield History — `3283:67619`) omit it. When absent,
- * no `<h2>` is rendered.
- *
- * Token discipline: title uses display-font + heading tokens; the surface
- * chrome comes from `Card`. No raw colors/sizes.
+ * spec: docs/frontend/dashboard-components.md#panel-states
+ * (state discriminator, title/borderless behavior).
  */
 export type PanelState = "ready" | "loading" | "empty" | "error";
 
@@ -47,25 +31,13 @@ export interface PanelContainerProps {
   /** Real content, rendered when `state === "ready"`. */
   children?: React.ReactNode;
   className?: string;
-  /**
-   * When `true` the outer `Card` surface (border + background) is suppressed.
-   * Use for the Loan Book (DeploymentMonitorPanel) whose Figma section frame
-   * `3283:14431` is borderless — the visual chrome lives on the inner
-   * summary cards and the table-container card instead.
-   * All other panels keep the default bordered white Card.
-   */
+  /** Suppresses the outer `Card` surface. spec: docs/frontend/dashboard-components.md#panel-states */
   borderless?: boolean;
   "data-testid"?: string;
   "data-node-id"?: string;
 }
 
-// Panel heading — display serif at heading-l (48px/56px) on desktop, stepping
-// down to heading-m (28px/36px) below md, matching the applied Figma values on
-// section title nodes 3283:14432 (Loan Book) and 3283:14894 (Withdrawal Queue):
-// font/title-font-family (display), font/font-size/heading-l (48px),
-// font/line-height/heading-l (56px), font/title-font-weight = Regular (400).
-// Mobile step-down follows the home page responsive type-scale convention
-// (FRONTEND.md "Responsive behavior").
+// spec: docs/frontend/dashboard-components.md#panel-states (panel heading Figma tokens)
 const titleClasses = [
   "font-[family-name:var(--font-display)]",
   "font-normal",
@@ -135,11 +107,7 @@ export function PanelContainer({
   );
 
   if (borderless) {
-    // Borderless mode: no Card surface — no border, no background fill.
-    // The Loan Book section frame (Figma 3283:14431) is unstyled; chrome lives
-    // on the inner summary cards and table-container card.
-    // gap-8 (32px) = Figma size-32: heading h=56, content starts y=88 → 32px gap
-    // (measured on nodes 3283:14432 Loan Book, 3283:14894 Withdrawal Queue).
+    // spec: docs/frontend/dashboard-components.md#panel-states (borderless mode)
     return (
       <div
         className={["flex flex-col gap-8", className].filter(Boolean).join(" ")}
@@ -153,7 +121,6 @@ export function PanelContainer({
   return (
     <Card
       variant="white"
-      // gap-8 (32px) = Figma size-32: heading h=56, content starts y=88 → 32px gap.
       className={["flex flex-col gap-8", className].filter(Boolean).join(" ")}
       {...rest}
     >

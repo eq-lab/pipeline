@@ -12,57 +12,8 @@ import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
 import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 
-/**
- * Transactions / Activity page — wired to `GET /v1/requests`.
- *
- * Responsive layout:
- *   - Mobile (< 768 px) — Figma node 1993-9592 (402×874):
- *     8 px side margins (`px-2`); `ActivityHeader` shows left-aligned heading
- *     with no arrow-clock icon.
- *   - Desktop (≥ 768 px) — Figma node 1497-94912:
- *     centred content column capped at `max-w-[480px]`; `ActivityHeader`
- *     shows centred icon + heading.
- *
- * Visual structure (top → bottom):
- *   1. Centred content column, `max-w-[480px]`, `px-2 py-8` page padding.
- *   2. `ActivityHeader` — responsive (icon + centred heading on desktop;
- *      no icon, left-aligned heading on mobile).
- *   3. `SegmentedTabs` — Buy / Sell / Stake / Unstake filter bar.
- *      The "All" tab has been removed; "Buy" is the default.
- *      Selecting a tab filters the in-memory array client-side — no re-fetch.
- *   4. Activity rows from `useRequests()`, filtered by the active tab.
- *
- * Empty-state behaviour: the full `EmptyState` illustration + caption renders
- * whenever the visible row count is zero — whether the wallet is disconnected,
- * the API returned zero rows, or the active tab filter yields zero rows. The
- * intent is a single consistent visual rather than a different treatment per
- * cause (a deliberate reversal of part of #257).
- *
- * Active-chain gating (Issue #644): connection is keyed off the active chain's
- * wallet (`useWalletView().kind`), not EVM unconditionally — mirroring the
- * `useRequests` hook. With Stellar active, `isStellarConnected` drives the
- * empty-state gate; with EVM active, `isEvmConnected` does. The empty state
- * and rows list are mutually exclusive: at most one of {loading, error,
- * empty-state, rows} is visible at a time.
- *
- * Token discipline: this file adds no raw colors, font names, or hardcoded
- * pixel sizes. All values flow through `@pipeline/ui` component props or
- * Tailwind utilities that resolve design tokens.
- *
- * Empty-state layout:
- *   - Mobile (< 768 px) — Figma node 1993-9958: illustration (240×240) and
- *     caption are top-anchored just below the tab bar with natural spacing;
- *     no tall centering wrapper.
- *   - Desktop (≥ 768 px) — Figma node 1497-94912: illustration is
- *     vertically centred inside a `min-h-[400px]` wrapper.
- *   The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`)
- *   to gate the desktop centering treatment without affecting mobile.
- *
- * Figma references:
- *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-94912&m=dev
- *   Mobile (with data): https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9592&m=dev
- *   Mobile (empty):     https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1993-9958&m=dev
- */
+// spec: docs/frontend/dashboard-components.md#transactions-route
+// (responsive layout, empty-state behavior, active-chain gating, Figma refs).
 
 /** Ordered tab definitions for the filter bar — "All" tab is intentionally absent. */
 const TABS = [

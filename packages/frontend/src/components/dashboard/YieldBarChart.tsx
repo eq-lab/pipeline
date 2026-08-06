@@ -1,23 +1,8 @@
 /**
  * YieldBarChart — reusable inline-SVG bar chart for the Yield History panel.
  *
- * Renders a fixed number of thin vertical bars, each a single solid `<rect>`
- * in one flat colour (matching the Figma chart — no glow/opacity layering).
- *
- * On hover the chart shows a tooltip with the bar's value and date, and a
- * faint highlight band marks the hovered slot. Pointer tracking is mouse-only
- * (touch is deferred — logged in tech-debt-tracker.md).
- *
- * Props:
- *   - `bars`        — array of `{ height: number (0–100), value: number, timestamp: number }`.
- *   - `fill`        — bar fill colour; defaults to the green chart-positive token.
- *   - `formatValue` — formats a bar's numeric value for the tooltip; defaults
- *                     to compact USD (both series this chart backs are USD).
- *   - `className`   — appended to the wrapper element.
- *
- * One file = one component (FRONTEND.md rule 1). No data fetching — presentational.
- *
- * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-68337
+ * spec: docs/frontend/dashboard-components.md#yieldbarchart
+ * (rendering rules, hover/tooltip behavior, props).
  */
 import { useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -151,7 +136,6 @@ export function YieldBarChart({
           const barH = (pt.height / 100) * VB_H;
           const y0 = VB_H - barH;
 
-          // Single solid bar — one flat colour, no opacity layering (Figma).
           return (
             <rect
               key={i}

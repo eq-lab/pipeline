@@ -10,56 +10,8 @@ import {
 } from "./usePortfolioChart";
 import type { StatsPriceItem } from "@/api";
 
-/**
- * PortfolioPlaceholderCard — Connected-state replacement for ConnectWalletPromoCard.
- *
- * Renders in the top-left slot of the home dashboard when `isConnected === true`
- * (Figma node `1497:95048`). The balance and PnL labels are supplied by the
- * home route. Chart bars use `/v1/stats/prices` data when available and fall
- * back to the synthetic placeholder curve when the endpoint has no data.
- *
- * Layout:
- *   ┌────────────────────────────────────────────────────────────────────┐
- *   │  Total Balance                    [ 7D | 1M | 3M | 1Y | All ]     │
- *   │  $0.00                                                             │
- *   │  $0.00 unrealized                                                  │
- *   │  Get PLUSD to start →                                              │
- *   ├────────────────────────────────────────────────────────────────────┤
- *   │  ████████████████████████████████████████████████████████████      │
- *   │  Interactive 100-bar stacked monotonic-growth chart                │
- *   │  Hover → vertical cursor line + tooltip (balance + timestamp)      │
- *   └────────────────────────────────────────────────────────────────────┘
- *
- * Chart rendering:
- *   - 100 bar slots. Each slot has 3 nested rectangles (widths 3/2/1 px wide
- *     in SVG-coordinate terms, centred on the slot) at heights 30%/60%/100% of
- *     the slot's balance height, giving a "soft glow" stacked appearance.
- *   - Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) for real price
- *     data, `#D5D8C8` for the synthetic fallback.
- *   - Fallback curve is deterministic per period (seeded LCG). Heights are
- *     monotonically non-decreasing and anchored to `Date.now()` at mount time.
- *
- * Hover interaction:
- *   - Pointer move over the chart wrapper snaps to the nearest slot index.
- *   - A vertical cursor line is drawn at the slot's X position.
- *   - A tooltip floats above the cursor showing balance + period-appropriate
- *     timestamp. The tooltip is clamped horizontally to stay inside the chart
- *     bounds (half-width = 70px) — the cursor line is NOT clamped (prototype
- *     behaviour verbatim).
- *   - Mouse only — touch support deferred (logged in tech-debt-tracker.md).
- *
- * Accessibility:
- *   - Chart wrap: `role="img"` + descriptive `aria-label` (period + unrealized PnL).
- *   - Individual bar `<rect>` elements are decorative — no aria attributes.
- *   - The card `<region>` is labelled by the `$0.00` heading.
- *
- * Data rule:
- *   - Chart `priceItems` come from `/v1/stats/prices`.
- *   - Empty/invalid price data keeps the fallback curve visible.
- *   - Unrealized PnL caption is supplied by `/v1/pnl`; defaults to `$0.00 unrealized`.
- *
- * Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
- */
+// spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard
+// (chart rendering, hover interaction, data rules, Figma node 1497:95048).
 
 /** Mobile home balance state — drives CTA copy and connected balance state. */
 export type MobileHomeState = "empty" | "plusd" | "splusd";
@@ -70,10 +22,7 @@ export interface PortfolioPlaceholderCardProps extends Omit<
 > {
   /**
    * Mobile-only: the connected balance state (empty / plusd / splusd).
-   * When provided, controls CTA copy and link state:
-   *   - "empty"  → "Get PLUSD to start" → /deposit (State A)
-   *   - "plusd"  → "Stake PLUSD to start earning" → /stake (B)
-   *   - "splusd" → no link, PnL caption (C)
+   * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (states A/B/C).
    */
   mobileHomeState?: MobileHomeState;
   /**
@@ -170,11 +119,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     [onPointerMove],
   );
 
-  /**
-   * Tooltip left offset as a percentage of the wrapper width.
-   * We clamp so the tooltip (width ~140px, half = 70px) stays inside.
-   * The cursor line itself is NOT clamped (prototype behaviour verbatim).
-   */
+  /** Tooltip left offset as a percentage of the wrapper width (clamped — see spec). */
   const tooltipLeftPct =
     hoveredIdx !== null
       ? ((slotCentreX(hoveredIdx) / VB_W) * 100).toFixed(2)
@@ -195,7 +140,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     "relative flex flex-col gap-6",
     "min-h-[274px] w-full",
     "overflow-hidden",
-    // Figma asymmetric elevation border: 1px top/left, 3px right/bottom.
     "!border-t !border-r-[3px] !border-b-[3px] !border-l",
     className,
   ]
@@ -212,8 +156,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       data-node-id="1497:95048"
       {...rest}
     >
-      {/* Header row — mobile: stacked (balance then tabs, both left-aligned);
-          md+: row with tabs top-right (restores current desktop layout). */}
+      {/* spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (mobile/desktop header row layout). */}
       <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
         {/* Left: Total Balance label + balance display + CTA/caption row */}
         <header className="flex flex-col gap-1">
@@ -259,10 +202,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             {unrealizedPnlLabel}
           </span>
 
-          {/* State A: "Get PLUSD to start" link to /deposit.
-              State B: "Stake PLUSD to start earning" link to /stake.
-              State C: no link (PnL caption is sufficient context).
-              Desktop (no mobileHomeState): "Get PLUSD to start" as before. */}
+          {/* spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (states A/B/C). */}
           {mobileHomeState === "splusd" ? null : (
             <Link
               to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
@@ -298,9 +238,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         />
       </div>
 
-      {/* Body: interactive stacked-bars monotonic-growth chart.
-          The wrap is position:relative so the cursor + tooltip overlays
-          (position:absolute) sit correctly. */}
+      {/* position:relative so the cursor + tooltip overlays (position:absolute) sit correctly. */}
       <div
         ref={wrapRef}
         className="relative flex-1"
@@ -323,7 +261,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             const y0 = VB_H - barH;
             return (
               <g key={i} data-bar-slot={i}>
-                {/* Outer rect (full height, narrowest opacity — glow) */}
+                {/* Outer/mid/core rects — glow effect, spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard. */}
                 <rect
                   x={cx - 1.5}
                   y={y0}
@@ -332,7 +270,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   fill={barFill}
                   opacity={0.35}
                 />
-                {/* Mid rect (60% height) */}
                 <rect
                   x={cx - 1}
                   y={y0 + barH * 0.4}
@@ -341,7 +278,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   fill={barFill}
                   opacity={0.65}
                 />
-                {/* Core rect (30% height, full opacity) */}
                 <rect
                   x={cx - 0.5}
                   y={y0 + barH * 0.7}

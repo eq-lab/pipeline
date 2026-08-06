@@ -1,22 +1,4 @@
-/**
- * ConnectChooserModal — small modal that lets the user choose which wallet
- * namespace to connect when neither EVM nor Stellar is connected.
- *
- * Shown when the user clicks "Connect Wallet" and no wallet is connected.
- *
- * Props:
- *   - `open`             — whether the modal is visible.
- *   - `onConnectEvm`     — called when the user clicks "Connect EVM".
- *   - `onConnectStellar` — called when the user clicks "Connect Stellar".
- *   - `onDismiss`        — called when the user dismisses (Escape / scrim / ×).
- *
- * Each connect button calls the namespace's `connect()` (passed from TopBar)
- * then dismisses the chooser. The chooser does NOT implement its own terms gate
- * — each `connect()` already routes through the shared chain-agnostic gate.
- *
- * Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss,
- * body-scroll lock. Mirrors `FirstConnectionModal` structural patterns.
- */
+// spec: docs/frontend/dashboard-components.md#connectchoosermodal (namespace choice, terms-gate delegation, accessibility).
 import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -70,7 +52,6 @@ export function ConnectChooserModal({
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "connect-chooser-modal-heading";
 
-  // Focus the first button when opened.
   useEffect(() => {
     if (open) {
       const id = setTimeout(() => {
@@ -81,7 +62,6 @@ export function ConnectChooserModal({
     }
   }, [open]);
 
-  // Escape key.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -94,7 +74,6 @@ export function ConnectChooserModal({
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [open, onDismiss]);
 
-  // Focus trap.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -106,7 +85,6 @@ export function ConnectChooserModal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  // Body scroll lock.
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";

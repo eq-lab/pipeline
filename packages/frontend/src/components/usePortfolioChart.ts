@@ -1,25 +1,4 @@
-/**
- * usePortfolioChart — co-located hook for PortfolioPlaceholderCard.
- *
- * Owns:
- *  - Active time-range period (7d / 1m / 3m / 1y / all).
- *  - Price-history curve from `/v1/stats/prices` when available.
- *  - Deterministic balance-history curve generated per period as a fallback.
- *  - Hover state (nearest slot index, tooltip content).
- *
- * The hook does not fetch by itself. Callers pass optional price samples from
- * `/v1/stats/prices`; when samples are absent or invalid, `generateCurve`
- * keeps the existing placeholder chart visible.
- *
- * Algorithm:
- *   The curve mirrors the prototype in
- *   `docs.local/stacked_bars_natural_monotonic_growth.html`.
- *   Given `N = 100` slots, `startBalance = endBalance − period.earning`,
- *   a random-looking but deterministic non-decreasing sequence is produced
- *   by drawing increments from a seeded pseudo-random pool and normalising
- *   them to sum to the total earning. Heights are the balances normalised to
- *   a 0–100 percentage of the final (maximum) balance.
- */
+// spec: docs/frontend/dashboard-components.md#useportfoliochart (responsibilities, curve-generation algorithm).
 
 import { useCallback, useRef, useState } from "react";
 import type { StatsPriceItem } from "@/api";

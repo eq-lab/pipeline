@@ -4,20 +4,7 @@ import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
 import { useStats, formatApy } from "@/api";
 
-/**
- * HomeStatsStrip — Exchange rate / TVL / Current APY stat row.
- *
- * Extracted from `WelcomeHeader` so the same live stats can be rendered in
- * two places without prop-drilling or duplication:
- *
- *   - **Desktop**: inside `WelcomeHeader` on the right side of the heading row.
- *   - **Mobile**: as a horizontally-scrollable strip at the bottom of the home
- *     page (`routes/index.tsx`) per the Figma mobile frame `1989:8292`.
- *
- * Catalogued in `docs/frontend/utils.md`.
- *
- * Figma refs: stat cells from nodes 1989:9048, 1989:9049, 1989:9050, 1989:9051.
- */
+// spec: docs/frontend/dashboard-components.md#homestatsstrip (desktop/mobile reuse, Figma frame 1989:8292).
 
 // External-link arrow icon — inline SVG so it paints with currentColor and
 // inherits the ink-muted token without a separate asset import.
@@ -36,15 +23,14 @@ function ExternalLinkIcon() {
   );
 }
 
-// Separator cell — adds hairline left-border + left-padding matching
-// Figma's divided list-item pattern (nodes 1497:94562 / 1497:94563).
+// spec: docs/frontend/dashboard-components.md#homestatsstrip (Figma nodes 1497:94562 / 1497:94563).
 const separatedCellClasses = [
   "pl-3",
   "border-l border-solid",
   "border-[color:var(--color-pipeline-line)]",
 ].join(" ");
 
-// External-link icon button — 40×40 tap target matching Figma node 1497:94564.
+// spec: docs/frontend/dashboard-components.md#homestatsstrip (Figma node 1497:94564).
 const iconButtonClasses = [
   "inline-flex items-center justify-center",
   "size-10 px-2",

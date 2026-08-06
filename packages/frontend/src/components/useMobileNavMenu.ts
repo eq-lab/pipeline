@@ -1,16 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-/**
- * useMobileNavMenu — local state hook for the mobile hamburger nav panel.
- *
- * Manages open/close state, body-scroll lock, and Escape-to-close. The hook
- * is intentionally narrow: it owns only the boolean toggle and its side
- * effects. The host component (`TopBar`) holds the wallet state and passes
- * action handlers into `MobileNavMenu` as props.
- *
- * Extracted per FRONTEND.md rule 2 (separate view from logic via a
- * co-located hook).
- */
+// spec: docs/frontend/dashboard-components.md#mobilenavmenu (useMobileNavMenu responsibilities).
 export function useMobileNavMenu() {
   const [isOpen, setIsOpen] = useState(false);
 

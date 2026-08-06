@@ -18,46 +18,8 @@ import { useStakeFlow } from "@/wallet/useStakeFlow";
 /** Active tab of the stake page; also the `?tab=` search-param value. */
 type StakeTab = "stake" | "unstake";
 
-/**
- * Stake route — chain-aware stake/unstake page.
- *
- * Drives two flows via the `useStakeFlow` adapter, which selects between the
- * EVM and Stellar/Soroban stacks based on `useWalletView().kind`.
- *
- * EVM Stake tab:
- *   1. Allow Pipeline to use PLUSD (Approve)
- *   2. Confirm and stake PLUSD (Stake)
- *
- * EVM Unstake tab:
- *   1. Confirm and unstake sPLUSD (Unstake)
- *
- * Stellar Stake tab:
- *   1. Enable sPLUSD (changeTrust for share asset)
- *   2. Confirm and stake PLUSD (vault deposit)
- *
- * Stellar Unstake tab:
- *   1. Enable PLUSD (changeTrust — receiver needs PLUSD trustline)
- *   2. Confirm and unstake sPLUSD (vault redeem)
- *
- * Chain-aware wiring
- * ------------------
- * The page reacts to `useWalletView().kind` (EVM vs Stellar). When Stellar is
- * active, the `useStakeFlow` adapter switches all data and actions to the
- * Stellar/Soroban stack (trustline steps, SAC balances, XLM fee, etc.).
- * Flipping back to EVM restores the original behavior. Amount is reset on
- * chain switch via the `prevKindRef` pattern (mirror of deposit.tsx).
- *
- * Toast ids are scoped per chain+tab:
- *   EVM stake tab:    stake-approve-tx / stake-tx
- *   EVM unstake tab:  unstake-tx
- *   Stellar stake:    stellar-splusd-trust-tx / stellar-stake-tx
- *   Stellar unstake:  stellar-plusd-trust-tx / stellar-unstake-tx
- *
- * Figma references:
- *   Disconnected: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-7280
- *   Init: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95311
- *   Approved: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158
- */
+// spec: docs/frontend/dashboard-components.md#stake-route
+// (step sequences per chain/tab, toast id scoping, Figma refs).
 
 function Stake() {
   // ── Chain view ────────────────────────────────────────────────────────
@@ -71,9 +33,7 @@ function Stake() {
   const { open: openConnectModal } = useConnectModal();
 
   // ── Initial tab from the URL ──────────────────────────────────────────
-  // `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home StakeCard's
-  // "Unstake" link). The URL only seeds the initial tab; in-page switching is
-  // local state, so subsequent tab toggles do not push history entries.
+  // spec: docs/frontend/dashboard-components.md#stake-route (URL contract)
   const { tab: initialTab } = Route.useSearch();
 
   // ── Local state ───────────────────────────────────────────────────────
@@ -291,9 +251,8 @@ function Stake() {
           </div>
         </Card>
 
-        {/* Steps card — conditional on wallet connection */}
+        {/* Steps card — conditional on wallet connection. Figma node 1994-7226 (banner). */}
         {!flow.isConnected ? (
-          /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"

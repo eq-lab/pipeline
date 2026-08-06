@@ -135,7 +135,7 @@ The home route (`/`) has a designed mobile layout that pixel-matches the Figma m
 
 Breakpoint: Tailwind `md` (768px). Below 768px is the mobile layout; 768px and above uses the desktop layout.
 
-**Typography token responsive behavior:** Home card headings step down one type-scale step below the `md` breakpoint to match the mobile Figma type scale. Two mobile-specific tokens cover this step-down: `--text-pipeline-heading-m-mobile` (20px/28px, used by `ConnectWalletPromoCard`) and `--text-pipeline-heading-s-mobile` (18px/28px, used by `StartHereCard`, `StakeCard`, and `EarnedCard`). At `md` and above the desktop tokens (`heading-m` 28/36 and `heading-s` 20/28) are restored via responsive `md:` utilities.
+**Typography token responsive behavior:** Home card headings step down one type-scale step below the `md` breakpoint to match the mobile Figma type scale. Two mobile-specific tokens cover this step-down: `--text-pipeline-heading-m-mobile` (20px/28px, used by `ConnectWalletPromoCard`, Figma node `1989:9176`) and `--text-pipeline-heading-s-mobile` (18px/28px, used by `StartHereCard` — nodes `1989:9017` disconnected default / `1984:6501` connected — `StakeCard` — nodes `1989:9039` default / `1886:46777` State C splusd — and `EarnedCard` — nodes `1989:9030` default placeholder / `1886:46777` PnL state). At `md` and above the desktop tokens (`heading-m` 28/36 and `heading-s` 20/28) are restored via responsive `md:` utilities.
 
 **Home page mobile layout (below `md`):**
 
