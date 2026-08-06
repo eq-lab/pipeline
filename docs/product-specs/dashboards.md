@@ -82,8 +82,8 @@ Returns `[{ timestamp, cumulative_yield }]` (oldest first). `cumulative_yield(t)
 **Capital Wallet reserves**
 - USDC balance (units and USD value).
 - USYC holding (units and current USD value at issuer's published NAV), shown as a separate line.
-- USDC deployed on active loans (from the trustee feed).
-- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation`: `in_transit` = net custody→ramp flow of the tracked asset (`Σ(custody→ramp) − Σ(ramp→custody)`, 6-decimal-normalized, clamped at 0, `null` unless custody/ramp sets are configured); `trust_account` = `sum(deposits) − sum(withdrawals) − sum(fees)` over a manually-entered ledger (`POST /v1/bank-transactions`, trustee-only, append-only, global not per-chain, not clamped — see route module docs).
+- USDC deployed on active loans (from the trustee feed). `GET /v1/capital-allocation`: `deployed` = Σ senior tranche over loans that are inside the active window **and** Trustee-flagged `is_loan_deployed` (#1027).
+- USDC in transit (on-ramp leg in either direction) and USD held in the trust account. `GET /v1/capital-allocation` (#1027): `in_transit` = gross Trustee-approved custody↔ramp flow of the tracked asset (both legs, absolute, 6-decimal-normalized) minus the per-loan confirmed transfers (`Σ(on_ramp_transferred + off_ramp_transferred)`); `null` unless custody/ramp sets are configured, **not clamped** — may go negative. `trust_account` = `sum(trust_account_deposit) − sum(trust_account_withdrawal)` over the chain's Trustee-entered `loan_capital_transfers` records (chain-scoped, not clamped — see route module docs). Both per-loan records are written via the trustee-only full-upsert `GET`/`POST /v1/loan-book/{loan_id}/transfers`; the former `bank_transactions` ledger no longer feeds this endpoint (removal tracked in #1029).
 
 **Liquidity ratio**
 - Current USDC ratio vs 15% target, with upper band (20%) and lower band (10%) indicators.

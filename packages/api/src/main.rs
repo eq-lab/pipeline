@@ -11,6 +11,7 @@ use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::HttpLoanMetadataFetcher;
@@ -57,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
     let bank_transaction_repo = BankTransactionRepo::new(pool.clone());
+    let loan_capital_transfers_repo = LoanCapitalTransfersRepo::new(pool.clone());
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
     // attempt (no retry backoff) — this is a synchronous write path, so a dead URI
@@ -132,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
         loan_disbursement_repo,
         jwt_keys,
         bank_transaction_repo,
+        loan_capital_transfers_repo,
     });
 
     let mut api_docs = pipeline_api::routes::kyc::ApiDoc::openapi();
@@ -152,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::ccr_history::CcrHistoryDoc::openapi());
     api_docs.merge(pipeline_api::routes::waterfall::WaterfallDoc::openapi());
     api_docs.merge(pipeline_api::routes::bank_transactions::BankTransactionsDoc::openapi());
+    api_docs.merge(pipeline_api::routes::loan_transfers::LoanTransfersDoc::openapi());
     api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
 
@@ -174,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::ccr_history::router())
         .nest("/v1", pipeline_api::routes::waterfall::router())
         .nest("/v1", pipeline_api::routes::bank_transactions::router())
+        .nest("/v1", pipeline_api::routes::loan_transfers::router())
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
         .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", api_docs))

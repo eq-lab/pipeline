@@ -5,24 +5,39 @@
 //! `routes::financial_position` / `routes::loan_book`: Axum handler, utoipa schema,
 //! base-6 decimal strings for amounts, `chain_id?` defaulting to `DEFAULT_CHAIN_ID`.
 //!
-//! ## Data availability (v1)
+//! ## Bucket sources (#1027)
 //!
-//! Only `deployed` is sourceable from the indexer today; the other buckets are
-//! served as `null` with a TODO pointing at their eventual source:
+//! Three buckets are driven by the Trustee-entered per-loan capital-transfers
+//! record (`loan_capital_transfers`, written via
+//! `POST /v1/loan-book/{loan_id}/transfers` — see `routes::loan_transfers`); the
+//! rest are served as `null` with a TODO pointing at their eventual source:
 //!
-//! - **`deployed`** — Σ `original_senior_tranche` over active loans (senior-only;
-//!   this differs from `financial-position.secured_loans_outstanding`, which is
-//!   senior + equity). The active-loan set (`origination_date ≤ now < effective_end`)
-//!   mirrors `routes::financial_position` / `routes::loan_book`.
-//! - **`in_transit`** — net custody→ramp flow of the tracked asset:
-//!   `Σ(approved custody→ramp) − Σ(approved ramp→custody)` over indexed
-//!   `AssetTransfer` events (clamped at 0). Sourced only when both custody and ramp
-//!   address sets are configured (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`);
-//!   otherwise `null`. **Both legs** only net once a Trustee has reviewed the event
-//!   and Approved it via `POST /v1/ramp/events/{id}/review` (#936) — a pending or
-//!   Rejected transfer, on either leg, does not move `in_transit` at all. NOTE: an
-//!   approximation — disbursed funds that leave the ramp to borrowers off-chain are
-//!   not observed, so this can over-state true in-transit.
+//! - **`deployed`** — Σ `original_senior_tranche` over loans that are **both**
+//!   inside the active window (`origination_date ≤ now < effective_end`, mirroring
+//!   `routes::financial_position` / `routes::loan_book`) **and** flagged
+//!   `is_loan_deployed` by a Trustee. Senior-only — this differs from
+//!   `financial-position.secured_loans_outstanding`, which is senior + equity.
+//! - **`in_transit`** — gross approved ramp flow minus what Trustees have confirmed
+//!   as transferred per loan:
+//!   `Σ(approved custody↔ramp legs, both directions, absolute) −
+//!   Σ(on_ramp_transferred + off_ramp_transferred)`. Sourced only when both custody
+//!   and ramp address sets are configured
+//!   (`CHAIN_<id>_API_STELLAR_{CUSTODY,RAMP}_ADDRESSES`); otherwise `null`. A leg
+//!   only counts once a Trustee has reviewed the event and Approved it via
+//!   `POST /v1/ramp/events/{id}/review` (#936) — a pending or Rejected transfer
+//!   does not move `in_transit` at all. **Not clamped** (#1027): a negative value
+//!   means Trustees recorded more per-loan confirmed transfers than the indexer
+//!   observed as approved ramp flow — a real bookkeeping gap that should be
+//!   visible, not hidden.
+//! - **`trust_account`** — `Σ(trust_account_deposit) − Σ(trust_account_withdrawal)`
+//!   over the chain's `loan_capital_transfers` rows. Chain-scoped (#1027 decision 6;
+//!   previously global via the `bank_transactions` ledger, which is no longer read —
+//!   its removal is #1029). Not clamped: a negative value means recorded
+//!   withdrawals exceed recorded deposits, a real bookkeeping error that should be
+//!   visible rather than hidden. Stored/returned as a **plain dollar figure** (no
+//!   base-6 scaling — a cash-rail movement has no on-chain native scale); this
+//!   endpoint scales it to base-6 units only when folding it into `total` alongside
+//!   `deployed`/`in_transit`.
 //! - **`withdrawal_queue`** — the Withdrawal Queue Wallet's current USDC balance
 //!   (Issue #933), read from the running `params.wallet_balance_after` the indexer
 //!   computes on each tracked `AssetTransfer` (`ContractLogsRepo::get_wallet_balance_as_of`).
@@ -31,17 +46,9 @@
 //!   negative reading is a real tracking gap that should be visible, not hidden
 //!   (e.g. the indexer started tracking after the wallet already held a balance).
 //! - **`capital_wallet`** — `null`. TODO: index the Capital-Wallet USDC balance.
-//! - **`trust_account`** — `sum(deposits) - sum(withdrawals) - sum(fees)` over the
-//!   manually-entered `bank_transactions` ledger (`POST /v1/bank-transactions`, #924).
-//!   Global (not chain-scoped) — the trust account is one real-world bank account
-//!   for the whole protocol. Not clamped at zero: a negative value means recorded
-//!   withdrawals/fees exceed recorded deposits, a real bookkeeping error that should
-//!   be visible rather than hidden. Stored/returned by the ledger as a **plain
-//!   dollar figure** (no base-6 scaling — a bank transaction has no on-chain native
-//!   scale); this endpoint scales it to base-6 units only when folding it into
-//!   `total` alongside `deployed`/`in_transit`.
 //! - **`tbills`** — `null`. TODO: index the USYC / T-Bills holding.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -52,6 +59,7 @@ use serde::Serialize;
 use utoipa::{OpenApi, ToSchema};
 
 use shared::contract_logs_repo::{AssetTransferRow, LifecycleRow, LoanSnapshotRow};
+use shared::loan_capital_transfers_repo::LoanCapitalTransfersRow;
 
 use crate::config::{TransferAddressSets, CANONICAL_AMOUNT_DECIMALS};
 use crate::error::ApiError;
@@ -68,21 +76,24 @@ pub struct CapitalBuckets {
     /// Capital-Wallet USDC, idle. `null` — not indexed.
     /// TODO: index the Capital-Wallet USDC balance and populate this.
     pub capital_wallet: Option<String>,
-    /// Funds in transit on the on/off-ramp leg — net custody→ramp flow of the
-    /// tracked asset (`Σ(approved custody→ramp) − Σ(approved ramp→custody)`,
-    /// clamped at 0). `null` when custody/ramp address sets are not configured for
-    /// the chain.
+    /// Funds in transit on the on/off-ramp legs — gross approved custody↔ramp flow
+    /// (both directions, absolute) minus the Trustee-confirmed per-loan transfers
+    /// (`Σ(on_ramp_transferred + off_ramp_transferred)`). `null` when custody/ramp
+    /// address sets are not configured for the chain. Not clamped — may go
+    /// negative (see module docs).
     pub in_transit: Option<String>,
     /// The Withdrawal Queue Wallet's current USDC balance (Issue #933). `null`
     /// when no wallet is configured for the chain. Not clamped at zero (see
     /// module docs).
     pub withdrawal_queue: Option<String>,
-    /// USD residuals held in the trust account: `sum(deposits) - sum(withdrawals) -
-    /// sum(fees)` over the manually-entered bank-transaction ledger. Not clamped at
-    /// zero (see module docs).
+    /// USD residuals held in the trust account:
+    /// `Σ(trust_account_deposit) − Σ(trust_account_withdrawal)` over the chain's
+    /// Trustee-entered `loan_capital_transfers` rows. Chain-scoped, not clamped
+    /// (see module docs).
     pub trust_account: Option<String>,
-    /// Σ senior tranche over active loans, USDC (6-decimal string). Senior-only —
-    /// distinct from `financial-position.secured_loans_outstanding` (senior + equity).
+    /// Σ senior tranche over active loans flagged `is_loan_deployed`, USDC
+    /// (6-decimal string). Senior-only — distinct from
+    /// `financial-position.secured_loans_outstanding` (senior + equity).
     pub deployed: Option<String>,
     /// USYC / T-Bills holding valued at issuer NAV. `null` — not indexed.
     /// TODO: index the USYC / T-Bills holding and populate this.
@@ -94,7 +105,7 @@ pub struct CapitalBuckets {
 pub struct CapitalAllocationResponse {
     /// Σ of the available buckets (`deployed`, `in_transit` when present,
     /// `withdrawal_queue` when present, and `trust_account`; the rest are `null`
-    /// until sourced).
+    /// until sourced). Unclamped buckets may reduce it.
     pub total: Option<String>,
     pub buckets: CapitalBuckets,
 }
@@ -163,7 +174,10 @@ async fn get_capital_allocation(
         }
         None => None,
     };
-    let trust_account = state.bank_transaction_repo.trust_account_balance().await?;
+    let capital_transfers = state
+        .loan_capital_transfers_repo
+        .list_for_chain(chain_id)
+        .await?;
 
     Ok(Json(compute_capital_allocation(
         &loans,
@@ -173,7 +187,7 @@ async fn get_capital_allocation(
         addr,
         asset_decimals,
         withdrawal_queue_balance.as_ref(),
-        &trust_account,
+        &capital_transfers,
     )))
 }
 
@@ -216,19 +230,30 @@ pub(crate) fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> Bi
     }
 }
 
+/// Scale a plain dollar figure to the endpoint's canonical base-6 units — the one
+/// conversion needed to combine Trustee-entered cash-rail amounts with the
+/// on-chain buckets (`in_transit` subtraction, `total` fold-in).
+fn dollars_to_base6(dollars: &BigDecimal) -> BigDecimal {
+    dollars * BigDecimal::from(10i128.pow(CANONICAL_AMOUNT_DECIMALS))
+}
+
 /// Pure computation: no DB calls. Builds the capital allocation from pre-fetched
 /// loan snapshots, lifecycle events, asset transfers, the Withdrawal Queue
-/// Wallet's raw balance, and the bank-transaction-ledger balance, as-of `to`.
+/// Wallet's raw balance, and the chain's Trustee-entered `loan_capital_transfers`
+/// rows, as-of `to`.
 ///
 /// "Active" = `origination_date ≤ to < effective_end`, matching `routes::loan_book`.
-/// `deployed` = Σ senior tranche over the active set. `in_transit` = net custody→ramp
-/// flow of the tracked asset (`Σ(approved custody→ramp) − Σ(approved ramp→custody)`,
-/// clamped at 0), sourced only when `addr` is `Some` — both legs only net once a
-/// Trustee has Approved the event (#936). `withdrawal_queue` = `withdrawal_queue_balance`
-/// normalized to canonical scale, **not** clamped (see module docs) — sourced only
-/// when `withdrawal_queue_balance` is `Some`. `trust_account` = `trust_account_balance`,
-/// a **plain dollar figure** (not clamped — see module docs) — displayed as-is, and
-/// scaled to base-6 units only when folded into `total`. `asset_decimals` is the
+/// `deployed` = Σ senior tranche over active loans flagged `is_loan_deployed`
+/// (#1027 — the flag ANDs with the window, so a closed/matured loan drops out even
+/// if its flag was left set). `in_transit` = gross approved custody↔ramp flow
+/// (both legs, absolute — only Trustee-Approved events count, #936) minus
+/// `Σ(on_ramp_transferred + off_ramp_transferred)` scaled to base-6; **not
+/// clamped** — sourced only when `addr` is `Some`. `trust_account` =
+/// `Σ(trust_account_deposit) − Σ(trust_account_withdrawal)` over
+/// `capital_transfers`, a **plain dollar figure** (not clamped) — displayed as-is,
+/// and scaled to base-6 units only when folded into `total`. `withdrawal_queue` =
+/// `withdrawal_queue_balance` normalized to canonical scale, **not** clamped —
+/// sourced only when `withdrawal_queue_balance` is `Some`. `asset_decimals` is the
 /// tracked asset's on-chain decimal scale, shared by `in_transit` and
 /// `withdrawal_queue` for normalization. Remaining buckets are `null`.
 ///
@@ -243,50 +268,72 @@ pub fn compute_capital_allocation(
     addr: Option<&TransferAddressSets>,
     asset_decimals: u32,
     withdrawal_queue_balance: Option<&BigDecimal>,
-    trust_account_balance: &BigDecimal,
+    capital_transfers: &[LoanCapitalTransfersRow],
 ) -> CapitalAllocationResponse {
-    let mut deployed = BigDecimal::from(0);
+    // deployed = Σ senior tranche over loans that are active AND Trustee-flagged
+    // as deployed. A loan with no capital-transfers row is not deployed.
+    let deployed_ids: HashSet<&BigDecimal> = capital_transfers
+        .iter()
+        .filter(|r| r.is_loan_deployed)
+        .map(|r| &r.loan_id)
+        .collect();
 
+    let mut deployed = BigDecimal::from(0);
     for loan in loans {
         let s = &loan.snapshot;
-        if s.origination_date <= to && to < effective_end(loan, events) {
+        if s.origination_date <= to
+            && to < effective_end(loan, events)
+            && deployed_ids.contains(&loan.loan_id)
+        {
             deployed += &s.original_senior_tranche;
         }
     }
 
-    // in_transit = net custody→ramp flow (only when both address sets configured).
-    // Amounts are in the tracked asset's on-chain scale (`asset_decimals`); they
-    // are normalized to the canonical 6-decimal base units so they can be summed
-    // with `deployed` and formatted with `base6_to_decimal_string`.
+    // in_transit = gross approved ramp flow minus Trustee-confirmed per-loan
+    // transfers (only when both address sets are configured). On-chain amounts are
+    // in the tracked asset's scale (`asset_decimals`) and are normalized to the
+    // canonical 6-decimal base units; the per-loan confirmed amounts are plain
+    // dollars and are scaled up to the same units for the subtraction.
     let in_transit = addr.map(|sets| {
-        let mut net = BigDecimal::from(0);
+        let mut gross = BigDecimal::from(0);
         for t in transfers {
-            // Both legs only net once a Trustee has reviewed the event and
-            // Approved it (#936) — a pending or Rejected transfer, on either leg,
-            // does not move in_transit.
-            let out = sets.custody.contains(&t.from_addr)
-                && sets.ramp.contains(&t.to_addr)
-                && t.is_approved();
-            let back = sets.ramp.contains(&t.from_addr)
-                && sets.custody.contains(&t.to_addr)
-                && t.is_approved();
-            if out {
-                net += &t.amount;
-            } else if back {
-                net -= &t.amount;
+            // Both legs count toward the gross flow, as absolute amounts — but
+            // only once a Trustee has reviewed the event and Approved it (#936);
+            // a pending or Rejected transfer, on either leg, does not move
+            // in_transit. custody↔custody / ramp↔ramp shuffles are ignored.
+            let out = sets.custody.contains(&t.from_addr) && sets.ramp.contains(&t.to_addr);
+            let back = sets.ramp.contains(&t.from_addr) && sets.custody.contains(&t.to_addr);
+            if (out || back) && t.is_approved() {
+                gross += &t.amount;
             }
-            // custody↔custody / ramp↔ramp shuffles net to zero — ignored.
         }
-        let net = normalize_to_canonical(net, asset_decimals);
-        // A displayed in-transit balance shouldn't be negative.
-        net.max(BigDecimal::from(0))
+        let gross = normalize_to_canonical(gross, asset_decimals);
+
+        let confirmed = capital_transfers
+            .iter()
+            .fold(BigDecimal::from(0), |acc, r| {
+                acc + &r.on_ramp_transferred + &r.off_ramp_transferred
+            });
+
+        // Deliberately NOT clamped (#1027): negative means Trustees confirmed more
+        // per-loan transfers than the indexer observed as approved ramp flow.
+        gross - dollars_to_base6(&confirmed)
     });
 
+    // trust_account = Σ deposits − Σ withdrawals over the chain's Trustee-entered
+    // rows, a plain dollar figure. Deliberately NOT clamped — a negative value is
+    // a real bookkeeping error that should surface.
+    let trust_account = capital_transfers
+        .iter()
+        .fold(BigDecimal::from(0), |acc, r| {
+            acc + &r.trust_account_deposit - &r.trust_account_withdrawal
+        });
+
     // withdrawal_queue = the Withdrawal Queue Wallet's raw running balance,
-    // normalized to canonical scale. Deliberately NOT clamped at zero — unlike
-    // in_transit's approximation, this is a literal tracked balance; a negative
-    // reading means tracking started after the wallet already held funds, and
-    // that gap should be visible (mirrors `trust_account`'s no-clamp rationale).
+    // normalized to canonical scale. Deliberately NOT clamped at zero — this is a
+    // literal tracked balance; a negative reading means tracking started after the
+    // wallet already held funds, and that gap should be visible (mirrors
+    // `trust_account`'s no-clamp rationale).
     let withdrawal_queue =
         withdrawal_queue_balance.map(|b| normalize_to_canonical(b.clone(), asset_decimals));
 
@@ -301,7 +348,7 @@ pub fn compute_capital_allocation(
     if let Some(wq) = &withdrawal_queue {
         total += wq;
     }
-    total += trust_account_balance * BigDecimal::from(10i128.pow(CANONICAL_AMOUNT_DECIMALS));
+    total += dollars_to_base6(&trust_account);
 
     CapitalAllocationResponse {
         total: Some(base6_to_decimal_string(&total)),
@@ -310,7 +357,7 @@ pub fn compute_capital_allocation(
             in_transit: in_transit.as_ref().map(base6_to_decimal_string),
             withdrawal_queue: withdrawal_queue.as_ref().map(base6_to_decimal_string),
             trust_account: Some(
-                trust_account_balance
+                trust_account
                     .with_scale_round(6, RoundingMode::Down)
                     .to_plain_string(),
             ),

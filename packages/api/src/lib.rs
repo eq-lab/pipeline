@@ -17,6 +17,7 @@ use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
+use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
@@ -78,7 +79,11 @@ pub struct AppState {
     pub loan_disbursement_repo: LoanDisbursementRepo,
     /// JWT signing/verification keys. `None` when not configured (auth disabled).
     pub jwt_keys: Option<JwtKeys>,
-    /// Manually-entered bank-account ledger (`bank_transactions`), backing
-    /// `capital-allocation`'s `trust_account` bucket. Global, not chain-scoped.
+    /// Manually-entered bank-account ledger (`bank_transactions`). No longer read
+    /// by `capital-allocation` (#1027); removal is tracked in #1029.
     pub bank_transaction_repo: BankTransactionRepo,
+    /// Trustee-entered per-loan capital movement record
+    /// (`loan_capital_transfers`), backing `capital-allocation`'s reworked
+    /// `deployed` / `in_transit` / `trust_account` buckets (#1027).
+    pub loan_capital_transfers_repo: LoanCapitalTransfersRepo,
 }

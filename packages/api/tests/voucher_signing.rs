@@ -89,7 +89,11 @@ fn make_test_state(chain_id: i64, with_evm_signer: bool) -> AppState {
             pool.clone(),
         ),
         jwt_keys: None,
-        bank_transaction_repo: shared::bank_transaction_repo::BankTransactionRepo::new(pool),
+        bank_transaction_repo: shared::bank_transaction_repo::BankTransactionRepo::new(
+            pool.clone(),
+        ),
+        loan_capital_transfers_repo:
+            shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo::new(pool),
     }
 }
 
