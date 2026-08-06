@@ -1,24 +1,11 @@
 /**
- * React Query hook — fetches the Capital Allocation breakdown from the
- * Pipeline API (`GET /v1/capital-allocation`) for the Trustee Overview page's
- * Capital Allocation card (issue #797).
+ * React Query hook — fetches the Capital Allocation breakdown
+ * (`GET /v1/capital-allocation`) for the Trustee Overview page's Capital
+ * Allocation card. Mirrors the LP frontend's `useDashboardSummary` pattern —
+ * see `packages/frontend/src/api/useDashboardSummary.ts`.
  *
- * Mirrors the LP frontend's `useDashboardSummary` pattern (queryKey, `apiFetch`,
- * `URLSearchParams`, `refetchInterval`) — see
- * `packages/frontend/src/api/useDashboardSummary.ts`.
- *
- * The Overview page is Stellar-scoped, like the LP Protocol Dashboard: the
- * EVM chain (560048/Hoodi) carries malformed test data (#765), so this hook
- * always sends `chain_id=ENV.STELLAR_CHAIN_ID` explicitly rather than relying
- * on the endpoint's `DEFAULT_CHAIN_ID` fallback.
- *
- * Data-layer note
- * ---------------
- * Every bucket and `total` is a base-6 decimal string already in human units
- * (e.g. `"96000000.000000"` = $96M), or `null` when the backend has no source
- * for that field yet (see `packages/api/src/routes/capital_allocation.rs` —
- * today only `deployed` is sourced from the indexer). Render `—` for `null`;
- * never derive a value client-side (per [no frontend-computed metrics]).
+ * spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer
+ * (base-6 unit scale, null-bucket handling).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";

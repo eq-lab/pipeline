@@ -1,44 +1,13 @@
 /**
- * Query-wiring + value→display mapping for the Trustee **Loans** page (issue
- * #843, Figma node `4116:9989`).
+ * Query-wiring + value→display mapping for the Trustee Loans page.
  *
  * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` route is JSX/styling
  * only; this hook owns the `useLoanBook` call, the summary-card view-model, the
  * per-loan row mapping, the CCR classification, and the client-side status
- * filter — so the view stays a pure render function and all of this is
- * unit-testable without a DOM (mirrors `-useOriginationTable.ts`).
+ * filter (mirrors `-useOriginationTable.ts`).
  *
- * ## Resolved Open Questions (human, issue #843 comments; corrected by #888)
- *
- * 1. **CCR is used AS SERVED — no ÷1000 correction.** Issue #843 originally
- *    assumed `collateral` was price-feed correct-scale while `senior_outstanding`
- *    was registry-sourced (1000× too small, #840), making the served
- *    `ccr_bps = collateral / senior_outstanding` exactly 1000× too big. A live
- *    payload (issue #888) proved that assumption false: `collateral` is ALSO
- *    registry-sourced and 1000× too small, on the SAME scale as
- *    `senior_outstanding` — so the ×1000 cancels out of the ratio and the
- *    served `ccr_bps` is already the true CCR. The former `correctCcrBps`
- *    ÷1000 helper has been removed (it was silently rendering CCR 1000× too
- *    small, e.g. 0.21% instead of the true 209.87%). The 120% maintenance-margin
- *    pre-default threshold (`MAINTENANCE_MARGIN_BPS`) is applied directly to the
- *    served `ccr_bps`.
- * 2. **Default & Closed tabs render per Figma but stay empty.** `/v1/loan-book`
- *    returns only the active set (Performing + WatchList); defaulted/closed
- *    loans are excluded backend-side, so client-side filtering yields 0 rows
- *    (count 0) for those tabs. A backend follow-up is needed to serve them.
- * 3. **The "Payments due" banner + "Record coupon" action are omitted** — no
- *    `/v1/loan-book` data source (never fabricate). Handled in the view.
- *
- * ## Never-fabricate defaults (exec-plan RISK 3)
- *
- * Figma details with no backend field are dropped, not invented:
- *   - Spot sub-line: real 7-day change basis (`spot_change_7d`), no `/t`
- *     per-tonne unit and no "30d" relabel — `formatSpot` renders `$4,500 · −18% 7d`.
- *   - Stage cell: the served `status` label only, no "· Risk Council" /
- *     "· feed stale" qualifier.
- *   - CCR staleness: the age derived from `ccr_reported_at` only
- *     (`1h` / `26h`), no "feed stale" label (its cutoff is not served).
- * Every field is read defensively → `—`, never fabricated.
+ * spec: docs/frontend/trustee-flows.md#loan-book--tables (resolved Open
+ * Questions, never-fabricate defaults, CCR classification & tab mapping).
  */
 import { useLoanBook } from "@/api/useLoanBook";
 import type {
@@ -51,29 +20,11 @@ import { formatMaturityDate } from "@/utils/formatDate";
 
 // ── Named constants ─────────────────────────────────────────────────────────
 
-/**
- * 120% maintenance margin, in basis points — the **margin-call** threshold. A
- * loan below 130% but at/above this is `attention` (yellow); dropping below it
- * is a `margin-call` (orange). Frontend-owned policy constant (no backend flag —
- * resolved decision #2 / #931); the served `ccr_bps` is used as-is (#888).
- */
+// CCR band thresholds + concentration limit — frontend-owned policy constants.
+// spec: docs/frontend/trustee-flows.md#ccr-classification--tab-mapping.
 export const MAINTENANCE_MARGIN_BPS = 12_000;
-
-/** 130% healthy floor, in basis points (footnote band `≥130% healthy`). */
 export const HEALTHY_MARGIN_BPS = 13_000;
-
-/**
- * 110% hard-margin-call threshold, in basis points. Below this a loan is
- * `pre-default` (red — the spec's hard margin call); at/above it but below 120%
- * it is a `margin-call` (orange). Frontend-owned policy constant (#931, #939).
- */
 export const HARD_MARGIN_CALL_BPS = 11_000;
-
-/**
- * Top-concentration policy limit, percent. Frontend-owned per the backend doc
- * ("the policy limit is frontend-owned") — the `top_concentration.share` figure
- * is served, this ceiling is not. Backs the card's `Cocoa · limit 10%` sub-line.
- */
 export const CONCENTRATION_LIMIT_PCT = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -88,18 +39,9 @@ export const LOAN_TABS: readonly LoanTab[] = [
   "Closed",
 ] as const;
 
-/**
- * Tab → the served `status` literals it includes. The backend serves `"WatchList"`
- * (capital L); the tab reads `"Watchlist"` (Figma casing). The **Performing** tab
- * also includes **`"Disbursing"`** — a backend-derived, Performing-family display
- * status (off-ramp not yet complete, #862) — so freshly-drawn loans surface there
- * rather than disappearing from every tab.
- */
+// Tab → served `status` literals. spec: trustee-flows.md#ccr-classification--tab-mapping.
 const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
   Performing: ["Performing", "Disbursing"],
-  // Watchlist groups the at-risk set: elevated-risk WatchList loans plus
-  // past-maturity ones (served `Past Due`, legacy `Matured`) — otherwise a
-  // matured loan would match no tab and vanish from the list (#867).
   Watchlist: ["WatchList", "Past Due", "Matured"],
   Default: ["Default"],
   Closed: ["Closed"],
@@ -180,13 +122,8 @@ function safeString(value: unknown): string {
   return typeof value === "string" && value.length > 0 ? value : "—";
 }
 
-/**
- * Classifies a **served** CCR (bps, used as-is — see the module doc, #888) into
- * the spec's 4-level band (trustee-risk-watchlist.md §CCR color bands, #939):
- * `≥130%` healthy (green) · `120–130%` attention (yellow) · `110–120%`
- * margin-call (orange) · `<110%` pre-default (red). `null` CCR → `null` (neutral
- * render, no flag). Stale-gray is handled separately (CCR staleness / `age`).
- */
+// Classifies a served CCR (bps, used as-is) into the 4-level band.
+// spec: docs/frontend/trustee-flows.md#ccr-classification--tab-mapping.
 export function classifyCcr(servedBps: number | null): CcrBand | null {
   if (servedBps == null || !Number.isFinite(servedBps)) return null;
   if (servedBps >= HEALTHY_MARGIN_BPS) return "healthy";
@@ -203,12 +140,7 @@ export interface NearestPayment {
   overdue: boolean;
 }
 
-/**
- * Builds the **Nearest payment** cell (#941) from the served `next_payment_timestamp`
- * + server-computed `days_overdue` (#953). Overdue (`days_overdue` non-null) shows how
- * late — "Due today" within the first day, else "N days late". Otherwise the payment
- * date; `"—"` when the timestamp is missing/zero (never fabricated).
- */
+// Builds the Nearest payment cell (#941). spec: trustee-flows.md#loan-book--tables.
 export function formatNearestPayment(
   nextPaymentUnix: number | null | undefined,
   daysOverdue: number | null | undefined,
@@ -228,11 +160,7 @@ export function formatNearestPayment(
   return { text: formatMaturityDate(nextPaymentUnix), overdue: false };
 }
 
-/**
- * Formats a `ccr_reported_at` Unix-seconds timestamp as an age relative to
- * `nowMs`, matching the Figma chips (`1h`, `26h`). `0` (never reported),
- * missing, or a future timestamp → `"—"` (never fabricate a freshness).
- */
+/** Formats `ccr_reported_at` as an age (`"1h"` / `"26h"`); unreported/future → `"—"`. */
 export function formatCcrAge(
   reportedAtUnix: number | null | undefined,
   nowMs: number,
@@ -253,12 +181,8 @@ export function formatCcrAge(
   return `${Math.floor(hours / 24)}d`;
 }
 
-/**
- * Formats the commodity spot sub-line as `"$4,500 · −18% 7d"` — the REAL
- * 7-day change basis (`spot_change_7d`), with no fabricated `/t` per-tonne unit
- * and no "30d" relabel (exec-plan RISK 3). Returns `null` when the asset is
- * unpriced (`spot_price` null) → the view renders no sub-line.
- */
+// Formats the spot sub-line, e.g. "$4,500 · −18% 7d". spec:
+// trustee-flows.md#never-fabricate-defaults-exec-plan-risk-3.
 export function formatSpot(
   spotPrice: string | null,
   spotChange7d: string | null,
@@ -325,11 +249,8 @@ export function mapEntryToRow(
     originator: safeString(entry.originator),
     commodity: safeString(entry.commodity),
     spot: formatSpot(entry.spot_price, entry.spot_change_7d),
-    // Displayed as served by the backend (issue #906 — no frontend
-    // rescaling). Two-decimal compact (e.g. $1.84M) to match the collateral
-    // column.
+    // Two-decimal compact (e.g. $1.84M) to match the collateral column.
     seniorOutstanding: formatCompactUsd2dp(entry.senior_outstanding),
-    // collateral is likewise displayed as served (issue #906).
     collateral: formatCompactUsd2dp(entry.collateral),
     ccr,
     nearestPayment: formatNearestPayment(
@@ -345,8 +266,6 @@ export function mapEntryToRow(
 export function mapSummary(summary: LoanBookSummary): LoansSummaryView {
   const top = summary.top_concentration;
   return {
-    // deployed_senior / at_risk_..._senior are displayed as served by the
-    // backend (issue #906 — no frontend rescaling).
     deployedSenior: formatCompactUsd(summary.deployed_senior),
     atRiskPct: formatFractionPct(summary.at_risk_wl_and_default_pct),
     atRiskSenior: formatCompactUsd(summary.at_risk_wl_and_default_senior),

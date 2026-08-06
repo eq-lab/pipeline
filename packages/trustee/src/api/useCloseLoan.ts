@@ -1,16 +1,10 @@
 /**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `closeLoan`
- * (issue #884): the trustee-wallet-signed on-chain `LoanRegistry.close_loan` run
- * through the executor `execute` proxy (same pattern as `useRecordPayment`).
+ * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `closeLoan`:
+ * the trustee-wallet-signed on-chain `LoanRegistry.close_loan`, run through
+ * the executor `execute` proxy (same pattern as `useRecordPayment`). Moves
+ * the loan to `Closed` with a `ClosureReason`.
  *
- * Moves the loan to `Closed` with a `ClosureReason` (the trustee repayment-close
- * reasons: `ScheduledMaturity` when at/after maturity, `EarlyRepayment` before).
- * On success this invalidates the loan-book / financials queries so the detail
- * refetches the closed status.
- *
- * Like the other on-chain hooks (TD-33), the Soroban machinery lives in the
- * shared package; this hook only wires env + the connected wallet, guards the
- * unconfigured/disconnected cases, and surfaces the progress stage.
+ * spec: docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
  */
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

@@ -1,36 +1,10 @@
 /**
  * React Query hook — fetches loan submissions (the "In Origination" pipeline)
  * from the Pipeline API (`GET /v1/loan-book/submissions`) for the Trustee
- * Origination page (issue #813).
+ * Origination page.
  *
- * Mirrors the LP frontend's `useLoanSubmissions` conventions (queryKey shape,
- * `apiFetch`, `refetchInterval`) — see
- * `packages/frontend/src/api/useLoanSubmissions.ts` — and the trustee's own
- * `useCapitalAllocation.ts` (Stellar-scoped `chain_id`, 30 s poll). The
- * trustee app deliberately does NOT depend on `@pipeline/frontend` (epic #775
- * keeps the two apps separate), so the types below are a self-contained port
- * rather than an import. See `docs/exec-plans/tech-debt-tracker.md` TD-42 for
- * the cross-package consolidation debt this duplication creates (also
- * flagged for #814, the Protocol Dashboard's In-Origination tab, which reads
- * the same endpoint).
- *
- * Data-layer note
- * ---------------
- * `loan_data` is the verbatim submitted payload (backend `SubmissionView.loan_data`
- * is a `serde_json::Value`), returned as a **nested JSON object** — not a
- * JSON-encoded string. Its four monetary fields (`economics.original_facility_size`
- * / `original_senior_tranche` / `original_equity_tranche` /
- * `original_offtaker_price`) are served at the on-chain **7-decimal
- * (10^7) base-unit scale** (e.g. `"8000000000.000000"` = 8,000,000,000 base
- * units = $800.00) — NOT human-unit dollars (issue #912; corrects the prior
- * assumption here). Display consumers must normalize ÷10^7 (BigInt-safe —
- * never `Number`/`parseFloat` on the raw string) before `formatFullUsd`; see
- * `economicsBaseUnitsToUsdDecimal` in `@/utils/stellarSacUnits`. The
- * `draw_loan` on-chain write sends these fields to the contract EXACTLY as
- * served, with NO re-scaling (see `@pipeline/wallet-connect`'s
- * `parseUsdcBaseUnitsToU128`). Because the wire type is `serde_json::Value`,
- * callers must defensively handle missing/malformed nested fields and render
- * `—` (never fabricate).
+ * spec: docs/frontend/trustee-flows.md#data-layer-useloansubmissions
+ * (conventions, base-unit scaling, TD-42 duplication).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -110,18 +84,7 @@ export type OriginationSubmissionStatus =
   | "Rejected"
   | "ChangesRequested";
 
-/**
- * Normalizes the backend's merged submission/loan lifecycle status into the
- * Origination UI vocabulary (issue #892). Once a submission reports a loan
- * lifecycle status such as `Performing`, `WatchList`, `Past Due`, `Default`,
- * or `Closed`, the origination decision is already complete, so Origination
- * surfaces display it as `Approved`.
- *
- * `ChangesRequested` (backend #949) is a genuine **pre-decision** origination
- * outcome — non-final, the submission stays open for the originator to resubmit
- * — so it is preserved, not folded into `Approved` (issue #950). Only the true
- * post-approval loan-lifecycle statuses fall through to `Approved`.
- */
+// spec: docs/frontend/trustee-flows.md#data-layer-useloansubmissions (status normalization).
 export function normalizeOriginationSubmissionStatus(
   status: SubmissionView["status"],
 ): OriginationSubmissionStatus {

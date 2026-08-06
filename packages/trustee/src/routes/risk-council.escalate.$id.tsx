@@ -9,28 +9,12 @@ import type { CcrTrend } from "./-useLoanDetail";
 import { CcrTrendChart } from "./-CcrTrendChart";
 
 /**
- * Risk Council — Escalate (issue #782; Figma node `4116-12953` for styling) —
- * the destination opened by clicking the "Escalate to Risk Council"
- * other-action on the loan-detail page (`loans.$id.tsx`).
+ * Risk Council — Escalate — the destination opened by clicking the
+ * "Escalate to Risk Council" other-action on the loan-detail page
+ * (`loans.$id.tsx`).
  *
- * This is the **proposal builder** (`docs/product-specs/trustee-risk-watchlist.md`):
- * the Trustee reviews the loan's risk evidence (left card) and writes a
- * free-form proposal name + text for the Risk Council (right card), rather than
- * a type-specific `setDefault` payload — see `-risk-council-escalate.ts`'s
- * module doc for the full real-vs-mock breakdown. The read-only re-term /
- * write-down frames (`4116-13481` / `4116-13625`) are the Risk-Council display
- * screens (`risk-council.reterm.$id.tsx` / `risk-council.writedown.$id.tsx`).
- *
- * Registered as a child of the `/risk-council` pass-through layout
- * (`risk-council.tsx`'s `<Outlet/>`) at `/risk-council/escalate/$id` — no
- * `$id_` trailing-underscore escape is needed here (unlike
- * `loans.$id_.record-coupon.tsx`) because there is no `risk-council.escalate.tsx`
- * leaf file it would otherwise collide with.
- *
- * Per `docs/FRONTEND.md` Code structure rule 2, this `.tsx` is JSX/styling
- * only; all data wiring + value→display mapping lives in the colocated
- * `-risk-council-escalate.ts` view-model hook (mirrors `loans.$id_.record-coupon.tsx`
- * / `-record-coupon.ts`).
+ * spec: docs/frontend/trustee-flows.md#risk-council-actions (proposal-builder
+ * model, routing).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -233,11 +217,7 @@ const GUARDRAILS = [
 const FIELD_CLASS =
   "w-full rounded-[4px] border border-solid px-[13px] py-[10px] font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[#262524] outline-none disabled:cursor-not-allowed disabled:opacity-70";
 
-/**
- * The proposal builder (Risk & Watchlist spec) — the Trustee writes a free-form
- * proposal name + text for the Risk Council; the Safe composes/executes the
- * actual on-chain action. Local mock Draft → Submitted state, no wallet/network.
- */
+// spec: docs/frontend/trustee-flows.md#escalate-to-default-flow-10--proposal-builder-not-a-typed-payload.
 function ProposalBuilderCard({
   proposalName,
   proposalText,

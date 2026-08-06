@@ -10,111 +10,28 @@ import {
 } from "./-useLoansTable";
 
 /**
- * Loans — the real Trustee page (issue #843, Figma node `4116:9989`), replacing
- * the #786 placeholder body. Driven by live `GET /v1/loan-book` data (via
- * `useLoansTable` → `useLoanBook`, Stellar-scoped `chain_id`, 30 s poll).
+ * Loans — the Trustee list page at `/loans`; the sibling detail page lives at
+ * `/loans/$id` (`loans.$id.tsx`), both under the pass-through `loans.tsx`
+ * `<Outlet/>` layout.
  *
- * This is the list page at `/loans` (`loans.index.tsx`); the sibling detail page
- * lives at `/loans/$id` (`loans.$id.tsx`), both under the pass-through
- * `loans.tsx` `<Outlet/>` layout (mirrors the Origination routing precedent,
- * #821). Clicking a row navigates to `/loans/$id` with the served `loan_id`
- * (the fake in-page navigation from #847 is gone now that a real id exists).
- *
- * Layout (top → bottom): the `Loans` heading · five summary cards (Deployed
- * senior · At-risk (WL + Default) · Weighted rate · Weighted tenor · Top
- * concentration) · a status tab-bar with per-status counts · a white card
- * holding the active-loan table (Originator · Commodity·spot · Senior outst. ·
- * Collateral · CCR · Nearest payment · Stage + a trailing chevron cell) and the
- * CCR-band footnote.
- *
- * ## Resolved Open Questions (human, issue #843 comments)
- *   - **CCR** is corrected frontend-side (`true = served / 1000`, #840 family)
- *     before the 120% pre-default threshold — see `-useLoansTable.ts`.
- *   - **Default & Closed tabs** render per Figma but stay empty (count 0):
- *     `/v1/loan-book` serves only the active Performing + WatchList set; a
- *     backend follow-up is needed to populate them.
- *   - **The "Payments due" banner + "Record coupon" action are OMITTED** — no
- *     `/v1/loan-book` data source (never fabricate). Add when a source exists.
- *
- * ## Never-fabricate defaults (exec-plan RISK 3, handled in `-useLoansTable.ts`)
- *   - Spot sub-line uses the real 7-day basis, no `/t` unit, no "30d" relabel.
- *   - Stage renders the served status label only, no "· Risk Council" suffix.
- *   - CCR staleness shows the derived age only, no "feed stale" label.
- *
- * ## Figma → token / px mapping (`get_variable_defs` returned `{}` — no bound
- * design variables; raw literals mapped to trustee `--color-pipeline-*` tokens,
- * one-offs documented, matching the Origination-page precedent)
- *
- *   - Heading: `font-display text-[64px] leading-[64px]`, `rgba(56,55,53,0.3)`
- *     (`--color-pipeline-ink-subtle`, exact) — identical to the Origination h1.
- *   - Card: `bg-white` (`--color-pipeline-surface`), `LINE_COLOR` border
- *     (`rgba(56,55,53,0.18)`, exact Figma literal), `rounded-[4px]`,
- *     `px-[21px] py-[19px]`. Label `Inter 12.5px / rgba(56,55,53,0.6)`
- *     (`--color-pipeline-ink-muted`, exact). Value `Besley 26px / #262524`
- *     (`--color-pipeline-ink`, exact). Sub `Inter 12.5px` ink-muted, `pt-[6px]`.
- *   - CCR bands (spec's 4-level scheme, #939) + their footnote spans:
- *       · `≥130%` healthy → `--color-pipeline-positive-primary` (`#208000`, token).
- *       · `120–130%` attention/yellow → `ATTENTION_AMBER` (`#6e6400`), one-off.
- *       · `110–120%` margin-call/orange → `MARGIN_CALL_ORANGE` (`#b35900`), one-off.
- *       · `<110%` pre-default/red → `NEGATIVE_RED` (`#b20000`), a documented
- *         one-off (NOT `--color-pipeline-negative` `#c0392b`) — matches the Figma
- *         exactly, same precedent as the Origination pills' alpha one-offs. Also
- *         used for the At-risk headline value + negative spot.
- *   - Tab-bar container `bg rgba(191,189,187,0.12)`, `LINE_COLOR` border,
- *     `p-[4px] gap-[2px] rounded-[4px]`; buttons `px-[16px] py-[9px] gap-[8px]`;
- *     active `bg-white` + ink text, inactive ink-muted; count `14px` ink-muted
- *     (all one-off literals + tokens, Origination precedent).
- *   - White table card `bg-white pt-[36px] pb-[32px] px-[32px] rounded-[4px]`.
- *   - Header cells `Inter 14px / ink-muted`, `pb-[12px] px-[14px]` (reuses the
- *     Origination `HEADER_CELL_CLASS`); the table draws borders ONLY around the
- *     body box + inter-row separators (`LINE_COLOR`), no column dividers — the
- *     header row sits above the box, unbordered (Origination precedent).
- *   - Body cells `Inter 16px / #262524`; originator semibold; stage + chevron
- *     ink-muted; CCR `Inter Bold 16.5px`; spot/age subs `12–12.5px` ink-muted.
- *   - Senior outst. + Collateral: two-decimal compact (`$1.84M` / `$2.10M`,
- *     `formatCompactUsd2dp`). Senior outst. is a deliberate deviation from the
- *     Figma (which shows full dollars `$1,840,000`) — the two amount columns
- *     were unified to the same 2-dp compact style during live review.
- *   - Footnote `Inter 13px / ink-muted`, `leading-[18.2px]`, coloured band spans.
+ * spec: docs/frontend/trustee-flows.md#loan-book--tables (layout, resolved
+ * Open Questions, never-fabricate defaults, Figma → token mapping).
  */
 
-/**
- * The exact Figma body/card border literal (`rgba(56,55,53,0.18)`), applied via
- * inline `style` (not a Tailwind arbitrary border class) so it always paints
- * regardless of any Tailwind v4 utility-ordering quirk — same precedent as
- * `origination.index.tsx`.
- */
+// Figma body/card border literal, applied via inline `style` (not a Tailwind
+// arbitrary class) so it always paints regardless of Tailwind v4 utility
+// ordering — same precedent as `origination.index.tsx`.
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
 
-/**
- * Figma loan-page red (`#b20000`) for the At-risk headline, negative spot, the
- * `<110%` pre-default CCR band, and the footnote `<110%` span. Deliberately a
- * documented one-off — it differs from `--color-pipeline-negative` (`#c0392b`) —
- * to match the Figma exactly (same precedent as the Origination pills' one-offs).
- */
+// CCR band colors + At-risk/negative-spot red. spec:
+// trustee-flows.md#figma--token--px-mapping-loans-page-41169989.
 const NEGATIVE_RED = "#b20000";
-
-/** CCR "attention"/yellow band (120–130%) — a documented one-off, no token. */
 const ATTENTION_AMBER = "#6e6400";
-
-/**
- * CCR "margin-call"/orange band (110–120%) — a documented one-off, no token.
- * The spec's 4-band scheme (#939) needs an orange the prior 3-band scheme
- * lacked; a distinct hue between the yellow `ATTENTION_AMBER` and red
- * `NEGATIVE_RED`.
- */
 const MARGIN_CALL_ORANGE = "#b35900";
-
-/** Green healthy band — exact match for `--color-pipeline-positive-primary`. */
 const POSITIVE_GREEN = "var(--color-pipeline-positive-primary)";
 
-/**
- * Column tracks. Like the Origination table (whose Figma export widths are
- * internally inconsistent), the table fills 100% of the card width with
- * flexible tracks in the Figma's relative proportions (`minmax(0,Nfr)` so cells
- * shrink+ellipsis rather than overflow), plus a fixed 34px trailing chevron
- * column (matching Figma). No horizontal scroll/clip.
- */
+// Flexible column tracks (Figma's relative proportions) + a fixed 34px
+// trailing chevron column — same approach as the Origination table.
 const GRID_TEMPLATE_COLUMNS =
   "minmax(0,1.3fr) minmax(0,1.6fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,1.15fr) 34px";
 

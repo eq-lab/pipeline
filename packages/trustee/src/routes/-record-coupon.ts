@@ -1,54 +1,12 @@
 /**
- * View-model + data wiring for the Trustee **Record Coupon** full-page route
- * (`loans.$id_.record-coupon.tsx`, issue #882, Figma node `4116-11452`). Per
- * `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is JSX/styling
- * only; this hook owns the live fetches, the amount/date input state, and the
- * value→display mapping (mirroring `-useLoanDetail.ts`'s split).
+ * View-model + data wiring for the Trustee Record Coupon full-page route
+ * (`loans.$id_.record-coupon.tsx`). Per `docs/FRONTEND.md` Code structure
+ * rule 2 the `.tsx` route is JSX/styling only; this hook owns the live
+ * fetches, the amount/date input state, and the value→display mapping
+ * (mirroring `-useLoanDetail.ts`'s split).
  *
- * ## Scope (issue #882 — read/UI only)
- * This page previews the payment waterfall for a trustee-entered offtaker
- * coupon via `useLoanWaterfall` (`GET /v1/loan-book/{loan_id}/waterfall`,
- * already wired). It does NOT perform the on-chain `record_payment` write —
- * that mutation (`useRecordPayment`) is deferred to a follow-up issue, so
- * there is no submit/confirm action here, only the live preview.
- *
- * ## Scale handling (critical — verified against `-useLoanDetail.ts` /
- * `useLoanWaterfall.ts` before wiring, per the issue's explicit instruction)
- *   - The `/waterfall` `amount` param and all response fields
- *     (`senior_principal_returned`, `senior_coupon_net`, `management_fee`,
- *     `performance_fee`, `oet_allocation`) are **raw base units at 7-decimal
- *     USDC (Stellar SAC) scale**. `usdToBaseUnits` multiplies the entered USD
- *     amount by 10^7 before calling the endpoint; `baseUnitsToUsd` divides
- *     backend response fields by 10^7 for display. The `recordPayment` payload
- *     uses backend raw fields unchanged.
- *   - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding`
- *     (`useLoanFinancials`) are displayed **exactly as the backend serves
- *     them** — no client-side rescaling (issue #906; the former ×1000
- *     `scaleRegistryAmount` workaround has been removed).
- *   - The left card's third row is **context-dependent** (`hasCouponDue`): a
- *     simply-performing loan with no upcoming/past-due payment shows the
- *     backend-served **"Offtaker still owed after coupon"** (`offtaker_
- *     outstanding − entered`); otherwise it shows the **"Scheduled coupon"** —
- *     a **client-side projection** (`current_apy_bps × senior_outstanding ×
- *     (days / 365)`, `computeScheduledCoupon`; the backend serves no scheduled-
- *     coupon figure), shown for reference only and never recorded on the ledger.
- *   - `Gross interest` is derived as `senior_coupon_net + management_fee +
- *     performance_fee` (summed in base units via `BigInt` — no float drift —
- *     then converted once to USD) — the interest before the fee carve-outs,
- *     not a separately-served field.
- *   - The green summary's `"Components sum to received $<amount>"` prints the
- *     ENTERED USD amount, not a re-derived sum of the five components (the
- *     waterfall has no equity field, so the five components alone do not sum
- *     to the offtaker amount — see issue #882's on-chain open question).
- *
- * ## Terminal-close detection (issue #882 explicit scope note)
- * The Figma's "Next stage: principal repayment →" button is suppressed
- * everywhere EXCEPT the terminal case — when this coupon fully amortises the
- * outstanding senior principal (`isTerminalRepayment`): the entered amount
- * covers (≥) the loan's outstanding senior AND the waterfall's own
- * `senior_principal_returned` equals it exactly (to the cent, guarding float
- * drift from the two independent unit conversions). Otherwise no hint renders
- * at all — this is an interest-only coupon page by default.
+ * spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions
+ * (scope, scale handling, terminal-close detection).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -109,14 +67,7 @@ function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
 }
 
-/**
- * Maps a `/waterfall` query error to friendly, user-facing copy — never the
- * raw backend message, and no numbers (#916). The backend's extended waterfall
- * validates the amount against the loan's terms and returns a client error
- * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
- * rate / outstanding); that maps to the "too high" line. Anything else gets a
- * generic retry message.
- */
+// spec: docs/frontend/trustee-flows.md#waterfall-error-mapping-916.
 export function mapWaterfallError(error: Error | null): string | null {
   if (error == null) return null;
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
@@ -125,21 +76,7 @@ export function mapWaterfallError(error: Error | null): string | null {
   return "Couldn't preview this payment. Please try again.";
 }
 
-/**
- * Builds the on-chain `RepaymentData` (issue #882) from the waterfall preview +
- * the entered offtaker amount (raw base-unit integer strings — passed through
- * unscaled to `record_payment`).
- *
- * This is the **interest-only coupon** flow (a `recordPayment` with **zero
- * principal** — the design's info banner): `senior_principal_repaid` is always
- * `0` (principal stays deployed), regardless of the waterfall's own
- * `senior_principal_returned` (which is a principal-first `min(amount,
- * outstanding)` figure, irrelevant to a coupon). The interest + fee carve-outs
- * map 1:1; `equity_distributed` is the **residual** after interest + fees so the
- * six components sum exactly to `offtaker_received` (clamped at 0 — never
- * negative). `null` until a positive amount is entered and the preview resolves.
- * Exported for unit testing.
- */
+// spec: docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
 export function buildRepaymentInput(
   amountBaseUnits: string,
   waterfall:
@@ -172,22 +109,14 @@ export function buildRepaymentInput(
   };
 }
 
-/**
- * Parses a backend-served base-6 decimal amount to a plain USD number, as-is —
- * no client-side rescaling (issue #906). `null` for anything missing/
- * unparseable — never fabricated.
- */
+// Displayed as served, no rescaling (issue #906).
 function parseServedUsd(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * The coupon-period display (`"2 Jan 2026 → 31 Mar 2026 · 88 days"`) derived from the
- * loan's current epoch (`start_date` → `maturity_date`). `—` / `null` days
- * when no epoch is on record (never fabricated).
- */
+// e.g. "2 Jan 2026 → 31 Mar 2026 · 88 days". "—"/null when no epoch is on record.
 export function computeCouponPeriod(epoch: Epoch | null): {
   label: string;
   days: number | null;
@@ -205,14 +134,8 @@ export function computeCouponPeriod(epoch: Epoch | null): {
   };
 }
 
-/**
- * The scheduled coupon for the current period — the interest the loan is
- * expected to pay this coupon: `senior APY × outstanding senior × (days /
- * 365)`. A **client-side projection** shown as a reference row only (the
- * backend serves no scheduled-coupon figure, and this is never recorded on the
- * ledger). `null` whenever the rate, outstanding senior, or period length is
- * unknown — never fabricated.
- */
+// A client-side projection, reference-only. spec:
+// docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
 export function computeScheduledCoupon(
   apyBps: number | null | undefined,
   outstandingSeniorUsd: number | null,
@@ -232,14 +155,7 @@ export function computeScheduledCoupon(
 /** Days before an epoch's maturity within which its coupon counts as "upcoming". */
 export const DUE_SOON_DAYS = 7;
 
-/**
- * Whether a coupon payment is currently relevant for this loan — **upcoming**
- * (today is within `dueSoonDays` before the epoch's maturity) or **past due**
- * (today is on/after maturity). Drives whether the left card's third row shows
- * the "Scheduled coupon" line (a payment is due) rather than "Offtaker still
- * owed after coupon" (nothing due yet). `false` when the maturity date is
- * missing/unparseable — never fabricated. Pure — exported for unit testing.
- */
+// spec: docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
 export function hasCouponDue(
   maturityDate: string | null | undefined,
   nowMs: number,
@@ -251,11 +167,7 @@ export function hasCouponDue(
   return nowMs >= maturity.getTime() - dueSoonDays * 86_400_000;
 }
 
-/**
- * Terminal-close detection (issue #882 explicit scope note) — see the module
- * doc comment. `false` whenever any input is unknown or the loan has no
- * outstanding senior on record.
- */
+// spec: docs/frontend/trustee-flows.md#record-coupon--interest-only-context-dependent-third-row.
 export function isTerminalRepayment(
   outstandingSeniorUsd: number | null,
   enteredUsd: number | null,

@@ -1,54 +1,14 @@
 /**
- * Approve & mint confirmation dialog (issue #838, Figma node `4116:13943`) —
- * opened by the "Approve" control on the Origination details page
- * (`origination.$id.tsx`). Mirrors `-RejectReasonDialog.tsx`'s shell/
- * accessibility contract, re-skinned to this frame: `role="dialog"`,
- * `aria-modal="true"`, `aria-labelledby` on the title, Escape-to-close,
- * backdrop-click-cancels, initial focus on the Cancel button (no text input
- * to focus here).
+ * Approve & mint confirmation dialog — opened by the "Approve" control on
+ * the Origination details page (`origination.$id.tsx`). Mirrors
+ * `-RejectReasonDialog.tsx`'s shell/accessibility contract, re-skinned to
+ * this frame: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on the
+ * title, Escape-to-close, backdrop-click-cancels, initial focus on the
+ * Cancel button (no text input to focus here).
  *
- * ## Confirm gate (issue #838 Open Question 1 — resolved)
- *
- * Before this issue, clicking Approve fired the #831 chain-first mint→review
- * orchestration immediately. This dialog introduces a pre-mint confirmation
- * gate: Approve now OPENS this dialog (see `-useOriginationReview.ts`'s
- * `openApprove`), and the orchestration only runs when the trustee clicks
- * "Mint loan" (`onConfirm`, wired to the existing `approve()`). The
- * orchestration itself — chain-first ordering, idempotency guard,
- * wallet-rejection/tx-failure error mapping — is UNCHANGED by this issue.
- *
- * ## Transaction preview
- *
- * The dark code block renders `preview` (computed by
- * `-origination-detail.ts`'s `mapTransactionPreview`, from the real
- * `loan_data` payload — the same one sent to `useDrawLoan`). The Figma
- * frame's four green mint-invariant checklist rows ("senior + equity ==
- * facility size", etc.) are deliberately OMITTED — no backend field backs
- * them, and this project never fabricates "green" confidence signals.
- *
- * ## Progress / success / error (issue #838 Open Question 3 — resolved)
- *
- * The frame depicts only the confirm state; progress/error/success carry
- * over the pre-existing behavior verbatim, now surfaced inside the dialog
- * instead of via a page-level button-label swap:
- *   - `mintingLabel` swaps the "Mint loan" button's text through the mint's
- *     stages ("Waiting for wallet signature…" → "Submitting on-chain…" →
- *     "Confirming…" → "Finalizing approval…").
- *   - `errorMessage` renders inline inside the dialog (mirrors
- *     `RejectReasonDialog`'s error `<p>`) — retryable, the submission stays
- *     InReview.
- *   - Success closes the dialog (handled by the caller via `approveOpen`
- *     flipping false on review success) — there is no dedicated in-dialog
- *     success state; the page's footer flips to the Approved banner.
- *
- * Cancel/Escape/backdrop-click are disabled while `isSubmitting` — once the
- * trustee clicks "Mint loan" the on-chain sequence is in flight and cannot
- * be un-shown; this is a deliberate stricter contract than
- * `RejectReasonDialog` (whose Cancel stays enabled during submission, since
- * a review-only mutation has no on-chain side effect to lose visibility
- * into). This also protects `-useOriginationReview.ts`'s idempotency
- * guard — the dialog cannot be dismissed mid-mint in a way that would
- * confuse a subsequent Approve click.
+ * spec: docs/frontend/trustee-flows.md#approve--mint-confirmation-dialog-838-figma-node-411613943
+ * (confirm gate, transaction preview, progress/error/success, why
+ * Cancel/Escape/backdrop lock while minting).
  */
 import { useEffect, useRef } from "react";
 import type { TransactionPreviewDisplay } from "./-origination-detail";

@@ -1,32 +1,8 @@
 /**
- * TrusteeSidebar — the persistent left nav panel from Figma node `4116:8855`
- * ("Aside"), replacing the #777 scaffold's topbar nav (issue #786).
+ * TrusteeSidebar — the persistent left nav panel, replacing the earlier
+ * topbar nav.
  *
- * Pixel/token mapping (see docs/exec-plans/active/issue-786-trustee-app-shell.md
- * "Decisions" + "Exact layout spec" for the full trace):
- *   - Root: navy `--color-pipeline-brand` background, fixed 320px
- *     (288 content + 16px padding each side), full viewport height.
- *   - Wordmark: shared `@pipeline/ui` `Logo` (116×32).
- *   - Nav items: 56px tall buttons, 20px icon + 16px body label, 14px gap.
- *     Active state is driven by TanStack Router (`activeProps`), not a
- *     hardcoded label — active gets the white `--color-pipeline-surface` fill
- *     with a brand-colored label; inactive is transparent with an on-dark
- *     (white) label.
- *   - Count badge slot: renders nothing unless a backend-served count is
- *     supplied on the nav item (`TrusteeNavItem.badgeCount`) — there is no
- *     backend source for the Figma mock's 1/4/3 today (decision #786-2, "no
- *     frontend-computed metrics").
- *   - Two dividers (`rgba(235,233,230,0.25)`, documented one-off — no theme
- *     token, same precedent as `SignInCard.tsx`): after Overview, and before
- *     the Risk Council / Audit Log group.
- *   - Account chip pinned to the bottom via a `flex-1` spacer: avatar circle,
- *     truncated address, "Trustee · connected" subtitle, and a `⋯` affordance
- *     that opens a small popover menu with "Sign out" (decision #786-4) —
- *     wired to `useTrusteeSession().signOut`. Renders nothing when `address`
- *     is undefined (never the string "undefined").
- *
- * Desktop-only for this issue (decision #786-5) — no mobile drawer/collapse;
- * responsive behavior is tracked in `docs/exec-plans/tech-debt-tracker.md`.
+ * spec: docs/frontend/trustee-flows.md#trustee-sidebar-figma-node-41168855-aside.
  */
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -46,8 +22,7 @@ import {
 import type { ComponentType, SVGProps } from "react";
 
 // Documented scoped one-offs (no theme token exists) — same precedent as
-// `SignInCard.tsx` / `sign-in.tsx`. `#EBE9E6` = rgba(235,233,230,*), a warm
-// off-white used only on this dark sidebar surface.
+// `SignInCard.tsx`.
 const DIVIDER_COLOR = "rgba(235,233,230,0.25)";
 const SUBTITLE_COLOR = "rgba(235,233,230,0.7)";
 const BADGE_BG_COLOR = "rgba(191,189,187,0.24)";
@@ -78,14 +53,7 @@ function NavBadge({ count }: { count: number | undefined }) {
   );
 }
 
-// `Link`'s `className` and `activeProps.className`/`inactiveProps.className`
-// are CONCATENATED (not swapped) by TanStack Router, so putting a `color`
-// utility in both the base className and `activeProps` would leave two
-// same-specificity Tailwind classes fighting over `color` in the DOM at
-// once — whichever lands later in the generated stylesheet wins, which is
-// fragile and not reliably "active wins". Instead: the base `className`
-// carries ONLY layout (no color/background), and the active/inactive
-// surface + text color are mutually exclusive — only one is ever present.
+// spec: docs/frontend/trustee-flows.md#trustee-sidebar-figma-node-41168855-aside.
 const NAV_ITEM_BASE_CLASSNAME =
   "flex h-14 w-full shrink-0 items-center gap-[14px] rounded-[4px] px-4";
 

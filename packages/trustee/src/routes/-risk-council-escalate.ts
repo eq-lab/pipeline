@@ -1,56 +1,12 @@
 /**
- * View-model + data wiring for the Trustee **Risk Council — Escalate**
- * page (`risk-council.escalate.$id.tsx`, issue #782; Figma `4116-12953` for
- * styling). Per `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is
- * JSX/styling only; this hook owns the live fetches and the value→display
- * mapping (mirrors `-useLoanDetail.ts` / `-record-coupon.ts`).
+ * View-model + data wiring for the Trustee Risk Council — Escalate page
+ * (`risk-council.escalate.$id.tsx`). Per `docs/FRONTEND.md` Code structure
+ * rule 2 the `.tsx` route is JSX/styling only; this hook owns the live
+ * fetches and the value→display mapping (mirrors `-useLoanDetail.ts` /
+ * `-record-coupon.ts`).
  *
- * ## Model — proposal builder (docs/product-specs/trustee-risk-watchlist.md)
- * Per the Risk & Watchlist spec (docs are the source of truth, Figma is
- * styling), escalation is a **generic proposal builder**: the Trustee reviews
- * the loan's risk evidence (below) and writes a proposal **name + text** for
- * the Risk Council — NOT a type-specific `setDefault` payload composed by the
- * dashboard. The 3-of-5 Safe executes the underlying action after the 24h
- * timelock; the Trustee cannot execute. The proposal Figma frames
- * `4116-13481` / `4116-13625` are the read-only Risk-Council DISPLAY screens.
- *
- * ## Real vs. mock (data-sourcing convention)
- * **Real** (sourced live, per-loan):
- *   - Originator / Facility (`principal`) / senior deployed
- *     (`senior_outstanding`) / Collateral — the matching `useLoanBook` entry.
- *     Served display-scale ⇒ formatted AS-IS via `formatFullUsd` (the ×1000
- *     registry rescale was removed in #906); `ccr_bps` is used as-is.
- *   - Repaid to date — `useLoanFinancials` (`offtaker − offtaker_outstanding`,
- *     both served display-scale as-is).
- *   - CCR trend — `useLoanCcrHistory` + `buildCcrTrend` (reused from
- *     `-useLoanDetail.ts`, #879).
- *   - Current at-risk % — loan-book `summary.at_risk_wl_and_default_pct`.
- *   - Concentration — `summary.top_concentration`, only when it names THIS
- *     loan's own commodity (the endpoint serves a single portfolio-wide top
- *     concentration, not a per-commodity share) — `—` otherwise, never
- *     fabricated.
- *
- * **Mock** (no backend source; flagged here, not per-loan):
- *   - "Days on watchlist" — no "watchlist since" timestamp is served anywhere
- *     in the Trustee API (the same gap the Watchlist loan-detail page already
- *     has, `LOAN_DETAIL_WATCHLIST_MOCK.tiles`, issue #859).
- *   - The "→ Y% if defaulted" portfolio-impact projection — there is no
- *     projection endpoint, and `at_risk_wl_and_default_pct` already COMBINES
- *     WatchList + Default, so a Watchlist→Default transition for a loan
- *     already on Watchlist barely moves that combined figure — there is no
- *     real formula to derive the Figma's forward-looking delta from served
- *     data. Static Figma literal.
- *   - The proposal builder itself (name + text form, Draft → Submitted, the
- *     24h-timelock timer) — no Safe/proposal/voting/timelock backend exists
- *     yet (`RiskCouncilSafe.propose` is RISK_COUNCIL-only, not Trustee-
- *     callable). Local UI state only, no network / no wallet.
- *
- * The Figma's collateral sub-label reads "coffee −18% 30d"; like the Loans
- * page (exec-plan RISK 3, `-useLoansTable.ts`'s `formatSpot`), the only
- * served change window is 7-day (`spot_change_7d`) — the real basis is used
- * here too, not a fabricated "30d" relabel. Similarly, the Figma's "unchanged
- * · 3.9%" concentration qualifier has no trend/history source, so "unchanged"
- * is dropped — only the served share renders.
+ * spec: docs/frontend/trustee-flows.md#escalate-to-default-flow-10--proposal-builder-not-a-typed-payload
+ * (proposal-builder model, real-vs-mock data sourcing).
  */
 import { useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -81,12 +37,7 @@ const HEALTHY_MARGIN_PCT = HEALTHY_MARGIN_BPS / 100;
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
-/**
- * The next-lower protocol CCR threshold (130 / 120 / 110%, spec §9.6) a
- * declining loan has not yet crossed, in whole percent. `null` once the loan
- * is at/below the lowest tracked threshold (110%) — there is no lower alert
- * left to name.
- */
+// Protocol CCR thresholds (130/120/110%, spec §9.6); null once at/below the lowest.
 export function nextCcrAlertPct(ccrBps: number | null): number | null {
   if (ccrBps == null || !Number.isFinite(ccrBps)) return null;
   const pct = ccrBps / 100;

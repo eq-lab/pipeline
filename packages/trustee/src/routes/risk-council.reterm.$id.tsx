@@ -6,19 +6,11 @@ import {
 } from "./-risk-council-reterm";
 
 /**
- * Risk Council — Amend economics (off-cycle re-term) — issue #782, Figma node
- * `4116-13481`. The SECOND of the three Type-3 RISK_COUNCIL proposal screens
- * (spec `docs/product-specs/trustee-dashboard.md` §"Type 3", flow 11).
+ * Risk Council — Amend economics (off-cycle re-term). The second of the
+ * three Type-3 RISK_COUNCIL proposal screens.
  *
- * A **read-only REVIEW** page (unlike flow 10's draft+submit): the Trustee
- * dashboard only shows the review, evidence, and voting status — execution
- * stays with the Risk Council Safe after the 24h timelock, GUARDIAN-cancelable.
- * "View Safe proposal" is a placeholder for the (unbuilt) Safe link.
- *
- * Registered under the `/risk-council` pass-through layout (`risk-council.tsx`'s
- * `<Outlet/>`) at `/risk-council/reterm/$id`. Per `docs/FRONTEND.md` rule 2 this
- * `.tsx` is JSX/styling only; data wiring + the real-vs-mock split live in the
- * colocated `-risk-council-reterm.ts` view-model.
+ * spec: docs/frontend/trustee-flows.md#amend-economics--off-cycle-re-term-flow-11--read-only-review
+ * (flow, routing).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";

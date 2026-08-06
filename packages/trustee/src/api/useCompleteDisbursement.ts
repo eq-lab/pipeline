@@ -1,23 +1,12 @@
 /**
  * React Query mutation hook — marks a loan's USDC off-ramp complete via
- * `POST /v1/loan-book/{loan_id}/disbursement/complete` (issue #862), flipping it
- * out of the derived `Disbursing` display status so the API surfaces its live
- * on-chain status.
+ * `POST /v1/loan-book/{loan_id}/disbursement/complete`, flipping it out of
+ * the derived `Disbursing` display status. Trustee-only (`403`/`401` per
+ * `apiFetch`'s auth injection); idempotent — completing an already-complete
+ * loan just refreshes the actor/timestamp; `404` when no loan with that id
+ * is indexed.
  *
- * Contract source of truth: `packages/api/src/routes/loan_book.rs`,
- * `complete_disbursement`:
- *   - **Trustee-only** — `apiFetch` injects `Authorization: Bearer <token>`
- *     (#791); `403` when the caller lacks the `trustee` role, `401` on a
- *     missing/invalid/expired token.
- *   - **Idempotent** — completing an already-complete loan just refreshes the
- *     actor/timestamp; `200` with an empty body either way.
- *   - **`404`** when no loan with that id is indexed on the chain (surfaced as a
- *     typed `ApiError` with `.status === 404`).
- *   - Stellar-scoped `chain_id`, matching the read hooks.
- *
- * On success, invalidates the loan-book / financials / valuation queries (React
- * Query matches by key prefix) so the loan detail + list refetch and the status
- * flips out of `Disbursing`.
+ * spec: docs/frontend/trustee-flows.md#wired-actions (Disbursement complete).
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";

@@ -3,68 +3,10 @@ import { OriginationIcon } from "./TrusteeNavIcons";
 import { useNeedsAttention } from "./useNeedsAttention";
 
 /**
- * NeedsAttention — the Trustee Overview page's "Needs Attention" section,
- * Origination group ONLY (issue #818, Figma node `4116:9004` section header /
- * `4116:9006` group header / `4116:9008` row). Real data:
- * `GET /v1/loan-book/submissions?status=InReview` via `useNeedsAttention`.
+ * NeedsAttention — the Trustee Overview page's "Needs Attention" section.
  *
- * Scope (issue #818, cross-linked to #799): the Loans — Payments Due, Cash
- * Management, and Risk Council groups (Figma nodes `4116:9018`+) are
- * deliberately OMITTED — no backend endpoints exist for them yet. This
- * component renders ONLY the Origination group.
- *
- * Empty/loading/error handling (resolved OQ#3, human review): the section —
- * heading and all — renders NOTHING unless there is at least one in-review
- * submission. No skeleton on loading, no error surface; this is a
- * supplementary block, not the page's primary content (unlike
- * `CapitalAllocationCard`, which does show loading/error states).
- *
- * Resolved OQ#1 (human, superseded by issue #821): the "Review" button now
- * navigates to `/origination/$id`, passing the row's source `SubmissionView`
- * as router state — mirroring `origination.tsx`'s `StatusCell` "in-review"
- * case, which was wired the same way in the same issue.
- *
- * NOT a `Card` (human review follow-up, issue #818): per the Figma
- * background node `4116:8928`, the "Needs Attention" heading/group/rows live
- * INSIDE the SAME single white surface as the Capital Allocation content —
- * ONE continuous card, not two stacked white blocks. This component
- * therefore renders plain content (no white background/border/radius of its
- * own); the Overview route passes it as `children` to `CapitalAllocationCard`,
- * which renders it inside its own `Card`, right after its own content. An
- * earlier cut wrapped this in its own `Card`, which visually produced a
- * second white block with a gap — corrected here.
- *
- * Pixel/token mapping from the Figma export:
- *   - Section heading "Needs Attention": Besley display, `text-[36px]
- *     leading-[46px]`, `--color-pipeline-ink` (exact `#262524`) — NOT
- *     `--text-pipeline-title` (64px); arbitrary one-off at a non-token size,
- *     same precedent as `CapitalAllocationCard`'s `58px` total.
- *   - Group header "Origination": uppercase, `text-[12px] leading-[16.8px]
- *     tracking-[0.96px]`, `--color-pipeline-ink-muted` (exact
- *     `rgba(56,55,53,0.6)`) — `tracking-[0.96px]` has no token, arbitrary
- *     one-off.
- *   - Row: `bg-[rgba(211,235,117,0.16)]` + `border-[rgba(56,55,53,0.18)]` —
- *     NO matching token for either (scoped one-offs, same precedent as
- *     `CapitalAllocationCard`'s provenance chips and the origination table's
- *     `LINE_COLOR`); `rounded-[4px]`, `min-h-[72px]`, `px-[17px] py-[15px]`,
- *     `gap-[16px]`, `items-center`.
- *   - Icon circle: 36px, `--color-pipeline-brand` (exact `#000080`) bg,
- *     wrapping `OriginationIcon` (18px, white) — reuses the existing sidebar
- *     lightbulb glyph rather than redrawing the Figma SVG asset (both are the
- *     lightbulb glyph; see the exec plan's Assumptions section).
- *   - Row title: `text-[16px] leading-[22.4px]`, `--color-pipeline-ink`
- *     (exact `#262524`).
- *   - Row subtitle: `text-[12px] leading-[16.8px]`, `--color-pipeline-ink-muted`
- *     (exact `rgba(56,55,53,0.6)`).
- *   - Review button (Figma node `4116:9016`): `--color-pipeline-brand` (exact
- *     `#000080`) bg, white text, `rounded-[4px]`, `h-[40px]`, `px-[16px]`,
- *     `text-[16px]` Inter regular, full opacity. Human review follow-up
- *     (issue #818): the initial cut wrongly copied the ORIGINATION TABLE's
- *     disabled Review button shape (`h-[36px]`/`text-[15px]`/`opacity-60`,
- *     Figma node `4116:9159`) — a DIFFERENT Figma component from this
- *     section's button. Issue #821 wires it live (navigates to
- *     `/origination/$id`); the `disabled`/`aria-disabled` inert affordance is
- *     removed accordingly, keeping the same visual shape.
+ * spec: docs/frontend/trustee-flows.md#needs-attention-section (scope, why
+ * not a `Card`, empty/loading/error handling, Figma → token mapping).
  */
 const ROW_CLASS =
   "flex min-h-[72px] w-full items-center gap-[16px] rounded-[4px] border border-solid px-[17px] py-[15px]";
