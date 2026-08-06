@@ -308,6 +308,7 @@ function NetworkRow({
                 "font-[family-name:var(--font-body)]",
                 "text-[length:var(--text-pipeline-caption)]",
                 "leading-[var(--text-pipeline-caption--line-height)]",
+                "whitespace-nowrap",
                 "text-white/70 underline underline-offset-2",
                 "transition-opacity hover:opacity-80",
                 "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",

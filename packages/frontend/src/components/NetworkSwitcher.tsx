@@ -48,22 +48,26 @@ export function NetworkSwitcher() {
         ].join(" ")}
         aria-hidden="true"
       />
-      <span className="text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] font-[var(--font-weight-medium)] text-[color:var(--color-pipeline-ink)]">
+      <span className="text-[15px] leading-none font-[var(--font-weight-medium)] whitespace-nowrap text-[color:var(--color-pipeline-ink)]">
         {currentNetwork.label}
       </span>
     </>
   );
 
+  // Matches the adjacent WalletPill idiom exactly (h-12, white surface,
+  // hairline border, fully-rounded ends) so the two read as one control row;
+  // mainnet swaps in an amber-tinted surface as the real-funds affordance.
   const pillClasses = [
-    "flex items-center gap-2 rounded-full px-3 py-1.5",
-    "border border-[color:var(--color-pipeline-line)]",
+    "flex h-12 items-center gap-2 px-4",
+    "rounded-[var(--radius-pipeline-pill)]",
+    "border",
     isMainnet
-      ? "bg-[color:var(--color-pipeline-warning)]/10"
-      : "bg-[color:var(--color-pipeline-line)]/40",
+      ? "border-[color:var(--color-pipeline-warning)]/50 bg-[color:var(--color-pipeline-warning)]/10"
+      : "border-[rgb(56_55_53_/_0.18)] bg-[var(--color-pipeline-surface)]",
   ].join(" ");
 
   return (
-    <div ref={rootRef} className="relative hidden shrink-0 md:block">
+    <div ref={rootRef} className="relative mr-3 hidden shrink-0 md:block">
       {hasMenu ? (
         <button
           type="button"
@@ -73,7 +77,7 @@ export function NetworkSwitcher() {
           onClick={() => setOpen((v) => !v)}
           className={[
             pillClasses,
-            "cursor-pointer transition-opacity hover:opacity-80",
+            "cursor-pointer text-[color:var(--color-pipeline-ink)] transition-opacity hover:opacity-80",
             "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--color-pipeline-ink)]/30",
           ].join(" ")}
         >
@@ -123,7 +127,7 @@ export function NetworkSwitcher() {
                 setOpen(false);
                 requestSwitch(link);
               }}
-              className="flex items-center gap-2 px-4 py-2 text-left font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink)] transition-colors hover:bg-[color:var(--color-pipeline-line)]/30"
+              className="flex items-center gap-2 px-4 py-2.5 text-left font-[family-name:var(--font-body)] text-[15px] whitespace-nowrap text-[color:var(--color-pipeline-ink)] transition-colors hover:bg-[color:var(--color-pipeline-line)]/30"
             >
               <span
                 className={[
