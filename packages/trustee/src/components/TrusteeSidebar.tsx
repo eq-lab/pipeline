@@ -298,31 +298,34 @@ function AccountChip() {
         >
           {truncateAddress(address)}
         </span>
-        <span
-          className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]"
-          style={{ color: SUBTITLE_COLOR }}
-        >
-          Trustee · connected
-        </span>
-        {/* Current-network pill — always visible, no menu required
-            (issue #1032 acceptance: "active network always labeled").
-            Tinted pill (not muted caption text) so the active network is
-            unmissable on the navy sidebar; mainnet gets the amber accent. */}
-        <span
-          className={[
-            "mt-1 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5",
-            "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] font-[var(--font-weight-medium)]",
-            currentNetwork.id === "mainnet"
-              ? "bg-[color:var(--color-pipeline-warning)]/20 text-[color:var(--color-pipeline-warning)]"
-              : "bg-white/12 text-white/85",
-          ].join(" ")}
-          data-testid="trustee-network-badge"
-        >
+        {/* Subtitle row: "Trustee · connected" with the current-network pill
+            beside it — always visible, no menu required (issue #1032
+            acceptance: "active network always labeled"). Tinted pill so the
+            active network is unmissable on the navy sidebar; mainnet gets
+            the amber accent. */}
+        <span className="flex items-center gap-2">
           <span
-            className={networkDotClasses(currentNetwork.id)}
-            aria-hidden="true"
-          />
-          {currentNetwork.label}
+            className="font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] whitespace-nowrap"
+            style={{ color: SUBTITLE_COLOR }}
+          >
+            Trustee · connected
+          </span>
+          <span
+            className={[
+              "inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5",
+              "font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] font-[var(--font-weight-medium)] whitespace-nowrap",
+              currentNetwork.id === "mainnet"
+                ? "bg-[color:var(--color-pipeline-warning)]/20 text-[color:var(--color-pipeline-warning)]"
+                : "bg-white/12 text-white/85",
+            ].join(" ")}
+            data-testid="trustee-network-badge"
+          >
+            <span
+              className={networkDotClasses(currentNetwork.id)}
+              aria-hidden="true"
+            />
+            {currentNetwork.label}
+          </span>
         </span>
       </div>
 
