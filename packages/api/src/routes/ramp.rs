@@ -10,9 +10,9 @@
 //!
 //! Once reviewed, an event is recorded in `ramp_reviews` (keyed by
 //! `contract_logs.id`) and — only if the decision was Approved —
-//! `routes::capital_allocation`'s `in_transit` bucket starts counting it on the
-//! matching leg (on-ramp subtracts, off-ramp adds). A Rejected event simply drops
-//! off the pending list and never counts.
+//! `routes::capital_allocation`'s `in_transit` bucket starts counting it toward
+//! the gross ramp flow (both legs add, as absolute amounts — #1027). A Rejected
+//! event simply drops off the pending list and never counts.
 
 use std::sync::Arc;
 

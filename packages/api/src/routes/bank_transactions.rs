@@ -1,6 +1,9 @@
 //! Bank-transaction ledger submission endpoint (`POST /v1/bank-transactions`).
 //!
-//! Backs `trust_account` on `GET /v1/capital-allocation` (#924). Gated on
+//! Originally backed `trust_account` on `GET /v1/capital-allocation` (#924).
+//! **Decoupled by #1027** — capital-allocation now sources `trust_account` from
+//! the per-loan `loan_capital_transfers` table (`routes::loan_transfers`), so this
+//! ledger has no remaining consumer; its removal is tracked in #1029. Gated on
 //! `bank_operator` — a narrower financial-operations role distinct from `trustee`.
 //! Append-only — a bookkeeping correction is a new offsetting entry, never an edit
 //! (same audit rationale as the assay/offtake submission endpoints in
@@ -8,9 +11,6 @@
 //!
 //! `amount` is stored as a **plain dollar figure**, not base-6/on-chain-scaled — a
 //! bank transaction has no on-chain native scale to normalize against.
-//! `routes::capital_allocation` is responsible for scaling this figure when it folds
-//! `trust_account_balance()` into `total` alongside the base-6 `deployed`/
-//! `in_transit` buckets.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -40,9 +40,7 @@ pub struct SubmitBankTransactionRequest {
     /// Always non-negative; sign is implied entirely by `transaction_type`. A plain
     /// dollar decimal string (e.g. `"50000"` or `"50000.00"`) — stored verbatim, no
     /// base-6/on-chain scaling. A bank transaction has no on-chain native scale to
-    /// stay consistent with. `routes::capital_allocation` converts this figure to
-    /// base-6 units only when folding it into `total`, alongside `deployed`/
-    /// `in_transit`; the stored value and `trust_account_balance()` stay plain.
+    /// stay consistent with.
     pub amount: String,
     /// E.g. a wire reference number. Optional, but must not be blank if present.
     pub payment_reference: Option<String>,
