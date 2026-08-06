@@ -128,6 +128,26 @@ vi.mock("@/wallet/stellar/config", () => ({
   },
 }));
 
+// ── Network switcher mock (issue #1032) ───────────────────────────────────────
+// Same pattern as AccountDropdown.test.tsx: only `getNetworkSwitcherState` is
+// stubbed (controllable per test); `navigateToNetworkLink` stays real.
+
+const { mockNetworkSwitcherState } = vi.hoisted(() => ({
+  mockNetworkSwitcherState: {
+    currentNetwork: { id: "testnet", label: "Testnet" },
+    otherNetworks: [] as { id: string; label: string; url: string }[],
+  },
+}));
+
+vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
+  return {
+    ...original,
+    getNetworkSwitcherState: () => mockNetworkSwitcherState,
+  };
+});
+
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
 const mockUseReadContract = vi.fn(() => ({
@@ -326,6 +346,8 @@ function clearMocks() {
   mockStellarPlusdState.hasTrustline = false;
   mockStellarPlusdState.isAuthorized = false;
   mockStellarSplusdState.balance = undefined;
+  mockNetworkSwitcherState.currentNetwork = { id: "testnet", label: "Testnet" };
+  mockNetworkSwitcherState.otherNetworks = [];
 }
 
 // ── Tests: route-driven active nav ────────────────────────────────────────────
@@ -775,7 +797,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     setConnectedMock(); // EVM connected, Stellar disconnected
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$1,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$1,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -796,7 +820,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     // mockStellarPlusdState stays hasTrustline: false (default).
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$2,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -819,7 +845,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     setStellarPlusdBalance("5000.0000000"); // ~$5,000.00
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$2,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -842,7 +870,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     setStellarSplusdBalance(12345678900n); // 1234.5678900 sPLUSD at 7dp
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$2,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -865,7 +895,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     setStellarSplusdBalance(0n);
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$2,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$2,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -889,7 +921,9 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     setStellarSplusdBalance(12345678900n);
     renderTopBar("/");
 
-    const trigger = await screen.findByRole("button", { name: /\$1,000\.00|—/ });
+    const trigger = await screen.findByRole("button", {
+      name: /\$1,000\.00|—/,
+    });
     await user.click(trigger);
 
     await waitFor(() =>
@@ -903,5 +937,51 @@ describe("TopBar — Stellar PLUSD/sPLUSD balance rows in AccountDropdown", () =
     expect(
       screen.queryByTestId("topbar-splusd-balance-row"),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ── Tests: network switcher static badge (issue #1032) ───────────────────────
+
+describe("TopBar — network switcher static badge", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("shows the current network label even when disconnected (no menu needed)", async () => {
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-network-badge")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("topbar-network-badge")).toHaveTextContent(
+      "Testnet",
+    );
+  });
+
+  it("shows the current network label when connected too", async () => {
+    setConnectedMock();
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-network-badge")).toHaveTextContent(
+        "Testnet",
+      ),
+    );
+  });
+
+  it("reflects a mainnet current-network deployment", async () => {
+    mockNetworkSwitcherState.currentNetwork = {
+      id: "mainnet",
+      label: "Mainnet",
+    };
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-network-badge")).toHaveTextContent(
+        "Mainnet",
+      ),
+    );
   });
 });

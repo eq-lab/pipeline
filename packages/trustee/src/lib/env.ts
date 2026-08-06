@@ -124,6 +124,15 @@ export const ENV = Object.freeze({
     "VITE_STELLAR_LOAN_REGISTRY_EXECUTOR_ID",
     "",
   ),
+
+  /**
+   * Sibling-deployment URLs for the cross-deployment network switcher
+   * (issue #1032), e.g. `"mainnet=https://dashboard.pipeline.one,testnet=https://dashboard.pipeline.stage.eqlab.net"`.
+   * Parsed by `parseNetworkLinks` from `@pipeline/wallet-connect`. Defaults
+   * to the empty string — an absent/unset var renders the switcher as a
+   * static network label with no menu (see docs/frontend/wallet-flows.md).
+   */
+  NETWORK_LINKS: readString("VITE_NETWORK_LINKS", ""),
 });
 
 /**

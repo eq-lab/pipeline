@@ -10,6 +10,9 @@
  *   - Trigger has aria-expanded toggling.
  *   - Namespace toggle (EVM ↔ Stellar) switches the rendered address/balance.
  *   - Not-connected state renders "Connect {namespace}" action, hides Disconnect.
+ *   - Network switcher row (issue #1032): current network always shown;
+ *     other-network rows only when `VITE_NETWORK_LINKS` supplies siblings;
+ *     mainnet row click asks for confirmation before navigating.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -105,6 +108,51 @@ vi.mock("@/wallet/stellar/config", () => ({
     init: vi.fn(),
   },
 }));
+
+// ── Network switcher mock (issue #1032) ───────────────────────────────────────
+// Only `getNetworkSwitcherState` is stubbed (controllable per test); the real
+// `navigateToNetworkLink` (confirm + navigate) runs unmocked so the mainnet
+// confirm behavior is exercised end-to-end — tests observe it via
+// `window.confirm` / `window.location.assign` spies.
+
+const { mockNetworkSwitcherState } = vi.hoisted(() => ({
+  mockNetworkSwitcherState: {
+    currentNetwork: { id: "testnet", label: "Testnet" },
+    otherNetworks: [] as { id: string; label: string; url: string }[],
+  },
+}));
+
+vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
+  return {
+    ...original,
+    getNetworkSwitcherState: () => mockNetworkSwitcherState,
+  };
+});
+
+// jsdom's `Location.prototype.assign` is non-configurable, so `vi.spyOn`
+// cannot redefine it directly — replace `window.location` itself with a
+// stand-in object for the duration of the test instead.
+const ORIGINAL_WINDOW_LOCATION = window.location;
+
+function mockLocationAssign() {
+  const assign = vi.fn();
+  Object.defineProperty(window, "location", {
+    value: { ...ORIGINAL_WINDOW_LOCATION, assign },
+    configurable: true,
+    writable: true,
+  });
+  return assign;
+}
+
+function restoreWindowLocation() {
+  Object.defineProperty(window, "location", {
+    value: ORIGINAL_WINDOW_LOCATION,
+    configurable: true,
+    writable: true,
+  });
+}
 
 // ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
@@ -568,5 +616,121 @@ describe("AccountDropdown — not-connected-tab state", () => {
     expect(
       screen.queryByRole("menuitem", { name: "Disconnect" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ── Tests: network switcher row (issue #1032) ────────────────────────────────
+
+describe("AccountDropdown — network switcher row", () => {
+  beforeEach(() => {
+    setEvmConnectedMock();
+  });
+
+  afterEach(() => {
+    clearEvmMocks();
+    clearStellarHookMock();
+    localStorage.clear();
+    vi.clearAllMocks();
+    restoreWindowLocation();
+    mockNetworkSwitcherState.currentNetwork = {
+      id: "testnet",
+      label: "Testnet",
+    };
+    mockNetworkSwitcherState.otherNetworks = [];
+  });
+
+  it("always shows the current network label, with no switch-network group when unconfigured", async () => {
+    const user = userEvent.setup();
+    renderWithWallet();
+    await openDropdown(user);
+
+    expect(screen.getByTestId("topbar-network-current")).toHaveTextContent(
+      "Testnet",
+    );
+    expect(
+      screen.queryByRole("group", { name: "Switch network" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders an other-network row when VITE_NETWORK_LINKS supplies a sibling", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://app.pipeline.one",
+      },
+    ];
+    const user = userEvent.setup();
+    renderWithWallet();
+    await openDropdown(user);
+
+    expect(
+      screen.getByRole("group", { name: "Switch network" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("topbar-network-link-mainnet"),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking a non-mainnet other-network row navigates directly, without confirm", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "futurenet",
+        label: "Futurenet",
+        url: "https://futurenet.example.com",
+      },
+    ];
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderWithWallet();
+    await openDropdown(user);
+
+    await user.click(screen.getByTestId("topbar-network-link-futurenet"));
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(assignSpy).toHaveBeenCalledWith("https://futurenet.example.com");
+  });
+
+  it("clicking a mainnet other-network row asks for confirmation before navigating", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://app.pipeline.one",
+      },
+    ];
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderWithWallet();
+    await openDropdown(user);
+
+    await user.click(screen.getByTestId("topbar-network-link-mainnet"));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(assignSpy).toHaveBeenCalledWith("https://app.pipeline.one");
+  });
+
+  it("does not navigate when the mainnet confirm is declined", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://app.pipeline.one",
+      },
+    ];
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderWithWallet();
+    await openDropdown(user);
+
+    await user.click(screen.getByTestId("topbar-network-link-mainnet"));
+
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 });

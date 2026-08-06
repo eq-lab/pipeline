@@ -181,3 +181,17 @@ export { useConnectModal } from "./ConnectModalContext";
 export type { ConnectModalContextValue } from "./ConnectModalContext";
 export { ConnectWalletModal } from "./ConnectWalletModal";
 export type { ConnectWalletModalProps, WalletTab } from "./ConnectWalletModal";
+
+/**
+ * Network switcher (issue #1032) — cross-deployment link helpers. See
+ * `docs/frontend/wallet-flows.md` for the design; each deployment is
+ * single-network, so "switching" networks means navigating to a sibling
+ * deployment's URL, not swapping runtime config.
+ */
+export {
+  networkIdFromPassphrase,
+  parseNetworkLinks,
+  navigateToNetworkLink,
+  MAINNET_CONFIRM_MESSAGE,
+} from "./network/links";
+export type { NetworkIdentity, NetworkLink } from "./network/links";

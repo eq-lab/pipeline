@@ -14,6 +14,7 @@ import {
   formatUsdcDisplay,
   useWalletView,
   useConnectModal,
+  getNetworkSwitcherState,
 } from "@/wallet";
 import { AccountDropdown } from "./AccountDropdown";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
@@ -96,6 +97,13 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const splusdDisplay: string | undefined = formatSplusdDisplay(
       stellarSplusd.balance,
     );
+
+    // ── Network switcher (issue #1032) ───────────────────────────────────
+    // spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
+    // Static current-network label — always visible in the wallet block,
+    // independent of the AccountDropdown's own network row (which only
+    // shows while the menu is open).
+    const { currentNetwork } = getNetworkSwitcherState();
 
     // ── View selection ────────────────────────────────────────────────────
     const { kind, setKind } = useWalletView();
@@ -205,6 +213,27 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ))}
         </nav>
 
+        {/* Static current-network label — always visible, no menu required
+            (issue #1032 acceptance: "active network always labeled"). */}
+        <div
+          className="hidden shrink-0 items-center gap-1.5 md:flex"
+          data-testid="topbar-network-badge"
+          title={currentNetwork.label}
+        >
+          <span
+            className={[
+              "size-1.5 shrink-0 rounded-full",
+              currentNetwork.id === "mainnet"
+                ? "bg-[color:var(--color-pipeline-warning)]"
+                : "bg-[color:var(--color-pipeline-ink-muted)]",
+            ].join(" ")}
+            aria-hidden="true"
+          />
+          <span className="text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink-muted)]">
+            {currentNetwork.label}
+          </span>
+        </div>
+
         {/* Right slot — desktop wallet controls (md and above). */}
         <div
           className="relative hidden w-40 shrink-0 items-center justify-end md:flex"
@@ -308,7 +337,6 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             activeDisconnect();
           }}
         />
-
       </header>
     );
   },

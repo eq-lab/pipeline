@@ -70,24 +70,34 @@ link-out switcher; single `VITE_NETWORK_LINKS` var._
 
 ## Implementation Steps
 
-1. `packages/wallet-connect/src/network/links.ts` (+ export from `src/index.ts`):
+1. ✅ `packages/wallet-connect/src/network/links.ts` (+ export from `src/index.ts`):
    `parseNetworkLinks(raw: string | undefined): NetworkLink[]` (`{ id, label, url }`, order
    preserved, malformed dropped) and `networkIdFromPassphrase(passphrase: string): { id, label }`.
    Labels: `testnet` → "Testnet", `mainnet` → "Mainnet", unknown → raw id capitalized.
-2. `packages/frontend/src/lib/env.ts` + `packages/trustee/src/lib/env.ts`: add
+2. ✅ `packages/frontend/src/lib/env.ts` + `packages/trustee/src/lib/env.ts`: add
    `NETWORK_LINKS: readString("VITE_NETWORK_LINKS", "")` (optional, default empty).
-3. LP `AccountDropdown` (`packages/frontend/src/components/AccountDropdown.tsx`): network row per
+3. ✅ LP `AccountDropdown` (`packages/frontend/src/components/AccountDropdown.tsx`): network row per
    Design §3; current network from `networkIdFromPassphrase(ENV.STELLAR_NETWORK_PASSPHRASE)`;
    links from `parseNetworkLinks(ENV.NETWORK_LINKS)` minus the current network. Static label in
-   the wallet pill area if one isn't naturally visible.
-4. Trustee `TrusteeSidebar` AccountMenu popover: same content model, sidebar idiom styling.
-5. Mainnet confirm on navigate (Design §4), shared helper or inline per app (tiny).
-6. Docker entrypoints: pass `VITE_NETWORK_LINKS` through.
-7. `.env.example`: document the new var with both apps' example values.
-8. Docs: `docs/frontend/wallet-flows.md` — new `### Network switcher (cross-deployment links)`
-   section under a suitable heading capturing Design §1–4; product spec touch only if
-   `docs/product-specs/dashboards.md`/trustee spec enumerate wallet-block contents.
-9. Verification gate (below).
+   the wallet pill area if one isn't naturally visible. Implemented via a shared
+   `getNetworkSwitcherState()` composition helper (`packages/frontend/src/wallet/networkSwitcher.ts`)
+   consumed by both `useAccountDropdown.ts` (menu row) and `TopBar.tsx` (always-visible badge).
+4. ✅ Trustee `TrusteeSidebar` AccountMenu popover: same content model, sidebar idiom styling.
+   Mirrored per-app composition helper: `packages/trustee/src/lib/networkSwitcher.ts`.
+5. ✅ Mainnet confirm on navigate (Design §4): shared `navigateToNetworkLink` in
+   `@pipeline/wallet-connect`, used by both apps.
+6. ✅ Docker entrypoints: pass `VITE_NETWORK_LINKS` through (`docker/frontend/entrypoint.sh`,
+   `docker/trustee/entrypoint.sh`).
+7. ✅ `.env.example`: documented the new var with both apps' example values.
+8. ✅ Docs: `docs/frontend/wallet-flows.md` — new `## Network switcher (cross-deployment links)`
+   section capturing Design §1–4; also catalogued `getNetworkSwitcherState` in
+   `docs/frontend/hooks.md` (used by 2+ components per app). No product-spec touch needed —
+   neither `dashboards.md` nor the trustee spec enumerate wallet-block contents.
+9. ✅ Verification gate (below). Also required a one-line fix to
+   `packages/trustee/vite.config.ts` (add the same `test.server.deps.inline` for
+   `@stellar/freighter-api`/`@creit.tech/stellar-wallets-kit` that `packages/frontend/vite.config.ts`
+   already has) — the trustee test suite had never before exercised the real (non-mocked)
+   `@pipeline/wallet-connect` barrel, which this issue's composition helper does.
 
 ## Test Strategy
 

@@ -27,12 +27,22 @@
  *
  * Desktop-only for this issue (decision #786-5) — no mobile drawer/collapse;
  * responsive behavior is tracked in `docs/exec-plans/tech-debt-tracker.md`.
+ *
+ * Network switcher (issue #1032): a static current-network label sits next
+ * to "Trustee · connected"; the `⋯` popover gains switch-network rows above
+ * "Sign out" when `VITE_NETWORK_LINKS` supplies sibling deployments.
+ * spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
  */
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Logo } from "@pipeline/ui";
 import { TRUSTEE_NAV_ITEMS, type TrusteeNavItem } from "@/lib/nav";
 import { truncateAddress } from "@/lib/truncateAddress";
+import {
+  getNetworkSwitcherState,
+  navigateToNetworkLink,
+  type NetworkLink,
+} from "@/lib/networkSwitcher";
 import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
 import {
   OverviewIcon,
@@ -130,8 +140,29 @@ function Divider() {
   );
 }
 
-/** The account chip's "⋯" popover menu, containing "Sign out". */
-function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
+// Testnet dot is a muted on-dark tone; mainnet's is the amber "warning"
+// token so it reads as a real-funds signal against the dark surfaces here
+// (a navy dot on the navy sidebar/chip would be effectively invisible).
+function networkDotClasses(id: string): string {
+  return [
+    "size-1.5 shrink-0 rounded-full",
+    id === "mainnet"
+      ? "bg-[color:var(--color-pipeline-warning)]"
+      : "bg-white/40",
+  ].join(" ");
+}
+
+/**
+ * The account chip's "⋯" popover menu: switch-network rows (only when
+ * `otherNetworks` is non-empty) above "Sign out".
+ */
+function AccountMenu({
+  otherNetworks,
+  onSignOut,
+}: {
+  otherNetworks: NetworkLink[];
+  onSignOut: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -170,8 +201,43 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         <div
           role="menu"
           aria-label="Account"
-          className="absolute right-0 bottom-full mb-2 min-w-[140px] rounded-[4px] border border-solid border-[color:var(--color-pipeline-line)] bg-[color:var(--color-pipeline-surface)] py-1 shadow-lg"
+          className="absolute right-0 bottom-full mb-2 min-w-[180px] rounded-[4px] border border-solid border-[color:var(--color-pipeline-line)] bg-[color:var(--color-pipeline-surface)] py-1 shadow-lg"
         >
+          {otherNetworks.length > 0 && (
+            <>
+              <div
+                role="group"
+                aria-label="Switch network"
+                className="flex flex-col"
+                data-testid="trustee-network-switcher-group"
+              >
+                {otherNetworks.map((link) => (
+                  <button
+                    key={link.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      navigateToNetworkLink(link);
+                    }}
+                    data-testid={`trustee-network-link-${link.id}`}
+                    className="flex w-full cursor-pointer items-center gap-2 bg-transparent px-3 py-2 text-left font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-body)] text-[color:var(--color-pipeline-ink)] hover:bg-[color:var(--color-pipeline-surface-muted)]"
+                  >
+                    <span
+                      className={networkDotClasses(link.id)}
+                      aria-hidden="true"
+                    />
+                    Switch to {link.label}
+                  </button>
+                ))}
+              </div>
+              <div
+                className="my-1 h-px border-t border-solid border-[color:var(--color-pipeline-line)]"
+                role="separator"
+                aria-hidden="true"
+              />
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -191,6 +257,7 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
 
 function AccountChip() {
   const { address, signOut } = useTrusteeSession();
+  const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
 
   if (!address) return null;
 
@@ -221,9 +288,22 @@ function AccountChip() {
         >
           Trustee · connected
         </span>
+        {/* Static current-network label — always visible, no menu required
+            (issue #1032 acceptance: "active network always labeled"). */}
+        <span
+          className="mt-0.5 flex items-center gap-1.5 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)]"
+          style={{ color: SUBTITLE_COLOR }}
+          data-testid="trustee-network-badge"
+        >
+          <span
+            className={networkDotClasses(currentNetwork.id)}
+            aria-hidden="true"
+          />
+          {currentNetwork.label}
+        </span>
       </div>
 
-      <AccountMenu onSignOut={signOut} />
+      <AccountMenu otherNetworks={otherNetworks} onSignOut={signOut} />
     </div>
   );
 }

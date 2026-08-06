@@ -206,3 +206,14 @@ export type {
   StakeStepState,
   StakeStepInfo,
 } from "./useStakeFlow";
+
+// ── Network switcher (cross-deployment links, issue #1032) ───────────────────
+export {
+  getNetworkSwitcherState,
+  navigateToNetworkLink,
+} from "./networkSwitcher";
+export type {
+  NetworkSwitcherState,
+  NetworkIdentity,
+  NetworkLink,
+} from "./networkSwitcher";

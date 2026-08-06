@@ -6,9 +6,15 @@
  * minimal in-test TanStack router (mirroring
  * `packages/frontend/src/components/TopBar.test.tsx`) so `Link`/`activeProps`
  * resolve real active-route state without needing the full app router tree.
+ *
+ * Also covers the network switcher (issue #1032): the static badge in the
+ * account chip, the `⋯` popover's switch-network rows, and the mainnet
+ * confirm — `getNetworkSwitcherState` is stubbed (controllable per test)
+ * while the real `navigateToNetworkLink` (confirm + navigate) runs unmocked.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   createRootRoute,
   createRoute,
@@ -31,6 +37,45 @@ vi.mock("@/auth/TrusteeSessionProvider", () => ({
     signOut: mockSignOut,
   }),
 }));
+
+const { mockNetworkSwitcherState } = vi.hoisted(() => ({
+  mockNetworkSwitcherState: {
+    currentNetwork: { id: "testnet", label: "Testnet" },
+    otherNetworks: [] as { id: string; label: string; url: string }[],
+  },
+}));
+
+vi.mock("@/lib/networkSwitcher", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/lib/networkSwitcher")>();
+  return {
+    ...original,
+    getNetworkSwitcherState: () => mockNetworkSwitcherState,
+  };
+});
+
+// jsdom's `Location.prototype.assign` is non-configurable, so `vi.spyOn`
+// cannot redefine it directly — replace `window.location` itself with a
+// stand-in object for the duration of the test instead.
+const ORIGINAL_WINDOW_LOCATION = window.location;
+
+function mockLocationAssign() {
+  const assign = vi.fn();
+  Object.defineProperty(window, "location", {
+    value: { ...ORIGINAL_WINDOW_LOCATION, assign },
+    configurable: true,
+    writable: true,
+  });
+  return assign;
+}
+
+function restoreWindowLocation() {
+  Object.defineProperty(window, "location", {
+    value: ORIGINAL_WINDOW_LOCATION,
+    configurable: true,
+    writable: true,
+  });
+}
 
 /** Builds a minimal in-test router that renders <TrusteeSidebar/> on every route. */
 function buildRouter(initialPath: string) {
@@ -61,6 +106,8 @@ beforeEach(() => {
   mockSessionState = {
     address: "0x4c7f000000000000000000000000000000002a1b",
   };
+  mockNetworkSwitcherState.currentNetwork = { id: "testnet", label: "Testnet" };
+  mockNetworkSwitcherState.otherNetworks = [];
 });
 
 describe("TrusteeSidebar", () => {
@@ -176,5 +223,125 @@ describe("TrusteeSidebar", () => {
 
     fireEvent.click(signOutItem);
     await waitFor(() => expect(mockSignOut).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("TrusteeSidebar — network switcher (issue #1032)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    restoreWindowLocation();
+  });
+
+  it("shows the static current-network badge with no other-network group when unconfigured", async () => {
+    renderSidebar();
+
+    const badge = await screen.findByTestId("trustee-network-badge");
+    expect(badge).toHaveTextContent("Testnet");
+    expect(
+      screen.queryByTestId("trustee-network-switcher-group"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reflects a mainnet current-network deployment in the static badge", async () => {
+    mockNetworkSwitcherState.currentNetwork = {
+      id: "mainnet",
+      label: "Mainnet",
+    };
+    renderSidebar();
+
+    expect(
+      await screen.findByTestId("trustee-network-badge"),
+    ).toHaveTextContent("Mainnet");
+  });
+
+  it("renders an other-network row in the ⋯ popover when configured", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://dashboard.pipeline.one",
+      },
+    ];
+    const user = userEvent.setup();
+    renderSidebar();
+
+    const menuButton = await screen.findByRole("button", {
+      name: "Account menu",
+    });
+    await user.click(menuButton);
+
+    expect(
+      await screen.findByTestId("trustee-network-link-mainnet"),
+    ).toBeInTheDocument();
+  });
+
+  it("clicking a non-mainnet other-network row navigates directly, without confirm", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "futurenet",
+        label: "Futurenet",
+        url: "https://futurenet.example.com",
+      },
+    ];
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Account menu" }),
+    );
+    await user.click(
+      await screen.findByTestId("trustee-network-link-futurenet"),
+    );
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(assignSpy).toHaveBeenCalledWith("https://futurenet.example.com");
+  });
+
+  it("clicking a mainnet other-network row asks for confirmation before navigating", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://dashboard.pipeline.one",
+      },
+    ];
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Account menu" }),
+    );
+    await user.click(await screen.findByTestId("trustee-network-link-mainnet"));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(assignSpy).toHaveBeenCalledWith("https://dashboard.pipeline.one");
+  });
+
+  it("does not navigate when the mainnet confirm is declined", async () => {
+    mockNetworkSwitcherState.otherNetworks = [
+      {
+        id: "mainnet",
+        label: "Mainnet",
+        url: "https://dashboard.pipeline.one",
+      },
+    ];
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const assignSpy = mockLocationAssign();
+
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Account menu" }),
+    );
+    await user.click(await screen.findByTestId("trustee-network-link-mainnet"));
+
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,14 @@
 // spec: docs/frontend/dashboard-components.md#accountdropdown (hook responsibilities).
+// spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links (network row, issue #1032).
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { truncateAddress } from "@/utils/truncateAddress";
+import {
+  getNetworkSwitcherState,
+  navigateToNetworkLink,
+  type NetworkIdentity,
+  type NetworkLink,
+} from "@/wallet";
 
 export { truncateAddress };
 
@@ -15,6 +22,9 @@ export interface UseAccountDropdownResult {
   copied: boolean;
   copy: () => void;
   truncated: string;
+  currentNetwork: NetworkIdentity;
+  otherNetworks: NetworkLink[];
+  selectNetwork: (link: NetworkLink) => void;
 }
 
 export function useAccountDropdown({
@@ -76,5 +86,15 @@ export function useAccountDropdown({
     }
   }, [pathname, onClose]);
 
-  return { rootRef, copied, copy, truncated };
+  const { currentNetwork, otherNetworks } = getNetworkSwitcherState();
+
+  return {
+    rootRef,
+    copied,
+    copy,
+    truncated,
+    currentNetwork,
+    otherNetworks,
+    selectNetwork: navigateToNetworkLink,
+  };
 }

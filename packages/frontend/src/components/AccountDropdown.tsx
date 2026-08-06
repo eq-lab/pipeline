@@ -1,11 +1,13 @@
 /**
  * spec: docs/frontend/dashboard-components.md#accountdropdown (dropdown balance rows,
  * EVM/Stellar differences, Figma node 1506:104728).
+ * spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
+ * (network row above the namespace tabs, issue #1032).
  */
 import { useEffect, useRef } from "react";
 import { CoinIcon } from "@pipeline/ui";
 import { useAccountDropdown } from "./useAccountDropdown";
-import type { WalletViewKind } from "@/wallet";
+import type { WalletViewKind, NetworkIdentity, NetworkLink } from "@/wallet";
 
 // ── Inline SVG glyphs ─────────────────────────────────────────────────────────
 
@@ -244,6 +246,82 @@ function NotConnectedRow({ kind, onConnect }: NotConnectedRowProps) {
   );
 }
 
+// ── Network switcher row ─────────────────────────────────────────────────────
+
+// Testnet dot is a muted on-dark tone; mainnet's is the amber "warning" token
+// so it reads as a real-funds signal against the dark panel (a navy dot on
+// this navy-adjacent dark surface would be effectively invisible).
+function networkDotClasses(id: string): string {
+  return [
+    "size-2 shrink-0 rounded-full",
+    id === "mainnet"
+      ? "bg-[color:var(--color-pipeline-warning)]"
+      : "bg-white/40",
+  ].join(" ");
+}
+
+interface NetworkRowProps {
+  currentNetwork: NetworkIdentity;
+  otherNetworks: NetworkLink[];
+  onSelectNetwork: (link: NetworkLink) => void;
+}
+
+/**
+ * Current-network label (always shown) plus, when `VITE_NETWORK_LINKS`
+ * supplies sibling deployments, clickable rows that navigate to them.
+ * Renders as a static label only when `otherNetworks` is empty (unset var).
+ */
+function NetworkRow({
+  currentNetwork,
+  otherNetworks,
+  onSelectNetwork,
+}: NetworkRowProps) {
+  return (
+    <div
+      className="flex flex-col gap-2 px-5 pt-4 pb-1"
+      data-testid="topbar-network-switcher"
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={networkDotClasses(currentNetwork.id)}
+          aria-hidden="true"
+        />
+        <span className={captionClasses} data-testid="topbar-network-current">
+          {currentNetwork.label}
+        </span>
+      </div>
+      {otherNetworks.length > 0 && (
+        <div
+          className="flex flex-col gap-0.5"
+          role="group"
+          aria-label="Switch network"
+        >
+          {otherNetworks.map((link) => (
+            <button
+              key={link.id}
+              type="button"
+              role="menuitem"
+              onClick={() => onSelectNetwork(link)}
+              data-testid={`topbar-network-link-${link.id}`}
+              className={[
+                "self-start",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "text-white/70 underline underline-offset-2",
+                "transition-opacity hover:opacity-80",
+                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40",
+              ].join(" ")}
+            >
+              Switch to {link.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export interface AccountDropdownProps {
@@ -295,7 +373,15 @@ export function AccountDropdown({
 }: AccountDropdownProps) {
   const isConnected = address !== undefined;
 
-  const { rootRef, copied, copy, truncated } = useAccountDropdown({
+  const {
+    rootRef,
+    copied,
+    copy,
+    truncated,
+    currentNetwork,
+    otherNetworks,
+    selectNetwork,
+  } = useAccountDropdown({
     onClose,
     address: address ?? "",
   });
@@ -320,6 +406,13 @@ export function AccountDropdown({
     >
       {/* Heading row */}
       <p className={headingClasses}>Account</p>
+
+      {/* Network row — current network + sibling-deployment links, if any */}
+      <NetworkRow
+        currentNetwork={currentNetwork}
+        otherNetworks={otherNetworks}
+        onSelectNetwork={selectNetwork}
+      />
 
       {/* Namespace segmented control */}
       <SegmentedControl kind={kind} onKindChange={onKindChange} />
