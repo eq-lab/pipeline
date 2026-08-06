@@ -650,6 +650,7 @@ function Deposit() {
                 loading: flow.step2.loading,
                 state: flow.step2.state,
                 onAction: flow.step2.onAction,
+                errorMessage: flow.step2.errorMessage,
               },
               {
                 label: flow.step3.label,
@@ -658,6 +659,7 @@ function Deposit() {
                 loading: flow.step3.loading,
                 state: flow.step3.state,
                 onAction: flow.step3.onAction,
+                errorMessage: flow.step3.errorMessage,
               },
             ]}
           />
@@ -683,6 +685,7 @@ function Deposit() {
                 loading: flow.step2.loading,
                 state: flow.step2.state,
                 onAction: flow.step2.onAction,
+                errorMessage: flow.step2.errorMessage,
               },
               {
                 label: flow.step3.label,
@@ -691,6 +694,7 @@ function Deposit() {
                 loading: flow.step3.loading,
                 state: flow.step3.state,
                 onAction: flow.step3.onAction,
+                errorMessage: flow.step3.errorMessage,
               },
             ]}
           />

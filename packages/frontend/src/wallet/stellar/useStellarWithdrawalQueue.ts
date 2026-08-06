@@ -102,6 +102,40 @@ export interface UseStellarChangeTrustUsdcResult {
   reset: () => void;
 }
 
+// ── Decode / error helpers ────────────────────────────────────────────────────
+
+/**
+ * Return-shape-tolerant `request_withdrawal` result decode: tuple → first
+ * element, bare value as-is; throws on anything else (#1024).
+ * spec: docs/frontend/wallet-flows.md#withdrawal-request-decode
+ */
+export function decodeRequestId(native: unknown): bigint {
+  const candidate = Array.isArray(native) ? native[0] : native;
+  return typeof candidate === "bigint" ? candidate : BigInt(String(candidate));
+}
+
+/**
+ * Normalizes unknown thrown values into readable `Error`s (#1024).
+ * spec: docs/frontend/wallet-flows.md#error-normalization
+ */
+export function toError(err: unknown): Error {
+  if (err instanceof Error) return err;
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return new Error((err as { message: string }).message);
+  }
+  if (typeof err === "string") return new Error(err);
+  try {
+    return new Error(JSON.stringify(err));
+  } catch {
+    return new Error(String(err));
+  }
+}
+
 // ── In-flight recovery localStorage helpers ───────────────────────────────────
 
 const INFLIGHT_KEY_PREFIX = "pipeline.stellar.withdrawal.inflight.";
@@ -167,7 +201,8 @@ export function clearInflightWithdrawal(address: string): void {
 // ── useStellarRequestWithdrawal ───────────────────────────────────────────────
 
 /**
- * Write hook for `request_withdrawal(sender, amount: i128) → request_id: u128`.
+ * Write hook for `request_withdrawal(sender, amount: i128)`. Return shape:
+ * spec: docs/frontend/wallet-flows.md#withdrawal-request-decode.
  *
  * @example
  * ```tsx
@@ -304,9 +339,7 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
 
           let requestId: bigint;
           try {
-            const native = scValToNative(finalResult.returnValue);
-            requestId =
-              typeof native === "bigint" ? native : BigInt(String(native));
+            requestId = decodeRequestId(scValToNative(finalResult.returnValue));
           } catch (decodeErr) {
             const detail =
               decodeErr instanceof Error
@@ -327,7 +360,7 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
             createdAt: Date.now(),
           });
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(toError(err));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -475,7 +508,7 @@ export function useStellarClaimWithdrawal(): StellarClaimWithdrawalResult {
           setIsSuccess(true);
           clearInflightWithdrawal(address);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(toError(err));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -661,7 +694,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
         setIsSuccess(true);
         refetchUsdcTrustline();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(toError(err));
       } finally {
         setIsPending(false);
         setIsInFlight(false);

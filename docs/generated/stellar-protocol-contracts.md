@@ -98,7 +98,11 @@ fn digest(request_id: u128, sender: Address, amount: i128, deadline: u64) -> Byt
 fn domain_separator() -> BytesN<32>;
 
 // Write operations (require sender auth)
-fn request_withdrawal(sender: Address, amount: i128) -> u128;
+// 2026-08-06 (#1024): the DEPLOYED contract now returns a tuple
+// (request_id, amount) — observed via scValToNative on stage tx return
+// values; this line predates that change. Regenerate this file with
+// `stellar contract info interface` to capture the exact types.
+fn request_withdrawal(sender: Address, amount: i128) -> u128; // STALE — see note above
 fn claim_request(request_id: u128, verifier_signature: BytesN<64>, deadline: u64) -> i128;
 fn pause(caller: Address);
 fn unpause(caller: Address);

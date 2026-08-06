@@ -38,12 +38,12 @@ export interface StepItem {
    */
   loading?: boolean;
   /**
-   * Step state:
-   *   - `"idle"` (default) — renders the action button normally.
-   *   - `"success"` — keeps the numeric step badge and shows a wide green pill
-   *     with a check icon in the right slot, indicating this step is complete.
+   * Step state — see `StepRow`'s `state` prop (`"error"` keeps the action
+   * button for retry and renders `errorMessage` under the label).
    */
-  state?: "idle" | "success";
+  state?: "idle" | "success" | "error";
+  /** Red message line under the label; rendered only when `state` is `"error"`. */
+  errorMessage?: string;
 }
 
 export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -77,7 +77,15 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
         <div data-testid="steps-list" className="flex flex-col gap-2">
           {steps.map(
             (
-              { label, actionLabel, disabled, onAction, loading, state },
+              {
+                label,
+                actionLabel,
+                disabled,
+                onAction,
+                loading,
+                state,
+                errorMessage,
+              },
               index,
             ) => (
               <StepRow
@@ -88,6 +96,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                 disabled={disabled}
                 onAction={onAction}
                 loading={loading}
+                errorMessage={errorMessage}
                 state={state}
               />
             ),
