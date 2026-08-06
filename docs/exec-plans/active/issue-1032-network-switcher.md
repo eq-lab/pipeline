@@ -116,6 +116,28 @@ authoritative "what". No Figma reference exists for this feature (see
 
 ## Open Questions
 
+_Resolved with the user in-session (2026-08-06):_
+
+- **Q1 env naming** → prefix form (`VITE_<NETWORK>_<EXISTING_SUFFIX>`), existing flat names remain
+  the default-network fallback.
+- **Q4 EVM scope** → Stellar-only descriptors now; descriptor EVM fields optional.
+- **Q6 trustee session** → evict on switch (chainId-mismatch sessions dropped; fresh sign-in per
+  network).
+- **Q5 placement** → menu rows: LP network row atop `AccountDropdown`; trustee row in the existing
+  `⋯` AccountMenu popover. Mainnet visually distinct per plan.
+- **Q7 mainnet confirm** → default taken: YES, a lightweight confirm before switching to mainnet
+  (page reloads and drops form state; real funds).
+- **Q8 testnet-only gating** → none known; no gating built.
+- **Q2 testnet API host** → repo evidence: the current stage/testnet API is
+  `api.pipeline.stage.eqlab.net` (root `.env`), mainnet is `api.pipeline.one`; `apiBaseUrl` is part
+  of the descriptor. CORS across both hosts still needs an ops check before mainnet goes live.
+- **Q3 mainnet chain_id** → build config-driven with `99000002` as the provisional mainnet value,
+  flagged for ops confirmation; mainnet contract IDs left unset until provided (descriptor
+  unresolvable → network hidden, per design).
+
+_Original questions retained below for provenance:_
+
+
 1. **Env var naming convention for per-network config sets.** This plan proposes the prefix
    form `VITE_<NETWORK>_<EXISTING_SUFFIX>` (e.g. `VITE_MAINNET_STELLAR_CHAIN_ID`,
    `VITE_TESTNET_STELLAR_DEPOSIT_MANAGER_ID`) with the existing flat names retained as the
