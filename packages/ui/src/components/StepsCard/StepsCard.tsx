@@ -44,6 +44,8 @@ export interface StepItem {
   state?: "idle" | "success" | "error";
   /** Red message line under the label; rendered only when `state` is `"error"`. */
   errorMessage?: string;
+  /** Raw error text for the details dialog — see `StepRow.errorDetails`. */
+  errorDetails?: string;
 }
 
 export interface StepsCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -85,6 +87,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                 loading,
                 state,
                 errorMessage,
+                errorDetails,
               },
               index,
             ) => (
@@ -97,6 +100,7 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
                 onAction={onAction}
                 loading={loading}
                 errorMessage={errorMessage}
+                errorDetails={errorDetails}
                 state={state}
               />
             ),

@@ -10,6 +10,7 @@ import { useDashboardSummary } from "@/api/useDashboardSummary";
 import { useDashboardTvlHistory } from "@/api/useDashboardTvlHistory";
 import { useDashboardYieldHistory } from "@/api/useDashboardYieldHistory";
 import { pointsToBars } from "@/utils/yieldSeries";
+import { toUserError } from "@/utils/userError";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
@@ -133,7 +134,8 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
       tvlBars: null,
       tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards: EMPTY_METRICS,
-      errorMessage: primaryError.message,
+      // spec: docs/frontend/error-handling.md — mapped, never the raw message.
+      errorMessage: toUserError(primaryError).message,
       refetch,
     };
   }

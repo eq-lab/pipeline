@@ -39,12 +39,18 @@ import {
 } from "@/wallet";
 import { ENV } from "@/lib/env";
 import { formatUsdc } from "@/lib/usdc";
+import { toUserError, type UserFacingError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type StakeTab = "stake" | "unstake";
 
-export type StakeStepState = "idle" | "success";
+/**
+ * `"error"` mirrors #1024's deposit-flow derivation (mutation `error` set
+ * and not pending; success wins over error). spec:
+ * docs/frontend/wallet-flows.md#step-error-state
+ */
+export type StakeStepState = "idle" | "success" | "error";
 
 export interface StakeStepInfo {
   label: string;
@@ -55,6 +61,13 @@ export interface StakeStepInfo {
   onAction: () => void;
   /** Optional testid hint for the route to pass to the StepsCard. */
   testId?: string;
+  /**
+   * Set only when `state` is `"error"` — the mapped, human-safe message line
+   * (never the raw error text). spec: docs/frontend/error-handling.md
+   */
+  errorMessage?: string;
+  /** Raw error text for the details dialog — never rendered inline. */
+  errorDetails?: string;
 }
 
 /** Per-step write transaction state — used by the component for toast emission. */
@@ -62,6 +75,8 @@ export interface StepTxState {
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
+  /** The mapped form of `error` (`toUserError`) — undefined while `error` is null. */
+  userError?: UserFacingError;
 }
 
 /**
@@ -315,16 +330,39 @@ export function useStakeFlow(
     !evmUnstake.isPending &&
     !evmUnstake.isSuccess;
 
+  // Mapped errors (#1034) — mirrors #1024's deposit-flow derivation: success
+  // wins over error. spec: docs/frontend/error-handling.md
+  const evmStep1Error = isStake ? evmPlusdToken.error : null;
+  const evmStep1UserError = evmStep1Error
+    ? toUserError(evmStep1Error)
+    : undefined;
+  const evmStep2Error = evmStake.error;
+  const evmStep2UserError = evmStep2Error
+    ? toUserError(evmStep2Error)
+    : undefined;
+  const evmUnstakeError = evmUnstake.error;
+  const evmUnstakeUserError = evmUnstakeError
+    ? toUserError(evmUnstakeError)
+    : undefined;
+
   const evmStep1State: StakeStepState =
     isStake &&
     (evmHasSufficientAllowance || evmStake.isSuccess) &&
     isEvmConnected
       ? "success"
+      : evmStep1Error && !evmPlusdToken.isApprovePending
+        ? "error"
+        : "idle";
+  const evmStep2State: StakeStepState = evmStake.isSuccess
+    ? "success"
+    : evmStep2Error && !evmStake.isPending
+      ? "error"
       : "idle";
-  const evmStep2State: StakeStepState = evmStake.isSuccess ? "success" : "idle";
   const evmUnstakeStepState: StakeStepState = evmUnstake.isSuccess
     ? "success"
-    : "idle";
+    : evmUnstakeError && !evmUnstake.isPending
+      ? "error"
+      : "idle";
 
   // EVM preview and rate.
   const evmPreviewOutputValue = isStake
@@ -438,18 +476,49 @@ export function useStakeFlow(
     !stellarUnstake.isPending &&
     !stellarUnstake.isSuccess;
 
+  // Mapped errors (#1034) — mirrors the EVM path's derivation above.
+  // spec: docs/frontend/error-handling.md
+  const stellarSplusdTrustlineError = splusdTrustline.error;
+  const stellarSplusdTrustlineUserError = stellarSplusdTrustlineError
+    ? toUserError(stellarSplusdTrustlineError)
+    : undefined;
+  const stellarPlusdTrustlineError = plusdTrustline.error;
+  const stellarPlusdTrustlineUserError = stellarPlusdTrustlineError
+    ? toUserError(stellarPlusdTrustlineError)
+    : undefined;
+  const stellarStakeError = stellarStake.error;
+  const stellarStakeUserError = stellarStakeError
+    ? toUserError(stellarStakeError)
+    : undefined;
+  const stellarUnstakeError = stellarUnstake.error;
+  const stellarUnstakeUserError = stellarUnstakeError
+    ? toUserError(stellarUnstakeError)
+    : undefined;
+
   // Step states — sPLUSD trustline step is "success" only when satisfied/not-required.
   // spec: docs/frontend/wallet-flows.md#trustline-model.
   const stellarSplusdTrustlineState: StakeStepState =
-    stellarSplusdTrustlineSatisfied && isStellarConnected ? "success" : "idle";
+    stellarSplusdTrustlineSatisfied && isStellarConnected
+      ? "success"
+      : stellarSplusdTrustlineError && !splusdTrustline.isPending
+        ? "error"
+        : "idle";
   const stellarPlusdTrustlineState: StakeStepState =
-    !stellarPlusdNeedsTrustline && isStellarConnected ? "success" : "idle";
+    !stellarPlusdNeedsTrustline && isStellarConnected
+      ? "success"
+      : stellarPlusdTrustlineError && !plusdTrustline.isPending
+        ? "error"
+        : "idle";
   const stellarStakeStepState: StakeStepState = stellarStake.isSuccess
     ? "success"
-    : "idle";
+    : stellarStakeError && !stellarStake.isPending
+      ? "error"
+      : "idle";
   const stellarUnstakeStepState: StakeStepState = stellarUnstake.isSuccess
     ? "success"
-    : "idle";
+    : stellarUnstakeError && !stellarUnstake.isPending
+      ? "error"
+      : "idle";
 
   // Stellar preview and rate.
   const stellarPreviewOutputValue = isStake
@@ -522,6 +591,14 @@ export function useStakeFlow(
             loading: evmPlusdToken.isApprovePending,
             disabled: !evmCanApprove,
             onAction: () => evmPlusdToken.approve?.(amountBig),
+            errorMessage:
+              evmStep1State === "error"
+                ? evmStep1UserError?.message
+                : undefined,
+            errorDetails:
+              evmStep1State === "error"
+                ? evmStep1UserError?.details
+                : undefined,
           },
           {
             label: "Confirm and stake PLUSD",
@@ -530,6 +607,14 @@ export function useStakeFlow(
             loading: evmStake.isPending,
             disabled: !evmCanStake,
             onAction: () => evmStake.write(amountBig),
+            errorMessage:
+              evmStep2State === "error"
+                ? evmStep2UserError?.message
+                : undefined,
+            errorDetails:
+              evmStep2State === "error"
+                ? evmStep2UserError?.details
+                : undefined,
           },
         ]
       : [
@@ -540,6 +625,14 @@ export function useStakeFlow(
             loading: evmUnstake.isPending,
             disabled: !evmCanUnstake,
             onAction: () => evmUnstake.write(amountBig),
+            errorMessage:
+              evmUnstakeStepState === "error"
+                ? evmUnstakeUserError?.message
+                : undefined,
+            errorDetails:
+              evmUnstakeStepState === "error"
+                ? evmUnstakeUserError?.details
+                : undefined,
           },
         ];
 
@@ -566,12 +659,14 @@ export function useStakeFlow(
       step1Tx: {
         isPending: isStake ? evmPlusdToken.isApprovePending : false,
         isSuccess: isStake ? evmPlusdToken.isApproveSuccess : false,
-        error: null,
+        error: evmStep1Error,
+        userError: evmStep1UserError,
       },
       step2Tx: {
         isPending: isStake ? evmStake.isPending : evmUnstake.isPending,
         isSuccess: isStake ? evmStake.isSuccess : evmUnstake.isSuccess,
-        error: isStake ? evmStake.error : evmUnstake.error,
+        error: isStake ? evmStep2Error : evmUnstakeError,
+        userError: isStake ? evmStep2UserError : evmUnstakeUserError,
       },
       refetchBalances: () => {
         evmPlusdToken.refetchBalance();
@@ -594,6 +689,14 @@ export function useStakeFlow(
           disabled: !canStellarEnableSplusd,
           onAction: () => splusdTrustline.submit(),
           testId: "stake-trustline-step",
+          errorMessage:
+            stellarSplusdTrustlineState === "error"
+              ? stellarSplusdTrustlineUserError?.message
+              : undefined,
+          errorDetails:
+            stellarSplusdTrustlineState === "error"
+              ? stellarSplusdTrustlineUserError?.details
+              : undefined,
         },
         {
           label: "Confirm and stake PLUSD",
@@ -602,6 +705,14 @@ export function useStakeFlow(
           loading: stellarStake.isPending,
           disabled: !canStellarStake,
           onAction: () => stellarStake.write(amountBig),
+          errorMessage:
+            stellarStakeStepState === "error"
+              ? stellarStakeUserError?.message
+              : undefined,
+          errorDetails:
+            stellarStakeStepState === "error"
+              ? stellarStakeUserError?.details
+              : undefined,
         },
       ]
     : [
@@ -613,6 +724,14 @@ export function useStakeFlow(
           disabled: !canStellarEnablePlusd,
           onAction: () => plusdTrustline.submit(),
           testId: "unstake-trustline-step",
+          errorMessage:
+            stellarPlusdTrustlineState === "error"
+              ? stellarPlusdTrustlineUserError?.message
+              : undefined,
+          errorDetails:
+            stellarPlusdTrustlineState === "error"
+              ? stellarPlusdTrustlineUserError?.details
+              : undefined,
         },
         {
           label: "Confirm and unstake sPLUSD",
@@ -621,6 +740,14 @@ export function useStakeFlow(
           loading: stellarUnstake.isPending,
           disabled: !canStellarUnstake,
           onAction: () => stellarUnstake.write(amountBig),
+          errorMessage:
+            stellarUnstakeStepState === "error"
+              ? stellarUnstakeUserError?.message
+              : undefined,
+          errorDetails:
+            stellarUnstakeStepState === "error"
+              ? stellarUnstakeUserError?.details
+              : undefined,
         },
       ];
 
@@ -643,12 +770,16 @@ export function useStakeFlow(
     step1Tx: {
       isPending: isStake ? splusdTrustline.isPending : plusdTrustline.isPending,
       isSuccess: isStake ? splusdTrustline.isSuccess : plusdTrustline.isSuccess,
-      error: isStake ? splusdTrustline.error : plusdTrustline.error,
+      error: isStake ? stellarSplusdTrustlineError : stellarPlusdTrustlineError,
+      userError: isStake
+        ? stellarSplusdTrustlineUserError
+        : stellarPlusdTrustlineUserError,
     },
     step2Tx: {
       isPending: isStake ? stellarStake.isPending : stellarUnstake.isPending,
       isSuccess: isStake ? stellarStake.isSuccess : stellarUnstake.isSuccess,
-      error: isStake ? stellarStake.error : stellarUnstake.error,
+      error: isStake ? stellarStakeError : stellarUnstakeError,
+      userError: isStake ? stellarStakeUserError : stellarUnstakeUserError,
     },
     refetchBalances: () => {
       stellarSplusdBalance.refetch();

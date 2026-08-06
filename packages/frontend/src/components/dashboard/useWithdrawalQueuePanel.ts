@@ -10,6 +10,7 @@ import { useWithdrawalQueue } from "@/api";
 import { useFinancialPosition } from "@/api/useFinancialPosition";
 import type { PanelState } from "./PanelContainer";
 import { truncateAddress } from "@/utils/truncateAddress";
+import { toUserError } from "@/utils/userError";
 import {
   formatCompactUsd,
   formatCoverage,
@@ -103,7 +104,8 @@ export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
       expanded: false,
       hasMore: false,
       showMore: () => setExpanded(true),
-      errorMessage: error.message,
+      // spec: docs/frontend/error-handling.md — mapped, never the raw message.
+      errorMessage: toUserError(error).message,
       refetch,
     };
   }

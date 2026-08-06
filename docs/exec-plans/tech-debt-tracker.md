@@ -739,6 +739,23 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 
 ---
 
+### TD-49: DepositManager contract error `#3` → "Amount exceeds the deposit limit." is an unverified mapping
+
+- **Date:** 2026-08-06 (#1034)
+- **Location:** `packages/frontend/src/utils/userError.ts` (Soroban contract-error table)
+- **Gap:** The Soroban contract source is not vendored in this repo and the generated interface
+  doc carries no `#[contracterror]` enum, so error `#3`'s meaning could not be confirmed. The
+  mapping ships on circumstantial evidence (user-docs "a single deposit cannot exceed $5M";
+  `maxPerLPPerWindow` default `5_000_000e6`; the reported ~5M repro threshold) — resolved with
+  the user on #1034 as a deliberately flippable table entry.
+- **Impact:** If `#3` means something other than the amount cap, users see a wrong (but
+  harmless) specific message; the details dialog always carries the raw error either way.
+- **Suggested fix:** Confirm the enum against the deployed WithdrawalQueue/DepositManager
+  contract source (contracts repo / `stellar contract info`), then correct or confirm the
+  table entry — a one-line change.
+
+---
+
 ## Post-MVP
 
 - Automated bank integration (repayment identification currently manual)

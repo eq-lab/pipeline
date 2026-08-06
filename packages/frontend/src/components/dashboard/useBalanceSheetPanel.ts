@@ -12,6 +12,7 @@ import {
 } from "@/wallet/stellar/useStellarFinancialPositionReads";
 import { sacRawToDisplay } from "@/wallet/stellar/useStellarSacToken";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
+import { toUserError } from "@/utils/userError";
 import { convertUsycToUsdc } from "./usycNav";
 import type { PanelState } from "./PanelContainer";
 
@@ -179,7 +180,8 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
       state: "error",
       assets: emptyAssets(),
       liabilities: emptyLiabilities(),
-      errorMessage: restError.message,
+      // spec: docs/frontend/error-handling.md — mapped, never the raw message.
+      errorMessage: toUserError(restError).message,
       refetch,
       showTotalsDisclaimer: false,
     };

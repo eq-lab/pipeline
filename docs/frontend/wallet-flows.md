@@ -105,6 +105,9 @@ its green check) while the only failure signal was a console error and a transie
   success conditions **win over error** — if the backend/on-chain state says the step genuinely
   completed (e.g. the request is `PendingClaim`), the flow is recoverable and the step stays green.
 - `StepInfo.errorMessage` carries the mutation's error message only while `state === "error"`.
+  As of #1034 that message is **mapped, never raw**: `toUserError` supplies the short human line
+  and the raw payload moves to `StepInfo.errorDetails`, shown only inside the details dialog —
+  see [`error-handling.md`](./error-handling.md).
 - Rendering (`@pipeline/ui` `StepRow`): the error state red-tints the numbered badge and shows the
   message as a red line under the label, but **keeps the action button** so the user can retry —
   unlike the success state, which replaces the button with the green check pill. Error and loading
@@ -117,6 +120,12 @@ its green check) while the only failure signal was a console error and a transie
 
 Mirrors `useDepositFlow`: a chain-agnostic adapter exposing a single `StakeFlowState` so the route
 never calls chain-specific hooks directly.
+
+As of #1034 the stake steps carry the same error state as the deposit stepper:
+`StakeStepState` is `"idle" | "success" | "error"`, derived per
+[Step error state](#step-error-state) (mutation error set and not pending; success wins), with the
+mapped message in `errorMessage` and the raw payload in `errorDetails` — previously stake/unstake
+failures were toast-only with no stepper signal.
 
 ### Architecture
 
@@ -177,7 +186,9 @@ throws, preserving the caller's decode-error message. Regenerate the interface d
 ### Error normalization
 
 Wallet kits and RPC layers can reject with plain objects, which `new Error(String(err))` rendered
-as `[object Object]` (#1024). `toError` (same file) normalizes any thrown value into an `Error`:
+as `[object Object]` (#1024). `toError` normalizes any thrown value into an `Error`:
 real `Error`s pass through; objects with a string `.message` use it; strings become the message;
 everything else falls back to JSON, then `String`. All withdrawal-queue mutation catches route
-through it.
+through it. As of #1034 `toError` lives in `packages/frontend/src/utils/userError.ts` and is the
+first stage of `toUserError`, the mapping layer that turns normalized errors into user-facing copy
+— see [`error-handling.md`](./error-handling.md).

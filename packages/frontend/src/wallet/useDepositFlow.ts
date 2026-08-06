@@ -49,6 +49,7 @@ import {
 } from "@/api";
 import { ENV } from "@/lib/env";
 import { formatUsdc, formatUsdcCurrencyCompact } from "@/lib/usdc";
+import { toUserError, type UserFacingError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,8 +65,17 @@ export interface StepInfo {
   loading: boolean;
   disabled: boolean;
   onAction: () => void;
-  /** Set only when `state` is `"error"` — the step row's red message line. */
+  /**
+   * Set only when `state` is `"error"` — the step row's mapped, human-safe
+   * message line (never the raw error text). spec:
+   * docs/frontend/error-handling.md
+   */
   errorMessage?: string;
+  /**
+   * Raw error text for the details dialog — never rendered inline. Set
+   * alongside `errorMessage` when `state` is `"error"`.
+   */
+  errorDetails?: string;
 }
 
 /** Per-step write transaction state — used by the component for toast emission. */
@@ -73,6 +83,12 @@ export interface StepTxState {
   isPending: boolean;
   isSuccess: boolean;
   error: Error | null;
+  /**
+   * The mapped form of `error` (`toUserError`) — lets callers (e.g. toast
+   * effects) read the mapped copy without re-mapping at the call site.
+   * `undefined` while `error` is null.
+   */
+  userError?: UserFacingError;
 }
 
 /**
@@ -850,6 +866,20 @@ export function useDepositFlow(
 
     const evmNetworkFee = isDeposit ? depositFeeEth : withdrawFeeEth;
 
+    // Mapped errors (#1034) — computed once so `errorMessage`/`errorDetails`
+    // and `stepNTx.userError` don't each re-map. spec:
+    // docs/frontend/error-handling.md
+    const evmStep2Error = isDeposit
+      ? evmRequestDeposit.error
+      : evmRequestWithdrawal.error;
+    const evmStep2UserError = evmStep2Error
+      ? toUserError(evmStep2Error)
+      : undefined;
+    const evmStep3Error = isDeposit ? evmClaim.error : evmClaimWithdrawal.error;
+    const evmStep3UserError = evmStep3Error
+      ? toUserError(evmStep3Error)
+      : undefined;
+
     const evmMinChipLabel =
       evmMinDeposit !== undefined && evmDecimals !== undefined
         ? `${formatUsdcCurrencyCompact(evmMinDeposit, evmDecimals)} (Min)`
@@ -932,10 +962,9 @@ export function useDepositFlow(
           else evmRequestWithdrawal.write(amountBig);
         },
         errorMessage:
-          evmStep2State === "error"
-            ? (isDeposit ? evmRequestDeposit.error : evmRequestWithdrawal.error)
-                ?.message
-            : undefined,
+          evmStep2State === "error" ? evmStep2UserError?.message : undefined,
+        errorDetails:
+          evmStep2State === "error" ? evmStep2UserError?.details : undefined,
       },
       step3: {
         label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
@@ -958,9 +987,9 @@ export function useDepositFlow(
           }
         },
         errorMessage:
-          evmStep3State === "error"
-            ? (isDeposit ? evmClaim.error : evmClaimWithdrawal.error)?.message
-            : undefined,
+          evmStep3State === "error" ? evmStep3UserError?.message : undefined,
+        errorDetails:
+          evmStep3State === "error" ? evmStep3UserError?.details : undefined,
       },
       step1Tx: {
         isPending: isDeposit
@@ -978,7 +1007,8 @@ export function useDepositFlow(
         isSuccess: isDeposit
           ? evmRequestDeposit.isSuccess
           : evmRequestWithdrawal.isSuccess,
-        error: isDeposit ? evmRequestDeposit.error : evmRequestWithdrawal.error,
+        error: evmStep2Error,
+        userError: evmStep2UserError,
       },
       step3Tx: {
         isPending: isDeposit
@@ -987,7 +1017,8 @@ export function useDepositFlow(
         isSuccess: isDeposit
           ? evmClaim.isSuccess
           : evmClaimWithdrawal.isSuccess,
-        error: isDeposit ? evmClaim.error : evmClaimWithdrawal.error,
+        error: evmStep3Error,
+        userError: evmStep3UserError,
       },
       isAnyTxInFlight: evmIsAnyTxInFlight,
       isInputFaded: evmIsInputFaded,
@@ -1171,6 +1202,21 @@ export function useDepositFlow(
 
   const stellarNetworkFee = isDeposit ? depositFeeXlm : withdrawFeeXlm;
 
+  // Mapped errors (#1034) — see the EVM path's equivalent consts above.
+  // spec: docs/frontend/error-handling.md
+  const stellarStep2Error = isDeposit
+    ? stellarRequestDeposit.error
+    : stellarRequestWithdrawal.error;
+  const stellarStep2UserError = stellarStep2Error
+    ? toUserError(stellarStep2Error)
+    : undefined;
+  const stellarStep3Error = isDeposit
+    ? stellarClaim.error
+    : stellarClaimWithdrawal.error;
+  const stellarStep3UserError = stellarStep3Error
+    ? toUserError(stellarStep3Error)
+    : undefined;
+
   const stellarInflight = isDeposit
     ? stellarDepositInflight
     : stellarWithdrawInflight;
@@ -1268,10 +1314,11 @@ export function useDepositFlow(
       },
       errorMessage:
         stellarStep2State === "error"
-          ? (isDeposit
-              ? stellarRequestDeposit.error
-              : stellarRequestWithdrawal.error
-            )?.message
+          ? stellarStep2UserError?.message
+          : undefined,
+      errorDetails:
+        stellarStep2State === "error"
+          ? stellarStep2UserError?.details
           : undefined,
     },
     step3: {
@@ -1315,8 +1362,11 @@ export function useDepositFlow(
       },
       errorMessage:
         stellarStep3State === "error"
-          ? (isDeposit ? stellarClaim.error : stellarClaimWithdrawal.error)
-              ?.message
+          ? stellarStep3UserError?.message
+          : undefined,
+      errorDetails:
+        stellarStep3State === "error"
+          ? stellarStep3UserError?.details
           : undefined,
     },
     step1Tx: {
@@ -1331,9 +1381,8 @@ export function useDepositFlow(
       isSuccess: isDeposit
         ? stellarRequestDeposit.isSuccess
         : stellarRequestWithdrawal.isSuccess,
-      error: isDeposit
-        ? stellarRequestDeposit.error
-        : stellarRequestWithdrawal.error,
+      error: stellarStep2Error,
+      userError: stellarStep2UserError,
     },
     step3Tx: {
       isPending: isDeposit
@@ -1342,7 +1391,8 @@ export function useDepositFlow(
       isSuccess: isDeposit
         ? stellarClaim.isSuccess
         : stellarClaimWithdrawal.isSuccess,
-      error: isDeposit ? stellarClaim.error : stellarClaimWithdrawal.error,
+      error: stellarStep3Error,
+      userError: stellarStep3UserError,
     },
     isAnyTxInFlight: stellarIsAnyTxInFlight,
     isInputFaded: stellarIsInputFaded,

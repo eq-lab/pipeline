@@ -28,6 +28,8 @@ Entries are sorted alphabetically by name.
 | `accrualToBars` | `@/utils/yieldSeries` | Converts a `SampleYieldItem[]` from `GET /v1/stats/yield` into a 100-slot `YieldBarPoint[]` normalised to the max `accrued` value. Returns `null` on empty/invalid input so callers can show the empty state. |
 | `latestAccrued` | `@/utils/yieldSeries` | Returns the most-recent cumulative `accrued` value (human-unit dollars) from a `SampleYieldItem[]` by timestamp. Returns `null` on empty/invalid input. |
 | `pointsToBars` | `@/utils/yieldSeries` | Generic series adapter: converts a `[{ timestamp: string; value: string }]`-shaped array into a 100-slot `YieldBarPoint[]` normalised to the max value. Callers map domain field names to `value` at the call site (e.g. `cumulative_yield`, `tvl`). Returns `null` on empty/invalid/all-zero input. Used by the TVL and dashboard yield-history series (issue #760). |
+| `toError` | `@/utils/userError` | Normalizes any thrown value into an `Error` (moved from `useStellarWithdrawalQueue.ts` by #1034; originally #1024): real `Error`s pass through, string-`message` objects use it, strings become the message, JSON/`String` fallback. |
+| `toUserError` | `@/utils/userError` | Maps a thrown value to `{ message, details, isSpecific }` — the short human line for inline display + the full raw text for the details dialog (#1034). Match order: wallet rejection → Soroban `Error(Contract, #N)` table → HTTP → EVM revert → generic fallback. See `docs/frontend/error-handling.md`. |
 
 ## How to add a row
 

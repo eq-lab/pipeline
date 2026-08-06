@@ -6,10 +6,12 @@ import {
   DepositHeader,
   StepsCard,
   Button,
+  ErrorDetailsDialog,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
+import { toUserError } from "@/utils/userError";
 
 // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
 // (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
@@ -45,6 +47,13 @@ function Deposit() {
   // ── Local state ───────────────────────────────────────────────────────
   const [amountInput, setAmountInput] = useState("");
   const [copied, setCopied] = useState(false);
+  // Page-level ErrorDetailsDialog state (#1034) — a danger toast's "Details"
+  // action opens this dialog, which outlives the toast's 5s auto-dismiss.
+  // spec: docs/frontend/error-handling.md
+  const [errorDialog, setErrorDialog] = useState<{
+    message: string;
+    details: string;
+  } | null>(null);
   // `request_id` of a completed deposit the page has already reset for. Gates
   // the auto-reset effect so it fires once per completed deposit.
   const [dismissedDepositId, setDismissedDepositId] = useState<
@@ -256,10 +265,28 @@ function Deposit() {
         isDeposit ? "Deposit failed:" : "Withdrawal failed:",
         flow.step2Tx.error,
       );
+      // spec: docs/frontend/error-handling.md#toast-title-rule — use the
+      // mapped specific message as the toast title when recognised,
+      // otherwise keep the hardcoded generic title. The raw payload never
+      // reaches the toast; a "Details" action opens the page-level dialog.
+      // Re-mapped here (not read from `flow.step2Tx.userError`) so the
+      // effect's dependency array only needs the stable `error` reference.
+      const mapped = toUserError(flow.step2Tx.error);
       toast.update(toastId, {
         tone: "danger",
-        title: isDeposit ? "Deposit failed" : "Withdrawal failed",
-        action: undefined,
+        title: mapped.isSpecific
+          ? mapped.message
+          : isDeposit
+            ? "Deposit failed"
+            : "Withdrawal failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
       });
     }
     prevStep2IsPending.current = flow.step2Tx.isPending;
@@ -325,7 +352,19 @@ function Deposit() {
     }
     if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
       console.error("Claim failed:", flow.step3Tx.error);
-      toast.update(toastId, { tone: "danger", title: "Claim failed" });
+      const mapped = toUserError(flow.step3Tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : "Claim failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
     }
     prevStep3IsPending.current = flow.step3Tx.isPending;
     prevStep3IsSuccess.current = flow.step3Tx.isSuccess;
@@ -585,6 +624,7 @@ function Deposit() {
                 state: flow.step2.state,
                 onAction: flow.step2.onAction,
                 errorMessage: flow.step2.errorMessage,
+                errorDetails: flow.step2.errorDetails,
               },
               {
                 label: flow.step3.label,
@@ -594,6 +634,7 @@ function Deposit() {
                 state: flow.step3.state,
                 onAction: flow.step3.onAction,
                 errorMessage: flow.step3.errorMessage,
+                errorDetails: flow.step3.errorDetails,
               },
             ]}
           />
@@ -619,6 +660,7 @@ function Deposit() {
                 state: flow.step2.state,
                 onAction: flow.step2.onAction,
                 errorMessage: flow.step2.errorMessage,
+                errorDetails: flow.step2.errorDetails,
               },
               {
                 label: flow.step3.label,
@@ -628,11 +670,18 @@ function Deposit() {
                 state: flow.step3.state,
                 onAction: flow.step3.onAction,
                 errorMessage: flow.step3.errorMessage,
+                errorDetails: flow.step3.errorDetails,
               },
             ]}
           />
         )}
       </main>
+      <ErrorDetailsDialog
+        open={errorDialog !== null}
+        summary={errorDialog?.message}
+        details={errorDialog?.details ?? ""}
+        onClose={() => setErrorDialog(null)}
+      />
     </div>
   );
 }

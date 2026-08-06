@@ -22,7 +22,6 @@ import {
   writeInflightWithdrawal,
   clearInflightWithdrawal,
   decodeRequestId,
-  toError,
 } from "./useStellarWithdrawalQueue";
 import * as mockModule from "./mock";
 
@@ -697,23 +696,8 @@ describe("decodeRequestId (#1024)", () => {
   });
 });
 
-describe("toError (#1024)", () => {
-  it("passes real Errors through unchanged", () => {
-    const err = new Error("boom");
-    expect(toError(err)).toBe(err);
-  });
-
-  it("extracts a string message from plain rejection objects (no more [object Object])", () => {
-    expect(toError({ message: "user declined access" }).message).toBe(
-      "user declined access",
-    );
-  });
-
-  it("falls back to JSON for message-less objects and to the string itself for strings", () => {
-    expect(toError({ code: -4001 }).message).toBe('{"code":-4001}');
-    expect(toError("plain failure").message).toBe("plain failure");
-  });
-});
+// `toError` (#1024) moved to `@/utils/userError` (#1034) — its tests moved
+// with it to `src/utils/userError.test.ts`.
 
 describe("in-flight recovery helpers", () => {
   beforeEach(() => localStorageMock.clear());
