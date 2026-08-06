@@ -1,34 +1,8 @@
 /**
  * WithdrawalQueueTable — withdrawal queue table for Panel C.
  *
- * All viewports: a semantic `<table>` with 3 columns: Holder / Amount /
- *   Status. Wrapped in `overflow-x: auto` (FRONTEND.md wide-content rule).
- *
- *   The Figma XS mobile frame `3283-71053` renders a real 3-column table at
- *   mobile (Table container w=370, three ~115px `Item` columns) that fits
- *   within the 370px content area without horizontal scroll. The previous
- *   stacked-card `MobileCards` path has been removed to match Figma exactly
- *   (issue #749 resolved decision).
- *
- *   Spacing and typography follow the same conventions as `LoanBookTable`
- *   (Figma section `3283:14893`):
- *     Row height:    64px  (matching LoanBookTable row h=64)
- *     Row padding:   py-3  (12px top+bottom)
- *     Header gap:    pb-2  (8px after header)
- *     Row divider:   border-t 1px --color-pipeline-line-subtle on <td>
- *     Header caps:   12px/16px, font-normal, --color-pipeline-ink-muted
- *     Body cells:    16px/22px, font-normal, --color-pipeline-ink
- *
- *   Status colour:
- *     `Completed`  — green (`--color-pipeline-positive`) — the "done" state.
- *     `Queued`     — muted ink (`--color-pipeline-ink-muted`) — neutral/pending.
- *     Unknown      — muted ink (safe fallback).
- *
- * Figma references:
- *   Panel C desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14893
- *   Mobile (XS):     https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-71053
- *
- * Token discipline: no raw hex/font values.
+ * spec: docs/frontend/dashboard-components.md#withdrawalqueuetable
+ * (columns, mobile behavior, spacing/typography, status color).
  */
 
 import type { WithdrawalQueueRow } from "./useWithdrawalQueuePanel";
@@ -40,9 +14,7 @@ export interface WithdrawalQueueTableProps {
 }
 
 // ── Token class constants ─────────────────────────────────────────────────────
-
-// Column-header cells: 12px/16px caption token.
-// `pb-2` provides the 8px gap between header text and first body row.
+// spec: docs/frontend/dashboard-components.md#withdrawalqueuetable (cell spacing/typography)
 const headerCellClasses = [
   "text-left",
   "font-[family-name:var(--font-body)]",
@@ -56,11 +28,6 @@ const headerCellClasses = [
   "overflow-hidden",
 ].join(" ");
 
-// Body cells — py-3 (12px) row layer matching Figma geometry (section 3283:14893).
-// The previous "two-layer" approach (py-3 on <td> + py-2 on inner <span>) was
-// double-counting: the inner py-2 added 8px extra on each side, making rows
-// taller than Figma h=64. Correct geometry: py-3 on <td> only, inner <span>
-// has no vertical padding.
 const bodyCellClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
@@ -72,10 +39,8 @@ const bodyCellClasses = [
   "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-// Cell inner wrapper: plain block — no extra vertical padding.
 const bodyCellInnerClasses = "block";
 
-// First column (Holder): allow truncation of long addresses.
 const firstBodyCellClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
@@ -88,18 +53,10 @@ const firstBodyCellClasses = [
   "border-t border-[color:var(--color-pipeline-line-subtle)]",
 ].join(" ");
 
-// Inner span for the holder cell: truncate — no extra vertical padding.
 const firstBodyCellInnerClasses = "block truncate";
 
 // ── Status badge ─────────────────────────────────────────────────────────────
-
-/**
- * Returns the Tailwind class for the status text colour.
- *
- * - `Completed` → green (`--color-pipeline-positive`): the "done" state.
- * - `Queued`    → muted (`--color-pipeline-ink-muted`): neutral/pending.
- * - Unknown     → muted (safe fallback).
- */
+// spec: docs/frontend/dashboard-components.md#withdrawalqueuetable (status color mapping)
 function statusColorClass(status: string): string {
   if (status === "Completed") {
     return "text-[color:var(--color-pipeline-positive)]";
@@ -117,8 +74,7 @@ function QueueTable({ rows }: WithdrawalQueueTableProps) {
     >
       <table className="w-full table-fixed border-collapse">
         <colgroup>
-          {/* Three equal columns (~1/3 each), matching the Figma flex-1
-              distribution for Holder / Amount / Status. */}
+          {/* Three equal columns, matching Figma flex-1 distribution. */}
           <col style={{ width: "33.333%" }} />
           <col style={{ width: "33.333%" }} />
           <col style={{ width: "33.334%" }} />
@@ -161,13 +117,7 @@ function QueueTable({ rows }: WithdrawalQueueTableProps) {
 
 /**
  * Renders the withdrawal queue table at all viewport widths.
- *
- * Mobile (below `md`): the 3-column table fits the 370px content area per
- * Figma XS frame `3283-71053` (three ~115px `Item` columns). The previous
- * stacked-card `MobileCards` path has been removed (issue #749 resolved
- * decision).
- *
- * Desktop (`md+`): same table, full width.
+ * spec: docs/frontend/dashboard-components.md#withdrawalqueuetable (mobile/desktop behavior).
  */
 export function WithdrawalQueueTable({ rows }: WithdrawalQueueTableProps) {
   return (

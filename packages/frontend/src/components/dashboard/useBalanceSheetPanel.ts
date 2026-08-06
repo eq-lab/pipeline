@@ -2,32 +2,8 @@
  * Co-located hook for `BalanceSheetPanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Blends REST `GET /v1/financial-position` + on-chain reads:
- *   - PLUSD outstanding  → `useStellarPlusdTotalSupply()`        (Horizon decimal string)
- *   - Cash — stablecoins → `useStellarUsdcCustodyBalance()`      (Soroban raw i128 bigint)
- *   - Deployed / Junior  → REST base-6 decimal strings
- *   - USYC stub          → `convertUsycToUsdc` seam → `—` (no holding in v1)
- *   - Off-chain USD      → `—` (off-chain, no source)
- *
- * Decimal discipline
- * ------------------
- * PLUSD: Horizon returns human-decimal strings (e.g. `"10000711.9961018"`).
- *   Call `parseFloat(str)` directly — no SAC scaling needed.
- *
- * USDC: Soroban `balance()` returns a raw i128 bigint at 7-decimal SAC scale.
- *   Use `sacRawToDisplay(bigint)` → human string → `parseFloat()`.
- *
- * REST rows: base-6 decimal strings — pass directly to `formatCompactUsd()`.
- *
- * Section totals are CLIENT-RECOMPUTED (the REST roll-up excludes on-chain
- * leaves). Only sourced rows contribute to the total. Unsourced rows (`—`)
- * are excluded — a muted footnote is shown when any row is unsourced.
- *
- * Panel state
- * -----------
- *   - `loading` → REST is still in flight.
- *   - `error`   → REST fetch failed (provides `refetch` for retry).
- *   - `ready`   → REST has data; rows render best-effort with on-chain fills.
+ * spec: docs/frontend/dashboard-components.md#balancesheetpanel
+ * (data blending, decimal discipline, totals recompute, panel state).
  */
 import { useFinancialPosition } from "@/api/useFinancialPosition";
 import {
@@ -79,10 +55,7 @@ export interface BalanceSheetPanelState {
   liabilities: BalanceSheetLiabilitiesSection;
   errorMessage: string | undefined;
   refetch: () => void;
-  /**
-   * When `true` the section totals may not balance because some rows are
-   * unsourced. A muted footnote should be shown.
-   */
+  /** True when totals may not balance due to unsourced rows; see spec above. */
   showTotalsDisclaimer: boolean;
 }
 
@@ -177,12 +150,7 @@ function emptyLiabilities(): BalanceSheetLiabilitiesSection {
 /**
  * Drives `BalanceSheetPanel` (Panel A — Statement of Financial Position).
  *
- * - `loading` → while the REST fetch is in flight.
- * - `error`   → REST fetch failed; Horizon reads don't cause a whole-panel error.
- * - `ready`   → REST has data; rows are best-effort blended with Horizon reads.
- *
- * Horizon reads that are unconfigured or still loading surface as per-row `—`,
- * never as a whole-panel error state.
+ * spec: docs/frontend/dashboard-components.md#balancesheetpanel (panel state rules).
  */
 export function useBalanceSheetPanel(): BalanceSheetPanelState {
   const {
@@ -219,11 +187,8 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
 
   // ── Ready: blend REST + on-chain ─────────────────────────────────────────
 
-  // REST rows (base-6 decimal strings → parseFloat → human numbers).
-  //
-  // `secured_loans_outstanding` is displayed exactly as served by the backend
-  // (issue #906 — the former `scaleRegistryAmount` ×1000 workaround has been
-  // removed; the backend now serves the corrected value directly).
+  // secured_loans_outstanding displayed as served (issue #906).
+  // spec: docs/frontend/dashboard-components.md#balancesheetpanel
   const securedLoansRaw = rest?.assets.deployed.secured_loans_outstanding;
   const securedLoans = parseHuman(securedLoansRaw);
   const accruedInterest = parseHuman(
@@ -233,11 +198,8 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     rest?.liabilities.subordinated_capital.junior_tranche,
   );
 
-  // PLUSD outstanding — Horizon human-decimal string → parseFloat.
   const plusdOutstandingHuman = parseHuman(plusdSupplyStr);
 
-  // USDC custody balance — Soroban raw i128 bigint at 7-decimal SAC scale.
-  // `sacRawToDisplay` converts to a human-decimal string; then parseHuman → number.
   const usdcCustodyHuman =
     usdcCustodyRaw !== undefined
       ? parseHuman(sacRawToDisplay(usdcCustodyRaw))
@@ -290,8 +252,6 @@ export function useBalanceSheetPanel(): BalanceSheetPanelState {
     deployed: [
       {
         label: "Secured loans outstanding",
-        // Displayed as served (issue #906) — matches the raw figure summed
-        // into assetsTotal.
         value:
           securedLoans !== undefined ? formatCompactUsd(securedLoansRaw!) : "—",
         testId: "bs-secured-loans",

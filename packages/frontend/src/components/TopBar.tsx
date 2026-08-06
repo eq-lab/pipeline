@@ -19,38 +19,8 @@ import { AccountDropdown } from "./AccountDropdown";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
 
-/**
- * TopBar — global page header (self-contained, no external props for wallet).
- *
- * Mounted in the root layout (`__root.tsx`) so every page renders it
- * automatically.  All wallet state is read internally; no per-route prop
- * plumbing is required.
- *
- * Connected state:
- *   - Renders a `WalletPill` wrapped in a trigger button.
- *   - Clicking the pill opens the `AccountDropdown` panel (address copy,
- *     USDC balance, namespace toggle, disconnect).
- *   - When the active namespace is Stellar, the dropdown additionally shows
- *     non-zero PLUSD and sPLUSD balances (Issue #675).
- *
- * Disconnected state (neither namespace connected):
- *   - Renders a "Connect Wallet" `<Button>` that opens `ConnectWalletModal`
- *     (Issue #558 — per-wallet selection with EVM / Soroban tabs).
- *
- * Figma references:
- *   - Frame: `1497:94715` (TopBar frame)
- *   - WalletPill: `1498:100168`
- *   - Account dropdown: `1506:104728` inside `Header / Connected` (`1497:94752`)
- *
- * Active nav is derived from the current URL:
- *   - `/`                          → `"home"`
- *   - `/deposit`                   → `"deposit"` (Convert)
- *   - `/deposit?direction=withdraw`→ `"deposit"` (Convert — direction is a search param,
- *                                    pathname is still `/deposit` after the redirect)
- *   - `/stake`                     → `"stats"` (Earn)
- *   - `/transactions`              → `"history"` (Activity)
- *   - other                        → `"home"` (safe fallback)
- */
+// spec: docs/frontend/dashboard-components.md#topbar
+// (connected/disconnected states, active-nav derivation, Figma frame 1497:94715).
 
 /** One nav slot: icon + accessible label + optional route target. */
 interface NavItem {
@@ -151,8 +121,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const activeDisconnect =
       kind === "evm" ? evm.disconnect : stellar.disconnect;
 
-    // Pill shows the active namespace's balance, falling back to EVM if active
-    // namespace is disconnected but the other is connected.
+    // spec: docs/frontend/dashboard-components.md#topbar (pill balance fallback rule).
     const pillBalance =
       activeFormattedBalance ??
       (anyConnected
@@ -183,13 +152,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
               : "home";
 
     const composed = [
-      // Layout: flex row, three slots, justified between, vertically centred.
       "flex items-center justify-between",
-      // Padding: 8px on mobile (Figma 1989:9052 = 56px tall = 8px + 40px + 8px),
-      // restored to 16px on desktop (md and above).
+      // spec: docs/frontend/dashboard-components.md#topbar (mobile height, Figma node 1989:9052).
       "p-2 md:p-4",
       "w-full",
-      // Surface tokens — no hardcoded colors.
       "bg-[var(--color-pipeline-paper)]",
       "border-b border-[var(--color-pipeline-line)]",
       // Position context for the dropdown.
@@ -207,9 +173,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
         {...rest}
         data-node-id="1497:94715"
       >
-        {/* Left slot — fixed 160px wide so the centred nav reads symmetrically.
-          The Logo intrinsic width (116px) plus the slot's flex container
-          mirrors Figma node 1497:94716. */}
+        {/* spec: docs/frontend/dashboard-components.md#topbar (logo slot sizing, Figma node 1497:94716). */}
         <div
           className="flex w-40 shrink-0 items-center"
           data-testid="topbar-logo-slot"

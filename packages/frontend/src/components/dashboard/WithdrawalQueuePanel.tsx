@@ -1,21 +1,8 @@
 /**
  * WithdrawalQueuePanel — Protocol Dashboard Panel C: Withdrawal Queue.
  *
- * Wires the `useWithdrawalQueue` hook via the co-located
- * `useWithdrawalQueuePanel` logic hook (FRONTEND.md rule 2). The view here is
- * JSX-only; all formatting and state-machine logic lives in the hook.
- *
- * Content per Figma section `3283:14893`:
- *   - Title "Withdrawal Queue".
- *   - Four summary cards: In Queue / Requests / Estimated wait / Liquid Cover.
- *   - Table: Holder / Amount / Status (3 columns).
- *   - "Show more" affordance when there are more than 5 items (client-side).
- *
- * Figma:
- *   Desktop: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-14893
- *   Mobile:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387
- *
- * Token discipline: no raw hex/font values.
+ * spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
+ * (content, layout, Figma bindings).
  */
 import React from "react";
 import { PanelContainer } from "./PanelContainer";
@@ -23,14 +10,7 @@ import { WithdrawalQueueTable } from "./WithdrawalQueueTable";
 import { useWithdrawalQueuePanel } from "./useWithdrawalQueuePanel";
 
 // ── Summary card ──────────────────────────────────────────────────────────────
-
-// Card surface: matches the LoanBookSummary card treatment —
-// white surface, asymmetric depth border (1px top+left, 3px bottom+right),
-// 4px radius, 16px padding, 144px tall (Figma frame 3283:14895 card height=144).
-//
-// Mobile: w-[200px] shrink-0 — fixed 200px per Figma card-horizontal node
-// 3283:72377 (w=200). The outer overflow-x-auto wrapper handles scroll.
-// Desktop: md:w-auto md:flex-1 — stretches to fill the 4-column row equally.
+// spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (summary card Figma tokens)
 const cardClasses = [
   "flex flex-col justify-between",
   "bg-[color:var(--color-pipeline-surface)]",
@@ -42,7 +22,6 @@ const cardClasses = [
   "w-[200px] shrink-0 md:w-auto md:flex-1",
 ].join(" ");
 
-// Card label: Heading S token — body font, 16px/20px, regular weight.
 const cardLabelClasses = [
   "font-[family-name:var(--font-body)]",
   "font-normal",
@@ -51,7 +30,6 @@ const cardLabelClasses = [
   "text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
 
-// Card value: display serif, 20px/28px, regular weight.
 const cardValueClasses = [
   "font-[family-name:var(--font-display)]",
   "font-normal",
@@ -80,9 +58,6 @@ function SummaryCard({
 }
 
 // ── Show more button ──────────────────────────────────────────────────────────
-
-// Caption-size, muted ink, minimal chrome — matches the panel's typographic
-// scale for supplementary controls.
 const showMoreClasses = [
   "mt-2 w-full text-center",
   "font-[family-name:var(--font-body)]",
@@ -114,28 +89,14 @@ export function WithdrawalQueuePanel() {
       state={state}
       onRetry={refetch}
       errorMessage={errorMessage}
-      // Borderless section per Figma 3283:12101 — the withdrawal section has no
-      // outer container border; visual chrome lives only on the summary cards.
+      // Borderless per Figma 3283:12101 — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
       borderless
       data-testid="dashboard-panel-withdrawal-queue"
       data-node-id="3283:14893"
     >
-      {/*
-       * Spacing from Figma section 3283:14893:
-       *   heading h=56, cards start y=88 → 32px heading→cards gap.
-       *   PanelContainer now contributes gap-8 (32px) between <h2> and this
-       *   body div — no extra pt-* needed.
-       *   gap-8 (32px) between summary cards and table container:
-       *   cards end y=232, table starts y=264 → 32px below cards.
-       */}
+      {/* Section spacing — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel */}
       <div className="flex flex-col gap-8">
-        {/*
-         * Four summary cards — horizontally scrollable flex row at all widths.
-         * Figma XS node 3283:72376 "Second card pair": flex gap-[16px], each
-         * card w=200px shrink-0. The outer overflow-x-auto lets the user scroll
-         * to reach all 4 cards on mobile (2×200+gap=416px > 370px viewport).
-         * On desktop the cards expand (flex-1) to fill the full width.
-         */}
+        {/* Summary cards — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel */}
         <div className="w-full overflow-x-auto">
           <div
             className="flex items-stretch gap-4"
@@ -164,9 +125,7 @@ export function WithdrawalQueuePanel() {
           </div>
         </div>
 
-        {/* Table container — borderless per Figma 3283:12101 (unlike the Loan
-            Book table, the withdrawal table has no surrounding card box; it sits
-            on the section background with only row dividers). */}
+        {/* Table container — borderless per Figma 3283:12101 */}
         <div
           className="flex flex-col"
           data-testid="withdrawal-queue-table-container"

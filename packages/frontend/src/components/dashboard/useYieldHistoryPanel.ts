@@ -2,34 +2,8 @@
  * Co-located hook for `YieldHistoryPanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Resolves chain from ENV defaults (no wallet connection on the Protocol
- * Dashboard), fans out API calls to the three new `/v1/dashboard/*` endpoints,
- * and derives panel state + formatted values for the view layer.
- *
- * Endpoints used (issue #760):
- *   - `GET /v1/dashboard/summary?chain_id` — five headline KPIs
- *   - `GET /v1/dashboard/tvl-history?chain_id&days&interval` — TVL series
- *   - `GET /v1/dashboard/yield-history?chain_id&days&interval` — yield series
- *
- * Decisions (issue #760):
- *   - `chainId` = ENV.STELLAR_CHAIN_ID — the Protocol Dashboard is Stellar-scoped
- *     (real data on chain 99000001; the EVM chain carries malformed test data, #765).
- *   - All three endpoints are protocol-level (no vault address needed).
- *     The zero-address vault guard from the pre-#760 version has been dropped —
- *     these endpoints are unconditionally enabled (they are wallet-less and
- *     the panel's empty state handles `200 []`).
- *   - "Target Net to sPLUSD" is a static product constant ("8–12%") — no
- *     endpoint serves a target APY yet (#738 backend follow-up); the value is
- *     fixed in the Figma spec and product docs.
- *   - "Current APY, Net to sPLUSD" → `summary.current_apy_net_to_splusd`.
- *   - "Loan Book Yield" → `summary.loan_book_yield`.
- *   - Cumulative Yield headline → `summary.cumulative_yield_total`.
- *   - Progress bar fill → `outstanding_in_loans / tvl` (approved exception
- *     to "no frontend-computed metrics" for ratio-of-served-values; null/zero
- *     tvl → null, render empty bar + "—%").
- *   - `outstanding_in_loans` is displayed exactly as served by the backend
- *     (issue #906 — the former `scaleRegistryAmount` ×1000 workaround has been
- *     removed; the backend now serves the corrected value directly).
+ * spec: docs/frontend/dashboard-components.md#yieldhistorypanel
+ * (endpoints, chain-scoping decision, business rules for each field).
  */
 import { ENV } from "@/lib/env";
 import { useDashboardSummary } from "@/api/useDashboardSummary";
@@ -45,21 +19,10 @@ import type { YieldBarPoint } from "@/utils/yieldSeries";
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
+/** spec: docs/frontend/dashboard-components.md#yieldhistorypanel (metric card sourcing) */
 export interface YieldHistoryMetricCards {
-  /**
-   * Current APY, Net to sPLUSD — from `GET /v1/dashboard/summary`
-   * `current_apy_net_to_splusd`. "—" when null.
-   */
   currentApyNet: string;
-  /**
-   * Loan Book Yield — from `GET /v1/dashboard/summary` `loan_book_yield`.
-   * "—" when no active loans or data is unavailable.
-   */
   loanBookYield: string;
-  /**
-   * Target Net to sPLUSD — static product constant (8–12%). No endpoint
-   * serves a target APY yet; seam left for #738.
-   */
   targetNetApy: string;
 }
 
@@ -68,10 +31,7 @@ export interface TvlSummary {
   headlineTvl: string;
   /** Formatted outstanding in loans, e.g. "$31.6M". "—" when null. */
   outstandingInLoans: string;
-  /**
-   * Deployment ratio (0–1) for the progress bar, or `null` when
-   * tvl is null/zero (divide-by-zero guard) or outstanding is null.
-   */
+  /** Deployment ratio (0–1) for the progress bar, or `null` on divide-by-zero/missing data. */
   deployedRatio: number | null;
 }
 
@@ -94,10 +54,7 @@ export interface YieldHistoryPanelState {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/**
- * "Target Net to sPLUSD" is a static product constant (8–12%). No API endpoint
- * serves a target APY today — seam left for #738. Fixed in the Figma spec and docs.
- */
+// Static product constant — spec: docs/frontend/dashboard-components.md#yieldhistorypanel. Seam: #738.
 const TARGET_NET_APY_STATIC = "8–12%";
 
 // ── Fallback values ───────────────────────────────────────────────────────────
@@ -200,9 +157,7 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   );
 
   // ── Headline value from summary ─────────────────────────────────────────────
-  // Headline comes from summary.cumulative_yield_total (not last chart bar),
-  // so the KPI matches even when the chart resamples/aggregates.
-
+  // spec: docs/frontend/dashboard-components.md#yieldhistorypanel (headline source)
   const summary = summaryQuery.data;
 
   const headlineValue = summary?.cumulative_yield_total
@@ -210,16 +165,13 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     : "—";
 
   // ── TVL summary ─────────────────────────────────────────────────────────────
-
-  // Displayed exactly as served by the backend (issue #906 — no frontend
-  // rescaling).
+  // outstanding_in_loans displayed as served (issue #906 — no frontend rescaling).
   const outstandingInLoansRaw = summary?.outstanding_in_loans ?? null;
 
   const headlineTvl = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
   const outstandingInLoans = formatCompactUsd(outstandingInLoansRaw);
 
-  // Deployment ratio — approved client-side computation (ratio of two served values).
-  // Guard against null/zero tvl to avoid divide-by-zero.
+  // Deployment ratio calc — spec: docs/frontend/dashboard-components.md#yieldhistorypanel
   let deployedRatio: number | null = null;
   if (summary?.tvl != null && outstandingInLoansRaw != null) {
     const tvlNum = parseFloat(summary.tvl);

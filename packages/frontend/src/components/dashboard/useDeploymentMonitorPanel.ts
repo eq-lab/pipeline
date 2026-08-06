@@ -2,22 +2,8 @@
  * Co-located hook for `DeploymentMonitorPanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Maps raw `useLoanBook` + `useLoanSubmissions` data → formatted summary cards,
- * Active Loans rows, In Origination rows, per-tab state, and the selected-tab
- * state machine, so the view layer is pure JSX with no formatting logic.
- *
- * Tabs (issue #755):
- *   - Active Loans   → `useLoanBook` (`GET /v1/loan-book`).
- *   - In Origination → `useLoanSubmissions` (`GET /v1/loan-book/submissions`).
- * The panel-level `state` follows the Active Loans query (it drives the summary
- * cards + the shared PanelContainer chrome). The In Origination tab carries its
- * own `originationState` so a slow/failed submissions fetch never blanks the
- * whole panel.
- *
- * The In Origination tab's row shape (`OriginationTableRow`) and its
- * submission→row mapping (`mapSubmissionToRow`) live in `originationRow.ts`
- * (issue #814 — the tab now shows a distinct Figma `4116-9155` field set,
- * replacing the Active-Loans-shaped `LoanBookRow` it previously reused).
+ * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
+ * (tabs data sourcing, state machine, headerAggregates, LTV aggregate calc).
  */
 import { useState } from "react";
 import { useLoanBook, useLoanSubmissions } from "@/api";
@@ -46,15 +32,7 @@ export interface DeploymentMonitorPanelState {
   rows: LoanBookRow[];
   /**
    * Pre-formatted aggregate strings for the table column headers.
-   * Populated from `summary` by the hook (FRONTEND.md rule 2: formatting
-   * lives in the hook, not in the table component).
-   *
-   * - `principal` — always defined when ready (total_deployed is non-null).
-   * - `collateral` — defined only when `total_collateral` is non-null; `undefined`
-   *   while TODO #706 (commodity price feed) is not yet merged. Displayed as
-   *   served by the backend (issue #906 — no frontend rescaling).
-   * - `ltv` — user-approved average LTV (null → 0), defined only when
-   *   loans.length > 0 (seam refs #729 / #765).
+   * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (headerAggregates fields).
    */
   headerAggregates: LoanBookHeaderAggregates;
   /** Live count of active loans (loans.length when ready; 0 otherwise). */
@@ -81,12 +59,11 @@ export interface DeploymentMonitorPanelState {
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
+// total_deployed / total_collateral displayed as served by the backend (issue
+// #906 — no frontend rescaling). spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
 function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
   return {
-    // total_deployed is displayed as served by the backend (issue #906 — no
-    // frontend rescaling).
     totalDeployed: formatCompactUsd(summary.total_deployed),
-    // total_collateral is likewise displayed as served (issue #906).
     totalCollateral: formatCompactUsd(summary.total_collateral),
     seniorDebtCoverage: formatCoverage(summary.senior_debt_coverage),
     avgYield: formatOneDecimalRate(summary.avg_yield),
@@ -97,9 +74,7 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
     borrowerCommodity: `${entry.borrower} / ${entry.commodity}`,
-    // principal is displayed as served by the backend (issue #906).
     principal: formatCompactUsd(entry.principal),
-    // collateral is likewise displayed as served (issue #906).
     collateral: formatCompactUsd(entry.collateral),
     ltv: formatLtv(entry.ltv),
     duration: formatDurationDays(entry.duration_days, "compact"),
@@ -126,15 +101,7 @@ const EMPTY_HEADER_AGGREGATES: LoanBookHeaderAggregates = {};
 /**
  * Drives `DeploymentMonitorPanel`.
  *
- * Panel-level `state` (Active Loans query, drives summary + PanelContainer):
- *   - `loading` → panel shows `PanelLoading`.
- *   - `error`   → panel shows `PanelError` with a retry action.
- *   - `ready`   → summary + tabs render (even with zero active loans, so the
- *                 In Origination tab stays reachable; each tab renders its own
- *                 empty state inline).
- *
- * `originationState` (submissions query) drives the In Origination tab body
- * independently: `loading` / `error` / `empty` / `ready`.
+ * spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel (panel/tab state rules).
  */
 export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const { data, isLoading, error, refetch } = useLoanBook();
@@ -194,14 +161,9 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     };
   }
 
-  // Ready even with zero active loans — the Active Loans tab renders its own
-  // inline empty state, keeping the In Origination tab reachable.
   const loans = data?.loans ?? [];
 
-  // ── LTV column aggregate (user-approved calc, exception to no-frontend-computed-
-  // metrics rule, seam refs #729 / #765). Average LTV = Σ(perRowLtv) / count,
-  // where null/missing LTV contributes 0 to the sum but still counts in the
-  // denominator. Only set when loans.length > 0.
+  // LTV aggregate calc — spec: docs/frontend/dashboard-components.md#deploymentmonitorpanel
   let ltvAggregate: string | undefined;
   if (loans.length > 0) {
     const sum = loans.reduce((acc, loan) => {
@@ -218,7 +180,6 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     headerAggregates: data
       ? {
           principal: formatCompactUsd(data.summary.total_deployed),
-          // #906: total_collateral is displayed as served, same as principal.
           collateral:
             data.summary.total_collateral == null
               ? undefined

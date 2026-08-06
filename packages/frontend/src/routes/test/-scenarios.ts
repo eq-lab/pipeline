@@ -1,37 +1,7 @@
-/**
- * Test scenario registry for the /test Mocks tab.
- *
- * Each scenario is a pure data record describing a meaningful app state. The
- * Mocks tab renders one card per scenario and lets the developer activate it
- * with a single click.
- *
- * Activation flow:
- *   1. `clearAllMocks()` — removes every `pipeline.mock.*` key from localStorage.
- *   2. `localStorage.setItem(key, value)` for every entry in `scenario.keys`.
- *   3. `reloadPage()` — calls `window.location.reload()` so every hook re-reads
- *      its keys from a clean slate.
- *
- * We deliberately choose page reload over reactive wiring because `/test` is a
- * developer surface and a reload is both acceptable and simpler.
- *
- * Addresses used in scenarios:
- *   - Wallet address : `0x1234000000000000000000000000000000000000`
- *   - USDC           : `0x2222000000000000000000000000000000000002`
- *   - DepositManager : `0x3333000000000000000000000000000000000003`
- *   - PLUSD          : `0x1111000000000000000000000000000000000001`
- *   - WithdrawalQueue: `0x4444000000000000000000000000000000000004`
- *   - StakedPLUSD    : `0x5555000000000000000000000000000000000005`
- *
- * Convention — every request-flow feature ships with full mock state:
- *   - Balance and allowance keys so the UI renders the correct CTA step.
- *   - A write-side contract mock (e.g. `depositManager.requestDeposit`,
- *     `withdrawalQueue.requestWithdrawal`) so clicking Confirm settles
- *     synchronously inside the Mocks tab without falling through to a real
- *     wagmi/RPC call. Shape: `{ hash: "0x...", requestId?: "123" }` for
- *     deposit; `{ hash: "0x...", requestId?: "123", queued?: "0" }` for
- *     withdrawal.
- *   - API mock keys for in-flight request states (`pipeline.mock.api.GET./v1/requests`).
- */
+// spec: docs/frontend/dashboard-components.md#diagnostics-route
+// (scenario registry: activation flow, mock-state convention).
+// Addresses used below: wallet 0x1234…, USDC 0x2222…02, DepositManager
+// 0x3333…03, PLUSD 0x1111…01, WithdrawalQueue 0x4444…04, StakedPLUSD 0x5555…05.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

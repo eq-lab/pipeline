@@ -1,13 +1,4 @@
-/**
- * useAccountDropdown — logic hook for the AccountDropdown component.
- *
- * Owns:
- *   - address truncation (via shared `truncateAddress` util)
- *   - clipboard copy with a 1.5s `copied` affordance
- *   - outside-click, Escape, and route-change dismissal effects
- *
- * Returns `{ rootRef, copied, copy, truncated }`.
- */
+// spec: docs/frontend/dashboard-components.md#accountdropdown (hook responsibilities).
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { truncateAddress } from "@/utils/truncateAddress";

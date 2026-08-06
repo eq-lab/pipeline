@@ -3,31 +3,7 @@ import { createPortal } from "react-dom";
 import { Logo, NavIcon, CoinIcon } from "@pipeline/ui";
 import type { NavIconName } from "@pipeline/ui";
 
-/**
- * MobileNavMenu — full-screen slide-in nav panel for mobile viewports.
- *
- * Shown when the user taps the hamburger (`menu-2`) icon in the `TopBar` at
- * viewport widths below the `md` (768px) breakpoint.
- *
- * Disconnected state (Figma node 1989:9231):
- *   - Logo + close (×) button
- *   - Four nav items: Home / Convert / Earn / Activity
- *   - Pipeline Overview item (divider-separated)
- *   - "Connect Wallet" full-width dark CTA
- *
- * Connected state (Figma node 1993:6527):
- *   - Same nav items
- *   - Wallet address row (icon + truncated address + copy)
- *   - USDC balance row (coin icon + balance)
- *   - "Disconnect" button (red text, borderless)
- *
- * Accessibility:
- *   - `role="dialog" aria-modal="true"` — announces as a modal.
- *   - Focus is moved to the first focusable element on open.
- *   - Focus is trapped inside while open.
- *   - Escape closes (handled by `useMobileNavMenu`).
- *   - Scrim click closes.
- */
+// spec: docs/frontend/dashboard-components.md#mobilenavmenu (disconnected/connected states, Figma nodes 1989:9231 / 1993:6527).
 
 // ── Focus trap helper ─────────────────────────────────────────────────────────
 
@@ -324,7 +300,6 @@ export function MobileNavMenu({
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "mobile-nav-menu-heading";
 
-  // Focus the first button when opened.
   useEffect(() => {
     if (open) {
       const id = setTimeout(() => {
@@ -335,7 +310,6 @@ export function MobileNavMenu({
     }
   }, [open]);
 
-  // Focus trap.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {

@@ -2,14 +2,7 @@ import React from "react";
 
 /**
  * PanelError — shared "error" body for Protocol Dashboard panels.
- *
- * A muted message plus a Retry button, mirroring the error/retry block on the
- * Transactions page (`routes/transactions.tsx`). Pure presentational: the
- * owning panel passes an `onRetry` callback (typically the query's `refetch`)
- * via `PanelContainer`'s `state="error"`. All four panels reuse this so the
- * failure affordance is identical across the dashboard.
- *
- * Token discipline: muted-ink + body type tokens only — no raw colors/sizes.
+ * spec: docs/frontend/dashboard-components.md#panel-states
  */
 export interface PanelErrorProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,

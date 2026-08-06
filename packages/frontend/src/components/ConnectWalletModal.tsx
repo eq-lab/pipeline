@@ -1,28 +1,4 @@
-/**
- * ConnectWalletModal — full wallet-selection modal (Issues #558, #563).
- *
- * Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
- *   Left:  "Connect Wallet" heading, EVM / Soroban tab control, per-wallet
- *          rows with brand icons and direct connect actions.
- *   Right: background photo + Pipeline logo + marketing headline.
- *          Hidden on mobile (below lg breakpoint).
- *
- * Tab set: EVM (Ethereum-compatible wallets) | Soroban (Stellar wallets).
- * No "All" aggregate tab.
- *
- * Per-wallet behaviour:
- *   - Wallet available → connect directly (wagmi connector or kit setWallet).
- *   - Wallet unavailable → open wallet's website in a new browser tab.
- *
- * Show More: appears when a tab has more than 5 wallets; toggles the full list.
- *
- * Entry point: called from TopBar (replaces ConnectChooserModal).
- *
- * Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss,
- * body-scroll lock. Dismissal is via the × button and Escape only (no scrim click).
- *
- * Figma: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
- */
+// spec: docs/frontend/dashboard-components.md#connectwalletmodal (two-pane layout, tab set, per-wallet behavior, Figma node 2858:57637).
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Logo, SegmentedTabs } from "@pipeline/ui";
@@ -443,7 +419,6 @@ function WalletRow({ label, caption, icon, onClick }: WalletRowProps) {
         // Layout: full-width row, 56px tall, flex between label and icon
         "flex w-full items-center justify-between",
         "h-[56px] shrink-0 px-0",
-        // Bottom border matching Figma spec: rgba(56,55,53,0.18)
         "border-b border-[rgba(56,55,53,0.18)]",
         // Interaction
         "cursor-pointer bg-transparent",
@@ -458,7 +433,6 @@ function WalletRow({ label, caption, icon, onClick }: WalletRowProps) {
         <span
           className={[
             "block truncate",
-            // Body Emphasized: Graphik LC Semi Bold 16/22
             "font-[family-name:var(--font-body)]",
             "text-[length:var(--text-pipeline-body)]",
             "leading-[var(--text-pipeline-body--line-height)]",
@@ -472,7 +446,6 @@ function WalletRow({ label, caption, icon, onClick }: WalletRowProps) {
           <span
             className={[
               "block truncate",
-              // Caption: Graphik LC Regular 12/16
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
@@ -508,8 +481,7 @@ function RightImagePanel() {
         className="absolute inset-0 size-full object-cover"
         loading="lazy"
       />
-      {/* Dark scrim — matches Figma node 2858:57637 upper-left gradient so the
-          white wordmark and headline stay legible over the lighter sky/sea. */}
+      {/* Dark scrim — spec: docs/frontend/dashboard-components.md#connectwalletmodal (hero scrim gradient). */}
       <div
         className="absolute inset-0"
         style={{
@@ -577,7 +549,6 @@ export function ConnectWalletModal({
   // Soroban per-wallet connect hook
   const { connectWallet: connectSorobanWallet } = useStellarConnectors();
 
-  // Focus the first focusable element when opened.
   useEffect(() => {
     if (open) {
       const id = setTimeout(() => {
@@ -588,7 +559,6 @@ export function ConnectWalletModal({
     }
   }, [open]);
 
-  // Escape key.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -601,7 +571,6 @@ export function ConnectWalletModal({
     return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [open, onDismiss]);
 
-  // Focus trap.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -613,7 +582,6 @@ export function ConnectWalletModal({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  // Body scroll lock.
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -672,7 +640,6 @@ export function ConnectWalletModal({
         {/* Left: Connect content — equal half on desktop, full width on mobile */}
         <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-6 py-10 lg:px-8 lg:py-12">
           <div className="flex w-full max-w-[400px] flex-col gap-6">
-            {/* Heading: Besley Regular 48/56, ink primary */}
             <h2
               id={headingId}
               className={[

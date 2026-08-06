@@ -5,42 +5,8 @@ import { formatTokenAmount, formatActivityTime } from "@/lib/format";
 import { SAC_DECIMALS } from "@/wallet";
 import type { WalletViewKind } from "@/wallet";
 
-/**
- * renderRequestRow — shared row renderer for `RequestItem` data.
- *
- * Both `RecentActivityCard` (home, connected state, Figma `1497:95119`) and
- * the `/transactions` page (Figma `1497-94912`) render rows with identical
- * visuals. This helper is the single source of truth for the type→icon,
- * status→tone, and amount-formatting logic so neither call site can drift.
- *
- * Rule: row visuals must stay identical between the home card and
- * `/transactions`. Any change to row appearance belongs here, not in the
- * individual consumers.
- *
- * Chain-aware decimal scaling (Issue #674):
- *   The renderer accepts the active chain kind and derives decimal scales from
- *   it rather than hardcoding EVM values. Stellar SAC tokens are all 7 decimals
- *   (`SAC_DECIMALS`), while EVM uses 6 for payment tokens (USDC) and 18 for
- *   stake tokens (PLUSD / sPLUSD).
- *
- *   | Chain   | Deposit / Withdraw | Stake / Unstake (assets / shares) |
- *   |---------|--------------------|------------------------------------|
- *   | EVM     | 6                  | 18                                 |
- *   | Stellar | 7 (SAC_DECIMALS)   | 7 (SAC_DECIMALS)                   |
- *
- * Fail-loud contract for Stake / Unstake fields:
- *   Both `assets` and `shares` are required by the `/v1/requests` API contract
- *   for Stake/Unstake items. If either field is absent from the API response,
- *   the renderer deliberately renders `—` (em-dash) instead of silently falling
- *   back to a zero or approximate value. This makes data regressions immediately
- *   visible rather than silently zeroing out amounts.
- *
- * @param item      - A single `RequestItem` returned by `GET /v1/requests`.
- * @param chainKind - The active chain kind (`"evm"` or `"stellar"`), used to
- *                    select the correct decimal scale for amount formatting.
- * @returns A React element representing the activity row, ready to be embedded
- *          in a list or container by the caller.
- */
+// spec: docs/frontend/dashboard-components.md#renderrequestrow
+// (shared row-visual rule, chain-aware decimal table, fail-loud contract).
 
 /**
  * TwoLineAmount — right-aligned two-line amount block for stake / unstake /
@@ -187,9 +153,7 @@ export function renderRequestRow(
   }
 
   if (item.type === "Stake") {
-    // Fail-loud: render "—" when assets or shares are missing from the API
-    // response. Falling back to item.amount or "0" would silently zero out
-    // the row and hide data regressions.
+    // Fail-loud contract: spec: docs/frontend/dashboard-components.md#renderrequestrow.
     const assets =
       item.assets !== undefined
         ? formatTokenAmount(item.assets, stakeDecimals)

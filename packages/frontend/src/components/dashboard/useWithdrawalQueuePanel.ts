@@ -2,12 +2,8 @@
  * Co-located hook for `WithdrawalQueuePanel` (FRONTEND.md rule 2: view = JSX
  * only, logic lives in the hook).
  *
- * Maps raw `useWithdrawalQueue` data → formatted summary cards + table rows +
- * panel state, so the view layer is pure JSX with no formatting logic.
- *
- * Row expand (resolved Open Question 2): the first 5 rows are visible by
- * default. `expanded` toggles the "Show more" affordance. The hook owns this
- * state so the view is JSX-only.
+ * spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
+ * (data mapping, row-expand behavior, Liquid Cover calc).
  */
 import { useState } from "react";
 import { useWithdrawalQueue } from "@/api";
@@ -35,15 +31,7 @@ export interface WithdrawalQueueSummaryFormatted {
   requests: string;
   /** e.g. `"~3.2 days"` or `"—"` */
   estimatedWait: string;
-  /**
-   * e.g. `"5.6x"` or `"—"`.
-   * Frontend calc (user-approved): (cash + tokenized-T-bills) / queue.
-   * cash  = REST `assets.liquid.cash_stablecoins` (null/non-finite → 0).
-   * tbills = REST `assets.liquid.tokenized_tbills` (null/non-finite → 0).
-   * queue = `in_queue_usd` (null/non-finite → 0). Divide-by-zero → "—".
-   * Both cash and tbills are null in v1, so this reads "0.0x" today.
-   * Seam: wire on-chain sources when available.
-   */
+  /** e.g. `"5.6x"` or `"—"`. spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (Liquid Cover calc). */
   liquidCover: string;
 }
 
@@ -86,22 +74,12 @@ const EMPTY_SUMMARY: WithdrawalQueueSummaryFormatted = {
 
 /**
  * Drives `WithdrawalQueuePanel`.
- *
- * - `loading` → panel shows `PanelLoading`.
- * - `error`   → panel shows `PanelError` with a retry action.
- * - `empty`   → no queue items; panel shows `PanelEmpty`.
- * - `ready`   → formatted summary + rows are available.
- *
- * Row expand: 5 rows visible by default; `showMore()` reveals all.
+ * spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel (panel state, row expand).
  */
 export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
   const { data, isLoading, error, refetch } = useWithdrawalQueue();
   const [expanded, setExpanded] = useState(false);
-  // Liquid Cover numerator: cash + tokenized T-bills sourced from REST financial
-  // position. Both are null in v1 (no commodity price feed, no USYC holding) so
-  // the ratio reads "0.0x" until the values are populated. Seam: once on-chain
-  // sources are available, wire cash = on-chain USDC custody balance and
-  // tbills = on-chain USYC NAV (wire on-chain USYC NAV when available).
+  // Liquid Cover numerator — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
   const { data: fp } = useFinancialPosition();
 
   if (isLoading) {
@@ -154,11 +132,7 @@ export function useWithdrawalQueuePanel(): WithdrawalQueuePanelState {
     ? allRows
     : allRows.slice(0, WITHDRAWAL_QUEUE_DEFAULT_VISIBLE);
 
-  // Liquid Cover = (cash + tokenized-T-bills) / queue (user-approved calc).
-  // cash  = REST assets.liquid.cash_stablecoins  (null/non-finite → 0)
-  // tbills = REST assets.liquid.tokenized_tbills (null/non-finite → 0)
-  // Both are null in v1 → ratio is "0.0x" for now.
-  // Seam: wire on-chain USYC NAV when available.
+  // Liquid Cover calc — spec: docs/frontend/dashboard-components.md#withdrawalqueuepanel
   const cashRaw = fp?.assets.liquid.cash_stablecoins;
   const tbillsRaw = fp?.assets.liquid.tokenized_tbills;
   const cash = (() => {

@@ -1,31 +1,8 @@
 /**
  * YieldHistoryPanel — Protocol Dashboard "Top" row (Figma frame `3283:67619`).
  *
- * Wires the `useYieldHistoryPanel` logic hook (FRONTEND.md rule 2: view =
- * JSX only). Renders:
- *
- *   Left column (node `3283:67622`): TVL card — headline, Outstanding in Loans,
- *     progress bar ("% deployed"), and dark TVL bar chart.
- *     Backed by `GET /v1/dashboard/summary` + `GET /v1/dashboard/tvl-history`.
- *
- *   Right column: Cumulative Yield card — headline value + green bar chart
- *     (no time-range selector — the Figma "Top" frame shows none).
- *     Backed by `GET /v1/dashboard/summary` + `GET /v1/dashboard/yield-history`.
- *
- *   Three metric cards — "Current APY, Net to sPLUSD", "Loan Book Yield",
- *     "Target Net to sPLUSD". The last is a static product constant (8–12%);
- *     a seam for `#738` is labelled in the code.
- *
- * Data that is NOT served by the API today (by-source cumulative minted split,
- * real-time T-bill accrual, trailing-30d loan/T-bill breakdown) is intentionally
- * omitted — not fabricated. Seams for those series will be wired once #738
- * delivers the backend endpoints.
- *
- * Figma:
- *   Top row:  https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67619
- *   TVL card: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-67622
- *   Yield:    https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-68333
- *   Mobile:   https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387
+ * spec: docs/frontend/dashboard-components.md#yieldhistorypanel
+ * (layout, data sourcing, omitted-data rationale, Figma bindings).
  */
 import { PanelContainer } from "./PanelContainer";
 import { YieldBarChart } from "./YieldBarChart";
@@ -33,9 +10,7 @@ import { TvlCard } from "./TvlCard";
 import { useYieldHistoryPanel } from "./useYieldHistoryPanel";
 
 // ── Metric card ────────────────────────────────────────────────────────────────
-// Figma node 3380:1921 — asymmetric depth border, white surface, 16px padding.
-// Matches the inner card treatment in DeploymentMonitorPanel (LoanBookSummary).
-
+// spec: docs/frontend/dashboard-components.md#yieldhistorypanel (metric card Figma tokens)
 interface MetricCardProps {
   label: string;
   value: string;
@@ -52,8 +27,6 @@ function MetricCard({
   return (
     <div
       className={[
-        // h-[144px] + justify-between: label pinned to the top, value to the
-        // bottom (Figma node 3380:1921, 176×144 cards).
         "flex h-[144px] flex-col justify-between p-4",
         "bg-[color:var(--color-pipeline-surface)]",
         "rounded-[var(--radius-pipeline-card)]",
@@ -61,8 +34,6 @@ function MetricCard({
         "border-r-[3px] border-b-[3px]",
         "border-b-[color:var(--color-pipeline-line)]",
         "border-r-[color:var(--color-pipeline-line)]",
-        // Mobile: w-[200px] shrink-0 — fixed 200px, no shrink (row scrolls).
-        // Desktop: flex-1 min-w-0 — cards expand to fill equal widths.
         "w-[200px] shrink-0 md:w-auto md:min-w-0 md:flex-1",
       ].join(" ")}
       data-testid={testId}
@@ -121,17 +92,7 @@ export function YieldHistoryPanel() {
       data-testid="dashboard-panel-yield-history"
       data-node-id="3283:68333"
     >
-      {/*
-       * No section heading — per Figma frame 3283:67619, the "Top" row has no
-       * heading text. Layout mirrors Figma 3283:67619 (1136×460): two equal
-       * 560-wide columns with a 16px gap, stacked below md.
-       *   LEFT  (3283:67622): TVL card — spans the full column height, dark
-       *     bar chart anchored to the bottom.
-       *   RIGHT (3380:1920): vertical stack —
-       *     1. Cumulative Yield card (3283:68333, ~300h) — green bars, no tabs.
-       *     2. Three metric cards in a row (3380:1921, 144h).
-       *   All three metric cards are shown at every viewport (#749 Q3).
-       */}
+      {/* No section heading (Figma 3283:67619) — spec: docs/frontend/dashboard-components.md#yieldhistorypanel */}
       <div className="flex flex-col gap-4 md:h-[460px] md:flex-row">
         {/* LEFT column — TVL card (Figma 3283:67622); fills the full column height. */}
         <TvlCard
@@ -143,10 +104,7 @@ export function YieldHistoryPanel() {
 
         {/* RIGHT column (Figma 3380:1920) — Cumulative Yield card + metric cards. */}
         <div className="flex flex-col gap-4 md:flex-1">
-          {/*
-           * Cumulative Yield card — Figma node 3283:68333. No period tabs per design.
-           * Mobile: fixed 248px (Figma 3283:71770). Desktop: fills the right column.
-           */}
+          {/* Cumulative Yield card (Figma 3283:68333, no period tabs) */}
           <div
             className={[
               "flex h-[248px] flex-col gap-4 p-4 md:h-auto md:flex-1",
@@ -204,12 +162,7 @@ export function YieldHistoryPanel() {
                 />
               </div>
             ) : (
-              /*
-               * Seam: empty chart area when no yield data is available (API returned
-               * data but all cumulative_yield values are zero). Metric cards still
-               * render. Full empty state (all series null) is handled by
-               * PanelContainer `state="empty"` above.
-               */
+              // Empty chart seam — spec: docs/frontend/dashboard-components.md#yieldhistorypanel
               <div
                 className="h-[144px] md:h-auto md:flex-1"
                 aria-hidden="true"
@@ -218,11 +171,7 @@ export function YieldHistoryPanel() {
             )}
           </div>
 
-          {/*
-           * Metric cards row — Figma node 3380:1921 (three 176×144 cards, 16px gap).
-           * Mobile: overflow-x-auto horizontal scroll so all cards stay reachable.
-           * Desktop (md+): three equal flex-1 cards filling the right column.
-           */}
+          {/* Metric cards row (Figma 3380:1921) — spec: docs/frontend/dashboard-components.md#yieldhistorypanel */}
           <div
             className="overflow-x-auto"
             data-testid="yield-metric-cards-scroll"
@@ -241,10 +190,7 @@ export function YieldHistoryPanel() {
                 value={metricCards.loanBookYield}
                 data-testid="yield-metric-loan-book-yield"
               />
-              {/*
-               * "Target Net to sPLUSD" is the static product constant "8–12%".
-               * TODO(#738): wire live decomposed target APY once the backend serves it.
-               */}
+              {/* Static product constant — spec: docs/frontend/dashboard-components.md#yieldhistorypanel. TODO(#738) */}
               <MetricCard
                 label="Target Net to sPLUSD"
                 value={metricCards.targetNetApy}

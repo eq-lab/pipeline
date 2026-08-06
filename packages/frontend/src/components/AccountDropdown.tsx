@@ -1,29 +1,6 @@
 /**
- * AccountDropdown — the panel that opens when the user clicks the WalletPill.
- *
- * Anchored under the WalletPill (absolute, right-aligned), dark surface.
- *
- * Figma reference: node 1506:104728 inside `Header / Connected` (1497:94752).
- *
- * Accepts:
- *   - `kind`              — active namespace (`'evm'` or `'stellar'`).
- *   - `onKindChange`      — called when the user clicks the other namespace tab.
- *   - `address`           — connected wallet address (or `undefined` when the
- *                           active namespace is not connected).
- *   - `formattedBalance`  — pre-formatted USDC balance string, e.g. `"$1,000.00"`.
- *   - `stellarPlusdBalance` — pre-formatted PLUSD balance string (e.g. `"$5,000.00"`),
- *                             only passed when Stellar is the active namespace and the
- *                             balance is non-zero. Omit/`undefined` to hide the row.
- *   - `stellarSplusdBalance` — sPLUSD token count string (e.g. `"1,234.56"`),
- *                              only passed when Stellar is the active namespace and the
- *                              balance is non-zero. Omit/`undefined` to hide the row.
- *   - `onConnect`         — called when the user clicks the "Connect {namespace}"
- *                           affordance in the not-connected state.
- *   - `onClose`           — called when the panel should be dismissed.
- *   - `onDisconnect`      — called when the user clicks Disconnect.
- *
- * This component is composed inside `TopBar` and is NOT exported from
- * `@pipeline/ui` (single-owner rule per docs/FRONTEND.md rule 2).
+ * spec: docs/frontend/dashboard-components.md#accountdropdown (dropdown balance rows,
+ * EVM/Stellar differences, Figma node 1506:104728).
  */
 import { useEffect, useRef } from "react";
 import { CoinIcon } from "@pipeline/ui";
@@ -112,10 +89,8 @@ function CheckGlyph() {
 
 // ── Token styles ──────────────────────────────────────────────────────────────
 
-// Dark surface — `--color-pipeline-ink` is #262524 (near-black), used for
-// primary CTA buttons; that is the closest "dark surface" token in theme.css.
-// White text uses `--color-pipeline-on-dark` (#ffffff).
-// Divider: thin line at low-opacity white (matches Figma separator between blocks).
+// Dark surface & divider styling rationale:
+// spec: docs/frontend/dashboard-components.md#accountdropdown.
 
 const panelClasses = [
   // Positioning — anchored under the pill, right-aligned.

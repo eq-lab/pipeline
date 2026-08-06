@@ -11,63 +11,8 @@ import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
 import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 
-/**
- * Deposit/Withdraw route — merged three-step conversion page.
- *
- * Direction is driven by the `?direction=deposit|withdraw` search param.
- * Unknown values fall back to `"deposit"`.
- *
- * URL contract:
- *   /deposit                       → direction = "deposit"
- *   /deposit?direction=deposit     → direction = "deposit"
- *   /deposit?direction=withdraw    → direction = "withdraw"
- *   /deposit?direction=<anything>  → falls back to "deposit"
- *   /withdraw                      → redirected here with direction=withdraw
- *
- * Chain-aware wiring (issue #552)
- * --------------------------------
- * The page reacts to `useWalletView().kind` (EVM vs Stellar). When Stellar is
- * active, the `useDepositFlow` adapter switches all data and actions to the
- * Stellar/Soroban stack (trustline step, SAC balances, XLM fee, etc.).
- * Flipping back to EVM restores the original behavior.
- *
- * Drives three steps:
- *
- * --- EVM Deposit ---
- * 1. Allow Pipeline to use USDC (Approve)
- * 2. Confirm USDC transfer (Confirm)
- * 3. Claim your PLUSD (Claim)
- *
- * --- EVM Withdraw ---
- * 1. Allow Pipeline to use PLUSD (Approve)
- * 2. Confirm PLUSD burn (Confirm)
- * 3. Claim your USDC (Claim)
- *
- * --- Stellar Deposit AND Withdraw ---
- * 1. Enable PLUSD (changeTrust — shown complete when PLUSD trustline exists)
- * 2. Enable USDC  (changeTrustUsdc — shown complete when USDC trustline exists)
- * 3. Confirm USDC transfer / PLUSD burn (request_deposit / request_withdrawal)
- * 4. Claim your PLUSD / USDC (claim_request + verifier signature)
- *
- * Both trustline rows are always shown in both directions (issue #604). Confirm
- * is gated until BOTH trustlines exist.
- *
- * Toast ids are scoped per chain+direction so a stale toast from one
- * direction/chain does not collide with a new one:
- *   EVM deposit:   approve-tx / deposit-tx / claim-tx
- *   EVM withdraw:  withdraw-approve-tx / withdraw-tx / withdraw-claim-tx
- *   Stellar trustlines: stellar-trust-plusd-tx / stellar-trust-usdc-tx (direction-independent)
- *   Stellar deposit:  stellar-deposit-tx / stellar-deposit-claim-tx
- *   Stellar withdraw: stellar-withdraw-tx / stellar-withdraw-claim-tx
- *
- * All hooks are called unconditionally per React's Rules of Hooks.
- *
- * Figma references:
- *   Deposit page: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812
- *   Withdraw page: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351
- *   Swap button: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157
- *   Wallet not connected: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885
- */
+// spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route
+// (URL contract, step sequences per chain/direction, toast id scoping, Figma refs).
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,10 +81,7 @@ function Deposit() {
   const isInitialDataLoad = flow.isDataPending && !hasLoadedDataRef.current;
 
   // ── Auto-reset once a deposit settles to `Completed` ──────────────────
-  // There is no terminal "done" state: when the latest deposit completes the
-  // form returns to its initial state so a fresh deposit can start. Dismiss the
-  // completed request (so this fires once), clear the input, and reset the
-  // request/claim mutations.
+  // spec: docs/frontend/wallet-flows.md#request-state-model
   const {
     isDepositCompleted,
     depositCompletedRequestId,
@@ -366,8 +308,7 @@ function Deposit() {
       const claimedAmount = lastClaimAmountRef.current;
       toast.update(toastId, {
         tone: "success",
-        // PLUSD claims surface the amount + a Stake CTA; USDC claims (withdraw)
-        // keep the plain confirmation since staking USDC doesn't apply.
+        // spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (claim toast)
         title: isDeposit
           ? claimedAmount
             ? `+${claimedAmount} PLUSD`
@@ -513,9 +454,8 @@ function Deposit() {
           onSwap={flow.isAnyTxInFlight ? undefined : onSwap}
         />
 
-        {/* Conditional: disconnected banner, data-pending (null), low-balance banner, OR three-step card */}
+        {/* spec: docs/frontend/dashboard-components.md#deposit-and-withdraw-route (banner precedence) */}
         {!flow.isConnected ? (
-          /* Wallet-not-connected banner. Figma: node 1994-7226. */
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
@@ -537,14 +477,10 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : isInitialDataLoad /* First load only: chain data / requests API still loading — render nothing until first resolved (avoids re-hide flicker on background refetches). */ ? null : isStellar &&
+        ) : isInitialDataLoad ? null : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
           flow.hasBalance === false ? (
-          /* No USDC trustline (Stellar deposit, no USDC balance) — must be
-             established before the account can hold or deposit USDC. Takes the
-             place of the low-balance banner; same layout, but the action adds
-             the USDC trustline instead of prompting to add funds. */
           <Card
             variant="yellow"
             data-testid="usdc-trustline-banner"
@@ -578,7 +514,6 @@ function Deposit() {
             </Button>
           </Card>
         ) : isDeposit && flow.hasBalance === false ? (
-          /* Insufficient-balance banner — deposit only. Figma: node 1825-10214. */
           <Card
             variant="yellow"
             data-testid="low-balance-banner"
@@ -615,7 +550,6 @@ function Deposit() {
             </Button>
           </Card>
         ) : isStellar && flow.trustlines.length === 2 ? (
-          /* Four-step card for Stellar: PLUSD trustline, USDC trustline, Confirm, Claim */
           <StepsCard
             data-testid={
               isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
@@ -662,7 +596,6 @@ function Deposit() {
             ]}
           />
         ) : (
-          /* Three-step card for EVM (deposit and withdraw) */
           <StepsCard
             data-testid={
               isDeposit ? "deposit-steps-card" : "withdraw-steps-card"
