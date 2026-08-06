@@ -105,15 +105,9 @@ export interface UseStellarChangeTrustUsdcResult {
 // ── Decode / error helpers ────────────────────────────────────────────────────
 
 /**
- * Decodes `request_withdrawal`'s transaction return value into the request id.
- *
- * The deployed contract's return shape changed from a bare `u128` to a tuple
- * `(request_id, amount)` — `scValToNative` then yields an ARRAY, and the old
- * `BigInt(String(native))` threw `Cannot convert 0,500000000000 to a BigInt`
- * (the comma is `String([0n, 500000000000n])`), dead-ending a withdrawal whose
- * burn had already succeeded on-chain (#1024). Accept both shapes: an
- * array/tuple's FIRST element is the id; a bare bigint/number/string is used
- * as-is. Anything else still throws for the caller's decode-error message.
+ * Return-shape-tolerant `request_withdrawal` result decode: tuple → first
+ * element, bare value as-is; throws on anything else (#1024).
+ * spec: docs/frontend/wallet-flows.md#withdrawal-request-decode
  */
 export function decodeRequestId(native: unknown): bigint {
   const candidate = Array.isArray(native) ? native[0] : native;
@@ -121,10 +115,8 @@ export function decodeRequestId(native: unknown): bigint {
 }
 
 /**
- * Normalizes an unknown thrown value into an `Error` with a readable message.
- * Wallet kits / RPC layers can reject with plain objects — the old
- * `new Error(String(err))` rendered those as `[object Object]` (#1024).
- * Prefers a string `.message` property; falls back to JSON, then `String`.
+ * Normalizes unknown thrown values into readable `Error`s (#1024).
+ * spec: docs/frontend/wallet-flows.md#error-normalization
  */
 export function toError(err: unknown): Error {
   if (err instanceof Error) return err;
@@ -209,9 +201,8 @@ export function clearInflightWithdrawal(address: string): void {
 // ── useStellarRequestWithdrawal ───────────────────────────────────────────────
 
 /**
- * Write hook for `request_withdrawal(sender, amount: i128)`. The deployed
- * contract returns a tuple `(request_id, amount)`; older builds returned the
- * bare `request_id: u128` — `decodeRequestId` accepts both (#1024).
+ * Write hook for `request_withdrawal(sender, amount: i128)`. Return shape:
+ * spec: docs/frontend/wallet-flows.md#withdrawal-request-decode.
  *
  * @example
  * ```tsx

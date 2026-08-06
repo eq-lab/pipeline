@@ -43,8 +43,13 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
    *   - `"success"` — keeps the numeric step badge on the left and replaces
    *     the action button on the right with a wide green pill containing a
    *     centred check icon (Figma node 1497-95272).
+   *   - `"error"` — red-tinted badge + `errorMessage` line; the action button
+   *     is KEPT so the user can retry. spec:
+   *     docs/frontend/wallet-flows.md#step-error-state
    */
-  state?: "idle" | "success";
+  state?: "idle" | "success" | "error";
+  /** Red message line under the label; rendered only when `state` is `"error"`. */
+  errorMessage?: string;
 }
 
 const rootClasses = [
@@ -95,19 +100,21 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
       onAction,
       loading = false,
       state = "idle",
+      errorMessage,
       className,
       ...rest
     },
     ref,
   ) {
     const isSuccess = state === "success";
+    const isError = state === "error";
 
     // When disabled and not in a special state, apply 30% opacity.
-    // Success and loading rows always render at full opacity so the user can
-    // see the check badge / spinner clearly.
+    // Success, error, and loading rows always render at full opacity so the
+    // user can see the check badge / error line / spinner clearly.
     const composed = [
       rootClasses,
-      disabled && !isSuccess && !loading ? "opacity-30" : "",
+      disabled && !isSuccess && !isError && !loading ? "opacity-30" : "",
       className,
     ]
       .filter(Boolean)
@@ -120,17 +127,40 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
         className={composed}
         {...rest}
       >
-        {/* Numbered square — always visible, including in success state */}
+        {/* Numbered square — always visible; red-tinted in the error state.
+            Inline styles (not class overrides) so they deterministically beat
+            the base badge/number classes regardless of Tailwind emit order. */}
         <div
           data-testid={`step-row-${step}-badge`}
           className={stepCircleClasses}
+          style={
+            isError ? { backgroundColor: "rgba(192, 57, 43, 0.12)" } : undefined
+          }
           aria-hidden="true"
         >
-          <span className={stepNumberClasses}>{step}</span>
+          <span
+            className={stepNumberClasses}
+            style={
+              isError ? { color: "var(--color-pipeline-negative)" } : undefined
+            }
+          >
+            {step}
+          </span>
         </div>
 
-        {/* Label */}
-        <span className={labelClasses}>{label}</span>
+        {/* Label (+ error line when state === "error") */}
+        <span className={labelClasses}>
+          {label}
+          {isError && errorMessage && (
+            <span
+              data-testid={`step-row-${step}-error`}
+              role="alert"
+              className="mt-0.5 block text-[13px] leading-[18px] text-[color:var(--color-pipeline-negative)]"
+            >
+              {errorMessage}
+            </span>
+          )}
+        </span>
 
         {/* Action button / loading spinner wrapper — matches Figma `ButtonCont` */}
         <div data-testid={`step-row-${step}-action`} className="shrink-0 p-1">

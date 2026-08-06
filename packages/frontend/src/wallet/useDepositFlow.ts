@@ -54,7 +54,8 @@ import { formatUsdc, formatUsdcCurrencyCompact } from "@/lib/usdc";
 
 export type Direction = "deposit" | "withdraw";
 
-export type StepState = "idle" | "success";
+/** spec: docs/frontend/wallet-flows.md#step-error-state */
+export type StepState = "idle" | "success" | "error";
 
 export interface StepInfo {
   label: string;
@@ -63,6 +64,8 @@ export interface StepInfo {
   loading: boolean;
   disabled: boolean;
   onAction: () => void;
+  /** Set only when `state` is `"error"` — the step row's red message line. */
+  errorMessage?: string;
 }
 
 /** Per-step write transaction state — used by the component for toast emission. */
@@ -786,10 +789,16 @@ export function useDepositFlow(
         ? "success"
         : "idle";
     const evmDepositStep2State: StepState =
-      evmDepositIsPendingClaim || evmClaim.isSuccess ? "success" : "idle";
+      evmDepositIsPendingClaim || evmClaim.isSuccess
+        ? "success"
+        : evmRequestDeposit.error && !evmRequestDeposit.isPending
+          ? "error"
+          : "idle";
     const evmDepositStep3State: StepState = evmClaim.isSuccess
       ? "success"
-      : "idle";
+      : evmClaim.error && !evmClaim.isPending
+        ? "error"
+        : "idle";
 
     const evmWithdrawStep1State: StepState =
       (evmHasSufficientWithdrawAllowance && isEvmConnected) ||
@@ -799,10 +808,14 @@ export function useDepositFlow(
     const evmWithdrawStep2State: StepState =
       evmWithdrawIsPendingClaim || evmClaimWithdrawal.isSuccess
         ? "success"
-        : "idle";
+        : evmRequestWithdrawal.error && !evmRequestWithdrawal.isPending
+          ? "error"
+          : "idle";
     const evmWithdrawStep3State: StepState = evmClaimWithdrawal.isSuccess
       ? "success"
-      : "idle";
+      : evmClaimWithdrawal.error && !evmClaimWithdrawal.isPending
+        ? "error"
+        : "idle";
 
     const evmStep1State = isDeposit
       ? evmDepositStep1State
@@ -918,6 +931,11 @@ export function useDepositFlow(
           if (isDeposit) evmRequestDeposit.write(amountBig);
           else evmRequestWithdrawal.write(amountBig);
         },
+        errorMessage:
+          evmStep2State === "error"
+            ? (isDeposit ? evmRequestDeposit.error : evmRequestWithdrawal.error)
+                ?.message
+            : undefined,
       },
       step3: {
         label: isDeposit ? "Claim your PLUSD" : "Claim your USDC",
@@ -939,6 +957,10 @@ export function useDepositFlow(
             );
           }
         },
+        errorMessage:
+          evmStep3State === "error"
+            ? (isDeposit ? evmClaim.error : evmClaimWithdrawal.error)?.message
+            : undefined,
       },
       step1Tx: {
         isPending: isDeposit
@@ -1039,11 +1061,17 @@ export function useDepositFlow(
 
   // Step 2 state (request).
   const stellarDepositStep2State: StepState =
-    stellarDepositIsPendingClaim || stellarClaim.isSuccess ? "success" : "idle";
+    stellarDepositIsPendingClaim || stellarClaim.isSuccess
+      ? "success"
+      : stellarRequestDeposit.error && !stellarRequestDeposit.isPending
+        ? "error"
+        : "idle";
   const stellarWithdrawStep2State: StepState =
     stellarWithdrawIsPendingClaim || stellarClaimWithdrawal.isSuccess
       ? "success"
-      : "idle";
+      : stellarRequestWithdrawal.error && !stellarRequestWithdrawal.isPending
+        ? "error"
+        : "idle";
   const stellarStep2State = isDeposit
     ? stellarDepositStep2State
     : stellarWithdrawStep2State;
@@ -1052,10 +1080,14 @@ export function useDepositFlow(
   const stellarStep3State: StepState = isDeposit
     ? stellarClaim.isSuccess
       ? "success"
-      : "idle"
+      : stellarClaim.error && !stellarClaim.isPending
+        ? "error"
+        : "idle"
     : stellarClaimWithdrawal.isSuccess
       ? "success"
-      : "idle";
+      : stellarClaimWithdrawal.error && !stellarClaimWithdrawal.isPending
+        ? "error"
+        : "idle";
 
   // Step gates
   const canStellarStep1Deposit =
@@ -1234,6 +1266,13 @@ export function useDepositFlow(
         if (isDeposit) stellarRequestDeposit.write(amountBig);
         else stellarRequestWithdrawal.write(amountBig);
       },
+      errorMessage:
+        stellarStep2State === "error"
+          ? (isDeposit
+              ? stellarRequestDeposit.error
+              : stellarRequestWithdrawal.error
+            )?.message
+          : undefined,
     },
     step3: {
       label: isDeposit
@@ -1274,6 +1313,11 @@ export function useDepositFlow(
           stellarClaimWithdrawal.write(stellarRequestIdBigInt, sig, deadline);
         }
       },
+      errorMessage:
+        stellarStep3State === "error"
+          ? (isDeposit ? stellarClaim.error : stellarClaimWithdrawal.error)
+              ?.message
+          : undefined,
     },
     step1Tx: {
       isPending: isDeposit ? changeTrust.isPending : changeTrustUsdc.isPending,

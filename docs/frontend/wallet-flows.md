@@ -94,6 +94,22 @@ Steps are labelled per (chain, direction):
 | 2 | Confirm USDC transfer | Confirm PLUSD burn | Confirm USDC transfer | Confirm PLUSD burn |
 | 3 | Claim PLUSD | Claim USDC | Claim PLUSD | Claim USDC |
 
+### Step error state
+
+Added by #1024, after a failed `requestWithdrawal` left the stepper looking fully successful (the
+burn had succeeded on-chain, so the backend indexed the request as `PendingClaim` and step 2 showed
+its green check) while the only failure signal was a console error and a transient toast.
+
+- `StepState` is `"idle" | "success" | "error"`. The request step (2) and claim step (3) derive
+  `"error"` from their underlying mutation: `mutation.error` set and the mutation not pending. The
+  success conditions **win over error** — if the backend/on-chain state says the step genuinely
+  completed (e.g. the request is `PendingClaim`), the flow is recoverable and the step stays green.
+- `StepInfo.errorMessage` carries the mutation's error message only while `state === "error"`.
+- Rendering (`@pipeline/ui` `StepRow`): the error state red-tints the numbered badge and shows the
+  message as a red line under the label, but **keeps the action button** so the user can retry —
+  unlike the success state, which replaces the button with the green check pill. Error and loading
+  rows always render at full opacity.
+
 ## Stake / unstake adapter (`useStakeFlow`)
 
 **Source:** `packages/frontend/src/wallet/useStakeFlow.ts`
@@ -142,3 +158,26 @@ _Scaffold — to be migrated from `packages/frontend/src/wallet/evm/**` under #9
 ## Stellar integration
 
 _Scaffold — to be migrated from `packages/frontend/src/wallet/stellar/**` under #995._
+
+### Withdrawal request decode
+
+`request_withdrawal`'s on-chain return shape changed without notice: the interface doc
+(`docs/generated/stellar-protocol-contracts.md`, fetched 2026-06-10) records `-> u128` (the bare
+request id), but the deployed contract returns a tuple `(request_id, amount)`. `scValToNative`
+turns that tuple into a JS array, and the original `BigInt(String(native))` decode threw
+`Cannot convert 0,500000000000 to a BigInt` (the comma is `String([0n, 500000000000n])`) — after
+the burn had already succeeded on-chain, so the request id was never persisted and the Claim step
+dead-ended (#1024).
+
+`decodeRequestId` (in `useStellarWithdrawalQueue.ts`) therefore accepts **both** shapes: an
+array/tuple's first element is the id; a bare bigint/number/string is used as-is. Anything else
+throws, preserving the caller's decode-error message. Regenerate the interface doc when the
+`stellar` CLI is available to pin the exact tuple types.
+
+### Error normalization
+
+Wallet kits and RPC layers can reject with plain objects, which `new Error(String(err))` rendered
+as `[object Object]` (#1024). `toError` (same file) normalizes any thrown value into an `Error`:
+real `Error`s pass through; objects with a string `.message` use it; strings become the message;
+everything else falls back to JSON, then `String`. All withdrawal-queue mutation catches route
+through it.
