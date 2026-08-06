@@ -1,25 +1,10 @@
 /**
- * React Query hook — fetches one loan's collateral valuation from the Pipeline
- * API (`GET /v1/loan-book/{loan_id}/valuations`) for the Trustee **Loan detail**
- * page's Price & collateral section (issues #845 / #847, Figma node `4116:10549`).
+ * React Query hook — fetches one loan's collateral valuation
+ * (`GET /v1/loan-book/{loan_id}/valuations`) for the Trustee Loan detail
+ * page's Price & collateral section.
  *
- * Mirrors `useLoanBook.ts`'s conventions (queryKey shape, `apiFetch`,
- * `refetchInterval`, Stellar-scoped `chain_id`). Like the rest of the Trustee
- * app it does NOT depend on `@pipeline/frontend` (epic #775), so the types below
- * are a self-contained port of the backend DTO
- * (`packages/api/src/routes/collateral_valuation.rs`, `CollateralValuationResponse`)
- * rather than an import — a fifth hand-mirroring alongside TD-42's existing
- * trustee/LP pairs (see `docs/exec-plans/tech-debt-tracker.md`).
- *
- * ## Scale note
- * This endpoint recomputes collateral value and CCR in **plain USD**, so its
- * money fields (`collateral_value`, `ccr.collateral_value`,
- * `ccr.outstanding_senior_principal`) are correct-scale decimal strings —
- * display them as served, via plain `formatCompactUsd`. (The frontend no
- * longer rescales any endpoint's amounts — the ×1000 `scaleRegistryAmount`
- * workaround was removed project-wide in issue #906.) `inputs.haircut_pct`
- * is a fraction in `[0,1]` (e.g. `"0.10"` = 10%). `ccr.ccr_pct` is a percent
- * string (`"178.00"`).
+ * spec: docs/frontend/trustee-flows.md#price--collateral-card (scale note,
+ * TD-42 hand-mirroring).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -40,17 +25,7 @@ export interface MetalInput {
   rc_per_oz: string;
 }
 
-/**
- * One penalty-tier input line (concentrate mode).
- *
- * `level_pct` / `threshold_pct` / `step_pct` are **percent-normalised** by the
- * backend (#966) — always in percent regardless of whether the tier was authored
- * in percent or ppm (a `10` ppm tier echoes as `0.001`, not `10`). So whoever
- * renders these should treat them as percent (append a `%`, no scaling and no
- * ppm conversion). Not currently surfaced anywhere in the Console (#986
- * verification: no penalty display and no offtake-authoring form yet) — this
- * note documents the contract for when they are.
- */
+// One penalty-tier input line (concentrate mode). spec: trustee-flows.md#price--collateral-card.
 export interface PenaltyInput {
   element: string;
   level_pct: string;

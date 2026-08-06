@@ -1,18 +1,10 @@
 /**
- * React Query mutation hook — wires the Trustee Approve/Reject controls on the
- * **Cash Management** On/Off-ramp review queue (issue #943) to
- * `POST /v1/ramp/events/{id}/review` (backend #936).
+ * React Query mutation hook — wires the Trustee Approve/Reject controls on
+ * the Cash Management On/Off-ramp review queue to
+ * `POST /v1/ramp/events/{id}/review`. Mirrors `useReviewSubmission.ts`'s
+ * contract shape (`loan_book::review_submission`).
  *
- * Contract source of truth: `packages/api/src/routes/ramp.rs`,
- * `review_ramp_event` (mirrors `loan_book::review_submission`):
- *   - Approve → `{ decision: "Approved" }`, **no** `reason` key.
- *   - Reject  → `{ decision: "Rejected", reason: "<non-empty>" }`.
- *   - Only a pending event is reviewable (an already-decided one → `409`).
- *   - `200` on success with an empty body; `apiFetch` injects the bearer token
- *     (#791) and throws a typed `ApiError` (`.status`) on any non-2xx.
- *
- * On success, invalidates every `["ramp-events", ...]` query so the queue
- * refetches and the reviewed event drops off. Mirrors `useReviewSubmission.ts`.
+ * spec: docs/frontend/trustee-flows.md#onoff-ramp-tab.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";

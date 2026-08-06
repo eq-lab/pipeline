@@ -6,40 +6,11 @@ import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
 
 /**
- * Record Repayment — Principal full-page route (issue #884, Figma node
- * `4116-11621`) — the destination opened by clicking the existing "Close
- * loan" other-action on the loan-detail page (`loans.$id.tsx`; that action
- * does NOT close the loan directly — it opens this page, where the trustee
- * records the final principal repayment and only then closes the loan).
+ * Record Repayment — Principal full-page route — the destination opened by
+ * clicking the existing "Close loan" other-action on the loan-detail page.
  *
- * A full-screen page, not a modal, mirroring the Record Coupon route
- * (`loans.$id_.record-coupon.tsx`, #882) — registered as a NON-nested child
- * of the `/loans` layout via the `$id_` trailing-underscore file-name escape,
- * for the same reason that route's doc comment describes.
- *
- * ## Scope
- * Previews the payment waterfall for a trustee-entered final offtaker
- * payment via `useLoanWaterfall`, then records it on-chain via
- * `useRecordPayment` (`record_payment`, the same write #882 uses). Unlike the
- * coupon page, `Senior principal returned` here is the REAL waterfall figure
- * (this is a principal repayment, not an interest-only coupon) — see
- * `-record-repayment.ts`'s module doc.
- *
- * ## Close loan (new on-chain write, issue #884)
- * Once the loan is fully repaid (`view.showCloseLoan`), a second action
- * appears that calls `useCloseLoan` (`close_loan`) with the resolved
- * `ClosureReason` (`view.closureReason` — `ScheduledMaturity` at/after
- * maturity, else `EarlyRepayment`) and navigates back to the loan detail page
- * on success.
- *
- * ## Chips (never-fabricate)
- * Only the static "Your key · no cash moves" copy chip renders — the Figma's
- * "Recorded · 24 Jun" progress chip is omitted (no backend source ever marks
- * a repayment "recorded" on this page), mirroring #882's chip policy.
- *
- * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; all data
- * wiring + value→display mapping lives in the colocated `-record-repayment.ts`
- * view-model hook.
+ * spec: docs/frontend/trustee-flows.md#route-registration--page-shell
+ * (routing, close-loan write, chips).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";

@@ -1,20 +1,12 @@
 import type { CcrTrend } from "./-useLoanDetail";
 
 /**
- * The CCR-trend line-chart SVG (Figma nodes `4116:10868` / `4116-12953`),
- * drawn from the real `/ccr-history` series (`useLoanCcrHistory` +
- * `buildCcrTrend`, issue #879). Extracted from the Watchlist loan-detail page
- * (`loans.$id.tsx`, issue #859) so it can be reused, unwrapped, inside the
- * Risk Council "Escalate to Default" ledger card (issue #782) — that Figma
- * embeds the same chart directly inside a bordered section (no separate
- * white card / title), unlike the loan-detail page's own `CcrTrendCard`
- * (title + bordered card), which now wraps this component.
+ * The CCR-trend line-chart SVG, drawn from the real `/ccr-history` series.
+ * Extracted from the Watchlist loan-detail page so it can be reused,
+ * unwrapped, inside the Risk Council "Escalate to Default" ledger card.
  *
- * The y-scale is per-loan: it spans the series' own CCR range widened to
- * include the threshold guide-lines, so the decline and its distance to the
- * 120% / 110% levels read correctly for each loan. A single point renders as
- * a dot. `viewBox` is 440×124 (the Figma SVG box) and scales to the container
- * width.
+ * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868,
+ * docs/frontend/trustee-flows.md#escalate-to-default-flow-10--proposal-builder-not-a-typed-payload.
  */
 
 const NEGATIVE_RED = "#b20000";

@@ -1,14 +1,10 @@
 /**
  * React Query hook — the pending ramp-boundary review queue for the Trustee
- * **Cash Management** On/Off-ramp tab (`GET /v1/ramp/events`, issue #943, backend
- * #936). Mirrors `useLoanBook.ts` conventions (queryKey shape, `apiFetch`,
- * `refetchInterval`, Stellar-scoped `chain_id`).
+ * Cash Management On/Off-ramp tab (`GET /v1/ramp/events`). Serves only
+ * pending events; a reviewed (Approved or Rejected) event drops off the
+ * list. Mirrors `useLoanBook.ts` conventions (TD-42 hand-mirror).
  *
- * Contract source of truth: `packages/api/src/routes/ramp.rs`,
- * `list_ramp_events` — serves ONLY **pending** events (both on-ramp and
- * off-ramp); a reviewed (Approved or Rejected) event drops off the list. The
- * types below are a self-contained port of the backend DTO (TD-42 hand-mirror,
- * like the rest of the Trustee `api/` hooks — no `@pipeline/frontend` dep).
+ * spec: docs/frontend/trustee-flows.md#onoff-ramp-tab.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";

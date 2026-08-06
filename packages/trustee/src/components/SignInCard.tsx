@@ -3,31 +3,10 @@ import { LockIcon } from "@/components/LockIcon";
 import { useTrusteeSession } from "@/auth/TrusteeSessionProvider";
 
 /**
- * SignInCard — the "Login Prompt" card from the Trustee sign-in overlay
- * (Figma node `4174:33891`, frame `4174-31660`, "Unauthenticated Overlay").
+ * SignInCard — the "Login Prompt" card from the Trustee sign-in overlay.
  *
- * Pixel/token mapping from the Figma export (see issue #787):
- *   - Card: white surface, `border-[rgba(50,56,55,0.18)]` → matches
- *     `--color-pipeline-line` (same rgb/alpha), `rounded-[24px]` (no existing
- *     radius token is 24px — `--radius-pipeline-card-lg` is 16px — so this is
- *     a documented one-off arbitrary value), `p-[32px]` / `gap-[24px]`,
- *     fixed `w-[520px]`, subtle `backdrop-blur` (Figma "Blur" effect,
- *     radius 32).
- *   - Icon badge: navy circle, `size-[56px]`, `rounded-[28px]` (= a perfect
- *     circle at this size), fill `--color-pipeline-brand` (`#000080` — exact
- *     token match), centered white 24px `LockIcon`.
- *   - Heading: Besley display serif, 36px/46px line-height, ink token.
- *   - Subtext: body 16px/22px, ink-muted token.
- *   - Actions: full-width black pill button (`--color-pipeline-cta` fill,
- *     `--radius-pipeline-pill` radius, 48px tall) labelled "Connect Wallet";
- *     caption footer, ink-muted, centered.
- *
- * "Connect Wallet" wires to the real sign-in flow (#791):
- * connect wallet → `GET /v1/auth/challenge` → sign the message → `POST
- * /v1/auth/verify` → store the JWT → redirect to the dashboard. The
- * `unauthorized` status (backend `401` — address not on the allow-list) is
- * rendered inline as an error state on the card. There is no client-side
- * on-chain role check; authorization is entirely server-side.
+ * spec: docs/frontend/trustee-flows.md#sign-in-card-figma-node-417433891-frame-4174-31660-unauthenticated-overlay
+ * (Figma → token mapping), docs/frontend/trustee-flows.md#sign-in-flow-791-hardened-793794795.
  */
 export function SignInCard() {
   const { status, error, signIn, signOut } = useTrusteeSession();
@@ -41,8 +20,6 @@ export function SignInCard() {
         "rounded-[24px] border border-solid",
         "border-[color:var(--color-pipeline-line)]",
         "bg-[color:var(--color-pipeline-surface)]",
-        // Figma "Blur" effect (background blur, radius 32) — no shared token,
-        // scoped to this card only.
         "backdrop-blur-[16px]",
       ].join(" ")}
       data-testid="sign-in-card"
@@ -79,11 +56,7 @@ export function SignInCard() {
       <div className="flex w-full flex-col items-start gap-3">
         <Button
           variant="primary-dark"
-          // `!` overrides Button's built-in `rounded-[var(--radius-pipeline-button)])`
-          // and `min-w-12` — same pattern the Button component itself uses for
-          // its `compact` size override (Tailwind v4 equal-specificity hazard,
-          // Issue #357). Figma's `radius/radius-full` (240px) maps to the
-          // existing pill token.
+          // spec: docs/frontend/trustee-flows.md#sign-in-card-figma-node-417433891-frame-4174-31660-unauthenticated-overlay.
           className="!w-full !min-w-0 !rounded-[var(--radius-pipeline-pill)]"
           disabled={isConnecting}
           onClick={isUnauthorized ? signOut : signIn}

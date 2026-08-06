@@ -8,103 +8,16 @@ import { DocumentIcon } from "@/components/DocumentIcon";
 import { InlineError } from "@pipeline/ui";
 
 /**
- * Origination details / review page (issue #821, Figma node `4116:9292`) —
- * the destination opened by clicking a "Review" control on the #813
- * Origination table or the #818 Needs Attention section. Supersedes the
- * closed #816.
- *
- * Resolved decisions (issue #821 — see the exec plan for full detail):
- *   - NO Collateral Valuation card. The Figma's valuation card
- *     (waterfall/CCR/inputs/freshness chip/on-chain-ticks footnote) is
- *     omitted entirely — it is INCORRECT (no submission is anchored
- *     on-chain pre-mint, so there is no `loan_id` to call
- *     `GET /v1/loan-book/{loan_id}/valuations` with).
- *   - Approve / Reject render per Figma and are WIRED (issue #829) to
- *     `POST /v1/loan-book/submissions/{id}/review` via
- *     `-useOriginationReview.ts` / `useReviewSubmission`. Approve additionally
- *     performs a trustee-wallet-signed on-chain `draw_loan` mint BEFORE that
- *     review call (issue #831 — see "Approve/Reject wiring" below). As of
- *     issue #838, Approve opens the `-ApproveMintDialog` confirmation dialog
- *     (Figma `4116:13943`) rather than minting immediately — see that
- *     section. The inert "Request changes" button and the "Approval mints
- *     the loan NFT…" footer note were both removed by issue #838 (no
- *     backend endpoint for the former; the latter was redundant with the
- *     new dialog's copy).
- *   - Only the backend-backed status chip renders. The Figma's static
- *     "Your key · one click" chip and "NSR · Net Smelter Return"
- *     valuation-mode chip are both dropped — no data source, never
- *     fabricated. The "All three mint invariants pass" and "Originator
- *     signature verified" green banners are likewise omitted entirely (not
- *     gated behind a flag — there is no path to ever showing them here).
- *   - Direct-URL / refresh access (no router state): refetch the submission
- *     by `$id` from the submissions list; render a not-found state if
- *     absent.
- *
- * ## Status-conditional footer (issue #823, Figma node `4116:9656`)
- *
- * The always-shown `ActionButtons` block below is now rendered only for
- * `InReview`. `Approved` and `Rejected` submissions instead render a colored
- * banner in its place:
- *   - `ApprovedBanner` — green (`--color-pipeline-positive-primary`),
- *     "Approved & minted · `<date>`" (restored by #831 — see below). The
- *     Figma's "funded from batch #B-102 →" segment is OMITTED — no `batch`
- *     field exists on `SubmissionView`/`loan_data`; never fabricated.
- *   - `RejectedBanner` — red (`--color-pipeline-negative`), "Rejected ·
- *     `<date>` — `<reason>`" (`reason` = `SubmissionView.reason`, backed).
- *     No Figma reference exists for this state; it mirrors the Approved
- *     banner's shape/tokens in red.
- * Both dates are `updated_at` formatted via `formatSubmittedDate` (surfaced
- * as `reviewedDate` by the view-model) — NOT `formatMaturityDate` (Unix
- * seconds + year).
- *
- * ## Approve/Reject wiring (issue #829, extended by #831's chain-first mint,
- * gated behind a confirmation dialog by #838)
- *
- * `ActionButtons` (the InReview footer) now fires real mutations via
- * `useOriginationReview` (composing `useDrawLoan` and `useReviewSubmission`):
- *   - **Approve** OPENS the `-ApproveMintDialog` confirmation dialog (issue
- *     #838, Figma `4116:13943`) — it no longer mints immediately. The
- *     dialog's transaction-preview code block renders `detail.transactionPreview`
- *     (real `loan_data`, `—` fallbacks; the four green mint-invariant rows
- *     are omitted — no backing data). Clicking the dialog's "Mint loan"
- *     button runs the UNCHANGED chain-first #831 orchestration: `useDrawLoan`
- *     builds → simulates (the "verify the loan" step) → requests the
- *     connected trustee wallet's signature → submits → polls the `draw_loan`
- *     mint to a terminal status BEFORE `useReviewSubmission`'s
- *     `POST .../review {decision:"Approved"}` ever fires. The "Mint loan"
- *     button's label swaps through the mint's progress stages ("Waiting for
- *     wallet signature…" → "Submitting on-chain…" → "Confirming…" →
- *     "Finalizing approval…").
- *   - A wallet rejection or any mint failure (simulate/send/poll) makes
- *     **no** review call — the submission stays `InReview`, a mapped
- *     retryable error renders inline inside the dialog, and no signature is
- *     ever requested if the simulate step fails. Cancel/Escape/backdrop are
- *     locked while minting (see `-ApproveMintDialog.tsx`) but available once
- *     the error settles.
- *   - **Reject** is unchanged: opens `RejectReasonDialog` (re-skinned to
- *     Figma `4116:14123` by #838 — same min-5-trimmed-chars-reason logic,
- *     "Send to originator" + Cancel), a pure DB review call.
- *   - **Request changes** (#1017): opens `RequestChangesDialog` (textarea
- *     reason, same min-5-trimmed-chars validation) and posts the non-final
- *     `{decision:"ChangesRequested", reason}` review — a pure DB call, no
- *     mint; the footer then flips to the #950 Changes-requested banner.
- *   - All three page-level buttons disable while any mutation
- *     is in flight; a mapped error (mint failure, or the #829 review errors:
- *     409 "already reviewed", 403 "not authorized", 401 session-expired,
- *     other generic) renders inside whichever dialog is open, or inline near
- *     the buttons as a defensive fallback if neither is.
- *   - On success, the submissions list is invalidated and
- *     `-origination-detail.ts`'s resolution fix (prefer the live list copy
- *     over stale router state) flips this footer to the Approved/Rejected
- *     banner without a manual refresh; the approve dialog closes itself on
- *     review success.
- * The inert "Request changes" button and the "Approval mints the loan NFT…"
- * footer note were both removed by issue #838.
- *
+ * Origination details / review page — the destination opened by clicking a
+ * "Review" control on the Origination table or the Needs Attention section.
  * The `.tsx` is JSX/styling only; all data extraction + formatting lives in
- * the colocated `-origination-detail.ts` view-model hook (mirroring
- * `-useOriginationTable.ts`'s split), and all Approve/Reject orchestration
- * lives in `-useOriginationReview.ts` (`docs/FRONTEND.md` rule 2).
+ * the colocated `-origination-detail.ts` view-model hook, and all
+ * Approve/Reject orchestration lives in `-useOriginationReview.ts`
+ * (`docs/FRONTEND.md` rule 2).
+ *
+ * spec: docs/frontend/trustee-flows.md#origination-detail-originationid-issue-821,
+ * docs/frontend/trustee-flows.md#status-conditional-footer-823-figma-node-41169656-copy-amended-by-829-restored-by-831,
+ * docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -299,17 +212,8 @@ interface ActionButtonsProps {
   errorDetails: string | null;
 }
 
-/**
- * The InReview footer's action buttons. `onApprove` OPENS the
- * `-ApproveMintDialog` confirmation dialog (issue #838) — the chain-first
- * mint-then-review flow (issue #831) now runs only from that dialog's "Mint
- * loan" action, not directly from this button. `onReject` opens the
- * reject-reason dialog (owned by the caller). All buttons disable while any
- * mutation is in flight. The inert "Request changes" button #838 removed is
- * back as a WIRED control (#1017): `onRequestChanges` opens the
- * request-changes reason dialog, which submits the non-final
- * `ChangesRequested` review decision (a pure DB call, no mint).
- */
+// spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831,
+// docs/frontend/trustee-flows.md#request-changes-1017.
 function ActionButtons({
   onApprove,
   onReject,
@@ -365,18 +269,7 @@ function ActionButtons({
   );
 }
 
-/**
- * Green "Approved & drawn · `<date>`" banner (issue #823, Figma node
- * `4116:9656`; copy restored by #831), rendered in place of `ActionButtons`
- * for Approved submissions. Approve performs a real trustee-wallet-signed
- * on-chain `draw_loan` before this banner ever renders (issue #831).
- *
- * When the just-drawn `loanId` is known (#876 — captured from the mint tx in
- * this session), the banner appends a "View loan →" deep-link to the loan's
- * detail page so the trustee can jump straight there. On a page reload the id
- * is gone (the mint mutation's data isn't persisted — accepted residual), so
- * the link is simply omitted.
- */
+// spec: docs/frontend/trustee-flows.md#status-conditional-footer-823-figma-node-41169656-copy-amended-by-829-restored-by-831.
 function ApprovedBanner({
   date,
   loanId,
@@ -411,12 +304,7 @@ function ApprovedBanner({
   );
 }
 
-/**
- * Red "Rejected · `<date>` — `<reason>`" banner (issue #823), rendered in
- * place of `ActionButtons` for Rejected submissions. No Figma reference
- * exists for this state — mirrors `ApprovedBanner`'s container shape in the
- * red tokens already used by this route's `StatusPill`.
- */
+// spec: docs/frontend/trustee-flows.md#status-conditional-footer-823-figma-node-41169656-copy-amended-by-829-restored-by-831.
 function RejectedBanner({ date, reason }: { date: string; reason: string }) {
   return (
     <div
@@ -430,13 +318,7 @@ function RejectedBanner({ date, reason }: { date: string; reason: string }) {
   );
 }
 
-/**
- * Sweet-orange "Changes requested · `<date>` — `<reason>`" banner (#950), rendered in
- * place of `ActionButtons` for ChangesRequested submissions. A non-final state —
- * the trustee already asked for changes and is waiting on the originator to
- * resubmit — so no action buttons. Mirrors `RejectedBanner`'s shape in the
- * sweet-orange `#c2500a` one-off (no token; matches the `StatusPill` chip).
- */
+// spec: docs/frontend/trustee-flows.md#status-conditional-footer-823-figma-node-41169656-copy-amended-by-829-restored-by-831.
 function ChangesRequestedBanner({
   date,
   reason,

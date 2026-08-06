@@ -1,31 +1,12 @@
 /**
- * View-model + data wiring for the Trustee **Risk Council — Amend economics
- * (off-cycle re-term)** page (`risk-council.reterm.$id.tsx`, issue #782, Figma
- * node `4116-13481`). Per `docs/FRONTEND.md` Code structure rule 2 the `.tsx`
- * route is JSX/styling only; this hook owns the live fetches + value→display
- * mapping (mirrors `-risk-council-escalate.ts`).
+ * View-model + data wiring for the Trustee Risk Council — Amend economics
+ * (off-cycle re-term) page (`risk-council.reterm.$id.tsx`). Per
+ * `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is JSX/styling
+ * only; this hook owns the live fetches + value→display mapping (mirrors
+ * `-risk-council-escalate.ts`).
  *
- * ## Flow (spec `docs/product-specs/trustee-dashboard.md` §"Type 3", flow 11)
- * Off-cycle re-term is a RISK_COUNCIL `amendEconomics` proposal. Unlike
- * Escalate-to-Default (flow 10, which the Trustee drafts + submits), this is a
- * **read-only REVIEW** screen: the Trustee dashboard only shows the review,
- * evidence, and voting status — execution stays with the Risk Council Safe
- * after the 24h timelock, GUARDIAN-cancelable. There is no submit action.
- *
- * ## Real vs. mock (data-sourcing convention)
- * **Real** — the loan's CURRENT terms, per-loan:
- *   - Loan (originator — commodity), CCR (`ccr_bps`), Maturity (`maturity`) —
- *     the matching `useLoanBook` entry.
- *   - Current coupon — the current epoch APY (`useLoanFinancials`
- *     `epoch.current_apy_bps`); falls back to the loan-book `rate` when no
- *     epoch is on record. `—` when neither is available (never fabricated).
- *
- * **Mock** — the PROPOSED amendment + the proposal timestamp. No Safe/proposal
- * backend exists (`RiskCouncilSafe.propose(amendEconomics)` is RISK_COUNCIL-
- * only, not Trustee-callable, and nothing serves a pending proposal), so the
- * proposed coupon / maturity extension / covenant / expected status and the
- * "21 Jun 2026, 14:32 UTC" stamp are static Figma literals until that infra
- * lands — the same convention as flow 10's proposal section.
+ * spec: docs/frontend/trustee-flows.md#amend-economics--off-cycle-re-term-flow-11--read-only-review
+ * (flow, real-vs-mock data sourcing).
  */
 import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
@@ -56,11 +37,7 @@ export function formatLoanLabel(
   return `${originator ?? "—"} — ${commodity ?? "—"}`;
 }
 
-/**
- * The loan's CURRENT coupon — the current epoch APY (`current_apy_bps`), or the
- * loan-book `rate` decimal fraction when no epoch is on record. `—` when
- * neither is available. Never fabricated.
- */
+// Current epoch APY, falling back to the loan-book `rate`; "—" when neither is available.
 export function formatCurrentCoupon(
   apyBps: number | null | undefined,
   rateDecimal: string | null | undefined,
