@@ -32,6 +32,12 @@ export interface CapitalBuckets {
   capital_wallet: string | null;
   /** Funds converting at providers (on/off-ramp). `null` when not yet indexed. */
   in_transit: string | null;
+  /**
+   * The Withdrawal Queue Wallet's current USDC balance (backend #933,
+   * rendered per #1020). `null` when no queue wallet is configured for the
+   * chain. Included in the served `total` when present.
+   */
+  withdrawal_queue: string | null;
   /** USD residuals held in the trust account. `null` when not yet indexed. */
   trust_account: string | null;
   /** Σ senior tranche over active loans. `null` when not yet indexed. */

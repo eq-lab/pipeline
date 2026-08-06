@@ -64,6 +64,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -87,6 +88,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: "9000000.000000",
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -111,6 +113,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -131,6 +134,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: "9000000.000000",
           in_transit: "4950000.000000",
+          withdrawal_queue: null,
           trust_account: "1200000.000000",
           deployed: "96000000.000000",
           tbills: "4040000.000000",
@@ -152,6 +156,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: null,
           tbills: null,
@@ -176,6 +181,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: null,
           tbills: null,
@@ -196,6 +202,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -225,6 +232,7 @@ describe("useCapitalAllocationCard — Capital Wallet on-chain fold-in (#805)", 
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -261,6 +269,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: "8400000.000000",
           in_transit: "4950000.000000",
+          withdrawal_queue: null,
           trust_account: "1200000.000000",
           deployed: "96000000.000000",
           tbills: "4640000.000000",
@@ -278,6 +287,59 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
     expect(percentOf(result.current.legend, "tbills")).toBe("4%");
   });
 
+  it("renders the served withdrawal_queue bucket with value, percent, and bar fraction (#1020)", () => {
+    // Mirrors the live stage response that exposed the gap: total $15.2M =
+    // deployed $5.2M + withdrawal_queue $10M; no on-chain wallet read.
+    mockCapitalAllocation({
+      data: {
+        total: "15200000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: "0.000000",
+          withdrawal_queue: "10000000.000000",
+          trust_account: "0.000000",
+          deployed: "5200000.000000",
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    const row = result.current.legend.find((r) => r.key === "withdrawal_queue");
+    expect(row?.label).toBe("Withdrawal queue");
+    expect(row?.value).toBe("$10M");
+    expect(row?.percentDisplay).toBe("66%");
+    expect(row?.barFraction).toBeCloseTo(10_000_000 / 15_200_000, 10);
+    // The legend keeps the null-bucket behavior for the others.
+    expect(result.current.legend).toHaveLength(6);
+  });
+
+  it("renders '—' and no percent/segment for a null withdrawal_queue (#1020)", () => {
+    mockCapitalAllocation({
+      data: {
+        total: "5200000.000000",
+        buckets: {
+          capital_wallet: null,
+          in_transit: null,
+          withdrawal_queue: null,
+          trust_account: null,
+          deployed: "5200000.000000",
+          tbills: null,
+        },
+      },
+    });
+    mockCapitalWalletBalance({ data: undefined });
+
+    const { result } = renderHook(() => useCapitalAllocationCard());
+
+    const row = result.current.legend.find((r) => r.key === "withdrawal_queue");
+    expect(row?.value).toBe("—");
+    expect(row?.percentDisplay).toBeNull();
+    expect(row?.barFraction).toBeNull();
+  });
+
   it("computes the capital_wallet percentage against the on-chain-augmented total (double-count guard scenario)", () => {
     mockCapitalAllocation({
       data: {
@@ -285,6 +347,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -307,6 +370,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -332,6 +396,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: null,
           tbills: null,
@@ -355,6 +420,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "100000000.000000",
           tbills: "500000.000000",
@@ -379,6 +445,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: "999999.000000",
+          withdrawal_queue: null,
           trust_account: null,
           deployed: null,
           tbills: null,
@@ -397,6 +464,7 @@ describe("useCapitalAllocationCard — per-bucket percentage pills (#805 scope a
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: "1000000.000000",
           deployed: null,
           tbills: null,
@@ -427,6 +495,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         buckets: {
           capital_wallet: "8400000.000000",
           in_transit: "4950000.000000",
+          withdrawal_queue: null,
           trust_account: "1200000.000000",
           deployed: "96000000.000000",
           tbills: "4640000.000000",
@@ -460,6 +529,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,
@@ -484,6 +554,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: null,
           tbills: null,
@@ -506,6 +577,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "100000000.000000",
           tbills: "500000.000000",
@@ -529,6 +601,7 @@ describe("useCapitalAllocationCard — proportional allocation bar (barFraction,
         buckets: {
           capital_wallet: null,
           in_transit: null,
+          withdrawal_queue: null,
           trust_account: null,
           deployed: "96000000.000000",
           tbills: null,

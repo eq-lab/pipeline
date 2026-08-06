@@ -40,6 +40,7 @@ const FIXTURE_FULL: CapitalAllocation = {
   buckets: {
     capital_wallet: "8400000.000000",
     in_transit: "4950000.000000",
+    withdrawal_queue: null,
     trust_account: "1200000.000000",
     deployed: "96000000.000000",
     tbills: "4640000.000000",
@@ -51,6 +52,7 @@ const FIXTURE_DEPLOYED_ONLY: CapitalAllocation = {
   buckets: {
     capital_wallet: null,
     in_transit: null,
+    withdrawal_queue: null,
     trust_account: null,
     deployed: "96000000.000000",
     tbills: null,
