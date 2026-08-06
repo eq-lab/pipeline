@@ -1,29 +1,12 @@
 /**
- * View-model + data wiring for the Trustee **Risk Council — Write-down close
- * (Default resolution)** page (`risk-council.writedown.$id.tsx`, issue #782,
- * Figma node `4116-13625`). Per `docs/FRONTEND.md` rule 2 the `.tsx` route is
- * JSX/styling only; this hook owns the live fetch + value→display mapping
- * (mirrors `-risk-council-reterm.ts`).
+ * View-model + data wiring for the Trustee Risk Council — Write-down close
+ * (Default resolution) page (`risk-council.writedown.$id.tsx`). Per
+ * `docs/FRONTEND.md` rule 2 the `.tsx` route is JSX/styling only; this hook
+ * owns the live fetch + value→display mapping (mirrors
+ * `-risk-council-reterm.ts`).
  *
- * ## Flow (spec `docs/product-specs/trustee-dashboard.md` §"Type 3", flow 12)
- * Write-down close is a RISK_COUNCIL `closeLoan(reason: OtherWriteDown)`
- * proposal. Like flow 11 (and unlike flow 10) it is a **read-only REVIEW**
- * screen — the Trustee has NO close button on this flow ("PLUSD backing impact
- * and audit trail are shown before execution"). Execution stays with the Risk
- * Council Safe after the timelock, GUARDIAN-cancelable.
- *
- * ## Real vs. mock (data-sourcing convention)
- * **Real** — the loan's resolution ledger identity, per-loan:
- *   - Loan (originator — commodity) and Principal outstanding
- *     (`senior_outstanding`, served display-scale as-is, #906) — the matching
- *     `useLoanBook` entry.
- *
- * **Mock** — the write-down resolution + the Safe voting layer. Nothing serves
- * a recovery-received figure, a pending `closeLoan` proposal, its `loanId`
- * string / recoveryAmount / writeDown, per-signer voting status, or the queue
- * timelock. `RiskCouncilSafe.propose(closeLoan)` is RISK_COUNCIL-only, not
- * Trustee-callable. Static Figma literals until that infra lands — the same
- * convention as flows 10/11's proposal sections.
+ * spec: docs/frontend/trustee-flows.md#write-down-close--default-resolution-flow-12--read-only-no-action
+ * (flow, real-vs-mock data sourcing).
  */
 import { useLoanBook } from "@/api/useLoanBook";
 import { formatFullUsd } from "@/utils/formatUsd";

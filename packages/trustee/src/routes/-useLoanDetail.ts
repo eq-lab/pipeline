@@ -1,38 +1,11 @@
 /**
- * View-model + data wiring for the Trustee **Loan detail** page (issues #845 /
- * #847, Figma node `4116:10549`). Per `docs/FRONTEND.md` Code structure rule 2
- * the `.tsx` route is render-only; this hook owns the live fetches, the
- * value→display mapping, and the composition of live data + static actions, so
- * the builders below are unit-testable without a DOM (mirrors `-useLoansTable.ts`).
+ * View-model + data wiring for the Trustee Loan detail page. Per
+ * `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is render-only;
+ * this hook owns the live fetches, the value→display mapping, and the
+ * composition of live data + static actions (mirrors `-useLoansTable.ts`).
  *
- * ## Data sources
- * Loan-specific facts are sourced from API responses:
- *   - **Hero identity** ← the matching `/v1/loan-book` row (originator, commodity,
- *     on-chain status), keyed by `loan_id`. The status bar carries no dates
- *     (maturity is a key number, not a status field — §S5); the chip maps the
- *     raw on-chain status via `statusToChip` (design assignment §3.2).
- *   - **Price & collateral** ← `GET /v1/loan-book/{loan_id}/valuations`
- *     (`useLoanValuation`).
- *   - **Loan-lifecycle stepper** ← derived from the on-chain status
- *     (`buildLifecycle`); no longer a static fixture (design assignment §3.2).
- *   - **Registry state & derived** ← `GET /v1/loan-book/{loan_id}/financials`
- *     (`useLoanFinancials`, issue #852), plus the loan-book row's `protection`
- *     for the Protection row (#1014).
- *   - **Summary tiles** ← the matching `/v1/loan-book` row plus
- *     `/financials` for unminted yield / epoch APY (issue #874).
- *   - **Action availability / explanatory copy** ← static product configuration
- *     in `-loanDetailStatic.ts`.
- *
- * ## Never-fabricate (memory: no frontend-computed metrics)
- * The valuation endpoint drives P&C directly; fields it does not serve are NOT
- * carried over from the old fixture:
- *   - the "feed 2h old · recalcs every 60 min" freshness note → replaced by the
- *     real `price_provider` attribution (or dropped when absent);
- *   - the "Last on-chain write: CCR 135% · 12 May" footnote → dropped (no source);
- *   - absent inputs surface as `—` plus a real `missing_inputs` "Awaiting:" note.
- * The one cross-source value is the spot 7-day change, taken from the loan-book
- * row's `spot_change_7d` (same underlying price series as the valuation's
- * `reference_price`) — a served field, not a derived one.
+ * spec: docs/frontend/trustee-flows.md#loan-detail (data sources,
+ * never-fabricate rules, status chip mapping, lifecycle spine, variants).
  */
 import { useLoanBook } from "@/api/useLoanBook";
 import type { LoanBookEntry } from "@/api/useLoanBook";
@@ -79,12 +52,7 @@ export interface CcrThreshold {
   label: string;
 }
 
-/**
- * The CCR-trend chart view-model (Watchlist variant), built from the real
- * `/ccr-history` series (#879) — replaces the fixed-geometry fixture (#859).
- * `points` are the CCR percentages oldest → newest; the card derives the
- * polyline + a per-loan y-scale from them and the thresholds.
- */
+// CCR-trend chart view-model. spec: trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
 export interface CcrTrend {
   /** CCR percentages, oldest → newest (e.g. `146` for 146%). */
   points: number[];
@@ -96,11 +64,7 @@ export interface CcrTrend {
   thresholds: CcrThreshold[];
 }
 
-/**
- * Protocol CCR watchlist thresholds (spec §9.6): 120% maintenance-margin and
- * 110% margin-call — the two dashed guide-lines the Figma chart shows. These are
- * protocol-wide defaults; no endpoint serves per-loan overrides yet (#879).
- */
+// Protocol-wide watchlist thresholds (spec §9.6) — no per-loan override endpoint yet (#879).
 const CCR_TREND_THRESHOLDS: CcrThreshold[] = [
   { pct: 120, label: "120%" },
   { pct: 110, label: "110%" },
@@ -217,28 +181,9 @@ export interface StatusChip {
   raw: string;
 }
 
-/**
- * Maps the raw on-chain loan status string to its display chip + colour band,
- * per the Trustee Dashboard design assignment §3.2 "Loan status chip":
- *
- *   | on-chain status | chip label | band      |
- *   | Performing      | Performing | positive  |
- *   | Watchlist       | Watchlist  | attention |
- *   | Matured         | Past Due   | negative  |  ← display rename
- *   | Default         | Default    | negative  |
- *   | Closed          | Closed     | neutral   |
- *
- * The `Disbursing` chip (a Performing loan whose outbound disbursement has not
- * reached "Wired") is a data-derived divergence that needs movement state not
- * served to this page, so it is not distinguished here — a Performing loan
- * renders "Performing". Backend accepts both `Watchlist` and the legacy
- * `WatchList` casing. Unknown values fall through to a neutral chip printing the
- * raw string verbatim (never fabricated).
- */
+// spec: docs/frontend/trustee-flows.md#status-chip-mapping-design-assignment-32.
 export function statusToChip(rawStatus: string): StatusChip {
   switch (rawStatus) {
-    // `Disbursing` is a backend-derived display status (off-ramp not yet
-    // complete); a Performing-family in-progress state → `info` (brand) band.
     case "Disbursing":
       return { label: "Disbursing", band: "info", raw: rawStatus };
     case "Performing":
@@ -246,10 +191,7 @@ export function statusToChip(rawStatus: string): StatusChip {
     case "Watchlist":
     case "WatchList":
       return { label: "Watchlist", band: "attention", raw: rawStatus };
-    // Backend now serves `Past Due` directly; keep `Matured` as a legacy fallback.
-    // Past-maturity: the backend serves `Past Due`, but the design renders this
-    // state as **Matured** (chip + dedicated screen + rollover, #866/#867). The
-    // legacy `Matured` value maps the same. Olive/attention band.
+    // `Matured` is a legacy fallback — the backend now serves `Past Due` directly.
     case "Past Due":
     case "Matured":
       return { label: "Matured", band: "attention", raw: rawStatus };
@@ -277,10 +219,7 @@ export interface LifecycleStep {
   index: number;
 }
 
-/**
- * Short descriptor for each live status on the middle "live" node (design
- * assignment §3.2 "Meaning" column).
- */
+// Meaning column, design assignment §3.2 — short descriptor for the live node.
 const LIVE_STATUS_SUB: Record<string, string> = {
   Performing: "deployed & current",
   Watchlist: "elevated risk",
@@ -288,30 +227,8 @@ const LIVE_STATUS_SUB: Record<string, string> = {
   Default: "council declared",
 };
 
-/**
- * Builds the loan-lifecycle stepper from the raw on-chain status.
- *
- * The stepper is the **happy-path spine** of the design-assignment §3.2 status
- * diagram — `Origination → Disbursing → (live) → Closed` — NOT a linear list of
- * every status. Watchlist / Past Due / Default are **branch flows off the live
- * state**, not sequential stages, so they are never shown as "upcoming" steps
- * (issue #854): a healthy Performing loan's only forward step is **Closed**.
- *
- * The middle **live node** reflects where the loan actually is: while live it
- * takes the current status label (`Performing` / `Watchlist` / `Past Due` /
- * `Default` via `statusToChip`); once `Closed` it reads as the completed
- * `Performing` phase. States:
- *   - `Origination` — done for any loan the loan-book returns (it exists on-chain).
- *   - `Disbursing` — **active** when the served status is `Disbursing` (off-ramp
- *     not yet complete, issue #862); done once the loan is live/closed; pending
- *     when no status. (Now that the backend serves `Disbursing` directly, this
- *     step can be the current one — closes the #854 data gap.)
- *   - live node — active while the loan is a live non-Disbursing status; done
- *     once Closed; pending while still Disbursing.
- *   - `Closed` — active when the status is `Closed`, else pending.
- *
- * An absent status (no loan-book row) leaves every step pending — never fabricated.
- */
+// Builds the loan-lifecycle stepper's happy-path spine. spec:
+// docs/frontend/trustee-flows.md#loan-lifecycle-stepper-design-assignment-32-status-diagram.
 export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   const hasStatus = rawStatus != null && rawStatus.length > 0;
   const chip = hasStatus ? statusToChip(rawStatus) : null;
@@ -380,16 +297,7 @@ function formatCcrPct(ccrPct: string | null | undefined): string {
   return `${ccrPct}%`;
 }
 
-/**
- * Builds the hero view-model from the matching loan-book row. When no row is
- * found (e.g. a direct URL to a non-active loan), degrades to the loan id only —
- * never fabricates identity.
- *
- * The meta prints the loan id + the **maturity date** (both layouts — issue #859;
- * the maturity is a real served field, `entry.maturity`). The chip shows the
- * mapped display status (`statusToChip`). The Figma hero corridor
- * (`Colombia → Italy`) has no backend source and is omitted (never fabricated).
- */
+// Builds the hero view-model. spec: docs/frontend/trustee-flows.md#hero.
 export function buildHero(
   loanId: string,
   entry: LoanBookEntry | undefined,
@@ -403,9 +311,6 @@ export function buildHero(
     };
   }
   const chip = statusToChip(entry.status);
-  // The **Nearest payment** (#941/#953): "next payment <date>" when upcoming, or
-  // "payment N days late" / "payment due today" when overdue. Dropped entirely
-  // when no next-payment timestamp is served.
   const np = formatNearestPayment(
     entry.next_payment_timestamp,
     entry.days_overdue,
@@ -427,11 +332,7 @@ export function buildHero(
   };
 }
 
-/**
- * Builds the Price & collateral view-model from the valuation response. `spotChange7d`
- * is the loan-book row's served trailing change (decimal fraction, e.g. `"-0.012"`),
- * paired with the valuation's `reference_price`; `null` drops the change span.
- */
+// spec: docs/frontend/trustee-flows.md#price--collateral-card.
 export function buildPriceCollateral(
   valuation: LoanValuationResponse,
   spotChange7d: string | null,
@@ -491,11 +392,7 @@ function parseSpotChange(
   return { text: `${sign}${pct}% 7d`, negative: change < 0 };
 }
 
-/**
- * Maps the valuation query's load/error/data states to the P&C view-model. A
- * 404 (`ApiError.status === 404`) is the loan having no valuation anchor on
- * record → a neutral `"empty"` note, not a red error.
- */
+// A 404 → neutral "empty" note, not a red error. spec: trustee-flows.md#price--collateral-card.
 export function buildPriceCollateralState(
   valuation: UseLoanValuationResult,
   spotChange7d: string | null,
@@ -530,25 +427,10 @@ function placeholderPc(
 
 // ── Registry state & derived (issue #852) ────────────────────────────────────
 
-/**
- * The financials money fields are displayed exactly as served by the backend
- * (issue #906 — the former `formatRegistryCompactUsd` ×1000 workaround has
- * been removed).
- */
+// Displayed exactly as served (issue #906 — the ×1000 workaround was removed).
 const fmtRegistryUsd = formatCompactUsd;
 
-/**
- * Builds the "Registry state & derived" rows from the financials response.
- *
- * `Epochs` and `Custodian co-sig on mint` have no field on this endpoint yet, so
- * they render `—` pending clarification (issue #852 open question c) — never
- * fabricated. `not_minted_yield` is shown as a single figure (no vault/treasury
- * split — open question b).
- */
-/**
- * Formats the current epoch as `"1 · 10.0% · 18 Jun 2026 → 19 Aug 2029"`
- * (number · APY · start → maturity); `—` when no epoch is on record (#857).
- */
+// spec: docs/frontend/trustee-flows.md#registry-state--derived-852.
 function formatEpoch(epoch: Epoch | null): string {
   if (epoch == null) return "—";
   return (
@@ -568,8 +450,7 @@ export function buildFinancials(
 
   return [
     { label: "Status / location", value: statusLocation, tag: "chain" },
-    // Deal-level trade-finance protection instrument (#1014) — served on the
-    // loan-book row (relayer DB, from the submission payload; never on-chain).
+    // Protection: #1014. spec: docs/frontend/trustee-flows.md#registry-state--derived-852.
     {
       label: "Protection",
       value: protection != null && protection.length > 0 ? protection : "—",
@@ -701,11 +582,8 @@ export function buildSummaryTiles(
   ];
 }
 
-/**
- * Maps the financials query's load/error/data states to the Registry view-model.
- * A 404 (`ApiError.status === 404`) — no financials on record for the loan —
- * renders a neutral `"empty"` note, not a red error (mirrors P&C).
- */
+// A 404 → neutral "empty" note, not a red error (mirrors P&C).
+// spec: docs/frontend/trustee-flows.md#registry-state--derived-852.
 export function buildRegistryState(
   financials: UseLoanFinancialsResult,
   protection: string | null = null,
@@ -733,10 +611,7 @@ export function buildRegistryState(
 }
 
 /**
- * Builds the CCR-trend view-model from the `/ccr-history` series (#879).
- * `ccr_bps` (12_000 = 120%) → percent. Returns `null` when the series has no
- * points (never priced / empty window) so the card is simply omitted rather
- * than drawing a fabricated line.
+ * spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
  */
 export function buildCcrTrend(
   ccrHistory: UseLoanCcrHistoryResult,
@@ -758,13 +633,8 @@ export function buildCcrTrend(
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-/**
- * Wires the loan-book row (hero + lifecycle), the per-loan valuation (Price &
- * collateral), and the per-loan financials (Registry state & derived) for
- * `loanId`, composed with static action configuration. The top-level `state` tracks
- * the loan-book fetch (hero source); Price & collateral and Registry each carry
- * their own `state` so they load/error independently within the page.
- */
+// Wires loan-book (hero source, top-level `state`) + valuation + financials
+// (each with their own `state`) for `loanId`. spec: trustee-flows.md#loan-detail.
 export function useLoanDetail(loanId: string): UseLoanDetailResult {
   const loanBook = useLoanBook();
   const valuation = useLoanValuation(loanId);
@@ -772,9 +642,8 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
 
   const entry = loanBook.data?.loans.find((l) => l.loan_id === loanId);
 
-  // CCR-trend series (#879) — from the loan's origination
-  // (`maturity − duration_days`) through now, daily. The hook self-disables
-  // until `from` is known; we only build the chart for the Watchlist variant.
+  // CCR-trend series (#879), origination through now, daily. Self-disables
+  // until `from` is known; only built for the Watchlist variant.
   const ccrFrom =
     entry != null ? entry.maturity - entry.duration_days * 86_400 : null;
   const ccrHistory = useLoanCcrHistory(loanId, ccrFrom);
@@ -790,9 +659,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     entry?.spot_change_7d ?? null,
   );
 
-  // Status-conditional layout (§859 / §862 / §866): the served display status
-  // selects the section set. Watchlist and Matured have their own layouts;
-  // Disbursing reuses the performing layout with the disbursement-complete card.
+  // spec: docs/frontend/trustee-flows.md#status-conditional-layout-859862866.
   const chipLabel = entry != null ? statusToChip(entry.status).label : null;
   const variant: LoanDetailVariant =
     chipLabel === "Watchlist"
@@ -812,17 +679,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
         : variant === "disbursing"
           ? DISBURSING_OTHER_ACTIONS
           : PERFORMING_OTHER_ACTIONS;
-  // Only the Watchlist variant renders a current-stage card (its escalation
-  // copy). The Performing "on-ramp in transit" card was removed (#876);
-  // Disbursing shows the disbursement-complete action, Matured the rollover
-  // card. `null` for every non-watchlist variant.
-  //
-  // The Watchlist escalation current-stage card is HIDDEN for now (#938): its
-  // real behavior is proposal-aware — a plain "decision pending" title only
-  // once a Risk-Council proposal is submitted for the loan, otherwise a warning
-  // + prompt to open an escalation — which needs a per-loan proposal-status
-  // feed the backend doesn't serve yet. The static `WATCHLIST_CURRENT_STAGE`
-  // mock is not rendered until that lands.
+  // Hidden for now (#938) — spec: trustee-flows.md#status-conditional-layout-859862866.
   const currentStage: CurrentStage | null = null;
 
   return {

@@ -1,43 +1,13 @@
 /**
  * Query-wiring + value→display mapping for the Overview page's "Needs
- * Attention" section (issue #818, Figma node `4116:9004`). Two groups:
- *   - **Origination** — in-review submissions (#818).
- *   - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867).
+ * Attention" section. Per `docs/FRONTEND.md` Code structure rule 2, the
+ * `.tsx` component is JSX/styling only; this hook owns the
+ * `useLoanSubmissions({ status: "InReview" })` + `useLoanBook()` calls and
+ * maps each into a display-ready row (mirrors `-useOriginationTable.ts`'s
+ * `state` discriminant shape).
  *
- * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` component is JSX/
- * styling only; this hook owns the `useLoanSubmissions({ status: "InReview" })`
- * + `useLoanBook()` calls and maps each into a display-ready row so the view
- * stays a pure render function (and this mapping is unit-testable without a
- * DOM). Mirrors `-useOriginationTable.ts`'s `state` discriminant shape.
- *
- * ## Field mapping (resolved Open Questions, issue #818 comments)
- *
- *   - Title: `` `${friendlyOriginator} — ${commodity}: new request` `` where
- *     `friendlyOriginator` is `loan_data.originator` (the friendly NAME, e.g.
- *     "Open Mineral") — NOT the top-level `SubmissionView.originator` (the
- *     authenticated submitter address). This is the opposite field choice
- *     from `-useOriginationTable.ts`'s Originator column, which intentionally
- *     uses the top-level field; both are correct for their own row shape.
- *   - Subtitle: `` `${commodity} · ${corridor} · submitted ${date}` ``
- *     (backed fields only — human-resolved OQ#2). The Figma subtitle also
- *     references the valuation mode and attached documents, neither of which
- *     is backed pre-mint (see `-useOriginationTable.ts`'s docs for why); those
- *     parts are omitted, not fabricated. The corridor uses the same
- *     hyphen→arrow transform as `-useOriginationTable.ts` (`"PE-CN"` →
- *     `"PE → CN"`); any missing segment is dropped cleanly rather than
- *     rendered as a bare "—" in the middle of the joined string.
- *   - Action: inert "Review" button — no wiring/navigation this issue
- *     (resolved OQ#1); rendered by the view, not modeled here.
- *
- * Every field is read defensively: `loan_data` is `serde_json::Value` on the
- * wire, so missing/malformed nested fields degrade to "—" rather than
- * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). Only raw
- * `InReview` submissions are actionable here; backend merged/lifecycle
- * statuses mean the origination is already approved and are filtered out
- * defensively even though the server already applies `?status=InReview`
- * (issue #892). `ChangesRequested` (#949/#950) is likewise excluded — it is
- * originator-actionable (waiting on a resubmit), not trustee-actionable — so it
- * stays out of Needs Attention until it returns to `InReview` on resubmit.
+ * spec: docs/frontend/trustee-flows.md#needs-attention-section (field
+ * mapping, scope, empty/loading/error handling).
  */
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";

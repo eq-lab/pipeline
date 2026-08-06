@@ -1,19 +1,11 @@
 /**
- * View-model + data wiring for the Trustee **Cash Management** page's On/Off-ramp
- * review queue (`cash-management.tsx`, issue #943, Figma `4116-11802` for
- * styling; source of truth `docs/product-specs/trustee-dashboard.md` §Type 1
- * flow 2 + §Type 4). Per `docs/FRONTEND.md` rule 2 the `.tsx` is JSX/styling
- * only; this hook owns the fetch + value→display mapping.
+ * View-model + data wiring for the Trustee Cash Management page's On/Off-ramp
+ * review queue (`cash-management.tsx`). Per `docs/FRONTEND.md` rule 2 the
+ * `.tsx` is JSX/styling only; this hook owns the fetch + value→display
+ * mapping.
  *
- * Wires `useRampEvents` (`GET /v1/ramp/events`, pending events only) and
- * `useReviewRampEvent` (`POST …/review`). Events are split by leg into
- * **inbound** (`OnRamp`, ramp→custody) and **outbound** (`OffRamp`,
- * custody→ramp), matching the Figma's INBOUND / OUTBOUND sections.
- *
- * Data-sourcing: everything shown here is REAL — the served `RampEvent`
- * (id/type/to/from/amount/created_at). The Figma's richer per-loan tagging /
- * batch grouping / progress is NOT in the contract (#943) and is deliberately
- * NOT fabricated.
+ * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp--t-bills
+ * (On/Off-ramp tab, data-sourcing).
  */
 import { useRampEvents, type RampEvent } from "@/api/useRampEvents";
 import {

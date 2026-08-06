@@ -24,39 +24,12 @@ import {
 import { CcrTrendChart } from "./-CcrTrendChart";
 
 /**
- * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
- * destination opened by clicking a loan row on the Loans list (`/loans`, #843).
- * A real route at `/loans/$id`, keyed by the loan-book `loan_id` (the #847
- * in-page "fake navigation" is gone now that a real id is served).
+ * Loan detail page — the destination opened by clicking a loan row on the
+ * Loans list (`/loans`, #843). A real route at `/loans/$id`, keyed by the
+ * loan-book `loan_id`.
  *
- * ## Status-conditional layout (#859 / #862)
- * The page branches on `detail.variant` (derived from the served display status):
- *   - **performing** — lifecycle stepper + Price & collateral + Registry state.
- *   - **watchlist** — no stepper; a CCR-trend chart beside Price & collateral,
- *     a "Days on watchlist" tile, and an escalation current-stage card (Figma
- *     node `4116:10803`).
- *   - **disbursing** — the performing layout, but the current-stage card is the
- *     wired disbursement-complete action (`POST …/disbursement/complete`, #862);
- *     the lifecycle shows the Disbursing node active.
- *   - **matured** — no stepper; a rollover card beside Price & collateral, the
- *     hero shows `<date> — passed`, and Roll over is the matured-only fast-path
- *     (Figma node `4116:10969`, #866). The served `Past Due` status maps here.
- * Shared live sections render in both: Hero + status chip (loan-book row), Price
- * & collateral (`/valuations`), Registry (`/financials`, performing only).
- * Watchlist CCR trend and summary tiles are live; action labels and explanatory
- * copy are static product configuration unless a branch opens a wired flow below.
- *
- * ## Figma → token / px map
- *   - `‹ Loans` `Besley 18px / #262524`; title `Besley 44px`; both ink.
- *   - Status chip → colour band (`chipStyle`): positive green (0.08 bg / 0.3
- *     border), attention amber `#6e6400`, negative red `#b20000`, neutral muted.
- *   - Card `bg-white`, `LINE_COLOR` border (`rgba(56,55,53,0.18)`), `rounded-[4px]`.
- *   - Card title `Besley 26px` ink; row label `Inter 15px` ink-muted; value `Inter 16px` ink.
- *   - Stepper: done ✓ green `#208000` (= `--color-pipeline-positive-primary`);
- *     active filled navy `#000080` (= `--color-pipeline-brand`); pending muted ring.
- *   - Primary button `#000080` white text (`--color-pipeline-brand`).
- *   - Sub-lines tones: positive green `#208000`; attention amber `#6e6400` (one-off);
- *     negative `#b20000` (one-off, ≠ `--color-pipeline-negative`); muted ink-muted.
+ * spec: docs/frontend/trustee-flows.md#loan-detail (status-conditional
+ * layout, Figma → token mapping).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -67,11 +40,7 @@ const BRAND = "var(--color-pipeline-brand)";
 const INK = "var(--color-pipeline-ink)";
 const INK_MUTED = "rgba(56,55,53,0.6)";
 
-/**
- * Lifecycle stepper one-offs (Figma node `4116:10560`): the done node's green
- * tint fill + 30%-green border, which also colours the filled connector line;
- * the active node's 12%-brand ring glow.
- */
+// Lifecycle stepper one-offs. spec: trustee-flows.md#figma--token--px-mapping-411610549.
 const STEP_DONE_BG = "rgba(32, 128, 0, 0.08)";
 const STEP_DONE_LINE = "rgba(32, 128, 0, 0.3)";
 const STEP_ACTIVE_RING = "0px 0px 0px 4px rgba(0, 0, 128, 0.12)";
@@ -626,15 +595,7 @@ function OtherActionsCard({
 
 // ── Disbursement action (Disbursing variant, #862) ───────────────────────────
 
-/**
- * The Disbursing-loan current-stage card with the wired "Mark disbursement
- * complete" action (`POST …/disbursement/complete`, issues #862 / #864).
- * Disbursing has no dedicated Figma flow, so the page keeps the Performing
- * layout and only this "Next Step" card differs. The `Complete off-ramp` button
- * is the one real, status-changing action — it flips the loan out of
- * `Disbursing` and refetches. Pending disables the button; a failure surfaces
- * inline (404 = loan not indexed).
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions.
 function DisbursementActionCard({
   loanName,
   onRequestComplete,
@@ -667,13 +628,7 @@ function DisbursementActionCard({
   );
 }
 
-/**
- * Small confirmation modal for the "Complete off-ramp" action (#864). Mirrors
- * the shared dialog shell (`-RejectReasonDialog.tsx`): `role="dialog"`,
- * `aria-modal`, Escape + backdrop-click cancel (never a stray confirm), navy
- * confirm button. The `POST …/disbursement/complete` fires on Confirm; pending
- * disables both buttons and the mutation error surfaces inline.
- */
+// Mirrors the shared dialog shell (`-RejectReasonDialog.tsx`). spec: trustee-flows.md#wired-actions.
 function DisbursementConfirmDialog({
   open,
   loanName,
@@ -761,12 +716,7 @@ function DisbursementConfirmDialog({
 
 // ── Matured rollover card (Matured variant, #866) ────────────────────────────
 
-/**
- * The Matured "rollover" card (Figma `4116:10969`, right column). The title
- * interpolates the loan's live maturity date; the `rollover available` tag is an
- * olive/attention pill. The "Roll over →" button opens the wired rollover
- * confirmation flow (#870).
- */
+// spec: docs/frontend/trustee-flows.md#status-conditional-layout-859862866.
 function MaturedRolloverCard({
   rollover,
   maturityDate,
@@ -813,14 +763,7 @@ function MaturedRolloverCard({
   );
 }
 
-/**
- * The Roll over confirmation modal (S9, Figma node `4116:14050`, issue #870).
- * Collects the new rate (bps) + new maturity, then submits the on-chain
- * `LoanRegistry.rollover` via `useRollover`. Mirrors the shared dialog shell
- * (Escape/backdrop cancel, navy confirm, pending/error). The mint-ceiling delta
- * is not previewed with a figure — the real ceiling change is computed on-chain
- * at rollover (avoids fabricating a transaction-effect number).
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions.
 function RolloverDialog({
   open,
   loanName,
@@ -980,13 +923,7 @@ function RolloverDialog({
   );
 }
 
-/**
- * The Update-lifecycle modal (S10, Figma node `4116:14087`, issue #872).
- * Collects the non-economic mutable fields — status, CCR %, location, optional
- * metadata URI — then submits the on-chain `LoanRegistry.updateMutable` via
- * `useUpdateLifecycle`. Default/Closed are not offered (they route to the Risk
- * Council / close flows); Past Due/Matured are derived, not settable here.
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions.
 function UpdateLifecycleDialog({
   open,
   loanName,
@@ -1215,15 +1152,7 @@ function UpdateLifecycleDialog({
 
 // ── CCR trend (Watchlist variant) ────────────────────────────────────────────
 
-/**
- * CCR-trend card (Watchlist variant, Figma node `4116:10868`) — the bordered
- * white card + title wrapping the shared `CcrTrendChart`, extracted to
- * `-CcrTrendChart.tsx` (issue #782) so the Risk Council "Escalate to Default"
- * page can reuse the same chart embedded directly in its ledger card (without
- * this card's own border/title). The chart itself is drawn from the real
- * `/ccr-history` series (#879), per-loan y-scale spanning the series' CCR range
- * widened to the 120% / 110% guide-lines; a single point renders as a dot.
- */
+// spec: docs/frontend/trustee-flows.md#ccr-trend-chart-watchlist-variant-figma-node-411610868.
 function CcrTrendCard({ trend }: { trend: CcrTrend }) {
   return (
     <div
@@ -1237,14 +1166,7 @@ function CcrTrendCard({ trend }: { trend: CcrTrend }) {
   );
 }
 
-/**
- * Past-Due attention notice (#940). A past-maturity loan renders under the
- * Matured variant; its derived `Past Due` status is an attention signal, not a
- * lock — per the backend, it exists "to draw the Trustee's attention that they
- * either need to record the payment or escalate to default". This banner
- * surfaces those two paths directly, wired to the existing Record coupon /
- * Escalate actions. Amber (attention) tokens — not red, which is Default.
- */
+// spec: docs/frontend/trustee-flows.md#wired-actions.
 function PastDueNotice({
   onRecord,
   onEscalate,

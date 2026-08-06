@@ -1,20 +1,15 @@
 /**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `drawLoan`
- * (issue #831): the trustee-wallet-signed on-chain `draw_loan` mint that now
- * runs BEFORE the DB review flip on Approve (see `-useOriginationReview.ts`).
+ * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `drawLoan`:
+ * the trustee-wallet-signed on-chain `draw_loan` mint that runs before the
+ * DB review flip on Approve (see `-useOriginationReview.ts`).
  *
  * The Trustee app cannot import `@stellar/stellar-sdk` directly (TD-33, no
  * `src/wallet/**` carve-out) — all Soroban build/simulate/sign/submit/poll
  * machinery lives in the shared package; this hook only wires env values +
  * the connected wallet in, guards the unconfigured/disconnected cases, and
- * surfaces `drawLoan`'s progress stages for the Approve-button UX (issue
- * #831 Open Question 5: "Waiting for wallet signature…" → "Submitting
- * on-chain…" → "Confirming…").
+ * surfaces `drawLoan`'s progress stages for the Approve-button UX.
  *
- * Not under `src/api/` for REST-fetch reasons (it makes no `apiFetch` call —
- * `drawLoan` talks to Soroban RPC entirely inside `@pipeline/wallet-connect`)
- * but colocated with the trustee's other data hooks anyway, matching the
- * `useCapitalWalletBalance.ts` precedent (issue #805) for on-chain reads.
+ * spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
  */
 import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";

@@ -6,16 +6,11 @@ import {
 } from "./-risk-council-writedown";
 
 /**
- * Risk Council — Write-down close (Default resolution) — issue #782, Figma node
- * `4116-13625`. The THIRD of the three Type-3 RISK_COUNCIL proposal screens
- * (spec `docs/product-specs/trustee-dashboard.md` §"Type 3", flow 12).
+ * Risk Council — Write-down close (Default resolution). The third of the
+ * three Type-3 RISK_COUNCIL proposal screens.
  *
- * A **read-only REVIEW** page with NO action at all — "trustee has no direct
- * close button on this flow"; the Risk Council Safe executes after the
- * timelock, GUARDIAN-cancelable. Registered under the `/risk-council`
- * pass-through layout at `/risk-council/writedown/$id`. Per `docs/FRONTEND.md`
- * rule 2 this `.tsx` is JSX/styling only; the real-vs-mock split lives in the
- * colocated `-risk-council-writedown.ts` view-model.
+ * spec: docs/frontend/trustee-flows.md#write-down-close--default-resolution-flow-12--read-only-no-action
+ * (flow, routing).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -148,7 +143,13 @@ function ResolutionCard({
 
 // ── Right card — Close payload + signer voting ──────────────────────────────
 
-function SignerRow({ signer, isLast }: { signer: SignerStatus; isLast: boolean }) {
+function SignerRow({
+  signer,
+  isLast,
+}: {
+  signer: SignerStatus;
+  isLast: boolean;
+}) {
   return (
     <div
       data-testid="risk-council-writedown-signer"
@@ -356,7 +357,10 @@ function RiskCouncilWritedown() {
             recoveryReceived={view.recoveryReceived}
             writeDownAmount={view.writeDownAmount}
           />
-          <ClosePayloadCard payload={view.closePayload} signers={view.signers} />
+          <ClosePayloadCard
+            payload={view.closePayload}
+            signers={view.signers}
+          />
         </div>
 
         <div

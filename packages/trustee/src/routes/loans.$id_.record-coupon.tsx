@@ -3,41 +3,12 @@ import { useRecordCoupon, type WaterfallRow } from "./-record-coupon";
 import { useRecordPayment } from "@/api/useRecordPayment";
 
 /**
- * Record Coupon full-page route (issue #882, Figma node `4116-11452`) — the
- * destination opened by clicking the existing "Record coupon" other-action
- * on the loan-detail page (`loans.$id.tsx`, available in any post-Disbursing
- * status, #867).
+ * Record Coupon full-page route — the destination opened by clicking the
+ * existing "Record coupon" other-action on the loan-detail page
+ * (`loans.$id.tsx`, available in any post-Disbursing status, #867).
  *
- * A full-screen page, not a modal, so it lives at its own route rather than
- * inside `loans.$id.tsx`. It is registered as a NON-nested child of the
- * `/loans` layout (`loans.tsx`'s `<Outlet/>`) via the `$id_` trailing-
- * underscore file-name escape — `loans.$id.tsx` is a leaf page with no
- * `<Outlet/>` of its own, so a plain `loans.$id.record-coupon.tsx` would try
- * to nest under it and fail to register (same class of issue `loans.tsx`'s
- * doc comment describes for `/loans/$id` itself).
- *
- * ## Scope (read/UI only — see `-record-coupon.ts`'s module doc)
- * Previews the payment waterfall for a trustee-entered offtaker coupon via
- * the already-wired `useLoanWaterfall`. Does NOT perform the on-chain
- * `record_payment` write — no submit action exists on this page yet.
- *
- * ## Chips (never-fabricate)
- * Only the static "Your key · no cash moves" copy chip renders. The Figma's
- * "Recorded · 31 Mar" / "Minted · 2 Apr" progress chips are omitted entirely —
- * no backend source ever marks a coupon "recorded"/"minted" in this session
- * (the write doesn't exist yet), so they would be fabricated.
- *
- * ## Suppressed "Next stage: principal repayment" button
- * Per the issue's explicit scope note, the Figma's button is never rendered.
- * In its place, `view.isTerminal` gates a plain text hint — ONLY in the
- * terminal case where this coupon fully amortises the outstanding senior
- * principal (`isTerminalRepayment` in `-record-coupon.ts`). Every other
- * coupon (the common interest-only case) shows no principal-repayment copy
- * at all.
- *
- * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; all data
- * wiring + value→display mapping lives in the colocated `-record-coupon.ts`
- * view-model hook (mirrors `origination.$id.tsx` / `-origination-detail.ts`).
+ * spec: docs/frontend/trustee-flows.md#route-registration--page-shell
+ * (routing, chips, suppressed button).
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";

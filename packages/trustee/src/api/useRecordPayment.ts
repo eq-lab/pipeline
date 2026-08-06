@@ -1,15 +1,12 @@
 /**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `recordPayment`
- * (issue #882): the trustee-wallet-signed on-chain `LoanRegistry.record_payment`
- * run through the executor `execute` proxy (same pattern as `useUpdateLifecycle`).
+ * React Query mutation hook — wraps `@pipeline/wallet-connect`'s
+ * `recordPayment`: the trustee-wallet-signed on-chain
+ * `LoanRegistry.record_payment`, run through the executor `execute` proxy
+ * (same pattern as `useUpdateLifecycle`). Pure accounting — records a
+ * repayment split (senior principal / interest, fees, equity); moves no
+ * USDC and mints no PLUSD.
  *
- * Pure accounting — records a repayment split (senior principal / interest, fees,
- * equity); moves no USDC and mints no PLUSD. On success this invalidates the
- * loan-book / financials / waterfall queries so the detail + preview refetch.
- *
- * Like `useUpdateLifecycle`/`useDrawLoan`, the Soroban machinery lives in the
- * shared package (TD-33); this hook only wires env + the connected wallet, guards
- * the unconfigured/disconnected cases, and surfaces the progress stage.
+ * spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions.
  */
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

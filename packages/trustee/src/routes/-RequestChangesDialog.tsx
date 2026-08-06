@@ -1,23 +1,11 @@
 /**
- * Request-changes reason dialog (#1017) — opened by the "Request changes"
- * control on the Origination details page (`origination.$id.tsx`). Submits
- * the non-final `ChangesRequested` review decision (backend #949) with the
- * entered reason; the submission stays open for the originator to amend and
- * resubmit.
+ * Request-changes reason dialog — opened by the "Request changes" control on
+ * the Origination details page (`origination.$id.tsx`). Submits the
+ * non-final `ChangesRequested` review decision with the entered reason; the
+ * submission stays open for the originator to amend and resubmit.
  *
- * Structurally mirrors `-RejectReasonDialog.tsx` (same shell, tokens,
- * accessibility contract and validation hook), with two deliberate deltas:
- * the copy, and the reason field is a multi-line `<textarea>` (per the issue)
- * rather than the #838 re-skin's single-line input. No Figma exists for this
- * dialog — the styling simply follows the Reject dialog's.
- *
- * Accessibility: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on
- * the title, closes on Escape and on the Cancel button, initial focus on the
- * reason textarea, and a backdrop click that closes WITHOUT submitting.
- *
- * Validation state (min 5 chars trimmed + inline error) reuses the
- * co-located `-useRejectReasonDialog.ts` hook unchanged — this component is
- * JSX/styling only per `docs/FRONTEND.md` rule 2.
+ * spec: docs/frontend/trustee-flows.md#reason-dialog-shell--validation,
+ * docs/frontend/trustee-flows.md#request-changes-1017.
  */
 import { useEffect, useRef } from "react";
 import { useRejectReasonDialog } from "./-useRejectReasonDialog";

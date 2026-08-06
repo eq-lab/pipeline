@@ -1,23 +1,10 @@
 /**
- * React Query hook — fetches one loan's realized financials from the Pipeline
- * API (`GET /v1/loan-book/{loan_id}/financials`) for the Trustee **Loan detail**
- * page's "Registry state & derived" section (issue #852, Figma node `4116:10549`).
+ * React Query hook — fetches one loan's realized financials
+ * (`GET /v1/loan-book/{loan_id}/financials`) for the Trustee Loan detail
+ * page's "Registry state & derived" section.
  *
- * Mirrors `useLoanValuation.ts` / `useLoanBook.ts` conventions (queryKey shape,
- * `apiFetch`, `refetchInterval`, Stellar-scoped `chain_id`). Like the rest of the
- * Trustee app it does NOT depend on `@pipeline/frontend` (epic #775), so the
- * types below are a self-contained port of the backend DTO
- * (`packages/api/src/routes/loan_financials.rs`, `LoanFinancialsResponse`) rather
- * than an import — a sixth hand-mirroring alongside TD-42's existing pairs (see
- * `docs/exec-plans/tech-debt-tracker.md`).
- *
- * ## Scale note (issue #852 open question a)
- * The money fields are registry/loan-snapshot-sourced USDC 6-decimal strings, so
- * they are expected to be **1000× too small on the wire** like `senior_outstanding`
- * (issue #840) — the presenter (`-useLoanDetail.ts::buildFinancials`) formats them
- * with the `formatRegistry*` ×1000 helpers. **To be verified against real data**
- * once available; if this endpoint turns out to serve correct-scale amounts (like
- * `/valuations`), drop the ×1000 helpers there.
+ * spec: docs/frontend/trustee-flows.md#registry-state--derived-852 (scale
+ * note, TD-42 hand-mirroring).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";

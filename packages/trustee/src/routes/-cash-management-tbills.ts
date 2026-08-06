@@ -1,20 +1,9 @@
 /**
- * View-model for the Cash Management **T-Bills** tab's Buy / Sell USYC swap form
- * (`cash-management.tsx`, issue #944, Figma `4116-11802` for styling). Per
- * `docs/FRONTEND.md` rule 2 the `.tsx` is JSX/styling only; this hook owns the
- * data wiring.
+ * View-model for the Cash Management T-Bills tab's Buy / Sell USYC swap form
+ * (`cash-management.tsx`). Per `docs/FRONTEND.md` rule 2 the `.tsx` is
+ * JSX/styling only; this hook owns the data wiring.
  *
- * Balances shown against the shared Capital Allocation section:
- *   - **Buy** spends **USDC** — the real on-chain Capital-Wallet balance
- *     (`useCapitalWalletBalance`).
- *   - **Sell** spends **USYC** — the total T-Bills value at issuer NAV
- *     (`useCapitalAllocation().buckets.tbills`), currently `null` → `"—"` (the
- *     bucket is hardcoded `None` server-side, #931/#944).
- *
- * This is a **UI shell**: buying/selling USYC is a Capital-Wallet MPC action
- * (3-of-5, Type 2, flow 8) with no backend assembly/quote path yet (follow-up
- * filed with #944). So the submit is disabled and the received amount / fee are
- * `"—"` — no USYC price/NAV is served, and it is never fabricated.
+ * spec: docs/frontend/trustee-flows.md#t-bills-tab-944.
  */
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
