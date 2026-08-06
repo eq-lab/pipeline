@@ -102,6 +102,48 @@ export interface UseStellarChangeTrustUsdcResult {
   reset: () => void;
 }
 
+// ── Decode / error helpers ────────────────────────────────────────────────────
+
+/**
+ * Decodes `request_withdrawal`'s transaction return value into the request id.
+ *
+ * The deployed contract's return shape changed from a bare `u128` to a tuple
+ * `(request_id, amount)` — `scValToNative` then yields an ARRAY, and the old
+ * `BigInt(String(native))` threw `Cannot convert 0,500000000000 to a BigInt`
+ * (the comma is `String([0n, 500000000000n])`), dead-ending a withdrawal whose
+ * burn had already succeeded on-chain (#1024). Accept both shapes: an
+ * array/tuple's FIRST element is the id; a bare bigint/number/string is used
+ * as-is. Anything else still throws for the caller's decode-error message.
+ */
+export function decodeRequestId(native: unknown): bigint {
+  const candidate = Array.isArray(native) ? native[0] : native;
+  return typeof candidate === "bigint" ? candidate : BigInt(String(candidate));
+}
+
+/**
+ * Normalizes an unknown thrown value into an `Error` with a readable message.
+ * Wallet kits / RPC layers can reject with plain objects — the old
+ * `new Error(String(err))` rendered those as `[object Object]` (#1024).
+ * Prefers a string `.message` property; falls back to JSON, then `String`.
+ */
+export function toError(err: unknown): Error {
+  if (err instanceof Error) return err;
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  ) {
+    return new Error((err as { message: string }).message);
+  }
+  if (typeof err === "string") return new Error(err);
+  try {
+    return new Error(JSON.stringify(err));
+  } catch {
+    return new Error(String(err));
+  }
+}
+
 // ── In-flight recovery localStorage helpers ───────────────────────────────────
 
 const INFLIGHT_KEY_PREFIX = "pipeline.stellar.withdrawal.inflight.";
@@ -167,7 +209,9 @@ export function clearInflightWithdrawal(address: string): void {
 // ── useStellarRequestWithdrawal ───────────────────────────────────────────────
 
 /**
- * Write hook for `request_withdrawal(sender, amount: i128) → request_id: u128`.
+ * Write hook for `request_withdrawal(sender, amount: i128)`. The deployed
+ * contract returns a tuple `(request_id, amount)`; older builds returned the
+ * bare `request_id: u128` — `decodeRequestId` accepts both (#1024).
  *
  * @example
  * ```tsx
@@ -304,9 +348,7 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
 
           let requestId: bigint;
           try {
-            const native = scValToNative(finalResult.returnValue);
-            requestId =
-              typeof native === "bigint" ? native : BigInt(String(native));
+            requestId = decodeRequestId(scValToNative(finalResult.returnValue));
           } catch (decodeErr) {
             const detail =
               decodeErr instanceof Error
@@ -327,7 +369,7 @@ export function useStellarRequestWithdrawal(): RequestWithdrawalResult {
             createdAt: Date.now(),
           });
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(toError(err));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -475,7 +517,7 @@ export function useStellarClaimWithdrawal(): StellarClaimWithdrawalResult {
           setIsSuccess(true);
           clearInflightWithdrawal(address);
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)));
+          setError(toError(err));
         } finally {
           setIsPending(false);
           setIsInFlight(false);
@@ -661,7 +703,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
         setIsSuccess(true);
         refetchUsdcTrustline();
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setError(toError(err));
       } finally {
         setIsPending(false);
         setIsInFlight(false);

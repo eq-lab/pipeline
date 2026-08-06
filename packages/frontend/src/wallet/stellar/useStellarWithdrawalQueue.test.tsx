@@ -21,6 +21,8 @@ import {
   readInflightWithdrawal,
   writeInflightWithdrawal,
   clearInflightWithdrawal,
+  decodeRequestId,
+  toError,
 } from "./useStellarWithdrawalQueue";
 import * as mockModule from "./mock";
 
@@ -672,6 +674,46 @@ describe("useStellarChangeTrustUsdc", () => {
 });
 
 // ── Tests: in-flight recovery helpers ────────────────────────────────────────
+
+describe("decodeRequestId (#1024)", () => {
+  it("decodes the deployed contract's tuple return — first element is the id", () => {
+    // scValToNative of the on-chain (request_id, amount) tuple → an array.
+    // The stage regression: [0n, 500000000000n] previously threw
+    // "Cannot convert 0,500000000000 to a BigInt".
+    expect(decodeRequestId([0n, 500000000000n])).toBe(0n);
+    expect(decodeRequestId([1n, 1100000000000n])).toBe(1n);
+  });
+
+  it("decodes the legacy bare-u128 return shapes", () => {
+    expect(decodeRequestId(7n)).toBe(7n);
+    expect(decodeRequestId(7)).toBe(7n);
+    expect(decodeRequestId("7")).toBe(7n);
+  });
+
+  it("still throws on an undecodable value (caller wraps into its decode-error message)", () => {
+    expect(() => decodeRequestId("not-a-number")).toThrow();
+    expect(() => decodeRequestId(undefined)).toThrow();
+    expect(() => decodeRequestId([])).toThrow();
+  });
+});
+
+describe("toError (#1024)", () => {
+  it("passes real Errors through unchanged", () => {
+    const err = new Error("boom");
+    expect(toError(err)).toBe(err);
+  });
+
+  it("extracts a string message from plain rejection objects (no more [object Object])", () => {
+    expect(toError({ message: "user declined access" }).message).toBe(
+      "user declined access",
+    );
+  });
+
+  it("falls back to JSON for message-less objects and to the string itself for strings", () => {
+    expect(toError({ code: -4001 }).message).toBe('{"code":-4001}');
+    expect(toError("plain failure").message).toBe("plain failure");
+  });
+});
 
 describe("in-flight recovery helpers", () => {
   beforeEach(() => localStorageMock.clear());
