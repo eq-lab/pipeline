@@ -160,6 +160,79 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
   share asset is loading or errored, the step stays "idle" and staking is blocked — never a
   false-ready state.
 
+## Network switcher (cross-deployment links)
+
+**Source:** `packages/wallet-connect/src/network/links.ts` (shared helpers); per-app glue in
+`packages/frontend/src/wallet/networkSwitcher.ts` and `packages/trustee/src/lib/networkSwitcher.ts`.
+**Consumers:** the LP `AccountDropdown` (`packages/frontend/src/components/AccountDropdown.tsx` +
+its `useAccountDropdown.ts` hook) and its `TopBar`; the trustee `TrusteeSidebar`'s account chip and
+`⋯` `AccountMenu` popover.
+
+### Design (issue #1032)
+
+Each deployment (ArgoCD `test.yaml` / `prod.yaml`) is **single-network** — the existing flat env
+vars (`VITE_STELLAR_NETWORK_PASSPHRASE`, contract IDs, RPC URLs, …) are set to one network's values
+per environment, and testnet/mainnet live at **different origins** entirely. There is no runtime
+config swap, no network store, no query re-keying, and no wallet-kit re-coordination — "switching
+networks" means navigating to a sibling deployment's URL, and the separate origin naturally
+isolates everything else (a fresh page load, a wallet that must reconnect on the new origin).
+
+1. **Current-network identity** is derived from the deployment's own existing Stellar network
+   passphrase — no new var needed for this half. `networkIdFromPassphrase` maps
+   `"Test SDF Network ; September 2015"` → `{ id: "testnet", label: "Testnet" }` and
+   `"Public Global Stellar Network ; September 2015"` → `{ id: "mainnet", label: "Mainnet" }`.
+   Any other passphrase (futurenet, standalone, …) is treated as **testnet-styled** (no
+   real-funds affordance) but keeps the raw passphrase string as the visible label, since there is
+   no canonical short name for it.
+2. **Sibling links** come from one new env var, same name in both apps:
+   `VITE_NETWORK_LINKS="mainnet=https://app.pipeline.one,testnet=https://pipeline.stage.eqlab.net"`
+   (the trustee's yaml sets this to the dashboard's own sibling URLs instead). `parseNetworkLinks`
+   parses it defensively — entries are `id=url`, comma-separated, order preserved; an entry missing
+   `=`, an empty id/url, or a URL that fails to parse as absolute `http(s)` is dropped rather than
+   thrown (an operator typo degrades the switcher, it does not break the app). A network absent
+   from the var is simply not offered. **When the var is unset, or only the current network
+   remains after excluding self, the switcher renders as a static network label with no menu** —
+   this is the "hidden when unconfigured" behavior the issue requires, and it is also the default
+   dev/local experience (the var defaults to the empty string).
+3. **UI.** Both apps render the current network as an always-visible **pill** (tinted background,
+   colored dot + network label) outside any menu, so the active network never requires opening a
+   menu to see:
+   - LP app: `TopBar`'s `topbar-network-badge` is the `NetworkSwitcher` component
+     (`packages/frontend/src/components/NetworkSwitcher.tsx`). With siblings configured it is a
+     button with a chevron that opens its own small popover (`topbar-network-menu`) listing
+     "Switch to …" rows; with none it renders as a non-interactive pill. The LP `AccountDropdown`
+     keeps its network row too (same behavior, both routes through the confirm flow).
+   - Trustee: the account chip's `trustee-network-badge` pill (white-tint for testnet, amber-tint
+     for mainnet on the navy sidebar); switch rows live in the `⋯` `AccountMenu` popover above
+     "Sign out".
+   - The testnet pill dot is green (LP) / muted (menus); the mainnet dot uses the amber
+     `--color-pipeline-warning` token rather than the literal brand navy, since a navy dot would
+     be invisible against these apps' navy/dark-ink surfaces.
+4. **Mainnet confirm.** Clicking a mainnet sibling link opens the shared styled
+   `NetworkSwitchDialog` (`@pipeline/ui`) — real funds are at stake once you cross onto mainnet.
+   The dialog states that the wallet must be reconnected on the other origin; Cancel/Escape/
+   backdrop close without navigating. The gate is decided by `shouldConfirmNetworkSwitch(link)`
+   (`@pipeline/wallet-connect`; true only for `mainnet`) — `window.confirm` is not used. Any other
+   network navigates immediately via `navigateToNetworkLink` → `window.location.assign(url)` — a
+   full-page, cross-origin navigation, so no in-app state carries over by design. The LP app wraps
+   the pending-link state in `useNetworkSwitch()` (`packages/frontend/src/wallet/useNetworkSwitch.ts`);
+   the trustee inlines the same two-state flow in `AccountMenu`.
+5. **Shared vs. per-app.** The parsing/identity/navigate/gate logic (`parseNetworkLinks`,
+   `networkIdFromPassphrase`, `navigateToNetworkLink`, `shouldConfirmNetworkSwitch`) and the
+   confirm dialog (`NetworkSwitchDialog`, `@pipeline/ui`) live once in shared packages so both
+   apps run the same implementation. The thin composition that reads each app's own `ENV` and
+   combines it with those helpers (`getNetworkSwitcherState`) is duplicated per app (mirrors the
+   trustee/LP util-duplication precedent in `docs/frontend/utils.md` — the trustee app does not
+   depend on `@pipeline/frontend`, epic #775) — each app's version is a handful of lines and is unit
+   tested in place.
+
+### Deployment note
+
+`docker/frontend/entrypoint.sh` and `docker/trustee/entrypoint.sh` both pass `VITE_NETWORK_LINKS`
+through to the runtime `window.__ENV__` injection. Operators must add the var to each environment's
+ArgoCD values (`test.yaml` / `prod.yaml`) for the switcher to appear; an absent var is a safe
+default (static label only), not an error.
+
 ## EVM integration
 
 _Scaffold — to be migrated from `packages/frontend/src/wallet/evm/**` under #995._

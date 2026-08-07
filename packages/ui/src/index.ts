@@ -22,6 +22,8 @@ export type {
 } from "./components/ActivityEmptyIllustration";
 export { EmptyState } from "./components/EmptyState";
 export type { EmptyStateProps } from "./components/EmptyState";
+export { NetworkSwitchDialog } from "./components/NetworkSwitchDialog/NetworkSwitchDialog";
+export type { NetworkSwitchDialogProps } from "./components/NetworkSwitchDialog/NetworkSwitchDialog";
 export { CoinIcon } from "./components/CoinIcon/CoinIcon";
 export type { CoinIconProps } from "./components/CoinIcon/CoinIcon";
 export { WalletPill } from "./components/WalletPill/WalletPill";

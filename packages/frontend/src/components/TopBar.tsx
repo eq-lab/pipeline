@@ -15,6 +15,7 @@ import {
   useWalletView,
   useConnectModal,
 } from "@/wallet";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 import { AccountDropdown } from "./AccountDropdown";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
@@ -205,6 +206,10 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ))}
         </nav>
 
+        {/* Network pill — always-visible current network; opens a switch
+            menu when siblings are configured (issue #1032). */}
+        <NetworkSwitcher />
+
         {/* Right slot — desktop wallet controls (md and above). */}
         <div
           className="relative hidden w-40 shrink-0 items-center justify-end md:flex"
@@ -308,7 +313,6 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
             activeDisconnect();
           }}
         />
-
       </header>
     );
   },
