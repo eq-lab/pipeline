@@ -23,6 +23,7 @@ import {
 import { useRampAddresses } from "@/api/useRampAddresses";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { formatFullUsd } from "@/utils/formatUsd";
+import { toUserError } from "@/utils/userError";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
@@ -74,6 +75,7 @@ export interface RampEventRow {
 export interface CashManagementView {
   state: "loading" | "error" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   /** `OnRamp` events (ramp → custody). */
   inbound: RampEventRow[];
   /** `OffRamp` events (custody → ramp). */
@@ -84,6 +86,7 @@ export interface CashManagementView {
   /** The event id currently being reviewed (per-row pending state), or `null`. */
   reviewPendingId: number | null;
   reviewErrorMessage: string | null;
+  reviewErrorDetails: string | null;
 
   // ── Swap-form data (UI shell — #943 chose B; execution/quote have no backend) ──
   /** Capital Wallet on-chain USDC balance (`useCapitalWalletBalance`); `null` when unavailable. */
@@ -135,15 +138,24 @@ export function useCashManagement(): CashManagementView {
     .filter((e) => e.type === "OffRamp")
     .map((e) => mapEvent(e, nowSec));
 
+  const loadError = rampEvents.error
+    ? toUserError(rampEvents.error, "Failed to load ramp events.")
+    : null;
+  const reviewError = review.error
+    ? toUserError(review.error, "Failed to review this ramp event.")
+    : null;
+
   return {
     state,
-    errorMessage: rampEvents.error?.message ?? null,
+    errorMessage: loadError?.message ?? null,
+    errorDetails: loadError?.details ?? null,
     inbound,
     outbound,
     isEmpty: state === "ready" && events.length === 0,
     review: review.review,
     reviewPendingId: review.pendingId,
-    reviewErrorMessage: review.error?.message ?? null,
+    reviewErrorMessage: reviewError?.message ?? null,
+    reviewErrorDetails: reviewError?.details ?? null,
     usdcBalanceValue,
     usdcBalanceDisplay: formatUsdcAmount(usdcBalanceValue),
     rampAddressDisplay: truncateStrkey(rampAddress),

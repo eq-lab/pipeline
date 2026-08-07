@@ -21,6 +21,7 @@
  */
 import { useEffect, useRef } from "react";
 import { useRejectReasonDialog } from "./-useRejectReasonDialog";
+import { InlineError } from "@pipeline/ui";
 
 export interface RequestChangesDialogProps {
   open: boolean;
@@ -30,6 +31,8 @@ export interface RequestChangesDialogProps {
   onSubmit: (reason: string) => void;
   isSubmitting: boolean;
   errorMessage: string | null;
+  /** Full raw text behind `errorMessage`, for `InlineError`'s details dialog. */
+  errorDetails: string | null;
 }
 
 export function RequestChangesDialog({
@@ -39,6 +42,7 @@ export function RequestChangesDialog({
   onSubmit,
   isSubmitting,
   errorMessage,
+  errorDetails,
 }: RequestChangesDialogProps) {
   const { value, setValue, isValid, validationError, trimmedValue, reset } =
     useRejectReasonDialog();
@@ -123,12 +127,13 @@ export function RequestChangesDialog({
           </p>
         )}
         {errorMessage && (
-          <p
-            data-testid="request-changes-error"
-            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
-          >
-            {errorMessage}
-          </p>
+          <div data-testid="request-changes-error">
+            <InlineError
+              message={errorMessage}
+              details={errorDetails ?? undefined}
+              className="block text-[13px]"
+            />
+          </div>
         )}
         <div className="flex items-start justify-end gap-[12px] pt-[20px]">
           <button

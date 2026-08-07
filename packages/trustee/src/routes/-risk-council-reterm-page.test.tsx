@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
 
@@ -150,9 +151,9 @@ describe("Risk Council — Off-cycle re-term route (ready)", () => {
     expect(
       screen.getByRole("heading", { name: "Risk proposal" }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("risk-council-reterm-timestamp")).toHaveTextContent(
-      "21 Jun 2026, 14:32 UTC",
-    );
+    expect(
+      screen.getByTestId("risk-council-reterm-timestamp"),
+    ).toHaveTextContent("21 Jun 2026, 14:32 UTC");
     expect(
       screen.getByTestId("risk-council-reterm-chip-timelock"),
     ).toHaveTextContent("24h timelock");
@@ -191,7 +192,9 @@ describe("Risk Council — Off-cycle re-term route (ready)", () => {
     // Read-only review page: no submit/draft control like flow 10 has.
     const footer = screen.getByTestId("risk-council-reterm-footer");
     expect(
-      within(footer).getByText(/only shows review, evidence, and voting status/),
+      within(footer).getByText(
+        /only shows review, evidence, and voting status/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -225,10 +228,13 @@ describe("Risk Council — Off-cycle re-term route (top-level states)", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("risk-council-reterm-loading")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("risk-council-reterm-loading"),
+    ).toBeInTheDocument();
   });
 
-  it("renders an error state when the loan book fails to load", () => {
+  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -242,7 +248,12 @@ describe("Risk Council — Off-cycle re-term route (top-level states)", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("risk-council-reterm-error")).toHaveTextContent(
+    const alert = screen.getByTestId("risk-council-reterm-error");
+    expect(alert).toHaveTextContent("Failed to load the loan.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { RampEventsResponse } from "@/api/useRampEvents";
 
 vi.mock("@/components/CapitalAllocationCard", () => ({
@@ -399,14 +400,20 @@ describe("Cash Management route — On/Off-ramp review queue", () => {
     expect(screen.getByTestId("cash-management-approve-2")).toBeEnabled();
   });
 
-  it("surfaces a review error inline", () => {
+  it("surfaces the friendly review error inline, raw text only in errorDetails (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseReviewRampEvent.mockReturnValue(
       reviewHook({ error: new Error("already reviewed") }),
     );
     renderRoute();
-    expect(
-      screen.getByTestId("cash-management-review-error"),
-    ).toHaveTextContent("already reviewed");
+    const alert = screen.getByTestId("cash-management-review-error");
+    expect(alert).toHaveTextContent("Failed to review this ramp event.");
+    expect(alert).not.toHaveTextContent("already reviewed");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "already reviewed",
+    );
   });
 });
 
@@ -428,7 +435,8 @@ describe("Cash Management route — states", () => {
     expect(screen.getByTestId("cash-management-loading")).toBeInTheDocument();
   });
 
-  it("renders an error state", () => {
+  it("renders the friendly error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseRampEvents.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -436,7 +444,12 @@ describe("Cash Management route — states", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("cash-management-error")).toHaveTextContent(
+    const alert = screen.getByTestId("cash-management-error");
+    expect(alert).toHaveTextContent("Failed to load ramp events.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

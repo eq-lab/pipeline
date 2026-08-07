@@ -31,6 +31,7 @@ import { useLoanBook } from "@/api/useLoanBook";
 import { useLoanFinancials } from "@/api/useLoanFinancials";
 import { formatBpsRate } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
+import { toUserError } from "@/utils/userError";
 
 // ── Mock constants (see module doc — no proposal backend) ────────────────────
 
@@ -98,6 +99,7 @@ export interface RetermProposedTerms {
 export interface RiskCouncilRetermView {
   state: "loading" | "error" | "not-found" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   loanId: string;
   /** MOCK — see module doc. */
   timestamp: string;
@@ -127,9 +129,14 @@ export function useRiskCouncilReterm(loanId: string): RiskCouncilRetermView {
         ? "not-found"
         : "ready";
 
+  const loanBookError = loanBook.error
+    ? toUserError(loanBook.error, "Failed to load the loan.")
+    : null;
+
   return {
     state,
-    errorMessage: loanBook.error?.message ?? null,
+    errorMessage: loanBookError?.message ?? null,
+    errorDetails: loanBookError?.details ?? null,
     loanId,
     timestamp: MOCK_PROPOSAL_TIMESTAMP,
     current: {

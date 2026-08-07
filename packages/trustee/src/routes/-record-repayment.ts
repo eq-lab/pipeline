@@ -57,7 +57,6 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { ApiError } from "@/api/client";
 import { formatFullUsd } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
@@ -65,6 +64,8 @@ import {
   sacBaseUnitsToUsdDecimal,
   usdInputToSacBaseUnits,
 } from "@/utils/stellarSacUnits";
+import { mapWaterfallError, toUserError } from "@/utils/userError";
+import type { UserFacingError } from "@/utils/userError";
 
 // ── Pure helpers (exported for unit tests) ──────────────────────────────────
 
@@ -109,22 +110,6 @@ function sumBaseUnits(values: (string | undefined)[]): string | null {
 /** `$X` (whole dollars, per `formatFullUsd`) for a USD number; `—` for `null`. */
 function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
-}
-
-/**
- * Maps a `/waterfall` query error to friendly, user-facing copy — never the
- * raw backend message, and no numbers (#916). The backend's extended waterfall
- * validates the amount against the loan's terms and returns a client error
- * (4xx) when it doesn't fit (e.g. an amount too large for the loan's interest
- * rate / outstanding); that maps to the "too high" line. Anything else gets a
- * generic retry message.
- */
-export function mapWaterfallError(error: Error | null): string | null {
-  if (error == null) return null;
-  if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-    return "This amount is too high for this loan. Enter a smaller amount.";
-  }
-  return "Couldn't preview this payment. Please try again.";
 }
 
 /**
@@ -261,6 +246,7 @@ export interface WaterfallRow {
 export interface RecordRepaymentView {
   state: "loading" | "error" | "not-found" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   originator: string;
   backLabel: string;
   commodity: string;
@@ -275,6 +261,7 @@ export interface RecordRepaymentView {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
     errorMessage: string | null;
+    errorDetails: string | null;
     rows: WaterfallRow[];
   };
   /** `"Components sum to received $<amount>"` — `null` until a positive amount is entered and the preview resolves. */
@@ -465,9 +452,15 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       ? null
       : closureReason(Math.floor(Date.now() / 1000), maturity);
 
+  const loanBookError: UserFacingError | null = loanBook.error
+    ? toUserError(loanBook.error, "Failed to load the loan.")
+    : null;
+  const waterfallError = mapWaterfallError(waterfall.error);
+
   return {
     state,
-    errorMessage: loanBook.error?.message ?? null,
+    errorMessage: loanBookError?.message ?? null,
+    errorDetails: loanBookError?.details ?? null,
     originator: entry?.originator ?? "—",
     backLabel:
       entry != null ? `‹ ${entry.originator} · ${entry.commodity}` : "‹ Loan",
@@ -480,7 +473,8 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
-      errorMessage: mapWaterfallError(waterfall.error),
+      errorMessage: waterfallError?.message ?? null,
+      errorDetails: waterfallError?.details ?? null,
       rows,
     },
     summaryText,

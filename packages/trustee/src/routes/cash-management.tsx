@@ -10,6 +10,7 @@ import {
   useWithdrawalQueueView,
   type WithdrawalQueueView,
 } from "./-cash-management-withdrawals";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
@@ -973,14 +974,15 @@ function WithdrawalQueueSection({
       </div>
 
       {withdrawals.state === "error" ? (
-        <p
-          role="alert"
-          data-testid="cash-management-withdrawals-error"
-          className="font-[family-name:var(--font-body)] text-[14px]"
-          style={{ color: NEGATIVE_RED }}
-        >
-          {withdrawals.errorMessage ?? "Failed to load the withdrawal queue."}
-        </p>
+        <div data-testid="cash-management-withdrawals-error">
+          <InlineError
+            message={
+              withdrawals.errorMessage ?? "Failed to load the withdrawal queue."
+            }
+            details={withdrawals.errorDetails ?? undefined}
+            className="block text-[14px]"
+          />
+        </div>
       ) : (
         <div className="flex flex-col">
           <div className={summaryRow} style={{ borderColor: LINE_COLOR }}>
@@ -1129,11 +1131,13 @@ function CashManagement() {
 
             {view.state === "error" && (
               <div
-                role="alert"
                 data-testid="cash-management-error"
                 className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
               >
-                {view.errorMessage ?? "Failed to load ramp events."}
+                <InlineError
+                  message={view.errorMessage ?? "Failed to load ramp events."}
+                  details={view.errorDetails ?? undefined}
+                />
               </div>
             )}
 
@@ -1169,14 +1173,13 @@ function CashManagement() {
                   </>
                 )}
                 {view.reviewErrorMessage && (
-                  <p
-                    role="alert"
-                    data-testid="cash-management-review-error"
-                    className="font-[family-name:var(--font-body)] text-[14px]"
-                    style={{ color: NEGATIVE_RED }}
-                  >
-                    {view.reviewErrorMessage}
-                  </p>
+                  <div data-testid="cash-management-review-error">
+                    <InlineError
+                      message={view.reviewErrorMessage}
+                      details={view.reviewErrorDetails ?? undefined}
+                      className="block text-[14px]"
+                    />
+                  </div>
                 )}
               </>
             )}

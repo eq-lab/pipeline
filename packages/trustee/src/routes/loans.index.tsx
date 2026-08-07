@@ -8,6 +8,7 @@ import {
   type LoanTableRow,
   type LoansSummaryView,
 } from "./-useLoansTable";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Loans — the real Trustee page (issue #843, Figma node `4116:9989`), replacing
@@ -516,7 +517,7 @@ function CcrFootnote() {
 function LoansIndex() {
   const [activeTab, setActiveTab] = useState<LoanTab>("Performing");
   const navigate = useNavigate();
-  const { state, errorMessage, summary, counts, rows } =
+  const { state, errorMessage, errorDetails, summary, counts, rows } =
     useLoansTable(activeTab);
 
   const openLoan = (row: LoanTableRow) =>
@@ -530,11 +531,13 @@ function LoansIndex() {
 
       {state === "error" ? (
         <div
-          role="alert"
           data-testid="loans-error"
           className="w-full rounded-[var(--radius-pipeline-card)] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink)]"
         >
-          {errorMessage ?? "Failed to load the loan book."}
+          <InlineError
+            message={errorMessage ?? "Failed to load the loan book."}
+            details={errorDetails ?? undefined}
+          />
         </div>
       ) : state === "loading" || summary == null ? (
         <div

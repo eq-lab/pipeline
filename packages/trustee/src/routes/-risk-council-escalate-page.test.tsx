@@ -20,6 +20,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
 import type { CcrHistoryResponse } from "@/api/useLoanCcrHistory";
@@ -348,7 +349,8 @@ describe("Risk Council Escalate route — top-level states", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders an error state when the loan book fails to load", () => {
+  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -367,7 +369,12 @@ describe("Risk Council Escalate route — top-level states", () => {
       error: null,
     });
     renderRoute();
-    expect(screen.getByTestId("risk-council-escalate-error")).toHaveTextContent(
+    const alert = screen.getByTestId("risk-council-escalate-error");
+    expect(alert).toHaveTextContent("Failed to load the loan.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

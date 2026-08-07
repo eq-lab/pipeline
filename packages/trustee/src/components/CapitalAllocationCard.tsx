@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Card } from "@pipeline/ui";
+import { Card, InlineError } from "@pipeline/ui";
 import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 
 /**
@@ -89,8 +89,14 @@ export interface CapitalAllocationCardProps {
 export function CapitalAllocationCard({
   children,
 }: CapitalAllocationCardProps = {}) {
-  const { isLoading, isError, errorMessage, totalDisplay, legend } =
-    useCapitalAllocationCard();
+  const {
+    isLoading,
+    isError,
+    errorMessage,
+    errorDetails,
+    totalDisplay,
+    legend,
+  } = useCapitalAllocationCard();
 
   return (
     <Card
@@ -113,11 +119,15 @@ export function CapitalAllocationCard({
 
         {isError ? (
           <div
-            role="alert"
             data-testid="capital-allocation-error"
             className="w-full rounded-[var(--radius-pipeline-card)] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink)]"
           >
-            {errorMessage ?? "Failed to load Capital Allocation data."}
+            <InlineError
+              message={
+                errorMessage ?? "Failed to load Capital Allocation data."
+              }
+              details={errorDetails ?? undefined}
+            />
           </div>
         ) : isLoading ? (
           <div

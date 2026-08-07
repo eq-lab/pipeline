@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
 import type { WaterfallResponse } from "@/api/useLoanWaterfall";
@@ -408,9 +409,7 @@ describe("Record Repayment route — ready state", () => {
       target: { value: "6150000" },
     });
     await waitFor(() =>
-      expect(
-        screen.getByTestId("record-repayment-close-submit"),
-      ).toBeEnabled(),
+      expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled(),
     );
     // The record button now reads as complete and is locked to prevent a
     // double-record.
@@ -505,7 +504,7 @@ describe("Record Repayment route — ready state", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it("renders the close_loan error inline via the mocked hook's error field", () => {
+  it("renders the friendly close_loan error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
     mockCloseLoan.error = new Error("close_loan trapped");
     mockUseLoanBook.mockReturnValue({
       data: {
@@ -517,9 +516,14 @@ describe("Record Repayment route — ready state", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(
-      screen.getByTestId("record-repayment-close-error"),
-    ).toHaveTextContent("close_loan trapped");
+    const alert = screen.getByTestId("record-repayment-close-error");
+    expect(alert).toHaveTextContent("Failed to close this loan.");
+    expect(alert).not.toHaveTextContent("close_loan trapped");
+
+    await userEvent.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "close_loan trapped",
+    );
   });
 });
 
@@ -541,7 +545,7 @@ describe("Record Repayment route — top-level states", () => {
     expect(screen.getByTestId("record-repayment-loading")).toBeInTheDocument();
   });
 
-  it("renders an error state when the loan book fails to load", () => {
+  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -555,7 +559,12 @@ describe("Record Repayment route — top-level states", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("record-repayment-error")).toHaveTextContent(
+    const alert = screen.getByTestId("record-repayment-error");
+    expect(alert).toHaveTextContent("Failed to load the loan.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await userEvent.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

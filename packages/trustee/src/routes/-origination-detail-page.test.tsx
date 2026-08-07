@@ -40,6 +40,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { OriginationDetailResult } from "./-origination-detail";
 import type { UseOriginationReviewResult } from "./-useOriginationReview";
 
@@ -120,6 +121,7 @@ function mockReview(overrides?: Partial<UseOriginationReviewResult>) {
     isPending: false,
     mintingLabel: null,
     errorMessage: null,
+    errorDetails: null,
     approveOpen: false,
     rejectOpen: false,
     requestChangesOpen: false,
@@ -536,6 +538,21 @@ describe("Origination details route", () => {
       expect(
         screen.getByTestId("origination-detail-review-error"),
       ).toHaveTextContent("You are not authorized to review submissions.");
+    });
+
+    it("wires errorDetails through to InlineError's View details trigger (#1037)", async () => {
+      const user = userEvent.setup();
+      mockReview({
+        errorMessage: "Something went wrong. Please try again.",
+        errorDetails: "raw backend diagnostic text",
+      });
+      mockDetail(READY_RESULT);
+      renderRoute();
+
+      await user.click(screen.getByTestId("inline-error-view-details"));
+      expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+        "raw backend diagnostic text",
+      );
     });
 
     it("does NOT render the inline error while the reject dialog is open (the dialog owns it)", () => {

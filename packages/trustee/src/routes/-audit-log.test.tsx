@@ -28,7 +28,12 @@ beforeEach(() => {
 
 describe("Audit Log page", () => {
   it("shows the Audit Log heading", () => {
-    mockView.mockReturnValue({ state: "ready", errorMessage: null, rows: [] });
+    mockView.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     expect(
       screen.getByRole("heading", { name: "Audit Log" }),
@@ -39,6 +44,7 @@ describe("Audit Log page", () => {
     mockView.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [
         {
           key: "k1",
@@ -60,7 +66,12 @@ describe("Audit Log page", () => {
   });
 
   it("shows an empty state when there are no rows", () => {
-    mockView.mockReturnValue({ state: "ready", errorMessage: null, rows: [] });
+    mockView.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     expect(screen.getByTestId("audit-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("audit-row")).not.toBeInTheDocument();
@@ -70,6 +81,7 @@ describe("Audit Log page", () => {
     mockView.mockReturnValue({
       state: "loading",
       errorMessage: null,
+      errorDetails: null,
       rows: [],
     });
     renderRoute();
@@ -81,6 +93,7 @@ describe("Audit Log page", () => {
     mockView.mockReturnValue({
       state: "error",
       errorMessage: "boom",
+      errorDetails: null,
       rows: [],
     });
     renderRoute();
@@ -96,7 +109,12 @@ describe("Audit Log page", () => {
       reference: "0xabc1…f4d9",
       referenceFull: "0xabc1234567890def4d9",
     }));
-    mockView.mockReturnValue({ state: "ready", errorMessage: null, rows });
+    mockView.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      errorDetails: null,
+      rows,
+    });
     renderRoute();
 
     // First paint caps the DOM at the page size (50), not all 120 rows.

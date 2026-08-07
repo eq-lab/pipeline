@@ -35,13 +35,27 @@ export function useErrorDetailsDialog({
   // Escape closes the dialog regardless of which element currently has focus
   // — a window-level listener rather than a per-element `onKeyDown` guards
   // against focus having moved elsewhere (e.g. onto the Copy button).
+  //
+  // Registered in the CAPTURE phase with `stopImmediatePropagation()`: when
+  // this dialog is opened from inside another dialog (e.g. a trustee review
+  // dialog), that parent dialog's own Escape listener is bubble-phase and
+  // registered earlier, so without capture it would fire first and close the
+  // parent, unmounting this dialog with it. Capture-phase listeners run
+  // before bubble-phase ones for the same event, so the topmost (most
+  // recently opened) dialog consumes Escape first. This means any future
+  // dialog that wants to nest inside another must stay bubble-phase itself
+  // so it doesn't out-race a details dialog nested inside IT.
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation();
+        onClose();
+      }
     }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [open, onClose]);
 
   // Reset the "Copied" flag whenever the dialog closes, so it doesn't

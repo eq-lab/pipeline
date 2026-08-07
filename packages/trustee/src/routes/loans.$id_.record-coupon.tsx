@@ -1,6 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRecordCoupon, type WaterfallRow } from "./-record-coupon";
 import { useRecordPayment } from "@/api/useRecordPayment";
+import { toUserError } from "@/utils/userError";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Record Coupon full-page route (issue #882, Figma node `4116-11452`) — the
@@ -143,7 +145,7 @@ function WaterfallRowView({
           </span>
         )}
       </span>
-      <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] font-semibold leading-[22.4px] text-[#262524]">
+      <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] font-semibold text-[#262524]">
         {row.value}
       </span>
     </div>
@@ -155,6 +157,12 @@ function RecordCoupon() {
   const view = useRecordCoupon(id);
   const navigate = useNavigate();
   const record = useRecordPayment();
+  // Not threaded through `-record-coupon.ts` — `record` is a page-level
+  // mutation, not part of the presenter's read view-model (spec:
+  // docs/frontend/error-handling.md).
+  const recordError = record.error
+    ? toUserError(record.error, "Failed to record this payment.")
+    : null;
 
   const onRecord = () => {
     if (view.recordPaymentInput == null) return;
@@ -198,11 +206,13 @@ function RecordCoupon() {
           {view.backLabel}
         </Link>
         <div
-          role="alert"
           data-testid="record-coupon-error"
           className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
         >
-          {view.errorMessage ?? "Failed to load the loan."}
+          <InlineError
+            message={view.errorMessage ?? "Failed to load the loan."}
+            details={view.errorDetails ?? undefined}
+          />
         </div>
       </main>
     );
@@ -354,14 +364,13 @@ function RecordCoupon() {
             </div>
           )}
           {view.waterfall.errorMessage && (
-            <p
-              role="alert"
-              data-testid="record-coupon-waterfall-error"
-              className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-              style={{ color: "#b20000" }}
-            >
-              {view.waterfall.errorMessage}
-            </p>
+            <div data-testid="record-coupon-waterfall-error">
+              <InlineError
+                message={view.waterfall.errorMessage}
+                details={view.waterfall.errorDetails ?? undefined}
+                className="block text-[14px] leading-[19.6px]"
+              />
+            </div>
           )}
           {view.summaryText && (
             <div
@@ -410,15 +419,14 @@ function RecordCoupon() {
               Pinned to the bottom of the right card (`mt-auto`) per Figma node
               `4116-11295` — stays anchored even before an amount is entered. */}
           <div className="mt-auto flex flex-col gap-[12px] pt-[16px]">
-            {record.error && (
-              <p
-                role="alert"
-                data-testid="record-coupon-record-error"
-                className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-                style={{ color: "#b20000" }}
-              >
-                {record.error.message}
-              </p>
+            {recordError && (
+              <div data-testid="record-coupon-record-error">
+                <InlineError
+                  message={recordError.message}
+                  details={recordError.details}
+                  className="block text-[14px] leading-[19.6px]"
+                />
+              </div>
             )}
             <button
               type="button"

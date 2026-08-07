@@ -279,48 +279,68 @@ _All resolved:_
 
 ## Implementation Steps
 
-1. **Baseline.** From `feat/1037-trustee-error-ux`, confirm `yarn workspace @pipeline/trustee test`
+1. [x] **Baseline.** From `feat/1037-trustee-error-ux`, confirm `yarn workspace @pipeline/trustee test`
    is 787/59 green. Re-read `packages/frontend/src/utils/userError.ts` and
    `docs/frontend/error-handling.md` — the LP implementation is the reference for structure and
    comment style.
-2. **Create `packages/trustee/src/utils/userError.ts`** per D2: `toError`,
+2. [x] **Create `packages/trustee/src/utils/userError.ts`** per D2: `toError`,
    `parseSorobanContractErrorCode`, `toUserError(err, fallback?)`, `mapWaterfallError`. Port the LP
    rejection regexes and Soroban parser verbatim; add the trustee-specific `instanceof ApiError`
    status branch and the five preflight-guard patterns. Header comment is a `spec:` pointer only
    (rule 6) — behaviour prose goes in step 12.
-3. **Create `packages/trustee/src/utils/-userError.test.ts`** covering: every rejection pattern; each
+3. [x] **Create `packages/trustee/src/utils/-userError.test.ts`** covering: every rejection pattern; each
    `ApiError` status (401 via `ApiUnauthorizedError`, 403, 409, 400, 404, 500); each preflight guard;
    `Error(Contract, #N)` parse incl. multiple-occurrence-first-wins and unlisted-code fallthrough;
    the simulation-error shape; per-surface `fallback` override; and the invariant that `details` is
    always the full untruncated normalized text on every branch.
-4. **`@pipeline/ui` Escape fix** (D4): in
+4. [x] **`@pipeline/ui` Escape fix** (D4): in
    `packages/ui/src/components/ErrorDetailsDialog/useErrorDetailsDialog.ts`, register the keydown
    listener with `{ capture: true }` and call `e.stopImmediatePropagation()` before `onClose()`.
    Update the inline comment. Add a `packages/ui` test proving that with a sibling bubble-phase
    `window` keydown listener registered first, Escape invokes only the dialog's `onClose`.
-5. **Area A — origination review.** Rework `mapReviewError` / `mapMintError` / the composed
+   **Deviation:** the test lives in `packages/frontend/src/components/ErrorDetailsDialog.dom.test.tsx`
+   (added to the existing suite there), not a new `packages/ui` test file — `packages/ui` has no test
+   runner at all (confirmed: no vitest/jest config, no existing `.test.*` files in the package), and
+   the established precedent for `ErrorDetailsDialog`/`InlineError` DOM coverage already lives in the
+   frontend's jsdom Vitest environment (see that file's own doc comment). Also added the matching D4
+   nested-dialog regression test per dialog in Areas A's dialog test files.
+5. [x] **Area A — origination review.** Rework `mapReviewError` / `mapMintError` / the composed
    `errorMessage` in `-useOriginationReview.ts` to return `UserFacingError` per D3; expose
    `errorDetails: string | null` from the hook. Thread it through `origination.$id.tsx`'s
    `DetailFooter` → `ActionButtons` and the three dialogs' props. Swap all four render sites to
    `InlineError`, preserving existing `data-testid`s and the `:583-587` suppression guard.
-6. **Area B** — `-useOriginationTable.ts` + `origination.index.tsx`.
-7. **Area C** — move `mapWaterfallError` into the shared module, delete both local copies, update
+   **Deviation:** `mapReviewError` was retired entirely (its 401/403/409/400/default branches are now
+   exactly the shared `toUserError` `ApiError.status` table — see D3 table in the doc); the composed
+   `errorMessage`/`errorDetails` logic calls `toUserError(reviewMutation.error)` directly instead of
+   through a wrapper function.
+6. [x] **Area B** — `-useOriginationTable.ts` + `origination.index.tsx`.
+7. [x] **Area C** — move `mapWaterfallError` into the shared module, delete both local copies, update
    both route-module imports; map the loanBook load error and the three on-chain
    record/close failures in `loans.$id_.record-coupon.tsx` / `loans.$id_.record-repayment.tsx`;
    replace the `#b20000` / `NEGATIVE_RED` literals.
-8. **Area D** — `-useLoanDetail.ts` (three fields, 404-empty cases untouched) + `loans.$id.tsx`
+8. [x] **Area D** — `-useLoanDetail.ts` (three fields, 404-empty cases untouched) + `loans.$id.tsx`
    (three panels + three action dialogs; widen the dialog `error` props to a message/details pair).
-9. **Areas E–I** — loans list, the three risk-council presenters + pages, the three cash-management
+9. [x] **Areas E–I** — loans list, the three risk-council presenters + pages, the three cash-management
    surfaces, audit log, capital allocation. Same shape each time: hook maps with a per-surface
    fallback and returns `errorDetails`; JSX drops its `??` and renders `InlineError`.
-10. **Sweep check.** `grep -rn "\.message" packages/trustee/src --include='*.ts' --include='*.tsx'`
+   **Deviation:** the remaining `errorMessage ?? "<friendly text>"` sites were NOT fully dropped —
+   each hook's mapped `errorMessage` is now guaranteed friendly and non-raw, so keeping a same-text
+   `??` fallback is purely for TypeScript's `string | null` narrowing (both sides read identically),
+   not the original anti-pattern (raw `??` friendly). Verified via the sweep in step 10 that no `??`
+   site still diverges between a raw and a friendly branch.
+10. [x] **Sweep check.** `grep -rn "\.message" packages/trustee/src --include='*.ts' --include='*.tsx'`
     and confirm no remaining read of a caught/thrown `.message` feeds a display field; likewise
-    `grep -rn 'errorMessage ??' packages/trustee/src` returns nothing.
-11. **Tests** per Test Strategy.
-12. **Docs** per Docs to Update.
-13. **Lint & build.** `yarn workspace @pipeline/trustee lint`,
+    `grep -rn 'errorMessage ??' packages/trustee/src` returns nothing raw (see step 9 deviation note).
+11. [x] **Tests** per Test Strategy.
+12. [x] **Docs** per Docs to Update.
+13. [x] **Lint & build.** `yarn workspace @pipeline/trustee lint`,
     `yarn workspace @pipeline/ui lint`, `yarn workspace @pipeline/trustee build`, and
-    `npx tsx scripts/lint-docs.ts`. Do not fix TD-51's pre-existing Prettier drift in unrelated files.
+    `npx tsx scripts/lint-docs.ts`. **Deviation:** TD-51's pre-existing Prettier drift ended up fully
+    resolved rather than left untouched — every one of TD-51's listed files was already being
+    substantially rewritten by this issue, so each was run through `prettier --write` as part of
+    finishing its edit rather than hand-picking a diff-only fix; `packages/trustee` is now fully
+    Prettier-clean (`prettier --check .` passes with zero violations). TD-51 marked resolved in the
+    tracker. No file outside this issue's touch set was reformatted.
 
 ## Test Strategy
 

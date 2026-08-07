@@ -69,6 +69,7 @@
 import { useCapitalAllocation } from "@/api/useCapitalAllocation";
 import { useCapitalWalletBalance } from "@/api/useCapitalWalletBalance";
 import { formatCompactUsd, formatFullUsd } from "@/utils/formatUsd";
+import { toUserError } from "@/utils/userError";
 
 /** One row of the Capital Allocation legend. */
 export interface AllocationLegendRow {
@@ -100,6 +101,7 @@ export interface UseCapitalAllocationCardResult {
   isLoading: boolean;
   isError: boolean;
   errorMessage: string | null;
+  errorDetails: string | null;
   /** Fully-expanded whole-dollar total, e.g. "$115,190,000"; "—" when null. */
   totalDisplay: string;
   /**
@@ -296,12 +298,17 @@ export function useCapitalAllocationCard(): UseCapitalAllocationCardResult {
     },
   ];
 
+  const mapped = error
+    ? toUserError(error, "Failed to load Capital Allocation data.")
+    : null;
+
   return {
     isLoading,
     // Only the backend query's error drives the card-level error surface —
     // a flaky on-chain read degrades just the Capital-Wallet legend value.
     isError: error !== null,
-    errorMessage: error?.message ?? null,
+    errorMessage: mapped?.message ?? null,
+    errorDetails: mapped?.details ?? null,
     totalDisplay: formatTotalDisplay(totalNum),
     legend,
   };

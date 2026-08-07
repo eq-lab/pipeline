@@ -48,6 +48,7 @@ import type {
 } from "@/api/useLoanBook";
 import { formatCompactUsd, formatCompactUsd2dp } from "@/utils/formatUsd";
 import { formatMaturityDate } from "@/utils/formatDate";
+import { toUserError } from "@/utils/userError";
 
 // ── Named constants ─────────────────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ export type LoansTableState = "loading" | "error" | "empty" | "ready";
 export interface UseLoansTableResult {
   state: LoansTableState;
   errorMessage: string | null;
+  errorDetails: string | null;
   summary: LoansSummaryView | null;
   /** Per-tab row counts (a grouping of served rows — allowed, not a derived metric). */
   counts: Record<LoanTab, number>;
@@ -419,15 +421,18 @@ export function useLoansTable(activeTab: LoanTab): UseLoansTableResult {
     return {
       state: "loading",
       errorMessage: null,
+      errorDetails: null,
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
     };
   }
   if (error) {
+    const mapped = toUserError(error, "Failed to load the loan book.");
     return {
       state: "error",
-      errorMessage: error.message,
+      errorMessage: mapped.message,
+      errorDetails: mapped.details,
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
@@ -437,6 +442,7 @@ export function useLoansTable(activeTab: LoanTab): UseLoansTableResult {
     return {
       state: "empty",
       errorMessage: null,
+      errorDetails: null,
       summary: null,
       counts: EMPTY_COUNTS,
       rows: [],
@@ -448,6 +454,7 @@ export function useLoansTable(activeTab: LoanTab): UseLoansTableResult {
   return {
     state: data.loans.length === 0 ? "empty" : "ready",
     errorMessage: null,
+    errorDetails: null,
     summary,
     counts,
     rows,

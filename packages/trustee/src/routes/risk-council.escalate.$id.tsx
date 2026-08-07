@@ -7,6 +7,7 @@ import {
 import type { CcrBand } from "./-useLoansTable";
 import type { CcrTrend } from "./-useLoanDetail";
 import { CcrTrendChart } from "./-CcrTrendChart";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Risk Council — Escalate (issue #782; Figma node `4116-12953` for styling) —
@@ -351,11 +352,13 @@ function RiskCouncilEscalate() {
           ‹ Risk Council
         </Link>
         <div
-          role="alert"
           data-testid="risk-council-escalate-error"
           className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
         >
-          {view.errorMessage ?? "Failed to load the loan."}
+          <InlineError
+            message={view.errorMessage ?? "Failed to load the loan."}
+            details={view.errorDetails ?? undefined}
+          />
         </div>
       </main>
     );

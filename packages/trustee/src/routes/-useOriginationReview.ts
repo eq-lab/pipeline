@@ -67,23 +67,16 @@
  * deferred to a follow-up backend issue — see
  * `docs/exec-plans/tech-debt-tracker.md`.
  *
- * Error copy (issue body, `packages/api/src/routes/loan_book.rs`
- * `review_submission` contract):
- *   - `409` — the submission was already reviewed (race with another
- *     trustee, or a stale page) → "already reviewed, refresh".
- *   - `403` — caller authenticated but lacks the `trustee` role → "not
- *     authorized".
- *   - `401` (`ApiUnauthorizedError`) — missing/invalid/expired session.
- *   - `400` — a validation guard tripped (should not happen given
- *     client-side validation) → surface the backend message.
- *   - anything else — generic fallback, backend message appended when
- *     present.
+ * Review-mutation error copy (401/403/409/400/default) comes from the
+ * shared `toUserError` status table (#1037); raw backend text is never
+ * rendered inline, only via `errorDetails`.
+ * spec: docs/frontend/error-handling.md
  */
 import { useState } from "react";
 import { useReviewSubmission } from "@/api/useReviewSubmission";
 import { useDrawLoan, type DrawLoanStage } from "@/api/useDrawLoan";
 import { useLoanSubmissions } from "@/api/useLoanSubmissions";
-import { ApiError, ApiUnauthorizedError } from "@/api/client";
+import { toUserError, type UserFacingError } from "@/utils/userError";
 
 export interface UseOriginationReviewResult {
   /**
@@ -123,6 +116,8 @@ export interface UseOriginationReviewResult {
   mintingLabel: string | null;
   /** User-facing error copy, mapped from the last failed step, or `null`. */
   errorMessage: string | null;
+  /** Full raw text behind `errorMessage`, for `InlineError`'s details dialog, or `null`. */
+  errorDetails: string | null;
   /** Whether the approve & mint confirmation dialog is open (issue #838). */
   approveOpen: boolean;
   /** Whether the reject-reason dialog is open. */
@@ -139,54 +134,53 @@ export interface UseOriginationReviewResult {
   mintedLoanId: number | null;
 }
 
-/** Maps a thrown review-mutation error to user-facing copy. `null` when there is no error. */
-function mapReviewError(error: Error | null): string | null {
-  if (!error) return null;
-
-  if (error instanceof ApiUnauthorizedError) {
-    return "Your session has expired or is not authorized. Please sign in again.";
-  }
-
-  if (error instanceof ApiError) {
-    switch (error.status) {
-      case 409:
-        return "This submission has already been reviewed. Refresh to see the latest status.";
-      case 403:
-        return "You are not authorized to review submissions.";
-      case 400:
-        return error.message || "This request was invalid.";
-      default:
-        return error.message
-          ? `Something went wrong: ${error.message}`
-          : "Something went wrong. Please try again.";
-    }
-  }
-
-  return "Something went wrong. Please try again.";
-}
-
 /**
  * Maps a thrown `useDrawLoan` (on-chain mint) error to user-facing copy.
  * Uses substring heuristics on the error message since wallet kits/Soroban
  * RPC don't expose a stable typed error taxonomy for "user rejected" vs.
- * other failures.
+ * other failures. Kept local rather than folded into the shared
+ * `toUserError` table (#1037) — every branch here carries Approve-specific
+ * wording ("the loan", "Click Approve again") that would be wrong on the
+ * other four on-chain hooks sharing `toUserError`'s generic copy.
+ * spec: docs/frontend/error-handling.md
  */
-function mapMintError(error: Error): string {
-  const message = error.message;
+function mapMintError(error: Error): UserFacingError {
+  const details = error.message;
 
-  if (/simulation error/i.test(message)) {
-    return `Could not verify the loan on-chain (${message}). No signature was requested — safe to retry.`;
+  if (/simulation error/i.test(details)) {
+    return {
+      message:
+        "Could not verify the loan on-chain. No signature was requested — safe to retry.",
+      details,
+      isSpecific: true,
+    };
   }
-  if (/reject|cancel|declin|denied|dismiss/i.test(message)) {
-    return "Signature cancelled. Click Approve again to retry.";
+  if (/reject|cancel|declin|denied|dismiss/i.test(details)) {
+    return {
+      message: "Signature cancelled. Click Approve again to retry.",
+      details,
+      isSpecific: true,
+    };
   }
-  if (/not configured/i.test(message)) {
-    return "On-chain minting isn't configured for this environment.";
+  if (/not configured/i.test(details)) {
+    return {
+      message: "On-chain minting isn't configured for this environment.",
+      details,
+      isSpecific: true,
+    };
   }
-  if (/not connected/i.test(message)) {
-    return "Connect your trustee wallet to approve on-chain.";
+  if (/not connected/i.test(details)) {
+    return {
+      message: "Connect your trustee wallet to approve on-chain.",
+      details,
+      isSpecific: true,
+    };
   }
-  return `The on-chain transaction failed (${message}). Please try again.`;
+  return {
+    message: "The on-chain transaction failed. Please try again.",
+    details,
+    isSpecific: false,
+  };
 }
 
 /** Progress copy for each `useDrawLoan` stage, shown on the Approve button. */
@@ -317,14 +311,20 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     );
   }
 
-  const errorMessage = drawLoanMutation.error
+  // Mint-succeeded-but-review-failed is a distinct known limitation (issue
+  // #831 Open Question 4) — not a plain `toUserError` review-mapping case,
+  // since retrying would attempt a second on-chain mint.
+  const mappedError: UserFacingError | null = drawLoanMutation.error
     ? mapMintError(drawLoanMutation.error)
     : reviewMutation.error
       ? drawLoanMutation.isSuccess
-        ? `The loan minted on-chain successfully, but marking it Approved failed (${
-            reviewMutation.error.message || "unknown error"
-          }). This is a known limitation — contact support rather than retrying (Approve would attempt another on-chain mint).`
-        : mapReviewError(reviewMutation.error)
+        ? {
+            message:
+              "The loan minted on-chain successfully, but marking it Approved failed. This is a known limitation — contact support rather than retrying (Approve would attempt another on-chain mint).",
+            details: reviewMutation.error.message || "unknown error",
+            isSpecific: true,
+          }
+        : toUserError(reviewMutation.error)
       : null;
 
   const mintingLabel = drawLoanMutation.isPending
@@ -345,7 +345,8 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
     submitRequestChanges,
     isPending: drawLoanMutation.isPending || reviewMutation.isPending,
     mintingLabel,
-    errorMessage,
+    errorMessage: mappedError?.message ?? null,
+    errorDetails: mappedError?.details ?? null,
     approveOpen,
     rejectOpen,
     requestChangesOpen,

@@ -5,6 +5,7 @@ import { RejectReasonDialog } from "./-RejectReasonDialog";
 import { RequestChangesDialog } from "./-RequestChangesDialog";
 import { ApproveMintDialog } from "./-ApproveMintDialog";
 import { DocumentIcon } from "@/components/DocumentIcon";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Origination details / review page (issue #821, Figma node `4116:9292`) —
@@ -295,6 +296,7 @@ interface ActionButtonsProps {
   onRequestChanges: () => void;
   isPending: boolean;
   errorMessage: string | null;
+  errorDetails: string | null;
 }
 
 /**
@@ -314,16 +316,18 @@ function ActionButtons({
   onRequestChanges,
   isPending,
   errorMessage,
+  errorDetails,
 }: ActionButtonsProps) {
   return (
     <div className="flex flex-col items-start gap-[20px] pt-[4px]">
       {errorMessage && (
-        <p
-          data-testid="origination-detail-review-error"
-          className="font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-negative)]"
-        >
-          {errorMessage}
-        </p>
+        <div data-testid="origination-detail-review-error">
+          <InlineError
+            message={errorMessage}
+            details={errorDetails ?? undefined}
+            className="block text-[14px]"
+          />
+        </div>
       )}
       <div className="flex items-start gap-[10px]">
         <button
@@ -462,6 +466,7 @@ function DetailFooter({
   onRequestChanges,
   isPending,
   errorMessage,
+  errorDetails,
 }: {
   statusKind: StatusChip["kind"];
   reviewedDate: string;
@@ -472,6 +477,7 @@ function DetailFooter({
   onRequestChanges: () => void;
   isPending: boolean;
   errorMessage: string | null;
+  errorDetails: string | null;
 }) {
   if (statusKind === "approved") {
     return <ApprovedBanner date={reviewedDate} loanId={mintedLoanId} />;
@@ -494,6 +500,7 @@ function DetailFooter({
       onRequestChanges={onRequestChanges}
       isPending={isPending}
       errorMessage={errorMessage}
+      errorDetails={errorDetails}
     />
   );
 }
@@ -585,6 +592,11 @@ function OriginationDetail() {
               ? null
               : review.errorMessage
           }
+          errorDetails={
+            review.approveOpen || review.rejectOpen || review.requestChangesOpen
+              ? null
+              : review.errorDetails
+          }
         />
       </div>
 
@@ -595,6 +607,7 @@ function OriginationDetail() {
         isSubmitting={review.isPending}
         mintingLabel={review.mintingLabel}
         errorMessage={review.approveOpen ? review.errorMessage : null}
+        errorDetails={review.approveOpen ? review.errorDetails : null}
         preview={detail.transactionPreview}
       />
 
@@ -605,6 +618,7 @@ function OriginationDetail() {
         onSubmit={review.submitReject}
         isSubmitting={review.isPending}
         errorMessage={review.rejectOpen ? review.errorMessage : null}
+        errorDetails={review.rejectOpen ? review.errorDetails : null}
       />
 
       <RequestChangesDialog
@@ -614,6 +628,7 @@ function OriginationDetail() {
         onSubmit={review.submitRequestChanges}
         isSubmitting={review.isPending}
         errorMessage={review.requestChangesOpen ? review.errorMessage : null}
+        errorDetails={review.requestChangesOpen ? review.errorDetails : null}
       />
     </main>
   );

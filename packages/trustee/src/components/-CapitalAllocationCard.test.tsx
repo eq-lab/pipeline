@@ -31,6 +31,7 @@ function mockHook(overrides: Partial<UseCapitalAllocationCardResult>) {
     isLoading: false,
     isError: false,
     errorMessage: null,
+    errorDetails: null,
     totalDisplay: "—",
     legend: [
       {
