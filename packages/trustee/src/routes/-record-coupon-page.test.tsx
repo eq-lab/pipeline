@@ -18,6 +18,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 import type { LoanFinancialsResponse } from "@/api/useLoanFinancials";
 import type { WaterfallResponse } from "@/api/useLoanWaterfall";
@@ -517,7 +518,7 @@ describe("Record Coupon route — top-level states", () => {
     expect(screen.getByTestId("record-coupon-loading")).toBeInTheDocument();
   });
 
-  it("renders an error state when the loan book fails to load", () => {
+  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -531,7 +532,12 @@ describe("Record Coupon route — top-level states", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("record-coupon-error")).toHaveTextContent(
+    const alert = screen.getByTestId("record-coupon-error");
+    expect(alert).toHaveTextContent("Failed to load the loan.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await userEvent.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

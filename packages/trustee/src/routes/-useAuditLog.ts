@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useAuditLog, type AuditLogItem } from "@/api/useAuditLog";
 import { useLoanBook } from "@/api/useLoanBook";
 import { formatAuditTimestamp } from "@/utils/formatDate";
+import { toUserError } from "@/utils/userError";
 
 export interface AuditRow {
   key: string;
@@ -24,6 +25,7 @@ export type AuditState = "loading" | "error" | "ready";
 export interface UseAuditLogView {
   state: AuditState;
   errorMessage: string | null;
+  errorDetails: string | null;
   rows: AuditRow[];
 }
 
@@ -79,9 +81,14 @@ export function useAuditLogView(): UseAuditLogView {
       ? "loading"
       : "ready";
 
+  const mapped = audit.error
+    ? toUserError(audit.error, "Failed to load the audit log.")
+    : null;
+
   return {
     state,
-    errorMessage: audit.error?.message ?? null,
+    errorMessage: mapped?.message ?? null,
+    errorDetails: mapped?.details ?? null,
     rows,
   };
 }

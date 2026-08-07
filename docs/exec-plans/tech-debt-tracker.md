@@ -777,7 +777,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Scope the §S5 tab-strip migration as its own issue once prioritized; move the
   Documents card's list markup into the new Documents tab body unchanged.
 
-### TD-51: `packages/trustee` has the same pre-existing Prettier formatting drift as TD-47/TD-12 (`packages/frontend`)
+### TD-51: `packages/trustee` has the same pre-existing Prettier formatting drift as TD-47/TD-12 (`packages/frontend`) [RESOLVED 2026-08-07 / #1037]
 
 - **Date:** 2026-08-07 (found during #1039)
 - **Location:** Confirmed on the `feat/1039-loan-detail-documents` branch's base commit (i.e.
@@ -795,6 +795,34 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** One-shot `prettier --write` pass over `packages/trustee` in a dedicated
   formatting-only chore PR (mirrors TD-47's suggested fix for `packages/frontend`), then confirm
   `yarn --cwd packages/trustee lint` passes clean.
+- **Resolved by #1037:** the error-UX adoption sweep touched all seven previously-listed files
+  (plus several more), and each edit was followed by `prettier --write` on the whole file rather
+  than a diff-only fix (the files were already being substantially rewritten, so bringing them
+  fully into compliance cost nothing extra). `yarn --cwd packages/trustee lint` now passes clean
+  with zero Prettier violations across the package — verified via `prettier --check .`.
+
+### TD-52: Trustee `userError.ts` duplicates the LP `packages/frontend/src/utils/userError.ts` chain-generic half
+
+- **Date:** 2026-08-07 (#1037)
+- **Location:** `packages/trustee/src/utils/userError.ts` (`toError`, `parseSorobanContractErrorCode`, the
+  wallet/user-rejection regex list) vs. `packages/frontend/src/utils/userError.ts`'s identically-named
+  exports (#1034).
+- **Impact:** The ~60-line chain-generic half of the mapping layer (normalizing unknown thrown values,
+  parsing `Error(Contract, #N)`, detecting wallet rejections) is now duplicated verbatim across the two
+  apps, alongside the trustee-specific `ApiError.status` table and preflight-guard/simulation-error
+  branches that have no LP equivalent. Same duplication shape already tracked for
+  `formatCompactUsd`/`formatFullUsd` (TD-38), the `loan_data` extractor (TD-42), and
+  `formatFractionPct` (TD-46) — see `docs/frontend/utils.md` → "Trustee app" for the running precedent.
+- **Root cause:** D1 in the #1037 exec plan (`docs/exec-plans/completed/issue-1037-trustee-error-ux.md`
+  once archived) rejected hoisting into `@pipeline/wallet-connect` because `packages/frontend` has no
+  workspace dependency edge to it (TD-35 — the LP wallet code was copied, not moved, and never
+  re-pointed), and rejected `@pipeline/ui` because it has no `utils/` directory and is a presentational
+  package. Consolidating now would need TD-35 resolved first, or the LP module duplicated a second time.
+- **Suggested fix:** Gate on TD-35 (`packages/frontend` re-pointed at `@pipeline/wallet-connect`). Once
+  that lands, hoist `toError`/`parseSorobanContractErrorCode`/the rejection-pattern list into
+  `@pipeline/wallet-connect` and have both `packages/frontend/src/utils/userError.ts` and
+  `packages/trustee/src/utils/userError.ts` import the shared half, keeping only their
+  status-table/copy differences local.
 
 ---
 

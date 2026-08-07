@@ -293,7 +293,7 @@ describe("useOriginationReview", () => {
 
   // ── Mint error mapping ───────────────────────────────────────────────────────
 
-  it("maps a simulation-error mint failure to a 'could not verify' + safe-to-retry message", () => {
+  it("maps a simulation-error mint failure to a 'could not verify' + safe-to-retry message, raw text only in errorDetails", () => {
     mockDrawLoanState = {
       isPending: false,
       isSuccess: false,
@@ -301,8 +301,13 @@ describe("useOriginationReview", () => {
       stage: null,
     };
     const { result } = renderHook(() => useOriginationReview("7"));
-    expect(result.current.errorMessage).toMatch(/Could not verify/);
-    expect(result.current.errorMessage).toMatch(/safe to retry/i);
+    expect(result.current.errorMessage).toBe(
+      "Could not verify the loan on-chain. No signature was requested — safe to retry.",
+    );
+    expect(result.current.errorMessage).not.toMatch(/bad encoding/);
+    expect(result.current.errorDetails).toBe(
+      "drawLoan simulation error: bad encoding",
+    );
   });
 
   it("maps a wallet-rejection mint failure to 'Signature cancelled'", () => {
@@ -342,7 +347,24 @@ describe("useOriginationReview", () => {
     expect(result.current.errorMessage).toMatch(/Connect your trustee wallet/);
   });
 
-  it("maps the mint-succeeded-but-review-failed known limitation distinctly", () => {
+  it("maps an unrecognized mint failure to the generic on-chain-failed message, raw text only in errorDetails (mint-default branch)", () => {
+    mockDrawLoanState = {
+      isPending: false,
+      isSuccess: false,
+      error: new Error("HostError: some unrecognized trap"),
+      stage: null,
+    };
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.errorMessage).toBe(
+      "The on-chain transaction failed. Please try again.",
+    );
+    expect(result.current.errorMessage).not.toMatch(/HostError/);
+    expect(result.current.errorDetails).toBe(
+      "HostError: some unrecognized trap",
+    );
+  });
+
+  it("maps the mint-succeeded-but-review-failed known limitation distinctly, raw text only in errorDetails", () => {
     mockDrawLoanState = {
       isPending: false,
       isSuccess: true,
@@ -353,7 +375,8 @@ describe("useOriginationReview", () => {
     const { result } = renderHook(() => useOriginationReview("7"));
     expect(result.current.errorMessage).toMatch(/minted on-chain successfully/);
     expect(result.current.errorMessage).toMatch(/known limitation/);
-    expect(result.current.errorMessage).not.toBeNull();
+    expect(result.current.errorMessage).not.toMatch(/boom/);
+    expect(result.current.errorDetails).toBe("boom");
   });
 
   // ── Unchanged Reject flow + review error mapping (issue #829) ────────────────
@@ -481,18 +504,47 @@ describe("useOriginationReview", () => {
     expect(result.current.errorMessage).toMatch(/session/i);
   });
 
-  it("maps an unrecognized status to a generic message including the backend message", () => {
+  it("maps a 400 ApiError to the curated 'invalid request' copy, raw text only in errorDetails (review-400 branch)", () => {
     mockReviewState = {
       isPending: false,
-      error: new ApiError("boom", 500),
+      error: new ApiError("amount must be positive", 400),
     };
     const { result } = renderHook(() => useOriginationReview("7"));
-    expect(result.current.errorMessage).toContain("boom");
+    expect(result.current.errorMessage).toBe("This request was invalid.");
+    expect(result.current.errorMessage).not.toMatch(/amount must be positive/);
+    expect(result.current.errorDetails).toBe("amount must be positive");
   });
 
-  it("returns null errorMessage when there is no error", () => {
+  it("maps a 5xx ApiError to the service-unavailable copy, raw text only in errorDetails", () => {
+    mockReviewState = {
+      isPending: false,
+      error: new ApiError("boom", 599),
+    };
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.errorMessage).toBe(
+      "The service is temporarily unavailable. Please try again.",
+    );
+    expect(result.current.errorMessage).not.toContain("boom");
+    expect(result.current.errorDetails).toBe("boom");
+  });
+
+  it("maps a truly unmapped status (e.g. 418) to the generic fallback, raw text only in errorDetails (review-default branch)", () => {
+    mockReviewState = {
+      isPending: false,
+      error: new ApiError("boom", 418),
+    };
+    const { result } = renderHook(() => useOriginationReview("7"));
+    expect(result.current.errorMessage).toBe(
+      "Something went wrong. Please try again.",
+    );
+    expect(result.current.errorMessage).not.toContain("boom");
+    expect(result.current.errorDetails).toBe("boom");
+  });
+
+  it("returns null errorMessage and errorDetails when there is no error", () => {
     const { result } = renderHook(() => useOriginationReview("7"));
     expect(result.current.errorMessage).toBeNull();
+    expect(result.current.errorDetails).toBeNull();
   });
 
   // ── Approve confirmation dialog (issue #838) ────────────────────────────────

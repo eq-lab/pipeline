@@ -7,12 +7,14 @@
  */
 import { useWithdrawalQueue } from "@/api/useWithdrawalQueue";
 import { formatFullUsd } from "@/utils/formatUsd";
+import { toUserError } from "@/utils/userError";
 
 export type WithdrawalQueueState = "loading" | "error" | "ready";
 
 export interface WithdrawalQueueView {
   state: WithdrawalQueueState;
   errorMessage: string | null;
+  errorDetails: string | null;
   walletBalanceDisplay: string;
   totalClaimableDisplay: string;
   requestsDisplay: string;
@@ -29,9 +31,14 @@ export function useWithdrawalQueueView(): WithdrawalQueueView {
       ? "loading"
       : "ready";
 
+  const mapped = error
+    ? toUserError(error, "Failed to load the withdrawal queue.")
+    : null;
+
   return {
     state,
-    errorMessage: error?.message ?? null,
+    errorMessage: mapped?.message ?? null,
+    errorDetails: mapped?.details ?? null,
     walletBalanceDisplay: "—",
     totalClaimableDisplay: formatFullUsd(data?.summary.in_queue_usd),
     requestsDisplay:

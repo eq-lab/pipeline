@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 
 // ── Mock the router navigation ─────────────────────────────────────────────────
@@ -278,7 +279,8 @@ describe("Loans list route (loading)", () => {
 });
 
 describe("Loans list route (error)", () => {
-  it("renders the error alert", () => {
+  it("renders the friendly error alert, not the raw backend text — raw only reachable via View details (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -286,6 +288,11 @@ describe("Loans list route (error)", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("loans-error")).toHaveTextContent("boom");
+    const alert = screen.getByTestId("loans-error");
+    expect(alert).toHaveTextContent("Failed to load the loan book.");
+    expect(alert).not.toHaveTextContent("boom");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent("boom");
   });
 });

@@ -245,7 +245,7 @@ describe("useOriginationTable", () => {
     expect(result.current.rows).toEqual([]);
   });
 
-  it("returns 'error' with the message when the query errors", () => {
+  it("returns 'error' with the friendly fallback message, raw text only in errorDetails (#1037)", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -254,7 +254,10 @@ describe("useOriginationTable", () => {
     });
     const { result } = renderHook(() => useOriginationTable());
     expect(result.current.state).toBe("error");
-    expect(result.current.errorMessage).toBe("network down");
+    expect(result.current.errorMessage).toBe(
+      "Failed to load loan submissions.",
+    );
+    expect(result.current.errorDetails).toBe("network down");
   });
 
   it("returns 'empty' when data is an empty array", () => {

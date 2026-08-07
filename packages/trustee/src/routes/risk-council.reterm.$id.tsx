@@ -4,6 +4,7 @@ import {
   type RetermCurrentTerms,
   type RetermProposedTerms,
 } from "./-risk-council-reterm";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Risk Council — Amend economics (off-cycle re-term) — issue #782, Figma node
@@ -206,11 +207,13 @@ function RiskCouncilReterm() {
       <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
         <BackLink />
         <div
-          role="alert"
           data-testid="risk-council-reterm-error"
           className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
         >
-          {view.errorMessage ?? "Failed to load the loan."}
+          <InlineError
+            message={view.errorMessage ?? "Failed to load the loan."}
+            details={view.errorDetails ?? undefined}
+          />
         </div>
       </main>
     );

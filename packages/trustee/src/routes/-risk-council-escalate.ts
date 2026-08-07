@@ -65,6 +65,7 @@ import {
   HEALTHY_MARGIN_BPS,
 } from "./-useLoansTable";
 import { formatFullUsd } from "@/utils/formatUsd";
+import { toUserError } from "@/utils/userError";
 
 // ── Mock constants (see module doc — no backend source, not per-loan) ───────
 
@@ -246,6 +247,7 @@ export type ProposalStatus = "draft" | "submitted";
 export interface RiskCouncilEscalateView {
   state: "loading" | "error" | "not-found" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   loanId: string;
   originator: string;
   title: string;
@@ -317,9 +319,14 @@ export function useRiskCouncilEscalate(
     loanBook.data?.summary.top_concentration,
   );
 
+  const loanBookError = loanBook.error
+    ? toUserError(loanBook.error, "Failed to load the loan.")
+    : null;
+
   return {
     state,
-    errorMessage: loanBook.error?.message ?? null,
+    errorMessage: loanBookError?.message ?? null,
+    errorDetails: loanBookError?.details ?? null,
     loanId,
     originator,
     title,

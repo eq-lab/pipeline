@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import {
   MATURED_OTHER_ACTIONS,
@@ -103,6 +104,7 @@ function makeResult(
   return {
     state: "ready",
     errorMessage: null,
+    errorDetails: null,
     variant: "performing",
     ccrTrend: null,
     rollover: null,
@@ -158,6 +160,7 @@ function makeResult(
     registry: {
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [
         {
           label: "Status / location",
@@ -185,6 +188,7 @@ function makeResult(
     priceCollateral: {
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       providerNote: "via coingecko",
       spot: { main: "$10,450", change: "−1.2% 7d", changeNegative: true },
       rows: [
@@ -263,6 +267,7 @@ describe("Loan detail route — Price & collateral (live)", () => {
         priceCollateral: {
           state: "ready",
           errorMessage: null,
+          errorDetails: null,
           providerNote: "",
           spot: { main: "—", change: null, changeNegative: false },
           rows: [
@@ -287,6 +292,7 @@ describe("Loan detail route — Price & collateral (live)", () => {
         priceCollateral: {
           state: "loading",
           errorMessage: null,
+          errorDetails: null,
           providerNote: "",
           spot: { main: "—", change: null, changeNegative: false },
           rows: [],
@@ -306,6 +312,7 @@ describe("Loan detail route — Price & collateral (live)", () => {
         priceCollateral: {
           state: "empty",
           errorMessage: null,
+          errorDetails: null,
           providerNote: "",
           spot: { main: "—", change: null, changeNegative: false },
           rows: [],
@@ -329,6 +336,7 @@ describe("Loan detail route — Price & collateral (live)", () => {
         priceCollateral: {
           state: "error",
           errorMessage: "boom",
+          errorDetails: null,
           providerNote: "",
           spot: { main: "—", change: null, changeNegative: false },
           rows: [],
@@ -370,7 +378,12 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   it("renders the loading skeleton while financials load", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        registry: { state: "loading", errorMessage: null, rows: [] },
+        registry: {
+          state: "loading",
+          errorMessage: null,
+          errorDetails: null,
+          rows: [],
+        },
       }),
     );
     renderRoute();
@@ -382,7 +395,12 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   it("renders a neutral 'no financials' note for a 404 (empty state)", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        registry: { state: "empty", errorMessage: null, rows: [] },
+        registry: {
+          state: "empty",
+          errorMessage: null,
+          errorDetails: null,
+          rows: [],
+        },
       }),
     );
     renderRoute();
@@ -394,7 +412,12 @@ describe("Loan detail route — Registry state & derived (live)", () => {
   it("renders the error message when financials fail", () => {
     mockUseLoanDetail.mockReturnValue(
       makeResult({
-        registry: { state: "error", errorMessage: "boom", rows: [] },
+        registry: {
+          state: "error",
+          errorMessage: "boom",
+          errorDetails: null,
+          rows: [],
+        },
       }),
     );
     renderRoute();
@@ -549,6 +572,24 @@ describe("Loan detail route — Matured variant (#866)", () => {
     });
   });
 
+  it("surfaces the friendly rollover mutation error inside the modal, raw text only in errorDetails (#1037)", async () => {
+    const user = userEvent.setup();
+    mockRollover.error = new Error("rollover simulation error: bad ledger");
+    mockUseLoanDetail.mockReturnValue(maturedResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-rollover-action"));
+    const alert = screen.getByTestId("rollover-error");
+    expect(alert).toHaveTextContent(
+      "Could not verify this action on-chain. No signature was requested — safe to retry.",
+    );
+    expect(alert).not.toHaveTextContent("bad ledger");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "rollover simulation error: bad ledger",
+    );
+  });
+
   it("surfaces the Past-Due attention notice with the record + escalate paths (#940)", () => {
     mockUseLoanDetail.mockReturnValue(maturedResult());
     renderRoute();
@@ -647,13 +688,19 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     expect(btn).toHaveTextContent("Completing…");
   });
 
-  it("surfaces the mutation error inside the modal", () => {
+  it("surfaces the friendly mutation error inside the modal, raw text only in errorDetails (#1037)", async () => {
+    const user = userEvent.setup();
     mockComplete.error = new Error("loan 4488 not indexed on chain 99000001");
     mockUseLoanDetail.mockReturnValue(disbursingResult());
     renderRoute();
     fireEvent.click(screen.getByTestId("loan-detail-complete-disbursement"));
-    expect(screen.getByTestId("disbursement-confirm-error")).toHaveTextContent(
-      "not indexed",
+    const alert = screen.getByTestId("disbursement-confirm-error");
+    expect(alert).toHaveTextContent("Failed to complete the off-ramp.");
+    expect(alert).not.toHaveTextContent("not indexed");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "loan 4488 not indexed on chain 99000001",
     );
   });
 });
@@ -669,6 +716,23 @@ describe("Loan detail route — Update lifecycle (#872)", () => {
     expect(screen.getByTestId("update-lifecycle-dialog")).toBeInTheDocument();
     // Submit is disabled until CCR + location are entered.
     expect(screen.getByTestId("update-lifecycle-submit")).toBeDisabled();
+  });
+
+  it("surfaces the friendly update-lifecycle mutation error inside the modal, raw text only in errorDetails (#1037)", async () => {
+    const user = userEvent.setup();
+    mockUpdateLifecycle.error = new Error("Stellar wallet not connected.");
+    mockUseLoanDetail.mockReturnValue(makeResult());
+    renderRoute();
+    fireEvent.click(screen.getByTestId("loan-detail-action-Update lifecycle"));
+    const alert = screen.getByTestId("update-lifecycle-error");
+    expect(alert).toHaveTextContent(
+      "Connect your trustee wallet to approve on-chain.",
+    );
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "Stellar wallet not connected.",
+    );
   });
 
   it("submits update_mutable with status + CCR% + location + metadataURI", () => {
@@ -907,6 +971,7 @@ describe("Loan detail route — Documents (#1039)", () => {
       makeResult({
         state: "error",
         errorMessage: "kaboom",
+        errorDetails: null,
         documents: DOCS,
       }),
     );

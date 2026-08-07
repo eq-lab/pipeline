@@ -125,7 +125,10 @@ describe("formatNearestPayment", () => {
   });
 
   it('returns "—" when the next-payment timestamp is missing/zero (never fabricated)', () => {
-    expect(formatNearestPayment(0, null)).toEqual({ text: "—", overdue: false });
+    expect(formatNearestPayment(0, null)).toEqual({
+      text: "—",
+      overdue: false,
+    });
     expect(formatNearestPayment(null, null)).toEqual({
       text: "—",
       overdue: false,

@@ -24,6 +24,14 @@ import {
   type TileTone,
 } from "./-loanDetailStatic";
 import { CcrTrendChart } from "./-CcrTrendChart";
+import { toUserError } from "@/utils/userError";
+import { InlineError } from "@pipeline/ui";
+
+/** Minimal mapped-error shape shared by the three on-chain action dialogs below. */
+interface DialogError {
+  message: string;
+  details: string | null;
+}
 
 /**
  * Loan detail page (issues #845 / #847, Figma node `4116:10549`) — the
@@ -410,14 +418,16 @@ function PriceCollateralCard({ pc }: { pc: PriceCollateralView }) {
           ))}
         </div>
       ) : pc.state === "error" ? (
-        <p
-          role="alert"
+        <div
           data-testid="loan-detail-price-collateral-error"
-          className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-          style={{ color: NEGATIVE_RED }}
+          className="pt-[6px]"
         >
-          {pc.errorMessage ?? "Failed to load the valuation."}
-        </p>
+          <InlineError
+            message={pc.errorMessage ?? "Failed to load the valuation."}
+            details={pc.errorDetails ?? undefined}
+            className="block text-[14px]"
+          />
+        </div>
       ) : pc.state === "empty" ? (
         <p
           data-testid="loan-detail-price-collateral-empty"
@@ -494,14 +504,13 @@ function RegistryCard({ registry }: { registry: RegistryView }) {
           ))}
         </div>
       ) : registry.state === "error" ? (
-        <p
-          role="alert"
-          data-testid="loan-detail-registry-error"
-          className="pt-[6px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-          style={{ color: NEGATIVE_RED }}
-        >
-          {registry.errorMessage ?? "Failed to load the financials."}
-        </p>
+        <div data-testid="loan-detail-registry-error" className="pt-[6px]">
+          <InlineError
+            message={registry.errorMessage ?? "Failed to load the financials."}
+            details={registry.errorDetails ?? undefined}
+            className="block text-[14px]"
+          />
+        </div>
       ) : registry.state === "empty" ? (
         <p
           data-testid="loan-detail-registry-empty"
@@ -741,7 +750,7 @@ function DisbursementConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
   pending: boolean;
-  error: string | null;
+  error: DialogError | null;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -779,13 +788,13 @@ function DisbursementConfirmDialog({
           status to Performing.
         </p>
         {error && (
-          <p
-            role="alert"
-            data-testid="disbursement-confirm-error"
-            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
-          >
-            {error}
-          </p>
+          <div data-testid="disbursement-confirm-error">
+            <InlineError
+              message={error.message}
+              details={error.details ?? undefined}
+              className="block text-[13px]"
+            />
+          </div>
         )}
         <div className="flex items-start justify-end gap-[12px] pt-[16px]">
           <button
@@ -890,7 +899,7 @@ function RolloverDialog({
   onClose: () => void;
   onConfirm: (newRateBps: number, newMaturityUnix: number) => void;
   pending: boolean;
-  error: string | null;
+  error: DialogError | null;
 }) {
   const [rateBps, setRateBps] = useState("");
   const [maturity, setMaturity] = useState("");
@@ -999,13 +1008,13 @@ function RolloverDialog({
         </p>
 
         {error && (
-          <p
-            role="alert"
-            data-testid="rollover-error"
-            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
-          >
-            {error}
-          </p>
+          <div data-testid="rollover-error">
+            <InlineError
+              message={error.message}
+              details={error.details ?? undefined}
+              className="block text-[13px]"
+            />
+          </div>
         )}
 
         <div className="flex items-start justify-end gap-[12px] pt-[12px]">
@@ -1062,7 +1071,7 @@ function UpdateLifecycleDialog({
     metadataUri: string;
   }) => void;
   pending: boolean;
-  error: string | null;
+  error: DialogError | null;
 }) {
   const [status, setStatus] = useState(currentStatus);
   const [ccr, setCcr] = useState("");
@@ -1220,13 +1229,13 @@ function UpdateLifecycleDialog({
         </label>
 
         {error && (
-          <p
-            role="alert"
-            data-testid="update-lifecycle-error"
-            className="font-[family-name:var(--font-body)] text-[13px] text-[color:var(--color-pipeline-negative)]"
-          >
-            {error}
-          </p>
+          <div data-testid="update-lifecycle-error">
+            <InlineError
+              message={error.message}
+              details={error.details ?? undefined}
+              className="block text-[13px]"
+            />
+          </div>
         )}
 
         <div className="flex items-start justify-end gap-[12px] pt-[12px]">
@@ -1406,11 +1415,13 @@ function LoanDetail() {
             ‹ Loans
           </Link>
           <div
-            role="alert"
             data-testid="loan-detail-error"
             className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
           >
-            {detail.errorMessage ?? "Failed to load the loan."}
+            <InlineError
+              message={detail.errorMessage ?? "Failed to load the loan."}
+              details={detail.errorDetails ?? undefined}
+            />
           </div>
         </>
       ) : detail.state === "loading" ? (
@@ -1482,7 +1493,14 @@ function LoanDetail() {
             loanName={detail.hero.title}
             maturityLabel={detail.maturityDate}
             pending={rolloverMutation.isPending}
-            error={rolloverMutation.error?.message ?? null}
+            error={
+              rolloverMutation.error
+                ? toUserError(
+                    rolloverMutation.error,
+                    "Failed to roll over this loan.",
+                  )
+                : null
+            }
             onClose={() => setRolloverOpen(false)}
             onConfirm={(newRateBps, newMaturity) => {
               // Close on success; the error surfaces inline via the hook state.
@@ -1522,7 +1540,14 @@ function LoanDetail() {
             open={confirmOpen}
             loanName={detail.hero.title}
             pending={completeDisbursement.isPending}
-            error={completeDisbursement.error?.message ?? null}
+            error={
+              completeDisbursement.error
+                ? toUserError(
+                    completeDisbursement.error,
+                    "Failed to complete the off-ramp.",
+                  )
+                : null
+            }
             onCancel={() => setConfirmOpen(false)}
             onConfirm={() =>
               completeDisbursement.mutate(
@@ -1543,7 +1568,14 @@ function LoanDetail() {
           detail.hero.status?.label === "Watchlist" ? "WatchList" : "Performing"
         }
         pending={updateLifecycle.isPending}
-        error={updateLifecycle.error?.message ?? null}
+        error={
+          updateLifecycle.error
+            ? toUserError(
+                updateLifecycle.error,
+                "Failed to update the lifecycle.",
+              )
+            : null
+        }
         onClose={() => setUpdateOpen(false)}
         onConfirm={(input) => {
           void updateLifecycle

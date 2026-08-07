@@ -438,13 +438,16 @@ describe("buildPriceCollateralState", () => {
     expect(pc.missingNote).toBe("No valuation on record for this loan.");
   });
 
-  it("maps a non-404 error to the error state", () => {
+  it("maps a non-404 error to the error state, friendly message, raw text only in errorDetails (#1037)", () => {
     const pc = buildPriceCollateralState(
       makeQueryResult({ error: new ApiError("boom", 500) }),
       null,
     );
     expect(pc.state).toBe("error");
-    expect(pc.errorMessage).toBe("boom");
+    expect(pc.errorMessage).toBe(
+      "The service is temporarily unavailable. Please try again.",
+    );
+    expect(pc.errorDetails).toBe("boom");
   });
 
   it("maps loaded data to the ready view-model", () => {
@@ -688,12 +691,15 @@ describe("buildRegistryState", () => {
     expect(view.rows).toEqual([]);
   });
 
-  it("maps a non-404 error to the error state", () => {
+  it("maps a non-404 error to the error state, friendly message, raw text only in errorDetails (#1037)", () => {
     const view = buildRegistryState(
       makeFinancialsQuery({ error: new ApiError("boom", 500) }),
     );
     expect(view.state).toBe("error");
-    expect(view.errorMessage).toBe("boom");
+    expect(view.errorMessage).toBe(
+      "The service is temporarily unavailable. Please try again.",
+    );
+    expect(view.errorDetails).toBe("boom");
   });
 
   it("maps loaded data to the ready view-model with rows", () => {

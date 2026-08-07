@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRecordRepayment, type WaterfallRow } from "./-record-repayment";
 import { useRecordPayment } from "@/api/useRecordPayment";
 import { useCloseLoan } from "@/api/useCloseLoan";
+import { toUserError } from "@/utils/userError";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Record Repayment — Principal full-page route (issue #884, Figma node
@@ -154,7 +156,7 @@ function WaterfallRowView({
           </span>
         )}
       </span>
-      <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] font-semibold leading-[22.4px] text-[#262524]">
+      <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] font-semibold text-[#262524]">
         {row.value}
       </span>
     </div>
@@ -167,6 +169,15 @@ function RecordRepayment() {
   const navigate = useNavigate();
   const record = useRecordPayment();
   const closeLoan = useCloseLoan();
+  // Not threaded through `-record-repayment.ts` — `record`/`closeLoan` are
+  // page-level mutations, not part of the presenter's read view-model (spec:
+  // docs/frontend/error-handling.md).
+  const recordError = record.error
+    ? toUserError(record.error, "Failed to record this payment.")
+    : null;
+  const closeLoanError = closeLoan.error
+    ? toUserError(closeLoan.error, "Failed to close this loan.")
+    : null;
 
   const onRecord = () => {
     if (view.recordPaymentInput == null) return;
@@ -220,11 +231,13 @@ function RecordRepayment() {
           {view.backLabel}
         </Link>
         <div
-          role="alert"
           data-testid="record-repayment-error"
           className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
         >
-          {view.errorMessage ?? "Failed to load the loan."}
+          <InlineError
+            message={view.errorMessage ?? "Failed to load the loan."}
+            details={view.errorDetails ?? undefined}
+          />
         </div>
       </main>
     );
@@ -356,14 +369,13 @@ function RecordRepayment() {
             </div>
           )}
           {view.waterfall.errorMessage && (
-            <p
-              role="alert"
-              data-testid="record-repayment-waterfall-error"
-              className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-              style={{ color: "#b20000" }}
-            >
-              {view.waterfall.errorMessage}
-            </p>
+            <div data-testid="record-repayment-waterfall-error">
+              <InlineError
+                message={view.waterfall.errorMessage}
+                details={view.waterfall.errorDetails ?? undefined}
+                className="block text-[14px] leading-[19.6px]"
+              />
+            </div>
           )}
           {view.summaryText && (
             <div
@@ -398,25 +410,23 @@ function RecordRepayment() {
               Pinned to the bottom of the right card (`mt-auto`) so the actions
               stay anchored to the card floor, matching Record Coupon. */}
           <div className="mt-auto flex flex-col gap-[12px] pt-[16px]">
-            {record.error && (
-              <p
-                role="alert"
-                data-testid="record-repayment-record-error"
-                className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-                style={{ color: "#b20000" }}
-              >
-                {record.error.message}
-              </p>
+            {recordError && (
+              <div data-testid="record-repayment-record-error">
+                <InlineError
+                  message={recordError.message}
+                  details={recordError.details}
+                  className="block text-[14px] leading-[19.6px]"
+                />
+              </div>
             )}
-            {closeLoan.error && (
-              <p
-                role="alert"
-                data-testid="record-repayment-close-error"
-                className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
-                style={{ color: "#b20000" }}
-              >
-                {closeLoan.error.message}
-              </p>
+            {closeLoanError && (
+              <div data-testid="record-repayment-close-error">
+                <InlineError
+                  message={closeLoanError.message}
+                  details={closeLoanError.details}
+                  className="block text-[14px] leading-[19.6px]"
+                />
+              </div>
             )}
             <button
               type="button"

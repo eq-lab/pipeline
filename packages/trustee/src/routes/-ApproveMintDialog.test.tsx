@@ -11,13 +11,17 @@
  *   - "Mint loan" calls `onConfirm`.
  *   - The "Mint loan" label swaps to `mintingLabel` and the buttons disable
  *     while `isSubmitting`.
- *   - `errorMessage` renders inside the dialog.
+ *   - `errorMessage` renders inside the dialog via `InlineError`; with
+ *     `errorDetails` set, "View details" opens `ErrorDetailsDialog` with the
+ *     raw text; Escape/backdrop-click on that nested dialog leave this
+ *     parent dialog open (#1037 D4 — the capture-phase Escape fix).
  *   - The green mint-invariant checklist strings are NOT present (no
  *     backing data — issue #838 explicitly omits them).
  *   - Accessibility attributes are present.
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ApproveMintDialog } from "./-ApproveMintDialog";
 import type { TransactionPreviewDisplay } from "./-origination-detail";
 
@@ -42,6 +46,7 @@ function renderDialog(overrides?: {
   isSubmitting?: boolean;
   mintingLabel?: string | null;
   errorMessage?: string | null;
+  errorDetails?: string | null;
   preview?: TransactionPreviewDisplay;
 }) {
   const onCancel = overrides?.onCancel ?? vi.fn();
@@ -54,6 +59,7 @@ function renderDialog(overrides?: {
       isSubmitting={overrides?.isSubmitting ?? false}
       mintingLabel={overrides?.mintingLabel ?? null}
       errorMessage={overrides?.errorMessage ?? null}
+      errorDetails={overrides?.errorDetails ?? null}
       preview={overrides?.preview ?? PREVIEW}
     />,
   );
@@ -164,6 +170,61 @@ describe("ApproveMintDialog", () => {
     expect(screen.getByTestId("approve-mint-error")).toHaveTextContent(
       "Signature cancelled. Click Approve again to retry.",
     );
+  });
+
+  it("with errorDetails null renders no View details trigger", () => {
+    renderDialog({ errorMessage: "Signature cancelled." });
+    expect(
+      screen.queryByTestId("inline-error-view-details"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("with errorDetails set, View details opens ErrorDetailsDialog with the raw text (#1037)", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      errorMessage: "The on-chain transaction failed. Please try again.",
+      errorDetails: "HostError: Error(Contract, #7) raw diagnostic dump",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    const dialog = await screen.findByTestId("error-details-dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "HostError: Error(Contract, #7) raw diagnostic dump",
+    );
+  });
+
+  it("Escape closes only the nested ErrorDetailsDialog — the parent approve-mint dialog stays open (#1037 D4 regression)", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      errorMessage: "The on-chain transaction failed. Please try again.",
+      errorDetails: "raw diagnostic dump",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(
+      await screen.findByTestId("error-details-dialog"),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByTestId("error-details-dialog"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("approve-mint-dialog")).toBeInTheDocument();
+  });
+
+  it("backdrop click on the nested ErrorDetailsDialog leaves the parent approve-mint dialog open (#1037 D4)", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      errorMessage: "The on-chain transaction failed. Please try again.",
+      errorDetails: "raw diagnostic dump",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    await user.click(await screen.findByTestId("error-details-backdrop"));
+
+    expect(
+      screen.queryByTestId("error-details-dialog"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("approve-mint-dialog")).toBeInTheDocument();
   });
 
   it("defaults the confirm label to 'Draw loan' when mintingLabel is null", () => {

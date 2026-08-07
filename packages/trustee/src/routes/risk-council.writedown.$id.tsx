@@ -4,6 +4,7 @@ import {
   type ClosePayload,
   type SignerStatus,
 } from "./-risk-council-writedown";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Risk Council — Write-down close (Default resolution) — issue #782, Figma node
@@ -148,7 +149,13 @@ function ResolutionCard({
 
 // ── Right card — Close payload + signer voting ──────────────────────────────
 
-function SignerRow({ signer, isLast }: { signer: SignerStatus; isLast: boolean }) {
+function SignerRow({
+  signer,
+  isLast,
+}: {
+  signer: SignerStatus;
+  isLast: boolean;
+}) {
   return (
     <div
       data-testid="risk-council-writedown-signer"
@@ -241,11 +248,13 @@ function RiskCouncilWritedown() {
       <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[16px] px-[56px] pt-[39px] pb-[80px]">
         <BackLink />
         <div
-          role="alert"
           data-testid="risk-council-writedown-error"
           className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
         >
-          {view.errorMessage ?? "Failed to load the loan."}
+          <InlineError
+            message={view.errorMessage ?? "Failed to load the loan."}
+            details={view.errorDetails ?? undefined}
+          />
         </div>
       </main>
     );
@@ -356,7 +365,10 @@ function RiskCouncilWritedown() {
             recoveryReceived={view.recoveryReceived}
             writeDownAmount={view.writeDownAmount}
           />
-          <ClosePayloadCard payload={view.closePayload} signers={view.signers} />
+          <ClosePayloadCard
+            payload={view.closePayload}
+            signers={view.signers}
+          />
         </div>
 
         <div

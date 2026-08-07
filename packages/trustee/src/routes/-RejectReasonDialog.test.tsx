@@ -16,10 +16,13 @@
  *   - Submit is disabled while `isSubmitting` is true.
  *   - A valid reason enables Submit, and clicking it calls `onSubmit` with the
  *     trimmed value.
- *   - Displays a passed `errorMessage`.
+ *   - Displays a passed `errorMessage` via `InlineError`; with `errorDetails`
+ *     set, "View details" opens `ErrorDetailsDialog`, and Escape/backdrop
+ *     click on that nested dialog leave this parent dialog open (#1037 D4).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { RejectReasonDialog } from "./-RejectReasonDialog";
 
 const ORIGINATOR = "Auric Andes S.A.C.";
@@ -31,6 +34,7 @@ function renderDialog(overrides?: {
   onSubmit?: (reason: string) => void;
   isSubmitting?: boolean;
   errorMessage?: string | null;
+  errorDetails?: string | null;
 }) {
   const onCancel = overrides?.onCancel ?? vi.fn();
   const onSubmit = overrides?.onSubmit ?? vi.fn();
@@ -42,6 +46,7 @@ function renderDialog(overrides?: {
       onSubmit={onSubmit}
       isSubmitting={overrides?.isSubmitting ?? false}
       errorMessage={overrides?.errorMessage ?? null}
+      errorDetails={overrides?.errorDetails ?? null}
     />,
   );
   return { ...utils, onCancel, onSubmit };
@@ -155,5 +160,60 @@ describe("RejectReasonDialog", () => {
     expect(screen.getByTestId("reject-reason-error")).toHaveTextContent(
       "This submission has already been reviewed.",
     );
+  });
+
+  it("with errorDetails null renders no View details trigger", () => {
+    renderDialog({
+      errorMessage: "This submission has already been reviewed.",
+    });
+    expect(
+      screen.queryByTestId("inline-error-view-details"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("with errorDetails set, View details opens ErrorDetailsDialog with the raw text (#1037)", async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      errorMessage: "Something went wrong. Please try again.",
+      errorDetails: "raw backend diagnostic text",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "raw backend diagnostic text",
+    );
+  });
+
+  it("Escape closes only the nested ErrorDetailsDialog — the parent reject dialog stays open (#1037 D4 regression)", async () => {
+    const user = userEvent.setup();
+    const { onCancel } = renderDialog({
+      errorMessage: "Something went wrong. Please try again.",
+      errorDetails: "raw backend diagnostic text",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByTestId("error-details-dialog"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("reject-reason-dialog")).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("backdrop click on the nested ErrorDetailsDialog leaves the parent reject dialog open (#1037 D4)", async () => {
+    const user = userEvent.setup();
+    const { onCancel } = renderDialog({
+      errorMessage: "Something went wrong. Please try again.",
+      errorDetails: "raw backend diagnostic text",
+    });
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    await user.click(screen.getByTestId("error-details-backdrop"));
+
+    expect(
+      screen.queryByTestId("error-details-dialog"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("reject-reason-dialog")).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 });

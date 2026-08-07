@@ -57,6 +57,7 @@ import {
 } from "@/utils/formatUsd";
 import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
+import { toUserError } from "@/utils/userError";
 import {
   DISBURSING_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
@@ -151,6 +152,7 @@ export interface SpotView {
 export interface PriceCollateralView {
   state: "loading" | "error" | "empty" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   /** Right-aligned attribution, e.g. `"via coingecko"`; `""` when unknown. */
   providerNote: string;
   spot: SpotView;
@@ -173,6 +175,7 @@ export interface RegistryRow {
 export interface RegistryView {
   state: "loading" | "error" | "empty" | "ready";
   errorMessage: string | null;
+  errorDetails: string | null;
   rows: RegistryRow[];
 }
 
@@ -193,6 +196,7 @@ export interface UseLoanDetailResult {
   /** Driven by the loan-book fetch (the hero source). */
   state: LoanDetailState;
   errorMessage: string | null;
+  errorDetails: string | null;
   /** Status-selected layout — the view branches on this before rendering. */
   variant: LoanDetailVariant;
   hero: HeroView;
@@ -496,6 +500,7 @@ export function buildPriceCollateral(
   return {
     state: "ready",
     errorMessage: null,
+    errorDetails: null,
     providerNote,
     spot,
     rows,
@@ -532,7 +537,14 @@ export function buildPriceCollateralState(
         missingNote: "No valuation on record for this loan.",
       });
     }
-    return placeholderPc("error", { errorMessage: valuation.error.message });
+    const mapped = toUserError(
+      valuation.error,
+      "Failed to load the valuation.",
+    );
+    return placeholderPc("error", {
+      errorMessage: mapped.message,
+      errorDetails: mapped.details,
+    });
   }
   if (valuation.data) return buildPriceCollateral(valuation.data, spotChange7d);
   return placeholderPc("ready");
@@ -541,11 +553,16 @@ export function buildPriceCollateralState(
 /** A P&C view carrying only a state + a neutral spot placeholder (no rows). */
 function placeholderPc(
   state: PriceCollateralView["state"],
-  opts: { errorMessage?: string | null; missingNote?: string | null } = {},
+  opts: {
+    errorMessage?: string | null;
+    errorDetails?: string | null;
+    missingNote?: string | null;
+  } = {},
 ): PriceCollateralView {
   return {
     state,
     errorMessage: opts.errorMessage ?? null,
+    errorDetails: opts.errorDetails ?? null,
     providerNote: "",
     spot: { main: "—", change: null, changeNegative: false },
     rows: [],
@@ -736,25 +753,45 @@ export function buildRegistryState(
   protection: string | null = null,
 ): RegistryView {
   if (financials.isLoading) {
-    return { state: "loading", errorMessage: null, rows: [] };
+    return {
+      state: "loading",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    };
   }
   if (financials.error) {
     if (
       financials.error instanceof ApiError &&
       financials.error.status === 404
     ) {
-      return { state: "empty", errorMessage: null, rows: [] };
+      return {
+        state: "empty",
+        errorMessage: null,
+        errorDetails: null,
+        rows: [],
+      };
     }
-    return { state: "error", errorMessage: financials.error.message, rows: [] };
+    const mapped = toUserError(
+      financials.error,
+      "Failed to load the financials.",
+    );
+    return {
+      state: "error",
+      errorMessage: mapped.message,
+      errorDetails: mapped.details,
+      rows: [],
+    };
   }
   if (financials.data) {
     return {
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: buildFinancials(financials.data, protection),
     };
   }
-  return { state: "ready", errorMessage: null, rows: [] };
+  return { state: "ready", errorMessage: null, errorDetails: null, rows: [] };
 }
 
 /**
@@ -850,9 +887,14 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
   // mock is not rendered until that lands.
   const currentStage: CurrentStage | null = null;
 
+  const loanBookError = loanBook.error
+    ? toUserError(loanBook.error, "Failed to load the loan.")
+    : null;
+
   return {
     state,
-    errorMessage: loanBook.error?.message ?? null,
+    errorMessage: loanBookError?.message ?? null,
+    errorDetails: loanBookError?.details ?? null,
     variant,
     hero: buildHero(loanId, entry),
     lifecycle: buildLifecycle(entry?.status),

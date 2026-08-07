@@ -57,6 +57,30 @@ describe("ErrorDetailsDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("Escape does not reach a sibling bubble-phase window listener registered first (#1037 nested-dialog regression)", async () => {
+    // Simulates a parent dialog (e.g. a trustee review dialog) that registers
+    // its own bubble-phase `window` keydown listener BEFORE this dialog
+    // mounts — the exact shape of the pre-#1037 bug, where the parent's
+    // earlier-registered bubble listener fired first and closed the parent
+    // (unmounting this dialog with it) instead of just this dialog consuming
+    // Escape.
+    const parentOnClose = vi.fn();
+    function parentHandleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") parentOnClose();
+    }
+    window.addEventListener("keydown", parentHandleKeyDown);
+    try {
+      const onClose = vi.fn();
+      const user = userEvent.setup();
+      render(<ErrorDetailsDialog open details="raw text" onClose={onClose} />);
+      await user.keyboard("{Escape}");
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(parentOnClose).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", parentHandleKeyDown);
+    }
+  });
+
   it("backdrop click calls onClose", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();

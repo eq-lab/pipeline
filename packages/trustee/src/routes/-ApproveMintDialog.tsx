@@ -52,6 +52,7 @@
  */
 import { useEffect, useRef } from "react";
 import type { TransactionPreviewDisplay } from "./-origination-detail";
+import { InlineError } from "@pipeline/ui";
 
 export interface ApproveMintDialogProps {
   open: boolean;
@@ -61,6 +62,8 @@ export interface ApproveMintDialogProps {
   /** Progress label while minting (issue #831), or `null` when not minting. */
   mintingLabel: string | null;
   errorMessage: string | null;
+  /** Full raw text behind `errorMessage`, for `InlineError`'s details dialog. */
+  errorDetails: string | null;
   preview: TransactionPreviewDisplay;
 }
 
@@ -74,6 +77,7 @@ export function ApproveMintDialog({
   isSubmitting,
   mintingLabel,
   errorMessage,
+  errorDetails,
   preview,
 }: ApproveMintDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -154,12 +158,13 @@ export function ApproveMintDialog({
         </div>
 
         {errorMessage && (
-          <p
-            data-testid="approve-mint-error"
-            className="pt-[12px] font-[family-name:var(--font-body)] text-[14px] text-[color:var(--color-pipeline-negative)]"
-          >
-            {errorMessage}
-          </p>
+          <div data-testid="approve-mint-error" className="pt-[12px]">
+            <InlineError
+              message={errorMessage}
+              details={errorDetails ?? undefined}
+              className="block text-[14px]"
+            />
+          </div>
         )}
 
         <div className="flex items-start justify-end gap-[12px] pt-[20px]">

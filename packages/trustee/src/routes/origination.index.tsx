@@ -4,6 +4,7 @@ import {
   useOriginationTable,
   type OriginationTableRow,
 } from "./-useOriginationTable";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Origination — the real page (issue #813, Figma node `4116:9155`, table card
@@ -236,7 +237,7 @@ function StatusCell({ row }: { row: OriginationTableRow }) {
 }
 
 function OriginationTable() {
-  const { state, errorMessage, rows } = useOriginationTable();
+  const { state, errorMessage, errorDetails, rows } = useOriginationTable();
   const navigate = useNavigate();
 
   function goToDetail(row: OriginationTableRow) {
@@ -250,11 +251,13 @@ function OriginationTable() {
   if (state === "error") {
     return (
       <div
-        role="alert"
         data-testid="origination-error"
         className="w-full rounded-[var(--radius-pipeline-card)] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink)]"
       >
-        {errorMessage ?? "Failed to load loan submissions."}
+        <InlineError
+          message={errorMessage ?? "Failed to load loan submissions."}
+          details={errorDetails ?? undefined}
+        />
       </div>
     );
   }

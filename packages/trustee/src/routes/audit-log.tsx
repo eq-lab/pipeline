@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { memo, useState } from "react";
 import { useAuditLogView, type AuditRow } from "./-useAuditLog";
+import { InlineError } from "@pipeline/ui";
 
 /**
  * Audit Log — the real Trustee page for `/audit-log` (Surface 17, issue #1004).
@@ -131,7 +132,7 @@ function AuditCaption() {
 }
 
 function AuditLog() {
-  const { state, errorMessage, rows } = useAuditLogView();
+  const { state, errorMessage, errorDetails, rows } = useAuditLogView();
   const [visibleCount, setVisibleCount] = useState(AUDIT_PAGE_SIZE);
 
   // Newest `visibleCount` only — feed is newest-first, so slice from the top.
@@ -146,11 +147,13 @@ function AuditLog() {
 
       {state === "error" ? (
         <div
-          role="alert"
           data-testid="audit-error"
           className="w-full rounded-[var(--radius-pipeline-card)] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[length:var(--text-pipeline-caption)] leading-[var(--text-pipeline-caption--line-height)] text-[color:var(--color-pipeline-ink)]"
         >
-          {errorMessage ?? "Failed to load the audit log."}
+          <InlineError
+            message={errorMessage ?? "Failed to load the audit log."}
+            details={errorDetails ?? undefined}
+          />
         </div>
       ) : state === "loading" ? (
         <div

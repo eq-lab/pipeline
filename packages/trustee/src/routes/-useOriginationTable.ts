@@ -70,6 +70,7 @@ import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatCompactUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
+import { toUserError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export type OriginationTableState = "loading" | "error" | "empty" | "ready";
 export interface UseOriginationTableResult {
   state: OriginationTableState;
   errorMessage: string | null;
+  errorDetails: string | null;
   rows: OriginationTableRow[];
 }
 
@@ -195,17 +197,29 @@ export function useOriginationTable(): UseOriginationTableResult {
   const { data, isLoading, error } = useLoanSubmissions();
 
   if (isLoading) {
-    return { state: "loading", errorMessage: null, rows: [] };
+    return {
+      state: "loading",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    };
   }
   if (error) {
-    return { state: "error", errorMessage: error.message, rows: [] };
+    const mapped = toUserError(error, "Failed to load loan submissions.");
+    return {
+      state: "error",
+      errorMessage: mapped.message,
+      errorDetails: mapped.details,
+      rows: [],
+    };
   }
   if (!data || data.length === 0) {
-    return { state: "empty", errorMessage: null, rows: [] };
+    return { state: "empty", errorMessage: null, errorDetails: null, rows: [] };
   }
   return {
     state: "ready",
     errorMessage: null,
+    errorDetails: null,
     rows: data.map(mapSubmissionToRow),
   };
 }

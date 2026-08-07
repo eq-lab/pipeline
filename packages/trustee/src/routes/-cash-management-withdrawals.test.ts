@@ -55,7 +55,7 @@ describe("useWithdrawalQueueView", () => {
     expect(v.requestsDisplay).toBe("—");
   });
 
-  it("surfaces an error", () => {
+  it("surfaces the friendly error, raw text only in errorDetails (#1037)", () => {
     mockUseWithdrawalQueue.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -64,6 +64,7 @@ describe("useWithdrawalQueueView", () => {
     });
     const v = useWithdrawalQueueView();
     expect(v.state).toBe("error");
-    expect(v.errorMessage).toBe("boom");
+    expect(v.errorMessage).toBe("Failed to load the withdrawal queue.");
+    expect(v.errorDetails).toBe("boom");
   });
 });

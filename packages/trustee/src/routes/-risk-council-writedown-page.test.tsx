@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { LoanBookResponse } from "@/api/useLoanBook";
 
 vi.mock("@tanstack/react-router", async () => {
@@ -189,7 +190,8 @@ describe("Risk Council — Write-down close route (top-level states)", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders an error state when the loan book fails to load", () => {
+  it("renders the friendly loan-load error, not the raw backend text — raw only reachable via View details (#1037)", async () => {
+    const user = userEvent.setup();
     mockUseLoanBook.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -197,7 +199,12 @@ describe("Risk Council — Write-down close route (top-level states)", () => {
       refetch: () => {},
     });
     renderRoute();
-    expect(screen.getByTestId("risk-council-writedown-error")).toHaveTextContent(
+    const alert = screen.getByTestId("risk-council-writedown-error");
+    expect(alert).toHaveTextContent("Failed to load the loan.");
+    expect(alert).not.toHaveTextContent("network error");
+
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
       "network error",
     );
   });

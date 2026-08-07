@@ -17,6 +17,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
+- **Date:** 2026-08-07
+- **Location:** `packages/trustee/src/components/useNeedsAttention.ts:176` (sets `errorMessage: error.message` on the `"error"` state) / `packages/trustee/src/components/NeedsAttention.tsx` (never reads `errorMessage` or branches on `state === "error"`).
+- **Symptom:** When the underlying query the panel depends on fails, `useNeedsAttention` computes a mapped error state, but `NeedsAttention.tsx` has no render branch for it at all — the panel silently renders as if there were nothing to show (no red text, no "couldn't load" note, nothing). A trustee has no way to know the panel failed to load rather than genuinely having zero items needing attention.
+- **Root cause:** The component was never wired to the hook's `state`/`errorMessage` fields — only `rows`/`loanRows` are consumed. Predates #1037; out of scope there per the resolved Open Question (adopting `InlineError` here requires first wiring the missing render branch, which is a distinct, larger change than the mapping-layer sweep).
+- **Workaround:** None. Fix requires adding an error-state branch to `NeedsAttention.tsx` (and, per the #1037 pattern, an `InlineError` there) — tracked as follow-up, not fixed inline.
+
+### BUG-15: Origination detail page has no error state — a failed submissions fetch renders "not found"
+- **Date:** 2026-08-07
+- **Location:** `packages/trustee/src/routes/-origination-detail.ts:188` / `:431` (no error branch) — `origination.$id.tsx:529-535` renders the not-found UI for both "genuinely not found" and "the submissions fetch failed" cases.
+- **Symptom:** If `useLoanSubmissions` (shared with `-useOriginationTable.ts`) fails while loading `/origination/$id`, the presenter finds no matching submission (since `data` is `undefined`) and falls through to the same `not-found` state a truly-missing id would produce ("Submission not found." + a link back to Origination) — there is no distinct error message, and the raw fetch failure is discarded entirely.
+- **Root cause:** `-origination-detail.ts`'s state derivation only distinguishes `loading` / `not-found` / `ready`, with no `error` branch reading `useLoanSubmissions().error`.
+- **Workaround:** None. Out of scope for #1037 (a sibling hook already gets the mapping-layer treatment; this needs a new `error` state added to `-origination-detail.ts` first, which is presenter-shape work, not just a copy swap).
+
 ### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
 - **Date:** 2026-07-29
 - **Location:** `packages/frontend` — 9 committed files fail `yarn lint` (prettier `--check`): `src/api/README.md`, `src/api/useStatsYield.ts`, `src/components/ConnectWalletModal.test.tsx`, `src/components/TopBar.test.tsx`, `src/components/TopBar.tsx`, `src/wallet/ConnectModalProvider.test.tsx`, `src/wallet/README.md`, `src/wallet/stellar/connectionStore.ts`, `src/wallet/stellar/contracts/stakedPlusd.test.ts`.

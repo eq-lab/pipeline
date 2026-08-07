@@ -19,6 +19,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   createRootRoute,
   createRoute,
@@ -201,12 +202,22 @@ const MISSING_FIELD_ROW: OriginationTableRow = {
 
 describe("Origination route", () => {
   it("renders without throwing", () => {
-    mockTable({ state: "empty", errorMessage: null, rows: [] });
+    mockTable({
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     expect(() => renderRoute()).not.toThrow();
   });
 
   it("shows the Origination heading", async () => {
-    mockTable({ state: "empty", errorMessage: null, rows: [] });
+    mockTable({
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     expect(
       await screen.findByRole("heading", { name: "Origination" }),
@@ -214,7 +225,12 @@ describe("Origination route", () => {
   });
 
   it("does not render the Figma footer note (deliberately omitted)", async () => {
-    mockTable({ state: "empty", errorMessage: null, rows: [] });
+    mockTable({
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     await screen.findByRole("heading", { name: "Origination" });
     expect(
@@ -226,7 +242,12 @@ describe("Origination route", () => {
   });
 
   it("renders a loading skeleton", async () => {
-    mockTable({ state: "loading", errorMessage: null, rows: [] });
+    mockTable({
+      state: "loading",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     expect(
       await screen.findByTestId("origination-loading"),
@@ -238,6 +259,7 @@ describe("Origination route", () => {
     mockTable({
       state: "error",
       errorMessage: "Failed to fetch",
+      errorDetails: null,
       rows: [],
     });
     renderRoute();
@@ -246,8 +268,29 @@ describe("Origination route", () => {
     expect(alert.textContent).toContain("Failed to fetch");
   });
 
+  it("wires errorDetails through to InlineError's View details trigger (#1037)", async () => {
+    const user = userEvent.setup();
+    mockTable({
+      state: "error",
+      errorMessage: "Failed to load loan submissions.",
+      errorDetails: "raw backend diagnostic text",
+      rows: [],
+    });
+    renderRoute();
+    await screen.findByTestId("origination-error");
+    await user.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "raw backend diagnostic text",
+    );
+  });
+
   it("renders an empty-state caption", async () => {
-    mockTable({ state: "empty", errorMessage: null, rows: [] });
+    mockTable({
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
     renderRoute();
     expect((await screen.findByTestId("origination-empty")).textContent).toBe(
       "No loans in origination.",
@@ -258,6 +301,7 @@ describe("Origination route", () => {
     mockTable({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [IN_REVIEW_ROW, APPROVED_ROW, REJECTED_ROW, CHANGES_REQUESTED_ROW],
     });
     renderRoute();
@@ -295,6 +339,7 @@ describe("Origination route", () => {
     mockTable({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [IN_REVIEW_ROW],
     });
     const onDetailLocation = vi.fn();
@@ -314,6 +359,7 @@ describe("Origination route", () => {
     mockTable({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [IN_REVIEW_ROW],
     });
     renderRoute();
@@ -323,7 +369,12 @@ describe("Origination route", () => {
   });
 
   it("does not render a valuation sub-line under the commodity", async () => {
-    mockTable({ state: "ready", errorMessage: null, rows: [APPROVED_ROW] });
+    mockTable({
+      state: "ready",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [APPROVED_ROW],
+    });
     renderRoute();
     await screen.findByTestId("origination-status-approved");
     expect(screen.queryByText(/NSR/)).not.toBeInTheDocument();
@@ -334,6 +385,7 @@ describe("Origination route", () => {
     mockTable({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [MISSING_FIELD_ROW],
     });
     renderRoute();
@@ -351,6 +403,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [APPROVED_ROW],
       });
       const onDetailLocation = vi.fn();
@@ -370,6 +423,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [REJECTED_ROW],
       });
       const onDetailLocation = vi.fn();
@@ -389,6 +443,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [IN_REVIEW_ROW],
       });
       const onDetailLocation = vi.fn();
@@ -408,6 +463,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [APPROVED_ROW],
       });
       const onDetailLocation = vi.fn();
@@ -429,6 +485,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [IN_REVIEW_ROW],
       });
       const onDetailLocation = vi.fn();
@@ -449,6 +506,7 @@ describe("Origination route", () => {
       mockTable({
         state: "ready",
         errorMessage: null,
+        errorDetails: null,
         rows: [IN_REVIEW_ROW, APPROVED_ROW, REJECTED_ROW],
       });
       renderRoute();
