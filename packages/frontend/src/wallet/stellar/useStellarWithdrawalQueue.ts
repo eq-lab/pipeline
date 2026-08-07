@@ -30,6 +30,7 @@
 
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toError } from "@/utils/userError";
 import {
   rpc,
   TransactionBuilder,
@@ -114,27 +115,11 @@ export function decodeRequestId(native: unknown): bigint {
   return typeof candidate === "bigint" ? candidate : BigInt(String(candidate));
 }
 
-/**
- * Normalizes unknown thrown values into readable `Error`s (#1024).
- * spec: docs/frontend/wallet-flows.md#error-normalization
- */
-export function toError(err: unknown): Error {
-  if (err instanceof Error) return err;
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "message" in err &&
-    typeof (err as { message: unknown }).message === "string"
-  ) {
-    return new Error((err as { message: string }).message);
-  }
-  if (typeof err === "string") return new Error(err);
-  try {
-    return new Error(JSON.stringify(err));
-  } catch {
-    return new Error(String(err));
-  }
-}
+// `toError` (#1024, error normalization) moved to `@/utils/userError` (#1034)
+// — it is now stage 1 of `toUserError`. Re-exported here (imported above) so
+// the three existing call sites below and other importers of this module
+// don't need to change their import path.
+export { toError };
 
 // ── In-flight recovery localStorage helpers ───────────────────────────────────
 

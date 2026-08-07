@@ -144,7 +144,12 @@ describe("useBalanceSheetPanel — error state", () => {
     });
 
     expect(result.current.state).toBe("error");
-    expect(result.current.errorMessage).toBe("network failure");
+    // spec: docs/frontend/error-handling.md — mapped via toUserError, not the
+    // raw "network failure" string (#1034). "network" matches the EVM
+    // network-problem copy.
+    expect(result.current.errorMessage).toBe(
+      "Network problem. Please try again.",
+    );
   });
 
   it("exposes refetch on error", () => {

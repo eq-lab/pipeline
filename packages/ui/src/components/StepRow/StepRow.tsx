@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "../Button";
+import { InlineError } from "../InlineError/InlineError";
 
 /**
  * StepRow — numbered step row used inside `StepsCard`.
@@ -50,6 +51,12 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
   state?: "idle" | "success" | "error";
   /** Red message line under the label; rendered only when `state` is `"error"`. */
   errorMessage?: string;
+  /**
+   * Raw error text for the details dialog — never rendered inline. When
+   * present alongside `errorMessage`, the error line gains a "View details"
+   * trigger (via `InlineError`). spec: docs/frontend/error-handling.md
+   */
+  errorDetails?: string;
 }
 
 const rootClasses = [
@@ -101,6 +108,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
       loading = false,
       state = "idle",
       errorMessage,
+      errorDetails,
       className,
       ...rest
     },
@@ -148,19 +156,21 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
           </span>
         </div>
 
-        {/* Label (+ error line when state === "error") */}
-        <span className={labelClasses}>
+        {/* Label (+ error line when state === "error"). A <div>, not a
+            <span>, because `InlineError` can render `ErrorDetailsDialog`'s
+            backdrop <div> as a descendant when its "View details" trigger
+            is present — a <div> is not valid phrasing content inside a
+            <span>. */}
+        <div className={labelClasses}>
           {label}
           {isError && errorMessage && (
-            <span
-              data-testid={`step-row-${step}-error`}
-              role="alert"
-              className="mt-0.5 block text-[13px] leading-[18px] text-[color:var(--color-pipeline-negative)]"
-            >
-              {errorMessage}
-            </span>
+            <InlineError
+              message={errorMessage}
+              details={errorDetails}
+              className="mt-0.5 block"
+            />
           )}
-        </span>
+        </div>
 
         {/* Action button / loading spinner wrapper — matches Figma `ButtonCont` */}
         <div data-testid={`step-row-${step}-action`} className="shrink-0 p-1">

@@ -78,3 +78,7 @@ export { NavIcon } from "./components/NavIcon";
 export type { NavIconProps, NavIconName } from "./components/NavIcon";
 export { Toast } from "./components/Toast";
 export type { ToastProps, ToastTone, ToastAction } from "./components/Toast";
+export { ErrorDetailsDialog } from "./components/ErrorDetailsDialog/ErrorDetailsDialog";
+export type { ErrorDetailsDialogProps } from "./components/ErrorDetailsDialog/ErrorDetailsDialog";
+export { InlineError } from "./components/InlineError/InlineError";
+export type { InlineErrorProps } from "./components/InlineError/InlineError";

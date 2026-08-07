@@ -4,6 +4,7 @@ import { parseUsdc } from "@/lib/usdc";
 import {
   Button,
   Card,
+  ErrorDetailsDialog,
   InfoRow,
   SegmentedTabs,
   StakeHeader,
@@ -14,6 +15,7 @@ import {
 import { useWalletView, useConnectModal } from "@/wallet";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
+import { toUserError } from "@/utils/userError";
 
 /** Active tab of the stake page; also the `?tab=` search-param value. */
 type StakeTab = "stake" | "unstake";
@@ -39,6 +41,12 @@ function Stake() {
   // ── Local state ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<StakeTab>(initialTab);
   const [amountInput, setAmountInput] = useState("");
+  // Page-level ErrorDetailsDialog state (#1034) — mirrors routes/deposit.tsx.
+  // spec: docs/frontend/error-handling.md
+  const [errorDialog, setErrorDialog] = useState<{
+    message: string;
+    details: string;
+  } | null>(null);
 
   const isStakeTab = activeTab === "stake";
 
@@ -77,6 +85,7 @@ function Stake() {
   // ── Toast: step 1 (EVM approve / Stellar trustline) ───────────────────
   const prevStep1IsPending = useRef(false);
   const prevStep1IsSuccess = useRef(false);
+  const prevStep1Error = useRef<Error | null>(null);
   useEffect(() => {
     const toastId = isStellar
       ? isStakeTab
@@ -98,6 +107,11 @@ function Stake() {
         ? "sPLUSD trustline enabled"
         : "PLUSD trustline enabled"
       : "Approval confirmed";
+    const genericFailureTitle = isStellar
+      ? isStakeTab
+        ? "sPLUSD trustline failed"
+        : "PLUSD trustline failed"
+      : "Approval failed";
 
     if (flow.step1Tx.isPending && !prevStep1IsPending.current) {
       toast.show({ id: toastId, tone: "pending", title: pendingTitle });
@@ -105,11 +119,39 @@ function Stake() {
     if (flow.step1Tx.isSuccess && !prevStep1IsSuccess.current) {
       toast.update(toastId, { tone: "success", title: successTitle });
     }
+    // spec: docs/frontend/error-handling.md#toast-title-rule — added by
+    // #1034 (this branch did not exist before; step 1 failures were
+    // console-error-only).
+    if (flow.step1Tx.error && flow.step1Tx.error !== prevStep1Error.current) {
+      console.error(
+        isStellar
+          ? isStakeTab
+            ? "sPLUSD trustline failed:"
+            : "PLUSD trustline failed:"
+          : "Approval failed:",
+        flow.step1Tx.error,
+      );
+      const mapped = toUserError(flow.step1Tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : genericFailureTitle,
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
+    }
     prevStep1IsPending.current = flow.step1Tx.isPending;
     prevStep1IsSuccess.current = flow.step1Tx.isSuccess;
+    prevStep1Error.current = flow.step1Tx.error;
   }, [
     flow.step1Tx.isPending,
     flow.step1Tx.isSuccess,
+    flow.step1Tx.error,
     toast,
     isStellar,
     isStakeTab,
@@ -146,9 +188,22 @@ function Stake() {
         isStakeTab ? "Stake failed:" : "Unstake failed:",
         flow.step2Tx.error,
       );
+      const mapped = toUserError(flow.step2Tx.error);
       toast.update(toastId, {
         tone: "danger",
-        title: isStakeTab ? "Stake failed" : "Unstake failed",
+        title: mapped.isSpecific
+          ? mapped.message
+          : isStakeTab
+            ? "Stake failed"
+            : "Unstake failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
       });
     }
     prevStep2IsPending.current = flow.step2Tx.isPending;
@@ -283,6 +338,12 @@ function Stake() {
           />
         )}
       </main>
+      <ErrorDetailsDialog
+        open={errorDialog !== null}
+        summary={errorDialog?.message}
+        details={errorDialog?.details ?? ""}
+        onClose={() => setErrorDialog(null)}
+      />
     </div>
   );
 }

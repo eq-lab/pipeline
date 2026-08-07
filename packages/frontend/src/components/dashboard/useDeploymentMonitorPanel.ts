@@ -13,6 +13,7 @@ import type { LoanBookSummaryProps } from "./LoanBookSummary";
 import type { LoanBookRow, LoanBookHeaderAggregates } from "./LoanBookTable";
 import type { OriginationTableRow } from "./originationRow";
 import { mapSubmissionToRow } from "./originationRow";
+import { toUserError } from "@/utils/userError";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
@@ -130,7 +131,10 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
     originationRows,
     inOriginationCount,
     originationState,
-    originationErrorMessage: submissions.error?.message,
+    // spec: docs/frontend/error-handling.md — mapped, never the raw message.
+    originationErrorMessage: submissions.error
+      ? toUserError(submissions.error).message
+      : undefined,
     refetchOrigination: submissions.refetch,
   };
 
@@ -155,7 +159,8 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
       headerAggregates: EMPTY_HEADER_AGGREGATES,
       rows: [],
       activeLoansCount: 0,
-      errorMessage: error.message,
+      // spec: docs/frontend/error-handling.md — mapped, never the raw message.
+      errorMessage: toUserError(error).message,
       refetch,
       ...originationCommon,
     };
