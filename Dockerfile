@@ -83,6 +83,7 @@ RUN corepack enable && yarn install --immutable
 # @pipeline/frontend imports the source-only @pipeline/ui workspace package.
 COPY packages/frontend/ packages/frontend/
 COPY packages/ui/ packages/ui/
+COPY packages/wallet-connect/ packages/wallet-connect/
 
 RUN yarn workspace @pipeline/frontend build
 
