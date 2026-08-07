@@ -20,6 +20,8 @@
  *     for the Protection row (#1014).
  *   - **Summary tiles** ← the matching `/v1/loan-book` row plus
  *     `/financials` for unminted yield / epoch APY (issue #874).
+ *   - **Documents** ← the matching `/v1/loan-book` row's `documents` array.
+ *     Spec: `docs/frontend/trustee-flows.md#documents`.
  *   - **Action availability / explanatory copy** ← static product configuration
  *     in `-loanDetailStatic.ts`.
  *
@@ -127,6 +129,12 @@ export interface LabelValueRow {
   value: string;
 }
 
+/** One document row of the Documents card — name + the URI it opens. */
+export interface DocumentDisplay {
+  name: string;
+  uri: string;
+}
+
 /** The spot line (price + optional trailing-change), rendered two-tone. */
 export interface SpotView {
   main: string;
@@ -202,6 +210,8 @@ export interface UseLoanDetailResult {
   rollover: RolloverCard | null;
   /** Formatted maturity date (e.g. `"15 Jun 2026"`), for the Matured rollover-card title; `null` when absent. */
   maturityDate: string | null;
+  /** Documents card rows. Spec: `docs/frontend/trustee-flows.md#documents`. */
+  documents: DocumentDisplay[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -425,6 +435,21 @@ export function buildHero(
     status: { label: chip.label, band: chip.band },
     meta: metaParts.join(" · "),
   };
+}
+
+/**
+ * Documents card rows from the loan-book row. Spec:
+ * `docs/frontend/trustee-flows.md#documents`. `Array.isArray` guard mirrors
+ * `mapDealDetails`'s defensive pattern for an older API build.
+ */
+export function buildDocuments(
+  entry: LoanBookEntry | undefined,
+): DocumentDisplay[] {
+  if (entry == null || !Array.isArray(entry.documents)) return [];
+  return entry.documents.map((doc) => ({
+    name: doc.name ?? "",
+    uri: doc.uri ?? "",
+  }));
 }
 
 /**
@@ -839,5 +864,6 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
     ccrTrend: variant === "watchlist" ? buildCcrTrend(ccrHistory) : null,
     rollover: variant === "matured" ? MATURED_ROLLOVER_CARD : null,
     maturityDate: entry ? formatMaturityDate(entry.maturity) : null,
+    documents: buildDocuments(entry),
   };
 }

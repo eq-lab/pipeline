@@ -6,6 +6,7 @@ import {
   useUpdateLifecycle,
   type LocationInput,
 } from "@/api/useUpdateLifecycle";
+import { DocumentIcon } from "@/components/DocumentIcon";
 import {
   useLoanDetail,
   type HeroView,
@@ -15,6 +16,7 @@ import {
   type RegistryView,
   type StatusBand,
   type CcrTrend,
+  type DocumentDisplay,
 } from "./-useLoanDetail";
 import {
   type RolloverCard as RolloverCardData,
@@ -42,7 +44,8 @@ import { CcrTrendChart } from "./-CcrTrendChart";
  *     hero shows `<date> — passed`, and Roll over is the matured-only fast-path
  *     (Figma node `4116:10969`, #866). The served `Past Due` status maps here.
  * Shared live sections render in both: Hero + status chip (loan-book row), Price
- * & collateral (`/valuations`), Registry (`/financials`, performing only).
+ * & collateral (`/valuations`), Registry (`/financials`, performing only), and
+ * Documents (loan-book row; spec: `docs/frontend/trustee-flows.md#documents`).
  * Watchlist CCR trend and summary tiles are live; action labels and explanatory
  * copy are static product configuration unless a branch opens a wired flow below.
  *
@@ -521,6 +524,57 @@ function RegistryCard({ registry }: { registry: RegistryView }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Documents (issue #1039) ───────────────────────────────────────────────────
+
+/** Documents card. Markup mirrors `origination.$id.tsx`'s `DealDetailsCard`
+ * documents list verbatim. Spec: `docs/frontend/trustee-flows.md#documents`. */
+function DocumentsCard({ documents }: { documents: DocumentDisplay[] }) {
+  return (
+    <div
+      className={`${CARD_CLASS} gap-[8px] p-[26px]`}
+      style={cardStyle()}
+      data-testid="loan-detail-documents"
+    >
+      <CardTitle>Documents</CardTitle>
+      <div className="flex flex-col gap-[4px]">
+        {documents.length === 0 ? (
+          <p
+            className="py-[8px] font-[family-name:var(--font-body)] text-[15px] leading-[21px]"
+            style={{ color: INK_MUTED }}
+          >
+            No documents provided.
+          </p>
+        ) : (
+          documents.map((doc, i) => (
+            <a
+              key={`${doc.name}-${i}`}
+              href={doc.uri || undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={doc.uri ? undefined : true}
+              className={[
+                "flex items-center gap-[12px] py-[8px] no-underline",
+                doc.uri ? "cursor-pointer" : "pointer-events-none",
+              ].join(" ")}
+              data-testid="loan-detail-document"
+            >
+              <span className="flex size-[32px] shrink-0 items-center justify-center rounded-[4px] bg-[rgba(0,0,128,0.06)] text-[#000080]">
+                <DocumentIcon />
+              </span>
+              <span
+                className="border-b border-dashed pb-px font-[family-name:var(--font-body)] text-[15px] leading-[21px] text-[#262524]"
+                style={{ borderBottomColor: LINE_COLOR }}
+              >
+                {doc.name}
+              </span>
+            </a>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -1387,6 +1441,7 @@ function LoanDetail() {
           {detail.currentStage && (
             <CurrentStageCard stage={detail.currentStage} />
           )}
+          <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
             onAction={onOtherAction}
@@ -1417,6 +1472,7 @@ function LoanDetail() {
               />
             )}
           </div>
+          <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
             onAction={onOtherAction}
@@ -1457,6 +1513,7 @@ function LoanDetail() {
               }}
             />
           )}
+          <DocumentsCard documents={detail.documents} />
           <OtherActionsCard
             otherActions={detail.otherActions}
             onAction={onOtherAction}

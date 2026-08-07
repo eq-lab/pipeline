@@ -108,6 +108,7 @@ const LOAN_BOOK_RESPONSE: LoanBookResponse = {
       rate: "0.130000",
       protection: null,
       status: "WatchList",
+      documents: [],
       repaid_to_date: "0.000000",
       disbursed: true,
       days_on_watchlist: null,

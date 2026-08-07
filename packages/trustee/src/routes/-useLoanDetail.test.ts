@@ -20,6 +20,7 @@ import type {
 import { ApiError } from "@/api/client";
 import {
   buildCcrTrend,
+  buildDocuments,
   buildFinancials,
   buildHero,
   buildLifecycle,
@@ -54,6 +55,7 @@ function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
     rate: "0.130000",
     protection: null,
     status: "Performing",
+    documents: [],
     repaid_to_date: "6300.000000",
     disbursed: true,
     days_on_watchlist: null,
@@ -188,6 +190,77 @@ describe("buildHero", () => {
   it("omits the payment clause when no next-payment timestamp is served (no fabrication)", () => {
     const hero = buildHero("4488", makeEntry({ next_payment_timestamp: 0 }));
     expect(hero.meta).toBe("Loan #4488");
+  });
+});
+
+// ── buildDocuments (issue #1039) ───────────────────────────────────────────────
+
+describe("buildDocuments", () => {
+  it("maps a served two-document array to DocumentDisplay[], preserving name/uri/order", () => {
+    const docs = buildDocuments(
+      makeEntry({
+        documents: [
+          { name: "Facility Agreement (extract)", uri: "ipfs://cid-1" },
+          { name: "Offtake Contract", uri: "ipfs://cid-2" },
+        ],
+      }),
+    );
+    expect(docs).toEqual([
+      { name: "Facility Agreement (extract)", uri: "ipfs://cid-1" },
+      { name: "Offtake Contract", uri: "ipfs://cid-2" },
+    ]);
+  });
+
+  it("returns [] for an undefined entry (loan-book row not found)", () => {
+    expect(buildDocuments(undefined)).toEqual([]);
+  });
+
+  it("returns [] for an empty documents array", () => {
+    expect(buildDocuments(makeEntry({ documents: [] }))).toEqual([]);
+  });
+
+  it("returns [] when documents is absent/malformed — never throws (A1's defensive guard)", () => {
+    const entry = makeEntry();
+    // Cast away the type to simulate an older API build omitting the key, or
+    // serving a non-array shape.
+    const missingKey = {
+      ...entry,
+      documents: undefined,
+    } as unknown as LoanBookEntry;
+    expect(() => buildDocuments(missingKey)).not.toThrow();
+    expect(buildDocuments(missingKey)).toEqual([]);
+    const nonArray = {
+      ...entry,
+      documents: "oops",
+    } as unknown as LoanBookEntry;
+    expect(buildDocuments(nonArray)).toEqual([]);
+  });
+
+  it("passes through a document with an empty uri rather than dropping it", () => {
+    const docs = buildDocuments(
+      makeEntry({ documents: [{ name: "Assay certificate", uri: "" }] }),
+    );
+    expect(docs).toEqual([{ name: "Assay certificate", uri: "" }]);
+  });
+
+  it("does not dedupe two documents sharing a name", () => {
+    const docs = buildDocuments(
+      makeEntry({
+        documents: [
+          { name: "Certificate of Analysis", uri: "ipfs://cid-a" },
+          { name: "Certificate of Analysis", uri: "ipfs://cid-b" },
+        ],
+      }),
+    );
+    expect(docs).toHaveLength(2);
+    expect(docs[0]).toEqual({
+      name: "Certificate of Analysis",
+      uri: "ipfs://cid-a",
+    });
+    expect(docs[1]).toEqual({
+      name: "Certificate of Analysis",
+      uri: "ipfs://cid-b",
+    });
   });
 });
 

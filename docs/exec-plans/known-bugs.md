@@ -24,6 +24,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Formatting debt landed on `main` without prettier being applied; the pre-commit `frontend lint` runs a repo-wide `prettier --check`, so it fails regardless of what the commit touches.
 - **Workaround:** Run `cd packages/frontend && yarn lint --write` (or `prettier --write`) on the 9 files in a dedicated formatting-only PR. Discovered while committing #953 (backend-only); that commit bypassed the stale stage with `--no-verify` after manually verifying `cargo fmt`, `yarn codegen` (no changes), clippy, `cargo test --all`, `tsc`, and doc lint all pass.
 
+### BUG-14: Trustee loan detail Documents card shows the empty state for loans indexed before commit `f73d54d`
+- **Date:** 2026-08-07
+- **Location:** `packages/shared/src/loan_snapshot.rs:26-31` (`LoanSnapshot.documents`, `#[serde(default)]`)
+- **Symptom:** A loan's Documents card (`packages/trustee/src/routes/loans.$id.tsx`, issue #1039) renders "No documents provided." even though the loan's on-chain IPFS metadata lists real documents.
+- **Root cause:** `GET /v1/loan-book`'s `documents` field was added by commit `f73d54d`. Loans whose `contract_logs.params.snapshot` row was indexed *before* that commit deserialize `documents` to `[]` (the field defaults on deserialize) rather than backfilling from the still-available on-chain metadata. This is correct never-fabricate behavior on the frontend — the API genuinely serves `[]` for these rows — but the underlying data gap is real.
+- **Workaround:** None applied. The loan-registry indexer resync (#442) re-indexes historical snapshots and will backfill `documents` for these loans once it runs; no frontend workaround should be attempted (do not re-fetch metadata client-side — see #1039's exec plan for why that was rejected).
+
 ### BUG-11: EVM yield-mint phase has no "nothing to mint" skip (potential retry-forever)
 - **Date:** 2026-07-29
 - **Location:** `packages/worker/src/relayer/yield_mint/mod.rs` + `packages/shared/src/yield_mint_outbox_repo.rs::discover_pending` (EVM path).

@@ -191,7 +191,7 @@ required.
 
 ## Implementation Steps
 
-### 1. Add `documents` to the trustee `LoanBookEntry` type
+### 1. Add `documents` to the trustee `LoanBookEntry` type — DONE
 
 File: `packages/trustee/src/api/useLoanBook.ts`
 
@@ -219,7 +219,7 @@ File: `packages/trustee/src/api/useLoanBook.ts`
   records none **and** for snapshots indexed before the field existed — render the empty state,
   never fabricate.
 
-### 2. Extract `DocumentIcon` into its own component file
+### 2. Extract `DocumentIcon` into its own component file — DONE
 
 New file: `packages/trustee/src/components/DocumentIcon.tsx`
 
@@ -234,7 +234,7 @@ New file: `packages/trustee/src/components/DocumentIcon.tsx`
 - Per FRONTEND.md rules 4/5, an icon *component* is neither a util nor a shared hook —
   `LockIcon.tsx` sets the precedent of not cataloguing it. No `utils.md`/`hooks.md` entry.
 
-### 3. Build the documents view-model
+### 3. Build the documents view-model — DONE
 
 File: `packages/trustee/src/routes/-useLoanDetail.ts`
 
@@ -265,7 +265,7 @@ File: `packages/trustee/src/routes/-useLoanDetail.ts`
   `/v1/loan-book` row's `documents` (indexer-sourced from the loan's IPFS metadata). Keep it to
   the one line — the behavioral spec goes in the doc (Step 7), per FRONTEND.md rule 6.
 
-### 4. Render the Documents card
+### 4. Render the Documents card — DONE
 
 File: `packages/trustee/src/routes/loans.$id.tsx`
 
@@ -302,17 +302,37 @@ File: `packages/trustee/src/routes/loans.$id.tsx`
 - Update the route file's `## Status-conditional layout` docblock only to note that Documents is
   a shared always-rendered section; the behavioral spec lives in the doc (rule 6).
 
-### 5. Update the broken `LoanBookEntry` fixtures
+### 5. Update the broken `LoanBookEntry` fixtures — DONE (7 fixtures, not 3 — see deviation note)
 
 Add `documents: []` to the three factories listed in R2. Prefer the neutral empty default so
 existing assertions are unaffected; individual tests override via the `Partial<LoanBookEntry>`
 argument.
 
-### 6. Tests
+**Deviation:** `npx tsc -b` (Step 9's authoritative sweep) found **7** full-literal
+`LoanBookEntry` fixtures needing `documents: []`, not the 3 named in R2:
+`-useLoanDetail.test.ts`, `-useLoansTable.test.ts`, `-useNeedsAttention.test.ts` (as listed),
+plus `-loans.index.test.tsx` (2 literals), `-record-coupon-page.test.tsx`,
+`-record-repayment-page.test.tsx`, `-risk-council-escalate-page.test.tsx`,
+`-risk-council-reterm-page.test.tsx`, `-risk-council-writedown-page.test.tsx`. All fixed with
+the same one-line `documents: [],` addition; `tsc -b` is clean.
+
+### 6. Tests — DONE
 
 Covered in detail under **Test Strategy** below.
 
-### 7. Spec prose (FRONTEND.md rule 6)
+**Deviation — Hook wiring test (Test Strategy item):** the plan asserts "the existing
+mocked-`useLoanBook` harness in that file already supplies entries" — no such harness exists in
+`-useLoanDetail.test.ts` (confirmed: the file is pure builder-function tests only, per its own
+module docblock; no other field on `UseLoanDetailResult` — `hero`, `lifecycle`, `tiles` — has a
+dedicated hook-render test either, only builder unit tests). Building a `renderHook` harness
+mocking `useLoanBook`/`useLoanValuation`/`useLoanFinancials`/`useLoanCcrHistory` solely for
+`documents` would be inconsistent with every sibling field and would contradict the file's
+"All pure — no DOM, no query layer" docblock. Coverage instead comes from (a) `buildDocuments`'s
+6 unit tests (the exact logic the hook wires unchanged: `documents: buildDocuments(entry)`) and
+(b) the route-level tests below, which mock `useLoanDetail` itself and verify `detail.documents`
+reaches the rendered card. Noted on the Issue.
+
+### 7. Spec prose (FRONTEND.md rule 6) — DONE
 
 File: `docs/frontend/trustee-flows.md`
 
@@ -345,7 +365,7 @@ Content (prose, not code):
 - Deferral: the v3 design assignment §S5 places Documents in a tab strip that this page does not
   implement; the card is the approved interim.
 
-### 8. Tracker entries
+### 8. Tracker entries — DONE
 
 - `docs/exec-plans/tech-debt-tracker.md`: (a) the v3 S5 tab-strip migration
   (Ledger / Terms / Movements / Documents / Location / Activity) that would relocate this card;
@@ -356,7 +376,7 @@ Content (prose, not code):
   backfills them. Date, location (`packages/shared/src/loan_snapshot.rs:26-31`), symptom, root
   cause, remedy. Do not fix inline.
 
-### 9. Lint, typecheck, build
+### 9. Lint, typecheck, build — DONE (778/778 tests, tsc clean, eslint clean; yarn lint's Prettier check fails only on pre-existing unrelated drift — see TD-51)
 
 From the repo root:
 
@@ -369,7 +389,7 @@ From the repo root:
 
 No Rust changed, so `cargo clippy` is not required.
 
-### 10. Structural parity verification (in place of Figma)
+### 10. Structural parity verification (in place of Figma) — DEFERRED to the user per the standing preference (ask, don't drive their browser)
 
 No Figma frame exists for this card (R5). Verify instead that the rendered documents list is
 structurally identical to the origination block: same icon glyph and 32px tinted square, same
