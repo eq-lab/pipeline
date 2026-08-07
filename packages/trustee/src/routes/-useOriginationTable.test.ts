@@ -283,4 +283,50 @@ describe("useOriginationTable", () => {
     expect(result.current.rows).toHaveLength(1);
     expect(result.current.rows[0]?.originator).toBe("Auric Andes");
   });
+
+  // ── In-flight-only filter (#1044) ──────────────────────────────────────────
+
+  it("filters out Approved submissions — they belong on the Loans surfaces", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [
+        FULL_SUBMISSION, // InReview
+        { ...FULL_SUBMISSION, id: 2, status: "Approved" },
+        { ...FULL_SUBMISSION, id: 3, status: "Rejected" },
+        { ...FULL_SUBMISSION, id: 4, status: "ChangesRequested" },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useOriginationTable());
+    expect(result.current.state).toBe("ready");
+    expect(result.current.rows.map((r) => r.id)).toEqual([1, 3, 4]);
+  });
+
+  it("filters out backend merged/lifecycle statuses (normalize to Approved, #892)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [
+        { ...FULL_SUBMISSION, id: 5, status: "Performing" },
+        { ...FULL_SUBMISSION, id: 6, status: "Closed" },
+        { ...FULL_SUBMISSION, id: 7, status: "SomethingNew" },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useOriginationTable());
+    expect(result.current.state).toBe("empty");
+    expect(result.current.rows).toEqual([]);
+  });
+
+  it("returns 'empty' when every submission is Approved (not 'ready' with zero rows)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [{ ...FULL_SUBMISSION, id: 8, status: "Approved" }],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useOriginationTable());
+    expect(result.current.state).toBe("empty");
+  });
 });
