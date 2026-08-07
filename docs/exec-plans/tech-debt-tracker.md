@@ -588,6 +588,14 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   family, removed together when #840 is fixed). The `Custodian co-sig on mint` row has
   no field on this endpoint yet and renders `—` pending clarification (the `Epochs` row is now
   sourced from the endpoint's `epoch` object, #857).
+
+  **Addendum (issue #1039, Trustee Loan detail — `documents` mirror drift closed, `reported_ccr_bps`
+  still open):** `useLoanBook.ts`'s `LoanBookEntry` hand-mirror had drifted from the backend DTO —
+  `documents` (added backend-side by commit `f73d54d`) was missing from the trustee TS type and
+  silently discarded on the wire. #1039 added it (`LoanDocumentDto`, a further trustee-local
+  duplicate of `useLoanSubmissions.ts`'s identical type — a fourth hand-mirroring alongside those
+  already tracked above). `reported_ccr_bps` is likewise served by the backend but still missing
+  from this mirror; nothing reads it yet, so it is left out rather than added speculatively.
 - **Impact:** Any change to the `loan_data` shape, base-6/bps/date conventions, or
   `SubmissionView` fields must now be manually ported across **three** hand-mirrored call sites
   (trustee's `-useOriginationTable.ts`, LP's `originationRow.ts`, and each app's own
@@ -753,6 +761,40 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 - **Suggested fix:** Confirm the enum against the deployed WithdrawalQueue/DepositManager
   contract source (contracts repo / `stellar contract info`), then correct or confirm the
   table entry — a one-line change.
+
+### TD-50: Trustee Loan detail's Documents card is a stand-in for the v3 §S5 tab strip
+
+- **Date:** 2026-08-07 (#1039)
+- **Location:** `packages/trustee/src/routes/loans.$id.tsx` (`DocumentsCard`);
+  `docs/design-docs/trustee-dashboard-v3-design-assignment.md` §S5.
+- **Gap:** The v3 design assignment specifies Documents as one of six tabs (Ledger / Terms /
+  Movements / Documents / Location / Activity) on the loan detail page. The implemented page has
+  no tab strip at all (the #847/#859/#862/#866 card layout); #1039 rendered Documents as an
+  always-on card instead, placed directly before Other actions in every §S5 variant — an
+  author-approved interim, not the spec'd structure.
+- **Impact:** None today (the card satisfies the same user need), but a future full tab-strip
+  migration will need to relocate this card's content rather than build it fresh.
+- **Suggested fix:** Scope the §S5 tab-strip migration as its own issue once prioritized; move the
+  Documents card's list markup into the new Documents tab body unchanged.
+
+### TD-51: `packages/trustee` has the same pre-existing Prettier formatting drift as TD-47/TD-12 (`packages/frontend`)
+
+- **Date:** 2026-08-07 (found during #1039)
+- **Location:** Confirmed on the `feat/1039-loan-detail-documents` branch's base commit (i.e.
+  pre-existing, not introduced by #1039): `packages/trustee/src/routes/loans.$id_.record-coupon.tsx`,
+  `packages/trustee/src/routes/loans.$id_.record-repayment.tsx`,
+  `packages/trustee/src/routes/risk-council.writedown.$id.tsx`, plus four test files that #1039
+  touched with a single-line fixture addition each (`-record-repayment-page.test.tsx`,
+  `-risk-council-reterm-page.test.tsx`, `-risk-council-writedown-page.test.tsx`,
+  `-useLoansTable.test.ts`) — their pre-existing bodies fail `prettier --check` for unrelated
+  reasons elsewhere in the file, so `yarn --cwd packages/trustee lint` fails on a clean checkout
+  independent of #1039's changes (verified via `git stash`).
+- **Impact:** Same as TD-12/TD-47 but for the trustee package: `yarn lint` fails on `main`,
+  CI/pre-commit gates relying on it are already broken, and any future change to these files
+  will look larger than it is if lint is fixed opportunistically inside an unrelated PR.
+- **Suggested fix:** One-shot `prettier --write` pass over `packages/trustee` in a dedicated
+  formatting-only chore PR (mirrors TD-47's suggested fix for `packages/frontend`), then confirm
+  `yarn --cwd packages/trustee lint` passes clean.
 
 ---
 

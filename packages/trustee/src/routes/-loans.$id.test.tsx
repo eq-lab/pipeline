@@ -107,6 +107,7 @@ function makeResult(
     ccrTrend: null,
     rollover: null,
     maturityDate: "30 Jun 2026",
+    documents: [],
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
@@ -777,6 +778,142 @@ describe("Loan detail route — top-level states", () => {
       "href",
       "/loans",
     );
+  });
+});
+
+describe("Loan detail route — Documents (#1039)", () => {
+  const DOCS = [
+    { name: "Facility Agreement (extract)", uri: "ipfs://cid-facility" },
+    { name: "Offtake Contract", uri: "ipfs://cid-offtake" },
+  ];
+
+  it.each([
+    ["performing", makeResult({ variant: "performing", documents: DOCS })],
+    [
+      "watchlist",
+      makeResult({
+        variant: "watchlist",
+        otherActions: { actions: [], note: "" },
+        documents: DOCS,
+      }),
+    ],
+    [
+      "disbursing",
+      makeResult({
+        variant: "disbursing",
+        hero: {
+          backLabel: "‹ Loans",
+          title: "Helios Metals · Lithium",
+          status: { label: "Disbursing", band: "info" },
+          meta: "Loan #4488 · matures 30 Jun 2026",
+        },
+        documents: DOCS,
+      }),
+    ],
+    [
+      "matured",
+      makeResult({
+        variant: "matured",
+        maturityDate: "15 Jun 2026",
+        rollover: {
+          tag: "rollover available",
+          body: "now ≥ currentMaturityDate and status is not Default or Closed.",
+          actionLabel: "Roll over →",
+        },
+        documents: DOCS,
+      }),
+    ],
+  ])("renders the Documents section in the %s variant", (_label, result) => {
+    mockUseLoanDetail.mockReturnValue(result);
+    renderRoute();
+    expect(screen.getByTestId("loan-detail-documents")).toBeInTheDocument();
+  });
+
+  it("places the Documents card before the Other-actions card in DOM order (performing)", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult({ documents: DOCS }));
+    renderRoute();
+    const docs = screen.getByTestId("loan-detail-documents");
+    const actions = screen.getByTestId("loan-detail-other-actions");
+    const position = docs.compareDocumentPosition(actions);
+    expect(Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("places the Documents card before the Other-actions card in DOM order (matured)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        variant: "matured",
+        maturityDate: "15 Jun 2026",
+        rollover: {
+          tag: "rollover available",
+          body: "now ≥ currentMaturityDate and status is not Default or Closed.",
+          actionLabel: "Roll over →",
+        },
+        documents: DOCS,
+      }),
+    );
+    renderRoute();
+    const docs = screen.getByTestId("loan-detail-documents");
+    const actions = screen.getByTestId("loan-detail-other-actions");
+    const position = docs.compareDocumentPosition(actions);
+    expect(Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("renders two document anchors with the served name/href/target/rel", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult({ documents: DOCS }));
+    renderRoute();
+    const anchors = screen.getAllByTestId("loan-detail-document");
+    expect(anchors).toHaveLength(2);
+    expect(anchors[0]).toHaveTextContent("Facility Agreement (extract)");
+    expect(anchors[0]).toHaveAttribute("href", "ipfs://cid-facility");
+    expect(anchors[0]).toHaveAttribute("target", "_blank");
+    expect(anchors[0]?.getAttribute("rel")).toContain("noopener");
+    expect(anchors[0]?.getAttribute("rel")).toContain("noreferrer");
+    expect(anchors[1]).toHaveTextContent("Offtake Contract");
+    expect(anchors[1]).toHaveAttribute("href", "ipfs://cid-offtake");
+  });
+
+  it("renders the empty state and no document anchors when documents is []", () => {
+    mockUseLoanDetail.mockReturnValue(makeResult({ documents: [] }));
+    renderRoute();
+    const card = screen.getByTestId("loan-detail-documents");
+    expect(
+      within(card).getByText("No documents provided."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("loan-detail-document"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a document with an empty uri as inert (no href, aria-disabled)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ documents: [{ name: "Untitled scan", uri: "" }] }),
+    );
+    renderRoute();
+    const anchor = screen.getByTestId("loan-detail-document");
+    expect(anchor).not.toHaveAttribute("href");
+    expect(anchor).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("omits the Documents card in the top-level loading/error states", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ state: "loading", documents: DOCS }),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-documents"),
+    ).not.toBeInTheDocument();
+
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({
+        state: "error",
+        errorMessage: "kaboom",
+        documents: DOCS,
+      }),
+    );
+    renderRoute();
+    expect(
+      screen.queryByTestId("loan-detail-documents"),
+    ).not.toBeInTheDocument();
   });
 });
 

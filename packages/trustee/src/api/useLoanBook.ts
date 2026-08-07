@@ -38,6 +38,14 @@ import { ENV } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** Mirrors `packages/api/src/routes/loan_book.rs`'s `LoanDocumentDto`.
+ * Trustee-local duplicate of `useLoanSubmissions.ts`'s identical type
+ * (separate backend DTOs) — see TD-42. */
+export interface LoanDocumentDto {
+  name: string;
+  uri: string;
+}
+
 /** Largest single-commodity exposure in the active loan book (Top concentration tile). */
 export interface TopConcentration {
   /** Underlying commodity with the largest senior exposure. */
@@ -190,6 +198,8 @@ export interface LoanBookEntry {
   protection: string | null;
   /** Loan status from the latest snapshot: `"Performing"`, `"WatchList"`, `"Default"`, `"Closed"`, … */
   status: string;
+  /** Backs the loan-detail Documents card. Spec: `docs/frontend/trustee-flows.md#documents`. */
+  documents: LoanDocumentDto[];
   /**
    * Cumulative offtaker cash received to date, USDC base-6 decimal string.
    * Registry-sourced; displayed as served (issue #906). Backs the

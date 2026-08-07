@@ -143,6 +143,43 @@ _To be migrated from `packages/trustee/src/api/useLoanBook.ts`, `routes/-useLoan
 
 _To be migrated from `packages/trustee/src/routes/-useLoanDetail.ts`, `routes/loans.$id.tsx`._
 
+### Documents
+
+**Sources:** `packages/trustee/src/api/useLoanBook.ts` (`LoanBookEntry.documents`),
+`packages/trustee/src/routes/-useLoanDetail.ts` (`buildDocuments`, `DocumentDisplay`),
+`packages/trustee/src/routes/loans.$id.tsx` (`DocumentsCard`),
+`packages/trustee/src/components/DocumentIcon.tsx`. Issue #1039.
+
+The loan detail page renders a Documents section on **every** loan, regardless of lifecycle status.
+
+- **Source.** The matching `GET /v1/loan-book` row's `documents` array —
+  indexer-sourced from the loan's on-chain IPFS metadata document
+  (`LoanMetadataJson.documents` → `LoanSnapshot.documents`), not the submissions payload. The
+  submissions endpoint is deliberately **not** consulted: although a real join key exists
+  (`SubmissionView.loan_id` matches `LoanBookEntry.loan_id`), reading `documents` off the
+  loan-book row the page already fetches is strictly better — one fetch instead of two, no
+  cross-endpoint consistency window, correct for loans whose submission row is absent, and
+  sourced from the loan's *live* indexed metadata rather than the frozen submitted payload.
+- **Placement.** Directly before the Other-actions section, in every §S5 status variant
+  (performing, watchlist, disbursing, matured). The section **always renders**; only its
+  contents vary — never hidden, never gated on `documents.length`.
+- **Rendering.** Reuses the Origination detail page's documents-list markup verbatim
+  (`DealDetailsCard` in `origination.$id.tsx`): a filled navy `DocumentIcon` in a 32px tinted
+  square, the document name as a dashed-underline link, opening `uri` in a new tab
+  (`target="_blank" rel="noopener noreferrer"`). A document with an empty `uri` renders inert
+  (`aria-disabled`, no pointer events, no `href`) rather than a dead link. The zero-document
+  empty state reads "No documents provided." The card *chrome* (26px `CardTitle`) follows the
+  loan-detail page's own idiom rather than origination's 28px heading — the one deliberate
+  divergence from the "reuse verbatim" rule.
+- **Never-fabricate.** Served order is preserved; no filtering, sorting, deduping, or synthesized
+  names. Loans whose snapshot was indexed before commit `f73d54d` (which introduced the
+  `documents` field) legitimately show the empty state until re-indexed — see the known-bugs
+  entry for the remedy.
+- **Deferral.** The v3 design assignment (`docs/design-docs/trustee-dashboard-v3-design-assignment.md`
+  §S5) places Documents in a tab strip (Ledger / Terms / Movements / Documents / Location /
+  Activity) that this page does not implement — the card above is the author-approved interim
+  until that larger tab-strip migration lands (tracked in the tech-debt tracker).
+
 ## Cash movement & lifecycle actions
 
 _To be migrated from `packages/trustee/src/routes/-record-*.ts`._
