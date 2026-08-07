@@ -238,11 +238,15 @@ set `isError`.
   `cash-management.tsx`, `loans.$id.tsx`, `useCapitalAllocationCard.ts`, `useNeedsAttention.ts`, …).
   It deletes large comment blocks wholesale and moves 1011 lines of prose into
   `docs/frontend/trustee-flows.md`. Conflicts are guaranteed and large in both directions.
-  **Recommendation: land #1026 first**, then rebase #1037 on top — #1026 is comment/doc-only, so
-  rebasing it *after* a behavioural change means regenerating it by hand rather than resolving it.
-  See Open Question 3.
+  **Decided: #1037 lands first.** #1026 is then updated against the new `main` and its conflicts
+  resolved afterwards. Because #1026 is comment-only churn over the same files, expect to
+  **regenerate** its comment-stripping against the post-#1037 sources rather than replay the old
+  diff — the comment blocks it deletes will have moved or changed wording. Whoever owns #997 should
+  know this before they pick it back up.
   Consequence for this plan: put **all** new spec prose in `docs/frontend/error-handling.md` and do
-  **not** touch `docs/frontend/trustee-flows.md`.
+  **not** touch `docs/frontend/trustee-flows.md` — that keeps this issue's doc surface disjoint from
+  #1026's 1011-line rewrite of `trustee-flows.md`, so the two only collide in source comments, not
+  in docs.
 - **R2 — `@pipeline/ui` change has LP blast radius.** The capture-phase Escape fix (D4) touches a
   component the LP app already uses at 8 sites. It is additive and no LP surface nests dialogs today,
   but `packages/ui` and `packages/frontend` suites must both be re-run, not just trustee's.
