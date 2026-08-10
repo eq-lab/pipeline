@@ -5,7 +5,11 @@
  * spec: docs/frontend/dashboard-components.md#originationtable
  * (field-by-field mapping decisions, defensive-read rationale).
  */
-import type { SubmissionView } from "@/api/useLoanSubmissions";
+import { normalizeOriginationSubmissionStatus } from "@/api/useLoanSubmissions";
+import type {
+  OriginationSubmissionStatus,
+  SubmissionView,
+} from "@/api/useLoanSubmissions";
 import {
   economicsBaseUnitsToUsdDecimal,
   formatBpsRate,
@@ -14,6 +18,14 @@ import {
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** Human-readable Status-cell label per normalized origination status (#1053). */
+export const STATUS_LABELS: Record<OriginationSubmissionStatus, string> = {
+  InReview: "In review",
+  ChangesRequested: "Changes requested",
+  Rejected: "Rejected",
+  Approved: "Approved",
+};
 
 /** One formatted, display-ready row of the In-Origination table. */
 export interface OriginationTableRow {
@@ -25,8 +37,10 @@ export interface OriginationTableRow {
   rate: string;
   maturity: string;
   submitted: string;
-  /** Raw lifecycle status string; see spec above for rendering. */
-  status: string;
+  /** Normalized origination status — drives the Status cell's color. */
+  status: OriginationSubmissionStatus;
+  /** Human-readable Status-cell text (`STATUS_LABELS[status]`, #1053). */
+  statusLabel: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -54,6 +68,7 @@ export function mapSubmissionToRow(
     submission.loan_data ?? {};
   const economics: Partial<SubmissionView["loan_data"]["economics"]> =
     loanData.economics ?? {};
+  const status = normalizeOriginationSubmissionStatus(submission.status);
 
   return {
     id: submission.id,
@@ -68,6 +83,7 @@ export function mapSubmissionToRow(
     rate: formatBpsRate(safeNumber(economics.senior_interest_rate_bps)),
     maturity: formatMaturityDate(safeNumber(economics.original_maturity_date)),
     submitted: formatSubmittedDate(submission.created_at),
-    status: safeString(submission.status),
+    status,
+    statusLabel: STATUS_LABELS[status],
   };
 }

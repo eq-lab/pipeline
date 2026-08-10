@@ -839,9 +839,11 @@ column. Columns are separated by 12px via `pr-3` on every cell except the last. 
 the `Originator` column definition means it's left flexible so it absorbs the remaining table width.
 
 Status column text colour mirrors the `WithdrawalQueueTable` status-colour pattern (same mapping as
-the retired `LoanBookTable.statusColorClass`, issue #755): `Approved` → positive (green); `Rejected`
-→ negative (red); `InReview` → pending (amber); anything else (including `"—"`) → muted ink (neutral
-fallback).
+the retired `LoanBookTable.statusColorClass`, issue #755), keyed on the row's **normalized** status:
+`Approved` → positive (green); `Rejected` → negative (red); `InReview` / `ChangesRequested` →
+pending (amber); anything else → muted ink (neutral fallback). The cell TEXT is the human-readable
+`statusLabel` (`STATUS_LABELS` in `originationRow.ts`, #1053) — "In review", "Changes requested",
+"Rejected" — not the backend literal.
 
 **`originationRow.ts` field mapping** (`SubmissionView` → table row; mirrors
 `packages/trustee/src/routes/-useOriginationTable.ts`'s `mapSubmissionToRow`, minus the trustee-only

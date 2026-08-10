@@ -139,27 +139,41 @@ describe("mapSubmissionToRow", () => {
     expect(row.facility).toBe("—");
   });
 
-  it("passes through each lifecycle status as the raw string", () => {
-    expect(
-      mapSubmissionToRow({ ...FULL_SUBMISSION, status: "InReview" }).status,
-    ).toBe("InReview");
-    expect(
-      mapSubmissionToRow({ ...FULL_SUBMISSION, status: "Approved" }).status,
-    ).toBe("Approved");
-    expect(
-      mapSubmissionToRow({ ...FULL_SUBMISSION, status: "Rejected" }).status,
-    ).toBe("Rejected");
+  it("normalizes the status and derives a human-readable label (#1053)", () => {
+    const inReview = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "InReview",
+    });
+    expect(inReview.status).toBe("InReview");
+    expect(inReview.statusLabel).toBe("In review");
+
+    const changes = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "ChangesRequested",
+    });
+    expect(changes.status).toBe("ChangesRequested");
+    expect(changes.statusLabel).toBe("Changes requested");
+
+    const rejected = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "Rejected",
+    });
+    expect(rejected.status).toBe("Rejected");
+    expect(rejected.statusLabel).toBe("Rejected");
   });
 
-  it("maps an unknown/empty status string without throwing", () => {
+  it("normalizes merged lifecycle / unknown / empty statuses to Approved without throwing (#892, #1053)", () => {
+    expect(
+      mapSubmissionToRow({ ...FULL_SUBMISSION, status: "Performing" }).status,
+    ).toBe("Approved");
     expect(
       mapSubmissionToRow({ ...FULL_SUBMISSION, status: "SomethingNew" }).status,
-    ).toBe("SomethingNew");
-    expect(
-      mapSubmissionToRow({
-        ...FULL_SUBMISSION,
-        status: "" as SubmissionView["status"],
-      }).status,
-    ).toBe("—");
+    ).toBe("Approved");
+    const empty = mapSubmissionToRow({
+      ...FULL_SUBMISSION,
+      status: "" as SubmissionView["status"],
+    });
+    expect(empty.status).toBe("Approved");
+    expect(empty.statusLabel).toBe("Approved");
   });
 });
