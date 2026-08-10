@@ -5,8 +5,10 @@
  * The hook is always enabled (no wallet connection required — this endpoint is
  * public, mirroring `useLoanBook`).
  *
- * No `?status=` filter is sent: the In Origination tab lists *all* submissions
- * (newest first) and surfaces each row's lifecycle status in a Status column.
+ * No `?status=` filter is sent — the backend serves all statuses (newest
+ * first), including merged loan-lifecycle statuses for drawn loans (#892). The
+ * In Origination tab keeps only in-flight submissions client-side via
+ * `normalizeOriginationSubmissionStatus` (#1053).
  *
  * Mock layer
  * ----------
@@ -93,16 +95,49 @@ export interface SubmitLoanRequest {
   secondary_metadata_uri?: string | null;
 }
 
+/**
+ * A submission's normalized origination-decision status (issue #1053; ports the
+ * trustee app's equivalent — `packages/trustee/src/api/useLoanSubmissions.ts`,
+ * issues #892/#950 — the two apps deliberately don't share code, TD-42).
+ */
+export type OriginationSubmissionStatus =
+  | "InReview"
+  | "Approved"
+  | "Rejected"
+  | "ChangesRequested";
+
+/**
+ * Normalizes the backend's merged submission/loan lifecycle status into the
+ * origination vocabulary: once a submission reports a loan lifecycle status
+ * (`Performing`, `WatchList`, `Past Due`, `Closed`, …) the origination decision
+ * is complete, so it normalizes to `Approved`. `ChangesRequested` is a genuine
+ * pre-decision outcome and is preserved.
+ */
+export function normalizeOriginationSubmissionStatus(
+  status: SubmissionView["status"],
+): OriginationSubmissionStatus {
+  if (status === "InReview") return "InReview";
+  if (status === "Rejected") return "Rejected";
+  if (status === "ChangesRequested") return "ChangesRequested";
+  return "Approved";
+}
+
 /** One submission as returned by `GET /v1/loan-book/submissions`. */
 export interface SubmissionView {
   id: number;
-  /** Lifecycle status: `"InReview"` | `"Approved"` | `"Rejected"`. */
+  /**
+   * Raw backend status — a decision status (`"InReview"` | `"Approved"` |
+   * `"Rejected"` | `"ChangesRequested"`) or, for drawn loans, a merged loan
+   * lifecycle status. Use `normalizeOriginationSubmissionStatus` before
+   * origination-specific rendering/filtering (#1053).
+   */
   status:
     | "InReview"
     | "Approved"
     | "Rejected"
+    | "ChangesRequested"
     | (string & Record<never, never>);
-  /** Rejection reason; present iff `status === "Rejected"`. */
+  /** Reviewer reason; present iff `status` is `"Rejected"` or `"ChangesRequested"`. */
   reason: string | null;
   /** The submitter (authenticated address). */
   originator: string;

@@ -57,6 +57,7 @@ function baseState(
         maturity: "15 Dec 2026",
         submitted: "18 Jun",
         status: "InReview",
+        statusLabel: "In review",
       },
     ],
     inOriginationCount: 3,
@@ -123,12 +124,13 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     expect(within(table).getByText("West Africa → EU")).toBeTruthy();
     expect(within(table).getByText("15 Dec 2026")).toBeTruthy();
     expect(within(table).getByText("18 Jun")).toBeTruthy();
-    expect(within(table).getByText("InReview")).toBeTruthy();
+    // Human-readable status label, not the backend literal (#1053).
+    expect(within(table).getByText("In review")).toBeTruthy();
+    expect(within(table).queryByText("InReview")).toBeNull();
   });
 
-  it("colours the Status cell by lifecycle status", () => {
+  it("colours the Status cell by lifecycle status and renders the human label (#1053)", () => {
     const row = {
-      id: 1,
       originator: "X",
       commodity: "Y",
       facility: "$1.0M",
@@ -140,9 +142,34 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     hookState = baseState({
       activeTab: "origination",
       originationRows: [
-        { ...row, originator: "A", status: "Approved" },
-        { ...row, originator: "R", status: "Rejected" },
-        { ...row, originator: "I", status: "InReview" },
+        {
+          ...row,
+          id: 1,
+          originator: "A",
+          status: "Approved",
+          statusLabel: "Approved",
+        },
+        {
+          ...row,
+          id: 2,
+          originator: "R",
+          status: "Rejected",
+          statusLabel: "Rejected",
+        },
+        {
+          ...row,
+          id: 3,
+          originator: "I",
+          status: "InReview",
+          statusLabel: "In review",
+        },
+        {
+          ...row,
+          id: 4,
+          originator: "C",
+          status: "ChangesRequested",
+          statusLabel: "Changes requested",
+        },
       ],
     });
     render(<DeploymentMonitorPanel />);
@@ -153,7 +180,10 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     expect(screen.getByText("Rejected").className).toContain(
       "var(--color-pipeline-negative)",
     );
-    expect(screen.getByText("InReview").className).toContain(
+    expect(screen.getByText("In review").className).toContain(
+      "var(--color-pipeline-pending)",
+    );
+    expect(screen.getByText("Changes requested").className).toContain(
       "var(--color-pipeline-pending)",
     );
   });

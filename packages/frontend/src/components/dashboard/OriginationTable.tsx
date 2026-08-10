@@ -20,6 +20,7 @@ function statusColorClass(status: string): string {
     case "Rejected":
       return "text-[color:var(--color-pipeline-negative)]";
     case "InReview":
+    case "ChangesRequested":
       return "text-[color:var(--color-pipeline-pending)]";
     default:
       return "text-[color:var(--color-pipeline-ink-muted)]";
@@ -32,7 +33,7 @@ export interface OriginationTableProps {
 
 // spec: docs/frontend/dashboard-components.md#originationtable (column widths)
 const COLUMNS: {
-  key: keyof Omit<OriginationTableRow, "id">;
+  key: keyof Omit<OriginationTableRow, "id" | "statusLabel">;
   label: string;
   width?: string;
 }[] = [
@@ -96,7 +97,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
                           : "",
                       ].join(" ")}
                     >
-                      {row[col.key]}
+                      {col.key === "status" ? row.statusLabel : row[col.key]}
                     </span>
                   </td>
                 ))}

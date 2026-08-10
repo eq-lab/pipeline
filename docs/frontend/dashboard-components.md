@@ -662,7 +662,8 @@ tooling.
 **Tabs (issue #755):** Active Loans / In Origination tab bar (Figma node `3283:14480`). Both tabs are
 selectable and carry a live count badge:
 - Active Loans → `loans.length` from `GET /v1/loan-book`.
-- In Origination → submission count from `GET /v1/loan-book/submissions`.
+- In Origination → **in-flight** submission count from `GET /v1/loan-book/submissions` (issue #1053 —
+  see `useDeploymentMonitorPanel` below for the filter).
 
 The In Origination tab renders its own `OriginationTable` (issue #814, Figma node `4116-9155`) — a
 distinct 8-column field set (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status)
@@ -715,6 +716,15 @@ reachable.
 The In Origination tab's row shape (`OriginationTableRow`) and its submission→row mapping
 (`mapSubmissionToRow`) live in `originationRow.ts` (issue #814 — the tab now shows a distinct Figma
 `4116-9155` field set, replacing the Active-Loans-shaped `LoanBookRow` it previously reused).
+
+**In-flight filter (issue #1053):** only submissions whose normalized status is `InReview`,
+`ChangesRequested`, or `Rejected` are shown — `Approved` and the backend's merged loan-lifecycle
+statuses (`Performing`, `Closed`, `Past Due`, …, #892) are already loans and belong on the Active
+Loans tab, so they are excluded from both the rows and the count badge, and the tab reports `empty`
+when only such submissions are served. The normalization helper
+(`normalizeOriginationSubmissionStatus`, `src/api/useLoanSubmissions.ts`) is a port of the trustee
+app's equivalent (#1044) — the two apps deliberately don't share code (TD-42). Mirrors the trustee
+origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#1044 paragraph).
 
 `headerAggregates` — pre-formatted aggregate strings for the table column headers, populated from
 `summary` by the hook (formatting stays in the hook, not the table component):
@@ -829,9 +839,11 @@ column. Columns are separated by 12px via `pr-3` on every cell except the last. 
 the `Originator` column definition means it's left flexible so it absorbs the remaining table width.
 
 Status column text colour mirrors the `WithdrawalQueueTable` status-colour pattern (same mapping as
-the retired `LoanBookTable.statusColorClass`, issue #755): `Approved` → positive (green); `Rejected`
-→ negative (red); `InReview` → pending (amber); anything else (including `"—"`) → muted ink (neutral
-fallback).
+the retired `LoanBookTable.statusColorClass`, issue #755), keyed on the row's **normalized** status:
+`Approved` → positive (green); `Rejected` → negative (red); `InReview` / `ChangesRequested` →
+pending (amber); anything else → muted ink (neutral fallback). The cell TEXT is the human-readable
+`statusLabel` (`STATUS_LABELS` in `originationRow.ts`, #1053) — "In review", "Changes requested",
+"Rejected" — not the backend literal.
 
 **`originationRow.ts` field mapping** (`SubmissionView` → table row; mirrors
 `packages/trustee/src/routes/-useOriginationTable.ts`'s `mapSubmissionToRow`, minus the trustee-only

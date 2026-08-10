@@ -6,7 +6,11 @@
  * (tabs data sourcing, state machine, headerAggregates, LTV aggregate calc).
  */
 import { useState } from "react";
-import { useLoanBook, useLoanSubmissions } from "@/api";
+import {
+  useLoanBook,
+  useLoanSubmissions,
+  normalizeOriginationSubmissionStatus,
+} from "@/api";
 import type { LoanBookSummary, LoanBookEntry } from "@/api";
 import type { PanelState } from "./PanelContainer";
 import type { LoanBookSummaryProps } from "./LoanBookSummary";
@@ -46,9 +50,14 @@ export interface DeploymentMonitorPanelState {
   activeTab: LoanBookTab;
   /** Selects a tab. */
   setActiveTab: (tab: LoanBookTab) => void;
-  /** Formatted In Origination rows (all submissions, newest first). */
+  /**
+   * Formatted In Origination rows — only in-flight submissions (normalized
+   * `InReview` / `ChangesRequested` / `Rejected`, issue #1053), newest first.
+   * Approved and merged loan-lifecycle statuses are already loans and belong
+   * on the Active Loans tab.
+   */
   originationRows: OriginationTableRow[];
-  /** Live count of submissions in origination (0 otherwise). */
+  /** Live count of in-flight submissions (0 otherwise). */
   inOriginationCount: number;
   /** Independent state for the In Origination tab body. */
   originationState: PanelState;
@@ -110,16 +119,17 @@ export function useDeploymentMonitorPanel(): DeploymentMonitorPanelState {
   const [activeTab, setActiveTab] = useState<LoanBookTab>("active");
 
   // ── In Origination tab — independent of the Active Loans query ───────────────
-  const originationRows = submissions.data
-    ? submissions.data.map(mapSubmissionToRow)
-    : [];
-  const inOriginationCount = submissions.data?.length ?? 0;
+  const inFlightSubmissions = (submissions.data ?? []).filter(
+    (s) => normalizeOriginationSubmissionStatus(s.status) !== "Approved",
+  );
+  const originationRows = inFlightSubmissions.map(mapSubmissionToRow);
+  const inOriginationCount = inFlightSubmissions.length;
   let originationState: PanelState;
   if (submissions.isLoading) {
     originationState = "loading";
   } else if (submissions.error) {
     originationState = "error";
-  } else if (!submissions.data || submissions.data.length === 0) {
+  } else if (inFlightSubmissions.length === 0) {
     originationState = "empty";
   } else {
     originationState = "ready";

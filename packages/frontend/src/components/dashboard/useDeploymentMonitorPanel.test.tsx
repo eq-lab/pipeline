@@ -125,8 +125,8 @@ const FIXTURE_SUBMISSIONS: SubmissionView[] = [
   },
   {
     id: 2,
-    status: "Approved",
-    reason: null,
+    status: "ChangesRequested",
+    reason: "Docs incomplete",
     originator: "0x123",
     created_at: "2026-07-02T00:00:00Z",
     updated_at: "2026-07-02T00:00:00Z",
@@ -322,7 +322,45 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     expect(row1.rate).toBe("11.7%"); // 1170 bps
     expect(row1.maturity).toBe("14 Jan 2024");
     expect(row1.submitted).toBe("2 Jul");
-    expect(row1.status).toBe("Approved");
+    expect(row1.status).toBe("ChangesRequested");
+  });
+
+  it("filters out Approved and merged lifecycle-status submissions (#1053)", async () => {
+    const drawn: SubmissionView[] = [
+      { ...FIXTURE_SUBMISSIONS[0]!, id: 3, status: "Approved" },
+      { ...FIXTURE_SUBMISSIONS[0]!, id: 4, status: "Performing" },
+      { ...FIXTURE_SUBMISSIONS[0]!, id: 5, status: "Closed" },
+    ];
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
+    localStorage.setItem(
+      SUBMISSIONS_KEY,
+      JSON.stringify([...FIXTURE_SUBMISSIONS, ...drawn]),
+    );
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.originationState).toBe("ready"));
+    expect(result.current.inOriginationCount).toBe(2);
+    expect(result.current.originationRows.map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("is empty when every submission is already a loan (#1053)", async () => {
+    const drawn: SubmissionView[] = [
+      { ...FIXTURE_SUBMISSIONS[0]!, id: 3, status: "Approved" },
+      { ...FIXTURE_SUBMISSIONS[0]!, id: 4, status: "Performing" },
+    ];
+    localStorage.setItem(LOAN_BOOK_KEY, JSON.stringify(FIXTURE_LOAN_BOOK));
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(drawn));
+
+    const { result } = renderHook(() => useDeploymentMonitorPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.originationState).toBe("empty"));
+    expect(result.current.inOriginationCount).toBe(0);
+    expect(result.current.originationRows).toHaveLength(0);
   });
 
   it("is empty (badge 0) when no submissions exist", async () => {
