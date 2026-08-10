@@ -149,8 +149,6 @@ function WaterfallRowView({
         )}
       </span>
       <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] font-semibold text-[#262524]">
-        {/* Pulse block ≤ the value's 22.4px line-height, so the row height is
-            identical between calculating and resolved (#1049). */}
         {isCalculating ? (
           <span
             data-testid="record-coupon-waterfall-value-loading"

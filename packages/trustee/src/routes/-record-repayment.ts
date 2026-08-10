@@ -260,13 +260,7 @@ export interface RecordRepaymentView {
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
-    /**
-     * `true` while a recalculation is pending for an entered amount — the live
-     * input is ahead of the debounce, or the debounced amount's query has
-     * neither resolved nor errored (#1049). The view keeps the full row set
-     * mounted (stable card height) and masks each row's VALUE with a pulse
-     * skeleton, so no figure from a previous amount is ever readable.
-     */
+    /** `true` while a recalculation for the entered amount is pending (#1049). */
     isCalculating: boolean;
     errorMessage: string | null;
     errorDetails: string | null;
@@ -391,20 +385,12 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     ? baseUnitsToUsd(recordPaymentInput.equity_distributed)
     : null;
 
-  // A recalculation is pending when a positive amount sits in the LIVE input
-  // and either the debounce hasn't caught up (the query still holds the
-  // PREVIOUS amount's figures — they must be masked, not shown) or the
-  // debounced amount's query has neither resolved nor errored (#1049).
   const enteredUsdLive = parseUsdInput(amountInput);
   const isCalculating =
     enteredUsdLive != null &&
     (amountInput !== debouncedAmount ||
       (waterfall.data == null && waterfall.error == null));
 
-  // Rows stay mounted for ANY entered amount (#1049): values degrade to "—"
-  // while the preview is unresolved (masked by the view's pulse skeleton when
-  // `isCalculating`; shown as static "—" on error) so the card keeps a stable
-  // height instead of collapsing to the empty-state line between fetches.
   const rows: WaterfallRow[] =
     waterfall.data != null || enteredUsdLive != null
       ? [

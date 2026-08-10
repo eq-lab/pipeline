@@ -426,8 +426,6 @@ describe("Record Coupon route — ready state", () => {
     const rows = screen.getAllByTestId("record-coupon-waterfall-row");
     expect(rows).toHaveLength(6);
     const right = screen.getByTestId("record-coupon-right-card");
-    // Values are skeleton-masked until the 400 ms debounce settles (#1049) —
-    // wait for the first real figure before asserting the rest.
     await waitFor(() => expect(right).toHaveTextContent("$0"));
     expect(right).toHaveTextContent("Senior principal returned");
     expect(right).toHaveTextContent(
@@ -453,9 +451,6 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    // Synchronously after typing the debounce has NOT settled: the card must
-    // not collapse to the empty-state line — all six rows stay mounted with
-    // their values masked, and the rows container is marked busy.
     expect(
       screen.queryByTestId("record-coupon-waterfall-empty"),
     ).not.toBeInTheDocument();
@@ -468,7 +463,6 @@ describe("Record Coupon route — ready state", () => {
     expect(
       screen.getByTestId("record-coupon-waterfall-calculating"),
     ).toHaveAttribute("aria-busy", "true");
-    // No dollar figure from the (mock-resolved) preview is readable yet.
     expect(
       screen.getByTestId("record-coupon-right-card"),
     ).not.toHaveTextContent("$43,000");
@@ -534,9 +528,6 @@ describe("Record Coupon route — ready state", () => {
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
       target: { value: "45000" },
     });
-    // Once the debounce settles, the errored preview is NOT "calculating":
-    // skeletons go away, the rows stay mounted with "—" values (stable
-    // height), and the error block renders beneath them.
     await waitFor(() =>
       expect(
         screen.queryByTestId("record-coupon-waterfall-value-loading"),
