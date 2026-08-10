@@ -286,6 +286,40 @@ describe("Record Repayment route — ready state", () => {
     expect(amount).toBeDisabled();
   });
 
+  it("keeps the full row set mounted with pulse skeletons while a recalculation is pending (#1049)", async () => {
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-repayment-amount"), {
+      target: { value: "6150000" },
+    });
+    // Synchronously after typing the debounce has NOT settled: no empty-state
+    // collapse — all seven rows stay mounted with masked values, container busy.
+    expect(
+      screen.queryByTestId("record-repayment-waterfall-empty"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByTestId("record-repayment-waterfall-row"),
+    ).toHaveLength(7);
+    expect(
+      screen.getAllByTestId("record-repayment-waterfall-value-loading"),
+    ).toHaveLength(7);
+    expect(
+      screen.getByTestId("record-repayment-waterfall-calculating"),
+    ).toHaveAttribute("aria-busy", "true");
+    // Once the debounce settles, the skeletons swap for the real figures.
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("record-repayment-waterfall-value-loading"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("record-repayment-waterfall-calculating"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("record-repayment-right-card")).toHaveTextContent(
+      "$4,800,000",
+    );
+  });
+
   it("renders the waterfall rows with the REAL (non-zero, non-disabled) senior-principal row", async () => {
     mockWaterfall(WATERFALL_TERMINAL);
     renderRoute();

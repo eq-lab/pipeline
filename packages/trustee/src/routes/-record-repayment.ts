@@ -260,6 +260,14 @@ export interface RecordRepaymentView {
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
+    /**
+     * `true` while a recalculation is pending for an entered amount — the live
+     * input is ahead of the debounce, or the debounced amount's query has
+     * neither resolved nor errored (#1049). The view keeps the full row set
+     * mounted (stable card height) and masks each row's VALUE with a pulse
+     * skeleton, so no figure from a previous amount is ever readable.
+     */
+    isCalculating: boolean;
     errorMessage: string | null;
     errorDetails: string | null;
     rows: WaterfallRow[];
@@ -383,51 +391,66 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     ? baseUnitsToUsd(recordPaymentInput.equity_distributed)
     : null;
 
-  const rows: WaterfallRow[] = waterfall.data
-    ? [
-        {
-          // Principal repayment: the real, waterfall-served figure (unlike
-          // #882's always-$0 forced coupon row) — never disabled.
-          label: "Senior principal returned",
-          value: usdFull(seniorPrincipalReturnedUsd),
-          sub: "On-ramped, no mint (rebalances backing)",
-        },
-        {
-          label: "Gross interest (final period)",
-          value: usdFull(grossInterestUsd),
-          sub: null,
-        },
-        {
-          label: "Management fee",
-          value: usdFull(managementFeeUsd),
-          sub: null,
-        },
-        {
-          label: "Performance fee",
-          value: usdFull(performanceFeeUsd),
-          sub: null,
-        },
-        {
-          label: "OET allocation",
-          value: usdFull(oetAllocationUsd),
-          sub: null,
-        },
-        {
-          label: "Net senior coupon → vault",
-          value: usdFull(netSeniorCouponUsd),
-          sub: "Mints to sPLUSD, lifts NAV",
-        },
-        {
-          // The offtaker-received residual after principal + interest + fees.
-          // Dimmed to match the Figma (it stays USD off-chain — not on-ramped
-          // / not minted), like the other non-vault leg.
-          label: "Originator residual",
-          value: usdFull(equityUsd),
-          sub: "Stays USD off-chain, not on-ramped",
-          disabled: true,
-        },
-      ]
-    : [];
+  // A recalculation is pending when a positive amount sits in the LIVE input
+  // and either the debounce hasn't caught up (the query still holds the
+  // PREVIOUS amount's figures — they must be masked, not shown) or the
+  // debounced amount's query has neither resolved nor errored (#1049).
+  const enteredUsdLive = parseUsdInput(amountInput);
+  const isCalculating =
+    enteredUsdLive != null &&
+    (amountInput !== debouncedAmount ||
+      (waterfall.data == null && waterfall.error == null));
+
+  // Rows stay mounted for ANY entered amount (#1049): values degrade to "—"
+  // while the preview is unresolved (masked by the view's pulse skeleton when
+  // `isCalculating`; shown as static "—" on error) so the card keeps a stable
+  // height instead of collapsing to the empty-state line between fetches.
+  const rows: WaterfallRow[] =
+    waterfall.data != null || enteredUsdLive != null
+      ? [
+          {
+            // Principal repayment: the real, waterfall-served figure (unlike
+            // #882's always-$0 forced coupon row) — never disabled.
+            label: "Senior principal returned",
+            value: usdFull(seniorPrincipalReturnedUsd),
+            sub: "On-ramped, no mint (rebalances backing)",
+          },
+          {
+            label: "Gross interest (final period)",
+            value: usdFull(grossInterestUsd),
+            sub: null,
+          },
+          {
+            label: "Management fee",
+            value: usdFull(managementFeeUsd),
+            sub: null,
+          },
+          {
+            label: "Performance fee",
+            value: usdFull(performanceFeeUsd),
+            sub: null,
+          },
+          {
+            label: "OET allocation",
+            value: usdFull(oetAllocationUsd),
+            sub: null,
+          },
+          {
+            label: "Net senior coupon → vault",
+            value: usdFull(netSeniorCouponUsd),
+            sub: "Mints to sPLUSD, lifts NAV",
+          },
+          {
+            // The offtaker-received residual after principal + interest + fees.
+            // Dimmed to match the Figma (it stays USD off-chain — not on-ramped
+            // / not minted), like the other non-vault leg.
+            label: "Originator residual",
+            value: usdFull(equityUsd),
+            sub: "Stays USD off-chain, not on-ramped",
+            disabled: true,
+          },
+        ]
+      : [];
 
   const summaryText =
     enteredUsd != null && waterfall.data != null
@@ -473,6 +496,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
+      isCalculating,
       errorMessage: waterfallError?.message ?? null,
       errorDetails: waterfallError?.details ?? null,
       rows,

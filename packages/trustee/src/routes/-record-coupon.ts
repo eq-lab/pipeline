@@ -298,6 +298,14 @@ export interface RecordCouponView {
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
+    /**
+     * `true` while a recalculation is pending for an entered amount — the live
+     * input is ahead of the debounce, or the debounced amount's query has
+     * neither resolved nor errored (#1049). The view keeps the full row set
+     * mounted (stable card height) and masks each row's VALUE with a pulse
+     * skeleton, so no figure from a previous amount is ever readable.
+     */
+    isCalculating: boolean;
     errorMessage: string | null;
     errorDetails: string | null;
     rows: WaterfallRow[];
@@ -417,44 +425,58 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     : null;
   const grossInterestUsd = baseUnitsToUsd(grossInterestBase ?? undefined);
 
-  const rows: WaterfallRow[] = waterfall.data
-    ? [
-        {
-          // Interest-only coupon: principal never returns here (it's a zero-
-          // principal recordPayment), so this is always $0 and disabled — the
-          // waterfall's own principal-first figure is not applied (#882).
-          label: "Senior principal returned",
-          value: usdFull(0),
-          sub: "Interest-only coupon — principal stays deployed",
-          disabled: true,
-        },
-        {
-          label: `Gross interest (${couponPeriod.days ?? "—"} / 365 days)`,
-          value: usdFull(grossInterestUsd),
-          sub: null,
-        },
-        {
-          label: "Management fee",
-          value: usdFull(managementFeeUsd),
-          sub: null,
-        },
-        {
-          label: "Performance fee",
-          value: usdFull(performanceFeeUsd),
-          sub: null,
-        },
-        {
-          label: "OET allocation",
-          value: usdFull(oetAllocationUsd),
-          sub: null,
-        },
-        {
-          label: "Net senior coupon → vault",
-          value: usdFull(netSeniorCouponUsd),
-          sub: "Mints to sPLUSD once the on-ramp lands",
-        },
-      ]
-    : [];
+  // A recalculation is pending when a positive amount sits in the LIVE input
+  // and either the debounce hasn't caught up (the query still holds the
+  // PREVIOUS amount's figures — they must be masked, not shown) or the
+  // debounced amount's query has neither resolved nor errored (#1049).
+  const isCalculating =
+    enteredUsdLive != null &&
+    (amountInput !== debouncedAmount ||
+      (waterfall.data == null && waterfall.error == null));
+
+  // Rows stay mounted for ANY entered amount (#1049): values degrade to "—"
+  // while the preview is unresolved (masked by the view's pulse skeleton when
+  // `isCalculating`; shown as static "—" on error) so the card keeps a stable
+  // height instead of collapsing to the empty-state line between fetches.
+  const rows: WaterfallRow[] =
+    waterfall.data != null || enteredUsdLive != null
+      ? [
+          {
+            // Interest-only coupon: principal never returns here (it's a zero-
+            // principal recordPayment), so this is always $0 and disabled — the
+            // waterfall's own principal-first figure is not applied (#882).
+            label: "Senior principal returned",
+            value: usdFull(0),
+            sub: "Interest-only coupon — principal stays deployed",
+            disabled: true,
+          },
+          {
+            label: `Gross interest (${couponPeriod.days ?? "—"} / 365 days)`,
+            value: usdFull(grossInterestUsd),
+            sub: null,
+          },
+          {
+            label: "Management fee",
+            value: usdFull(managementFeeUsd),
+            sub: null,
+          },
+          {
+            label: "Performance fee",
+            value: usdFull(performanceFeeUsd),
+            sub: null,
+          },
+          {
+            label: "OET allocation",
+            value: usdFull(oetAllocationUsd),
+            sub: null,
+          },
+          {
+            label: "Net senior coupon → vault",
+            value: usdFull(netSeniorCouponUsd),
+            sub: "Mints to sPLUSD once the on-ramp lands",
+          },
+        ]
+      : [];
 
   const summaryText =
     enteredUsd != null && waterfall.data != null
@@ -491,6 +513,7 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
+      isCalculating,
       errorMessage: waterfallError?.message ?? null,
       errorDetails: waterfallError?.details ?? null,
       rows,
