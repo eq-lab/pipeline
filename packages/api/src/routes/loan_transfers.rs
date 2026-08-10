@@ -12,7 +12,7 @@
 //! `POST` is a **full upsert** (decision 3 on #1027): the body always carries all
 //! five values and create-or-replaces the loan's record. Amounts are **plain
 //! dollar figures** (decision 4) — no base-6/on-chain scaling on entry; stored
-//! verbatim like `bank_transactions` amounts. `GET` serves defaults (flag false,
+//! verbatim. `GET` serves defaults (flag false,
 //! all amounts `"0"`) when nothing has been recorded yet — absence-as-default
 //! mirrors `loan_disbursement`.
 
@@ -104,8 +104,8 @@ impl LoanTransfersResponse {
 }
 
 /// OpenAPI doc bundle for the loan-transfers routes. Tagged `CapitalAllocation`
-/// (precedent: `bank_transactions.rs`) — these records back the
-/// capital-allocation buckets, not the loan-book aggregation.
+/// because these records back the capital-allocation buckets, not the loan-book
+/// aggregation.
 #[derive(OpenApi)]
 #[openapi(
     paths(get_loan_transfers, upsert_loan_transfers),

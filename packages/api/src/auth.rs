@@ -36,10 +36,6 @@ pub const ORIGINATOR_ROLE: &str = "originator";
 /// financial writes — submission review, assay/offtake recording). Single source of
 /// truth: route modules should import this rather than redefining their own copy.
 pub const TRUSTEE_ROLE: &str = "trustee";
-/// Role granted to bank-operator addresses (manual bank-transaction ledger entry,
-/// `POST /v1/bank-transactions`, #924) — a narrower financial-operations role,
-/// distinct from `trustee`.
-pub const BANK_OPERATOR_ROLE: &str = "bank_operator";
 
 /// Claims embedded in an issued JWT.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

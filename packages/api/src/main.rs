@@ -6,7 +6,6 @@ use pipeline_api::auth::JwtKeys;
 use pipeline_api::config::{ipfs_gateway_url_from_env, ChainsConfig};
 use pipeline_api::AppState;
 use shared::auth_user_repo::AuthUserRepo;
-use shared::bank_transaction_repo::BankTransactionRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::kyc_repo::KycRepo;
@@ -57,7 +56,6 @@ async fn main() -> anyhow::Result<()> {
     let loan_asset_price_repo = LoanAssetPriceRepo::new(pool.clone());
     let collateral_valuation_repo = CollateralValuationRepo::new(pool.clone());
     let loan_disbursement_repo = LoanDisbursementRepo::new(pool.clone());
-    let bank_transaction_repo = BankTransactionRepo::new(pool.clone());
     let loan_capital_transfers_repo = LoanCapitalTransfersRepo::new(pool.clone());
 
     // Loan-metadata fetcher for `submit_loan`'s `metadata_uri` validation. Single
@@ -133,7 +131,6 @@ async fn main() -> anyhow::Result<()> {
         collateral_valuation_repo,
         loan_disbursement_repo,
         jwt_keys,
-        bank_transaction_repo,
         loan_capital_transfers_repo,
     });
 
@@ -154,7 +151,6 @@ async fn main() -> anyhow::Result<()> {
     api_docs.merge(pipeline_api::routes::loan_financials::LoanFinancialsDoc::openapi());
     api_docs.merge(pipeline_api::routes::ccr_history::CcrHistoryDoc::openapi());
     api_docs.merge(pipeline_api::routes::waterfall::WaterfallDoc::openapi());
-    api_docs.merge(pipeline_api::routes::bank_transactions::BankTransactionsDoc::openapi());
     api_docs.merge(pipeline_api::routes::loan_transfers::LoanTransfersDoc::openapi());
     api_docs.merge(pipeline_api::routes::ramp::RampDoc::openapi());
     api_docs.merge(pipeline_api::routes::audit_log::AuditLogDoc::openapi());
@@ -177,7 +173,6 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1", pipeline_api::routes::loan_financials::router())
         .nest("/v1", pipeline_api::routes::ccr_history::router())
         .nest("/v1", pipeline_api::routes::waterfall::router())
-        .nest("/v1", pipeline_api::routes::bank_transactions::router())
         .nest("/v1", pipeline_api::routes::loan_transfers::router())
         .nest("/v1", pipeline_api::routes::ramp::router())
         .nest("/v1", pipeline_api::routes::audit_log::router())
