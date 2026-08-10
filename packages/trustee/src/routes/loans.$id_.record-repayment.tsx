@@ -323,7 +323,7 @@ function RecordRepayment() {
                 amount is fixed to it and read-only (no partial principal
                 repayment). */}
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
               data-testid="record-repayment-amount"
               value={view.amountInput}

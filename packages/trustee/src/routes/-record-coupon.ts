@@ -56,7 +56,11 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
+import {
+  formatBpsRate,
+  formatFullUsd,
+  formatUsdInputValue,
+} from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   parsePositiveUsdInput,
@@ -293,6 +297,8 @@ export interface RecordCouponView {
   thirdRowValue: string;
   amountInput: string;
   onAmountChange: (value: string) => void;
+  /** Non-blocking warning shown below the input when the entered amount exceeds what the offtaker still owes; `null` otherwise (#1048). */
+  amountWarning: string | null;
   /** Fixed to today (read-only) — the coupon is always recorded as of today (#916). */
   dateInput: string;
   waterfall: {
@@ -424,6 +430,15 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     (amountInput !== debouncedAmount ||
       (waterfall.data == null && waterfall.error == null));
 
+  const amountWarning =
+    enteredUsdLive != null &&
+    offtakerOutstandingUsd != null &&
+    enteredUsdLive > offtakerOutstandingUsd
+      ? `Entered amount is larger than the offtaker still owes (${usdFull(
+          offtakerOutstandingUsd,
+        )}). Check the wire before recording.`
+      : null;
+
   const rows: WaterfallRow[] =
     waterfall.data != null || enteredUsdLive != null
       ? [
@@ -495,7 +510,9 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     thirdRowLabel,
     thirdRowValue,
     amountInput,
-    onAmountChange: setAmountInput,
+    onAmountChange: (value: string) =>
+      setAmountInput(formatUsdInputValue(value)),
+    amountWarning,
     dateInput,
     waterfall: {
       ready: waterfall.data != null,

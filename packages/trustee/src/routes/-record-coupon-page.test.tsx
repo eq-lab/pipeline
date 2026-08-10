@@ -384,11 +384,50 @@ describe("Record Coupon route — ready state", () => {
 
   it("renders the amount input and a read-only date fixed to today (#916)", () => {
     renderRoute();
-    expect(screen.getByTestId("record-coupon-amount")).toHaveValue(null);
+    expect(screen.getByTestId("record-coupon-amount")).toHaveValue("");
     const dateInput = screen.getByTestId("record-coupon-date");
     const today = new Date().toISOString().slice(0, 10);
     expect(dateInput).toHaveValue(today);
     expect(dateInput).toBeDisabled();
+  });
+
+  it("formats the amount with comma grouping as you type (#1048)", () => {
+    renderRoute();
+    const input = screen.getByTestId("record-coupon-amount");
+    fireEvent.change(input, { target: { value: "1234567.89" } });
+    expect(input).toHaveValue("1,234,567.89");
+  });
+
+  it("accepts a pasted display-formatted amount ($/commas) — the preview still runs (#1048)", async () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    const input = screen.getByTestId("record-coupon-amount");
+    fireEvent.change(input, { target: { value: "$45,000" } });
+    expect(input).toHaveValue("45,000");
+    await waitFor(() =>
+      expect(screen.getByTestId("record-coupon-summary")).toHaveTextContent(
+        "Components sum to received $45,000",
+      ),
+    );
+  });
+
+  it("warns (non-blocking) when the entered amount exceeds what the offtaker still owes (#1048)", async () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    const input = screen.getByTestId("record-coupon-amount");
+    fireEvent.change(input, { target: { value: "2500000" } });
+    expect(
+      screen.getByTestId("record-coupon-amount-warning"),
+    ).toHaveTextContent(
+      "Entered amount is larger than the offtaker still owes ($2,000,000). Check the wire before recording.",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("record-coupon-submit")).toBeEnabled(),
+    );
+    fireEvent.change(input, { target: { value: "45000" } });
+    expect(
+      screen.queryByTestId("record-coupon-amount-warning"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the 'enter an amount' placeholder before any amount is entered", () => {

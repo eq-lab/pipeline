@@ -57,7 +57,7 @@ import { useLoanFinancials } from "@/api/useLoanFinancials";
 import type { Epoch } from "@/api/useLoanFinancials";
 import { useLoanWaterfall } from "@/api/useLoanWaterfall";
 import type { RepaymentInput } from "@/api/useRecordPayment";
-import { formatFullUsd } from "@/utils/formatUsd";
+import { formatFullUsd, formatUsdInputValue } from "@/utils/formatUsd";
 import { formatEpochDate } from "@/utils/formatDate";
 import {
   parsePositiveUsdInput,
@@ -354,7 +354,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       offtakerOutstandingUsd != null &&
       offtakerOutstandingUsd > 0
     ) {
-      setAmountInput(String(offtakerOutstandingUsd));
+      setAmountInput(formatUsdInputValue(String(offtakerOutstandingUsd)));
       setPrefilled(true);
     }
   }, [prefilled, amountInput, offtakerOutstandingUsd]);

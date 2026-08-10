@@ -11,6 +11,7 @@ import {
   formatCompactUsd,
   formatCompactUsd2dp,
   formatFullUsd,
+  formatUsdInputValue,
 } from "./formatUsd";
 
 describe("formatCompactUsd", () => {
@@ -134,5 +135,33 @@ describe("formatBpsRate", () => {
   it("returns em-dash for non-finite input", () => {
     expect(formatBpsRate(NaN)).toBe("—");
     expect(formatBpsRate(Infinity)).toBe("—");
+  });
+});
+
+describe("formatUsdInputValue (#1048)", () => {
+  it("groups the integer part with commas", () => {
+    expect(formatUsdInputValue("45000")).toBe("45,000");
+    expect(formatUsdInputValue("1234567")).toBe("1,234,567");
+    expect(formatUsdInputValue("123")).toBe("123");
+  });
+
+  it("accepts display-formatted input ($ and existing commas) and regroups", () => {
+    expect(formatUsdInputValue("$1,234,567.89")).toBe("1,234,567.89");
+    expect(formatUsdInputValue("$ 45,000")).toBe("45,000");
+  });
+
+  it("preserves a decimal part and a trailing point mid-typing", () => {
+    expect(formatUsdInputValue("1234.56")).toBe("1,234.56");
+    expect(formatUsdInputValue("45,000.")).toBe("45,000.");
+    expect(formatUsdInputValue("0.5")).toBe("0.5");
+  });
+
+  it("keeps only the first decimal point", () => {
+    expect(formatUsdInputValue("1.2.3")).toBe("1.23");
+  });
+
+  it("drops non-numeric characters entirely", () => {
+    expect(formatUsdInputValue("abc")).toBe("");
+    expect(formatUsdInputValue("")).toBe("");
   });
 });
