@@ -260,6 +260,8 @@ export interface RecordRepaymentView {
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
+    /** `true` while a recalculation for the entered amount is pending (#1049). */
+    isCalculating: boolean;
     errorMessage: string | null;
     errorDetails: string | null;
     rows: WaterfallRow[];
@@ -383,51 +385,58 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     ? baseUnitsToUsd(recordPaymentInput.equity_distributed)
     : null;
 
-  const rows: WaterfallRow[] = waterfall.data
-    ? [
-        {
-          // Principal repayment: the real, waterfall-served figure (unlike
-          // #882's always-$0 forced coupon row) — never disabled.
-          label: "Senior principal returned",
-          value: usdFull(seniorPrincipalReturnedUsd),
-          sub: "On-ramped, no mint (rebalances backing)",
-        },
-        {
-          label: "Gross interest (final period)",
-          value: usdFull(grossInterestUsd),
-          sub: null,
-        },
-        {
-          label: "Management fee",
-          value: usdFull(managementFeeUsd),
-          sub: null,
-        },
-        {
-          label: "Performance fee",
-          value: usdFull(performanceFeeUsd),
-          sub: null,
-        },
-        {
-          label: "OET allocation",
-          value: usdFull(oetAllocationUsd),
-          sub: null,
-        },
-        {
-          label: "Net senior coupon → vault",
-          value: usdFull(netSeniorCouponUsd),
-          sub: "Mints to sPLUSD, lifts NAV",
-        },
-        {
-          // The offtaker-received residual after principal + interest + fees.
-          // Dimmed to match the Figma (it stays USD off-chain — not on-ramped
-          // / not minted), like the other non-vault leg.
-          label: "Originator residual",
-          value: usdFull(equityUsd),
-          sub: "Stays USD off-chain, not on-ramped",
-          disabled: true,
-        },
-      ]
-    : [];
+  const enteredUsdLive = parseUsdInput(amountInput);
+  const isCalculating =
+    enteredUsdLive != null &&
+    (amountInput !== debouncedAmount ||
+      (waterfall.data == null && waterfall.error == null));
+
+  const rows: WaterfallRow[] =
+    waterfall.data != null || enteredUsdLive != null
+      ? [
+          {
+            // Principal repayment: the real, waterfall-served figure (unlike
+            // #882's always-$0 forced coupon row) — never disabled.
+            label: "Senior principal returned",
+            value: usdFull(seniorPrincipalReturnedUsd),
+            sub: "On-ramped, no mint (rebalances backing)",
+          },
+          {
+            label: "Gross interest (final period)",
+            value: usdFull(grossInterestUsd),
+            sub: null,
+          },
+          {
+            label: "Management fee",
+            value: usdFull(managementFeeUsd),
+            sub: null,
+          },
+          {
+            label: "Performance fee",
+            value: usdFull(performanceFeeUsd),
+            sub: null,
+          },
+          {
+            label: "OET allocation",
+            value: usdFull(oetAllocationUsd),
+            sub: null,
+          },
+          {
+            label: "Net senior coupon → vault",
+            value: usdFull(netSeniorCouponUsd),
+            sub: "Mints to sPLUSD, lifts NAV",
+          },
+          {
+            // The offtaker-received residual after principal + interest + fees.
+            // Dimmed to match the Figma (it stays USD off-chain — not on-ramped
+            // / not minted), like the other non-vault leg.
+            label: "Originator residual",
+            value: usdFull(equityUsd),
+            sub: "Stays USD off-chain, not on-ramped",
+            disabled: true,
+          },
+        ]
+      : [];
 
   const summaryText =
     enteredUsd != null && waterfall.data != null
@@ -473,6 +482,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
+      isCalculating,
       errorMessage: waterfallError?.message ?? null,
       errorDetails: waterfallError?.details ?? null,
       rows,

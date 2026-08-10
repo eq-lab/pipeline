@@ -417,7 +417,7 @@ describe("Record Coupon route — ready state", () => {
     });
   });
 
-  it("renders the waterfall rows from the mocked useLoanWaterfall response", () => {
+  it("renders the waterfall rows from the mocked useLoanWaterfall response", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
     fireEvent.change(screen.getByTestId("record-coupon-amount"), {
@@ -426,8 +426,8 @@ describe("Record Coupon route — ready state", () => {
     const rows = screen.getAllByTestId("record-coupon-waterfall-row");
     expect(rows).toHaveLength(6);
     const right = screen.getByTestId("record-coupon-right-card");
+    await waitFor(() => expect(right).toHaveTextContent("$0"));
     expect(right).toHaveTextContent("Senior principal returned");
-    expect(right).toHaveTextContent("$0");
     expect(right).toHaveTextContent(
       "Interest-only coupon — principal stays deployed",
     );
@@ -445,6 +445,70 @@ describe("Record Coupon route — ready state", () => {
     expect(right).toHaveTextContent("Mints to sPLUSD once the on-ramp lands");
   });
 
+  it("keeps the full row set mounted with pulse skeletons while a recalculation is pending (#1049)", () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "45000" },
+    });
+    expect(
+      screen.queryByTestId("record-coupon-waterfall-empty"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("record-coupon-waterfall-row")).toHaveLength(
+      6,
+    );
+    expect(
+      screen.getAllByTestId("record-coupon-waterfall-value-loading"),
+    ).toHaveLength(6);
+    expect(
+      screen.getByTestId("record-coupon-waterfall-calculating"),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByTestId("record-coupon-right-card"),
+    ).not.toHaveTextContent("$43,000");
+  });
+
+  it("swaps the skeletons for values once the debounce settles (#1049)", async () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "45000" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("record-coupon-waterfall-value-loading"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("record-coupon-waterfall-calculating"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("record-coupon-right-card")).toHaveTextContent(
+      "$43,000",
+    );
+  });
+
+  it("shows the empty-state line again when the amount is cleared (#1049)", async () => {
+    mockWaterfall(WATERFALL_INTEREST_ONLY);
+    renderRoute();
+    const input = screen.getByTestId("record-coupon-amount");
+    fireEvent.change(input, { target: { value: "45000" } });
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("record-coupon-waterfall-value-loading"),
+      ).not.toBeInTheDocument(),
+    );
+    mockWaterfall(undefined);
+    fireEvent.change(input, { target: { value: "" } });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("record-coupon-waterfall-empty"),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTestId("record-coupon-waterfall-row"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the green 'Components sum to received $<amount>' summary", async () => {
     mockWaterfall(WATERFALL_INTEREST_ONLY);
     renderRoute();
@@ -456,6 +520,28 @@ describe("Record Coupon route — ready state", () => {
         "Components sum to received $45,000",
       ),
     );
+  });
+
+  it("on a waterfall error keeps static '—' rows (no pulse) with the error shown below (#1049)", async () => {
+    mockWaterfall(undefined, new Error("boom"));
+    renderRoute();
+    fireEvent.change(screen.getByTestId("record-coupon-amount"), {
+      target: { value: "45000" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId("record-coupon-waterfall-value-loading"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getAllByTestId("record-coupon-waterfall-row")).toHaveLength(
+      6,
+    );
+    expect(
+      screen.queryByTestId("record-coupon-waterfall-calculating"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("record-coupon-waterfall-error"),
+    ).toBeInTheDocument();
   });
 
   it("does NOT render the 'Next stage: principal repayment' hint for a normal interest coupon", () => {

@@ -121,11 +121,14 @@ function WaterfallRowView({
   row,
   step,
   isLast,
+  isCalculating,
 }: {
   row: WaterfallRow;
   /** 1-based step number shown in the row's circular badge (Figma node `4116-11295`). */
   step: number;
   isLast: boolean;
+  /** Masks the value with a pulse skeleton while a recalculation is pending (#1049). */
+  isCalculating: boolean;
 }) {
   return (
     <div
@@ -157,7 +160,15 @@ function WaterfallRowView({
         )}
       </span>
       <span className="shrink-0 text-right font-[family-name:var(--font-body)] text-[16px] leading-[22.4px] font-semibold text-[#262524]">
-        {row.value}
+        {isCalculating ? (
+          <span
+            data-testid="record-repayment-waterfall-value-loading"
+            aria-hidden="true"
+            className="inline-block h-[20px] w-[72px] animate-pulse rounded-[4px] bg-[color:var(--color-pipeline-surface-muted)] align-middle"
+          />
+        ) : (
+          row.value
+        )}
       </span>
     </div>
   );
@@ -357,13 +368,21 @@ function RecordRepayment() {
               Enter the offtaker payment to preview the waterfall.
             </p>
           ) : (
-            <div>
+            <div
+              aria-busy={view.waterfall.isCalculating}
+              data-testid={
+                view.waterfall.isCalculating
+                  ? "record-repayment-waterfall-calculating"
+                  : undefined
+              }
+            >
               {view.waterfall.rows.map((row, i) => (
                 <WaterfallRowView
                   key={row.label}
                   row={row}
                   step={i + 1}
                   isLast={i === view.waterfall.rows.length - 1}
+                  isCalculating={view.waterfall.isCalculating}
                 />
               ))}
             </div>

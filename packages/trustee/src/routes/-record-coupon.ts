@@ -298,6 +298,8 @@ export interface RecordCouponView {
   waterfall: {
     /** `true` once a positive amount has been entered and the preview has resolved. */
     ready: boolean;
+    /** `true` while a recalculation for the entered amount is pending (#1049). */
+    isCalculating: boolean;
     errorMessage: string | null;
     errorDetails: string | null;
     rows: WaterfallRow[];
@@ -417,44 +419,50 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     : null;
   const grossInterestUsd = baseUnitsToUsd(grossInterestBase ?? undefined);
 
-  const rows: WaterfallRow[] = waterfall.data
-    ? [
-        {
-          // Interest-only coupon: principal never returns here (it's a zero-
-          // principal recordPayment), so this is always $0 and disabled — the
-          // waterfall's own principal-first figure is not applied (#882).
-          label: "Senior principal returned",
-          value: usdFull(0),
-          sub: "Interest-only coupon — principal stays deployed",
-          disabled: true,
-        },
-        {
-          label: `Gross interest (${couponPeriod.days ?? "—"} / 365 days)`,
-          value: usdFull(grossInterestUsd),
-          sub: null,
-        },
-        {
-          label: "Management fee",
-          value: usdFull(managementFeeUsd),
-          sub: null,
-        },
-        {
-          label: "Performance fee",
-          value: usdFull(performanceFeeUsd),
-          sub: null,
-        },
-        {
-          label: "OET allocation",
-          value: usdFull(oetAllocationUsd),
-          sub: null,
-        },
-        {
-          label: "Net senior coupon → vault",
-          value: usdFull(netSeniorCouponUsd),
-          sub: "Mints to sPLUSD once the on-ramp lands",
-        },
-      ]
-    : [];
+  const isCalculating =
+    enteredUsdLive != null &&
+    (amountInput !== debouncedAmount ||
+      (waterfall.data == null && waterfall.error == null));
+
+  const rows: WaterfallRow[] =
+    waterfall.data != null || enteredUsdLive != null
+      ? [
+          {
+            // Interest-only coupon: principal never returns here (it's a zero-
+            // principal recordPayment), so this is always $0 and disabled — the
+            // waterfall's own principal-first figure is not applied (#882).
+            label: "Senior principal returned",
+            value: usdFull(0),
+            sub: "Interest-only coupon — principal stays deployed",
+            disabled: true,
+          },
+          {
+            label: `Gross interest (${couponPeriod.days ?? "—"} / 365 days)`,
+            value: usdFull(grossInterestUsd),
+            sub: null,
+          },
+          {
+            label: "Management fee",
+            value: usdFull(managementFeeUsd),
+            sub: null,
+          },
+          {
+            label: "Performance fee",
+            value: usdFull(performanceFeeUsd),
+            sub: null,
+          },
+          {
+            label: "OET allocation",
+            value: usdFull(oetAllocationUsd),
+            sub: null,
+          },
+          {
+            label: "Net senior coupon → vault",
+            value: usdFull(netSeniorCouponUsd),
+            sub: "Mints to sPLUSD once the on-ramp lands",
+          },
+        ]
+      : [];
 
   const summaryText =
     enteredUsd != null && waterfall.data != null
@@ -491,6 +499,7 @@ export function useRecordCoupon(loanId: string): RecordCouponView {
     dateInput,
     waterfall: {
       ready: waterfall.data != null,
+      isCalculating,
       errorMessage: waterfallError?.message ?? null,
       errorDetails: waterfallError?.details ?? null,
       rows,
