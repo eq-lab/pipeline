@@ -6,7 +6,11 @@ import { useNeedsAttention } from "./useNeedsAttention";
  * NeedsAttention — the Trustee Overview page's "Needs Attention" section,
  * Origination group ONLY (issue #818, Figma node `4116:9004` section header /
  * `4116:9006` group header / `4116:9008` row). Real data:
- * `GET /v1/loan-book/submissions?status=InReview` via `useNeedsAttention`.
+ * `GET /v1/loan-book/submissions` (unfiltered) via `useNeedsAttention`, which
+ * keeps `InReview` + `ChangesRequested` rows (#1046) — a changes-requested
+ * origination stays visible while awaiting the originator's resubmit, with a
+ * status-derived row title ("…: changes requested") and the SAME "Review"
+ * link (the `/origination/$id` detail renders the reason banner, #950).
  *
  * Scope (issue #818, cross-linked to #799): the Loans — Payments Due, Cash
  * Management, and Risk Council groups (Figma nodes `4116:9018`+) are
@@ -14,8 +18,9 @@ import { useNeedsAttention } from "./useNeedsAttention";
  * component renders ONLY the Origination group.
  *
  * Empty/loading/error handling (resolved OQ#3, human review): the section —
- * heading and all — renders NOTHING unless there is at least one in-review
- * submission. No skeleton on loading, no error surface; this is a
+ * heading and all — renders NOTHING unless at least one group has a row
+ * (in-flight submission or needs-attention loan). No skeleton on loading, no
+ * error surface; this is a
  * supplementary block, not the page's primary content (unlike
  * `CapitalAllocationCard`, which does show loading/error states).
  *

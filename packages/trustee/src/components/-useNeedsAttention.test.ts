@@ -4,14 +4,17 @@
  * query-state hook (issue #818).
  *
  * Covers:
- *   - Title built from `loan_data.originator` (friendly name) + `loan_data.commodity`.
+ *   - Title built from `loan_data.originator` (friendly name) + `loan_data.commodity`,
+ *     with a status-derived suffix: "new request" (InReview) vs
+ *     "changes requested" (ChangesRequested, #1046).
  *   - Subtitle: commodity · corridor (arrow-formatted) · submitted <date>,
  *     backed fields only.
  *   - Missing/malformed `loan_data` fields degrade to "—"/omitted segments,
  *     never fabricated, never throwing.
  *   - `state` derivation: loading/error/empty/ready.
- *   - Non-InReview submissions, including backend merged/lifecycle statuses,
- *     are excluded.
+ *   - Origination-group inclusion set is exactly normalized
+ *     {InReview, ChangesRequested}: Approved, Rejected, and backend
+ *     merged/lifecycle statuses are excluded (#892, #1044, #1046).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
@@ -59,10 +62,32 @@ const IN_REVIEW_SUBMISSION: SubmissionView = {
   },
 };
 
+const CHANGES_REQUESTED_SUBMISSION: SubmissionView = {
+  ...IN_REVIEW_SUBMISSION,
+  id: 7,
+  status: "ChangesRequested",
+  reason: "Missing insurance certificate",
+};
+
 describe("mapSubmissionToNeedsAttentionRow", () => {
   it("builds the title from loan_data.originator (friendly name) + loan_data.commodity", () => {
     const row = mapSubmissionToNeedsAttentionRow(IN_REVIEW_SUBMISSION);
     expect(row.title).toBe("Open Mineral — Copper Concentrate: new request");
+  });
+
+  it("titles a ChangesRequested submission '…: changes requested' (#1046)", () => {
+    const row = mapSubmissionToNeedsAttentionRow(CHANGES_REQUESTED_SUBMISSION);
+    expect(row.title).toBe(
+      "Open Mineral — Copper Concentrate: changes requested",
+    );
+  });
+
+  it("keeps the standard subtitle for a ChangesRequested row — the reason is NOT inlined (#1046)", () => {
+    const row = mapSubmissionToNeedsAttentionRow(CHANGES_REQUESTED_SUBMISSION);
+    expect(row.subtitle).toBe(
+      "Copper Concentrate · PE → CN · submitted 18 Jun",
+    );
+    expect(row.subtitle).not.toContain("Missing insurance certificate");
   });
 
   it("does NOT use the top-level SubmissionView.originator (submitter address) for the title", () => {
@@ -292,14 +317,49 @@ describe("useNeedsAttention", () => {
     );
   });
 
-  it("excludes non-InReview submissions defensively, even though the server already filters", () => {
+  it("fetches submissions UNFILTERED — no server-side status option (#1046)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHook(() => useNeedsAttention());
+    expect(vi.mocked(useLoanSubmissions)).toHaveBeenCalledWith();
+  });
+
+  it("keeps exactly InReview + ChangesRequested in served order; Approved and Rejected are excluded (#1046)", () => {
     const approved: SubmissionView = {
       ...IN_REVIEW_SUBMISSION,
       id: 2,
       status: "Approved",
     };
+    const rejected: SubmissionView = {
+      ...IN_REVIEW_SUBMISSION,
+      id: 3,
+      status: "Rejected",
+      reason: "Not eligible",
+    };
     vi.mocked(useLoanSubmissions).mockReturnValue({
-      data: [IN_REVIEW_SUBMISSION, approved],
+      data: [
+        CHANGES_REQUESTED_SUBMISSION,
+        approved,
+        IN_REVIEW_SUBMISSION,
+        rejected,
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() => useNeedsAttention());
+    expect(result.current.state).toBe("ready");
+    expect(result.current.rows.map((r) => r.id)).toEqual([7, 1]);
+    expect(result.current.rows[0]?.title).toContain("changes requested");
+  });
+
+  it("returns 'ready' on ChangesRequested rows alone (#1046)", () => {
+    vi.mocked(useLoanSubmissions).mockReturnValue({
+      data: [CHANGES_REQUESTED_SUBMISSION],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
@@ -307,16 +367,21 @@ describe("useNeedsAttention", () => {
     const { result } = renderHook(() => useNeedsAttention());
     expect(result.current.state).toBe("ready");
     expect(result.current.rows).toHaveLength(1);
-    expect(result.current.rows[0]?.id).toBe(1);
   });
 
-  it("returns 'empty' when all submissions are filtered out as non-InReview", () => {
+  it("returns 'empty' when every submission is a non-attention status", () => {
     const approved: SubmissionView = {
       ...IN_REVIEW_SUBMISSION,
       status: "Approved",
     };
+    const rejected: SubmissionView = {
+      ...IN_REVIEW_SUBMISSION,
+      id: 3,
+      status: "Rejected",
+      reason: "Not eligible",
+    };
     vi.mocked(useLoanSubmissions).mockReturnValue({
-      data: [approved],
+      data: [approved, rejected],
       isLoading: false,
       error: null,
       refetch: vi.fn(),

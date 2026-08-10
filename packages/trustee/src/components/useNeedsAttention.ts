@@ -1,18 +1,28 @@
 /**
  * Query-wiring + value→display mapping for the Overview page's "Needs
  * Attention" section (issue #818, Figma node `4116:9004`). Two groups:
- *   - **Origination** — in-review submissions (#818).
+ *   - **Origination** — in-review + changes-requested submissions (#818, #1046).
  *   - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867).
  *
  * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` component is JSX/
- * styling only; this hook owns the `useLoanSubmissions({ status: "InReview" })`
- * + `useLoanBook()` calls and maps each into a display-ready row so the view
- * stays a pure render function (and this mapping is unit-testable without a
- * DOM). Mirrors `-useOriginationTable.ts`'s `state` discriminant shape.
+ * styling only; this hook owns the `useLoanSubmissions()` + `useLoanBook()`
+ * calls and maps each into a display-ready row so the view stays a pure render
+ * function (and this mapping is unit-testable without a DOM). Mirrors
+ * `-useOriginationTable.ts`'s `state` discriminant shape.
+ *
+ * The submissions fetch is deliberately UNFILTERED (#1046): the Origination
+ * group needs `InReview` + `ChangesRequested`, but the backend's
+ * `SubmissionsQuery.status` accepts a single status per request, so one
+ * unfiltered call filtered client-side (via
+ * `normalizeOriginationSubmissionStatus`, the origination table's #1044
+ * pattern) beats two parallel filtered queries — one request, and it shares
+ * the `["loan-submissions", chainId, "all"]` cache with `useOriginationTable`.
  *
  * ## Field mapping (resolved Open Questions, issue #818 comments)
  *
- *   - Title: `` `${friendlyOriginator} — ${commodity}: new request` `` where
+ *   - Title: `` `${friendlyOriginator} — ${commodity}: ${statusSuffix}` `` —
+ *     the suffix is `"new request"` for `InReview` and `"changes requested"`
+ *     for `ChangesRequested` (#1046, origination-table vocabulary); the
  *     `friendlyOriginator` is `loan_data.originator` (the friendly NAME, e.g.
  *     "Open Mineral") — NOT the top-level `SubmissionView.originator` (the
  *     authenticated submitter address). This is the opposite field choice
@@ -31,15 +41,20 @@
  *
  * Every field is read defensively: `loan_data` is `serde_json::Value` on the
  * wire, so missing/malformed nested fields degrade to "—" rather than
- * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). Only raw
- * `InReview` submissions are actionable here; backend merged/lifecycle
- * statuses mean the origination is already approved and are filtered out
- * defensively even though the server already applies `?status=InReview`
- * (issue #892). `ChangesRequested` (#949/#950) is likewise excluded — it is
- * originator-actionable (waiting on a resubmit), not trustee-actionable — so it
- * stays out of Needs Attention until it returns to `InReview` on resubmit.
+ * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). The
+ * Origination group keeps exactly the normalized statuses `InReview` and
+ * `ChangesRequested`: backend merged/lifecycle statuses normalize to
+ * `Approved` (#892) and belong on the Loans surfaces, and `Rejected` is a
+ * terminal decision record with nothing left to act on. `ChangesRequested`
+ * was originally excluded as originator-actionable (#949/#950); issue #1046
+ * reversed that — an origination awaiting a resubmit must stay visible on the
+ * Overview, with the reviewer reason readable on the `/origination/$id`
+ * detail page (banner-only per #950) via the same "Review" link.
  */
-import { useLoanSubmissions } from "@/api/useLoanSubmissions";
+import {
+  normalizeOriginationSubmissionStatus,
+  useLoanSubmissions,
+} from "@/api/useLoanSubmissions";
 import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { useLoanBook } from "@/api/useLoanBook";
 import type { LoanBookEntry } from "@/api/useLoanBook";
@@ -75,7 +90,7 @@ export type NeedsAttentionState = "loading" | "error" | "empty" | "ready";
 export interface UseNeedsAttentionResult {
   state: NeedsAttentionState;
   errorMessage: string | null;
-  /** Origination group — in-review submissions. */
+  /** Origination group — in-review + changes-requested submissions (#1046). */
   rows: NeedsAttentionRow[];
   /** Loans group — Watchlist + Matured loans (issue #867). */
   loanRows: LoanNeedsAttentionRow[];
@@ -100,10 +115,13 @@ function formatCorridor(corridor: unknown): string | undefined {
 }
 
 /**
- * Maps one in-review `SubmissionView` to a Needs Attention row. `loan_data`
- * is treated as loosely-typed (its wire type is `serde_json::Value`) — every
- * nested field access is guarded so a missing/malformed submission never
- * throws.
+ * Maps one in-flight (`InReview` / `ChangesRequested`) `SubmissionView` to a
+ * Needs Attention row. The title suffix is status-derived (#1046): "new
+ * request" for `InReview`, "changes requested" for `ChangesRequested` (any
+ * other status falls back to "new request", but the hook never passes one).
+ * `loan_data` is treated as loosely-typed (its wire type is
+ * `serde_json::Value`) — every nested field access is guarded so a
+ * missing/malformed submission never throws.
  */
 export function mapSubmissionToNeedsAttentionRow(
   submission: SubmissionView,
@@ -120,9 +138,15 @@ export function mapSubmissionToNeedsAttentionRow(
     (part): part is string => Boolean(part),
   );
 
+  const statusSuffix =
+    normalizeOriginationSubmissionStatus(submission.status) ===
+    "ChangesRequested"
+      ? "changes requested"
+      : "new request";
+
   return {
     id: submission.id,
-    title: `${friendlyOriginator} — ${commodity}: new request`,
+    title: `${friendlyOriginator} — ${commodity}: ${statusSuffix}`,
     subtitle: subtitleParts.join(" · "),
     submission,
   };
@@ -155,7 +179,9 @@ export function mapLoanToNeedsAttentionRow(
 
 /**
  * Wires the Needs Attention section's two groups:
- *   - **Origination** — `useLoanSubmissions({ status: "InReview" })`.
+ *   - **Origination** — unfiltered `useLoanSubmissions()`, kept to normalized
+ *     `InReview` + `ChangesRequested` client-side (#1046; see the module doc
+ *     for why the server-side single-status filter doesn't fit here).
  *   - **Loans** — `useLoanBook()` filtered to Watchlist + Matured (issue #867).
  *
  * Supplementary block: the view renders nothing while loading/error or when both
@@ -163,7 +189,7 @@ export function mapLoanToNeedsAttentionRow(
  * state is derived.
  */
 export function useNeedsAttention(): UseNeedsAttentionResult {
-  const submissions = useLoanSubmissions({ status: "InReview" });
+  const submissions = useLoanSubmissions();
   const loanBook = useLoanBook();
 
   if (submissions.isLoading || loanBook.isLoading) {
@@ -180,7 +206,10 @@ export function useNeedsAttention(): UseNeedsAttentionResult {
   }
 
   const rows = (submissions.data ?? [])
-    .filter((submission) => submission.status === "InReview")
+    .filter((submission) => {
+      const status = normalizeOriginationSubmissionStatus(submission.status);
+      return status === "InReview" || status === "ChangesRequested";
+    })
     .map(mapSubmissionToNeedsAttentionRow);
 
   const loanRows = (loanBook.data?.loans ?? []).flatMap((entry) => {

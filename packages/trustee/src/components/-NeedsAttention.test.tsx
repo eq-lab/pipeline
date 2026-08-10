@@ -93,6 +93,19 @@ const ROW_2: NeedsAttentionRow = {
   submission: { ...SUBMISSION, id: 2 },
 };
 
+/** A ChangesRequested-sourced row (#1046) — same shell, status-derived title. */
+const ROW_CHANGES_REQUESTED: NeedsAttentionRow = {
+  id: 7,
+  title: "Open Mineral — Copper Concentrate: changes requested",
+  subtitle: "Copper Concentrate · PE → CN · submitted 18 Jun",
+  submission: {
+    ...SUBMISSION,
+    id: 7,
+    status: "ChangesRequested",
+    reason: "Missing insurance certificate",
+  },
+};
+
 const LOAN_ROW: LoanNeedsAttentionRow = {
   loanId: "4471",
   title: "Delta Commodities · Coffee",
@@ -170,6 +183,26 @@ describe("NeedsAttention", () => {
     expect(
       screen.getByText("Copper Concentrate · PE → CN · submitted 18 Jun"),
     ).toBeInTheDocument();
+  });
+
+  it("renders a ChangesRequested row with its status title and the same Review link (#1046)", async () => {
+    mockUseNeedsAttention.mockReturnValue({
+      state: "ready",
+      errorMessage: null,
+      rows: [ROW_CHANGES_REQUESTED],
+      loanRows: [],
+    });
+
+    renderNeedsAttention();
+
+    expect(
+      await screen.findByText(
+        "Open Mineral — Copper Concentrate: changes requested",
+      ),
+    ).toBeInTheDocument();
+    const link = screen.getByTestId("needs-attention-review");
+    expect(link).toHaveAttribute("href", "/origination/7");
+    expect(link).toHaveTextContent("Review");
   });
 
   it("renders one row per in-review submission when there are multiple", async () => {
