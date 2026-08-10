@@ -15,8 +15,9 @@
  * fail to resolve in some sandboxes.
  *
  * Issue #818 adds the "Needs Attention" (Origination group) section, backed
- * by `GET /v1/loan-book/submissions?status=InReview` (via `NeedsAttention` →
- * `useNeedsAttention` → `useLoanSubmissions`). `apiFetch` is a single shared
+ * by `GET /v1/loan-book/submissions` (unfiltered since #1046; via
+ * `NeedsAttention` → `useNeedsAttention` → `useLoanSubmissions`, keeping
+ * InReview + ChangesRequested rows). `apiFetch` is a single shared
  * mock across both the Capital Allocation and submissions endpoints, so it
  * dispatches on the requested URL. The pre-#818 assertion that "Needs
  * Attention" is absent no longer holds unconditionally — it is now present
