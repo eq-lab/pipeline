@@ -824,6 +824,26 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `packages/trustee/src/utils/userError.ts` import the shared half, keeping only their
   status-table/copy differences local.
 
+### TD-53: Frontend Prettier drift blocks the pre-commit hook
+
+- **Date:** 2026-08-10
+- **Location:** `packages/frontend` (`.husky/pre-commit` step 3c), 7+ files incl.
+  `src/api/useStatsYield.ts`, `src/wallet/stellar/connectionStore.ts`,
+  `src/components/ConnectWalletModal.test.tsx`, `src/wallet/ConnectModalProvider.test.tsx`,
+  `src/wallet/stellar/contracts/stakedPlusd.test.ts`, and two READMEs.
+- **Gap:** `main` is not Prettier-clean under `packages/frontend`, but the pre-commit hook
+  runs `yarn --cwd packages/frontend lint` (Prettier `--check`) unconditionally on every
+  commit — so any commit that stages code fails the hook regardless of what it touched.
+  Discovered while committing the backend-only #1029 removal, which had to use
+  `--no-verify`. CI does not catch this (lint-frontend runs only `tsc --noEmit`), so the
+  drift is invisible in PRs and contributors are evidently bypassing the hook.
+- **Impact:** The pre-commit gate is effectively unusable for any commit until the drift is
+  fixed; encourages routine `--no-verify`, which also skips the Rust fmt/clippy checks.
+- **Suggested fix:** Run `yarn --cwd packages/frontend format` (Prettier `--write`) to
+  reformat the drifted files in a dedicated frontend chore PR, then add a
+  `format:check` CI step so drift can't silently return. Alternatively scope the hook's
+  Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
+
 ---
 
 ## Post-MVP
