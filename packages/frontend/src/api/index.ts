@@ -48,10 +48,14 @@ export type {
   LoanBookResponse,
   UseLoanBookResult,
 } from "./useLoanBook";
-export { useLoanSubmissions } from "./useLoanSubmissions";
+export {
+  useLoanSubmissions,
+  normalizeOriginationSubmissionStatus,
+} from "./useLoanSubmissions";
 export type {
   EconomicsInput,
   LocationInput,
+  OriginationSubmissionStatus,
   SubmitLoanRequest,
   SubmissionView,
   UseLoanSubmissionsResult,

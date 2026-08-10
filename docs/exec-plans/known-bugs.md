@@ -137,6 +137,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** The chart curve is generated deterministically from `Date.now()` as the anchor. As real time advances, the same seeded pseudo-random curve produces lower intermediate balances at the test's hardcoded hover position. The assertion `toContain("$1,")` assumed the value always exceeds $1 K.
 - **Workaround:** None applied. Fix: mock `Date.now()` in the test, or change the assertion to a looser regex (e.g. `/\$[\d.,]+/`).
 
+### BUG-8: LP frontend tests using `localStorage` fail on Node ≥ 22 (`Cannot read properties of undefined (reading 'clear')`)
+- **Date:** 2026-08-10
+- **Location:** any `packages/frontend` test touching `localStorage` (observed: `useDeploymentMonitorPanel.test.tsx`, all cases fail in `beforeEach` → `localStorage.clear()`)
+- **Symptom:** With current Node (warning: `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`), Node's built-in experimental `localStorage` global resolves to `undefined` inside vitest and shadows the jsdom environment's implementation, so every test in the file errors before running. Pre-existing on `main`; unrelated to any code change.
+- **Root cause:** Node 22+ ships an experimental WebStorage global; vitest's jsdom environment does not override it.
+- **Workaround:** run with `NODE_OPTIONS="--no-experimental-webstorage"` — all tests pass. Fix candidates: add that flag to the package `test` script, or set `--localstorage-file`.
+
+### BUG-9: `useRequests.test.tsx` fails at module load — stale `@creit.tech/stellar-wallets-kit` mock
+- **Date:** 2026-08-10
+- **Location:** `packages/frontend/src/api/useRequests.test.tsx`
+- **Symptom:** The whole suite fails to load: `No "addressUpdatedEvent" export is defined on the "@creit.tech/stellar-wallets-kit" mock` (raised from `packages/wallet-connect/src/stellar/useStellarWallet.ts:38`). Pre-existing on `main`.
+- **Root cause:** `wallet-connect`'s `useStellarWallet` started subscribing to the kit's `addressUpdatedEvent` at module scope; this test's `vi.mock` of the kit predates that and doesn't export it.
+- **Workaround:** None. Fix: add `addressUpdatedEvent: { subscribe: vi.fn() }` (or an `importOriginal` partial mock) to the test's kit mock.
+
 ---
 
 ## Resolved
