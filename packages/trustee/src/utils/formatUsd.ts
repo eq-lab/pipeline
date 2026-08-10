@@ -117,6 +117,28 @@ export function formatFullUsd(base6Decimal: string | null | undefined): string {
   return `$${formatted}`;
 }
 
+// ── formatUsdInputValue ───────────────────────────────────────────────────────
+
+/**
+ * Formats a USD text-input value as-you-type with `,` thousands grouping
+ * (issue #1048): keeps digits and the first decimal point, drops everything
+ * else (`$`, stray separators, letters), and regroups the integer part.
+ *
+ * - `"45000"`        → `"45,000"`
+ * - `"$1,234,567.89"`→ `"1,234,567.89"`
+ * - `"45,000."`      → `"45,000."` (trailing point preserved mid-typing)
+ * - `"abc"`          → `""`
+ */
+export function formatUsdInputValue(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+  const dotIndex = cleaned.indexOf(".");
+  const integerPart = dotIndex === -1 ? cleaned : cleaned.slice(0, dotIndex);
+  const fractionPart =
+    dotIndex === -1 ? null : cleaned.slice(dotIndex + 1).replace(/\./g, "");
+  const grouped = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return fractionPart == null ? grouped : `${grouped}.${fractionPart}`;
+}
+
 // ── formatBpsRate ─────────────────────────────────────────────────────────────
 
 /**

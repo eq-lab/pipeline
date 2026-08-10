@@ -12,7 +12,7 @@ export function usdInputToSacBaseUnits(
   input: string | null | undefined,
   decimals: number = SAC_DECIMALS,
 ): string | null {
-  const trimmed = input?.trim() ?? "";
+  const trimmed = (input ?? "").replace(/[$,\s]/g, "");
   if (!POSITIVE_DECIMAL_RE.test(trimmed)) return null;
 
   const [wholeRaw = "0", fracRaw = ""] = trimmed.split(".");

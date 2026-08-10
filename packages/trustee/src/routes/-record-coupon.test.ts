@@ -36,12 +36,23 @@ describe("parseUsdInput", () => {
     expect(parseUsdInput("abc")).toBeNull();
     expect(parseUsdInput("1.2.3")).toBeNull();
   });
+
+  it("accepts display-formatted input — strips $, commas, and spaces (#1048)", () => {
+    expect(parseUsdInput("1,234,567.89")).toBe(1234567.89);
+    expect(parseUsdInput("$45,000")).toBe(45000);
+    expect(parseUsdInput("$ 1,234.56")).toBe(1234.56);
+  });
 });
 
 describe("usdToBaseUnits", () => {
   it("converts entered USD to 7-decimal SAC base units", () => {
     expect(usdToBaseUnits("45000")).toBe("450000000000");
     expect(usdToBaseUnits("123.45678")).toBe("1234567800");
+  });
+
+  it("accepts display-formatted input (#1048)", () => {
+    expect(usdToBaseUnits("45,000")).toBe("450000000000");
+    expect(usdToBaseUnits("$1,234,567.89")).toBe("12345678900000");
   });
 
   it("truncates beyond the SAC decimal precision", () => {

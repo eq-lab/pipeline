@@ -317,15 +317,46 @@ function RecordCoupon() {
               Offtaker payment received (USD, Trust account)
             </span>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
               data-testid="record-coupon-amount"
               value={view.amountInput}
               onChange={(e) => view.onAmountChange(e.target.value)}
-              placeholder="e.g. 45000"
+              placeholder="e.g. 45,000"
               className={FIELD_INPUT_CLASS}
             />
           </label>
+          {view.amountWarning && (
+            <p
+              data-testid="record-coupon-amount-warning"
+              aria-live="polite"
+              className="flex items-start gap-[8px] font-[family-name:var(--font-body)] text-[13px] leading-[18.2px] text-[color:var(--color-pipeline-warning)]"
+            >
+              <svg
+                aria-hidden="true"
+                width={14}
+                height={14}
+                viewBox="0 0 16 16"
+                className="mt-[2px] shrink-0"
+              >
+                <path
+                  d="M8 1.5 15 14H1L8 1.5Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M8 6v3.4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+                <circle cx="8" cy="11.8" r="0.9" fill="currentColor" />
+              </svg>
+              {view.amountWarning}
+            </p>
+          )}
           <label className={FIELD_BOX} style={{ backgroundColor: FIELD_FILL }}>
             <span className={FIELD_LABEL_CLASS} style={{ color: INK_MUTED }}>
               Date received

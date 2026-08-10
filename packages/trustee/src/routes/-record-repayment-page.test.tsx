@@ -281,7 +281,7 @@ describe("Record Repayment route — ready state", () => {
     renderRoute();
     const amount = screen.getByTestId("record-repayment-amount");
     // offtaker_outstanding "6150000.000000" displayed as-is (#906) = $6,150,000.
-    await waitFor(() => expect(amount).toHaveValue(6150000));
+    await waitFor(() => expect(amount).toHaveValue("6,150,000"));
     // A principal repayment always pays it ALL — the input is disabled.
     expect(amount).toBeDisabled();
   });
