@@ -1,0 +1,25 @@
+-- Migration: drop bank_transactions.
+--
+-- The manually-entered bank-account ledger (#924) originally backed `trust_account`
+-- on GET /v1/capital-allocation. #1027 (merged in PR #1028) reworked that endpoint to
+-- source `trust_account` from the per-loan `loan_capital_transfers` table, leaving this
+-- ledger with no consumer. Its endpoint (POST /v1/bank-transactions), repo, and the
+-- `bank_operator` role are removed in the same change (#1029); the table is dropped here.
+--
+-- Holds dev/test data only at the time of removal — no production trust-account data
+-- lives here (that now lives in loan_capital_transfers).
+--
+-- Inverse (rollback) SQL — forward-only migrations, provided for reference only.
+-- Recreates the table shape only; rows are not restorable:
+--   CREATE TABLE bank_transactions (
+--       id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+--       transaction_type  TEXT        NOT NULL CHECK (transaction_type IN ('Deposit', 'Withdrawal', 'Fee')),
+--       amount            NUMERIC     NOT NULL CHECK (amount >= 0),
+--       payment_reference TEXT,
+--       occurred_at       TIMESTAMPTZ NOT NULL,
+--       recorded_by       TEXT        NOT NULL,
+--       created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+--   );
+--   CREATE INDEX bank_transactions_occurred_at_idx ON bank_transactions (occurred_at DESC);
+
+DROP TABLE bank_transactions;

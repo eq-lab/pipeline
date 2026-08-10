@@ -15,9 +15,9 @@
 //! yet" (flag false, all amounts 0) — the API serves defaults; the indexer never
 //! seeds rows (unlike `loan_disbursement`).
 //!
-//! Amounts are **plain dollar figures**, not base-6/on-chain-scaled (same
-//! rationale as `bank_transaction_repo`): cash-rail movements have no on-chain
-//! native scale. `routes::capital_allocation` scales them only when combining
+//! Amounts are **plain dollar figures**, not base-6/on-chain-scaled: cash-rail
+//! movements have no on-chain native scale. `routes::capital_allocation` scales
+//! them only when combining
 //! with base-6 buckets. `recorded_by` is the audit trail; callers must pass the
 //! authenticated Trustee identity (JWT `sub`), never a client-supplied value.
 

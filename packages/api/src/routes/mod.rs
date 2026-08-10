@@ -1,7 +1,6 @@
 pub mod analytics;
 pub mod audit_log;
 pub mod auth;
-pub mod bank_transactions;
 pub mod capital_allocation;
 pub mod ccr_history;
 pub mod collateral_valuation;

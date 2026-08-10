@@ -30,9 +30,8 @@
 //!   observed as approved ramp flow — a real bookkeeping gap that should be
 //!   visible, not hidden.
 //! - **`trust_account`** — `Σ(trust_account_deposit) − Σ(trust_account_withdrawal)`
-//!   over the chain's `loan_capital_transfers` rows. Chain-scoped (#1027 decision 6;
-//!   previously global via the `bank_transactions` ledger, which is no longer read —
-//!   its removal is #1029). Not clamped: a negative value means recorded
+//!   over the chain's `loan_capital_transfers` rows. Chain-scoped (#1027 decision 6).
+//!   Not clamped: a negative value means recorded
 //!   withdrawals exceed recorded deposits, a real bookkeeping error that should be
 //!   visible rather than hidden. Stored/returned as a **plain dollar figure** (no
 //!   base-6 scaling — a cash-rail movement has no on-chain native scale); this
