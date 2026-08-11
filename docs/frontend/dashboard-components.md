@@ -766,9 +766,10 @@ Besley (display font), 20px/28px, weight 400.
 
 ### LoanBookTable
 
-Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns
-matching the Figma header row: Borrower / Commodity, Principal, Collateral, LTV, Duration, Rate,
-Protection. Wrapped in `overflow-x: auto` so it horizontally scrolls at mobile widths where the full
+Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
+Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the
+commodity only — borrower identity is not displayed on the LP-facing protocol dashboard (issue
+#1058; the Figma header row's "Borrower / Commodity" label predates that decision). Wrapped in `overflow-x: auto` so it horizontally scrolls at mobile widths where the full
 1024px table exceeds the 370px content area (FRONTEND.md wide-content rule).
 
 The Figma XS mobile frame `3283-71053` renders the full 7-column table scrolling horizontally inside
@@ -776,12 +777,12 @@ the section — NOT stacked label/value cards. The previous `MobileCards` path (
 removed to match Figma exactly (resolved decision for issue #749) — this table now renders at every
 width, and `headerAggregates` populates the header row at all widths too.
 
-**Column widths** (Figma node `3283-14552`, Table container): Borrower/Commodity is flexible (fills
+**Column widths** (Figma node `3283-14552`, Table container): Commodity is flexible (fills
 remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); Collateral 112px (`3704:1079`);
 LTV 112px (`3704:1082`); Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px
-(`3704:1091`) — fixed columns total 656px, remainder goes to Borrower/Commodity. `table-layout: fixed`
-+ `<colgroup>` enforces these widths so long hash strings in the borrower column don't push the
-numeric columns together; the borrower cell truncates (`overflow-hidden` + `text-ellipsis` +
+(`3704:1091`) — fixed columns total 656px, remainder goes to Commodity. `table-layout: fixed`
++ `<colgroup>` enforces these widths so long strings in the commodity column don't push the
+numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
 `whitespace-nowrap`) so overflow clips with an ellipsis.
 
 **Spacing** (Figma node `3283-14552` metadata): row height 64px (node `3704:1095`); row padding `py-3`

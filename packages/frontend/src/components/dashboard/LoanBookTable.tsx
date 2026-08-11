@@ -8,8 +8,8 @@
 
 /** One pre-formatted loan row, as prepared by `useDeploymentMonitorPanel`. */
 export interface LoanBookRow {
-  /** Combined "Borrower / Commodity" label. */
-  borrowerCommodity: string;
+  /** Commodity label — borrower identity is not shown on the LP-facing dashboard (issue #1058). */
+  commodity: string;
   principal: string;
   collateral: string;
   ltv: string;
@@ -100,7 +100,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
        */}
       <table className="w-full table-fixed border-collapse">
         <colgroup>
-          {/* Borrower/Commodity — flexible, fills remaining width */}
+          {/* Commodity — flexible, fills remaining width */}
           <col />
           <col style={{ width: "112px" }} />
           <col style={{ width: "112px" }} />
@@ -112,9 +112,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
         <thead>
           {/* Header <tr> has no border class — border-b lives on each <th> (headerCellClasses). */}
           <tr>
-            <th className={[headerCellClasses, "pr-3"].join(" ")}>
-              Borrower / Commodity
-            </th>
+            <th className={[headerCellClasses, "pr-3"].join(" ")}>Commodity</th>
             <th className={headerCellClasses}>
               Principal
               {agg.principal != null && (
@@ -164,7 +162,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
             <tr key={i}>
               <td className={[firstBodyCellClasses, "pr-3"].join(" ")}>
                 <span className={firstBodyCellInnerClasses}>
-                  {row.borrowerCommodity}
+                  {row.commodity}
                 </span>
               </td>
               <td className={bodyCellClasses}>

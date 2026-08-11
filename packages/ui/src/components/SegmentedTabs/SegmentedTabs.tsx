@@ -1,40 +1,8 @@
 import React from "react";
 
 /**
- * SegmentedTabs — Pipeline UI primitive.
- *
- * A purely presentational segmented-control / filter bar. The owning page
- * manages active state; this component is visual-only.
- *
- * ## Variants
- *
- * ### `"track"` (default)
- * Anatomy (Figma node 1497-94917):
- *   - Container pill: muted-fill background (`--color-pipeline-fill-muted`),
- *     2 px padding, radius-xl (6 px). Same fill token as HeroIcon.
- *   - Active tab: paper-white background (`--color-pipeline-surface`),
- *     radius-s (4 px), primary ink label.
- *   - Inactive tabs: transparent background, secondary-ink label.
- *   - All tabs equal-width (`flex-1`), 32 px tall, caption-emphasized type
- *     style (Graphik LC Medium 12/16).
- *
- * ### `"floating"`
- * Compact, right-aligned pill style with **no outer track**. Used for chart
- * time-range selectors (e.g. `7D 1M 3M 1Y All` in the Portfolio chart card).
- *   - No container background — tabs sit directly on the card surface.
- *   - Active tab: white pill with subtle shadow, semibold caption text.
- *   - Inactive tabs: transparent, muted gray caption text, no background.
- *   - Tabs size to their label (intrinsic width), small horizontal padding.
- *
- * Design tokens:
- *   - `--color-pipeline-fill-muted`   — track container background (track variant)
- *   - `--color-pipeline-surface`      — active tab background
- *   - `--color-pipeline-ink`          — active tab label colour
- *   - `--color-pipeline-ink-muted`    — inactive tab label colour
- *   - `--font-body`                   — Graphik LC family
- *   - `--text-pipeline-caption`       — 12 px font size
- *   - `--text-pipeline-caption--line-height` — 16 px line height
- *   - `--font-weight-medium`          — weight 500 (Caption Emphasized)
+ * SegmentedTabs — presentational segmented-control / filter bar.
+ * spec: docs/frontend/ui-components.md#segmentedtabs
  */
 
 export interface SegmentedTabsTab {
@@ -54,11 +22,7 @@ export interface SegmentedTabsProps extends Omit<
   onSelect?: (id: string) => void;
   /** Additional class names forwarded to the container element. */
   className?: string;
-  /**
-   * Visual variant.
-   * - `"track"` (default) — gray segmented-control track behind all tabs.
-   * - `"floating"` — no outer track; active tab is a floating white pill.
-   */
+  /** Visual variant: `"track"` (default, gray track) or `"floating"` (trackless pill). */
   variant?: "track" | "floating";
 }
 
@@ -82,8 +46,8 @@ export const SegmentedTabs = React.forwardRef<
     : [
         // Pill container (track variant)
         "flex items-center",
-        "p-0.5", // 2 px padding around tabs
-        "rounded-[6px]", // radius-xl — matches Figma var(--radius/radius-xl, 6px)
+        "p-0.5",
+        "rounded-[6px]",
         "bg-[var(--color-pipeline-fill-muted)]",
         "w-full",
         className,
@@ -100,14 +64,14 @@ export const SegmentedTabs = React.forwardRef<
           ? [
               // Intrinsic width (no flex-1)
               "flex items-center justify-center",
-              "h-7", // 28 px — compact
-              "px-2", // 8 px horizontal padding
-              "rounded-[var(--radius-pipeline-button)]", // 4 px radius-s
-              // Background: white pill for active, transparent for inactive
+              "h-7",
+              "px-2",
+              "rounded-[var(--radius-pipeline-button)]",
+              // Background
               isActive
                 ? "bg-[var(--color-pipeline-surface)] shadow-sm"
                 : "bg-transparent",
-              // Typography — Caption Emphasized
+              // Typography
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",
@@ -134,14 +98,14 @@ export const SegmentedTabs = React.forwardRef<
               "flex-1",
               // Layout
               "flex items-center justify-center",
-              "h-8", // 32 px
-              "px-1.5", // 6 px horizontal padding (Figma size-6)
-              "rounded-[var(--radius-pipeline-button)]", // 4 px radius-s
+              "h-8",
+              "px-1.5",
+              "rounded-[var(--radius-pipeline-button)]",
               // Background
               isActive
                 ? "bg-[var(--color-pipeline-surface)]"
                 : "bg-transparent",
-              // Typography — Caption Emphasized: Graphik LC Medium 12/16
+              // Typography
               "font-[family-name:var(--font-body)]",
               "text-[length:var(--text-pipeline-caption)]",
               "leading-[var(--text-pipeline-caption--line-height)]",

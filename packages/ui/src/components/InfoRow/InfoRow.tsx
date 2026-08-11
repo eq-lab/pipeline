@@ -2,15 +2,7 @@ import React from "react";
 
 /**
  * InfoRow — label-on-left, value-on-right row.
- *
- * Used for `Exchange rate` and `Network fee` lines at the bottom of the
- * conversion card (Figma node 1498-100130 / 1498-99897).
- *
- * Layout: horizontal flex row, label in muted ink on the left, value in
- * primary ink on the right, filling the full width.
- *
- * Font: body size (16px/22px) per Figma node 1498-99897, applied to all
- * InfoRow instances (Issue #595 fix 7).
+ * spec: docs/frontend/ui-components.md#inforow
  */
 
 export interface InfoRowProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -45,9 +37,8 @@ const valueClasses = [
 export const InfoRow = React.forwardRef<HTMLDivElement, InfoRowProps>(
   function InfoRow({ label, value, className, ...rest }, ref) {
     const composed = [rootClasses, className].filter(Boolean).join(" ");
-    // Derive a stable test id from the label so the two rows rendered inside a
-    // ConversionCard ("Exchange rate" / "Network fee") stay individually
-    // addressable. A caller-supplied data-testid (via ...rest) still wins.
+    // Stable test id derived from the label; a caller-supplied data-testid
+    // (via ...rest) still wins.
     const derivedTestId = `info-row-${label
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")

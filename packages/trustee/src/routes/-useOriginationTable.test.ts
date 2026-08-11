@@ -284,9 +284,9 @@ describe("useOriginationTable", () => {
     expect(result.current.rows[0]?.originator).toBe("Auric Andes");
   });
 
-  // ── In-flight-only filter (#1044) ──────────────────────────────────────────
+  // ── All statuses listed (#1056 — reverses the #1044 in-flight filter) ──────
 
-  it("filters out Approved submissions — they belong on the Loans surfaces", () => {
+  it("lists Approved submissions alongside the in-flight ones (#1056)", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
       data: [
         FULL_SUBMISSION, // InReview
@@ -300,10 +300,11 @@ describe("useOriginationTable", () => {
     });
     const { result } = renderHook(() => useOriginationTable());
     expect(result.current.state).toBe("ready");
-    expect(result.current.rows.map((r) => r.id)).toEqual([1, 3, 4]);
+    expect(result.current.rows.map((r) => r.id)).toEqual([1, 2, 3, 4]);
+    expect(result.current.rows[1]?.status.kind).toBe("approved");
   });
 
-  it("filters out backend merged/lifecycle statuses (normalize to Approved, #892)", () => {
+  it("lists backend merged/lifecycle statuses as Approved rows (#892, #1056)", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
       data: [
         { ...FULL_SUBMISSION, id: 5, status: "Performing" },
@@ -315,18 +316,33 @@ describe("useOriginationTable", () => {
       refetch: vi.fn(),
     });
     const { result } = renderHook(() => useOriginationTable());
-    expect(result.current.state).toBe("empty");
-    expect(result.current.rows).toEqual([]);
+    expect(result.current.state).toBe("ready");
+    expect(result.current.rows.map((r) => r.status.kind)).toEqual([
+      "approved",
+      "approved",
+      "approved",
+    ]);
   });
 
-  it("returns 'empty' when every submission is Approved (not 'ready' with zero rows)", () => {
+  it("renders the Approved chip with its date label (green chip contract)", () => {
     vi.mocked(useLoanSubmissions).mockReturnValue({
-      data: [{ ...FULL_SUBMISSION, id: 8, status: "Approved" }],
+      data: [
+        {
+          ...FULL_SUBMISSION,
+          id: 8,
+          status: "Approved",
+          updated_at: "2026-06-20T10:00:00Z",
+        },
+      ],
       isLoading: false,
       error: null,
       refetch: vi.fn(),
     });
     const { result } = renderHook(() => useOriginationTable());
-    expect(result.current.state).toBe("empty");
+    expect(result.current.state).toBe("ready");
+    expect(result.current.rows[0]?.status).toEqual({
+      kind: "approved",
+      label: "Approved · 20 Jun",
+    });
   });
 });

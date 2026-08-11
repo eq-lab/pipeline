@@ -1,55 +1,14 @@
 /**
- * View-model + data wiring for the Trustee **Record Repayment — Principal**
- * full-page route (`loans.$id_.record-repayment.tsx`, issue #884, Figma node
- * `4116-11621`) — the principal-repayment sibling of the Record Coupon flow
- * (`-record-coupon.ts`, issue #882). Per `docs/FRONTEND.md` Code structure
- * rule 2 the `.tsx` route is JSX/styling only; this hook owns the live
- * fetches, the amount/date input state, and the value→display mapping.
+ * View-model + data wiring for the Trustee Record Repayment — Principal
+ * full-page route (`loans.$id_.record-repayment.tsx`) — the
+ * principal-repayment sibling of the Record Coupon flow (`-record-coupon.ts`).
+ * Per `docs/FRONTEND.md` Code structure rule 2 the `.tsx` route is
+ * JSX/styling only; this hook owns the live fetches, the amount/date input
+ * state, and the value→display mapping.
  *
- * This module deliberately duplicates several of `-record-coupon.ts`'s pure
- * helpers (parse/scale conversions, terminal-repayment detection, the coupon
- * → "final" period computation) rather than importing them — each
- * `loans.$id_.*` route is a self-contained presenter (mirrors the project's
- * existing per-route hand-mirroring convention, e.g. TD-42's trustee/LP
- * pairs), so the two flows can diverge independently as either evolves.
- *
- * ## Scope (issue #884)
- * Previews the payment waterfall for a trustee-entered **final** offtaker
- * payment via the already-wired `useLoanWaterfall`, then performs the
- * on-chain `record_payment` write via `useRecordPayment` (page-level, like
- * #882's eventual write). Once the loan is fully repaid, the page also
- * exposes a **Close loan** action (`useCloseLoan`, issue #884's new on-chain
- * write) that moves the loan to `Closed`.
- *
- * ## Key difference from Record Coupon (#882) — REAL principal
- * The coupon flow forces `senior_principal_repaid` to `"0"` (interest-only —
- * principal stays deployed). This is a **principal repayment**: the
- * waterfall's real `senior_principal_returned` is displayed AND carried into
- * `senior_principal_repaid` verbatim. Equity is the residual after ALL five
- * carve-outs (principal + interest + fees) — clamped at 0, never negative —
- * so the six components still sum exactly to `offtaker_received`.
- *
- * ## Scale handling (identical to #882 — see `-record-coupon.ts`)
- *   - The `/waterfall` `amount` param and response fields are raw 7-decimal
- *     SAC base units. Entered USD is multiplied by 10^7 before the preview
- *     request, response fields are divided by 10^7 for display, and
- *     `recordPayment` carries backend raw fields unchanged.
- *   - `senior_outstanding` (`useLoanBook`) / `offtaker_outstanding`
- *     (`useLoanFinancials`) are displayed exactly as the backend serves them —
- *     no client-side rescaling (issue #906; the former ×1000
- *     `scaleRegistryAmount` workaround has been removed).
- *
- * ## Close-loan gating (issue #884 open question 3, resolved on start)
- * The Close-loan action always renders as the full-width "Next step — close
- * loan" item, but only ENABLES once the final payment is actually complete:
- * `showCloseLoan` marks that closing is applicable (the entered amount is
- * terminal — `isTerminalRepayment`, same cent-precision detection as #882 — or
- * the outstanding senior is already `0`), while the page keeps the button
- * disabled until the `record_payment` write has succeeded (`record.isSuccess`)
- * or the loan was already fully repaid on load (`alreadyRepaid`). Entering a
- * terminal amount is no longer enough on its own — the trustee must record the
- * payment first. `closureReason` picks `ScheduledMaturity` when `now >=
- * maturity` (the loan-book's rollover-aware `maturity`), else `EarlyRepayment`.
+ * spec: docs/frontend/trustee-flows.md#cash-movement--lifecycle-actions
+ * (scope, key difference from Record Coupon, scale handling, close-loan
+ * gating).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLoanBook } from "@/api/useLoanBook";
@@ -112,19 +71,7 @@ function usdFull(usd: number | null): string {
   return usd == null ? "—" : formatFullUsd(usd.toString());
 }
 
-/**
- * Builds the on-chain `RepaymentData` (issue #884) from the waterfall preview +
- * the entered offtaker amount (raw base-unit integer strings — passed through
- * unscaled to `record_payment`).
- *
- * This is the **principal repayment** flow: `senior_principal_repaid` carries
- * the waterfall's real `senior_principal_returned` (unlike the coupon flow's
- * forced `"0"`). The interest + fee carve-outs map 1:1; `equity_distributed`
- * is the residual after principal + interest + fees so the six components sum
- * exactly to `offtaker_received` (clamped at 0 — never negative). `null` until
- * a positive amount is entered and the preview resolves. Exported for unit
- * testing.
- */
+// spec: docs/frontend/trustee-flows.md#record-repayment--principal-884--key-difference-from-record-coupon.
 export function buildRepaymentInput(
   amountBaseUnits: string,
   waterfall:
@@ -156,23 +103,15 @@ export function buildRepaymentInput(
   };
 }
 
-/**
- * Parses a backend-served base-6 decimal amount to a plain USD number, as-is —
- * no client-side rescaling (issue #906). `null` for anything missing/
- * unparseable — never fabricated.
- */
+// Displayed as served, no rescaling (issue #906).
 function parseServedUsd(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * The final-period display (`"31 Mar 2026 → 24 Jun 2026 · 85 days"`) derived from the
- * loan's current epoch (`start_date` → `maturity_date`) — same computation as
- * #882's `computeCouponPeriod`, renamed for this page's "Final period" row.
- * `—` / `null` days when no epoch is on record (never fabricated).
- */
+// e.g. "31 Mar 2026 → 24 Jun 2026 · 85 days" — same computation as
+// `computeCouponPeriod`, renamed for this page's "Final period" row.
 export function computeFinalPeriod(epoch: Epoch | null): {
   label: string;
   days: number | null;
@@ -190,14 +129,8 @@ export function computeFinalPeriod(epoch: Epoch | null): {
   };
 }
 
-/**
- * Terminal-repayment detection (mirrors #882's `isTerminalRepayment`) — `true`
- * when the entered amount covers (≥) the loan's outstanding senior AND the
- * waterfall's own `senior_principal_returned` equals it exactly (to the cent,
- * guarding float drift from the two independent unit conversions). Gates the
- * Close-loan action alongside the already-zero-outstanding case (see
- * `useRecordRepayment`).
- */
+// Mirrors -record-coupon.ts's isTerminalRepayment. spec:
+// docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
 export function isTerminalRepayment(
   outstandingSeniorUsd: number | null,
   enteredUsd: number | null,
@@ -218,12 +151,7 @@ export function isTerminalRepayment(
   );
 }
 
-/**
- * Picks the on-chain `ClosureReason` for a repayment close (issue #884,
- * resolved open questions 1 & 2): `"ScheduledMaturity"` when `now >=
- * maturity` (the loan-book's rollover-aware `currentMaturityDate`), else
- * `"EarlyRepayment"`. Pure — exported for unit testing.
- */
+// spec: docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
 export function closureReason(
   nowSeconds: number,
   maturitySeconds: number,

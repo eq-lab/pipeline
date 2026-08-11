@@ -229,9 +229,7 @@ describe("useDeploymentMonitorPanel — panel state", () => {
 
     await waitFor(() => expect(result.current.state).toBe("ready"));
     expect(result.current.activeLoansCount).toBe(1);
-    expect(result.current.rows[0]!.borrowerCommodity).toBe(
-      "Open Mineral / Copper Concentrate",
-    );
+    expect(result.current.rows[0]!.commodity).toBe("Copper Concentrate");
     expect(result.current.rows[0]!.principal).toBe("$8.0K");
   });
 

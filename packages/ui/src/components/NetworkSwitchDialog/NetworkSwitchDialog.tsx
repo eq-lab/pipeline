@@ -2,9 +2,8 @@ import { useEffect, useRef } from "react";
 import { Button } from "../Button";
 
 /**
- * NetworkSwitchDialog — styled confirmation shown before navigating to a
- * sibling network deployment (issue #1032; replaces the interim
- * `window.confirm`). Shared by the LP app and the trustee dashboard.
+ * NetworkSwitchDialog — confirmation shown before navigating to a sibling
+ * network deployment.
  * spec: docs/frontend/wallet-flows.md#network-switcher-cross-deployment-links
  */
 

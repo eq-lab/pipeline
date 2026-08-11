@@ -3,24 +3,8 @@ import arrowClockSrc from "../../assets/icons/arrow-clock.svg?url";
 import navStatsSrc from "../../assets/icons/nav-stats.svg?url";
 
 /**
- * HeroIcon — 72×72 muted-fill circle with a 36px ink-tinted icon centered
- * inside. Used as the page-hero badge above the heading (see Activity hero in
- * Figma node 1497-94912).
- *
- * Built as a generic primitive so future page heroes can reuse it by extending
- * the `icon` string-literal union.
- *
- * Visual spec (Figma nodes 1497-94912, 1497-95313):
- *   - 72×72 px circle — `--color-pipeline-fill-muted` background
- *   - 36×36 px icon slot — ink token via CSS mask; chart uses ink-subtle (no
- *     baked opacity), arrow-clock keeps full ink (SVG bakes fill-opacity="0.3")
- *
- * The icon asset uses `fill="currentColor"` so it is tinted by applying a CSS
- * mask and setting `background-color` to the ink token, matching the pattern
- * used by the nav icon buttons (see `IconButton.stories.tsx → MaskIcon`).
- *
- * Accessibility: decorative by default (`aria-hidden="true"`). Pass an
- * explicit `aria-label` to make the element meaningful to assistive tech.
+ * HeroIcon — circular page-hero icon badge.
+ * spec: docs/frontend/ui-components.md#heroicon
  */
 
 /** String-literal union of supported icon names. Extend as new icons land. */
@@ -31,8 +15,8 @@ const ICON_SRC_MAP: Record<HeroIconName, string> = {
   chart: navStatsSrc,
 };
 
-// arrow-clock SVG bakes fill-opacity="0.3"; use full ink so composed opacity
-// stays ~0.3. chart has no baked opacity, so use ink-subtle directly.
+// arrow-clock's SVG bakes fill-opacity="0.3", so full ink composes to ~0.3;
+// chart bakes none, so use ink-subtle directly.
 const ICON_TINT_MAP: Record<HeroIconName, string> = {
   "arrow-clock": "var(--color-pipeline-ink)",
   chart: "var(--color-pipeline-ink-subtle)",
@@ -43,7 +27,6 @@ export interface HeroIconProps extends React.HTMLAttributes<HTMLDivElement> {
   icon: HeroIconName;
 }
 
-// Outer circle — 72×72 px, muted fill, fully rounded.
 const circleClasses = [
   "inline-flex items-center justify-center",
   "shrink-0",
@@ -82,11 +65,7 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
         role={ariaLabel != null ? "img" : undefined}
         {...rest}
       >
-        {/*
-         * 36×36 icon rendered via CSS mask so that SVG's fill="currentColor"
-         * paths pick up the ink token.  The span sets `color` to the ink token
-         * and the mask paints with `background-color: currentColor`.
-         */}
+        {/* CSS mask tints the fill="currentColor" asset via background-color. */}
         <span
           aria-hidden="true"
           style={{

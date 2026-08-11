@@ -13,33 +13,13 @@ import {
 import { InlineError } from "@pipeline/ui";
 
 /**
- * Cash Management (issue #943, Figma node `4116-11802` for styling) — replaces
- * the #786 placeholder. Source of truth: `docs/product-specs/trustee-dashboard.md`
- * (§Type 1 flow 2, §Type 4) + the Cash Management working doc.
+ * Cash Management — replaces the #786 placeholder. Per `docs/FRONTEND.md`
+ * rule 2, this `.tsx` is JSX/styling only; the fetch + value→display mapping
+ * live in `-cash-management.ts` / `-cash-management-tbills.ts` /
+ * `-cash-management-withdrawals.ts`.
  *
- * The **On/Off-ramp** tab has two parts:
- *   1. a **"New swap" button** that opens the doc's swap form in a modal
- *      (`SwapDialog`, Transak-style) — off/on-ramp toggle, USDC amount + real
- *      on-chain balance (`useCapitalWalletBalance`), bank-wire method, ramp
- *      destination (`GET /v1/ramp/addresses`), and a 1:1 receive summary. This is
- *      a UI shell: off-ramp execution is a Capital-Wallet MPC 3-of-5 transfer with
- *      no backend endpoint yet (#781), and there is no ramp-quote endpoint, so
- *      submit is disabled and the fee shows `—` (never fabricated).
- *   2. the **review queue** below it — the pending ramp-boundary events
- *      (`GET /v1/ramp/events`, #936) the Trustee Approves/Rejects
- *      (`POST …/review`), which is what actually moves the on-chain state.
- *
- * The **T-Bills** tab (#944) has the same "New swap" modal UX — a Buy/Sell USYC
- * swap-form UI shell (`TbillsSwapDialog`; submit disabled, MPC execution not yet
- * backed). The **Withdrawal Queue** tab (#945) shows the queue's total-claimable
- * / requests (served) with the wallet balance `—` (unserved), and a "Top up"
- * button opening `WithdrawalTopUpDialog` — a Capital-Wallet MPC 3-of-5 shell
- * (Co-sign disabled). (No Refunds tab — the working doc has no such section;
- * docs are the source of truth, Figma is styling only.)
- *
- * Per `docs/FRONTEND.md` rule 2, this `.tsx` is JSX/styling only; the fetch +
- * value→display mapping live in `-cash-management.ts` / `-cash-management-tbills.ts`
- * / `-cash-management-withdrawals.ts`.
+ * spec: docs/frontend/trustee-flows.md#cash-management--onoff-ramp--t-bills,
+ * docs/frontend/trustee-flows.md#cash-management--withdrawal-queue.
  */
 
 const LINE_COLOR = "rgba(56, 55, 53, 0.18)";
@@ -273,11 +253,9 @@ function RampSection({
   );
 }
 
-// ── On/Off-ramp swap dialog (UI shell — #943, execution blocked on Type-2 MPC #781) ──
-//
-// Opened from the tab's "New swap" button (Transak-style). Mirrors the app's
-// dialog shell (RolloverDialog / UpdateLifecycleDialog): backdrop, centered
-// panel, Escape/backdrop close, form reset on open.
+// ── On/Off-ramp swap dialog ──────────────────────────────────────────────────
+// spec: docs/frontend/trustee-flows.md#onoff-ramp-tab. Mirrors the app's
+// dialog shell (RolloverDialog / UpdateLifecycleDialog).
 
 function SwapDialog({
   open,
@@ -317,8 +295,6 @@ function SwapDialog({
 
   const isOff = mode === "off";
   const amountNum = Number.parseFloat(amount);
-  // USDC ↔ USD is 1:1, so "You receive" mirrors the amount — a disabled twin of
-  // the amount input. The provider fee has no quote endpoint, so it stays "—".
   const receiveValue = Number.isFinite(amountNum) ? String(amountNum) : "";
 
   return (
@@ -520,16 +496,8 @@ function SwapDialog({
   );
 }
 
-// ── T-Bills tab: Buy / Sell USYC swap dialog (#944) ───────────────────────────
-//
-// Same UX as the On/Off-ramp swap: opened from the tab's "New swap" button into
-// a modal (backdrop, Escape/backdrop/× close, reset on open). UI shell — Buy
-// spends real USDC (Capital-Wallet balance), Sell spends USYC valued at the
-// T-Bills bucket (`buckets.tbills`, currently null → "—"). Buying/selling USYC
-// is a Capital-Wallet MPC action (3-of-5, Type 2, flow 8) with no backend path
-// yet, so submit is disabled; "You receive" is a disabled twin of the amount
-// input that stays empty (no USYC price/NAV served — never fabricated), and the
-// fee shows "—". Backend follow-up filed with #944.
+// ── T-Bills tab: Buy / Sell USYC swap dialog ──────────────────────────────────
+// spec: docs/frontend/trustee-flows.md#t-bills-tab-944.
 
 function TbillsSwapDialog({
   open,

@@ -3,21 +3,8 @@ import { Card } from "../Card";
 import { StepRow } from "../StepRow/StepRow";
 
 /**
- * StepsCard — a thin wrapper that renders a list of `StepRow` items inside
- * a `muted` `Card` surface.
- *
- * Used on the deposit/conversion screen to guide the user through a numbered
- * sequence of on-chain actions (e.g. Approve token spend, then Convert).
- *
- * Figma reference: node 1498-100130 (StepsCard container with two step rows).
- *
- * Props:
- *   - `steps` — ordered array of step descriptors. Each entry maps 1:1 to a
- *     `StepRow`. Minimum two items expected (Approve + Convert), but the
- *     component accepts any number.
- *
- * The card's inner padding (`p-6`) comes from `Card`. The step rows are
- * stacked with a `gap-2` (8 px) gutter matching the Figma spacing.
+ * StepsCard — renders a list of `StepRow` items inside a `muted` `Card` surface.
+ * spec: docs/frontend/ui-components.md#stepscard
  */
 
 export interface StepItem {
@@ -25,22 +12,13 @@ export interface StepItem {
   label: string;
   /** Label for the trailing action button (e.g. "Approve", "Convert"). */
   actionLabel: string;
-  /**
-   * When true, the step row renders at 30% opacity and the action button is
-   * inert. Defaults to `false`.
-   */
+  /** When true, the step row dims and the action button is inert. Defaults to `false`. */
   disabled?: boolean;
   /** Called when the action button is clicked (only fires when not disabled). */
   onAction?: React.MouseEventHandler<HTMLButtonElement>;
-  /**
-   * When true the action button shows a loading / in-flight state (disabled
-   * with a spinner). The row opacity remains full so the user sees progress.
-   */
+  /** When true the action button shows a loading / in-flight state. */
   loading?: boolean;
-  /**
-   * Step state — see `StepRow`'s `state` prop (`"error"` keeps the action
-   * button for retry and renders `errorMessage` under the label).
-   */
+  /** Step state — see `StepRow`'s `state` prop. */
   state?: "idle" | "success" | "error";
   /** Red message line under the label; rendered only when `state` is `"error"`. */
   errorMessage?: string;
@@ -62,12 +40,8 @@ export const StepsCard = React.forwardRef<HTMLDivElement, StepsCardProps>(
       <Card
         ref={ref}
         variant="muted"
-        // Figma node 1498-100130: asymmetric border — 1px on left + top,
-        // 3px on right + bottom — producing a subtle "stamped" elevation effect.
-        // Use `!` important prefix so per-side widths reliably beat the uniform
-        // `border` shorthand in Card's baseClasses regardless of Tailwind's
-        // CSS cascade order. Border colour is inherited from the muted variant's
-        // border-color token (--color-pipeline-line).
+        // `!` important prefix so per-side widths reliably beat the uniform
+        // `border` shorthand in Card's baseClasses regardless of cascade order.
         className={[
           "!border-t !border-r-[3px] !border-b-[3px] !border-l",
           className,

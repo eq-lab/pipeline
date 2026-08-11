@@ -2,12 +2,7 @@ import { ErrorDetailsDialog } from "../ErrorDetailsDialog/ErrorDetailsDialog";
 import { useInlineError } from "./useInlineError";
 
 /**
- * InlineError — the one-line half of the error-UX pattern (#1034): a short
- * human `message` (always safe to render — never raw) plus, when raw
- * `details` are available, a "View details" trigger that opens a shared
- * `ErrorDetailsDialog`. This is the component adopted at every error
- * surface (`StepRow`, dashboard panels, etc.) — the disclosure state lives
- * here so callers don't each reimplement it.
+ * InlineError — the one-line half of the error-UX pattern.
  * spec: docs/frontend/error-handling.md
  */
 export interface InlineErrorProps {

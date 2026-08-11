@@ -1,18 +1,8 @@
 /**
- * The six Trustee nav sections, per Figma node `4116:8855` ("Aside") and
- * `docs/product-specs/trustee-dashboard.md` (spec #453).
+ * The six Trustee nav sections.
  *
- * This replaces the #777 scaffold's `TRUSTEE_FLOW_TYPES` (Type-1..4 taxonomy)
- * — the Figma nav is the real product navigation (issue #786). Per-flow
- * signing content for each section still lands in later sub-issues of epic
- * #775 (#780–#782); these routes render placeholder page bodies until then.
- *
- * `badgeCount` is intentionally unpopulated today — there is no backend
- * source for the counts shown in the Figma mock (1 / 4 / 3 on Origination /
- * Loans / Cash Management). Per the project rule [no frontend-computed
- * metrics], the badge slot renders only when a count is supplied; see
- * `TrusteeSidebar`'s `NavBadge`. Wiring a real count is tracked in
- * `docs/exec-plans/tech-debt-tracker.md`.
+ * spec: docs/frontend/trustee-flows.md#nav-sections-libnavts (Figma source,
+ * #777→#786 taxonomy history, why `badgeCount` is unpopulated).
  */
 
 export interface TrusteeNavItem {

@@ -4,85 +4,15 @@ import { useCapitalAllocationCard } from "./useCapitalAllocationCard";
 
 /**
  * CapitalAllocationCard — the Trustee Overview page's "Capital Allocation"
- * card (Figma node `4116:8928`, frame `4116-8854`), issue #797, extended in
- * #807 and #805 (including a human review follow-up on PR #811).
+ * card.
  *
- * Net scope for this issue (see `docs/exec-plans/active/issue-797-*.md`
- * "Decisions" section, human-confirmed 2026-07-08):
- *   - Big total (`formatFullUsd`), fully-expanded whole dollars.
- *   - A proportional allocation bar (see below) — originally an inert,
- *     equal-width placeholder (no client-computed percentages/proportions;
- *     see [no frontend-computed metrics]); superseded by a #805 review
- *     follow-up once per-bucket percentages were approved.
- *   - Per-bucket legend (Capital Wallet / In transit / Trust account /
- *     Deployed / T-Bills (USYC)) with compact dollar values, "—" for null.
- *
- * Issue #825 removed the #807 static mock chrome that had no backing API
- * field — the green reconciliation header
- * ("RECONCILES TO PLUSD BACKING · DRIFT < 0.01%") and the 4 provenance chips
- * below the legend — per the project's "no fabricated/frontend-computed
- * metrics" convention. If real provenance/drift data ever lands they can be
- * re-added wired to that source.
- *
- * Legend percentage pills (Figma node `4116:8961`, #805 scope addition): each
- * row shows `bucket_value ÷ displayed_total` (the SAME guarded total computed
- * for #805's Capital-Wallet fold-in), rounded to the nearest whole percent —
- * except a strictly-positive sub-1% share, which renders `"< 1%"` (human
- * review follow-up on PR #811; NOT rounded to `"0%"` or up to `"1%"`). This is
- * a deliberate, EXPLICITLY REQUESTED reversal of the bar's original "no
- * client-computed percentages" deferral — the requester decided the total is
- * now authoritative enough (backend + on-chain) to divide by. See
- * `useCapitalAllocationCard.ts` for the computation and
- * `docs/exec-plans/tech-debt-tracker.md` TD-41 for the tracked exception. A
- * `null` `percentDisplay` (bucket/total unknown, or a `<= 0` share) renders
- * the pre-#805 plain dot instead of a pill — never a fabricated `0%`.
- *
- * Proportional allocation bar (human review follow-up on #805, PR #811): each
- * segment's width = `row.barFraction * 100%` — the EXACT (unrounded) share of
- * the displayed total, computed alongside `percentDisplay` in
- * `useCapitalAllocationCard.ts`. Rows with a `null` `barFraction` render no
- * segment (filtered before mapping) rather than a fabricated share. Uses the
- * raw fraction, not the rounded/`"< 1%"` percent text, so segments sum to
- * ~100% instead of drifting from independent per-row rounding.
- *
- * Pixel/token mapping from the Figma export:
- *   - Card: white surface, `rounded-[4px]` → `--radius-pipeline-card`,
- *     `p-[32px]`.
- *   - Header label: Inter/body 16px, `--color-pipeline-ink`.
- *   - Total: Besley display, Figma `text-[58px]/leading-[81.2px]`, ink token.
- *   - Bar segment / legend dot colours: `#000080` → `--color-pipeline-brand`
- *     (exact match), `#208000` → `--color-pipeline-positive-primary` (exact
- *     match). `#c9a200` and `#6666b3` have no matching token — scoped
- *     one-offs, same precedent as `SignInCard`'s blur effect and #786's
- *     unbadged nav items. The mid grey segment
- *     (`rgba(56,55,53,0.35)`) is a darker alpha step of the ink token family
- *     than any existing muted/subtle token, so it is also a scoped one-off.
- *   - Percentage pill (`4116:8961`/`4116:8962`): pill background
- *     `rgba(191,189,187,0.12)` — same one-off as #786's nav badge background;
- *     `h-[16.8px]`, `rounded-[4px]`. Dot: `size-[8px] rounded-[2px]` in the
- *     row's own bucket colour (see above), `left-[4px]`. Percent text:
- *     `text-[12px]`/`leading-[16.8px]`, `rgba(56,55,53,0.6)` — an alpha step
- *     of the ink token family with no exact token match; scoped one-off,
- *     same precedent as the mid-grey bar segment above.
- *
- * `children` (issue #818, human review follow-up): the Figma background node
- * `4116:8928` wraps the ENTIRE Overview page content — Capital Allocation
- * AND "Needs Attention" — in ONE continuous white surface, not two separate
- * stacked cards. Rather than duplicating this `Card` wrapper in a second
- * component (which renders a visible gap/second white block), the Overview
- * route passes `<NeedsAttention />` in as `children` here, rendered directly
- * after this card's own content, still inside the SAME `Card`, separated by
- * 48px (issue #825; the Card's outer `gap-12`).
- * `NeedsAttention.tsx` itself renders plain content (no `Card` of its own).
+ * spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer
+ * (scope, removed mock chrome, percentage pills, allocation bar, `children`
+ * composition, Figma → token mapping).
  */
 
 export interface CapitalAllocationCardProps {
-  /**
-   * Extra content rendered inside the SAME white `Card` as this component's
-   * own content, directly after it (issue #818 — see the module doc's
-   * `children` note). Used by the Overview route to append `<NeedsAttention />`
-   * without creating a second, visually separate white block.
-   */
+  /** Extra content rendered inside the same white `Card`, directly after this component's own content. */
   children?: ReactNode;
 }
 
@@ -102,11 +32,7 @@ export function CapitalAllocationCard({
     <Card
       variant="white"
       padding="none"
-      // Outer gap = 48px (issue #825) between the Capital Allocation content
-      // and `children` (Needs Attention). Card internals keep their own
-      // `gap-4` in the inner column below. When `children` renders nothing
-      // (no in-review submissions) it produces no flex item, so no gap is
-      // added — no trailing whitespace.
+      // spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer (children composition).
       className="flex w-full flex-col gap-12 p-8"
       data-testid="capital-allocation-card"
     >
@@ -152,14 +78,7 @@ export function CapitalAllocationCard({
               {totalDisplay}
             </p>
 
-            {/* Proportional allocation bar (human review follow-up on #805,
-              PR #811) — each segment's width = that bucket's EXACT
-              (unrounded) share of the displayed total (`row.barFraction`),
-              the same guarded total used for the legend percentages, so the
-              bar visually matches the legend. Supersedes #797/TD-39's inert
-              equal-width placeholder. A null/unknown bucket renders no
-              segment at all (filtered out below) rather than a fabricated
-              share. */}
+            {/* spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer (allocation bar). */}
             <div
               className="flex h-2 w-full overflow-hidden rounded-[2px]"
               role="presentation"
@@ -183,11 +102,7 @@ export function CapitalAllocationCard({
             <div className="flex w-full flex-wrap items-end gap-x-6 gap-y-3">
               {legend.map((row) => (
                 <div key={row.key} className="flex items-end gap-2">
-                  {/* Percentage pill (Figma node 4116:8961, #805 scope addition)
-                    — bucket_value ÷ displayed total, rounded to the nearest
-                    whole percent; renders nothing when the bucket/total is
-                    unknown (never a fabricated 0%). Replaces the standalone
-                    dot from #797 — the dot now lives inside the pill. */}
+                  {/* spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer (percentage pills). */}
                   {row.percentDisplay !== null && (
                     <span
                       className="relative flex h-[16.8px] shrink-0 items-center rounded-[4px] bg-[rgba(191,189,187,0.12)] pl-[4px]"
@@ -220,9 +135,6 @@ export function CapitalAllocationCard({
         )}
       </div>
 
-      {/* #818: e.g. <NeedsAttention /> — rendered inside this SAME white
-          Card, independent of this card's own loading/error state (it gates
-          on its own hook). See the module doc's `children` note. */}
       {children}
     </Card>
   );

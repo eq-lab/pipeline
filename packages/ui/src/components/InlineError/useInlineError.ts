@@ -1,9 +1,8 @@
 import { useState, useCallback } from "react";
 
 /**
- * Co-located hook for `InlineError` (`docs/FRONTEND.md` rule 2) — owns the
- * paired `ErrorDetailsDialog`'s open state so every adoption site gets the
- * disclosure behaviour for free.
+ * useInlineError — co-located hook for `InlineError`; owns the paired
+ * `ErrorDetailsDialog`'s open state. spec: docs/frontend/error-handling.md
  */
 export interface UseInlineErrorResult {
   open: boolean;

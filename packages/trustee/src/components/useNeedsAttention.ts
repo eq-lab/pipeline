@@ -1,55 +1,14 @@
 /**
  * Query-wiring + value→display mapping for the Overview page's "Needs
- * Attention" section (issue #818, Figma node `4116:9004`). Two groups:
- *   - **Origination** — in-review + changes-requested submissions (#818, #1046).
- *   - **Loans** — Watchlist + Matured loans from `useLoanBook` (#867).
+ * Attention" section. Per `docs/FRONTEND.md` Code structure rule 2, the
+ * `.tsx` component is JSX/styling only; this hook owns the unfiltered
+ * `useLoanSubmissions()` + `useLoanBook()` calls (#1046) and maps each into a
+ * display-ready row (mirrors `-useOriginationTable.ts`'s `state` discriminant
+ * shape).
  *
- * Per `docs/FRONTEND.md` Code structure rule 2, the `.tsx` component is JSX/
- * styling only; this hook owns the `useLoanSubmissions()` + `useLoanBook()`
- * calls and maps each into a display-ready row so the view stays a pure render
- * function (and this mapping is unit-testable without a DOM). Mirrors
- * `-useOriginationTable.ts`'s `state` discriminant shape.
- *
- * The submissions fetch is deliberately UNFILTERED (#1046): the Origination
- * group needs `InReview` + `ChangesRequested`, but the backend's
- * `SubmissionsQuery.status` accepts a single status per request, so one
- * unfiltered call filtered client-side (via
- * `normalizeOriginationSubmissionStatus`, the origination table's #1044
- * pattern) beats two parallel filtered queries — one request, and it shares
- * the `["loan-submissions", chainId, "all"]` cache with `useOriginationTable`.
- *
- * ## Field mapping (resolved Open Questions, issue #818 comments)
- *
- *   - Title: `` `${friendlyOriginator} — ${commodity}: ${statusSuffix}` `` —
- *     the suffix is `"new request"` for `InReview` and `"changes requested"`
- *     for `ChangesRequested` (#1046, origination-table vocabulary); the
- *     `friendlyOriginator` is `loan_data.originator` (the friendly NAME, e.g.
- *     "Open Mineral") — NOT the top-level `SubmissionView.originator` (the
- *     authenticated submitter address). This is the opposite field choice
- *     from `-useOriginationTable.ts`'s Originator column, which intentionally
- *     uses the top-level field; both are correct for their own row shape.
- *   - Subtitle: `` `${commodity} · ${corridor} · submitted ${date}` ``
- *     (backed fields only — human-resolved OQ#2). The Figma subtitle also
- *     references the valuation mode and attached documents, neither of which
- *     is backed pre-mint (see `-useOriginationTable.ts`'s docs for why); those
- *     parts are omitted, not fabricated. The corridor uses the same
- *     hyphen→arrow transform as `-useOriginationTable.ts` (`"PE-CN"` →
- *     `"PE → CN"`); any missing segment is dropped cleanly rather than
- *     rendered as a bare "—" in the middle of the joined string.
- *   - Action: inert "Review" button — no wiring/navigation this issue
- *     (resolved OQ#1); rendered by the view, not modeled here.
- *
- * Every field is read defensively: `loan_data` is `serde_json::Value` on the
- * wire, so missing/malformed nested fields degrade to "—" rather than
- * fabricating or throwing (mirrors `mapSubmissionToRow`'s guards). The
- * Origination group keeps exactly the normalized statuses `InReview` and
- * `ChangesRequested`: backend merged/lifecycle statuses normalize to
- * `Approved` (#892) and belong on the Loans surfaces, and `Rejected` is a
- * terminal decision record with nothing left to act on. `ChangesRequested`
- * was originally excluded as originator-actionable (#949/#950); issue #1046
- * reversed that — an origination awaiting a resubmit must stay visible on the
- * Overview, with the reviewer reason readable on the `/origination/$id`
- * detail page (banner-only per #950) via the same "Review" link.
+ * spec: docs/frontend/trustee-flows.md#needs-attention-section (field
+ * mapping incl. the #1046 ChangesRequested inclusion and unfiltered-fetch
+ * rationale, scope, empty/loading/error handling).
  */
 import {
   normalizeOriginationSubmissionStatus,

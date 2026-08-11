@@ -692,7 +692,7 @@ describe("DeploymentMonitorPanel — ready state", () => {
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Open Mineral / Copper Concentrate").length,
+        screen.getAllByText("Copper Concentrate").length,
       ).toBeGreaterThanOrEqual(1);
     });
 
@@ -963,7 +963,6 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     }
 
     // Old Active-Loans-shaped columns are absent from this tab.
-    expect(screen.queryByText("Borrower / Commodity")).toBeNull();
     expect(screen.queryByText("Principal")).toBeNull();
     expect(screen.queryByText("LTV")).toBeNull();
     expect(screen.queryByText("Duration")).toBeNull();
@@ -977,7 +976,7 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     expect(screen.getByText("PE → CN")).toBeInTheDocument();
     expect(screen.getByText("14.0%")).toBeInTheDocument();
     expect(screen.getByText("15 Dec 2026")).toBeInTheDocument();
-    expect(screen.getByText("InReview")).toBeInTheDocument();
+    expect(screen.getByText("In review")).toBeInTheDocument();
   });
 
   it("still renders the empty state on the In Origination tab with no submissions", async () => {
@@ -1023,7 +1022,7 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
       expect(screen.getByTestId("loan-book-table")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Borrower / Commodity")).toBeInTheDocument();
+    expect(screen.getByText("Commodity")).toBeInTheDocument();
     expect(screen.getByText("Protection")).toBeInTheDocument();
     expect(screen.queryByTestId("origination-table")).toBeNull();
   });
