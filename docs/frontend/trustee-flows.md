@@ -724,6 +724,12 @@ to resubmit — so it is preserved, not folded into `Approved` (#950).
 Columns: Originator · Commodity · Facility · Corridor · Rate · Maturity · Submitted ·
 Status/action.
 
+**Row set (#1056):** the table lists **all** submissions, newest first — `Approved` rows
+(including backend merged/lifecycle statuses, which normalize to `Approved` per #892) render
+with the green "Approved · `<date>`" chip alongside `InReview` / `ChangesRequested` / `Rejected`.
+This reverses the short-lived #1044 in-flight filter: the approval history stays visible on the
+origination surface, while the resulting loan also lives on the Loans surfaces.
+
 - **Originator** ← `loan_data.originator` (the name as submitted), **not**
   `SubmissionView.originator` (the authenticated-submitter address) — distinct sources.
 - **Commodity** ← `loan_data.commodity`. The Figma's valuation sub-line ("NSR · Net Smelter

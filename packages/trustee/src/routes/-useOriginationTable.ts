@@ -153,20 +153,16 @@ export function useOriginationTable(): UseOriginationTableResult {
       rows: [],
     };
   }
-  // Only in-flight originations (#1044): Approved submissions (incl. backend
-  // merged/lifecycle statuses, which normalize to Approved per #892) belong
-  // on the Loans surfaces, not here. InReview / ChangesRequested / Rejected
-  // remain — spec: docs/product-specs/trustee-dashboard.md.
-  const inFlight = (data ?? []).filter(
-    (s) => normalizeOriginationSubmissionStatus(s.status) !== "Approved",
-  );
-  if (inFlight.length === 0) {
+  // All statuses listed, incl. Approved with its green chip (#1056 — reverses
+  // the #1044 in-flight filter). spec: docs/product-specs/trustee-dashboard.md.
+  const submissions = data ?? [];
+  if (submissions.length === 0) {
     return { state: "empty", errorMessage: null, errorDetails: null, rows: [] };
   }
   return {
     state: "ready",
     errorMessage: null,
     errorDetails: null,
-    rows: inFlight.map(mapSubmissionToRow),
+    rows: submissions.map(mapSubmissionToRow),
   };
 }
