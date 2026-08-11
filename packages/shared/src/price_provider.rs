@@ -13,6 +13,23 @@
 //! [`MetalPricePriceProvider`](crate::metal_price::MetalPricePriceProvider)
 //! (`METALPRICE_PROVIDER_KEY`, precious-metal USD spot/historical rates from
 //! [MetalpriceAPI](https://metalpriceapi.com/documentation)).
+//!
+//! ## Market vs non-market providers
+//!
+//! Every registered key is classified as **market** (backed by a live external
+//! feed, e.g. `metal_price`) or **non-market** (a deterministic stub with no
+//! relationship to a real price, e.g. `static`). [`is_market_provider`] and
+//! [`is_known_provider`] expose that classification.
+//!
+//! [`price_provider_for`] refuses to resolve a non-market key unless the caller
+//! passes `allow_non_market = true`. This function stays pure — it does not read
+//! the environment — so the escape hatch is threaded in explicitly by callers.
+//! The one production caller is the `asset_price_collector` worker job, which
+//! reads it once at startup from `PRICE_PROVIDER_ALLOW_NON_MARKET`
+//! (`AssetPriceCollectorSettings::from_env`) and threads it through; the same flag
+//! also gates the worker's boot-time assertion that no drawn loan uses a
+//! non-market provider. Leave the variable unset (default refuse) in production;
+//! set it to allow `static` in dev/test.
 
 use std::sync::Arc;
 
@@ -43,17 +60,79 @@ pub const STATIC_PROVIDER_KEY: &str = "static";
 /// [`MetalPricePriceProvider`](crate::metal_price::MetalPricePriceProvider).
 pub const METALPRICE_PROVIDER_KEY: &str = "metal_price";
 
+/// A registered provider key and whether it is backed by a live market feed.
+struct ProviderSpec {
+    key: &'static str,
+    is_market: bool,
+}
+
+/// The full set of registered `price_provider` keys, with their market
+/// classification. Adding a provider means adding it here *and* to the `CHECK`
+/// constraint on `collateral_valuation_config.price_provider`
+/// (`packages/shared/migrations/20260811000001_price_provider_market_guard.sql`)
+/// — the two must stay in sync, mirroring the existing `valuation_mode`
+/// enum/`CHECK` coupling on the same table.
+const PROVIDERS: &[ProviderSpec] = &[
+    ProviderSpec {
+        key: STATIC_PROVIDER_KEY,
+        is_market: false,
+    },
+    ProviderSpec {
+        key: METALPRICE_PROVIDER_KEY,
+        is_market: true,
+    },
+];
+
+/// Whether `key` is a registered provider (market or non-market).
+pub fn is_known_provider(key: &str) -> bool {
+    PROVIDERS.iter().any(|p| p.key == key)
+}
+
+/// Whether `key` is a registered **market** provider (a live external feed).
+/// An unknown key is never a market provider.
+pub fn is_market_provider(key: &str) -> bool {
+    PROVIDERS.iter().any(|p| p.key == key && p.is_market)
+}
+
+/// The registered provider keys, in registry order — for diagnostics and error
+/// messages so they stay in sync with [`PROVIDERS`] rather than duplicating the
+/// list as a string literal.
+pub fn known_provider_keys() -> Vec<&'static str> {
+    PROVIDERS.iter().map(|p| p.key).collect()
+}
+
 /// Resolve a `price_provider` string key (as stored on the collateral-valuation anchor) to a
-/// concrete provider. Returns an error for unknown keys — and for providers whose
-/// configuration is missing (e.g. an unset API key) — so the caller can log and
-/// skip the affected asset.
-pub fn price_provider_for(key: &str) -> Result<Arc<dyn PriceProvider>> {
+/// concrete provider. Returns an error for unknown keys, for providers whose
+/// configuration is missing (e.g. an unset API key), and — unless
+/// `allow_non_market` is `true` — for known non-market (stub) providers, so the
+/// caller can log and skip the affected asset exactly as it already does for the
+/// other error cases.
+///
+/// `allow_non_market` is an explicit parameter rather than an environment read so
+/// this function (and the `shared` crate) stays pure and unit-testable without
+/// env-gated tests. See the module docs for how the production caller threads the
+/// flag through from `PRICE_PROVIDER_ALLOW_NON_MARKET`.
+pub fn price_provider_for(key: &str, allow_non_market: bool) -> Result<Arc<dyn PriceProvider>> {
+    // The registry (`PROVIDERS`) is the single source of truth for whether a key is
+    // known and whether it is market-backed, so classification never drifts between
+    // this resolution path and `is_market_provider` (used by the worker startup
+    // assertion). Adding a provider to `PROVIDERS` guards it here automatically.
+    if !is_known_provider(key) {
+        return Err(anyhow!("unknown price provider key `{key}`"));
+    }
+    if !is_market_provider(key) && !allow_non_market {
+        return Err(anyhow!(
+            "non-market price provider `{key}` refused in production; set \
+             PRICE_PROVIDER_ALLOW_NON_MARKET to allow in dev/test"
+        ));
+    }
     match key {
         STATIC_PROVIDER_KEY => Ok(Arc::new(StaticPriceProvider)),
         METALPRICE_PROVIDER_KEY => Ok(Arc::new(
             crate::metal_price::MetalPricePriceProvider::from_env()?,
         )),
-        other => Err(anyhow!("unknown price provider key `{other}`")),
+        // `is_known_provider` above already rejected anything not in `PROVIDERS`.
+        _ => unreachable!("known provider key `{key}` has no constructor arm"),
     }
 }
 

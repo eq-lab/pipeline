@@ -32,7 +32,7 @@ use chrono::{DateTime, Datelike, TimeZone, Timelike, Utc};
 use shared::collateral_valuation::asset_for_metal;
 use shared::collateral_valuation_repo::{AssetProvider, CollateralValuationRepo};
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
-use shared::price_provider::price_provider_for;
+use shared::price_provider::{is_market_provider, price_provider_for};
 
 pub use config::{AssetPriceCollectorSettings, PriceInterval};
 
@@ -197,7 +197,7 @@ async fn collect_asset(
     provider_key: &str,
     now: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    let provider = price_provider_for(provider_key)?;
+    let provider = price_provider_for(provider_key, settings.allow_non_market)?;
 
     let grid = expected_grid(now, settings.interval, settings.retention);
     let Some(cutoff) = grid.first().copied() else {
@@ -239,5 +239,45 @@ async fn collect_asset(
         tracing::info!(asset = %asset, provider = %provider_key, inserted, "collected asset prices");
     }
 
+    Ok(())
+}
+
+/// Pure filter (no DB): the subset of `providers` that are non-market and would be
+/// refused by [`price_provider_for`] given `allow_non_market`.
+///
+/// Factored out of [`assert_live_loans_use_market_providers`] so the decision logic
+/// is unit-testable without a database; the DB round-trip only supplies the input
+/// list.
+pub fn non_market_providers_in_use(providers: &[String], allow_non_market: bool) -> Vec<String> {
+    if allow_non_market {
+        return Vec::new();
+    }
+    providers
+        .iter()
+        .filter(|p| !is_market_provider(p))
+        .cloned()
+        .collect()
+}
+
+/// Worker startup guard: fail fast if any **drawn** loan's valuation anchor names a
+/// non-market price provider and the dev/test escape hatch is off.
+///
+/// Called once at boot (before the collection loop is spawned) so a misconfigured
+/// production deployment aborts immediately with a clear error rather than
+/// silently serving a fabricated price series. Checks all drawn loans
+/// (`submitted_loans.chain_id IS NOT NULL`) — a stricter, safe superset of
+/// "approved, non-closed" (see [`CollateralValuationRepo::distinct_providers_for_drawn_loans`]).
+pub async fn assert_live_loans_use_market_providers(
+    repo: &CollateralValuationRepo,
+    allow_non_market: bool,
+) -> anyhow::Result<()> {
+    let providers = repo.distinct_providers_for_drawn_loans().await?;
+    let offending = non_market_providers_in_use(&providers, allow_non_market);
+    if !offending.is_empty() {
+        return Err(anyhow::anyhow!(
+            "drawn loan(s) use non-market price provider(s) {offending:?}; refusing to \
+             start. Set PRICE_PROVIDER_ALLOW_NON_MARKET to allow in dev/test."
+        ));
+    }
     Ok(())
 }

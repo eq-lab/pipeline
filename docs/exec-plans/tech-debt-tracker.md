@@ -844,6 +844,25 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `format:check` CI step so drift can't silently return. Alternatively scope the hook's
   Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
 
+### TD-54: `CollateralValuationInput::asset` is stored un-normalized
+
+- **Date:** 2026-08-11
+- **Location:** `packages/api/src/routes/loan_book.rs` (`validate_submission`), fed into
+  `CollateralValuationRepo::insert_pending` → `loan_collateral_valuations.asset`.
+- **Gap:** #1023 added a non-empty check on `asset` but (by the resolved scope: "non-empty
+  only") does not trim or upper-case it. The original value is stored verbatim and then used
+  as (a) the `loan_asset_prices` series key `(asset, provider, timestamp)` and (b) the
+  MetalpriceAPI `currencies=` symbol. A submission of `" XAU "` or `"xau"` passes validation.
+- **Impact:** For StandardGoods loans the collector would poll a malformed symbol, log a
+  per-pair error and skip it, so the loan reads silently *unpriced* — the same "fails
+  quietly, monitoring gap" failure mode #1023 set out to close, just via a different field.
+  Not a mispricing (reader and collector both key off the same stored string), and
+  MetalConcentrate prices each metal via `asset_for_metal` (clean symbols) independently, so
+  the blast radius is StandardGoods anchors.
+- **Suggested fix:** Trim (and likely upper-case) `asset` at submission before persisting, or
+  validate it against `[A-Z0-9]{2,6}`. Consider the same normalization for
+  `price_provider`. Low-risk, no schema change.
+
 ---
 
 ## Post-MVP

@@ -42,7 +42,7 @@ fn valid_request() -> SubmitLoanRequest {
         collateral_valuation: CollateralValuationInput {
             valuation_mode: "StandardGoods".to_owned(),
             asset: "XCU".to_owned(),
-            price_provider: "LME".to_owned(),
+            price_provider: "metal_price".to_owned(),
             haircut_pct: "0.20".to_owned(),
             quantity_dmt: "1000".to_owned(),
         },
@@ -135,6 +135,32 @@ fn unknown_valuation_mode_is_rejected() {
     r.collateral_valuation.valuation_mode = "Moon".to_owned();
     let err = validate_submission(&r).unwrap_err();
     assert!(err.contains("valuation_mode"), "unexpected error: {err}");
+}
+
+#[test]
+fn unknown_price_provider_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.price_provider = "LME".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("price_provider"), "unexpected error: {err}");
+}
+
+#[test]
+fn empty_asset_is_rejected() {
+    let mut r = valid_request();
+    r.collateral_valuation.asset = "   ".to_owned();
+    let err = validate_submission(&r).unwrap_err();
+    assert!(err.contains("asset"), "unexpected error: {err}");
+}
+
+#[test]
+fn static_provider_is_accepted_at_submission() {
+    // `static` is a known registry key, so submission validation accepts it — the
+    // market-vs-non-market guard is enforced at price-resolution time and worker
+    // startup (both respect the dev/test escape hatch), not here.
+    let mut r = valid_request();
+    r.collateral_valuation.price_provider = "static".to_owned();
+    assert!(validate_submission(&r).is_ok());
 }
 
 #[test]
@@ -358,7 +384,7 @@ fn submit_request_defaults_optional_fields() {
         "collateral_valuation": {
             "valuation_mode": "StandardGoods",
             "asset": "XCU",
-            "price_provider": "LME",
+            "price_provider": "metal_price",
             "haircut_pct": "0.20",
             "quantity_dmt": "1000"
         },

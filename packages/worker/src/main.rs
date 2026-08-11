@@ -1,3 +1,4 @@
+use pipeline_worker::asset_price_collector::assert_live_loans_use_market_providers;
 use pipeline_worker::asset_price_collector::run_asset_price_collector_job;
 use pipeline_worker::asset_price_collector::AssetPriceCollectorSettings;
 use pipeline_worker::indexer::config::{env_bool, IndexerSettings};
@@ -115,6 +116,10 @@ async fn main() -> anyhow::Result<()> {
         let settings = AssetPriceCollectorSettings::from_env()?;
         let anchors_repo = Arc::new(CollateralValuationRepo::new(pool.clone()));
         let price_repo = Arc::new(LoanAssetPriceRepo::new(pool.clone()));
+
+        // Fail fast at boot if a drawn loan already resolves to a non-market price
+        // provider and the dev/test escape hatch is off — see #1023.
+        assert_live_loans_use_market_providers(&anchors_repo, settings.allow_non_market).await?;
 
         tracing::info!("asset price collector job started");
         tokio::spawn(async move {

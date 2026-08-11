@@ -3,8 +3,8 @@
 use bigdecimal::BigDecimal;
 use chrono::{TimeZone, Utc};
 use shared::price_provider::{
-    price_provider_for, PriceProvider, StaticPriceProvider, STATIC_CURRENT_PRICE,
-    STATIC_PROVIDER_KEY,
+    is_known_provider, is_market_provider, price_provider_for, PriceProvider, StaticPriceProvider,
+    METALPRICE_PROVIDER_KEY, STATIC_CURRENT_PRICE, STATIC_PROVIDER_KEY,
 };
 use std::str::FromStr;
 
@@ -57,12 +57,31 @@ async fn historical_price_varies_across_timestamps() {
 
 #[tokio::test]
 async fn registry_resolves_static_key() {
-    let provider = price_provider_for(STATIC_PROVIDER_KEY).unwrap();
+    let provider = price_provider_for(STATIC_PROVIDER_KEY, true).unwrap();
     let price = provider.current_price("ANY").await.unwrap();
     assert_eq!(price, BigDecimal::from_str("1.2345").unwrap());
 }
 
 #[test]
 fn registry_rejects_unknown_key() {
-    assert!(price_provider_for("nope").is_err());
+    assert!(price_provider_for("nope", false).is_err());
+}
+
+#[test]
+fn registry_refuses_static_without_escape_hatch() {
+    assert!(price_provider_for(STATIC_PROVIDER_KEY, false).is_err());
+}
+
+#[test]
+fn is_market_provider_classifies_known_and_unknown_keys() {
+    assert!(is_market_provider(METALPRICE_PROVIDER_KEY));
+    assert!(!is_market_provider(STATIC_PROVIDER_KEY));
+    assert!(!is_market_provider("nope"));
+}
+
+#[test]
+fn is_known_provider_classifies_known_and_unknown_keys() {
+    assert!(is_known_provider(STATIC_PROVIDER_KEY));
+    assert!(is_known_provider(METALPRICE_PROVIDER_KEY));
+    assert!(!is_known_provider("nope"));
 }

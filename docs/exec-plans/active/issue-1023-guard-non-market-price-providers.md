@@ -87,6 +87,11 @@ _None_ — both resolved by the issue owner (2026-08-11):
 
 ## Implementation Steps
 
+**Status: all steps 1–6 implemented on `fix/1023-guard-non-market-price-providers`.**
+`cargo clippy --all -- -D warnings` is clean; `cargo test -p shared`,
+`cargo test -p pipeline-api`, `cargo test -p pipeline-worker`, and full
+`cargo test --all` all pass (0 failures). No deviations from the plan.
+
 ### 1. Provider registry — market classification + guarded resolution
 
 `packages/shared/src/price_provider.rs`
