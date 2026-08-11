@@ -2,16 +2,8 @@ import { Button } from "../Button";
 import { useErrorDetailsDialog } from "./useErrorDetailsDialog";
 
 /**
- * ErrorDetailsDialog — shared modal that shows the full raw text behind a
- * failed action (e.g. a Soroban simulation error), with a copy-to-clipboard
- * button. Paired with `InlineError`, which owns this dialog's open state at
- * each adoption site. spec: docs/frontend/error-handling.md
- *
- * Shell/a11y pattern copied from the `NetworkSwitchDialog` idiom (#1032) /
- * `-RejectReasonDialog.tsx` (informational 440px proportions, not the
- * 640px form variant): fixed backdrop, `role="dialog"` + `aria-modal` +
- * `aria-labelledby`, Escape closes, backdrop click closes, panel click does
- * not, initial focus on Close.
+ * ErrorDetailsDialog — modal showing the full raw text behind a failed action.
+ * spec: docs/frontend/error-handling.md
  */
 export interface ErrorDetailsDialogProps {
   open: boolean;

@@ -1,39 +1,15 @@
 import React from "react";
 
 /**
- * Logo — Pipeline wordmark.
- *
- * Inline SVG rendering of the "Pipeline" wordmark from the top-left of the
- * Figma frame 1497-94556. The SVG paths are inlined directly (rather than
- * loaded via a Vite URL import) so the component is self-contained — no
- * external request, no build-system dependency on SVGR — and can be themed
- * via `currentColor`.
- *
- * Intrinsic size matches the Figma asset: 116 × 32 (a 29:8 aspect ratio).
- * Callers can override the rendered width via the `width` prop; the height
- * scales proportionally because the underlying `<svg>` uses `viewBox`
- * preservation rather than fixed dimensions.
- *
- * Color: the wordmark paints with `currentColor`, defaulting to the brand
- * navy token (`--color-pipeline-brand`). Override by passing a `className`
- * (e.g. `text-[color:var(--color-pipeline-paper)]` for a dark surface) or a
- * `style={{ color }}` value.
- *
- * Accessibility: rendered with `role="img"` and `aria-label="Pipeline"` so
- * screen readers announce the brand name. Pass `aria-label` to override
- * (e.g. when used as a link to the home route, the parent anchor usually
- * owns the label and the SVG should be hidden — set `aria-hidden`).
+ * Logo — Pipeline wordmark, inline SVG.
+ * spec: docs/frontend/ui-components.md#logo
  */
 
 export interface LogoProps extends Omit<
   React.SVGAttributes<SVGSVGElement>,
   "viewBox" | "fill"
 > {
-  /**
-   * Rendered width in pixels (or any valid CSS length). Height scales
-   * proportionally via the SVG viewBox. Defaults to the Figma intrinsic
-   * width of 116.
-   */
+  /** Rendered width (px number or CSS length); height scales via viewBox. Defaults to 116. */
   width?: number | string;
 }
 
@@ -50,15 +26,13 @@ export const Logo = React.forwardRef<SVGSVGElement, LogoProps>(function Logo(
   },
   ref,
 ) {
-  // Default color → brand navy. Callers can override via className/style.
   const composedStyle: React.CSSProperties = {
     color: "var(--color-pipeline-brand)",
     ...style,
   };
 
-  // Compute proportional height so the SVG paints at the requested width
-  // without distortion. Numbers stay numbers (SVG attribute), strings pass
-  // through (e.g. "100%", "8rem") and let `aspect-ratio` keep the shape.
+  // Numeric widths get a computed proportional height attribute; string widths
+  // (e.g. "100%", "8rem") pass through and let the viewBox keep the shape.
   const height =
     typeof width === "number"
       ? (width * INTRINSIC_HEIGHT) / INTRINSIC_WIDTH
@@ -76,9 +50,6 @@ export const Logo = React.forwardRef<SVGSVGElement, LogoProps>(function Logo(
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={composedStyle}
-      // When a parent supplies its own label/title, hide the inner role from
-      // assistive tech to avoid double announcement. The caller still sees
-      // the consumed prop above via `ariaLabel`.
       {...rest}
     >
       <g>

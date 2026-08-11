@@ -2,24 +2,7 @@ import React from "react";
 
 /**
  * NavIcon — inline SVG icons for the four top-bar navigation slots.
- *
- * These icons are rendered as inline `<svg>` elements so they inherit
- * `fill="currentColor"` from the surrounding CSS `color` property.  This
- * makes them fully responsive to the IconButton's active/inactive state
- * without requiring a CSS mask or any URL import at all.
- *
- * Supported names:
- *   - `"home"`    — filled house glyph  (Figma nav-home.svg)
- *   - `"deposit"` — dollar-in-circle    (Figma nav-dollar.svg)
- *   - `"stats"`   — three bar-chart bars (Figma nav-stats.svg)
- *   - `"history"` — clock with arrow    (Figma nav-history.svg)
- *
- * Usage:
- * ```tsx
- * <IconButton icon={<NavIcon name="home" />} label="Home" active />
- * ```
- *
- * All paths are verbatim from the SVG assets in `assets/icons/`.
+ * spec: docs/frontend/ui-components.md#navicon
  */
 
 export type NavIconName = "home" | "deposit" | "stats" | "history";
@@ -27,10 +10,7 @@ export type NavIconName = "home" | "deposit" | "stats" | "history";
 export interface NavIconProps extends React.SVGAttributes<SVGSVGElement> {
   /** Which nav glyph to render. */
   name: NavIconName;
-  /**
-   * Rendered size in px.  Defaults to 24 to match the 24×24 icon slot
-   * inside IconButton.
-   */
+  /** Rendered size in px. Defaults to 24 (the IconButton icon slot). */
   size?: number;
 }
 

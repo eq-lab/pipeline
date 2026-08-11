@@ -5,62 +5,27 @@ import type {
   ActivityIconTone,
 } from "../ActivityIcon/ActivityIcon";
 
-/**
- * ActivityIconName — re-export of the ActivityIcon variant union so callers
- * can import the type directly from this module.
- */
+/** Re-export of the ActivityIcon variant union for direct import from this module. */
 export type ActivityIconName = ActivityIconVariant;
 
-/**
- * ActivityRowTone — re-export of the ActivityIcon tone union so callers
- * can import the type directly from this module.
- */
+/** Re-export of the ActivityIcon tone union for direct import from this module. */
 export type ActivityRowTone = ActivityIconTone;
 
 /**
- * ActivityRow — single row in the activity list.
- *
- * Layout: horizontal flex row with a top border separator.
- *   - Leading `ActivityIcon` (40 × 40 ink tile)
- *   - Two-line content block: title (Body 16/22) + timestamp (Caption 12/16)
- *   - Right-aligned `amount` slot (shrink-0) — accepts any `ReactNode` so
- *     callers can pass an `<AmountPill>` (success rows) or a custom two-line
- *     block (stake / unstake / convert / pending rows).
- *
- * `ActivityRow` is intentionally dumb — no per-state styling logic lives here.
- *
- * Acceptance criteria:
- *   - Top border using the secondary border token (`--color-pipeline-line`),
- *     16 px top padding.
- *   - 12 px gap between icon and content; content block uses `flex-1 min-w-0`.
- *   - Title truncates with ellipsis when it overflows.
- *   - Timestamp uses the secondary-ink token (`--color-pipeline-ink-muted`).
- *   - Right slot is right-aligned with `shrink-0`.
- *   - No raw colors or raw sizes.
- *
- * Figma reference: node 1497-94912.
+ * ActivityRow — single row in the activity list (icon + title/timestamp + amount slot).
+ * spec: docs/frontend/ui-components.md#activityrow
  */
 
 export interface ActivityRowProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which activity icon to display (re-exported from `ActivityIcon`). */
   icon: ActivityIconName;
-  /**
-   * Tonal variant forwarded to `ActivityIcon`:
-   * - `success` — green tile, white glyph
-   * - `warning` — amber tile, white glyph
-   * - `neutral` — muted gray tile, dark glyph (default)
-   *
-   * @default "neutral"
-   */
+  /** Tonal variant forwarded to `ActivityIcon`. @default "neutral" */
   tone?: ActivityRowTone;
   /** Primary text, e.g. "PLUSD → USDC". Truncates with ellipsis on overflow. */
   title: string;
   /** Secondary text, e.g. "Apr 17, 2:17 PM". Uses the secondary-ink token. */
   timestamp: string;
-  /**
-   * Right-aligned amount slot. Pass an `<AmountPill>` for success rows or a
-   * two-line block for stake / unstake / convert / pending rows.
-   */
+  /** Right-aligned amount slot; accepts any ReactNode (e.g. an `<AmountPill>`). */
   amount: React.ReactNode;
 }
 
@@ -102,16 +67,13 @@ export const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
 
     return (
       <div ref={ref} className={composed} {...rest}>
-        {/* Leading activity icon */}
         <ActivityIcon icon={icon} tone={tone} aria-hidden="true" />
 
-        {/* Two-line content block */}
         <div className={contentClasses}>
           <span className={titleClasses}>{title}</span>
           <span className={timestampClasses}>{timestamp}</span>
         </div>
 
-        {/* Right-aligned amount slot */}
         <div className={amountClasses}>{amount}</div>
       </div>
     );

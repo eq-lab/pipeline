@@ -1,25 +1,12 @@
 import React from "react";
 
-// All three tokens render from real vector SVGs via Vite's `?url` import,
-// matching the approach used for HeroIcon (Issue #238).
-// PLUSD vectorised in Issue #535 (Figma node 910:10281).
 import usdcSrc from "../../assets/icons/coin-usdc.svg?url";
 import splusdSrc from "../../assets/icons/coin-splusd.svg?url";
 import plusdSrc from "../../assets/icons/coin-plusd.svg?url";
 
 /**
- * CoinIcon — displays a USDC, PLUS-D, or sPLUSD coin icon at a given size.
- *
- * All tokens render from vector SVG assets (Issue #246, #534, #535).
- *
- * Sizes map to the contexts defined in the Figma spec:
- *   - sm (20 px) — wallet pill / conversion-card row
- *   - md (24 px) — default / general use
- *   - lg (40 px) — TokenInput / TokenAmountDisplay row icon
- *   - xl (72 px) — DepositHeader hero slot (Issue #595)
- *
- * Accessibility: decorative by default (`aria-hidden="true"`).  Pass an
- * explicit `aria-label` to make the icon meaningful to assistive tech.
+ * CoinIcon — USDC, PLUSD, or sPLUSD coin icon at a fixed size (sm/md/lg/xl).
+ * spec: docs/frontend/ui-components.md#coinicon
  */
 
 const SIZE_MAP: Record<"sm" | "md" | "lg" | "xl", number> = {
@@ -35,13 +22,7 @@ export interface CoinIconProps extends Omit<
 > {
   /** Which coin to display. */
   token: "usdc" | "plusd" | "splusd";
-  /**
-   * Rendered size.
-   * - sm (20 px) — wallet pill / conversion-card row
-   * - md (24 px) — default
-   * - lg (40 px) — TokenInput / TokenAmountDisplay row icon
-   * - xl (72 px) — DepositHeader hero slot
-   */
+  /** Rendered size: sm 20 / md 24 (default) / lg 40 / xl 72 px. */
   size?: "sm" | "md" | "lg" | "xl";
 }
 
@@ -68,12 +49,8 @@ export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
     // Decorative by default; becomes meaningful when caller supplies aria-label.
     const isHidden = ariaLabel == null ? true : (ariaHidden ?? false);
 
-    // "block" is the default display; callers can override it with responsive
-    // Tailwind utilities (e.g. className="hidden md:block") because class-based
-    // rules share the same specificity and the caller's classes appear later in
-    // the stylesheet.  We deliberately do NOT put display in the inline style —
-    // inline styles have higher specificity than utility classes, which would
-    // prevent responsive hiding from working (Issue #547).
+    // Display stays a class, never an inline style — inline style would beat
+    // responsive utilities like "hidden md:block" (Issue #547).
     const composedClassName = ["block", className].filter(Boolean).join(" ");
 
     return (
