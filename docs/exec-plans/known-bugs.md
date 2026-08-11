@@ -17,6 +17,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-18: `-dashboard.test.tsx` asserts the pre-#1053 raw status literal — fails on `main`
+- **Date:** 2026-08-11
+- **Location:** `packages/frontend/src/routes/-dashboard.test.tsx` — "renders the Figma 4116-9155 column set and formatted values when selected" (`expect(screen.getByText("InReview"))`, ~line 980).
+- **Symptom:** The test fails on a clean `main` checkout: the origination Status cell renders the #1053 humanized label "In review", but the assertion still expects the backend literal "InReview".
+- **Root cause:** #1053 changed the status rendering; `DeploymentMonitorPanel.test.tsx` fixtures were updated (`statusLabel: "In review"`) but this route-level assertion was missed. Not caught because CI does not run the frontend vitest suite.
+- **Workaround:** None needed — change the assertion to `"In review"`. Discovered while running the suite for #1058 (unrelated to that change, so not fixed inline).
+
+### BUG-17: `dashboards.md` In Origination row-field spec is stale (pre-#814 column set)
+- **Date:** 2026-08-11
+- **Location:** `docs/product-specs/dashboards.md` — "In Origination tab" bullet (Panel B section, ~line 160-161).
+- **Symptom:** The spec says each origination row "reuses the Active Loans table layout plus a Status column" with fields Borrower/Commodity, Principal, Rate, Protection (Collateral/LTV/Duration as `—`). The actual `OriginationTable.tsx` renders the issue #814 8-column set: Originator, Commodity, Facility, Corridor, Rate, Maturity, Submitted, Status.
+- **Root cause:** #814 replaced the origination tab's field set but this product-spec paragraph was not updated (only `docs/frontend/dashboard-components.md` was).
+- **Workaround:** None needed — `dashboard-components.md#originationtable` and the #814 exec plan describe the current columns. Discovered while scoping #1058 (out of scope there: the origination tab is explicitly unchanged).
+
 ### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
 - **Date:** 2026-08-07
 - **Location:** `packages/trustee/src/components/useNeedsAttention.ts:176` (sets `errorMessage: error.message` on the `"error"` state) / `packages/trustee/src/components/NeedsAttention.tsx` (never reads `errorMessage` or branches on `state === "error"`).

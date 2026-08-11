@@ -31,7 +31,7 @@ function baseState(
     },
     rows: [
       {
-        borrowerCommodity: "Open Mineral / Copper Concentrate",
+        commodity: "Copper Concentrate",
         principal: "$8.0M",
         collateral: "—",
         ltv: "—",

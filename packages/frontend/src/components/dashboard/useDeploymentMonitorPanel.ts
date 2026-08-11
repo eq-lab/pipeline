@@ -83,7 +83,7 @@ function formatSummary(summary: LoanBookSummary): LoanBookSummaryProps {
 
 function formatRow(entry: LoanBookEntry): LoanBookRow {
   return {
-    borrowerCommodity: `${entry.borrower} / ${entry.commodity}`,
+    commodity: entry.commodity,
     principal: formatCompactUsd(entry.principal),
     collateral: formatCompactUsd(entry.collateral),
     ltv: formatLtv(entry.ltv),
