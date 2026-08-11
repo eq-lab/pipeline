@@ -9,10 +9,11 @@ Trustee product intent lives in `docs/product-specs/` (see the Trustee panel not
 [`docs/FRONTEND.md`](../FRONTEND.md#application-structure)); this doc captures the frontend
 *implementation* architecture.
 
-> **Status:** scaffold. Sections are filled in as each module's comments are migrated under
-> [issue #991](https://github.com/eq-lab/pipeline/issues/991). Do not delete a source comment until
-> its content lives in a section below. The **Audit Log** section below is migrated; the rest are
-> scaffolds.
+> **Status:** migrated (#997, part of epic
+> [#991](https://github.com/eq-lab/pipeline/issues/991)). Do not delete a source comment until its
+> content lives in a section below. `lib/env.ts` and `routes/-loanDetailStatic.ts` keep their
+> definition-site config/field docs by design (rule-6 compliant: short constraints at the
+> definition, not flow narration).
 
 ## Audit Log
 
@@ -1298,3 +1299,42 @@ radius, 48px tall) labelled "Connect Wallet"; the `!` override on its className 
 `Button` component's built-in radius/`min-w-12` (Tailwind v4 equal-specificity hazard, #357 — the
 same pattern `Button` itself uses for its `compact` size override); caption footer ink-muted,
 centered.
+
+## App bootstrap & providers
+
+**Sources:** `packages/trustee/src/main.tsx`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
+#791 (sign-in flow / provider stack).
+
+`main.tsx` configures the shared `@pipeline/wallet-connect` slice (`setWalletConnectConfig`)
+before rendering `EvmWalletProvider`/`StellarWalletProvider` — those providers initialise AppKit /
+the Stellar kit lazily on first render (not at module load), so the call only needs to precede
+`createRoot(...).render(...)`, not any particular import (#791). The `QueryClient` is a module-
+level singleton so React StrictMode's double-mount doesn't create two clients (`EvmWalletProvider`
+mounts its own internal `QueryClientProvider` for wagmi; this one is for Trustee-owned fetching).
+
+Provider order mirrors the LP frontend's `main.tsx`, minus `WalletGateProvider` — the Trustee
+omits the LP first-connection terms gate (internal operators; see the #791 exec plan's Decision
+Log). Without a `WalletGateContext.Provider` mounted, `@pipeline/wallet-connect`'s gate hooks
+default to a no-op (immediate proceed). `TrusteeSessionProvider` is NOT mounted in `main.tsx` —
+it calls `useNavigate()`, which needs router context, so it mounts inside the root route
+(`routes/__root.tsx`), below `<RouterProvider>`.
+
+### Nav sections (`lib/nav.ts`)
+
+`TRUSTEE_NAV_ITEMS` defines the six nav sections per Figma node `4116:8855` ("Aside") and
+`docs/product-specs/trustee-dashboard.md` (spec #453): Overview, Origination, Loans, Cash
+Management, Risk Council, Audit Log. This replaced the #777 scaffold's `TRUSTEE_FLOW_TYPES`
+(Type-1..4 taxonomy) — the Figma nav is the real product navigation (#786). `badgeCount` is
+intentionally unpopulated: there is no backend source for the counts in the Figma mock (1/4/3),
+and per [[no-frontend-computed-metrics]] the badge slot renders only when a count is supplied
+(see [Trustee sidebar](#trustee-sidebar-figma-node-41168855-aside)); wiring a real count is
+tracked in `docs/exec-plans/tech-debt-tracker.md`.
+
+### Auth endpoint wrappers (`api/auth.ts`)
+
+Typed wrappers over `GET /v1/auth/challenge` / `POST /v1/auth/verify` (#791). Contract source of
+truth: `packages/api/src/routes/auth.rs` and `docs/product-specs/api-authorization.md`. A `401`
+from `challenge` means the address is not on the server allow-list — the sign-in flow renders it
+as "not authorized" (see [Sign-in card](#sign-in-card-figma-node-417433891-frame-4174-31660-unauthenticated-overlay));
+a `401` from `verify` means an unknown address, no outstanding challenge, or a bad signature
+(usually an expired or already-consumed nonce).

@@ -1,8 +1,8 @@
 /**
  * Typed wrappers around the backend signature-auth endpoints (#791).
  *
- * Contract source of truth: `packages/api/src/routes/auth.rs` and
- * `docs/product-specs/api-authorization.md`.
+ * spec: docs/frontend/trustee-flows.md#auth-endpoint-wrappers-apiauthts
+ * (contract source of truth, 401 semantics per endpoint).
  */
 import { apiFetch } from "./client";
 
@@ -28,12 +28,7 @@ export interface VerifyResponse {
   expiresIn: number;
 }
 
-/**
- * `GET /v1/auth/challenge?address=<0x…|G…>&chain_id=<optional>`.
- *
- * 401 (`ApiUnauthorizedError`, see `./client`) means the address is not on
- * the server allow-list — the sign-in flow renders that as "not authorized".
- */
+/** `GET /v1/auth/challenge?address=<0x…|G…>&chain_id=<optional>`. */
 export async function getAuthChallenge(
   address: string,
   chainId: number,
@@ -45,13 +40,7 @@ export async function getAuthChallenge(
   return apiFetch<ChallengeResponse>(`/v1/auth/challenge?${params}`);
 }
 
-/**
- * `POST /v1/auth/verify` — exchanges a signed challenge for a bearer JWT.
- *
- * 401 (`ApiUnauthorizedError`) means an unknown address, no outstanding
- * challenge, or a bad signature (rare on the happy path — usually a nonce
- * that expired or was already consumed).
- */
+/** `POST /v1/auth/verify` — exchanges a signed challenge for a bearer JWT. */
 export async function postAuthVerify(
   req: VerifyRequest,
 ): Promise<VerifyResponse> {
