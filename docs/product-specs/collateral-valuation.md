@@ -20,6 +20,8 @@ Ongoing price-data feeds stay at or below US$1,000 per year in aggregate. The pr
 
 Prices are consumed off-chain and are not published to any on-chain oracle. Full price reporting agency subscriptions (Platts, Argus, Fastmarkets, CRU) are out of budget at this stage.
 
+The protocol distinguishes market price providers (live external feeds, e.g. MetalpriceAPI) from non-market stubs used only in development (the deterministic `static` provider). A production deployment refuses to resolve a non-market provider for a live loan — at loan submission, at price-collection time, and via a worker startup check — unless an explicit dev/test escape hatch is set.
+
 ## Valuation modes
 
 Each loan is valued in one of two modes, selected in the loan's valuation record.

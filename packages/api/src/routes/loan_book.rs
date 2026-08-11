@@ -27,6 +27,7 @@ use shared::collateral_valuation_repo::{
 use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
+use shared::price_provider::{is_known_provider, known_provider_keys};
 use shared::submitted_loan_repo::{SubmissionStatus, SubmittedLoanRepo, SubmittedLoanRow};
 
 use crate::auth::{AuthClaims, SecurityAddon, ORIGINATOR_ROLE, TRUSTEE_ROLE};
@@ -1027,6 +1028,16 @@ pub fn validate_submission(req: &SubmitLoanRequest) -> Result<(), String> {
                 "unknown valuation_mode `{other}` (expected StandardGoods or MetalConcentrate)"
             ))
         }
+    }
+    if req.collateral_valuation.asset.trim().is_empty() {
+        return Err("`asset` must not be empty".to_owned());
+    }
+    if !is_known_provider(&req.collateral_valuation.price_provider) {
+        return Err(format!(
+            "unknown price_provider `{}` (expected one of: {})",
+            req.collateral_valuation.price_provider,
+            known_provider_keys().join(", ")
+        ));
     }
     let haircut_pct = parse("haircut_pct", &req.collateral_valuation.haircut_pct)?;
     // BigDecimal only implements `PartialOrd<i32>` (not the reverse), so

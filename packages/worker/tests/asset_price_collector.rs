@@ -3,8 +3,8 @@
 
 use chrono::{TimeZone, Utc};
 use pipeline_worker::asset_price_collector::{
-    align_down_to_grid, expected_grid, latest_is_live, missing_points, retention_cutoff,
-    PriceInterval,
+    align_down_to_grid, expected_grid, latest_is_live, missing_points, non_market_providers_in_use,
+    retention_cutoff, PriceInterval,
 };
 
 #[test]
@@ -174,4 +174,36 @@ fn latest_is_live_boundary_is_two_cycles() {
     // One second past the window is treated as a missed point.
     let past_edge = latest + chrono::Duration::seconds(601);
     assert!(!latest_is_live(past_edge, latest));
+}
+
+// ── non_market_providers_in_use (#1023 guard) ───────────────────────────────────
+
+#[test]
+fn non_market_providers_in_use_empty_when_all_market() {
+    let providers = vec!["metal_price".to_owned()];
+    assert!(non_market_providers_in_use(&providers, false).is_empty());
+}
+
+#[test]
+fn non_market_providers_in_use_flags_static_without_escape_hatch() {
+    let providers = vec!["static".to_owned()];
+    assert_eq!(
+        non_market_providers_in_use(&providers, false),
+        vec!["static".to_owned()]
+    );
+}
+
+#[test]
+fn non_market_providers_in_use_empty_when_escape_hatch_allows() {
+    let providers = vec!["static".to_owned()];
+    assert!(non_market_providers_in_use(&providers, true).is_empty());
+}
+
+#[test]
+fn non_market_providers_in_use_filters_mixed_list() {
+    let providers = vec!["metal_price".to_owned(), "static".to_owned()];
+    assert_eq!(
+        non_market_providers_in_use(&providers, false),
+        vec!["static".to_owned()]
+    );
 }

@@ -438,6 +438,25 @@ impl CollateralValuationRepo {
         .await
     }
 
+    /// The distinct set of `price_provider` values in use across **drawn** loans
+    /// (`submitted_loans.chain_id IS NOT NULL`) — a safe superset of "approved,
+    /// non-closed" since on-chain closed/repaid status is not copied into
+    /// `submitted_loans` (see `20260713000001_submitted_loans_onchain_link.sql`).
+    /// Consumed by the worker startup assertion
+    /// (`assert_live_loans_use_market_providers`) to fail fast if a live loan names
+    /// a non-market provider and the dev/test escape hatch is off.
+    pub async fn distinct_providers_for_drawn_loans(&self) -> Result<Vec<String>, sqlx::Error> {
+        sqlx::query_as::<_, (String,)>(
+            "SELECT DISTINCT lcv.price_provider \
+             FROM loan_collateral_valuations lcv \
+             JOIN submitted_loans sl ON sl.id = lcv.submitted_loan_id \
+             WHERE sl.chain_id IS NOT NULL",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map(|rows| rows.into_iter().map(|(p,)| p).collect())
+    }
+
     /// Distinct `(payable-metal name, price_provider)` across **all** concentrate loans,
     /// on every chain — each loan's offtake payable metals joined to its anchor's provider.
     ///
