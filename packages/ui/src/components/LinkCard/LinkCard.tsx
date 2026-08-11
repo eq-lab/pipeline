@@ -1,21 +1,8 @@
 import React from "react";
 
 /**
- * LinkCard — Pipeline UI primitive.
- *
- * Row used in the QUESTIONS & ANSWERS section (Figma frame 1497-94556, nodes
- * 1497:94669 / 1497:94671 / 1497:94673). A label on the left and an
- * arrow-up-right icon on the right; the whole row is a focusable anchor.
- *
- * Visual structure:
- *   - Top border hairline (`--color-pipeline-line`) separating rows.
- *   - Label text in Body style (`--text-pipeline-body`), muted ink color in
- *     resting state, full ink on hover/focus.
- *   - Arrow-up-right icon (12.5 × 12.5 SVG, `currentColor`) on the right;
- *     tracks the text colour so it brightens with the label.
- *   - Minimum row height 40px, vertical padding 8–9px (mirrors Figma).
- *
- * Focus ring mirrors the pattern used by `Button` and `IconButton`.
+ * LinkCard — Q&A link row (label + arrow-up-right anchor).
+ * spec: docs/frontend/ui-components.md#linkcard
  */
 
 export interface LinkCardProps extends Omit<
@@ -36,7 +23,7 @@ const rootClasses = [
   "text-[length:var(--text-pipeline-body)]",
   "leading-[var(--text-pipeline-body--line-height)]",
   "font-[var(--font-weight-regular)]",
-  // Resting colour — muted ink; transitions to full ink on hover/focus
+  // Resting colour
   "text-[color:var(--color-pipeline-ink-muted)]",
   // Interaction
   "cursor-pointer select-none no-underline",
@@ -51,7 +38,7 @@ const rootClasses = [
   "focus-visible:text-[color:var(--color-pipeline-ink)]",
 ].join(" ");
 
-/** Inline arrow-up-right SVG — 12.5 × 12.5, painted with `currentColor`. */
+/** Arrow-up-right glyph, painted with `currentColor`. */
 function ArrowUpRight() {
   return (
     <svg
@@ -77,14 +64,10 @@ export const LinkCard = React.forwardRef<HTMLAnchorElement, LinkCardProps>(
 
     return (
       <a ref={ref} className={composed} {...rest}>
-        {/* Label — occupies the left portion of the row */}
         <span className="inline-block overflow-hidden text-ellipsis whitespace-nowrap">
           {label}
         </span>
 
-        {/* Icon slot — fixed 24px container mirrors the Figma drill-in node
-            (.drill-in, 1497:94670;8902:3678) so the icon is optically centered
-            inside a consistent touch target. */}
         <span
           aria-hidden="true"
           className="inline-flex size-6 shrink-0 items-center justify-center"

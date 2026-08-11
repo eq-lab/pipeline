@@ -4,18 +4,7 @@ import { InlineError } from "../InlineError/InlineError";
 
 /**
  * StepRow — numbered step row used inside `StepsCard`.
- *
- * Renders a numbered circle/square (e.g. `1`) + a label
- * (e.g. `Allow contract to use USDC`) + a trailing action `Button`
- * (e.g. `Approve` / `Convert`).
- *
- * Figma reference: node 1498-100694 (card-horizontal / List item)
- *   — node I1498:100694;8980:3384;1498:100676  (step 1, disabled)
- *   — node I1498:100694;8980:3384;1498:100685  (step 2, disabled)
- *
- * Disabled state matches Figma: entire row rendered at 30% opacity
- * (`opacity-30`). The action button additionally receives the HTML
- * `disabled` attribute so it is inert.
+ * spec: docs/frontend/ui-components.md#steprow
  */
 
 export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -25,50 +14,32 @@ export interface StepRowProps extends React.HTMLAttributes<HTMLDivElement> {
   label: string;
   /** Label for the trailing action button (e.g. "Approve", "Convert"). */
   actionLabel: string;
-  /**
-   * When true, the row renders at 30% opacity and the action button is
-   * inert. Defaults to `false`.
-   */
+  /** When true, the row dims and the action button is inert. Defaults to `false`. */
   disabled?: boolean;
   /** Called when the action button is clicked (only fires when not disabled). */
   onAction?: React.MouseEventHandler<HTMLButtonElement>;
-  /**
-   * When true, the action button is disabled and shows an in-flight spinner
-   * to communicate that a transaction is pending. Full row opacity is kept so
-   * the user can see the progress state clearly.
-   */
+  /** When true, the action button is disabled and shows an in-flight spinner. */
   loading?: boolean;
   /**
-   * Step state:
-   *   - `"idle"` (default) — renders the normal action button.
-   *   - `"success"` — keeps the numeric step badge on the left and replaces
-   *     the action button on the right with a wide green pill containing a
-   *     centred check icon (Figma node 1497-95272).
-   *   - `"error"` — red-tinted badge + `errorMessage` line; the action button
-   *     is KEPT so the user can retry. spec:
-   *     docs/frontend/wallet-flows.md#step-error-state
+   * Step state: "idle" (default), "success" (check pill replaces the action),
+   * or "error" (retry kept — spec: docs/frontend/wallet-flows.md#step-error-state).
    */
   state?: "idle" | "success" | "error";
   /** Red message line under the label; rendered only when `state` is `"error"`. */
   errorMessage?: string;
   /**
-   * Raw error text for the details dialog — never rendered inline. When
-   * present alongside `errorMessage`, the error line gains a "View details"
-   * trigger (via `InlineError`). spec: docs/frontend/error-handling.md
+   * Raw error text for the details dialog — never rendered inline.
+   * spec: docs/frontend/error-handling.md
    */
   errorDetails?: string;
 }
 
 const rootClasses = [
-  // items-center vertically centers the step badge, label, and action button
-  // within the row. When the label wraps to two lines the badge and button
-  // align to the mid-point of the label block, which matches the Figma intent.
   "flex items-center gap-3",
   "w-full",
   "transition-opacity duration-150",
 ].join(" ");
 
-/** 40 × 40 px numbered square with muted fill — matches Figma `image` node. */
 const stepCircleClasses = [
   "flex items-center justify-center",
   "size-10 shrink-0",
@@ -92,9 +63,6 @@ const labelClasses = [
   "leading-[var(--text-pipeline-body--line-height)]",
   "font-[var(--font-weight-regular)]",
   "text-[color:var(--color-pipeline-ink)]",
-  // Allow labels to wrap on mobile so long step descriptions
-  // (e.g. "Allow Pipeline to use USDC") remain fully readable.
-  // Previously `truncate` clipped them at 402px mobile width.
 ].join(" ");
 
 export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
@@ -117,9 +85,6 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
     const isSuccess = state === "success";
     const isError = state === "error";
 
-    // When disabled and not in a special state, apply 30% opacity.
-    // Success, error, and loading rows always render at full opacity so the
-    // user can see the check badge / error line / spinner clearly.
     const composed = [
       rootClasses,
       disabled && !isSuccess && !isError && !loading ? "opacity-30" : "",
@@ -135,9 +100,8 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
         className={composed}
         {...rest}
       >
-        {/* Numbered square — always visible; red-tinted in the error state.
-            Inline styles (not class overrides) so they deterministically beat
-            the base badge/number classes regardless of Tailwind emit order. */}
+        {/* Error tint via inline styles (not class overrides) so it
+            deterministically beats the base classes regardless of Tailwind emit order. */}
         <div
           data-testid={`step-row-${step}-badge`}
           className={stepCircleClasses}
@@ -156,11 +120,8 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
           </span>
         </div>
 
-        {/* Label (+ error line when state === "error"). A <div>, not a
-            <span>, because `InlineError` can render `ErrorDetailsDialog`'s
-            backdrop <div> as a descendant when its "View details" trigger
-            is present — a <div> is not valid phrasing content inside a
-            <span>. */}
+        {/* A <div>, not a <span>: `InlineError` can render `ErrorDetailsDialog`'s
+            backdrop <div> as a descendant, which is not valid inside a <span>. */}
         <div className={labelClasses}>
           {label}
           {isError && errorMessage && (
@@ -172,10 +133,8 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
           )}
         </div>
 
-        {/* Action button / loading spinner wrapper — matches Figma `ButtonCont` */}
         <div data-testid={`step-row-${step}-action`} className="shrink-0 p-1">
           {isSuccess ? (
-            /* Success state: wide green pill with check icon — matches Figma node 1497-95272 */
             <div
               className={[
                 "inline-flex items-center justify-center",
@@ -186,10 +145,6 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               aria-label={`${actionLabel} complete`}
               data-state="success"
             >
-              {/* Check icon — 20×20 viewport, strokeWidth 2.5 matches the
-                  medium-heavy Figma weight (node 1498:100802;9285:26314).
-                  Path spans the full usable height so the glyph clearly
-                  reads inside the 32 px pill. */}
               <svg
                 width="20"
                 height="20"
@@ -212,15 +167,13 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               variant="primary-dark"
               disabled={disabled || loading}
               onClick={onAction}
-              /* Override default 48px height to the 32px height used in the
-                 step card (Figma button height: 32px × 88px).
-                 Uses !h-8 (important modifier) so the override reliably beats
+              /* !h-8 (important modifier) so the height override reliably beats
                  the h-12 from the primary-dark variant class in Tailwind v4. */
               className="!h-8 w-22 min-w-0 text-[length:var(--text-pipeline-body)]"
               aria-busy={loading}
             >
               {loading ? (
-                /* Inline CSS-only spinner — no new exported primitive */
+                /* CSS-only spinner kept inline — no new exported primitive */
                 <span
                   className={[
                     "inline-block",

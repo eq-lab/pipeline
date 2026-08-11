@@ -7,26 +7,7 @@ import exchangeSrc from "../../assets/icons/exchange.svg";
 
 /**
  * ActivityIcon — 40 × 40 tonal tile that leads every transaction row.
- *
- * Renders a 20 px icon centered inside a 40 × 40 square tile with:
- *   - `rounded-pipeline-card` corner radius (`--radius-pipeline-card`)
- *   - Tile background and glyph color determined by the `tone` prop:
- *     - `success` — green fill (`--color-pipeline-success`), white glyph
- *     - `warning` — amber/gold fill (`--color-pipeline-warning`), white glyph
- *     - `neutral` — muted gray fill (`--color-pipeline-fill-muted`), dark
- *       muted glyph (no color inversion)
- *
- * Icon map:
- *   - `check-circle`      — completed / success transaction
- *   - `clock-pending`     — pending transaction
- *   - `arrow-up-circle`   — send / withdraw
- *   - `arrow-down-circle` — receive / deposit
- *   - `exchange`          — exchange / swap
- *
- * Accessibility: decorative by default (`aria-hidden="true"`).  Pass an
- * explicit `aria-label` to make the icon meaningful to assistive tech.
- *
- * Figma reference: node 1497-94912.
+ * spec: docs/frontend/ui-components.md#activityicon
  */
 
 export type ActivityIconVariant =
@@ -42,14 +23,7 @@ export type ActivityIconTone = "success" | "warning" | "neutral";
 export interface ActivityIconProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which icon to display. */
   icon: ActivityIconVariant;
-  /**
-   * Tone controls the tile background and glyph colour:
-   * - `success` — green fill, white glyph (completed state)
-   * - `warning` — amber/gold fill, white glyph (pending state)
-   * - `neutral` — muted gray fill, dark glyph (default)
-   *
-   * @default "neutral"
-   */
+  /** Tile background and glyph colour. @default "neutral" */
   tone?: ActivityIconTone;
 }
 

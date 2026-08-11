@@ -844,6 +844,21 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `format:check` CI step so drift can't silently return. Alternatively scope the hook's
   Prettier check to staged files (lint-staged) so unrelated debt doesn't block commits.
 
+### TD-54: No lint guard against spec-style comments creeping back into frontend source
+
+- **Date:** 2026-08-11 (#998, epic #991)
+- **Location:** `packages/frontend/src`, `packages/trustee/src`, `packages/ui/src` — enforcement of
+  `docs/FRONTEND.md` Code-structure rule 6 ("Comments describe code; specs describe behavior").
+- **Gap:** The #991 migration moved flow/design-defining comments into `docs/frontend/*` across all
+  three UI packages, but nothing mechanical stops new over-long header docblocks or Figma-binding
+  comments from accumulating again; the guard is rule 6 + review discipline only. Resolved Open
+  Question in the #991 exec plan explicitly deferred a lint rule until the backlog cleared — it now
+  has (#994–#998).
+- **Impact:** Comment drift can silently re-diverge code from the specs the migration created.
+- **Suggested fix:** A lightweight lint (ESLint rule or a `scripts/` check like `lint-docs.ts`)
+  flagging header docblocks over ~N lines in `packages/*/src/**` that lack a `spec:` pointer, plus
+  flagging Figma node IDs (`\d{3,}[:-]\d{3,}`) in comments outside `docs/`.
+
 ---
 
 ## Post-MVP

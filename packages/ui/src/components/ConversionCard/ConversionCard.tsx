@@ -9,40 +9,8 @@ import { InfoRow } from "../InfoRow/InfoRow";
 import swapVerticalSrc from "../../assets/icons/swap-vertical.svg";
 
 /**
- * ConversionCard — full conversion UI card.
- *
- * Composes two white `Card`s stacked vertically with a 2px gap:
- *
- *   Card A (top) — `TokenInput` (USDC token row + quick-amount chips).
- *   Card B (bottom) — `TokenAmountDisplay` (PLUSD token row) **plus** the
- *     nested `Exchange rate` / `Network fee` details block.
- *
- * The swap-vertical icon button is absolutely positioned over the 2px seam
- * between the two cards (centered on the gap), with `rounded-[4px]` corners
- * and a white-to-paper gradient fill.
- *
- * Slots and props:
- *   - `input`        — props forwarded directly to `TokenInput`.
- *   - `output`       — props forwarded directly to `TokenAmountDisplay`.
- *   - `exchangeRate` — string displayed in the "Exchange rate" `InfoRow`.
- *   - `networkFee`   — string displayed in the "Network fee" `InfoRow`.
- *   - `onSwap`       — optional callback fired when the user clicks the swap
- *                      button to toggle direction (deposit ↔ withdraw). When
- *                      omitted, or when either side's `disabled` prop is true,
- *                      the button is rendered with the HTML `disabled` attribute
- *                      so it cannot fire during an in-flight wallet action.
- *
- * Design tokens used:
- *   - `--color-pipeline-surface`   — white card fill (Card `white` variant and Card A wrapper)
- *   - `--color-pipeline-fill-muted`  — swap button fill (subtle gray)
- *   - `--color-pipeline-surface-muted` — swap button hover fill
- *   - `--color-pipeline-line`      — card border
- *   - `--color-pipeline-ink-muted` — InfoRow label colour (via InfoRow)
- *   - `--color-pipeline-ink`       — InfoRow value colour (via InfoRow)
- *   - `--radius-pipeline-card`     — 4px card corner radius (via Card, used for Card A and Card B; Issue #595)
- *
- * Figma reference: node 1498-100130 (input section, file A43rjYYjSwdTmiwwf5cx5n).
- * Swap button: Figma node 1498-100157.
+ * ConversionCard — full conversion UI card: two stacked token cards + swap button.
+ * spec: docs/frontend/ui-components.md#conversioncard
  */
 
 export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -54,27 +22,12 @@ export interface ConversionCardProps extends React.HTMLAttributes<HTMLDivElement
   exchangeRate: string;
   /** Value shown in the "Network fee" InfoRow, e.g. "~$1.20". */
   networkFee: string;
-  /**
-   * Called when the user clicks the swap-direction button between the two
-   * token cards. When undefined, or when `input.disabled` is true, the button
-   * is rendered with the HTML `disabled` attribute so it cannot fire during an
-   * in-flight wallet action.
-   */
+  /** Swap-direction callback; when undefined (or `input.disabled`) the button renders disabled. */
   onSwap?: () => void;
 }
 
-// Swap button: absolutely positioned to straddle the 2px seam between the two
-// cards. Anchored to the bottom edge of Card A's wrapper (`top-full`) and
-// shifted up by half its own height (`-translate-y-1/2`) so it sits centered
-// on the gap. The `left-1/2 -translate-x-1/2` centers it horizontally.
-//
-// Styling per Figma node 1498-100157:
-//   - `rounded-[4px]`  — square-ish corners (not a full pill)
-//   - size 32×32 (`size-8`) — quiet recessed affordance, not a boxy chip
-//   - fill: --color-pipeline-fill-muted (subtle gray, same family as USDC panel)
-//   - no visible border — design omits the hairline border
-//   - cursor-pointer + focus ring consistent with TopBar pill trigger
-//   - disabled:opacity-50 + disabled:cursor-not-allowed when button is disabled
+// Straddles the 2px seam: anchored to Card A's bottom edge (top-full) and
+// shifted up half its own height; left-1/2 -translate-x-1/2 centers it.
 const swapButtonClasses = [
   "absolute z-10",
   "left-1/2 -translate-x-1/2",
@@ -97,15 +50,13 @@ export const ConversionCard = React.forwardRef<
   { input, output, exchangeRate, networkFee, onSwap, className, ...rest },
   ref,
 ) {
-  // Prefix the PLUSD output value with "+" when non-zero (purely visual).
-  // Zero values stay un-prefixed to match the Figma "0" placeholder state.
+  // "+" prefix is purely visual and only for non-zero values (spec).
   const outputValue =
     output.value && output.value !== "0" ? `+${output.value}` : output.value;
 
   return (
-    /* Outer wrapper: two cards stacked with a 2px gap.
-       `relative` is NOT needed here — Card A's wrapper carries `relative`
-       so the swap button is positioned relative to Card A's bottom edge. */
+    /* `relative` deliberately lives on Card A's wrapper, not here, so the swap
+       button anchors to Card A's bottom edge. */
     <div
       ref={ref}
       className={["flex flex-col gap-[2px]", className]
@@ -113,27 +64,15 @@ export const ConversionCard = React.forwardRef<
         .join(" ")}
       {...rest}
     >
-      {/* Card A (top): TokenInput — sell side (USDC).
-          White outer card matching Figma node 1498:100136 ("input-sum-inline"):
-            - background: --color-pipeline-surface (white)
-            - corner radius: --radius-pipeline-card (4px; Issue #595 changed from 16px)
-            - padding: 16/16/24/16 (pt-4 pr-4 pb-6 pl-4)
-            - no border (Figma shows none)
-          `relative` enables the absolutely-positioned swap button to anchor
-          to this card's bottom edge via `top-full`.
-          signPrefix="−" shows the minus sign (outflow) when a non-zero value
-          is present; the underlying input value stays positive. */}
+      {/* Card A (top): sell side. signPrefix="−" shows the outflow sign while
+          the underlying input value stays positive. */}
       <div
         data-testid="conversion-input-card"
         className="relative rounded-[var(--radius-pipeline-card)] bg-[var(--color-pipeline-surface)] pt-4 pr-4 pb-6 pl-4"
       >
         <TokenInput {...input} signPrefix="−" />
 
-        {/* Swap button — straddles the seam between Card A and Card B.
-            Fill: --color-pipeline-fill-muted (subtle gray, no border).
-            Figma node 1498-100157.
-            Disabled when onSwap is not provided or either side is disabled,
-            so it cannot fire during an in-flight wallet action. */}
+        {/* Disabled so it cannot fire during an in-flight wallet action. */}
         <button
           type="button"
           aria-label="Switch direction"
@@ -151,21 +90,13 @@ export const ConversionCard = React.forwardRef<
         </button>
       </div>
 
-      {/* Card B (bottom): TokenAmountDisplay (PLUSD) + Exchange rate / Network fee.
-          Both live inside a single white Card so the Details block is visually
-          nested within the PLUSD card, matching Figma node 1498-100135.
-          TokenAmountDisplay's self-styling (border, bg, radius, padding) is
-          suppressed via inline styles so it renders flush inside Card B.
-          border-0 removes the white Card's default hairline border (fix 8, Issue #595). */}
+      {/* Card B (bottom): receive side + details. TokenAmountDisplay's own chrome
+          is suppressed via inline styles below so it renders flush inside the Card. */}
       <Card
         variant="white"
         data-testid="conversion-output-card"
         className="flex flex-col gap-2 border-0"
       >
-        {/* PLUSD token row — card chrome stripped via inline styles so it
-            sits flush inside the Card B wrapper without a nested border.
-            padding uses "16px 0 0" — no left/right padding (Issue #595 fix 6);
-            bottom padding is handled by TokenAmountDisplay's own pb-8 default. */}
         <TokenAmountDisplay
           {...output}
           value={outputValue}
@@ -177,7 +108,6 @@ export const ConversionCard = React.forwardRef<
           }}
         />
 
-        {/* Details: Exchange rate + Network fee — nested inside Card B */}
         <div
           data-testid="conversion-details"
           className="flex flex-col gap-2 pb-2"

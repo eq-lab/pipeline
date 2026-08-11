@@ -3,26 +3,7 @@ import { CoinIcon } from "../CoinIcon/CoinIcon";
 
 /**
  * TokenAmountDisplay — read-only counterpart to `TokenInput`.
- *
- * Renders the same top-half layout as `TokenInput`:
- *   - Token coin icon (CoinIcon at lg/40 px) + token label + balance subtitle
- *   - A large display-serif numeric value (right-aligned, display only)
- *
- * No interactive elements, no `<input>`.  Intended for the PLUS-D (output)
- * side of the conversion card where the value is computed, not entered.
- *
- * Design tokens used:
- *   - `--color-pipeline-surface`     — white card fill
- *   - `--color-pipeline-line`        — card border
- *   - `--color-pipeline-ink`         — primary text
- *   - `--color-pipeline-ink-muted`   — balance subtitle
- *   - `--color-pipeline-ink-subtle`  — numeric value colour (matches TokenInput placeholder)
- *   - `--radius-pipeline-card`       — card corner radius
- *   - `--font-display`, `--font-body` — typeface families
- *   - `--text-pipeline-*` size/lh pairs
- *   - `--font-weight-regular`
- *
- * Figma reference: node 1498-100130 (PLUSD side of the conversion card).
+ * spec: docs/frontend/ui-components.md#tokenamountdisplay
  */
 
 export interface TokenAmountDisplayProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -36,9 +17,6 @@ export interface TokenAmountDisplayProps extends React.HTMLAttributes<HTMLDivEle
   value: string;
 }
 
-// Outer card — white fill, subtle border, card radius.
-// No horizontal padding (px-2 removed, Issue #595 fix 6).
-// pb-8 provides 32px bottom spacing (Issue #595 fix 6).
 const cardClasses = [
   "bg-[var(--color-pipeline-surface)]",
   "border border-[var(--color-pipeline-line)]",
@@ -48,7 +26,6 @@ const cardClasses = [
   "pt-4 pb-8",
 ].join(" ");
 
-// Left identity section (icon + labels stacked)
 const identityClasses = ["flex flex-1 items-center", "gap-3", "min-w-0"].join(
   " ",
 );
@@ -71,7 +48,6 @@ const balanceLabelClasses = [
   "overflow-hidden text-ellipsis whitespace-nowrap",
 ].join(" ");
 
-// Numeric value — mirrors TokenInput's <input> visual style
 const valueClasses = [
   "font-[family-name:var(--font-display)]",
   "text-[24px] leading-[28px]",
@@ -97,12 +73,10 @@ export const TokenAmountDisplay = React.forwardRef<
       className={composed}
       {...rest}
     >
-      {/* Row: identity (icon + label + balance) + numeric value */}
       <div
         data-testid="token-amount-display-row"
         className="flex items-center justify-between pr-2"
       >
-        {/* Left: coin icon + labels */}
         <div className={identityClasses}>
           <CoinIcon token={token} size="lg" aria-hidden />
           <div className="flex min-w-0 flex-col items-start justify-center">
@@ -111,7 +85,6 @@ export const TokenAmountDisplay = React.forwardRef<
           </div>
         </div>
 
-        {/* Right: display-only numeric value */}
         <div
           className="flex shrink-0 items-start justify-end"
           aria-label={`${tokenLabel} amount: ${value}`}

@@ -2,30 +2,8 @@ import React from "react";
 import { Button } from "../Button/Button";
 
 /**
- * Toast — Pipeline UI notification.
- *
- * A near-rectangular surface (4px radius) with 16px padding, a 20px leading
- * icon, and a Body-weight title. Two visual shapes:
- *   - **Informational** — icon + title text.
- *   - **Actionable** — same surface plus a right-aligned action button.
- *
- * Four tones, each mapping to a `--color-pipeline-*` fill token:
- *   - `neutral`  → `--color-pipeline-ink` (dark)
- *   - `success`  → `--color-pipeline-positive-primary` (green #208000)
- *   - `danger`   → `--color-pipeline-danger` (red)
- *   - `pending`  → `--color-pipeline-ink-muted` (muted)
- *
- * Default icons: a plain checkmark for `success`, `check-circle` for
- * neutral/danger, and `clock-pending` for `pending`. Pass the `icon` prop to
- * override (e.g. a token glyph for a claim toast).
- *
- * A11y:
- *   - `role="alert"` + `aria-live="assertive"` for `danger`.
- *   - `role="status"` + `aria-live="polite"` for all other tones.
- *
- * Figma references:
- *   - Success (claim, actionable) — node 1497:95175
- *   - Success (stake, informational) — node 1497:95270
+ * Toast — Pipeline UI notification surface with tone-mapped fill and optional action.
+ * spec: docs/frontend/ui-components.md#toast
  */
 
 export type ToastTone = "neutral" | "success" | "danger" | "pending";
@@ -45,17 +23,12 @@ export interface ToastProps extends Omit<
   title: React.ReactNode;
   /** Optional right-aligned action button. */
   action?: ToastAction;
-  /** Optional leading icon override. Defaults per tone:
-   *  - neutral / success / danger → check-circle
-   *  - pending → clock-pending
-   */
+  /** Optional leading icon override; defaults per tone. */
   icon?: React.ReactNode;
 }
 
 // SVG icons inlined so the component is self-contained without an asset bundler.
-// Rendered at 20px to match the restyled toast (Figma node 1497:95270).
 
-// Plain checkmark — default for the `success` tone (Figma node 1497:95270).
 const CheckIcon = (
   <svg
     viewBox="0 0 20 20"
@@ -74,8 +47,7 @@ const CheckIcon = (
   </svg>
 );
 
-// Circle-enclosed check — default for neutral/danger tones.
-// Viewbox: 16.6667 × 16.6667 — matches the existing icon assets in packages/ui/src/assets/icons/.
+// Viewbox 16.6667 × 16.6667 matches the existing icon assets in packages/ui/src/assets/icons/.
 const CheckCircleIcon = (
   <svg
     viewBox="0 0 16.6667 16.6667"
@@ -110,12 +82,11 @@ const ClockPendingIcon = (
   </svg>
 );
 
-// Background class per tone. All values reference design tokens from theme.css.
 const toneBackground: Record<ToastTone, string> = {
   neutral: "bg-[var(--color-pipeline-ink)]",
   success: "bg-[var(--color-pipeline-positive-primary)]",
   danger: "bg-[var(--color-pipeline-danger)]",
-  // ink-muted is rgba — Tailwind can't apply it directly with bg- utility; use inline style
+  // ink-muted is rgba — Tailwind can't apply the token via bg-, so the raw value is inlined
   pending: "bg-[rgb(56_55_53_/_0.6)]",
 };
 
@@ -161,15 +132,12 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         className={containerClasses}
         {...rest}
       >
-        {/* Leading icon */}
         <span className="shrink-0 text-[color:var(--color-pipeline-on-dark)]">
           {leadingIcon}
         </span>
 
-        {/* Title — 8px horizontal padding provides the gap to the icon/button */}
         <span className="shrink-0 px-2 whitespace-nowrap">{title}</span>
 
-        {/* Action button — right-aligned, only when provided */}
         {action && (
           <Button variant="toast-action" onClick={action.onClick}>
             {action.label}
