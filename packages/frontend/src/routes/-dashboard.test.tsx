@@ -976,7 +976,7 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     expect(screen.getByText("PE → CN")).toBeInTheDocument();
     expect(screen.getByText("14.0%")).toBeInTheDocument();
     expect(screen.getByText("15 Dec 2026")).toBeInTheDocument();
-    expect(screen.getByText("InReview")).toBeInTheDocument();
+    expect(screen.getByText("In review")).toBeInTheDocument();
   });
 
   it("still renders the empty state on the In Origination tab with no submissions", async () => {
