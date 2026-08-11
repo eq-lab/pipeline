@@ -1,17 +1,11 @@
 /**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `rollover`
- * (issue #870): the trustee-wallet-signed on-chain `LoanRegistry.rollover` run
- * through the executor `execute` proxy (same pattern as `useDrawLoan`/#831).
+ * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `rollover`:
+ * the trustee-wallet-signed on-chain `LoanRegistry.rollover`, run through
+ * the executor `execute` proxy (same pattern as `useDrawLoan`). On success
+ * invalidates the loan-book/financials/valuation queries so the loan detail
+ * + list refetch and the status flips Matured → Performing.
  *
- * Rollover appends an epoch from the prior maturity, sets `currentMaturityDate`,
- * returns the loan's status to Performing, and raises the mint ceiling only
- * (mints nothing). On success this invalidates the loan-book / financials /
- * valuation queries so the loan detail + list refetch and the status flips
- * Matured → Performing.
- *
- * Like `useDrawLoan`, the Soroban machinery lives in the shared package (TD-33);
- * this hook only wires env + the connected wallet, guards the
- * unconfigured/disconnected cases, and surfaces the progress stage.
+ * spec: docs/frontend/trustee-flows.md#wired-actions (Roll over).
  */
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

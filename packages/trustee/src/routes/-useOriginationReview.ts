@@ -1,76 +1,16 @@
 /**
  * Page orchestration hook for the Origination details page's
  * Approve/Reject/Request-changes controls. Co-located with the route per
- * `docs/FRONTEND.md` rule 2 — `origination.$id.tsx` stays JSX-only; this hook
- * owns the reject-dialog, the request-changes-dialog (#1017) AND (as of issue
- * #838) the approve-mint-confirmation-dialog open/close state, and maps
- * mutation errors to user-facing copy. Request changes mirrors Reject: a pure
- * DB review call (`{ decision: "ChangesRequested", reason }`, backend #949) —
- * no on-chain step, non-final (the submission stays open for re-review).
+ * `docs/FRONTEND.md` rule 2 — `origination.$id.tsx` stays JSX-only; this
+ * hook owns the reject-dialog, the request-changes-dialog, and the
+ * approve-mint-confirmation-dialog open/close state, and maps mutation
+ * errors to user-facing copy.
  *
- * ## Approve confirmation gate (issue #838, Figma node `4116:13943`)
- *
- * Before #838, clicking Approve fired `approve()` (below) immediately. #838
- * introduces a pre-mint confirmation dialog (`-ApproveMintDialog.tsx`):
- * `openApprove()` opens it; `approve()` — UNCHANGED — is now invoked only as
- * the dialog's "Mint loan" confirm action; `cancelApprove()` closes it
- * without touching the on-chain mint. This does not alter the #831
- * orchestration itself (still chain-first mint → review, still guarded by
- * the same idempotency check) — it only gates *when* `approve()` fires.
- * `cancelApprove()` deliberately does NOT reset `useDrawLoan`'s mutation once
- * it has already succeeded (`drawLoanMutation.isSuccess`) — doing so would
- * erase the idempotency guard's "already minted this session" marker and
- * risk a second on-chain mint on a subsequent Approve click.
- *
- * ## Chain-first Approve ordering (issue #831)
- *
- * Approve now runs the trustee-wallet-signed on-chain `draw_loan` mint
- * (`useDrawLoan`, `@pipeline/wallet-connect`) BEFORE the existing #829 DB
- * review call (`useReviewSubmission`, `POST .../review {decision:"Approved"}`):
- *   1. `useDrawLoan().mutateAsync({ loanData })` — build -> simulate (the
- *      "verify the loan" step) -> wallet signature -> submit -> poll to a
- *      terminal status.
- *   2. Only once that resolves does `useReviewSubmission` fire.
- *
- * A wallet rejection, a failed simulate/send/poll, or an unconfigured
- * registry/disconnected-wallet guard (see `useDrawLoan`) all reject step 1 —
- * the review call is skipped entirely, the submission stays `InReview`, and
- * `errorMessage` surfaces a mapped, retryable message. **No signature is
- * ever requested when the simulate step fails.**
- *
- * No-double-mint guard: an already-`Approved` submission's `approve()` is a
- * no-op (defensive — the InReview-only footer shouldn't normally allow this
- * call, but guards a stale render/race).
- *
- * ## Idempotency guard — re-click after a mint-succeeded/review-failed retry
- *
- * `useDrawLoan`'s underlying `useMutation` retains its `isSuccess`/`data`
- * state for as long as this hook instance (keyed to one submission `id`,
- * `useOriginationReview(id)`) stays mounted — an in-session "minted" marker
- * for that submission. If the mint (step 1) succeeds but the review call
- * (step 2) then fails, re-clicking Approve checks that marker FIRST: when
- * `drawLoanMutation.isSuccess` is already true for this submission, `approve()`
- * skips step 1 entirely and re-fires ONLY the review call — no second
- * on-chain mint is ever attempted on retry. The pre-submit `simulateTransaction`
- * inside `drawLoan` remains a backstop for the (non-retry) first attempt.
- * **Accepted residual:** a hard page reload between mint-success and
- * finalize-failure loses this in-memory marker (React Query cache is not
- * persisted across reloads) — a subsequent Approve would attempt another
- * on-chain mint. No backend reconciliation exists to close this gap; it is a
- * deliberately accepted bound (issue #831), not a deferred follow-up.
- *
- * **Known limitation (issue #831 Open Question 4, accepted scope):** if the
- * mint succeeds but the subsequent review call fails, the loan is minted
- * on-chain while the DB submission stays `InReview` — a distinct message
- * warns against blindly retrying (a retry would attempt another on-chain
- * mint). Robust reconciliation (the worker already indexes `loan_drawn`) is
- * deferred to a follow-up backend issue — see
- * `docs/exec-plans/tech-debt-tracker.md`.
- *
- * Review-mutation error copy (401/403/409/400/default) comes from the
- * shared `toUserError` status table (#1037); raw backend text is never
- * rendered inline, only via `errorDetails`.
- * spec: docs/frontend/error-handling.md
+ * spec: docs/frontend/trustee-flows.md#approve--mint-confirmation-dialog-838-figma-node-411613943,
+ * docs/frontend/trustee-flows.md#chain-first-approve-ordering-831,
+ * docs/frontend/trustee-flows.md#review-error-copy (#1041 → the shared
+ * toUserError table, docs/frontend/error-handling.md),
+ * docs/frontend/trustee-flows.md#request-changes-1017.
  */
 import { useState } from "react";
 import { useReviewSubmission } from "@/api/useReviewSubmission";
@@ -223,15 +163,11 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
 
   function approve() {
     if (!submission) return;
-    // No-double-mint guard (issue #831 Open Question 4): an already-Approved
-    // submission needs no further on-chain action.
+    // No-double-mint guard: an already-Approved submission needs no further
+    // on-chain action.
     if (submission.status === "Approved") return;
 
-    // Idempotency guard (issue #831): if the mint already succeeded in this
-    // session (e.g. a prior Approve click minted on-chain but the review call
-    // then failed), the "minted" marker is `drawLoanMutation.isSuccess` —
-    // skip step 1 (mint) entirely and retry ONLY step 2 (finalize). Never
-    // re-invoke `drawLoan` once it has already succeeded for this submission.
+    // Idempotency guard — spec: docs/frontend/trustee-flows.md#chain-first-approve-ordering-831.
     if (drawLoanMutation.isSuccess) {
       fireApprovalReview();
       return;
@@ -243,28 +179,19 @@ export function useOriginationReview(id: string): UseOriginationReviewResult {
         await drawLoanMutation.mutateAsync({ loanData });
       } catch {
         // Mint failed / wallet rejected — stay InReview, no review call.
-        // `drawLoanMutation.error` already carries the mapped detail.
         return;
       }
       fireApprovalReview();
     })();
   }
 
-  // Opens the approve & mint confirmation dialog (issue #838), clearing any
-  // stale review error left over from a previous Reject attempt sharing the
-  // same `reviewMutation` instance — mirrors `openReject`'s reset below.
   function openApprove() {
     reviewMutation.reset();
     setApproveOpen(true);
   }
 
-  // Closes the approve & mint dialog without minting. Only reachable while
-  // NOT submitting (the dialog disables Cancel/Escape/backdrop-close during
-  // the mint — see `-ApproveMintDialog.tsx`), so this always represents
-  // either a fresh, untouched dialog or one showing a settled error.
-  // `drawLoanMutation.reset()` is skipped once it has already succeeded —
-  // clearing it would erase the idempotency guard's "already minted this
-  // session" marker and risk a second on-chain mint on retry.
+  // Skips resetting `drawLoanMutation` once it has already succeeded — see
+  // the idempotency guard above.
   function cancelApprove() {
     setApproveOpen(false);
     reviewMutation.reset();

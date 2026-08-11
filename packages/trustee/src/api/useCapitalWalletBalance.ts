@@ -1,38 +1,17 @@
 /**
- * React Query hook — reads the Capital Wallet's USDC balance **directly from
- * the Stellar contract** (on-chain), as an interim source for the Overview
- * page's Capital Allocation card until the backend indexes `capital_wallet`
- * (issue #805; see `docs/exec-plans/tech-debt-tracker.md` TD-41).
+ * React Query hook — reads the Capital Wallet's USDC balance directly from
+ * the Stellar contract (on-chain), as an interim source for the Overview
+ * page's Capital Allocation card until the backend indexes `capital_wallet`.
  *
- * Confirmed mapping (human-approved, see issue #805 comments): the "Capital
- * Wallet" bucket = the existing USDC custody account
- * (`ENV.STELLAR_USDC_CUSTODY_ID`). No new env var — reuses the id already
- * used by the LP frontend's `useStellarUsdcCustodyBalance` (#770).
+ * Read path: a thin `useQuery` wrapper around `@pipeline/wallet-connect`'s
+ * `getSacBalance` — a plain async function (that package forbids
+ * `@tanstack/react-query` outside `src/evm/**`). The Trustee cannot import
+ * `@stellar/stellar-sdk` directly (TD-33, no carve-out), so all Soroban read
+ * machinery lives in the shared package; this file only wires env values in
+ * and scales/guards the result for display.
  *
- * Read path: this hook is a thin `useQuery` wrapper around
- * `@pipeline/wallet-connect`'s `getSacBalance` — a plain async function (that
- * package forbids `@tanstack/react-query` outside `src/evm/**`). The Trustee
- * cannot import `@stellar/stellar-sdk` directly (TD-33, no carve-out), so all
- * Soroban read machinery lives in the shared package; this file only wires
- * env values in and scales/guards the result for display.
- *
- * Scale conversion (critical — see issue #805 "Critical correctness notes"):
- * `getSacBalance` returns a raw i128 `bigint` at **7-decimal SAC scale**
- * (e.g. `10_000_000n` = 1 USDC). The backend's `capital_allocation` buckets
- * and `total` are **base-6 decimal strings already in human units** (e.g.
- * `"96000000.000000"` = $96,000,000), consumed directly by
- * `formatCompactUsd`/`formatFullUsd`. This hook converts the raw 7-decimal
- * bigint to a **human-decimal string** (same shape as the backend buckets)
- * via a local `sacRawToDisplay` port, so callers can feed it straight into
- * the existing formatters/summing logic without re-deriving the scale. The
- * Trustee app does not depend on `@pipeline/frontend`, so this is a
- * deliberate, small duplication of the LP's
- * `packages/frontend/src/wallet/stellar/useStellarSacToken.ts` helper (same
- * precedent as `formatUsd.ts`, TD-38).
- *
- * The i64-max issuer sentinel guard lives in `getSacBalance` itself (throws),
- * so a misconfigured custody id (pointing at the USDC issuer) surfaces here
- * as `error`, not a fabricated ~$922B balance.
+ * spec: docs/frontend/trustee-flows.md#capital-allocation-card--data-layer
+ * (mapping, scale conversion, sentinel guard — all TD-41).
  */
 import { useQuery } from "@tanstack/react-query";
 import { getSacBalance } from "@pipeline/wallet-connect";

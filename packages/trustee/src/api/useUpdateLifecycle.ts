@@ -1,15 +1,11 @@
 /**
- * React Query mutation hook — wraps `@pipeline/wallet-connect`'s `updateMutable`
- * (issue #872): the trustee-wallet-signed on-chain `LoanRegistry.updateMutable`
- * run through the executor `execute` proxy (same pattern as `useRollover`/#870).
+ * React Query mutation hook — wraps `@pipeline/wallet-connect`'s
+ * `updateMutable`: the trustee-wallet-signed on-chain
+ * `LoanRegistry.updateMutable`, run through the executor `execute` proxy
+ * (same pattern as `useRollover`). Non-economic fields only (status / CCR /
+ * location / metadata URI), no NAV impact.
  *
- * Non-economic fields only (status / CCR / location / metadata URI), no NAV
- * impact. On success this invalidates the loan-book / financials / valuation
- * queries so the loan detail + list refetch with the new status/CCR/location.
- *
- * Like `useRollover`/`useDrawLoan`, the Soroban machinery lives in the shared
- * package (TD-33); this hook only wires env + the connected wallet, guards the
- * unconfigured/disconnected cases, and surfaces the progress stage.
+ * spec: docs/frontend/trustee-flows.md#wired-actions (Update lifecycle).
  */
 import { useState, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";

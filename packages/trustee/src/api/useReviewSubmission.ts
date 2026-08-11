@@ -1,30 +1,10 @@
 /**
  * React Query mutation hook — wires the Trustee Approve/Reject controls
- * (issue #829, `/origination/$id`) to the existing backend endpoint
+ * (`/origination/$id`) to the existing backend endpoint
  * `POST /v1/loan-book/submissions/{id}/review`.
  *
- * Contract source of truth: `packages/api/src/routes/loan_book.rs`,
- * `review_submission`:
- *   - Approve → `{ decision: "Approved" }`, **no** `reason` key at all
- *     (sending one → `400`).
- *   - Reject  → `{ decision: "Rejected", reason: "<non-empty>" }`
- *     (missing/empty → `400`).
- *   - Request changes → `{ decision: "ChangesRequested", reason: "<non-empty>" }`
- *     (missing/empty → `400`, backend #949 / frontend #1017). Non-final: the
- *     submission stays open and may be reviewed again.
- *   - Only `InReview` and `ChangesRequested` submissions are reviewable — an
- *     already-`Approved`/`Rejected` one → `409 Conflict`.
- *   - `401` missing/invalid/expired token (`ApiUnauthorizedError`); `403`
- *     caller lacks the `trustee` role; `200` on success with an empty body.
- *
- * `apiFetch` already injects `Authorization: Bearer <token>` (#791) and
- * throws a typed `ApiError` (carrying `.status`) on any non-2xx response
- * (#829) — callers map `.status` to user-facing copy (see
- * `-useOriginationReview.ts`).
- *
- * On success, invalidates every `["loan-submissions", ...]` query (React
- * Query matches by key prefix) so the `/origination` table and the
- * `/origination/$id` detail page both refetch and flip to the new status.
+ * spec: docs/frontend/trustee-flows.md#review-error-copy (contract,
+ * status-code → copy mapping, cache invalidation).
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";

@@ -1,36 +1,9 @@
 /**
- * React Query hook — fetches the active loan book from the Pipeline API
- * (`GET /v1/loan-book`) for the Trustee **Loans** page (issue #843, Figma
- * node `4116:9989`).
+ * React Query hook — fetches the active loan book (`GET /v1/loan-book`) for
+ * the Trustee Loans page.
  *
- * Mirrors `useLoanSubmissions.ts`'s conventions (queryKey shape, `apiFetch`,
- * `refetchInterval`, Stellar-scoped `chain_id`). The trustee app deliberately
- * does NOT depend on `@pipeline/frontend` (epic #775 keeps the two apps
- * separate), so the types below are a self-contained port of the post-#833
- * backend shape (`packages/api/src/routes/loan_book.rs`) rather than an
- * import — a fourth hand-mirroring alongside TD-42's existing trustee/LP
- * pairs (see `docs/exec-plans/tech-debt-tracker.md`). The pre-#833 LP
- * frontend hook (`packages/frontend/src/api/useLoanBook.ts`) predates the
- * Trustee-only summary fields below and is NOT extended here — only this
- * trustee copy carries them.
- *
- * Data-layer note
- * ---------------
- * `deployed_senior`, `at_risk_wl_and_default_senior`, per-loan
- * `senior_outstanding`/`principal`, AND `collateral`/`total_collateral` are
- * **registry-sourced** base-6 decimal strings (already in human units, e.g.
- * `"1200000.000000"` = $1.2M). The frontend no longer rescales these — the
- * former ×1000 `scaleRegistryAmount`/`formatRegistryCompactUsd`/
- * `formatRegistryCompact2dpUsd` workaround (issue #840) has been removed
- * (issue #906); they are displayed exactly as served, via plain
- * `formatCompactUsd`/`formatCompactUsd2dp` from `@/utils/formatUsd`. Because
- * `ccr_bps` and `ltv` divide two registry-sourced amounts at the same scale,
- * the scale cancels out of those ratios regardless — they are served
- * ALREADY CORRECT and must NOT be scaled or divided (see `-useLoansTable.ts`,
- * which used to apply an erroneous ÷1000 "correction" to `ccr_bps` before
- * issue #888 fixed it). `at_risk_wl_and_default_pct` mixes a registry-scaled
- * numerator with a correct-scale NAV denominator and is rendered as served
- * (no frontend correction defined).
+ * spec: docs/frontend/trustee-flows.md#loan-book--tables (architecture,
+ * registry-sourced amount scaling, resolved Open Questions).
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -99,11 +72,9 @@ export interface LoanBookSummary {
   at_risk_wl_and_default_senior: string;
   /**
    * At-risk senior over whole-book NAV, 4-decimal fraction string (e.g.
-   * `"0.0430"` = 4.3%). Backend-computed ratio (mixes a registry-scaled
-   * numerator with a correct-scale NAV denominator — see the module doc);
-   * rendered as served, no frontend correction is defined for this issue.
-   * `null` when no collateral is available. Backs the **At-risk (WL +
-   * Default)** tile headline %.
+   * `"0.0430"` = 4.3%). Rendered as served. `null` when no collateral is
+   * available. Backs the **At-risk (WL + Default)** tile headline %.
+   * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
    */
   at_risk_wl_and_default_pct: string | null;
   /** Largest single-commodity exposure by outstanding-senior share. Backs the **Top concentration** tile. */
@@ -174,20 +145,16 @@ export interface LoanBookEntry {
   collateral: string | null;
   /**
    * Loan-to-value, 4-decimal fraction string = `principal / collateral`.
-   * Both operands are registry-sourced (1000×-low), so the ×1000 cancels
-   * out of the ratio — served ALREADY CORRECT, do NOT scale. Not rendered
-   * on this page.
+   * Served already-correct, do not scale. Not rendered on this page.
+   * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
    */
   ltv: string | null;
   /**
    * Collateral Coverage Ratio in basis points (`14000` = 140%) =
-   * `collateral / outstanding senior`. Both operands are registry-sourced
-   * (1000×-low), so the ×1000 cancels out of the ratio — served ALREADY
-   * CORRECT (issue #888 corrected the earlier #843 assumption that this was
-   * served ~1000× too big; do NOT ÷1000 it — see `-useLoansTable.ts`'s
-   * `classifyCcr`/CCR mapping, which now uses the served value as-is). `null`
-   * when collateral is unavailable. Backs the **CCR** column + pre-default
-   * classification.
+   * `collateral / outstanding senior`. Served already-correct, do not scale.
+   * `null` when collateral is unavailable. Backs the **CCR** column +
+   * pre-default classification.
+   * spec: docs/frontend/trustee-flows.md#data-scale--registry-sourced-amounts-served-as-is-906
    */
   ccr_bps: number | null;
   /** Original loan term in days. Not rendered on this page. */

@@ -1,25 +1,11 @@
 /**
- * Reject-reason dialog (issue #829, re-skinned to Figma node `4116:14123` by
- * issue #838) — opened by the "Reject" control on the Origination details
- * page (`origination.$id.tsx`). Styled with the same tokens as the rest of
- * the details page (navy `#000080` primary, `rgba(56,55,53,0.18)` borders).
+ * Reject-reason dialog — opened by the "Reject" control on the Origination
+ * details page (`origination.$id.tsx`). Styled with the same tokens as the
+ * rest of the details page (navy `#000080` primary,
+ * `rgba(56,55,53,0.18)` borders).
  *
- * Issue #838 re-skin deltas (logic unchanged): title interpolates the
- * originator ("Reject request — `<originator>`"), a new subtitle line, the
- * "Reason" label drops to 13px, the reason field is now a single-line input
- * with a placeholder (was a 3-row `<textarea>`), the primary button reads
- * "Send to originator" (was "Submit"), and the shell grew to 640px / 6px
- * radius (was 420px / 4px) to match the shared dialog shell used by
- * `-ApproveMintDialog.tsx`.
- *
- * Accessibility: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on
- * the title, closes on Escape and on the Cancel button, initial focus on the
- * reason input, and a backdrop click that closes WITHOUT submitting (mirrors
- * Cancel, never a stray submit).
- *
- * Validation state (trimmed length + inline error) lives in the co-located
- * `-useRejectReasonDialog.ts` hook per `docs/FRONTEND.md` rule 2 — this
- * component is JSX/styling only.
+ * spec: docs/frontend/trustee-flows.md#reason-dialog-shell--validation
+ * (accessibility contract, validation rule, re-skin history).
  */
 import { useEffect, useRef } from "react";
 import { useRejectReasonDialog } from "./-useRejectReasonDialog";
