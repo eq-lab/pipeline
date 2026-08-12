@@ -156,6 +156,52 @@ vi.mock("@/wallet/stellar/useStellarSacToken", async (importOriginal) => {
   };
 });
 
+// ── Stellar claim hook mocks ──────────────────────────────────────────────────
+// useStellarClaim / useStellarClaimWithdrawal submit real Soroban transactions;
+// we replace their write with spies so tests can assert the claim click path.
+
+const mockStellarClaimWrite = vi.fn();
+const mockStellarClaimWithdrawalWrite = vi.fn();
+
+vi.mock("@/wallet/stellar/useStellarDepositManager", async (importOriginal) => {
+  const original =
+    await importOriginal<
+      typeof import("@/wallet/stellar/useStellarDepositManager")
+    >();
+  return {
+    ...original,
+    useStellarClaim: () => ({
+      write: mockStellarClaimWrite,
+      data: undefined,
+      isPending: false,
+      isSuccess: false,
+      error: null,
+      reset: vi.fn(),
+    }),
+  };
+});
+
+vi.mock(
+  "@/wallet/stellar/useStellarWithdrawalQueue",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("@/wallet/stellar/useStellarWithdrawalQueue")
+      >();
+    return {
+      ...original,
+      useStellarClaimWithdrawal: () => ({
+        write: mockStellarClaimWithdrawalWrite,
+        data: undefined,
+        isPending: false,
+        isSuccess: false,
+        error: null,
+        reset: vi.fn(),
+      }),
+    };
+  },
+);
+
 // ── API module mock ───────────────────────────────────────────────────────────
 // The deposit page uses useRequests and useDepositVoucher from @/api.
 // We mock them here so tests control what the API "returns" without needing
@@ -175,6 +221,9 @@ let mockStellarDepositVoucherStatus: "idle" | "pending" | "ready" | "failed" =
   "idle";
 let mockStellarWithdrawVoucherStatus: "idle" | "pending" | "ready" | "failed" =
   "idle";
+
+/** Deadline served by the ready Stellar voucher mocks (unix-seconds string). */
+const STELLAR_VOUCHER_DEADLINE = "9999999999";
 
 vi.mock("@/api", () => ({
   useRequests: () => ({
@@ -197,11 +246,17 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  // `signatureBytes` lives at the top level of the hook result (matching
+  // UseStellarDepositVoucherResult); `deadline` under `data` (voucher response).
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   useStellarDepositVoucher: (_requestId: string | undefined) => ({
     data:
       mockStellarDepositVoucherStatus === "ready"
-        ? { signatureBytes: new Uint8Array([1, 2, 3]) }
+        ? { deadline: STELLAR_VOUCHER_DEADLINE }
+        : undefined,
+    signatureBytes:
+      mockStellarDepositVoucherStatus === "ready"
+        ? new Uint8Array([1, 2, 3])
         : undefined,
     status: mockStellarDepositVoucherStatus,
     error: null,
@@ -211,7 +266,11 @@ vi.mock("@/api", () => ({
   useStellarWithdrawalVoucher: (_requestId: string | undefined) => ({
     data:
       mockStellarWithdrawVoucherStatus === "ready"
-        ? { signatureBytes: new Uint8Array([4, 5, 6]) }
+        ? { deadline: STELLAR_VOUCHER_DEADLINE }
+        : undefined,
+    signatureBytes:
+      mockStellarWithdrawVoucherStatus === "ready"
+        ? new Uint8Array([4, 5, 6])
         : undefined,
     status: mockStellarWithdrawVoucherStatus,
     error: null,
@@ -3072,6 +3131,103 @@ describe("Deposit page — Stellar PLUSD unauthorized trustline guard", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Claim" })).not.toBeDisabled();
     });
+  });
+});
+
+// ── Stellar claim click path ──────────────────────────────────────────────────
+// Analogous to the EVM "clicking Claim when voucher is ready triggers
+// claim.write" test: clicking Claim must invoke the on-chain write with the
+// voucher's signature bytes and deadline (see #800 for the 3-arg shape).
+
+describe("Deposit page — Stellar claim click triggers write", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockStellarClaimWrite.mockClear();
+    mockStellarClaimWithdrawalWrite.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockStellarDepositVoucherStatus = "idle";
+    mockStellarWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    mockStellarDepositVoucherStatus = "idle";
+    mockStellarWithdrawVoucherStatus = "idle";
+  });
+
+  it("clicking Claim when the Stellar deposit voucher is ready triggers stellarClaim.write with signature + deadline", async () => {
+    seedStellarMocks({
+      usdcBalance: "5000",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Deposit",
+          request_id: "100",
+          amount: "10000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockStellarDepositVoucherStatus = "ready";
+
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const claimBtn = await screen.findByRole("button", { name: "Claim" });
+    await waitFor(() => expect(claimBtn).not.toBeDisabled());
+    await user.click(claimBtn);
+
+    await waitFor(() => {
+      expect(mockStellarClaimWrite).toHaveBeenCalledWith(
+        100n,
+        new Uint8Array([1, 2, 3]),
+        BigInt(STELLAR_VOUCHER_DEADLINE),
+      );
+    });
+    expect(mockStellarClaimWithdrawalWrite).not.toHaveBeenCalled();
+  });
+
+  it("clicking Claim when the Stellar withdrawal voucher is ready triggers stellarClaimWithdrawal.write with signature + deadline", async () => {
+    mockDirection = "withdraw";
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+    });
+    mockRequestsData = {
+      requests: [
+        {
+          type: "Withdraw",
+          request_id: "101",
+          amount: "10000000000",
+          status: "PendingClaim",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
+    mockStellarWithdrawVoucherStatus = "ready";
+
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const claimBtn = await screen.findByRole("button", { name: "Claim" });
+    await waitFor(() => expect(claimBtn).not.toBeDisabled());
+    await user.click(claimBtn);
+
+    await waitFor(() => {
+      expect(mockStellarClaimWithdrawalWrite).toHaveBeenCalledWith(
+        101n,
+        new Uint8Array([4, 5, 6]),
+        BigInt(STELLAR_VOUCHER_DEADLINE),
+      );
+    });
+    expect(mockStellarClaimWrite).not.toHaveBeenCalled();
   });
 });
 
