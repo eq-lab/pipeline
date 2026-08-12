@@ -129,22 +129,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Asset was originally extracted as a rasterised PNG and placed into an SVG wrapper (same historical pattern as `coin-usdc.svg`). Not caught by #246 scope, which was USDC-only.
 - **Workaround:** None applied. Replace with a proper vector SVG export from Figma (same procedure as #246 Step 1–2).
 
-### BUG-4: `-deposit.test.tsx` — "step 2 shows loading affordance" test fails
-- **Tracked:** #1075
-- **Date:** 2026-06-19
-- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` > "Deposit page — three-step flow" > "step 2 shows loading affordance (not greyed) when request status is PendingVerification"
-- **Symptom:** `npx vitest run src/routes/-deposit.test.tsx` reports 1 failure for the PendingVerification spinner affordance test. Reproduces on a clean checkout of `main` before any 672 changes, confirming it is pre-existing.
-- **Root cause:** Not investigated. The test expects `null` not to be null (i.e., a spinner element to be present), but the element is not found in the rendered output.
-- **Workaround:** None applied.
-
-### BUG-5: `-index.test.tsx` — "clicking Connect calls useWallet().connect()" test fails
-- **Tracked:** #1076
-- **Date:** 2026-06-19
-- **Location:** `packages/frontend/src/routes/-index.test.tsx` > "Home page — disconnected state" > "clicking Connect calls useWallet().connect() → opens AppKit modal (when ack flag is pre-set)"
-- **Symptom:** `npx vitest run src/routes/-index.test.tsx` reports 1 failure for the Connect button test. The test expects `mockOpen` (from `useAppKit`) to be called once, but it is called 0 times. Reproduces on `main` before any #684 changes, confirming it is pre-existing.
-- **Root cause:** The `ConnectWalletPromoCard.onConnect` is wired to `useConnectModal().open` which is a no-op in the test context (no `ConnectModalProvider` in the wrapper). The `mockOpen` from `useAppKit` is never called. The test was written assuming the Connect button invokes `useAppKit().open` directly, but the indirection through `ConnectModalProvider` was introduced later.
-- **Workaround:** None applied. Fix: wrap `renderHome()` with `ConnectModalProvider` (backed by a mocked `WalletGateProvider`) so `useConnectModal().open` delegates to `useAppKit().open`.
-
 ### BUG-8: `@pipeline/wallet-connect` — `localStorage` undefined in several jsdom test files
 
 - **Tracked:** #1003 (consolidated; see comment there)
@@ -165,6 +149,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-4: `-deposit.test.tsx` — "step 2 shows loading affordance" test fails
+- **Tracked:** #1075
+- **Date:** 2026-06-19
+- **Resolved:** 2026-06-19 by #690 (test-harness gaps sweep). Confirmed on `main` 2026-08-12 while triaging #1075: 107/107 pass, including both PendingVerification loading-affordance tests.
+- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` > "step 2 shows loading affordance (not greyed) when request status is PendingVerification"
+- **Symptom:** 1 failure — the expected spinner element was not found in the rendered output.
+
+### BUG-5: `-index.test.tsx` — "clicking Connect calls useWallet().connect()" test fails
+- **Tracked:** #1076
+- **Date:** 2026-06-19
+- **Resolved:** 2026-06-19 by #690, which rewrote the test as "clicking Connect opens the shared ConnectWalletModal via useConnectModal().open()" — asserting the `ConnectModalProvider` indirection instead of expecting `useAppKit().open` directly (modal-opening behaviour is covered by `ConnectModalProvider.test.tsx`). Confirmed on `main` 2026-08-12 while triaging #1076: 57/57 pass.
+- **Location:** `packages/frontend/src/routes/-index.test.tsx` > "Home page — disconnected state"
+- **Symptom:** `mockOpen` (from `useAppKit`) expected once, called 0 times — the button's `onConnect` went through `useConnectModal().open`, a no-op without a `ConnectModalProvider` in the test wrapper.
 
 ### BUG-3: `useStellarWithdrawalQueue.test.tsx` — 8 failing tests
 - **Tracked:** #1077
