@@ -145,14 +145,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** The `ConnectWalletPromoCard.onConnect` is wired to `useConnectModal().open` which is a no-op in the test context (no `ConnectModalProvider` in the wrapper). The `mockOpen` from `useAppKit` is never called. The test was written assuming the Connect button invokes `useAppKit().open` directly, but the indirection through `ConnectModalProvider` was introduced later.
 - **Workaround:** None applied. Fix: wrap `renderHome()` with `ConnectModalProvider` (backed by a mocked `WalletGateProvider`) so `useConnectModal().open` delegates to `useAppKit().open`.
 
-### BUG-3: `useStellarWithdrawalQueue.test.tsx` — 8 failing tests
-- **Tracked:** #1077
-- **Date:** 2026-06-17
-- **Location:** `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx`
-- **Symptom:** `npx vitest run src/wallet/stellar/useStellarWithdrawalQueue.test.tsx` reports 8 failures (16 pass). Example: the "declined signature sets error" case expects `error.message` to match `/Declined/` but receives `"WithdrawalQueue not configured"`. Reproduces on a clean `main` checkout, so unrelated to any in-flight change.
-- **Root cause:** Not investigated. The mocked test setup appears to leave the WithdrawalQueue contract unconfigured, so the hook short-circuits with a "not configured" error before reaching the signature-decline / submission paths the tests assert on.
-- **Workaround:** None applied.
-
 ### BUG-8: `@pipeline/wallet-connect` — `localStorage` undefined in several jsdom test files
 
 - **Tracked:** #1003 (consolidated; see comment there)
@@ -162,14 +154,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Not investigated. `vite.config.ts`'s `test.environment` is `"jsdom"` with `globals: true`, so `localStorage` should be jsdom-provided; something in this package's `test-setup.ts` or dependency versions leaves the global `localStorage` unset for these three files specifically (other test files in the same package, e.g. `sacBalance.test.ts`, `loanRegistry.test.ts`, `connectionStore.test.ts`, pass cleanly).
 - **Workaround:** None applied. Run the unaffected files individually to validate unrelated changes (as done for issue #831's `loanRegistry.test.ts`).
 
-### BUG-7: `PortfolioPlaceholderCard.test.tsx` — tooltip balance test is time-sensitive
-- **Tracked:** #1078
-- **Date:** 2026-07-01
-- **Location:** `packages/frontend/src/components/PortfolioPlaceholderCard.test.tsx` line 261
-- **Symptom:** The test "pointerMove on chart wrap shows tooltip with '$1,' balance prefix" fails because the synthetic chart curve's balance at the hovered slot is currently sub-$1000 (e.g. `$636.59`). The test was written when `Date.now()` was earlier in the deployment lifetime, causing the synthetic curve to land in a different balance range.
-- **Root cause:** The chart curve is generated deterministically from `Date.now()` as the anchor. As real time advances, the same seeded pseudo-random curve produces lower intermediate balances at the test's hardcoded hover position. The assertion `toContain("$1,")` assumed the value always exceeds $1 K.
-- **Workaround:** None applied. Fix: mock `Date.now()` in the test, or change the assertion to a looser regex (e.g. `/\$[\d.,]+/`).
-
 ### BUG-8: LP frontend tests using `localStorage` fail on Node ≥ 22 (`Cannot read properties of undefined (reading 'clear')`)
 - **Tracked:** #1003 (consolidated; see comment there)
 - **Date:** 2026-08-10
@@ -178,16 +162,28 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Node 22+ ships an experimental WebStorage global; vitest's jsdom environment does not override it.
 - **Workaround:** run with `NODE_OPTIONS="--no-experimental-webstorage"` — all tests pass. Fix candidates: add that flag to the package `test` script, or set `--localstorage-file`.
 
-### BUG-9: `useRequests.test.tsx` fails at module load — stale `@creit.tech/stellar-wallets-kit` mock
-- **Tracked:** #1079
-- **Date:** 2026-08-10
-- **Location:** `packages/frontend/src/api/useRequests.test.tsx`
-- **Symptom:** The whole suite fails to load: `No "addressUpdatedEvent" export is defined on the "@creit.tech/stellar-wallets-kit" mock` (raised from `packages/wallet-connect/src/stellar/useStellarWallet.ts:38`). Pre-existing on `main`.
-- **Root cause:** `wallet-connect`'s `useStellarWallet` started subscribing to the kit's `addressUpdatedEvent` at module scope; this test's `vi.mock` of the kit predates that and doesn't export it.
-- **Workaround:** None. Fix: add `addressUpdatedEvent: { subscribe: vi.fn() }` (or an `importOriginal` partial mock) to the test's kit mock.
-
 ---
 
 ## Resolved
 
-_None yet._
+### BUG-3: `useStellarWithdrawalQueue.test.tsx` — 8 failing tests
+- **Tracked:** #1077
+- **Date:** 2026-06-17
+- **Resolved:** 2026-06-19 by #690 (test-harness gaps sweep) — the chain mock now provides `withdrawalQueueId`, and the "not configured" path is explicitly tested. Confirmed 28/28 passing on `main` 2026-08-12 while triaging #1077; the entry was simply never moved here.
+- **Location:** `packages/frontend/src/wallet/stellar/useStellarWithdrawalQueue.test.tsx`
+- **Symptom:** 8 failures (16 pass), e.g. expected `/Declined/` but received `"WithdrawalQueue not configured"`.
+- **Root cause:** The mocked test setup left the WithdrawalQueue contract unconfigured, so the hook short-circuited before the paths under test.
+
+### BUG-7: `PortfolioPlaceholderCard.test.tsx` — tooltip balance test is time-sensitive
+- **Tracked:** #1078
+- **Date:** 2026-07-01
+- **Resolved:** 2026-08-12 by #1082. The originally logged root cause was wrong: `generateCurve` balances are seed-deterministic and `Date.now()` only shifts timestamp labels. The real cause was the default period changing to `all` (curve starts at $200), putting the hovered mid-chart slot below the asserted $1,000. Fixed by hovering the last slot, which is pinned to `END_BALANCE` for every period.
+- **Location:** `packages/frontend/src/components/PortfolioPlaceholderCard.test.tsx` line 261
+- **Symptom:** The tooltip test failed with `$636.59` against a `toContain("$1,")` assertion.
+
+### BUG-9: `useRequests.test.tsx` fails at module load — stale `@creit.tech/stellar-wallets-kit` mock
+- **Tracked:** #1079
+- **Date:** 2026-08-10
+- **Resolved:** 2026-08-12 by #1081 — added `addressUpdatedEvent`/`disconnectEvent` subscribe stubs to the test's kit mock, matching the sibling test files.
+- **Location:** `packages/frontend/src/api/useRequests.test.tsx`
+- **Symptom:** Whole suite failed at module load: `No "addressUpdatedEvent" export is defined on the "@creit.tech/stellar-wallets-kit" mock` (raised from `wallet-connect`'s module-scope subscription in `connectionStore.ts`).
