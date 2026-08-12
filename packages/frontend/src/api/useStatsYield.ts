@@ -89,7 +89,9 @@ export function useStatsYield({
       if (period.days !== undefined) {
         params.set("days", String(period.days));
       }
-      return apiFetch<SampleYieldItem[]>(`/v1/stats/yield?${params.toString()}`);
+      return apiFetch<SampleYieldItem[]>(
+        `/v1/stats/yield?${params.toString()}`,
+      );
     },
     enabled,
     refetchInterval: 30_000,

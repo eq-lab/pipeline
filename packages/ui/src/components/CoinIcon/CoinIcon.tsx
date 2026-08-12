@@ -41,10 +41,7 @@ export const CoinIcon = React.forwardRef<HTMLImageElement, CoinIconProps>(
     const px = SIZE_MAP[size];
     const isUsdc = token === "usdc";
     const isSplusd = token === "splusd";
-    const src =
-      isUsdc ? usdcSrc
-      : isSplusd ? splusdSrc
-      : plusdSrc;
+    const src = isUsdc ? usdcSrc : isSplusd ? splusdSrc : plusdSrc;
 
     // Decorative by default; becomes meaningful when caller supplies aria-label.
     const isHidden = ariaLabel == null ? true : (ariaHidden ?? false);

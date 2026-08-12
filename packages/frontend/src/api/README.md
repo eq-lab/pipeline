@@ -189,9 +189,9 @@ this event and issues a refetch — no page reload needed.
 
 ### `useFinancialPosition` mock keys
 
-| Key                                              | Type                           | Purpose                                                      |
-| ------------------------------------------------ | ------------------------------ | ------------------------------------------------------------ |
-| `pipeline.mock.api.GET./v1/financial-position`   | JSON `FinancialPositionResponse` | Bypasses the real fetch — `useFinancialPosition` returns this |
+| Key                                            | Type                             | Purpose                                                       |
+| ---------------------------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/financial-position` | JSON `FinancialPositionResponse` | Bypasses the real fetch — `useFinancialPosition` returns this |
 
 **DevTools snippet:**
 
@@ -201,7 +201,12 @@ localStorage.setItem(
   JSON.stringify({
     assets: {
       total: "8100000.000000",
-      liquid: { total: null, cash_stablecoins: null, tokenized_tbills: null, off_chain_usd: null },
+      liquid: {
+        total: null,
+        cash_stablecoins: null,
+        tokenized_tbills: null,
+        off_chain_usd: null,
+      },
       deployed: {
         total: "8100000.000000",
         secured_loans_outstanding: "8000000.000000",
@@ -219,9 +224,9 @@ localStorage.setItem(
 
 ### `useLoanBook` mock keys
 
-| Key                                    | Type                       | Purpose                                              |
-| -------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| `pipeline.mock.api.GET./v1/loan-book`  | JSON `LoanBookResponse`    | Bypasses the real fetch — `useLoanBook` returns this |
+| Key                                   | Type                    | Purpose                                              |
+| ------------------------------------- | ----------------------- | ---------------------------------------------------- |
+| `pipeline.mock.api.GET./v1/loan-book` | JSON `LoanBookResponse` | Bypasses the real fetch — `useLoanBook` returns this |
 
 ### `useStats` mock keys
 

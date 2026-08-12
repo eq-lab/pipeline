@@ -49,14 +49,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** `-origination-detail.ts`'s state derivation only distinguishes `loading` / `not-found` / `ready`, with no `error` branch reading `useLoanSubmissions().error`.
 - **Workaround:** None. Out of scope for #1037 (a sibling hook already gets the mapping-layer treatment; this needs a new `error` state added to `-origination-detail.ts` first, which is presenter-shape work, not just a copy swap).
 
-### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
-- **Tracked:** #1066
-- **Date:** 2026-07-29
-- **Location:** `packages/frontend` — 9 committed files fail `yarn lint` (prettier `--check`): `src/api/README.md`, `src/api/useStatsYield.ts`, `src/components/ConnectWalletModal.test.tsx`, `src/components/TopBar.test.tsx`, `src/components/TopBar.tsx`, `src/wallet/ConnectModalProvider.test.tsx`, `src/wallet/README.md`, `src/wallet/stellar/connectionStore.ts`, `src/wallet/stellar/contracts/stakedPlusd.test.ts`.
-- **Symptom:** The husky pre-commit hook's `frontend lint` stage exits 1 for **any** commit, because these already-committed files are not prettier-conformant (each is byte-identical to `HEAD` — the debt predates the commit under way). Blocks committing unrelated (e.g. backend-only) changes through the hook.
-- **Root cause:** Formatting debt landed on `main` without prettier being applied; the pre-commit `frontend lint` runs a repo-wide `prettier --check`, so it fails regardless of what the commit touches.
-- **Workaround:** Run `cd packages/frontend && yarn lint --write` (or `prettier --write`) on the 9 files in a dedicated formatting-only PR. Discovered while committing #953 (backend-only); that commit bypassed the stale stage with `--no-verify` after manually verifying `cargo fmt`, `yarn codegen` (no changes), clippy, `cargo test --all`, `tsc`, and doc lint all pass.
-
 ### BUG-14: Trustee loan detail Documents card shows the empty state for loans indexed before commit `f73d54d`
 - **Tracked:** #1067
 - **Date:** 2026-08-07
@@ -125,6 +117,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
+- **Tracked:** #1066
+- **Date:** 2026-07-29
+- **Resolved:** 2026-08-12 by the #1066 formatting-only PR — `prettier --write` on the 7 frontend files still failing (`TopBar.tsx`/`TopBar.test.tsx` had healed since the entry) plus 2 `packages/ui` files found during #1072 (`Button.stories.tsx`, `CoinIcon.tsx`). `yarn lint` is clean in both packages; trustee and wallet-connect were checked and carried no debt.
+- **Location:** `packages/frontend` + `packages/ui` committed files failing repo-wide `prettier --check`.
+- **Symptom:** The husky pre-commit hook's lint stage exited 1 for any commit, since the debt predated the commit under way (bypassed with `--no-verify` by #953).
 
 ### BUG-2: `swap-vertical.svg` is an SVG wrapper around a base64 PNG
 - **Tracked:** #1073

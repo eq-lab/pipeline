@@ -108,7 +108,11 @@ describe("ConnectModalProvider — open / close (terms pre-acknowledged)", () =>
     localStorage.clear();
     // Pre-acknowledge terms so gate is skipped — these tests exercise open/close only.
     localStorage.setItem("pipeline.wallet.termsAcknowledged", "true");
-    capturedGateProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+    capturedGateProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
     mockGateContinue.mockClear();
     mockGateDismiss.mockClear();
   });
@@ -219,7 +223,11 @@ describe("ConnectModalProvider — open / close (terms pre-acknowledged)", () =>
 describe("ConnectModalProvider — gate ordering (issue #639)", () => {
   beforeEach(() => {
     localStorage.clear();
-    capturedGateProps = { open: false, onContinue: () => {}, onDismiss: () => {} };
+    capturedGateProps = {
+      open: false,
+      onContinue: () => {},
+      onDismiss: () => {},
+    };
     mockGateContinue.mockClear();
     mockGateDismiss.mockClear();
   });
@@ -261,7 +269,9 @@ describe("ConnectModalProvider — gate ordering (issue #639)", () => {
     // Gate is now closed.
     expect(capturedGateProps.open).toBe(false);
     // Ack flag has been written.
-    expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe("true");
+    expect(localStorage.getItem("pipeline.wallet.termsAcknowledged")).toBe(
+      "true",
+    );
   });
 
   it("dismissing gate does NOT open ConnectWalletModal", async () => {
