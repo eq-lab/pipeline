@@ -72,10 +72,14 @@ const mockUseWalletView = vi.fn(() => ({
   setKind: vi.fn(),
 }));
 
+// connectionStore.ts subscribes to addressUpdatedEvent and disconnectEvent at
+// module scope, so the mock must export them.
 vi.mock("@creit.tech/stellar-wallets-kit", () => ({
   StellarWalletsKit: Object.assign(vi.fn(), {
     init: vi.fn(),
   }),
+  addressUpdatedEvent: { subscribe: vi.fn() },
+  disconnectEvent: { subscribe: vi.fn() },
   WalletNetwork: { TESTNET: "TESTNET" },
   Networks: {
     TESTNET: "Test SDF Network ; September 2015",
