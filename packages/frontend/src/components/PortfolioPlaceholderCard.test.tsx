@@ -232,7 +232,7 @@ describe("PortfolioPlaceholderCard — hover behaviour", () => {
     expect(tooltip).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("pointerMove on chart wrap shows tooltip with '$1,' balance prefix", async () => {
+  it("pointerMove on chart wrap shows tooltip with the end balance", async () => {
     const { container } = renderCard();
     const chartWrap = container.querySelector(
       "[data-node-id='1497:95048-chart']",
@@ -252,13 +252,14 @@ describe("PortfolioPlaceholderCard — hover behaviour", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    // Fire pointer move at the centre of the chart (slot ~50)
-    fireEvent.pointerMove(chartWrap, { clientX: 300 });
+    // Fire pointer move at the right edge (last slot, pinned to END_BALANCE
+    // for every period — mid-chart balances vary with the active period).
+    fireEvent.pointerMove(chartWrap, { clientX: 600 });
 
     await waitFor(() => {
       const tooltip = screen.getByTestId("chart-tooltip");
       expect(tooltip).toHaveAttribute("aria-hidden", "false");
-      expect(tooltip.textContent).toContain("$1,");
+      expect(tooltip.textContent).toContain("$1,042.80");
     });
   });
 
