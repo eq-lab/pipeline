@@ -16,7 +16,7 @@ const meta = {
           "actions inside Toast notifications — Figma node 1497:95109). All variants " +
           "consume design tokens from `@pipeline/ui/styles/theme.css`. " +
           "Rectangular variants (`primary-dark`, `primary-blue`, `secondary`) additionally " +
-          "accept a `size` prop: `\"default\"` (48px, default) or `\"compact\"` (32px with " +
+          'accept a `size` prop: `"default"` (48px, default) or `"compact"` (32px with ' +
           "tighter padding — Figma node 1994-7226).",
       },
     },

@@ -46,9 +46,7 @@ export function getStellarConnectionAddress(): string | undefined {
  * Update the shared address.  Notifies subscribers only when the value
  * actually changes (same-value writes are silently dropped).
  */
-export function setStellarConnectionAddress(
-  addr: string | undefined,
-): void {
+export function setStellarConnectionAddress(addr: string | undefined): void {
   if (addr === currentAddress) return;
   currentAddress = addr;
   listeners.forEach((l) => l());

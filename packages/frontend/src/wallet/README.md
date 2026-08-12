@@ -952,7 +952,7 @@ Short-circuits to `undefined` when `VITE_STELLAR_USDC_ID` or
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToShares`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarStakeConvertToShares`. Output = `(assets * rate) / 1e7`. Example: `"9600000"` = 0.96 sPLUSD per PLUSD. **Uses 1e7 (SAC), not 1e18 (EVM).** |
 | `pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets`       | decimal bigint at SAC 1e7 scale (rate)      | Rate mock for `useStellarUnstakeConvertToAssets`. Output = `(shares * rate) / 1e7`. Example: `"10400000"` = 1.04 PLUSD per sPLUSD.                                  |
 | `pipeline.mock.wallet.stellar.stakedPlusd.shareBalance`          | decimal bigint string (7-dec raw)           | Mocks `useStellarStakedPlusdBalance` and sPLUSD trustline check. E.g. `"10000000"` = 1 sPLUSD.                                                                      |
-| `pipeline.mock.wallet.stellar.plusd.totalSupply`                 | decimal bigint string (7-dec raw)           | (Removed — `useStellarPlusdTotalSupply` uses real Horizon fetch; no mock layer.)                                                                                     |
+| `pipeline.mock.wallet.stellar.plusd.totalSupply`                 | decimal bigint string (7-dec raw)           | (Removed — `useStellarPlusdTotalSupply` uses real Horizon fetch; no mock layer.)                                                                                    |
 
 **DevTools snippet:**
 

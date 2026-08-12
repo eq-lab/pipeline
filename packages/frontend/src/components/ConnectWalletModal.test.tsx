@@ -335,7 +335,9 @@ describe("ConnectWalletModal — full-viewport layout", () => {
 
   it("left-pane wrapper is top-anchored (justify-start), not vertically centered (justify-center)", async () => {
     renderModal();
-    const heading = await screen.findByRole("heading", { name: "Connect Wallet" });
+    const heading = await screen.findByRole("heading", {
+      name: "Connect Wallet",
+    });
     // Walk up to the flex wrapper that directly wraps the content column
     const contentColumn = heading.parentElement!;
     const leftPane = contentColumn.parentElement!;
