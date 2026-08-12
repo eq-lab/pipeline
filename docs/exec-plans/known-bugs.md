@@ -105,14 +105,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause (found 2026-07-10, this machine's dev environment):** On this machine, `which yarn` resolves to `/opt/homebrew/bin/yarn`, whose shebang is `#!/opt/homebrew/opt/node/bin/node` — an **absolute path** to Homebrew's Node (v26.0.0 at the time of writing), bypassing the shell's `PATH`-selected nvm Node (v20.20.2, per `.nvmrc`) entirely. Node v26 ships an experimental built-in `globalThis.localStorage`; when vitest's `jsdom` environment (via `yarn` → the Homebrew Node process) tries to install its own `window.localStorage`, the two collide and the global is left `undefined` in the test's `globalThis`. Confirmed: running the exact same test file's `vitest` binary directly with the nvm-pinned Node 20 binary (bypassing yarn's shebang) — `node <nvm-path>/node ../../node_modules/.bin/vitest run <file>` — makes every one of these failures disappear; the entire suite goes from ~615 failed to 1 pre-existing unrelated flake (BUG-7). This is a **local dev-machine toolchain issue**, not a code defect — CI and any correctly-`nvm`'d shell are unaffected.
 - **Workaround:** Invoke `vitest`/`tsc`/`eslint` via the nvm-selected Node binary explicitly (e.g. ``$(command -v node) node_modules/.bin/vitest run`` from the workspace root, or `nvm use` before `yarn ...`) rather than through a `yarn` whose shebang hardcodes a different Node install. Longer-term: `yarn` should resolve Node via `PATH`/`env` rather than an absolute Homebrew path — outside this repo's control (a local Homebrew/yarn install detail), but worth flagging to anyone hitting mysteriously-failing frontend tests on macOS.
 
-### BUG-2: `swap-vertical.svg` is an SVG wrapper around a base64 PNG
-- **Tracked:** #1073
-- **Date:** 2026-05-18
-- **Location:** `packages/ui/src/assets/icons/swap-vertical.svg` — imported by `packages/ui/src/components/ConversionCard/ConversionCard.tsx:9`
-- **Symptom:** The swap-arrows icon rendered between the two ConversionCard halves uses an SVG file that wraps a rasterised PNG (`<image href="data:image/png;base64,…">`). Same stale-raster pattern as the original `coin-usdc.svg` before Issue #246 fixed it. Detected during UX testing of #246: `grep -c "data:image/png" packages/ui/src/assets/icons/swap-vertical.svg` → `1`.
-- **Root cause:** Asset was originally extracted as a rasterised PNG and placed into an SVG wrapper (same historical pattern as `coin-usdc.svg`). Not caught by #246 scope, which was USDC-only.
-- **Workaround:** None applied. Replace with a proper vector SVG export from Figma (same procedure as #246 Step 1–2).
-
 ### BUG-8: `@pipeline/wallet-connect` — `localStorage` undefined in several jsdom test files
 
 - **Tracked:** #1003 (consolidated; see comment there)
@@ -133,6 +125,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-2: `swap-vertical.svg` is an SVG wrapper around a base64 PNG
+- **Tracked:** #1073
+- **Date:** 2026-05-18
+- **Resolved:** 2026-08-12 by the #1073 PR — replaced with true vector geometry (two 1.5px round-cap stroke arrows, ink `#262524` = `--color-pipeline-ink`), traced pixel-exactly from the embedded 22×22 raster since the Figma MCP used by #246 was not available; verified by rasterising the new SVG and diffing masks against the original PNG. It was the last raster-in-SVG asset in `packages/ui/src/assets/icons/`.
+- **Location:** `packages/ui/src/assets/icons/swap-vertical.svg` — imported by `ConversionCard.tsx`.
+- **Symptom:** The swap-arrows icon wrapped a base64 PNG (`<image href="data:image/png;base64,…">`), same stale-raster pattern #246 fixed for `coin-usdc.svg`.
 
 ### BUG-1: `Typography.stories.tsx` fails strict TS check with unused `React` import
 - **Tracked:** #1072
