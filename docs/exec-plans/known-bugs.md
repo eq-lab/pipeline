@@ -105,14 +105,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause (found 2026-07-10, this machine's dev environment):** On this machine, `which yarn` resolves to `/opt/homebrew/bin/yarn`, whose shebang is `#!/opt/homebrew/opt/node/bin/node` — an **absolute path** to Homebrew's Node (v26.0.0 at the time of writing), bypassing the shell's `PATH`-selected nvm Node (v20.20.2, per `.nvmrc`) entirely. Node v26 ships an experimental built-in `globalThis.localStorage`; when vitest's `jsdom` environment (via `yarn` → the Homebrew Node process) tries to install its own `window.localStorage`, the two collide and the global is left `undefined` in the test's `globalThis`. Confirmed: running the exact same test file's `vitest` binary directly with the nvm-pinned Node 20 binary (bypassing yarn's shebang) — `node <nvm-path>/node ../../node_modules/.bin/vitest run <file>` — makes every one of these failures disappear; the entire suite goes from ~615 failed to 1 pre-existing unrelated flake (BUG-7). This is a **local dev-machine toolchain issue**, not a code defect — CI and any correctly-`nvm`'d shell are unaffected.
 - **Workaround:** Invoke `vitest`/`tsc`/`eslint` via the nvm-selected Node binary explicitly (e.g. ``$(command -v node) node_modules/.bin/vitest run`` from the workspace root, or `nvm use` before `yarn ...`) rather than through a `yarn` whose shebang hardcodes a different Node install. Longer-term: `yarn` should resolve Node via `PATH`/`env` rather than an absolute Homebrew path — outside this repo's control (a local Homebrew/yarn install detail), but worth flagging to anyone hitting mysteriously-failing frontend tests on macOS.
 
-### BUG-1: `Typography.stories.tsx` fails strict TS check with unused `React` import
-- **Tracked:** #1072
-- **Date:** 2026-05-12
-- **Location:** `packages/ui/src/typography/Typography.stories.tsx:2`
-- **Symptom:** `npx tsc --noEmit` from `packages/ui` reports `error TS6133: 'React' is declared but its value is never read.` The Storybook build itself succeeds because Storybook does not run a strict tsc pass, but anyone running the package-level type check hits the error.
-- **Root cause:** Unused `import React from "react"` in the file; the package's `tsconfig.json` enables `noUnusedLocals`. React 19 + the new JSX runtime no longer require the explicit import.
-- **Workaround:** None applied. Drop the import (or switch to `import type` if a type is needed) when this is addressed.
-
 ### BUG-2: `swap-vertical.svg` is an SVG wrapper around a base64 PNG
 - **Tracked:** #1073
 - **Date:** 2026-05-18
@@ -141,6 +133,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-1: `Typography.stories.tsx` fails strict TS check with unused `React` import
+- **Tracked:** #1072
+- **Date:** 2026-05-12
+- **Resolved:** 2026-08-12 by the #1072 PR — dropped the unused `import React` there and in `ConversionCard.stories.tsx`, which had developed the identical TS6133 since the entry was logged; `npx tsc --noEmit` from `packages/ui` is clean again.
+- **Location:** `packages/ui/src/typography/Typography.stories.tsx:2`, `packages/ui/src/components/ConversionCard/ConversionCard.stories.tsx:1`
+- **Symptom:** `npx tsc --noEmit` from `packages/ui` reported `TS6133: 'React' is declared but its value is never read` (`noUnusedLocals`; React 19's JSX runtime needs no explicit import). Storybook builds were unaffected.
 
 ### BUG-8: `-deposit.test.tsx` Stellar voucher mocks nest `signatureBytes` under `data` instead of top-level
 - **Tracked:** #1074
