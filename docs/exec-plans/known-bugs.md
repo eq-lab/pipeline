@@ -97,14 +97,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Missing `base6_to_decimal_string` call. Discovered while auditing every `base6_to_decimal_string` consumer for #901's Stellar-scale bug; `GroupedRequest` is currently unused by any API route or worker consumer (confirmed via repo-wide grep) so there is no live user-visible impact today.
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
-### BUG-8: `-deposit.test.tsx` Stellar voucher mocks nest `signatureBytes` under `data` instead of top-level
-- **Tracked:** #1074
-- **Date:** 2026-07-09
-- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` — the `@/api` mock factory for `useStellarDepositVoucher` / `useStellarWithdrawalVoucher` (around line 201-219).
-- **Symptom:** The mock returns `{ data: { signatureBytes: ... }, status, error, refetch }`, but the real hooks (`useStellarDepositVoucher.ts` / `useStellarWithdrawalVoucher.ts`) expose `signatureBytes` as a top-level field on the hook result, not nested inside `data`. The `useDepositFlow.ts` Stellar claim `onAction` handler reads `(stellarVoucher as { signatureBytes? }).signatureBytes` (top-level), so with this mock shape `sig` is always `undefined` when status is "ready". No test currently clicks the Stellar Claim button (`renderDepositStellar()` tests only assert enabled/disabled state, never `user.click`), so this has been latent and undetected.
-- **Root cause:** Mock was written against a guessed/incorrect shape and never exercised end-to-end via a click assertion.
-- **Workaround:** None applied — found while implementing #800 (voucher `deadline` threading). Fix by moving `signatureBytes` to the mock's top level (matching `UseStellarDepositVoucherResult`/`UseStellarWithdrawalVoucherResult`) and adding a click-triggers-write test for the Stellar claim path, analogous to the existing EVM "clicking Claim ... triggers claim.write" tests.
-
 ### BUG-6: Frontend vitest suite — widespread `localStorage` undefined failures
 - **Tracked:** #1003 (consolidated with the two `localStorage` BUG-8 entries)
 - **Date:** 2026-06-30 (root cause identified 2026-07-10, issue #814)
@@ -149,6 +141,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-8: `-deposit.test.tsx` Stellar voucher mocks nest `signatureBytes` under `data` instead of top-level
+- **Tracked:** #1074
+- **Date:** 2026-07-09
+- **Resolved:** 2026-08-12 by the #1074 PR — `signatureBytes` moved to the mock's top level (matching `UseStellarDepositVoucherResult`/`UseStellarWithdrawalVoucherResult`), `deadline` added under `data` (required since #800), and two click-triggers-write tests added for the Stellar deposit and withdrawal claim paths, asserting `write(requestId, signatureBytes, deadline)`.
+- **Location:** `packages/frontend/src/routes/-deposit.test.tsx` — the `@/api` mock factory for `useStellarDepositVoucher` / `useStellarWithdrawalVoucher`.
+- **Symptom:** The mock nested `signatureBytes` inside `data`, but the real hooks expose it top-level; the Stellar claim `onAction` read the top-level field, so `sig` was always `undefined`. Latent because no test clicked the Stellar Claim button.
 
 ### BUG-4: `-deposit.test.tsx` — "step 2 shows loading affordance" test fails
 - **Tracked:** #1075
