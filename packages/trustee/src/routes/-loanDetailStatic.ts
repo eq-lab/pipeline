@@ -58,6 +58,12 @@ export const DISBURSING_OTHER_ACTIONS: OtherActions = {
   note: "Default, off-cycle re-term, and write-down close are not available from your key — they are Risk Council proposals under a 24h timelock.",
 };
 
+/** A closed loan is terminal — no lifecycle or cash actions remain (#1092). */
+export const CLOSED_OTHER_ACTIONS: OtherActions = {
+  actions: [],
+  note: "This loan is closed — no further actions are available.",
+};
+
 export const WATCHLIST_CURRENT_STAGE: CurrentStage = {
   title: "Current stage — escalation decision pending",
   tag: "Risk Council · 24h timelock",

@@ -4,6 +4,10 @@
  * the executor `execute` proxy (same pattern as `useRecordPayment`). Moves
  * the loan to `Closed` with a `ClosureReason`.
  *
+ * On success, invalidates the loan-book/financials queries immediately and
+ * again after short delays — the close is indexed asynchronously, so the
+ * immediate refetch races the indexer and the next poll is 30 s out (#1092).
+ *
  * spec: docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
  */
 import { useState, useCallback } from "react";
@@ -68,8 +72,14 @@ export function useCloseLoan(): UseCloseLoanResult {
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
+      const invalidate = () => {
+        void queryClient.invalidateQueries({ queryKey: ["loan-book"] });
+        void queryClient.invalidateQueries({ queryKey: ["loan-financials"] });
+      };
+      invalidate();
+      for (const delayMs of [5_000, 15_000]) {
+        setTimeout(invalidate, delayMs);
+      }
     },
   });
 
