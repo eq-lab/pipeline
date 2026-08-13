@@ -17,22 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-18: `-dashboard.test.tsx` asserts the pre-#1053 raw status literal — fails on `main`
-- **Tracked:** #1062
-- **Date:** 2026-08-11
-- **Location:** `packages/frontend/src/routes/-dashboard.test.tsx` — "renders the Figma 4116-9155 column set and formatted values when selected" (`expect(screen.getByText("InReview"))`, ~line 980).
-- **Symptom:** The test fails on a clean `main` checkout: the origination Status cell renders the #1053 humanized label "In review", but the assertion still expects the backend literal "InReview".
-- **Root cause:** #1053 changed the status rendering; `DeploymentMonitorPanel.test.tsx` fixtures were updated (`statusLabel: "In review"`) but this route-level assertion was missed. Not caught because CI does not run the frontend vitest suite.
-- **Workaround:** None needed — change the assertion to `"In review"`. Discovered while running the suite for #1058 (unrelated to that change, so not fixed inline).
-
-### BUG-17: `dashboards.md` In Origination row-field spec is stale (pre-#814 column set)
-- **Tracked:** #1063
-- **Date:** 2026-08-11
-- **Location:** `docs/product-specs/dashboards.md` — "In Origination tab" bullet (Panel B section, ~line 160-161).
-- **Symptom:** The spec says each origination row "reuses the Active Loans table layout plus a Status column" with fields Borrower/Commodity, Principal, Rate, Protection (Collateral/LTV/Duration as `—`). The actual `OriginationTable.tsx` renders the issue #814 8-column set: Originator, Commodity, Facility, Corridor, Rate, Maturity, Submitted, Status.
-- **Root cause:** #814 replaced the origination tab's field set but this product-spec paragraph was not updated (only `docs/frontend/dashboard-components.md` was).
-- **Workaround:** None needed — `dashboard-components.md#originationtable` and the #814 exec plan describe the current columns. Discovered while scoping #1058 (out of scope there: the origination tab is explicitly unchanged).
-
 ### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
 - **Tracked:** #1064
 - **Date:** 2026-08-07
@@ -117,6 +101,20 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-18: `-dashboard.test.tsx` asserts the pre-#1053 raw status literal — fails on `main`
+- **Tracked:** #1062
+- **Date:** 2026-08-11
+- **Resolved:** 2026-08-11 by #1060 (the #1058 follow-up), which changed the assertion to the humanized "In review" label and deliberately removed this entry — it was fixed before ever landing on `main`. The entry was re-introduced by the #1080 tracking-annotation carry-over from the `docs/998` branch, and #1062 was filed from the stale text. Confirmed 32/32 passing on `main` 2026-08-13.
+- **Location:** `packages/frontend/src/routes/-dashboard.test.tsx` (assertion now at ~line 979).
+- **Symptom:** The origination Status cell renders the #1053 humanized "In review" label, but the assertion expected the backend literal "InReview".
+
+### BUG-17: `dashboards.md` In Origination row-field spec is stale (pre-#814 column set)
+- **Tracked:** #1063
+- **Date:** 2026-08-11
+- **Resolved:** 2026-08-11 by #1060 (the #1058 follow-up), which rewrote the In Origination bullet to describe the #814 8-column set (Originator, Commodity, Facility, Corridor, Rate, Maturity, Submitted, Status) and the #1053 humanized status labels. Same carry-over story as BUG-18: the entry re-entered `main` via #1080 after the fix, and #1063 was filed from the stale text.
+- **Location:** `docs/product-specs/dashboards.md` — "In Origination tab" bullet (Panel B section).
+- **Symptom:** The spec described the pre-#814 row fields ("Active Loans table layout plus a Status column").
 
 ### BUG-13: pre-commit `frontend lint` stage fails on pre-existing prettier debt
 - **Tracked:** #1066
