@@ -849,6 +849,14 @@ Approve/Reject the invalidated list would refetch a fresh (status-flipped) copy,
 returning the stale snapshot — the footer would never flip to the Approved/Rejected banner until a
 hard refresh dropped the router state.
 
+**State derivation (#1065):** with no resolvable submission, the presenter distinguishes
+`loading` (fallback list query in flight) → `error` (the query **failed** — rendered as an
+`InlineError` per the #1037 pattern, friendly "Failed to load the submission." with the raw
+failure behind View details, plus a back link) → `not-found` (the query resolved and no row
+matches the id). Before #1065 a failed fetch fell through to the same "Submission not found."
+copy as a genuinely missing id, discarding the failure entirely. A router-state submission still
+renders `ready` even when the list query errors.
+
 ### Status-conditional footer (#823, Figma node `4116:9656`; copy amended by #829, restored by #831)
 
 The always-shown action-buttons block is replaced by a footer that branches on status:
