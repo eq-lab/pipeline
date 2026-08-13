@@ -624,17 +624,28 @@ load — a principal repayment always pays it all; there are no partial principa
 Once the loan is fully repaid, the page also exposes a **Close loan** action (`useCloseLoan`) that
 moves the loan to `Closed`.
 
-### Close-loan gating (#884, resolved open questions 1–3)
+**Offtaker fully paid (#1090):** when the financials' `offtaker_outstanding` is `0` — the offtaker
+owes nothing, e.g. the final coupon was recorded in the sibling flow — there is nothing left to
+record. The presenter's `offtakerFullyPaid` collapses the entered amount (including a stale
+pre-refetch prefill), keeps the waterfall query disabled, and forces `recordPaymentInput` to
+`null`; the page replaces the amount/date fields, waterfall, and Record action with a fully-repaid
+notice ("nothing left to record") and lets Close-loan enable. The state must hold **without a
+reload** — a refetch that brings owed to `0` mid-session drops the stale form rather than leaving
+a recordable amount on screen. It is suppressed while this page's own `record_payment` is
+pending/settled so the "Payment recorded" confirmation flow stays intact.
+
+### Close-loan gating (#884, resolved open questions 1–3; #1090)
 
 The Close-loan action always renders as the full-width "Next step — close loan" item, but only
 **enables** once the final payment is actually complete:
 
 - `showCloseLoan` marks that closing is applicable — the entered amount is terminal
-  (`isTerminalRepayment`, same cent-precision detection as the coupon flow) or the outstanding
-  senior is already `0` (`alreadyRepaid` — the trustee reloaded after recording it).
+  (`isTerminalRepayment`, same cent-precision detection as the coupon flow), the outstanding
+  senior is already `0` (`alreadyRepaid` — the trustee reloaded after recording it), or the
+  offtaker owes nothing (`offtakerFullyPaid`, #1090).
 - The button stays **disabled** until the `record_payment` write has succeeded
-  (`record.isSuccess`) or `alreadyRepaid` — entering a terminal amount is not enough on its own;
-  the trustee must record the payment first.
+  (`record.isSuccess`), `alreadyRepaid`, or `offtakerFullyPaid` — entering a terminal amount is
+  not enough on its own; the trustee must record the payment first.
 - `closureReason` picks `"ScheduledMaturity"` when `now >= maturity` (the loan-book's
   rollover-aware `maturity`), else `"EarlyRepayment"`.
 

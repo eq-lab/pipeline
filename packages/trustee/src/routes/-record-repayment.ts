@@ -215,6 +215,13 @@ export interface RecordRepaymentView {
    * it), so the Close-loan action may enable without recording again.
    */
   alreadyRepaid: boolean;
+  /**
+   * `true` when the financials' `offtaker_outstanding` is `0` — the offtaker
+   * owes nothing, so there is nothing left to record (#1090). The page renders
+   * the fully-repaid notice instead of the amount form/waterfall, and the
+   * Close-loan action may enable without recording again.
+   */
+  offtakerFullyPaid: boolean;
   /** The `ClosureReason` to pass to `useCloseLoan`; `null` while the loan's maturity is unknown. */
   closureReason: "ScheduledMaturity" | "EarlyRepayment" | null;
 }
@@ -243,8 +250,20 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     return () => clearTimeout(timer);
   }, [amountInput]);
 
-  const enteredUsd = parseUsdInput(debouncedAmount);
-  const amountBaseUnits = usdToBaseUnits(debouncedAmount);
+  const offtakerOutstandingUsd = parseServedUsd(
+    financials.data?.offtaker_outstanding,
+  );
+  // Nothing left to record once the offtaker owes $0 (#1090) — collapses the
+  // entered amount (stale from before a refetch brought owed to zero, e.g. the
+  // final coupon recorded in the sibling flow) so the waterfall query stays
+  // disabled and no record payload can be built.
+  const offtakerFullyPaid =
+    offtakerOutstandingUsd != null && offtakerOutstandingUsd <= 0;
+
+  const enteredUsd = offtakerFullyPaid ? null : parseUsdInput(debouncedAmount);
+  const amountBaseUnits = offtakerFullyPaid
+    ? "0"
+    : usdToBaseUnits(debouncedAmount);
   const asOfSeconds = useMemo(() => {
     if (!dateInput) return Math.floor(Date.now() / 1000);
     const parsed = Math.floor(
@@ -266,9 +285,6 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
         : "ready";
 
   const outstandingSeniorUsd = parseServedUsd(entry?.senior_outstanding);
-  const offtakerOutstandingUsd = parseServedUsd(
-    financials.data?.offtaker_outstanding,
-  );
 
   // Set the amount to the full remaining owed once financials load — a
   // principal repayment always pays it ALL (the input is read-only on the page,
@@ -313,14 +329,14 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     ? baseUnitsToUsd(recordPaymentInput.equity_distributed)
     : null;
 
-  const enteredUsdLive = parseUsdInput(amountInput);
+  const enteredUsdLive = offtakerFullyPaid ? null : parseUsdInput(amountInput);
   const isCalculating =
     enteredUsdLive != null &&
     (amountInput !== debouncedAmount ||
       (waterfall.data == null && waterfall.error == null));
 
   const rows: WaterfallRow[] =
-    waterfall.data != null || enteredUsdLive != null
+    !offtakerFullyPaid && (waterfall.data != null || enteredUsdLive != null)
       ? [
           {
             // Principal repayment: the real, waterfall-served figure (unlike
@@ -381,7 +397,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
 
   const alreadyRepaid =
     outstandingSeniorUsd != null && outstandingSeniorUsd <= 0;
-  const showCloseLoan = isTerminal || alreadyRepaid;
+  const showCloseLoan = isTerminal || alreadyRepaid || offtakerFullyPaid;
 
   const maturity = entry?.maturity ?? null;
   const reason =
@@ -419,6 +435,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     recordPaymentInput,
     showCloseLoan,
     alreadyRepaid,
+    offtakerFullyPaid,
     closureReason: reason,
   };
 }

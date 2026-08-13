@@ -558,6 +558,106 @@ describe("Record Repayment route — ready state", () => {
   });
 });
 
+describe("Record Repayment route — offtaker fully paid (#1090)", () => {
+  function fullyPaid() {
+    mockUseLoanBook.mockReturnValue({
+      data: LOAN_BOOK_RESPONSE,
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    mockUseLoanFinancials.mockReturnValue({
+      data: { ...FINANCIALS_RESPONSE, offtaker_outstanding: "0.000000" },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+  }
+
+  beforeEach(() => {
+    mockRecord.isSuccess = false;
+  });
+
+  it("shows the fully-repaid notice instead of the form, waterfall placeholder, and record action", () => {
+    fullyPaid();
+    renderRoute();
+    expect(screen.getByTestId("record-repayment-fully-paid")).toHaveTextContent(
+      "nothing left to record",
+    );
+    expect(
+      screen.queryByTestId("record-repayment-amount"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-repayment-date"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-repayment-submit"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-repayment-waterfall-empty"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ENABLES Close-loan when the offtaker owes nothing, and clicking closes with the resolved reason", async () => {
+    // Freeze `Date.now()` at the fixture's maturity so the reason is
+    // deterministic (never time-of-run dependent).
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
+    fullyPaid();
+    renderRoute();
+    const closeBtn = screen.getByTestId("record-repayment-close-submit");
+    expect(closeBtn).toBeEnabled();
+    fireEvent.click(closeBtn);
+    await waitFor(() =>
+      expect(mockCloseLoan.mutateAsync).toHaveBeenCalledWith({
+        loanId: 4488,
+        reason: "ScheduledMaturity",
+      }),
+    );
+    nowSpy.mockRestore();
+  });
+
+  it("drops the stale entered amount and shows the notice when a refetch brings offtaker owed to zero (recorded in the sibling coupon flow)", async () => {
+    ready();
+    mockWaterfall(WATERFALL_TERMINAL);
+    const rendered = renderRoute();
+    fireEvent.change(screen.getByTestId("record-repayment-amount"), {
+      target: { value: "6150000" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("record-repayment-submit")).toBeEnabled(),
+    );
+    // The financials refetch now serves owed = 0 — the amount above is stale.
+    mockUseLoanFinancials.mockReturnValue({
+      data: { ...FINANCIALS_RESPONSE, offtaker_outstanding: "0.000000" },
+      isLoading: false,
+      error: null,
+      refetch: () => {},
+    });
+    const Page = Route.options.component as React.ComponentType;
+    rendered.rerender(<Page />);
+    expect(
+      screen.getByTestId("record-repayment-fully-paid"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("record-repayment-submit"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
+  });
+
+  it("keeps the just-recorded confirmation when this page's own record succeeded (no notice swap)", () => {
+    mockRecord.isSuccess = true;
+    fullyPaid();
+    mockWaterfall(WATERFALL_TERMINAL);
+    renderRoute();
+    expect(
+      screen.queryByTestId("record-repayment-fully-paid"),
+    ).not.toBeInTheDocument();
+    const submit = screen.getByTestId("record-repayment-submit");
+    expect(submit).toHaveTextContent("Payment recorded");
+    expect(screen.getByTestId("record-repayment-close-submit")).toBeEnabled();
+  });
+});
+
 describe("Record Repayment route — top-level states", () => {
   it("renders a loading skeleton while the loan book is loading", () => {
     mockUseLoanBook.mockReturnValue({
