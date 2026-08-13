@@ -629,20 +629,22 @@ function OtherActionsCard({
       >
         Other actions on this loan
       </p>
-      <div className="flex flex-wrap gap-[10px]">
-        {otherActions.actions.map((label) => (
-          <button
-            key={label}
-            type="button"
-            data-testid={`loan-detail-action-${label}`}
-            onClick={() => onAction?.(label)}
-            className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
-            style={{ borderColor: LINE_COLOR }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {otherActions.actions.length > 0 && (
+        <div className="flex flex-wrap gap-[10px]">
+          {otherActions.actions.map((label) => (
+            <button
+              key={label}
+              type="button"
+              data-testid={`loan-detail-action-${label}`}
+              onClick={() => onAction?.(label)}
+              className="inline-flex h-[40px] items-center rounded-[4px] border border-solid bg-white px-[17px] font-[family-name:var(--font-body)] text-[16px] text-[#262524]"
+              style={{ borderColor: LINE_COLOR }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {otherActions.note && (
         <p
           className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"

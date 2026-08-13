@@ -15,6 +15,7 @@ import { render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UseLoanDetailResult } from "./-useLoanDetail";
 import {
+  CLOSED_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
   PERFORMING_OTHER_ACTIONS,
 } from "./-loanDetailStatic";
@@ -456,6 +457,18 @@ describe("Loan detail route — static action sections", () => {
     expect(
       screen.queryByTestId("loan-detail-current-stage"),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders NO action buttons on a Closed loan — only the terminal note (#1092)", () => {
+    mockUseLoanDetail.mockReturnValue(
+      makeResult({ otherActions: CLOSED_OTHER_ACTIONS }),
+    );
+    renderRoute();
+    const actions = screen.getByTestId("loan-detail-other-actions");
+    expect(within(actions).queryAllByRole("button")).toHaveLength(0);
+    expect(
+      within(actions).getByText(/This loan is closed — no further actions/),
+    ).toBeInTheDocument();
   });
 
   it("renders the Other actions buttons + timelock note", () => {

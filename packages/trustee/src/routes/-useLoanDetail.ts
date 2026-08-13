@@ -31,6 +31,7 @@ import { formatEpochDate, formatMaturityDate } from "@/utils/formatDate";
 import { formatNearestPayment } from "./-useLoansTable";
 import { toUserError } from "@/utils/userError";
 import {
+  CLOSED_OTHER_ACTIONS,
   DISBURSING_OTHER_ACTIONS,
   MATURED_OTHER_ACTIONS,
   MATURED_ROLLOVER_CARD,
@@ -192,6 +193,21 @@ export interface StatusChip {
   band: StatusBand;
   /** The raw on-chain status string as served — always printed on the loan detail (§3.2). */
   raw: string;
+}
+
+/** The other-actions set for the loan's state — Closed loans are terminal and get none (#1092). */
+export function selectOtherActions(
+  chipLabel: string | null,
+  variant: LoanDetailVariant,
+): OtherActions {
+  if (chipLabel === "Closed") return CLOSED_OTHER_ACTIONS;
+  return variant === "watchlist"
+    ? WATCHLIST_OTHER_ACTIONS
+    : variant === "matured"
+      ? MATURED_OTHER_ACTIONS
+      : variant === "disbursing"
+        ? DISBURSING_OTHER_ACTIONS
+        : PERFORMING_OTHER_ACTIONS;
 }
 
 // spec: docs/frontend/trustee-flows.md#status-chip-mapping-design-assignment-32.
@@ -732,14 +748,7 @@ export function useLoanDetail(loanId: string): UseLoanDetailResult {
           : "performing";
 
   const tiles = buildSummaryTiles(entry, financials.data, variant);
-  const otherActions =
-    variant === "watchlist"
-      ? WATCHLIST_OTHER_ACTIONS
-      : variant === "matured"
-        ? MATURED_OTHER_ACTIONS
-        : variant === "disbursing"
-          ? DISBURSING_OTHER_ACTIONS
-          : PERFORMING_OTHER_ACTIONS;
+  const otherActions = selectOtherActions(chipLabel, variant);
   // Hidden for now (#938) — spec: trustee-flows.md#status-conditional-layout-859862866.
   const currentStage: CurrentStage | null = null;
 
