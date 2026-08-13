@@ -28,8 +28,16 @@ import {
   buildPriceCollateralState,
   buildRegistryState,
   buildSummaryTiles,
+  selectOtherActions,
   statusToChip,
 } from "./-useLoanDetail";
+import {
+  CLOSED_OTHER_ACTIONS,
+  DISBURSING_OTHER_ACTIONS,
+  MATURED_OTHER_ACTIONS,
+  PERFORMING_OTHER_ACTIONS,
+  WATCHLIST_OTHER_ACTIONS,
+} from "./-loanDetailStatic";
 import type { UseLoanCcrHistoryResult } from "@/api/useLoanCcrHistory";
 
 function makeEntry(overrides: Partial<LoanBookEntry> = {}): LoanBookEntry {
@@ -103,6 +111,37 @@ function makeValuation(
 }
 
 // ── statusToChip (design assignment §3.2) ─────────────────────────────────────
+
+describe("selectOtherActions (#1092)", () => {
+  it("returns the terminal no-actions set for a Closed loan, regardless of variant", () => {
+    expect(selectOtherActions("Closed", "performing")).toBe(
+      CLOSED_OTHER_ACTIONS,
+    );
+    expect(selectOtherActions("Closed", "watchlist")).toBe(
+      CLOSED_OTHER_ACTIONS,
+    );
+    expect(CLOSED_OTHER_ACTIONS.actions).toEqual([]);
+    expect(CLOSED_OTHER_ACTIONS.note).toMatch(/closed/i);
+  });
+
+  it("keeps the per-variant sets for non-Closed loans", () => {
+    expect(selectOtherActions("Performing", "performing")).toBe(
+      PERFORMING_OTHER_ACTIONS,
+    );
+    expect(selectOtherActions("Watchlist", "watchlist")).toBe(
+      WATCHLIST_OTHER_ACTIONS,
+    );
+    expect(selectOtherActions("Matured", "matured")).toBe(
+      MATURED_OTHER_ACTIONS,
+    );
+    expect(selectOtherActions("Disbursing", "disbursing")).toBe(
+      DISBURSING_OTHER_ACTIONS,
+    );
+    expect(selectOtherActions(null, "performing")).toBe(
+      PERFORMING_OTHER_ACTIONS,
+    );
+  });
+});
 
 describe("statusToChip", () => {
   it("maps the raw on-chain status to the display chip + band", () => {

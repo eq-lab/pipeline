@@ -225,9 +225,10 @@ correct-scale NAV denominator; rendered as served (no frontend correction is def
    already the true CCR. The former `correctCcrBps` ÷1000 helper (which silently rendered CCR
    1000× too small — e.g. 0.21% instead of the true 209.87%) has been removed. The 120%
    maintenance-margin pre-default threshold applies directly to the served `ccr_bps`.
-2. **Default & Closed tabs render per Figma but stay empty.** `/v1/loan-book` returns only the
-   active set (Performing + WatchList); defaulted/closed loans are excluded backend-side, so
-   client-side filtering yields 0 rows for those tabs. A backend follow-up is needed to serve them.
+2. **Default & Closed tabs render per Figma.** `/v1/loan-book` serves closed loans in `loans[]`
+   with status `Closed` (verified on staging, #1092 — the earlier "excluded backend-side" note is
+   outdated for Closed; Default remains unverified), excluded only from the active-set
+   aggregates. Client-side status filtering populates the Closed tab as loans close.
 3. **The "Payments due" banner + "Record coupon" action are omitted** from this page — no
    `/v1/loan-book` data source (never fabricate).
 
@@ -451,6 +452,13 @@ The page branches on `detail.variant` (derived from the served display status):
   passed`, and Roll over is the matured-only fast-path (Figma node `4116:10969`, #866). The served
   `Past Due` status maps here.
 
+A `Closed` status keeps the performing layout (the lifecycle spine reads it as the completed
+Performing phase) but is terminal for actions: `selectOtherActions` returns
+`CLOSED_OTHER_ACTIONS` — no action buttons, only the "This loan is closed — no further actions
+are available." note — whenever the status chip is Closed, regardless of variant (#1092).
+Closed loans stay served in `/v1/loan-book`'s `loans[]` (status `Closed`); they are excluded
+from the active-set aggregates, not from the row set.
+
 Shared live sections render in every variant: Hero + status chip (loan-book row), Price &
 collateral (`/valuations`), Registry (`/financials`, performing only), and Documents
 (loan-book row, #1040 — see [Documents](#documents)). Watchlist CCR trend and summary tiles are
@@ -624,19 +632,46 @@ load — a principal repayment always pays it all; there are no partial principa
 Once the loan is fully repaid, the page also exposes a **Close loan** action (`useCloseLoan`) that
 moves the loan to `Closed`.
 
-### Close-loan gating (#884, resolved open questions 1–3)
+**Offtaker fully paid (#1090):** when the financials' `offtaker_outstanding` is `0` — the offtaker
+owes nothing, e.g. the final coupon was recorded in the sibling flow — there is nothing left to
+record. The presenter's `offtakerFullyPaid` collapses the entered amount (including a stale
+pre-refetch prefill), keeps the waterfall query disabled, and forces `recordPaymentInput` to
+`null`; the page replaces the amount/date fields, waterfall, and Record action with a fully-repaid
+notice ("nothing left to record"). The state must hold **without a reload** — a refetch that
+brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
+screen. It is suppressed while this page's own `record_payment` is pending/settled so the
+"Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
+close checklist below, not by this state alone.
 
-The Close-loan action always renders as the full-width "Next step — close loan" item, but only
-**enables** once the final payment is actually complete:
+### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
-- `showCloseLoan` marks that closing is applicable — the entered amount is terminal
-  (`isTerminalRepayment`, same cent-precision detection as the coupon flow) or the outstanding
-  senior is already `0` (`alreadyRepaid` — the trustee reloaded after recording it).
-- The button stays **disabled** until the `record_payment` write has succeeded
-  (`record.isSuccess`) or `alreadyRepaid` — entering a terminal amount is not enough on its own;
-  the trustee must record the payment first.
-- `closureReason` picks `"ScheduledMaturity"` when `now >= maturity` (the loan-book's
-  rollover-aware `maturity`), else `"EarlyRepayment"`.
+The Close-loan action always renders as the full-width "Next step — close loan" item, above a
+three-item checklist (`closeChecklist` on the presenter). The button enables only when **every**
+item is green:
+
+1. **Senior principal outstanding is zero** — hard gate. Green when the loan-book's
+   `senior_outstanding` is `0`, or when this page's own `record_payment` write has just succeeded
+   (`record.isSuccess` — the terminal principal payment zeroes it; the loan-book refetch lags the
+   indexer). The unmet row shows the current outstanding amount.
+2. **Nothing left to mint on either leg** — hard gate, **no manual override**. Green when the
+   financials' `not_minted_yield` is `0` (the aggregate covers both mint legs — no per-leg field
+   is served). After recording a final payment this stays red until the relayer mints the
+   recorded yield; the unmet row shows the unminted amount.
+3. **Remaining offtaker balance acknowledged** — auto-green when the received cash covers the
+   contracted price (`offtaker_outstanding` is `0`). Otherwise (early payoff or waiver) the row
+   renders a checkbox the trustee ticks manually; the tick is page-local and does not persist a
+   reload.
+
+`closureReason` picks `"ScheduledMaturity"` when `now >= maturity` (the loan-book's
+rollover-aware `maturity`), else `"EarlyRepayment"`. The former `isTerminalRepayment` /
+`alreadyRepaid` / `showCloseLoan` gate (#884) is removed from this flow — the checklist is the
+single source of enablement. The full S15 benign close-loan checklist screen remains tracked in
+#982; this checklist is its gating core, embedded on the Record Repayment page.
+
+On success, `useCloseLoan` invalidates the loan-book/financials queries immediately and again at
+5 s and 15 s (#1092) — the close is indexed asynchronously, so the immediate refetch races the
+indexer and the next `refetchInterval` poll is 30 s out; the delayed re-invalidations make the
+post-close loan detail converge in seconds instead of appearing stale.
 
 ### Route registration & page shell
 

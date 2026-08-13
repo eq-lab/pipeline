@@ -145,6 +145,64 @@ function WaterfallRowView({
   );
 }
 
+/** One close-checklist row: a check (met) or ring (unmet) + label + optional detail. */
+function ChecklistRow({
+  ok,
+  label,
+  detail,
+}: {
+  ok: boolean;
+  label: string;
+  detail: string | null;
+}) {
+  return (
+    <div
+      className="flex items-start gap-[10px]"
+      data-testid={
+        ok ? "record-repayment-check-ok" : "record-repayment-check-unmet"
+      }
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden="true"
+        className="mt-[3px] shrink-0"
+      >
+        {ok ? (
+          <path
+            d="M2.9 7.4 5.8 10.3 11.1 4"
+            stroke={POSITIVE_GREEN}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <circle
+            cx="7"
+            cy="7"
+            r="5.5"
+            stroke="var(--color-pipeline-negative)"
+            strokeWidth="1.4"
+          />
+        )}
+      </svg>
+      <span className="flex flex-col font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#262524]">
+        <span>{label}</span>
+        {detail && (
+          <span
+            className="text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            {detail}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function RecordRepayment() {
   const { id } = Route.useParams();
   const view = useRecordRepayment(id);
@@ -160,6 +218,15 @@ function RecordRepayment() {
   const closeLoanError = closeLoan.error
     ? toUserError(closeLoan.error, "Failed to close this loan.")
     : null;
+
+  const showFullyPaid =
+    view.offtakerFullyPaid && !record.isPending && !record.isSuccess;
+
+  const seniorOk = view.closeChecklist.seniorZero || record.isSuccess;
+  const closeReady =
+    seniorOk &&
+    view.closeChecklist.nothingToMint &&
+    (view.closeChecklist.offtakerCovered || view.closeChecklist.offtakerAck);
 
   const onRecord = () => {
     if (view.recordPaymentInput == null) return;
@@ -286,41 +353,57 @@ function RecordRepayment() {
             />
             <TermRow label="Offtaker owed" value={view.offtakerOwed} isLast />
           </div>
-          <label className={FIELD_BOX} style={{ backgroundColor: FIELD_FILL }}>
-            <span className={FIELD_LABEL_CLASS} style={{ color: INK_MUTED }}>
-              Offtaker payment received (USD, Trust account)
-            </span>
-            {/* Principal repayment always pays the full remaining owed — the
-                amount is fixed to it and read-only (no partial principal
-                repayment). */}
-            <input
-              type="text"
-              inputMode="decimal"
-              data-testid="record-repayment-amount"
-              value={view.amountInput}
-              disabled
-              className={FIELD_INPUT_CLASS}
-            />
-          </label>
-          <label className={FIELD_BOX} style={{ backgroundColor: FIELD_FILL }}>
-            <span className={FIELD_LABEL_CLASS} style={{ color: INK_MUTED }}>
-              Date received
-            </span>
-            <input
-              type="date"
-              data-testid="record-repayment-date"
-              value={view.dateInput}
-              disabled
-              className={FIELD_INPUT_CLASS}
-            />
-          </label>
-          <p
-            className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
-            style={{ color: INK_MUTED }}
-          >
-            Check the amount against the correspondent bank wire before
-            recording — there is no automatic bank feed.
-          </p>
+          {!showFullyPaid && (
+            <>
+              <label
+                className={FIELD_BOX}
+                style={{ backgroundColor: FIELD_FILL }}
+              >
+                <span
+                  className={FIELD_LABEL_CLASS}
+                  style={{ color: INK_MUTED }}
+                >
+                  Offtaker payment received (USD, Trust account)
+                </span>
+                {/* Principal repayment always pays the full remaining owed — the
+                    amount is fixed to it and read-only (no partial principal
+                    repayment). */}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  data-testid="record-repayment-amount"
+                  value={view.amountInput}
+                  disabled
+                  className={FIELD_INPUT_CLASS}
+                />
+              </label>
+              <label
+                className={FIELD_BOX}
+                style={{ backgroundColor: FIELD_FILL }}
+              >
+                <span
+                  className={FIELD_LABEL_CLASS}
+                  style={{ color: INK_MUTED }}
+                >
+                  Date received
+                </span>
+                <input
+                  type="date"
+                  data-testid="record-repayment-date"
+                  value={view.dateInput}
+                  disabled
+                  className={FIELD_INPUT_CLASS}
+                />
+              </label>
+              <p
+                className="font-[family-name:var(--font-body)] text-[13px] leading-[18.2px]"
+                style={{ color: INK_MUTED }}
+              >
+                Check the amount against the correspondent bank wire before
+                recording — there is no automatic bank feed.
+              </p>
+            </>
+          )}
         </div>
 
         <div
@@ -330,7 +413,38 @@ function RecordRepayment() {
           <h2 className="font-[family-name:var(--font-display)] text-[28px] leading-[35.84px] text-[#262524]">
             Waterfall Breakdown
           </h2>
-          {view.waterfall.rows.length === 0 ? (
+          {showFullyPaid ? (
+            <div
+              data-testid="record-repayment-fully-paid"
+              className="flex items-center justify-between gap-[12px] rounded-[4px] border border-solid px-[18px] py-[14px] font-[family-name:var(--font-body)] text-[16px] leading-[22.4px]"
+              style={{
+                color: POSITIVE_GREEN,
+                backgroundColor: "rgba(32,128,0,0.08)",
+                borderColor: "rgba(32,128,0,0.3)",
+              }}
+            >
+              <span>
+                Offtaker fully repaid — all payments are recorded, nothing left
+                to record.
+              </span>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                fill="none"
+                aria-hidden="true"
+                className="shrink-0"
+              >
+                <path
+                  d="M3.75 9.5 7.5 13.25 14.25 5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          ) : view.waterfall.rows.length === 0 ? (
             <p
               data-testid="record-repayment-waterfall-empty"
               className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px]"
@@ -418,38 +532,77 @@ function RecordRepayment() {
                 />
               </div>
             )}
-            <button
-              type="button"
-              data-testid="record-repayment-submit"
-              disabled={
-                view.recordPaymentInput == null ||
-                record.isPending ||
-                record.isSuccess
-              }
-              onClick={onRecord}
-              className="flex h-[48px] w-full items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: BRAND }}
+            {!showFullyPaid && (
+              <button
+                type="button"
+                data-testid="record-repayment-submit"
+                disabled={
+                  view.recordPaymentInput == null ||
+                  record.isPending ||
+                  record.isSuccess
+                }
+                onClick={onRecord}
+                className="flex h-[48px] w-full items-center justify-center rounded-[4px] px-[28px] font-[family-name:var(--font-body)] text-[16px] text-white disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ backgroundColor: BRAND }}
+              >
+                {record.isPending
+                  ? recordStageLabel(record.stage)
+                  : record.isSuccess
+                    ? "Payment recorded"
+                    : "Record repayment"}
+              </button>
+            )}
+            <div
+              data-testid="record-repayment-close-checklist"
+              className="flex flex-col gap-[8px]"
             >
-              {record.isPending
-                ? recordStageLabel(record.stage)
-                : record.isSuccess
-                  ? "Payment recorded"
-                  : "Record repayment"}
-            </button>
-            {/* Close loan — the sequential "next step". Always shown as a
-                full-width item, but stays disabled until the payment is
-                actually complete: the `record_payment` write has succeeded
-                (`record.isSuccess`) or the loan was already fully repaid on
-                load (`view.alreadyRepaid`). Entering a terminal amount alone no
-                longer enables it. */}
+              <ChecklistRow
+                ok={seniorOk}
+                label="Senior principal outstanding is zero"
+                detail={
+                  seniorOk
+                    ? null
+                    : `${view.closeChecklist.seniorOutstanding} outstanding`
+                }
+              />
+              <ChecklistRow
+                ok={view.closeChecklist.nothingToMint}
+                label="Nothing left to mint on either leg"
+                detail={
+                  view.closeChecklist.nothingToMint
+                    ? null
+                    : `${view.closeChecklist.unminted} unminted — no manual override`
+                }
+              />
+              {view.closeChecklist.offtakerCovered ? (
+                <ChecklistRow
+                  ok
+                  label="Remaining offtaker balance acknowledged"
+                  detail="received covers the contracted price"
+                />
+              ) : (
+                <label className="flex items-start gap-[10px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#262524]">
+                  <input
+                    type="checkbox"
+                    data-testid="record-repayment-offtaker-ack"
+                    checked={view.closeChecklist.offtakerAck}
+                    onChange={(e) =>
+                      view.closeChecklist.onOfftakerAckChange(e.target.checked)
+                    }
+                    className="mt-[3px] size-[14px] accent-[#000080]"
+                  />
+                  <span>
+                    Acknowledge remaining offtaker balance (early payoff or
+                    waiver)
+                  </span>
+                </label>
+              )}
+            </div>
             <button
               type="button"
               data-testid="record-repayment-close-submit"
               disabled={
-                !view.showCloseLoan ||
-                !(record.isSuccess || view.alreadyRepaid) ||
-                view.closureReason == null ||
-                closeLoan.isPending
+                !closeReady || view.closureReason == null || closeLoan.isPending
               }
               onClick={onCloseLoan}
               className="flex h-[48px] w-full items-center justify-center rounded-[4px] border border-solid px-[28px] font-[family-name:var(--font-body)] text-[16px] disabled:cursor-not-allowed disabled:opacity-50"
