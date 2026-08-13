@@ -14,7 +14,12 @@
 //!
 //! Each item carries a server-rendered human-readable `action`, the raw `event_name`, a
 //! curated `details` object (the same scalars the action string is built from), the
-//! resolved `scope`, an ISO-8601 `timestamp`, and the on-chain `tx_hash` `reference`.
+//! resolved `scope` (`Loan #<id>` / `Protocol`), an ISO-8601 `timestamp`, and `reference`
+//! — the friendly loan name (`"<originator> — <commodity>"`, sourced from the loan
+//! snapshot), empty string for protocol-scoped events or loans missing either field. The
+//! response shape is unchanged from before #1094 (still a `reference: String` field); only
+//! its *value* changed from the on-chain tx hash to the friendly loan name. `format_action`
+//! is unchanged — the `params` nesting fix is tracked separately as #1096.
 //!
 //! The feed is returned in full (newest first) — it is not paginated.
 
@@ -59,10 +64,10 @@ const AUDIT_EVENT_NAMES: &[&str] = &[
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuditScope {
     /// On-chain loan id (`uint256`, decimal string) for loan-scoped events; `null` for
-    /// protocol-scoped events (e.g. `YieldMinted`). The frontend maps this to its own
-    /// friendly loan name; `label` is a server-side fallback.
+    /// protocol-scoped events (e.g. `YieldMinted`).
     pub loan_id: Option<String>,
-    /// Human-readable scope label, e.g. `"Loan #4492"` or `"Protocol"`.
+    /// Human-readable scope label, e.g. `"Loan #4492"` or `"Protocol"`. This is the
+    /// loan **number** — see `AuditLogItem::reference` for the loan **name**.
     pub label: String,
 }
 
@@ -75,7 +80,12 @@ pub struct AuditLogItem {
     pub action: String,
     /// What the action pertains to.
     pub scope: AuditScope,
-    /// On-chain reference — the transaction hash.
+    /// Friendly loan name, `"<originator> — <commodity>"` (e.g. `"Open Mineral — Copper
+    /// Concentrate"`), sourced from the loan's on-chain snapshot. Empty string for
+    /// protocol-scoped events (e.g. `YieldMinted`, which has no snapshot) and for any
+    /// loan-scoped row missing either the originator or the commodity. This is
+    /// deliberately distinct from `scope.label` (`"Loan #<id>"` / `"Protocol"`), which
+    /// is the loan number, not the loan name.
     pub reference: String,
     /// Raw on-chain event name (e.g. `"PaymentRecorded"`), for clients that prefer to
     /// format their own action string.
@@ -145,7 +155,8 @@ pub fn build_response(rows: Vec<AuditLogRow>) -> AuditLogResponse {
     AuditLogResponse { items }
 }
 
-/// Map one raw row to an API item, rendering the action string and scope.
+/// Map one raw row to an API item, rendering the action string, scope, and friendly
+/// loan name.
 fn map_item(row: AuditLogRow) -> AuditLogItem {
     let (action, details) = format_action(&row.event_name, &row.params);
     let scope = match row.loan_id.as_deref() {
@@ -158,13 +169,26 @@ fn map_item(row: AuditLogRow) -> AuditLogItem {
             label: "Protocol".to_owned(),
         },
     };
+    let reference = build_reference_name(row.originator.as_deref(), row.commodity.as_deref())
+        .unwrap_or_default();
     AuditLogItem {
         timestamp: iso_utc_from_unix(row.block_timestamp),
         action,
         scope,
-        reference: row.tx_hash,
+        reference,
         event_name: row.event_name,
         details,
+    }
+}
+
+/// Build the friendly loan name `"<originator> — <commodity>"` from the loan snapshot's
+/// two name fields. `None` unless **both** are present and non-empty — a partial
+/// snapshot (or a protocol-scoped event with no snapshot at all, e.g. `YieldMinted`)
+/// must not render a dangling `" — "` or a lone half of the name.
+fn build_reference_name(originator: Option<&str>, commodity: Option<&str>) -> Option<String> {
+    match (originator, commodity) {
+        (Some(o), Some(c)) if !o.is_empty() && !c.is_empty() => Some(format!("{o} — {c}")),
+        _ => None,
     }
 }
 

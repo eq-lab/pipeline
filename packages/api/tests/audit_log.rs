@@ -5,6 +5,11 @@
 //! Lives under `packages/api/tests/` per the project convention (all tests in `tests/`,
 //! feature-named, no inline `#[cfg(test)]` in `src/`). Pure unit tests — no
 //! `DATABASE_URL` / Postgres connection.
+//!
+//! `format_action` reads flat top-level `params` fields, unchanged from before #1094 —
+//! the `params->'event'` nesting fix is tracked separately as #1096. The `reference`
+//! field (friendly loan name, sourced from `params->'snapshot'`) is exercised in the
+//! `build_response` section below.
 
 use serde_json::{json, Value};
 
@@ -15,6 +20,8 @@ use utoipa::OpenApi;
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
 /// Build a fixture row with a given id, event name, optional loan id, and params.
+/// `originator`/`commodity` default to `None` (protocol-scoped / no-snapshot rows);
+/// use [`row_with_snapshot`] for loan-scoped rows that carry a name.
 fn row(id: i64, event_name: &str, loan_id: Option<&str>, params: Value) -> AuditLogRow {
     AuditLogRow {
         id,
@@ -22,11 +29,30 @@ fn row(id: i64, event_name: &str, loan_id: Option<&str>, params: Value) -> Audit
         block_timestamp: 1_700_000_000, // fixed instant; timestamp formatting tested elsewhere
         tx_hash: format!("0xhash{id}"),
         loan_id: loan_id.map(str::to_owned),
+        originator: None,
+        commodity: None,
         params,
     }
 }
 
-// ── format_action: per-event ─────────────────────────────────────────────────
+/// Like [`row`], but also sets the snapshot-derived `originator`/`commodity` fields
+/// (as the repo SELECT would project them from `params->'snapshot'`).
+fn row_with_snapshot(
+    id: i64,
+    event_name: &str,
+    loan_id: Option<&str>,
+    originator: Option<&str>,
+    commodity: Option<&str>,
+    params: Value,
+) -> AuditLogRow {
+    AuditLogRow {
+        originator: originator.map(str::to_owned),
+        commodity: commodity.map(str::to_owned),
+        ..row(id, event_name, loan_id, params)
+    }
+}
+
+// ── format_action: per-event (flat params shape) ─────────────────────────────
 
 #[test]
 fn loan_drawn_is_approved_and_minted() {
@@ -154,7 +180,7 @@ fn amount_helper_handles_missing_and_malformed_without_panicking() {
     assert_eq!(details["treasury"], Value::Null);
 }
 
-// ── build_response: mapping + ordering + scope ───────────────────────────────
+// ── build_response: mapping + ordering + scope + reference (friendly name) ──────
 
 #[test]
 fn empty_feed_maps_to_no_items() {
@@ -165,16 +191,17 @@ fn empty_feed_maps_to_no_items() {
 #[test]
 fn every_row_is_returned_in_input_order() {
     // No pagination: the whole feed comes back, newest-first order preserved from input.
+    // Distinguish rows by event_name (not tx_hash, which is no longer on the DTO).
     let rows = vec![
         row(9, "LoanDrawn", Some("9"), json!({})),
-        row(8, "LoanDrawn", Some("8"), json!({})),
-        row(7, "LoanDrawn", Some("7"), json!({})),
+        row(8, "LoanClosed", Some("8"), json!({})),
+        row(7, "LoanDefaulted", Some("7"), json!({})),
     ];
     let resp = build_response(rows);
     assert_eq!(resp.items.len(), 3);
-    assert_eq!(resp.items[0].reference, "0xhash9");
-    assert_eq!(resp.items[1].reference, "0xhash8");
-    assert_eq!(resp.items[2].reference, "0xhash7");
+    assert_eq!(resp.items[0].event_name, "LoanDrawn");
+    assert_eq!(resp.items[1].event_name, "LoanClosed");
+    assert_eq!(resp.items[2].event_name, "LoanDefaulted");
 }
 
 #[test]
@@ -195,12 +222,81 @@ fn protocol_scoped_row_has_no_loan_id() {
 }
 
 #[test]
-fn item_carries_timestamp_reference_and_event_name() {
+fn item_carries_timestamp_and_event_name() {
     let resp = build_response(vec![row(5, "LoanDrawn", Some("1"), json!({}))]);
     let item = &resp.items[0];
     assert_eq!(item.event_name, "LoanDrawn");
-    assert_eq!(item.reference, "0xhash5");
     assert_eq!(item.timestamp, "2023-11-14T22:13:20Z"); // 1_700_000_000 unix
+}
+
+#[test]
+fn loan_scoped_row_with_snapshot_gets_friendly_reference_name() {
+    let resp = build_response(vec![row_with_snapshot(
+        1,
+        "PaymentRecorded",
+        Some("4492"),
+        Some("Open Mineral"),
+        Some("Copper Concentrate"),
+        json!({}),
+    )]);
+    let item = &resp.items[0];
+    assert_eq!(item.reference, "Open Mineral — Copper Concentrate");
+    assert_eq!(item.scope.label, "Loan #4492");
+    assert_eq!(item.scope.loan_id.as_deref(), Some("4492"));
+}
+
+#[test]
+fn protocol_scoped_row_has_empty_reference() {
+    // YieldMinted has no snapshot at all → both fields None → reference "".
+    let resp = build_response(vec![row(1, "YieldMinted", None, json!({}))]);
+    assert_eq!(resp.items[0].reference, "");
+}
+
+#[test]
+fn loan_row_missing_commodity_has_empty_reference() {
+    // Defensive: a partial snapshot must not render a dangling "<name> — ".
+    let resp = build_response(vec![row_with_snapshot(
+        1,
+        "PaymentRecorded",
+        Some("4492"),
+        Some("Open Mineral"),
+        None,
+        json!({}),
+    )]);
+    assert_eq!(resp.items[0].reference, "");
+}
+
+#[test]
+fn loan_row_with_empty_originator_has_empty_reference() {
+    // Defensive: an empty-string field (not just missing) must also suppress the name.
+    let resp = build_response(vec![row_with_snapshot(
+        1,
+        "PaymentRecorded",
+        Some("4492"),
+        Some(""),
+        Some("Copper Concentrate"),
+        json!({}),
+    )]);
+    assert_eq!(resp.items[0].reference, "");
+}
+
+#[test]
+fn closed_loan_event_still_gets_a_name_from_its_own_snapshot() {
+    // The whole point of sourcing the name server-side: a LoanClosed row (which the
+    // frontend loan-book join would miss, since the loan book only has active loans)
+    // still renders the name, because it comes from this row's own snapshot.
+    let params = json!({ "loan_id": "77", "closure_reason": "Repaid" });
+    let resp = build_response(vec![row_with_snapshot(
+        1,
+        "LoanClosed",
+        Some("77"),
+        Some("Trafigura"),
+        Some("Lithium"),
+        params,
+    )]);
+    let item = &resp.items[0];
+    assert_eq!(item.reference, "Trafigura — Lithium");
+    assert_eq!(item.action, "Loan closed — Repaid");
 }
 
 // ── OpenAPI doc smoke ─────────────────────────────────────────────────────────

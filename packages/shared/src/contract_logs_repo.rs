@@ -167,9 +167,10 @@ pub struct EconomicsEventRow {
 }
 
 /// One `contract_logs` row projected for the Trustee **Audit Log** feed
-/// (`GET /v1/audit-log`). Deliberately raw: the human-readable "Action" string and the
-/// scope label are derived in the API layer (`routes::audit_log`) from `event_name` +
-/// `params`, keeping this repo free of presentation concerns.
+/// (`GET /v1/audit-log`). Deliberately raw: the human-readable "Action" string, the
+/// friendly loan name, and the scope label are derived in the API layer
+/// (`routes::audit_log`) from `event_name` + `params` (+ the two snapshot-derived
+/// fields below), keeping this repo free of presentation concerns.
 ///
 /// `id` is the table's `BIGSERIAL` primary key — a monotonic insertion order used as the
 /// stable keyset cursor and tiebreak for the reverse-chronological page (rather than
@@ -182,6 +183,13 @@ pub struct AuditLogRow {
     pub tx_hash: String,
     /// `params->>'loan_id'` — `None` for protocol-scoped events (e.g. `YieldMinted`).
     pub loan_id: Option<String>,
+    /// `params->'snapshot'->>'originator'` — `None` for protocol-scoped events (no
+    /// snapshot, e.g. `YieldMinted`). Used by the API layer to build the friendly
+    /// loan name that populates `AuditLogItem::reference` (`"<originator> — <commodity>"`).
+    pub originator: Option<String>,
+    /// `params->'snapshot'->>'commodity'` — `None` for protocol-scoped events (no
+    /// snapshot, e.g. `YieldMinted`). See `originator`.
+    pub commodity: Option<String>,
     /// The full event `params` JSONB, passed to the action formatter.
     pub params: serde_json::Value,
 }
@@ -1023,6 +1031,8 @@ impl ContractLogsRepo {
                  block_timestamp,
                  tx_hash,
                  params->>'loan_id' AS loan_id,
+                 params->'snapshot'->>'originator' AS originator,
+                 params->'snapshot'->>'commodity' AS commodity,
                  params
              FROM contract_logs
              WHERE chain_id = $1
@@ -1042,6 +1052,8 @@ impl ContractLogsRepo {
                     block_timestamp: row.try_get("block_timestamp")?,
                     tx_hash: row.try_get("tx_hash")?,
                     loan_id: row.try_get("loan_id")?,
+                    originator: row.try_get("originator")?,
+                    commodity: row.try_get("commodity")?,
                     params: row.try_get("params")?,
                 })
             })
