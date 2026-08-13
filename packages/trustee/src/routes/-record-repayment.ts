@@ -129,28 +129,6 @@ export function computeFinalPeriod(epoch: Epoch | null): {
   };
 }
 
-// Mirrors -record-coupon.ts's isTerminalRepayment. spec:
-// docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
-export function isTerminalRepayment(
-  outstandingSeniorUsd: number | null,
-  enteredUsd: number | null,
-  seniorPrincipalReturnedUsd: number | null,
-): boolean {
-  if (
-    outstandingSeniorUsd == null ||
-    enteredUsd == null ||
-    seniorPrincipalReturnedUsd == null ||
-    outstandingSeniorUsd <= 0
-  ) {
-    return false;
-  }
-  const toCents = (n: number) => Math.round(n * 100);
-  return (
-    enteredUsd >= outstandingSeniorUsd &&
-    toCents(seniorPrincipalReturnedUsd) === toCents(outstandingSeniorUsd)
-  );
-}
-
 // spec: docs/frontend/trustee-flows.md#close-loan-gating-884-resolved-open-questions-13.
 export function closureReason(
   nowSeconds: number,
@@ -203,25 +181,32 @@ export interface RecordRepaymentView {
    */
   recordPaymentInput: RepaymentInput | null;
   /**
-   * `true` once closing is applicable — the terminal entered amount would fully
-   * repay the loan OR the loan-book's outstanding senior is already `0`. Gates
-   * whether the Close-loan action can ever enable (it still stays disabled until
-   * the payment is actually complete — see `alreadyRepaid` / `record.isSuccess`).
-   */
-  showCloseLoan: boolean;
-  /**
-   * `true` when the loan-book's outstanding senior is already `0` on load — the
-   * final payment is already complete (e.g. the trustee reloads after recording
-   * it), so the Close-loan action may enable without recording again.
-   */
-  alreadyRepaid: boolean;
-  /**
    * `true` when the financials' `offtaker_outstanding` is `0` — the offtaker
    * owes nothing, so there is nothing left to record (#1090). The page renders
-   * the fully-repaid notice instead of the amount form/waterfall, and the
-   * Close-loan action may enable without recording again.
+   * the fully-repaid notice instead of the amount form/waterfall.
    */
   offtakerFullyPaid: boolean;
+  /**
+   * The close-loan checklist (#1090) — Close-loan enables only when every item
+   * is green. Items 1–2 are hard gates with no manual override; item 3 is
+   * auto-green when the received cash covers the contracted price, or manually
+   * acknowledged by the trustee on an early payoff or waiver.
+   */
+  closeChecklist: {
+    /** Hard gate — the loan-book's `senior_outstanding` is `0`. */
+    seniorZero: boolean;
+    /** Formatted current senior outstanding, for the unmet-item detail line. */
+    seniorOutstanding: string;
+    /** Hard gate — the financials' `not_minted_yield` is `0` (covers both mint legs). */
+    nothingToMint: boolean;
+    /** Formatted current unminted yield, for the unmet-item detail line. */
+    unminted: string;
+    /** Auto-green — `offtaker_outstanding` is `0` (received covers the contracted price). */
+    offtakerCovered: boolean;
+    /** The trustee's manual acknowledgement tick (early payoff or waiver). */
+    offtakerAck: boolean;
+    onOfftakerAckChange: (value: boolean) => void;
+  };
   /** The `ClosureReason` to pass to `useCloseLoan`; `null` while the loan's maturity is unknown. */
   closureReason: "ScheduledMaturity" | "EarlyRepayment" | null;
 }
@@ -238,6 +223,7 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   const financials = useLoanFinancials(loanId);
 
   const [amountInput, setAmountInput] = useState("");
+  const [offtakerAck, setOfftakerAck] = useState(false);
   // Date is fixed to today and not editable (#916) — no calendar/date picker.
   const dateInput = todayDateInput();
 
@@ -383,17 +369,16 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
       ? `Components sum to received ${usdFull(enteredUsd)}`
       : null;
 
-  const isTerminal =
-    waterfall.data != null &&
-    isTerminalRepayment(
-      outstandingSeniorUsd,
-      enteredUsd,
-      seniorPrincipalReturnedUsd,
-    );
-
-  const alreadyRepaid =
-    outstandingSeniorUsd != null && outstandingSeniorUsd <= 0;
-  const showCloseLoan = isTerminal || alreadyRepaid || offtakerFullyPaid;
+  const notMintedUsd = parseServedUsd(financials.data?.not_minted_yield);
+  const closeChecklist: RecordRepaymentView["closeChecklist"] = {
+    seniorZero: outstandingSeniorUsd != null && outstandingSeniorUsd <= 0,
+    seniorOutstanding: usdFull(outstandingSeniorUsd),
+    nothingToMint: notMintedUsd != null && notMintedUsd <= 0,
+    unminted: usdFull(notMintedUsd),
+    offtakerCovered: offtakerFullyPaid,
+    offtakerAck,
+    onOfftakerAckChange: setOfftakerAck,
+  };
 
   const maturity = entry?.maturity ?? null;
   const reason =
@@ -429,9 +414,8 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
     },
     summaryText,
     recordPaymentInput,
-    showCloseLoan,
-    alreadyRepaid,
     offtakerFullyPaid,
+    closeChecklist,
     closureReason: reason,
   };
 }

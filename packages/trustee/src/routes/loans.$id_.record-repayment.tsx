@@ -145,6 +145,64 @@ function WaterfallRowView({
   );
 }
 
+/** One close-checklist row: a check (met) or ring (unmet) + label + optional detail. */
+function ChecklistRow({
+  ok,
+  label,
+  detail,
+}: {
+  ok: boolean;
+  label: string;
+  detail: string | null;
+}) {
+  return (
+    <div
+      className="flex items-start gap-[10px]"
+      data-testid={
+        ok ? "record-repayment-check-ok" : "record-repayment-check-unmet"
+      }
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        aria-hidden="true"
+        className="mt-[3px] shrink-0"
+      >
+        {ok ? (
+          <path
+            d="M2.9 7.4 5.8 10.3 11.1 4"
+            stroke={POSITIVE_GREEN}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <circle
+            cx="7"
+            cy="7"
+            r="5.5"
+            stroke="var(--color-pipeline-negative)"
+            strokeWidth="1.4"
+          />
+        )}
+      </svg>
+      <span className="flex flex-col font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#262524]">
+        <span>{label}</span>
+        {detail && (
+          <span
+            className="text-[12px] leading-[16.8px]"
+            style={{ color: INK_MUTED }}
+          >
+            {detail}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function RecordRepayment() {
   const { id } = Route.useParams();
   const view = useRecordRepayment(id);
@@ -163,6 +221,12 @@ function RecordRepayment() {
 
   const showFullyPaid =
     view.offtakerFullyPaid && !record.isPending && !record.isSuccess;
+
+  const seniorOk = view.closeChecklist.seniorZero || record.isSuccess;
+  const closeReady =
+    seniorOk &&
+    view.closeChecklist.nothingToMint &&
+    (view.closeChecklist.offtakerCovered || view.closeChecklist.offtakerAck);
 
   const onRecord = () => {
     if (view.recordPaymentInput == null) return;
@@ -488,24 +552,57 @@ function RecordRepayment() {
                     : "Record repayment"}
               </button>
             )}
-            {/* Close loan — the sequential "next step". Always shown as a
-                full-width item, but stays disabled until the payment is
-                actually complete: the `record_payment` write has succeeded
-                (`record.isSuccess`) or the loan was already fully repaid on
-                load (`view.alreadyRepaid`). Entering a terminal amount alone no
-                longer enables it. */}
+            <div
+              data-testid="record-repayment-close-checklist"
+              className="flex flex-col gap-[8px]"
+            >
+              <ChecklistRow
+                ok={seniorOk}
+                label="Senior principal outstanding is zero"
+                detail={
+                  seniorOk
+                    ? null
+                    : `${view.closeChecklist.seniorOutstanding} outstanding`
+                }
+              />
+              <ChecklistRow
+                ok={view.closeChecklist.nothingToMint}
+                label="Nothing left to mint on either leg"
+                detail={
+                  view.closeChecklist.nothingToMint
+                    ? null
+                    : `${view.closeChecklist.unminted} unminted — no manual override`
+                }
+              />
+              {view.closeChecklist.offtakerCovered ? (
+                <ChecklistRow
+                  ok
+                  label="Remaining offtaker balance acknowledged"
+                  detail="received covers the contracted price"
+                />
+              ) : (
+                <label className="flex items-start gap-[10px] font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[#262524]">
+                  <input
+                    type="checkbox"
+                    data-testid="record-repayment-offtaker-ack"
+                    checked={view.closeChecklist.offtakerAck}
+                    onChange={(e) =>
+                      view.closeChecklist.onOfftakerAckChange(e.target.checked)
+                    }
+                    className="mt-[3px] size-[14px] accent-[#000080]"
+                  />
+                  <span>
+                    Acknowledge remaining offtaker balance (early payoff or
+                    waiver)
+                  </span>
+                </label>
+              )}
+            </div>
             <button
               type="button"
               data-testid="record-repayment-close-submit"
               disabled={
-                !view.showCloseLoan ||
-                !(
-                  record.isSuccess ||
-                  view.alreadyRepaid ||
-                  view.offtakerFullyPaid
-                ) ||
-                view.closureReason == null ||
-                closeLoan.isPending
+                !closeReady || view.closureReason == null || closeLoan.isPending
               }
               onClick={onCloseLoan}
               className="flex h-[48px] w-full items-center justify-center rounded-[4px] border border-solid px-[28px] font-[family-name:var(--font-body)] text-[16px] disabled:cursor-not-allowed disabled:opacity-50"

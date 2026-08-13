@@ -629,25 +629,36 @@ owes nothing, e.g. the final coupon was recorded in the sibling flow — there i
 record. The presenter's `offtakerFullyPaid` collapses the entered amount (including a stale
 pre-refetch prefill), keeps the waterfall query disabled, and forces `recordPaymentInput` to
 `null`; the page replaces the amount/date fields, waterfall, and Record action with a fully-repaid
-notice ("nothing left to record") and lets Close-loan enable. The state must hold **without a
-reload** — a refetch that brings owed to `0` mid-session drops the stale form rather than leaving
-a recordable amount on screen. It is suppressed while this page's own `record_payment` is
-pending/settled so the "Payment recorded" confirmation flow stays intact.
+notice ("nothing left to record"). The state must hold **without a reload** — a refetch that
+brings owed to `0` mid-session drops the stale form rather than leaving a recordable amount on
+screen. It is suppressed while this page's own `record_payment` is pending/settled so the
+"Payment recorded" confirmation flow stays intact. Whether Close-loan enables is decided by the
+close checklist below, not by this state alone.
 
-### Close-loan gating (#884, resolved open questions 1–3; #1090)
+### Close-loan gating — the close checklist (#1090, supersedes the #884 gate)
 
-The Close-loan action always renders as the full-width "Next step — close loan" item, but only
-**enables** once the final payment is actually complete:
+The Close-loan action always renders as the full-width "Next step — close loan" item, above a
+three-item checklist (`closeChecklist` on the presenter). The button enables only when **every**
+item is green:
 
-- `showCloseLoan` marks that closing is applicable — the entered amount is terminal
-  (`isTerminalRepayment`, same cent-precision detection as the coupon flow), the outstanding
-  senior is already `0` (`alreadyRepaid` — the trustee reloaded after recording it), or the
-  offtaker owes nothing (`offtakerFullyPaid`, #1090).
-- The button stays **disabled** until the `record_payment` write has succeeded
-  (`record.isSuccess`), `alreadyRepaid`, or `offtakerFullyPaid` — entering a terminal amount is
-  not enough on its own; the trustee must record the payment first.
-- `closureReason` picks `"ScheduledMaturity"` when `now >= maturity` (the loan-book's
-  rollover-aware `maturity`), else `"EarlyRepayment"`.
+1. **Senior principal outstanding is zero** — hard gate. Green when the loan-book's
+   `senior_outstanding` is `0`, or when this page's own `record_payment` write has just succeeded
+   (`record.isSuccess` — the terminal principal payment zeroes it; the loan-book refetch lags the
+   indexer). The unmet row shows the current outstanding amount.
+2. **Nothing left to mint on either leg** — hard gate, **no manual override**. Green when the
+   financials' `not_minted_yield` is `0` (the aggregate covers both mint legs — no per-leg field
+   is served). After recording a final payment this stays red until the relayer mints the
+   recorded yield; the unmet row shows the unminted amount.
+3. **Remaining offtaker balance acknowledged** — auto-green when the received cash covers the
+   contracted price (`offtaker_outstanding` is `0`). Otherwise (early payoff or waiver) the row
+   renders a checkbox the trustee ticks manually; the tick is page-local and does not persist a
+   reload.
+
+`closureReason` picks `"ScheduledMaturity"` when `now >= maturity` (the loan-book's
+rollover-aware `maturity`), else `"EarlyRepayment"`. The former `isTerminalRepayment` /
+`alreadyRepaid` / `showCloseLoan` gate (#884) is removed from this flow — the checklist is the
+single source of enablement. The full S15 benign close-loan checklist screen remains tracked in
+#982; this checklist is its gating core, embedded on the Record Repayment page.
 
 ### Route registration & page shell
 

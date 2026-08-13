@@ -12,7 +12,6 @@ import {
   buildRepaymentInput,
   closureReason,
   computeFinalPeriod,
-  isTerminalRepayment,
   parseUsdInput,
   todayDateInput,
   usdToBaseUnits,
@@ -86,34 +85,6 @@ describe("computeFinalPeriod", () => {
       maturity_date: "2026-06-24T00:00:00Z",
     };
     expect(computeFinalPeriod(epoch)).toEqual({ label: "—", days: null });
-  });
-});
-
-describe("isTerminalRepayment", () => {
-  it("is true when the entered amount covers the outstanding senior AND the waterfall returns exactly that principal", () => {
-    expect(isTerminalRepayment(4_800_000, 6_150_000, 4_800_000)).toBe(true);
-  });
-
-  it("is true at cent-level equality despite float drift from independent conversions", () => {
-    expect(isTerminalRepayment(4_800_000, 4_800_000, 4_800_000.001)).toBe(true);
-  });
-
-  it("is false for a partial repayment (principal returned is less than outstanding)", () => {
-    expect(isTerminalRepayment(4_800_000, 1_000_000, 1_000_000)).toBe(false);
-  });
-
-  it("is false when the entered amount does not cover the outstanding senior, even if principal returned matches partially", () => {
-    expect(isTerminalRepayment(4_800_000, 900_000, 900_000)).toBe(false);
-  });
-
-  it("is false when any input is unknown (never fabricates the terminal case)", () => {
-    expect(isTerminalRepayment(null, 6_150_000, 4_800_000)).toBe(false);
-    expect(isTerminalRepayment(4_800_000, null, 4_800_000)).toBe(false);
-    expect(isTerminalRepayment(4_800_000, 6_150_000, null)).toBe(false);
-  });
-
-  it("is false when the loan has no outstanding senior on record", () => {
-    expect(isTerminalRepayment(0, 6_150_000, 0)).toBe(false);
   });
 });
 
