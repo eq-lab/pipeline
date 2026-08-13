@@ -415,6 +415,28 @@ function OriginationDetail() {
     );
   }
 
+  if (detail.state === "error") {
+    return (
+      <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[30px] px-[56px] pt-[39px] pb-[80px]">
+        <Link
+          to="/origination"
+          className="self-start font-[family-name:var(--font-display)] text-[18px] leading-[25.2px] text-[#262524] no-underline hover:underline"
+        >
+          ‹ Origination
+        </Link>
+        <div
+          data-testid="origination-detail-error"
+          className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]"
+        >
+          <InlineError
+            message={detail.errorMessage ?? "Failed to load the submission."}
+            details={detail.errorDetails ?? undefined}
+          />
+        </div>
+      </main>
+    );
+  }
+
   if (detail.state === "not-found") {
     return (
       <main className="mx-auto flex w-full max-w-[1180px] flex-col gap-[30px] px-[56px] pt-[39px] pb-[80px]">

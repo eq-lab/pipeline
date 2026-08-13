@@ -97,11 +97,12 @@ const FULL_SUBMISSION: SubmissionView = {
 function mockSubmissions(
   data: SubmissionView[] | undefined,
   isLoading = false,
+  error: Error | null = null,
 ) {
   vi.mocked(useLoanSubmissions).mockReturnValue({
     data,
     isLoading,
-    error: null,
+    error,
     refetch: vi.fn(),
   });
 }
@@ -541,6 +542,34 @@ describe("useOriginationDetail — refetch fallback (no router state)", () => {
     await waitFor(() => {
       expect(result.current.state).toBe("not-found");
     });
+  });
+
+  it("renders 'error' — NOT 'not-found' — when the fallback list query failed (#1065)", () => {
+    mockSubmissions(undefined, false, new Error("fetch failed: 500"));
+
+    const { result } = renderHook(() => useOriginationDetail("7", undefined));
+
+    expect(result.current.state).toBe("error");
+    expect(result.current.errorMessage).toBe("Failed to load the submission.");
+    expect(result.current.errorDetails).toContain("fetch failed: 500");
+  });
+
+  it("stays 'ready' from router state even when the list query failed (#1065)", () => {
+    mockSubmissions(undefined, false, new Error("fetch failed: 500"));
+
+    const { result } = renderHook(() =>
+      useOriginationDetail("7", FULL_SUBMISSION),
+    );
+
+    expect(result.current.state).toBe("ready");
+    expect(result.current.errorMessage).toBeNull();
+  });
+
+  it("renders 'loading' while the fallback query is in flight, even with a stale error", () => {
+    mockSubmissions(undefined, true, new Error("previous failure"));
+
+    const { result } = renderHook(() => useOriginationDetail("7", undefined));
+    expect(result.current.state).toBe("loading");
   });
 
   // ── Resolution precedence (issue #829 — load-bearing for Approve/Reject) ──

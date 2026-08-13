@@ -25,6 +25,7 @@ import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { formatBpsRate, formatFullUsd } from "@/utils/formatUsd";
 import { formatMaturityDate, formatSubmittedDate } from "@/utils/formatDate";
 import { economicsBaseUnitsToUsdDecimal } from "@/utils/stellarSacUnits";
+import { toUserError } from "@/utils/userError";
 
 // ── Router state augmentation ────────────────────────────────────────────────
 
@@ -83,7 +84,11 @@ function formatEconomicsUsd(value: unknown): string {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type OriginationDetailState = "loading" | "not-found" | "ready";
+export type OriginationDetailState =
+  | "loading"
+  | "error"
+  | "not-found"
+  | "ready";
 
 /** Status chip discriminant — mirrors the #813 table's per-status labels. */
 export type StatusChip =
@@ -141,6 +146,10 @@ export interface TransactionPreviewDisplay {
 
 export interface OriginationDetailResult {
   state: OriginationDetailState;
+  /** Friendly message for the `"error"` state (#1065); `null` otherwise. */
+  errorMessage: string | null;
+  /** Raw failure text behind the `"error"` state's View-details control; `null` otherwise. */
+  errorDetails: string | null;
   heading: string;
   breadcrumb: string;
   statusChip: StatusChip;
@@ -297,8 +306,11 @@ export function useOriginationDetail(
   id: string,
   stateSubmission: SubmissionView | undefined,
 ): OriginationDetailResult {
-  const { data: submissions, isLoading: submissionsLoading } =
-    useLoanSubmissions();
+  const {
+    data: submissions,
+    isLoading: submissionsLoading,
+    error: submissionsError,
+  } = useLoanSubmissions();
 
   const submission = useMemo<SubmissionView | undefined>(() => {
     const fromList = submissions?.find((s) => String(s.id) === id);
@@ -310,12 +322,19 @@ export function useOriginationDetail(
     ? "ready"
     : needsFallback && submissionsLoading
       ? "loading"
-      : "not-found";
-
+      : needsFallback && submissionsError != null
+        ? "error"
+        : "not-found";
   return useMemo<OriginationDetailResult>(() => {
     if (!submission) {
+      const userError =
+        submissionState === "error" && submissionsError != null
+          ? toUserError(submissionsError, "Failed to load the submission.")
+          : null;
       return {
         state: submissionState,
+        errorMessage: userError?.message ?? null,
+        errorDetails: userError?.details ?? null,
         heading: "—",
         breadcrumb: "—",
         statusChip: { kind: "unknown", label: "—" },
@@ -348,6 +367,8 @@ export function useOriginationDetail(
 
     return {
       state: "ready",
+      errorMessage: null,
+      errorDetails: null,
       heading: mapHeading(submission),
       breadcrumb: mapHeading(submission),
       statusChip,
@@ -358,5 +379,5 @@ export function useOriginationDetail(
       rejectionReason: safeString(submission.reason),
       transactionPreview: mapTransactionPreview(submission),
     };
-  }, [submission, submissionState]);
+  }, [submission, submissionState, submissionsError]);
 }

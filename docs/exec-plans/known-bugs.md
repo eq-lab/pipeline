@@ -25,14 +25,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** The component was never wired to the hook's `state`/`errorMessage` fields — only `rows`/`loanRows` are consumed. Predates #1037; out of scope there per the resolved Open Question (adopting `InlineError` here requires first wiring the missing render branch, which is a distinct, larger change than the mapping-layer sweep).
 - **Workaround:** None. Fix requires adding an error-state branch to `NeedsAttention.tsx` (and, per the #1037 pattern, an `InlineError` there) — tracked as follow-up, not fixed inline.
 
-### BUG-15: Origination detail page has no error state — a failed submissions fetch renders "not found"
-- **Tracked:** #1065
-- **Date:** 2026-08-07
-- **Location:** `packages/trustee/src/routes/-origination-detail.ts:188` / `:431` (no error branch) — `origination.$id.tsx:529-535` renders the not-found UI for both "genuinely not found" and "the submissions fetch failed" cases.
-- **Symptom:** If `useLoanSubmissions` (shared with `-useOriginationTable.ts`) fails while loading `/origination/$id`, the presenter finds no matching submission (since `data` is `undefined`) and falls through to the same `not-found` state a truly-missing id would produce ("Submission not found." + a link back to Origination) — there is no distinct error message, and the raw fetch failure is discarded entirely.
-- **Root cause:** `-origination-detail.ts`'s state derivation only distinguishes `loading` / `not-found` / `ready`, with no `error` branch reading `useLoanSubmissions().error`.
-- **Workaround:** None. Out of scope for #1037 (a sibling hook already gets the mapping-layer treatment; this needs a new `error` state added to `-origination-detail.ts` first, which is presenter-shape work, not just a copy swap).
-
 ### BUG-14: Trustee loan detail Documents card shows the empty state for loans indexed before commit `f73d54d`
 - **Tracked:** #1067
 - **Date:** 2026-08-07
@@ -101,6 +93,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-15: Origination detail page has no error state — a failed submissions fetch renders "not found"
+- **Tracked:** #1065
+- **Date:** 2026-08-07
+- **Resolved:** 2026-08-13 by the #1065 PR — `-origination-detail.ts` gains an `error` state (loading → error → not-found precedence, reading `useLoanSubmissions().error`), surfaced per the #1037 pattern: friendly "Failed to load the submission." with the raw failure behind View details. A router-state submission still renders `ready` when the list query errors.
+- **Location:** `packages/trustee/src/routes/-origination-detail.ts` / `origination.$id.tsx`.
+- **Symptom:** A failed `useLoanSubmissions` fetch fell through to the same "Submission not found." UI as a truly-missing id, discarding the failure entirely.
 
 ### BUG-18: `-dashboard.test.tsx` asserts the pre-#1053 raw status literal — fails on `main`
 - **Tracked:** #1062

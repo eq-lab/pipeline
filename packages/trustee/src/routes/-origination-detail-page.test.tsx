@@ -141,6 +141,8 @@ function renderRoute() {
 
 const READY_RESULT: OriginationDetailResult = {
   state: "ready",
+  errorMessage: null,
+  errorDetails: null,
   heading: "Auric Andes S.A.C. — Gold pyrite concentrate",
   breadcrumb: "Auric Andes S.A.C. — Gold pyrite concentrate",
   statusChip: { kind: "in-review", label: "Awaiting your review" },
@@ -279,6 +281,26 @@ describe("Origination details route", () => {
     expect(notFound).toBeInTheDocument();
     const backLink = screen.getByRole("link", { name: "Back to Origination" });
     expect(backLink).toHaveAttribute("href", "/origination");
+  });
+
+  it("renders a distinct error state — NOT the not-found copy — when the submissions fetch failed (#1065)", () => {
+    mockDetail({
+      ...READY_RESULT,
+      state: "error",
+      errorMessage: "Failed to load the submission.",
+      errorDetails: "fetch failed: 500",
+    });
+    renderRoute();
+    const error = screen.getByTestId("origination-detail-error");
+    expect(error).toHaveTextContent("Failed to load the submission.");
+    expect(error).not.toHaveTextContent("fetch failed: 500");
+    expect(
+      screen.queryByTestId("origination-detail-not-found"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "‹ Origination" })).toHaveAttribute(
+      "href",
+      "/origination",
+    );
   });
 
   // ── NO collateral-valuation UI — the Figma's valuation card is incorrect ──
