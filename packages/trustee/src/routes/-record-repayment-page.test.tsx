@@ -494,8 +494,6 @@ describe("Record Repayment route — ready state", () => {
     // instant without touching real timers (the amount debounce still needs to
     // fire on the real clock).
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
-    // The payment is recorded and the refetched financials cover the offtaker,
-    // so the close action can enable.
     mockRecord.isSuccess = true;
     readyWith({ offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);
@@ -522,8 +520,6 @@ describe("Record Repayment route — ready state", () => {
     const nowSpy = vi
       .spyOn(Date, "now")
       .mockReturnValue(1_782_172_800 * 1000 - 86_400_000);
-    // The payment is recorded and the refetched financials cover the offtaker,
-    // so the close action can enable.
     mockRecord.isSuccess = true;
     readyWith({ offtaker: "0.000000" });
     mockWaterfall(WATERFALL_TERMINAL);

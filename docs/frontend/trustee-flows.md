@@ -225,9 +225,10 @@ correct-scale NAV denominator; rendered as served (no frontend correction is def
    already the true CCR. The former `correctCcrBps` ÷1000 helper (which silently rendered CCR
    1000× too small — e.g. 0.21% instead of the true 209.87%) has been removed. The 120%
    maintenance-margin pre-default threshold applies directly to the served `ccr_bps`.
-2. **Default & Closed tabs render per Figma but stay empty.** `/v1/loan-book` returns only the
-   active set (Performing + WatchList); defaulted/closed loans are excluded backend-side, so
-   client-side filtering yields 0 rows for those tabs. A backend follow-up is needed to serve them.
+2. **Default & Closed tabs render per Figma.** `/v1/loan-book` serves closed loans in `loans[]`
+   with status `Closed` (verified on staging, #1092 — the earlier "excluded backend-side" note is
+   outdated for Closed; Default remains unverified), excluded only from the active-set
+   aggregates. Client-side status filtering populates the Closed tab as loans close.
 3. **The "Payments due" banner + "Record coupon" action are omitted** from this page — no
    `/v1/loan-book` data source (never fabricate).
 
@@ -451,6 +452,13 @@ The page branches on `detail.variant` (derived from the served display status):
   passed`, and Roll over is the matured-only fast-path (Figma node `4116:10969`, #866). The served
   `Past Due` status maps here.
 
+A `Closed` status keeps the performing layout (the lifecycle spine reads it as the completed
+Performing phase) but is terminal for actions: `selectOtherActions` returns
+`CLOSED_OTHER_ACTIONS` — no action buttons, only the "This loan is closed — no further actions
+are available." note — whenever the status chip is Closed, regardless of variant (#1092).
+Closed loans stay served in `/v1/loan-book`'s `loans[]` (status `Closed`); they are excluded
+from the active-set aggregates, not from the row set.
+
 Shared live sections render in every variant: Hero + status chip (loan-book row), Price &
 collateral (`/valuations`), Registry (`/financials`, performing only), and Documents
 (loan-book row, #1040 — see [Documents](#documents)). Watchlist CCR trend and summary tiles are
@@ -659,6 +667,11 @@ rollover-aware `maturity`), else `"EarlyRepayment"`. The former `isTerminalRepay
 `alreadyRepaid` / `showCloseLoan` gate (#884) is removed from this flow — the checklist is the
 single source of enablement. The full S15 benign close-loan checklist screen remains tracked in
 #982; this checklist is its gating core, embedded on the Record Repayment page.
+
+On success, `useCloseLoan` invalidates the loan-book/financials queries immediately and again at
+5 s and 15 s (#1092) — the close is indexed asynchronously, so the immediate refetch races the
+indexer and the next `refetchInterval` poll is 30 s out; the delayed re-invalidations make the
+post-close loan detail converge in seconds instead of appearing stale.
 
 ### Route registration & page shell
 
