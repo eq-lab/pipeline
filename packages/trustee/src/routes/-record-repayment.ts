@@ -253,10 +253,6 @@ export function useRecordRepayment(loanId: string): RecordRepaymentView {
   const offtakerOutstandingUsd = parseServedUsd(
     financials.data?.offtaker_outstanding,
   );
-  // Nothing left to record once the offtaker owes $0 (#1090) — collapses the
-  // entered amount (stale from before a refetch brought owed to zero, e.g. the
-  // final coupon recorded in the sibling flow) so the waterfall query stays
-  // disabled and no record payload can be built.
   const offtakerFullyPaid =
     offtakerOutstandingUsd != null && offtakerOutstandingUsd <= 0;
 

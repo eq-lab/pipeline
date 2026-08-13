@@ -599,8 +599,6 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
   });
 
   it("ENABLES Close-loan when the offtaker owes nothing, and clicking closes with the resolved reason", async () => {
-    // Freeze `Date.now()` at the fixture's maturity so the reason is
-    // deterministic (never time-of-run dependent).
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_782_172_800 * 1000);
     fullyPaid();
     renderRoute();
@@ -626,7 +624,6 @@ describe("Record Repayment route — offtaker fully paid (#1090)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("record-repayment-submit")).toBeEnabled(),
     );
-    // The financials refetch now serves owed = 0 — the amount above is stale.
     mockUseLoanFinancials.mockReturnValue({
       data: { ...FINANCIALS_RESPONSE, offtaker_outstanding: "0.000000" },
       isLoading: false,

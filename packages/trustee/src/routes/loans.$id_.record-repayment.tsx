@@ -161,10 +161,6 @@ function RecordRepayment() {
     ? toUserError(closeLoan.error, "Failed to close this loan.")
     : null;
 
-  // The dedicated nothing-left-to-record presentation (#1090). Suppressed
-  // while this page's own record write is pending/settled so the "Payment
-  // recorded" confirmation flow stays intact — the state is for arriving at
-  // (or refetching into) an already-fully-paid loan.
   const showFullyPaid =
     view.offtakerFullyPaid && !record.isPending && !record.isSuccess;
 
@@ -495,10 +491,9 @@ function RecordRepayment() {
             {/* Close loan — the sequential "next step". Always shown as a
                 full-width item, but stays disabled until the payment is
                 actually complete: the `record_payment` write has succeeded
-                (`record.isSuccess`), the loan was already fully repaid on load
-                (`view.alreadyRepaid`), or the offtaker owes nothing
-                (`view.offtakerFullyPaid`, #1090). Entering a terminal amount
-                alone no longer enables it. */}
+                (`record.isSuccess`) or the loan was already fully repaid on
+                load (`view.alreadyRepaid`). Entering a terminal amount alone no
+                longer enables it. */}
             <button
               type="button"
               data-testid="record-repayment-close-submit"
