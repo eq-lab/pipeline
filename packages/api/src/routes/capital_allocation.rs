@@ -242,7 +242,13 @@ pub(crate) fn normalize_to_canonical(raw: BigDecimal, asset_decimals: u32) -> Bi
     use crate::config::CANONICAL_AMOUNT_DECIMALS as CANON;
     match asset_decimals.cmp(&CANON) {
         Ordering::Equal => raw,
-        Ordering::Greater => raw / BigDecimal::from(10i128.pow(asset_decimals - CANON)),
+        // Truncating (floor) division: every raw on-chain amount is a whole integer
+        // at its native scale, so the canonical result must be a whole base unit too.
+        // Plain `BigDecimal` division does not floor (123456789 / 10 = 12345678.9), so
+        // round down to scale 0 — mirroring `shared::chains::normalize_usdc_amount`
+        // (BUG-10 / #1070).
+        Ordering::Greater => (raw / BigDecimal::from(10i128.pow(asset_decimals - CANON)))
+            .with_scale_round(0, RoundingMode::Down),
         Ordering::Less => raw * BigDecimal::from(10i128.pow(CANON - asset_decimals)),
     }
 }
