@@ -506,6 +506,35 @@ fn in_transit_normalizes_7_decimal_usdc_sac_to_6_decimal() {
     assert_eq!(r.total, Some("100.000000".to_owned()));
 }
 
+#[test]
+fn normalize_floors_sub_base_unit_fractions_not_rounds() {
+    // BUG-10 / #1070: normalizing a 7-decimal SAC amount to 6-decimal base units must
+    // FLOOR (truncating division) — every raw on-chain amount is a whole integer at its
+    // native scale, so the canonical result must be too. A raw amount ending in `…5`
+    // leaves a half-base-unit fraction after ÷10; below the 6-dp display it is invisible
+    // in any single bucket, but the un-floored `in_transit` and `withdrawal_queue`
+    // fractions would each leak 0.5 base units and sum to a phantom whole base unit in
+    // `total`. With truncation, both buckets floor cleanly and `total` is exact.
+    let raw = BigDecimal::from(1_000_000_005_i64); // 7-dec: 100.0000005
+    let transfers = vec![AssetTransferRow {
+        id: 0,
+        chain_id: 1,
+        from_addr: CUSTODY.to_owned(),
+        to_addr: RAMP.to_owned(),
+        amount: raw.clone(),
+        block_timestamp: 0,
+        review_decision: Some("Approved".to_owned()),
+        review_reason: None,
+        reviewed_at: Some(chrono::Utc::now()),
+    }];
+    let sets = addr_sets();
+    let r = compute_capital_allocation(&[], &[], 0, &transfers, Some(&sets), 7, Some(&raw), &[]);
+    assert_eq!(r.buckets.in_transit, Some("100.000000".to_owned()));
+    assert_eq!(r.buckets.withdrawal_queue, Some("100.000000".to_owned()));
+    // Pre-fix this was 200.000001 — two leaked 0.5 base units summing to a phantom unit.
+    assert_eq!(r.total, Some("200.000000".to_owned()));
+}
+
 // ── withdrawal_queue: Withdrawal Queue Wallet running balance (Issue #933) ──────
 
 #[test]
