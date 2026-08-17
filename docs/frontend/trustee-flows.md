@@ -813,6 +813,41 @@ same precedent as the Capital Allocation legend colors); the check icon is redra
 Figma reference row — resolved via Open Questions as a token-consistent default, mirroring
 Approved's shape with `--color-pipeline-negative`.
 
+### Submit a loan (`/origination/new`, #1100)
+
+The "Submit a loan" action beside the Origination heading opens a full-page form covering the
+complete `SubmitLoanRequest` contract of `POST /v1/loan-book/loan` (mirrored field-for-field in
+`useSubmitLoan.ts`; the Rust source in `packages/api/src/routes/loan_book.rs` is authoritative).
+No Figma exists for this screen (product decision on #1100) — it reuses the Record
+Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
+
+- **Sections** (`FORM_SECTIONS` in `-origination-new.ts`, dotted request paths as field ids):
+  Loan & metadata (`to`, `metadata_uri`, optional `secondary_metadata_uri`, `originator`,
+  `borrower_id`, `commodity`, `corridor`, `governing_law`, optional `protection`), Economics
+  (four 6-decimal amount strings + rate bps + two unix-second dates), Collateral (`initial_ccr`
+  + `initial_location.*`), Collateral valuation (`collateral_valuation.*`), Fee schedule
+  (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
+- **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
+  per submission; the API's duplicate rejection additionally surfaces inline on submit.
+- **Import from JSON (`-ImportJsonDialog.tsx`):** a dialog with a plain textarea. On import,
+  `parseSubmissionJson` fills every scalar field present in the pasted object (numbers are
+  stringified into the inputs) and replaces the documents rows when a well-formed `documents`
+  array is present; **required paths absent from the JSON are listed in a warning banner** and
+  the rest still autofills (the #1100 example payload warns exactly the
+  `collateral_valuation.*` + `fee_schedule.*` paths). Malformed JSON or a non-object root keeps
+  the dialog open with an inline parse error and touches nothing — a single JSON object is
+  required (resolved open question: wrapped/array fixture forms are not accepted).
+- **Validation split:** client-side checks are shape-only — required fields non-empty, numeric
+  fields whole non-negative numbers, document rows complete. Amount strings are sent
+  **verbatim** (×1e6 convention, [[frontend-display-backend-values-verbatim]]). Backend
+  invariants (facility = senior + equity, `initial_ccr >= 1_000_000`, date ordering,
+  `metadata_uri` uniqueness) are NOT duplicated — the API's rejection renders via
+  `InlineError` with the raw response behind View details.
+- **Submit:** `useSubmitLoan` POSTs with the session bearer (attached by `apiFetch`, #791) and
+  invalidates `loan-submissions` on success; the page then navigates back to `/origination`,
+  where the refetched list shows the new submission awaiting review. The route sits behind the
+  app's auth gate like every other trustee route — no separate token input.
+
 ### Origination detail (`/origination/$id`, issue #821)
 
 Supersedes closed #816, which included a Collateral Valuation card + `/valuations` wiring —
