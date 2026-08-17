@@ -41,14 +41,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Design choice (worker-side only, no on-chain call) trades the authoritative contract guard for avoiding an RPC round-trip. The Stellar parser (`loan_registry_parsers.rs:236-246`) always writes all seven fields, so NULLs shouldn't occur in practice — but nothing enforces that at the sweep. Also unrelated: the sweep duplicates the contract's mint rule in SQL, so if `pipeline-stellar-contracts` changes what counts as mintable, the sweep could skip a row that should mint (uncaught, since the mint is no longer attempted).
 - **Workaround:** None needed while the parser guarantees the fields. If robustness is required, re-add a submit-time contract-error fallback, or add a monitor that alerts on `pending` rows older than N cycles.
 
-### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
-- **Tracked:** #1070
-- **Date:** 2026-07-21
-- **Location:** `packages/api/src/routes/capital_allocation.rs` — `normalize_to_canonical` (~line 157-170).
-- **Symptom:** `raw / BigDecimal::from(10i128.pow(asset_decimals - CANON))` (the `asset_decimals > CANON` branch) uses plain `BigDecimal` division, which does not floor to a whole base-unit integer — `BigDecimal::from(123456789) / BigDecimal::from(10) = 12345678.9`, not `12345678`. Every raw on-chain amount is a whole integer at its native scale, so the normalized result should be too.
-- **Root cause:** Same defect class discovered and fixed in `shared::chains::normalize_usdc_amount` during #901's code review (see `normalize_usdc_amount_stellar_truncates_not_rounds` test, `packages/shared/tests/chains.rs`) — that fix appended `.with_scale_round(0, RoundingMode::Down)`. This function needs the identical fix but was out of scope for #901 (pre-existing, untouched code).
-- **Workaround:** None. Impact is likely small (sub-base-unit precision only) but affects Capital Allocation's `in_transit` bucket for any Stellar `AssetTransfer` amount not evenly divisible by the scale factor.
-
 ### BUG-9: `KycRepo::GroupedRequest::from_row` formats `amount`/`assets`/`shares` as raw on-chain integers, not dollar strings
 - **Tracked:** #1071
 - **Date:** 2026-07-21
@@ -92,6 +84,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Resolved:** 2026-08-17 by the #1064 PR — `NeedsAttention.tsx` gains an error render branch (heading + `InlineError` per the #1037 pattern); `useNeedsAttention` maps the failure through `toUserError` (friendly "Failed to load the Needs Attention items." + raw details). The spec's "no error surface" rule is amended accordingly.
 - **Location:** `packages/trustee/src/components/useNeedsAttention.ts` / `NeedsAttention.tsx`.
 - **Symptom:** A failed underlying query rendered the section as silently absent — indistinguishable from "nothing needs attention".
+
+### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
+- **Tracked:** #1070
+- **Date:** 2026-07-21
+- **Resolved:** 2026-08-14 by #1070 — the `asset_decimals > CANON` branch now floors the quotient with `.with_scale_round(0, RoundingMode::Down)`, mirroring `shared::chains::normalize_usdc_amount`. Regression-tested through the public `compute_capital_allocation` (`packages/api/tests/capital_allocation.rs::normalize_floors_sub_base_unit_fractions_not_rounds`): a 7-decimal amount ending in `…5` leaves a half-base-unit fraction that truncates below the 6-dp display in any single bucket, but the un-floored `in_transit` and `withdrawal_queue` fractions would sum to a phantom whole base unit in `total`; with truncation `total` is exact.
+- **Location:** `packages/api/src/routes/capital_allocation.rs` — `normalize_to_canonical` (~line 239-248).
+- **Symptom:** `raw / BigDecimal::from(10i128.pow(asset_decimals - CANON))` used plain `BigDecimal` division, which did not floor to a whole base-unit integer — `123456789 / 10 = 12345678.9`, not `12345678`.
 
 ### BUG-15: Origination detail page has no error state — a failed submissions fetch renders "not found"
 - **Tracked:** #1065
