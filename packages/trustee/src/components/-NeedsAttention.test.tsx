@@ -21,6 +21,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   createRootRoute,
   createRoute,
@@ -162,6 +163,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [ROW_1],
       loanRows: [],
     });
@@ -189,6 +191,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [ROW_CHANGES_REQUESTED],
       loanRows: [],
     });
@@ -209,6 +212,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [ROW_1, ROW_2],
       loanRows: [],
     });
@@ -221,6 +225,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [],
       loanRows: [LOAN_ROW],
     });
@@ -245,6 +250,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [ROW_1],
       loanRows: [],
     });
@@ -265,6 +271,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "ready",
       errorMessage: null,
+      errorDetails: null,
       rows: [ROW_1],
       loanRows: [],
     });
@@ -286,6 +293,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "empty",
       errorMessage: null,
+      errorDetails: null,
       rows: [],
       loanRows: [],
     });
@@ -301,6 +309,7 @@ describe("NeedsAttention", () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "loading",
       errorMessage: null,
+      errorDetails: null,
       rows: [],
       loanRows: [],
     });
@@ -310,16 +319,28 @@ describe("NeedsAttention", () => {
     expect(screen.queryByTestId("needs-attention")).not.toBeInTheDocument();
   });
 
-  it("renders nothing on error (omits the section rather than showing an error surface)", () => {
+  it("renders the heading + InlineError on a failed load — never silently nothing (#1064)", async () => {
     mockUseNeedsAttention.mockReturnValue({
       state: "error",
-      errorMessage: "network down",
+      errorMessage: "Failed to load the Needs Attention items.",
+      errorDetails: "network down",
       rows: [],
       loanRows: [],
     });
 
     renderNeedsAttention();
 
+    const error = await screen.findByTestId("needs-attention-error");
+    expect(error).toHaveTextContent("Needs Attention");
+    expect(error).toHaveTextContent(
+      "Failed to load the Needs Attention items.",
+    );
+    expect(error).not.toHaveTextContent("network down");
     expect(screen.queryByTestId("needs-attention")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("inline-error-view-details"));
+    expect(screen.getByTestId("error-details-raw")).toHaveTextContent(
+      "network down",
+    );
   });
 });

@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { InlineError } from "@pipeline/ui";
 import { OriginationIcon } from "./TrusteeNavIcons";
 import { useNeedsAttention } from "./useNeedsAttention";
 
@@ -43,7 +44,30 @@ function RowBody({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 export function NeedsAttention() {
-  const { state, rows, loanRows } = useNeedsAttention();
+  const { state, errorMessage, errorDetails, rows, loanRows } =
+    useNeedsAttention();
+
+  if (state === "error") {
+    return (
+      <div
+        className="flex w-full flex-col items-start gap-[10px]"
+        data-testid="needs-attention-error"
+        aria-label="Needs Attention"
+      >
+        <h2 className="font-[family-name:var(--font-display)] text-[36px] leading-[46px] text-[color:var(--color-pipeline-ink)]">
+          Needs Attention
+        </h2>
+        <div className="w-full rounded-[4px] border border-solid border-[color:var(--color-pipeline-negative)] bg-[rgba(192,57,43,0.06)] p-3 font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[color:var(--color-pipeline-ink)]">
+          <InlineError
+            message={
+              errorMessage ?? "Failed to load the Needs Attention items."
+            }
+            details={errorDetails ?? undefined}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (state !== "ready" || (rows.length === 0 && loanRows.length === 0)) {
     return null;
