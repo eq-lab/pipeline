@@ -1354,6 +1354,11 @@ centered.
 **Sources:** `packages/trustee/src/main.tsx`, `lib/nav.ts`, `api/auth.ts`. Issues: #786 (nav),
 #791 (sign-in flow / provider stack).
 
+The app's favicon is the Pipeline wordmark SVG (`public/pipeline.svg`, sourced from
+`https://pipeline.one/pipeline.svg`, a true vector), declared in `index.html` (#1102). The
+sidebar account chip's avatar glyph paints white (`text-white` on the wrapper —
+`AvatarIcon` fills with `currentColor`), matching its white ring on the dark sidebar (#1102).
+
 `main.tsx` configures the shared `@pipeline/wallet-connect` slice (`setWalletConnectConfig`)
 before rendering `EvmWalletProvider`/`StellarWalletProvider` — those providers initialise AppKit /
 the Stellar kit lazily on first render (not at module load), so the call only needs to precede

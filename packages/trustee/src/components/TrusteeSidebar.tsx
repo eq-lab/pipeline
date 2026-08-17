@@ -249,7 +249,7 @@ function AccountChip() {
       data-testid="trustee-account-chip"
     >
       <div
-        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-solid border-white"
+        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-solid border-white text-white"
         aria-hidden="true"
       >
         <AvatarIcon width={15} height={15} />
