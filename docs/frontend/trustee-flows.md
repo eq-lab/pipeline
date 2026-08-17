@@ -847,8 +847,10 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   `InlineError` with the raw response behind View details.
 - **Submit:** `useSubmitLoan` POSTs with the session bearer (attached by `apiFetch`, #791) and
   invalidates `loan-submissions` on success; the page then navigates back to `/origination`,
-  where the refetched list shows the new submission awaiting review. The route sits behind the
-  app's auth gate like every other trustee route — no separate token input.
+  where the refetched list shows the new submission awaiting review. A rejection does **not**
+  navigate — the error renders inline and the trustee stays on the page, with the form intact,
+  to fix and resubmit. The route sits behind the app's auth gate like every other trustee
+  route — no separate token input.
 
 ### Origination detail (`/origination/$id`, issue #821)
 

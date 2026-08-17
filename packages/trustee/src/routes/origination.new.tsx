@@ -93,9 +93,7 @@ function OriginationNew() {
     void submit
       .mutateAsync(input)
       .then(() => navigate({ to: "/origination" }))
-      .catch(() => {
-        // Error surfaces inline via `submit.error`; stay on the page to fix and retry.
-      });
+      .catch(() => undefined);
   };
 
   return (
@@ -251,7 +249,10 @@ function OriginationNew() {
           </button>
         </section>
 
-        <div className="flex flex-col gap-[12px] border-t border-solid pt-[20px]" style={{ borderColor: LINE_COLOR }}>
+        <div
+          className="flex flex-col gap-[12px] border-t border-solid pt-[20px]"
+          style={{ borderColor: LINE_COLOR }}
+        >
           {submitError && (
             <div data-testid="submit-loan-error">
               <InlineError
