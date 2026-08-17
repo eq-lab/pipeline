@@ -1,11 +1,4 @@
-/**
- * Render tests for the Submit-a-loan page (`origination.new.tsx`, #1100).
- *
- * Mocks `useSubmitLoan` (mutation) and the router's `Link`/`useNavigate`
- * (mirrors `-origination-detail-page.test.tsx`); the form presenter runs for
- * real so the Import-from-JSON → autofill → warning → submit chain is
- * exercised end-to-end at the page level.
- */
+/** Render tests for origination.new.tsx (#1100). */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
@@ -82,7 +75,6 @@ const EXAMPLE_JSON = JSON.stringify({
   },
 });
 
-/** Pastes `text` into the import dialog and confirms. */
 function importJson(text: string) {
   fireEvent.click(screen.getByTestId("submit-loan-import-open"));
   fireEvent.change(screen.getByTestId("import-json-input"), {
@@ -91,7 +83,6 @@ function importJson(text: string) {
   fireEvent.click(screen.getByTestId("import-json-submit"));
 }
 
-/** Fills the collateral-valuation + fee-schedule fields the example lacks. */
 function fillMissingBlocks() {
   const remaining: Record<string, string> = {
     "collateral_valuation.valuation_mode": "MetalConcentrate",

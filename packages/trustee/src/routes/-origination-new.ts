@@ -1,26 +1,16 @@
 /**
- * Form state + pure transforms for the Submit-a-loan page
- * (`origination.new.tsx`, #1100). Per `docs/FRONTEND.md` Code structure
- * rule 2 the `.tsx` route is JSX/styling only; this hook owns the field
- * state, the Import-from-JSON parsing, and the form → `SubmitLoanInput`
- * build. The `useSubmitLoan` mutation and post-success navigation stay
- * page-level (same split as the Record Repayment page).
- *
- * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100
- * (field set, import semantics, validation split with the backend).
+ * Form state + pure transforms for origination.new.tsx (#1100).
+ * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
  */
 import { useState } from "react";
 import type { LoanDocumentInput, SubmitLoanInput } from "@/api/useSubmitLoan";
 
 // ── Field model ───────────────────────────────────────────────────────────────
 
-/** One scalar form field, addressed by its dotted request path. */
 export interface FieldDef {
   path: string;
   label: string;
-  /** Rendered as the input's `inputMode`; numeric fields are coerced on build. */
   numeric?: boolean;
-  /** `false` only for `protection` / `secondary_metadata_uri`. */
   required: boolean;
   placeholder?: string;
 }
@@ -30,11 +20,6 @@ export interface SectionDef {
   fields: FieldDef[];
 }
 
-/**
- * Every scalar field of `SubmitLoanRequest`, grouped into the page's render
- * sections. Paths are the request's own dotted key paths — the same paths
- * `parseSubmissionJson` reads and the missing-fields warning prints.
- */
 export const FORM_SECTIONS: SectionDef[] = [
   {
     title: "Loan & metadata",
@@ -204,10 +189,8 @@ export function emptyFormValues(): Record<string, string> {
 export type ParsedSubmissionJson =
   | {
       ok: true;
-      /** Dotted-path → string value for every scalar field present in the JSON. */
       values: Record<string, string>;
       documents: LoanDocumentInput[] | null;
-      /** Required dotted paths absent from the JSON (drives the warning). */
       missingFields: string[];
     }
   | { ok: false; error: string };
@@ -219,12 +202,6 @@ function readPath(root: unknown, path: string): unknown {
   }, root);
 }
 
-/**
- * Parses a pasted submission payload. A single JSON object is required —
- * arrays and other roots are rejected (fixture wrappers must be unwrapped by
- * hand). Every scalar field present autofills; required fields absent are
- * listed in `missingFields` so the page can warn and keep the rest.
- */
 export function parseSubmissionJson(text: string): ParsedSubmissionJson {
   let root: unknown;
   try {
@@ -271,18 +248,9 @@ export type BuiltSubmission =
   | { ok: true; input: SubmitLoanInput }
   | {
       ok: false;
-      /** Dotted-path → human message for every invalid/missing field. */
       fieldErrors: Record<string, string>;
     };
 
-/**
- * Builds the `POST /v1/loan-book/loan` payload from the form values. Amount
- * strings are carried **verbatim** (×1e6 convention — no client-side
- * rescaling); numeric fields must parse as non-negative integers. Backend
- * invariants (facility = senior + equity, CCR floor, date ordering,
- * `metadata_uri` uniqueness) are NOT duplicated here — the API's rejection
- * surfaces inline instead.
- */
 export function buildSubmitLoanInput(
   values: Record<string, string>,
   documents: LoanDocumentInput[],
@@ -365,16 +333,9 @@ export interface OriginationNewForm {
   addDocument: () => void;
   removeDocument: (index: number) => void;
   setDocument: (index: number, doc: LoanDocumentInput) => void;
-  /** Dotted paths listed by the last import's missing-fields warning; `null` when none. */
   importWarning: string[] | null;
-  /**
-   * Replaces the whole form with a parsed import — fields absent from the
-   * JSON are cleared so the missing-fields warning matches what is on screen.
-   * Returns an error string for the dialog on failure (form untouched).
-   */
   importFromJson: (text: string) => string | null;
   fieldErrors: Record<string, string>;
-  /** Validates and builds the payload; `null` when validation failed (errors set). */
   buildForSubmit: () => SubmitLoanInput | null;
 }
 

@@ -1,3 +1,7 @@
+/**
+ * Submit a loan — /origination/new (#1100).
+ * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
+ */
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
@@ -9,16 +13,6 @@ import { ImportJsonDialog } from "./-ImportJsonDialog";
 import { useSubmitLoan } from "@/api/useSubmitLoan";
 import { toUserError } from "@/utils/userError";
 import { InlineError } from "@pipeline/ui";
-
-/**
- * Submit a loan — full-page route (`/origination/new`, #1100), opened by the
- * "Submit a loan" action on the Origination page. Renders the complete
- * `SubmitLoanRequest` form with the Import-from-JSON dialog. No Figma exists
- * for this screen (product decision) — styling reuses the Record
- * Coupon/Repayment field-box pattern and the origination page shell.
- *
- * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
- */
 
 const LINE_COLOR = "rgba(56,55,53,0.18)";
 const INK_MUTED = "rgba(56,55,53,0.6)";

@@ -1,12 +1,6 @@
 /**
- * React Query mutation hook — wires the Submit-a-loan form
- * (`/origination/new`, #1100) to `POST /v1/loan-book/loan`.
- *
- * The input types mirror `SubmitLoanRequest` in
- * `packages/api/src/routes/loan_book.rs` field-for-field; amount strings are
- * full-scale 6-decimal strings sent verbatim (no client-side rescaling). The
- * session bearer is attached by `apiFetch` (#791).
- *
+ * POST /v1/loan-book/loan mutation — types mirror SubmitLoanRequest in
+ * packages/api/src/routes/loan_book.rs.
  * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +17,6 @@ export interface EconomicsInput {
 }
 
 export interface LocationInput {
-  /** One of `Vessel`, `Warehouse`, `TankFarm`, `Other`. */
   location_type: string;
   location_identifier: string;
   tracking_url: string;
@@ -31,11 +24,9 @@ export interface LocationInput {
 }
 
 export interface CollateralValuationInput {
-  /** One of `StandardGoods`, `MetalConcentrate`. */
   valuation_mode: string;
   asset: string;
   price_provider: string;
-  /** Decimal fraction string in `[0, 1]`. */
   haircut_pct: string;
   quantity_dmt: string;
 }
@@ -63,7 +54,6 @@ export interface SubmitLoanInput {
   secondary_metadata_uri?: string;
   documents: LoanDocumentInput[];
   economics: EconomicsInput;
-  /** 1e6-scaled; the backend rejects values below 1_000_000. */
   initial_ccr: number;
   initial_location: LocationInput;
   collateral_valuation: CollateralValuationInput;
@@ -71,7 +61,6 @@ export interface SubmitLoanInput {
 }
 
 export interface SubmitLoanResponse {
-  /** The `submitted_loans` PK — not an on-chain `loan_id`. */
   id: number;
 }
 

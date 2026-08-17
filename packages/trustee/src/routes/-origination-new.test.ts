@@ -1,10 +1,4 @@
-/**
- * Pure-transform tests for the Submit-a-loan page's presenter
- * (`-origination-new.ts`, #1100): `parseSubmissionJson` (Import-from-JSON
- * semantics — partial autofill + missing-required detection, object-only
- * root) and `buildSubmitLoanInput` (verbatim amount strings, numeric
- * coercion, field-level validation).
- */
+/** Tests for -origination-new.ts pure transforms (#1100). */
 import { describe, it, expect } from "vitest";
 import {
   buildSubmitLoanInput,
@@ -12,8 +6,6 @@ import {
   parseSubmissionJson,
 } from "./-origination-new";
 
-/** The example payload from issue #1100 — intentionally missing
- *  `collateral_valuation` and `fee_schedule`. */
 const EXAMPLE_JSON = JSON.stringify({
   to: "GDH66JAF6T5MD45GUGR7T7ITDRDX3Z5OMISPQZKK6LHJ3CW3VPC53KIU",
   metadata_uri: "https://example.com/ipfs/QmeaPY",
@@ -101,7 +93,9 @@ describe("parseSubmissionJson", () => {
     ]);
 
     const withBadDoc = parseSubmissionJson(
-      JSON.stringify({ documents: [{ name: "ok", uri: "u" }, { name: 3 }, "x"] }),
+      JSON.stringify({
+        documents: [{ name: "ok", uri: "u" }, { name: 3 }, "x"],
+      }),
     );
     if (!withBadDoc.ok) throw new Error(withBadDoc.error);
     expect(withBadDoc.documents).toEqual([{ name: "ok", uri: "u" }]);
@@ -139,9 +133,7 @@ describe("buildSubmitLoanInput", () => {
     ]);
     if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
 
-    expect(built.input.economics.original_facility_size).toBe(
-      "1200000.000000",
-    );
+    expect(built.input.economics.original_facility_size).toBe("1200000.000000");
     expect(built.input.economics.senior_interest_rate_bps).toBe(1000);
     expect(built.input.economics.origination_date).toBe(1781806657);
     expect(built.input.initial_ccr).toBe(1500000);
@@ -160,7 +152,11 @@ describe("buildSubmitLoanInput", () => {
   });
 
   it("omits secondary_metadata_uri when empty and keeps protection as an empty string", () => {
-    const values = { ...completeValues(), secondary_metadata_uri: "", protection: "" };
+    const values = {
+      ...completeValues(),
+      secondary_metadata_uri: "",
+      protection: "",
+    };
     const built = buildSubmitLoanInput(values, []);
     if (!built.ok) throw new Error(JSON.stringify(built.fieldErrors));
     expect("secondary_metadata_uri" in built.input).toBe(false);

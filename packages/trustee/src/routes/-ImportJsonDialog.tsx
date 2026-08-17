@@ -1,11 +1,5 @@
 /**
- * Import-from-JSON dialog — opened by the "Import from JSON" control on the
- * Submit-a-loan page (`origination.new.tsx`, #1100). A plain textarea for
- * pasting a `SubmitLoanRequest`-shaped payload; parse failures render inline
- * and keep the dialog open, a successful import closes it (the page shows the
- * missing-fields warning). Shell, tokens, and keyboard contract mirror
- * `-RejectReasonDialog.tsx`.
- *
+ * Import-from-JSON dialog for the Submit-a-loan page (#1100).
  * spec: docs/frontend/trustee-flows.md#submit-a-loan-originationnew-1100.
  */
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 export interface ImportJsonDialogProps {
   open: boolean;
   onCancel: () => void;
-  /** Returns an error string to display (dialog stays open), or `null` on success. */
   onImport: (text: string) => string | null;
 }
 
