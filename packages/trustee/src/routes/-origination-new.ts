@@ -367,7 +367,11 @@ export interface OriginationNewForm {
   setDocument: (index: number, doc: LoanDocumentInput) => void;
   /** Dotted paths listed by the last import's missing-fields warning; `null` when none. */
   importWarning: string[] | null;
-  /** Applies a parsed import; returns an error string for the dialog on failure. */
+  /**
+   * Replaces the whole form with a parsed import — fields absent from the
+   * JSON are cleared so the missing-fields warning matches what is on screen.
+   * Returns an error string for the dialog on failure (form untouched).
+   */
   importFromJson: (text: string) => string | null;
   fieldErrors: Record<string, string>;
   /** Validates and builds the payload; `null` when validation failed (errors set). */
@@ -393,8 +397,8 @@ export function useOriginationNewForm(): OriginationNewForm {
   const importFromJson = (text: string): string | null => {
     const parsed = parseSubmissionJson(text);
     if (!parsed.ok) return parsed.error;
-    setValues((prev) => ({ ...prev, ...parsed.values }));
-    if (parsed.documents !== null) setDocuments(parsed.documents);
+    setValues({ ...emptyFormValues(), ...parsed.values });
+    setDocuments(parsed.documents ?? []);
     setImportWarning(
       parsed.missingFields.length > 0 ? parsed.missingFields : null,
     );

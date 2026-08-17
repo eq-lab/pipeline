@@ -171,6 +171,36 @@ describe("Submit a loan page — Import from JSON", () => {
     expect(warning).toHaveTextContent("fee_schedule.oet_alloc_rate_bps");
   });
 
+  it("REPLACES previously filled fields — a field missing from the new payload is cleared, matching the warning", () => {
+    renderRoute();
+    fireEvent.change(
+      screen.getByTestId("submit-loan-field-collateral_valuation.asset"),
+      { target: { value: "XAU" } },
+    );
+    fireEvent.change(screen.getByTestId("submit-loan-field-commodity"), {
+      target: { value: "Old commodity" },
+    });
+    fireEvent.click(screen.getByTestId("submit-loan-document-add"));
+
+    importJson(EXAMPLE_JSON);
+
+    expect(
+      screen.getByTestId("submit-loan-field-collateral_valuation.asset"),
+    ).toHaveValue("");
+    expect(screen.getByTestId("submit-loan-field-commodity")).toHaveValue(
+      "Jet fuel JET A-1",
+    );
+    expect(screen.getByTestId("submit-loan-document-name-0")).toHaveValue(
+      "Agreement",
+    );
+    expect(
+      screen.queryByTestId("submit-loan-document-name-1"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("submit-loan-import-warning")).toHaveTextContent(
+      "collateral_valuation.asset",
+    );
+  });
+
   it("keeps the dialog open with a parse error on malformed JSON and touches nothing", () => {
     renderRoute();
     importJson("{ nope");

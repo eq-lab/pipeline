@@ -829,14 +829,16 @@ Coupon/Repayment field-box pattern, the reason-dialog shell, and `InlineError`.
   (`fee_schedule.*` bps), and Documents (dynamic name/URI rows).
 - **Unique-URI banner:** a standing attention banner states that `metadata_uri` must be unique
   per submission; the API's duplicate rejection additionally surfaces inline on submit.
-- **Import from JSON (`-ImportJsonDialog.tsx`):** a dialog with a plain textarea. On import,
-  `parseSubmissionJson` fills every scalar field present in the pasted object (numbers are
-  stringified into the inputs) and replaces the documents rows when a well-formed `documents`
-  array is present; **required paths absent from the JSON are listed in a warning banner** and
-  the rest still autofills (the #1100 example payload warns exactly the
-  `collateral_valuation.*` + `fee_schedule.*` paths). Malformed JSON or a non-object root keeps
-  the dialog open with an inline parse error and touches nothing — a single JSON object is
-  required (resolved open question: wrapped/array fixture forms are not accepted).
+- **Import from JSON (`-ImportJsonDialog.tsx`):** a dialog with a plain textarea. A successful
+  import **replaces the whole form**: scalar fields present in the pasted object fill (numbers
+  are stringified into the inputs), fields absent are **cleared** — so the missing-fields
+  warning always matches what is on screen (previously-typed values never linger under a
+  "missing" warning) — and the document rows are replaced (cleared when the payload has none).
+  **Required paths absent from the JSON are listed in a warning banner** while the rest
+  autofills (the #1100 example payload warns exactly the `collateral_valuation.*` +
+  `fee_schedule.*` paths). Malformed JSON or a non-object root keeps the dialog open with an
+  inline parse error and touches nothing — a single JSON object is required (resolved open
+  question: wrapped/array fixture forms are not accepted).
 - **Validation split:** client-side checks are shape-only — required fields non-empty, numeric
   fields whole non-negative numbers, document rows complete. Amount strings are sent
   **verbatim** (×1e6 convention, [[frontend-display-backend-values-verbatim]]). Backend
