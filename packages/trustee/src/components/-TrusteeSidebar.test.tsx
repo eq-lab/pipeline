@@ -195,6 +195,15 @@ describe("TrusteeSidebar", () => {
     expect(screen.getByText("Trustee · connected")).toBeInTheDocument();
   });
 
+  it("renders the avatar glyph in white on the dark sidebar (#1102)", async () => {
+    renderSidebar();
+    const chip = await screen.findByTestId("trustee-account-chip");
+    const avatarWrap = chip.querySelector("div[aria-hidden='true']");
+    expect(avatarWrap).not.toBeNull();
+    expect(avatarWrap!.className).toContain("text-white");
+    expect(avatarWrap!.className).toContain("border-white");
+  });
+
   it("renders nothing for the account chip when address is undefined", async () => {
     mockSessionState = { address: undefined };
     renderSidebar();
