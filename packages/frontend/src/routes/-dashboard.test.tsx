@@ -967,8 +967,6 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     expect(screen.queryByText("Duration")).toBeNull();
     expect(screen.queryByText("Protection")).toBeNull();
 
-    // Formatted values from FIXTURE_SUBMISSIONS: compact facility (#841),
-    // arrow corridor.
     expect(screen.queryByText("Auric Andes")).toBeNull();
     expect(screen.getByText("Gold pyrite concentrate")).toBeInTheDocument();
     expect(screen.getByText("$3.5M")).toBeInTheDocument();
