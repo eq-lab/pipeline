@@ -19,6 +19,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as RiskCouncilIndexRouteImport } from './routes/risk-council.index'
 import { Route as OriginationIndexRouteImport } from './routes/origination.index'
 import { Route as LoansIndexRouteImport } from './routes/loans.index'
+import { Route as OriginationNewRouteImport } from './routes/origination.new'
 import { Route as OriginationIdRouteImport } from './routes/origination.$id'
 import { Route as LoansIdRouteImport } from './routes/loans.$id'
 import { Route as RiskCouncilWritedownIdRouteImport } from './routes/risk-council.writedown.$id'
@@ -77,6 +78,11 @@ const LoansIndexRoute = LoansIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LoansRoute,
 } as any)
+const OriginationNewRoute = OriginationNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => OriginationRoute,
+} as any)
 const OriginationIdRoute = OriginationIdRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/origination/new': typeof OriginationNewRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
   '/risk-council/': typeof RiskCouncilIndexRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/origination/new': typeof OriginationNewRoute
   '/loans': typeof LoansIndexRoute
   '/origination': typeof OriginationIndexRoute
   '/risk-council': typeof RiskCouncilIndexRoute
@@ -159,6 +167,7 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/loans/$id': typeof LoansIdRoute
   '/origination/$id': typeof OriginationIdRoute
+  '/origination/new': typeof OriginationNewRoute
   '/loans/': typeof LoansIndexRoute
   '/origination/': typeof OriginationIndexRoute
   '/risk-council/': typeof RiskCouncilIndexRoute
@@ -180,6 +189,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/loans/$id'
     | '/origination/$id'
+    | '/origination/new'
     | '/loans/'
     | '/origination/'
     | '/risk-council/'
@@ -196,6 +206,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/loans/$id'
     | '/origination/$id'
+    | '/origination/new'
     | '/loans'
     | '/origination'
     | '/risk-council'
@@ -215,6 +226,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/loans/$id'
     | '/origination/$id'
+    | '/origination/new'
     | '/loans/'
     | '/origination/'
     | '/risk-council/'
@@ -307,6 +319,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoansIndexRouteImport
       parentRoute: typeof LoansRoute
     }
+    '/origination/new': {
+      id: '/origination/new'
+      path: '/new'
+      fullPath: '/origination/new'
+      preLoaderRoute: typeof OriginationNewRouteImport
+      parentRoute: typeof OriginationRoute
+    }
     '/origination/$id': {
       id: '/origination/$id'
       path: '/$id'
@@ -377,11 +396,13 @@ const LoansRouteWithChildren = LoansRoute._addFileChildren(LoansRouteChildren)
 
 interface OriginationRouteChildren {
   OriginationIdRoute: typeof OriginationIdRoute
+  OriginationNewRoute: typeof OriginationNewRoute
   OriginationIndexRoute: typeof OriginationIndexRoute
 }
 
 const OriginationRouteChildren: OriginationRouteChildren = {
   OriginationIdRoute: OriginationIdRoute,
+  OriginationNewRoute: OriginationNewRoute,
   OriginationIndexRoute: OriginationIndexRoute,
 }
 

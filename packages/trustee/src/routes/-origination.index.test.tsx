@@ -224,6 +224,19 @@ describe("Origination route", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the Submit-a-loan action linking to /origination/new (#1100)", async () => {
+    mockTable({
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+    });
+    renderRoute();
+    const link = await screen.findByTestId("origination-submit-loan");
+    expect(link).toHaveTextContent("Submit a loan");
+    expect(link).toHaveAttribute("href", "/origination/new");
+  });
+
   it("does not render the Figma footer note (deliberately omitted)", async () => {
     mockTable({
       state: "empty",

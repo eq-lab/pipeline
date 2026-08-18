@@ -313,9 +313,18 @@ function OriginationTable() {
 function Origination() {
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-[30px] px-4 py-12 md:px-8">
-      <h1 className="font-[family-name:var(--font-display)] text-[64px] leading-[64px] text-[rgba(56,55,53,0.3)]">
-        {navItem.heading}
-      </h1>
+      <div className="flex flex-wrap items-end justify-between gap-[16px]">
+        <h1 className="font-[family-name:var(--font-display)] text-[64px] leading-[64px] text-[rgba(56,55,53,0.3)]">
+          {navItem.heading}
+        </h1>
+        <Link
+          to="/origination/new"
+          data-testid="origination-submit-loan"
+          className="flex h-[48px] items-center rounded-[4px] bg-[color:var(--color-pipeline-brand)] px-[24px] font-[family-name:var(--font-body)] text-[16px] text-white no-underline"
+        >
+          Submit a loan
+        </Link>
+      </div>
       {/* White surface per Figma "Background" node (4116:9159): bg-white,
           rounded-4px, 32px padding — NO border/shadow. The only border in the
           page is the table's own body box (see OriginationTable). */}
