@@ -178,9 +178,9 @@ export function TrusteeSessionProvider({
     });
   }, [onModalCancel]);
 
-  // The ONLY place `preferredChainRef` is set. An already-connected pick must
-  // run sign-in directly here: same-address reconnect is a no-op in the
-  // kit/wagmi, so the watch effect would never fire (#794/#795, spec).
+  // The ONLY place `preferredChainRef` is set. EVM may direct-run when
+  // already connected (#794); Stellar never does — the ambient address can be
+  // a stale different-wallet hydration (#1106, spec: sign-in flow).
   useEffect(() => {
     return onModalWalletSelect((chain) => {
       const preferred = chain === "soroban" ? "stellar" : "evm";
@@ -197,22 +197,6 @@ export function TrusteeSessionProvider({
         ).finally(() => {
           orchestratingRef.current = false;
         });
-        return;
-      }
-
-      if (
-        preferred === "stellar" &&
-        stellarWallet.isConnected &&
-        stellarWallet.address
-      ) {
-        orchestratingRef.current = true;
-        void runSignIn(
-          stellarWallet.address,
-          ENV.STELLAR_CHAIN_ID,
-          stellarWallet.signMessage,
-        ).finally(() => {
-          orchestratingRef.current = false;
-        });
       }
       // Fresh connect: the watch effect picks it up once the chain connects.
     });
@@ -221,9 +205,6 @@ export function TrusteeSessionProvider({
     evmWallet.isConnected,
     evmWallet.address,
     evmWallet.signMessage,
-    stellarWallet.isConnected,
-    stellarWallet.address,
-    stellarWallet.signMessage,
     runSignIn,
   ]);
 

@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useStellarWallet, useStellarConnectors } from "./useStellarWallet";
-import { _resetStellarConnectionStoreForTests } from "./connectionStore";
+import {
+  _resetStellarConnectionStoreForTests,
+  markStellarConnectionHydrated,
+  setStellarConnectionAddress,
+} from "./connectionStore";
 
 // ── Mock the Stellar kit singleton (./config) ─────────────────────────────────
 // vi.hoisted ensures the mock functions are available when vi.mock factory runs,
@@ -316,6 +320,78 @@ describe("useStellarConnectors — connectWallet calls kit directly", () => {
 
     expect(mockSetWallet).toHaveBeenCalledWith("freighter");
     expect(mockFetchAddress).toHaveBeenCalledOnce();
+  });
+
+  it("clears a stale hydrated address BEFORE fetching the picked wallet's (#1106 regression)", async () => {
+    markStellarConnectionHydrated();
+    setStellarConnectionAddress("GSTALEFREIGHTERADDRESS");
+
+    let resolveFetch!: (v: { address: string }) => void;
+    mockFetchAddress.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        connectors: useStellarConnectors(),
+        wallet: useStellarWallet(),
+      }),
+      { wrapper },
+    );
+    expect(result.current.wallet.address).toBe("GSTALEFREIGHTERADDRESS");
+
+    let connectPromise!: Promise<void>;
+    act(() => {
+      connectPromise = result.current.connectors.connectWallet("hana");
+    });
+
+    expect(result.current.wallet.address).toBeUndefined();
+    expect(result.current.wallet.isConnected).toBe(false);
+
+    await act(async () => {
+      resolveFetch({ address: "GHANAADDRESS" });
+      await connectPromise;
+    });
+
+    expect(result.current.wallet.address).toBe("GHANAADDRESS");
+    expect(result.current.wallet.isConnected).toBe(true);
+  });
+
+  it("a same-address re-pick still transitions the store (undefined → address), never a silent no-op", async () => {
+    markStellarConnectionHydrated();
+    setStellarConnectionAddress(STELLAR_ADDR);
+
+    const transitions: Array<string | undefined> = [];
+    let resolveFetch!: (v: { address: string }) => void;
+    mockFetchAddress.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    const { result } = renderHook(
+      () => ({
+        connectors: useStellarConnectors(),
+        wallet: useStellarWallet(),
+      }),
+      { wrapper },
+    );
+
+    let connectPromise!: Promise<void>;
+    act(() => {
+      connectPromise = result.current.connectors.connectWallet("freighter");
+    });
+    transitions.push(result.current.wallet.address);
+
+    await act(async () => {
+      resolveFetch({ address: STELLAR_ADDR });
+      await connectPromise;
+    });
+    transitions.push(result.current.wallet.address);
+
+    expect(transitions).toEqual([undefined, STELLAR_ADDR]);
   });
 
   it("mock short-circuit: connectWallet is a no-op when mock address is set", async () => {
