@@ -290,10 +290,6 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
 
     expect(result.current.inOriginationCount).toBe(2);
     const row0 = result.current.originationRows[0]!;
-    // Originator is loan_data.originator (the submitted name), not the
-    // top-level submitter address — same value in this fixture, but the
-    // mapping source matters (see originationRow.test.ts for the distinction).
-    expect(row0.originator).toBe("0xabc");
     expect(row0.commodity).toBe("Alumina");
     expect(row0.facility).toBe("$8.0M"); // compact, matching Active Loans (#841)
     expect(row0.corridor).toBe("West Africa → EU");

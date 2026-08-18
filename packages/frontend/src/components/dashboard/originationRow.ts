@@ -30,7 +30,6 @@ export const STATUS_LABELS: Record<OriginationSubmissionStatus, string> = {
 /** One formatted, display-ready row of the In-Origination table. */
 export interface OriginationTableRow {
   id: number;
-  originator: string;
   commodity: string;
   facility: string;
   corridor: string;
@@ -72,7 +71,6 @@ export function mapSubmissionToRow(
 
   return {
     id: submission.id,
-    originator: safeString(loanData.originator),
     commodity: safeString(loanData.commodity),
     // Facility scale/formatting — spec: docs/frontend/dashboard-components.md#originationtable
     facility: formatCompactUsd(

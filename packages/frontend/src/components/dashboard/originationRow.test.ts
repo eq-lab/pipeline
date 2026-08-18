@@ -56,7 +56,6 @@ const FULL_SUBMISSION: SubmissionView = {
 describe("mapSubmissionToRow", () => {
   it("maps a full fixture submission to correctly formatted fields", () => {
     const row = mapSubmissionToRow(FULL_SUBMISSION);
-    expect(row.originator).toBe("Auric Andes");
     expect(row.commodity).toBe("Gold pyrite concentrate");
     expect(row.facility).toBe("$3.5M"); // compact, matching Active Loans (#841)
     expect(row.corridor).toBe("PE → CN");
@@ -86,11 +85,6 @@ describe("mapSubmissionToRow", () => {
   it("does not include a valuation sub-line field on the row (resolved: omitted)", () => {
     const row = mapSubmissionToRow(FULL_SUBMISSION);
     expect(row).not.toHaveProperty("valuation");
-  });
-
-  it("uses loan_data.originator, not the top-level submitter address", () => {
-    const row = mapSubmissionToRow(FULL_SUBMISSION);
-    expect(row.originator).not.toBe(FULL_SUBMISSION.originator);
   });
 
   it("renders '—' for missing economics fields, never throwing", () => {

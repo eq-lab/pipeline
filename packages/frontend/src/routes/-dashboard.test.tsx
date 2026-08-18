@@ -19,7 +19,7 @@
  *  11. DeploymentMonitorPanel: responsive class assertions.
  *  12. DeploymentMonitorPanel: tab bar — Active Loans + selectable "In Origination" (#755).
  *  13. DeploymentMonitorPanel: In Origination tab renders the Figma 4116-9155 field set
- *      (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status), the old
+ *      (Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status, #1104), the old
  *      Active-Loans-shaped columns are absent, and the Active Loans tab is unchanged (#814).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -950,7 +950,6 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
 
     // New 8-column header set.
     for (const header of [
-      "Originator",
       "Commodity",
       "Facility",
       "Corridor",
@@ -968,9 +967,7 @@ describe("DeploymentMonitorPanel — In Origination tab field set (issue #814)",
     expect(screen.queryByText("Duration")).toBeNull();
     expect(screen.queryByText("Protection")).toBeNull();
 
-    // Formatted values from FIXTURE_SUBMISSIONS: loan_data.originator (not the
-    // top-level submitter address), compact facility (#841), arrow corridor.
-    expect(screen.getByText("Auric Andes")).toBeInTheDocument();
+    expect(screen.queryByText("Auric Andes")).toBeNull();
     expect(screen.getByText("Gold pyrite concentrate")).toBeInTheDocument();
     expect(screen.getByText("$3.5M")).toBeInTheDocument();
     expect(screen.getByText("PE → CN")).toBeInTheDocument();

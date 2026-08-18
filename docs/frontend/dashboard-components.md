@@ -666,7 +666,7 @@ selectable and carry a live count badge:
   see `useDeploymentMonitorPanel` below for the filter).
 
 The In Origination tab renders its own `OriginationTable` (issue #814, Figma node `4116-9155`) — a
-distinct 8-column field set (Originator/Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status)
+distinct 7-column field set (Commodity/Facility/Corridor/Rate/Maturity/Submitted/Status, #1104 dropped Originator)
 derived from each submission's `loan_data` payload via `mapSubmissionToRow`; it no longer shares
 `LoanBookTable`'s Active-Loans column set. The In Origination tab body renders its own
 loading/error/empty/ready state, independent of the panel-level Active Loans state, so a slow or
@@ -818,7 +818,8 @@ Figma refs: desktop `node-id=3283-14431`, table container `node-id=3283-14552`, 
 The In-Origination tab's submissions table for the Loan Book panel (issue #814, Figma node
 `4116-9155` — the same field set as the trustee Origination page, #813).
 
-Eight columns: Originator · Commodity · Facility · Corridor · Rate · Maturity · Submitted · Status.
+Seven columns: Commodity · Facility · Corridor · Rate · Maturity · Submitted · Status (#1104 removed
+the Originator column; `loan_data.originator` keeps being served, just not rendered here).
 Rows come pre-formatted from `mapSubmissionToRow` (`originationRow.ts`) via
 `useDeploymentMonitorPanel`.
 
@@ -837,7 +838,8 @@ pattern (`overflow-hidden max-w-0` on the `<td>` + `truncate` on the inner span,
 the first column elsewhere) is applied to ALL columns here, so long values (e.g. a long commodity or
 a "South Korea → Mongolia" corridor) clip with an ellipsis instead of spilling into the neighbouring
 column. Columns are separated by 12px via `pr-3` on every cell except the last. `width: undefined` on
-the `Originator` column definition means it's left flexible so it absorbs the remaining table width.
+the `Commodity` column definition means it's left flexible so it absorbs the remaining table width
+(the flexible slot moved from the removed Originator column, #1104).
 
 Status column text colour mirrors the `WithdrawalQueueTable` status-colour pattern (same mapping as
 the retired `LoanBookTable.statusColorClass`, issue #755), keyed on the row's **normalized** status:
@@ -852,7 +854,6 @@ router-nav `submission` threading and Review action):
 
 | Field | Source | Notes |
 |---|---|---|
-| Originator | `loan_data.originator` | The originator's name as submitted with the loan, NOT the top-level `SubmissionView.originator` authenticated-submitter address. |
 | Commodity | `loan_data.commodity` | Figma also shows a valuation sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"), but no field in `loan_data`/`SubmissionView` carries a valuation mode for pre-mint submissions (`ValuationMode` lives in `loan_collateral_valuations`, keyed by an on-chain `loan_id` submissions don't have yet). Resolved (human, issue #814, mirroring #813): OMIT the sub-line entirely rather than infer it from the commodity name. |
 | Facility | `loan_data.economics.original_facility_size` | Served at the on-chain 7-decimal base-unit scale — normalized ÷10^7 via `economicsBaseUnitsToUsdDecimal` (issue #912, BigInt-safe) before `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841). |
 | Corridor | `loan_data.corridor` | Hyphen separator rendered as the Figma's arrow glyph ("PE-CN" → "PE → CN") — same data, design-matching glyph. |
