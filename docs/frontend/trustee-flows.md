@@ -1305,11 +1305,21 @@ unauthorized-error states).
    must be driven by the user's deliberate chain pick, never ambient wallet state (#795: wagmi
    auto-reconnects a persisted EVM session on page load, which used to hijack sign-in and skip the
    modal, so Freighter/Soroban was never offered). The picked chain (`onWalletSelect`) becomes the
-   sole driver: already connected → sign-in runs immediately (the kit treats same-address reconnect
-   as a no-op, so a watch effect alone would miss this case, #794); not yet connected → a watch
-   effect on the reactive wallet hooks runs it once that specific chain connects. A wallet on the
-   *other* chain never triggers sign-in. Dismissing the modal with no pick resets to
-   `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
+   sole driver, with per-chain semantics:
+   - **EVM:** already connected → sign-in runs immediately (wagmi treats a same-connector
+     reconnect as a no-op, so a watch effect alone would miss this case, #794); not yet connected
+     → the watch effect runs it once EVM connects.
+   - **Stellar:** there is **no** immediate run from ambient state (#1106): the kit persists the
+     last wallet, so the hydrated address may belong to a *different* wallet than the row the
+     user just clicked — signing it produced Hana's "Incorrect wallet" rejection for a
+     Freighter-addressed challenge. Every Soroban row click re-fetches via
+     `useStellarConnectors().connectWallet`, which **clears the shared store address before
+     `setWallet`/`fetchAddress`** — so no consumer can sign for the previous wallet mid-switch,
+     and even a same-address re-pick produces a store transition (undefined → address) that
+     fires the watch effect. Sign-in therefore always uses the freshly fetched address of the
+     wallet actually picked.
+   A wallet on the *other* chain never triggers sign-in. Dismissing the modal with no pick resets
+   to `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
    challenge/verify orchestration single-flight.
 2. `GET /v1/auth/challenge?address=&chain_id=` — `401` = address not on the server allow-list →
    `unauthorized` + explanatory error (authorization is entirely server-side); other failures →

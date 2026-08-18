@@ -16,9 +16,9 @@
  *     `-sessionStore.test.ts`; this file focuses on the orchestration).
  *   - (#793) Cancelling the connect modal (no wallet chosen) resets `status`
  *     back to `unauthenticated` — no more stuck "Connecting…".
- *   - (#794) A Stellar wallet (e.g. Freighter) drives the challenge with its
- *     `G…` address and `STELLAR_CHAIN_ID` when the user explicitly picks it
- *     in the modal, whether it connects fresh or was already connected.
+ *   - (#794/#1106) A Stellar pick drives the challenge with the freshly
+ *     fetched `G…` address and `STELLAR_CHAIN_ID` — never the ambient
+ *     (possibly stale-hydrated, different-wallet) address.
  *   - (#795) `signIn()` ALWAYS opens the modal, even when a wallet (e.g. an
  *     auto-reconnected/persisted EVM session) is already connected — ambient
  *     connection state never auto-signs or skips the picker. Only the user's
@@ -414,14 +414,14 @@ describe("TrusteeSessionProvider — Stellar connect via explicit modal pick (#7
   });
 });
 
-describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in the modal (#794)", () => {
-  it("signs in with the already-connected Stellar wallet once the user picks Soroban in the modal", async () => {
+describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in the modal (#794/#1106)", () => {
+  it("#1106 regression: a stale hydrated Stellar address never drives the challenge — sign-in waits for the freshly picked wallet's address", async () => {
     mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
     mockStellarSignMessage.mockResolvedValue({ signature: "c3RlbGxhcg==" });
     mockPostAuthVerify.mockResolvedValue({ token: "jwt", expiresIn: 86400 });
-    stellarState = { isConnected: true, address: "GALREADYCONNECTED" };
+    stellarState = { isConnected: true, address: "GSTALEFREIGHTERADDRESS" };
 
-    renderProvider();
+    const { rerender } = renderProvider();
     act(() => screen.getByText("sign in").click());
 
     // The modal always opens, even with a wallet already connected (#795).
@@ -429,16 +429,36 @@ describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in t
     expect(mockGetAuthChallenge).not.toHaveBeenCalled();
 
     act(() => fireModalWalletSelect("soroban"));
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
+
+    stellarState = { isConnected: false, address: undefined };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
+
+    stellarState = { isConnected: true, address: "GHANAFRESHADDRESS" };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
 
     await waitFor(() => {
       expect(mockGetAuthChallenge).toHaveBeenCalledWith(
-        "GALREADYCONNECTED",
+        "GHANAFRESHADDRESS",
         99000001,
       );
     });
+    expect(mockGetAuthChallenge).not.toHaveBeenCalledWith(
+      "GSTALEFREIGHTERADDRESS",
+      99000001,
+    );
   });
 
-  it("does not hard-prefer EVM when both wallets are already connected — waits for the user's modal pick", async () => {
+  it("does not hard-prefer EVM when both wallets are already connected — waits for the user's modal pick, then the fresh Stellar re-fetch", async () => {
     mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
     mockStellarSignMessage.mockResolvedValue({ signature: "c3RlbGxhcg==" });
     mockEvmSignMessage.mockResolvedValue({ signature: "0xsig" });
@@ -446,7 +466,7 @@ describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in t
     evmState = { isConnected: true, address: "0xabc" };
     stellarState = { isConnected: true, address: "GBOTHCONNECTED" };
 
-    renderProvider();
+    const { rerender } = renderProvider();
     act(() => screen.getByText("sign in").click());
 
     // Both chains are already connected — the modal opens and neither
@@ -454,10 +474,21 @@ describe("TrusteeSessionProvider — pre-connected wallet picked explicitly in t
     expect(mockOpenConnectModal).toHaveBeenCalledTimes(1);
     expect(mockGetAuthChallenge).not.toHaveBeenCalled();
 
-    // The user explicitly picks the Soroban (Stellar) tab/wallet row in the
-    // modal — even though it was already connected (a no-op reconnect from
-    // the kit's perspective, so no isConnected/address change follows).
     act(() => fireModalWalletSelect("soroban"));
+    expect(mockGetAuthChallenge).not.toHaveBeenCalled();
+
+    stellarState = { isConnected: false, address: undefined };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+    stellarState = { isConnected: true, address: "GBOTHCONNECTED" };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
 
     await waitFor(() => {
       expect(mockGetAuthChallenge).toHaveBeenCalledWith(

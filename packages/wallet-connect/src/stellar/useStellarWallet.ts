@@ -251,6 +251,7 @@ export function useStellarConnectors(): UseStellarConnectorsResult {
         return;
       }
 
+      setStellarConnectionAddress(undefined);
       try {
         StellarWalletsKit.setWallet(walletId);
         const { address: newAddress } = await StellarWalletsKit.fetchAddress();
