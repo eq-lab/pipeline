@@ -300,7 +300,10 @@ render in two places without prop-drilling or duplication:
 Catalogued in `docs/frontend/utils.md`. Figma refs: stat cells from nodes `1989:9048`, `1989:9049`,
 `1989:9050`, `1989:9051`. Separator-cell hairline styling matches Figma nodes `1497:94562` /
 `1497:94563`; the trailing external-link icon button (40×40 tap target) matches Figma node
-`1497:94564` and opens the Protocol Dashboard (`/dashboard`, Issue #716).
+`1497:94564` and opens the Protocol Dashboard (`/dashboard`, Issue #716). The glyph inside is the
+box-and-arrow external-link icon from Figma node `1497:94558` (24×24, #1110) — painted with
+`currentColor` so the button's `--color-pipeline-ink-muted` (`rgb(56 55 53 / 0.6)`) reproduces the
+node's `#383735` @ 0.6 fill exactly.
 
 ### QnaSection
 
