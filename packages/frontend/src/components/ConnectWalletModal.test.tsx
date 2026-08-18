@@ -225,41 +225,22 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
     await screen.findByRole("button", { name: "Connect Freighter" });
   });
 
-  it("shows 5 wallets then a Show More button (6 total)", async () => {
-    // 6 soroban wallets → 5 visible + Show More
+  it("shows all 5 Soroban wallets with no Show More — Hana removed (#1108)", () => {
     expect(
-      screen.getByRole("button", { name: "Show More" }),
-    ).toBeInTheDocument();
-    // First 5 visible
-    expect(
-      screen.getByRole("button", { name: "Connect Freighter" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Connect LOBSTR" }),
-    ).toBeInTheDocument();
-  });
-
-  it("clicking Show More reveals all 6 wallets", async () => {
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Show More" }));
-
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Show More" }),
-      ).not.toBeInTheDocument(),
-    );
-
-    // All 6 wallets now visible
+      screen.queryByRole("button", { name: "Show More" }),
+    ).not.toBeInTheDocument();
     for (const label of [
       "Connect Freighter",
       "Connect LOBSTR",
       "Connect xBull",
-      "Connect Hana",
       "Connect Albedo",
       "Connect Rabet",
     ]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(
+      screen.queryByRole("button", { name: "Connect Hana" }),
+    ).not.toBeInTheDocument();
   });
 
   it("clicking Freighter calls connectSorobanWallet and dismisses", async () => {
@@ -278,29 +259,6 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
     expect(mockConnectSorobanWallet).toHaveBeenCalledWith(
       "freighter",
       expect.any(Function),
-    );
-  });
-
-  it("Show More resets when switching tabs", async () => {
-    const user = userEvent.setup();
-    // Expand Soroban list
-    await user.click(screen.getByRole("button", { name: "Show More" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Show More" }),
-      ).not.toBeInTheDocument(),
-    );
-
-    // Switch back to EVM
-    await user.click(screen.getByRole("tab", { name: "EVM" }));
-    // Switch back to Soroban
-    await user.click(screen.getByRole("tab", { name: "Soroban" }));
-
-    // Show More should be visible again
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Show More" }),
-      ).toBeInTheDocument(),
     );
   });
 });
