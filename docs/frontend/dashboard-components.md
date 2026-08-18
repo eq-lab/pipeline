@@ -511,7 +511,13 @@ Per-wallet behavior:
 - Wallet unavailable → open the wallet's website in a new browser tab.
 
 "Show More" appears when a tab has more than 5 wallets (`SHOW_MORE_THRESHOLD`); toggles the full
-list. Switching tabs resets `showMore` back to collapsed.
+list. Switching tabs resets `showMore` back to collapsed. Currently dormant: EVM lists 4 wallets
+and Soroban 5 — **Hana was removed from the Soroban catalogue (#1108)** because its `signMessage`
+returns a constant unrelated to the message (verified: two different messages → byte-identical
+signature, verifying under no known scheme for the signing account), so signature sign-in can
+never succeed. The kit plumbing (`HANA_ID` exports) is kept for a one-line re-enable once Hana
+ships a fix; re-enable criterion: different messages produce different signatures AND the
+signature verifies per SEP-53.
 
 Entry point: called from `TopBar` (replaces `ConnectChooserModal`).
 

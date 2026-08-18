@@ -251,27 +251,6 @@ function XbullIcon() {
   );
 }
 
-function HanaIcon() {
-  return (
-    <svg
-      width={24}
-      height={24}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <rect width="24" height="24" rx="12" fill="#E91E8C" />
-      <path
-        d="M7 12h10M12 7v10"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function AlbedoIcon() {
   return (
     <svg
@@ -354,12 +333,6 @@ const SOROBAN_WALLETS: Omit<WalletEntry, "tab">[] = [
     label: "xBull",
     websiteUrl: "https://xbull.app",
     icon: <XbullIcon />,
-  },
-  {
-    id: "hana",
-    label: "Hana",
-    websiteUrl: "https://www.hanawallet.io",
-    icon: <HanaIcon />,
   },
   {
     id: "albedo",
