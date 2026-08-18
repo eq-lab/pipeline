@@ -37,8 +37,7 @@ const COLUMNS: {
   label: string;
   width?: string;
 }[] = [
-  { key: "originator", label: "Originator", width: undefined },
-  { key: "commodity", label: "Commodity", width: "176px" },
+  { key: "commodity", label: "Commodity", width: undefined },
   { key: "facility", label: "Facility", width: "120px" },
   { key: "corridor", label: "Corridor", width: "148px" },
   { key: "rate", label: "Rate", width: "84px" },

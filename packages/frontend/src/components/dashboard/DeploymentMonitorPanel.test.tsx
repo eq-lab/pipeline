@@ -49,7 +49,6 @@ function baseState(
     originationRows: [
       {
         id: 1,
-        originator: "Trafigura",
         commodity: "Alumina",
         facility: "$8.0M",
         corridor: "West Africa → EU",
@@ -105,7 +104,6 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
 
     // New 8-column header set.
     for (const header of [
-      "Originator",
       "Commodity",
       "Facility",
       "Corridor",
@@ -118,7 +116,7 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     }
 
     const table = screen.getByTestId("origination-table");
-    expect(within(table).getByText("Trafigura")).toBeTruthy();
+    expect(within(table).queryByText("Trafigura")).toBeNull();
     expect(within(table).getByText("Alumina")).toBeTruthy();
     expect(within(table).getByText("$8.0M")).toBeTruthy();
     expect(within(table).getByText("West Africa → EU")).toBeTruthy();
@@ -131,7 +129,6 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
 
   it("colours the Status cell by lifecycle status and renders the human label (#1053)", () => {
     const row = {
-      originator: "X",
       commodity: "Y",
       facility: "$1.0M",
       corridor: "A → B",
@@ -145,28 +142,24 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
         {
           ...row,
           id: 1,
-          originator: "A",
           status: "Approved",
           statusLabel: "Approved",
         },
         {
           ...row,
           id: 2,
-          originator: "R",
           status: "Rejected",
           statusLabel: "Rejected",
         },
         {
           ...row,
           id: 3,
-          originator: "I",
           status: "InReview",
           statusLabel: "In review",
         },
         {
           ...row,
           id: 4,
-          originator: "C",
           status: "ChangesRequested",
           statusLabel: "Changes requested",
         },
