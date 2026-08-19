@@ -36,7 +36,6 @@ export function ConnectModalProvider({
   signMessageOnly = false,
 }: {
   children: React.ReactNode;
-  /** Forwarded to `ConnectWalletModal` — sign-in contexts pass `true` (#1112). */
   signMessageOnly?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);

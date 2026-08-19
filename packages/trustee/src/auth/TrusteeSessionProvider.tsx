@@ -50,7 +50,6 @@ function isNotAuthorized(err: unknown): boolean {
   return err instanceof Error && err.name === "ApiUnauthorizedError";
 }
 
-/** The kit's "wallet has no signMessage" rejection (`code: -3`, #1112). */
 function isSignUnsupported(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
   const { code, message } = err as { code?: unknown; message?: unknown };

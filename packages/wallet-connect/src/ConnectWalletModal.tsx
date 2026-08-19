@@ -80,7 +80,6 @@ interface WalletEntry {
   websiteUrl: string;
   /** SVG content rendered as the 24×24 icon (inline, not a URL). */
   icon: React.ReactNode;
-  /** Whether the kit module implements `signMessage` (sign-in capable, #1112). */
   supportsSignMessage?: boolean;
 }
 
@@ -553,10 +552,6 @@ export interface ConnectWalletModalProps {
    * connected wallet (#794) know which one the user actually acted on.
    */
   onWalletSelect?: (chain: WalletTab) => void;
-  /**
-   * Show only Soroban wallets whose kit module supports `signMessage`
-   * (#1112) — the trustee sign-in context; EVM entries are unaffected.
-   */
   signMessageOnly?: boolean;
 }
 
