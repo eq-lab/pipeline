@@ -66,7 +66,6 @@ function formatRawDecimalUSD(
   return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
 }
 
-// spec: docs/frontend/dashboard-components.md#home-route (mobile home state)
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
 function deriveMobileHomeState(
@@ -79,10 +78,6 @@ function deriveMobileHomeState(
 }
 
 function Home() {
-  // Derive connection state from the active wallet view namespace, mirroring
-  // the deposit/stake convention (see useDepositFlow, useStakeFlow).
-  // This fixes #684: a Stellar-only session was incorrectly reading EVM
-  // isConnected (false) and showing the "Connect wallet" screen.
   const evm = useEvmWallet();
   const stellar = useStellarWallet();
   const { kind } = useWalletView();
@@ -93,11 +88,6 @@ function Home() {
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
 
-  // ── EVM balance reads — called unconditionally (Rules of Hooks) ────────────
-  // Balances are sourced from the active chain; EVM values are selected when
-  // kind !== "stellar". These calls mirror the pattern in useStakeFlow.ts
-  // and useDepositFlow.ts (hooks always mounted, result gated in derivation).
-  // Fixed in #688: balance hooks are now chain-aware. (#684 fixed isConnected.)
   const { plusd: plusdAddress } = useStakedPlusdAsset();
   const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
   const { balance: evmPlusdBalance, formattedBalance: evmPlusdFormatted } =
@@ -105,18 +95,13 @@ function Home() {
       token: plusdAddress ?? ZERO_ADDRESS,
     });
 
-  // Read the sPLUSD ERC-20 share balance for the mobile home state.
-  // The sPLUSD vault IS the ERC-20 token for shares; use its address directly.
   const { balance: evmSplusdBalance } = useEvmToken({
     token: ENV.STAKED_PLUSD_ADDRESS,
   });
 
-  // Convert EVM sPLUSD shares → PLUSD-equivalent for StakeCard State C.
   const { data: evmSplusdInPlusd } =
     useStakedPlusdConvertToAssets(evmSplusdBalance);
 
-  // ── Stellar balance reads — called unconditionally (Rules of Hooks) ────────
-  // Mirrors TopBar.tsx lines 104-128 and useStakeFlow.ts lines 242-258.
   const { addresses: stellarAddresses } = useStellarDepositManagerAddresses();
   const stellarPlusd = useStellarSacToken({
     assetCode: "PLUSD",
@@ -125,16 +110,11 @@ function Home() {
   });
   const stellarSplusd = useStellarStakedPlusdBalance();
 
-  // sPLUSD raw share balance (7-decimal bigint or undefined).
   const stellarSplusdShares = stellarSplusd.balance;
 
-  // Convert Stellar sPLUSD shares → PLUSD-equivalent (7-decimal bigint).
   const { data: stellarSplusdInPlusd } =
     useStellarUnstakeConvertToAssets(stellarSplusdShares);
 
-  // Stellar PLUSD raw balance: convert the Horizon decimal string to a
-  // 7-decimal bigint, guarded by try/catch (mirrors useStakeFlow.ts lines 382-391).
-  // No trustline → treat as undefined (same as zero / not held).
   let stellarPlusdBalance: bigint | undefined;
   if (stellarPlusd.hasTrustline && stellarPlusd.balance != null) {
     try {
@@ -144,24 +124,16 @@ function Home() {
     }
   }
 
-  // ── Active-chain selection (after all hooks, before JSX) ──────────────────
-  // Select the active chain's balance values and decimal scale.
   const isStellar = kind === "stellar";
 
-  // Raw bigints at the active chain's scale.
   const plusdBalanceActive = isStellar ? stellarPlusdBalance : evmPlusdBalance;
   const splusdSharesActive = isStellar ? stellarSplusdShares : evmSplusdBalance;
   const splusdInPlusdActive = isStellar
     ? stellarSplusdInPlusd
     : evmSplusdInPlusd;
 
-  // Decimal count for the active chain (used by home balance labels and StakeCard).
   const activeDecimals = isStellar ? SAC_DECIMALS : 18;
 
-  // Formatted PLUSD display string passed to StartHereCard's `mobilePlusdBalance`
-  // prop. EVM: use the `formattedBalance` from useEvmToken (already "$X.XX").
-  // Stellar: format the Horizon decimal string through formatUsdcDisplay
-  //   (returns "$X.XX" — same shape as the EVM formatted string).
   const plusdFormattedActive: string | undefined = isStellar
     ? stellarPlusd.hasTrustline && stellarPlusd.balance != null
       ? formatUsdcDisplay(stellarPlusd.balance)
@@ -178,15 +150,10 @@ function Home() {
     { signed: true, suffix: "unrealized" },
   );
 
-  // ── Mobile home state ──────────────────────────────────────────────────────
-  // deriveMobileHomeState only compares > 0n so it is scale-agnostic.
   const mobileHomeState: MobileHomeState = isConnected
     ? deriveMobileHomeState(plusdBalanceActive, splusdSharesActive)
     : "empty";
 
-  // "Earned" shows the staked position's total PnL in dollars (realized +
-  // unrealized) once the user holds sPLUSD; otherwise the EarnedCard keeps its
-  // per-state placeholder ("Nothing yet" / "Tracked once you stake").
   const earnedPnlLabel =
     mobileHomeState === "splusd" && pnl.data?.total_pnl != null
       ? formatRawDecimalUSD(pnl.data.total_pnl, activeDecimals, {
@@ -194,8 +161,6 @@ function Home() {
         })
       : undefined;
 
-  // Disable Stake only when connected with zero or undefined PLUSD balance.
-  // When disconnected the CTA stays enabled so the user can navigate to /stake.
   const stakeDisabled =
     isConnected &&
     (plusdBalanceActive === undefined || plusdBalanceActive === 0n);
@@ -222,7 +187,6 @@ function Home() {
           data-testid="home-welcome-header"
         />
 
-        {/* Mobile layout (below md) — spec: docs/frontend/dashboard-components.md#home-route */}
         <div
           className="flex flex-col gap-2 md:hidden"
           data-testid="home-mobile-layout"
@@ -287,7 +251,6 @@ function Home() {
             />
           </div>
 
-          {/* spec: docs/frontend/dashboard-components.md#home-route (mobile RecentActivityCard visibility) */}
           {isConnected && mobileHomeState !== "empty" && (
             <RecentActivityCard data-testid="home-recent-activity-card" />
           )}
@@ -300,7 +263,6 @@ function Home() {
           </div>
         </div>
 
-        {/* Desktop layout (md+) — spec: docs/frontend/dashboard-components.md#home-route */}
         <Card
           variant="white"
           className="hidden p-8 md:block"
@@ -349,7 +311,6 @@ function Home() {
               />
             </div>
 
-            {/* spec: docs/frontend/dashboard-components.md#home-route (StakeCard grid slot) */}
             <StakeCard
               className="col-span-2 col-start-3 row-start-2"
               onStake={onStake}

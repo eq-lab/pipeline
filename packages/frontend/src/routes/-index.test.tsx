@@ -1,17 +1,7 @@
 /**
- * Integration tests for the / (home) route.
- *
- * All blockchain state is seeded via the `pipeline.mock.wallet.*` localStorage
- * keys — no real wagmi calls are made. The same mock layer used in the
- * dev-server DevTools is exercised here, so the tests stay close to real usage.
- *
- * Scenarios covered:
- *   1. Disconnected → ConnectWalletPromoCard renders; click invokes connect().
- *   2. Connected (via mock) → PortfolioPlaceholderCard renders; $0.00 visible;
- *      "Get PLUSD to start" link is present; ConnectWallet promo is absent.
- *   3. SegmentedTabs default + click: default tab is "All"; clicking "1M"
- *      makes it the active tab; no wallet action occurs.
- *   4. Card height parity: both cards carry the `min-h-[274px]` utility class.
+ * Integration tests for the / (home) route — wallet state seeded via the
+ * `pipeline.mock.wallet.*` localStorage mock layer; no real wagmi/kit calls.
+ * spec: docs/frontend/dashboard-components.md#home-route
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React, { useEffect } from "react";
@@ -20,8 +10,6 @@ import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 import { WalletViewProvider, useWalletView } from "@/wallet";
 import { Route } from "./index";
-
-// ── Wagmi / AppKit mocks ──────────────────────────────────────────────────────
 
 const mockOpen = vi.fn();
 
@@ -64,10 +52,6 @@ vi.mock("@reown/appkit/react", () => ({
   useAppKit: vi.fn(() => ({ open: mockOpen })),
 }));
 
-// ── Stellar kit mock ──────────────────────────────────────────────────────────
-// Mock the Stellar wallet kit singleton so tests don't try to initialise the
-// real kit (which requires DOM extension points from the browser wallet
-// extensions). The mock exposes only the methods useStellarWallet calls.
 vi.mock("@/wallet/stellar/config", () => ({
   StellarWalletsKit: {
     init: vi.fn(),
@@ -80,10 +64,6 @@ vi.mock("@/wallet/stellar/config", () => ({
   },
 }));
 
-// Disconnected CTAs open the shared ConnectWalletModal via useConnectModal()
-// (issues #638/#645) rather than calling AppKit directly. The gate/modal
-// behavior is covered by ConnectModalProvider.test.tsx; here we only assert the
-// Home CTA is wired to useConnectModal().open().
 const mockConnectModalOpen = vi.fn();
 vi.mock("@/wallet", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/wallet")>()),
@@ -111,11 +91,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
       children: React.ReactNode;
       client: unknown;
     }) => <>{children}</>,
-    // Mock useQuery so the Stellar hooks added in #688 (useStellarSacToken,
-    // useStellarStakedPlusdBalance, useStellarUnstakeConvertToAssets,
-    // useStellarDepositManagerAddresses) don't throw "No QueryClient set".
-    // Tests that need real hook behaviour seed localStorage mock keys instead
-    // (the hooks short-circuit to the mock fast-path before useQuery runs).
     useQuery: vi.fn(() => ({
       data: undefined,
       isLoading: false,
@@ -130,12 +105,6 @@ vi.mock("@/wallet/config", () => ({
   wagmiAdapter: {},
 }));
 
-// ── TanStack Router mock ──────────────────────────────────────────────────────
-// The home route uses <Link to="/deposit"> inside PortfolioPlaceholderCard.
-// We render Link as an <a> passthrough so href assertions work without a real
-// router tree.
-
-// A shared navigate spy so tests can assert calls on it.
 const mockNavigate = vi.fn();
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -152,8 +121,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-// ── ENV mock ──────────────────────────────────────────────────────────────────
-
 const mockEnv = vi.hoisted(() => ({
   EVM_CHAIN_ID: 560048,
   STELLAR_CHAIN_ID: 99000001,
@@ -169,10 +136,6 @@ const mockEnv = vi.hoisted(() => ({
 vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
-
-// ── API module mock ───────────────────────────────────────────────────────────
-// RecentActivityCard and other children call useRequests. Return empty data so
-// they render without blowing up; the test only asserts the top-left card slot.
 
 vi.mock("@/api", () => ({
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
@@ -196,8 +159,6 @@ vi.mock("@/api", () => ({
   },
 }));
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 const WALLET_ADDRESS = "0x1234000000000000000000000000000000000001";
 
 function renderHome() {
@@ -209,10 +170,6 @@ function renderHome() {
   );
 }
 
-/**
- * Helper that switches the WalletViewContext to "stellar" before rendering the
- * Home page. Uses a real WalletViewProvider — same pattern as deposit tests.
- */
 function StellarViewSwitcher({ children }: { children: React.ReactNode }) {
   const { setKind } = useWalletView();
   useEffect(() => {
@@ -238,8 +195,6 @@ beforeEach(() => {
   mockPnlData.current = undefined;
 });
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe("Home page — disconnected state", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -258,8 +213,6 @@ describe("Home page — disconnected state", () => {
   });
 
   it("shows ConnectWalletPromoCard heading", async () => {
-    // Both mobile and desktop blocks render ConnectWalletPromoCard when
-    // disconnected; check that at least one heading is present.
     renderHome();
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
@@ -280,15 +233,11 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render a "Connect" button; click the first.
     const connectBtns = await screen.findAllByRole("button", {
       name: "Connect",
     });
     await user.click(connectBtns[0]!);
 
-    // The Home CTA's onConnect is wired to useConnectModal().open(), which
-    // routes through the terms gate and opens ConnectWalletModal (issues
-    // #638/#645). It no longer calls AppKit's open() directly.
     await waitFor(() => {
       expect(mockConnectModalOpen).toHaveBeenCalledTimes(1);
     });
@@ -298,7 +247,6 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render StartHereCard; click the first Buy.
     const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
     await user.click(buyBtns[0]!);
 
@@ -314,15 +262,9 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render StartHereCard.
-    // Since #476, the mobile Sell (index 0, renders first in DOM) is intentionally
-    // disabled + dimmed when the wallet is disconnected (mobileHomeState="empty").
-    // The desktop Sell (index 1) remains enabled and is used for navigation.
     const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
     expect(sellBtns.length).toBeGreaterThanOrEqual(2);
-    // Mobile instance must be disabled in disconnected state.
     expect(sellBtns[0]).toBeDisabled();
-    // Desktop instance must be enabled.
     expect(sellBtns[1]).not.toBeDisabled();
     await user.click(sellBtns[1]!);
 
@@ -335,9 +277,6 @@ describe("Home page — disconnected state", () => {
   });
 
   it("Stake button is enabled when wallet is disconnected (regardless of PLUSD balance)", async () => {
-    // Disconnected state — no PLUSD address or balance seeded.
-    // The CTA must be enabled so the user can navigate to /stake.
-    // Both the mobile and desktop StakeCards render; we check the first one.
     renderHome();
 
     await waitFor(() => {
@@ -351,8 +290,6 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render StakeCards in the disconnected
-    // state; click the first one found (desktop-grid card).
     const stakeBtns = await screen.findAllByRole("button", {
       name: "Stake PLUSD",
     });
@@ -367,7 +304,6 @@ describe("Home page — disconnected state", () => {
   });
 
   it("clicking Stake navigates to /stake when wallet has PLUSD balance", async () => {
-    // Seed a PLUSD address via the named alias and seed a non-zero balance.
     const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000001";
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.asset",
@@ -381,8 +317,6 @@ describe("Home page — disconnected state", () => {
     const user = userEvent.setup();
     renderHome();
 
-    // Both mobile and desktop blocks render StakeCards in the disconnected
-    // state; click the first one found (desktop-grid card).
     const stakeBtns = await screen.findAllByRole("button", {
       name: "Stake PLUSD",
     });
@@ -402,7 +336,6 @@ describe("Home page — connected state (mock)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
-    // Simulate a connected wallet via the mock layer (same pattern as deposit tests)
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
   });
@@ -412,8 +345,6 @@ describe("Home page — connected state (mock)", () => {
   });
 
   it("shows PortfolioPlaceholderCard — 'Total Balance' heading", async () => {
-    // Both mobile and desktop blocks render the Total Balance text; check for
-    // at least one instance.
     renderHome();
     await waitFor(() => {
       const elements = screen.getAllByText("Total Balance");
@@ -422,7 +353,6 @@ describe("Home page — connected state (mock)", () => {
   });
 
   it("shows '$0.00' sPLUSD balance literal", async () => {
-    // Both mobile (State A) and desktop render the sPLUSD balance in currency format.
     renderHome();
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
@@ -433,7 +363,6 @@ describe("Home page — connected state (mock)", () => {
   });
 
   it("'Get PLUSD to start' link is present and points to /deposit", async () => {
-    // Both mobile and desktop blocks render this link; check the first one.
     renderHome();
     const links = await screen.findAllByRole("link", {
       name: "Get PLUSD to start",
@@ -506,8 +435,6 @@ describe("Home page — card height parity (disconnected)", () => {
   });
 
   it("ConnectWalletPromoCard carries min-h-[274px] when disconnected", async () => {
-    // Both mobile and desktop blocks render ConnectWalletPromoCard; check
-    // that at least one card has the min-h class.
     renderHome();
 
     await waitFor(() => {
@@ -531,8 +458,6 @@ describe("Home page — card height parity (connected)", () => {
   });
 
   it("PortfolioPlaceholderCard carries min-h-[274px] when connected", async () => {
-    // Both mobile and desktop blocks render PortfolioPlaceholderCard; check
-    // that the desktop card (which has min-h-[274px]) is present.
     renderHome();
 
     await waitFor(() => {
@@ -544,22 +469,6 @@ describe("Home page — card height parity (connected)", () => {
   });
 });
 
-// ── Mobile connected balance states (States A / B / C) ────────────────────────
-//
-// Mock seeding convention (same as deposit tests):
-//   - `pipeline.mock.wallet.isConnected` = "true"
-//   - `pipeline.mock.wallet.address` = WALLET_ADDRESS
-//   - `pipeline.mock.wallet.contract.stakedPlusd.asset` = PLUSD_ADDRESS
-//   - `pipeline.mock.wallet.balance.<PLUSD_ADDRESS>` = "<bigint>" (18-dec string)
-//   - `pipeline.mock.wallet.balance.<STAKED_PLUSD_ADDRESS>` = "<bigint>" (18-dec)
-//   - `pipeline.mock.wallet.contract.stakedPlusd.convertToAssets` = "<rate>"
-//
-// Since JSDOM does not apply CSS media queries, both the `md:hidden` mobile block
-// and the `hidden md:block` desktop block are in the DOM simultaneously.
-// Assertions target text content / button names that are unique to the mobile
-// connected state (e.g. "Nothing to Stake", "Staked PLUSD", "Nothing yet", etc.)
-// or use `getAllBy*` where content appears in both blocks.
-
 const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000002";
 const STAKED_PLUSD_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -570,13 +479,10 @@ describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
     mockNavigate.mockClear();
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
-    // Seed PLUSD address but no balance (zero balance).
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.asset",
       PLUSD_ADDRESS,
     );
-    // sPLUSD address uses the env default (zero address, balance undefined).
-    // No balance keys → all balances resolve as undefined → State A.
   });
 
   afterEach(() => {
@@ -585,7 +491,6 @@ describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
 
   it("greeting shows 'Welcome back' text on mobile", async () => {
     renderHome();
-    // The mobile span renders "Welcome back" when isConnected=true.
     await waitFor(() => {
       expect(screen.getByText("Welcome back")).toBeInTheDocument();
     });
@@ -620,18 +525,11 @@ describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
   });
 
   it("mobile RecentActivityCard is absent in State A", async () => {
-    // Per issue #466 Q6: if no activity, the entire block is hidden.
-    // In State A (empty) the card is not rendered at all in the mobile block.
-    // The desktop block still renders it so we check for the mobile-block
-    // absence by checking the total count matches only the desktop instance.
     renderHome();
     await waitFor(() => {
-      // The desktop block always has a RecentActivityCard; the mobile block
-      // should NOT have one in State A. We verify only one instance exists.
       const cards = screen.getAllByRole("region", {
         name: "Recent activity",
       });
-      // Only the desktop card should be present (mobile one is not rendered).
       expect(cards).toHaveLength(1);
     });
   });
@@ -648,12 +546,10 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
       "pipeline.mock.wallet.contract.stakedPlusd.asset",
       PLUSD_ADDRESS,
     );
-    // Seed non-zero PLUSD balance (1000 PLUSD = 1000 * 10^18).
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
       "1000000000000000000000",
     );
-    // sPLUSD balance remains zero (not seeded).
   });
 
   afterEach(() => {
@@ -685,13 +581,10 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
   });
 
   it("mobile StakeCard 'Stake' button is enabled (State B)", async () => {
-    // In State B, both the mobile 'Stake' button (mobileHomeState="plusd") and
-    // the desktop 'Stake PLUSD' button should be enabled.
     renderHome();
 
     await waitFor(() => {
       const stakeBtns = screen.getAllByRole("button", { name: "Stake PLUSD" });
-      // Desktop button should be enabled (has PLUSD balance).
       expect(stakeBtns[0]).not.toBeDisabled();
     });
   });
@@ -705,12 +598,9 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
   });
 
   it("mobile RecentActivityCard is rendered in State B", async () => {
-    // Per issue #466 Q6: activity block is shown when connected with balance.
-    // In State B, the mobile block renders RecentActivityCard.
     renderHome();
     await waitFor(() => {
       const cards = screen.getAllByRole("region", { name: "Recent activity" });
-      // Both mobile and desktop blocks render the card.
       expect(cards.length).toBeGreaterThanOrEqual(2);
     });
   });
@@ -739,17 +629,14 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
       "pipeline.mock.wallet.contract.stakedPlusd.asset",
       PLUSD_ADDRESS,
     );
-    // Seed PLUSD balance.
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
       "1000000000000000000000",
     );
-    // Seed sPLUSD balance via the zero-address token key.
     localStorage.setItem(
       `pipeline.mock.wallet.balance.${SPLUSD_ADDRESS}`,
       "1000000000000000000000",
     );
-    // Seed convertToAssets rate: 1.0428 PLUSD per 1 sPLUSD (18-decimal).
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.convertToAssets",
       "1042800000000000000",
@@ -787,7 +674,6 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
   it("StakeCard shows 'Stake More' CTA (State C)", async () => {
     renderHome();
     await waitFor(() => {
-      // Rendered on both the mobile stack and the desktop dashboard.
       expect(
         screen.getAllByRole("button", { name: "Stake More PLUSD" }).length,
       ).toBeGreaterThanOrEqual(1);
@@ -836,11 +722,9 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     renderHome();
 
     await waitFor(() => {
-      // total_pnl rendered as a signed USD value (Earned card) — not a percent.
       const elements = screen.getAllByText("+$123.00");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
-    // The old APY label must no longer appear.
     expect(screen.queryByText("8.42% p.a.")).not.toBeInTheDocument();
   });
 
@@ -878,23 +762,16 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
     await waitFor(() => {
       const sharesEls = screen.getAllByTestId("splusd-shares");
       expect(sharesEls.length).toBeGreaterThanOrEqual(1);
-      // 1000 sPLUSD shares at 18 decimals.
       expect(sharesEls[0]?.textContent).toContain("1,000.00");
     });
   });
 
   it("StakeCard staked sub-line shows the sPLUSD label, USD value and coin icon (State C)", async () => {
-    // The PLUSD-equivalent figure comes from convertToAssets, which is gated on
-    // a non-zero STAKED_PLUSD_ADDRESS — so in this EVM mock (zero-address) the
-    // numeric value is 0; the precise figure is asserted in the Stellar suite.
     renderHome();
     await waitFor(() => {
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
-      // "{X} sPLUSD · ${USD}" with the position's USD value appended
-      // (Figma node 1497:95226).
       expect(subLine?.textContent).toContain("sPLUSD");
       expect(subLine?.textContent).toMatch(/· \$[\d,]+\.\d{2}/);
-      // The sPLUSD coin icon precedes the figures.
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
   });
@@ -902,8 +779,6 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
   it("desktop StakeCard renders the staked state, not the marketing CTA (State C)", async () => {
     renderHome();
     await waitFor(() => {
-      // Both the mobile and desktop instances now show the staked layout, so
-      // there is no generic "Stake" CTA (home-stake-button) anywhere.
       expect(screen.queryByTestId("home-stake-button")).not.toBeInTheDocument();
       expect(
         screen.getAllByTestId("home-stake-more-button").length,
@@ -912,20 +787,6 @@ describe("Home page — mobile State C: connected, has sPLUSD", () => {
   });
 });
 
-// ── Stellar connection gate regression tests (#684) ───────────────────────────
-//
-// These tests guard the fix for #684: when view kind is "stellar" the home page
-// must use stellar.isConnected (not evm.isConnected) to decide which card to
-// render in the top-left slot.
-//
-// Mock seeding convention (Stellar):
-//   pipeline.mock.wallet.stellar.address   — 56-char Stellar public key (G…)
-//   pipeline.mock.wallet.stellar.isConnected — "true" / "false"
-//
-// renderHomeStellar() wraps the page in <WalletViewProvider> and switches view
-// kind to "stellar" before the component renders, exactly mirroring the deposit-
-// page Stellar test pattern.
-
 const STELLAR_MOCK_ADDRESS =
   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
@@ -933,7 +794,6 @@ describe("Home page — Stellar-only connected (regression #684)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
-    // Seed a connected Stellar wallet; EVM wallet remains disconnected (default).
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.address",
       STELLAR_MOCK_ADDRESS,
@@ -946,7 +806,6 @@ describe("Home page — Stellar-only connected (regression #684)", () => {
   });
 
   it("renders connected layout (PortfolioPlaceholderCard) — not the promo card", async () => {
-    // Regression guard for #684: stellar-only session must see connected view.
     renderHomeStellar();
     await waitFor(() => {
       const portfolioCards = screen.getAllByTestId(
@@ -954,7 +813,6 @@ describe("Home page — Stellar-only connected (regression #684)", () => {
       );
       expect(portfolioCards.length).toBeGreaterThanOrEqual(1);
     });
-    // Promo card must be absent.
     expect(
       screen.queryByTestId("home-connect-wallet-card"),
     ).not.toBeInTheDocument();
@@ -982,10 +840,8 @@ describe("Home page — EVM-only connected, Stellar view (view-kind semantics)",
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
-    // EVM wallet connected, Stellar wallet disconnected.
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
-    // Stellar is NOT seeded → stellar.isConnected === false.
   });
 
   afterEach(() => {
@@ -993,8 +849,6 @@ describe("Home page — EVM-only connected, Stellar view (view-kind semantics)",
   });
 
   it("shows disconnected promo card when Stellar view active but Stellar not connected", async () => {
-    // Documents the view-kind semantics: active view (stellar) is disconnected
-    // even though EVM is connected. The home page shows the promo card.
     renderHomeStellar();
     await waitFor(() => {
       const headings = screen.getAllByRole("heading", {
@@ -1021,7 +875,6 @@ describe("Home page — EVM-only connected, EVM view (no regression)", () => {
   });
 
   it("still shows connected layout when EVM is connected and view kind is EVM", async () => {
-    // renderHome() uses the default EVM view (no WalletViewProvider override).
     renderHome();
     await waitFor(() => {
       const elements = screen.getAllByText("Total Balance");
@@ -1034,7 +887,6 @@ describe("Home page — neither connected, Stellar view (disconnected promo)", (
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
-    // Neither EVM nor Stellar seeded → both disconnected.
   });
 
   afterEach(() => {
@@ -1059,29 +911,11 @@ describe("Home page — neither connected, Stellar view (disconnected promo)", (
   });
 });
 
-// ── Stellar connected balances (#688) ─────────────────────────────────────────
-//
-// Mock seeding convention (Stellar balances, 7-decimal SAC scale):
-//   pipeline.mock.wallet.stellar.address      — 56-char public key (G…)
-//   pipeline.mock.wallet.stellar.isConnected  — "true"
-//   pipeline.mock.wallet.stellar.balance.sac.plusd
-//       — Raw bigint string (7-dec): "10000000" = 1 PLUSD
-//   pipeline.mock.wallet.stellar.stakedPlusd.shareBalance
-//       — Raw bigint string (7-dec): "10000000" = 1 sPLUSD
-//   pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets
-//       — Rate at SAC 1e7 scale: output = (shares * rate) / 1e7
-//         e.g. "10400000" → 1 sPLUSD → 1.04 PLUSD
-//
-// renderHomeStellar() wraps the page in <WalletViewProvider> and switches view
-// kind to "stellar". Note: useQuery is mocked to return { data: undefined };
-// hooks rely on their localStorage mock fast-paths (which run before useQuery).
-
 describe("Home page — Stellar connected balances (#688)", () => {
   beforeEach(() => {
     localStorage.clear();
     mockOpen.mockClear();
     mockNavigate.mockClear();
-    // Connect the Stellar wallet.
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.address",
       STELLAR_MOCK_ADDRESS,
@@ -1094,12 +928,10 @@ describe("Home page — Stellar connected balances (#688)", () => {
   });
 
   it("Case 1: has PLUSD, 0 sPLUSD — Total Balance shows sPLUSD only, Stake enabled, mobile state plusd", async () => {
-    // Seed 500 PLUSD at 7-decimal scale: 500 * 10^7 = 5_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
       "5000000000",
     );
-    // No sPLUSD seeded → zero shares.
 
     renderHomeStellar();
 
@@ -1118,16 +950,12 @@ describe("Home page — Stellar connected balances (#688)", () => {
       expect(subLine).toHaveTextContent(/\$500\.00 USDC/);
     });
 
-    // Stake CTA should be enabled (has PLUSD).
     await waitFor(() => {
-      // Desktop StakeCard shows "Stake PLUSD" button when stakeDisabled=false.
       const stakeBtns = screen.getAllByRole("button", { name: "Stake PLUSD" });
       expect(stakeBtns.length).toBeGreaterThanOrEqual(1);
-      // Desktop button (index 0 in connected layout) should be enabled.
       expect(stakeBtns[0]).not.toBeDisabled();
     });
 
-    // Mobile state should be "plusd" — StartHereCard shows "PLUSD Balance" eyebrow.
     await waitFor(() => {
       const elements = screen.getAllByText("PLUSD Balance");
       expect(elements.length).toBeGreaterThanOrEqual(1);
@@ -1135,17 +963,14 @@ describe("Home page — Stellar connected balances (#688)", () => {
   });
 
   it("Case 2: has sPLUSD — Total Balance shows sPLUSD shares in currency format, mobile state splusd, RecentActivityCard present", async () => {
-    // Seed 100 sPLUSD at 7-decimal scale: 100 * 10^7 = 1_000_000_000n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.shareBalance",
       "1000000000",
     );
-    // Rate: 1.04 PLUSD per sPLUSD → "10400000" (SAC 1e7 scale)
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.stakedPlusd.convertToAssets",
       "10400000",
     );
-    // Also seed some PLUSD.
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
       "1000000000",
@@ -1153,7 +978,6 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     renderHomeStellar();
 
-    // Mobile state "splusd" → StakeCard shows "Staked PLUSD" label.
     await waitFor(() => {
       const elements = screen.getAllByText("Staked PLUSD");
       expect(elements.length).toBeGreaterThanOrEqual(1);
@@ -1166,29 +990,21 @@ describe("Home page — Stellar connected balances (#688)", () => {
       expect(headings.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Staked sub-line: 100 shares × 1.04 rate = 104.00 PLUSD-equivalent,
-    // labelled sPLUSD, with the position's USD value ($100.00) appended and the
-    // sPLUSD coin icon (Figma node 1497:95226).
     await waitFor(() => {
       const subLine = screen.getAllByTestId("splusd-in-plusd")[0];
       expect(subLine?.textContent).toContain("104.00 sPLUSD · $100.00");
       expect(subLine?.querySelector("img")).toBeInTheDocument();
     });
 
-    // Mobile RecentActivityCard should be present (State C).
     await waitFor(() => {
       const cards = screen.getAllByRole("region", { name: "Recent activity" });
-      // Both mobile and desktop blocks render the card.
       expect(cards.length).toBeGreaterThanOrEqual(2);
     });
   });
 
   it("Case 3: zero balances / no trustline — $0.00 sPLUSD Total Balance, Stake disabled, mobile state empty", async () => {
-    // No balance keys seeded → all balances undefined → State A.
-
     renderHomeStellar();
 
-    // Total Balance should show sPLUSD shares only.
     await waitFor(() => {
       const zeroHeadings = screen.getAllByRole("heading", {
         name: "$0.00",
@@ -1196,7 +1012,6 @@ describe("Home page — Stellar connected balances (#688)", () => {
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Stake CTA should be disabled (no PLUSD).
     await waitFor(() => {
       for (const nothingBtn of screen.getAllByRole("button", {
         name: "Nothing to Stake",
@@ -1205,15 +1020,12 @@ describe("Home page — Stellar connected balances (#688)", () => {
       }
     });
 
-    // Mobile state "empty" → StartHereCard shows "Start here" / "Get PLUSD" (not PLUSD Balance).
     await waitFor(() => {
       expect(screen.queryByText("PLUSD Balance")).not.toBeInTheDocument();
     });
   });
 
   it("Case 4: decimal-scale assertion — 7-decimal PLUSD StartHere balance is formatted as $1,234.57, not mis-scaled", async () => {
-    // Seed 1234.5678900 PLUSD at 7-decimal fixed-point.
-    // 1234.5678900 * 10^7 = 12_345_678_900n
     localStorage.setItem(
       "pipeline.mock.wallet.stellar.balance.sac.plusd",
       "12345678900",
@@ -1221,9 +1033,6 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     renderHomeStellar();
 
-    // The StartHere PLUSD sub-line must show "$1,234.57" — not a mis-scaled value.
-    // If the 18-decimal path were used by mistake, 12_345_678_900n at 18 decimals
-    // would render as "$0.00" (value ~1.23e-8), proving the 7-decimal path is taken.
     await waitFor(() => {
       const subLine = screen.getByTestId("plusd-in-usdc");
       expect(subLine).toHaveTextContent("$1,234.57 USDC");
@@ -1231,8 +1040,6 @@ describe("Home page — Stellar connected balances (#688)", () => {
   });
 
   it("Case 5 (EVM regression): existing EVM connected tests still pass", async () => {
-    // Guard: switch back to EVM view; seed EVM connected state.
-    // Use renderHome() — that defaults to EVM view (no WalletViewProvider override).
     localStorage.clear();
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
@@ -1243,7 +1050,6 @@ describe("Home page — Stellar connected balances (#688)", () => {
       const elements = screen.getAllByText("Total Balance");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
-    // $0.00 because no EVM sPLUSD balance seeded.
     await waitFor(() => {
       const zeroHeadings = screen.getAllByRole("heading", {
         name: "$0.00",

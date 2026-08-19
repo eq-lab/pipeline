@@ -16,12 +16,9 @@ export type ButtonSize = "default" | "compact";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
-  /** Rectangular shapes only: `"default"` 48px (omitted) or `"compact"` 32px inline CTA. */
   size?: ButtonSize;
 }
 
-// Text color is intentionally omitted here and set per-variant: secondary uses
-// ink while filled variants use on-dark (white).
 const baseClasses = [
   "inline-flex items-center justify-center",
   "cursor-pointer select-none",
@@ -82,8 +79,6 @@ const variantClasses: Record<ButtonVariant, string> = {
     "disabled:hover:bg-[rgba(184,191,190,0.12)]",
   ].join(" "),
 
-  // Focus-ring offset colour is deliberately omitted: the toast's own dark
-  // surface is the ring backdrop.
   "toast-action": [
     "h-8 min-w-8 px-2.5",
     "rounded-[var(--radius-pipeline-button)]",
@@ -97,14 +92,12 @@ const variantClasses: Record<ButtonVariant, string> = {
   ].join(" "),
 };
 
-// Rectangular variants that support the `compact` size override.
 const RECTANGULAR_VARIANTS: ReadonlySet<ButtonVariant> = new Set([
   "primary-dark",
   "primary-blue",
   "secondary",
 ]);
 
-// Size-override classes applied on top of the variant block for `compact`.
 const compactSizeClasses = "!h-8 !min-w-8 !px-1.5";
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
