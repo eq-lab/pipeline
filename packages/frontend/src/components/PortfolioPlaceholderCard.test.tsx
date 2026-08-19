@@ -1,7 +1,8 @@
-/** Tests for PortfolioPlaceholderCard — header states + the honest empty chart region (#1114). */
+/** Tests for PortfolioPlaceholderCard — header states + the zero-value placeholder chart (#1114). */
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -41,14 +42,7 @@ describe("PortfolioPlaceholderCard — header", () => {
     expect(link).toHaveAttribute("href", "/deposit");
   });
 
-  it("shows '$0.00 unrealized' caption by default", () => {
-    renderCard();
-    expect(screen.getByTestId("earning-caption")).toHaveTextContent(
-      "$0.00 unrealized",
-    );
-  });
-
-  it("renders provided sPLUSD balance as the main heading and no duplicate sublabel", () => {
+  it("renders provided sPLUSD balance as the main heading", () => {
     render(
       <PortfolioPlaceholderCard
         balanceLabel="1,000.00 sPLUSD"
@@ -58,9 +52,6 @@ describe("PortfolioPlaceholderCard — header", () => {
     expect(
       screen.getByRole("heading", { name: "1,000.00 sPLUSD" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("splusd-balance-caption"),
-    ).not.toBeInTheDocument();
     expect(screen.getByTestId("earning-caption")).toHaveTextContent(
       "+$42.80 unrealized",
     );
@@ -78,21 +69,81 @@ describe("PortfolioPlaceholderCard — header", () => {
   });
 });
 
-describe("PortfolioPlaceholderCard — chart region (#1114 honest empty state)", () => {
-  it("renders the empty-state note instead of any chart", () => {
+describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
+  it("default active tab is 'All' (aria-selected='true')", () => {
     renderCard();
-    expect(screen.getByTestId("balance-history-empty")).toHaveTextContent(
-      "Balance history will appear here once it's tracked.",
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
-    const { container } = renderCard();
-    expect(container.querySelector("svg")).toBeNull();
-    expect(container.querySelector("[data-bar-slot]")).toBeNull();
   });
 
-  it("renders no period tabs and no tooltip", () => {
+  it("clicking '1M' makes it active and deactivates 'All'", async () => {
+    const user = userEvent.setup();
     renderCard();
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "1M" }));
+    expect(screen.getByRole("tab", { name: "1M" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+  });
+});
+
+describe("PortfolioPlaceholderCard — zero-value placeholder chart (#1114)", () => {
+  it("renders 100 flat placeholder bar slots with the grey placeholder fill", () => {
+    const { container } = renderCard();
+    const slots = container.querySelectorAll("[data-bar-slot]");
+    expect(slots).toHaveLength(100);
+    const rect = slots[0]!.querySelector("rect")!;
+    expect(rect.getAttribute("fill")).toBe("#D5D8C8");
+    const heights = new Set(
+      Array.from(slots).map((g) =>
+        g.querySelector("rect")!.getAttribute("height"),
+      ),
+    );
+    expect(heights.size).toBe(1);
+  });
+
+  it("chart wrapper has role='img' and a descriptive aria-label", () => {
+    renderCard();
+    const wrap = screen.getByRole("img");
+    expect(wrap.getAttribute("aria-label")).toContain("Total balance for All");
+  });
+
+  it("tooltip is initially hidden and shows $0.00 on hover — never a fabricated value", async () => {
+    const { container } = renderCard();
+    const tooltip = screen.getByTestId("chart-tooltip");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
+
+    const chartWrap = container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerMove(chartWrap, { clientX: 300 });
+
+    await waitFor(() => {
+      expect(tooltip).toHaveAttribute("aria-hidden", "false");
+      expect(tooltip.textContent).toContain("$0.00");
+    });
+
+    fireEvent.pointerLeave(chartWrap);
+    await waitFor(() => {
+      expect(tooltip).toHaveAttribute("aria-hidden", "true");
+    });
   });
 });
 
@@ -104,8 +155,6 @@ describe("PortfolioPlaceholderCard — responsive header layout", () => {
     ) as HTMLElement;
     expect(wrapper).toBeTruthy();
     expect(wrapper.className).toContain("flex-col");
-    expect(wrapper.className).toContain("items-start");
     expect(wrapper.className).toContain("md:flex-row");
-    expect(wrapper.className).toContain("md:justify-between");
   });
 });

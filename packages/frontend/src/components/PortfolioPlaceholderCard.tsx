@@ -1,10 +1,18 @@
 import React from "react";
 import { Link } from "@tanstack/react-router";
-import { Card } from "@pipeline/ui";
+import { Card, SegmentedTabs } from "@pipeline/ui";
+import {
+  N,
+  DEFAULT_PERIOD_ID,
+  formatMoney,
+  formatTime,
+  usePortfolioChart,
+} from "./usePortfolioChart";
 
 /**
- * Total Balance card — real balance/PnL header with an honest empty chart
- * region until a per-address balance-history series exists (#1114).
+ * Total Balance card (Figma node 1497:95048) — real balance/PnL header plus
+ * the design's bar chart rendered as a flat zero-value placeholder until a
+ * per-address balance-history series exists (#1114/#1116).
  * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
  */
 
@@ -17,9 +25,30 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   mobileHomeState?: MobileHomeState;
   balanceLabel?: string;
   unrealizedPnlLabel?: string;
+  activePeriodId?: string;
+  onActivePeriodChange?: (id: string) => void;
 }
 
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
+
+const TABS = [
+  { id: "7d", label: "7D" },
+  { id: "1m", label: "1M" },
+  { id: "3m", label: "3M" },
+  { id: "1y", label: "1Y" },
+  { id: "all", label: "All" },
+];
+
+const VB_W = 680;
+const VB_H = 120;
+const TOOLTIP_HALF = 70;
+const PLACEHOLDER_BAR_H = 8;
+const PLACEHOLDER_FILL = "#D5D8C8";
+
+function slotCentreX(idx: number): number {
+  const slotW = VB_W / N;
+  return idx * slotW + slotW / 2;
+}
 
 export const PortfolioPlaceholderCard = React.forwardRef<
   HTMLDivElement,
@@ -30,12 +59,39 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     mobileHomeState,
     balanceLabel = "$0.00",
     unrealizedPnlLabel = "$0.00 unrealized",
+    activePeriodId,
+    onActivePeriodChange,
     ...rest
   },
   ref,
 ) {
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
+
+  const [uncontrolledActiveId, setUncontrolledActiveId] =
+    React.useState(DEFAULT_PERIOD_ID);
+  const activeId = activePeriodId ?? uncontrolledActiveId;
+  const setActiveId = onActivePeriodChange ?? setUncontrolledActiveId;
+
+  const { period, hoveredIdx, tooltip, onPointerMove, onPointerLeave } =
+    usePortfolioChart({ activeId, setActiveId });
+
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+
+  const handlePointerMove = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!wrapRef.current) return;
+      onPointerMove(e.clientX, wrapRef.current.getBoundingClientRect());
+    },
+    [onPointerMove],
+  );
+
+  const cursorLeftPct =
+    hoveredIdx !== null
+      ? ((slotCentreX(hoveredIdx) / VB_W) * 100).toFixed(2)
+      : "0";
+
+  const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
 
   const composed = [
     "relative flex flex-col gap-6",
@@ -46,6 +102,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   ]
     .filter(Boolean)
     .join(" ");
+
+  const barH = (PLACEHOLDER_BAR_H / 100) * VB_H;
+  const y0 = VB_H - barH;
 
   return (
     <Card
@@ -122,24 +181,107 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             </Link>
           )}
         </header>
+
+        <SegmentedTabs
+          tabs={TABS}
+          activeId={activeId}
+          onSelect={setActiveId}
+          variant="floating"
+          className="shrink-0"
+        />
       </div>
 
       <div
-        className="flex flex-1 items-end"
+        ref={wrapRef}
+        className="relative flex-1"
+        role="img"
+        aria-label={`Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`}
         data-node-id="1497:95048-chart"
-        data-testid="balance-history-empty"
+        onPointerMove={handlePointerMove}
+        onPointerLeave={onPointerLeave}
       >
-        <span
+        <svg
+          viewBox={`0 0 ${VB_W} ${VB_H}`}
+          preserveAspectRatio="none"
+          className="h-full w-full"
+          aria-hidden="true"
+        >
+          {Array.from({ length: N }, (_, i) => {
+            const cx = slotCentreX(i);
+            return (
+              <g key={i} data-bar-slot={i}>
+                <rect
+                  x={cx - 1.5}
+                  y={y0}
+                  width={3}
+                  height={barH}
+                  fill={PLACEHOLDER_FILL}
+                  opacity={0.35}
+                />
+                <rect
+                  x={cx - 1}
+                  y={y0 + barH * 0.4}
+                  width={2}
+                  height={barH * 0.6}
+                  fill={PLACEHOLDER_FILL}
+                  opacity={0.65}
+                />
+                <rect
+                  x={cx - 0.5}
+                  y={y0 + barH * 0.7}
+                  width={1}
+                  height={barH * 0.3}
+                  fill={PLACEHOLDER_FILL}
+                  opacity={1}
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoveredIdx !== null && (
+          <div
+            aria-hidden="true"
+            style={{ left: `${cursorLeftPct}%` }}
+            className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-[var(--color-pipeline-chart-positive)]"
+          />
+        )}
+
+        <div
+          aria-hidden={hoveredIdx === null}
+          data-testid="chart-tooltip"
+          style={{
+            left:
+              hoveredIdx !== null
+                ? `clamp(${TOOLTIP_HALF}px, ${cursorLeftPct}%, calc(100% - ${TOOLTIP_HALF}px))`
+                : "50%",
+            opacity: hoveredIdx !== null ? 1 : 0,
+            pointerEvents: "none",
+          }}
           className={[
-            "pb-2",
+            "absolute bottom-full mb-2",
+            "-translate-x-1/2",
+            "rounded px-3 py-1.5",
+            "bg-[var(--color-pipeline-ink)]",
+            "text-[color:var(--color-pipeline-on-dark)]",
             "font-[family-name:var(--font-body)]",
             "text-[length:var(--text-pipeline-caption)]",
             "leading-[var(--text-pipeline-caption--line-height)]",
-            "text-[color:var(--color-pipeline-ink-muted)]",
+            "whitespace-nowrap",
+            "transition-opacity duration-75",
           ].join(" ")}
         >
-          Balance history will appear here once it&apos;s tracked.
-        </span>
+          {tooltip !== null ? (
+            <>
+              <span className="block font-[var(--font-weight-medium)]">
+                {formatMoney(tooltip.balance)}
+              </span>
+              <span className="block opacity-70">
+                {formatTime(tooltip.timestamp, period.fmt)}
+              </span>
+            </>
+          ) : null}
+        </div>
       </div>
     </Card>
   );

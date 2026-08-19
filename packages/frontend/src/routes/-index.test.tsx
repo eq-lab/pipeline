@@ -462,7 +462,7 @@ describe("Home page — connected state (mock)", () => {
   });
 });
 
-describe("Home page — Total Balance card empty chart state (#1114)", () => {
+describe("Home page — Total Balance zero-placeholder chart (#1114)", () => {
   beforeEach(() => {
     localStorage.clear();
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
@@ -473,15 +473,17 @@ describe("Home page — Total Balance card empty chart state (#1114)", () => {
     localStorage.clear();
   });
 
-  it("renders no period tabs and shows the balance-history empty note", async () => {
+  it("renders the zero-value placeholder chart with period tabs, no fabricated values", async () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getAllByTestId("balance-history-empty").length,
+        screen.getAllByRole("tab", { name: "All" }).length,
       ).toBeGreaterThanOrEqual(1);
     });
-    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
+    const tooltips = screen.getAllByTestId("chart-tooltip");
+    expect(tooltips.length).toBeGreaterThanOrEqual(1);
+    expect(tooltips[0]).toHaveAttribute("aria-hidden", "true");
+    expect(document.querySelectorAll("[data-bar-slot]").length % 100).toBe(0);
   });
 });
 

@@ -184,16 +184,16 @@ Connected-state replacement for `ConnectWalletPromoCard`. Renders in the top-lef
 dashboard when `isConnected === true` (Figma node `1497:95048`). The balance and PnL labels are
 supplied by the home route.
 
-**No chart is rendered (#1114).** The card previously drew a synthetic seeded placeholder curve
-(or, when `/v1/stats/prices` served data, the share-price series) labelled as the user's balance —
-both are wrong data for a "Total Balance" graph, and no per-address balance-history endpoint
-exists. Per the never-fabricate rule the chart region now shows a muted empty note ("Balance
-history will appear here once it's tracked.", `data-testid="balance-history-empty"`), and the
-period tabs, hover tooltip, and `usePortfolioChart` hook were removed with it. The Figma frame's
-chart re-enables once a backend per-address balance-history series lands (tracked separately —
-see #1114).
+**Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
+and hover tooltip are rendered, but every value is **0** until a per-address balance-history
+series exists (#1116): 100 flat placeholder bars at a constant minimal height, grey `#D5D8C8`
+fill (the glow triple-rect construction per Figma), and the hover tooltip always shows `$0.00`
+with the period-appropriate timestamp. The former synthetic growth curve (seeded LCG ending at
+$1,042.80) and the price-series-as-balance fallback are gone — nothing on the card fabricates a
+history. Period tabs (7d/1m/3m/1y/all) only change the tooltip's timestamp window. When #1116
+lands, real series data replaces the flat bars.
 
-**Header row:** mobile stacks the balance block; `md+` keeps the row layout.
+**Header row:** mobile stacks balance-then-tabs (both left-aligned); `md+` restores a row with tabs top-right.
 
 **States A/B/C** (mobile-only CTA under the balance, via `mobileHomeState`):
 
@@ -204,10 +204,11 @@ see #1114).
 | `"splusd"` (C) | No link — the PnL caption is sufficient context |
 | `undefined` (desktop) | "Get PLUSD to start" (same as State A) |
 
-**Accessibility:** the card region is labelled by the balance heading.
+**Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
 **Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
-`$0.00 unrealized`) are the only data on the card — both real, neither derived client-side.
+`$0.00 unrealized`) are the only real data on the card; the chart is a constant-zero placeholder
+(no client-side derivation, no fabricated values).
 
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
@@ -1134,7 +1135,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Top-left card branching:** connection state is derived from the *active wallet view namespace* (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The card renders no chart until a per-address balance-history series exists (#1114).
+**Top-left card branching:** connection state is derived from the *active wallet view namespace* (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart is a constant-zero placeholder until a per-address balance-history series exists (#1114/#1116).
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 
