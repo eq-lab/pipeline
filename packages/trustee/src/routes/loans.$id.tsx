@@ -677,7 +677,7 @@ function DisbursementActionCard({
       <CardTitle>Next Step</CardTitle>
       <p className="max-w-[640px] font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[#262524]">
         Mark {loanName} USDC off-ramp complete — this will move the Disbursing
-        status to Performing.
+        status to Active.
       </p>
       <button
         type="button"
@@ -741,7 +741,7 @@ function DisbursementConfirmDialog({
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[15px] leading-[22px] text-[rgba(56,55,53,0.6)]">
           Mark {loanName} USDC off-ramp complete — this will move the Disbursing
-          status to Performing.
+          status to Active.
         </p>
         {error && (
           <div data-testid="disbursement-confirm-error">
@@ -899,7 +899,7 @@ function RolloverDialog({
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
           LoanRegistry.rollover · your key · appends an epoch from the prior
-          maturity, sets currentMaturityDate, returns status to Performing.
+          maturity, sets currentMaturityDate, returns status to Active.
           Raises the mint ceiling only — mints nothing.
         </p>
 
@@ -1088,7 +1088,7 @@ function UpdateLifecycleDialog({
             onChange={(e) => setStatus(e.target.value)}
             className={fieldClass}
           >
-            <option value="Performing">Performing</option>
+            <option value="Performing">Active</option>
             <option value="WatchList">Watchlist</option>
           </select>
         </label>

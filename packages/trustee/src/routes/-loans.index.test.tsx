@@ -168,7 +168,7 @@ describe("Loans list route (ready)", () => {
   it("renders the tab-bar with per-status counts (Default/Closed empty)", () => {
     renderRoute();
     expect(
-      within(screen.getByTestId("loans-tab-Performing")).getByText("1"),
+      within(screen.getByTestId("loans-tab-Active")).getByText("1"),
     ).toBeInTheDocument();
     expect(
       within(screen.getByTestId("loans-tab-Watchlist")).getByText("1"),
@@ -260,7 +260,7 @@ describe("Loans list route (empty book)", () => {
     renderRoute();
     expect(screen.getByText("$96K")).toBeInTheDocument();
     expect(screen.getByTestId("loans-empty")).toHaveTextContent(
-      "No performing loans.",
+      "No active loans.",
     );
   });
 });

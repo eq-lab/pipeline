@@ -314,17 +314,17 @@ describe("buildLoansView", () => {
   };
 
   it("counts each status; Default/Closed are 0 (backend serves active-only, OQ2)", () => {
-    const { counts } = buildLoansView(data, "Performing", NOW_MS);
+    const { counts } = buildLoansView(data, "Active", NOW_MS);
     expect(counts).toEqual({
-      Performing: 2,
+      Active: 2,
       Watchlist: 1,
       Default: 0,
       Closed: 0,
     });
   });
 
-  it("filters rows to the active tab (Performing)", () => {
-    const { rows } = buildLoansView(data, "Performing", NOW_MS);
+  it("filters rows to the Active tab", () => {
+    const { rows } = buildLoansView(data, "Active", NOW_MS);
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta"]);
   });
 
@@ -357,7 +357,7 @@ describe("buildLoansView", () => {
     ]);
   });
 
-  it("includes Disbursing loans under the Performing tab (#864)", () => {
+  it("includes Disbursing loans under the Active tab (#864)", () => {
     const withDisbursing: LoanBookResponse = {
       summary: SUMMARY,
       loans: [
@@ -367,10 +367,10 @@ describe("buildLoansView", () => {
     };
     const { counts, rows } = buildLoansView(
       withDisbursing,
-      "Performing",
+      "Active",
       NOW_MS,
     );
-    expect(counts.Performing).toBe(3); // 2 Performing + 1 Disbursing
+    expect(counts.Active).toBe(3); // 2 Performing + 1 Disbursing
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Delta"]);
   });
 });
