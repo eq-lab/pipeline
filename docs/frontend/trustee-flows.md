@@ -1321,6 +1321,13 @@ unauthorized-error states).
    A wallet on the *other* chain never triggers sign-in. Dismissing the modal with no pick resets
    to `unauthenticated` (#793 — no stuck "Connecting…"). An `orchestrating` ref makes the
    challenge/verify orchestration single-flight.
+   The trustee mounts `ConnectModalProvider` with **`signMessageOnly`** (#1112): the Soroban tab
+   offers only wallets whose kit module implements `signMessage` — Freighter, xBull, LOBSTR
+   (Albedo/Rabet cannot sign messages and would dead-end after the challenge; they stay available
+   in the LP app, which only needs `signTransaction`). Belt-and-braces, `runSignIn` also
+   distinguishes the kit's unsupported-wallet rejection (`code: -3`) from a genuine user decline:
+   unsupported surfaces an explanatory `unauthorized` error ("This wallet cannot sign
+   authentication messages…"), while a true decline stays silent per spec.
 2. `GET /v1/auth/challenge?address=&chain_id=` — `401` = address not on the server allow-list →
    `unauthorized` + explanatory error (authorization is entirely server-side); other failures →
    "could not reach the sign-in service".

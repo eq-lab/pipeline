@@ -45,7 +45,7 @@ createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <EvmWalletProvider>
         <StellarWalletProvider>
-          <ConnectModalProvider>
+          <ConnectModalProvider signMessageOnly>
             <RouterProvider router={router} />
           </ConnectModalProvider>
         </StellarWalletProvider>

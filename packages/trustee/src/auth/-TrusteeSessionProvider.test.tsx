@@ -254,6 +254,39 @@ describe("TrusteeSessionProvider — signature rejected", () => {
     expect(screen.getByTestId("error")).toHaveTextContent("");
     expect(mockPostAuthVerify).not.toHaveBeenCalled();
   });
+
+  it("surfaces an explanatory error — not silence — when the wallet cannot sign messages (#1112)", async () => {
+    mockGetAuthChallenge.mockResolvedValue({ message: "msg", nonce: "n1" });
+    mockStellarSignMessage.mockRejectedValue({
+      code: -3,
+      message: 'Rabet does not support the "signMessage" function',
+    });
+    stellarState = { isConnected: true, address: "GRABETADDRESS" };
+
+    const { rerender } = renderProvider();
+    act(() => screen.getByText("sign in").click());
+    act(() => fireModalWalletSelect("soroban"));
+    stellarState = { isConnected: false, address: undefined };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+    stellarState = { isConnected: true, address: "GRABETADDRESS" };
+    rerender(
+      <TrusteeSessionProvider>
+        <Probe />
+      </TrusteeSessionProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("unauthorized");
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "This wallet cannot sign authentication messages",
+    );
+    expect(mockPostAuthVerify).not.toHaveBeenCalled();
+  });
 });
 
 describe("TrusteeSessionProvider — 401 on verify", () => {
