@@ -18,6 +18,7 @@ import type { SubmissionView } from "@/api/useLoanSubmissions";
 import { useLoanBook } from "@/api/useLoanBook";
 import type { LoanBookEntry } from "@/api/useLoanBook";
 import { formatSubmittedDate } from "@/utils/formatDate";
+import { toUserError } from "@/utils/userError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,10 @@ export type NeedsAttentionState = "loading" | "error" | "empty" | "ready";
 
 export interface UseNeedsAttentionResult {
   state: NeedsAttentionState;
+  /** Friendly message for the `"error"` state (#1064); `null` otherwise. */
   errorMessage: string | null;
+  /** Raw failure text behind the error's View-details control (#1064); `null` otherwise. */
+  errorDetails: string | null;
   /** Origination group — in-review + changes-requested submissions (#1046). */
   rows: NeedsAttentionRow[];
   /** Loans group — Watchlist + Matured loans (issue #867). */
@@ -143,22 +147,33 @@ export function mapLoanToNeedsAttentionRow(
  *     for why the server-side single-status filter doesn't fit here).
  *   - **Loans** — `useLoanBook()` filtered to Watchlist + Matured (issue #867).
  *
- * Supplementary block: the view renders nothing while loading/error or when both
- * groups are empty. Both queries are read unconditionally (hook rules) before the
- * state is derived.
+ * Supplementary block: the view renders nothing while loading or when both
+ * groups are empty; a failed load renders an inline error (#1064). Both queries
+ * are read unconditionally (hook rules) before the state is derived.
  */
 export function useNeedsAttention(): UseNeedsAttentionResult {
   const submissions = useLoanSubmissions();
   const loanBook = useLoanBook();
 
   if (submissions.isLoading || loanBook.isLoading) {
-    return { state: "loading", errorMessage: null, rows: [], loanRows: [] };
+    return {
+      state: "loading",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+      loanRows: [],
+    };
   }
   const error = submissions.error ?? loanBook.error;
   if (error) {
+    const userError = toUserError(
+      error,
+      "Failed to load the Needs Attention items.",
+    );
     return {
       state: "error",
-      errorMessage: error.message,
+      errorMessage: userError.message,
+      errorDetails: userError.details ?? null,
       rows: [],
       loanRows: [],
     };
@@ -177,8 +192,20 @@ export function useNeedsAttention(): UseNeedsAttentionResult {
   });
 
   if (rows.length === 0 && loanRows.length === 0) {
-    return { state: "empty", errorMessage: null, rows: [], loanRows: [] };
+    return {
+      state: "empty",
+      errorMessage: null,
+      errorDetails: null,
+      rows: [],
+      loanRows: [],
+    };
   }
 
-  return { state: "ready", errorMessage: null, rows, loanRows };
+  return {
+    state: "ready",
+    errorMessage: null,
+    errorDetails: null,
+    rows,
+    loanRows,
+  };
 }

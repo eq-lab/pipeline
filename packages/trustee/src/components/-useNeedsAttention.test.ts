@@ -277,7 +277,10 @@ describe("useNeedsAttention", () => {
     });
     const { result } = renderHook(() => useNeedsAttention());
     expect(result.current.state).toBe("error");
-    expect(result.current.errorMessage).toBe("network down");
+    expect(result.current.errorMessage).toBe(
+      "Failed to load the Needs Attention items.",
+    );
+    expect(result.current.errorDetails).toContain("network down");
   });
 
   it("returns 'empty' when data is an empty array", () => {

@@ -17,14 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
-- **Tracked:** #1064
-- **Date:** 2026-08-07
-- **Location:** `packages/trustee/src/components/useNeedsAttention.ts:176` (sets `errorMessage: error.message` on the `"error"` state) / `packages/trustee/src/components/NeedsAttention.tsx` (never reads `errorMessage` or branches on `state === "error"`).
-- **Symptom:** When the underlying query the panel depends on fails, `useNeedsAttention` computes a mapped error state, but `NeedsAttention.tsx` has no render branch for it at all — the panel silently renders as if there were nothing to show (no red text, no "couldn't load" note, nothing). A trustee has no way to know the panel failed to load rather than genuinely having zero items needing attention.
-- **Root cause:** The component was never wired to the hook's `state`/`errorMessage` fields — only `rows`/`loanRows` are consumed. Predates #1037; out of scope there per the resolved Open Question (adopting `InlineError` here requires first wiring the missing render branch, which is a distinct, larger change than the mapping-layer sweep).
-- **Workaround:** None. Fix requires adding an error-state branch to `NeedsAttention.tsx` (and, per the #1037 pattern, an `InlineError` there) — tracked as follow-up, not fixed inline.
-
 ### BUG-14: Trustee loan detail Documents card shows the empty state for loans indexed before commit `f73d54d`
 - **Tracked:** #1067
 - **Date:** 2026-08-07
@@ -85,6 +77,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 ---
 
 ## Resolved
+
+### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
+- **Tracked:** #1064
+- **Date:** 2026-08-07
+- **Resolved:** 2026-08-17 by the #1064 PR — `NeedsAttention.tsx` gains an error render branch (heading + `InlineError` per the #1037 pattern); `useNeedsAttention` maps the failure through `toUserError` (friendly "Failed to load the Needs Attention items." + raw details). The spec's "no error surface" rule is amended accordingly.
+- **Location:** `packages/trustee/src/components/useNeedsAttention.ts` / `NeedsAttention.tsx`.
+- **Symptom:** A failed underlying query rendered the section as silently absent — indistinguishable from "nothing needs attention".
 
 ### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
 - **Tracked:** #1070

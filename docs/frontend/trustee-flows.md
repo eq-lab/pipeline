@@ -1234,10 +1234,13 @@ Two groups, both defensively read (`loan_data` is `serde_json::Value` on the wir
 Council groups (Figma nodes `4116:9018`+) are deliberately omitted — no backend endpoints exist
 for them yet. Only the Origination and (later, #867) Loans groups render.
 
-**Empty/loading/error handling (resolved, human review):** the section — heading and all —
-renders nothing unless there is at least one row in either group. No skeleton on loading, no
-error surface — this is a supplementary block, not the page's primary content (unlike
-`CapitalAllocationCard`, which does show loading/error states).
+**Empty/loading/error handling (resolved, human review; error amended by #1064):** the section —
+heading and all — renders nothing while loading or when both groups are empty (no skeleton — a
+supplementary block, not the page's primary content, unlike `CapitalAllocationCard`). A **failed
+load** is no longer silent (#1064): the heading renders with an `InlineError` beneath it (#1037
+pattern — friendly "Failed to load the Needs Attention items." with the raw failure behind View
+details), so a trustee can tell "the section failed to load" from "genuinely nothing needs
+attention".
 
 Figma → token mapping: section heading "Needs Attention" Besley display `text-[36px]
 leading-[46px]` ink (a non-token one-off, same precedent as the card's `58px` total); group header
