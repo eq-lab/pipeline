@@ -266,6 +266,49 @@ describe("ConnectWalletModal — Soroban wallet list", () => {
   });
 });
 
+describe("ConnectWalletModal — signMessageOnly (sign-in context, #1112)", () => {
+  it("filters the Soroban list to signMessage-capable wallets; EVM unaffected", async () => {
+    const user = userEvent.setup();
+    renderModal({ signMessageOnly: true });
+    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    for (const label of [
+      "Connect Freighter",
+      "Connect LOBSTR",
+      "Connect xBull",
+    ]) {
+      expect(
+        await screen.findByRole("button", { name: label }),
+      ).toBeInTheDocument();
+    }
+    for (const label of ["Connect Albedo", "Connect Rabet"]) {
+      expect(
+        screen.queryByRole("button", { name: label }),
+      ).not.toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("tab", { name: "EVM" }));
+    expect(
+      await screen.findByRole("button", { name: "Connect MetaMask" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the full Soroban list without the flag", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole("tab", { name: "Soroban" }));
+    for (const label of [
+      "Connect Freighter",
+      "Connect LOBSTR",
+      "Connect xBull",
+      "Connect Albedo",
+      "Connect Rabet",
+    ]) {
+      expect(
+        await screen.findByRole("button", { name: label }),
+      ).toBeInTheDocument();
+    }
+  });
+});
+
 // ── Layout ────────────────────────────────────────────────────────────────────
 
 describe("ConnectWalletModal — full-viewport layout", () => {

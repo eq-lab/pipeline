@@ -33,8 +33,10 @@ import { useWalletGate } from "./WalletGateContext";
 
 export function ConnectModalProvider({
   children,
+  signMessageOnly = false,
 }: {
   children: React.ReactNode;
+  signMessageOnly?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { openGate } = useWalletGate();
@@ -102,6 +104,7 @@ export function ConnectModalProvider({
         open={isOpen}
         onDismiss={handleDismiss}
         onWalletSelect={handleWalletSelect}
+        signMessageOnly={signMessageOnly}
       />
     </ConnectModalContext.Provider>
   );

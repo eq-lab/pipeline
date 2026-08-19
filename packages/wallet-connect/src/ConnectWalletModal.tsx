@@ -80,6 +80,7 @@ interface WalletEntry {
   websiteUrl: string;
   /** SVG content rendered as the 24×24 icon (inline, not a URL). */
   icon: React.ReactNode;
+  supportsSignMessage?: boolean;
 }
 
 // ── Inline SVG icons ──────────────────────────────────────────────────────────
@@ -347,30 +348,35 @@ const EVM_WALLETS: Omit<WalletEntry, "tab">[] = [
 const SOROBAN_WALLETS: Omit<WalletEntry, "tab">[] = [
   {
     id: "freighter",
+    supportsSignMessage: true,
     label: "Freighter",
     websiteUrl: "https://www.freighter.app",
     icon: <FreighterIcon />,
   },
   {
     id: "lobstr",
+    supportsSignMessage: true,
     label: "LOBSTR",
     websiteUrl: "https://lobstr.co",
     icon: <LobstrIcon />,
   },
   {
     id: "xbull",
+    supportsSignMessage: true,
     label: "xBull",
     websiteUrl: "https://xbull.app",
     icon: <XbullIcon />,
   },
   {
     id: "albedo",
+    supportsSignMessage: false,
     label: "Albedo",
     websiteUrl: "https://albedo.link",
     icon: <AlbedoIcon />,
   },
   {
     id: "rabet",
+    supportsSignMessage: false,
     label: "Rabet",
     websiteUrl: "https://rabet.io",
     icon: <RabetIcon />,
@@ -546,6 +552,7 @@ export interface ConnectWalletModalProps {
    * connected wallet (#794) know which one the user actually acted on.
    */
   onWalletSelect?: (chain: WalletTab) => void;
+  signMessageOnly?: boolean;
 }
 
 // ── Modal component ───────────────────────────────────────────────────────────
@@ -554,6 +561,7 @@ export function ConnectWalletModal({
   open,
   onDismiss,
   onWalletSelect,
+  signMessageOnly = false,
 }: ConnectWalletModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const headingId = "connect-wallet-modal-heading";
@@ -619,7 +627,10 @@ export function ConnectWalletModal({
   }, [open]);
 
   // Wallet list for the active tab
-  const walletEntries = activeTab === "evm" ? EVM_WALLETS : SOROBAN_WALLETS;
+  const sorobanEntries = signMessageOnly
+    ? SOROBAN_WALLETS.filter((w) => w.supportsSignMessage)
+    : SOROBAN_WALLETS;
+  const walletEntries = activeTab === "evm" ? EVM_WALLETS : sorobanEntries;
   const needsShowMore = walletEntries.length > SHOW_MORE_THRESHOLD;
   const visibleWallets =
     needsShowMore && !showMore

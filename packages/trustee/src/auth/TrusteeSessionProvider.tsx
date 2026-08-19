@@ -50,6 +50,16 @@ function isNotAuthorized(err: unknown): boolean {
   return err instanceof Error && err.name === "ApiUnauthorizedError";
 }
 
+function isSignUnsupported(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const { code, message } = err as { code?: unknown; message?: unknown };
+  return (
+    code === -3 ||
+    (typeof message === "string" &&
+      /does not support .*signMessage/i.test(message))
+  );
+}
+
 export function TrusteeSessionProvider({
   children,
 }: {
@@ -97,7 +107,14 @@ export function TrusteeSessionProvider({
       try {
         const result = await sign(challenge.message);
         signature = result.signature;
-      } catch {
+      } catch (err) {
+        if (isSignUnsupported(err)) {
+          setSessionStatus(
+            "unauthorized",
+            "This wallet cannot sign authentication messages. Use Freighter, xBull, or LOBSTR.",
+          );
+          return;
+        }
         // Rejection is a user choice, not an error — silent (spec).
         setSessionStatus("unauthenticated");
         return;

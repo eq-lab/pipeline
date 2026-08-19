@@ -513,6 +513,11 @@ Per-wallet behavior:
 - Wallet available → connect directly (wagmi connector or kit `setWallet`).
 - Wallet unavailable → open the wallet's website in a new browser tab.
 
+`signMessageOnly` prop (#1112, threaded through `ConnectModalProvider`): filters the Soroban tab
+to wallets whose kit module implements `signMessage` (`supportsSignMessage` on the entry —
+Freighter, xBull, LOBSTR). Sign-in contexts (the trustee app) pass it; the LP app omits it and
+keeps the full list, since its flows only need `signTransaction` (which Albedo/Rabet support).
+
 "Show More" appears when a tab has more than 5 wallets (`SHOW_MORE_THRESHOLD`); toggles the full
 list. Switching tabs resets `showMore` back to collapsed. Currently dormant: EVM lists 4 wallets
 and Soroban 5 — **Hana was removed from the Soroban catalogue (#1108)** because its `signMessage`
