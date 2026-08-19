@@ -77,7 +77,9 @@ const variantClasses: Record<ButtonVariant, string> = {
     "hover:bg-[color-mix(in_oklab,var(--color-pipeline-brand)_85%,white)]",
     "active:bg-[color-mix(in_oklab,var(--color-pipeline-brand)_92%,black)]",
     "focus-visible:ring-[var(--color-pipeline-ink)]",
-    "disabled:hover:bg-[var(--color-pipeline-brand)]",
+    "disabled:bg-[rgba(184,191,190,0.12)]",
+    "disabled:text-[color:var(--color-pipeline-ink-subtle)]",
+    "disabled:hover:bg-[rgba(184,191,190,0.12)]",
   ].join(" "),
 
   // Focus-ring offset colour is deliberately omitted: the toast's own dark

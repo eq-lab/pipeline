@@ -16,13 +16,13 @@ for per-component structure and behavior.
 
 ### ConnectWalletPromoCard
 
-
 Disconnected-state hero card. Pale-yellow promo card that sits across the top of the left column
 on the Disconnected dashboard (Figma frame `1497:94556`, node `1497:94566` "Portfolio"). Invites
 the wallet-less visitor to connect: heading + subtitle + "Connect" CTA on the left, a striped-wallet
 illustration bleeding off the right edge.
 
 **Composition** (all primitives from `@pipeline/ui`):
+
 - `Card` `variant="yellow"` supplies the pale-yellow promo surface, hairline border, 4px radius and
   24px interior padding; paints `--color-pipeline-promo` / `--color-pipeline-line` so the composer
   adds no raw colors.
@@ -37,9 +37,10 @@ Container / Button" stack). `overflow-hidden` clips the illustration to the roun
 `min-h-[274px]` mirrors the Figma height.
 
 **Illustration positioning (Figma anchor math):**
+
 - Desktop: the Figma node positions the 313.672 × 200 vector at `left: 376.09px / top: 91.38px`
   inside a 274px-tall card; this is mirrored with a `right`-based offset (`md:top-[70%]
-  md:w-[314px]`) so the composition reads identically while remaining width-agnostic.
+md:w-[314px]`) so the composition reads identically while remaining width-agnostic.
 - Mobile (< md, Figma node `1989:9179`): 235×150, anchored lower-right (card ≈ 386px wide,
   illustration x≈187 → right-bleed). Top edge at y=117px, height=150px → centre at ≈192px (≈70% of
   274px) — a wrapper sets responsive width while the illustration fills 100% of it.
@@ -55,7 +56,6 @@ Reuse: page-local to the Disconnected home view (replaced by the portfolio summa
 connects); not hoisted into `@pipeline/ui`.
 
 ### EarnedCard
-
 
 Disconnected-state "Earned" placeholder card. Smallest card in the left column of the Disconnected
 dashboard (Figma frame `1497:94556`, node `1497:94691` `card-horizontal` → child `1497:94692`
@@ -78,11 +78,11 @@ not call for italics, so the component intentionally omits them.
 
 **State → display-value table** (`mobileHomeState` + `earnedPnlLabel`):
 
-| Condition | Displayed value |
-|-----------|------------------|
-| `earnedPnlLabel` present | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`), rendered in the green positive token (`--color-pipeline-chart-positive`) instead of the muted placeholder color. |
-| No PnL label, `mobileHomeState` is `"empty"` or `"plusd"` (States A/B) | `"Nothing yet"` (Figma frames `1988:7074` / `1984:6501`). |
-| No PnL label, `mobileHomeState` is `"splusd"` (State C) or `undefined` (disconnected/desktop) | `"Tracked once you stake"`. |
+| Condition                                                                                     | Displayed value                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `earnedPnlLabel` present                                                                      | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`), rendered in the green positive token (`--color-pipeline-chart-positive`) instead of the muted placeholder color. |
+| No PnL label, `mobileHomeState` is `"empty"` or `"plusd"` (States A/B)                        | `"Nothing yet"` (Figma frames `1988:7074` / `1984:6501`).                                                                                                                                     |
+| No PnL label, `mobileHomeState` is `"splusd"` (State C) or `undefined` (disconnected/desktop) | `"Tracked once you stake"`.                                                                                                                                                                   |
 
 **Accessibility:** `role="region"` + `aria-labelledby` referencing the "Earned" label; the
 placeholder value never changes so no live-region semantics are needed.
@@ -92,13 +92,13 @@ muted-placeholder framing is specific to the wallet-less/pre-PnL dashboard state
 
 ### StartHereCard
 
-
 Disconnected-state "Get PLUSD" entry card. White card under the Connect Wallet promo on the
 Disconnected dashboard (Figma frame `1497:94556`, node `1497:94676` "card-horizontal" inside the
 "Balances" stack `1497:94675`). Primary on-ramp for a brand-new visitor: eyebrow label, "Get PLUSD"
 headline with a small dollar glyph, a 1:1-USDC-swap subtitle, and a "Buy"/"Sell" action row.
 
 **Composition** (all primitives from `@pipeline/ui`):
+
 - `Card` `variant="white"` supplies the paper-white surface, hairline border, 4px radius.
 - `Button` `variant="primary-blue"` provides the brand-navy "Buy" CTA (Figma node `1497:94688` /
   `1497:94689`).
@@ -115,11 +115,11 @@ gap (Figma `gap-2`).
 
 **States A/B/C** (`mobileHomeState`, mobile-only):
 
-| State | Behavior |
-|-------|----------|
-| `"empty"` (A) / disconnected | Disconnected "Start here / Get PLUSD" copy. Sell disabled, rendered at 32% opacity (Figma node `1989:9022`) — used for both the disconnected-mobile state and the connected-but-zero-balance state. |
+| State                        | Behavior                                                                                                                                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"empty"` (A) / disconnected | Disconnected "Start here / Get PLUSD" copy. Sell disabled, rendered at 32% opacity (Figma node `1989:9022`) — used for both the disconnected-mobile state and the connected-but-zero-balance state.                                                              |
 | `"plusd"` / `"splusd"` (B/C) | "PLUSD Balance" connected variant: eyebrow "PLUSD Balance", formatted balance, USDC sub-line (Figma node `1984:6772`, since PLUSD is 1:1 with USDC the balance value doubles as the USDC-equivalent and is always shown even at $0.00), Buy + Sell both enabled. |
-| `undefined` (desktop) | Default disconnected appearance without disabling Sell. |
+| `undefined` (desktop)        | Default disconnected appearance without disabling Sell.                                                                                                                                                                                                          |
 
 **Typography** (no raw font sizes): eyebrow "Start here" is Body token; heading "Get PLUSD" is
 Heading-S token in Besley display serif with the dollar glyph inline at 24px; subtitle is Caption
@@ -133,12 +133,12 @@ Reuse: paired with the Connect Wallet promo card and the Earned/Staked cards; pa
 
 ### StakeCard
 
-
 Stake PLUSD entry-point card. Small white card in the lower-middle slot of the Disconnected
 dashboard (Figma frame `1497:94556`, node `1497:94702` "card-horizontal"). Advertises the staking
 yield and offers the circular "Stake" CTA.
 
 **Composition** (all primitives from `@pipeline/ui`):
+
 - `Card` `variant="white"` supplies the paper-white surface with hairline border, 4px radius and
   16px interior padding mirroring the Figma "card-horizontal" frame.
 - `Button` `variant="circular-blue"` provides the round navy "Stake" CTA anchored bottom-right
@@ -154,15 +154,16 @@ the API returns null or the request fails.
 
 **States A/B/C** (`mobileHomeState`):
 
-| State | Behavior |
-|-------|----------|
-| `"empty"` (A) | Circular CTA disabled, labelled "Nothing to Stake". |
-| `"plusd"` (B) | Circular CTA enabled, labelled "Stake". |
-| `"splusd"` (C) | "Staked PLUSD" balance display + "Stake More" CTA + "Unstake" text link (Figma node `1497:95217`, shared by mobile and the desktop dashboard). |
-| `undefined` | Marketing CTA appearance ("Stake PLUSD / Earn X%") is preserved. |
+| State          | Behavior                                                                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"empty"` (A)  | Circular CTA disabled, labelled "Nothing to Stake" (disabled visuals per Figma node `1497:95069` — see `ui-components.md#button`, `circular-blue`). |
+| `"plusd"` (B)  | Circular CTA enabled, labelled "Stake".                                                                                                             |
+| `"splusd"` (C) | "Staked PLUSD" balance display + "Stake More" CTA + "Unstake" text link (Figma node `1497:95217`, shared by mobile and the desktop dashboard).      |
+| `undefined`    | Marketing CTA appearance ("Stake PLUSD / Earn X%") is preserved.                                                                                    |
 
-The empty/plusd labels are mobile-specific; the `"splusd"` staked layout is shared by mobile and
-desktop.
+The empty/plusd labels apply to both the mobile card and the desktop card (the desktop container
+passes `stakeDisabled` when the connected PLUSD balance is zero, which renders the same disabled
+"Nothing to Stake" CTA); the `"splusd"` staked layout is shared by mobile and desktop.
 
 In State C, the sub-line (sPLUSD coin icon + PLUSD-equivalent + USD value) matches Figma nodes
 `1497:95225` / `1497:95226`; the bottom section (Unstake link + Stake More CTA) matches Figma node
@@ -178,7 +179,6 @@ state) since the visible label is shorter.
 Reuse: page-level glue around `@pipeline/ui` primitives.
 
 ### PortfolioPlaceholderCard
-
 
 Connected-state replacement for `ConnectWalletPromoCard`. Renders in the top-left slot of the home
 dashboard when `isConnected === true` (Figma node `1497:95048`). The balance and PnL labels are
@@ -197,12 +197,12 @@ lands, real series data replaces the flat bars.
 
 **States A/B/C** (mobile-only CTA under the balance, via `mobileHomeState`):
 
-| State | CTA / caption |
-|-------|----------------|
-| `"empty"` (A) | "Get PLUSD to start" → `/deposit` |
-| `"plusd"` (B) | "Stake PLUSD to start earning" → `/stake` |
-| `"splusd"` (C) | No link — the PnL caption is sufficient context |
-| `undefined` (desktop) | "Get PLUSD to start" (same as State A) |
+| State                 | CTA / caption                                   |
+| --------------------- | ----------------------------------------------- |
+| `"empty"` (A)         | "Get PLUSD to start" → `/deposit`               |
+| `"plusd"` (B)         | "Stake PLUSD to start earning" → `/stake`       |
+| `"splusd"` (C)        | No link — the PnL caption is sufficient context |
+| `undefined` (desktop) | "Get PLUSD to start" (same as State A)          |
 
 **Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
@@ -213,7 +213,6 @@ lands, real series data replaces the flat bars.
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
 ### RecentActivityCard
-
 
 Right-column card on the home dashboard. Renders in two states:
 
@@ -252,13 +251,13 @@ button `1497:95216`.
 
 ### WelcomeHeader
 
-
 Dashboard top heading with stats strip. Implements Figma frame `1497:94558` ("Title" row inside
 "Heading"): left is a large "Welcome" display heading in Besley serif, ink-subtle color; right is
 `HomeStatsStrip` (three `Stat` readouts separated by hairline left-borders, plus a trailing
 external-link icon button).
 
 **Responsive behavior:**
+
 - Desktop (`md+`): heading at 64px/64px (`--text-pipeline-title`, Figma frame `1497:94558`), stats
   strip visible on the right. Always renders "Welcome" — connected desktop states are out of scope
   for issue #466.
@@ -278,9 +277,9 @@ and `useStats`). TVL remains hardcoded pending a separate issue.
 
 ### HomeStatsStrip
 
-
 Exchange rate / TVL / Current APY stat row. Extracted from `WelcomeHeader` so the same live stats
 render in two places without prop-drilling or duplication:
+
 - **Desktop:** inside `WelcomeHeader`, right side of the heading row.
 - **Mobile:** a horizontally-scrollable strip at the bottom of the home page (`routes/index.tsx`)
   per the Figma mobile frame `1989:8292`.
@@ -295,12 +294,12 @@ node's `#383735` @ 0.6 fill exactly.
 
 ### QnaSection
 
-
 Questions & Answers row at the bottom of the dashboard. Implements Figma frame `1497:94666`
 ("FAQ") — the narrow strip below the main Disconnected dashboard grid, the page's last block before
 the footer, acting as secondary navigation into the help content.
 
 **Composition:**
+
 - An all-caps micro-label eyebrow ("QUESTIONS & ANSWERS") in caption typography, medium weight, the
   brand label tracking token (`--tracking-pipeline-label`, 7px) and muted ink-subtle color —
   matches the Figma `heading` instance `1497:94667` (Label style: caption + 500 + uppercase +
@@ -327,7 +326,6 @@ Reuse: page-level, stays in `packages/frontend/src/components/` — the reusable
 
 ### Footer
 
-
 Global page footer, mounted once in the root layout (`__root.tsx`). Implements Figma frame
 `3283-13463` ("Footer") — the two-row strip that renders on the page background
 (`--color-pipeline-paper`), outside/below every route's content container (Figma `3283:12101`).
@@ -335,8 +333,9 @@ Figma reference (Issue #746, epic #712):
 https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-13463&m=dev
 
 **Structure:**
+
 - **Row 1** ("Footer links container", node `3283:13464`): flex row, `items-center
-  justify-between`, `border-y` in primary ink, `py-4` (16px, gap-s). Left: `Logo` at 232×64 (2× the
+justify-between`, `border-y` in primary ink, `py-4` (16px, gap-s). Left: `Logo` at 232×64 (2× the
   116×32 intrinsic size), primary ink — the `Logo` default is brand navy, overridden via
   `currentColor`. Right: nav links row, `gap-6` (24px, gap-m), Body 16px, primary ink. On mobile,
   links stack vertically (Figma XS node `3283:74414`: `flex-col`, 24px gap) before switching to a
@@ -359,11 +358,11 @@ decisions — see TD-29 in tech-debt-tracker.md.
 
 ### TopBar
 
-
 Global page header (self-contained, no external props for wallet). Mounted in the root layout
 (`__root.tsx`) so every page renders it automatically; all wallet state is read internally.
 
 **Connected state:**
+
 - Renders a `WalletPill` wrapped in a trigger button.
 - Clicking the pill opens the `AccountDropdown` panel (address copy, USDC balance, namespace
   toggle, disconnect).
@@ -382,16 +381,15 @@ totaling 56px tall (8 + 40 + 8), Figma node `1989:9052`; restored to `p-4` (16px
 
 **Active nav** is derived from the current URL:
 
-| Path | Nav key |
-|------|---------|
-| `/` | `"home"` |
-| `/deposit` (incl. `?direction=withdraw` — direction is a search param, pathname stays `/deposit`) | `"deposit"` (Convert) |
-| `/stake` | `"stats"` (Earn) |
-| `/transactions` | `"history"` (Activity) |
-| other | `"home"` (safe fallback) |
+| Path                                                                                              | Nav key                  |
+| ------------------------------------------------------------------------------------------------- | ------------------------ |
+| `/`                                                                                               | `"home"`                 |
+| `/deposit` (incl. `?direction=withdraw` — direction is a search param, pathname stays `/deposit`) | `"deposit"` (Convert)    |
+| `/stake`                                                                                          | `"stats"` (Earn)         |
+| `/transactions`                                                                                   | `"history"` (Activity)   |
+| other                                                                                             | `"home"` (safe fallback) |
 
 ### AccountDropdown
-
 
 **Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.
 
@@ -402,15 +400,15 @@ FRONTEND.md rule 2).
 
 **Props contract:**
 
-| Prop | Behavior |
-|------|----------|
-| `kind` / `onKindChange` | Active namespace (`evm`/`stellar`); tab click switches it. |
-| `address` | Connected address for the active namespace, `undefined` when not connected. |
-| `formattedBalance` | Pre-formatted USDC balance (e.g. `"$1,000.00"`), `undefined` when disconnected/loading. |
-| `stellarPlusdBalance` | Pre-formatted PLUSD balance. Only passed when Stellar is active **and** balance is non-zero; `undefined` hides the PLUSD row entirely (Issue #675: zero/no-trustline rows are hidden, not zeroed). |
-| `stellarSplusdBalance` | sPLUSD token count string. Same non-zero/Stellar-only gating and hide-when-absent rule as PLUSD (#675). |
-| `onConnect` | "Connect {namespace}" affordance in the not-connected state. |
-| `onClose` / `onDisconnect` | Panel dismissal / disconnect action. |
+| Prop                       | Behavior                                                                                                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kind` / `onKindChange`    | Active namespace (`evm`/`stellar`); tab click switches it.                                                                                                                                         |
+| `address`                  | Connected address for the active namespace, `undefined` when not connected.                                                                                                                        |
+| `formattedBalance`         | Pre-formatted USDC balance (e.g. `"$1,000.00"`), `undefined` when disconnected/loading.                                                                                                            |
+| `stellarPlusdBalance`      | Pre-formatted PLUSD balance. Only passed when Stellar is active **and** balance is non-zero; `undefined` hides the PLUSD row entirely (Issue #675: zero/no-trustline rows are hidden, not zeroed). |
+| `stellarSplusdBalance`     | sPLUSD token count string. Same non-zero/Stellar-only gating and hide-when-absent rule as PLUSD (#675).                                                                                            |
+| `onConnect`                | "Connect {namespace}" affordance in the not-connected state.                                                                                                                                       |
+| `onClose` / `onDisconnect` | Panel dismissal / disconnect action.                                                                                                                                                               |
 
 EVM header stays USDC-only — the PLUSD/sPLUSD rows only ever render for the Stellar namespace.
 
@@ -425,19 +423,20 @@ effects.
 
 ### MobileNavMenu
 
-
 **Source:** `MobileNavMenu.tsx` + `useMobileNavMenu.ts`.
 
 Full-screen slide-in nav panel for mobile viewports. Shown when the user taps the hamburger
 (`menu-2`) icon in `TopBar` at viewport widths below the `md` (768px) breakpoint.
 
 **Disconnected state** (Figma node `1989:9231`):
+
 - Logo + close (×) button.
 - Four nav items: Home / Convert / Earn / Activity.
 - Pipeline Overview item (divider-separated).
 - "Connect Wallet" full-width dark CTA.
 
 **Connected state** (Figma node `1993:6527`):
+
 - Same nav items.
 - Wallet address row (icon + truncated address + copy).
 - USDC balance row (coin icon + balance).
@@ -454,7 +453,6 @@ rule 2 (separate view from logic via a co-located hook).
 
 ### ConnectChooserModal
 
-
 Small modal that lets the user choose which wallet namespace to connect when neither EVM nor
 Stellar is connected. Shown when the user clicks "Connect Wallet" and no wallet is connected.
 
@@ -467,11 +465,11 @@ Mirrors `FirstConnectionModal`'s structural patterns.
 
 ### ConnectWalletModal
 
-
 Full wallet-selection modal (Issues #558, #563). Figma:
 https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=2858-57637
 
 Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
+
 - **Left:** "Connect Wallet" heading, EVM / Soroban tab control, per-wallet rows with brand icons
   and direct connect actions.
 - **Right:** background photo + Pipeline logo + marketing headline ("Access real-world yield
@@ -482,6 +480,7 @@ Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
 Tab set: EVM (Ethereum-compatible wallets) | Soroban (Stellar wallets). No "All" aggregate tab.
 
 Per-wallet behavior:
+
 - Wallet available → connect directly (wagmi connector or kit `setWallet`).
 - Wallet unavailable → open the wallet's website in a new browser tab.
 
@@ -501,12 +500,12 @@ Dismissal is via the × button and Escape only — no scrim click (unlike `Conne
 
 ### FirstConnectionModal
 
-
 "Before you continue" jurisdiction self-attestation modal that gates wallet connect. Shown the
 first time a user clicks Connect Wallet (when `pipeline.wallet.termsAcknowledged.<address>` is not
 yet set in localStorage).
 
 Visual specs (Figma):
+
 - Init state (toggle off, Continue disabled): node `1572:123328`.
 - Ready state (toggle on, Continue enabled): node `1582:69059`.
 
@@ -525,7 +524,6 @@ restored to the element that triggered the modal (handled by the caller via `tri
 
 ### renderRequestRow
 
-
 Shared row renderer for `RequestItem` data. Both `RecentActivityCard` (home, connected state, Figma
 `1497:95119`) and the `/transactions` page (Figma `1497-94912`) render rows with identical visuals.
 This helper is the single source of truth for the type→icon, status→tone, and amount-formatting
@@ -539,10 +537,10 @@ derives decimal scales from it rather than hardcoding EVM values. Stellar SAC to
 decimals (`SAC_DECIMALS`), while EVM uses 6 for payment tokens (USDC) and 18 for stake tokens
 (PLUSD / sPLUSD).
 
-| Chain | Deposit / Withdraw | Stake / Unstake (assets / shares) |
-|-------|---------------------|-------------------------------------|
-| EVM | 6 | 18 |
-| Stellar | 7 (`SAC_DECIMALS`) | 7 (`SAC_DECIMALS`) |
+| Chain   | Deposit / Withdraw | Stake / Unstake (assets / shares) |
+| ------- | ------------------ | --------------------------------- |
+| EVM     | 6                  | 18                                |
+| Stellar | 7 (`SAC_DECIMALS`) | 7 (`SAC_DECIMALS`)                |
 
 **Fail-loud contract for Stake/Unstake fields:** both `assets` and `shares` are required by the
 `/v1/requests` API contract for Stake/Unstake items. If either field is absent from the API
@@ -574,22 +572,23 @@ literals (pixel values below are doc-only).
 
 **Figma token mapping (pixel-authoritative):**
 
-| Element | Token | Value |
-|---|---|---|
+| Element                                   | Token                       | Value                                                                                      |
+| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
 | Title ("Statement of Financial Position") | `--text-pipeline-heading-l` | 48px/56px desktop; steps down to heading-m (28/36) below `md`, matching Figma `3283:72288` |
-| Section headers ("Assets"/"Liabilities") | `--text-pipeline-heading-m` | 28px/36px; no mobile step-down (mobile frame uses same size) |
-| Column total (muted rollup) | `--text-pipeline-heading-m` | same size as section name, muted ink |
-| Sub-section headers | `--text-pipeline-heading-s` | 20px/28px, normal weight, ink |
-| Row labels + values | `--text-pipeline-body` | 16px/22px |
-| Caption ("1:1 redeemable") | `--text-pipeline-caption` | 12px/16px, muted ink |
-| Border color | `--color-pipeline-line` | border-test/secondary |
-| Card padding | — | 16px all sides (`size-16` → `p-4`) |
-| Card gap (between sub-sections) | — | 32px (`size-32` → `gap-8`) |
-| Container gap (between columns) | — | 32px (`size-32` → `gap-8`) |
-| Row pad-top/right | — | 16px (`gap-s` → `pt-4 pr-4`) |
-| Row content↔amount gap | — | 12px (`size-12` → `gap-3`) |
+| Section headers ("Assets"/"Liabilities")  | `--text-pipeline-heading-m` | 28px/36px; no mobile step-down (mobile frame uses same size)                               |
+| Column total (muted rollup)               | `--text-pipeline-heading-m` | same size as section name, muted ink                                                       |
+| Sub-section headers                       | `--text-pipeline-heading-s` | 20px/28px, normal weight, ink                                                              |
+| Row labels + values                       | `--text-pipeline-body`      | 16px/22px                                                                                  |
+| Caption ("1:1 redeemable")                | `--text-pipeline-caption`   | 12px/16px, muted ink                                                                       |
+| Border color                              | `--color-pipeline-line`     | border-test/secondary                                                                      |
+| Card padding                              | —                           | 16px all sides (`size-16` → `p-4`)                                                         |
+| Card gap (between sub-sections)           | —                           | 32px (`size-32` → `gap-8`)                                                                 |
+| Container gap (between columns)           | —                           | 32px (`size-32` → `gap-8`)                                                                 |
+| Row pad-top/right                         | —                           | 16px (`gap-s` → `pt-4 pr-4`)                                                               |
+| Row content↔amount gap                    | —                           | 12px (`size-12` → `gap-3`)                                                                 |
 
 Per-element Figma bindings:
+
 - **Row** (Figma list-item): `border-t` (border-test/secondary), `pt-4 pr-4`, `gap-3` between content
   and amount.
 - **Column heading row** (Figma `3283:14281`): `items-baseline`, `justify-between`, sits OUTSIDE the
@@ -606,6 +605,7 @@ Per-element Figma bindings:
 ### useBalanceSheetPanel
 
 Blends REST `GET /v1/financial-position` + on-chain reads:
+
 - PLUSD outstanding → `useStellarPlusdTotalSupply()` (Horizon decimal string)
 - Cash — stablecoins → `useStellarUsdcCustodyBalance()` (Soroban raw i128 bigint)
 - Deployed / Junior tranche → REST base-6 decimal strings
@@ -613,6 +613,7 @@ Blends REST `GET /v1/financial-position` + on-chain reads:
 - Off-chain USD → `—` (off-chain, no source)
 
 **Decimal discipline:**
+
 - PLUSD: Horizon returns human-decimal strings (e.g. `"10000711.9961018"`) — call `parseFloat(str)`
   directly, no SAC scaling needed.
 - USDC: Soroban `balance()` returns a raw i128 bigint at 7-decimal SAC scale — use
@@ -642,6 +643,7 @@ tooling.
 
 **Tabs (issue #755):** Active Loans / In Origination tab bar (Figma node `3283:14480`). Both tabs are
 selectable and carry a live count badge:
+
 - Active Loans → `loans.length` from `GET /v1/loan-book`.
 - In Origination → **in-flight** submission count from `GET /v1/loan-book/submissions` (issue #1053 —
   see `useDeploymentMonitorPanel` below for the filter).
@@ -658,6 +660,7 @@ Figma: desktop `node-id=3283-14431`, mobile `node-id=3283-72323`.
 **Tab bar styling** (Figma nodes `3283:14480` desktop / `3283:72372` mobile — segmented control). The
 two Figma variants are structurally identical (`flex-1` tabs in a `size-full` track) but render
 differently by context:
+
 - Desktop (`md+`, `3283:14480`): the track HUGS its content and sits left-aligned; tabs are sized to
   their own label+badge (NOT split 50/50) → `md:w-auto md:self-start` on the track, `md:flex-none` on
   the tabs.
@@ -709,6 +712,7 @@ origination table's behavior; spec: `docs/product-specs/trustee-dashboard.md` (#
 
 `headerAggregates` — pre-formatted aggregate strings for the table column headers, populated from
 `summary` by the hook (formatting stays in the hook, not the table component):
+
 - `principal` — always defined when ready (`total_deployed` is non-null); displayed as served by the
   backend (issue #906 — no frontend rescaling).
 - `collateral` — defined only when `total_collateral` is non-null; `undefined` while TODO #706
@@ -762,9 +766,10 @@ width, and `headerAggregates` populates the header row at all widths too.
 remaining space, `min-w 1px`); Principal 112px (node `3704:1076`); Collateral 112px (`3704:1079`);
 LTV 112px (`3704:1082`); Duration 96px (`3704:1085`); Rate 96px (`3704:1088`); Protection 128px
 (`3704:1091`) — fixed columns total 656px, remainder goes to Commodity. `table-layout: fixed`
-+ `<colgroup>` enforces these widths so long strings in the commodity column don't push the
-numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
-`whitespace-nowrap`) so overflow clips with an ellipsis.
+
+- `<colgroup>` enforces these widths so long strings in the commodity column don't push the
+  numeric columns together; the commodity cell truncates (`overflow-hidden` + `text-ellipsis` +
+  `whitespace-nowrap`) so overflow clips with an ellipsis.
 
 **Spacing** (Figma node `3283-14552` metadata): row height 64px (node `3704:1095`); row padding `py-3`
 (12px top+bottom); header→row gap `pb-2` (8px, Table container `gap-8` between Header and Content
@@ -805,6 +810,7 @@ Rows come pre-formatted from `mapSubmissionToRow` (`originationRow.ts`) via
 `useDeploymentMonitorPanel`.
 
 **Resolved Open Questions from issue #814 (human-confirmed):**
+
 1. The "Commodity · valuation" sub-line is OMITTED — no valuation-mode source exists for pre-mint
    submissions (mirrors #813).
 2. Status renders as the dashboard's existing simple color-coded label (`statusColorClass`), NOT the
@@ -833,15 +839,15 @@ pending (amber); anything else → muted ink (neutral fallback). The cell TEXT i
 `packages/trustee/src/routes/-useOriginationTable.ts`'s `mapSubmissionToRow`, minus the trustee-only
 router-nav `submission` threading and Review action):
 
-| Field | Source | Notes |
-|---|---|---|
-| Commodity | `loan_data.commodity` | Figma also shows a valuation sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"), but no field in `loan_data`/`SubmissionView` carries a valuation mode for pre-mint submissions (`ValuationMode` lives in `loan_collateral_valuations`, keyed by an on-chain `loan_id` submissions don't have yet). Resolved (human, issue #814, mirroring #813): OMIT the sub-line entirely rather than infer it from the commodity name. |
-| Facility | `loan_data.economics.original_facility_size` | Served at the on-chain 7-decimal base-unit scale — normalized ÷10^7 via `economicsBaseUnitsToUsdDecimal` (issue #912, BigInt-safe) before `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841). |
-| Corridor | `loan_data.corridor` | Hyphen separator rendered as the Figma's arrow glyph ("PE-CN" → "PE → CN") — same data, design-matching glyph. |
-| Rate | `loan_data.economics.senior_interest_rate_bps` | Via `formatBpsRate` (e.g. `1400` → `"14.0%"`). |
-| Maturity | `loan_data.economics.original_maturity_date` (Unix seconds) | Via `formatMaturityDate` (e.g. `"15 Dec 2026"`). |
-| Submitted | `SubmissionView.created_at` (RFC 3339) | Via `formatSubmittedDate` (e.g. `"18 Jun"`). |
-| Status | Raw `SubmissionView.status` string | Resolved (human, issue #814): the LP dashboard keeps its existing simple color-coded status label rather than adopting the trustee's Review-button / "Approved & minted" pill — the LP app is read-only for submissions and has no review route. |
+| Field     | Source                                                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commodity | `loan_data.commodity`                                       | Figma also shows a valuation sub-line ("NSR · Net Smelter Return" / "Standard · price × quantity"), but no field in `loan_data`/`SubmissionView` carries a valuation mode for pre-mint submissions (`ValuationMode` lives in `loan_collateral_valuations`, keyed by an on-chain `loan_id` submissions don't have yet). Resolved (human, issue #814, mirroring #813): OMIT the sub-line entirely rather than infer it from the commodity name. |
+| Facility  | `loan_data.economics.original_facility_size`                | Served at the on-chain 7-decimal base-unit scale — normalized ÷10^7 via `economicsBaseUnitsToUsdDecimal` (issue #912, BigInt-safe) before `formatCompactUsd` (compact M/K, e.g. `"$3.5M"`) to match the Active Loans table (#841).                                                                                                                                                                                                            |
+| Corridor  | `loan_data.corridor`                                        | Hyphen separator rendered as the Figma's arrow glyph ("PE-CN" → "PE → CN") — same data, design-matching glyph.                                                                                                                                                                                                                                                                                                                                |
+| Rate      | `loan_data.economics.senior_interest_rate_bps`              | Via `formatBpsRate` (e.g. `1400` → `"14.0%"`).                                                                                                                                                                                                                                                                                                                                                                                                |
+| Maturity  | `loan_data.economics.original_maturity_date` (Unix seconds) | Via `formatMaturityDate` (e.g. `"15 Dec 2026"`).                                                                                                                                                                                                                                                                                                                                                                                              |
+| Submitted | `SubmissionView.created_at` (RFC 3339)                      | Via `formatSubmittedDate` (e.g. `"18 Jun"`).                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Status    | Raw `SubmissionView.status` string                          | Resolved (human, issue #814): the LP dashboard keeps its existing simple color-coded status label rather than adopting the trustee's Review-button / "Approved & minted" pill — the LP app is read-only for submissions and has no review route.                                                                                                                                                                                              |
 
 Every field is read defensively: `loan_data` is `serde_json::Value` on the wire (declared as
 `SubmitLoanRequest` for convenience, but not guaranteed to match at runtime), so missing/malformed
@@ -858,6 +864,7 @@ variant) with an optional panel title header and a body region.
 
 **State handling:** a single `state` discriminator selects which body renders, so all four panels
 share one loading/empty/error treatment:
+
 - `"ready"` (default) — renders `children` (the panel's real content).
 - `"loading"` — renders `<PanelLoading/>`.
 - `"empty"` — renders `<PanelEmpty caption={emptyCaption}/>`.
@@ -903,6 +910,7 @@ values are derived by `useYieldHistoryPanel` and passed in as props; no data fet
 component itself.
 
 Renders:
+
 - "TVL" eyebrow + headline value (e.g. `"$43.1M"`), Figma node `3283:67623` (528×56, two halves each
   264 wide).
 - "Outstanding in Loans" label + value (muted, right-aligned), or `"—"` when null.
@@ -910,7 +918,7 @@ Renders:
   `3380:1895`) — fill width is `outstanding_in_loans / tvl`, an **approved exception** to the "no
   frontend-computed metrics" rule for this ratio-of-served-values visualisation (issue #760
   open-question resolution). Guard: null/zero `tvl` → `deployedRatio` is `null` → empty bar + `"—%
-  deployed"` caption. Track: `bg-pipeline-line`; Fill: `bg-pipeline-ink`.
+deployed"` caption. Track: `bg-pipeline-line`; Fill: `bg-pipeline-ink`.
 - Dark TVL bar chart (`fill="var(--color-pipeline-ink)"`), fixed 240px tall anchored to the bottom
   (`mt-auto`), matching Figma chart container `3283:67630` (240h) on both desktop (`3283:67622`,
   460-tall card) and mobile (`3283:71067`, 404-tall card).
@@ -928,6 +936,7 @@ Protocol Dashboard Panel C — Withdrawal Queue. Wires the `useWithdrawalQueue` 
 `useWithdrawalQueuePanel` logic hook.
 
 **Content** per Figma section `3283:14893`:
+
 - Title "Withdrawal Queue".
 - Four summary cards: In Queue / Requests / Estimated wait / Liquid Cover.
 - Table: Holder / Amount / Status (3 columns).
@@ -965,6 +974,7 @@ view stays JSX-only.
 
 **Liquid Cover calc** (`"5.6x"` or `"—"`) — frontend calc, user-approved: `(cash + tokenized-T-bills) /
 queue`.
+
 - `cash` = REST `assets.liquid.cash_stablecoins` (null/non-finite → 0).
 - `tbills` = REST `assets.liquid.tokenized_tbills` (null/non-finite → 0).
 - `queue` = `in_queue_usd` (null/non-finite → 0). Divide-by-zero → `"—"`.
@@ -1003,6 +1013,7 @@ the hovered slot. Pointer tracking is mouse-only — touch is deferred (logged i
 `tech-debt-tracker.md`).
 
 Props:
+
 - `bars` — array of `{ height: number (0–100), value: number, timestamp: number }`.
 - `fill` — bar fill colour; defaults to the green chart-positive token.
 - `formatValue` — formats a bar's numeric value for the tooltip; defaults to compact USD (both
@@ -1058,6 +1069,7 @@ to the three `/v1/dashboard/*` endpoints, and derives panel state + formatted va
 layer.
 
 **Endpoints used (issue #760):**
+
 - `GET /v1/dashboard/summary?chain_id` — five headline KPIs.
 - `GET /v1/dashboard/tvl-history?chain_id&days&interval` — TVL series.
 - `GET /v1/dashboard/yield-history?chain_id&days&interval` — yield series.
@@ -1065,6 +1077,7 @@ layer.
 Both series are fetched at the default daily interval, showing full history with no range selector.
 
 **Decisions (issue #760):**
+
 - `chainId` = `ENV.STELLAR_CHAIN_ID` — the Protocol Dashboard is Stellar-scoped (real data lives on
   chain `99000001`; the EVM chain carries malformed test data, #765).
 - All three endpoints are protocol-level (no vault address needed). The zero-address vault guard from
@@ -1118,13 +1131,13 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air; horizontal padding lets the column breathe at narrower widths without exceeding the 1200px design cap). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap.
 3. Inside the outer card, a 7-column CSS grid (mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`):
 
-   | Slot | Grid position | Content |
-   |------|---------------|---------|
-   | Portfolio | col 1–4, row 1 | Disconnected: `ConnectWalletPromoCard`; connected: `PortfolioPlaceholderCard`. Both use `Card variant="yellow"` + `min-h-[274px]` so the grid never reflows when wallet state changes. |
-   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard` — the row-span lets it stretch across both rows so it sits flush with the bottom of the StakeCard. |
-   | Balances | col 1–2, row 2 | Vertical stack of `StartHereCard` + `EarnedCard` (Figma "Balances" frame `1497:94675`). |
-   | StakeCard | col 3–4, row 2 | Once the user holds sPLUSD the card switches to the "Staked PLUSD" balance layout (Figma node `1497:95217`); otherwise it keeps the marketing CTA. The empty/plusd button labels are mobile-specific, so the desktop instance only opts into the `"splusd"` state. |
-   | QnaSection | col 1–7, row 3 | Questions & Answers strip. |
+   | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                            |
+   | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+   | Portfolio       | col 1–4, row 1                       | Disconnected: `ConnectWalletPromoCard`; connected: `PortfolioPlaceholderCard`. Both use `Card variant="yellow"` + `min-h-[274px]` so the grid never reflows when wallet state changes.                                                                             |
+   | Recent activity | col 5–7, `row-span-2` starting row 1 | `RecentActivityCard` — the row-span lets it stretch across both rows so it sits flush with the bottom of the StakeCard.                                                                                                                                            |
+   | Balances        | col 1–2, row 2                       | Vertical stack of `StartHereCard` + `EarnedCard` (Figma "Balances" frame `1497:94675`).                                                                                                                                                                            |
+   | StakeCard       | col 3–4, row 2                       | Once the user holds sPLUSD the card switches to the "Staked PLUSD" balance layout (Figma node `1497:95217`); otherwise it keeps the marketing CTA. The empty/plusd button labels are mobile-specific, so the desktop instance only opts into the `"splusd"` state. |
+   | QnaSection      | col 1–7, row 3                       | Questions & Answers strip.                                                                                                                                                                                                                                         |
 
 **Mobile (below md) visual structure — single-column stack**, rendered directly (no outer white Card wrapper — Figma frame `1989:8292` uses the page background, not a white card):
 
@@ -1135,7 +1148,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Top-left card branching:** connection state is derived from the *active wallet view namespace* (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart is a constant-zero placeholder until a per-address balance-history series exists (#1114/#1116).
+**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart is a constant-zero placeholder until a per-address balance-history series exists (#1114/#1116).
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 
@@ -1155,13 +1168,13 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 **URL contract:**
 
-| URL | Resulting direction |
-|-----|----------------------|
-| `/deposit` | `"deposit"` |
-| `/deposit?direction=deposit` | `"deposit"` |
-| `/deposit?direction=withdraw` | `"withdraw"` |
-| `/deposit?direction=<anything else>` | `"deposit"` (fallback) |
-| `/withdraw` | Redirected to `/deposit?direction=withdraw` |
+| URL                                  | Resulting direction                         |
+| ------------------------------------ | ------------------------------------------- |
+| `/deposit`                           | `"deposit"`                                 |
+| `/deposit?direction=deposit`         | `"deposit"`                                 |
+| `/deposit?direction=withdraw`        | `"withdraw"`                                |
+| `/deposit?direction=<anything else>` | `"deposit"` (fallback)                      |
+| `/withdraw`                          | Redirected to `/deposit?direction=withdraw` |
 
 `/withdraw` (`withdraw.tsx`) is a one-time `redirect` to `/deposit?direction=withdraw`, kept only so external links/bookmarks to `/withdraw` continue to work — the actual page lives at `/deposit`. `replace: true` keeps the redirect out of the back-button history (reload does not flash `/withdraw` before `/deposit`, and back-button does not accumulate redirect hops). Incoming search params are preserved.
 
@@ -1169,12 +1182,12 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 **Step sequences per chain/direction:**
 
-| Step | EVM deposit | EVM withdraw | Stellar deposit & withdraw |
-|------|-------------|--------------|------------------------------|
-| 1 | Allow Pipeline to use USDC (Approve) | Allow Pipeline to use PLUSD (Approve) | Enable PLUSD (`changeTrust`, complete when trustline exists) |
-| 2 | Confirm USDC transfer (Confirm) | Confirm PLUSD burn (Confirm) | Enable USDC (`changeTrustUsdc`, complete when trustline exists) |
-| 3 | Claim your PLUSD (Claim) | Claim your USDC (Claim) | Confirm USDC transfer / PLUSD burn (`request_deposit` / `request_withdrawal`) |
-| 4 | — | — | Claim your PLUSD / USDC (`claim_request` + verifier signature) |
+| Step | EVM deposit                          | EVM withdraw                          | Stellar deposit & withdraw                                                    |
+| ---- | ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------- |
+| 1    | Allow Pipeline to use USDC (Approve) | Allow Pipeline to use PLUSD (Approve) | Enable PLUSD (`changeTrust`, complete when trustline exists)                  |
+| 2    | Confirm USDC transfer (Confirm)      | Confirm PLUSD burn (Confirm)          | Enable USDC (`changeTrustUsdc`, complete when trustline exists)               |
+| 3    | Claim your PLUSD (Claim)             | Claim your USDC (Claim)               | Confirm USDC transfer / PLUSD burn (`request_deposit` / `request_withdrawal`) |
+| 4    | —                                    | —                                     | Claim your PLUSD / USDC (`claim_request` + verifier signature)                |
 
 Both Stellar trustline rows are always shown in both directions (issue #604); Confirm is gated until BOTH trustlines exist — the page renders the four-step `StepsCard` when `isStellar && flow.trustlines.length === 2`, otherwise the three-step EVM `StepsCard`.
 
@@ -1215,7 +1228,7 @@ Chain-aware stake/unstake page driving two flows via the `useStakeFlow` adapter,
 
 Amount is reset on chain switch via the same `prevKindRef` pattern used by `deposit.tsx`.
 
-**URL contract:** `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home `StakeCard`'s "Unstake" link). The URL only seeds the *initial* tab — in-page switching is local state, so subsequent tab toggles do not push history entries.
+**URL contract:** `/stake?tab=unstake` deep-links the Unstake tab (e.g. the home `StakeCard`'s "Unstake" link). The URL only seeds the _initial_ tab — in-page switching is local state, so subsequent tab toggles do not push history entries.
 
 **Toast ids** scoped per chain+tab: EVM stake — `stake-approve-tx` / `stake-tx`; EVM unstake — `unstake-tx`; Stellar stake — `stellar-splusd-trust-tx` / `stellar-stake-tx`; Stellar unstake — `stellar-plusd-trust-tx` / `stellar-unstake-tx`.
 

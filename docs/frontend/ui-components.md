@@ -179,7 +179,10 @@ Five variants, matching Figma frame `1497-94556` and the toast spec `1497:95175`
   `1497:94690`), rendered with the `disabled` prop at opacity 0.32 (matching Figma
   opacity-32) to signal the action is not yet available.
 - **`circular-blue`** — 128 px round CTA (`size-32`, pill radius), brand/navy background.
-  Matches the "Stake" button (node `1497:94713`).
+  Matches the "Stake" button (node `1497:94713`). Disabled state (node `1497:95069`):
+  fill `rgba(184,191,190,0.12)` (Figma `fill-test/primary` in this mode — no theme token
+  holds this value, so the literal is used) and label `--color-pipeline-ink-subtle`
+  (`content-test/tertiary`); hover is suppressed back to the same fill.
 - **`toast-action`** — compact CTA for right-aligned actions inside toasts (Figma node
   `1497:95175` — "Stake" CTA). White fill, ink text, 32 px tall, 4 px radius
   (`radius/radius-s`), Body Emphasized label. No explicit focus ring-offset colour is
@@ -278,7 +281,7 @@ in Issue #535 (Figma node `910:10281`).
 
 - **Accessibility:** decorative by default (`aria-hidden="true"`, empty `alt`); passing an
   explicit `aria-label` makes the icon meaningful to assistive tech (`role="img"`).
-- **Display handling (Issue #547):** the default `block` display is applied as a *class*,
+- **Display handling (Issue #547):** the default `block` display is applied as a _class_,
   never as an inline style, so callers can override it with responsive Tailwind utilities
   (e.g. `className="hidden md:block"`) — class-based rules share specificity and the
   caller's classes appear later in the stylesheet, whereas an inline `display` style would
@@ -427,7 +430,7 @@ union (currently `"arrow-clock" | "chart"`; the `chart` glyph reuses `nav-stats.
 
 ### Per-icon tint (ink roles)
 
-The two icons deliberately use different ink tokens so their *composed* opacity matches the design:
+The two icons deliberately use different ink tokens so their _composed_ opacity matches the design:
 
 - `chart` — `--color-pipeline-ink-subtle` directly (the SVG bakes no opacity).
 - `arrow-clock` — full `--color-pipeline-ink`, because the SVG asset bakes `fill-opacity="0.3"`;
@@ -560,12 +563,12 @@ or any URL import at all.
 
 ### Supported names
 
-| Name        | Glyph                     | Figma asset       |
-| ----------- | ------------------------- | ----------------- |
-| `"home"`    | filled house              | `nav-home.svg`    |
-| `"deposit"` | dollar-in-circle          | `nav-dollar.svg`  |
-| `"stats"`   | three bar-chart bars      | `nav-stats.svg` (three separate path elements) |
-| `"history"` | clock with arrow          | `nav-history.svg` (two separate path elements) |
+| Name        | Glyph                | Figma asset                                    |
+| ----------- | -------------------- | ---------------------------------------------- |
+| `"home"`    | filled house         | `nav-home.svg`                                 |
+| `"deposit"` | dollar-in-circle     | `nav-dollar.svg`                               |
+| `"stats"`   | three bar-chart bars | `nav-stats.svg` (three separate path elements) |
+| `"history"` | clock with arrow     | `nav-history.svg` (two separate path elements) |
 
 All path data is lifted verbatim from the SVG assets in `packages/ui/src/assets/icons/`.
 
@@ -616,7 +619,7 @@ omit the `".00"` suffix.
 **Source:** `packages/ui/src/components/SegmentedTabs/SegmentedTabs.tsx`.
 
 A purely presentational segmented-control / filter bar. The owning page manages active state; the
-component is visual-only (`onSelect` fires only when an *inactive* tab is clicked).
+component is visual-only (`onSelect` fires only when an _inactive_ tab is clicked).
 
 ### `"track"` variant (default)
 
@@ -754,7 +757,7 @@ here.
 
 - **Disabled** (`disabled`): matches Figma — the entire row renders at 30 % opacity (`opacity-30`)
   and the action button additionally receives the HTML `disabled` attribute so it is inert. The
-  30 % opacity applies only when the row is *not* in a success/error/loading state — those always
+  30 % opacity applies only when the row is _not_ in a success/error/loading state — those always
   render at full opacity so the user can see the check badge / error line / spinner clearly.
 - **Loading** (`loading`): the action button is disabled and shows an inline CSS-only spinner
   (16 px ring in `--color-pipeline-on-dark` with transparent top, `animate-spin`) to communicate a

@@ -110,6 +110,10 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
     const { data: statsData } = useStats();
     const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`;
 
+    const isStakeCtaDisabled =
+      Boolean(stakeDisabled) ||
+      (mobileHomeState !== undefined && mobileHomeState === "empty");
+
     const composed = [
       "flex flex-col items-end justify-between",
       "min-h-[274px] w-full",
@@ -308,18 +312,13 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         <Button
           variant="circular-blue"
           onClick={onStake}
-          disabled={
-            stakeDisabled ||
-            (mobileHomeState !== undefined && mobileHomeState === "empty")
-          }
-          aria-label={
-            mobileHomeState === "empty" ? "Nothing to Stake" : "Stake PLUSD"
-          }
+          disabled={isStakeCtaDisabled}
+          aria-label={isStakeCtaDisabled ? "Nothing to Stake" : "Stake PLUSD"}
           className="size-[88px] md:size-32"
           data-node-id="1497:94713"
           data-testid="home-stake-button"
         >
-          {mobileHomeState === "empty" ? "Nothing to Stake" : "Stake"}
+          {isStakeCtaDisabled ? "Nothing to Stake" : "Stake"}
         </Button>
       </Card>
     );

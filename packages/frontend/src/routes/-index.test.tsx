@@ -451,14 +451,23 @@ describe("Home page — connected state (mock)", () => {
     });
   });
 
-  it("Stake button is disabled when connected with zero PLUSD balance", async () => {
-    // Connected but no PLUSD balance seeded — stakeDisabled should be true.
-    // The desktop block renders "Stake PLUSD" button (disabled); the mobile block
-    // renders "Nothing to Stake" button. Check the desktop one.
+  it("Stake button is disabled, grey, and labelled 'Nothing to Stake' when connected with zero PLUSD balance", async () => {
     renderHome();
 
-    const stakeBtn = await screen.findByRole("button", { name: "Stake PLUSD" });
-    expect(stakeBtn).toBeDisabled();
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Nothing to Stake",
+    });
+    expect(stakeBtns.length).toBeGreaterThanOrEqual(1);
+    for (const btn of stakeBtns) {
+      expect(btn).toBeDisabled();
+      expect(btn.className).toContain("disabled:bg-[rgba(184,191,190,0.12)]");
+      expect(btn.className).toContain(
+        "disabled:text-[color:var(--color-pipeline-ink-subtle)]",
+      );
+    }
+    expect(
+      screen.queryByRole("button", { name: "Stake PLUSD" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -586,16 +595,19 @@ describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
     renderHome();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Nothing to Stake" }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button", { name: "Nothing to Stake" }).length,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 
   it("mobile StakeCard 'Nothing to Stake' button is disabled (State A)", async () => {
     renderHome();
     await waitFor(() => {
-      const btn = screen.getByRole("button", { name: "Nothing to Stake" });
-      expect(btn).toBeDisabled();
+      for (const btn of screen.getAllByRole("button", {
+        name: "Nothing to Stake",
+      })) {
+        expect(btn).toBeDisabled();
+      }
     });
   });
 
@@ -1186,10 +1198,11 @@ describe("Home page — Stellar connected balances (#688)", () => {
 
     // Stake CTA should be disabled (no PLUSD).
     await waitFor(() => {
-      const nothingBtn = screen.getByRole("button", {
+      for (const nothingBtn of screen.getAllByRole("button", {
         name: "Nothing to Stake",
-      });
-      expect(nothingBtn).toBeDisabled();
+      })) {
+        expect(nothingBtn).toBeDisabled();
+      }
     });
 
     // Mobile state "empty" → StartHereCard shows "Start here" / "Get PLUSD" (not PLUSD Balance).
