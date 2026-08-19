@@ -25,10 +25,12 @@ import { useMobileNavMenu } from "./useMobileNavMenu";
 
 /** One nav slot: icon + accessible label + optional route target. */
 interface NavItem {
-  key: "home" | "deposit" | "stats" | "history";
+  key: "home" | "deposit" | "stats" | "history" | "overview";
   label: string;
   /** TanStack Router path this slot navigates to; omit for slots with no route yet. */
   to?: string;
+  /** Render a vertical divider before this slot (Figma node 5915:77654). */
+  dividerBefore?: boolean;
 }
 
 // Figma order, node ids on the side for traceability.
@@ -37,6 +39,7 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "deposit", label: "Convert", to: "/deposit" }, // 1497:94720
   { key: "stats", label: "Earn", to: "/stake" }, //     1497:94721
   { key: "history", label: "Activity", to: "/transactions" }, // 1497:94722
+  { key: "overview", label: "Overview", to: "/dashboard", dividerBefore: true }, // 5915:77655
 ];
 
 /**
@@ -148,9 +151,11 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ? "history"
           : pathname === "/stake"
             ? "stats"
-            : pathname === "/"
-              ? "home"
-              : "home";
+            : pathname === "/dashboard"
+              ? "overview"
+              : pathname === "/"
+                ? "home"
+                : "home";
 
     const composed = [
       "flex items-center justify-between",
@@ -191,31 +196,41 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           data-node-id="1497:94718"
         >
           {NAV_ITEMS.map((item) => (
-            <IconButton
-              key={item.key}
-              label={item.label}
-              active={derivedActive === item.key}
-              icon={<NavIcon name={item.key} />}
-              data-testid={`topbar-nav-${item.key}`}
-              onClick={
-                item.to
-                  ? () => void navigate({ to: item.to as string })
-                  : undefined
-              }
-            />
+            <React.Fragment key={item.key}>
+              {item.dividerBefore && (
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-px shrink-0 bg-[var(--color-pipeline-line)]"
+                  data-testid="topbar-nav-divider"
+                  data-node-id="5915:77654"
+                />
+              )}
+              <IconButton
+                label={item.label}
+                active={derivedActive === item.key}
+                icon={<NavIcon name={item.key} />}
+                data-testid={`topbar-nav-${item.key}`}
+                onClick={
+                  item.to
+                    ? () => void navigate({ to: item.to as string })
+                    : undefined
+                }
+              />
+            </React.Fragment>
           ))}
         </nav>
 
-        {/* Network pill — always-visible current network; opens a switch
-            menu when siblings are configured (issue #1032). */}
-        <NetworkSwitcher />
-
-        {/* Right slot — desktop wallet controls (md and above). */}
+        {/* Right slot — desktop wallet controls (md and above). Fixed 8px gap
+            between the network pill and the wallet pill (#1125); min-w-40
+            keeps the centred-nav symmetry with the logo slot. */}
         <div
-          className="relative hidden w-40 shrink-0 items-center justify-end md:flex"
+          className="relative hidden min-w-40 shrink-0 items-center justify-end gap-2 md:flex"
           data-testid="topbar-wallet-slot"
           data-node-id="1497:94724"
         >
+          {/* Network pill — always-visible current network; opens a switch
+              menu when siblings are configured (issue #1032). */}
+          <NetworkSwitcher />
           {anyConnected ? (
             <>
               {/* Trigger button wrapping the WalletPill */}

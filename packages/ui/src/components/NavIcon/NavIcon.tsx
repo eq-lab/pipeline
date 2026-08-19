@@ -1,11 +1,11 @@
 import React from "react";
 
 /**
- * NavIcon — inline SVG icons for the four top-bar navigation slots.
+ * NavIcon — inline SVG icons for the five top-bar navigation slots.
  * spec: docs/frontend/ui-components.md#navicon
  */
 
-export type NavIconName = "home" | "deposit" | "stats" | "history";
+export type NavIconName = "home" | "deposit" | "stats" | "history" | "overview";
 
 export interface NavIconProps extends React.SVGAttributes<SVGSVGElement> {
   /** Which nav glyph to render. */
@@ -41,6 +41,14 @@ const HISTORY_PATHS = [
   "M12.0659 4C12.48 4.00024 12.8159 4.33594 12.8159 4.75V10.375L16.5161 13.1504C16.8469 13.399 16.9137 13.869 16.6656 14.2002C16.417 14.5312 15.947 14.5978 15.6158 14.3496L11.6158 11.3496C11.4271 11.208 11.3159 10.9859 11.3159 10.75V4.75C11.3159 4.33579 11.6517 4 12.0659 4Z",
 ] as const;
 
+const OVERVIEW_VIEWBOX = "0 0 20 19.9697";
+// nav-overview.svg (pie chart) has three separate path elements
+const OVERVIEW_PATHS = [
+  "M9.25 9.96973C9.25 10.1686 9.32907 10.3593 9.46973 10.5L16.5186 17.5488C14.7678 19.056 12.4914 19.9697 10 19.9697C4.47715 19.9697 0 15.4926 0 9.96973C0 4.69923 4.07754 0.383617 9.25 0V9.96973Z",
+  "M19.0117 5.63184C19.6445 6.94409 20 8.4153 20 9.96973C20 12.4611 19.0863 14.7375 17.5791 16.4883L11.2207 10.1299L19.0117 5.63184Z",
+  "M10.75 0C13.8705 0.231434 16.5912 1.89331 18.2598 4.33398L10.75 8.66992V0Z",
+] as const;
+
 // ---------------------------------------------------------------------------
 // Render helpers
 // ---------------------------------------------------------------------------
@@ -73,6 +81,16 @@ function HistoryPaths() {
   );
 }
 
+function OverviewPaths() {
+  return (
+    <>
+      {OVERVIEW_PATHS.map((d, i) => (
+        <path key={i} d={d} fill="currentColor" />
+      ))}
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Public component
 // ---------------------------------------------------------------------------
@@ -84,6 +102,7 @@ export const NavIcon = React.forwardRef<SVGSVGElement, NavIconProps>(
       deposit: DEPOSIT_VIEWBOX,
       stats: STATS_VIEWBOX,
       history: HISTORY_VIEWBOX,
+      overview: OVERVIEW_VIEWBOX,
     };
 
     const viewBox = viewBoxMap[name];
@@ -104,6 +123,7 @@ export const NavIcon = React.forwardRef<SVGSVGElement, NavIconProps>(
         {name === "deposit" && <DepositPath />}
         {name === "stats" && <StatsPaths />}
         {name === "history" && <HistoryPaths />}
+        {name === "overview" && <OverviewPaths />}
       </svg>
     );
   },

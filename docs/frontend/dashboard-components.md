@@ -374,6 +374,12 @@ Global page header (self-contained, no external props for wallet). Mounted in th
 **Disconnected state** (neither namespace connected): renders a "Connect Wallet" `<Button>` that
 opens `ConnectWalletModal` (Issue #558 — per-wallet selection with EVM / Soroban tabs).
 
+**Wallet slot** (`topbar-wallet-slot`, #1125): `min-w-40 justify-end gap-2` and contains the
+`NetworkSwitcher` pill followed by the wallet pill / Connect button — the network↔wallet gap is
+a fixed 8px instead of varying with the balance width (previously the switcher sat outside the
+fixed `w-40` slot). Desktop-only (`hidden md:flex`); the mobile mount is the `MobileNavMenu`
+Network row.
+
 **Figma references:** frame `1497:94715` (TopBar frame); WalletPill `1498:100168`; account dropdown
 `1506:104728` inside `Header / Connected` (`1497:94752`); logo slot `1497:94716` (fixed 160px wide
 so the centred nav reads symmetrically — Logo intrinsic width 116px). Mobile height: `p-2` (8px)
@@ -387,7 +393,13 @@ totaling 56px tall (8 + 40 + 8), Figma node `1989:9052`; restored to `p-4` (16px
 | `/deposit` (incl. `?direction=withdraw` — direction is a search param, pathname stays `/deposit`) | `"deposit"` (Convert)    |
 | `/stake`                                                                                          | `"stats"` (Earn)         |
 | `/transactions`                                                                                   | `"history"` (Activity)   |
+| `/dashboard`                                                                                      | `"overview"` (Overview)  |
 | other                                                                                             | `"home"` (safe fallback) |
+
+The fifth slot — **Overview** (#1125, Figma node `5915:77655`) — navigates to the Protocol
+Dashboard at `/dashboard` and is separated from Activity by a vertical divider (node
+`5915:77654`, `h-5 w-px` in `--color-pipeline-line`, `aria-hidden`,
+`data-testid="topbar-nav-divider"`).
 
 ### AccountDropdown
 
@@ -432,7 +444,11 @@ Full-screen slide-in nav panel for mobile viewports. Shown when the user taps th
 
 - Logo + close (×) button.
 - Four nav items: Home / Convert / Earn / Activity.
-- Pipeline Overview item (divider-separated).
+- Pipeline Overview item (divider-separated) — navigates to the Protocol Dashboard at
+  `/dashboard` and closes the menu (#1125); no nav row is marked active on `/dashboard`.
+- Network row (`mobile-network-switcher`, #1125): "Network" label + the `NetworkSwitcher`
+  pill (the mobile mount — see wallet-flows.md#network-switcher-cross-deployment-links),
+  between the Pipeline Overview divider block and the wallet section.
 - "Connect Wallet" full-width dark CTA.
 
 **Connected state** (Figma node `1993:6527`):

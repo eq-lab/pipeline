@@ -202,6 +202,11 @@ isolates everything else (a fresh page load, a wallet that must reconnect on the
      button with a chevron that opens its own small popover (`topbar-network-menu`) listing
      "Switch to …" rows; with none it renders as a non-interactive pill. The LP `AccountDropdown`
      keeps its network row too (same behavior, both routes through the confirm flow).
+     Mounts (#1125): on desktop the pill lives **inside** `TopBar`'s wallet slot
+     (`topbar-wallet-slot`, `min-w-40 justify-end gap-2`) so the gap to the wallet pill is a
+     fixed 8px regardless of the balance's width; on mobile it renders as a "Network" row in
+     `MobileNavMenu` (`mobile-network-switcher`) — the component itself carries no breakpoint
+     classes, each mount owns visibility and spacing.
    - Trustee: the account chip's `trustee-network-badge` pill (white-tint for testnet, amber-tint
      for mainnet on the navy sidebar); switch rows live in the `⋯` `AccountMenu` popover above
      "Sign out".
