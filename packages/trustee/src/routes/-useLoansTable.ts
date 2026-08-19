@@ -30,10 +30,11 @@ export const CONCENTRATION_LIMIT_PCT = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** The four status tabs, in Figma order. */
-export type LoanTab = "Active" | "Watchlist" | "Default" | "Closed";
+/** The status tabs, in Figma order — plus the default unfiltered "All" (#1121). */
+export type LoanTab = "All" | "Active" | "Watchlist" | "Default" | "Closed";
 
 export const LOAN_TABS: readonly LoanTab[] = [
+  "All",
   "Active",
   "Watchlist",
   "Default",
@@ -41,12 +42,16 @@ export const LOAN_TABS: readonly LoanTab[] = [
 ] as const;
 
 // Tab → served `status` literals. spec: trustee-flows.md#ccr-classification--tab-mapping.
-const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
+const TAB_STATUSES: Record<Exclude<LoanTab, "All">, readonly string[]> = {
   Active: ["Performing", "Disbursing"],
   Watchlist: ["WatchList", "Past Due", "Matured"],
   Default: ["Default"],
   Closed: ["Closed"],
 };
+
+function tabMatches(tab: LoanTab, status: string): boolean {
+  return tab === "All" || TAB_STATUSES[tab].includes(status);
+}
 
 /** CCR footnote band → determines the CCR cell colour. */
 export type CcrBand = "healthy" | "attention" | "margin-call" | "pre-default";
@@ -282,15 +287,14 @@ export function mapSummary(summary: LoanBookSummary): LoansSummaryView {
 
 function countByStatus(rows: LoanTableRow[]): Record<LoanTab, number> {
   const counts: Record<LoanTab, number> = {
+    All: 0,
     Active: 0,
     Watchlist: 0,
     Default: 0,
     Closed: 0,
   };
   for (const tab of LOAN_TABS) {
-    counts[tab] = rows.filter((r) =>
-      TAB_STATUSES[tab].includes(r.status),
-    ).length;
+    counts[tab] = rows.filter((r) => tabMatches(tab, r.status)).length;
   }
   return counts;
 }
@@ -311,15 +315,14 @@ export function buildLoansView(
 } {
   const allRows = data.loans.map((entry) => mapEntryToRow(entry, nowMs));
   const counts = countByStatus(allRows);
-  const rows = allRows.filter((r) =>
-    TAB_STATUSES[activeTab].includes(r.status),
-  );
+  const rows = allRows.filter((r) => tabMatches(activeTab, r.status));
   return { summary: mapSummary(data.summary), counts, rows };
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 const EMPTY_COUNTS: Record<LoanTab, number> = {
+  All: 0,
   Active: 0,
   Watchlist: 0,
   Default: 0,

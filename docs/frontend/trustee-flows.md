@@ -253,7 +253,9 @@ Every field is read defensively → `—`, never fabricated.
   #931): `MAINTENANCE_MARGIN_BPS = 12_000` (120%), `HEALTHY_MARGIN_BPS = 13_000` (130%),
   `HARD_MARGIN_CALL_BPS = 11_000` (110%). `null` CCR → `null` band (neutral render, no flag);
   staleness/age is handled separately from the band.
-- **Tab → status mapping:** the backend serves `"WatchList"` (capital L); the tab reads
+- **Tab → status mapping:** an unfiltered **All** tab is first and the landing default (#1121) —
+  it lists every loan in the book, and its count is the total row count. The backend serves
+  `"WatchList"` (capital L); the tab reads
   `"Watchlist"` (Figma casing). The served `"Performing"` status displays as **Active** (#1119):
   the **Active** tab holds `"Performing"` plus **`"Disbursing"`** — a backend-derived,
   Performing-family display status (off-ramp not yet complete, #862) — so freshly-drawn loans
