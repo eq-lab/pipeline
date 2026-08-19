@@ -106,7 +106,7 @@ Figma: [node 3283-13463](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pip
 
 - A paragraph of disclaimer text is visible on the left of the footer's bottom row.
 - The text spans three lines (wrapping may vary by viewport):
-  - Line 1: "Pipeline is a financial protocol. This interface is provided for informational purposes only and does not constitute financial advice."
+  - Line 1: "Pipeline is a decentralized on-chain protocol. This interface is provided for informational purposes only and does not constitute financial advice."
   - Line 2: "Past performance is not indicative of future results. Participation involves risk, including possible loss of principal."
   - Line 3: "Always conduct your own due diligence before participating."
 - The text color is muted (`--color-pipeline-ink-muted`, approx. `rgb(56 55 53 / 0.6)`).

@@ -112,9 +112,9 @@ export const Footer = React.forwardRef<HTMLElement, FooterProps>(
             data-node-id="3283:13473"
             data-testid="footer-disclaimer"
           >
-            Pipeline is a financial protocol. This interface is provided for
-            informational purposes only and does not constitute financial
-            advice.
+            Pipeline is a decentralized on-chain protocol. This interface is
+            provided for informational purposes only and does not constitute
+            financial advice.
             <br />
             Past performance is not indicative of future results. Participation
             involves risk, including possible loss of principal.

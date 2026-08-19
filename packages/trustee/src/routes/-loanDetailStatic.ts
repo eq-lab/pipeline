@@ -68,7 +68,7 @@ export const WATCHLIST_CURRENT_STAGE: CurrentStage = {
   title: "Current stage — escalation decision pending",
   tag: "Risk Council · 24h timelock",
   tagTone: "risk",
-  body: "CCR has crossed the maintenance threshold. If the loan is past recovery on the performing path, draft a setDefault proposal.",
+  body: "CCR has crossed the maintenance threshold. If the loan is past recovery on the active path, draft a setDefault proposal.",
   actionLabel: "Open escalation →",
 };
 

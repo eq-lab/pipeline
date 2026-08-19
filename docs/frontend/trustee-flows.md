@@ -238,7 +238,8 @@ Figma details with no backend field are dropped, not invented:
 
 - Spot sub-line: the real 7-day change basis (`spot_change_7d`) only — no `/t` per-tonne unit, no
   "30d" relabel. `formatSpot` renders `$4,500 · −18% 7d`.
-- Stage cell: the served `status` label only — no "· Risk Council" / "· feed stale" qualifier.
+- Stage cell: the served `status` label only (`Performing` displays as **Active**, #1119) — no
+  "· Risk Council" / "· feed stale" qualifier.
 - CCR staleness: the age derived from `ccr_reported_at` only (`1h` / `26h`) — no "feed stale"
   label (its cutoff is not served).
 
@@ -253,9 +254,10 @@ Every field is read defensively → `—`, never fabricated.
   `HARD_MARGIN_CALL_BPS = 11_000` (110%). `null` CCR → `null` band (neutral render, no flag);
   staleness/age is handled separately from the band.
 - **Tab → status mapping:** the backend serves `"WatchList"` (capital L); the tab reads
-  `"Watchlist"` (Figma casing). **Performing** also includes **`"Disbursing"`** — a
-  backend-derived, Performing-family display status (off-ramp not yet complete, #862) — so
-  freshly-drawn loans surface there instead of vanishing from every tab. **Watchlist** groups the
+  `"Watchlist"` (Figma casing). The served `"Performing"` status displays as **Active** (#1119):
+  the **Active** tab holds `"Performing"` plus **`"Disbursing"`** — a backend-derived,
+  Performing-family display status (off-ramp not yet complete, #862) — so freshly-drawn loans
+  surface there instead of vanishing from every tab. **Watchlist** groups the
   at-risk set: WatchList plus past-maturity loans (served `"Past Due"`, legacy `"Matured"`) —
   otherwise a matured loan would match no tab and disappear from the list (#867).
 - **Nearest payment** (#941/#953): `next_payment_timestamp` is the rollover-aware maturity (for
@@ -347,7 +349,7 @@ field, not a derived one.
 
 | on-chain status | chip label | band |
 |---|---|---|
-| `Performing` | Performing | positive |
+| `Performing` | Active (#1119) | positive |
 | `Disbursing` | Disbursing | info (brand) |
 | `Watchlist` / `WatchList` | Watchlist | attention |
 | `Past Due` / `Matured` (legacy) | Matured | attention |
@@ -357,7 +359,7 @@ field, not a derived one.
 
 `Disbursing` (a Performing loan whose outbound disbursement has not reached "Wired") is a
 data-derived divergence that needs movement state not served to this page, so a Performing loan
-simply renders "Performing" — the `Disbursing` case only fires from the explicit backend status.
+simply renders "Active" — the `Disbursing` case only fires from the explicit backend status.
 Past-maturity loans: the backend serves `Past Due`, but the design renders this state as
 **Matured** (chip + dedicated screen + rollover, #866/#867); the legacy `Matured` value maps the
 same.
@@ -370,8 +372,8 @@ off the live state, not sequential stages, so they are never shown as "upcoming"
 healthy Performing loan's only forward step is **Closed**.
 
 The middle **live node** reflects where the loan actually is: while live it takes the current
-status label (`Performing` / `Watchlist` / `Past Due` / `Default`, via `statusToChip`); once
-`Closed` it reads as the completed `Performing` phase (there is no stored prior live status, so a
+status label (`Active` / `Watchlist` / `Matured` / `Default`, via `statusToChip`); once
+`Closed` it reads as the completed `Active` phase (there is no stored prior live status, so a
 specific risk state is never fabricated for the label). Step states:
 
 - `Origination` — done for any loan the loan-book returns (it exists on-chain).

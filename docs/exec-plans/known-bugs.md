@@ -17,6 +17,13 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
+- **Date:** 2026-08-19
+- **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).
+- **Symptom:** `yarn lint` in `packages/trustee` exits non-zero: `@typescript-eslint/no-unused-vars` × 3 — `'_input' is defined but never used`.
+- **Root cause:** Mock callbacks declare an `_input` parameter they never read; the trustee eslint config doesn't set `argsIgnorePattern: "^_"`, so the underscore convention isn't honored.
+- **Workaround:** None needed for CI (found while running the lint gate for #1119, which doesn't touch this file). Fix is either dropping the params or adding `argsIgnorePattern` to the eslint config.
+
 ### BUG-16: `NeedsAttention` silently drops load errors — no error UI at all
 - **Tracked:** #1064
 - **Date:** 2026-08-07

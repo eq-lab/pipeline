@@ -31,10 +31,10 @@ export const CONCENTRATION_LIMIT_PCT = 10;
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** The four status tabs, in Figma order. */
-export type LoanTab = "Performing" | "Watchlist" | "Default" | "Closed";
+export type LoanTab = "Active" | "Watchlist" | "Default" | "Closed";
 
 export const LOAN_TABS: readonly LoanTab[] = [
-  "Performing",
+  "Active",
   "Watchlist",
   "Default",
   "Closed",
@@ -42,7 +42,7 @@ export const LOAN_TABS: readonly LoanTab[] = [
 
 // Tab → served `status` literals. spec: trustee-flows.md#ccr-classification--tab-mapping.
 const TAB_STATUSES: Record<LoanTab, readonly string[]> = {
-  Performing: ["Performing", "Disbursing"],
+  Active: ["Performing", "Disbursing"],
   Watchlist: ["WatchList", "Past Due", "Matured"],
   Default: ["Default"],
   Closed: ["Closed"],
@@ -87,7 +87,7 @@ export interface LoanTableRow {
   ccr: CcrCell | null;
   /** Nearest payment: the next payment's date, or "N days late" when overdue (#941). */
   nearestPayment: NearestPayment;
-  /** Stage = the served status label only (no fabricated suffix). */
+  /** Stage = the served status label (`Performing` displayed as `Active`, #1119). */
   stage: string;
   /** Raw served status, retained for the client-side tab filter/counts. */
   status: string;
@@ -259,7 +259,7 @@ export function mapEntryToRow(
       entry.next_payment_timestamp,
       entry.days_overdue,
     ),
-    stage: safeString(entry.status),
+    stage: entry.status === "Performing" ? "Active" : safeString(entry.status),
     status: entry.status,
   };
 }
@@ -282,7 +282,7 @@ export function mapSummary(summary: LoanBookSummary): LoansSummaryView {
 
 function countByStatus(rows: LoanTableRow[]): Record<LoanTab, number> {
   const counts: Record<LoanTab, number> = {
-    Performing: 0,
+    Active: 0,
     Watchlist: 0,
     Default: 0,
     Closed: 0,
@@ -320,7 +320,7 @@ export function buildLoansView(
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 const EMPTY_COUNTS: Record<LoanTab, number> = {
-  Performing: 0,
+  Active: 0,
   Watchlist: 0,
   Default: 0,
   Closed: 0,

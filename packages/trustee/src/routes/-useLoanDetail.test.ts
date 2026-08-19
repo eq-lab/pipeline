@@ -146,7 +146,7 @@ describe("selectOtherActions (#1092)", () => {
 describe("statusToChip", () => {
   it("maps the raw on-chain status to the display chip + band", () => {
     expect(statusToChip("Performing")).toEqual({
-      label: "Performing",
+      label: "Active",
       band: "positive",
       raw: "Performing",
     });
@@ -204,7 +204,7 @@ describe("buildHero", () => {
   it("builds the identity + mapped chip; meta shows the nearest payment date (#859/#941)", () => {
     const hero = buildHero("4488", makeEntry());
     expect(hero.title).toBe("Helios Metals · Lithium");
-    expect(hero.status).toEqual({ label: "Performing", band: "positive" });
+    expect(hero.status).toEqual({ label: "Active", band: "positive" });
     // Not overdue → the next-payment date (next_payment_timestamp = 30 Jun 2026).
     expect(hero.meta).toBe("Loan #4488 · next payment 30 Jun 2026");
     expect(hero.backLabel).toBe("‹ Loans");
@@ -313,7 +313,7 @@ describe("buildLifecycle", () => {
     expect(buildLifecycle("Performing").map((s) => s.label)).toEqual([
       "Origination",
       "Disbursing",
-      "Performing",
+      "Active",
       "Closed",
     ]);
   });
@@ -322,7 +322,7 @@ describe("buildLifecycle", () => {
     expect(spine("Performing")).toEqual([
       "Origination:done",
       "Disbursing:done",
-      "Performing:active",
+      "Active:active",
       "Closed:pending",
     ]);
   });
@@ -331,7 +331,7 @@ describe("buildLifecycle", () => {
     expect(spine("Disbursing")).toEqual([
       "Origination:done",
       "Disbursing:active",
-      "Performing:pending",
+      "Active:pending",
       "Closed:pending",
     ]);
   });
@@ -368,7 +368,7 @@ describe("buildLifecycle", () => {
     expect(spine("Closed")).toEqual([
       "Origination:done",
       "Disbursing:done",
-      "Performing:done",
+      "Active:done",
       "Closed:active",
     ]);
   });

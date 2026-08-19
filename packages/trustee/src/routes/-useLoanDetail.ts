@@ -216,7 +216,7 @@ export function statusToChip(rawStatus: string): StatusChip {
     case "Disbursing":
       return { label: "Disbursing", band: "info", raw: rawStatus };
     case "Performing":
-      return { label: "Performing", band: "positive", raw: rawStatus };
+      return { label: "Active", band: "positive", raw: rawStatus };
     case "Watchlist":
     case "WatchList":
       return { label: "Watchlist", band: "attention", raw: rawStatus };
@@ -250,7 +250,7 @@ export interface LifecycleStep {
 
 // Meaning column, design assignment §3.2 — short descriptor for the live node.
 const LIVE_STATUS_SUB: Record<string, string> = {
-  Performing: "deployed & current",
+  Active: "deployed & current",
   Watchlist: "elevated risk",
   Matured: "past maturity",
   Default: "council declared",
@@ -266,10 +266,10 @@ export function buildLifecycle(rawStatus: string | undefined): LifecycleStep[] {
   // Live = a non-Disbursing, non-Closed status (Performing / Watchlist / Past Due / Default).
   const isLive = hasStatus && !isClosed && !isDisbursing;
 
-  // The live node adopts the current status while live; a neutral "Performing"
+  // The live node adopts the current status while live; a neutral "Active"
   // phase label before (Disbursing / no status) or after (Closed) — we don't
   // store the prior live status, so we never fabricate a specific risk state.
-  const liveLabel = isLive ? chip!.label : "Performing";
+  const liveLabel = isLive ? chip!.label : "Active";
   const liveSub = isLive
     ? (LIVE_STATUS_SUB[chip!.label] ?? "live")
     : "deployed & current";

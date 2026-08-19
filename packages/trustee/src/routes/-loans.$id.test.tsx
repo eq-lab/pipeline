@@ -114,7 +114,7 @@ function makeResult(
     hero: {
       backLabel: "‹ Loans",
       title: "Helios Metals · Lithium",
-      status: { label: "Performing", band: "positive" },
+      status: { label: "Active", band: "positive" },
       meta: "Loan #4488 · matures 30 Jun 2026",
     },
     lifecycle: [
@@ -131,7 +131,7 @@ function makeResult(
         index: 2,
       },
       {
-        label: "Performing",
+        label: "Active",
         sub: "deployed & current",
         state: "active",
         index: 3,
@@ -231,7 +231,7 @@ describe("Loan detail route — hero (live)", () => {
       screen.getByRole("heading", { name: "Helios Metals · Lithium" }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("loan-detail-status-chip")).toHaveTextContent(
-      "Performing",
+      "Active",
     );
     expect(screen.getByTestId("loan-detail-meta")).toHaveTextContent(
       "Loan #4488 · matures 30 Jun 2026",
@@ -432,7 +432,7 @@ describe("Loan detail route — static action sections", () => {
   it("renders the 4-node spine and NOT risk states as steps (#854)", () => {
     renderRoute();
     const lifecycle = screen.getByTestId("loan-detail-lifecycle");
-    for (const label of ["Origination", "Disbursing", "Performing", "Closed"]) {
+    for (const label of ["Origination", "Disbursing", "Active", "Closed"]) {
       expect(within(lifecycle).getByText(label)).toBeInTheDocument();
     }
     // Risk branch states are not sequential steps for a healthy Performing loan.
@@ -646,7 +646,7 @@ describe("Loan detail route — Disbursing variant (#862)", () => {
     expect(within(card).getByText("Next Step")).toBeInTheDocument();
     // Description references the loan name and the Disbursing → Performing move.
     expect(card).toHaveTextContent(
-      "Mark Helios Metals · Lithium USDC off-ramp complete — this will move the Disbursing status to Performing.",
+      "Mark Helios Metals · Lithium USDC off-ramp complete — this will move the Disbursing status to Active.",
     );
     expect(
       screen.getByTestId("loan-detail-complete-disbursement"),

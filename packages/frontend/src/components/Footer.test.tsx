@@ -83,7 +83,7 @@ describe("Footer — disclaimer and copyright", () => {
     expect(disclaimer).toBeInTheDocument();
     // Check a distinctive substring from the disclaimer copy.
     expect(disclaimer.textContent).toContain(
-      "Pipeline is a financial protocol",
+      "Pipeline is a decentralized on-chain protocol",
     );
     expect(disclaimer.textContent).toContain("due diligence");
   });
