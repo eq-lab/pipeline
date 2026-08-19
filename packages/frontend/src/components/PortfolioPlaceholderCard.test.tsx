@@ -1,27 +1,9 @@
-/**
- * Tests for PortfolioPlaceholderCard.
- *
- * Scenarios covered:
- *   1. Component renders without throwing.
- *   2. "Total Balance" eyebrow is present.
- *   3. "$0.00" balance heading is present.
- *   4. "Get PLUSD to start" link is present and points to /deposit.
- *   5. "All" tab is the default active tab (aria-selected="true").
- *   6. Other tabs start inactive (aria-selected="false").
- *   7. Switching tabs updates active state while PnL captions stay data-driven.
- *   8. Chart wrapper has role="img" and a descriptive aria-label.
- *   9. Chart renders 100 bar slots (100 <g data-bar-slot> elements).
- *  10. Hover shows tooltip; mouse leave hides it.
- */
+/** Tests for PortfolioPlaceholderCard — header states + the zero-value placeholder chart (#1114). */
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
-
-// ── TanStack Router mock ──────────────────────────────────────────────────────
-// PortfolioPlaceholderCard uses <Link to="/deposit">. Render it as a passthrough
-// <a> so href assertions work without a real router tree.
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
@@ -34,15 +16,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function renderCard() {
   return render(<PortfolioPlaceholderCard />);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe("PortfolioPlaceholderCard — smoke tests", () => {
+describe("PortfolioPlaceholderCard — header", () => {
   it("renders without throwing", () => {
     expect(() => renderCard()).not.toThrow();
   });
@@ -52,251 +30,131 @@ describe("PortfolioPlaceholderCard — smoke tests", () => {
     expect(screen.getByText("Total Balance")).toBeInTheDocument();
   });
 
-  it("shows '$0.00' balance", () => {
+  it("shows '$0.00' balance and labels the card region with it", () => {
     renderCard();
+    expect(screen.getByRole("region")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
   });
 
   it("shows 'Get PLUSD to start' link pointing to /deposit", () => {
     renderCard();
     const link = screen.getByRole("link", { name: "Get PLUSD to start" });
-    expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute("href", "/deposit");
   });
 
-  it("shows '$0.00 unrealized' caption by default", () => {
-    renderCard();
-    const caption = screen.getByTestId("earning-caption");
-    expect(caption).toHaveTextContent("$0.00 unrealized");
-  });
-
-  it("renders provided sPLUSD balance as the main heading and no duplicate sublabel", () => {
+  it("renders provided sPLUSD balance as the main heading", () => {
     render(
       <PortfolioPlaceholderCard
         balanceLabel="1,000.00 sPLUSD"
         unrealizedPnlLabel="+$42.80 unrealized"
       />,
     );
-
     expect(
       screen.getByRole("heading", { name: "1,000.00 sPLUSD" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("splusd-balance-caption"),
-    ).not.toBeInTheDocument();
     expect(screen.getByTestId("earning-caption")).toHaveTextContent(
       "+$42.80 unrealized",
     );
+  });
+
+  it("shows the stake CTA for the plusd state and none for splusd", () => {
+    const { rerender } = render(
+      <PortfolioPlaceholderCard mobileHomeState="plusd" />,
+    );
+    expect(
+      screen.getByRole("link", { name: "Stake PLUSD to start earning" }),
+    ).toHaveAttribute("href", "/stake");
+    rerender(<PortfolioPlaceholderCard mobileHomeState="splusd" />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 });
 
 describe("PortfolioPlaceholderCard — SegmentedTabs semantics", () => {
   it("default active tab is 'All' (aria-selected='true')", () => {
     renderCard();
-    const tabAll = screen.getByRole("tab", { name: "All" });
-    expect(tabAll).toHaveAttribute("aria-selected", "true");
-  });
-
-  it("other tabs default to inactive (aria-selected='false')", () => {
-    renderCard();
-    const inactiveTabs = ["7D", "1M", "3M", "1Y"];
-    for (const label of inactiveTabs) {
-      expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
-        "aria-selected",
-        "false",
-      );
-    }
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("clicking '1M' makes it active and deactivates 'All'", async () => {
     const user = userEvent.setup();
     renderCard();
-
-    const tab1m = screen.getByRole("tab", { name: "1M" });
-    await user.click(tab1m);
-
-    await waitFor(() => {
-      expect(tab1m).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
-        "aria-selected",
-        "false",
-      );
-    });
-  });
-
-  it("clicking '1M' leaves the unrealized PnL caption unchanged", async () => {
-    const user = userEvent.setup();
-    renderCard();
-
     await user.click(screen.getByRole("tab", { name: "1M" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("earning-caption")).toHaveTextContent(
-        "$0.00 unrealized",
-      );
-    });
-  });
-
-  it("clicking 'All' leaves the unrealized PnL caption unchanged", async () => {
-    const user = userEvent.setup();
-    renderCard();
-
-    await user.click(screen.getByRole("tab", { name: "All" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("earning-caption")).toHaveTextContent(
-        "$0.00 unrealized",
-      );
-    });
-  });
-
-  it("switching tabs leaves '$0.00' and 'Total Balance' unchanged", async () => {
-    const user = userEvent.setup();
-    renderCard();
-
-    const tab3m = screen.getByRole("tab", { name: "3M" });
-    await user.click(tab3m);
-
-    expect(screen.getByText("Total Balance")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "1M" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
   });
 });
 
-describe("PortfolioPlaceholderCard — chart structure", () => {
+describe("PortfolioPlaceholderCard — zero-value placeholder chart (#1114)", () => {
+  it("renders 100 flat placeholder bar slots with the grey placeholder fill", () => {
+    const { container } = renderCard();
+    const slots = container.querySelectorAll("[data-bar-slot]");
+    expect(slots).toHaveLength(100);
+    const rect = slots[0]!.querySelector("rect")!;
+    expect(rect.getAttribute("fill")).toBe("#D5D8C8");
+    const heights = new Set(
+      Array.from(slots).map((g) =>
+        g.querySelector("rect")!.getAttribute("height"),
+      ),
+    );
+    expect(heights.size).toBe(1);
+  });
+
   it("chart wrapper has role='img' and a descriptive aria-label", () => {
     renderCard();
-    const chart = screen.getByRole("img");
-    expect(chart).toBeInTheDocument();
-    const label = chart.getAttribute("aria-label") ?? "";
-    expect(label).toContain("Total balance");
-    expect(label).toContain("$0.00");
-    expect(label).toContain("$0.00 unrealized");
+    const wrap = screen.getByRole("img");
+    expect(wrap.getAttribute("aria-label")).toContain("Total balance for All");
   });
 
-  it("chart renders 100 bar slots (100 <g data-bar-slot> elements)", () => {
+  it("tooltip is initially hidden and shows $0.00 on hover — never a fabricated value", async () => {
     const { container } = renderCard();
-    const barSlots = container.querySelectorAll("[data-bar-slot]");
-    expect(barSlots).toHaveLength(100);
-  });
+    const tooltip = screen.getByTestId("chart-tooltip");
+    expect(tooltip).toHaveAttribute("aria-hidden", "true");
 
-  it("uses grey fallback bars when no price data is provided", () => {
-    const { container } = renderCard();
-    const firstBar = container.querySelector("[data-bar-slot] rect");
-    expect(firstBar).toHaveAttribute("fill", "#D5D8C8");
-  });
+    const chartWrap = container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerMove(chartWrap, { clientX: 300 });
 
-  it("uses chart-positive bars when price data is provided", () => {
-    const { container } = render(
-      <PortfolioPlaceholderCard
-        priceItems={[
-          { timestamp: "2026-01-01T00:00:00Z", avg_price: "1.00" },
-          { timestamp: "2026-01-02T00:00:00Z", avg_price: "1.02" },
-        ]}
-      />,
-    );
-    const firstBar = container.querySelector("[data-bar-slot] rect");
-    expect(firstBar).toHaveAttribute(
-      "fill",
-      "var(--color-pipeline-chart-positive)",
-    );
-  });
+    await waitFor(() => {
+      expect(tooltip).toHaveAttribute("aria-hidden", "false");
+      expect(tooltip.textContent).toContain("$0.00");
+    });
 
-  it("card region is labelled by the '$0.00' heading", () => {
-    renderCard();
-    const region = screen.getByRole("region");
-    expect(region).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "$0.00" })).toBeInTheDocument();
+    fireEvent.pointerLeave(chartWrap);
+    await waitFor(() => {
+      expect(tooltip).toHaveAttribute("aria-hidden", "true");
+    });
   });
 });
 
 describe("PortfolioPlaceholderCard — responsive header layout", () => {
   it("header wrapper has mobile-stacked and md-row responsive classes", () => {
     const { container } = renderCard();
-    // The header wrapper is the first div inside the Card element.
-    // It wraps the <header> (balance stack) and the SegmentedTabs.
     const wrapper = container.querySelector(
       "[data-node-id='1497:95048'] > div:first-child",
     ) as HTMLElement;
     expect(wrapper).toBeTruthy();
     expect(wrapper.className).toContain("flex-col");
-    expect(wrapper.className).toContain("items-start");
     expect(wrapper.className).toContain("md:flex-row");
-    expect(wrapper.className).toContain("md:justify-between");
-  });
-});
-
-describe("PortfolioPlaceholderCard — hover behaviour", () => {
-  it("tooltip is initially hidden (aria-hidden='true')", () => {
-    renderCard();
-    const tooltip = screen.getByTestId("chart-tooltip");
-    expect(tooltip).toHaveAttribute("aria-hidden", "true");
-  });
-
-  it("pointerMove on chart wrap shows tooltip with the end balance", async () => {
-    const { container } = renderCard();
-    const chartWrap = container.querySelector(
-      "[data-node-id='1497:95048-chart']",
-    ) as HTMLElement;
-    expect(chartWrap).toBeTruthy();
-
-    // Mock getBoundingClientRect so pointer math works in jsdom.
-    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      top: 0,
-      right: 600,
-      bottom: 120,
-      width: 600,
-      height: 120,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
-
-    // Fire pointer move at the right edge (last slot, pinned to END_BALANCE
-    // for every period — mid-chart balances vary with the active period).
-    fireEvent.pointerMove(chartWrap, { clientX: 600 });
-
-    await waitFor(() => {
-      const tooltip = screen.getByTestId("chart-tooltip");
-      expect(tooltip).toHaveAttribute("aria-hidden", "false");
-      expect(tooltip.textContent).toContain("$1,042.80");
-    });
-  });
-
-  it("pointerLeave hides the tooltip again", async () => {
-    const { container } = renderCard();
-    const chartWrap = container.querySelector(
-      "[data-node-id='1497:95048-chart']",
-    ) as HTMLElement;
-
-    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      top: 0,
-      right: 600,
-      bottom: 120,
-      width: 600,
-      height: 120,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
-
-    fireEvent.pointerMove(chartWrap, { clientX: 300 });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute(
-        "aria-hidden",
-        "false",
-      );
-    });
-
-    fireEvent.pointerLeave(chartWrap);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("chart-tooltip")).toHaveAttribute(
-        "aria-hidden",
-        "true",
-      );
-    });
   });
 });

@@ -8,39 +8,27 @@ import {
   formatTime,
   usePortfolioChart,
 } from "./usePortfolioChart";
-import type { StatsPriceItem } from "@/api";
 
-// spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard
-// (chart rendering, hover interaction, data rules, Figma node 1497:95048).
+/**
+ * Total Balance card (Figma node 1497:95048) — real balance/PnL header plus
+ * the design's bar chart rendered as a flat zero-value placeholder until a
+ * per-address balance-history series exists (#1114/#1116).
+ * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
+ */
 
-/** Mobile home balance state — drives CTA copy and connected balance state. */
 export type MobileHomeState = "empty" | "plusd" | "splusd";
 
 export interface PortfolioPlaceholderCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children"
 > {
-  /**
-   * Mobile-only: the connected balance state (empty / plusd / splusd).
-   * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (states A/B/C).
-   */
   mobileHomeState?: MobileHomeState;
-  /**
-   * Formatted balance string shown under "Total Balance". Connected home passes
-   * the active total balance here.
-   */
   balanceLabel?: string;
-  /** Formatted unrealized PnL displayed below the sPLUSD balance. */
   unrealizedPnlLabel?: string;
-  /** Active chart period id. Defaults to "all". */
   activePeriodId?: string;
-  /** Period change callback for tab selection. */
   onActivePeriodChange?: (id: string) => void;
-  /** Price samples from `/v1/stats/prices`; empty/invalid data uses fallback. */
-  priceItems?: StatsPriceItem[];
 }
 
-/** Base heading id prefix — each instance gets a unique suffix from useId(). */
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
 
 const TABS = [
@@ -51,17 +39,12 @@ const TABS = [
   { id: "all", label: "All" },
 ];
 
-/** SVG viewBox dimensions */
 const VB_W = 680;
 const VB_H = 120;
-
-/** Tooltip half-width in px — used for clamping (must match CSS). */
 const TOOLTIP_HALF = 70;
+const PLACEHOLDER_BAR_H = 8;
+const PLACEHOLDER_FILL = "#D5D8C8";
 
-/**
- * Map a slot index to its centre X within the SVG viewBox coordinate system.
- * The viewBox is `VB_W × VB_H`. Each slot occupies `VB_W / N` units.
- */
 function slotCentreX(idx: number): number {
   const slotW = VB_W / N;
   return idx * slotW + slotW / 2;
@@ -78,13 +61,10 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     unrealizedPnlLabel = "$0.00 unrealized",
     activePeriodId,
     onActivePeriodChange,
-    priceItems,
     ...rest
   },
   ref,
 ) {
-  // Use a unique id per instance to avoid duplicate id attributes when both
-  // the mobile and desktop blocks render this card in the same DOM.
   const instanceId = React.useId();
   const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
@@ -93,22 +73,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const activeId = activePeriodId ?? uncontrolledActiveId;
   const setActiveId = onActivePeriodChange ?? setUncontrolledActiveId;
 
-  const chart = usePortfolioChart({
-    activeId,
-    setActiveId,
-    prices: priceItems,
-  });
-  const {
-    period,
-    curve,
-    hoveredIdx,
-    tooltip,
-    onPointerMove,
-    onPointerLeave,
-    hasPriceData,
-  } = chart;
+  const { period, hoveredIdx, tooltip, onPointerMove, onPointerLeave } =
+    usePortfolioChart({ activeId, setActiveId });
 
-  /** Ref to the chart wrapper div for getBoundingClientRect on pointer move. */
   const wrapRef = React.useRef<HTMLDivElement>(null);
 
   const handlePointerMove = React.useCallback(
@@ -119,22 +86,12 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     [onPointerMove],
   );
 
-  /** Tooltip left offset as a percentage of the wrapper width (clamped — see spec). */
-  const tooltipLeftPct =
-    hoveredIdx !== null
-      ? ((slotCentreX(hoveredIdx) / VB_W) * 100).toFixed(2)
-      : "0";
-
-  /** Cursor line X as a percentage of the wrapper width (not clamped). */
   const cursorLeftPct =
     hoveredIdx !== null
       ? ((slotCentreX(hoveredIdx) / VB_W) * 100).toFixed(2)
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
-  const barFill = hasPriceData
-    ? "var(--color-pipeline-chart-positive)"
-    : "#D5D8C8";
 
   const composed = [
     "relative flex flex-col gap-6",
@@ -146,6 +103,9 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     .filter(Boolean)
     .join(" ");
 
+  const barH = (PLACEHOLDER_BAR_H / 100) * VB_H;
+  const y0 = VB_H - barH;
+
   return (
     <Card
       ref={ref}
@@ -156,11 +116,8 @@ export const PortfolioPlaceholderCard = React.forwardRef<
       data-node-id="1497:95048"
       {...rest}
     >
-      {/* spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (mobile/desktop header row layout). */}
       <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
-        {/* Left: Total Balance label + balance display + CTA/caption row */}
         <header className="flex flex-col gap-1">
-          {/* Eyebrow label — Caption token, muted ink */}
           <span
             className={[
               "font-[family-name:var(--font-body)]",
@@ -173,7 +130,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             Total Balance
           </span>
 
-          {/* Balance display — Heading M token, display serif. */}
           <h2
             id={HEADING_ID}
             className={[
@@ -188,7 +144,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             {balanceLabel}
           </h2>
 
-          {/* Unrealized PnL caption from `/v1/pnl`. */}
           <span
             data-testid="earning-caption"
             className={[
@@ -202,7 +157,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
             {unrealizedPnlLabel}
           </span>
 
-          {/* spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (states A/B/C). */}
           {mobileHomeState === "splusd" ? null : (
             <Link
               to={mobileHomeState === "plusd" ? "/stake" : "/deposit"}
@@ -228,7 +182,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           )}
         </header>
 
-        {/* Right: time-range floating tabs — no outer track, compact inline pills */}
         <SegmentedTabs
           tabs={TABS}
           activeId={activeId}
@@ -238,7 +191,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         />
       </div>
 
-      {/* position:relative so the cursor + tooltip overlays (position:absolute) sit correctly. */}
       <div
         ref={wrapRef}
         className="relative flex-1"
@@ -248,26 +200,22 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         onPointerMove={handlePointerMove}
         onPointerLeave={onPointerLeave}
       >
-        {/* Chart SVG — 100 stacked tri-rect bars */}
         <svg
           viewBox={`0 0 ${VB_W} ${VB_H}`}
           preserveAspectRatio="none"
           className="h-full w-full"
           aria-hidden="true"
         >
-          {curve.map((pt, i) => {
+          {Array.from({ length: N }, (_, i) => {
             const cx = slotCentreX(i);
-            const barH = (pt.height / 100) * VB_H;
-            const y0 = VB_H - barH;
             return (
               <g key={i} data-bar-slot={i}>
-                {/* Outer/mid/core rects — glow effect, spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard. */}
                 <rect
                   x={cx - 1.5}
                   y={y0}
                   width={3}
                   height={barH}
-                  fill={barFill}
+                  fill={PLACEHOLDER_FILL}
                   opacity={0.35}
                 />
                 <rect
@@ -275,7 +223,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.4}
                   width={2}
                   height={barH * 0.6}
-                  fill={barFill}
+                  fill={PLACEHOLDER_FILL}
                   opacity={0.65}
                 />
                 <rect
@@ -283,7 +231,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   y={y0 + barH * 0.7}
                   width={1}
                   height={barH * 0.3}
-                  fill={barFill}
+                  fill={PLACEHOLDER_FILL}
                   opacity={1}
                 />
               </g>
@@ -291,7 +239,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           })}
         </svg>
 
-        {/* Vertical cursor line — not clamped (prototype behaviour) */}
         {hoveredIdx !== null && (
           <div
             aria-hidden="true"
@@ -300,14 +247,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           />
         )}
 
-        {/* Tooltip — clamped to chart bounds */}
         <div
           aria-hidden={hoveredIdx === null}
           data-testid="chart-tooltip"
           style={{
             left:
               hoveredIdx !== null
-                ? `clamp(${TOOLTIP_HALF}px, ${tooltipLeftPct}%, calc(100% - ${TOOLTIP_HALF}px))`
+                ? `clamp(${TOOLTIP_HALF}px, ${cursorLeftPct}%, calc(100% - ${TOOLTIP_HALF}px))`
                 : "50%",
             opacity: hoveredIdx !== null ? 1 : 0,
             pointerEvents: "none",

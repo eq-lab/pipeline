@@ -7,76 +7,25 @@ import { useStats, formatApy } from "@/api";
 // spec: docs/frontend/dashboard-components.md#stakecard
 // (composition, states A/B/C, APY sourcing, Figma frame 1497:94556 node 1497:94702).
 
-/** Mobile home balance state — drives the StakeCard variant. */
 type MobileHomeState = "empty" | "plusd" | "splusd";
 
 export interface StakeCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children" | "title"
 > {
-  /**
-   * Click handler for the Stake CTA. Optional so the card can be dropped
-   * into Storybook / preview routes without wiring a staking flow; the
-   * page-level container is expected to supply this in production.
-   */
   onStake?: () => void;
-  /**
-   * Click handler for the "Unstake" text link shown in the `"splusd"` state.
-   * Expected to navigate to the stake page's Unstake tab
-   * (`/stake?tab=unstake`). Falls back to {@link StakeCardProps.onStake} when
-   * omitted.
-   */
   onUnstake?: () => void;
-  /**
-   * When `true`, the Stake CTA is rendered in its disabled state (per Figma
-   * node `1497:95069`). Pass `true` when the connected wallet's PLUSD balance
-   * is zero so the button cannot initiate a stake flow with no tokens.
-   */
   stakeDisabled?: boolean;
-  /**
-   * Connected balance state (empty/plusd/splusd). `undefined` preserves the
-   * marketing CTA appearance. spec: docs/frontend/dashboard-components.md#stakecard (states A/B/C).
-   */
   mobileHomeState?: MobileHomeState;
-  /**
-   * sPLUSD share balance (raw bigint at `splusdDecimals` scale). Displayed as
-   * the top number ("shares") in the `"splusd"` state.
-   */
   mobileSplusdShares?: bigint;
-  /**
-   * sPLUSD shares converted to PLUSD-equivalent (raw bigint at `splusdDecimals`
-   * scale). Displayed as the sub-line ("X.XX sPLUSD") in the `"splusd"` state.
-   */
   mobileSplusdInPlusd?: bigint;
-  /**
-   * Preformatted USD value of the staked position (e.g. `"$1,000.00"`). When
-   * provided, it is appended to the `"splusd"` sub-line as `· $X.XX` (Figma
-   * node `1497:95226`). Omitted from the sub-line when `undefined`.
-   */
   splusdUsdValue?: string;
-  /**
-   * Decimal precision of `mobileSplusdShares` and `mobileSplusdInPlusd`.
-   * Defaults to `18` (EVM). Pass `7` for Stellar SAC balances to avoid a
-   * ~1e11× scale error when formatting. (#688)
-   */
   splusdDecimals?: number;
-  /**
-   * Interior padding forwarded to the `Card` primitive. Defaults to `"lg"`
-   * (24px). Set to `"sm"` (8px) on mobile per Figma frame `1989:8292`.
-   */
   padding?: CardPadding;
 }
 
-/** Base heading id prefix — each instance gets a unique suffix from useId(). */
 const HEADING_ID_BASE = "stake-card-title";
 
-/**
- * Format a bigint to a locale number string (e.g. "1,000.00").
- *
- * @param value    - Raw bigint balance.
- * @param decimals - Decimal precision of `value`. Defaults to `18` (EVM).
- *                   Pass `7` for Stellar SAC balances (#688).
- */
 function formatBigintNumber(value: bigint | undefined, decimals = 18): string {
   if (value === undefined) return "0.00";
   const asFloat = parseFloat(formatUnits(value, decimals));
@@ -102,13 +51,15 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
     },
     ref,
   ) {
-    // Use a unique id per instance to avoid duplicate id attributes when both
-    // the mobile and desktop blocks render this card in the same DOM.
     const instanceId = React.useId();
     const HEADING_ID = `${HEADING_ID_BASE}-${instanceId}`;
 
     const { data: statsData } = useStats();
     const apyLabel = `Earn ${formatApy(statsData?.vaults[0]?.apy)} p.a.`;
+
+    const isStakeCtaDisabled =
+      Boolean(stakeDisabled) ||
+      (mobileHomeState !== undefined && mobileHomeState === "empty");
 
     const composed = [
       "flex flex-col items-end justify-between",
@@ -120,7 +71,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
       .filter(Boolean)
       .join(" ");
 
-    // State C: "Staked PLUSD" display with shares and PLUSD-equivalent.
     if (mobileHomeState === "splusd") {
       const sharesFormatted = formatBigintNumber(
         mobileSplusdShares,
@@ -141,7 +91,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           data-node-id="1497:94702"
           {...rest}
         >
-          {/* Staked PLUSD header */}
           <header
             className="flex w-full flex-col items-start gap-1 self-start"
             data-node-id="1497:94703"
@@ -159,7 +108,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             >
               Staked PLUSD
             </p>
-            {/* Top number: sPLUSD shares */}
             <p
               className={[
                 "font-[family-name:var(--font-display)]",
@@ -175,7 +123,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             >
               {sharesFormatted}
             </p>
-            {/* spec: docs/frontend/dashboard-components.md#stakecard (sub-line, Figma nodes 1497:95225 / 1497:95226). */}
             <div
               className="flex w-full items-center gap-1"
               data-testid="splusd-in-plusd"
@@ -202,7 +149,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
             </div>
           </header>
 
-          {/* spec: docs/frontend/dashboard-components.md#stakecard (bottom section, Figma node 1497:95228). */}
           <div
             className="flex w-full items-end justify-between"
             data-testid="home-stake-actions"
@@ -251,8 +197,6 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
         data-node-id="1497:94702"
         {...rest}
       >
-        {/* The Card uses `items-end` for the CTA, so we restore left alignment
-            locally with `self-start` + `w-full` on this header block. */}
         <header
           className="flex w-full flex-col items-start gap-1 self-start"
           data-node-id="1497:94703"
@@ -303,23 +247,16 @@ export const StakeCard = React.forwardRef<HTMLDivElement, StakeCardProps>(
           </p>
         </header>
 
-        {/* The parent flex column uses `items-end`, so the circular button
-            naturally anchors to the right edge. States: see spec. */}
         <Button
           variant="circular-blue"
           onClick={onStake}
-          disabled={
-            stakeDisabled ||
-            (mobileHomeState !== undefined && mobileHomeState === "empty")
-          }
-          aria-label={
-            mobileHomeState === "empty" ? "Nothing to Stake" : "Stake PLUSD"
-          }
+          disabled={isStakeCtaDisabled}
+          aria-label={isStakeCtaDisabled ? "Nothing to Stake" : "Stake PLUSD"}
           className="size-[88px] md:size-32"
           data-node-id="1497:94713"
           data-testid="home-stake-button"
         >
-          {mobileHomeState === "empty" ? "Nothing to Stake" : "Stake"}
+          {isStakeCtaDisabled ? "Nothing to Stake" : "Stake"}
         </Button>
       </Card>
     );

@@ -1,177 +1,35 @@
-// spec: docs/frontend/dashboard-components.md#useportfoliochart (responsibilities, curve-generation algorithm).
-
+/**
+ * Zero-value placeholder chart state for PortfolioPlaceholderCard (#1114):
+ * period tabs, per-slot timestamps over the selected window, and hover state.
+ * Every balance is 0 until a per-address history series exists (#1116) — no
+ * synthetic curve is generated.
+ * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
+ */
 import { useCallback, useRef, useState } from "react";
-import type { StatsPriceItem } from "@/api";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-/** Number of bar slots rendered by the chart. */
 export const N = 100;
-
-/** Maximum balance value used for height normalisation. */
-const END_BALANCE = 1042.8;
-
-/** Seed value for the pseudo-random increment pool (prototype parity). */
-const SEED = 42;
-
-// ── Period map ────────────────────────────────────────────────────────────────
 
 export type FormatMode = "datetime" | "date" | "month";
 
 export interface PeriodConfig {
   days: number;
-  earning: number;
   fmt: FormatMode;
 }
 
 export const PERIODS: Record<string, PeriodConfig> = {
-  "7d": { days: 7, earning: 42.8, fmt: "datetime" },
-  "1m": { days: 30, earning: 92.8, fmt: "date" },
-  "3m": { days: 90, earning: 192.8, fmt: "date" },
-  "1y": { days: 365, earning: 542.8, fmt: "month" },
-  all: { days: 730, earning: 842.8, fmt: "month" },
+  "7d": { days: 7, fmt: "datetime" },
+  "1m": { days: 30, fmt: "date" },
+  "3m": { days: 90, fmt: "date" },
+  "1y": { days: 365, fmt: "month" },
+  all: { days: 730, fmt: "month" },
 };
 
 export const DEFAULT_PERIOD_ID = "all";
 
-/** Default period used as a fallback when an unknown id is requested. */
-const DEFAULT_PERIOD: PeriodConfig = {
-  days: PERIODS[DEFAULT_PERIOD_ID]!.days,
-  earning: PERIODS[DEFAULT_PERIOD_ID]!.earning,
-  fmt: PERIODS[DEFAULT_PERIOD_ID]!.fmt,
-};
-
-/** Safely look up a period, falling back to DEFAULT_PERIOD. */
 export function getPeriod(id: string): PeriodConfig {
-  return PERIODS[id] ?? DEFAULT_PERIOD;
+  return PERIODS[id] ?? PERIODS[DEFAULT_PERIOD_ID]!;
 }
 
-// ── Curve types ───────────────────────────────────────────────────────────────
-
-export interface CurvePoint {
-  balance: number;
-  /** height as a percentage (0–100) of END_BALANCE */
-  height: number;
-  /** Unix timestamp (ms) for this slot */
-  timestamp: number;
-}
-
-// ── Pure helpers (exported for unit tests) ────────────────────────────────────
-
-/**
- * Seeded deterministic pseudo-random number generator (LCG, prototype parity).
- * Returns a sequence of floats in [0, 1).
- */
-function makeRng(seed: number) {
-  let s = seed;
-  return function next(): number {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    // Unsigned right shift to keep positive, then normalise to [0,1)
-    return ((s >>> 0) / 0x100000000) * 0.9 + 0.1; // skew away from 0
-  };
-}
-
-/**
- * Generate a deterministic monotonic-growth balance curve for the given period.
- *
- * @param periodId - one of the PERIODS keys
- * @param now      - anchor timestamp in ms (defaults to Date.now())
- * @returns        - array of N CurvePoints, monotonically non-decreasing in balance
- */
-export function generateCurve(
-  periodId: string,
-  now: number = Date.now(),
-): CurvePoint[] {
-  const period = getPeriod(periodId);
-  const { days, earning } = period;
-
-  const startBalance = END_BALANCE - earning;
-  const rng = makeRng(SEED);
-
-  // Draw N raw increments, all positive
-  const raw: number[] = [];
-  for (let i = 0; i < N; i++) {
-    raw.push(rng());
-  }
-
-  // Normalise so increments sum to total earning
-  const rawSum = raw.reduce((a, b) => a + b, 0);
-  const increments = raw.map((v) => (v / rawSum) * earning);
-
-  // Build cumulative balance array (monotonically non-decreasing)
-  const balances: number[] = [];
-  let running = startBalance;
-  for (let i = 0; i < N; i++) {
-    running += increments[i] ?? 0;
-    balances.push(Math.round(running * 100) / 100);
-  }
-
-  // Ensure last slot is exactly END_BALANCE
-  balances[N - 1] = END_BALANCE;
-
-  // Timestamps: evenly spaced over the period, ending at `now`
-  const periodMs = days * 24 * 60 * 60 * 1000;
-  const stepMs = periodMs / (N - 1);
-
-  return balances.map((balance, i) => ({
-    balance,
-    height: (balance / END_BALANCE) * 100,
-    timestamp: now - periodMs + i * stepMs,
-  }));
-}
-
-function parsePricePoint(point: StatsPriceItem): CurvePoint | null {
-  const balance = Number(point.avg_price);
-  const timestamp = new Date(point.timestamp).getTime();
-  if (!Number.isFinite(balance) || balance <= 0) return null;
-  if (!Number.isFinite(timestamp)) return null;
-  return {
-    balance,
-    height: 0,
-    timestamp,
-  };
-}
-
-function pickPoint(points: CurvePoint[], index: number): CurvePoint {
-  if (points.length === 1) return points[0]!;
-  const sourceIndex = Math.round((index / (N - 1)) * (points.length - 1));
-  return points[Math.min(points.length - 1, sourceIndex)]!;
-}
-
-/**
- * Converts API share-price samples into the 100-slot chart shape.
- *
- * Returns `null` when the API response is empty or invalid so callers can keep
- * the synthetic placeholder curve.
- */
-export function pricesToCurve(
-  prices: StatsPriceItem[] | undefined,
-): CurvePoint[] | null {
-  const points = (prices ?? [])
-    .map(parsePricePoint)
-    .filter((point): point is CurvePoint => point !== null)
-    .sort((a, b) => a.timestamp - b.timestamp);
-
-  if (points.length === 0) return null;
-
-  const maxBalance = Math.max(...points.map((point) => point.balance));
-  if (!Number.isFinite(maxBalance) || maxBalance <= 0) return null;
-
-  return Array.from({ length: N }, (_, index) => {
-    const source = pickPoint(points, index);
-    return {
-      balance: source.balance,
-      height: Math.max(2, (source.balance / maxBalance) * 100),
-      timestamp: source.timestamp,
-    };
-  });
-}
-
-/**
- * Format a monetary value as US dollars.
- *
- * @example formatMoney(1042.8) → "$1,042.80"
- */
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -196,13 +54,6 @@ const MONTH_NAMES = [
   "December",
 ];
 
-/**
- * Format a timestamp for the tooltip.
- *
- * - "datetime" → "January 1, 14:30"
- * - "date"     → "January 1, 2025"
- * - "month"    → "January 2025"
- */
 export function formatTime(ts: number, fmt: FormatMode): string {
   const d = new Date(ts);
   const month = MONTH_NAMES[d.getMonth()];
@@ -221,7 +72,12 @@ export function formatTime(ts: number, fmt: FormatMode): string {
   }
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+export function slotTimestamps(periodId: string, now: number): number[] {
+  const { days } = getPeriod(periodId);
+  const periodMs = days * 24 * 60 * 60 * 1000;
+  const stepMs = periodMs / (N - 1);
+  return Array.from({ length: N }, (_, i) => now - periodMs + i * stepMs);
+}
 
 export interface TooltipInfo {
   balance: number;
@@ -229,69 +85,30 @@ export interface TooltipInfo {
 }
 
 export interface PortfolioChartState {
-  /** Currently active period id */
   activeId: string;
-  /** Switch period */
   setActiveId: (id: string) => void;
-  /** Period config for the active period */
   period: PeriodConfig;
-  /** Pre-computed curve for the active period */
-  curve: CurvePoint[];
-  /** Hovered slot index, or null when not hovering */
+  timestamps: number[];
   hoveredIdx: number | null;
-  /** Tooltip data for the hovered slot, or null */
   tooltip: TooltipInfo | null;
-  /** Pointer-move handler — call with the event and the wrap element's bounding rect */
   onPointerMove: (clientX: number, rect: DOMRect) => void;
-  /** Pointer-leave handler */
   onPointerLeave: () => void;
-  /** Earning amount for the active period */
-  earning: number;
-  /** True when the curve is backed by `/v1/stats/prices` data. */
-  hasPriceData: boolean;
 }
 
-export interface UsePortfolioChartOptions {
-  activeId?: string;
-  setActiveId?: (id: string) => void;
-  prices?: StatsPriceItem[];
-}
-
-export function usePortfolioChart({
-  activeId: controlledActiveId,
-  setActiveId: controlledSetActiveId,
-  prices,
-}: UsePortfolioChartOptions = {}): PortfolioChartState {
-  const [uncontrolledActiveId, setUncontrolledActiveId] =
-    useState(DEFAULT_PERIOD_ID);
+export function usePortfolioChart(params: {
+  activeId: string;
+  setActiveId: (id: string) => void;
+}): PortfolioChartState {
+  const { activeId, setActiveId } = params;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const activeId = controlledActiveId ?? uncontrolledActiveId;
-  const setActiveId = controlledSetActiveId ?? setUncontrolledActiveId;
-
-  // Stable anchor time — generated once per mount so the chart doesn't
-  // re-render with a different curve on every hover event.
   const nowRef = useRef<number>(Date.now());
 
-  // Recompute the curve only when the period changes (not on hover).
-  // We use a ref + derived value pattern to keep it cheap.
-  const curveRef = useRef<{ id: string; curve: CurvePoint[] } | null>(null);
-  const priceCurve = pricesToCurve(prices);
-
-  if (curveRef.current === null || curveRef.current.id !== activeId) {
-    curveRef.current = {
-      id: activeId,
-      curve: generateCurve(activeId, nowRef.current),
-    };
-  }
-  const curve = priceCurve ?? curveRef.current.curve;
-
-  const period = getPeriod(activeId);
+  const timestamps = slotTimestamps(activeId, nowRef.current);
 
   const onPointerMove = useCallback((clientX: number, rect: DOMRect) => {
     const x = clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, x / rect.width));
-    const idx = Math.min(N - 1, Math.floor(fraction * N));
-    setHoveredIdx(idx);
+    setHoveredIdx(Math.min(N - 1, Math.floor(fraction * N)));
   }, []);
 
   const onPointerLeave = useCallback(() => {
@@ -299,23 +116,18 @@ export function usePortfolioChart({
   }, []);
 
   const tooltip: TooltipInfo | null =
-    hoveredIdx !== null && curve[hoveredIdx] != null
-      ? {
-          balance: curve[hoveredIdx]!.balance,
-          timestamp: curve[hoveredIdx]!.timestamp,
-        }
+    hoveredIdx !== null && timestamps[hoveredIdx] != null
+      ? { balance: 0, timestamp: timestamps[hoveredIdx]! }
       : null;
 
   return {
     activeId,
     setActiveId,
-    period,
-    curve,
+    period: getPeriod(activeId),
+    timestamps,
     hoveredIdx,
     tooltip,
     onPointerMove,
     onPointerLeave,
-    earning: period.earning,
-    hasPriceData: priceCurve !== null,
   };
 }
