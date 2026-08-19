@@ -182,11 +182,18 @@ Reuse: page-level glue around `@pipeline/ui` primitives.
 
 Connected-state replacement for `ConnectWalletPromoCard`. Renders in the top-left slot of the home
 dashboard when `isConnected === true` (Figma node `1497:95048`). The balance and PnL labels are
-supplied by the home route. Chart bars use `/v1/stats/prices` data when available and fall back to
-a synthetic placeholder curve when the endpoint has no data.
+supplied by the home route.
 
-**Header row:** mobile stacks balance-then-tabs (both left-aligned); `md+` restores a row with tabs
-top-right.
+**No chart is rendered (#1114).** The card previously drew a synthetic seeded placeholder curve
+(or, when `/v1/stats/prices` served data, the share-price series) labelled as the user's balance —
+both are wrong data for a "Total Balance" graph, and no per-address balance-history endpoint
+exists. Per the never-fabricate rule the chart region now shows a muted empty note ("Balance
+history will appear here once it's tracked.", `data-testid="balance-history-empty"`), and the
+period tabs, hover tooltip, and `usePortfolioChart` hook were removed with it. The Figma frame's
+chart re-enables once a backend per-address balance-history series lands (tracked separately —
+see #1114).
+
+**Header row:** mobile stacks the balance block; `md+` keeps the row layout.
 
 **States A/B/C** (mobile-only CTA under the balance, via `mobileHomeState`):
 
@@ -197,30 +204,10 @@ top-right.
 | `"splusd"` (C) | No link — the PnL caption is sufficient context |
 | `undefined` (desktop) | "Get PLUSD to start" (same as State A) |
 
-**Chart rendering:**
-- 100 bar slots. Each slot has 3 nested rectangles (widths 3/2/1 px in SVG-coordinate terms,
-  centred on the slot) at heights 30%/60%/100% of the slot's balance height, giving a "soft glow"
-  stacked appearance.
-- Bar fill: `--color-pipeline-chart-positive` (`#2D7B1F`) for real price data, `#D5D8C8` for the
-  synthetic fallback.
-- Fallback curve is deterministic per period (seeded LCG, see `usePortfolioChart`). Heights are
-  monotonically non-decreasing and anchored to `Date.now()` at mount time.
+**Accessibility:** the card region is labelled by the balance heading.
 
-**Hover interaction:**
-- Pointer move over the chart wrapper snaps to the nearest slot index.
-- A vertical cursor line is drawn at the slot's X position — **not** clamped (prototype behaviour
-  verbatim).
-- A tooltip floats above the cursor showing balance + period-appropriate timestamp, clamped
-  horizontally to stay inside the chart bounds (half-width = 70px).
-- Mouse only — touch support deferred (logged in tech-debt-tracker.md).
-
-**Accessibility:** the chart wrap uses `role="img"` + a descriptive `aria-label` (period +
-unrealized PnL); individual bar `<rect>` elements are decorative; the card region is labelled by
-the balance heading.
-
-**Data rule:** chart `priceItems` come from `/v1/stats/prices`; empty/invalid price data keeps the
-fallback curve visible. Unrealized PnL caption is supplied by `/v1/pnl`, defaulting to `$0.00
-unrealized`.
+**Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
+`$0.00 unrealized`) are the only data on the card — both real, neither derived client-side.
 
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
@@ -366,22 +353,6 @@ otherwise it falls back to the bare body background.
 Links: all five (Docs / White Paper / GitHub / X (Twitter) / Telegram) are placeholder stubs
 (`href="#"`, `aria-disabled="true"`) per resolved Open Question 1 (Issue #746), pending real URL
 decisions — see TD-29 in tech-debt-tracker.md.
-
-### usePortfolioChart
-
-
-Co-located hook for `PortfolioPlaceholderCard`. Owns: the active time-range period (7d / 1m / 3m /
-1y / all); the price-history curve from `/v1/stats/prices` when available; a deterministic
-balance-history curve generated per period as a fallback; and hover state (nearest slot index,
-tooltip content). The hook does not fetch by itself — callers pass optional price samples from
-`/v1/stats/prices`; when samples are absent or invalid, `generateCurve` keeps the placeholder chart
-visible.
-
-**Fallback algorithm:** mirrors the prototype in `docs.local/stacked_bars_natural_monotonic_growth.html`.
-Given `N = 100` slots and `startBalance = endBalance − period.earning`, a random-looking but
-deterministic non-decreasing sequence is produced by drawing increments from a seeded pseudo-random
-pool (LCG) and normalising them to sum to the total earning. Heights are the balances normalised to
-a 0–100 percentage of the final (maximum) balance.
 
 ## Navigation & wallet UI
 
@@ -1163,7 +1134,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
 
-**Top-left card branching:** connection state is derived from the *active wallet view namespace* (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). Chart history remains a placeholder pending further wiring.
+**Top-left card branching:** connection state is derived from the *active wallet view namespace* (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The card renders no chart until a per-address balance-history series exists (#1114).
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 

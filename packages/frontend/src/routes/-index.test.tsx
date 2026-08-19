@@ -462,10 +462,9 @@ describe("Home page — connected state (mock)", () => {
   });
 });
 
-describe("Home page — SegmentedTabs default + click semantics", () => {
+describe("Home page — Total Balance card empty chart state (#1114)", () => {
   beforeEach(() => {
     localStorage.clear();
-    mockOpen.mockClear();
     localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
     localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
   });
@@ -474,53 +473,15 @@ describe("Home page — SegmentedTabs default + click semantics", () => {
     localStorage.clear();
   });
 
-  it("default active tab is 'All'", async () => {
-    // Both mobile and desktop blocks render PortfolioPlaceholderCard in
-    // the connected state; check the first "All" tab found.
+  it("renders no period tabs and shows the balance-history empty note", async () => {
     renderHome();
     await waitFor(() => {
-      const tabs = screen.getAllByRole("tab", { name: "All" });
-      expect(tabs.length).toBeGreaterThanOrEqual(1);
-      expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getAllByTestId("balance-history-empty").length,
+      ).toBeGreaterThanOrEqual(1);
     });
-  });
-
-  it("other tabs default to inactive", async () => {
-    renderHome();
-    await waitFor(() => {
-      const tabs1m = screen.getAllByRole("tab", { name: "1M" });
-      expect(tabs1m.length).toBeGreaterThanOrEqual(1);
-      expect(tabs1m[0]).toHaveAttribute("aria-selected", "false");
-    });
-  });
-
-  it("clicking '1M' makes it the active tab and deactivates 'All'", async () => {
-    const user = userEvent.setup();
-    renderHome();
-
-    // Click the first "1M" tab found.
-    const tabs1m = await screen.findAllByRole("tab", { name: "1M" });
-    await user.click(tabs1m[0]!);
-
-    await waitFor(() => {
-      // At least one "1M" tab should now be active.
-      const active1mTabs = screen.getAllByRole("tab", { name: "1M" });
-      expect(active1mTabs[0]).toHaveAttribute("aria-selected", "true");
-      // The corresponding "All" tab (in the same tablist) should be inactive.
-      const tabsAll = screen.getAllByRole("tab", { name: "All" });
-      expect(tabsAll[0]).toHaveAttribute("aria-selected", "false");
-    });
-  });
-
-  it("switching tabs does not call useAppKit().open (no navigation triggered)", async () => {
-    const user = userEvent.setup();
-    renderHome();
-
-    const tabs3m = await screen.findAllByRole("tab", { name: "3M" });
-    await user.click(tabs3m[0]!);
-
-    // open() was not called (tab switch is purely visual, no wallet action)
-    expect(mockOpen).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chart-tooltip")).not.toBeInTheDocument();
   });
 });
 
