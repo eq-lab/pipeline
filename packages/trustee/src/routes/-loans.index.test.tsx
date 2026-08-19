@@ -138,7 +138,7 @@ describe("Loans list route (ready)", () => {
 
   it("navigates to /loans/$id with the loan_id when a row is clicked", () => {
     renderRoute();
-    fireEvent.click(screen.getByTestId("loans-row"));
+    fireEvent.click(screen.getAllByTestId("loans-row")[0]!);
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id",
       params: { id: "4488" },
@@ -147,7 +147,7 @@ describe("Loans list route (ready)", () => {
 
   it("navigates on keyboard activation (Enter)", () => {
     renderRoute();
-    fireEvent.keyDown(screen.getByTestId("loans-row"), { key: "Enter" });
+    fireEvent.keyDown(screen.getAllByTestId("loans-row")[0]!, { key: "Enter" });
     expect(mockNavigate).toHaveBeenCalledWith({
       to: "/loans/$id",
       params: { id: "4488" },
@@ -168,6 +168,9 @@ describe("Loans list route (ready)", () => {
   it("renders the tab-bar with per-status counts (Default/Closed empty)", () => {
     renderRoute();
     expect(
+      within(screen.getByTestId("loans-tab-All")).getByText("2"),
+    ).toBeInTheDocument();
+    expect(
       within(screen.getByTestId("loans-tab-Active")).getByText("1"),
     ).toBeInTheDocument();
     expect(
@@ -181,8 +184,16 @@ describe("Loans list route (ready)", () => {
     ).toBeInTheDocument();
   });
 
+  it("lands on the All tab showing every loan (#1121)", () => {
+    renderRoute();
+    expect(screen.getAllByTestId("loans-row")).toHaveLength(2);
+    expect(screen.getByText("Delta Commodities")).toBeInTheDocument();
+    expect(screen.getByText("Sahel Cocoa")).toBeInTheDocument();
+  });
+
   it("shows the active (Performing) row with a margin-call orange CCR (114%)", () => {
     renderRoute();
+    fireEvent.click(screen.getByTestId("loans-tab-Active"));
     const rows = screen.getAllByTestId("loans-row");
     expect(rows).toHaveLength(1);
     expect(screen.getByText("Delta Commodities")).toBeInTheDocument();
@@ -260,7 +271,7 @@ describe("Loans list route (empty book)", () => {
     renderRoute();
     expect(screen.getByText("$96K")).toBeInTheDocument();
     expect(screen.getByTestId("loans-empty")).toHaveTextContent(
-      "No active loans.",
+      "No loans.",
     );
   });
 });

@@ -316,11 +316,17 @@ describe("buildLoansView", () => {
   it("counts each status; Default/Closed are 0 (backend serves active-only, OQ2)", () => {
     const { counts } = buildLoansView(data, "Active", NOW_MS);
     expect(counts).toEqual({
+      All: 3,
       Active: 2,
       Watchlist: 1,
       Default: 0,
       Closed: 0,
     });
+  });
+
+  it("the All tab is unfiltered — every loan, in book order (#1121)", () => {
+    const { rows } = buildLoansView(data, "All", NOW_MS);
+    expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Gamma"]);
   });
 
   it("filters rows to the Active tab", () => {

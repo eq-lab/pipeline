@@ -54,6 +54,7 @@ const BODY_CELL_CLASS =
 
 /** Per-tab empty-state copy (resolved Open Question 2 for Default/Closed). */
 const EMPTY_TAB_MESSAGE: Record<LoanTab, string> = {
+  All: "No loans.",
   Active: "No active loans.",
   Watchlist: "No watchlist loans.",
   Default: "No defaulted loans.",
@@ -432,7 +433,7 @@ function CcrFootnote() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 function LoansIndex() {
-  const [activeTab, setActiveTab] = useState<LoanTab>("Active");
+  const [activeTab, setActiveTab] = useState<LoanTab>("All");
   const navigate = useNavigate();
   const { state, errorMessage, errorDetails, summary, counts, rows } =
     useLoansTable(activeTab);
