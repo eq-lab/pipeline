@@ -15,15 +15,14 @@ import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
 // spec: docs/frontend/dashboard-components.md#transactions-route
 // (responsive layout, empty-state behavior, active-chain gating, Figma refs).
 
-/** Ordered tab definitions for the filter bar — "All" tab is intentionally absent. */
 const TABS = [
+  { id: "all", label: "All" },
   { id: "buy", label: "Buy" },
   { id: "sell", label: "Sell" },
   { id: "stake", label: "Stake" },
   { id: "unstake", label: "Unstake" },
 ];
 
-/** Maps each request type to its tab id. */
 const TYPE_TO_TAB: Record<RequestType, string> = {
   Deposit: "buy",
   Withdraw: "sell",
@@ -32,20 +31,19 @@ const TYPE_TO_TAB: Record<RequestType, string> = {
 };
 
 function Transactions() {
-  const [activeTab, setActiveTab] = useState("buy");
+  const [activeTab, setActiveTab] = useState("all");
   const { data, isLoading, error, refetch } = useRequests();
-  // Active-chain gating (Issue #644): mirror useRequests' chain-selection logic.
-  // Tech-debt: this derivation is duplicated in useRequests and RecentActivityCard;
-  // extract to a shared hook in a follow-up (see tech-debt-tracker.md).
   const { kind } = useWalletView();
   const { isConnected: isEvmConnected } = useEvmWallet();
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
   const items = data?.requests ?? [];
-  const filtered = items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
+  const filtered =
+    activeTab === "all"
+      ? items
+      : items.filter((r) => TYPE_TO_TAB[r.type] === activeTab);
 
-  /** True whenever the visible row count is zero (disconnected, wallet-wide empty, or tab-filter empty). */
   const shouldRenderEmpty =
     !isLoading && !error && (!isConnected || filtered.length === 0);
 
@@ -54,15 +52,12 @@ function Transactions() {
       data-testid="transactions-page-root"
       className="min-h-screen bg-[var(--color-pipeline-paper)] text-[color:var(--color-pipeline-ink)]"
     >
-      {/* Centred content column: max-w-[480px], px-2 mobile side margins (8 px), py-8 vertical padding */}
       <main
         data-testid="transactions-main"
         className="mx-auto flex w-full max-w-[480px] flex-col gap-6 px-2 py-8"
       >
-        {/* Activity header: clock icon + "Activity" heading */}
         <ActivityHeader data-testid="transactions-activity-header" />
 
-        {/* Segmented filter bar */}
         <SegmentedTabs
           data-testid="transactions-filter-tabs"
           tabs={TABS}
@@ -70,7 +65,6 @@ function Transactions() {
           onSelect={setActiveTab}
         />
 
-        {/* Activity rows */}
         <div
           data-testid="transactions-rows-container"
           className="flex flex-col"
