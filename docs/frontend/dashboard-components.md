@@ -1252,7 +1252,7 @@ Activity page wired to `GET /v1/requests`.
 - Mobile (< 768px, Figma node `1993-9592`, 402×874): 8px side margins (`px-2`); `ActivityHeader` shows a left-aligned heading with no arrow-clock icon.
 - Desktop (≥ 768px, Figma node `1497-94912`): centred content column capped at `max-w-[480px]`; `ActivityHeader` shows a centred icon + heading.
 
-**Visual structure, top → bottom:** centred content column (`max-w-[480px]`, `px-2 py-8` page padding) → `ActivityHeader` → `SegmentedTabs` (Buy / Sell / Stake / Unstake — the "All" tab has been removed; "Buy" is the default; selecting a tab filters the in-memory array client-side with no re-fetch) → activity rows from `useRequests()`, filtered by the active tab.
+**Visual structure, top → bottom:** centred content column (`max-w-[480px]`, `px-2 py-8` page padding) → `ActivityHeader` → `SegmentedTabs` (All / Buy / Sell / Stake / Unstake — "All" is first and the default (#1117) and shows every request unfiltered; selecting a type tab filters the in-memory array client-side with no re-fetch) → activity rows from `useRequests()`, filtered by the active tab.
 
 **Empty-state behavior:** the full `EmptyState` illustration + caption renders whenever the visible row count is zero — whether the wallet is disconnected, the API returned zero rows, or the active tab filter yields zero rows. The intent is a single consistent visual rather than a different treatment per cause (a deliberate reversal of part of #257). The empty state and the rows list are mutually exclusive: at most one of {loading, error, empty-state, rows} is visible at a time.
 

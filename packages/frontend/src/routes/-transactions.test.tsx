@@ -1,27 +1,7 @@
 /**
- * Integration tests for the /transactions route.
- *
- * `useRequests` and `useWallet` are mocked to return controlled fixture data.
- * This avoids importing wagmi/AppKit and their network side effects, while
- * still exercising the full rendering and filtering logic of the Transactions
- * page.
- *
- * The API module itself (client, useRequests) is tested separately in
- * `src/api/useRequests.test.tsx` and `src/api/client.test.ts`.
- *
- * Scenarios covered:
- *   1. Default "Buy" tab renders only Deposit rows.
- *   2. Switching tabs filters in place.
- *   3. The "All" tab is absent.
- *   4. Wallet-level empty (zero rows) → illustration + caption render.
- *   5. Wallet-level empty (disconnected) → illustration + caption render.
- *   6. Tab-level empty (API has rows but active tab yields zero) → illustration + caption render, "No {tab} activity yet" absent.
- *   7. Error state renders "Couldn't load activity" + Retry button.
- *   8. Loading state renders "Loading…".
- *   9. Formatting assertions — amount strings appear in the rendered output.
- *  10. Timestamp shape assertion.
- *  11. Active-chain gating (Issue #644): Stellar view keys off Stellar connection;
- *      EVM view keys off EVM connection; empty state and rows are mutually exclusive.
+ * Integration tests for the /transactions route — useRequests and wallet
+ * hooks are mocked to fixture data; no wagmi/AppKit side effects.
+ * spec: docs/frontend/dashboard-components.md#transactions-route
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import React from "react";
@@ -30,10 +10,6 @@ import userEvent from "@testing-library/user-event";
 import { Route } from "./transactions";
 import type { RequestsResponse, RequestItem } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
-
-// ── Mock @/api ────────────────────────────────────────────────────────────────
-// We mock the entire api module so useRequests returns controlled data. This
-// avoids any network/wagmi/AppKit initialization in the test environment.
 
 const mockRefetch = vi.fn();
 
@@ -47,16 +23,6 @@ const mockUseRequests = vi.fn(() => ({
 vi.mock("@/api", () => ({
   useRequests: () => mockUseRequests(),
 }));
-
-// ── Mock @/wallet ─────────────────────────────────────────────────────────────
-// We mock useWallet so the component can import it without pulling in
-// wagmi/AppKit. We preserve all other exports (e.g. formatUnits) via
-// importOriginal so format helpers still work in tests.
-//
-// All three hooks required for active-chain gating (Issue #644) are mocked:
-//   - useEvmWallet (mockUseWallet) — defaults connected
-//   - useStellarWallet (mockUseStellarWallet) — defaults disconnected
-//   - useWalletView (mockUseWalletView) — defaults { kind: "evm" }
 
 const mockUseWallet = vi.fn(() => ({ isConnected: true }));
 const mockUseStellarWallet = vi.fn(() => ({ isConnected: false }));
@@ -72,8 +38,6 @@ vi.mock("@/wallet", async (importOriginal) => {
   };
 });
 
-// ── TanStack Router mock ──────────────────────────────────────────────────────
-
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
     await importOriginal<typeof import("@tanstack/react-router")>();
@@ -86,16 +50,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-// Stellar-specific fixture — a single Deposit row returned by useRequests when
-// the Stellar wallet is active and connected.
-// Amount encoded at 7 decimals (SAC_DECIMALS): 20000000000 = 2,000 USDC.
 const STELLAR_FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
-      amount: "20000000000", // 2,000 USDC at 7 decimals (SAC_DECIMALS)
+      amount: "20000000000",
       request_id: "stellar-1",
       status: "Completed",
       created_at: "2026-05-16T10:00:00Z",
@@ -107,37 +66,33 @@ const FIXTURE: RequestsResponse = {
   requests: [
     {
       type: "Deposit",
-      amount: "1000000000", // 1,000 USDC at 6 decimals
+      amount: "1000000000",
       request_id: "1",
       status: "Completed",
       created_at: "2026-05-15T12:00:00Z",
     },
     {
       type: "Withdraw",
-      amount: "1000000000", // 1,000 USDC at 6 decimals
+      amount: "1000000000",
       request_id: "2",
       status: "PendingClaim",
       created_at: "2026-05-14T09:30:00Z",
     },
     {
       type: "Stake",
-      amount: "1000000000000000000000", // 1,000 PLUSD at 18 decimals
+      amount: "1000000000000000000000",
       assets: "1000000000000000000000",
-      shares: "999500000000000000000", // 999.5 sPLUSD at 18 decimals
+      shares: "999500000000000000000",
       status: "Completed",
       created_at: "2026-05-13T18:00:00Z",
     },
   ],
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function renderTransactions() {
   const TransactionsPage = Route.options.component as React.ComponentType;
   return render(<TransactionsPage />);
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("Transactions page — responsive layout (Issue #523)", () => {
   beforeEach(() => {
@@ -184,8 +139,6 @@ describe("Transactions page — mobile empty-state layout (Issue #524)", () => {
 
   it("empty-state wrapper uses pt-8 for mobile top-anchoring and md:min-h-[400px] md:justify-center for desktop centering", () => {
     const { container } = renderTransactions();
-    // The outer wrapper div surrounds the EmptyState — find it via the unique
-    // pt-8 class applied to it in transactions.tsx.
     const wrapper = container.querySelector("[class*='pt-8']");
     expect(wrapper).not.toBeNull();
     expect(wrapper?.className).toContain("pt-8");
@@ -195,7 +148,7 @@ describe("Transactions page — mobile empty-state layout (Issue #524)", () => {
   });
 });
 
-describe("Transactions page — default Buy tab", () => {
+describe("Transactions page — default All tab", () => {
   beforeEach(() => {
     mockRefetch.mockClear();
     mockUseWallet.mockReturnValue({ isConnected: true });
@@ -217,10 +170,12 @@ describe("Transactions page — default Buy tab", () => {
     expect(() => renderTransactions()).not.toThrow();
   });
 
-  it("shows the Deposit (Buy) row's formatted amount under the default Buy tab", () => {
+  it("shows every fixture row under the default All tab", () => {
     renderTransactions();
-    // Deposit receives PLUSD (1:1 mint); Buy tab shows PLUSD, not USDC
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getByText("+1,000.00 USDC")).toBeInTheDocument();
+    expect(screen.getByText("−1,000.00 PLUSD")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^transactions-row-/)).toHaveLength(3);
   });
 
   it("adds 16px internal space above each row separator", () => {
@@ -228,13 +183,14 @@ describe("Transactions page — default Buy tab", () => {
     expect(screen.getByTestId("transactions-row-0")).toHaveClass("pb-4");
   });
 
-  it("does not show Withdraw amount under the Buy tab", () => {
+  it("does not show Withdraw amount after switching to the Buy tab", async () => {
+    const user = userEvent.setup();
     renderTransactions();
 
-    // Deposit row shows PLUSD; exactly one such row on the Buy tab
+    await user.click(screen.getByRole("tab", { name: "Buy" }));
+
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
     expect(screen.getAllByText("+1,000.00 PLUSD")).toHaveLength(1);
-    // Withdraw USDC row must not appear on the Buy tab
     expect(screen.queryByText("+1,000.00 USDC")).not.toBeInTheDocument();
   });
 });
@@ -277,7 +233,7 @@ describe("Transactions page — tab switching", () => {
   });
 });
 
-describe("Transactions page — All tab is absent", () => {
+describe("Transactions page — All tab (#1117)", () => {
   beforeEach(() => {
     mockUseWallet.mockReturnValue({ isConnected: true });
     mockUseStellarWallet.mockReturnValue({ isConnected: false });
@@ -294,10 +250,23 @@ describe("Transactions page — All tab is absent", () => {
     vi.clearAllMocks();
   });
 
-  it("does not render an 'All' tab", () => {
+  it("renders 'All' as the first tab, selected by default", () => {
     renderTransactions();
 
-    expect(screen.queryByRole("tab", { name: "All" })).not.toBeInTheDocument();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0]).toHaveTextContent("All");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("returning to All from a type tab shows the full list again", async () => {
+    const user = userEvent.setup();
+    renderTransactions();
+
+    await user.click(screen.getByRole("tab", { name: "Sell" }));
+    expect(screen.getAllByTestId(/^transactions-row-/)).toHaveLength(1);
+
+    await user.click(screen.getByRole("tab", { name: "All" }));
+    expect(screen.getAllByTestId(/^transactions-row-/)).toHaveLength(3);
   });
 });
 
@@ -338,7 +307,6 @@ describe("Transactions page — tab-level empty state", () => {
     mockUseWallet.mockReturnValue({ isConnected: true });
     mockUseStellarWallet.mockReturnValue({ isConnected: false });
     mockUseWalletView.mockReturnValue({ kind: "evm" });
-    // Data has one Deposit row (maps to Buy tab). Sell tab will yield zero rows.
     mockUseRequests.mockReturnValue({
       data: {
         requests: [
@@ -498,7 +466,6 @@ describe("Transactions page — formatting assertions", () => {
   it("formats Deposit amount as '+1,000.00 PLUSD'", () => {
     renderTransactions();
 
-    // Deposit mints PLUSD 1:1 from USDC; the label on the Buy tab is PLUSD
     expect(screen.getByText("+1,000.00 PLUSD")).toBeInTheDocument();
   });
 
@@ -537,9 +504,6 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
   });
 
   it("Stellar view + Stellar connected + Stellar rows → rows render and empty-state caption is absent (the bug)", () => {
-    // Repro: with Stellar active and connected and EVM disconnected,
-    // the old code would show BOTH rows AND the empty state. After the fix,
-    // only rows should be visible.
     mockUseWalletView.mockReturnValue({ kind: "stellar" });
     mockUseStellarWallet.mockReturnValue({ isConnected: true });
     mockUseWallet.mockReturnValue({ isConnected: false }); // EVM disconnected
@@ -552,9 +516,7 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
 
     renderTransactions();
 
-    // Rows must render — Stellar fixture is a Deposit, so label is PLUSD
     expect(screen.getByText("+2,000.00 PLUSD")).toBeInTheDocument();
-    // Empty-state caption must NOT render simultaneously (mutual exclusivity)
     expect(
       screen.queryByText("You will see all transactions here"),
     ).not.toBeInTheDocument();
@@ -576,7 +538,6 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     expect(
       screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
-    // Stellar fixture is a Deposit row (PLUSD label); must not appear when disconnected
     expect(screen.queryByText("+2,000.00 PLUSD")).not.toBeInTheDocument();
   });
 
@@ -593,7 +554,6 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
 
     renderTransactions();
 
-    // EVM view is active but EVM is disconnected → empty state
     expect(
       screen.getByText("You will see all transactions here"),
     ).toBeInTheDocument();
@@ -617,7 +577,6 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     );
     const rows = screen.queryAllByTestId(/^transactions-row-/);
 
-    // Either rows render and empty-state does not, or vice versa — never both
     if (rows.length > 0) {
       expect(emptyCaption).not.toBeInTheDocument();
     } else {
@@ -705,12 +664,10 @@ describe("Shared renderRequestRow helper — contract", () => {
     const stake: RequestItem = {
       type: "Stake",
       amount: "1000000000000000000000",
-      // assets and shares intentionally omitted — simulates missing API fields
       status: "Completed",
       created_at: "2026-05-05T10:00:00Z",
     };
     const { container } = render(<>{renderRequestRow(stake, "evm")}</>);
-    // Both lines should show em-dash, not zero
     const text = container.textContent ?? "";
     expect(text).toContain("−— PLUSD");
     expect(text).toContain("+— sPLUSD");
@@ -721,7 +678,6 @@ describe("Shared renderRequestRow helper — contract", () => {
     const unstake: RequestItem = {
       type: "Unstake",
       amount: "500000000000000000000",
-      // assets and shares intentionally omitted — simulates missing API fields
       status: "Completed",
       created_at: "2026-05-06T10:00:00Z",
     };
@@ -737,7 +693,6 @@ describe("Shared renderRequestRow helper — contract", () => {
       type: "Stake",
       amount: "1000000000000000000000",
       assets: "1000000000000000000000",
-      // shares intentionally omitted
       status: "Completed",
       created_at: "2026-05-07T10:00:00Z",
     };
@@ -748,7 +703,6 @@ describe("Shared renderRequestRow helper — contract", () => {
     expect(text).not.toContain("+0.00 sPLUSD");
   });
 
-  // Regression guard for #676: Deposit shows PLUSD, Withdraw stays USDC
   it("Completed Deposit row shows PLUSD label (not USDC)", () => {
     const deposit: RequestItem = {
       type: "Deposit",
@@ -797,13 +751,11 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     vi.clearAllMocks();
   });
 
-  // Stellar fixture: amounts encoded at 7 decimals (SAC_DECIMALS).
-  // 10_000_000 = 1.0 at 7 dp; 9_900_000 = 0.99 at 7 dp.
   const STELLAR_7DP: RequestsResponse = {
     requests: [
       {
         type: "Deposit",
-        amount: "10000000", // 1.0 PLUSD at 7 decimals
+        amount: "10000000",
         request_id: "s1",
         status: "Completed",
         created_at: "2026-06-01T10:00:00Z",
@@ -811,8 +763,8 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
       {
         type: "Stake",
         amount: "10000000",
-        assets: "10000000", // 1.0 PLUSD at 7 decimals
-        shares: "9900000", // 0.99 sPLUSD at 7 decimals
+        assets: "10000000",
+        shares: "9900000",
         status: "Completed",
         created_at: "2026-06-01T11:00:00Z",
       },
@@ -833,7 +785,6 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     renderTransactions();
 
     expect(screen.getByText("+1.00 PLUSD")).toBeInTheDocument();
-    // Ensure the old bug value does NOT appear
     expect(screen.queryByText("+10.00 PLUSD")).not.toBeInTheDocument();
   });
 
@@ -856,7 +807,6 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
 
     expect(screen.getByText("−1.00 PLUSD")).toBeInTheDocument();
     expect(screen.getByText("+0.99 sPLUSD")).toBeInTheDocument();
-    // Ensure the old bug value (18-dp scale → effectively 0) does NOT appear
     expect(screen.queryByText("−0.00 PLUSD")).not.toBeInTheDocument();
   });
 
