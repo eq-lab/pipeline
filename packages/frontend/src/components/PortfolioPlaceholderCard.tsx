@@ -30,7 +30,6 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   unrealizedPnlLabel?: string;
   activePeriodId?: string;
   onActivePeriodChange?: (id: string) => void;
-  /** Served sPLUSD history (#1138); `null`/absent renders the zero placeholder. */
   series?: ChartSeries | null;
 }
 

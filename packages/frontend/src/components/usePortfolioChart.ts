@@ -84,7 +84,6 @@ export interface TooltipInfo {
   timestamp: number;
 }
 
-/** Served series (#1138): parallel arrays of bucket timestamps and values. */
 export interface ChartSeries {
   timestamps: number[];
   values: number[];

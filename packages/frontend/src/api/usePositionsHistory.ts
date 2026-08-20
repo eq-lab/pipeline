@@ -1,6 +1,5 @@
 /**
- * React Query hook — fetches the connected wallet's dense sPLUSD position
- * history from `GET /v1/positions/history` (#1116/#1135), period-parameterized.
+ * Fetches the wallet's dense sPLUSD history from `GET /v1/positions/history`.
  * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
  */
 import { useQuery } from "@tanstack/react-query";
