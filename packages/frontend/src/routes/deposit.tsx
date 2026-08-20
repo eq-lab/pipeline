@@ -595,17 +595,6 @@ function Deposit() {
             }
             steps={[
               {
-                label: "Enable PLUSD",
-                actionLabel: "Enable",
-                state: plusdTrustline?.isEnabled ? "success" : "idle",
-                loading: plusdTrustline?.enabling ?? false,
-                disabled:
-                  (plusdTrustline?.isEnabled ?? false) ||
-                  (plusdTrustline?.enabling ?? false) ||
-                  !flow.isConnected,
-                onAction: plusdTrustline?.onEnable,
-              },
-              {
                 label: "Enable USDC",
                 actionLabel: "Enable",
                 state: usdcTrustline?.isEnabled ? "success" : "idle",
@@ -615,6 +604,17 @@ function Deposit() {
                   (usdcTrustline?.enabling ?? false) ||
                   !flow.isConnected,
                 onAction: usdcTrustline?.onEnable,
+              },
+              {
+                label: "Enable PLUSD",
+                actionLabel: "Enable",
+                state: plusdTrustline?.isEnabled ? "success" : "idle",
+                loading: plusdTrustline?.enabling ?? false,
+                disabled:
+                  (plusdTrustline?.isEnabled ?? false) ||
+                  (plusdTrustline?.enabling ?? false) ||
+                  !flow.isConnected,
+                onAction: plusdTrustline?.onEnable,
               },
               {
                 label: flow.step2.label,

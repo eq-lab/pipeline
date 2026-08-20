@@ -2620,13 +2620,18 @@ describe("Deposit page — Stellar trustline dual-enable (deposit direction)", (
     expect(() => renderDepositStellar()).not.toThrow();
   });
 
-  it("shows 'Enable PLUSD' and 'Enable USDC' step labels when both trustlines missing", async () => {
+  it("shows 'Enable USDC' before 'Enable PLUSD' when both trustlines missing (#1131)", async () => {
     seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: "0" });
     renderDepositStellar();
     await waitFor(() => {
       expect(screen.getByText("Enable PLUSD")).toBeInTheDocument();
       expect(screen.getByText("Enable USDC")).toBeInTheDocument();
     });
+    const usdc = screen.getByText("Enable USDC");
+    const plusd = screen.getByText("Enable PLUSD");
+    expect(
+      usdc.compareDocumentPosition(plusd) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows both Enable buttons when both trustlines missing", async () => {
