@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
@@ -30,7 +31,8 @@ import { StakeCard } from "@/components/StakeCard";
 import { EarnedCard } from "@/components/EarnedCard";
 import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
-import { usePnl } from "@/api";
+import { usePnl, usePositionsHistory } from "@/api";
+import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 
 // spec: docs/frontend/dashboard-components.md#home-route
 // (desktop/mobile composition, top-left card branching, Figma refs).
@@ -84,6 +86,8 @@ function Home() {
   const isConnected =
     kind === "stellar" ? stellar.isConnected : evm.isConnected;
   const pnl = usePnl();
+  const [portfolioPeriodId, setPortfolioPeriodId] = useState(DEFAULT_PERIOD_ID);
+  const positionsHistory = usePositionsHistory(portfolioPeriodId);
 
   const { open: openConnectModal } = useConnectModal();
   const navigate = useNavigate();
@@ -150,6 +154,11 @@ function Home() {
     { signed: true, suffix: "unrealized" },
   );
 
+  const portfolioSeries = buildSeries(
+    positionsHistory.data?.history,
+    activeDecimals,
+  );
+
   const mobileHomeState: MobileHomeState = isConnected
     ? deriveMobileHomeState(plusdBalanceActive, splusdSharesActive)
     : "empty";
@@ -197,6 +206,9 @@ function Home() {
               mobileHomeState={mobileHomeState}
               balanceLabel={splusdBalanceFormatted}
               unrealizedPnlLabel={unrealizedPnlFormatted}
+              activePeriodId={portfolioPeriodId}
+              onActivePeriodChange={setPortfolioPeriodId}
+              series={portfolioSeries}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -279,6 +291,9 @@ function Home() {
                 mobileHomeState={mobileHomeState}
                 balanceLabel={splusdBalanceFormatted}
                 unrealizedPnlLabel={unrealizedPnlFormatted}
+                activePeriodId={portfolioPeriodId}
+                onActivePeriodChange={setPortfolioPeriodId}
+                series={portfolioSeries}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (

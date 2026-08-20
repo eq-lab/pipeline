@@ -84,11 +84,35 @@ export interface TooltipInfo {
   timestamp: number;
 }
 
+/** Served series (#1138): parallel arrays of bucket timestamps and values. */
+export interface ChartSeries {
+  timestamps: number[];
+  values: number[];
+}
+
+export function buildSeries(
+  history: { timestamp: string; shares_balance: string }[] | undefined,
+  decimals: number,
+): ChartSeries | null {
+  if (!history || history.length === 0) return null;
+  const timestamps: number[] = [];
+  const values: number[] = [];
+  for (const item of history) {
+    const ts = Date.parse(item.timestamp);
+    const value = Number(item.shares_balance) / 10 ** decimals;
+    if (!Number.isFinite(ts) || !Number.isFinite(value)) return null;
+    timestamps.push(ts);
+    values.push(value);
+  }
+  return { timestamps, values };
+}
+
 export interface PortfolioChartState {
   activeId: string;
   setActiveId: (id: string) => void;
   period: PeriodConfig;
   timestamps: number[];
+  slotCount: number;
   hoveredIdx: number | null;
   tooltip: TooltipInfo | null;
   onPointerMove: (clientX: number, rect: DOMRect) => void;
@@ -98,18 +122,25 @@ export interface PortfolioChartState {
 export function usePortfolioChart(params: {
   activeId: string;
   setActiveId: (id: string) => void;
+  series?: ChartSeries | null;
 }): PortfolioChartState {
-  const { activeId, setActiveId } = params;
+  const { activeId, setActiveId, series } = params;
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const nowRef = useRef<number>(Date.now());
 
-  const timestamps = slotTimestamps(activeId, nowRef.current);
+  const timestamps = series?.timestamps.length
+    ? series.timestamps
+    : slotTimestamps(activeId, nowRef.current);
+  const slotCount = timestamps.length;
 
-  const onPointerMove = useCallback((clientX: number, rect: DOMRect) => {
-    const x = clientX - rect.left;
-    const fraction = Math.max(0, Math.min(1, x / rect.width));
-    setHoveredIdx(Math.min(N - 1, Math.floor(fraction * N)));
-  }, []);
+  const onPointerMove = useCallback(
+    (clientX: number, rect: DOMRect) => {
+      const x = clientX - rect.left;
+      const fraction = Math.max(0, Math.min(1, x / rect.width));
+      setHoveredIdx(Math.min(slotCount - 1, Math.floor(fraction * slotCount)));
+    },
+    [slotCount],
+  );
 
   const onPointerLeave = useCallback(() => {
     setHoveredIdx(null);
@@ -117,7 +148,10 @@ export function usePortfolioChart(params: {
 
   const tooltip: TooltipInfo | null =
     hoveredIdx !== null && timestamps[hoveredIdx] != null
-      ? { balance: 0, timestamp: timestamps[hoveredIdx]! }
+      ? {
+          balance: series?.values[hoveredIdx] ?? 0,
+          timestamp: timestamps[hoveredIdx]!,
+        }
       : null;
 
   return {
@@ -125,6 +159,7 @@ export function usePortfolioChart(params: {
     setActiveId,
     period: getPeriod(activeId),
     timestamps,
+    slotCount,
     hoveredIdx,
     tooltip,
     onPointerMove,

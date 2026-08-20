@@ -6,6 +6,8 @@
  */
 import { PanelContainer } from "./PanelContainer";
 import { YieldBarChart } from "./YieldBarChart";
+import { ChartDatesRow } from "../ChartDatesRow";
+import { formatAxisDateRange } from "@/utils/formatDate";
 import { TvlCard } from "./TvlCard";
 import { useYieldHistoryPanel } from "./useYieldHistoryPanel";
 
@@ -152,13 +154,24 @@ export function YieldHistoryPanel() {
             {/* Chart — green bars (Figma 3283:68337). Mobile: 144px; desktop: fills. */}
             {cumulativeBars !== null && cumulativeBars.length > 0 ? (
               <div
-                className="h-[144px] overflow-hidden md:h-auto md:flex-1"
-                data-testid="yield-chart-container"
+                className="flex flex-col md:h-auto md:flex-1"
+                data-node-id="6002:9279"
               >
-                <YieldBarChart
-                  bars={cumulativeBars}
-                  aria-label={`Cumulative yield history: ${headlineValue}`}
-                  className="h-full"
+                <div
+                  className="h-[128px] overflow-hidden md:h-auto md:flex-1"
+                  data-testid="yield-chart-container"
+                >
+                  <YieldBarChart
+                    bars={cumulativeBars}
+                    aria-label={`Cumulative yield history: ${headlineValue}`}
+                    className="h-full"
+                  />
+                </div>
+                <ChartDatesRow
+                  {...formatAxisDateRange(
+                    cumulativeBars[0]!.timestamp,
+                    cumulativeBars[cumulativeBars.length - 1]!.timestamp,
+                  )}
                 />
               </div>
             ) : (

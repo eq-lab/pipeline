@@ -8,11 +8,14 @@ import {
   formatTime,
   usePortfolioChart,
 } from "./usePortfolioChart";
+import { ChartDatesRow } from "./ChartDatesRow";
+import { formatAxisDateRange } from "@/utils/formatDate";
+import type { ChartSeries } from "./usePortfolioChart";
 
 /**
- * Total Balance card (Figma node 1497:95048) — real balance/PnL header plus
- * the design's bar chart rendered as a flat zero-value placeholder until a
- * per-address balance-history series exists (#1114/#1116).
+ * Total Balance card (Figma node 1497:95048) — balance/PnL header plus the
+ * served sPLUSD history chart (#1138), falling back to the flat zero-value
+ * placeholder when no series is available (#1114).
  * spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard.
  */
 
@@ -27,6 +30,8 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   unrealizedPnlLabel?: string;
   activePeriodId?: string;
   onActivePeriodChange?: (id: string) => void;
+  /** Served sPLUSD history (#1138); `null`/absent renders the zero placeholder. */
+  series?: ChartSeries | null;
 }
 
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
@@ -45,8 +50,8 @@ const TOOLTIP_HALF = 70;
 const PLACEHOLDER_BAR_H = 8;
 const PLACEHOLDER_FILL = "#D5D8C8";
 
-function slotCentreX(idx: number): number {
-  const slotW = VB_W / N;
+function slotCentreX(idx: number, count: number): number {
+  const slotW = VB_W / count;
   return idx * slotW + slotW / 2;
 }
 
@@ -61,6 +66,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     unrealizedPnlLabel = "$0.00 unrealized",
     activePeriodId,
     onActivePeriodChange,
+    series: seriesProp,
     ...rest
   },
   ref,
@@ -73,8 +79,17 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const activeId = activePeriodId ?? uncontrolledActiveId;
   const setActiveId = onActivePeriodChange ?? setUncontrolledActiveId;
 
-  const { period, hoveredIdx, tooltip, onPointerMove, onPointerLeave } =
-    usePortfolioChart({ activeId, setActiveId });
+  const series = seriesProp ?? null;
+
+  const {
+    period,
+    timestamps,
+    slotCount,
+    hoveredIdx,
+    tooltip,
+    onPointerMove,
+    onPointerLeave,
+  } = usePortfolioChart({ activeId, setActiveId, series });
 
   const wrapRef = React.useRef<HTMLDivElement>(null);
 
@@ -88,7 +103,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
 
   const cursorLeftPct =
     hoveredIdx !== null
-      ? ((slotCentreX(hoveredIdx) / VB_W) * 100).toFixed(2)
+      ? ((slotCentreX(hoveredIdx, slotCount) / VB_W) * 100).toFixed(2)
       : "0";
 
   const periodLabel = TABS.find((t) => t.id === activeId)?.label ?? "7D";
@@ -206,37 +221,58 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           className="h-full w-full"
           aria-hidden="true"
         >
-          {Array.from({ length: N }, (_, i) => {
-            const cx = slotCentreX(i);
-            return (
-              <g key={i} data-bar-slot={i}>
-                <rect
-                  x={cx - 1.5}
-                  y={y0}
-                  width={3}
-                  height={barH}
-                  fill={PLACEHOLDER_FILL}
-                  opacity={0.35}
-                />
-                <rect
-                  x={cx - 1}
-                  y={y0 + barH * 0.4}
-                  width={2}
-                  height={barH * 0.6}
-                  fill={PLACEHOLDER_FILL}
-                  opacity={0.65}
-                />
-                <rect
-                  x={cx - 0.5}
-                  y={y0 + barH * 0.7}
-                  width={1}
-                  height={barH * 0.3}
-                  fill={PLACEHOLDER_FILL}
-                  opacity={1}
-                />
-              </g>
-            );
-          })}
+          {series !== null
+            ? series.values.map((value, i) => {
+                const cx = slotCentreX(i, slotCount);
+                const maxValue = Math.max(...series.values);
+                const h =
+                  maxValue > 0
+                    ? Math.max((value / maxValue) * VB_H * 0.9, barH * 0.3)
+                    : barH * 0.3;
+                const w = Math.min(3, Math.max(0.5, (VB_W / slotCount) * 0.5));
+                return (
+                  <rect
+                    key={i}
+                    data-bar-slot={i}
+                    x={cx - w / 2}
+                    y={VB_H - h}
+                    width={w}
+                    height={h}
+                    fill={PLACEHOLDER_FILL}
+                  />
+                );
+              })
+            : Array.from({ length: N }, (_, i) => {
+                const cx = slotCentreX(i, N);
+                return (
+                  <g key={i} data-bar-slot={i}>
+                    <rect
+                      x={cx - 1.5}
+                      y={y0}
+                      width={3}
+                      height={barH}
+                      fill={PLACEHOLDER_FILL}
+                      opacity={0.35}
+                    />
+                    <rect
+                      x={cx - 1}
+                      y={y0 + barH * 0.4}
+                      width={2}
+                      height={barH * 0.6}
+                      fill={PLACEHOLDER_FILL}
+                      opacity={0.65}
+                    />
+                    <rect
+                      x={cx - 0.5}
+                      y={y0 + barH * 0.7}
+                      width={1}
+                      height={barH * 0.3}
+                      fill={PLACEHOLDER_FILL}
+                      opacity={1}
+                    />
+                  </g>
+                );
+              })}
         </svg>
 
         {hoveredIdx !== null && (
@@ -283,6 +319,13 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           ) : null}
         </div>
       </div>
+
+      <ChartDatesRow
+        {...formatAxisDateRange(
+          timestamps[0],
+          timestamps[timestamps.length - 1],
+        )}
+      />
     </Card>
   );
 });

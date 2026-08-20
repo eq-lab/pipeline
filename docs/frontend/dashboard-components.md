@@ -178,11 +178,38 @@ state) since the visible label is shorter.
 
 Reuse: page-level glue around `@pipeline/ui` primitives.
 
+### ChartDatesRow
+
+**Source:** `packages/frontend/src/components/ChartDatesRow.tsx` (#1133).
+
+Endpoint-date x-axis row shared by the LP charts (Figma dates containers `6002:9267` on the TVL
+card, `6002:9279` on the Cumulative Yield card, and the Total Balance card's period window,
+node `1497:95125`): one full-chart-width flex row (`justify-between`, 16px tall), two `MMM D`
+labels in the caption tokens + muted ink — series start left-aligned, series end right-aligned,
+both truncating. No intermediate ticks, no gridlines. The component is dumb (`{ start, end }`
+strings via `formatAxisDate`, `utils/formatDate.ts`); each caller gates rendering — the row is
+absent when its series is null/empty, never showing invented dates. Single-point series render
+the same date on both sides.
+
 ### PortfolioPlaceholderCard
 
 Connected-state replacement for `ConnectWalletPromoCard`. Renders in the top-left slot of the home
 dashboard when `isConnected === true` (Figma node `1497:95048`). The balance and PnL labels are
 supplied by the home route.
+
+**Served series mode (#1138).** `GET /v1/positions/history` (backend #1116/#1135 — dense,
+window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
+period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
+7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily, All → omitted/weekly), maps the
+response with `buildSeries` (raw share strings scaled by the active chain's decimals), and
+passes `series` into the card — the card stays presentational. Non-empty series → one bar per
+served bucket (height ∝ `shares_balance`), tooltip shows the bucket's served balance +
+timestamp. Empty/absent series → the zero placeholder below, unchanged.
+
+**Endpoint dates row (#1133/#1138).** A `ChartDatesRow` under the chart: in served-series mode
+the labels are the series' first/last bucket timestamps; in placeholder mode they fall back to
+the active period window's endpoints (`slotTimestamps[0]` / last — the same timestamps the
+hover tooltip already exposes, so no fabrication), updating with the period tab.
 
 **Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
 and hover tooltip are rendered, but every value is **0** until a per-address balance-history
@@ -935,6 +962,9 @@ Renders:
 - "TVL" eyebrow + headline value (e.g. `"$43.1M"`), Figma node `3283:67623` (528×56, two halves each
   264 wide).
 - "Outstanding in Loans" label + value (muted, right-aligned), or `"—"` when null.
+- `ChartDatesRow` under the bar chart (#1133, Figma dates container `6002:9267`): the served
+  `tvlBars` first/last timestamps as `MMM D`; absent when `tvlBars` is null/empty. The chart
+  container is 224px so chart + 16px dates row keep the previous 240px region.
 - Horizontal progress bar (Figma instance `3380:1410`, y=64, 528×4) + "X.X% deployed" caption (Figma
   `3380:1895`) — fill width is `outstanding_in_loans / tvl`, an **approved exception** to the "no
   frontend-computed metrics" rule for this ratio-of-served-values visualisation (issue #760
@@ -1053,6 +1083,10 @@ heading text). Wires the `useYieldHistoryPanel` logic hook and renders:
 - **Left column** (node `3283:67622`, spans the full column height): TVL card — headline,
   Outstanding in Loans, progress bar ("% deployed"), and dark TVL bar chart. Backed by
   `GET /v1/dashboard/summary` + `GET /v1/dashboard/tvl-history`.
+- Both chart cards render a `ChartDatesRow` under their bars (#1133): the Cumulative Yield card
+  (Figma dates container `6002:9279`) shows `cumulativeBars` first/last timestamps; absent when
+  the series is null/empty (the empty seam keeps its height). The mobile chart height drops to
+  128px so chart + dates row keep the previous 144px region.
 - **Right column** (`3380:1920`, vertical stack): Cumulative Yield card — headline value + green bar
   chart (no time-range selector — the Figma "Top" frame shows none). Backed by
   `GET /v1/dashboard/summary` + `GET /v1/dashboard/yield-history`. Below it, three metric cards in a
