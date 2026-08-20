@@ -243,8 +243,18 @@ impl PositionRepo {
     ///
     /// `interval` must be a valid PostgreSQL `DATE_TRUNC` field (`'hour'`,
     /// `'day'`, `'week'`) — supplied by `Interval::as_pg_trunc`, never from raw
-    /// user input. `vault` filters to a single vault; `None` returns every vault
-    /// the wallet has touched. `since` bounds the returned buckets.
+    /// user input. `since` bounds the returned buckets.
+    ///
+    /// There is no vault parameter: `chain_id` identifies the sPLUSD vault,
+    /// since that is the only vault the protocol runs.
+    ///
+    /// A redeployment does change the vault's contract address, so a chain can
+    /// hold rows for more than one. The result is scoped to the **current**
+    /// vault — the address with the chain's most recent event — and positions on
+    /// a superseded address are dropped, by product decision: after a redeploy
+    /// the old positions no longer matter. Scoping off observed events rather
+    /// than the `vaults` registry keeps this correct even if the registry seed
+    /// lags a redeploy. Every returned row therefore shares one `vault_address`.
     ///
     /// Reads `position_events`, so staking and either side of a `ShareTransfer`
     /// all contribute — a wallet that only ever received shares still has a
@@ -257,7 +267,6 @@ impl PositionRepo {
         &self,
         chain_id: i64,
         owner_address: &str,
-        vault: Option<&str>,
         interval: &str,
         since: Option<DateTime<Utc>>,
     ) -> anyhow::Result<Vec<PositionHistoryBucket>> {
@@ -268,7 +277,14 @@ impl PositionRepo {
         // window has been computed. Filtering inside the CTE would restart the
         // running total at the window boundary and understate it.
         let query = format!(
-            "WITH ev AS (
+            "WITH current_vault AS (
+                 SELECT LOWER(contract_address) AS addr
+                 FROM position_events
+                 WHERE chain_id = $1
+                 ORDER BY block_number DESC, log_index DESC
+                 LIMIT 1
+             ),
+             ev AS (
                  SELECT
                      (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
                      DATE_TRUNC('{interval}', TO_TIMESTAMP(block_timestamp)) AS bucket,
@@ -277,16 +293,15 @@ impl PositionRepo {
                      shares_balance,
                      avg_buy_share_price,
                      SUM(realized_pnl) OVER (
-                         PARTITION BY chain_id, LOWER(contract_address)
                          ORDER BY block_number, log_index
                          ROWS UNBOUNDED PRECEDING
                      ) AS cumulative_realized_pnl
                  FROM position_events
                  WHERE chain_id = $1
                    AND holder = $2
-                   {vault_clause}
+                   AND LOWER(contract_address) = (SELECT addr FROM current_vault)
              )
-             SELECT DISTINCT ON (vault_address, bucket)
+             SELECT DISTINCT ON (bucket)
                  vault_address,
                  bucket,
                  COALESCE(shares_balance, 0) AS shares_balance,
@@ -294,25 +309,17 @@ impl PositionRepo {
                  COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
              FROM ev
              {since_clause}
-             ORDER BY vault_address, bucket, block_number DESC, log_index DESC",
-            vault_clause = if vault.is_some() {
-                "AND LOWER(contract_address) = LOWER($3)"
+             ORDER BY bucket, block_number DESC, log_index DESC",
+            since_clause = if since.is_some() {
+                "WHERE bucket >= $3"
             } else {
                 ""
-            },
-            since_clause = match (vault.is_some(), since.is_some()) {
-                (true, true) => "WHERE bucket >= $4",
-                (false, true) => "WHERE bucket >= $3",
-                _ => "",
             },
         );
 
         let mut q = sqlx::query_as::<_, PositionHistoryBucket>(&query)
             .bind(chain_id)
             .bind(&owner);
-        if let Some(v) = vault {
-            q = q.bind(v);
-        }
         if let Some(s) = since {
             q = q.bind(s);
         }

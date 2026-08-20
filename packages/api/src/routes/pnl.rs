@@ -41,7 +41,6 @@ pub fn router() -> Router<Arc<AppState>> {
         PositionHistoryQuery,
         Interval,
         PositionHistoryResponse,
-        VaultPositionHistory,
         PositionHistoryItem
     )),
     tags(
@@ -215,8 +214,6 @@ async fn compute_pnl(state: &AppState, wallet: &str, chain_id: i64) -> anyhow::R
 #[derive(Deserialize, ToSchema)]
 pub struct PositionHistoryQuery {
     pub wallet: String,
-    /// Vault address (optional — omit for every vault the wallet has touched).
-    pub vault: Option<String>,
     /// Number of days to look back (optional — omit for all history).
     pub days: Option<u32>,
     /// Time grouping: "hourly", "daily" (default), or "weekly".
@@ -240,19 +237,22 @@ pub struct PositionHistoryItem {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct VaultPositionHistory {
-    pub vault_address: String,
+pub struct PositionHistoryResponse {
+    pub wallet: String,
+    /// The vault the series belongs to. `null` only when the wallet has no
+    /// indexed history on this chain, in which case `history` is empty too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_address: Option<String>,
+    pub interval: String,
     pub history: Vec<PositionHistoryItem>,
 }
 
-#[derive(Serialize, ToSchema)]
-pub struct PositionHistoryResponse {
-    pub wallet: String,
-    pub interval: String,
-    pub vaults: Vec<VaultPositionHistory>,
-}
-
 /// Position history for a wallet, bucketed like `/v1/stats/prices`.
+///
+/// Scoped by `chain_id`, which identifies the sPLUSD vault — the only vault the
+/// protocol runs — so there is no `vault` parameter. If the vault has been
+/// redeployed, the series covers the current address only; positions on a
+/// superseded one are dropped, since after a redeploy they no longer matter.
 ///
 /// Each entry is the **closing** position for its bucket, and buckets with no
 /// activity are omitted rather than forward-filled — a position persists until
@@ -272,7 +272,6 @@ pub struct PositionHistoryResponse {
     path = "/v1/positions/history",
     params(
         ("wallet" = String, Query, description = "Wallet address"),
-        ("vault" = Option<String>, Query, description = "Vault address (optional — omit for all vaults the wallet has touched)"),
         ("days" = Option<u32>, Query, description = "Number of days to look back (omit for all history)"),
         ("interval" = Option<String>, Query, description = "Time grouping: \"hourly\", \"daily\" (default), or \"weekly\""),
         ("chain_id" = Option<i64>, Query, description = "Chain ID (optional — defaults to DEFAULT_CHAIN_ID)"),
@@ -326,43 +325,37 @@ async fn get_position_history(
     // through and return an empty series rather than erroring.
     let rows = state
         .position_repo
-        .get_position_history(
-            chain_id,
-            &wallet,
-            query.vault.as_deref(),
-            query.interval.as_pg_trunc(),
-            since,
-        )
+        .get_position_history(chain_id, &wallet, query.interval.as_pg_trunc(), since)
         .await?;
+
+    let (vault_address, history) = build_history_series(rows);
 
     Ok(Json(PositionHistoryResponse {
         wallet,
+        vault_address,
         interval: query.interval.as_str().to_owned(),
-        vaults: group_history_by_vault(rows),
+        history,
     }))
 }
 
-/// Fold flat history rows into one series per vault.
+/// Turn repo rows into the response's single series, paired with the vault they
+/// belong to.
 ///
-/// Relies on the repo returning rows ordered by `(vault_address, bucket)`, so a
-/// change of vault starts a new group and a single pass suffices. Kept separate
-/// from the handler so it is testable without a database.
-pub fn group_history_by_vault(rows: Vec<PositionHistoryBucket>) -> Vec<VaultPositionHistory> {
-    let mut vaults: Vec<VaultPositionHistory> = Vec::new();
-    for row in rows {
-        let item = PositionHistoryItem {
+/// The repo scopes to one vault, so every row shares a `vault_address` and it is
+/// read off the first row — `None` when there is no history at all. Kept
+/// separate from the handler so it is testable without a database.
+pub fn build_history_series(
+    rows: Vec<PositionHistoryBucket>,
+) -> (Option<String>, Vec<PositionHistoryItem>) {
+    let vault_address = rows.first().map(|r| r.vault_address.clone());
+    let history = rows
+        .into_iter()
+        .map(|row| PositionHistoryItem {
             timestamp: iso_utc(&row.bucket),
             shares_balance: row.shares_balance.to_string(),
             avg_cost_basis: row.avg_buy_share_price.to_string(),
             cumulative_realized_pnl: row.cumulative_realized_pnl.to_string(),
-        };
-        match vaults.last_mut() {
-            Some(last) if last.vault_address == row.vault_address => last.history.push(item),
-            _ => vaults.push(VaultPositionHistory {
-                vault_address: row.vault_address,
-                history: vec![item],
-            }),
-        }
-    }
-    vaults
+        })
+        .collect();
+    (vault_address, history)
 }
