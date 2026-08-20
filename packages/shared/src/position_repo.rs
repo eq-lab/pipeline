@@ -263,6 +263,13 @@ impl PositionRepo {
     /// Each bucket carries the **last** position within it (`DISTINCT ON`
     /// ordered by event position descending), because a balance's closing value
     /// is the meaningful one.
+    ///
+    /// Returns only buckets that contain events — sparse. Callers densify to one
+    /// bucket per interval step (see `build_history_series` in the API layer).
+    /// To make that possible the result includes one **seed** bucket from before
+    /// `since`: the wallet's last position at the window start. Without it, a
+    /// wallet whose only activity predates the window would densify to a series
+    /// of zeros instead of its real, unchanged balance.
     pub async fn get_position_history(
         &self,
         chain_id: i64,
@@ -300,30 +307,34 @@ impl PositionRepo {
                  WHERE chain_id = $1
                    AND holder = $2
                    AND LOWER(contract_address) = (SELECT addr FROM current_vault)
+             ),
+             closing AS (
+                 SELECT DISTINCT ON (bucket)
+                     vault_address,
+                     bucket,
+                     COALESCE(shares_balance, 0) AS shares_balance,
+                     COALESCE(avg_buy_share_price, 0) AS avg_buy_share_price,
+                     COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
+                 FROM ev
+                 ORDER BY bucket, block_number DESC, log_index DESC
              )
-             SELECT DISTINCT ON (bucket)
-                 vault_address,
-                 bucket,
-                 COALESCE(shares_balance, 0) AS shares_balance,
-                 COALESCE(avg_buy_share_price, 0) AS avg_buy_share_price,
-                 COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
-             FROM ev
-             {since_clause}
-             ORDER BY bucket, block_number DESC, log_index DESC",
-            since_clause = if since.is_some() {
-                "WHERE bucket >= $3"
-            } else {
-                ""
-            },
+             SELECT vault_address, bucket, shares_balance, avg_buy_share_price, cumulative_realized_pnl
+             FROM closing
+             WHERE $3::timestamptz IS NULL
+                OR bucket >= $3
+                -- Seed bucket: the wallet's standing position entering the
+                -- window, so the caller can carry it forward from the first grid
+                -- bucket rather than zero-filling a position that already existed.
+                OR bucket = (SELECT MAX(bucket) FROM closing WHERE bucket < $3)
+             ORDER BY bucket",
         );
 
-        let mut q = sqlx::query_as::<_, PositionHistoryBucket>(&query)
+        Ok(sqlx::query_as::<_, PositionHistoryBucket>(&query)
             .bind(chain_id)
-            .bind(&owner);
-        if let Some(s) = since {
-            q = q.bind(s);
-        }
-        Ok(q.fetch_all(&self.pool).await?)
+            .bind(&owner)
+            .bind(since)
+            .fetch_all(&self.pool)
+            .await?)
     }
 
     /// Get per-vault position summaries for a wallet (latest position + total realized PnL).

@@ -334,14 +334,23 @@ It takes **no `vault` parameter**: the protocol runs a single vault (sPLUSD), so
 
 A redeployment does change the vault's contract address, so a chain can hold `contract_logs` rows for more than one. The query scopes to the **current** vault — the address carrying the chain's most recent event — and drops positions on any superseded address, by product decision: after a redeploy the old positions no longer matter. `cumulative_realized_pnl` therefore restarts from zero at a redeploy, counting only the current vault. Scoping off observed events rather than the `vaults` registry keeps this correct even if the registry seed lags a redeploy.
 
-It is named a *positions* endpoint, not a PnL one, because it returns balances and cost basis: `shares_balance`, `avg_cost_basis`, and `cumulative_realized_pnl`. There is deliberately **no unrealized or total PnL** per bucket — that needs the share price at each bucket joined from `share_prices`, which would also mean driving the bucket grid off the (dense, polled) price series rather than off the (sparse, event-driven) position series. `/v1/pnl` remains the point-in-time source for unrealized and total PnL. The handler lives in `routes/pnl.rs` alongside `/v1/pnl` since both share wallet normalisation and chain resolution.
+It is named a *positions* endpoint, not a PnL one, because it returns balances and cost basis: `shares_balance`, `avg_cost_basis`, and `cumulative_realized_pnl`. There is deliberately **no unrealized or total PnL** per bucket — that needs the share price at each bucket joined from `share_prices`. `/v1/pnl` remains the point-in-time source for unrealized and total PnL. The handler lives in `routes/pnl.rs` alongside `/v1/pnl` since both share wallet normalisation and chain resolution.
 
-Two semantics worth stating explicitly, because they differ from a price series:
+Three semantics worth stating explicitly:
 
 - **Each bucket is the *closing* position**, not an average over the bucket. Averaging a balance would be meaningless; the last event in the bucket wins (`DISTINCT ON` ordered by event position descending). A zero-balance bucket is a real data point — a full exit — and is never dropped.
-- **Buckets with no activity are omitted, not forward-filled.** Position events are sparse and event-driven, unlike the regularly-polled `share_prices`. A position persists until the next entry, so clients should step-interpolate; emitting synthetic rows for quiet periods would fabricate history the indexer never observed.
+- **The series is dense: one bucket per interval step across the whole window.** Quiet buckets carry the previous bucket's closing `shares_balance` / `avg_cost_basis` / `cumulative_realized_pnl`. This invents nothing — a balance is a step function, so between events the previous closing value *is* the balance. Sparse output would break consumers two ways: charts that render samples equidistantly distort the time axis when adjacent buckets are a day apart in one place and a month in another, and `history[0].timestamp` would be the wallet's first activity rather than the requested window start (a 1Y tab labelled with a date three days ago).
+- **Buckets before the wallet's first position are zero-filled**, so the series always starts at the window start and clients render it verbatim rather than left-padding. This is accurate, not padding: a wallet that staked three days ago genuinely held nothing over the preceding year.
+
+Empty history stays `history: []` with `vault_address` absent — that is distinct from a densified run of zeros, which would assert a real position of zero shares.
+
+**Caveat.** Carry-forward is exactly as trustworthy as event coverage. A missing or unindexed event becomes a confident flat line rather than a visible gap, which is one more reason the resync noted above matters: pre-tracking share transfers would render as plausible-looking wrong balances.
 
 `cumulative_realized_pnl` accumulates over the wallet's **full** history, not just the requested window. The `SUM(...) OVER (...)` therefore runs inside a CTE with no time filter and `since` is applied in the outer query — filtering inside the window would restart the running total at the window boundary and silently understate it.
+
+**Implementation.** Densification happens in Rust (`build_history_series` in `routes/pnl.rs`), not via `generate_series` in SQL. Two reasons: it keeps the gap-fill and leading-window behaviour reachable from `packages/api/tests/positions_history.rs`, which has no database, and the query keeps returning only event buckets — a handful — instead of shipping up to `MAX_SAMPLES` rows per request. `Interval::truncate` reproduces Postgres `DATE_TRUNC` in UTC (weekly buckets start Monday) so the Rust grid lands on the same instants as the query's buckets; a test pins those boundaries against values read from a real Postgres session.
+
+`PositionRepo::get_position_history` returns the in-window buckets **plus one seed bucket** from before `since` — the wallet's standing position entering the window. Without it, a wallet that staked long ago and did nothing since would densify to a series of zeros instead of its real, unchanged balance. The `MAX_SAMPLES` cap is unchanged and now bounds the exact row count rather than an upper estimate.
 
 ### Data Model (logical entities)
 
