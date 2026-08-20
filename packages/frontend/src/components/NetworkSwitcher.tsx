@@ -66,8 +66,6 @@ export function NetworkSwitcher() {
       : "border-[rgb(56_55_53_/_0.18)] bg-[var(--color-pipeline-surface)]",
   ].join(" ");
 
-  // Visibility and spacing are owned by the mount (TopBar wallet slot on
-  // desktop, MobileNavMenu network row on mobile — #1125).
   return (
     <div ref={rootRef} className="relative shrink-0">
       {hasMenu ? (

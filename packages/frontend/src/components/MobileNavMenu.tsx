@@ -491,7 +491,6 @@ export function MobileNavMenu({
             <MenuDivider />
           </div>
 
-          {/* Network row — mobile mount of the TopBar network pill (#1125). */}
           <div
             className="flex w-full items-center justify-between p-2"
             data-testid="mobile-network-switcher"

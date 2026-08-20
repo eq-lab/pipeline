@@ -29,7 +29,6 @@ interface NavItem {
   label: string;
   /** TanStack Router path this slot navigates to; omit for slots with no route yet. */
   to?: string;
-  /** Render a vertical divider before this slot (Figma node 5915:77654). */
   dividerBefore?: boolean;
 }
 
@@ -220,16 +219,12 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           ))}
         </nav>
 
-        {/* Right slot — desktop wallet controls (md and above). Fixed 8px gap
-            between the network pill and the wallet pill (#1125); min-w-40
-            keeps the centred-nav symmetry with the logo slot. */}
+        {/* Right slot — desktop wallet controls (md and above). */}
         <div
           className="relative hidden min-w-40 shrink-0 items-center justify-end gap-2 md:flex"
           data-testid="topbar-wallet-slot"
           data-node-id="1497:94724"
         >
-          {/* Network pill — always-visible current network; opens a switch
-              menu when siblings are configured (issue #1032). */}
           <NetworkSwitcher />
           {anyConnected ? (
             <>
