@@ -67,7 +67,7 @@ export function NetworkSwitcher() {
   ].join(" ");
 
   return (
-    <div ref={rootRef} className="relative mr-6 hidden shrink-0 md:block">
+    <div ref={rootRef} className="relative shrink-0">
       {hasMenu ? (
         <button
           type="button"

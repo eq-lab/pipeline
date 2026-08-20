@@ -261,12 +261,18 @@ function buildRouter(initialPath: string) {
     path: "/stake",
     component: () => null,
   });
+  const dashboardRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/dashboard",
+    component: () => null,
+  });
   const routeTree = rootRoute.addChildren([
     indexRoute,
     depositRoute,
     withdrawRoute,
     transactionsRoute,
     stakeRoute,
+    dashboardRoute,
   ]);
   return createRouter({
     routeTree,
@@ -417,6 +423,60 @@ describe("TopBar — route-driven active state", () => {
     renderTopBar("/stake");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Earn" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+  });
+
+  it("highlights Overview on /dashboard", async () => {
+    renderTopBar("/dashboard");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+  });
+
+  it("renders the nav divider between Activity and Overview", async () => {
+    renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-nav-divider")).toBeInTheDocument(),
+    );
+    const nav = screen.getByTestId("topbar-primary-nav");
+    const children = Array.from(nav.children);
+    const dividerIdx = children.indexOf(
+      screen.getByTestId("topbar-nav-divider"),
+    );
+    expect(children[dividerIdx - 1]).toBe(
+      screen.getByTestId("topbar-nav-history"),
+    );
+    expect(children[dividerIdx + 1]).toBe(
+      screen.getByTestId("topbar-nav-overview"),
+    );
+  });
+
+  it("navigates to /dashboard when Overview is clicked", async () => {
+    const user = userEvent.setup();
+    renderTopBar("/");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute(
+        "data-active",
+        "true",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute(
         "data-active",
         "true",
       ),

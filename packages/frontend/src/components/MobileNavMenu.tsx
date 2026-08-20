@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Logo, NavIcon, CoinIcon } from "@pipeline/ui";
 import type { NavIconName } from "@pipeline/ui";
+import { NetworkSwitcher } from "./NetworkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#mobilenavmenu (disconnected/connected states, Figma nodes 1989:9231 / 1993:6527).
 
@@ -167,7 +168,7 @@ function PieChartGlyph() {
 // ── Nav items ─────────────────────────────────────────────────────────────────
 
 interface MenuNavItem {
-  key: "home" | "deposit" | "stats" | "history";
+  key: "home" | "deposit" | "stats" | "history" | "overview";
   label: string;
   to?: string;
 }
@@ -329,7 +330,9 @@ export function MobileNavMenu({
         ? "history"
         : pathname === "/stake"
           ? "stats"
-          : "home";
+          : pathname === "/dashboard"
+            ? "overview"
+            : "home";
 
   const handleNavClick = useCallback(
     (to: string) => {
@@ -461,6 +464,7 @@ export function MobileNavMenu({
             ].join(" ")}
             data-testid="mobile-overview-button"
             data-node-id="1989:9444"
+            onClick={() => handleNavClick("/dashboard")}
           >
             <div
               className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
@@ -485,6 +489,23 @@ export function MobileNavMenu({
           {/* Divider before wallet section */}
           <div className="flex w-full items-center justify-center py-3">
             <MenuDivider />
+          </div>
+
+          <div
+            className="flex w-full items-center justify-between p-2"
+            data-testid="mobile-network-switcher"
+          >
+            <span
+              className={[
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-body)]",
+                "leading-[var(--text-pipeline-body--line-height)]",
+                "text-[color:var(--color-pipeline-ink-muted)]",
+              ].join(" ")}
+            >
+              Network
+            </span>
+            <NetworkSwitcher />
           </div>
 
           {anyConnected ? (

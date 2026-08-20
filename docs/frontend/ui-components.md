@@ -556,7 +556,7 @@ to avoid a double announcement.
 
 **Source:** `packages/ui/src/components/NavIcon/NavIcon.tsx`.
 
-Inline SVG icons for the four top-bar navigation slots. The icons are rendered as inline `<svg>`
+Inline SVG icons for the five top-bar navigation slots. The icons are rendered as inline `<svg>`
 elements so they inherit `fill="currentColor"` from the surrounding CSS `color` property — this
 makes them fully responsive to `IconButton`'s active/inactive state without requiring a CSS mask
 or any URL import at all.
@@ -569,6 +569,7 @@ or any URL import at all.
 | `"deposit"` | dollar-in-circle     | `nav-dollar.svg`                               |
 | `"stats"`   | three bar-chart bars | `nav-stats.svg` (three separate path elements) |
 | `"history"` | clock with arrow     | `nav-history.svg` (two separate path elements) |
+| `"overview"` | pie chart           | `nav-overview.svg` (three separate path elements, #1125) |
 
 All path data is lifted verbatim from the SVG assets in `packages/ui/src/assets/icons/`.
 

@@ -65,12 +65,21 @@ describe("MobileNavMenu — render when open", () => {
 // ── Tests: nav items ──────────────────────────────────────────────────────────
 
 describe("MobileNavMenu — nav items", () => {
-  it("lists all four nav destinations", () => {
+  it("lists all four nav destinations plus Pipeline Overview", () => {
     renderMenu({ open: true, pathname: "/" });
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Convert")).toBeInTheDocument();
     expect(screen.getByText("Earn")).toBeInTheDocument();
     expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByText("Pipeline Overview")).toBeInTheDocument();
+  });
+
+  it("renders the network switcher row with the current-network badge (#1125)", () => {
+    renderMenu({ open: true, pathname: "/" });
+    const row = screen.getByTestId("mobile-network-switcher");
+    expect(row).toBeInTheDocument();
+    expect(screen.getByText("Network")).toBeInTheDocument();
+    expect(screen.getByTestId("topbar-network-badge")).toBeInTheDocument();
   });
 });
 
@@ -155,6 +164,24 @@ describe("MobileNavMenu — navigation", () => {
     await user.click(screen.getByText("Earn"));
 
     expect(onNavigate).toHaveBeenCalledWith("/stake");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("calls onNavigate and onClose when Pipeline Overview is clicked (#1125)", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    const onClose = vi.fn();
+
+    renderMenu({
+      open: true,
+      pathname: "/",
+      onNavigate,
+      onClose,
+    });
+
+    await user.click(screen.getByTestId("mobile-overview-button"));
+
+    expect(onNavigate).toHaveBeenCalledWith("/dashboard");
     expect(onClose).toHaveBeenCalledOnce();
   });
 
@@ -283,5 +310,12 @@ describe("MobileNavMenu — active nav derivation", () => {
   it("marks Earn as active on pathname=/stake", async () => {
     renderMenu({ open: true, pathname: "/stake" });
     await waitFor(() => expect(screen.getByText("Earn")).toBeInTheDocument());
+  });
+
+  it("marks no nav row active on pathname=/dashboard (Pipeline Overview owns it)", async () => {
+    renderMenu({ open: true, pathname: "/dashboard" });
+    await waitFor(() =>
+      expect(screen.getByText("Pipeline Overview")).toBeInTheDocument(),
+    );
   });
 });
