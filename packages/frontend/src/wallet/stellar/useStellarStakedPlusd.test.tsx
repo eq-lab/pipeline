@@ -81,13 +81,17 @@ vi.mock("./useStellarWallet", () => ({
 
 // ── Mock useStellarSacToken ───────────────────────────────────────────────────
 
+const { mockSacRefetchBalance } = vi.hoisted(() => ({
+  mockSacRefetchBalance: vi.fn(),
+}));
+
 vi.mock("./useStellarSacToken", () => ({
   useStellarSacToken: vi.fn(() => ({
     balance: "0.0000000",
     hasTrustline: false,
     isAuthorized: false,
     decimals: 7,
-    refetchBalance: vi.fn(),
+    refetchBalance: mockSacRefetchBalance,
     isLoading: false,
     error: null,
   })),
@@ -623,6 +627,31 @@ describe("useStellarChangeTrustStakedPlusd", () => {
     });
     mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
     mockSubmitTransaction.mockResolvedValue({ hash: "trust-hash" });
+    mockSacRefetchBalance.mockResolvedValue({ hasTrustline: true });
+  });
+
+  it("real path — SUCCESS polls the trustline status until it flips (#1127)", async () => {
+    mockSacRefetchBalance
+      .mockResolvedValueOnce({ hasTrustline: false })
+      .mockResolvedValueOnce({ hasTrustline: true });
+
+    const { result } = renderHook(() => useStellarChangeTrustStakedPlusd(), {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(result.current.trustlineStatus).toBe("needed"));
+
+    act(() => {
+      result.current.submit();
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true), {
+      timeout: 2000,
+    });
+    expect(result.current.data?.hash).toBe("trust-hash");
+    await waitFor(
+      () => expect(mockSacRefetchBalance).toHaveBeenCalledTimes(2),
+      { timeout: 4000 },
+    );
   });
 
   it("mock-key happy path for sPLUSD trustline", async () => {

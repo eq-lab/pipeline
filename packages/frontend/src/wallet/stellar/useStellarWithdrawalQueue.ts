@@ -54,6 +54,7 @@ import {
 } from "./chain";
 import { useStellarDepositManagerAddresses } from "./useStellarDepositManagerAddresses";
 import { useStellarSacToken } from "./useStellarSacToken";
+import { pollTrustlineUntilPresent } from "./pollTrustline";
 import {
   readMockStellarRequestWithdrawal,
   readMockStellarClaimWithdrawal,
@@ -585,8 +586,6 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
     !!addresses?.usdcAsset &&
     !usdcTrustline.isLoading &&
     !usdcTrustline.hasTrustline;
-  // Refetch the trustline status immediately after a successful changeTrust so
-  // the UI flips without waiting for the 30s SAC-token poll (see #662).
   const { refetchBalance: refetchUsdcTrustline } = usdcTrustline;
 
   const reset = useCallback(() => {
@@ -677,7 +676,7 @@ export function useStellarChangeTrustUsdc(): UseStellarChangeTrustUsdcResult {
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
-        refetchUsdcTrustline();
+        void pollTrustlineUntilPresent(refetchUsdcTrustline);
       } catch (err) {
         setError(toError(err));
       } finally {

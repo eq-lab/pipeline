@@ -48,6 +48,15 @@ At the end the hook selects the active-chain, active-direction values and return
   *same* source as the TopBar wallet pill — so the deposit page's balance check can never disagree
   with the header. (The SAC hook reads a separate mock key / issuer and would diverge, surfacing a
   false "Add funds" banner when the user actually holds USDC.)
+- **Post-changeTrust trustline poll (#1127, supersedes the single #662 refetch).** After a
+  successful `changeTrust` submit, the real path runs a bounded poll —
+  `pollTrustlineUntilPresent` (`packages/frontend/src/wallet/stellar/pollTrustline.ts`), 8
+  attempts × 1.5 s — re-querying the trustline until `hasTrustline` flips, because Horizon's
+  `/accounts` endpoint can lag its own transaction-submission response and a single immediate
+  refetch often still returns the stale "no trustline". Applies to all three changeTrust hooks
+  (PLUSD, USDC, sPLUSD). The step's `isSuccess` flips immediately on tx success; only the
+  needs-trustline banner waits for the poll. If Horizon lags past the ~12 s budget, the UI falls
+  back to the 30 s background `refetchInterval`. Mock fast-paths keep a single refetch call.
 
 ### Business rules
 

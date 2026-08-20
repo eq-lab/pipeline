@@ -606,6 +606,7 @@ describe("useStellarChangeTrustUsdc", () => {
     });
     mockSignTransaction.mockResolvedValue({ signedTxXdr: "signed-xdr" });
     mockSubmitTransaction.mockResolvedValue({ hash: "trust-hash" });
+    mockRefetchBalance.mockResolvedValue({ hasTrustline: true });
   });
 
   it("mock-key happy path for USDC trustline", async () => {
@@ -626,9 +627,9 @@ describe("useStellarChangeTrustUsdc", () => {
     expect(result.current.data?.hash).toBe("trust-mock-hash");
     expect(result.current.needsTrustline).toBe(true);
     // #662: trustline status is refetched on success so the UI flips promptly.
-    // (The real-path success refetch is covered by the PLUSD changeTrust suite;
+    // (The real-path success poll is covered by the PLUSD changeTrust suite;
     // this file's real-path Horizon harness has pre-existing timing failures.)
-    expect(mockRefetchBalance).toHaveBeenCalled();
+    expect(mockRefetchBalance).toHaveBeenCalledTimes(1);
   });
 
   it("declined signature sets error", async () => {
