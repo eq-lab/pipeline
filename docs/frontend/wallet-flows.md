@@ -43,7 +43,8 @@ At the end the hook selects the active-chain, active-direction values and return
   `"1.5"`) and are converted to `bigint` at 7 dp (`sacDisplayToRaw`) for amount comparisons.
 - **Trustline array invariant.** `FlowState.trustlines` is always `[PLUSD (index 0), USDC (index 1)]`
   on Stellar — both rendered as steps inside the `StepsCard` regardless of direction — and always
-  `[]` on EVM (no trustline UI).
+  `[]` on EVM (no trustline UI). The **display** order is independent of the array index order:
+  the `StepsCard` renders "Enable USDC" first, then "Enable PLUSD" (#1131).
 - **USDC balance source.** On Stellar the deposit input balance comes from `useStellarToken` — the
   *same* source as the TopBar wallet pill — so the deposit page's balance check can never disagree
   with the header. (The SAC hook reads a separate mock key / issuer and would diverge, surfacing a
