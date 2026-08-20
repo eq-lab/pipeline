@@ -515,6 +515,7 @@ describe("useChangeTrust", () => {
     vi.spyOn(mockModule, "readMockStellarChangeTrust").mockReturnValue(
       undefined,
     );
+    mockRefetchBalance.mockResolvedValue({ hasTrustline: true });
   });
 
   it("mock key → settles with hash", async () => {
@@ -541,10 +542,13 @@ describe("useChangeTrust", () => {
     expect(result.current.needsTrustline).toBe(true);
     expect(result.current.error).toBeNull();
     // #662: trustline status is refetched on success so the UI flips promptly.
-    expect(mockRefetchBalance).toHaveBeenCalled();
+    expect(mockRefetchBalance).toHaveBeenCalledTimes(1);
   });
 
-  it("real path — SUCCESS refetches the trustline status (#662)", async () => {
+  it("real path — SUCCESS polls the trustline status until it flips (#1127)", async () => {
+    mockRefetchBalance
+      .mockResolvedValueOnce({ hasTrustline: false })
+      .mockResolvedValueOnce({ hasTrustline: true });
     mockLoadAccount.mockResolvedValue({
       id: "GADDR",
       sequence: "100",
@@ -567,7 +571,9 @@ describe("useChangeTrust", () => {
       timeout: 2000,
     });
     expect(result.current.data?.hash).toBe("real-trust-hash");
-    expect(mockRefetchBalance).toHaveBeenCalled();
+    await waitFor(() => expect(mockRefetchBalance).toHaveBeenCalledTimes(2), {
+      timeout: 4000,
+    });
   });
 
   it("declined signature → error state", async () => {

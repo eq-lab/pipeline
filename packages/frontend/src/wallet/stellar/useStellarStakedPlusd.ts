@@ -75,6 +75,7 @@ import {
   horizonUrl,
 } from "./chain";
 import { useStellarSacToken, SAC_DECIMALS } from "./useStellarSacToken";
+import { pollTrustlineUntilPresent } from "./pollTrustline";
 import {
   readMockStellarStake,
   readMockStellarUnstake,
@@ -838,6 +839,7 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
   // "I need to add a trustline" case. Loading/error do NOT set this true so
   // the button is disabled while resolution is pending.
   const needsTrustline = trustlineStatus === "needed";
+  const { refetchBalance: refetchSPlusdTrustline } = sPlusdToken;
 
   const reset = useCallback(() => {
     setData(undefined);
@@ -924,6 +926,7 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
 
         setData({ hash: submitResult.hash });
         setIsSuccess(true);
+        void pollTrustlineUntilPresent(refetchSPlusdTrustline);
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
@@ -931,7 +934,14 @@ export function useStellarChangeTrustStakedPlusd(): UseStellarChangeTrustStakedP
         setIsInFlight(false);
       }
     })();
-  }, [address, isConnected, isInFlight, shareAsset, signTransaction]);
+  }, [
+    address,
+    isConnected,
+    isInFlight,
+    shareAsset,
+    signTransaction,
+    refetchSPlusdTrustline,
+  ]);
 
   return {
     submit,

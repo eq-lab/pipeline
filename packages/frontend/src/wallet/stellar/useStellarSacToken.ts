@@ -143,8 +143,8 @@ export interface UseStellarSacTokenResult {
    * Decimal count for this SAC (always 7 for protocol USDC/PLUSD).
    */
   decimals: number;
-  /** Re-triggers the Horizon query. */
-  refetchBalance: () => void;
+  /** Re-triggers the Horizon query; resolves with the fresh snapshot. */
+  refetchBalance: () => Promise<{ hasTrustline: boolean } | undefined>;
   /** `true` while the first query is in-flight. */
   isLoading: boolean;
   /** Error from the Horizon query, or `null`. */
@@ -267,7 +267,7 @@ export function useStellarSacToken({
       // so dev/test mock paths are not newly blocked.
       isAuthorized: mockRaw > 0n,
       decimals: SAC_DECIMALS,
-      refetchBalance: () => {},
+      refetchBalance: async () => undefined,
       isLoading: false,
       error: null,
     };
@@ -280,7 +280,7 @@ export function useStellarSacToken({
       hasTrustline: false,
       isAuthorized: false,
       decimals: SAC_DECIMALS,
-      refetchBalance: query.refetch as () => void,
+      refetchBalance: async () => (await query.refetch()).data,
       isLoading: false,
       error: null,
     };
@@ -292,7 +292,7 @@ export function useStellarSacToken({
     hasTrustline: query.data?.hasTrustline ?? false,
     isAuthorized: query.data?.isAuthorized ?? false,
     decimals: SAC_DECIMALS,
-    refetchBalance: query.refetch as () => void,
+    refetchBalance: async () => (await query.refetch()).data,
     isLoading: query.isLoading,
     error: (query.error as Error | null) ?? null,
   };
