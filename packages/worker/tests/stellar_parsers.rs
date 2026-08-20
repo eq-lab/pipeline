@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use pipeline_worker::indexer::stellar::parsers::{
     dispatch_parser, parse_asset_transfer, parse_deposit_requested, parse_request_claimed,
-    parse_vault_deposit, parse_vault_withdraw, parse_withdrawal_requested,
+    parse_share_transfer, parse_vault_deposit, parse_vault_withdraw, parse_withdrawal_requested,
     transfer_between_tracked, transfer_touches_address,
 };
 use pipeline_worker::indexer::stellar::rpc::RawEvent;
@@ -829,6 +829,184 @@ fn asset_transfer_rejects_non_i128_value() {
         encode_symbol("not_a_number"),
     );
     assert!(parse_asset_transfer(&raw).is_none());
+}
+
+// ── parse_share_transfer ──────────────────────────────────────────────────────
+
+#[test]
+fn share_transfer_decodes_plain_i128_value() {
+    // SEP-41 `Transfer`: topics [transfer, from, to], value a bare i128.
+    let amount: i128 = 4_200_000;
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(OPERATOR_G)],
+        encode_i128_plain(amount),
+    );
+
+    let log = parse_share_transfer(&raw).expect("should decode ShareTransfer");
+    assert_eq!(log.event_name, "ShareTransfer");
+    assert_eq!(log.contract_address, SPLUSD_CONTRACT);
+    assert_eq!(log.params["from"], USER_G);
+    assert_eq!(log.params["to"], OPERATOR_G);
+    assert_eq!(log.params["amount"], amount.to_string());
+}
+
+#[test]
+fn share_transfer_decodes_muxed_amount_map() {
+    // SEP-41 `MuxedTransfer`: value is a Map carrying `to_muxed_id` alongside
+    // `amount`, so the map fallback must still find the amount.
+    let amount: i128 = 77;
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(OPERATOR_G)],
+        encode_map_i128(&[("amount", amount), ("to_muxed_id", 9)]),
+    );
+
+    let log = parse_share_transfer(&raw).expect("should decode muxed variant");
+    assert_eq!(log.event_name, "ShareTransfer");
+    assert_eq!(log.params["amount"], amount.to_string());
+}
+
+#[test]
+fn share_transfer_rejects_wrong_event_name() {
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "approve",
+        vec![encode_account(USER_G), encode_account(OPERATOR_G)],
+        encode_i128_plain(1),
+    );
+    assert!(parse_share_transfer(&raw).is_none());
+}
+
+#[test]
+fn share_transfer_rejects_short_topics() {
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G)],
+        encode_i128_plain(1),
+    );
+    assert!(parse_share_transfer(&raw).is_none());
+}
+
+#[test]
+fn share_and_asset_transfer_stay_distinct() {
+    // Identical on-chain shape, different emitting contract → different
+    // `event_name`. `AssetTransfer` consumers query without a
+    // `contract_address` filter, so the two must never collide.
+    let topics = vec![encode_account(USER_G), encode_account(CUSTODY_G)];
+    let share = parse_share_transfer(&make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        topics.clone(),
+        encode_i128_plain(5),
+    ))
+    .expect("share transfer decodes");
+    let asset = parse_asset_transfer(&make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        topics,
+        encode_i128_plain(5),
+    ))
+    .expect("asset transfer decodes");
+
+    assert_eq!(share.event_name, "ShareTransfer");
+    assert_eq!(asset.event_name, "AssetTransfer");
+    assert_ne!(share.event_name, asset.event_name);
+}
+
+// ── dispatch_parser: share transfers ─────────────────────────────────────────
+
+#[test]
+fn dispatch_transfer_from_splusd_is_share_transfer() {
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(OPERATOR_G)],
+        encode_i128_plain(1_000),
+    );
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        Some(ASSET_CONTRACT),
+    )
+    .expect("vault-emitted transfer should decode");
+    assert_eq!(log.event_name, "ShareTransfer");
+}
+
+#[test]
+fn dispatch_transfer_from_asset_is_asset_transfer() {
+    // Same topic shape from the configured asset contract routes the other way,
+    // even with the vault also configured.
+    let raw = make_raw_event(
+        ASSET_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(CUSTODY_G)],
+        encode_i128_plain(1_000),
+    );
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        Some(ASSET_CONTRACT),
+    )
+    .expect("asset-emitted transfer should decode");
+    assert_eq!(log.event_name, "AssetTransfer");
+}
+
+#[test]
+fn dispatch_share_transfer_needs_no_asset_config() {
+    // Share-transfer tracking is not gated on `asset_id`: the vault is always in
+    // the poller's contractIds filter, so these events arrive regardless.
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "transfer",
+        vec![encode_account(USER_G), encode_account(OPERATOR_G)],
+        encode_i128_plain(1),
+    );
+    let log = dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None,
+    )
+    .expect("share transfer should decode with asset tracking off");
+    assert_eq!(log.event_name, "ShareTransfer");
+}
+
+#[test]
+fn dispatch_vault_mint_event_is_not_parsed() {
+    // The vault mutates balances via `Base::update`, which emits nothing, so no
+    // token-level `mint` event exists on this contract. If one ever appears it
+    // would double-count against StakingDeposit — it must stay unparsed.
+    let raw = make_raw_event(
+        SPLUSD_CONTRACT,
+        "mint",
+        vec![encode_account(USER_G)],
+        encode_i128_plain(1_000),
+    );
+    assert!(dispatch_parser(
+        &raw,
+        DM_CONTRACT,
+        WQ_CONTRACT,
+        SPLUSD_CONTRACT,
+        None,
+        None,
+        None
+    )
+    .is_none());
 }
 
 // ── transfer_between_tracked ──────────────────────────────────────────────────

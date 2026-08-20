@@ -35,6 +35,26 @@ pub struct PositionSummary {
     pub total_realized_pnl: bigdecimal::BigDecimal,
 }
 
+/// One bucket of a wallet's position history: the **closing** position as of the
+/// end of that bucket, not an average over it — averaging a balance would be
+/// meaningless.
+///
+/// Buckets in which the position did not change are absent rather than
+/// forward-filled: a position persists until the next row, so consumers should
+/// step-interpolate. Emitting synthetic rows for quiet periods would fabricate
+/// history the indexer never observed.
+#[derive(sqlx::FromRow, Debug)]
+pub struct PositionHistoryBucket {
+    pub vault_address: String,
+    pub bucket: DateTime<Utc>,
+    pub shares_balance: bigdecimal::BigDecimal,
+    pub avg_buy_share_price: bigdecimal::BigDecimal,
+    /// Realized PnL accumulated from the wallet's first event up to and
+    /// including this bucket — always over full history, never just the
+    /// requested window.
+    pub cumulative_realized_pnl: bigdecimal::BigDecimal,
+}
+
 impl PositionRepo {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -178,22 +198,22 @@ impl PositionRepo {
         Ok(rows)
     }
 
-    /// Get the earliest stake timestamp for a wallet (unix seconds).
+    /// Earliest timestamp (unix seconds) at which a wallet held any share
+    /// position — the anchor for its effective-APY window.
     ///
-    /// The COALESCE-over-`from` clause catches legacy Stellar `StakingDeposit`
-    /// rows that predate the parser's EVM-parity normalization (they stored the
-    /// share holder under `from` instead of `owner`).
-    pub async fn get_first_stake_timestamp(
+    /// Reads `position_events`, so a holder who acquired shares only by
+    /// `ShareTransfer` and never staked directly still has an anchor. Keying on
+    /// staking alone would leave their APY undefined.
+    pub async fn get_first_position_timestamp(
         &self,
         chain_id: i64,
         owner_address: &str,
     ) -> anyhow::Result<Option<i64>> {
         let owner = owner_address.to_lowercase();
         let row: Option<(Option<i64>,)> = sqlx::query_as(
-            "SELECT MIN(block_timestamp) FROM contract_logs
+            "SELECT MIN(block_timestamp) FROM position_events
              WHERE chain_id = $1
-               AND LOWER(COALESCE(params->>'owner', params->>'from')) = $2
-               AND event_name = 'StakingDeposit'",
+               AND holder = $2",
         )
         .bind(chain_id)
         .bind(&owner)
@@ -219,6 +239,86 @@ impl PositionRepo {
         Ok(row.and_then(|(v,)| v))
     }
 
+    /// A wallet's position history, bucketed by `interval`.
+    ///
+    /// `interval` must be a valid PostgreSQL `DATE_TRUNC` field (`'hour'`,
+    /// `'day'`, `'week'`) — supplied by `Interval::as_pg_trunc`, never from raw
+    /// user input. `vault` filters to a single vault; `None` returns every vault
+    /// the wallet has touched. `since` bounds the returned buckets.
+    ///
+    /// Reads `position_events`, so staking and either side of a `ShareTransfer`
+    /// all contribute — a wallet that only ever received shares still has a
+    /// history.
+    ///
+    /// Each bucket carries the **last** position within it (`DISTINCT ON`
+    /// ordered by event position descending), because a balance's closing value
+    /// is the meaningful one.
+    pub async fn get_position_history(
+        &self,
+        chain_id: i64,
+        owner_address: &str,
+        vault: Option<&str>,
+        interval: &str,
+        since: Option<DateTime<Utc>>,
+    ) -> anyhow::Result<Vec<PositionHistoryBucket>> {
+        let owner = owner_address.to_lowercase();
+
+        // The cumulative realized-PnL window must run over the wallet's *whole*
+        // history, so the `since` bound is applied in the outer query, after the
+        // window has been computed. Filtering inside the CTE would restart the
+        // running total at the window boundary and understate it.
+        let query = format!(
+            "WITH ev AS (
+                 SELECT
+                     (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
+                     DATE_TRUNC('{interval}', TO_TIMESTAMP(block_timestamp)) AS bucket,
+                     block_number,
+                     log_index,
+                     shares_balance,
+                     avg_buy_share_price,
+                     SUM(realized_pnl) OVER (
+                         PARTITION BY chain_id, LOWER(contract_address)
+                         ORDER BY block_number, log_index
+                         ROWS UNBOUNDED PRECEDING
+                     ) AS cumulative_realized_pnl
+                 FROM position_events
+                 WHERE chain_id = $1
+                   AND holder = $2
+                   {vault_clause}
+             )
+             SELECT DISTINCT ON (vault_address, bucket)
+                 vault_address,
+                 bucket,
+                 COALESCE(shares_balance, 0) AS shares_balance,
+                 COALESCE(avg_buy_share_price, 0) AS avg_buy_share_price,
+                 COALESCE(cumulative_realized_pnl, 0) AS cumulative_realized_pnl
+             FROM ev
+             {since_clause}
+             ORDER BY vault_address, bucket, block_number DESC, log_index DESC",
+            vault_clause = if vault.is_some() {
+                "AND LOWER(contract_address) = LOWER($3)"
+            } else {
+                ""
+            },
+            since_clause = match (vault.is_some(), since.is_some()) {
+                (true, true) => "WHERE bucket >= $4",
+                (false, true) => "WHERE bucket >= $3",
+                _ => "",
+            },
+        );
+
+        let mut q = sqlx::query_as::<_, PositionHistoryBucket>(&query)
+            .bind(chain_id)
+            .bind(&owner);
+        if let Some(v) = vault {
+            q = q.bind(v);
+        }
+        if let Some(s) = since {
+            q = q.bind(s);
+        }
+        Ok(q.fetch_all(&self.pool).await?)
+    }
+
     /// Get per-vault position summaries for a wallet (latest position + total realized PnL).
     pub async fn get_position_summaries(
         &self,
@@ -231,10 +331,12 @@ impl PositionRepo {
         // Stellar Strkeys (C…) carry a CRC16 checksum — lowering corrupts them
         // into an invalid form that downstream clients can't parse, so preserve
         // case for Stellar chain IDs (sentinel 99000001 / 99000002).
-        // `COALESCE(owner, CASE WHEN event_name='StakingDeposit' THEN from END)`
-        // catches legacy Stellar `StakingDeposit` rows that lack `owner` and
-        // store the share holder under `from`. The CASE scope keeps the fallback
-        // safe: Stellar `StakingWithdrawal` rows always emit `owner` correctly.
+        //
+        // Both halves read the `position_events` view, which normalises the
+        // three position-bearing row shapes — staking rows keyed on `owner` (or
+        // legacy `from`), and each side of a `ShareTransfer` — into one row per
+        // holder. A holder's latest position is therefore found regardless of
+        // whether it was last set by staking or by a peer-to-peer transfer.
         let rows = sqlx::query_as::<_, PositionSummary>(
             "SELECT
                  latest.vault_address,
@@ -244,30 +346,20 @@ impl PositionRepo {
              FROM (
                  SELECT DISTINCT ON (LOWER(contract_address))
                      (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                     (params->>'shares_balance')::numeric AS shares_balance,
-                     (params->>'avg_buy_share_price')::numeric AS avg_buy_share_price
-                 FROM contract_logs
+                     shares_balance,
+                     avg_buy_share_price
+                 FROM position_events
                  WHERE chain_id = $1
-                   AND LOWER(COALESCE(
-                       params->>'owner',
-                       CASE WHEN event_name = 'StakingDeposit' THEN params->>'from' END
-                   )) = $2
-                   AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
-                   AND params ? 'shares_balance'
-                   AND (params->>'shares_balance')::numeric > 0
+                   AND holder = $2
+                   AND shares_balance > 0
                  ORDER BY LOWER(contract_address), block_number DESC, log_index DESC
              ) latest
              LEFT JOIN (
                  SELECT (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END) AS vault_address,
-                        SUM((params->>'realized_pnl')::numeric) AS total_realized_pnl
-                 FROM contract_logs
+                        SUM(realized_pnl) AS total_realized_pnl
+                 FROM position_events
                  WHERE chain_id = $1
-                   AND LOWER(COALESCE(
-                       params->>'owner',
-                       CASE WHEN event_name = 'StakingDeposit' THEN params->>'from' END
-                   )) = $2
-                   AND event_name IN ('StakingDeposit', 'StakingWithdrawal')
-                   AND params ? 'realized_pnl'
+                   AND holder = $2
                  GROUP BY (CASE WHEN chain_id IN (99000001, 99000002) THEN contract_address ELSE LOWER(contract_address) END)
              ) agg ON agg.vault_address = latest.vault_address",
         )

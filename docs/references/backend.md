@@ -306,6 +306,39 @@ The watchdog (security.md Layer 3) consumes this feed. Divergence that cannot be
   Each such row also gets a computed `params.wallet_balance_after` — a running balance (`prev ± amount`), computed pre-insert the same way the indexer computes the staking vault's `shares_balance` (see `compute_position_fields` in `packages/worker/src/indexer/mappers.rs`). Read via `ContractLogsRepo::get_wallet_balance_as_of(chain_id, asset_contract_address, wallet, as_of)`, which returns the most recent `wallet_balance_after` at or before `as_of` (unix seconds) — pass `as_of = now` for the current balance. Returns `None` when nothing has been indexed yet, which callers must treat as "unknown", not zero.
 - `JOB_INDEXER_STELLAR_CUSTODY_ADDRESSES` / `JOB_INDEXER_STELLAR_RAMP_ADDRESSES` — CSV address lists (`G…` or `C…`), independent of the Withdrawal Queue Wallet tracking above. When **both** are set (together with `ASSET_ID`), a transfer is additionally stored when **both** its `from` **and** `to` are in the custody∪ramp set — i.e. internal movements between tracked accounts (custody↔ramp, custody↔custody, ramp↔ramp); transfers with an untracked counterparty are not captured by this pair. Set both or neither — one without the other disables just this pair (warning log) without affecting Withdrawal Queue Wallet tracking.
 
+**sPLUSD share-transfer tracking (`ShareTransfer`).** Complete per-user share balance history requires every path that moves a holder's balance, not just staking. On the StakedPipelineUSD vault those are:
+
+| Contract entry point | Event emitted | `contract_logs.event_name` |
+|---|---|---|
+| `deposit` (assets-specified) | `deposit` | `StakingDeposit` |
+| `mint` (shares-specified) | `deposit` | `StakingDeposit` |
+| `withdraw` (assets-specified) | `withdraw` | `StakingWithdrawal` |
+| `redeem` (shares-specified) | `withdraw` | `StakingWithdrawal` |
+| `transfer` / `transfer_from` | `transfer` | `ShareTransfer` |
+
+**There is no token-level `mint`/`burn` event to index.** The vault mutates balances through `Base::update` (`stellar-tokens`), which is pure storage mutation and emits nothing; share creation and destruction are observable *only* via the two vault events above. `FungibleBurnable` is not implemented on the contract, so `burn`/`burn_from` are not callable. Consequently there is no double-count between staking events and `ShareTransfer` — but if the contract ever starts calling `Base::mint` (which *does* emit `mint`), that event would double-count against `StakingDeposit` and must not simply be added to the dispatcher.
+
+Share-transfer tracking needs **no configuration** — the vault is already in the poller's `contractIds` filter, so these events arrive regardless. It is deliberately a distinct `event_name` from `AssetTransfer`: the latter's consumers (`list_asset_transfers`, `get_wallet_balance_as_of`) query by `event_name` with no `contract_address` filter, on the assumption that one asset is tracked per chain. Sharing the name would fold share movements into USDC custody balances.
+
+**Two-sided balances and the `position_events` view.** `contract_logs` permits exactly one row per on-chain event (`UNIQUE (chain_id, contract_address, block_number, log_index)`), but a transfer moves *two* holders' balances. A `ShareTransfer` row therefore carries both sides: `shares_balance_from` / `avg_buy_share_price_from` and `shares_balance_to` / `avg_buy_share_price_to`.
+
+The `position_events` view normalises all three position-bearing row shapes — staking rows keyed on `owner` (or legacy `from`), plus each side of a `ShareTransfer` — into one row per `(holder, event)` with flat `holder` / `shares_balance` / `avg_buy_share_price` / `realized_pnl` columns. Every consumer reads the view rather than branching on `event_name`: `compute_position_fields`'s running-balance lookup, `PositionRepo::get_position_summaries`, and `PositionRepo::get_first_position_timestamp`.
+
+**Cost basis on transfer — carry-over.** A transfer is not an economic disposal, so neither side realizes PnL and the basis travels with the shares: the sender's `avg_buy_share_price` is unchanged, and the receiver inherits the sender's basis weighted into any position they already held. This keeps protocol-wide cost basis conserved — no gain or loss is created by moving shares between holders. The alternative (marking to the current share price) would invent realized PnL for a holder who never sold. Because `get_first_position_timestamp` reads the view, a holder who acquired shares only by transfer still has an APY anchor in `/v1/pnl`.
+
+Note that the running balance is only correct from the point share transfers began being indexed. Any holder who sent or received shares before this shipped needs an indexer resync over the vault to rebuild their chain.
+
+**`GET /v1/positions/history`.** Position history for a wallet, reading `position_events` via `PositionRepo::get_position_history`. The period surface mirrors `/v1/stats/prices` exactly — `days` (omit for all history), `interval` (`hourly` | `daily` | `weekly`, default `daily`), `chain_id` — plus `wallet` (required) and an optional `vault` filter. The shared `intervals::MAX_SAMPLES` cap (1_000 buckets) applies, rejecting over-wide requests with a 400 that names the estimate.
+
+It is named a *positions* endpoint, not a PnL one, because it returns balances and cost basis: `shares_balance`, `avg_cost_basis`, and `cumulative_realized_pnl`. There is deliberately **no unrealized or total PnL** per bucket — that needs the share price at each bucket joined from `share_prices`, which would also mean driving the bucket grid off the (dense, polled) price series rather than off the (sparse, event-driven) position series. `/v1/pnl` remains the point-in-time source for unrealized and total PnL. The handler lives in `routes/pnl.rs` alongside `/v1/pnl` since both share wallet normalisation and chain resolution.
+
+Two semantics worth stating explicitly, because they differ from a price series:
+
+- **Each bucket is the *closing* position**, not an average over the bucket. Averaging a balance would be meaningless; the last event in the bucket wins (`DISTINCT ON` ordered by event position descending). A zero-balance bucket is a real data point — a full exit — and is never dropped.
+- **Buckets with no activity are omitted, not forward-filled.** Position events are sparse and event-driven, unlike the regularly-polled `share_prices`. A position persists until the next entry, so clients should step-interpolate; emitting synthetic rows for quiet periods would fabricate history the indexer never observed.
+
+`cumulative_realized_pnl` accumulates over the wallet's **full** history, not just the requested window. The `SUM(...) OVER (...)` therefore runs inside a CTE with no time filter and `since` is applied in the outer query — filtering inside the window would restart the running total at the window boundary and silently understate it.
+
 ### Data Model (logical entities)
 
 ```

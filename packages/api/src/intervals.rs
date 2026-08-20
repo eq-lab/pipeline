@@ -1,12 +1,22 @@
 //! Time-bucket enum shared by time-series endpoints.
 //!
-//! Used by `/v1/stats/yield` (where it maps to a sample step in seconds) and
-//! `/v1/stats/prices` (where it maps to a Postgres `DATE_TRUNC` argument). Both routes
-//! deserialize the URL query value `"hourly" | "daily" | "weekly"` into the same type
-//! so the public API surface is consistent.
+//! Used by `/v1/stats/yield` (where it maps to a sample step in seconds), and by
+//! `/v1/stats/prices` and `/v1/positions/history` (where it maps to a Postgres
+//! `DATE_TRUNC` argument). All three deserialize the URL query value
+//! `"hourly" | "daily" | "weekly"` into the same type so the public API surface is
+//! consistent.
 
 use serde::Deserialize;
 use utoipa::ToSchema;
+
+/// Maximum number of time buckets any time-series endpoint will return. Caps
+/// `(now - from) / step + 1` and protects against runaway compute on
+/// `days = huge` requests: 1_000 daily samples ≈ 2.7 years, 1_000 weekly ≈ 19
+/// years, 1_000 hourly ≈ 42 days.
+///
+/// Shared by `/v1/stats/prices`, `/v1/stats/yield`, and `/v1/positions/history` so the
+/// three stay in step — they previously each declared their own copy.
+pub const MAX_SAMPLES: i64 = 1_000;
 
 #[derive(Debug, Default, Deserialize, ToSchema, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
