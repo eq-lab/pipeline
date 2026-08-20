@@ -263,6 +263,36 @@ pub fn parse_yield_minted(raw: &RawEvent) -> Option<StellarLog> {
 /// Membership filtering against the custody/ramp sets happens in the poller;
 /// this decoder is intentionally address-agnostic and pure.
 pub fn parse_asset_transfer(raw: &RawEvent) -> Option<StellarLog> {
+    parse_transfer_as(raw, "AssetTransfer")
+}
+
+/// StakedPipelineUSD share `transfer` event — the SEP-41 token half of the vault
+/// (`stellar_tokens::fungible`, reached via `transfer` / `transfer_from`).
+/// topics: [transfer, from: Address, to: Address]
+/// value:  i128 amount (`Transfer`), or `Map { to_muxed_id, amount }`
+///         (`MuxedTransfer`, when the destination is a muxed address).
+///
+/// Remapped to `event_name = "ShareTransfer"` — deliberately *not* reused as
+/// `"AssetTransfer"`, whose consumers (`list_asset_transfers`,
+/// `get_wallet_balance_as_of`) query by `event_name` with no
+/// `contract_address` filter on the assumption that one asset is tracked per
+/// chain. Sharing the name would fold share movements into USDC
+/// custody/withdrawal-queue balances.
+///
+/// The vault's own mint/burn is **not** visible here: `Vault::deposit_internal`
+/// and `withdraw_internal` call `Base::update` directly, which mutates balances
+/// without emitting anything. Share creation/destruction is observable only via
+/// `StakingDeposit` / `StakingWithdrawal`, so there is no double-count between
+/// those and this event.
+pub fn parse_share_transfer(raw: &RawEvent) -> Option<StellarLog> {
+    parse_transfer_as(raw, "ShareTransfer")
+}
+
+/// Shared decoder for the SEP-41 `transfer` topic shape, which is identical for
+/// the USDC SAC and the sPLUSD share token — only the stored `event_name`
+/// differs. Keeping one body means the muxed/plain value handling can't drift
+/// between the two callers.
+fn parse_transfer_as(raw: &RawEvent, event_name: &str) -> Option<StellarLog> {
     if raw.event_name != "transfer" {
         return None;
     }
@@ -279,7 +309,7 @@ pub fn parse_asset_transfer(raw: &RawEvent) -> Option<StellarLog> {
 
     Some(StellarLog {
         contract_address: raw.contract_id.clone(),
-        event_name: "AssetTransfer".to_owned(),
+        event_name: event_name.to_owned(),
         block_number: raw.ledger as u64,
         tx_hash: raw.tx_hash.clone(),
         log_index: synthesise_log_index(raw.tx_index, raw.op_index, raw.event_index_in_op),
@@ -409,6 +439,12 @@ fn sc_address_to_strkey(addr: &ScAddress) -> Option<String> {
 /// `request_claimed` is intentionally shared between DepositManager and
 /// WithdrawalQueue (`request_queue::claim_request` emits it from both).
 ///
+/// `transfer` is likewise emitted by two configured roles and disambiguated by
+/// contract id alone: from the StakedPipelineUSD vault it decodes to
+/// `"ShareTransfer"` (per-user sPLUSD balance tracking), from `asset_id` to
+/// `"AssetTransfer"` (USDC custody/ramp flows). The two must stay distinct —
+/// see `parse_share_transfer`.
+///
 /// `loan_registry_id` is `None` when the contract has not yet been deployed
 /// (ships dark — the new branch is a no-op until the env var is set).
 ///
@@ -435,7 +471,17 @@ pub fn dispatch_parser(
     } else if raw.contract_id == withdrawal_queue_id {
         parse_withdrawal_requested(raw).or_else(|| parse_request_claimed(raw))
     } else if raw.contract_id == staked_plusd_id {
-        parse_vault_deposit(raw).or_else(|| parse_vault_withdraw(raw))
+        // Vault mint/burn (`deposit`/`withdraw` events, covering all four of
+        // `deposit`/`mint`/`withdraw`/`redeem`) plus peer-to-peer share
+        // movement. There is deliberately no token-level `mint`/`burn` parser:
+        // the vault mutates balances through `Base::update`, which emits
+        // nothing, and `FungibleBurnable` is not implemented on the contract —
+        // so no such events exist. Should the contract ever start calling
+        // `Base::mint` (which does emit `mint`), that event would double-count
+        // against `StakingDeposit` and must not simply be added here.
+        parse_vault_deposit(raw)
+            .or_else(|| parse_vault_withdraw(raw))
+            .or_else(|| parse_share_transfer(raw))
     } else if loan_registry_id == Some(raw.contract_id.as_str()) {
         // LoanRegistry events — all 9 events, tried in order.
         // Returns None for any event not emitted by the LoanRegistry contract.

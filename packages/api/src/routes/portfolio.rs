@@ -13,15 +13,11 @@ use shared::contract_logs_repo::{LifecycleRow, LoanSnapshotRow};
 
 use crate::error::ApiError;
 use crate::formatting::{base6_to_decimal_string, iso_utc_from_unix};
-use crate::intervals::Interval;
+use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::AppState;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-/// Maximum samples per response. Caps `(now - from) / step + 1` and protects against
-/// runaway compute on `days = huge` requests. 1_000 daily samples ≈ 2.7 years;
-/// 1_000 weekly samples ≈ 19 years; 1_000 hourly samples ≈ 42 days.
-const MAX_SAMPLES: i64 = 1_000;
 /// Seconds per day (one place to change if anyone ever needs a different convention).
 const SECS_PER_DAY: i64 = 86_400;
 

@@ -10,18 +10,13 @@ use utoipa::{OpenApi, ToSchema};
 
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
-use crate::intervals::Interval;
+use crate::intervals::{Interval, MAX_SAMPLES};
 use crate::routes::common::resolve_chain;
 use crate::AppState;
 
-/// Maximum sample count for `/stats/prices` responses. Caps `(now - from) / step + 1`
-/// at 1_000 (≈ 2.7 years daily, ≈ 19 years weekly, ≈ 42 days hourly). Matches the
-/// cap used by `/stats/yield` (see `routes::portfolio::MAX_SAMPLES`).
-const MAX_SAMPLES: u32 = 1_000;
-
 /// Maximum value the `/stats` endpoint accepts for the `apy_days` query parameter.
-/// Coupled by product policy to `MAX_SAMPLES` (both 1_000) but semantically distinct:
-/// this is a duration in days, not a sample count.
+/// Coupled by product policy to `intervals::MAX_SAMPLES` (both 1_000) but semantically
+/// distinct: this is a duration in days, not a sample count.
 const MAX_APY_DAYS: u32 = 1_000;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -213,7 +208,7 @@ async fn get_daily_prices(
     if let Some(start) = since {
         let secs_window = (Utc::now() - start).num_seconds().max(0);
         let est_samples = secs_window / step + 1;
-        if est_samples > i64::from(MAX_SAMPLES) {
+        if est_samples > MAX_SAMPLES {
             return Err(ApiError::BadRequest(format!(
                 "request could produce up to {est_samples} samples (max {MAX_SAMPLES}); reduce `days` or use a coarser `interval`"
             )));

@@ -9,6 +9,10 @@
 /// path the EVM mapper uses. Without this, `/v1/pnl` and `PositionRepo`
 /// summaries would never see Stellar positions.
 ///
+/// `ShareTransfer` events go down the same path but write a per-side pair
+/// (`shares_balance_from` / `shares_balance_to` and their `avg_buy_share_price`
+/// counterparts), since one transfer moves two holders' balances.
+///
 /// For `AssetTransfer` events that touch the configured Withdrawal Queue
 /// Wallet, a running `wallet_balance_after` field is computed the same way
 /// (Issue #933) — see `compute_wallet_balance_field`.
@@ -22,7 +26,7 @@ use sqlx::PgConnection;
 
 use shared::{db::EventRepo, events::EventRow, log_mapper::LogMapper};
 
-use crate::indexer::mappers::{compute_position_fields, is_staking_event_name};
+use crate::indexer::mappers::{compute_position_fields, is_position_event_name};
 use crate::indexer::stellar::parsers::StellarLog;
 
 pub struct StellarLogMapper {
@@ -69,7 +73,7 @@ impl LogMapper for StellarLogMapper {
 
     async fn insert(&self, conn: &mut PgConnection) -> anyhow::Result<()> {
         let mut params = self.log.params.clone();
-        if is_staking_event_name(&self.log.event_name) {
+        if is_position_event_name(&self.log.event_name) {
             compute_position_fields(
                 conn,
                 self.chain_id,

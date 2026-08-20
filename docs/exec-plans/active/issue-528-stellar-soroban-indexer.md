@@ -23,6 +23,7 @@ Add a `StellarEventPoller` as the second concrete `ChainEventPoller` impl (the t
 - **`WithdrawalRequested` has a new `queued: i128` field** (cumulative queued amount at this request's position) — not present on the EVM side. Mapper writes `params->>'queued'` so the FIFO position can be surfaced in the UI.
 - **`StakedPipelineUSD` is a new contract** (commit `648273d`, deployed at `CDO4X3HC…`), the analog of the EVM sPLUSD ERC4626 vault. It uses `stellar_tokens::vault::Vault` so its events come from that library — `Deposit { operator, from, receiver, assets, shares }` and `Withdraw { operator, receiver, owner, assets, shares }`. **Remap** to `event_name='StakingDeposit'` / `'StakingWithdrawal'` at parse time so they merge with the existing EVM ERC4626 rows for cross-chain analytics symmetry.
 - The shared-token `Transfer`/`Mint`/`Approve` events (also emitted by StakedPipelineUSD via `FungibleToken`) are **not indexed** — low signal for the API and would multiply row volume.
+  - **Superseded for `Transfer`.** Complete per-user share balance history requires it, so `transfer` is now indexed as `ShareTransfer` — see the sPLUSD share-transfer tracking section in [`docs/references/backend.md`](../../references/backend.md). `Approve` remains unindexed (it moves no balance). `Mint`/`Burn` turned out not to exist on this contract at all: the vault mutates balances via `Base::update`, which emits nothing, and `FungibleBurnable` is not implemented.
 
 **In scope:**
 
@@ -214,6 +215,7 @@ All resolved via `/brainstorming` on 2026-06-09. Q1–Q5 confirmed the planner's
    - **`RequestEnqueued`** — the shared lib publishes this from `enqueue_request()` at the same call sites where DM/WQ publish their contract-specific events. Indexing both would double-write rows for the same logical event; the contract-specific events carry strictly more info (`WithdrawalRequested` adds `queued`). The poller's event filter excludes the `RequestEnqueued` topic.
    - **`CustodianSet` / `VerifierSet`** — admin/governance events on DM and WQ. No API/UI consumer; EVM-side indexer doesn't track equivalents. File a follow-up if an audit page ever needs them.
    - **Vault `Transfer` / `Mint` / `Approve`** (also emitted by StakedPipelineUSD via `FungibleToken`) — low signal, would multiply row volume on every share transfer. EVM-side similarly only indexes the ERC4626 `Deposit`/`Withdraw` events on sPLUSD, not the underlying ERC-20 transfers.
+     - **`Transfer` was later pulled back in** as `ShareTransfer`, since per-user balance history is incomplete without it. `Mint` does not exist on this contract (the vault calls `Base::update`, which emits nothing). See [`docs/references/backend.md`](../../references/backend.md).
 
    ScVal decoding via `stellar_xdr::ScVal::from_xdr_base64`:
    - `request_id`: `ScVal::U128` (decode `Parts { hi: u64, lo: u64 }` → `u128`; serialize as decimal string to keep parity with EVM `params->>'request_id'` shape).
