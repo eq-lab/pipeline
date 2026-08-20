@@ -6,6 +6,7 @@
 //! `"hourly" | "daily" | "weekly"` into the same type so the public API surface is
 //! consistent.
 
+use chrono::{DateTime, Datelike, Duration, NaiveTime, TimeZone, Timelike, Utc};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -28,6 +29,37 @@ pub enum Interval {
 }
 
 impl Interval {
+    /// One bucket's width, for stepping a dense bucket grid.
+    ///
+    /// Exact for all three variants because the grid is built in UTC, where an
+    /// hour, a day and a week are fixed lengths — no DST discontinuities to
+    /// worry about.
+    pub fn step(self) -> Duration {
+        Duration::seconds(self.step_secs())
+    }
+
+    /// Truncate `dt` to the start of the bucket containing it, matching Postgres
+    /// `DATE_TRUNC(as_pg_trunc(), …)` evaluated in UTC — so a grid built in Rust
+    /// lands on the same instants as the query's event buckets.
+    ///
+    /// Weekly buckets start Monday, as Postgres `DATE_TRUNC('week', …)` does.
+    pub fn truncate(self, dt: DateTime<Utc>) -> DateTime<Utc> {
+        match self {
+            Self::Hourly => dt
+                .with_minute(0)
+                .and_then(|d| d.with_second(0))
+                .and_then(|d| d.with_nanosecond(0))
+                .unwrap_or(dt),
+            Self::Daily => Utc.from_utc_datetime(&dt.date_naive().and_time(NaiveTime::MIN)),
+            Self::Weekly => {
+                let date = dt.date_naive();
+                let monday =
+                    date - Duration::days(i64::from(date.weekday().num_days_from_monday()));
+                Utc.from_utc_datetime(&monday.and_time(NaiveTime::MIN))
+            }
+        }
+    }
+
     /// Number of seconds in one bucket.
     pub fn step_secs(self) -> i64 {
         match self {

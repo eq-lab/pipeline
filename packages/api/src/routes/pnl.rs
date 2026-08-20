@@ -297,12 +297,17 @@ async fn get_position_history(
     let wallet = normalise_wallet(chain_kind, &query.wallet)
         .map_err(|(_, msg)| ApiError::BadRequest(msg))?;
 
+    // One `now` for the whole request: the sample cap, the grid end and the
+    // window start must agree, or a request straddling a bucket boundary could
+    // produce one more bucket than the cap allowed.
+    let now = Utc::now();
+
     // Resolve the lookback window. `days = Some(d)` starts at `now - d × 86400`.
     // `days = None` means all history, bounded by the wallet's first position so
     // the sample cap below has something real to check — mirroring how
     // `/stats/prices` bounds full-history queries by the earliest recorded price.
     let since = match query.days {
-        Some(d) => Some(Utc::now() - Duration::days(i64::from(d))),
+        Some(d) => Some(now - Duration::days(i64::from(d))),
         None => state
             .position_repo
             .get_first_position_timestamp(chain_id, &wallet)
@@ -310,9 +315,11 @@ async fn get_position_history(
             .and_then(|ts| DateTime::from_timestamp(ts, 0)),
     };
 
+    // The cap now bounds the *actual* row count rather than an upper estimate,
+    // since the response carries one bucket per step across the whole window.
     if let Some(start) = since {
         let step = query.interval.step_secs();
-        let secs_window = (Utc::now() - start).num_seconds().max(0);
+        let secs_window = (now - start).num_seconds().max(0);
         let est_samples = secs_window / step + 1;
         if est_samples > MAX_SAMPLES {
             return Err(ApiError::BadRequest(format!(
@@ -328,7 +335,7 @@ async fn get_position_history(
         .get_position_history(chain_id, &wallet, query.interval.as_pg_trunc(), since)
         .await?;
 
-    let (vault_address, history) = build_history_series(rows);
+    let (vault_address, history) = build_history_series(&rows, query.interval, since, now);
 
     Ok(Json(PositionHistoryResponse {
         wallet,
@@ -338,24 +345,78 @@ async fn get_position_history(
     }))
 }
 
-/// Turn repo rows into the response's single series, paired with the vault they
-/// belong to.
+/// Expand the repo's sparse event buckets into one bucket per interval step
+/// across `[window_start, now]`, paired with the vault the series belongs to.
 ///
-/// The repo scopes to one vault, so every row shares a `vault_address` and it is
-/// read off the first row — `None` when there is no history at all. Kept
-/// separate from the handler so it is testable without a database.
+/// **Why densify.** A balance is a step function: it only changes when an event
+/// changes it, so between events the previous closing value is the actual
+/// balance, not a guess. Carrying it forward states what the ledger already
+/// entails rather than inventing data. Sparse output, by contrast, breaks two
+/// things for consumers: charts that render samples equidistantly distort the
+/// time axis when adjacent buckets are a day apart in one place and a month in
+/// another, and the first timestamp becomes the wallet's first activity instead
+/// of the requested window start — so a 1Y tab would label its axis with a date
+/// three days ago.
+///
+/// **Leading buckets are zero-filled**, not omitted, so the series always starts
+/// at the window start and the client can render it verbatim. A wallet that
+/// staked three days ago genuinely held nothing over the preceding year, so the
+/// zeros are accurate rather than padding.
+///
+/// **Caveat.** Carry-forward is exactly as trustworthy as event coverage: a
+/// missing event becomes a confident flat line rather than a visible gap. See
+/// the resync note in `docs/references/backend.md`.
+///
+/// The repo scopes to one vault, so every row shares a `vault_address`, read off
+/// the first row — `None` when there is no history at all, in which case the
+/// series is empty too. `window_start` falls back to the first bucket for a
+/// caller that did not resolve a window.
+///
+/// The caller must have applied `MAX_SAMPLES` to the window: this bounds nothing
+/// itself, and silently truncating would misreport coverage.
 pub fn build_history_series(
-    rows: Vec<PositionHistoryBucket>,
+    rows: &[PositionHistoryBucket],
+    interval: Interval,
+    window_start: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
 ) -> (Option<String>, Vec<PositionHistoryItem>) {
-    let vault_address = rows.first().map(|r| r.vault_address.clone());
-    let history = rows
-        .into_iter()
-        .map(|row| PositionHistoryItem {
-            timestamp: iso_utc(&row.bucket),
-            shares_balance: row.shares_balance.to_string(),
-            avg_cost_basis: row.avg_buy_share_price.to_string(),
-            cumulative_realized_pnl: row.cumulative_realized_pnl.to_string(),
-        })
-        .collect();
-    (vault_address, history)
+    let Some(first) = rows.first() else {
+        return (None, Vec::new());
+    };
+
+    // Align the grid to bucket boundaries so its instants coincide with the
+    // query's `DATE_TRUNC`ed event buckets.
+    let mut bucket = interval.truncate(window_start.unwrap_or(first.bucket));
+    let end = interval.truncate(now);
+    let step = interval.step();
+
+    let mut history = Vec::new();
+    let mut carried: Option<&PositionHistoryBucket> = None;
+    let mut next = 0;
+
+    while bucket <= end {
+        // Adopt every event at or before this grid bucket; the last one wins,
+        // which is both the closing value and the state to carry forward. Rows
+        // arrive ordered by bucket, so this walks each exactly once. Matching on
+        // `<=` rather than equality also absorbs the seed bucket from before the
+        // window without special-casing it.
+        while let Some(row) = rows.get(next).filter(|r| r.bucket <= bucket) {
+            carried = Some(row);
+            next += 1;
+        }
+
+        history.push(PositionHistoryItem {
+            timestamp: iso_utc(&bucket),
+            shares_balance: carried
+                .map_or_else(|| "0".to_owned(), |r| r.shares_balance.to_string()),
+            avg_cost_basis: carried
+                .map_or_else(|| "0".to_owned(), |r| r.avg_buy_share_price.to_string()),
+            cumulative_realized_pnl: carried
+                .map_or_else(|| "0".to_owned(), |r| r.cumulative_realized_pnl.to_string()),
+        });
+
+        bucket += step;
+    }
+
+    (Some(first.vault_address.clone()), history)
 }
