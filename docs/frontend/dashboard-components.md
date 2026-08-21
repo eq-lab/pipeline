@@ -200,11 +200,25 @@ supplied by the home route.
 **Served series mode (#1138).** `GET /v1/positions/history` (backend #1116/#1135 — dense,
 window-spanning, carry-forward sPLUSD buckets) now drives the chart: the home route owns the
 period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days`/`interval`:
-7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily, All → omitted/weekly), maps the
+7D → 7/hourly, 1M → 30/daily, 3M → 90/daily, 1Y → 365/daily), maps the
 response with `buildSeries` (raw share strings scaled by the active chain's decimals), and
 passes `series` into the card — the card stays presentational. Non-empty series → one bar per
 served bucket (height ∝ `shares_balance`), tooltip shows the bucket's served balance +
 timestamp. Empty/absent series → the zero placeholder below, unchanged.
+
+**All-tab adaptive interval (#1140).** All omits `days` (the backend bounds the window at the
+wallet's first position), and hard-coding an interval either collapses young wallets into one
+weekly bucket or caps out old wallets. The hook ladders `hourly → daily → weekly`: on the
+backend's deterministic sample-cap 400 it retries the next rung, remembers the resolved rung
+per `chainId:wallet` (module map) so the 30 s poll doesn't re-probe, and keeps a stable
+react-query key (`"all-auto"`). Non-cap errors are rethrown, never laddered.
+
+**Series-mode bar design (#1140, Figma node `1497:95197`).** Real-entry bars are green —
+`--color-pipeline-chart-positive`, realigned to the node's `#208000` (= `fill/positive-primary`),
+no longer the prototype `#2d7b1f` — drawn as two bottom-anchored rects per slot: a thin
+full-value-height spike (~1px) plus a wider band at 40% of the value height (~3px), widths
+scaled down when slots are narrow. The grey `#D5D8C8` triple-rect construction remains
+placeholder-only.
 
 **Endpoint dates row (#1133/#1138).** A `ChartDatesRow` under the chart: in served-series mode
 the labels are the series' first/last bucket timestamps; in placeholder mode they fall back to

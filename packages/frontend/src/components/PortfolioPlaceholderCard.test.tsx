@@ -196,9 +196,17 @@ describe("PortfolioPlaceholderCard — served series mode (#1138)", () => {
     values: [0, 500, 1000],
   };
 
-  it("renders one bar per served bucket instead of the 100 placeholder slots", () => {
+  it("renders one green two-rect bar per served bucket (#1140, Figma 1497:95197)", () => {
     const { container } = renderCard({ series: SERIES });
-    expect(container.querySelectorAll("[data-bar-slot]")).toHaveLength(3);
+    const slots = container.querySelectorAll("[data-bar-slot]");
+    expect(slots).toHaveLength(3);
+    const rects = slots[2]!.querySelectorAll("rect");
+    expect(rects).toHaveLength(2);
+    for (const rect of Array.from(rects)) {
+      expect(rect.getAttribute("fill")).toBe(
+        "var(--color-pipeline-chart-positive)",
+      );
+    }
   });
 
   it("axis labels come from the served series endpoints", () => {

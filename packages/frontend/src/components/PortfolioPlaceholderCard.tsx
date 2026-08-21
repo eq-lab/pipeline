@@ -228,17 +228,26 @@ export const PortfolioPlaceholderCard = React.forwardRef<
                   maxValue > 0
                     ? Math.max((value / maxValue) * VB_H * 0.9, barH * 0.3)
                     : barH * 0.3;
-                const w = Math.min(3, Math.max(0.5, (VB_W / slotCount) * 0.5));
+                const slotW = VB_W / slotCount;
+                const spikeW = Math.min(1, Math.max(0.35, slotW * 0.25));
+                const bandW = Math.min(3, Math.max(0.7, slotW * 0.6));
                 return (
-                  <rect
-                    key={i}
-                    data-bar-slot={i}
-                    x={cx - w / 2}
-                    y={VB_H - h}
-                    width={w}
-                    height={h}
-                    fill={PLACEHOLDER_FILL}
-                  />
+                  <g key={i} data-bar-slot={i}>
+                    <rect
+                      x={cx - spikeW / 2}
+                      y={VB_H - h}
+                      width={spikeW}
+                      height={h}
+                      fill="var(--color-pipeline-chart-positive)"
+                    />
+                    <rect
+                      x={cx - bandW / 2}
+                      y={VB_H - h * 0.4}
+                      width={bandW}
+                      height={h * 0.4}
+                      fill="var(--color-pipeline-chart-positive)"
+                    />
+                  </g>
                 );
               })
             : Array.from({ length: N }, (_, i) => {
