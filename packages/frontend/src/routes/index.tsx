@@ -276,7 +276,7 @@ function Home() {
 
         <Card
           variant="white"
-          className="hidden p-8 md:block"
+          className="hidden !border-0 p-8 md:block"
           data-node-id="1497:94565"
           data-testid="home-dashboard-card"
         >
@@ -303,10 +303,12 @@ function Home() {
               />
             )}
 
-            <RecentActivityCard
-              className="col-span-3 col-start-5 row-span-2 row-start-1"
-              data-testid="home-recent-activity-card"
-            />
+            <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+              <RecentActivityCard
+                className="!absolute inset-0 min-h-0 overflow-hidden"
+                data-testid="home-recent-activity-card"
+              />
+            </div>
 
             <div
               className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"

@@ -122,6 +122,7 @@ export const ConnectWalletPromoCard = React.forwardRef<
           label, not stretched). `relative` keeps it above the artwork. */}
       <Button
         variant="primary-dark"
+        size="m"
         onClick={onConnect}
         className="relative self-start"
         data-node-id="I1497:94566;1360:49021"

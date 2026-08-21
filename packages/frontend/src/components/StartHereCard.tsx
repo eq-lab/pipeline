@@ -210,8 +210,8 @@ export const StartHereCard = React.forwardRef<
       >
         <Button
           variant="primary-blue"
+          size="m"
           onClick={onBuy}
-          className="h-10 md:h-12"
           data-node-id="1497:94689"
           data-testid="home-buy-button"
         >
@@ -219,9 +219,9 @@ export const StartHereCard = React.forwardRef<
         </Button>
         <Button
           variant="secondary"
+          size="m"
           onClick={onSell}
           disabled={mobileHomeState === "empty"}
-          className="h-10 md:h-12"
           data-node-id="1497:94690"
           data-testid="home-sell-button"
         >

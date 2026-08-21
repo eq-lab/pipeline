@@ -39,7 +39,7 @@ const QUESTIONS: ReadonlyArray<{
 
 export const QnaSection = React.forwardRef<HTMLElement, QnaSectionProps>(
   function QnaSection({ className, ...rest }, ref) {
-    const composed = ["flex flex-col gap-4", "w-full", className]
+    const composed = ["flex flex-col gap-4", "w-full pt-4", className]
       .filter(Boolean)
       .join(" ");
 
