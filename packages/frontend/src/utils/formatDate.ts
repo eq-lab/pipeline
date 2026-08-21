@@ -59,3 +59,31 @@ export function formatSubmittedDate(
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", DAY_MONTH).format(date);
 }
+
+const MONTH_DAY: Intl.DateTimeFormatOptions = {
+  month: "short",
+  day: "numeric",
+};
+
+export function formatAxisDate(unixMs: number | null | undefined): string {
+  if (unixMs == null || !Number.isFinite(unixMs)) return "—";
+  const date = new Date(unixMs);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-US", MONTH_DAY).format(date);
+}
+
+export function formatAxisDateRange(
+  startMs: number | null | undefined,
+  endMs: number | null | undefined,
+): { start: string; end: string } {
+  const start = formatAxisDate(startMs);
+  const end = formatAxisDate(endMs);
+  if (start === "—" || end === "—") return { start, end };
+  const startYear = new Date(startMs as number).getFullYear();
+  const endYear = new Date(endMs as number).getFullYear();
+  if (startYear === endYear) return { start, end };
+  return {
+    start: `${start} '${String(startYear).slice(-2)}`,
+    end: `${end} '${String(endYear).slice(-2)}`,
+  };
+}

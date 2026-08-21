@@ -32,6 +32,12 @@ export type {
 export { useStats, formatApy } from "./useStats";
 export type { VaultStatsItem, StatsResponse, UseStatsResult } from "./useStats";
 export { useStatsPrices } from "./useStatsPrices";
+export { usePositionsHistory, PERIOD_WINDOWS } from "./usePositionsHistory";
+export type {
+  PositionHistoryItem,
+  PositionHistoryResponse,
+  UsePositionsHistoryResult,
+} from "./usePositionsHistory";
 export type {
   StatsPriceItem,
   StatsPricesInterval,

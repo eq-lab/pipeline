@@ -4,6 +4,8 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
+import { slotTimestamps, buildSeries } from "./usePortfolioChart";
+import { formatAxisDateRange } from "@/utils/formatDate";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
@@ -16,8 +18,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-function renderCard() {
-  return render(<PortfolioPlaceholderCard />);
+function renderCard(
+  props: Partial<React.ComponentProps<typeof PortfolioPlaceholderCard>> = {},
+) {
+  return render(<PortfolioPlaceholderCard {...props} />);
 }
 
 describe("PortfolioPlaceholderCard — header", () => {
@@ -156,5 +160,97 @@ describe("PortfolioPlaceholderCard — responsive header layout", () => {
     expect(wrapper).toBeTruthy();
     expect(wrapper.className).toContain("flex-col");
     expect(wrapper.className).toContain("md:flex-row");
+  });
+});
+
+describe("PortfolioPlaceholderCard — endpoint dates row (#1133)", () => {
+  it("renders the active period window's endpoints as axis labels", () => {
+    renderCard();
+    const row = screen.getByTestId("chart-dates-row");
+    const [start, end] = Array.from(row.children).map((c) => c.textContent);
+    const now = Date.now();
+    const ts = slotTimestamps("all", now);
+    const expected = formatAxisDateRange(ts[0]!, now);
+    expect(end).toBe(expected.end);
+    expect(start).toBe(expected.start);
+  });
+
+  it("start label tracks the selected period tab", async () => {
+    const user = userEvent.setup();
+    renderCard();
+    await user.click(screen.getByRole("tab", { name: "7D" }));
+    const row = screen.getByTestId("chart-dates-row");
+    const start = row.children[0]!.textContent;
+    const ts = slotTimestamps("7d", Date.now());
+    expect(start).toBe(formatAxisDateRange(ts[0]!, ts[ts.length - 1]!).start);
+  });
+});
+
+describe("PortfolioPlaceholderCard — served series mode (#1138)", () => {
+  const SERIES = {
+    timestamps: [
+      Date.UTC(2026, 6, 20, 12),
+      Date.UTC(2026, 7, 5, 12),
+      Date.UTC(2026, 7, 20, 12),
+    ],
+    values: [0, 500, 1000],
+  };
+
+  it("renders one bar per served bucket instead of the 100 placeholder slots", () => {
+    const { container } = renderCard({ series: SERIES });
+    expect(container.querySelectorAll("[data-bar-slot]")).toHaveLength(3);
+  });
+
+  it("axis labels come from the served series endpoints", () => {
+    renderCard({ series: SERIES });
+    const row = screen.getByTestId("chart-dates-row");
+    expect(row.children[0]!.textContent).toBe("Jul 20");
+    expect(row.children[1]!.textContent).toBe("Aug 20");
+  });
+
+  it("appends 'YY to both labels when the endpoints cross a year boundary", () => {
+    renderCard({
+      series: {
+        timestamps: [Date.UTC(2025, 7, 20, 12), Date.UTC(2026, 7, 20, 12)],
+        values: [0, 1000],
+      },
+    });
+    const row = screen.getByTestId("chart-dates-row");
+    expect(row.children[0]!.textContent).toBe("Aug 20 '25");
+    expect(row.children[1]!.textContent).toBe("Aug 20 '26");
+  });
+
+  it("falls back to the zero placeholder when series is null", () => {
+    const { container } = renderCard({ series: null });
+    expect(container.querySelectorAll("[data-bar-slot]")).toHaveLength(100);
+  });
+});
+
+describe("buildSeries (#1138)", () => {
+  it("scales raw share strings by decimals and parses timestamps", () => {
+    const s = buildSeries(
+      [
+        {
+          timestamp: "2026-07-20T00:00:00Z",
+          shares_balance: "10000000",
+        },
+        {
+          timestamp: "2026-08-20T00:00:00Z",
+          shares_balance: "25000000",
+        },
+      ],
+      7,
+    );
+    expect(s).not.toBeNull();
+    expect(s!.values).toEqual([1, 2.5]);
+    expect(s!.timestamps[0]).toBe(Date.parse("2026-07-20T00:00:00Z"));
+  });
+
+  it("returns null for empty or malformed history", () => {
+    expect(buildSeries([], 7)).toBeNull();
+    expect(buildSeries(undefined, 7)).toBeNull();
+    expect(
+      buildSeries([{ timestamp: "not-a-date", shares_balance: "1" }], 7),
+    ).toBeNull();
   });
 });

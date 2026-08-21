@@ -5,6 +5,8 @@
  * (content, deployed-ratio business rule, Figma tokens).
  */
 import { YieldBarChart } from "./YieldBarChart";
+import { ChartDatesRow } from "../ChartDatesRow";
+import { formatAxisDateRange } from "@/utils/formatDate";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -139,15 +141,23 @@ export function TvlCard({
 
       {/* TVL bar chart — spec: docs/frontend/dashboard-components.md#tvlcard (Figma 3283:67630) */}
       {tvlBars !== null && tvlBars.length > 0 ? (
-        <div
-          className="mt-auto h-[240px] overflow-hidden"
-          data-testid="dashboard-tvl-chart-container"
-        >
-          <YieldBarChart
-            bars={tvlBars}
-            fill="var(--color-pipeline-ink)"
-            aria-label={`TVL history: ${headlineTvl}`}
-            className="h-full"
+        <div className="mt-auto flex flex-col" data-node-id="6002:9267">
+          <div
+            className="h-[224px] overflow-hidden"
+            data-testid="dashboard-tvl-chart-container"
+          >
+            <YieldBarChart
+              bars={tvlBars}
+              fill="var(--color-pipeline-ink)"
+              aria-label={`TVL history: ${headlineTvl}`}
+              className="h-full"
+            />
+          </div>
+          <ChartDatesRow
+            {...formatAxisDateRange(
+              tvlBars[0]!.timestamp,
+              tvlBars[tvlBars.length - 1]!.timestamp,
+            )}
           />
         </div>
       ) : (
