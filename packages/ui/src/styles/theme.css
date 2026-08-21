@@ -100,7 +100,7 @@
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
   --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
   --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
-  --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
+  --color-pipeline-chart-positive: #208000; /* chart bar fill — portfolio balance chart; Figma 1497:95197 (= fill/positive-primary) */
 
   /* Type ramp */
   --text-pipeline-title: 64px;
@@ -180,7 +180,7 @@
   --color-pipeline-positive: #1a6600; /* content/positive — step done check icon; dark-green on positive-secondary */
   --color-pipeline-negative: #c0392b; /* content/negative — status text (e.g. Rejected); mirrors fill/danger */
   --color-pipeline-pending: #b58a00; /* content/pending — status text (e.g. In Review); mirrors fill/warning */
-  --color-pipeline-chart-positive: #2d7b1f; /* chart bar fill — portfolio stacked-bars chart; prototype value */
+  --color-pipeline-chart-positive: #208000; /* chart bar fill — portfolio balance chart; Figma 1497:95197 (= fill/positive-primary) */
 
   /* --- Typography: families --- */
 

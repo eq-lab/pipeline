@@ -27,9 +27,11 @@ export interface PositionHistoryResponse {
   history: PositionHistoryItem[];
 }
 
+export type HistoryInterval = "hourly" | "daily" | "weekly";
+
 export interface PositionHistoryWindow {
-  days?: number;
-  interval: "hourly" | "daily" | "weekly";
+  days: number;
+  interval: HistoryInterval;
 }
 
 export const PERIOD_WINDOWS: Record<string, PositionHistoryWindow> = {
@@ -37,8 +39,65 @@ export const PERIOD_WINDOWS: Record<string, PositionHistoryWindow> = {
   "1m": { days: 30, interval: "daily" },
   "3m": { days: 90, interval: "daily" },
   "1y": { days: 365, interval: "daily" },
-  all: { interval: "weekly" },
 };
+
+export const ALL_INTERVAL_LADDER: readonly HistoryInterval[] = [
+  "hourly",
+  "daily",
+  "weekly",
+];
+
+const resolvedAllRung = new Map<string, number>();
+
+function isSampleCapError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /max \d+ samples|coarser .?interval.?/i.test(error.message)
+  );
+}
+
+function fetchHistory(
+  address: string,
+  chainId: number,
+  interval: HistoryInterval,
+  days?: number,
+): Promise<PositionHistoryResponse> {
+  const params = new URLSearchParams({
+    wallet: address,
+    chain_id: String(chainId),
+    interval,
+  });
+  if (days !== undefined) params.set("days", String(days));
+  return apiFetch<PositionHistoryResponse>(
+    `/v1/positions/history?${params.toString()}`,
+  );
+}
+
+async function fetchAllHistory(
+  address: string,
+  chainId: number,
+): Promise<PositionHistoryResponse> {
+  const key = `${chainId}:${address}`;
+  const start = resolvedAllRung.get(key) ?? 0;
+  for (let rung = start; rung < ALL_INTERVAL_LADDER.length; rung++) {
+    try {
+      const response = await fetchHistory(
+        address,
+        chainId,
+        ALL_INTERVAL_LADDER[rung]!,
+      );
+      resolvedAllRung.set(key, rung);
+      return response;
+    } catch (error) {
+      if (isSampleCapError(error) && rung < ALL_INTERVAL_LADDER.length - 1) {
+        resolvedAllRung.set(key, rung + 1);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("positions history: no interval fits the sample cap");
+}
 
 export interface UsePositionsHistoryResult {
   data: PositionHistoryResponse | undefined;
@@ -72,7 +131,7 @@ export function usePositionsHistory(
   const address = isStellar ? stellarAddress : evmAddress;
   const isConnected = isStellar ? isStellarConnected : isEvmConnected;
   const chainId = isStellar ? ENV.STELLAR_CHAIN_ID : ENV.EVM_CHAIN_ID;
-  const window = PERIOD_WINDOWS[periodId] ?? PERIOD_WINDOWS["all"]!;
+  const window = PERIOD_WINDOWS[periodId];
 
   const mockVer = useSyncExternalStore(
     subscribeMockVersion,
@@ -86,21 +145,14 @@ export function usePositionsHistory(
       kind,
       address,
       chainId,
-      window.days ?? "all",
-      window.interval,
+      window ? window.days : "all-auto",
+      window ? window.interval : "all-auto",
       mockVer,
     ],
-    queryFn: () => {
-      const params = new URLSearchParams({
-        wallet: address ?? "",
-        chain_id: String(chainId),
-        interval: window.interval,
-      });
-      if (window.days !== undefined) params.set("days", String(window.days));
-      return apiFetch<PositionHistoryResponse>(
-        `/v1/positions/history?${params.toString()}`,
-      );
-    },
+    queryFn: () =>
+      window
+        ? fetchHistory(address ?? "", chainId, window.interval, window.days)
+        : fetchAllHistory(address ?? "", chainId),
     enabled: isConnected && !!address,
     refetchInterval: 30_000,
   });
