@@ -10,6 +10,7 @@
 //! from the environment; when they are absent the API still boots (auth is
 //! simply unavailable), mirroring how Sumsub and per-chain signers degrade.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use axum::extract::FromRequestParts;
@@ -169,30 +170,35 @@ pub struct AuthClaims(pub Claims);
 impl FromRequestParts<Arc<AppState>> for AuthClaims {
     type Rejection = ApiError;
 
-    async fn from_request_parts(
+    fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
-    ) -> Result<Self, Self::Rejection> {
-        let keys = state
-            .jwt_keys
-            .as_ref()
-            .ok_or_else(|| ApiError::Unauthorized("authorization is not configured".to_owned()))?;
-
-        let token = parts
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .ok_or_else(|| {
-                ApiError::Unauthorized("missing or malformed Authorization header".to_owned())
-            })?;
-
-        let claims = keys
-            .decode_token(token)
-            .map_err(|_| ApiError::Unauthorized("invalid or expired token".to_owned()))?;
-
-        Ok(AuthClaims(claims))
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> {
+        std::future::ready(extract_claims(parts, state))
     }
+}
+
+/// Synchronous body of the [`AuthClaims`] extractor.
+fn extract_claims(parts: &mut Parts, state: &Arc<AppState>) -> Result<AuthClaims, ApiError> {
+    let keys = state
+        .jwt_keys
+        .as_ref()
+        .ok_or_else(|| ApiError::Unauthorized("authorization is not configured".to_owned()))?;
+
+    let token = parts
+        .headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| {
+            ApiError::Unauthorized("missing or malformed Authorization header".to_owned())
+        })?;
+
+    let claims = keys
+        .decode_token(token)
+        .map_err(|_| ApiError::Unauthorized("invalid or expired token".to_owned()))?;
+
+    Ok(AuthClaims(claims))
 }
