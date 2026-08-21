@@ -324,7 +324,7 @@ function Stake() {
           <Card
             variant="yellow"
             data-testid="connect-wallet-banner"
-            className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l"
+            className="flex flex-row items-center justify-between gap-4 !border-t !border-r-[3px] !border-b-[3px] !border-l shadow-sm"
           >
             <p
               data-testid="stake-connect-message"
