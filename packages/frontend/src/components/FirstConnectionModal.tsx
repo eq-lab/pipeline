@@ -298,7 +298,7 @@ export function FirstConnectionModal({
           maxWidth: "calc(100vw - 32px)",
           maxHeight: "min(80vh, 90dvh)",
           backgroundColor: "#f8f7f6",
-          borderRadius: 32,
+          borderRadius: 4,
           padding: 24,
         }}
         data-node-id="1572:123328"

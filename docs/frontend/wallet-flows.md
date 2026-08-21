@@ -120,7 +120,7 @@ the success toast survives the route change.
 
 Added by #1024, after a failed `requestWithdrawal` left the stepper looking fully successful (the
 burn had succeeded on-chain, so the backend indexed the request as `PendingClaim` and step 2 showed
-its green check) while the only failure signal was a console error and a transient toast.
+its success check) while the only failure signal was a console error and a transient toast.
 
 - `StepState` is `"idle" | "success" | "error"`. The request step (2) and claim step (3) derive
   `"error"` from their underlying mutation: `mutation.error` set and the mutation not pending. The
@@ -132,7 +132,7 @@ its green check) while the only failure signal was a console error and a transie
   see [`error-handling.md`](./error-handling.md).
 - Rendering (`@pipeline/ui` `StepRow`): the error state red-tints the numbered badge and shows the
   message as a red line under the label, but **keeps the action button** so the user can retry —
-  unlike the success state, which replaces the button with the green check pill. Error and loading
+  unlike the success state, which replaces the button with the ink check pill (#1189). Error and loading
   rows always render at full opacity.
 
 ## Stake / unstake adapter (`useStakeFlow`)
