@@ -202,10 +202,13 @@ Common rules:
 
 ### Size variants (rectangular variants only: `primary-dark`, `primary-blue`, `secondary`)
 
-- `"default"` (omitted) — 48 px tall.
+- `"default"` (omitted) — 48 px tall (the design's L).
+- `"m"` — 40 px tall, 8 px box (`px-2`) + 8 px inner label (`px-2`) = 16 px per side, matching
+  Figma node `1497:94689` (LP review size reference — home Buy/Sell and the promo card
+  Connect, epic #1145). Radius and colours are unchanged.
 - `"compact"` — 32 px tall with tighter horizontal padding: 6 px box (`px-1.5`) + 4 px inner
   label (`px-1`), matching Figma node `1994-7226` (inline banner CTAs such as the wallet
-  banner "Connect" button). Radius and colours are unchanged.
+  banner "Connect" button; the design's S). Radius and colours are unchanged.
 
 ## Card
 

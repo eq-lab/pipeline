@@ -274,9 +274,10 @@ Active-chain gating (Issue #644): `isConnected` is keyed off the active chain
 chain-selection derivation is duplicated in `useRequests` and `transactions.tsx`; a shared hook is
 tracked in tech-debt-tracker.md.)
 
-**Layout:** fixed `h-[564px]` matches the Figma height (node `1497:94567` is 564px tall; changed
-from `min-h` per LP review #3, #1149 — the card no longer stretches with the grid row) so both
-states stay visually balanced. Elevation border (Figma node `1497:95207`) uses the same "stamped"
+**Layout:** `min-h-[564px]`; on the desktop grid the height is pinned by the fixed row tracks
+(`grid-rows-[274px_274px_auto]`, LP review #3 — final layout node `1497:95187`: Portfolio 274 +
+16 gap + 274 = 564 matches the Recent-activity Section exactly), so the columns' heights always
+align. Elevation border (Figma node `1497:95207`) uses the same "stamped"
 asymmetric treatment (1px top/left, 3px right/bottom) as `StepsCard` (Figma node `1498:100130`).
 Illustration is pinned to 240×240 (Figma node `1497:94570`) to match the Figma `IMG` slot so the
 muted variant reads at the same scale as the design. Row cap: 5 rows (`MAX_ROWS`) — Figma frame
@@ -1199,8 +1200,8 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 **Desktop (md+) visual structure, top → bottom:**
 
 1. Sticky `TopBar` along the top edge of the viewport.
-2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air; horizontal padding lets the column breathe at narrower widths without exceeding the 1200px design cap). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap.
-3. Inside the outer card, a 7-column CSS grid (mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`):
+2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air; horizontal padding lets the column breathe at narrower widths without exceeding the 1200px design cap). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap; the outer Card is borderless (`!border-0` — the layout carries no strokes in the design, Figma node `1497:94948`; LP review #8/#1154).
+3. Inside the outer card, a 7-column CSS grid with fixed 274px row tracks for the two card rows (`grid-rows-[274px_274px_auto]` — final layout node `1497:95187`, LP review #3; mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`):
 
    | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                            |
    | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

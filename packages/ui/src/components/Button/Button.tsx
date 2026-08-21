@@ -12,7 +12,7 @@ export type ButtonVariant =
   | "circular-blue"
   | "toast-action";
 
-export type ButtonSize = "default" | "compact";
+export type ButtonSize = "default" | "m" | "compact";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -99,6 +99,7 @@ const RECTANGULAR_VARIANTS: ReadonlySet<ButtonVariant> = new Set([
 ]);
 
 const compactSizeClasses = "!h-8 !min-w-8 !px-1.5";
+const mSizeClasses = "!h-10 !min-w-10 !px-2";
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
@@ -108,7 +109,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const sizeOverride =
       size === "compact" && RECTANGULAR_VARIANTS.has(variant)
         ? compactSizeClasses
-        : undefined;
+        : size === "m" && RECTANGULAR_VARIANTS.has(variant)
+          ? mSizeClasses
+          : undefined;
 
     const composed = [
       baseClasses,

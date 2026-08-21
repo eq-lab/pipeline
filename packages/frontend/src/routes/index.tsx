@@ -276,12 +276,12 @@ function Home() {
 
         <Card
           variant="white"
-          className="hidden p-8 md:block"
+          className="hidden !border-0 p-8 md:block"
           data-node-id="1497:94565"
           data-testid="home-dashboard-card"
         >
           <div
-            className="grid w-full grid-cols-7 gap-4"
+            className="grid w-full grid-cols-7 grid-rows-[274px_274px_auto] gap-4"
             data-testid="home-dashboard-grid"
           >
             {isConnected ? (
