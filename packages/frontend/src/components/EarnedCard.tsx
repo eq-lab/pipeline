@@ -6,8 +6,6 @@ import type { CardPadding } from "@pipeline/ui";
 // (composition, states A/B/C, Figma frame 1497:94556 node 1497:94691).
 
 /** Mobile home balance state — drives the earned value display. */
-type MobileHomeState = "empty" | "plusd" | "splusd";
-
 export interface EarnedCardProps extends Omit<
   React.HTMLAttributes<HTMLDivElement>,
   "children"
@@ -19,7 +17,6 @@ export interface EarnedCardProps extends Omit<
    * When `"empty"` or `"plusd"` (States A/B), renders "Nothing yet".
    * When `undefined`, renders "Tracked once you stake".
    */
-  mobileHomeState?: MobileHomeState;
   /**
    * Formatted total PnL in dollars, e.g. `"+$123.00"` (realized + unrealized,
    * sourced from `GET /v1/pnl` `total_pnl`). When present, this replaces the
@@ -57,10 +54,7 @@ const valueClasses = [
 ].join(" ");
 
 export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
-  function EarnedCard(
-    { className, mobileHomeState, earnedPnlLabel, ...rest },
-    ref,
-  ) {
+  function EarnedCard({ className, earnedPnlLabel, ...rest }, ref) {
     // Use a unique id per instance to avoid duplicate id attributes when both
     // the mobile and desktop blocks render this card in the same DOM.
     const instanceId = React.useId();
@@ -79,9 +73,6 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
 
     if (earnedPnlLabel !== undefined) {
       earnedValue = earnedPnlLabel;
-      valueExtra = undefined;
-    } else if (mobileHomeState === "empty" || mobileHomeState === "plusd") {
-      earnedValue = "Nothing yet";
       valueExtra = undefined;
     } else {
       earnedValue = "Tracked once you stake";
@@ -124,7 +115,7 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
             data-node-id="1497:94693"
             data-testid="home-earned-label"
           >
-            Earned
+            Earnings
           </p>
           <p
             className={stateValueClasses}

@@ -459,7 +459,7 @@ transparent slot, and applies an accessible `aria-label` derived from `label`.
 ### Visual states
 
 - `active` — icon coloured with `--color-pipeline-brand` (navy/cobalt).
-- inactive — icon coloured with `--color-pipeline-ink-muted` (neutral grey).
+- inactive — icon coloured with `--color-pipeline-ink-subtle` (content/tertiary; was `ink-muted` — LP review #1, #1147).
 
 The icon is coloured via `color` on the button, so SVGs using `currentColor` (the convention for
 the nav icons) pick up the active/inactive state automatically. Raster `<img>` icons must be

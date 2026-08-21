@@ -241,7 +241,6 @@ function Home() {
               />
               <EarnedCard
                 padding="sm"
-                mobileHomeState={isConnected ? mobileHomeState : undefined}
                 earnedPnlLabel={earnedPnlLabel}
                 data-testid="home-earned-card"
               />
