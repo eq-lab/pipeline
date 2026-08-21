@@ -103,8 +103,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Elliptic KYT (Stellar). Defaults to false — matches the worker's ELLIPTIC_ENABLED.
     let elliptic_enabled = std::env::var("ELLIPTIC_ENABLED")
-        .ok()
-        .is_some_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
+        .is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"));
 
     let state = Arc::new(AppState {
         pool: pool.clone(),

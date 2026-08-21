@@ -363,9 +363,7 @@ fn split_csv_raw(raw: Option<&str>) -> Vec<String> {
 }
 
 pub fn env_bool(key: &str) -> bool {
-    env::var(key)
-        .ok()
-        .is_some_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+    env::var(key).is_ok_and(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
 fn env_parse<T: std::str::FromStr>(key: &str, default: T) -> Result<T>
