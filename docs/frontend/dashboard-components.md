@@ -345,6 +345,9 @@ the footer, acting as secondary navigation into the help content.
 
 **Composition:**
 
+- 16px top padding on the section root (`pt-4`) — the Figma FAQ frame insets its eyebrow by 16
+  (node `1497:95198`, eyebrow at y=16), so with the grid's 16px row gap the total card→eyebrow
+  space is 32px (LP review follow-up, epic #1145).
 - An all-caps micro-label eyebrow ("QUESTIONS & ANSWERS") in caption typography, medium weight, the
   brand label tracking token (`--tracking-pipeline-label`, 7px) and muted ink-subtle color —
   matches the Figma `heading` instance `1497:94667` (Label style: caption + 500 + uppercase +
