@@ -274,10 +274,11 @@ Active-chain gating (Issue #644): `isConnected` is keyed off the active chain
 chain-selection derivation is duplicated in `useRequests` and `transactions.tsx`; a shared hook is
 tracked in tech-debt-tracker.md.)
 
-**Layout:** `min-h-[564px]`; on the desktop grid the height is pinned by the fixed row tracks
-(`grid-rows-[274px_274px_auto]`, LP review #3 — final layout node `1497:95187`: Portfolio 274 +
-16 gap + 274 = 564 matches the Recent-activity Section exactly), so the columns' heights always
-align. Elevation border (Figma node `1497:95207`) uses the same "stamped"
+**Layout:** `min-h-[564px]` standalone (mobile). On the desktop grid the card absolutely fills a
+`row-span-2` wrapper (`relative` wrapper + `!absolute inset-0 min-h-0 overflow-hidden`), so its
+height always equals the left column's total and it never inflates the row tracks — the design's
+matched-columns rule (final layout node `1497:95187`: Portfolio 274 + 16 + 274 = 564 = Section;
+LP review #3). Elevation border (Figma node `1497:95207`) uses the same "stamped"
 asymmetric treatment (1px top/left, 3px right/bottom) as `StepsCard` (Figma node `1498:100130`).
 Illustration is pinned to 240×240 (Figma node `1497:94570`) to match the Figma `IMG` slot so the
 muted variant reads at the same scale as the design. Row cap: 5 rows (`MAX_ROWS`) — Figma frame
@@ -1201,7 +1202,7 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 
 1. Sticky `TopBar` along the top edge of the viewport.
 2. A centred content column (`max-w-[1200px]`) with `py-32` breathing room under the bar (48px gives the welcome heading air; horizontal padding lets the column breathe at narrower widths without exceeding the 1200px design cap). The column stacks `WelcomeHeader` and a white outer `Card` with a 48px gap; the outer Card is borderless (`!border-0` — the layout carries no strokes in the design, Figma node `1497:94948`; LP review #8/#1154).
-3. Inside the outer card, a 7-column CSS grid with fixed 274px row tracks for the two card rows (`grid-rows-[274px_274px_auto]` — final layout node `1497:95187`, LP review #3; mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`):
+3. Inside the outer card, a 7-column CSS grid (mirrors Figma's `grid-cols-[repeat(7,minmax(0,1fr))]`, 16px gap matching the design's `gap-x-16`/`gap-y-16`, node `1497:94565`; rows are content-sized, with Recent activity absolutely filling its two-row span so the columns' heights always match — node `1497:95187`, LP review #3):
 
    | Slot            | Grid position                        | Content                                                                                                                                                                                                                                                            |
    | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -281,7 +281,7 @@ function Home() {
           data-testid="home-dashboard-card"
         >
           <div
-            className="grid w-full grid-cols-7 grid-rows-[274px_274px_auto] gap-4"
+            className="grid w-full grid-cols-7 gap-4"
             data-testid="home-dashboard-grid"
           >
             {isConnected ? (
@@ -303,10 +303,12 @@ function Home() {
               />
             )}
 
-            <RecentActivityCard
-              className="col-span-3 col-start-5 row-span-2 row-start-1"
-              data-testid="home-recent-activity-card"
-            />
+            <div className="relative col-span-3 col-start-5 row-span-2 row-start-1">
+              <RecentActivityCard
+                className="!absolute inset-0 min-h-0 overflow-hidden"
+                data-testid="home-recent-activity-card"
+              />
+            </div>
 
             <div
               className="col-span-2 col-start-1 row-start-2 flex flex-col gap-4"
