@@ -81,10 +81,11 @@ not call for italics, so the component intentionally omits them.
 | Condition                                                                                     | Displayed value                                                                                                                                                                               |
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `earnedPnlLabel` present                                                                      | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`), rendered in the green positive token (`--color-pipeline-chart-positive`) instead of the muted placeholder color. |
-| No PnL label, `mobileHomeState` is `"empty"` or `"plusd"` (States A/B)                        | `"Nothing yet"` (Figma frames `1988:7074` / `1984:6501`).                                                                                                                                     |
-| No PnL label, `mobileHomeState` is `"splusd"` (State C) or `undefined` (disconnected/desktop) | `"Tracked once you stake"`.                                                                                                                                                                   |
+| No PnL label (any state)                                                                      | `"Tracked once you stake"` — unified per LP review #7 (#1153); the former States-A/B `"Nothing yet"` split and the `mobileHomeState` prop are gone.                                            |
 
-**Accessibility:** `role="region"` + `aria-labelledby` referencing the "Earned" label; the
+The card label reads **"Earnings"** (was "Earned"; LP review #7, #1153).
+
+**Accessibility:** `role="region"` + `aria-labelledby` referencing the "Earnings" label; the
 placeholder value never changes so no live-region semantics are needed.
 
 Reuse: page-local, alongside `ConnectWalletPromoCard`; not hoisted into `@pipeline/ui` because the
@@ -259,7 +260,8 @@ Active-chain gating (Issue #644): `isConnected` is keyed off the active chain
 chain-selection derivation is duplicated in `useRequests` and `transactions.tsx`; a shared hook is
 tracked in tech-debt-tracker.md.)
 
-**Layout:** `min-h-[564px]` mirrors the Figma height (node `1497:94567` is 564px tall) so both
+**Layout:** fixed `h-[564px]` matches the Figma height (node `1497:94567` is 564px tall; changed
+from `min-h` per LP review #3, #1149 — the card no longer stretches with the grid row) so both
 states stay visually balanced. Elevation border (Figma node `1497:95207`) uses the same "stamped"
 asymmetric treatment (1px top/left, 3px right/bottom) as `StepsCard` (Figma node `1498:100130`).
 Illustration is pinned to 240×240 (Figma node `1497:94570`) to match the Figma `IMG` slot so the

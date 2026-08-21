@@ -43,7 +43,7 @@ export const RecentActivityCard = React.forwardRef<
 
   const composed = [
     "flex flex-col gap-4",
-    "min-h-[564px] w-full",
+    "h-[564px] w-full",
     // spec: docs/frontend/dashboard-components.md#recentactivitycard (elevation border, Figma node 1497:95207).
     // `!` prefix so per-side widths beat the uniform `border` shorthand in
     // Card's baseClasses regardless of Tailwind's CSS cascade order.

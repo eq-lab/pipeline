@@ -58,7 +58,7 @@ const tooltipClasses = [
 
 const stateClasses = {
   active: "text-[color:var(--color-pipeline-brand)]",
-  inactive: "text-[color:var(--color-pipeline-ink-muted)]",
+  inactive: "text-[color:var(--color-pipeline-ink-subtle)]",
 } as const;
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(

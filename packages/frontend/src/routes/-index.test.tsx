@@ -516,10 +516,10 @@ describe("Home page — mobile State A: connected, 0 PLUSD, 0 sPLUSD", () => {
     });
   });
 
-  it("mobile EarnedCard shows 'Nothing yet' (State A)", async () => {
+  it("mobile EarnedCard shows 'Tracked once you stake' (State A, LP review #7)", async () => {
     renderHome();
     await waitFor(() => {
-      const elements = screen.getAllByText("Nothing yet");
+      const elements = screen.getAllByText("Tracked once you stake");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -589,10 +589,10 @@ describe("Home page — mobile State B: connected, has PLUSD, 0 sPLUSD", () => {
     });
   });
 
-  it("mobile EarnedCard shows 'Nothing yet' (State B)", async () => {
+  it("mobile EarnedCard shows 'Tracked once you stake' (State B, LP review #7)", async () => {
     renderHome();
     await waitFor(() => {
-      const elements = screen.getAllByText("Nothing yet");
+      const elements = screen.getAllByText("Tracked once you stake");
       expect(elements.length).toBeGreaterThanOrEqual(1);
     });
   });
