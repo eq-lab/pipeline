@@ -104,6 +104,18 @@ Steps are labelled per (chain, direction):
 | 2 | Confirm USDC transfer | Confirm PLUSD burn | Confirm USDC transfer | Confirm PLUSD burn |
 | 3 | Claim PLUSD | Claim USDC | Claim PLUSD | Claim USDC |
 
+### Terminal-success toasts and navigation (#1142)
+
+Terminal success toasts carry the **action + amount** — "Staked 100.00 PLUSD" /
+"Unstaked 25.50 sPLUSD" (stake step 2), "Deposited 1,000.00 USDC" / "Withdrawal of … PLUSD
+submitted" (deposit/withdraw step 2), "+X PLUSD" / "Claimed X USDC" (claim step 3). The amount is
+captured into a ref when the step's pending toast is shown (the routes clear `amountInput` on
+success); the claim amount comes from `lockedAmountRaw`. Value-less fallback titles remain for
+recovered in-flight requests whose ref is empty. After a **flow-terminal** success —
+stake/unstake step 2, deposit/withdraw **claim** — the route navigates home (`/`); intermediate
+steps (approve, trustline, request) never navigate. `ToastProvider` mounts above the router, so
+the success toast survives the route change.
+
 ### Step error state
 
 Added by #1024, after a failed `requestWithdrawal` left the stepper looking fully successful (the

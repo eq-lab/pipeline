@@ -172,6 +172,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               title={entry.title}
               action={entry.action}
               icon={entry.icon}
+              onDismiss={() => dismiss(entry.id)}
             />
           </div>
         ))}

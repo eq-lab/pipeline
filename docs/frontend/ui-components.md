@@ -812,6 +812,10 @@ Pipeline UI notification: a near-rectangular surface (4 px radius, `--radius-pip
 - **Informational** — icon + title text.
 - **Actionable** — same surface plus a right-aligned action button (the `toast-action` `Button`
   variant), rendered only when the `action` prop is provided.
+- **Dismissable (#1142)** — an optional `onDismiss` prop renders a trailing × button
+  (`data-testid="toast-dismiss"`, `aria-label="Dismiss"`) after the action slot, on **all tones
+  including `pending`** so a stuck pending toast can always be cleared by hand. `ToastProvider`
+  wires it to `dismiss(id)` for every stacked toast; auto-dismiss timing is unchanged.
 
 The title sits between the icon and the button with 8 px horizontal padding (`px-2`) providing the
 gap to both.

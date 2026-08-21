@@ -92,6 +92,24 @@ export const NeutralActionable: Story = {
   },
 };
 
+export const SuccessDismissable: Story = {
+  name: "success — dismissable",
+  args: {
+    tone: "success",
+    title: "Staked 100.00 PLUSD",
+    onDismiss: () => {},
+  },
+};
+
+export const PendingDismissable: Story = {
+  name: "pending — dismissable",
+  args: {
+    tone: "pending",
+    title: "Staking…",
+    onDismiss: () => {},
+  },
+};
+
 /* -------------------------------------------------------------------------- */
 /*  Icon override                                                              */
 /* -------------------------------------------------------------------------- */
