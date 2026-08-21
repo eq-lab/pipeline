@@ -1262,7 +1262,7 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 - Stellar deposit: `stellar-deposit-tx` / `stellar-deposit-claim-tx`
 - Stellar withdraw: `stellar-withdraw-tx` / `stellar-withdraw-claim-tx`
 
-**Claim toast copy:** PLUSD claims (deposit direction) surface the claimed amount plus a "Stake" CTA; USDC claims (withdraw direction) keep a plain confirmation, since staking USDC doesn't apply.
+**Claim toast copy:** PLUSD claims (deposit direction) surface the claimed amount plus a "Stake" CTA; USDC claims (withdraw direction) surface "Claimed X USDC" from the same locked-amount ref (#1142; plain "USDC claimed" fallback). Both directions navigate home after the claim success — see wallet-flows.md "Terminal-success toasts and navigation".
 
 Figma references: [deposit page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812), [withdraw page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351), [swap button](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157), [wallet not connected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885).
 

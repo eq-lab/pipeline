@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { parseUsdc } from "@/lib/usdc";
 import {
   Button,
@@ -158,6 +158,8 @@ function Stake() {
   ]);
 
   // ── Toast: step 2 (stake/unstake) ─────────────────────────────────────
+  const navigate = useNavigate();
+  const lastActionAmountRef = useRef<string>("");
   const prevStep2IsPending = useRef(false);
   const prevStep2IsSuccess = useRef(false);
   const prevStep2Error = useRef<Error | null>(null);
@@ -171,6 +173,7 @@ function Stake() {
         : "unstake-tx";
 
     if (flow.step2Tx.isPending && !prevStep2IsPending.current) {
+      lastActionAmountRef.current = amountInput.trim();
       toast.show({
         id: toastId,
         tone: "pending",
@@ -178,10 +181,18 @@ function Stake() {
       });
     }
     if (flow.step2Tx.isSuccess && !prevStep2IsSuccess.current) {
+      const amount = lastActionAmountRef.current;
       toast.update(toastId, {
         tone: "success",
-        title: isStakeTab ? "Staked successfully" : "Unstaked successfully",
+        title: isStakeTab
+          ? amount
+            ? `Staked ${amount} PLUSD`
+            : "Staked successfully"
+          : amount
+            ? `Unstaked ${amount} sPLUSD`
+            : "Unstaked successfully",
       });
+      void navigate({ to: "/" });
     }
     if (flow.step2Tx.error && flow.step2Tx.error !== prevStep2Error.current) {
       console.error(
@@ -216,6 +227,8 @@ function Stake() {
     toast,
     isStellar,
     isStakeTab,
+    amountInput,
+    navigate,
   ]);
 
   // ── Tab-switch handler ─────────────────────────────────────────────────

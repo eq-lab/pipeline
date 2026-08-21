@@ -235,6 +235,7 @@ function Deposit() {
   ]);
 
   // ── Toast: step 2 (request) ───────────────────────────────────────────
+  const lastActionAmountRef = useRef<string>("");
   const prevStep2IsPending = useRef(false);
   const prevStep2IsSuccess = useRef(false);
   const prevStep2Error = useRef<Error | null>(null);
@@ -248,12 +249,20 @@ function Deposit() {
         : "withdraw-tx";
 
     if (flow.step2Tx.isPending && !prevStep2IsPending.current) {
+      lastActionAmountRef.current = amountInput.trim();
       toast.show({ id: toastId, tone: "pending", title: "Sending…" });
     }
     if (flow.step2Tx.isSuccess && !prevStep2IsSuccess.current) {
+      const amount = lastActionAmountRef.current;
       toast.update(toastId, {
         tone: "success",
-        title: isDeposit ? "Deposit submitted" : "Withdrawal submitted",
+        title: isDeposit
+          ? amount
+            ? `Deposited ${amount} USDC`
+            : "Deposit submitted"
+          : amount
+            ? `Withdrawal of ${amount} PLUSD submitted`
+            : "Withdrawal submitted",
         action: {
           label: "View",
           onClick: () => void navigate({ to: "/transactions" }),
@@ -293,6 +302,7 @@ function Deposit() {
     prevStep2IsSuccess.current = flow.step2Tx.isSuccess;
     prevStep2Error.current = flow.step2Tx.error;
   }, [
+    amountInput,
     flow.step2Tx.isPending,
     flow.step2Tx.isSuccess,
     flow.step2Tx.error,
@@ -340,7 +350,9 @@ function Deposit() {
           ? claimedAmount
             ? `+${claimedAmount} PLUSD`
             : "PLUSD claimed"
-          : "USDC claimed",
+          : claimedAmount
+            ? `Claimed ${claimedAmount} USDC`
+            : "USDC claimed",
         action: isDeposit
           ? {
               label: "Stake",
@@ -349,6 +361,7 @@ function Deposit() {
             }
           : undefined,
       });
+      void navigate({ to: "/" });
     }
     if (flow.step3Tx.error && flow.step3Tx.error !== prevStep3Error.current) {
       console.error("Claim failed:", flow.step3Tx.error);

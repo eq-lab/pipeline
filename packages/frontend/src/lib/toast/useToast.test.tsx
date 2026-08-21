@@ -149,6 +149,21 @@ describe("useToast / ToastProvider", () => {
     }).not.toThrow();
   });
 
+  it("4b. clicking the rendered × dismisses the toast, pending included (#1142)", () => {
+    let api!: ReturnType<typeof useToast>;
+    renderWithProvider((a) => (api = a));
+
+    act(() => {
+      api.show({ id: "tx-x", tone: "pending", title: "Working…" });
+    });
+    expect(screen.getByText("Working…")).toBeInTheDocument();
+
+    act(() => {
+      screen.getByTestId("toast-dismiss").click();
+    });
+    expect(screen.queryByText("Working…")).not.toBeInTheDocument();
+  });
+
   it("5. stack cap: showing 4 toasts drops the oldest", async () => {
     let api!: ReturnType<typeof useToast>;
     renderWithProvider((a) => (api = a));

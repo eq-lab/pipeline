@@ -25,6 +25,7 @@ export interface ToastProps extends Omit<
   action?: ToastAction;
   /** Optional leading icon override; defaults per tone. */
   icon?: React.ReactNode;
+  onDismiss?: () => void;
 }
 
 // SVG icons inlined so the component is self-contained without an asset bundler.
@@ -92,7 +93,7 @@ const toneBackground: Record<ToastTone, string> = {
 
 export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
   function Toast(
-    { tone = "neutral", title, action, icon, className, ...rest },
+    { tone = "neutral", title, action, icon, onDismiss, className, ...rest },
     ref,
   ) {
     const isDanger = tone === "danger";
@@ -142,6 +143,39 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
           <Button variant="toast-action" onClick={action.onClick}>
             {action.label}
           </Button>
+        )}
+
+        {onDismiss && (
+          <button
+            type="button"
+            aria-label="Dismiss"
+            data-testid="toast-dismiss"
+            onClick={onDismiss}
+            className={[
+              "ml-2 flex size-6 shrink-0 items-center justify-center",
+              "rounded-[var(--radius-pipeline-button)]",
+              "text-[color:var(--color-pipeline-on-dark)]",
+              "transition-opacity hover:opacity-70",
+              "focus-visible:outline focus-visible:outline-2",
+              "focus-visible:outline-[color:var(--color-pipeline-on-dark)]/40",
+            ].join(" ")}
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              width={14}
+              height={14}
+              aria-hidden="true"
+            >
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         )}
       </div>
     );

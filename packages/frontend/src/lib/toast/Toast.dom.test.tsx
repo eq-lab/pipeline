@@ -12,7 +12,7 @@
  *   - `icon` prop overrides the default per-tone icon.
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Toast } from "@pipeline/ui";
 
@@ -81,6 +81,22 @@ describe("Toast primitive", () => {
     it("does not render an action button when action prop is omitted", () => {
       render(<Toast tone="success" title="Deposit confirmed" />);
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("dismiss button (#1142)", () => {
+    it("renders and calls onDismiss on click, on pending tone too", () => {
+      const onDismiss = vi.fn();
+      render(<Toast tone="pending" title="Staking…" onDismiss={onDismiss} />);
+      const btn = screen.getByTestId("toast-dismiss");
+      expect(btn).toHaveAttribute("aria-label", "Dismiss");
+      fireEvent.click(btn);
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it("is absent when onDismiss is omitted", () => {
+      render(<Toast tone="success" title="ok" />);
+      expect(screen.queryByTestId("toast-dismiss")).not.toBeInTheDocument();
     });
   });
 
