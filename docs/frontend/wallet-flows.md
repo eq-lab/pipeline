@@ -170,7 +170,7 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
 |-------------|------------------------|
 | EVM stake | `[Approve PLUSD, Stake]` |
 | EVM unstake | `[Unstake]` |
-| Stellar stake | `[Enable sPLUSD (trustline), Stake]` |
+| Stellar stake | `[Enable sPLUSD (trustline), Stake]` — the Enable row is omitted entirely when `trustlineStatus === "not_required"` (#1198), leaving `[Stake]` numbered 1 |
 | Stellar unstake | `[Enable PLUSD (trustline), Unstake]` |
 
 ### Trustline model
@@ -178,9 +178,11 @@ active-tab values and returns `StakeFlowState`. The component reads **only** fro
 - **Stake** needs an **sPLUSD** trustline; **unstake** needs a **PLUSD** trustline (same as the
   deposit flow).
 - The sPLUSD step uses the fail-safe `trustlineStatus` discriminator: "success" shows **only** when
-  the trustline is confirmed `satisfied` (or `not_required` for Soroban-native shares). While the
-  share asset is loading or errored, the step stays "idle" and staking is blocked — never a
-  false-ready state.
+  the trustline is confirmed `satisfied`. `not_required` (Soroban-native shares — no classic
+  trustline exists to enable) still unblocks staking but **removes the Enable sPLUSD step from the
+  card entirely** (#1198): a pre-completed check for an action the user can never perform is
+  misleading. While the share asset is loading or errored, the step stays "idle" and staking is
+  blocked — never a false-ready state.
 
 ## Network switcher (cross-deployment links)
 

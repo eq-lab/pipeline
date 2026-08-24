@@ -1299,7 +1299,7 @@ Chain-aware stake/unstake page driving two flows via the `useStakeFlow` adapter,
 
 - EVM Stake tab: 1. Allow Pipeline to use PLUSD (Approve) → 2. Confirm and stake PLUSD (Stake)
 - EVM Unstake tab: 1. Confirm and unstake sPLUSD (Unstake)
-- Stellar Stake tab: 1. Enable sPLUSD (`changeTrust` for share asset) → 2. Confirm and stake PLUSD (vault deposit)
+- Stellar Stake tab: 1. Enable sPLUSD (`changeTrust` for share asset) → 2. Confirm and stake PLUSD (vault deposit). When the vault's shares are Soroban-native (`trustlineStatus === "not_required"`) the Enable step is not rendered at all — the tab shows only "Confirm and stake PLUSD" as step 1 (#1198).
 - Stellar Unstake tab: 1. Enable PLUSD (`changeTrust` — receiver needs PLUSD trustline) → 2. Confirm and unstake sPLUSD (vault redeem)
 
 Amount is reset on chain switch via the same `prevKindRef` pattern used by `deposit.tsx`.

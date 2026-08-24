@@ -303,7 +303,7 @@ describe("useStakeFlow — Stellar PLUSD balance (Horizon path, issuer-sensitive
     expect(resultWithAmount.current.hasBalance).toBe(true);
   });
 
-  it("Stake step is enabled when the vault name is Soroban-native and no sPLUSD trustline is required", async () => {
+  it("Enable sPLUSD step is omitted and Stake is enabled when the vault name is Soroban-native (trustline not_required)", async () => {
     mockLoadAccount.mockResolvedValue({
       balances: makeBalances(PLUSD_BALANCE_50, PROTOCOL_ISSUER),
     });
@@ -316,9 +316,31 @@ describe("useStakeFlow — Stellar PLUSD balance (Horizon path, issuer-sensitive
     await waitFor(() => {
       expect(result.current.balance).toBe(PLUSD_BALANCE_50_RAW);
       expect(result.current.hasBalance).toBe(true);
-      expect(result.current.steps[0]?.state).toBe("success");
-      expect(result.current.steps[1]?.actionLabel).toBe("Stake");
-      expect(result.current.steps[1]?.disabled).toBe(false);
+      expect(result.current.steps).toHaveLength(1);
+      expect(result.current.steps[0]?.label).toBe("Confirm and stake PLUSD");
+      expect(result.current.steps[0]?.actionLabel).toBe("Stake");
+      expect(result.current.steps[0]?.disabled).toBe(false);
+    });
+    expect(
+      result.current.steps.find((s) => s.label === "Enable sPLUSD"),
+    ).toBeUndefined();
+  });
+
+  it("Enable sPLUSD step renders first when the vault shares are a classic asset", async () => {
+    mockStakedPlusdName.mockResolvedValue(`SPLUSD:${PROTOCOL_ISSUER}`);
+    mockLoadAccount.mockResolvedValue({
+      balances: makeBalances(PLUSD_BALANCE_50, PROTOCOL_ISSUER),
+    });
+
+    const { result } = renderHook(
+      () => useStakeFlow("stake", 100_000_000n, () => {}),
+      { wrapper: makeWrapper().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.steps).toHaveLength(2);
+      expect(result.current.steps[0]?.label).toBe("Enable sPLUSD");
+      expect(result.current.steps[1]?.label).toBe("Confirm and stake PLUSD");
     });
   });
 

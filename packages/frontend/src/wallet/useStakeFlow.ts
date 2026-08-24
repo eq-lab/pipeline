@@ -681,23 +681,27 @@ export function useStakeFlow(
 
   const stellarSteps: StakeStepInfo[] = isStake
     ? [
-        {
-          label: "Enable sPLUSD",
-          actionLabel: "Enable",
-          state: stellarSplusdTrustlineState,
-          loading: splusdTrustline.isPending,
-          disabled: !canStellarEnableSplusd,
-          onAction: () => splusdTrustline.submit(),
-          testId: "stake-trustline-step",
-          errorMessage:
-            stellarSplusdTrustlineState === "error"
-              ? stellarSplusdTrustlineUserError?.message
-              : undefined,
-          errorDetails:
-            stellarSplusdTrustlineState === "error"
-              ? stellarSplusdTrustlineUserError?.details
-              : undefined,
-        },
+        ...(stellarSplusdTrustlineStatus === "not_required"
+          ? []
+          : [
+              {
+                label: "Enable sPLUSD",
+                actionLabel: "Enable",
+                state: stellarSplusdTrustlineState,
+                loading: splusdTrustline.isPending,
+                disabled: !canStellarEnableSplusd,
+                onAction: () => splusdTrustline.submit(),
+                testId: "stake-trustline-step",
+                errorMessage:
+                  stellarSplusdTrustlineState === "error"
+                    ? stellarSplusdTrustlineUserError?.message
+                    : undefined,
+                errorDetails:
+                  stellarSplusdTrustlineState === "error"
+                    ? stellarSplusdTrustlineUserError?.details
+                    : undefined,
+              },
+            ]),
         {
           label: "Confirm and stake PLUSD",
           actionLabel: "Stake",
