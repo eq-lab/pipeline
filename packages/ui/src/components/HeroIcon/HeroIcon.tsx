@@ -15,12 +15,7 @@ const ICON_SRC_MAP: Record<HeroIconName, string> = {
   chart: navStatsSrc,
 };
 
-// arrow-clock's SVG bakes fill-opacity="0.3", so full ink composes to ~0.3;
-// chart bakes none, so use ink-subtle directly.
-const ICON_TINT_MAP: Record<HeroIconName, string> = {
-  "arrow-clock": "var(--color-pipeline-ink)",
-  chart: "var(--color-pipeline-ink-subtle)",
-};
+const ICON_TINT = "var(--color-pipeline-ink-subtle)";
 
 export interface HeroIconProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Which icon glyph to render inside the hero circle. */
@@ -47,7 +42,7 @@ export const HeroIcon = React.forwardRef<HTMLDivElement, HeroIconProps>(
     ref,
   ) {
     const src = ICON_SRC_MAP[icon];
-    const tint = ICON_TINT_MAP[icon];
+    const tint = ICON_TINT;
     const maskImage = `url(${JSON.stringify(src)})`;
 
     // Decorative by default; becomes meaningful when caller supplies aria-label.

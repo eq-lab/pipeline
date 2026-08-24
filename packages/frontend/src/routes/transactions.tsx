@@ -54,7 +54,7 @@ function Transactions() {
     >
       <main
         data-testid="transactions-main"
-        className="mx-auto flex w-full max-w-[480px] flex-col gap-6 px-2 py-8"
+        className="mx-auto flex w-full max-w-[480px] flex-col gap-8 px-2 py-8"
       >
         <ActivityHeader data-testid="transactions-activity-header" />
 
