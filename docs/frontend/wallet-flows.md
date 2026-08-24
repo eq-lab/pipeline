@@ -68,6 +68,30 @@ At the end the hook selects the active-chain, active-direction values and return
 - **Both trustlines before Confirm.** On Stellar, both the PLUSD and USDC trustlines must be present
   before the Confirm step can proceed (per issue #604, Q3).
 
+### XLM funding rule
+
+`FlowState.needsXlmFunding` / `StakeFlowState.needsXlmFunding` (#1196, #1130): `true` when the
+connected Stellar account cannot pay Stellar network fees, in which case every step CTA (trustline
+enable, confirm, claim, stake, unstake) would fail — the page replaces the StepsCard with the
+no-XLM banner (see
+[`dashboard-components.md` § banner precedence](./dashboard-components.md#deposit-and-withdraw-route)).
+Always `false` on EVM.
+
+- **Source.** `useStellarXlmBalance` reads the `native` balance line from Horizon `loadAccount`.
+  Unlike the token hooks, a Horizon 404 is **not** folded into "zero / no trustline" — it is
+  surfaced as `accountExists: false`, the unfunded-account discriminator #1130 asked for (an
+  account absent from the ledger cannot hold trustlines at all; `changeTrust` fails at
+  `loadAccount`).
+- **Trigger.** Zero-or-unfunded, resolved-only: `accountExists === false`, or the resolved
+  `xlmBalance` parses to `0`. A still-loading (undefined) balance never triggers, so the banner
+  cannot flash during initial load; the XLM query's first load also joins `isDataPending`.
+- **Deliberately not fee-compared.** The rule does not compare against the fee estimate: a
+  nonzero-but-below-fee XLM balance is a negligible edge (fees are ~0.00001–0.005 XLM) and the fee
+  simulation itself cannot run against an unfunded source account. Reserve-aware math (trustline
+  base reserve) is out of scope — see the tech-debt tracker if ever needed.
+- **Mock key.** `pipeline.mock.wallet.stellar.balance.xlm` (human-decimal string; reports
+  `accountExists: true`).
+
 ### Request state model
 
 - **Active request.** The active request is the most recent `Deposit`/`Withdraw` in

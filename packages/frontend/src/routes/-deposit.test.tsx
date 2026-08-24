@@ -2564,6 +2564,7 @@ function seedStellarMocks({
   usdcBalance = "5000", // USDC token balance (deposit input)
   sacPlusdBalance = "0", // SAC PLUSD balance raw at 7 dp — hasTrustline = > 0
   sacUsdcBalance = "0", // SAC USDC balance raw at 7 dp — hasTrustline = > 0
+  xlmBalance = "100",
 } = {}) {
   if (connected) {
     localStorage.setItem(
@@ -2595,6 +2596,7 @@ function seedStellarMocks({
     "pipeline.mock.wallet.stellar.balance.sac.usdc",
     sacUsdcBalance,
   );
+  localStorage.setItem("pipeline.mock.wallet.stellar.balance.xlm", xlmBalance);
 }
 
 describe("Deposit page — Stellar trustline dual-enable (deposit direction)", () => {
@@ -3290,5 +3292,104 @@ describe("Deposit page — Stellar completed (claimed) deposit reset", () => {
     }) as HTMLInputElement;
     expect(input.value).toBe("");
     expect(input).not.toBeDisabled();
+  });
+});
+
+describe("Deposit page — Stellar no-XLM funding banner (#1196/#1130)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows the banner instead of the StepsCard when the XLM balance is zero", async () => {
+    seedStellarMocks({
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+      xlmBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByTestId("xlm-funding-banner")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("deposit-steps-card")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xlm-funding-banner-title")).toHaveTextContent(
+      "Add funds to your XLM balance",
+    );
+    expect(screen.getByTestId("xlm-funding-banner-subtitle")).toHaveTextContent(
+      "You need XLM to pay the network fee",
+    );
+  });
+
+  it("outranks the USDC-trustline and low-balance banners", async () => {
+    seedStellarMocks({
+      usdcBalance: "0",
+      sacPlusdBalance: "0",
+      sacUsdcBalance: "0",
+      xlmBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByTestId("xlm-funding-banner")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("usdc-trustline-banner"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("low-balance-banner")).not.toBeInTheDocument();
+  });
+
+  it("shows the banner in the withdraw direction too", async () => {
+    mockDirection = "withdraw";
+    seedStellarMocks({
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+      xlmBalance: "0",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByTestId("xlm-funding-banner")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("withdraw-steps-card")).not.toBeInTheDocument();
+  });
+
+  it("Copy Address copies the connected address and flips to Copied", async () => {
+    seedStellarMocks({
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+      xlmBalance: "0",
+    });
+    const user = userEvent.setup();
+    renderDepositStellar();
+    const copyBtn = await screen.findByTestId("xlm-funding-banner-action");
+    await user.click(copyBtn);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Copied" }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("is absent when the account holds XLM", async () => {
+    seedStellarMocks({
+      sacPlusdBalance: SAC_1000_PLUS,
+      sacUsdcBalance: SAC_1000_PLUS,
+      xlmBalance: "100",
+    });
+    renderDepositStellar();
+    await waitFor(() => {
+      expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("xlm-funding-banner")).not.toBeInTheDocument();
   });
 });

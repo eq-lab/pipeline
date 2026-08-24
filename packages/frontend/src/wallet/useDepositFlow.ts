@@ -24,6 +24,7 @@ import {
   useStellarDepositManagerAddresses,
   useStellarSacToken,
   useStellarToken,
+  useStellarXlmBalance,
   SAC_DECIMALS,
   sacDisplayToRaw,
   useStellarRequestDeposit,
@@ -197,6 +198,8 @@ export interface FlowState {
    * On EVM: always [] — no trustline UI rendered.
    */
   trustlines: TrustlineInfo[];
+
+  needsXlmFunding: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -308,6 +311,7 @@ export function useDepositFlow(
   // USDC balance (Stellar deposit input) via the same source as the TopBar pill
   // so the two can't disagree. spec: docs/frontend/wallet-flows.md#design-choices--invariants.
   const usdcToken = useStellarToken();
+  const xlm = useStellarXlmBalance();
   // PLUSD SAC — withdraw input on Stellar
   const plusdSac = useStellarSacToken({
     assetCode: "PLUSD",
@@ -614,6 +618,11 @@ export function useDepositFlow(
     isStellarConnected && plusdSac.balance !== undefined
       ? sacDisplayToRaw(plusdSac.balance)
       : undefined;
+
+  const stellarNeedsXlmFunding =
+    isStellarConnected &&
+    (xlm.accountExists === false ||
+      (xlm.xlmBalance !== undefined && sacDisplayToRaw(xlm.xlmBalance) === 0n));
 
   const depositNeedsTrustline = changeTrust.needsTrustline;
   const withdrawNeedsTrustline = changeTrustUsdc.needsTrustline;
@@ -1028,6 +1037,7 @@ export function useDepositFlow(
         : refetchWithdrawBalance,
       onQuickAmount: onEvmDepositQuickAmount,
       trustlines: [],
+      needsXlmFunding: false,
     };
   }
 
@@ -1251,6 +1261,7 @@ export function useDepositFlow(
     : stellarPlusdBalanceRaw;
   const stellarIsDataPending =
     (isDeposit ? usdcToken.isLoading : plusdSac.isLoading) ||
+    xlm.isLoading ||
     requestsLoading ||
     (isStellarConnected && stellarActiveBalance === undefined);
 
@@ -1429,5 +1440,6 @@ export function useDepositFlow(
         },
       },
     ],
+    needsXlmFunding: stellarNeedsXlmFunding,
   };
 }

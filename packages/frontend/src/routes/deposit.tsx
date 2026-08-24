@@ -9,6 +9,7 @@ import {
   ErrorDetailsDialog,
 } from "@pipeline/ui";
 import { useDepositFlow, useWalletView, useConnectModal } from "@/wallet";
+import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import { parseUsdc, formatUsdc, formatUsdcWhole } from "@/lib/usdc";
 import { useToast } from "@/lib/toast";
 import { toUserError } from "@/utils/userError";
@@ -529,7 +530,9 @@ function Deposit() {
               Connect
             </Button>
           </Card>
-        ) : isInitialDataLoad ? null : isStellar &&
+        ) : isInitialDataLoad ? null : isStellar && flow.needsXlmFunding ? (
+          <XlmFundingBanner address={flow.address} />
+        ) : isStellar &&
           isDeposit &&
           usdcTrustline?.needsTrustline &&
           flow.hasBalance === false ? (

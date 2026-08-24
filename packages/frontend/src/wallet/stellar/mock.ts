@@ -35,6 +35,7 @@ export const STELLAR_MOCK_KEYS = {
    * directly to `formatUsdcDisplay` without any scaling math.
    */
   balanceUsdc: "pipeline.mock.wallet.stellar.balance.usdc",
+  balanceXlm: "pipeline.mock.wallet.stellar.balance.xlm",
 
   // ── Protocol contract mock keys ────────────────────────────────────────────
 

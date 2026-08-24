@@ -1267,13 +1267,14 @@ Merged three/four-step conversion page. Direction is driven by the `?direction=d
 
 Both Stellar trustline rows are always shown in both directions (issue #604); Confirm is gated until BOTH trustlines exist — the page renders the four-step `StepsCard` when `isStellar && flow.trustlines.length === 2`, otherwise the three-step EVM `StepsCard`.
 
-**Banner precedence** (checked top to bottom; conditional: disconnected → data-pending → USDC-trustline → low-balance → steps card):
+**Banner precedence** (checked top to bottom; conditional: disconnected → data-pending → no-XLM → USDC-trustline → low-balance → steps card):
 
 1. **Wallet-not-connected banner** (Figma node `1994-7226`) — shown whenever `!flow.isConnected`.
 2. **Initial data load** — first load only: chain data / requests API still loading; renders nothing until first resolved (avoids re-hide flicker on background refetches). Not shown again on later background refetches.
-3. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
-4. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`.
-5. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
+3. **No-XLM banner** (`XlmFundingBanner`, Figma frame `6090-8741`, card node `6093-75787`) — Stellar only, **both directions**, `flow.needsXlmFunding` (see [`wallet-flows.md` § XLM funding rule](./wallet-flows.md#xlm-funding-rule)). "Add funds to your XLM balance / You need XLM to pay the network fee" with a Copy Address action (copies the connected address; label flips to "Copied"). Outranks the USDC-trustline banner because adding a trustline itself requires XLM (#1196, #1130).
+4. **USDC trustline banner** — Stellar deposit, no USDC trustline, no USDC balance. Takes the place of the low-balance banner (same layout) but the action adds the USDC trustline instead of prompting to add funds — the account must hold a USDC trustline before it can hold or deposit USDC on Stellar.
+5. **Insufficient-balance banner** (Figma node `1825-10214`) — deposit only, `flow.hasBalance === false`.
+6. Otherwise, the steps card (four-step Stellar or three-step EVM, above).
 
 **Toast ids** are scoped per chain+direction so a stale toast from one direction/chain does not collide with a new one:
 
@@ -1309,6 +1310,8 @@ Amount is reset on chain switch via the same `prevKindRef` pattern used by `depo
 **Toast ids** scoped per chain+tab: EVM stake — `stake-approve-tx` / `stake-tx`; EVM unstake — `unstake-tx`; Stellar stake — `stellar-splusd-trust-tx` / `stellar-stake-tx`; Stellar unstake — `stellar-plusd-trust-tx` / `stellar-unstake-tx`.
 
 Wallet-not-connected banner uses the same Figma node as the deposit page (`1994-7226`).
+
+**No-XLM banner** — the same `XlmFundingBanner` component as the deposit page (precedence item 3 there) replaces the StepsCard on **both tabs** when `stakeFlow.needsXlmFunding` is true: every Stellar step (trustline enable, vault deposit/redeem) needs XLM for the network fee (#1196, #1130).
 
 Figma references: [disconnected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-7280), [init](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95311), [approved](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-101158).
 
