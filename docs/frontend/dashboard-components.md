@@ -172,6 +172,12 @@ The empty/plusd labels apply to both the mobile card and the desktop card (the d
 passes `stakeDisabled` when the connected PLUSD balance is zero, which renders the same disabled
 "Nothing to Stake" CTA); the `"splusd"` staked layout is shared by mobile and desktop.
 
+**Displayed-zero rule (#1186):** both `stakeDisabled` and the `mobileHomeState` derivation treat a
+balance as zero when its **2dp rendering** is `0.00` (`isDisplayZero` in
+`packages/frontend/src/lib/format.ts`, threshold half a cent) — a dust-level raw amount that
+displays as $0.00 must not keep the Stake CTA active or flip the page into the `"plusd"`/`"splusd"`
+states. Companion of #1194's sign-after-rounding rule.
+
 In State C, the sub-line (sPLUSD coin icon + PLUSD-equivalent + USD value) matches Figma nodes
 `1497:95225` / `1497:95226`; the bottom section (Unstake link + Stake More CTA) matches Figma node
 `1497:95228`.

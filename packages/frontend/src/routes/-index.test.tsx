@@ -152,6 +152,12 @@ vi.mock("@/api", () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  usePositionsHistory: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   formatApy: (apy: string | null | undefined) => {
     if (apy == null) return "—";
     const num = Number(apy);
@@ -1056,5 +1062,72 @@ describe("Home page — Stellar connected balances (#688)", () => {
       });
       expect(zeroHeadings.length).toBeGreaterThanOrEqual(1);
     });
+  });
+});
+
+describe("Home page — dust balances display as zero (#1186)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockNavigate.mockClear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("dust PLUSD (renders $0.00) keeps the Stake button disabled and grey", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "4000000000000000",
+    );
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Nothing to Stake",
+    });
+    expect(stakeBtns.length).toBeGreaterThanOrEqual(1);
+    for (const btn of stakeBtns) {
+      expect(btn).toBeDisabled();
+      expect(btn.className).toContain("disabled:bg-[rgba(184,191,190,0.12)]");
+    }
+    expect(
+      screen.queryByRole("button", { name: "Stake PLUSD" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("dust sPLUSD (renders 0.00) derives the empty state — no active Stake More", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${STAKED_PLUSD_ADDRESS}`,
+      "4000000000000000",
+    );
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Nothing to Stake",
+    });
+    expect(stakeBtns.length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.queryByRole("button", { name: "Stake More PLUSD" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("half-cent PLUSD (renders $0.01) keeps the Stake button active", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "5000000000000000",
+    );
+    renderHome();
+
+    const stakeBtns = await screen.findAllByRole("button", {
+      name: "Stake PLUSD",
+    });
+    expect(stakeBtns[0]).not.toBeDisabled();
   });
 });

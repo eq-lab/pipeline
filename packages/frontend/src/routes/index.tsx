@@ -2,7 +2,11 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
-import { formatBigintCurrency, formatRawDecimalUSD } from "@/lib/format";
+import {
+  formatBigintCurrency,
+  formatRawDecimalUSD,
+  isDisplayZero,
+} from "@/lib/format";
 
 import {
   useEvmWallet,
@@ -42,9 +46,10 @@ type MobileHomeState = "empty" | "plusd" | "splusd";
 function deriveMobileHomeState(
   plusdBalance: bigint | undefined,
   splusdBalance: bigint | undefined,
+  decimals: number,
 ): MobileHomeState {
-  if (splusdBalance !== undefined && splusdBalance > 0n) return "splusd";
-  if (plusdBalance !== undefined && plusdBalance > 0n) return "plusd";
+  if (!isDisplayZero(splusdBalance, decimals)) return "splusd";
+  if (!isDisplayZero(plusdBalance, decimals)) return "plusd";
   return "empty";
 }
 
@@ -129,7 +134,11 @@ function Home() {
   );
 
   const mobileHomeState: MobileHomeState = isConnected
-    ? deriveMobileHomeState(plusdBalanceActive, splusdSharesActive)
+    ? deriveMobileHomeState(
+        plusdBalanceActive,
+        splusdSharesActive,
+        activeDecimals,
+      )
     : "empty";
 
   const earnedPnlLabel =
@@ -140,8 +149,7 @@ function Home() {
       : undefined;
 
   const stakeDisabled =
-    isConnected &&
-    (plusdBalanceActive === undefined || plusdBalanceActive === 0n);
+    isConnected && isDisplayZero(plusdBalanceActive, activeDecimals);
 
   const onBuy = () =>
     navigate({ to: "/deposit", search: { direction: "deposit" } });
