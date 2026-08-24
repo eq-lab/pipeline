@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { formatUnits } from "viem";
 import { Card } from "@pipeline/ui";
 import { ENV } from "@/lib/env";
+import { formatBigintCurrency, formatRawDecimalUSD } from "@/lib/format";
 
 import {
   useEvmWallet,
@@ -36,37 +36,6 @@ import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
 
 // spec: docs/frontend/dashboard-components.md#home-route
 // (desktop/mobile composition, top-left card branching, Figma refs).
-
-function formatBigintCurrency(
-  value: bigint | undefined,
-  decimals: number,
-): string {
-  if (value === undefined || value === 0n) return "$0.00";
-  const asFloat = parseFloat(formatUnits(value, decimals));
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(asFloat);
-}
-
-function formatRawDecimalUSD(
-  value: string | null | undefined,
-  decimals: number,
-  options: { signed?: boolean; suffix?: string } = {},
-): string {
-  const raw = value === undefined || value === null ? 0 : Number(value);
-  const amount = Number.isFinite(raw) ? raw / 10 ** decimals : 0;
-  const absFormatted = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Math.abs(amount));
-  const sign = options.signed && amount > 0 ? "+" : amount < 0 ? "-" : "";
-  return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
-}
 
 type MobileHomeState = "empty" | "plusd" | "splusd";
 

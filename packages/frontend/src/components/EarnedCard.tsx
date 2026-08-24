@@ -79,7 +79,6 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
       valueExtra = undefined;
     }
 
-    // PnL value classes: use the green positive token for the earned value.
     const stateValueClasses =
       earnedPnlLabel !== undefined
         ? [
@@ -89,7 +88,9 @@ export const EarnedCard = React.forwardRef<HTMLDivElement, EarnedCardProps>(
             "md:text-[length:var(--text-pipeline-heading-s)]",
             "md:leading-[var(--text-pipeline-heading-s--line-height)]",
             "font-[var(--font-weight-regular)]",
-            "text-[color:var(--color-pipeline-chart-positive)]",
+            earnedPnlLabel.startsWith("+")
+              ? "text-[color:var(--color-pipeline-chart-positive)]"
+              : "text-[color:var(--color-pipeline-ink)]",
             "m-0",
           ].join(" ")
         : valueClasses;

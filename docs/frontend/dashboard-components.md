@@ -80,10 +80,16 @@ not call for italics, so the component intentionally omits them.
 
 | Condition                                                                                     | Displayed value                                                                                                                                                                               |
 | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `earnedPnlLabel` present                                                                      | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`), rendered in the green positive token (`--color-pipeline-chart-positive`) instead of the muted placeholder color. |
+| `earnedPnlLabel` present                                                                      | That value (total realized + unrealized PnL from `GET /v1/pnl` `total_pnl`). Color keys off the rendered sign (#1194): green positive token (`--color-pipeline-chart-positive`) only when the label starts with `+`; zero and negative values render in primary ink (`--color-pipeline-ink`). No red treatment for negatives — the design defines none, so neutral ink is deliberate. |
 | No PnL label (any state)                                                                      | `"Tracked once you stake"` — unified per LP review #7 (#1153); the former States-A/B `"Nothing yet"` split and the `mobileHomeState` prop are gone.                                            |
 
 The card label reads **"Earnings"** (was "Earned"; LP review #7, #1153).
+
+**Money-label sign rule (#1194):** `formatBigintCurrency` / `formatRawDecimalUSD`
+(`packages/frontend/src/lib/format.ts`) derive the sign from the **rendered 2dp value**, not the
+raw amount — a dust-level value that rounds to `$0.00` is always unsigned (never `−$0.00` or
+`+$0.00`). `+` renders only for positive values with `signed: true`; genuine negatives render
+`−$…`. This also governs the Total Balance "unrealized" caption.
 
 **Accessibility:** `role="region"` + `aria-labelledby` referencing the "Earnings" label; the
 placeholder value never changes so no live-region semantics are needed.
