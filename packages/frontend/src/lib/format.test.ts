@@ -6,7 +6,12 @@
  *   - `formatActivityTime` — shape-only assertion (TZ-independent), invalid input.
  */
 import { describe, it, expect } from "vitest";
-import { formatTokenAmount, formatActivityTime } from "./format";
+import {
+  formatTokenAmount,
+  formatActivityTime,
+  formatBigintCurrency,
+  formatRawDecimalUSD,
+} from "./format";
 
 describe("formatTokenAmount", () => {
   it("formats 1 USDC (6 decimals) — 1_000_000n → '1.00'", () => {
@@ -56,5 +61,64 @@ describe("formatActivityTime", () => {
 
   it("returns '—' for an empty string", () => {
     expect(formatActivityTime("")).toBe("—");
+  });
+});
+
+describe("formatRawDecimalUSD — sign follows the rendered 2dp value (#1194)", () => {
+  it("dust-level negative rounds to unsigned $0.00", () => {
+    expect(formatRawDecimalUSD("-40000", 7, { signed: true })).toBe("$0.00");
+  });
+
+  it("dust-level positive rounds to unsigned $0.00 even when signed", () => {
+    expect(formatRawDecimalUSD("40000", 7, { signed: true })).toBe("$0.00");
+  });
+
+  it("keeps the suffix on an unsigned zero", () => {
+    expect(
+      formatRawDecimalUSD("-40000", 7, { signed: true, suffix: "unrealized" }),
+    ).toBe("$0.00 unrealized");
+  });
+
+  it("real negative renders -$…", () => {
+    expect(formatRawDecimalUSD("-12300000", 7, { signed: true })).toBe(
+      "-$1.23",
+    );
+  });
+
+  it("positive renders +$… when signed", () => {
+    expect(formatRawDecimalUSD("12300000", 7, { signed: true })).toBe("+$1.23");
+  });
+
+  it("positive renders $… without a plus when unsigned", () => {
+    expect(formatRawDecimalUSD("12300000", 7)).toBe("$1.23");
+  });
+
+  it("exact zero renders $0.00", () => {
+    expect(formatRawDecimalUSD("0", 7, { signed: true })).toBe("$0.00");
+  });
+
+  it("null / undefined / non-numeric render $0.00", () => {
+    expect(formatRawDecimalUSD(null, 7, { signed: true })).toBe("$0.00");
+    expect(formatRawDecimalUSD(undefined, 7, { signed: true })).toBe("$0.00");
+    expect(formatRawDecimalUSD("abc", 7, { signed: true })).toBe("$0.00");
+  });
+});
+
+describe("formatBigintCurrency — never renders -$0.00 (#1194)", () => {
+  it("dust-level negative rounds to unsigned $0.00", () => {
+    expect(formatBigintCurrency(-40_000n, 7)).toBe("$0.00");
+  });
+
+  it("real negative renders -$…", () => {
+    expect(formatBigintCurrency(-12_300_000n, 7)).toBe("-$1.23");
+  });
+
+  it("positive renders $…", () => {
+    expect(formatBigintCurrency(12_300_000n, 7)).toBe("$1.23");
+  });
+
+  it("undefined and 0n render $0.00", () => {
+    expect(formatBigintCurrency(undefined, 7)).toBe("$0.00");
+    expect(formatBigintCurrency(0n, 7)).toBe("$0.00");
   });
 });

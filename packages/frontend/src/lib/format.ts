@@ -86,3 +86,40 @@ export function formatActivityTime(iso: string): string {
     return "—";
   }
 }
+
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatBigintCurrency(
+  value: bigint | undefined,
+  decimals: number,
+): string {
+  if (value === undefined || value === 0n) return "$0.00";
+  const asFloat = parseFloat(formatUnits(value, decimals));
+  const absFormatted = usdFormatter.format(Math.abs(asFloat));
+  const sign = asFloat < 0 && absFormatted !== "$0.00" ? "-" : "";
+  return `${sign}${absFormatted}`;
+}
+
+export function formatRawDecimalUSD(
+  value: string | null | undefined,
+  decimals: number,
+  options: { signed?: boolean; suffix?: string } = {},
+): string {
+  const raw = value === undefined || value === null ? 0 : Number(value);
+  const amount = Number.isFinite(raw) ? raw / 10 ** decimals : 0;
+  const absFormatted = usdFormatter.format(Math.abs(amount));
+  const sign =
+    absFormatted === "$0.00"
+      ? ""
+      : options.signed && amount > 0
+        ? "+"
+        : amount < 0
+          ? "-"
+          : "";
+  return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
+}
