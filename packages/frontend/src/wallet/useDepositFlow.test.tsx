@@ -26,8 +26,15 @@ const mockStellarClaimWithdrawalWrite = vi.fn();
 
 const SIG_BYTES = new Uint8Array(64).fill(0xab);
 
+// Mutable per-test state for the no-XLM banner derivation (#1196).
+const mockXlmState = vi.hoisted(() => ({
+  kind: "stellar" as "stellar" | "evm",
+  xlmBalance: "100" as string | undefined,
+  accountExists: true as boolean | undefined,
+}));
+
 vi.mock("@/wallet", () => ({
-  useWalletView: () => ({ kind: "stellar" }),
+  useWalletView: () => ({ kind: mockXlmState.kind }),
 
   // EVM (unused on the Stellar path, but called unconditionally)
   useEvmWallet: () => ({
@@ -104,6 +111,13 @@ vi.mock("@/wallet", () => ({
     balance: "1000",
     refetchBalance: vi.fn(),
     isLoading: false,
+  }),
+  useStellarXlmBalance: () => ({
+    xlmBalance: mockXlmState.xlmBalance,
+    accountExists: mockXlmState.accountExists,
+    refetchBalance: vi.fn(),
+    isLoading: false,
+    error: null,
   }),
   SAC_DECIMALS: 7,
   sacDisplayToRaw: (v: string) => BigInt(Math.round(parseFloat(v) * 1e7)),
@@ -225,9 +239,62 @@ vi.mock("@/api", () => ({
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe("useDepositFlow — needsXlmFunding (#1196/#1130)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockXlmState.kind = "stellar";
+    mockXlmState.xlmBalance = "100";
+    mockXlmState.accountExists = true;
+  });
+
+  it("is false when the account holds XLM", () => {
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.needsXlmFunding).toBe(false);
+  });
+
+  it("is true when the XLM balance is zero", () => {
+    mockXlmState.xlmBalance = "0";
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.needsXlmFunding).toBe(true);
+  });
+
+  it("is true when the account is unfunded (Horizon 404)", () => {
+    mockXlmState.xlmBalance = "0";
+    mockXlmState.accountExists = false;
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.needsXlmFunding).toBe(true);
+  });
+
+  it("is false while the balance is still unresolved", () => {
+    mockXlmState.xlmBalance = undefined;
+    mockXlmState.accountExists = undefined;
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.needsXlmFunding).toBe(false);
+  });
+
+  it("is true in the withdraw direction too (direction-independent)", () => {
+    mockXlmState.xlmBalance = "0";
+    const { result } = renderHook(() =>
+      useDepositFlow("withdraw", 0n, vi.fn()),
+    );
+    expect(result.current.needsXlmFunding).toBe(true);
+  });
+
+  it("is always false on EVM", () => {
+    mockXlmState.kind = "evm";
+    mockXlmState.xlmBalance = "0";
+    mockXlmState.accountExists = false;
+    const { result } = renderHook(() => useDepositFlow("deposit", 0n, vi.fn()));
+    expect(result.current.needsXlmFunding).toBe(false);
+  });
+});
+
 describe("useDepositFlow — Stellar claim deadline guard (#800)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockXlmState.kind = "stellar";
+    mockXlmState.xlmBalance = "100";
+    mockXlmState.accountExists = true;
     mockStellarDepositVoucherData = undefined;
     mockStellarWithdrawVoucherData = undefined;
   });

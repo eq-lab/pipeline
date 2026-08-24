@@ -98,6 +98,8 @@ export type {
 } from "./stellar/useStellarWallet";
 export { useStellarToken, formatUsdcDisplay } from "./stellar/useStellarToken";
 export type { UseStellarTokenResult } from "./stellar/useStellarToken";
+export { useStellarXlmBalance } from "./stellar/useStellarXlmBalance";
+export type { UseStellarXlmBalanceResult } from "./stellar/useStellarXlmBalance";
 export {
   useStellarSacToken,
   SAC_DECIMALS,

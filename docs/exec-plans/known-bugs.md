@@ -17,6 +17,14 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
+### BUG-18: frontend vitest suite broken on Node ≥20.19 — `localStorage` is undefined in jsdom tests
+- **Date:** 2026-08-24
+- **Location:** all `packages/frontend` tests that touch `localStorage` (e.g. `useStellarSacToken.test.tsx`, `-deposit.test.tsx`); found while running the test gate for #1196.
+- **Symptom:** `TypeError: Cannot read properties of undefined (reading 'clear'/'setItem')` on bare `localStorage`, plus Node's `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`.
+- **Root cause:** Node 20.19+/22+ defines an experimental `globalThis.localStorage` that is non-functional without `--localstorage-file`; because the key already exists on `globalThis`, vitest's jsdom environment does not install jsdom's own `localStorage` over it. Repo pins no Node version (`engines`/`.nvmrc` absent).
+- **Workaround:** run vitest with `NODE_OPTIONS="--localstorage-file=<tmpfile>"` (note: that file is shared across worker processes — pair with `--no-file-parallelism` to avoid cross-file pollution). Proper fix: pin a Node version for the repo or add `vite.config.ts` test setup that force-installs a storage shim.
+- Separately observed on this machine (all reproduce at branch HEAD with no working-tree changes, unrelated to #1196): 2 flaky failures in `-deposit.test.tsx` "Deposit page — toast emissions" (the toast never appears within the 3 s window), and 57 failures across `-index.test.tsx` / `useTermsAcknowledgement.test.tsx` — `[vitest] No "usePositionsHistory" export is defined on the "@/api" mock`.
+
 ### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
 - **Date:** 2026-08-19
 - **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).

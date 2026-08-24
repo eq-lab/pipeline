@@ -23,6 +23,7 @@ import {
   useStellarWallet,
   useStellarSacToken,
   useStellarToken,
+  useStellarXlmBalance,
   useStellarDepositManagerAddresses,
   useStellarStake,
   useStellarUnstake,
@@ -130,6 +131,13 @@ export interface StakeFlowState {
 
   // ── Quick-amount handler ───────────────────────────────────────────────
   onQuickAmount: (idx: number) => void;
+
+  /**
+   * Stellar only: connected account has no XLM to pay network fees (zero
+   * native balance, or unfunded — Horizon 404). Always `false` on EVM.
+   * spec: docs/frontend/wallet-flows.md#xlm-funding-rule
+   */
+  needsXlmFunding: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -245,6 +253,7 @@ export function useStakeFlow(
   });
   // Also get PLUSD balance via useStellarToken for consistency with TopBar.
   const stellarUsdcToken = useStellarToken();
+  const xlm = useStellarXlmBalance();
 
   // sPLUSD share balance — Unstake tab input (raw bigint from the vault).
   const stellarSplusdBalance = useStellarStakedPlusdBalance();
@@ -577,6 +586,13 @@ export function useStakeFlow(
   // Rules of Hooks — not used in the Stellar stake flow but must be mounted).
   void stellarUsdcToken;
 
+  // No-XLM rule: zero-or-unfunded, resolved-only (no flash while loading).
+  // spec: docs/frontend/wallet-flows.md#xlm-funding-rule
+  const stellarNeedsXlmFunding =
+    isStellarConnected &&
+    (xlm.accountExists === false ||
+      (xlm.xlmBalance !== undefined && sacDisplayToRaw(xlm.xlmBalance) === 0n));
+
   // ── Select the active state by chain ──────────────────────────────────────
 
   if (!isStellar) {
@@ -674,6 +690,7 @@ export function useStakeFlow(
         if (isStake) evmPlusdToken.refetchAllowance?.();
       },
       onQuickAmount: onEvmQuickAmount,
+      needsXlmFunding: false,
     };
   }
 
@@ -787,5 +804,6 @@ export function useStakeFlow(
       stellarPlusdSac.refetchBalance?.();
     },
     onQuickAmount: onStellarQuickAmount,
+    needsXlmFunding: stellarNeedsXlmFunding,
   };
 }

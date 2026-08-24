@@ -13,6 +13,7 @@ import {
   TokenInput,
 } from "@pipeline/ui";
 import { useWalletView, useConnectModal } from "@/wallet";
+import { XlmFundingBanner } from "@/components/XlmFundingBanner";
 import { useToast } from "@/lib/toast";
 import { useStakeFlow } from "@/wallet/useStakeFlow";
 import { toUserError } from "@/utils/userError";
@@ -342,6 +343,8 @@ function Stake() {
               Connect
             </Button>
           </Card>
+        ) : isStellar && flow.needsXlmFunding ? (
+          <XlmFundingBanner address={flow.address} />
         ) : (
           <StepsCard
             data-testid={

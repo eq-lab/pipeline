@@ -29,26 +29,28 @@ _None_
 
 ## Implementation Steps
 
-1. **New hook `packages/frontend/src/wallet/stellar/useStellarXlmBalance.ts`** (+ test file), mirroring `useStellarToken.ts` structure:
+All steps completed 2026-08-24 (coder).
+
+1. ✅ **New hook `packages/frontend/src/wallet/stellar/useStellarXlmBalance.ts`** (+ test file), mirroring `useStellarToken.ts` structure:
    - Horizon `loadAccount(address)`; pick the `asset_type === "native"` balance line.
    - Returns `{ xlmBalance: string | undefined, accountExists: boolean | undefined, isLoading, error, refetchBalance }`. Resolved 404 → `{ xlmBalance: "0", accountExists: false }`; account found → `accountExists: true`. Disconnected → all `undefined`.
    - Mock key `pipeline.mock.wallet.stellar.balance.xlm` (human-decimal string, matching `STELLAR_MOCK_KEYS` conventions in `wallet/stellar/mock.ts`); add the key to `STELLAR_MOCK_KEYS`.
    - `staleTime`/`refetchInterval` 30 s, `retry: false` — same as `useStellarSacToken`.
    - Export from the `@/wallet` barrel (`packages/frontend/src/wallet/index.ts`).
-2. **`packages/frontend/src/wallet/useDepositFlow.ts`**: call `useStellarXlmBalance()` unconditionally; add to `FlowState`:
+2. ✅ **`packages/frontend/src/wallet/useDepositFlow.ts`**: call `useStellarXlmBalance()` unconditionally; add to `FlowState`:
    - `needsXlmFunding: boolean` — Stellar path: connected && (`accountExists === false` || resolved `xlmBalance` parses to `0`); EVM path: always `false`.
    - Update the `FlowState` contract doc block pointer (spec change in step 7).
-3. **`packages/frontend/src/wallet/useStakeFlow.ts`** (locate via `grep -rn "useStakeFlow" packages/frontend/src`): same `needsXlmFunding` field on its state shape, Stellar-only, same rule.
-4. **Shared banner component `packages/frontend/src/components/XlmFundingBanner.tsx`**: yellow `Card` matching the existing `low-balance-banner` markup in `deposit.tsx` (`Card variant="yellow"`, title body text, caption subtitle, `Button variant="primary-dark"` compact) with copy per Figma node `6093-75787`:
+3. ✅ **`packages/frontend/src/wallet/useStakeFlow.ts`** (locate via `grep -rn "useStakeFlow" packages/frontend/src`): same `needsXlmFunding` field on its state shape, Stellar-only, same rule.
+4. ✅ **Shared banner component `packages/frontend/src/components/XlmFundingBanner.tsx`**: yellow `Card` matching the existing `low-balance-banner` markup in `deposit.tsx` (`Card variant="yellow"`, title body text, caption subtitle, `Button variant="primary-dark"` compact) with copy per Figma node `6093-75787`:
    - Title "Add funds to your XLM balance"; subtitle "You need XLM to pay the network fee".
    - Button: copy icon + "Copy Address" (→ "Copied" for 2 s after click), copies the connected Stellar address via the same clipboard pattern as `deposit.tsx`'s `copyAddress`. Props: `address: string | undefined`; `data-testid="xlm-funding-banner"` (+ `-title`, `-subtitle`, `-action`).
    - Token-exact styling verified against the Figma node (border-b-3/border-r-3 yellow card, radius-xxl, body/caption type tokens) — reuse the existing `Card`/`Button` primitives; only add what they don't already provide.
-5. **`packages/frontend/src/routes/deposit.tsx`**: insert into the banner-precedence chain after the initial-data-load gate and **before** the USDC-trustline banner: `isStellar && flow.needsXlmFunding` → `<XlmFundingBanner address={flow.address} />`. Applies in both directions (no `isDeposit` guard). Fold the XLM query's first load into `isInitialDataLoad` (via `flow.isDataPending` if that's where the gate reads from — keep the existing no-flicker behavior).
-6. **`packages/frontend/src/routes/stake.tsx`**: same banner in the StepsCard slot when `isStellar && stakeFlow.needsXlmFunding` (both tabs), after the connect-wallet banner / initial-load gate.
-7. **Spec updates (docs-first, same PR):**
+5. ✅ **`packages/frontend/src/routes/deposit.tsx`**: insert into the banner-precedence chain after the initial-data-load gate and **before** the USDC-trustline banner: `isStellar && flow.needsXlmFunding` → `<XlmFundingBanner address={flow.address} />`. Applies in both directions (no `isDeposit` guard). Fold the XLM query's first load into `isInitialDataLoad` (via `flow.isDataPending` if that's where the gate reads from — keep the existing no-flicker behavior).
+6. ✅ **`packages/frontend/src/routes/stake.tsx`**: same banner in the StepsCard slot when `isStellar && stakeFlow.needsXlmFunding` (both tabs), after the connect-wallet banner / initial-load gate.
+7. ✅ **Spec updates (docs-first, same PR):**
    - `docs/frontend/dashboard-components.md` — banner precedence list: insert "**No-XLM banner** (Figma node `6090-8741` / card `6093-75787`) — Stellar only, both directions, `flow.needsXlmFunding`; outranks the USDC-trustline banner because adding a trustline itself requires XLM" as item 3; renumber; add the Figma reference link. Stake route section: add the same banner rule.
    - `docs/frontend/wallet-flows.md` — `FlowState` contract: document `needsXlmFunding` and the zero-or-unfunded rule (incl. the Horizon-404 `accountExists` discriminator and why 404 is no longer folded into "no trustline" for this purpose).
-8. **Lint/build**: `npx tsx scripts/lint-docs.ts`, frontend lint + typecheck + unit tests + build per package scripts.
+8. ✅ **Lint/build**: `npx tsx scripts/lint-docs.ts`, frontend lint + typecheck + unit tests + build per package scripts.
 
 ## Test Strategy
 

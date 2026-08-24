@@ -350,6 +350,73 @@ describe("useStakeFlow — Stellar PLUSD balance (Horizon path, issuer-sensitive
   });
 });
 
+describe("useStakeFlow — needsXlmFunding (#1196/#1130)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockLoadAccount.mockClear();
+    mockStakedPlusdName.mockReset();
+    mockStakedPlusdConvertToShares.mockReset();
+    mockStakedPlusdConvertToAssets.mockReset();
+    mockStakedPlusdName.mockResolvedValue("Staked Pipeline USD");
+    mockStakedPlusdConvertToShares.mockResolvedValue(9_600_000n);
+    mockStakedPlusdConvertToAssets.mockResolvedValue(10_400_000n);
+    seedStellarWalletKeys();
+    seedDepositManagerMockKeys();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("is false when the account holds native XLM", async () => {
+    mockLoadAccount.mockResolvedValue({
+      balances: makeBalances(PLUSD_BALANCE_50, PROTOCOL_ISSUER),
+    });
+    const { result } = renderHook(() => useStakeFlow("stake", 0n, () => {}), {
+      wrapper: makeWrapper().wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.balance).toBe(PLUSD_BALANCE_50_RAW);
+    });
+    expect(result.current.needsXlmFunding).toBe(false);
+  });
+
+  it("is true when the native XLM balance is zero", async () => {
+    mockLoadAccount.mockResolvedValue({
+      balances: [
+        { asset_type: "native", balance: "0.0000000" },
+        {
+          asset_type: "credit_alphanum4",
+          asset_code: "PLUSD",
+          asset_issuer: PROTOCOL_ISSUER,
+          balance: PLUSD_BALANCE_50,
+          is_authorized: true,
+        },
+      ],
+    });
+    const { result } = renderHook(() => useStakeFlow("stake", 0n, () => {}), {
+      wrapper: makeWrapper().wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.needsXlmFunding).toBe(true);
+    });
+  });
+
+  it("is true when the account is unfunded (Horizon 404)", async () => {
+    const err = new Error("Not Found") as Error & {
+      response: { status: number };
+    };
+    err.response = { status: 404 };
+    mockLoadAccount.mockRejectedValue(err);
+    const { result } = renderHook(() => useStakeFlow("stake", 0n, () => {}), {
+      wrapper: makeWrapper().wrapper,
+    });
+    await waitFor(() => {
+      expect(result.current.needsXlmFunding).toBe(true);
+    });
+  });
+});
+
 describe("useStakeFlow — Stellar sPLUSD balance (Unstake tab, not issuer-sensitive)", () => {
   beforeEach(() => {
     localStorage.clear();
