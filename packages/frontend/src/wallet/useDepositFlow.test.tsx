@@ -26,7 +26,6 @@ const mockStellarClaimWithdrawalWrite = vi.fn();
 
 const SIG_BYTES = new Uint8Array(64).fill(0xab);
 
-// Mutable per-test state for the no-XLM banner derivation (#1196).
 const mockXlmState = vi.hoisted(() => ({
   kind: "stellar" as "stellar" | "evm",
   xlmBalance: "100" as string | undefined,

@@ -41,9 +41,7 @@ export function XlmFundingBanner({ address }: { address: string | undefined }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       },
-      () => {
-        /* Silently no-op when clipboard write fails. */
-      },
+      () => {},
     );
   }, [address]);
 

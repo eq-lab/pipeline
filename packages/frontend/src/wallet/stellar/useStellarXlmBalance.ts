@@ -1,7 +1,6 @@
 /**
- * Native XLM balance + funded-account discriminator for the connected Stellar
- * wallet. Unlike the token hooks, a Horizon 404 is NOT folded into "zero" —
- * it is surfaced as `accountExists: false` (issues #1196/#1130).
+ * Native XLM balance + funded-account discriminator (Horizon 404 →
+ * `accountExists: false`, not "zero") for the connected Stellar wallet.
  * spec: docs/frontend/wallet-flows.md#xlm-funding-rule
  */
 
@@ -17,9 +16,7 @@ function parseString(raw: string): string {
 }
 
 export interface UseStellarXlmBalanceResult {
-  /** Raw Horizon decimal string (e.g. `"3.5000000"`); `undefined` when disconnected / loading. */
   xlmBalance: string | undefined;
-  /** `false` when Horizon returns 404 (account not on the ledger); `undefined` when disconnected / loading. */
   accountExists: boolean | undefined;
   refetchBalance: () => void;
   isLoading: boolean;

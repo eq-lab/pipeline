@@ -77,6 +77,7 @@ scripts/wt ls                # alias for git worktree list
 - After any Rust change, run `cargo clippy --all -- -D warnings` and verify it passes.
 - After any TypeScript change, run `npx tsx scripts/lint-docs.ts` to validate documentation structure.
 - Never commit code that fails linting. Fix all errors before committing.
+- Comment-less code: at most one 2–3-line spec-pointer header per file, nothing else — no field/function JSDoc, no body or test comments. Substance belongs in the referenced spec; rationale in the plan, issue, or commit message.
 
 ### Docs-first
 

@@ -199,11 +199,6 @@ export interface FlowState {
    */
   trustlines: TrustlineInfo[];
 
-  /**
-   * Stellar only: connected account has no XLM to pay network fees (zero
-   * native balance, or unfunded — Horizon 404). Always `false` on EVM.
-   * spec: docs/frontend/wallet-flows.md#xlm-funding-rule
-   */
   needsXlmFunding: boolean;
 }
 
@@ -624,8 +619,6 @@ export function useDepositFlow(
       ? sacDisplayToRaw(plusdSac.balance)
       : undefined;
 
-  // No-XLM rule: zero-or-unfunded, resolved-only (no flash while loading).
-  // spec: docs/frontend/wallet-flows.md#xlm-funding-rule
   const stellarNeedsXlmFunding =
     isStellarConnected &&
     (xlm.accountExists === false ||

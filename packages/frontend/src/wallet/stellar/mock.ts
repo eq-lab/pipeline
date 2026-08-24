@@ -35,10 +35,6 @@ export const STELLAR_MOCK_KEYS = {
    * directly to `formatUsdcDisplay` without any scaling math.
    */
   balanceUsdc: "pipeline.mock.wallet.stellar.balance.usdc",
-  /**
-   * Human-scaled decimal string native XLM balance for `useStellarXlmBalance`
-   * (e.g. `"0"`, `"1.5"`). When set, `accountExists` is reported as `true`.
-   */
   balanceXlm: "pipeline.mock.wallet.stellar.balance.xlm",
 
   // ── Protocol contract mock keys ────────────────────────────────────────────

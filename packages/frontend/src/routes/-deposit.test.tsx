@@ -2564,7 +2564,7 @@ function seedStellarMocks({
   usdcBalance = "5000", // USDC token balance (deposit input)
   sacPlusdBalance = "0", // SAC PLUSD balance raw at 7 dp — hasTrustline = > 0
   sacUsdcBalance = "0", // SAC USDC balance raw at 7 dp — hasTrustline = > 0
-  xlmBalance = "100", // native XLM balance (human decimal) — "0" triggers the no-XLM banner (#1196)
+  xlmBalance = "100",
 } = {}) {
   if (connected) {
     localStorage.setItem(
