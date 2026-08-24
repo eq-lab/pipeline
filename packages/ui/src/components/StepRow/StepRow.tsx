@@ -49,8 +49,8 @@ const stepCircleClasses = [
 
 const stepNumberClasses = [
   "font-[family-name:var(--font-body)]",
-  "text-[length:var(--text-pipeline-heading-s)]",
-  "leading-[var(--text-pipeline-heading-s--line-height)]",
+  "text-[length:var(--text-pipeline-body)]",
+  "leading-[var(--text-pipeline-body--line-height)]",
   "font-[var(--font-weight-bold)]",
   "text-[color:var(--color-pipeline-ink)]",
   "select-none",
@@ -140,7 +140,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
                 "inline-flex items-center justify-center",
                 "h-8 w-22",
                 "rounded-[var(--radius-pipeline-button)]",
-                "bg-[color:var(--color-pipeline-positive-secondary)]",
+                "bg-[color:var(--color-pipeline-ink)]",
               ].join(" ")}
               aria-label={`${actionLabel} complete`}
               data-state="success"
@@ -155,7 +155,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               >
                 <path
                   d="M3.5 10.5L8 15.5L16.5 5"
-                  stroke="var(--color-pipeline-positive)"
+                  stroke="var(--color-pipeline-on-dark)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"

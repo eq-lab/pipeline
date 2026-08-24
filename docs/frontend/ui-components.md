@@ -748,7 +748,7 @@ here.
 - Root: `flex items-center gap-3`, full width. `items-center` vertically centers the step badge,
   label, and action button within the row; when the label wraps to two lines the badge and button
   align to the mid-point of the label block, which matches the Figma intent.
-- Step badge: 40 × 40 px numbered square with muted fill (`--color-pipeline-line`), card radius —
+- Step badge: 40 × 40 px numbered square with muted fill (`--color-pipeline-line`), card radius; the number is Body-size 16 px bold (was heading-s — LP review #41, #1187) —
   matches the Figma `image` node. Number is body-family, `heading-s` scale, bold, primary ink.
 - Label: body 16 / 22, regular, primary ink, `flex-1 min-w-0`. Labels are allowed to **wrap** so
   long step descriptions (e.g. "Allow Pipeline to use USDC") remain fully readable on mobile —
@@ -767,9 +767,10 @@ here.
   (16 px ring in `--color-pipeline-on-dark` with transparent top, `animate-spin`) to communicate a
   pending transaction. Full row opacity is kept.
 - **Success** (`state="success"`): keeps the numeric step badge on the left and replaces the action
-  button on the right with a wide green pill (32 px tall, `w-22`, button radius,
-  `--color-pipeline-positive-secondary` fill) containing a centred check icon — Figma node
-  `1497-95272`. The check icon is a 20×20 viewport stroke in `--color-pipeline-positive`;
+  button on the right with a wide ink pill (32 px tall, `w-22`, button radius,
+  `--color-pipeline-ink` fill — fill/primary per LP review #43, #1189; formerly the green
+  `positive-secondary`, node `1497-95272`) containing a centred check icon. The check icon is a
+  20×20 viewport stroke in `--color-pipeline-on-dark`;
   `strokeWidth` 2.5 matches the medium-heavy Figma weight (node `1498:100802;9285:26314`), and the
   path spans the full usable height so the glyph clearly reads inside the 32 px pill.
 - **Error** (`state="error"`): red-tinted badge (`rgba(192, 57, 43, 0.12)` fill, number in

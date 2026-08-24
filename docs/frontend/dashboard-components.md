@@ -579,7 +579,7 @@ Visual specs (Figma):
 - Ready state (toggle on, Continue enabled): node `1582:69059`.
 
 Dimensions: width 420px, max-height 80vh desktop / 90vh mobile. Scrim `rgba(56,55,53,0.6)`, modal
-background `#f8f7f6`, padding 24px, radius 32px (`radius-3xl`). The inline Toggle switch has no
+background `#f8f7f6`, padding 24px, radius 4px (was 32 — LP review #10, #1156). The inline Toggle switch has no
 `@pipeline/ui` primitive yet (tracked in tech-debt-tracker.md); track colors are off →
 `rgba(56,55,53,0.18)`, on → `#208000` (positive primary), thumb a white circle.
 
