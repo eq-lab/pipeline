@@ -123,3 +123,11 @@ export function formatRawDecimalUSD(
           : "";
   return `${sign}${absFormatted}${options.suffix ? ` ${options.suffix}` : ""}`;
 }
+
+export function isDisplayZero(
+  value: bigint | undefined,
+  decimals: number,
+): boolean {
+  if (value === undefined || value === 0n) return true;
+  return Math.abs(parseFloat(formatUnits(value, decimals))) < 0.005;
+}

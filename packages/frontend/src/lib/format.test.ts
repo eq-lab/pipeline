@@ -11,6 +11,7 @@ import {
   formatActivityTime,
   formatBigintCurrency,
   formatRawDecimalUSD,
+  isDisplayZero,
 } from "./format";
 
 describe("formatTokenAmount", () => {
@@ -120,5 +121,28 @@ describe("formatBigintCurrency — never renders -$0.00 (#1194)", () => {
   it("undefined and 0n render $0.00", () => {
     expect(formatBigintCurrency(undefined, 7)).toBe("$0.00");
     expect(formatBigintCurrency(0n, 7)).toBe("$0.00");
+  });
+});
+
+describe("isDisplayZero — zero at the rendered 2dp value (#1186)", () => {
+  it("true for undefined and 0n", () => {
+    expect(isDisplayZero(undefined, 18)).toBe(true);
+    expect(isDisplayZero(0n, 18)).toBe(true);
+  });
+
+  it("true for dust below half a cent", () => {
+    expect(isDisplayZero(4_000_000_000_000_000n, 18)).toBe(true);
+    expect(isDisplayZero(-4_000_000_000_000_000n, 18)).toBe(true);
+    expect(isDisplayZero(40_000n, 7)).toBe(true);
+  });
+
+  it("false from half a cent up (renders 0.01)", () => {
+    expect(isDisplayZero(5_000_000_000_000_000n, 18)).toBe(false);
+    expect(isDisplayZero(50_000n, 7)).toBe(false);
+  });
+
+  it("false for real balances", () => {
+    expect(isDisplayZero(1_000_000_000_000_000_000n, 18)).toBe(false);
+    expect(isDisplayZero(10_000_000n, 7)).toBe(false);
   });
 });
