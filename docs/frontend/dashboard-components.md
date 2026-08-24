@@ -1300,6 +1300,8 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 
 Figma references: [deposit page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100812), [withdraw page](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100351), [swap button](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1498-100157), [wallet not connected](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1994-6885).
 
+Section spacing: the `main` column uses `gap-8` (32 px) between header, conversion card, and banner/steps — the design frames use uniform 32 px section gaps (e.g. `6090:8742` Top h=124 → Input y=156; #1160). `DepositHeader` carries no bottom margin of its own.
+
 See also [`wallet-flows.md` § Request state model](./wallet-flows.md#request-state-model) for the completed-deposit auto-reset behavior driving this page's form-reset effect.
 
 ### Stake route
@@ -1335,6 +1337,7 @@ Activity page wired to `GET /v1/requests`.
 
 **Responsive layout:**
 
+- Section spacing: the `main` column uses `gap-8` (32 px) between header, tabs, and list — Figma `1497-94912` (Top h=124 → tabs y=156 → list y=224; #1182).
 - Mobile (< 768px, Figma node `1993-9592`, 402×874): 8px side margins (`px-2`); `ActivityHeader` shows a left-aligned heading with no arrow-clock icon.
 - Desktop (≥ 768px, Figma node `1497-94912`): centred content column capped at `max-w-[480px]`; `ActivityHeader` shows a centred icon + heading.
 

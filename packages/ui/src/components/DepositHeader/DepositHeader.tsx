@@ -15,7 +15,6 @@ const rootClasses = [
   "flex flex-col items-start md:items-center",
   "w-full",
   "gap-3",
-  "mb-8",
 ].join(" ");
 
 const headingClasses = [

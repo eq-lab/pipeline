@@ -247,7 +247,7 @@ function Stake() {
       {/* Centred narrow column */}
       <main
         data-testid="stake-main"
-        className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-12"
+        className="mx-auto flex w-full max-w-lg flex-col gap-8 px-4 py-12"
       >
         {/* Section header */}
         {/* TODO(#APR-followup): wire live yield rate; out of scope for #310 */}

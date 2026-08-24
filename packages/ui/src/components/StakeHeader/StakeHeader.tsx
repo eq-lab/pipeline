@@ -14,7 +14,7 @@ export interface StakeHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   title?: string;
 }
 
-const rootClasses = ["flex flex-col items-center", "gap-3", "mb-8"].join(" ");
+const rootClasses = ["flex flex-col items-center", "gap-3"].join(" ");
 
 const headingClasses = [
   "font-[family-name:var(--font-display)]",

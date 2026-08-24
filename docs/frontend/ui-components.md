@@ -77,6 +77,11 @@ Weight decision: Besley Regular (`font-normal`) at **both** breakpoints, matchin
 
 ### Implementation note (CSS precedence)
 
+All HeroIcon glyphs tint with a single token — `--color-pipeline-ink-subtle` (content/tertiary)
+over the `--color-pipeline-fill-muted` circle (#1172, #1181, LP review board `2999:9165`); icon
+SVG assets must carry no baked `fill-opacity` (the tint owns the alpha — `arrow-clock.svg`'s baked
+0.3 was removed with #1181).
+
 The `hidden md:block` visibility toggle lives on a plain wrapper `<div>` around `HeroIcon`,
 not on `HeroIcon` itself: `HeroIcon` applies its own `inline-flex` Tailwind utility, which
 shares the `display` property with `hidden` and compiles later in the stylesheet, so passing
@@ -378,7 +383,9 @@ node `1498:100130` and the confirmed human answer overriding the plan's Q2.
 - `--text-pipeline-heading-m` / `--text-pipeline-heading-m--line-height` — 28 px / 36 px.
 - `--color-pipeline-ink` — primary ink colour.
 - Root is `w-full` so left-alignment fills the row on mobile; `gap-3` between icon and
-  heading; `mb-8` (32 px) provides the required bottom spacing (fix 2, Issue #595).
+  heading. The header carries no bottom margin of its own (#1160, supersedes the #595 `mb-8`):
+  the deposit page's `main` column owns the 32 px section spacing via `gap-8`, matching the design
+  frames' uniform 32 px section gaps.
 - No raw hex codes, sizes, or hard-coded font names outside token references.
 
 Default `title` is `"1:1 Conversion"`. Accessibility: the coin icon is decorative
@@ -674,8 +681,8 @@ A vertically-stacked flex column, centred on both axes:
   (`gap-3`). The icon is decorative (`aria-hidden`).
 - Display-serif heading at the `heading-m` scale (28 px / 36 px line-height). Figma node
   `1497-95313` specifies **Besley Regular (font-weight 400), not Bold**.
-- `mb-8` (32 px) bottom margin matches `DepositHeader`'s bottom spacing so the header → card gap is
-  consistent across the Stake and Deposit pages (Issue #612).
+- No bottom margin of its own (#1160, keeps the #612 cross-page consistency): the stake page's
+  `main` column owns the 32 px section spacing via `gap-8`, same as the deposit page.
 - No fixed width on the root — it fills its parent.
 
 ### Tokens
