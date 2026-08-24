@@ -110,3 +110,46 @@ describe("TokenInput — sign prefix visibility (fix 3a, Issue #595)", () => {
     expect(row.textContent).not.toContain("−");
   });
 });
+
+describe("TokenInput — zero/absent balance hides the balance line (#1161)", () => {
+  it("shows the balance line for a real balance", () => {
+    render(<TokenInput {...defaultProps} />);
+    expect(screen.getByText("5,000.00")).toBeInTheDocument();
+  });
+
+  it.each(["—", "0.00", "0", ""])(
+    "hides the balance line for %j",
+    (balanceLabel) => {
+      render(<TokenInput {...defaultProps} balanceLabel={balanceLabel} />);
+      expect(screen.getByText("USDC")).toBeInTheDocument();
+      if (balanceLabel !== "") {
+        expect(screen.queryByText(balanceLabel)).not.toBeInTheDocument();
+      }
+    },
+  );
+});
+
+describe("TokenInput — whole-card click zone (#1162)", () => {
+  it("clicking the card outside the value row focuses the input", async () => {
+    const user = userEvent.setup();
+    render(<TokenInput {...defaultProps} inputTestId="ti-input" />);
+    await user.click(screen.getByTestId("token-input"));
+    expect(screen.getByTestId("ti-input")).toHaveFocus();
+  });
+
+  it("clicking a quick-amount chip does not steal focus to the input", async () => {
+    const user = userEvent.setup();
+    const onChip = vi.fn();
+    render(
+      <TokenInput
+        {...defaultProps}
+        quickAmounts={[{ label: "$5,000" }]}
+        inputTestId="ti-input"
+        onQuickAmountClick={onChip}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "$5,000" }));
+    expect(onChip).toHaveBeenCalled();
+    expect(screen.getByTestId("ti-input")).not.toHaveFocus();
+  });
+});

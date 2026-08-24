@@ -320,9 +320,11 @@ node `1498:100136` ("input-sum-inline"):
 nested within the PLUSD card, matching Figma node `1498-100135`.
 
 - `TokenAmountDisplay`'s self-styling (border, background, radius, padding) is suppressed
-  via inline styles so it renders flush inside Card B without a nested border. Its padding
-  becomes `16px 0 0` — no left/right padding (Issue #595 fix 6); bottom padding is handled
-  by `TokenAmountDisplay`'s own `pb-8` default.
+  via inline styles (padding `0`) so it renders flush inside Card B without a nested border.
+- Card B owns the geometry per Figma `6090:8742` (#1165, #1166 — supersedes the #595 fix-6
+  values): `padding="none"` + `px-4 pt-6 pb-4` (16 px sides, 24 px top, 16 px bottom) and
+  `gap-8` (32 px) between the value row and the details rows. The value row carries no extra
+  right padding, so the output value sits 16 px from the card edge.
 - `border-0` removes the white Card's default hairline border (fix 8, Issue #595).
 - The output value is prefixed with `+` when non-zero (purely visual); zero values stay
   un-prefixed to match the Figma "0" placeholder state.
@@ -335,7 +337,8 @@ and centered horizontally (`left-1/2 -translate-x-1/2`). Styling:
 
 - `rounded-[4px]` — square-ish corners, not a full pill.
 - 32 × 32 (`size-8`) — a quiet recessed affordance, not a boxy chip.
-- Fill `--color-pipeline-fill-muted` (subtle gray, same family as the USDC panel); hover
+- Fill `--color-pipeline-paper` (#F8F7F6 — LP review #24, #1170; was the translucent
+  `fill-muted`, which composed differently over the white seam); hover
   `--color-pipeline-surface-muted`; **no visible border** — the design omits the hairline.
 - Cursor-pointer + focus ring consistent with the TopBar pill trigger;
   `disabled:opacity-50 disabled:cursor-not-allowed`.
@@ -859,7 +862,9 @@ Pass the `icon` prop to override (e.g. a token glyph for a claim toast).
 
 Read-only counterpart to `TokenInput`. Renders the same top-half layout as `TokenInput`:
 
-- Token coin icon (`CoinIcon` at lg / 40 px) + token label + balance subtitle on the left.
+- Token coin icon (`CoinIcon` at lg / 40 px) + token label + balance subtitle on the left. The
+  balance subtitle is hidden when it is absent (`"—"`/empty) or renders as zero (`0`/`0.00`), and
+  the identity column vertically centers on the coin (LP review #15, #1161).
 - A large display-serif numeric value on the right — display only, mirrors `TokenInput`'s
   `<input>` visual style (display family, 24 px / 28 px, `--color-pipeline-ink-subtle`,
   right-aligned, `select-all`).
@@ -892,7 +897,9 @@ No interactive elements, no `<input>`. `token` accepts `"usdc" | "plusd" | "splu
 
 Renders:
 
-- Token coin icon (`CoinIcon` at lg / 40 px) + token label + balance subtitle on the left.
+- Token coin icon (`CoinIcon` at lg / 40 px) + token label + balance subtitle on the left. The
+  balance subtitle is hidden when it is absent (`"—"`/empty) or renders as zero (`0`/`0.00`), and
+  the identity column vertically centers on the coin (LP review #15, #1161).
 - A large display-serif numeric input on the right (right-aligned, with a caret indicator).
 - A row of `QuickAmountChip` buttons below.
 
@@ -917,8 +924,9 @@ uncontrolled and existing call sites render unchanged.
 
 ### Interaction (Issue #595)
 
-- **Click-to-focus (fix 3b):** clicking anywhere on the top row focuses the numeric input, guarded
-  so a disabled input is never focused and a click directly on the input is not double-focused.
+- **Click-to-focus (fix 3b, widened by LP review #16 / #1162):** clicking anywhere on the card —
+  except the quick-amount chips row — focuses the numeric input, guarded so a disabled input is
+  never focused and a click directly on the input is not double-focused.
 - **Identity alignment (fix 3a):** when the sign prefix is shown the left identity block aligns
   `justify-start` with the sign/number; when hidden (value `"0"` or no `signPrefix`) it switches to
   `justify-center` to vertically center the USDC identity.
@@ -984,8 +992,8 @@ surrounding card (Connect Wallet promo) or empty-state copy (Recent activity).
 connected-wallet chip in the header.
 
 Renders a small `CoinIcon` at the `sm` size (20 px) alongside a pre-formatted balance string
-(e.g. `"$10,000.00"`) inside a rounded white pill with a subtle border. Supported tokens:
-`"usdc"`, `"plusd"`, `"splusd"`.
+(e.g. `"$10,000.00"`) inside a borderless white chip with 4 px corners (LP review #39, #1185).
+Supported tokens: `"usdc"`, `"plusd"`, `"splusd"`.
 
 This is a purely visual element (`<div>`); interactive behaviour (click to open the wallet menu)
 was deferred to a later issue — desktop `AccountDropdown` behavior is described in
@@ -993,9 +1001,9 @@ was deferred to a later issue — desktop `AccountDropdown` behavior is describe
 
 ### Layout and tokens
 
-- Pill: `--color-pipeline-surface` white fill, `--radius-pipeline-pill` full-round ends, border
-  `rgba(56 55 53 / 0.18)` (border-test/secondary). Height 48 px / `px-3` — the same bar height as
-  the other header buttons.
+- Chip: `--color-pipeline-surface` white fill, `--radius-pipeline-card` 4 px corners, **no
+  border** (LP review #39, #1185 — was full-round with a border-test/secondary hairline).
+  Height 48 px / `px-3` — the same bar height as the other header buttons.
 - Balance label: Body Emphasized — Graphik LC Semi Bold 16 / 22 (`--font-body`,
   `--font-weight-emphasized`), primary ink (`--color-pipeline-ink`), `whitespace-nowrap`, `px-2`
   gap around the text.

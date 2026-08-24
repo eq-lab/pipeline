@@ -18,9 +18,8 @@ const pillClasses = [
   "gap-0",
   "overflow-hidden",
   "px-3",
-  "rounded-[var(--radius-pipeline-pill)]",
+  "rounded-[var(--radius-pipeline-card)]",
   "bg-[var(--color-pipeline-surface)]",
-  "border border-[rgb(56_55_53_/_0.18)]",
   "shrink-0",
 ].join(" ");
 

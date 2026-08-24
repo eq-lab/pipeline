@@ -86,3 +86,27 @@ describe("ConversionCard — swap button", () => {
     expect(btn).toBeDisabled();
   });
 });
+
+describe("ConversionCard — LP review batch (#1165, #1166, #1170)", () => {
+  it("swap button uses the paper background token (#1170)", () => {
+    renderCard({ onSwap: vi.fn() });
+    const btn = screen.getByRole("button", { name: "Switch direction" });
+    expect(btn.className).toContain("bg-[var(--color-pipeline-paper)]");
+  });
+
+  it("output card uses 16px sides / 24px top and a 32px row→details gap (#1165, #1166)", () => {
+    renderCard({ onSwap: vi.fn() });
+    const card = screen.getByTestId("conversion-output-card");
+    expect(card.className).toContain("px-4");
+    expect(card.className).toContain("pt-6");
+    expect(card.className).toContain("pb-4");
+    expect(card.className).toContain("gap-8");
+    expect(card.className).not.toContain("p-6");
+  });
+
+  it("output row carries no extra right padding (#1166)", () => {
+    renderCard({ onSwap: vi.fn() });
+    const row = screen.getByTestId("token-amount-display-row");
+    expect(row.className).not.toContain("pr-2");
+  });
+});

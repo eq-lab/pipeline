@@ -35,7 +35,7 @@ const swapButtonClasses = [
   "flex items-center justify-center",
   "size-8",
   "rounded-[4px]",
-  "bg-[var(--color-pipeline-fill-muted)]",
+  "bg-[var(--color-pipeline-paper)]",
   "hover:bg-[var(--color-pipeline-surface-muted)]",
   "cursor-pointer",
   "disabled:opacity-50 disabled:cursor-not-allowed",
@@ -94,8 +94,9 @@ export const ConversionCard = React.forwardRef<
           is suppressed via inline styles below so it renders flush inside the Card. */}
       <Card
         variant="white"
+        padding="none"
         data-testid="conversion-output-card"
-        className="flex flex-col gap-2 border-0"
+        className="flex flex-col gap-8 border-0 px-4 pt-6 pb-4"
       >
         <TokenAmountDisplay
           {...output}
@@ -104,14 +105,11 @@ export const ConversionCard = React.forwardRef<
             border: "none",
             background: "transparent",
             borderRadius: 0,
-            padding: "16px 0 0",
+            padding: 0,
           }}
         />
 
-        <div
-          data-testid="conversion-details"
-          className="flex flex-col gap-2 pb-2"
-        >
+        <div data-testid="conversion-details" className="flex flex-col gap-2">
           <InfoRow label="Exchange rate" value={exchangeRate} />
           <InfoRow label="Network fee" value={networkFee} />
         </div>

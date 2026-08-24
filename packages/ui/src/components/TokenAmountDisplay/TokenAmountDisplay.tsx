@@ -75,7 +75,7 @@ export const TokenAmountDisplay = React.forwardRef<
     >
       <div
         data-testid="token-amount-display-row"
-        className="flex items-center justify-between pr-2"
+        className="flex items-center justify-between"
       >
         <div className={identityClasses}>
           <CoinIcon token={token} size="lg" aria-hidden />
