@@ -163,8 +163,6 @@ vi.mock("@/wallet/stellar/useStellarSacToken", async (importOriginal) => {
 const mockStellarClaimWrite = vi.fn();
 const mockStellarClaimWithdrawalWrite = vi.fn();
 
-// When enabled, useChangeTrust's submit fails asynchronously (pending → error),
-// driving the #1129 trustline-toast error path deterministically.
 const mockChangeTrustFail = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("@/wallet/stellar/useStellarDepositManager", async (importOriginal) => {

@@ -1,6 +1,5 @@
 /**
- * Switch — library toggle control (52×24 track, 32×20 lozenge knob; LP review
- * #12 / #1158, Figma switcher inside node 6111:1371).
+ * Switch — library toggle control (Figma switcher in node 6111:1371; #1158).
  * spec: docs/frontend/ui-components.md#switch
  */
 
