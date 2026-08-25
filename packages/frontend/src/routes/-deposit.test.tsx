@@ -163,6 +163,10 @@ vi.mock("@/wallet/stellar/useStellarSacToken", async (importOriginal) => {
 const mockStellarClaimWrite = vi.fn();
 const mockStellarClaimWithdrawalWrite = vi.fn();
 
+// When enabled, useChangeTrust's submit fails asynchronously (pending → error),
+// driving the #1129 trustline-toast error path deterministically.
+const mockChangeTrustFail = vi.hoisted(() => ({ enabled: false }));
+
 vi.mock("@/wallet/stellar/useStellarDepositManager", async (importOriginal) => {
   const original =
     await importOriginal<
@@ -170,6 +174,25 @@ vi.mock("@/wallet/stellar/useStellarDepositManager", async (importOriginal) => {
     >();
   return {
     ...original,
+    useChangeTrust: (): ReturnType<typeof original.useChangeTrust> => {
+      const real = original.useChangeTrust();
+      const [pending, setPending] = React.useState(false);
+      const [error, setError] = React.useState<Error | null>(null);
+      if (!mockChangeTrustFail.enabled) return real;
+      return {
+        ...real,
+        isPending: pending,
+        isSuccess: false,
+        error,
+        submit: () => {
+          setPending(true);
+          setTimeout(() => {
+            setPending(false);
+            setError(new Error("boom"));
+          }, 10);
+        },
+      };
+    },
     useStellarClaim: () => ({
       write: mockStellarClaimWrite,
       data: undefined,
@@ -3391,5 +3414,54 @@ describe("Deposit page — Stellar no-XLM funding banner (#1196/#1130)", () => {
       expect(screen.getByTestId("deposit-steps-card")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("xlm-funding-banner")).not.toBeInTheDocument();
+  });
+});
+
+describe("Deposit page — trustline enable failure resolves the pending toast (#1129)", () => {
+  beforeEach(() => {
+    mockDirection = "deposit";
+    localStorage.clear();
+    mockWriteContract.mockClear();
+    mockRefetch.mockClear();
+    mockRequestsData = undefined;
+    mockRequestsLoading = false;
+    mockVoucherData = undefined;
+    mockVoucherStatus = "idle";
+    mockWithdrawVoucherData = undefined;
+    mockWithdrawVoucherStatus = "idle";
+    mockChangeTrustFail.enabled = true;
+  });
+
+  afterEach(() => {
+    mockChangeTrustFail.enabled = false;
+    localStorage.clear();
+  });
+
+  it("failed PLUSD enable turns the pending toast into a danger toast with Details", async () => {
+    seedStellarMocks({ sacPlusdBalance: "0", sacUsdcBalance: SAC_1000_PLUS });
+    const user = userEvent.setup();
+    renderDepositStellar();
+
+    const enableBtns = await screen.findAllByRole("button", {
+      name: "Enable",
+    });
+    const active = enableBtns.find((b) => !(b as HTMLButtonElement).disabled)!;
+    expect(active).toBeDefined();
+    await user.click(active);
+
+    await waitFor(() => {
+      expect(screen.getByText("Enabling PLUSD trustline…")).toBeInTheDocument();
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("PLUSD trustline failed")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+    expect(
+      screen.queryByText("Enabling PLUSD trustline…"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
   });
 });

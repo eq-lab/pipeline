@@ -1,6 +1,7 @@
 // spec: docs/frontend/dashboard-components.md#firstconnectionmodal (visual specs, accessibility, Figma nodes 1572:123328 / 1582:69059).
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Switch } from "@pipeline/ui";
 
 // ── Inline SVG glyphs ──────────────────────────────────────────────────────────
 
@@ -81,67 +82,6 @@ function MagnifierGlyph() {
         strokeLinecap="round"
       />
     </svg>
-  );
-}
-
-// ── Inline Toggle / Switch ─────────────────────────────────────────────────────
-
-interface ToggleProps {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  id: string;
-}
-
-// spec: docs/frontend/dashboard-components.md#firstconnectionmodal (inline Toggle switch).
-function Toggle({ checked, onChange, id }: ToggleProps) {
-  function handleClick() {
-    onChange(!checked);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === " " || e.key === "Enter") {
-      e.preventDefault();
-      onChange(!checked);
-    }
-  }
-
-  return (
-    <button
-      id={id}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      className="shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#262524]"
-      style={{
-        // Outer track
-        display: "inline-flex",
-        alignItems: "center",
-        width: 44,
-        height: 24,
-        borderRadius: 12,
-        padding: 2,
-        backgroundColor: checked ? "#208000" : "rgba(56,55,53,0.18)",
-        transition: "background-color 150ms ease-out",
-        border: "none",
-        cursor: "pointer",
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          display: "block",
-          width: 20,
-          height: 20,
-          borderRadius: "50%",
-          backgroundColor: "#ffffff",
-          transform: checked ? "translateX(20px)" : "translateX(0px)",
-          transition: "transform 150ms ease-out",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
-        }}
-      />
-    </button>
   );
 }
 
@@ -422,29 +362,12 @@ export function FirstConnectionModal({
             I&apos;m not a US person and not located in a restricted
             jurisdiction
           </label>
-          {/*
-           * The Toggle button is the first focusable element and receives focus
-           * on open. We hold a ref here so the useEffect above can call focus().
-           * We pass a prop `id` for the label association, but the ref needs to
-           * reach the inner <button>; we achieve this by wrapping and using
-           * a ref forwarded into the Toggle.
-           */}
-          <span
-            ref={(el) => {
-              // Assign toggleRef to the <button role="switch"> inside the wrapper.
-              if (el) {
-                const btn =
-                  el.querySelector<HTMLButtonElement>('[role="switch"]');
-                if (btn) {
-                  (
-                    toggleRef as React.MutableRefObject<HTMLButtonElement | null>
-                  ).current = btn;
-                }
-              }
-            }}
-          >
-            <Toggle id={toggleId} checked={toggled} onChange={setToggled} />
-          </span>
+          <Switch
+            ref={toggleRef}
+            id={toggleId}
+            checked={toggled}
+            onChange={setToggled}
+          />
         </div>
 
         {/* CTAs */}
