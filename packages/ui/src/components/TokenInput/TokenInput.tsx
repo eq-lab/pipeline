@@ -129,23 +129,32 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
     const composed = [cardClasses, className].filter(Boolean).join(" ");
 
     const showSign = signPrefix !== undefined && !!value && value !== "0";
+    const showBalance =
+      !!balanceLabel &&
+      balanceLabel !== "—" &&
+      !/^0(\.0+)?$/.test(balanceLabel.replace(/,/g, ""));
 
     const inputRef = React.useRef<HTMLInputElement>(null);
 
-    const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (disabled) return;
-      // Don't double-focus if the click was directly on the input itself.
-      if (inputRef.current && e.target !== inputRef.current) {
-        inputRef.current.focus();
-      }
+    const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (disabled || !inputRef.current) return;
+      const target = e.target as HTMLElement;
+      if (target === inputRef.current) return;
+      if (target.closest('[data-testid="token-input-chips"]')) return;
+      inputRef.current.focus();
     };
 
     return (
-      <div ref={ref} data-testid="token-input" className={composed} {...rest}>
+      <div
+        ref={ref}
+        data-testid="token-input"
+        className={composed}
+        onClick={handleCardClick}
+        {...rest}
+      >
         <div
           data-testid="token-input-row"
           className="flex items-center justify-between pr-2"
-          onClick={handleRowClick}
         >
           <div className={identityClasses}>
             <CoinIcon token={token} size="lg" aria-hidden />
@@ -156,7 +165,9 @@ export const TokenInput = React.forwardRef<HTMLDivElement, TokenInputProps>(
               ].join(" ")}
             >
               <span className={tokenLabelClasses}>{tokenLabel}</span>
-              <span className={balanceLabelClasses}>{balanceLabel}</span>
+              {showBalance && (
+                <span className={balanceLabelClasses}>{balanceLabel}</span>
+              )}
             </div>
           </div>
 
