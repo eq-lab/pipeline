@@ -178,6 +178,7 @@ function Deposit() {
   // ── Toast: Stellar PLUSD trustline ────────────────────────────────────
   const prevPlusdTrustPending = useRef(false);
   const prevPlusdTrustSuccess = useRef(false);
+  const prevPlusdTrustError = useRef<Error | null>(null);
   const plusdTrustline = flow.trustlines[0];
   useEffect(() => {
     if (!isStellar || !plusdTrustline) return;
@@ -195,11 +196,32 @@ function Deposit() {
         title: "PLUSD trustline enabled",
       });
     }
+    if (
+      plusdTrustline.tx.error &&
+      plusdTrustline.tx.error !== prevPlusdTrustError.current
+    ) {
+      console.error("PLUSD trustline failed:", plusdTrustline.tx.error);
+      const mapped = toUserError(plusdTrustline.tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : "PLUSD trustline failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
+    }
     prevPlusdTrustPending.current = plusdTrustline.tx.isPending;
     prevPlusdTrustSuccess.current = plusdTrustline.tx.isSuccess;
+    prevPlusdTrustError.current = plusdTrustline.tx.error;
   }, [
     plusdTrustline?.tx.isPending,
     plusdTrustline?.tx.isSuccess,
+    plusdTrustline?.tx.error,
     toast,
     isStellar,
     plusdTrustline,
@@ -208,6 +230,7 @@ function Deposit() {
   // ── Toast: Stellar USDC trustline ─────────────────────────────────────
   const prevUsdcTrustPending = useRef(false);
   const prevUsdcTrustSuccess = useRef(false);
+  const prevUsdcTrustError = useRef<Error | null>(null);
   const usdcTrustline = flow.trustlines[1];
   useEffect(() => {
     if (!isStellar || !usdcTrustline) return;
@@ -225,11 +248,32 @@ function Deposit() {
         title: "USDC trustline enabled",
       });
     }
+    if (
+      usdcTrustline.tx.error &&
+      usdcTrustline.tx.error !== prevUsdcTrustError.current
+    ) {
+      console.error("USDC trustline failed:", usdcTrustline.tx.error);
+      const mapped = toUserError(usdcTrustline.tx.error);
+      toast.update(toastId, {
+        tone: "danger",
+        title: mapped.isSpecific ? mapped.message : "USDC trustline failed",
+        action: {
+          label: "Details",
+          onClick: () =>
+            setErrorDialog({
+              message: mapped.message,
+              details: mapped.details,
+            }),
+        },
+      });
+    }
     prevUsdcTrustPending.current = usdcTrustline.tx.isPending;
     prevUsdcTrustSuccess.current = usdcTrustline.tx.isSuccess;
+    prevUsdcTrustError.current = usdcTrustline.tx.error;
   }, [
     usdcTrustline?.tx.isPending,
     usdcTrustline?.tx.isSuccess,
+    usdcTrustline?.tx.error,
     toast,
     isStellar,
     usdcTrustline,

@@ -591,9 +591,9 @@ Visual specs (Figma):
 - Ready state (toggle on, Continue enabled): node `1582:69059`.
 
 Dimensions: width 420px, max-height 80vh desktop / 90vh mobile. Scrim `rgba(56,55,53,0.6)`, modal
-background `#f8f7f6`, padding 24px, radius 4px (was 32 — LP review #10, #1156). The inline Toggle switch has no
-`@pipeline/ui` primitive yet (tracked in tech-debt-tracker.md); track colors are off →
-`rgba(56,55,53,0.18)`, on → `#208000` (positive primary), thumb a white circle.
+background `#f8f7f6`, padding 24px, radius 4px (was 32 — LP review #10, #1156). The toggle is the
+`@pipeline/ui` `Switch` primitive (LP review #12, #1158 — replaced the former inline toggle; see
+`ui-components.md#switch`).
 
 Toggle state resets to off every time the modal (re)opens.
 
@@ -1292,7 +1292,10 @@ Both Stellar trustline rows are always shown in both directions (issue #604); Co
 
 - EVM deposit: `approve-tx` / `deposit-tx` / `claim-tx`
 - EVM withdraw: `withdraw-approve-tx` / `withdraw-tx` / `withdraw-claim-tx`
-- Stellar trustlines (direction-independent): `stellar-trust-plusd-tx` / `stellar-trust-usdc-tx`
+- Stellar trustlines (direction-independent): `stellar-trust-plusd-tx` / `stellar-trust-usdc-tx`.
+  A failed enable resolves the pending toast to a danger toast (mapped title per
+  error-handling.md's toast-title rule, with a Details action opening the page-level
+  `ErrorDetailsDialog`) — #1129; mirrors the stake page's #1034 behavior.
 - Stellar deposit: `stellar-deposit-tx` / `stellar-deposit-claim-tx`
 - Stellar withdraw: `stellar-withdraw-tx` / `stellar-withdraw-claim-tx`
 

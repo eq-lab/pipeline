@@ -100,6 +100,7 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
 ### TD-10: Extract Modal + Switch UI primitives into `@pipeline/ui`
 
 - **Date:** 2026-05-25
+- **Partially resolved 2026-08-25 (#1158):** `Switch` now lives in `@pipeline/ui` (design-exact library switcher) and `FirstConnectionModal` consumes it. The Modal/ModalOverlay half of this entry remains open.
 - **Location:** `packages/frontend/src/components/FirstConnectionModal.tsx`
 - **Gap:** The inline `Toggle` (Switch) component and the portal overlay pattern used by `FirstConnectionModal` are implemented inline with no reusable primitive in `@pipeline/ui`. If a second consumer needs a modal or toggle, it will duplicate the styles.
 - **Impact:** Style drift risk if the design token values change (`#208000`, `rgba(56,55,53,0.18)`, scrim opacity) — two places must be updated. Low severity until a second consumer appears.

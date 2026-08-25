@@ -861,6 +861,20 @@ Pass the `icon` prop to override (e.g. a token glyph for a claim toast).
 - `danger` → `role="alert"` + `aria-live="assertive"`.
 - All other tones → `role="status"` + `aria-live="polite"`.
 
+## Switch
+
+**Source:** `packages/ui/src/components/Switch/Switch.tsx`. Figma: the library switcher used in
+the "Before you continue" modal (row node `6111:1371`; LP review #12, #1158).
+
+Accessible toggle: a native `<button role="switch" aria-checked>` — click, Space, and Enter all
+flip it.
+
+- Track 52 × 24 (`w-13 h-6`), full radius, 2 px inner padding; off `--color-pipeline-line`,
+  on `--color-pipeline-positive-primary`.
+- Knob: white 32 × 20 lozenge (`w-8 h-5`, full radius) translating 16 px (`translate-x-4`) when
+  checked; 150 ms ease-out transitions on both track color and knob position.
+- `forwardRef` reaches the underlying button (the terms modal focuses it on open).
+
 ## TokenAmountDisplay
 
 **Source:** `packages/ui/src/components/TokenAmountDisplay/TokenAmountDisplay.tsx`.

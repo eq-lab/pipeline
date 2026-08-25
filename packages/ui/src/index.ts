@@ -84,3 +84,5 @@ export { ErrorDetailsDialog } from "./components/ErrorDetailsDialog/ErrorDetails
 export type { ErrorDetailsDialogProps } from "./components/ErrorDetailsDialog/ErrorDetailsDialog";
 export { InlineError } from "./components/InlineError/InlineError";
 export type { InlineErrorProps } from "./components/InlineError/InlineError";
+export { Switch } from "./components/Switch";
+export type { SwitchProps } from "./components/Switch";
