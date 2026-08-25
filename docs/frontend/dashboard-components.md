@@ -126,7 +126,7 @@ gap (Figma `gap-2`).
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `"empty"` (A) / disconnected | Disconnected "Start here / Get PLUSD" copy. Sell disabled, rendered at 32% opacity (Figma node `1989:9022`) — used for both the disconnected-mobile state and the connected-but-zero-balance state.                                                              |
 | `"plusd"` / `"splusd"` (B/C) | "PLUSD Balance" connected variant: eyebrow "PLUSD Balance", formatted balance, USDC sub-line (Figma node `1984:6772`, since PLUSD is 1:1 with USDC the balance value doubles as the USDC-equivalent and is always shown even at $0.00), Buy + Sell both enabled. |
-| `undefined` (desktop)        | Default disconnected appearance without disabling Sell.                                                                                                                                                                                                          |
+| `undefined` (desktop)        | Default appearance; Sell disabling comes from the `sellDisabled` prop (#1151) — the home route passes `!isConnected || isDisplayZero(PLUSD)`, so desktop matches the mobile `"empty"` semantics.                                                                                                                                                                                                          |
 
 **Typography** (no raw font sizes): eyebrow "Start here" is Body token; heading "Get PLUSD" is
 Heading-S token in Besley display serif with the dollar glyph inline at 24px; subtitle is Caption
@@ -1235,6 +1235,12 @@ Full page composition. Figma: `1497:94556` (desktop), `1989:8292` (mobile).
 4. `RecentActivityCard` — shown only when connected with a non-empty mobile home state (States B/C). Per issue #466 answer Q6: if there is no activity the entire block is hidden on mobile.
 5. `HomeStatsStrip` — horizontally scrollable, at the bottom (replaces the `WelcomeHeader` stats strip, which is hidden on mobile).
 6. `QnaSection` and the desktop `RecentActivityCard` column are hidden on mobile.
+
+**Disconnected CTA rule (#1152, #1151):** with no wallet connected, Buy and the Stake circle open
+the shared connect modal (`useConnectModal().open()`) instead of navigating (supersedes the
+#408-era "Stake navigates when disconnected" behavior); Sell is disabled (`sellDisabled`,
+32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
+(deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
 **Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart is a constant-zero placeholder until a per-address balance-history series exists (#1114/#1116).
 
