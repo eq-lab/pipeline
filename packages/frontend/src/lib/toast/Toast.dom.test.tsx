@@ -113,3 +113,27 @@ describe("Toast primitive", () => {
     });
   });
 });
+
+describe("danger tone default icon (#1190)", () => {
+  it("danger renders the alert glyph, not the check-circle", () => {
+    render(<Toast tone="danger" title="Deposit failed" />);
+    expect(screen.getByTestId("toast-alert-icon")).toBeInTheDocument();
+  });
+
+  it("neutral keeps the check-circle default (no alert glyph)", () => {
+    render(<Toast tone="neutral" title="hello" />);
+    expect(screen.queryByTestId("toast-alert-icon")).not.toBeInTheDocument();
+  });
+
+  it("icon override still wins on danger", () => {
+    render(
+      <Toast
+        tone="danger"
+        title="Deposit failed"
+        icon={<span data-testid="override-icon">!</span>}
+      />,
+    );
+    expect(screen.getByTestId("override-icon")).toBeInTheDocument();
+    expect(screen.queryByTestId("toast-alert-icon")).not.toBeInTheDocument();
+  });
+});

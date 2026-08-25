@@ -815,6 +815,12 @@ their semantics; the error slot is specified in [`error-handling.md`](./error-ha
 
 ## Toast
 
+Per-tone default icons (#1190): `success` → check stroke; `pending` → clock; `danger` → alert
+(exclamation-in-circle — an error toast must not lead with a checkmark); `neutral` → check-circle.
+The `icon` prop overrides all of them. Radius has been 4 px (`--radius-pipeline-card`) since #702,
+and failure copy is mapped via `toUserError` with a Details action since #1034 — the LP review
+screenshot for #1190 predated both.
+
 **Source:** `packages/ui/src/components/Toast/Toast.tsx`.
 **Figma:** Success (claim, actionable) — node `1497:95175`; Success (stake, informational) — node
 `1497:95270`. **Consumers:** rendered by `<ToastProvider>` / emitted via `useToast()` (see
