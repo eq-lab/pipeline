@@ -1350,6 +1350,7 @@ Activity page wired to `GET /v1/requests`.
 
 **Empty-state layout:**
 
+- Disconnected empty state additionally renders a primary-dark "Connect Wallet" button (16 px below the caption) that opens the shared connect modal (#1184); connected-but-empty keeps the caption-only state.
 - Mobile (< 768px, Figma node `1993-9958`): illustration (240×240) and caption are top-anchored just below the tab bar with natural spacing; no tall centering wrapper.
 - Desktop (≥ 768px, Figma node `1497-94912`): illustration is vertically centred inside a `min-h-[400px]` wrapper. The wrapper uses responsive utilities (`md:min-h-[400px] md:justify-center`) to gate the desktop centering treatment without affecting mobile.
 
