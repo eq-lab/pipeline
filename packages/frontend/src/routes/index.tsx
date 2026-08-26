@@ -151,11 +151,30 @@ function Home() {
   const stakeDisabled =
     isConnected && isDisplayZero(plusdBalanceActive, activeDecimals);
 
-  const onBuy = () =>
+  const sellDisabled =
+    !isConnected || isDisplayZero(plusdBalanceActive, activeDecimals);
+
+  const onBuy = () => {
+    if (!isConnected) {
+      openConnectModal();
+      return;
+    }
     navigate({ to: "/deposit", search: { direction: "deposit" } });
-  const onSell = () =>
+  };
+  const onSell = () => {
+    if (!isConnected) {
+      openConnectModal();
+      return;
+    }
     navigate({ to: "/deposit", search: { direction: "withdraw" } });
-  const onStake = () => navigate({ to: "/stake", search: { tab: "stake" } });
+  };
+  const onStake = () => {
+    if (!isConnected) {
+      openConnectModal();
+      return;
+    }
+    navigate({ to: "/stake", search: { tab: "stake" } });
+  };
   const onUnstake = () =>
     navigate({ to: "/stake", search: { tab: "unstake" } });
 
@@ -212,6 +231,7 @@ function Home() {
                 padding="sm"
                 onBuy={onBuy}
                 onSell={onSell}
+                sellDisabled={sellDisabled}
                 mobileHomeState={isConnected ? mobileHomeState : "empty"}
                 mobilePlusdBalance={plusdFormattedActive}
                 data-testid="home-start-here-card"
@@ -296,6 +316,7 @@ function Home() {
                 className="flex-1"
                 onBuy={onBuy}
                 onSell={onSell}
+                sellDisabled={sellDisabled}
                 data-testid="home-start-here-card"
               />
               <EarnedCard

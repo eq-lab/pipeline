@@ -249,7 +249,7 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("clicking Buy navigates to /deposit with direction=deposit", async () => {
+  it("clicking Buy opens the connect modal instead of navigating (#1152)", async () => {
     const user = userEvent.setup();
     renderHome();
 
@@ -257,29 +257,19 @@ describe("Home page — disconnected state", () => {
     await user.click(buyBtns[0]!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/deposit",
-        search: { direction: "deposit" },
-      });
+      expect(mockConnectModalOpen).toHaveBeenCalled();
     });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it("clicking Sell navigates to /deposit?direction=withdraw", async () => {
-    const user = userEvent.setup();
+  it("every Sell button is disabled while disconnected (#1151)", async () => {
     renderHome();
 
     const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
     expect(sellBtns.length).toBeGreaterThanOrEqual(2);
-    expect(sellBtns[0]).toBeDisabled();
-    expect(sellBtns[1]).not.toBeDisabled();
-    await user.click(sellBtns[1]!);
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/deposit",
-        search: { direction: "withdraw" },
-      });
-    });
+    for (const btn of sellBtns) {
+      expect(btn).toBeDisabled();
+    }
   });
 
   it("Stake button is enabled when wallet is disconnected (regardless of PLUSD balance)", async () => {
@@ -292,7 +282,7 @@ describe("Home page — disconnected state", () => {
     });
   });
 
-  it("clicking Stake navigates to /stake when disconnected", async () => {
+  it("clicking Stake opens the connect modal when disconnected (#1152)", async () => {
     const user = userEvent.setup();
     renderHome();
 
@@ -302,14 +292,12 @@ describe("Home page — disconnected state", () => {
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/stake",
-        search: { tab: "stake" },
-      });
+      expect(mockConnectModalOpen).toHaveBeenCalled();
     });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it("clicking Stake navigates to /stake when wallet has PLUSD balance", async () => {
+  it("clicking Stake opens the connect modal while disconnected even with a PLUSD balance (#1152)", async () => {
     const PLUSD_ADDRESS = "0xaaaa000000000000000000000000000000000001";
     localStorage.setItem(
       "pipeline.mock.wallet.contract.stakedPlusd.asset",
@@ -330,9 +318,76 @@ describe("Home page — disconnected state", () => {
     await user.click(stakeBtns[0]!);
 
     await waitFor(() => {
+      expect(mockConnectModalOpen).toHaveBeenCalled();
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Home page — connected CTA wiring (#1151, #1152)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockOpen.mockClear();
+    mockConnectModalOpen.mockClear();
+    mockNavigate.mockClear();
+    localStorage.setItem("pipeline.mock.wallet.isConnected", "true");
+    localStorage.setItem("pipeline.mock.wallet.address", WALLET_ADDRESS);
+    localStorage.setItem(
+      "pipeline.mock.wallet.contract.stakedPlusd.asset",
+      PLUSD_ADDRESS,
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("connected Buy navigates to /deposit without opening the modal", async () => {
+    const user = userEvent.setup();
+    renderHome();
+
+    const buyBtns = await screen.findAllByRole("button", { name: "Buy" });
+    await user.click(buyBtns[0]!);
+
+    await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({
-        to: "/stake",
-        search: { tab: "stake" },
+        to: "/deposit",
+        search: { direction: "deposit" },
+      });
+    });
+    expect(mockConnectModalOpen).not.toHaveBeenCalled();
+  });
+
+  it("connected Sell is disabled at display-zero PLUSD (#1151)", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "4000000000000000",
+    );
+    renderHome();
+
+    const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
+    for (const btn of sellBtns) {
+      expect(btn).toBeDisabled();
+    }
+  });
+
+  it("connected Sell with PLUSD navigates to withdraw", async () => {
+    localStorage.setItem(
+      `pipeline.mock.wallet.balance.${PLUSD_ADDRESS}`,
+      "1000000000000000000",
+    );
+    const user = userEvent.setup();
+    renderHome();
+
+    const sellBtns = await screen.findAllByRole("button", { name: "Sell" });
+    const active = sellBtns.find((b) => !(b as HTMLButtonElement).disabled)!;
+    expect(active).toBeDefined();
+    await user.click(active);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: "/deposit",
+        search: { direction: "withdraw" },
       });
     });
   });

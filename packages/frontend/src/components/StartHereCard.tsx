@@ -25,6 +25,7 @@ export interface StartHereCardProps extends Omit<
    * `/deposit?direction=withdraw`).
    */
   onSell?: () => void;
+  sellDisabled?: boolean;
   /**
    * Mobile-only: connected balance state (empty/plusd/splusd).
    * spec: docs/frontend/dashboard-components.md#startherecard (states A/B/C).
@@ -49,7 +50,15 @@ export const StartHereCard = React.forwardRef<
   HTMLDivElement,
   StartHereCardProps
 >(function StartHereCard(
-  { onBuy, onSell, className, mobileHomeState, mobilePlusdBalance, ...rest },
+  {
+    onBuy,
+    onSell,
+    sellDisabled,
+    className,
+    mobileHomeState,
+    mobilePlusdBalance,
+    ...rest
+  },
   ref,
 ) {
   // Use a unique id per instance to avoid duplicate id attributes when both
@@ -221,7 +230,7 @@ export const StartHereCard = React.forwardRef<
           variant="secondary"
           size="m"
           onClick={onSell}
-          disabled={mobileHomeState === "empty"}
+          disabled={Boolean(sellDisabled) || mobileHomeState === "empty"}
           data-node-id="1497:94690"
           data-testid="home-sell-button"
         >
