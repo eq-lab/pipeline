@@ -54,16 +54,12 @@ export function NetworkSwitcher() {
     </>
   );
 
-  // Matches the adjacent WalletPill idiom exactly (h-12, white surface,
-  // hairline border, fully-rounded ends) so the two read as one control row;
-  // mainnet swaps in an amber-tinted surface as the real-funds affordance.
   const pillClasses = [
     "flex h-12 items-center gap-2 px-4",
-    "rounded-[var(--radius-pipeline-pill)]",
-    "border",
+    "rounded-[var(--radius-pipeline-card)]",
     isMainnet
-      ? "border-[color:var(--color-pipeline-warning)]/50 bg-[color:var(--color-pipeline-warning)]/10"
-      : "border-[rgb(56_55_53_/_0.18)] bg-[var(--color-pipeline-surface)]",
+      ? "bg-[color:var(--color-pipeline-warning)]/10"
+      : "bg-[var(--color-pipeline-surface)]",
   ].join(" ");
 
   return (
