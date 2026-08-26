@@ -4,13 +4,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   ActivityEmptyIllustration,
   ActivityHeader,
+  Button,
   EmptyState,
   SegmentedTabs,
 } from "@pipeline/ui";
 import { useRequests } from "@/api";
 import type { RequestType } from "@/api";
 import { renderRequestRow } from "@/components/activity/renderRequestRow";
-import { useEvmWallet, useStellarWallet, useWalletView } from "@/wallet";
+import {
+  useConnectModal,
+  useEvmWallet,
+  useStellarWallet,
+  useWalletView,
+} from "@/wallet";
 
 // spec: docs/frontend/dashboard-components.md#transactions-route
 // (responsive layout, empty-state behavior, active-chain gating, Figma refs).
@@ -35,6 +41,7 @@ function Transactions() {
   const { data, isLoading, error, refetch } = useRequests();
   const { kind } = useWalletView();
   const { isConnected: isEvmConnected } = useEvmWallet();
+  const { open: openConnectModal } = useConnectModal();
   const { isConnected: isStellarConnected } = useStellarWallet();
   const isConnected = kind === "stellar" ? isStellarConnected : isEvmConnected;
 
@@ -108,6 +115,16 @@ function Transactions() {
                 }
                 caption="You will see all transactions here"
               />
+              {!isConnected && (
+                <Button
+                  variant="primary-dark"
+                  className="mt-4"
+                  onClick={openConnectModal}
+                  data-testid="transactions-connect-wallet-button"
+                >
+                  Connect Wallet
+                </Button>
+              )}
             </div>
           )}
 

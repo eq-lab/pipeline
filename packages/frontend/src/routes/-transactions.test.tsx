@@ -28,6 +28,8 @@ const mockUseWallet = vi.fn(() => ({ isConnected: true }));
 const mockUseStellarWallet = vi.fn(() => ({ isConnected: false }));
 const mockUseWalletView = vi.fn(() => ({ kind: "evm" as "evm" | "stellar" }));
 
+const mockConnectModalOpen = vi.fn();
+
 vi.mock("@/wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/wallet")>();
   return {
@@ -35,6 +37,7 @@ vi.mock("@/wallet", async (importOriginal) => {
     useEvmWallet: () => mockUseWallet(),
     useStellarWallet: () => mockUseStellarWallet(),
     useWalletView: () => mockUseWalletView(),
+    useConnectModal: () => ({ open: mockConnectModalOpen, close: vi.fn() }),
   };
 });
 
@@ -871,5 +874,47 @@ describe("Transactions page — Stellar decimals (Issue #674)", () => {
     const { container } = render(<>{renderRequestRow(stake, "stellar")}</>);
     expect(container.textContent).toContain("−1.00 PLUSD");
     expect(container.textContent).toContain("+0.99 sPLUSD");
+  });
+});
+
+describe("Transactions page — disconnected Connect Wallet CTA (#1184)", () => {
+  beforeEach(() => {
+    mockConnectModalOpen.mockClear();
+    mockUseWalletView.mockReturnValue({ kind: "evm" });
+    mockUseRequests.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+  });
+
+  it("disconnected empty state renders the button and opens the connect modal", async () => {
+    mockUseWallet.mockReturnValue({ isConnected: false });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    const user = userEvent.setup();
+    renderTransactions();
+
+    const btn = screen.getByTestId("transactions-connect-wallet-button");
+    expect(btn).toHaveTextContent("Connect Wallet");
+    await user.click(btn);
+    expect(mockConnectModalOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("connected empty state hides the button", () => {
+    mockUseWallet.mockReturnValue({ isConnected: true });
+    mockUseStellarWallet.mockReturnValue({ isConnected: false });
+    mockUseRequests.mockReturnValue({
+      data: { requests: [] },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderTransactions();
+
+    expect(screen.getByTestId("transactions-empty-state")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("transactions-connect-wallet-button"),
+    ).not.toBeInTheDocument();
   });
 });
