@@ -83,6 +83,24 @@ const ClockPendingIcon = (
   </svg>
 );
 
+const AlertCircleIcon = (
+  <svg
+    viewBox="0 0 16.6667 16.6667"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    data-testid="toast-alert-icon"
+    className="size-[20px] shrink-0"
+  >
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M8.33333 0C12.9357 0 16.6667 3.73096 16.6667 8.33333C16.6667 12.9357 12.9357 16.6667 8.33333 16.6667C3.73096 16.6667 0 12.9357 0 8.33333C0 3.73096 3.73096 0 8.33333 0ZM8.33333 3.75C7.98816 3.75 7.70833 4.02982 7.70833 4.375V9.16667C7.70833 9.51184 7.98816 9.79167 8.33333 9.79167C8.67851 9.79167 8.95833 9.51184 8.95833 9.16667V4.375C8.95833 4.02982 8.67851 3.75 8.33333 3.75ZM8.33333 11.25C7.87309 11.25 7.5 11.6231 7.5 12.0833C7.5 12.5436 7.87309 12.9167 8.33333 12.9167C8.79357 12.9167 9.16667 12.5436 9.16667 12.0833C9.16667 11.6231 8.79357 11.25 8.33333 11.25Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const toneBackground: Record<ToastTone, string> = {
   neutral: "bg-[var(--color-pipeline-ink)]",
   success: "bg-[var(--color-pipeline-positive-primary)]",
@@ -105,7 +123,9 @@ export const Toast = React.forwardRef<HTMLDivElement, ToastProps>(
         ? ClockPendingIcon
         : tone === "success"
           ? CheckIcon
-          : CheckCircleIcon;
+          : tone === "danger"
+            ? AlertCircleIcon
+            : CheckCircleIcon;
     const leadingIcon = icon ?? defaultIcon;
 
     const bgClass = toneBackground[tone];
