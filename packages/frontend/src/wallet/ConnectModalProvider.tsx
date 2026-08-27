@@ -21,11 +21,17 @@
  *   - Owns the open/close boolean state.
  *   - Provides the context value to descendants.
  */
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ConnectModalContext } from "./ConnectModalContext";
 import { ConnectWalletModal } from "../components/ConnectWalletModal";
 import { useWalletGate } from "./WalletGateContext";
 import { readTermsAcknowledged } from "./useTermsAcknowledgement";
+import heroUrl from "../assets/connect-hero-ship.webp?url";
+
+function warmHeroImage() {
+  const img = new Image();
+  img.src = heroUrl;
+}
 
 export function ConnectModalProvider({
   children,
@@ -34,6 +40,15 @@ export function ConnectModalProvider({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const { openGate } = useWalletGate();
+
+  useEffect(() => {
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(warmHeroImage, { timeout: 2000 });
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(warmHeroImage, 500);
+    return () => clearTimeout(id);
+  }, []);
 
   // Private: open the modal unconditionally (used as the onProceed callback
   // passed to the gate, and directly when terms are already acknowledged).

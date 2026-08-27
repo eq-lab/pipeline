@@ -452,7 +452,6 @@ function RightImagePanel() {
         src={heroUrl}
         alt=""
         className="absolute inset-0 size-full object-cover"
-        loading="lazy"
       />
       {/* Dark scrim — spec: docs/frontend/dashboard-components.md#connectwalletmodal (hero scrim gradient). */}
       <div
