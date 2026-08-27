@@ -428,8 +428,10 @@ Global page header (self-contained, no external props for wallet). Mounted in th
   toggle, disconnect).
 - When the active namespace is Stellar, the dropdown additionally shows non-zero PLUSD and sPLUSD
   balances (Issue #675).
-- The wallet pill's balance shows the active namespace's balance, falling back to the other
-  namespace's balance if the active one is disconnected but the other is connected (otherwise "—").
+- The wallet pill's balance shows the active namespace's balance, or "—" when the active namespace
+  is disconnected or still loading (#456 — the former cross-namespace fallback was never a product
+  decision, only a code comment canonized by the #1022 comments→specs migration; it contradicted
+  the app-wide active-namespace convention where a disconnected active view renders connect CTAs).
 
 **Disconnected state** (neither namespace connected): renders a "Connect Wallet" `<Button>` that
 opens `ConnectWalletModal` (Issue #558 — per-wallet selection with EVM / Soroban tabs).

@@ -687,6 +687,24 @@ describe("TopBar — both namespaces connected", () => {
       expect(screen.getByText("$1,000.00")).toBeInTheDocument(),
     );
   });
+
+  it("pill shows — when the active namespace is disconnected, never the other namespace's balance (#456)", async () => {
+    setConnectedMock();
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByText("$1,000.00")).toBeInTheDocument(),
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("topbar-wallet-pill-trigger"));
+    await user.click(await screen.findByRole("tab", { name: "Stellar" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("—")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("$1,000.00")).not.toBeInTheDocument();
+  });
 });
 
 // ── Smoke test: header on non-/ routes ───────────────────────────────────────
