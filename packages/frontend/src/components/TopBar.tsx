@@ -124,14 +124,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
     const activeDisconnect =
       kind === "evm" ? evm.disconnect : stellar.disconnect;
 
-    // spec: docs/frontend/dashboard-components.md#topbar (pill balance fallback rule).
-    const pillBalance =
-      activeFormattedBalance ??
-      (anyConnected
-        ? kind === "evm"
-          ? (stellarToken.formattedBalance ?? "—")
-          : (evmToken.formattedBalance ?? "—")
-        : "—");
+    // spec: docs/frontend/dashboard-components.md#topbar (pill balance rule, #456).
+    const pillBalance = activeFormattedBalance ?? "—";
 
     // ── Dropdown state ────────────────────────────────────────────────────
     const [dropdownOpen, setDropdownOpen] = useState(false);
