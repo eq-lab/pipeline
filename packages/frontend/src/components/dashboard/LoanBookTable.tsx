@@ -84,23 +84,6 @@ export const firstBodyCellClasses = [
 
 export const firstBodyCellInnerClasses = "block truncate";
 
-const stickyFirstCellClasses = [
-  "sticky left-0 z-[1]",
-  "bg-[color:var(--color-pipeline-surface)]",
-  "min-w-[140px]",
-  "border-r border-[color:var(--color-pipeline-line-subtle)]",
-].join(" ");
-
-export const stickyFirstHeaderCellClasses = [
-  headerCellClasses,
-  stickyFirstCellClasses,
-].join(" ");
-
-export const stickyFirstBodyCellClasses = [
-  firstBodyCellClasses,
-  stickyFirstCellClasses,
-].join(" ");
-
 // ── Table (all viewports) ─────────────────────────────────────────────────────
 
 function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
@@ -115,7 +98,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
        * (column widths). border-collapse: dividers are on <td>/<th> (not <tr>)
        * because <tr> border rendering is unreliable in some browsers.
        */}
-      <table className="w-full table-fixed border-collapse">
+      <table className="w-full min-w-[1024px] table-fixed border-collapse">
         <colgroup>
           {/* Commodity — flexible, fills remaining width */}
           <col />
@@ -129,9 +112,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
         <thead>
           {/* Header <tr> has no border class — border-b lives on each <th> (headerCellClasses). */}
           <tr>
-            <th className={[stickyFirstHeaderCellClasses, "pr-3"].join(" ")}>
-              Commodity
-            </th>
+            <th className={[headerCellClasses, "pr-3"].join(" ")}>Commodity</th>
             <th className={headerCellClasses}>
               Principal
               {agg.principal != null && (
@@ -179,7 +160,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
             // row border-radius is unsupported on <tr> — logged as TD-26 in
             // tech-debt-tracker.md.
             <tr key={i}>
-              <td className={[stickyFirstBodyCellClasses, "pr-3"].join(" ")}>
+              <td className={[firstBodyCellClasses, "pr-3"].join(" ")}>
                 <span className={firstBodyCellInnerClasses}>
                   {row.commodity}
                 </span>

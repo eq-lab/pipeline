@@ -199,30 +199,17 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
   });
 });
 
-describe("DeploymentMonitorPanel — sticky identity column (#1216)", () => {
-  it("Loan Book Commodity header and cells are sticky with an opaque surface", () => {
+describe("DeploymentMonitorPanel — Commodity keeps its width under horizontal scroll (#1216)", () => {
+  it("Loan Book table carries the designed 1024px minimum width", () => {
     render(<DeploymentMonitorPanel />);
-    const header = screen.getByText("Commodity");
-    expect(header.className).toContain("sticky");
-    expect(header.className).toContain("left-0");
-    expect(header.className).toContain(
-      "bg-[color:var(--color-pipeline-surface)]",
-    );
-    expect(header.className).toContain("min-w-[140px]");
-    const cell = screen.getByText("Copper Concentrate").closest("td");
-    expect(cell?.className).toContain("sticky");
-    expect(cell?.className).toContain("left-0");
+    const table = screen.getByText("Commodity").closest("table");
+    expect(table?.className).toContain("min-w-[1024px]");
   });
 
-  it("Origination Commodity column gets the same sticky treatment", () => {
+  it("Origination table carries the same minimum width", () => {
     hookState = baseState({ activeTab: "origination" });
     render(<DeploymentMonitorPanel />);
-    const header = screen.getByText("Commodity");
-    expect(header.className).toContain("sticky");
-    const cell = screen.getByText("Alumina").closest("td");
-    expect(cell?.className).toContain("sticky");
-    expect(cell?.className).toContain(
-      "bg-[color:var(--color-pipeline-surface)]",
-    );
+    const table = screen.getByText("Commodity").closest("table");
+    expect(table?.className).toContain("min-w-[1024px]");
   });
 });

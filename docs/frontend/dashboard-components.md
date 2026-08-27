@@ -839,12 +839,12 @@ Besley (display font), 20px/28px, weight 400.
 
 ### LoanBookTable
 
-**Sticky identity column (#1216):** the Commodity header/body cells are `sticky left-0` with an
-opaque `--color-pipeline-surface` background, `z-[1]`, a 140 px minimum width (the flexible first
-column otherwise collapses once the fixed columns exceed the viewport), and a `line-subtle` right
-hairline — so the row identity stays visible while the table scrolls horizontally on small
-screens. `OriginationTable` reuses the same exported sticky cell classes for its Commodity column.
-`LoanBookSummary` is a card strip, not a table — no identity column to pin.
+**Table minimum width (#1216):** the table carries `min-w-[1024px]` (the Figma mobile frame's
+full-table width) so the flexible Commodity column keeps its designed share instead of collapsing
+toward zero once the fixed columns exceed the viewport — on small screens the table scrolls
+horizontally with Commodity readable at the left end (no sticky pinning; per the user's direction,
+plain scroll is the intended behavior). `OriginationTable` carries the same minimum.
+`LoanBookSummary` is a card strip, not a table — unaffected.
 
 Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
 Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the

@@ -9,8 +9,6 @@ import type { OriginationTableRow } from "./originationRow";
 import {
   headerCellClasses,
   firstBodyCellClasses,
-  stickyFirstHeaderCellClasses,
-  stickyFirstBodyCellClasses,
   firstBodyCellInnerClasses,
 } from "./LoanBookTable";
 
@@ -55,7 +53,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
         className="w-full overflow-x-auto"
         data-testid="origination-table-desktop"
       >
-        <table className="w-full table-fixed border-collapse">
+        <table className="w-full min-w-[1024px] table-fixed border-collapse">
           <colgroup>
             {COLUMNS.map((col) => (
               <col
@@ -70,7 +68,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
                 <th
                   key={col.key}
                   className={[
-                    i === 0 ? stickyFirstHeaderCellClasses : headerCellClasses,
+                    headerCellClasses,
                     i < COLUMNS.length - 1 ? "pr-3" : "",
                   ].join(" ")}
                 >
@@ -86,9 +84,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
                   <td
                     key={col.key}
                     className={[
-                      i === 0
-                        ? stickyFirstBodyCellClasses
-                        : firstBodyCellClasses,
+                      firstBodyCellClasses,
                       i < COLUMNS.length - 1 ? "pr-3" : "",
                     ].join(" ")}
                   >

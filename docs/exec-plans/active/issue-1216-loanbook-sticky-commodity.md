@@ -6,7 +6,8 @@ Source: https://github.com/eq-lab/pipeline/issues/1216
 
 Keep the row-identity column visible while the LP dashboard loan tables scroll horizontally:
 
-- `LoanBookTable` (Commodity) and `OriginationTable` (Commodity — reuses the exported cell classes): first header/body cells become `sticky left-0` with an opaque `--color-pipeline-surface` background (the panel is white), a `z-[1]` raise, a `min-w-[140px]` floor (the flexible first `<col>` otherwise collapses toward zero once the fixed columns exceed the viewport), and a right hairline (`border-r` line-subtle) so scrolled content reads as passing beneath it.
+- Root cause: with `table-fixed` + flexible first `<col>`, the fixed columns (656 px) crowd out Commodity entirely once they exceed the viewport — the column collapses toward zero, so it is invisible even scrolled fully left.
+- Fix (per user direction 2026-08-27: no sticky pinning, plain scroll): `min-w-[1024px]` on both tables (the Figma mobile frame's full-table width), restoring Commodity's designed share; it is readable at the left scroll end and scrolls away naturally.
 - `LoanBookSummary` checked during implementation: it is a card strip (flex of SummaryCards), not a table — no identity column to pin; left unchanged.
 
 Out of scope: mobile column subsetting or any layout redesign; row borders/radius (TD-26) unchanged.
@@ -23,8 +24,7 @@ _None_
 
 ## Implementation Steps
 
-1. `LoanBookTable.tsx`: add exported `stickyFirstHeaderCellClasses` / `stickyFirstBodyCellClasses` (existing class sets + `sticky left-0 z-[1] bg-[color:var(--color-pipeline-surface)] min-w-[140px] border-r border-[color:var(--color-pipeline-line-subtle)]`); use them on the Commodity `<th>`/`<td>`.
-2. `OriginationTable.tsx`: apply the same constants to its Commodity column.
+1. `LoanBookTable.tsx` / `OriginationTable.tsx`: `min-w-[1024px]` on the `<table>` (cells unchanged).
 4. Tests: `DeploymentMonitorPanel.test.tsx` (or a focused new block) asserting the sticky classes on the first header/body cells of both tables.
 5. Spec: `dashboard-components.md#loanbooktable` responsive section — sticky identity-column rule (#1216).
 
