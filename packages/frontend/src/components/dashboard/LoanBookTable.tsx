@@ -98,7 +98,7 @@ function LoanTable({ rows, headerAggregates }: LoanBookTableProps) {
        * (column widths). border-collapse: dividers are on <td>/<th> (not <tr>)
        * because <tr> border rendering is unreliable in some browsers.
        */}
-      <table className="w-full table-fixed border-collapse">
+      <table className="w-full min-w-[1024px] table-fixed border-collapse">
         <colgroup>
           {/* Commodity — flexible, fills remaining width */}
           <col />

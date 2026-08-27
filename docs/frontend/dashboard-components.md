@@ -839,6 +839,13 @@ Besley (display font), 20px/28px, weight 400.
 
 ### LoanBookTable
 
+**Table minimum width (#1216):** the table carries `min-w-[1024px]` (the Figma mobile frame's
+full-table width) so the flexible Commodity column keeps its designed share instead of collapsing
+toward zero once the fixed columns exceed the viewport — on small screens the table scrolls
+horizontally with Commodity readable at the left end (no sticky pinning; per the user's direction,
+plain scroll is the intended behavior). `OriginationTable` carries the same minimum.
+`LoanBookSummary` is a card strip, not a table — unaffected.
+
 Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
 Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the
 commodity only — borrower identity is not displayed on the LP-facing protocol dashboard (issue

@@ -198,3 +198,18 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     expect(screen.queryByText("Status")).toBeNull();
   });
 });
+
+describe("DeploymentMonitorPanel — Commodity keeps its width under horizontal scroll (#1216)", () => {
+  it("Loan Book table carries the designed 1024px minimum width", () => {
+    render(<DeploymentMonitorPanel />);
+    const table = screen.getByText("Commodity").closest("table");
+    expect(table?.className).toContain("min-w-[1024px]");
+  });
+
+  it("Origination table carries the same minimum width", () => {
+    hookState = baseState({ activeTab: "origination" });
+    render(<DeploymentMonitorPanel />);
+    const table = screen.getByText("Commodity").closest("table");
+    expect(table?.className).toContain("min-w-[1024px]");
+  });
+});

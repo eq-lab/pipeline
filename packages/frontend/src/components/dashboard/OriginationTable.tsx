@@ -53,7 +53,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
         className="w-full overflow-x-auto"
         data-testid="origination-table-desktop"
       >
-        <table className="w-full table-fixed border-collapse">
+        <table className="w-full min-w-[1024px] table-fixed border-collapse">
           <colgroup>
             {COLUMNS.map((col) => (
               <col
