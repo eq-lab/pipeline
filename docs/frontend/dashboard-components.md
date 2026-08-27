@@ -553,6 +553,11 @@ Renders a full-viewport two-pane layout (desktop) or single-column (mobile):
   upper-left-to-transparent gradient (matching Figma node `2858:57637`) so the white wordmark and
   headline stay legible over the lighter sky/sea in the photo.
 
+The hero photo (`connect-hero-ship.webp`, 98 KB WebP) is warmed at idle time by
+`ConnectModalProvider` (`requestIdleCallback` + timeout fallback) so the first modal open paints
+complete instead of the hero pane popping in on a cold cache (#1212); the `<img>` carries no
+`loading="lazy"` — laziness only delayed the fetch for a modal-gated image.
+
 Tab set: EVM (Ethereum-compatible wallets) | Soroban (Stellar wallets). No "All" aggregate tab.
 
 Per-wallet behavior:
