@@ -839,6 +839,13 @@ Besley (display font), 20px/28px, weight 400.
 
 ### LoanBookTable
 
+**Sticky identity column (#1216):** the Commodity header/body cells are `sticky left-0` with an
+opaque `--color-pipeline-surface` background, `z-[1]`, a 140 px minimum width (the flexible first
+column otherwise collapses once the fixed columns exceed the viewport), and a `line-subtle` right
+hairline — so the row identity stays visible while the table scrolls horizontally on small
+screens. `OriginationTable` reuses the same exported sticky cell classes for its Commodity column.
+`LoanBookSummary` is a card strip, not a table — no identity column to pin.
+
 Active-loan table for the Loan Book panel. All viewports render a semantic `<table>` with 7 columns:
 Commodity, Principal, Collateral, LTV, Duration, Rate, Protection. The first column shows the
 commodity only — borrower identity is not displayed on the LP-facing protocol dashboard (issue

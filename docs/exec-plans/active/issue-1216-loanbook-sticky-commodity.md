@@ -7,7 +7,7 @@ Source: https://github.com/eq-lab/pipeline/issues/1216
 Keep the row-identity column visible while the LP dashboard loan tables scroll horizontally:
 
 - `LoanBookTable` (Commodity) and `OriginationTable` (Commodity — reuses the exported cell classes): first header/body cells become `sticky left-0` with an opaque `--color-pipeline-surface` background (the panel is white), a `z-[1]` raise, a `min-w-[140px]` floor (the flexible first `<col>` otherwise collapses toward zero once the fixed columns exceed the viewport), and a right hairline (`border-r` line-subtle) so scrolled content reads as passing beneath it.
-- `LoanBookSummary`'s identity cell is the "Total" label row — same sticky treatment for consistency (same overflow wrapper).
+- `LoanBookSummary` checked during implementation: it is a card strip (flex of SummaryCards), not a table — no identity column to pin; left unchanged.
 
 Out of scope: mobile column subsetting or any layout redesign; row borders/radius (TD-26) unchanged.
 
@@ -25,7 +25,6 @@ _None_
 
 1. `LoanBookTable.tsx`: add exported `stickyFirstHeaderCellClasses` / `stickyFirstBodyCellClasses` (existing class sets + `sticky left-0 z-[1] bg-[color:var(--color-pipeline-surface)] min-w-[140px] border-r border-[color:var(--color-pipeline-line-subtle)]`); use them on the Commodity `<th>`/`<td>`.
 2. `OriginationTable.tsx`: apply the same constants to its Commodity column.
-3. `LoanBookSummary.tsx`: same treatment on the "Total" label cell.
 4. Tests: `DeploymentMonitorPanel.test.tsx` (or a focused new block) asserting the sticky classes on the first header/body cells of both tables.
 5. Spec: `dashboard-components.md#loanbooktable` responsive section — sticky identity-column rule (#1216).
 

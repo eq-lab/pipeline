@@ -198,3 +198,31 @@ describe("DeploymentMonitorPanel — origination content (issue #814 field set)"
     expect(screen.queryByText("Status")).toBeNull();
   });
 });
+
+describe("DeploymentMonitorPanel — sticky identity column (#1216)", () => {
+  it("Loan Book Commodity header and cells are sticky with an opaque surface", () => {
+    render(<DeploymentMonitorPanel />);
+    const header = screen.getByText("Commodity");
+    expect(header.className).toContain("sticky");
+    expect(header.className).toContain("left-0");
+    expect(header.className).toContain(
+      "bg-[color:var(--color-pipeline-surface)]",
+    );
+    expect(header.className).toContain("min-w-[140px]");
+    const cell = screen.getByText("Copper Concentrate").closest("td");
+    expect(cell?.className).toContain("sticky");
+    expect(cell?.className).toContain("left-0");
+  });
+
+  it("Origination Commodity column gets the same sticky treatment", () => {
+    hookState = baseState({ activeTab: "origination" });
+    render(<DeploymentMonitorPanel />);
+    const header = screen.getByText("Commodity");
+    expect(header.className).toContain("sticky");
+    const cell = screen.getByText("Alumina").closest("td");
+    expect(cell?.className).toContain("sticky");
+    expect(cell?.className).toContain(
+      "bg-[color:var(--color-pipeline-surface)]",
+    );
+  });
+});

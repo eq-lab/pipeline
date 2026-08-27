@@ -9,6 +9,8 @@ import type { OriginationTableRow } from "./originationRow";
 import {
   headerCellClasses,
   firstBodyCellClasses,
+  stickyFirstHeaderCellClasses,
+  stickyFirstBodyCellClasses,
   firstBodyCellInnerClasses,
 } from "./LoanBookTable";
 
@@ -68,7 +70,7 @@ export function OriginationTable({ rows }: OriginationTableProps) {
                 <th
                   key={col.key}
                   className={[
-                    headerCellClasses,
+                    i === 0 ? stickyFirstHeaderCellClasses : headerCellClasses,
                     i < COLUMNS.length - 1 ? "pr-3" : "",
                   ].join(" ")}
                 >
@@ -84,7 +86,9 @@ export function OriginationTable({ rows }: OriginationTableProps) {
                   <td
                     key={col.key}
                     className={[
-                      firstBodyCellClasses,
+                      i === 0
+                        ? stickyFirstBodyCellClasses
+                        : firstBodyCellClasses,
                       i < COLUMNS.length - 1 ? "pr-3" : "",
                     ].join(" ")}
                   >
