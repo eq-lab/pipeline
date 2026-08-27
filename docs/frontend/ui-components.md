@@ -777,10 +777,10 @@ here.
   (16 px ring in `--color-pipeline-on-dark` with transparent top, `animate-spin`) to communicate a
   pending transaction. Full row opacity is kept.
 - **Success** (`state="success"`): keeps the numeric step badge on the left and replaces the action
-  button on the right with a wide ink pill (32 px tall, `w-22`, button radius,
-  `--color-pipeline-ink` fill — fill/primary per LP review #43, #1189; formerly the green
-  `positive-secondary`, node `1497-95272`) containing a centred check icon. The check icon is a
-  20×20 viewport stroke in `--color-pipeline-on-dark`;
+  button on the right with a wide green pill (32 px tall, `w-22`, button radius,
+  `--color-pipeline-positive-secondary` fill — restored by #1217 per Figma `1498:100812`, node
+  `1497-95272`; the intermediate ink recolor from LP review #43/#1189 is superseded) containing a
+  centred check icon. The check icon is a 20×20 viewport stroke in `--color-pipeline-positive`;
   `strokeWidth` 2.5 matches the medium-heavy Figma weight (node `1498:100802;9285:26314`), and the
   path spans the full usable height so the glyph clearly reads inside the 32 px pill.
 - **Error** (`state="error"`): red-tinted badge (`rgba(192, 57, 43, 0.12)` fill, number in

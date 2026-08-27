@@ -140,7 +140,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
                 "inline-flex items-center justify-center",
                 "h-8 w-22",
                 "rounded-[var(--radius-pipeline-button)]",
-                "bg-[color:var(--color-pipeline-ink)]",
+                "bg-[color:var(--color-pipeline-positive-secondary)]",
               ].join(" ")}
               aria-label={`${actionLabel} complete`}
               data-state="success"
@@ -155,7 +155,7 @@ export const StepRow = React.forwardRef<HTMLDivElement, StepRowProps>(
               >
                 <path
                   d="M3.5 10.5L8 15.5L16.5 5"
-                  stroke="var(--color-pipeline-on-dark)"
+                  stroke="var(--color-pipeline-positive)"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
