@@ -294,7 +294,7 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     expect(row0.facility).toBe("$8.0M"); // compact, matching Active Loans (#841)
     expect(row0.corridor).toBe("West Africa → EU");
     expect(row0.rate).toBe("11.2%"); // 1120 bps (backend-served)
-    expect(row0.maturity).toBe("14 Mar 2024");
+    expect(row0.maturity).toBe("13 Mar 2024");
     expect(row0.submitted).toBe("1 Jul");
     expect(row0.status).toBe("InReview");
   });
@@ -314,7 +314,7 @@ describe("useDeploymentMonitorPanel — In Origination tab", () => {
     expect(row1.facility).toBe("$4.4M"); // compact, matching Active Loans (#841)
     expect(row1.corridor).toBe("DRC → CN");
     expect(row1.rate).toBe("11.7%"); // 1170 bps
-    expect(row1.maturity).toBe("14 Jan 2024");
+    expect(row1.maturity).toBe("13 Jan 2024");
     expect(row1.submitted).toBe("2 Jul");
     expect(row1.status).toBe("ChangesRequested");
   });

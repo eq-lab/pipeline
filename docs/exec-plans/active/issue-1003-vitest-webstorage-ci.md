@@ -26,6 +26,8 @@ _None_
 4. Run all three suites locally via the new scripts; fix or log anything real that surfaces.
 5. `docs/exec-plans/known-bugs.md`: resolve BUG-18 (both halves) and the BUG-6/BUG-8 localStorage entries with pointers to this issue.
 
+6. Pin `TZ=UTC` in the three `test`/`test:watch` scripts and fix the two timezone-dependent maturity-date assertions in `useDeploymentMonitorPanel.test.tsx` (written on a UTC+4 machine, failed on CI's UTC runner).
+
 ## Test Strategy
 
 The change IS the test infrastructure: all three suites green via `yarn workspace <pkg> test` locally, and the new CI job green on this PR (it runs the suites on a clean runner — the real proof).
