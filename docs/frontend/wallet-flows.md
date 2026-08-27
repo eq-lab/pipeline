@@ -156,7 +156,7 @@ its success check) while the only failure signal was a console error and a trans
   see [`error-handling.md`](./error-handling.md).
 - Rendering (`@pipeline/ui` `StepRow`): the error state red-tints the numbered badge and shows the
   message as a red line under the label, but **keeps the action button** so the user can retry —
-  unlike the success state, which replaces the button with the ink check pill (#1189). Error and loading
+  unlike the success state, which replaces the button with the green check pill — positive-secondary fill, positive check (#1217, Figma 1498:100812; supersedes #1189's ink recolor). Error and loading
   rows always render at full opacity.
 
 ## Stake / unstake adapter (`useStakeFlow`)
