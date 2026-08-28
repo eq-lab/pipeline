@@ -16,6 +16,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all
 
+  js-unit-tests:
+    name: JS unit tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: yarn install --frozen-lockfile
+      - run: yarn workspace @pipeline/frontend test
+      - run: yarn workspace @pipeline/wallet-connect test
+      - run: yarn workspace @pipeline/trustee test
+
   # TODO: Add Solidity tests when contracts/ is populated
   # solidity-tests:
   #   name: Solidity tests (Foundry)

@@ -1624,7 +1624,7 @@ describe("Deposit page — toast emissions", () => {
     localStorage.clear();
   });
 
-  it("requestDeposit success emits a 'Deposit submitted' toast with a View button", async () => {
+  it("requestDeposit success emits the amount-carrying success toast with a View button (#1142)", async () => {
     const user = userEvent.setup();
     renderDeposit();
 
@@ -1635,16 +1635,13 @@ describe("Deposit page — toast emissions", () => {
     await waitFor(() => expect(confirmBtn).not.toBeDisabled());
     await user.click(confirmBtn);
 
-    // The mock settles asynchronously with isSuccess=true — wait for the
-    // "Deposit submitted" toast to appear.
     await waitFor(
       () => {
-        expect(screen.getByText("Deposit submitted")).toBeInTheDocument();
+        expect(screen.getByText("Deposited 2000 USDC")).toBeInTheDocument();
       },
       { timeout: 3000 },
     );
 
-    // The actionable toast includes a "View" button.
     expect(screen.getByRole("button", { name: "View" })).toBeInTheDocument();
   });
 
@@ -1707,14 +1704,12 @@ describe("Deposit page — toast emissions", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText("Deposit submitted")).toBeInTheDocument();
+        expect(screen.getByText("Deposited 2000 USDC")).toBeInTheDocument();
       },
       { timeout: 3000 },
     );
 
-    // Only one "Deposit submitted" toast in the DOM (id-based upsert prevents
-    // duplicates even with StrictMode double-invocation).
-    expect(screen.getAllByText("Deposit submitted")).toHaveLength(1);
+    expect(screen.getAllByText("Deposited 2000 USDC")).toHaveLength(1);
   });
 });
 

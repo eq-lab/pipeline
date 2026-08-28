@@ -1,0 +1,37 @@
+# Issue #1003: frontend vitest suite broken (Node webstorage vs jsdom) — and not run in CI
+
+Source: https://github.com/eq-lab/pipeline/issues/1003
+
+## Scope
+
+1. **Neutralize the Node experimental WebStorage global** that shadows jsdom's `localStorage` (Node 20.19+/22+): a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). Verified 2026-08-27 under both Node 20.20 (nvm) and Node 26 (Homebrew yarn): full frontend suite 1532/1532.
+2. **Fix the 2 remaining failures** — not flakes: `-deposit.test.tsx` "toast emissions" tests still assert the pre-#1142 title "Deposit submitted"; since #1142 a non-empty amount renders "Deposited {amount} USDC". Stale-while-broken — exactly the zero-signal cost this issue describes.
+3. **Add a JS unit-test job to CI** (`.github/workflows/tests.yml`): Node 22 + corepack yarn, `yarn install --immutable`, then the three workspace `test` scripts.
+4. **Resolve the duplicate known-bugs entries** (BUG-18, and the BUG-6/BUG-8 remnants already consolidated into this issue) once green.
+
+## Assumptions and Risks
+
+- The shim is Node-version-agnostic (probe decides at runtime) — no flags, no engines pin needed. The fresh-JSDOM Storage shares the running env's jsdom module, so `StorageEvent`'s `storageArea` IDL check accepts it.
+- `wallet-connect` and `trustee` suites have not been run recently on this machine; the CI job will surface their true state — any real failures found get fixed here if small, or logged and the job scoped accordingly (no silently-skipped suites).
+
+## Open Questions
+
+_None_
+
+## Implementation Steps
+
+1. `packages/{frontend,wallet-connect,trustee}/src/test-setup.ts`: probe-and-repair storage shim (fresh-JSDOM `Storage`, Map-backed fallback); scripts and vite configs stay untouched.
+2. `packages/frontend/src/routes/-deposit.test.tsx`: update the two toast assertions to the #1142 titles ("Deposited 2000 USDC" + View), including the StrictMode dedup test.
+3. `.github/workflows/tests.yml`: add `js-unit-tests` job (checkout, setup-node 22, corepack enable, `yarn install --immutable`, run the three workspace tests).
+4. Run all three suites locally via the new scripts; fix or log anything real that surfaces.
+5. `docs/exec-plans/known-bugs.md`: resolve BUG-18 (both halves) and the BUG-6/BUG-8 localStorage entries with pointers to this issue.
+
+6. Pin `TZ=UTC` in the three `test`/`test:watch` scripts and fix the two timezone-dependent maturity-date assertions in `useDeploymentMonitorPanel.test.tsx` (written on a UTC+4 machine, failed on CI's UTC runner).
+
+## Test Strategy
+
+The change IS the test infrastructure: all three suites green via `yarn workspace <pkg> test` locally, and the new CI job green on this PR (it runs the suites on a clean runner — the real proof).
+
+## Docs to Update
+
+`docs/exec-plans/known-bugs.md`; CI workflow is self-documenting.

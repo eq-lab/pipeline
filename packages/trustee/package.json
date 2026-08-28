@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . && prettier --check .",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "TZ=UTC vitest run",
+    "test:watch": "TZ=UTC vitest"
   },
   "dependencies": {
     "@pipeline/ui": "workspace:^",

@@ -17,14 +17,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 
 ## Open
 
-### BUG-18: frontend vitest suite broken on Node ≥20.19 — `localStorage` is undefined in jsdom tests
-- **Date:** 2026-08-24
-- **Location:** all `packages/frontend` tests that touch `localStorage` (e.g. `useStellarSacToken.test.tsx`, `-deposit.test.tsx`); found while running the test gate for #1196.
-- **Symptom:** `TypeError: Cannot read properties of undefined (reading 'clear'/'setItem')` on bare `localStorage`, plus Node's `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`.
-- **Root cause:** Node 20.19+/22+ defines an experimental `globalThis.localStorage` that is non-functional without `--localstorage-file`; because the key already exists on `globalThis`, vitest's jsdom environment does not install jsdom's own `localStorage` over it. Repo pins no Node version (`engines`/`.nvmrc` absent).
-- **Workaround:** run vitest with `NODE_OPTIONS="--localstorage-file=<tmpfile>"` (note: that file is shared across worker processes — pair with `--no-file-parallelism` to avoid cross-file pollution). Proper fix: pin a Node version for the repo or add `vite.config.ts` test setup that force-installs a storage shim.
-- Separately observed on this machine (all reproduce at branch HEAD with no working-tree changes, unrelated to #1196): 2 flaky failures in `-deposit.test.tsx` "Deposit page — toast emissions" (the toast never appears within the 3 s window), and 57 failures across `-index.test.tsx` / `useTermsAcknowledgement.test.tsx` — `[vitest] No "usePositionsHistory" export is defined on the "@/api" mock`. The `-index.test.tsx` half was a genuinely missing mock export, fixed with #1186; the `useTermsAcknowledgement.test.tsx` failures are this bug's `localStorage` symptom itself (pass with the `--localstorage-file` workaround).
-
 ### BUG-17: trustee `yarn lint` fails — three unused `_input` mock params in `-origination-new-page.test.tsx`
 - **Date:** 2026-08-19
 - **Location:** `packages/trustee/src/routes/-origination-new-page.test.tsx` lines 9, 106, 274 (shipped with #1101, commit `069c4e2`).
@@ -72,7 +64,19 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Root cause:** Missing `base6_to_decimal_string` call. Discovered while auditing every `base6_to_decimal_string` consumer for #901's Stellar-scale bug; `GroupedRequest` is currently unused by any API route or worker consumer (confirmed via repo-wide grep) so there is no live user-visible impact today.
 - **Workaround:** None needed while unconsumed. Fix before wiring `GroupedRequest` to any endpoint.
 
+## Resolved
+
+### BUG-18: frontend vitest suite broken on Node ≥20.19 — `localStorage` is undefined in jsdom tests
+- **Resolved:** 2026-08-27 by #1003 — a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). All three suites green (1532 + 160 + 898); the two lingering `-deposit.test.tsx` toast failures were stale pre-#1142 title assertions, updated in the same PR. A `js-unit-tests` vitest job now runs the suites in CI.
+- **Date:** 2026-08-24
+- **Location:** all `packages/frontend` tests that touch `localStorage` (e.g. `useStellarSacToken.test.tsx`, `-deposit.test.tsx`); found while running the test gate for #1196.
+- **Symptom:** `TypeError: Cannot read properties of undefined (reading 'clear'/'setItem')` on bare `localStorage`, plus Node's `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`.
+- **Root cause:** Node 20.19+/22+ defines an experimental `globalThis.localStorage` that is non-functional without `--localstorage-file`; because the key already exists on `globalThis`, vitest's jsdom environment does not install jsdom's own `localStorage` over it. Repo pins no Node version (`engines`/`.nvmrc` absent).
+- **Workaround:** run vitest with `NODE_OPTIONS="--localstorage-file=<tmpfile>"` (note: that file is shared across worker processes — pair with `--no-file-parallelism` to avoid cross-file pollution). Proper fix: pin a Node version for the repo or add `vite.config.ts` test setup that force-installs a storage shim.
+- Separately observed on this machine (all reproduce at branch HEAD with no working-tree changes, unrelated to #1196): 2 flaky failures in `-deposit.test.tsx` "Deposit page — toast emissions" (the toast never appears within the 3 s window), and 57 failures across `-index.test.tsx` / `useTermsAcknowledgement.test.tsx` — `[vitest] No "usePositionsHistory" export is defined on the "@/api" mock`. The `-index.test.tsx` half was a genuinely missing mock export, fixed with #1186; the `useTermsAcknowledgement.test.tsx` failures are this bug's `localStorage` symptom itself (pass with the `--localstorage-file` workaround).
+
 ### BUG-6: Frontend vitest suite — widespread `localStorage` undefined failures
+- **Resolved:** 2026-08-27 by #1003 — a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). All three suites green (1532 + 160 + 898); the two lingering `-deposit.test.tsx` toast failures were stale pre-#1142 title assertions, updated in the same PR. A `js-unit-tests` vitest job now runs the suites in CI.
 - **Tracked:** #1003 (consolidated with the two `localStorage` BUG-8 entries)
 - **Date:** 2026-06-30 (root cause identified 2026-07-10, issue #814)
 - **Location:** `packages/frontend` — wallet store tests, prominently `src/wallet/stellar/useStellarWallet.test.tsx` (21 failures) and broadly across the suite (`yarn workspace @pipeline/frontend test` reports ~615 failed / ~489 passed).
@@ -81,6 +85,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** Invoke `vitest`/`tsc`/`eslint` via the nvm-selected Node binary explicitly (e.g. ``$(command -v node) node_modules/.bin/vitest run`` from the workspace root, or `nvm use` before `yarn ...`) rather than through a `yarn` whose shebang hardcodes a different Node install. Longer-term: `yarn` should resolve Node via `PATH`/`env` rather than an absolute Homebrew path — outside this repo's control (a local Homebrew/yarn install detail), but worth flagging to anyone hitting mysteriously-failing frontend tests on macOS.
 
 ### BUG-8: `@pipeline/wallet-connect` — `localStorage` undefined in several jsdom test files
+- **Resolved:** 2026-08-27 by #1003 — a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). All three suites green (1532 + 160 + 898); the two lingering `-deposit.test.tsx` toast failures were stale pre-#1142 title assertions, updated in the same PR. A `js-unit-tests` vitest job now runs the suites in CI.
 
 - **Tracked:** #1003 (consolidated; see comment there)
 - **Date:** 2026-07-10
@@ -90,6 +95,7 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** None applied. Run the unaffected files individually to validate unrelated changes (as done for issue #831's `loanRegistry.test.ts`).
 
 ### BUG-8: LP frontend tests using `localStorage` fail on Node ≥ 22 (`Cannot read properties of undefined (reading 'clear')`)
+- **Resolved:** 2026-08-27 by #1003 — a probe-and-repair storage shim in each jsdom workspace's `test-setup.ts` (frontend, wallet-connect, trustee): if the `localStorage`/`sessionStorage` global is missing or throwing (Node 20.19+/22+/26 defines an experimental WebStorage global that shadows jsdom's), it is replaced with a real `Storage` from a fresh `JSDOM` window (passes jsdom's `StorageEvent` IDL check), falling back to a Map-backed store. Flag-based fixes proved version-fragile: `NODE_OPTIONS=--no-experimental-webstorage` is rejected by CI's Node 20 ("not allowed in NODE_OPTIONS"), and worker `execArgv` behaved differently across Node 20/26 (locally masked by Homebrew yarn running its own newer Node — the BUG-6 quirk). All three suites green (1532 + 160 + 898); the two lingering `-deposit.test.tsx` toast failures were stale pre-#1142 title assertions, updated in the same PR. A `js-unit-tests` vitest job now runs the suites in CI.
 - **Tracked:** #1003 (consolidated; see comment there)
 - **Date:** 2026-08-10
 - **Location:** any `packages/frontend` test touching `localStorage` (observed: `useDeploymentMonitorPanel.test.tsx`, all cases fail in `beforeEach` → `localStorage.clear()`)
@@ -98,8 +104,6 @@ Bugs discovered during development that are not yet fixed. Log here, don't fix i
 - **Workaround:** run with `NODE_OPTIONS="--no-experimental-webstorage"` — all tests pass. Fix candidates: add that flag to the package `test` script, or set `--localstorage-file`.
 
 ---
-
-## Resolved
 
 ### BUG-10: `capital_allocation.rs::normalize_to_canonical` does non-truncating division
 - **Tracked:** #1070
