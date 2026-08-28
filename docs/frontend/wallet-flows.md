@@ -114,6 +114,11 @@ Always `false` on EVM.
 - **PLUSD authorization window.** When the PLUSD trustline exists but the issuer has not yet
   authorized it, Claim is blocked (it would fail with "balance is deauthorized", contract error
   #11) and the step label reads "Claim your PLUSD — awaiting authorization".
+- **Voucher polling stop rule (#313).** All four voucher hooks (EVM + Stellar, deposit +
+  withdrawal) poll every 3 s while pending and share one classification
+  (`api/voucherRetry.ts`): 404 "not found" / 403 "forbidden" / "not yet" states are retriable and
+  keep polling (retry cap 20); any other error stops both `retry` and `refetchInterval`, settling
+  the hook at `status: "failed"` instead of hitting the API every 3 s forever.
 - **Claim voucher `deadline`.** The live on-chain `claim_request(request_id, verifier_signature,
   deadline)` shape (see #800) requires a `deadline`; a voucher missing or with a malformed deadline
   is not treated as claimable.

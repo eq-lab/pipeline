@@ -203,3 +203,45 @@ describe("useStellarWithdrawalVoucher", () => {
     );
   });
 });
+
+describe("useStellarWithdrawalVoucher — polling stops on non-retriable failure (#313)", () => {
+  it("does not keep refetching after a non-retriable error settles", async () => {
+    const { useStellarWallet } = await import("@/wallet");
+    vi.mocked(useStellarWallet).mockReturnValue({
+      address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+      isConnected: true,
+    } as ReturnType<typeof useStellarWallet>);
+
+    mockApiFetch.mockRejectedValue(new Error("409 Conflict: already claimed"));
+
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("failed"));
+    const settledCallCount = mockApiFetch.mock.calls.length;
+
+    vi.useFakeTimers();
+    await vi.advanceTimersByTimeAsync(10_000);
+    vi.useRealTimers();
+
+    expect(mockApiFetch.mock.calls.length).toBe(settledCallCount);
+  });
+
+  it("stays pending (still polling) while the error is retriable (404)", async () => {
+    const { useStellarWallet } = await import("@/wallet");
+    vi.mocked(useStellarWallet).mockReturnValue({
+      address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+      isConnected: true,
+    } as ReturnType<typeof useStellarWallet>);
+
+    mockApiFetch.mockRejectedValue(new Error("404 Not Found"));
+
+    const { result } = renderHook(() => useStellarWithdrawalVoucher("42"), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled());
+    expect(result.current.status).toBe("pending");
+  });
+});
