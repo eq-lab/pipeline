@@ -41,30 +41,37 @@ describe("Footer — wordmark", () => {
 });
 
 describe("Footer — nav links", () => {
-  const EXPECTED_LINKS = [
-    "Docs",
-    "White Paper",
-    "GitHub",
-    "X (Twitter)",
-    "Telegram",
-  ];
-
   it("renders a footer nav with aria-label='Footer'", () => {
     render(<Footer />);
     const nav = screen.getByRole("navigation", { name: "Footer" });
     expect(nav).toBeInTheDocument();
   });
 
-  it.each(EXPECTED_LINKS)(
+  it.each([
+    ["Docs", "https://docs.pipeline.one/"],
+    ["GitHub", "https://github.com/eq-lab/pipeline/"],
+  ] as const)(
+    "renders '%s' as a live external link with hover/pointer affordance (#1221)",
+    (label, href) => {
+      render(<Footer />);
+      const link = screen.getByRole("link", { name: label });
+      expect(link).toHaveAttribute("href", href);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link).not.toHaveAttribute("aria-disabled");
+      expect(link.className).toContain("cursor-pointer");
+      expect(link.className).toContain("hover:underline");
+    },
+  );
+
+  it.each(["White Paper", "X (Twitter)", "Telegram"])(
     "renders '%s' as a non-navigating placeholder anchor",
     (label) => {
       render(<Footer />);
-      // getAllByRole because the same label might be in multiple roles;
-      // we specifically want the anchor.
       const link = screen.getByRole("link", { name: label });
-      expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", "#");
       expect(link).toHaveAttribute("aria-disabled", "true");
+      expect(link.className).toContain("cursor-default");
     },
   );
 

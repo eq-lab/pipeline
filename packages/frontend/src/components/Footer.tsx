@@ -8,9 +8,17 @@ const FOOTER_LINKS: ReadonlyArray<{
   href: string;
   testId: string;
 }> = [
-  { label: "Docs", href: "#", testId: "footer-link-docs" },
+  {
+    label: "Docs",
+    href: "https://docs.pipeline.one/",
+    testId: "footer-link-docs",
+  },
   { label: "White Paper", href: "#", testId: "footer-link-white-paper" },
-  { label: "GitHub", href: "#", testId: "footer-link-github" },
+  {
+    label: "GitHub",
+    href: "https://github.com/eq-lab/pipeline/",
+    testId: "footer-link-github",
+  },
   { label: "X (Twitter)", href: "#", testId: "footer-link-x-twitter" },
   { label: "Telegram", href: "#", testId: "footer-link-telegram" },
 ];
@@ -78,24 +86,29 @@ export const Footer = React.forwardRef<HTMLElement, FooterProps>(
             className="flex flex-col gap-6 md:flex-row md:flex-wrap md:items-center"
             data-testid="footer-nav"
           >
-            {FOOTER_LINKS.map(({ label, href, testId }) => (
-              <a
-                key={label}
-                href={href}
-                aria-disabled="true"
-                className={[
-                  bodyTokenClasses,
-                  // Focus ring for keyboard navigation.
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                  "focus-visible:outline-[var(--color-pipeline-ink)]",
-                  // Visually signal that these are non-navigating stubs.
-                  "cursor-default",
-                ].join(" ")}
-                data-testid={testId}
-              >
-                {label}
-              </a>
-            ))}
+            {FOOTER_LINKS.map(({ label, href, testId }) => {
+              const isStub = href === "#";
+              return (
+                <a
+                  key={label}
+                  href={href}
+                  target={isStub ? undefined : "_blank"}
+                  rel={isStub ? undefined : "noopener noreferrer"}
+                  aria-disabled={isStub ? "true" : undefined}
+                  className={[
+                    bodyTokenClasses,
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                    "focus-visible:outline-[var(--color-pipeline-ink)]",
+                    isStub
+                      ? "cursor-default"
+                      : "cursor-pointer underline-offset-2 hover:underline",
+                  ].join(" ")}
+                  data-testid={testId}
+                >
+                  {label}
+                </a>
+              );
+            })}
           </nav>
         </div>
 
