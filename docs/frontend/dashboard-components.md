@@ -412,14 +412,15 @@ otherwise it falls back to the bare body background.
 
 Links: see the link-wiring rule below (#1221) — Docs and GitHub are live; the rest are stubs.
 
-## Navigation & wallet UI
-
 **Link wiring (#1221, mirroring pipeline.one's live footer):** Docs → `https://docs.pipeline.one/`
 and GitHub → `https://github.com/eq-lab/pipeline/` are live external links (`target="_blank"`,
 `rel="noopener noreferrer"`, pointer cursor, `hover:underline underline-offset-2`). White Paper
 (kept empty by explicit direction), X (Twitter), and Telegram remain non-navigating stubs
 (`href="#"`, `aria-disabled`, default cursor) until their destinations exist — a link must never
 look clickable while doing nothing.
+
+## Navigation & wallet UI
+
 
 ### TopBar
 
