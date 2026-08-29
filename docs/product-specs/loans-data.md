@@ -18,8 +18,8 @@ interface ILoanRegistry {
         string calldata initialLocation
     ) external returns (uint256 loanId);
 
-    // TRUSTEE, no timelock. Non-economic fields only. status in {Performing, Watchlist,
-    // Matured}; reverts on Default (use setDefault) and Closed (use closeLoan).
+    // TRUSTEE, no timelock. Non-economic fields only. status in {Performing, Watchlist}
+    // (Default/Closed via setDefault/closeLoan). `Matured` not settable — display-only, #955.
     function updateMutable(
         uint256 loanId,
         LoanStatus status,
@@ -115,7 +115,7 @@ struct LocationUpdate {
     uint64       updatedAt;          // Timestamp of last location update
 }
 
-enum LoanStatus    { Performing, Watchlist, Matured, Default, Closed }
+enum LoanStatus    { Performing, Watchlist, Default, Closed }  // no `Matured`/`Past Due` — display-only, #955
 enum ClosureReason { None, ScheduledMaturity, EarlyRepayment, Default, OtherWriteDown }
 enum LocationType  { Vessel, Warehouse, TankFarm, Other }
 ```
