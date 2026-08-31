@@ -1,7 +1,14 @@
 /** Tests for PortfolioPlaceholderCard — header states + the zero-value placeholder chart (#1114). */
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+  cleanup,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
 import { slotTimestamps, buildSeries } from "./usePortfolioChart";
@@ -260,5 +267,60 @@ describe("buildSeries (#1138)", () => {
     expect(
       buildSeries([{ timestamp: "not-a-date", shares_balance: "1" }], 7),
     ).toBeNull();
+  });
+});
+
+describe("tooltip timestamp format per period (#1223)", () => {
+  function hoverWithSeries(activePeriodId: string) {
+    const base = Date.UTC(2026, 8, 21, 14, 13);
+    const timestamps = Array.from(
+      { length: 10 },
+      (_, i) => base - (9 - i) * 3_600_000,
+    );
+    const values = timestamps.map((_, i) => i * 100);
+    const { container } = render(
+      <PortfolioPlaceholderCard
+        activePeriodId={activePeriodId}
+        onActivePeriodChange={() => {}}
+        balanceLabel="$0.00"
+        series={{ timestamps, values }}
+      />,
+    );
+    const chartWrap = container.querySelector(
+      "[data-node-id='1497:95048-chart']",
+    ) as HTMLElement;
+    vi.spyOn(chartWrap, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 600,
+      bottom: 120,
+      width: 600,
+      height: 120,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerMove(chartWrap, { clientX: 599 });
+    const text =
+      within(container as HTMLElement).getByTestId("chart-tooltip")
+        .textContent ?? "";
+    cleanup();
+    return text;
+  }
+
+  it("7d shows day and time", () => {
+    expect(hoverWithSeries("7d")).toMatch(/September 21, \d{2}:\d{2}/);
+  });
+
+  it.each(["1m", "3m"])("%s shows day and year", (id) => {
+    const text = hoverWithSeries(id);
+    expect(text).toContain("September 21, 2026");
+    expect(text).not.toMatch(/\d{2}:\d{2}/);
+  });
+
+  it.each(["1y", "all"])("%s shows month and year (by design)", (id) => {
+    const text = hoverWithSeries(id);
+    expect(text).toContain("September 2026");
+    expect(text).not.toContain("September 21");
   });
 });
