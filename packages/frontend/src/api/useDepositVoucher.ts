@@ -21,6 +21,7 @@ import { useSyncExternalStore } from "react";
 import { useEvmWallet } from "@/wallet";
 import { subscribeMock } from "@/wallet";
 import { apiFetch } from "./client";
+import { isRetriableVoucherError, VOUCHER_RETRY_LIMIT } from "./voucherRetry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -99,23 +100,14 @@ export function useDepositVoucher(
         `/v1/deposits/${requestId}/voucher?wallet=${address ?? ""}`,
       ),
     enabled,
-    // Poll every 3 seconds while no data yet (verifier has latency).
-    // Once data is present the refetchInterval callback returns false to stop.
     refetchInterval: (query) => {
       if (query.state.data?.signature) return false;
+      if (query.state.error && !isRetriableVoucherError(query.state.error))
+        return false;
       return 3000;
     },
-    // Keep retrying on retriable errors (404 = not yet visible, 403 = not yet allowed).
-    retry: (failureCount, error) => {
-      const msg = error?.message ?? "";
-      const isRetriable =
-        msg.includes("Not Found") ||
-        msg.includes("not found") ||
-        msg.includes("Forbidden") ||
-        msg.includes("forbidden") ||
-        msg.includes("not yet");
-      return isRetriable && failureCount < 20;
-    },
+    retry: (failureCount, error) =>
+      isRetriableVoucherError(error) && failureCount < VOUCHER_RETRY_LIMIT,
     retryDelay: 3000,
   });
 
