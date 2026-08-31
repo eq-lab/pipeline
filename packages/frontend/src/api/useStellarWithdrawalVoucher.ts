@@ -135,14 +135,12 @@ export function useStellarWithdrawalVoucher(
         `/v1/withdrawals/${requestIdStr}/voucher?wallet=${address ?? ""}&chain_id=${chainId}`,
       ),
     enabled,
-    // Poll every 3 seconds while no signature yet.
     refetchInterval: (q) => {
       if (q.state.data?.signature) return false;
       if (q.state.error && !isRetriableVoucherError(q.state.error))
         return false;
       return 3000;
     },
-    // Retry on retriable errors (404 = not yet visible, 403 = not yet allowed).
     retry: (failureCount, error) =>
       isRetriableVoucherError(error) && failureCount < VOUCHER_RETRY_LIMIT,
     retryDelay: 3000,
