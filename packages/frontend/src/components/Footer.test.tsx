@@ -50,6 +50,7 @@ describe("Footer — nav links", () => {
   it.each([
     ["Docs", "https://docs.pipeline.one/"],
     ["GitHub", "https://github.com/eq-lab/pipeline/"],
+    ["X (Twitter)", "https://x.com/pipeline_one"],
   ] as const)(
     "renders '%s' as a live external link with hover/pointer affordance (#1221)",
     (label, href) => {
@@ -64,22 +65,21 @@ describe("Footer — nav links", () => {
     },
   );
 
-  it.each(["White Paper", "X (Twitter)", "Telegram"])(
-    "renders '%s' as a non-navigating placeholder anchor",
+  it.each(["White Paper", "Telegram"])(
+    "does not render the hidden '%s' entry (#1225)",
     (label) => {
       render(<Footer />);
-      const link = screen.getByRole("link", { name: label });
-      expect(link).toHaveAttribute("href", "#");
-      expect(link).toHaveAttribute("aria-disabled", "true");
-      expect(link.className).toContain("cursor-default");
+      expect(
+        screen.queryByRole("link", { name: label }),
+      ).not.toBeInTheDocument();
     },
   );
 
-  it("renders exactly five footer nav links", () => {
+  it("renders exactly three footer nav links", () => {
     render(<Footer />);
     const nav = screen.getByRole("navigation", { name: "Footer" });
     const links = nav.querySelectorAll("a");
-    expect(links).toHaveLength(5);
+    expect(links).toHaveLength(3);
   });
 });
 

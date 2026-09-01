@@ -13,14 +13,19 @@ const FOOTER_LINKS: ReadonlyArray<{
     href: "https://docs.pipeline.one/",
     testId: "footer-link-docs",
   },
-  { label: "White Paper", href: "#", testId: "footer-link-white-paper" },
   {
     label: "GitHub",
     href: "https://github.com/eq-lab/pipeline/",
     testId: "footer-link-github",
   },
-  { label: "X (Twitter)", href: "#", testId: "footer-link-x-twitter" },
-  { label: "Telegram", href: "#", testId: "footer-link-telegram" },
+  {
+    label: "X (Twitter)",
+    href: "https://x.com/pipeline_one",
+    testId: "footer-link-x-twitter",
+  },
+  // Hidden until their destinations exist (#1225):
+  // { label: "White Paper", href: "#", testId: "footer-link-white-paper" },
+  // { label: "Telegram", href: "#", testId: "footer-link-telegram" },
 ];
 
 // Body type token classes — matches the pattern used by QnaSection and dashboard.tsx.
