@@ -410,14 +410,15 @@ Responsive: both rows stack vertically below `md`; side-by-side at `md+`. The fo
 own paper background because it's mounted globally outside each route's own paper wrapper —
 otherwise it falls back to the bare body background.
 
-Links: see the link-wiring rule below (#1221) — Docs and GitHub are live; the rest are stubs.
+Links: see the link-wiring rule below (#1221/#1225) — Docs, GitHub, and X are live; White Paper and Telegram are hidden.
 
-**Link wiring (#1221, mirroring pipeline.one's live footer):** Docs → `https://docs.pipeline.one/`
-and GitHub → `https://github.com/eq-lab/pipeline/` are live external links (`target="_blank"`,
-`rel="noopener noreferrer"`, pointer cursor, `hover:underline underline-offset-2`). White Paper
-(kept empty by explicit direction), X (Twitter), and Telegram remain non-navigating stubs
-(`href="#"`, `aria-disabled`, default cursor) until their destinations exist — a link must never
-look clickable while doing nothing.
+**Link wiring (#1221/#1225):** Docs → `https://docs.pipeline.one/`, GitHub →
+`https://github.com/eq-lab/pipeline/`, and X (Twitter) → `https://x.com/pipeline_one` are live
+external links (`target="_blank"`, `rel="noopener noreferrer"`, pointer cursor,
+`hover:underline underline-offset-2`). White Paper (deferred by explicit direction) and Telegram
+are hidden entirely (commented out of `FOOTER_LINKS`, #1225) until their destinations exist — a
+link must never look clickable while doing nothing, and no stubs render at all. The stub
+rendering branch (`href="#"` → `aria-disabled`, default cursor) remains for their return.
 
 ## Navigation & wallet UI
 
