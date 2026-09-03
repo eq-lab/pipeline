@@ -30,6 +30,7 @@ Product & design:
 - [`docs/design-docs/index.md`](./docs/design-docs/index.md) — design catalog and verification status
 - [`docs/design-docs/core-beliefs.md`](./docs/design-docs/core-beliefs.md) — agent-first operating principles
 - [`docs/product-specs/user-stories.md`](./docs/product-specs/user-stories.md) — testable user stories (E2E/QA acceptance criteria)
+- [`docs/letters-of-credit/index.md`](./docs/letters-of-credit/index.md) — on-chain letters of credit research (exploratory, pre-spec)
 
 Operational:
 
