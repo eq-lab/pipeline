@@ -38,7 +38,12 @@ const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { key: "deposit", label: "Convert", to: "/deposit" }, // 1497:94720
   { key: "stats", label: "Earn", to: "/stake" }, //     1497:94721
   { key: "history", label: "Activity", to: "/transactions" }, // 1497:94722
-  { key: "overview", label: "Overview", to: "/dashboard", dividerBefore: true }, // 5915:77655
+  {
+    key: "overview",
+    label: "Dashboard",
+    to: "/dashboard",
+    dividerBefore: true,
+  }, // 5915:77655
 ];
 
 /**
