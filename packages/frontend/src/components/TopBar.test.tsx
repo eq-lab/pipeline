@@ -433,10 +433,10 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("highlights Overview on /dashboard", async () => {
+  it("highlights Dashboard on /dashboard", async () => {
     renderTopBar("/dashboard");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Dashboard" })).toHaveAttribute(
         "data-active",
         "true",
       ),
@@ -447,7 +447,7 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("renders the nav divider between Activity and Overview", async () => {
+  it("renders the nav divider between Activity and Dashboard", async () => {
     renderTopBar("/");
     await waitFor(() =>
       expect(screen.getByTestId("topbar-nav-divider")).toBeInTheDocument(),
@@ -465,7 +465,7 @@ describe("TopBar — route-driven active state", () => {
     );
   });
 
-  it("navigates to /dashboard when Overview is clicked", async () => {
+  it("navigates to /dashboard when Dashboard is clicked", async () => {
     const user = userEvent.setup();
     renderTopBar("/");
     await waitFor(() =>
@@ -474,9 +474,9 @@ describe("TopBar — route-driven active state", () => {
         "true",
       ),
     );
-    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await user.click(screen.getByRole("button", { name: "Dashboard" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: "Dashboard" })).toHaveAttribute(
         "data-active",
         "true",
       ),

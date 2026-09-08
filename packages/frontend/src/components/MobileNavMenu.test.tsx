@@ -65,13 +65,13 @@ describe("MobileNavMenu — render when open", () => {
 // ── Tests: nav items ──────────────────────────────────────────────────────────
 
 describe("MobileNavMenu — nav items", () => {
-  it("lists all four nav destinations plus Pipeline Overview", () => {
+  it("lists all four nav destinations plus Dashboard", () => {
     renderMenu({ open: true, pathname: "/" });
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Convert")).toBeInTheDocument();
     expect(screen.getByText("Earn")).toBeInTheDocument();
     expect(screen.getByText("Activity")).toBeInTheDocument();
-    expect(screen.getByText("Pipeline Overview")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
 
   it("renders the network switcher row with the current-network badge (#1125)", () => {
@@ -167,7 +167,7 @@ describe("MobileNavMenu — navigation", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("calls onNavigate and onClose when Pipeline Overview is clicked (#1125)", async () => {
+  it("calls onNavigate and onClose when Dashboard is clicked (#1125)", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
     const onClose = vi.fn();
@@ -312,10 +312,10 @@ describe("MobileNavMenu — active nav derivation", () => {
     await waitFor(() => expect(screen.getByText("Earn")).toBeInTheDocument());
   });
 
-  it("marks no nav row active on pathname=/dashboard (Pipeline Overview owns it)", async () => {
+  it("marks no nav row active on pathname=/dashboard (Dashboard owns it)", async () => {
     renderMenu({ open: true, pathname: "/dashboard" });
     await waitFor(() =>
-      expect(screen.getByText("Pipeline Overview")).toBeInTheDocument(),
+      expect(screen.getByText("Dashboard")).toBeInTheDocument(),
     );
   });
 });

@@ -136,7 +136,7 @@ function CopyGlyph() {
   );
 }
 
-/** Pie-chart glyph for Pipeline Overview. */
+/** Pie-chart glyph for Dashboard. */
 function PieChartGlyph() {
   return (
     <svg
@@ -447,12 +447,12 @@ export function MobileNavMenu({
             ))}
           </nav>
 
-          {/* Divider before Pipeline Overview */}
+          {/* Divider before Dashboard */}
           <div className="flex w-full items-center justify-center py-3">
             <MenuDivider />
           </div>
 
-          {/* Pipeline Overview item */}
+          {/* Dashboard item */}
           <button
             type="button"
             className={[
@@ -482,7 +482,7 @@ export function MobileNavMenu({
                 "truncate",
               ].join(" ")}
             >
-              Pipeline Overview
+              Dashboard
             </span>
           </button>
 
