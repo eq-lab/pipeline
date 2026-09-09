@@ -476,7 +476,7 @@ Dashboard at `/dashboard` and is separated from Activity by a vertical divider (
 
 Always-visible unaudited-contracts risk disclosure, mounted once in the root layout
 (`__root.tsx`) directly after `TopBar` so it renders on every route. Full-width strip on
-`--color-pipeline-warning` with `--color-pipeline-on-warning` Caption 12px text, centered,
+`--color-pipeline-ink` with `--color-pipeline-on-dark` Caption 12px text, centered,
 `px-4 py-2`. `role="note"`, `data-testid="risk-banner"`. Exact copy (exported as
 `RISK_BANNER_TEXT`):
 

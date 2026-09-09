@@ -11,11 +11,11 @@ export function RiskBanner() {
       data-testid="risk-banner"
       className={[
         "w-full px-4 py-2 text-center",
-        "bg-[var(--color-pipeline-warning)]",
+        "bg-[var(--color-pipeline-ink)]",
         "font-[family-name:var(--font-body)]",
         "text-[length:var(--text-pipeline-caption)]",
         "leading-[var(--text-pipeline-caption--line-height)]",
-        "text-[color:var(--color-pipeline-on-warning)]",
+        "text-[color:var(--color-pipeline-on-dark)]",
       ].join(" ")}
     >
       {RISK_BANNER_TEXT}
