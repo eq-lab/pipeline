@@ -11,7 +11,7 @@ export function RiskBanner() {
       data-testid="risk-banner"
       className={[
         "w-full px-4 py-2 text-center",
-        "bg-[var(--color-pipeline-ink)]",
+        "bg-[var(--color-pipeline-brand)]",
         "font-[family-name:var(--font-body)]",
         "text-[length:var(--text-pipeline-caption)]",
         "leading-[var(--text-pipeline-caption--line-height)]",
