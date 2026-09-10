@@ -763,6 +763,16 @@ describe("TopBar — mobile responsive classes", () => {
     expect(header.className).toContain("md:p-4");
   });
 
+  it("header is sticky at every breakpoint (#1238) — unprefixed classes apply to mobile too", async () => {
+    renderTopBar("/");
+
+    await waitFor(() => expect(screen.getByRole("banner")).toBeInTheDocument());
+    const header = screen.getByRole("banner");
+    expect(header.className).toContain("sticky");
+    expect(header.className).toContain("top-0");
+    expect(header.className).toContain("z-40");
+  });
+
   it("desktop nav wrapper has `hidden md:flex` class (invisible below md breakpoint)", async () => {
     renderTopBar("/");
 
