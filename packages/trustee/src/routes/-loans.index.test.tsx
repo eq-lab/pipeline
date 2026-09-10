@@ -270,9 +270,7 @@ describe("Loans list route (empty book)", () => {
     ready({ ...RESPONSE, loans: [] });
     renderRoute();
     expect(screen.getByText("$96K")).toBeInTheDocument();
-    expect(screen.getByTestId("loans-empty")).toHaveTextContent(
-      "No loans.",
-    );
+    expect(screen.getByTestId("loans-empty")).toHaveTextContent("No loans.");
   });
 });
 

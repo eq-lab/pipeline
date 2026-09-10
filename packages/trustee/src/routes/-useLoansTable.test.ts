@@ -371,11 +371,7 @@ describe("buildLoansView", () => {
         makeEntry({ loan_id: "4", originator: "Delta", status: "Disbursing" }),
       ],
     };
-    const { counts, rows } = buildLoansView(
-      withDisbursing,
-      "Active",
-      NOW_MS,
-    );
+    const { counts, rows } = buildLoansView(withDisbursing, "Active", NOW_MS);
     expect(counts.Active).toBe(3); // 2 Performing + 1 Disbursing
     expect(rows.map((r) => r.originator)).toEqual(["Alpha", "Beta", "Delta"]);
   });
