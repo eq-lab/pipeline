@@ -230,6 +230,44 @@ describe("pointsToBars", () => {
     expect(bars[YIELD_CHART_N - 1]!.height).toBe(100);
   });
 
+  it("a served domainMax above the series max yields a last-bar height < 100 (#1234)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+      { timestamp: "2025-01-15T00:00:00Z", value: "3000000.000000" },
+    ];
+    const bars = pointsToBars(points, 4_000_000)!;
+    expect(bars[YIELD_CHART_N - 1]!.height).toBeCloseTo(75, 5);
+  });
+
+  it("a domainMax below the series max clamps to 100, never exceeds it (#1234)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "3000000.000000" },
+    ];
+    const bars = pointsToBars(points, 2_000_000)!;
+    expect(bars[YIELD_CHART_N - 1]!.height).toBe(100);
+  });
+
+  it("omitting domainMax preserves the frontend-computed-max behaviour (#1234)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+    ];
+    const bars = pointsToBars(points)!;
+    expect(bars[YIELD_CHART_N - 1]!.height).toBe(100);
+  });
+
+  it("an invalid domainMax (non-finite or <= 0) falls back to the computed max (#1234)", () => {
+    const points = [
+      { timestamp: "2025-01-01T00:00:00Z", value: "1000000.000000" },
+      { timestamp: "2025-01-08T00:00:00Z", value: "2000000.000000" },
+    ];
+    expect(pointsToBars(points, NaN)![YIELD_CHART_N - 1]!.height).toBe(100);
+    expect(pointsToBars(points, 0)![YIELD_CHART_N - 1]!.height).toBe(100);
+    expect(pointsToBars(points, -5)![YIELD_CHART_N - 1]!.height).toBe(100);
+  });
+
   it("works for cumulative_yield field name mapped to value", () => {
     const yieldPoints = [
       {

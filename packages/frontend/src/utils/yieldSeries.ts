@@ -111,12 +111,19 @@ export function accrualToBars(
  *
  * - Parses `value` as a 6-decimal USDC string (already in human units).
  * - Sorts by `timestamp` ascending.
- * - Normalises heights: `height = max(MIN_HEIGHT_PCT, value / max * 100)`.
+ * - Normalises heights: `height = clamp(value / domain * 100, MIN_HEIGHT_PCT, 100)`.
  * - Maps to `YIELD_CHART_N` slots using the same `pickPoint` approach.
  * - Ignores non-finite, negative, or invalid entries.
+ *
+ * `domainMax` (issue #1234) — an optional explicit normalisation domain, e.g.
+ * a backend-served window-stat `max` that can sit outside the sampled
+ * series' own extremes. When omitted or non-finite/non-positive, falls back
+ * to today's frontend-computed series max (unchanged behaviour, guards
+ * `accrualToBars`' shape and any other caller that never passes a domain).
  */
 export function pointsToBars(
   points: { timestamp: string; value: string }[] | undefined,
+  domainMax?: number,
 ): YieldBarPoint[] | null {
   const valid = (points ?? [])
     .map((p) => {
@@ -135,13 +142,20 @@ export function pointsToBars(
 
   if (valid.length === 0) return null;
 
-  const maxValue = Math.max(...valid.map((p) => p.value));
-  if (!Number.isFinite(maxValue) || maxValue <= 0) return null;
+  const computedMax = Math.max(...valid.map((p) => p.value));
+  const effectiveMax =
+    domainMax != null && Number.isFinite(domainMax) && domainMax > 0
+      ? domainMax
+      : computedMax;
+  if (!Number.isFinite(effectiveMax) || effectiveMax <= 0) return null;
 
   const pts: YieldBarPoint[] = valid.map((p) => ({
     value: p.value,
     timestamp: p.timestamp,
-    height: Math.max(MIN_HEIGHT_PCT, (p.value / maxValue) * 100),
+    height: Math.min(
+      100,
+      Math.max(MIN_HEIGHT_PCT, (p.value / effectiveMax) * 100),
+    ),
   }));
 
   return Array.from({ length: YIELD_CHART_N }, (_, index) => {

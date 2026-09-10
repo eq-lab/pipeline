@@ -879,6 +879,25 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   validate it against `[A-Z0-9]{2,6}`. Consider the same normalization for
   `price_provider`. Low-risk, no schema change.
 
+### TD-56: No global React error boundary in the LP frontend
+
+- **Date:** 2026-09-10
+- **Location:** `packages/frontend/src/` — grep for `ErrorBoundary`/`componentDidCatch`/
+  `errorComponent` returns nothing; `routes/dashboard.tsx` and every other route render their
+  panel trees directly.
+- **Gap:** Issue #1234's exec plan discovered this the hard way: `f0f6f54`'s breaking change to
+  `/v1/dashboard/tvl-history` and `/v1/dashboard/yield-history` (a bare array → an envelope
+  object) went unnoticed by the frontend for one commit, and because nothing catches a render
+  `TypeError`, the entire `/dashboard` route white-screened rather than one panel showing an
+  error state.
+- **Impact:** Any single component throwing during render (a bad API shape, a null-safety miss)
+  takes down the whole route instead of being contained to the panel/card that broke.
+- **Suggested fix:** Add a top-level `ErrorBoundary` in `routes/__root.tsx` (or per-route) that
+  renders a generic "something went wrong" fallback instead of a blank page. Consider a
+  per-panel boundary around each `PanelContainer` child for finer-grained containment, matching
+  the existing `state="error"` treatment. Not built as part of #1234 — that issue only fixed the
+  specific parsing bug; this is the containment gap around it.
+
 ---
 
 ## Post-MVP

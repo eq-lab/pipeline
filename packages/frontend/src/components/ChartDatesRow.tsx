@@ -1,5 +1,5 @@
-// spec: docs/frontend/dashboard-components.md#chartdatesrow (endpoint-date x-axis row,
-// Figma nodes 6002:9267 / 6002:9279, #1133).
+// spec: docs/frontend/dashboard-components.md#chartdatesrow (X-axis row,
+// Figma nodes 6002:9267 / 6002:9279, #1133; widened to 5 labels per #1234).
 
 const labelClasses = [
   "font-[family-name:var(--font-body)]",
@@ -7,17 +7,28 @@ const labelClasses = [
   "leading-[var(--text-pipeline-caption--line-height)]",
   "font-normal",
   "text-[color:var(--color-pipeline-ink-muted)]",
-  "min-w-px flex-1 truncate",
+  "w-[44px] overflow-hidden text-ellipsis whitespace-nowrap",
 ].join(" ");
 
-export function ChartDatesRow({ start, end }: { start: string; end: string }) {
+export function ChartDatesRow({ labels }: { labels: string[] }) {
   return (
     <div
-      className="flex h-4 w-full items-center justify-between whitespace-nowrap"
+      className="flex h-4 w-full items-center justify-between"
       data-testid="chart-dates-row"
     >
-      <span className={labelClasses}>{start}</span>
-      <span className={`${labelClasses} text-right`}>{end}</span>
+      {labels.map((label, i) => {
+        const align =
+          i === 0
+            ? "text-left"
+            : i === labels.length - 1
+              ? "text-right"
+              : "text-center";
+        return (
+          <span key={i} className={`${labelClasses} ${align}`}>
+            {label}
+          </span>
+        );
+      })}
     </div>
   );
 }

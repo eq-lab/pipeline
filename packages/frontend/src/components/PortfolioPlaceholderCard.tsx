@@ -9,8 +9,10 @@ import {
   usePortfolioChart,
 } from "./usePortfolioChart";
 import { ChartDatesRow } from "./ChartDatesRow";
-import { formatAxisDateRange } from "@/utils/formatDate";
+import { ChartValueAxis } from "./ChartValueAxis";
+import { sampleAxisDates } from "@/utils/formatDate";
 import type { ChartSeries } from "./usePortfolioChart";
+import type { AxisTicks } from "@/utils/chartAxis";
 
 /**
  * Total Balance card (Figma node 1497:95048) — balance/PnL header plus the
@@ -31,6 +33,13 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   activePeriodId?: string;
   onActivePeriodChange?: (id: string) => void;
   series?: ChartSeries | null;
+  /** Y-axis ticks (served shares_balance max/average, scaled 1:1 to USD), or
+   * null/omitted when the stats block is missing/invalid — renders no Y axis. */
+  yAxis?: AxisTicks | null;
+  /** Explicit normalisation domain for bar heights (the served
+   * `shares_balance.max`, scaled by decimals) — falls back to the
+   * frontend-computed series max when omitted. */
+  yAxisDomainMax?: number | null;
 }
 
 const HEADING_ID_BASE = "portfolio-placeholder-card-title";
@@ -66,6 +75,8 @@ export const PortfolioPlaceholderCard = React.forwardRef<
     activePeriodId,
     onActivePeriodChange,
     series: seriesProp,
+    yAxis = null,
+    yAxisDomainMax = null,
     ...rest
   },
   ref,
@@ -119,6 +130,17 @@ export const PortfolioPlaceholderCard = React.forwardRef<
 
   const barH = (PLACEHOLDER_BAR_H / 100) * VB_H;
   const y0 = VB_H - barH;
+
+  // Hoisted out of the per-bar .map (was O(n²), re-derived per bar) — issue
+  // #1234. Prefer the served domain max when given (domain-true scaling);
+  // fall back to the frontend-computed series max otherwise.
+  const seriesMaxValue = series !== null ? Math.max(...series.values) : 0;
+  const domainMax =
+    yAxisDomainMax != null &&
+    Number.isFinite(yAxisDomainMax) &&
+    yAxisDomainMax > 0
+      ? yAxisDomainMax
+      : seriesMaxValue;
 
   return (
     <Card
@@ -205,135 +227,148 @@ export const PortfolioPlaceholderCard = React.forwardRef<
         />
       </div>
 
-      <div
-        ref={wrapRef}
-        className="relative flex-1"
-        role="img"
-        aria-label={`Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`}
-        data-node-id="1497:95048-chart"
-        onPointerMove={handlePointerMove}
-        onPointerLeave={onPointerLeave}
-      >
-        <svg
-          viewBox={`0 0 ${VB_W} ${VB_H}`}
-          preserveAspectRatio="none"
-          className="h-full w-full"
-          aria-hidden="true"
-        >
-          {series !== null
-            ? series.values.map((value, i) => {
-                const cx = slotCentreX(i, slotCount);
-                const maxValue = Math.max(...series.values);
-                const h =
-                  maxValue > 0
-                    ? Math.max((value / maxValue) * VB_H * 0.9, barH * 0.3)
-                    : barH * 0.3;
-                const slotW = VB_W / slotCount;
-                const spikeW = Math.min(1, Math.max(0.35, slotW * 0.25));
-                const bandW = Math.min(3, Math.max(0.7, slotW * 0.6));
-                return (
-                  <g key={i} data-bar-slot={i}>
-                    <rect
-                      x={cx - spikeW / 2}
-                      y={VB_H - h}
-                      width={spikeW}
-                      height={h}
-                      fill="var(--color-pipeline-chart-positive)"
-                    />
-                    <rect
-                      x={cx - bandW / 2}
-                      y={VB_H - h * 0.4}
-                      width={bandW}
-                      height={h * 0.4}
-                      fill="var(--color-pipeline-chart-positive)"
-                    />
-                  </g>
-                );
-              })
-            : Array.from({ length: N }, (_, i) => {
-                const cx = slotCentreX(i, N);
-                return (
-                  <g key={i} data-bar-slot={i}>
-                    <rect
-                      x={cx - 1.5}
-                      y={y0}
-                      width={3}
-                      height={barH}
-                      fill={PLACEHOLDER_FILL}
-                      opacity={0.35}
-                    />
-                    <rect
-                      x={cx - 1}
-                      y={y0 + barH * 0.4}
-                      width={2}
-                      height={barH * 0.6}
-                      fill={PLACEHOLDER_FILL}
-                      opacity={0.65}
-                    />
-                    <rect
-                      x={cx - 0.5}
-                      y={y0 + barH * 0.7}
-                      width={1}
-                      height={barH * 0.3}
-                      fill={PLACEHOLDER_FILL}
-                      opacity={1}
-                    />
-                  </g>
-                );
-              })}
-        </svg>
-
-        {hoveredIdx !== null && (
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-1">
+          {series !== null && yAxis !== null && (
+            <ChartValueAxis
+              maxLabel={yAxis.maxLabel}
+              avgLabel={yAxis.avgLabel}
+              avgFraction={yAxis.avgFraction}
+              bottomLabel={yAxis.bottomLabel}
+            />
+          )}
           <div
-            aria-hidden="true"
-            style={{ left: `${cursorLeftPct}%` }}
-            className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-[var(--color-pipeline-chart-positive)]"
-          />
-        )}
+            ref={wrapRef}
+            className="relative flex-1"
+            role="img"
+            aria-label={`Total balance for ${periodLabel}: ${balanceLabel} (${unrealizedPnlLabel})`}
+            data-node-id="1497:95048-chart"
+            onPointerMove={handlePointerMove}
+            onPointerLeave={onPointerLeave}
+          >
+            <svg
+              viewBox={`0 0 ${VB_W} ${VB_H}`}
+              preserveAspectRatio="none"
+              className="h-full w-full"
+              aria-hidden="true"
+            >
+              {series !== null
+                ? series.values.map((value, i) => {
+                    const cx = slotCentreX(i, slotCount);
+                    const h =
+                      domainMax > 0
+                        ? Math.max((value / domainMax) * VB_H * 0.9, barH * 0.3)
+                        : barH * 0.3;
+                    const slotW = VB_W / slotCount;
+                    const spikeW = Math.min(1, Math.max(0.35, slotW * 0.25));
+                    const bandW = Math.min(3, Math.max(0.7, slotW * 0.6));
+                    return (
+                      <g key={i} data-bar-slot={i}>
+                        <rect
+                          x={cx - spikeW / 2}
+                          y={VB_H - h}
+                          width={spikeW}
+                          height={h}
+                          fill="var(--color-pipeline-chart-positive)"
+                        />
+                        <rect
+                          x={cx - bandW / 2}
+                          y={VB_H - h * 0.4}
+                          width={bandW}
+                          height={h * 0.4}
+                          fill="var(--color-pipeline-chart-positive)"
+                        />
+                      </g>
+                    );
+                  })
+                : Array.from({ length: N }, (_, i) => {
+                    const cx = slotCentreX(i, N);
+                    return (
+                      <g key={i} data-bar-slot={i}>
+                        <rect
+                          x={cx - 1.5}
+                          y={y0}
+                          width={3}
+                          height={barH}
+                          fill={PLACEHOLDER_FILL}
+                          opacity={0.35}
+                        />
+                        <rect
+                          x={cx - 1}
+                          y={y0 + barH * 0.4}
+                          width={2}
+                          height={barH * 0.6}
+                          fill={PLACEHOLDER_FILL}
+                          opacity={0.65}
+                        />
+                        <rect
+                          x={cx - 0.5}
+                          y={y0 + barH * 0.7}
+                          width={1}
+                          height={barH * 0.3}
+                          fill={PLACEHOLDER_FILL}
+                          opacity={1}
+                        />
+                      </g>
+                    );
+                  })}
+            </svg>
 
-        <div
-          aria-hidden={hoveredIdx === null}
-          data-testid="chart-tooltip"
-          style={{
-            left:
-              hoveredIdx !== null
-                ? `clamp(${TOOLTIP_HALF}px, ${cursorLeftPct}%, calc(100% - ${TOOLTIP_HALF}px))`
-                : "50%",
-            opacity: hoveredIdx !== null ? 1 : 0,
-            pointerEvents: "none",
-          }}
-          className={[
-            "absolute bottom-full mb-2",
-            "-translate-x-1/2",
-            "rounded px-3 py-1.5",
-            "bg-[var(--color-pipeline-ink)]",
-            "text-[color:var(--color-pipeline-on-dark)]",
-            "font-[family-name:var(--font-body)]",
-            "text-[length:var(--text-pipeline-caption)]",
-            "leading-[var(--text-pipeline-caption--line-height)]",
-            "whitespace-nowrap",
-            "transition-opacity duration-75",
-          ].join(" ")}
-        >
-          {tooltip !== null ? (
-            <>
-              <span className="block font-[var(--font-weight-medium)]">
-                {formatMoney(tooltip.balance)}
-              </span>
-              <span className="block opacity-70">
-                {formatTime(tooltip.timestamp, period.fmt)}
-              </span>
-            </>
-          ) : null}
+            {hoveredIdx !== null && (
+              <div
+                aria-hidden="true"
+                style={{ left: `${cursorLeftPct}%` }}
+                className="pointer-events-none absolute inset-y-0 w-px -translate-x-1/2 bg-[var(--color-pipeline-chart-positive)]"
+              />
+            )}
+
+            <div
+              aria-hidden={hoveredIdx === null}
+              data-testid="chart-tooltip"
+              style={{
+                left:
+                  hoveredIdx !== null
+                    ? `clamp(${TOOLTIP_HALF}px, ${cursorLeftPct}%, calc(100% - ${TOOLTIP_HALF}px))`
+                    : "50%",
+                opacity: hoveredIdx !== null ? 1 : 0,
+                pointerEvents: "none",
+              }}
+              className={[
+                "absolute bottom-full mb-2",
+                "-translate-x-1/2",
+                "rounded px-3 py-1.5",
+                "bg-[var(--color-pipeline-ink)]",
+                "text-[color:var(--color-pipeline-on-dark)]",
+                "font-[family-name:var(--font-body)]",
+                "text-[length:var(--text-pipeline-caption)]",
+                "leading-[var(--text-pipeline-caption--line-height)]",
+                "whitespace-nowrap",
+                "transition-opacity duration-75",
+              ].join(" ")}
+            >
+              {tooltip !== null ? (
+                <>
+                  <span className="block font-[var(--font-weight-medium)]">
+                    {formatMoney(tooltip.balance)}
+                  </span>
+                  <span className="block opacity-70">
+                    {formatTime(tooltip.timestamp, period.fmt)}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex">
+          {series !== null && yAxis !== null && (
+            <div className="w-[32px] shrink-0" aria-hidden="true" />
+          )}
+          <div className="flex-1">
+            <ChartDatesRow labels={sampleAxisDates(timestamps)} />
+          </div>
         </div>
       </div>
-
-      <ChartDatesRow
-        {...formatAxisDateRange(
-          timestamps[0],
-          timestamps[timestamps.length - 1],
-        )}
-      />
     </Card>
   );
 });

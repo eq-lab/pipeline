@@ -212,7 +212,8 @@ remains:
 
 ## Implementation Steps
 
-1. **Repair the two dashboard hooks (do this first, independently reviewable).**
+1. [x] **Repair the two dashboard hooks (do this first, independently reviewable).** Landed
+   pre-coder on this branch, commit `3692715`.
    - `packages/frontend/src/api/useDashboardTvlHistory.ts`: keep `TvlPoint`, add
      `TvlHistoryResponse { series: TvlPoint[]; max: string; min: string; average: string }`, change
      the `useQuery` generic and `apiFetch` type argument to it, and widen
@@ -226,38 +227,42 @@ remains:
      through to whatever the axis needs (step 3).
    - Re-check the `empty` branch at `:212-230`: `summaryAllNull` plus both bar arrays being `null`
      still decides `state: "empty"`, and an all-zero stats block must not flip it to `ready`.
-2. **Type the additive `positions/history` fields.** In
+2. [x] **Type the additive `positions/history` fields.** In
    `packages/frontend/src/api/usePositionsHistory.ts`, add
    `export interface SeriesStat { max: string; min: string; average: string }` and the
    `shares_balance: SeriesStat` / `cumulative_realized_pnl: SeriesStat` members on
    `PositionHistoryResponse`. No parsing change is required — only the Y axis consumes them.
-3. **Add the axis-domain + tick-label utils** (new module, e.g.
-   `packages/frontend/src/utils/chartAxis.ts`; FRONTEND.md rule 3 requires a unit test in the same
-   commit, rule 4 a row in `docs/frontend/utils.md`):
-   - `ceilTo1SigFig(value: number): number` — the domain rule derived above (23.14e6 → 30e6,
-     43.2e3 → 50e3, 942.8 → 1000). Handle 0, negatives, and exact powers of ten explicitly.
-   - `axisTicks(max: string): { top: number; mid: number; bottom: number }` or an ordered
-     `string[]` of three formatted labels — top, half, `0`.
+3. [x] **Add the axis-domain + tick-label utils** (`packages/frontend/src/utils/chartAxis.ts` +
+   `chartAxis.test.ts`, row in `docs/frontend/utils.md`). **Superseded by the 2026-09-10
+   resolutions** — no `ceilTo1SigFig`, no rounded domain. Shipped as `computeAxisTicks(max,
+   average)` returning `{ maxLabel, avgLabel, avgFraction, bottomLabel } | null` (raw served
+   `max`/`average`, `avgFraction = average / max` clamped to `[0, 1]`, `null` when `max` is
+   missing/non-finite/`≤ 0`) and `formatAxisTickUsd(value)` — compact, **zero decimals**, `$`
+   prefix, exactly as originally specified below.
+   - ~~`ceilTo1SigFig(value: number): number`~~ — dropped; no domain rounding.
+   - ~~`axisTicks(max: string): { top; mid; bottom }`~~ — replaced by `computeAxisTicks(max,
+     average)`, which also derives the proportional `avgFraction`.
    - `formatAxisTickUsd(value: number): string` — compact, **zero decimals**, `$` prefix: `$30M`,
      `$15M`, `$50K`, `$500`, and bare `$0`. This is deliberately *not* `formatCompactUsd`, which
      emits one decimal (`"$30.0M"`); do not "reuse" it and lose the Figma formatting.
-4. **Re-base bar heights on the axis domain.** Extend `pointsToBars` in
-   `packages/frontend/src/utils/yieldSeries.ts` with an optional explicit domain max, e.g.
+4. [x] **Re-base bar heights on the axis domain.** Extended `pointsToBars` in
+   `packages/frontend/src/utils/yieldSeries.ts` with an optional explicit domain max —
    `pointsToBars(points, domainMax?: number)`, falling back to today's frontend-computed max when
-   omitted so `accrualToBars`' callers and `/v1/stats/yield` stay untouched. Normalise `height`
-   against the rounded domain, so the tallest bar reaches `max / ceilTo1SigFig(max)` rather than
-   100%. Keep the `MIN_HEIGHT_PCT = 2` floor. Update `docs/frontend/utils.md:32` in the same commit.
-5. **Build the Y-axis component.** No Y-axis/tick component exists in `packages/ui/src` or
-   `packages/frontend/src` today, so this is net-new — but it is small: **three text labels, no
-   gridlines, no spine.** Add it in its own file (FRONTEND.md rule 1), e.g.
-   `packages/frontend/src/components/ChartValueAxis.tsx`, taking three already-formatted label
-   strings and staying dumb exactly as `ChartDatesRow` does, with a one-line `// spec:` pointer
-   header and no narrative comments. Structure per Figma: `w-[32px] flex flex-col items-start
-   justify-between h-full pt-0 pb-[20px]`, labels in the caption tokens +
-   `--color-pipeline-ink-muted`. Render it as a **sibling** of the chart SVG (an outer flex row with
-   **no gap**), never inside `YieldBarChart` — the chart's `bars` prop stays a pre-normalised 0–100
-   `height` and the chart stays dumb.
-6. **Widen `ChartDatesRow` from two labels to five.** Figma shows 5 `MMM d` labels, so its
+   omitted so `accrualToBars`'s callers and `/v1/stats/yield` stay untouched. **Per the
+   resolutions, normalises against the raw served `domainMax`, not a rounded domain** — the
+   tallest bar reaches `value / domainMax` (clamped to 100, not necessarily reaching 100% since
+   the served window-stat can exceed the sampled series' own max). Kept the `MIN_HEIGHT_PCT = 2`
+   floor. Updated `docs/frontend/utils.md`'s `pointsToBars` row in the same commit.
+5. [x] **Build the Y-axis component.** Net-new, `packages/frontend/src/components/ChartValueAxis.tsx`
+   + test: **three text labels, no gridlines, no spine**, one-line `// spec:` pointer header, no
+   narrative comments. Takes `{ maxLabel, avgLabel, avgFraction, bottomLabel }` per the
+   resolutions (not three plain strings + `justify-between` — the average label is absolutely
+   positioned via `avgFraction`, since it is not pinned to the geometric middle). Structure:
+   `relative w-[32px] shrink-0`, top/bottom labels pinned via `top-0`/`bottom-0`, the average
+   label absolutely positioned at `top: (1 - avgFraction) * 100%` with a `-translate-y-1/2`.
+   Rendered as a **sibling** of the chart SVG (an outer flex row, no gap), never inside
+   `YieldBarChart` — the chart's `bars` prop stays a pre-normalised 0–100 `height`, unchanged.
+6. [x] **Widen `ChartDatesRow` from two labels to five.** Figma shows 5 `MMM d` labels, so its
    `{ start, end }` contract changes for all three callers at once — take an ordered `string[]`
    (assert 5) and render each `w-[44px] overflow-hidden text-ellipsis`, first left, middle three
    `text-center`, last `text-right`, in the existing 16px row. Derive the five labels from **served
@@ -266,35 +271,36 @@ remains:
    "absent when the series is null/empty — never invented dates" caller gating and the cross-year
    `'YY` suffix from `formatAxisDateRange`; with five labels the year-collision case it was added
    for needs re-checking.
-7. **Wire the three cards** (each stays a pure view; the domain + formatted labels are computed in
-   the hook / route and passed as props):
-   - `TvlCard.tsx` — from `tvl-history.max`. Figma's plot is **240px** with an 8px gap and the 16px
-     X row (264 total), where the code today has a 224px container + 16px row (240 total). This
-     resolves the doc's 224-vs-240 contradiction in favour of a 240px plot, but the region grows by
-     24px — re-check the fixed `h-[404px] md:h-[460px]` card, especially mobile (Figma's frame is
-     the 460 desktop one).
-   - `YieldHistoryPanel.tsx` — from `yield-history.max`, on the Cumulative Yield card
-     (`h-[128px]` mobile / `md:h-auto md:flex-1`). Figma node `3283:68333` is a 560×300 frame with a
-     172px plot, which does not correspond to either the 248px mobile card or the desktop
-     `md:h-[460px]` row — reconcile against the real responsive layout instead of hard-coding 172px.
-   - `PortfolioPlaceholderCard.tsx` — from `shares_balance.max`, scaled by `activeDecimals` exactly
-     as `buildSeries` does. The home route (`packages/frontend/src/routes/index.tsx:131`) already
-     owns the fetch, so pass the scaled domain in as a prop. Its 120px plot already matches the
-     component's `VB_H = 120`. Hoist the `Math.max(...series.values)` out of the `.map` at `:226`
-     and feed it the same domain. Keep the zero-placeholder branch rendering no fabricated axis.
-8. **Missing-data behaviour.** A tick whose backing value is null/absent/non-numeric renders `"—"`,
-   never `0` and never a computed substitute. When the stats block is missing entirely, render the
-   chart without a Y axis rather than a column of dashes. `max === min === 0` (the documented
-   empty-chain response) must not divide by zero — render the empty seam that
-   `dashboard-components.md:1170-1174` already specifies.
-9. **Docs.** Update `docs/frontend/dashboard-components.md` per "Docs to Update" below.
-10. **Catalogue the pre-existing gap.** `formatAxisDate` / `formatAxisDateRange`
-    (`packages/frontend/src/utils/formatDate.ts`) are used by all three charts but are missing from
-    `docs/frontend/utils.md` (FRONTEND.md rule 4). Add their rows while editing that file.
-11. **Gate.** `yarn workspace @pipeline/frontend lint`, `… test`, `… build`, plus
-    `npx tsx scripts/lint-docs.ts`. Then log the absent global error boundary in
-    `docs/exec-plans/tech-debt-tracker.md` (a breaking API shape change white-screened a whole
-    route with no containment) — note it, do not fix it here.
+7. [x] **Wire the three cards** (each stays a pure view; the domain + formatted labels are computed
+   in the hook / route and passed as props):
+   - `TvlCard.tsx` — `tvlAxis` from `tvl-history.max`/`.average`, via `useYieldHistoryPanel`.
+     Plot widened to Figma's **240px** (from 224px), resolving the doc's 224-vs-240
+     contradiction, with the 8px gap + 16px X row added around it (region grows by 24px). The
+     fixed `h-[404px] md:h-[460px]` card heights are unchanged; visual fit at both breakpoints
+     (especially the tighter 404px mobile case) is a QA/ux-tester item, not verified here (no
+     browser driving per project convention).
+   - `YieldHistoryPanel.tsx` — `yieldAxis` from `yield-history.max`/`.average`. Kept the existing
+     responsive plot height (`h-[128px]` mobile / `md:h-auto md:flex-1`) rather than hard-coding
+     Figma's 172px, which doesn't correspond to either breakpoint; added the axis column + 8px
+     gap within that existing sizing.
+   - `PortfolioPlaceholderCard.tsx` — `yAxis`/`yAxisDomainMax` from `shares_balance.max`/
+     `.average`, scaled by `activeDecimals` exactly as `buildSeries` does, computed in the home
+     route (`routes/index.tsx`) and passed as props. Hoisted the `Math.max(...series.values)` out
+     of the per-bar `.map`. The zero-placeholder branch renders no axis even if `yAxis` is passed.
+8. [x] **Missing-data behaviour.** A tick whose backing value is null/absent/non-numeric renders
+   `"—"` (the average tick alone, via `computeAxisTicks`'s fallback), never `0` and never a
+   computed substitute. When the served `max` is missing/non-finite/`≤ 0` — including the
+   documented `max === min === 0` empty-chain response — `computeAxisTicks` returns `null` and no
+   Y axis renders at all (no divide-by-zero, no column of dashes); the empty seam
+   `dashboard-components.md` already specifies for `tvlBars`/`cumulativeBars` null is unchanged.
+9. [x] **Docs.** Updated `docs/frontend/dashboard-components.md` per "Docs to Update" below,
+   including a net-new `### ChartValueAxis` section.
+10. [x] **Catalogue the pre-existing gap.** Added `formatAxisDate` / `formatAxisDateRange` /
+    `sampleAxisDates` rows to `docs/frontend/utils.md`, alongside the new `computeAxisTicks` /
+    `formatAxisTickUsd` rows and the updated `pointsToBars` row.
+11. [x] **Gate.** `yarn workspace @pipeline/frontend lint`, `… test`, `… build`, plus
+    `npx tsx scripts/lint-docs.ts` — see the coder's final report for results. Logged the absent
+    global error boundary as TD-56 in `docs/exec-plans/tech-debt-tracker.md`.
 
 ## Figma axis specification
 

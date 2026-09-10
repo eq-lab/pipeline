@@ -37,6 +37,7 @@ import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
+import { computeAxisTicks } from "@/utils/chartAxis";
 
 // spec: docs/frontend/dashboard-components.md#home-route
 // (desktop/mobile composition, top-left card branching, Figma refs).
@@ -133,6 +134,21 @@ function Home() {
     activeDecimals,
   );
 
+  // Portfolio Y axis — 1:1 USD over the shares series (issue #1234
+  // resolution 5). `shares_balance.max`/`.average` are raw share strings on
+  // the same scale as `history[].shares_balance`, so they take the same
+  // `/ 10 ** decimals` treatment `buildSeries` already applies.
+  const sharesStats = positionsHistory.data?.shares_balance;
+  const portfolioAxisMax =
+    sharesStats?.max != null
+      ? Number(sharesStats.max) / 10 ** activeDecimals
+      : null;
+  const portfolioAxisAvg =
+    sharesStats?.average != null
+      ? Number(sharesStats.average) / 10 ** activeDecimals
+      : null;
+  const portfolioAxis = computeAxisTicks(portfolioAxisMax, portfolioAxisAvg);
+
   const mobileHomeState: MobileHomeState = isConnected
     ? deriveMobileHomeState(
         plusdBalanceActive,
@@ -205,6 +221,8 @@ function Home() {
               activePeriodId={portfolioPeriodId}
               onActivePeriodChange={setPortfolioPeriodId}
               series={portfolioSeries}
+              yAxis={portfolioAxis}
+              yAxisDomainMax={portfolioAxisMax}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -290,6 +308,8 @@ function Home() {
                 activePeriodId={portfolioPeriodId}
                 onActivePeriodChange={setPortfolioPeriodId}
                 series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (

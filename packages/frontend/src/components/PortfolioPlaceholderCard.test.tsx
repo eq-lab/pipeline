@@ -12,7 +12,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { PortfolioPlaceholderCard } from "./PortfolioPlaceholderCard";
 import { slotTimestamps, buildSeries } from "./usePortfolioChart";
-import { formatAxisDateRange } from "@/utils/formatDate";
+import { sampleAxisDates } from "@/utils/formatDate";
+import type { AxisTicks } from "@/utils/chartAxis";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const original =
@@ -170,16 +171,13 @@ describe("PortfolioPlaceholderCard — responsive header layout", () => {
   });
 });
 
-describe("PortfolioPlaceholderCard — endpoint dates row (#1133)", () => {
-  it("renders the active period window's endpoints as axis labels", () => {
+describe("PortfolioPlaceholderCard — endpoint dates row (#1133, widened to 5 labels by #1234)", () => {
+  it("renders 5 labels sampled from the active period window's timestamps", () => {
     renderCard();
     const row = screen.getByTestId("chart-dates-row");
-    const [start, end] = Array.from(row.children).map((c) => c.textContent);
-    const now = Date.now();
-    const ts = slotTimestamps("all", now);
-    const expected = formatAxisDateRange(ts[0]!, now);
-    expect(end).toBe(expected.end);
-    expect(start).toBe(expected.start);
+    const labels = Array.from(row.children).map((c) => c.textContent);
+    const ts = slotTimestamps("all", Date.now());
+    expect(labels).toEqual(sampleAxisDates(ts));
   });
 
   it("start label tracks the selected period tab", async () => {
@@ -189,7 +187,7 @@ describe("PortfolioPlaceholderCard — endpoint dates row (#1133)", () => {
     const row = screen.getByTestId("chart-dates-row");
     const start = row.children[0]!.textContent;
     const ts = slotTimestamps("7d", Date.now());
-    expect(start).toBe(formatAxisDateRange(ts[0]!, ts[ts.length - 1]!).start);
+    expect(start).toBe(sampleAxisDates(ts)[0]);
   });
 });
 
@@ -216,14 +214,15 @@ describe("PortfolioPlaceholderCard — served series mode (#1138)", () => {
     }
   });
 
-  it("axis labels come from the served series endpoints", () => {
+  it("axis labels come from the served series timestamps (5 labels)", () => {
     renderCard({ series: SERIES });
     const row = screen.getByTestId("chart-dates-row");
+    expect(row.children).toHaveLength(5);
     expect(row.children[0]!.textContent).toBe("Jul 20");
-    expect(row.children[1]!.textContent).toBe("Aug 20");
+    expect(row.children[row.children.length - 1]!.textContent).toBe("Aug 20");
   });
 
-  it("appends 'YY to both labels when the endpoints cross a year boundary", () => {
+  it("appends 'YY to every label when the sampled points cross a year boundary", () => {
     renderCard({
       series: {
         timestamps: [Date.UTC(2025, 7, 20, 12), Date.UTC(2026, 7, 20, 12)],
@@ -232,12 +231,53 @@ describe("PortfolioPlaceholderCard — served series mode (#1138)", () => {
     });
     const row = screen.getByTestId("chart-dates-row");
     expect(row.children[0]!.textContent).toBe("Aug 20 '25");
-    expect(row.children[1]!.textContent).toBe("Aug 20 '26");
+    expect(row.children[row.children.length - 1]!.textContent).toBe(
+      "Aug 20 '26",
+    );
   });
 
   it("falls back to the zero placeholder when series is null", () => {
     const { container } = renderCard({ series: null });
     expect(container.querySelectorAll("[data-bar-slot]")).toHaveLength(100);
+  });
+});
+
+describe("PortfolioPlaceholderCard — Y axis (#1234)", () => {
+  const SERIES = {
+    timestamps: [
+      Date.UTC(2026, 6, 20, 12),
+      Date.UTC(2026, 7, 5, 12),
+      Date.UTC(2026, 7, 20, 12),
+    ],
+    values: [0, 500, 1000],
+  };
+
+  const AXIS: AxisTicks = {
+    maxLabel: "$1K",
+    avgLabel: "$500",
+    avgFraction: 0.5,
+    bottomLabel: "$0",
+  };
+
+  it("renders the Y ticks from the passed-in axis (derived from shares_balance.max/average)", () => {
+    renderCard({ series: SERIES, yAxis: AXIS });
+    expect(screen.getByTestId("chart-value-axis-max")).toHaveTextContent("$1K");
+    expect(screen.getByTestId("chart-value-axis-avg")).toHaveTextContent(
+      "$500",
+    );
+    expect(screen.getByTestId("chart-value-axis-bottom")).toHaveTextContent(
+      "$0",
+    );
+  });
+
+  it("renders no Y axis when yAxis is omitted, even with a served series", () => {
+    renderCard({ series: SERIES });
+    expect(screen.queryByTestId("chart-value-axis")).not.toBeInTheDocument();
+  });
+
+  it("renders no fabricated Y axis in placeholder mode, even if yAxis is passed", () => {
+    renderCard({ series: null, yAxis: AXIS });
+    expect(screen.queryByTestId("chart-value-axis")).not.toBeInTheDocument();
   });
 });
 
