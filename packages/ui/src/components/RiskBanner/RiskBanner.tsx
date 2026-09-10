@@ -1,5 +1,8 @@
-// spec: docs/frontend/dashboard-components.md#riskbanner
-// (always-visible unaudited-contracts risk disclosure, mounted below TopBar in __root.tsx, #1231).
+/**
+ * RiskBanner — always-visible unaudited-contracts risk disclosure, mounted
+ * topmost in each app's root layout (#1231).
+ * spec: docs/frontend/dashboard-components.md#riskbanner
+ */
 
 export const RISK_BANNER_TEXT =
   "You are using an unaudited version of smart contracts and should acknowledge related risks";

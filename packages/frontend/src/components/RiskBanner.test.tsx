@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { RiskBanner, RISK_BANNER_TEXT } from "./RiskBanner";
+import { RiskBanner, RISK_BANNER_TEXT } from "@pipeline/ui";
 
 // spec: docs/frontend/dashboard-components.md#riskbanner (#1231).
 

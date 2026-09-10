@@ -472,10 +472,12 @@ Dashboard at `/dashboard` and is separated from Activity by a vertical divider (
 
 ### RiskBanner
 
-**Source:** `RiskBanner.tsx` (#1231).
+**Source:** `@pipeline/ui` — `components/RiskBanner/RiskBanner.tsx` (#1231).
 
-Always-visible unaudited-contracts risk disclosure, mounted once in the root layout
-(`__root.tsx`) directly after `TopBar` so it renders on every route. Full-width strip on
+Always-visible unaudited-contracts risk disclosure, shared by both apps and mounted topmost in
+each root layout: in the LP app (`frontend/src/routes/__root.tsx`) above `TopBar`, and in the
+trustee app (`trustee/src/routes/__root.tsx`) above `TrusteeShell`, where it also renders over
+the sign-in state. Full-width strip on
 `--color-pipeline-brand` with `--color-pipeline-on-dark` Caption 12px text, centered,
 `px-4 py-2`. `role="note"`, `data-testid="risk-banner"`. Exact copy (exported as
 `RISK_BANNER_TEXT`):

@@ -1,4 +1,5 @@
 import { createRootRoute, redirect } from "@tanstack/react-router";
+import { RiskBanner } from "@pipeline/ui";
 import { TrusteeShell } from "@/components/TrusteeShell";
 import { TrusteeSessionProvider } from "@/auth/TrusteeSessionProvider";
 import { getSessionState } from "@/auth/sessionStore";
@@ -16,9 +17,12 @@ import { useAuthRedirect } from "@/auth/useAuthRedirect";
 function RootComponent() {
   useAuthRedirect();
   return (
-    <TrusteeSessionProvider>
-      <TrusteeShell />
-    </TrusteeSessionProvider>
+    <>
+      <RiskBanner />
+      <TrusteeSessionProvider>
+        <TrusteeShell />
+      </TrusteeSessionProvider>
+    </>
   );
 }
 
