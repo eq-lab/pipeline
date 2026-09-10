@@ -2,8 +2,6 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { RiskBanner, RISK_BANNER_TEXT } from "@pipeline/ui";
 
-// spec: docs/frontend/dashboard-components.md#riskbanner (#1231).
-
 describe("RiskBanner", () => {
   it("renders the exact risk-disclosure copy", () => {
     render(<RiskBanner />);
