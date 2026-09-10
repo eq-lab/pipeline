@@ -10,7 +10,8 @@
 use bigdecimal::BigDecimal;
 
 use pipeline_api::routes::dashboard::{
-    compute_summary, compute_tvl_series, compute_yield_series, net_apy, MAX_SAMPLES,
+    compute_summary, compute_tvl_history, compute_tvl_series, compute_yield_history,
+    compute_yield_series, net_apy, MAX_SAMPLES,
 };
 use shared::contract_logs_repo::{FlowEventRow, LifecycleRow, LoanSnapshotRow, YieldMintRow};
 use shared::loan_snapshot::{LoanSnapshot, LocationUpdateSnapshot, RepaymentSnapshot};
@@ -230,6 +231,61 @@ fn yield_final_point_equals_total_minted() {
     let last = series.last().unwrap();
     // 200 + 150 + 80 = 430
     assert_eq!(last.cumulative_yield, "430.000000");
+}
+
+// ── compute_tvl_history / compute_yield_history (max/min/average) ─────────────
+
+#[test]
+fn tvl_history_empty_flows_zero_stats() {
+    let result = compute_tvl_history(&[], 0, 10 * DAY, DAY);
+    assert!(result.series.is_empty());
+    assert_eq!(result.max, "0.000000");
+    assert_eq!(result.min, "0.000000");
+    assert_eq!(result.average, "0.000000");
+}
+
+#[test]
+fn tvl_history_stats_are_time_weighted_not_sample_averaged() {
+    // 100 on day 0, 50 more on day 5, sampled every 5 days over a 10-day window.
+    // V(t) = 100 for t in [0, 5), 150 for t in [5, 10] — a plain mean of the 3
+    // rendered samples (100, 150, 150) would give 133.33; the true time-weighted
+    // average over the window is (100*5 + 150*5) / 10 = 125.
+    let flows = vec![deposit(0, 100), deposit(5, 50)];
+    let result = compute_tvl_history(&flows, 0, 10 * DAY, 5 * DAY);
+    assert_eq!(result.max, "150.000000");
+    assert_eq!(result.min, "100.000000");
+    assert_eq!(result.average, "125.000000");
+}
+
+#[test]
+fn tvl_history_stats_reflect_a_withdrawal_dip() {
+    // deposit 100 on day 0, withdraw 30 on day 3, window [0, 5]:
+    // V(t) = 100 for t in [0, 3), 70 for t in [3, 5].
+    // average = (100*3 + 70*2) / 5 = 88.
+    let flows = vec![deposit(0, 100), withdrawal(3, 30)];
+    let result = compute_tvl_history(&flows, 0, 5 * DAY, 5 * DAY);
+    assert_eq!(result.max, "100.000000");
+    assert_eq!(result.min, "70.000000");
+    assert_eq!(result.average, "88.000000");
+}
+
+#[test]
+fn yield_history_empty_mints_zero_stats() {
+    let result = compute_yield_history(&[], 0, 10 * DAY, DAY);
+    assert!(result.series.is_empty());
+    assert_eq!(result.max, "0.000000");
+    assert_eq!(result.min, "0.000000");
+    assert_eq!(result.average, "0.000000");
+}
+
+#[test]
+fn yield_history_stats_are_time_weighted() {
+    // Same shape as the TVL time-weighting case: 100 minted day 0, 50 more day 5.
+    let mints = vec![yield_mint(0, 100), yield_mint(5, 50)];
+    let result = compute_yield_history(&mints, 0, 10 * DAY, 5 * DAY);
+    assert_eq!(result.max, "150.000000");
+    assert_eq!(result.min, "100.000000");
+    assert_eq!(result.average, "125.000000");
 }
 
 // ── net_apy (haircut) ─────────────────────────────────────────────────────────

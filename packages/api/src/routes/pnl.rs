@@ -14,7 +14,7 @@ use utoipa::{OpenApi, ToSchema};
 use crate::error::ApiError;
 use crate::formatting::iso_utc;
 use crate::intervals::{Interval, MAX_SAMPLES};
-use crate::routes::common::resolve_chain;
+use crate::routes::common::{resolve_chain, SeriesStat};
 use crate::routes::vouchers::normalise_wallet;
 use crate::AppState;
 use shared::chains::parse_chain_type;
@@ -41,7 +41,8 @@ pub fn router() -> Router<Arc<AppState>> {
         PositionHistoryQuery,
         Interval,
         PositionHistoryResponse,
-        PositionHistoryItem
+        PositionHistoryItem,
+        SeriesStat
     )),
     tags(
         (name = "PnL", description = "Staking profit and loss"),
@@ -245,6 +246,12 @@ pub struct PositionHistoryResponse {
     pub vault_address: Option<String>,
     pub interval: String,
     pub history: Vec<PositionHistoryItem>,
+    /// Max/min/time-weighted-average share balance over the window (same
+    /// carried-forward series as `history`, so it agrees with what the chart
+    /// renders regardless of `interval`).
+    pub shares_balance: SeriesStat,
+    /// Max/min/time-weighted-average cumulative realized PnL over the window.
+    pub cumulative_realized_pnl: SeriesStat,
 }
 
 /// Position history for a wallet, bucketed like `/v1/stats/prices`.
@@ -336,12 +343,16 @@ async fn get_position_history(
         .await?;
 
     let (vault_address, history) = build_history_series(&rows, query.interval, since, now);
+    let (shares_balance, cumulative_realized_pnl) =
+        compute_position_history_stats(&rows, query.interval, since, now);
 
     Ok(Json(PositionHistoryResponse {
         wallet,
         vault_address,
         interval: query.interval.as_str().to_owned(),
         history,
+        shares_balance,
+        cumulative_realized_pnl,
     }))
 }
 
@@ -384,13 +395,47 @@ pub fn build_history_series(
         return (None, Vec::new());
     };
 
+    let mut history = Vec::new();
+    walk_history_grid(rows, interval, window_start, now, |bucket, carried| {
+        history.push(PositionHistoryItem {
+            timestamp: iso_utc(&bucket),
+            shares_balance: carried
+                .map_or_else(|| "0".to_owned(), |r| r.shares_balance.to_string()),
+            avg_cost_basis: carried
+                .map_or_else(|| "0".to_owned(), |r| r.avg_buy_share_price.to_string()),
+            cumulative_realized_pnl: carried
+                .map_or_else(|| "0".to_owned(), |r| r.cumulative_realized_pnl.to_string()),
+        });
+    });
+
+    (Some(first.vault_address.clone()), history)
+}
+
+/// Walk the same grid `build_history_series` renders — bucket boundaries from
+/// `window_start` (or the first row) through `now`, truncated to `interval` —
+/// carrying the closing row at each grid point forward, and hand each
+/// `(bucket_timestamp, carried_row)` to `visit`.
+///
+/// Factored out so `compute_position_history_stats` integrates over exactly
+/// the values `build_history_series` renders, without duplicating the
+/// carry-forward pointer walk.
+fn walk_history_grid<'a>(
+    rows: &'a [PositionHistoryBucket],
+    interval: Interval,
+    window_start: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    mut visit: impl FnMut(DateTime<Utc>, Option<&'a PositionHistoryBucket>),
+) {
+    let Some(first) = rows.first() else {
+        return;
+    };
+
     // Align the grid to bucket boundaries so its instants coincide with the
     // query's `DATE_TRUNC`ed event buckets.
     let mut bucket = interval.truncate(window_start.unwrap_or(first.bucket));
     let end = interval.truncate(now);
     let step = interval.step();
 
-    let mut history = Vec::new();
     let mut carried: Option<&PositionHistoryBucket> = None;
     let mut next = 0;
 
@@ -405,18 +450,112 @@ pub fn build_history_series(
             next += 1;
         }
 
-        history.push(PositionHistoryItem {
-            timestamp: iso_utc(&bucket),
-            shares_balance: carried
-                .map_or_else(|| "0".to_owned(), |r| r.shares_balance.to_string()),
-            avg_cost_basis: carried
-                .map_or_else(|| "0".to_owned(), |r| r.avg_buy_share_price.to_string()),
-            cumulative_realized_pnl: carried
-                .map_or_else(|| "0".to_owned(), |r| r.cumulative_realized_pnl.to_string()),
-        });
+        visit(bucket, carried);
 
         bucket += step;
     }
+}
 
-    (Some(first.vault_address.clone()), history)
+/// Max/min/time-weighted-average of `shares_balance` and
+/// `cumulative_realized_pnl` over the same window and carry-forward series
+/// `build_history_series` renders as `history`.
+///
+/// Each grid value holds until the next grid point, except the last, which
+/// holds until `now` (real, not truncated to the grid) — so the average is the
+/// integral of the rendered series over `[window_start, now]` divided by that
+/// span, matching the `/v1/dashboard/*-history` convention.
+///
+/// Public so `packages/api/tests/positions_history.rs` can exercise it without
+/// the HTTP/DB layers.
+pub fn compute_position_history_stats(
+    rows: &[PositionHistoryBucket],
+    interval: Interval,
+    window_start: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> (SeriesStat, SeriesStat) {
+    let zero = BigDecimal::from(0);
+    let Some(first) = rows.first() else {
+        let z = SeriesStat {
+            max: zero.to_string(),
+            min: zero.to_string(),
+            average: zero.to_string(),
+        };
+        return (z.clone(), z);
+    };
+
+    let start = interval.truncate(window_start.unwrap_or(first.bucket));
+    let end = interval.truncate(now);
+    let step_secs = interval.step().num_seconds();
+    let total_secs = (now - start).num_seconds().max(0);
+
+    let mut shares_integral = zero.clone();
+    let mut shares_max: Option<BigDecimal> = None;
+    let mut shares_min: Option<BigDecimal> = None;
+    let mut shares_last = zero.clone();
+    let mut pnl_integral = zero.clone();
+    let mut pnl_max: Option<BigDecimal> = None;
+    let mut pnl_min: Option<BigDecimal> = None;
+    let mut pnl_last = zero.clone();
+
+    walk_history_grid(rows, interval, window_start, now, |bucket, carried| {
+        let shares = carried.map_or_else(|| zero.clone(), |r| r.shares_balance.clone());
+        let pnl = carried.map_or_else(|| zero.clone(), |r| r.cumulative_realized_pnl.clone());
+
+        // The last grid point holds until `now`, which may fall short of a
+        // full `step` past it; every earlier point holds for a full `step`.
+        let hold_secs = if bucket == end {
+            (now - bucket).num_seconds().max(0)
+        } else {
+            step_secs
+        };
+
+        shares_integral += &shares * BigDecimal::from(hold_secs);
+        pnl_integral += &pnl * BigDecimal::from(hold_secs);
+
+        shares_max = Some(shares_max.take().map_or_else(
+            || shares.clone(),
+            |m| if shares > m { shares.clone() } else { m },
+        ));
+        shares_min = Some(shares_min.take().map_or_else(
+            || shares.clone(),
+            |m| if shares < m { shares.clone() } else { m },
+        ));
+        pnl_max = Some(
+            pnl_max
+                .take()
+                .map_or_else(|| pnl.clone(), |m| if pnl > m { pnl.clone() } else { m }),
+        );
+        pnl_min = Some(
+            pnl_min
+                .take()
+                .map_or_else(|| pnl.clone(), |m| if pnl < m { pnl.clone() } else { m }),
+        );
+
+        shares_last = shares;
+        pnl_last = pnl;
+    });
+
+    let shares_average = if total_secs > 0 {
+        shares_integral / BigDecimal::from(total_secs)
+    } else {
+        shares_last
+    };
+    let pnl_average = if total_secs > 0 {
+        pnl_integral / BigDecimal::from(total_secs)
+    } else {
+        pnl_last
+    };
+
+    (
+        SeriesStat {
+            max: shares_max.unwrap_or(zero.clone()).to_string(),
+            min: shares_min.unwrap_or(zero.clone()).to_string(),
+            average: shares_average.to_string(),
+        },
+        SeriesStat {
+            max: pnl_max.unwrap_or(zero.clone()).to_string(),
+            min: pnl_min.unwrap_or(zero).to_string(),
+            average: pnl_average.to_string(),
+        },
+    )
 }

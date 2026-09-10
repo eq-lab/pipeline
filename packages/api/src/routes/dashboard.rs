@@ -6,9 +6,11 @@
 //!   outstanding in loans, current net APY to sPLUSD, loan-book yield, cumulative
 //!   yield total).
 //! - `GET /v1/dashboard/tvl-history?days&interval&chain_id` — running cumulative
-//!   TVL time series (`[{ timestamp, tvl }]`).
+//!   TVL time series plus `max`/`min`/`average` over the window
+//!   (`{ series: [{ timestamp, tvl }], max, min, average }`).
 //! - `GET /v1/dashboard/yield-history?days&interval&chain_id` — running cumulative
-//!   net yield minted time series (`[{ timestamp, cumulative_yield }]`).
+//!   net yield minted time series plus `max`/`min`/`average` over the window
+//!   (`{ series: [{ timestamp, cumulative_yield }], max, min, average }`).
 //!
 //! ## Data sources
 //!
@@ -109,6 +111,28 @@ pub struct YieldPoint {
     pub cumulative_yield: String,
 }
 
+/// Response for `GET /v1/dashboard/tvl-history`: the sampled series plus
+/// `max`/`min`/`average` (time-weighted) over the queried window, USDC
+/// (6-decimal strings).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TvlHistoryResponse {
+    pub series: Vec<TvlPoint>,
+    pub max: String,
+    pub min: String,
+    pub average: String,
+}
+
+/// Response for `GET /v1/dashboard/yield-history`: the sampled series plus
+/// `max`/`min`/`average` (time-weighted) over the queried window, USDC
+/// (6-decimal strings).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct YieldHistoryResponse {
+    pub series: Vec<YieldPoint>,
+    pub max: String,
+    pub min: String,
+    pub average: String,
+}
+
 /// OpenAPI doc bundle for the dashboard routes.
 #[derive(OpenApi)]
 #[openapi(
@@ -117,6 +141,8 @@ pub struct YieldPoint {
         DashboardSummaryResponse,
         TvlPoint,
         YieldPoint,
+        TvlHistoryResponse,
+        YieldHistoryResponse,
         DashboardSeriesQuery,
         Interval,
     )),
@@ -194,7 +220,7 @@ async fn get_summary(
         ("interval" = Option<String>, Query, description = "Sample interval: \"hourly\", \"daily\" (default), or \"weekly\""),
     ),
     responses(
-        (status = 200, description = "TVL time series", body = Vec<TvlPoint>),
+        (status = 200, description = "TVL time series plus max/min/average over the window", body = TvlHistoryResponse),
         (status = 400, description = "Too many samples — reduce `days` or use a coarser `interval`"),
         (status = 500, description = "Internal server error"),
     ),
@@ -203,7 +229,7 @@ async fn get_summary(
 async fn get_tvl_history(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DashboardSeriesQuery>,
-) -> Result<Json<Vec<TvlPoint>>, ApiError> {
+) -> Result<Json<TvlHistoryResponse>, ApiError> {
     let chain_id = resolve_chain(&state, query.chain_id);
     let step = query.interval.step_secs();
 
@@ -222,7 +248,7 @@ async fn get_tvl_history(
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match flows.iter().map(|r| r.block_timestamp).min() {
             Some(earliest) => earliest,
-            None => return Ok(Json(vec![])), // no flow events yet
+            None => return Ok(Json(empty_tvl_history())), // no flow events yet
         },
     };
 
@@ -234,7 +260,7 @@ async fn get_tvl_history(
         )));
     }
 
-    Ok(Json(compute_tvl_series(&flows, from, to, step)))
+    Ok(Json(compute_tvl_history(&flows, from, to, step)))
 }
 
 #[utoipa::path(
@@ -246,7 +272,7 @@ async fn get_tvl_history(
         ("interval" = Option<String>, Query, description = "Sample interval: \"hourly\", \"daily\" (default), or \"weekly\""),
     ),
     responses(
-        (status = 200, description = "Cumulative yield time series", body = Vec<YieldPoint>),
+        (status = 200, description = "Cumulative yield time series plus max/min/average over the window", body = YieldHistoryResponse),
         (status = 400, description = "Too many samples — reduce `days` or use a coarser `interval`"),
         (status = 500, description = "Internal server error"),
     ),
@@ -255,7 +281,7 @@ async fn get_tvl_history(
 async fn get_yield_history(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DashboardSeriesQuery>,
-) -> Result<Json<Vec<YieldPoint>>, ApiError> {
+) -> Result<Json<YieldHistoryResponse>, ApiError> {
     let chain_id = resolve_chain(&state, query.chain_id);
     let step = query.interval.step_secs();
 
@@ -274,7 +300,7 @@ async fn get_yield_history(
         Some(d) => to - i64::from(d) * SECS_PER_DAY,
         None => match mints.iter().map(|r| r.block_timestamp).min() {
             Some(earliest) => earliest,
-            None => return Ok(Json(vec![])), // no YieldMinted events yet
+            None => return Ok(Json(empty_yield_history())), // no YieldMinted events yet
         },
     };
 
@@ -286,7 +312,7 @@ async fn get_yield_history(
         )));
     }
 
-    Ok(Json(compute_yield_series(&mints, from, to, step)))
+    Ok(Json(compute_yield_history(&mints, from, to, step)))
 }
 
 // ── Compute ──────────────────────────────────────────────────────────────────
@@ -479,7 +505,148 @@ pub fn compute_yield_series(
     series
 }
 
+/// `TvlHistoryResponse` for a chain with no flow events yet — matches the
+/// zero-valued convention `compute_summary` uses for an empty book.
+fn empty_tvl_history() -> TvlHistoryResponse {
+    let zero = base6_to_decimal_string(&BigDecimal::from(0));
+    TvlHistoryResponse {
+        series: vec![],
+        max: zero.clone(),
+        min: zero.clone(),
+        average: zero,
+    }
+}
+
+/// `YieldHistoryResponse` for a chain with no `YieldMinted` events yet.
+fn empty_yield_history() -> YieldHistoryResponse {
+    let zero = base6_to_decimal_string(&BigDecimal::from(0));
+    YieldHistoryResponse {
+        series: vec![],
+        max: zero.clone(),
+        min: zero.clone(),
+        average: zero,
+    }
+}
+
+/// `compute_tvl_series` plus `max`/`min`/`average` over `[from, to]`, computed
+/// exactly from the underlying flow events (not the — possibly coarser —
+/// sampled `series`), so the stats don't blur with a wide `interval`.
+///
+/// Public so `packages/api/tests/dashboard.rs` can exercise it without the
+/// HTTP/DB layers.
+pub fn compute_tvl_history(flows: &[FlowEventRow], from: i64, to: i64, step: i64) -> TvlHistoryResponse {
+    let series = compute_tvl_series(flows, from, to, step);
+
+    let deltas: Vec<(i64, BigDecimal)> = flows
+        .iter()
+        .map(|f| {
+            let delta = if f.kind == "deposit" {
+                f.amount.clone()
+            } else {
+                -f.amount.clone()
+            };
+            (f.block_timestamp, delta)
+        })
+        .collect();
+    let stat = window_stats(&deltas, from, to);
+
+    TvlHistoryResponse {
+        series,
+        max: base6_to_decimal_string(&stat.max),
+        min: base6_to_decimal_string(&stat.min),
+        average: base6_to_decimal_string(&stat.average),
+    }
+}
+
+/// `compute_yield_series` plus `max`/`min`/`average` over `[from, to]`, computed
+/// exactly from the underlying `YieldMinted` events. See `compute_tvl_history`.
+///
+/// Public so `packages/api/tests/dashboard.rs` can exercise it without the
+/// HTTP/DB layers.
+pub fn compute_yield_history(
+    mints: &[YieldMintRow],
+    from: i64,
+    to: i64,
+    step: i64,
+) -> YieldHistoryResponse {
+    let series = compute_yield_series(mints, from, to, step);
+
+    let deltas: Vec<(i64, BigDecimal)> = mints
+        .iter()
+        .map(|m| (m.block_timestamp, m.s_plusd_amount.clone()))
+        .collect();
+    let stat = window_stats(&deltas, from, to);
+
+    YieldHistoryResponse {
+        series,
+        max: base6_to_decimal_string(&stat.max),
+        min: base6_to_decimal_string(&stat.min),
+        average: base6_to_decimal_string(&stat.average),
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Max/min/time-weighted-average of a cumulative step function over
+/// `[from, to]`, given `(timestamp, delta)` events sorted ascending by
+/// timestamp (ties are fine — they fold in together, with zero width between
+/// them). The step function is right-continuous: its value at `t` is the sum
+/// of every delta with `timestamp <= t`, matching `compute_tvl_series` /
+/// `compute_yield_series`.
+///
+/// `average` is the integral of the step function over `[from, to]` divided by
+/// `to - from` (falls back to the closing value when `to <= from`).
+fn window_stats(events: &[(i64, BigDecimal)], from: i64, to: i64) -> SeriesStatValues {
+    let zero = BigDecimal::from(0);
+
+    // Fold events at or before `from` into the starting value — they contribute
+    // no width to the integral, only the value the window opens with.
+    let mut idx = 0;
+    let mut running = zero.clone();
+    while idx < events.len() && events[idx].0 <= from {
+        running += &events[idx].1;
+        idx += 1;
+    }
+
+    let mut max = running.clone();
+    let mut min = running.clone();
+    let mut integral = zero.clone();
+    let mut prev_t = from;
+
+    while idx < events.len() && events[idx].0 <= to {
+        let (t, delta) = &events[idx];
+        integral += &running * BigDecimal::from(t - prev_t);
+        running += delta;
+        if running > max {
+            max = running.clone();
+        }
+        if running < min {
+            min = running.clone();
+        }
+        prev_t = *t;
+        idx += 1;
+    }
+    integral += &running * BigDecimal::from(to - prev_t);
+
+    let average = if to > from {
+        integral / BigDecimal::from(to - from)
+    } else {
+        running
+    };
+
+    SeriesStatValues { max, min, average }
+}
+
+/// Unformatted counterpart of `SeriesStat` — callers format each field with
+/// the series' own unit convention (e.g. `base6_to_decimal_string`) before
+/// building the public response.
+struct SeriesStatValues {
+    max: BigDecimal,
+    min: BigDecimal,
+    average: BigDecimal,
+}
+
+
 
 /// Build the sample grid: `from, from+step, …, to`.
 /// Always includes `to` as the final point. Deduplicates in case `to` falls

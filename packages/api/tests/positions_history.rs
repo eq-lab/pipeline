@@ -16,7 +16,7 @@ use bigdecimal::BigDecimal;
 use chrono::{DateTime, TimeZone, Utc};
 
 use pipeline_api::intervals::Interval;
-use pipeline_api::routes::pnl::build_history_series;
+use pipeline_api::routes::pnl::{build_history_series, compute_position_history_stats};
 use shared::position_repo::PositionHistoryBucket;
 
 const DAY: i64 = 86_400;
@@ -56,6 +56,57 @@ fn empty_history_stays_empty_and_names_no_vault() {
     let (vault, history) = build_history_series(&[], Interval::Daily, Some(ts(0)), ts(10 * DAY));
     assert_eq!(vault, None);
     assert!(history.is_empty());
+}
+
+#[test]
+fn empty_history_zero_stats() {
+    let (shares, pnl) = compute_position_history_stats(&[], Interval::Daily, Some(ts(0)), ts(10 * DAY));
+    assert_eq!((shares.max.as_str(), shares.min.as_str(), shares.average.as_str()), ("0", "0", "0"));
+    assert_eq!((pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()), ("0", "0", "0"));
+}
+
+// ── Stats (max/min/time-weighted-average) ───────────────────────────────────
+
+#[test]
+fn stats_are_time_weighted_over_the_rendered_grid_not_a_plain_mean() {
+    // Same fixture as `quiet_buckets_carry_the_previous_closing_balance`:
+    // shares hold 100 for days 1-4, then 60 from day 5 on; window [day1, day6].
+    // The rendered grid has 6 points (100,100,100,100,60,60) — a plain mean
+    // would be 90 — but each of the first 5 points holds for a full day and the
+    // last (`now`, exactly on a grid boundary) holds for zero time, so the true
+    // time-weighted average is (100*4 + 60*1) / 5 = 92.
+    let rows = vec![bucket(DAY, 100, "1.0", 0), bucket(5 * DAY, 60, "1.0", 8)];
+
+    let (shares, pnl) =
+        compute_position_history_stats(&rows, Interval::Daily, Some(ts(DAY)), ts(6 * DAY));
+
+    assert_eq!(shares.max, "100");
+    assert_eq!(shares.min, "60");
+    assert_eq!(shares.average, "92");
+
+    // cumulative_realized_pnl: 0 for days 1-4, 8 from day 5 on.
+    // average = (0*4 + 8*1) / 5 = 1.6
+    assert_eq!(pnl.max, "8");
+    assert_eq!(pnl.min, "0");
+    assert_eq!(pnl.average, "1.6");
+}
+
+#[test]
+fn stats_agree_with_the_rendered_history_series() {
+    // Whatever `build_history_series` renders is exactly what the stats
+    // integrate over — same rows, same window.
+    let rows = vec![bucket(DAY, 60, "1.25", 8)];
+    let interval = Interval::Daily;
+    let window_start = Some(ts(DAY));
+    let now = ts(3 * DAY);
+
+    let (_, history) = build_history_series(&rows, interval, window_start, now);
+    let (shares, pnl) = compute_position_history_stats(&rows, interval, window_start, now);
+
+    assert!(history.iter().all(|i| i.shares_balance == "60"));
+    assert_eq!((shares.max.as_str(), shares.min.as_str(), shares.average.as_str()), ("60", "60", "60"));
+    assert!(history.iter().all(|i| i.cumulative_realized_pnl == "8"));
+    assert_eq!((pnl.max.as_str(), pnl.min.as_str(), pnl.average.as_str()), ("8", "8", "8"));
 }
 
 // ── Gap fill ─────────────────────────────────────────────────────────────────
