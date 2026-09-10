@@ -404,7 +404,7 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
     vi.clearAllMocks();
   });
 
-  it("derives tvlAxis from the served tvl-history max/average — no rounding", async () => {
+  it("derives tvlAxis from the served tvl-history max with a fixed max/2 middle tick", async () => {
     const { result } = renderHook(() => useYieldHistoryPanel(), {
       wrapper: makeWrapper(),
     });
@@ -415,13 +415,12 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
 
     expect(result.current.tvlAxis).toEqual({
       maxLabel: "$43M",
-      avgLabel: "$24M",
-      avgFraction: 24_380_000 / 43_140_000,
+      midLabel: "$22M",
       bottomLabel: "$0",
     });
   });
 
-  it("derives yieldAxis from the served yield-history max/average — no rounding", async () => {
+  it("derives yieldAxis from the served yield-history max with a fixed max/2 middle tick", async () => {
     const { result } = renderHook(() => useYieldHistoryPanel(), {
       wrapper: makeWrapper(),
     });
@@ -432,8 +431,7 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
 
     expect(result.current.yieldAxis).toEqual({
       maxLabel: "$43K",
-      avgLabel: "$39K",
-      avgFraction: 38_527.068576 / 43_193.947876,
+      midLabel: "$22K",
       bottomLabel: "$0",
     });
   });

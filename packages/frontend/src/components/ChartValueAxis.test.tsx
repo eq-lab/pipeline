@@ -3,47 +3,33 @@ import { render, screen } from "@testing-library/react";
 import { ChartValueAxis } from "./ChartValueAxis";
 
 describe("ChartValueAxis", () => {
-  it("renders the three labels in top/avg/bottom order", () => {
-    render(
-      <ChartValueAxis
-        maxLabel="$23M"
-        avgLabel="$18M"
-        avgFraction={0.8}
-        bottomLabel="$0"
-      />,
-    );
+  it("renders the three labels in top/middle/bottom order", () => {
+    render(<ChartValueAxis maxLabel="$23M" midLabel="$12M" bottomLabel="$0" />);
     expect(screen.getByTestId("chart-value-axis-max")).toHaveTextContent(
       "$23M",
     );
-    expect(screen.getByTestId("chart-value-axis-avg")).toHaveTextContent(
-      "$18M",
+    expect(screen.getByTestId("chart-value-axis-mid")).toHaveTextContent(
+      "$12M",
     );
     expect(screen.getByTestId("chart-value-axis-bottom")).toHaveTextContent(
       "$0",
     );
   });
 
-  it("positions the average label proportionally from the top, not at 50%", () => {
-    render(
-      <ChartValueAxis
-        maxLabel="$100"
-        avgLabel="$90"
-        avgFraction={0.9}
-        bottomLabel="$0"
-      />,
+  it("distributes the labels with justify-between — the middle tick is fixed, not proportional", () => {
+    const { container } = render(
+      <ChartValueAxis maxLabel="$100" midLabel="$50" bottomLabel="$0" />,
     );
-    const avg = screen.getByTestId("chart-value-axis-avg");
-    expect(avg.style.top).toBe("10%");
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toContain("justify-between");
+    expect(
+      screen.getByTestId("chart-value-axis-mid").getAttribute("style"),
+    ).toBeNull();
   });
 
   it("uses the caption + ink-muted tokens and the 32px column structure", () => {
     const { container } = render(
-      <ChartValueAxis
-        maxLabel="$1K"
-        avgLabel="$500"
-        avgFraction={0.5}
-        bottomLabel="$0"
-      />,
+      <ChartValueAxis maxLabel="$1K" midLabel="$500" bottomLabel="$0" />,
     );
     const root = container.firstChild as HTMLElement;
     expect(root.className).toContain("w-[32px]");
@@ -54,17 +40,5 @@ describe("ChartValueAxis", () => {
     expect(max.className).toContain(
       "text-[color:var(--color-pipeline-ink-muted)]",
     );
-  });
-
-  it("renders '—' for a missing average without throwing", () => {
-    render(
-      <ChartValueAxis
-        maxLabel="$23M"
-        avgLabel="—"
-        avgFraction={0.5}
-        bottomLabel="$0"
-      />,
-    );
-    expect(screen.getByTestId("chart-value-axis-avg")).toHaveTextContent("—");
   });
 });

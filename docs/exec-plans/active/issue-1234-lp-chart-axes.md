@@ -136,6 +136,20 @@ Land step 1 even if the axis design is still being settled.
   dev server with HMR. Verify shapes with `curl` (as above) and ask the user to hard-refresh and
   report the Network tab.
 
+## Revision (2026-09-10, later user change — supersedes resolutions 1 and 3 below)
+
+- **Middle Y tick is a fixed `(0 + max) / 2` = `max/2`, rendered at the geometric middle**
+  (`justify-between`), not the served `average` and not proportionally positioned. The served
+  `average` (and `min`) stay typed on the response interfaces but are consumed nowhere.
+- **Mobile polish (no Figma mobile frames exist; judgment-based):** the TVL plot is
+  `h-[216px] md:h-[240px]` so the mobile axis block reoccupies the pre-#1234 240px footprint
+  inside the fixed 404px card; `ChartDatesRow` shows only the first/middle/last labels below `md`
+  (`hidden md:block` on the 2nd/4th), labels are content-sized with `max-w-[20%]` (untruncated
+  cross-year `MMM d 'YY` forms when space allows).
+- **Tooltip fix (user-reported):** 1y/all periods' tooltip format changed from `Month YYYY` to
+  the full date, plus `, HH:MM` when the served timestamp carries a non-midnight time
+  (`FormatMode` `"dateAuto"` replaces `"month"` in `usePortfolioChart.ts`).
+
 ## Resolutions (2026-09-10, from the user)
 
 All six questions below are settled; implement accordingly. Where a resolution contradicts an

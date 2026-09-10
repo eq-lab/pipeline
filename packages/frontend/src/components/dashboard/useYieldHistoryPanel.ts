@@ -152,28 +152,20 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     };
   }
 
-  // ── Y-axis domains — served max/average, no rounding (issue #1234) ──────────
+  // ── Y-axis domains — served max, middle tick fixed at max/2 (issue #1234) ───
   // spec: docs/frontend/dashboard-components.md#chartvalueaxis
 
   const tvlMax =
     tvlHistoryQuery.data?.max != null
       ? parseFloat(tvlHistoryQuery.data.max)
       : null;
-  const tvlAvg =
-    tvlHistoryQuery.data?.average != null
-      ? parseFloat(tvlHistoryQuery.data.average)
-      : null;
-  const tvlAxis = computeAxisTicks(tvlMax, tvlAvg);
+  const tvlAxis = computeAxisTicks(tvlMax);
 
   const yieldMax =
     yieldHistoryQuery.data?.max != null
       ? parseFloat(yieldHistoryQuery.data.max)
       : null;
-  const yieldAvg =
-    yieldHistoryQuery.data?.average != null
-      ? parseFloat(yieldHistoryQuery.data.average)
-      : null;
-  const yieldAxis = computeAxisTicks(yieldMax, yieldAvg);
+  const yieldAxis = computeAxisTicks(yieldMax);
 
   // ── Derive chart data ───────────────────────────────────────────────────────
   // Bars normalise against the served `max` (domain-true), not the sampled

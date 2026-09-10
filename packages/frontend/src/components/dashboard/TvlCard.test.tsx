@@ -15,8 +15,7 @@ const BARS: YieldBarPoint[] = [
 
 const AXIS: AxisTicks = {
   maxLabel: "$23M",
-  avgLabel: "$18M",
-  avgFraction: 0.8,
+  midLabel: "$12M",
   bottomLabel: "$0",
 };
 
@@ -72,13 +71,13 @@ describe("TvlCard — endpoint dates row (#1133, widened to 5 labels by #1234)",
 });
 
 describe("TvlCard — Y axis (#1234)", () => {
-  it("renders the three Y ticks (top/avg/$0) with the Figma formatting", () => {
+  it("renders the three Y ticks (top/max÷2/$0) with the Figma formatting", () => {
     renderCard(BARS);
     expect(screen.getByTestId("chart-value-axis-max")).toHaveTextContent(
       "$23M",
     );
-    expect(screen.getByTestId("chart-value-axis-avg")).toHaveTextContent(
-      "$18M",
+    expect(screen.getByTestId("chart-value-axis-mid")).toHaveTextContent(
+      "$12M",
     );
     expect(screen.getByTestId("chart-value-axis-bottom")).toHaveTextContent(
       "$0",

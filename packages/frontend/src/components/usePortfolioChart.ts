@@ -9,7 +9,7 @@ import { useCallback, useRef, useState } from "react";
 
 export const N = 100;
 
-export type FormatMode = "datetime" | "date" | "month";
+export type FormatMode = "datetime" | "date" | "dateAuto";
 
 export interface PeriodConfig {
   days: number;
@@ -20,8 +20,8 @@ export const PERIODS: Record<string, PeriodConfig> = {
   "7d": { days: 7, fmt: "datetime" },
   "1m": { days: 30, fmt: "date" },
   "3m": { days: 90, fmt: "date" },
-  "1y": { days: 365, fmt: "month" },
-  all: { days: 730, fmt: "month" },
+  "1y": { days: 365, fmt: "dateAuto" },
+  all: { days: 730, fmt: "dateAuto" },
 };
 
 export const DEFAULT_PERIOD_ID = "all";
@@ -67,8 +67,10 @@ export function formatTime(ts: number, fmt: FormatMode): string {
       return `${month} ${day}, ${hh}:${mm}`;
     case "date":
       return `${month} ${day}, ${year}`;
-    case "month":
-      return `${month} ${year}`;
+    case "dateAuto":
+      return d.getHours() === 0 && d.getMinutes() === 0
+        ? `${month} ${day}, ${year}`
+        : `${month} ${day}, ${year}, ${hh}:${mm}`;
   }
 }
 

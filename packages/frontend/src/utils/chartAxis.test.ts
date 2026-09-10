@@ -1,9 +1,9 @@
 /**
  * Tests for `src/utils/chartAxis.ts`.
  *
- * Per the 2026-09-10 resolutions on issue #1234: no domain rounding — the top
- * tick is the raw served `max`, compact zero-decimal; the middle tick is the
- * raw served `average`, positioned proportionally (`average / max`).
+ * Per the 2026-09-10 change on issue #1234: no domain rounding — the top tick
+ * is the raw served `max`, compact zero-decimal; the middle tick is a fixed
+ * `max/2`; the served `average` is not consumed.
  */
 import { describe, it, expect } from "vitest";
 import { computeAxisTicks, formatAxisTickUsd } from "./chartAxis";
@@ -42,51 +42,31 @@ describe("formatAxisTickUsd", () => {
 });
 
 describe("computeAxisTicks", () => {
-  it("returns raw served max/average — no ceiling or rounding to a domain", () => {
-    const ticks = computeAxisTicks(23_140_000, 18_450_060.931931);
-    expect(ticks).toEqual({
+  it("returns raw served max with a fixed max/2 middle tick", () => {
+    expect(computeAxisTicks(23_140_000)).toEqual({
       maxLabel: "$23M",
-      avgLabel: "$18M",
-      avgFraction: 18_450_060.931931 / 23_140_000,
+      midLabel: "$12M",
       bottomLabel: "$0",
     });
   });
 
-  it("positions the average tick proportionally, not at the geometric middle", () => {
-    const ticks = computeAxisTicks(100, 90)!;
-    expect(ticks.avgFraction).toBeCloseTo(0.9, 5);
+  it("halves sub-thousand maxima to whole dollars", () => {
+    expect(computeAxisTicks(1000)).toEqual({
+      maxLabel: "$1K",
+      midLabel: "$500",
+      bottomLabel: "$0",
+    });
   });
 
   it("returns null when max is missing, non-finite, or non-positive", () => {
-    expect(computeAxisTicks(null, 50)).toBeNull();
-    expect(computeAxisTicks(undefined, 50)).toBeNull();
-    expect(computeAxisTicks(NaN, 50)).toBeNull();
-    expect(computeAxisTicks(0, 0)).toBeNull();
-    expect(computeAxisTicks(-10, 5)).toBeNull();
-  });
-
-  it("renders '—' for the average tick when average is missing, keeping the max/bottom ticks", () => {
-    const ticks = computeAxisTicks(1000, null)!;
-    expect(ticks.maxLabel).toBe("$1K");
-    expect(ticks.avgLabel).toBe("—");
-    expect(ticks.bottomLabel).toBe("$0");
-  });
-
-  it("clamps an average above max to fraction 1, never off the plot", () => {
-    // Window stats and sampled series can diverge (documented risk) — an
-    // average above max must not push the tick off the plot.
-    const ticks = computeAxisTicks(100, 150)!;
-    expect(ticks.avgFraction).toBe(1);
-    expect(ticks.avgLabel).toBe("$150");
-  });
-
-  it("treats a negative average as invalid — same fallback as missing", () => {
-    const ticks = computeAxisTicks(100, -5)!;
-    expect(ticks.avgLabel).toBe("—");
-    expect(ticks.avgFraction).toBe(0.5);
+    expect(computeAxisTicks(null)).toBeNull();
+    expect(computeAxisTicks(undefined)).toBeNull();
+    expect(computeAxisTicks(NaN)).toBeNull();
+    expect(computeAxisTicks(0)).toBeNull();
+    expect(computeAxisTicks(-10)).toBeNull();
   });
 
   it("bottom tick is always literal $0, never the served min", () => {
-    expect(computeAxisTicks(100, 50)!.bottomLabel).toBe("$0");
+    expect(computeAxisTicks(100)!.bottomLabel).toBe("$0");
   });
 });

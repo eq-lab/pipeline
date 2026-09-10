@@ -232,8 +232,7 @@ export const PortfolioPlaceholderCard = React.forwardRef<
           {series !== null && yAxis !== null && (
             <ChartValueAxis
               maxLabel={yAxis.maxLabel}
-              avgLabel={yAxis.avgLabel}
-              avgFraction={yAxis.avgFraction}
+              midLabel={yAxis.midLabel}
               bottomLabel={yAxis.bottomLabel}
             />
           )}

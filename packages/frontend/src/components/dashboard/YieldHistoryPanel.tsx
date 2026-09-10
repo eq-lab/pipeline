@@ -165,8 +165,7 @@ export function YieldHistoryPanel() {
                   {yieldAxis !== null && (
                     <ChartValueAxis
                       maxLabel={yieldAxis.maxLabel}
-                      avgLabel={yieldAxis.avgLabel}
-                      avgFraction={yieldAxis.avgFraction}
+                      midLabel={yieldAxis.midLabel}
                       bottomLabel={yieldAxis.bottomLabel}
                     />
                   )}

@@ -152,13 +152,12 @@ export function TvlCard({
             {tvlAxis !== null && (
               <ChartValueAxis
                 maxLabel={tvlAxis.maxLabel}
-                avgLabel={tvlAxis.avgLabel}
-                avgFraction={tvlAxis.avgFraction}
+                midLabel={tvlAxis.midLabel}
                 bottomLabel={tvlAxis.bottomLabel}
               />
             )}
             <div
-              className="h-[240px] flex-1 overflow-hidden"
+              className="h-[216px] flex-1 overflow-hidden md:h-[240px]"
               data-testid="dashboard-tvl-chart-container"
             >
               <YieldBarChart
@@ -182,7 +181,7 @@ export function TvlCard({
         </div>
       ) : (
         <div
-          className="mt-auto h-[240px]"
+          className="mt-auto h-[216px] md:h-[240px]"
           aria-hidden="true"
           data-testid="dashboard-tvl-chart-placeholder"
         />

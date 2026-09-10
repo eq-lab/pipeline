@@ -254,15 +254,14 @@ describe("PortfolioPlaceholderCard — Y axis (#1234)", () => {
 
   const AXIS: AxisTicks = {
     maxLabel: "$1K",
-    avgLabel: "$500",
-    avgFraction: 0.5,
+    midLabel: "$500",
     bottomLabel: "$0",
   };
 
-  it("renders the Y ticks from the passed-in axis (derived from shares_balance.max/average)", () => {
+  it("renders the Y ticks from the passed-in axis (derived from shares_balance.max)", () => {
     renderCard({ series: SERIES, yAxis: AXIS });
     expect(screen.getByTestId("chart-value-axis-max")).toHaveTextContent("$1K");
-    expect(screen.getByTestId("chart-value-axis-avg")).toHaveTextContent(
+    expect(screen.getByTestId("chart-value-axis-mid")).toHaveTextContent(
       "$500",
     );
     expect(screen.getByTestId("chart-value-axis-bottom")).toHaveTextContent(
@@ -310,9 +309,11 @@ describe("buildSeries (#1138)", () => {
   });
 });
 
-describe("tooltip timestamp format per period (#1223)", () => {
-  function hoverWithSeries(activePeriodId: string) {
-    const base = Date.UTC(2026, 8, 21, 14, 13);
+describe("tooltip timestamp format per period (#1223, #1234 revision)", () => {
+  function hoverWithSeries(
+    activePeriodId: string,
+    base = Date.UTC(2026, 8, 21, 14, 13),
+  ) {
     const timestamps = Array.from(
       { length: 10 },
       (_, i) => base - (9 - i) * 3_600_000,
@@ -358,9 +359,19 @@ describe("tooltip timestamp format per period (#1223)", () => {
     expect(text).not.toMatch(/\d{2}:\d{2}/);
   });
 
-  it.each(["1y", "all"])("%s shows month and year (by design)", (id) => {
-    const text = hoverWithSeries(id);
-    expect(text).toContain("September 2026");
-    expect(text).not.toContain("September 21");
-  });
+  it.each(["1y", "all"])(
+    "%s shows the full date plus the time the served timestamp carries",
+    (id) => {
+      expect(hoverWithSeries(id)).toContain("September 21, 2026, 14:13");
+    },
+  );
+
+  it.each(["1y", "all"])(
+    "%s shows the full date with no time for a midnight (daily-bucket) timestamp",
+    (id) => {
+      const text = hoverWithSeries(id, Date.UTC(2026, 8, 22, 0, 0));
+      expect(text).toContain("September 22, 2026");
+      expect(text).not.toMatch(/\d{2}:\d{2}/);
+    },
+  );
 });

@@ -1,10 +1,10 @@
 // spec: docs/frontend/dashboard-components.md#chartvalueaxis (Y-axis domain
-// rule per the 2026-09-10 resolutions on issue #1234 — no domain rounding).
+// rule per the 2026-09-10 change on issue #1234 — raw served max, middle tick
+// fixed at max/2, served average unused).
 
 export interface AxisTicks {
   maxLabel: string;
-  avgLabel: string;
-  avgFraction: number;
+  midLabel: string;
   bottomLabel: string;
 }
 
@@ -20,19 +20,11 @@ export function formatAxisTickUsd(value: number): string {
 
 export function computeAxisTicks(
   max: number | null | undefined,
-  average: number | null | undefined,
 ): AxisTicks | null {
   if (max == null || !Number.isFinite(max) || max <= 0) return null;
-  const maxLabel = formatAxisTickUsd(max);
-  const bottomLabel = formatAxisTickUsd(0);
-  if (average == null || !Number.isFinite(average) || average < 0) {
-    return { maxLabel, avgLabel: "—", avgFraction: 0.5, bottomLabel };
-  }
-  const avgFraction = Math.min(1, Math.max(0, average / max));
   return {
-    maxLabel,
-    avgLabel: formatAxisTickUsd(average),
-    avgFraction,
-    bottomLabel,
+    maxLabel: formatAxisTickUsd(max),
+    midLabel: formatAxisTickUsd(max / 2),
+    bottomLabel: formatAxisTickUsd(0),
   };
 }

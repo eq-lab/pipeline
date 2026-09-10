@@ -1,5 +1,6 @@
 // spec: docs/frontend/dashboard-components.md#chartdatesrow (X-axis row,
-// Figma nodes 6002:9267 / 6002:9279, #1133; widened to 5 labels per #1234).
+// Figma nodes 6002:9267 / 6002:9279, #1133; widened to 5 labels per #1234 —
+// below md only the first/middle/last render, per the mobile-polish decision).
 
 const labelClasses = [
   "font-[family-name:var(--font-body)]",
@@ -7,7 +8,7 @@ const labelClasses = [
   "leading-[var(--text-pipeline-caption--line-height)]",
   "font-normal",
   "text-[color:var(--color-pipeline-ink-muted)]",
-  "w-[44px] overflow-hidden text-ellipsis whitespace-nowrap",
+  "max-w-[20%] overflow-hidden text-ellipsis whitespace-nowrap",
 ].join(" ");
 
 export function ChartDatesRow({ labels }: { labels: string[] }) {
@@ -23,8 +24,13 @@ export function ChartDatesRow({ labels }: { labels: string[] }) {
             : i === labels.length - 1
               ? "text-right"
               : "text-center";
+        const isEndpointOrCentre =
+          i === 0 ||
+          i === labels.length - 1 ||
+          i === Math.floor(labels.length / 2);
+        const visibility = isEndpointOrCentre ? "" : "hidden md:block";
         return (
-          <span key={i} className={`${labelClasses} ${align}`}>
+          <span key={i} className={`${labelClasses} ${align} ${visibility}`}>
             {label}
           </span>
         );
