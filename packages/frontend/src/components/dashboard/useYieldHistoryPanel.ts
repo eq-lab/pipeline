@@ -144,7 +144,7 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
 
   // Cumulative yield bars from yield-history series
   const cumulativeBars = pointsToBars(
-    (yieldHistoryQuery.data ?? []).map((p) => ({
+    (yieldHistoryQuery.data?.series ?? []).map((p) => ({
       timestamp: p.timestamp,
       value: p.cumulative_yield,
     })),
@@ -152,7 +152,7 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
 
   // TVL bars from tvl-history series
   const tvlBars = pointsToBars(
-    (tvlHistoryQuery.data ?? []).map((p) => ({
+    (tvlHistoryQuery.data?.series ?? []).map((p) => ({
       timestamp: p.timestamp,
       value: p.tvl,
     })),

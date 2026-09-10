@@ -105,6 +105,10 @@ function makeWrapper() {
   return wrapper;
 }
 
+function envelope<T>(series: T[]) {
+  return { series, max: "0.000000", min: "0.000000", average: "0.000000" };
+}
+
 function seedMockKeys(
   summary: DashboardSummary = SUMMARY_FIXTURE,
   tvlHistory: TvlPoint[] = TVL_HISTORY_FIXTURE,
@@ -116,11 +120,11 @@ function seedMockKeys(
   );
   localStorage.setItem(
     "pipeline.mock.api.GET./v1/dashboard/tvl-history",
-    JSON.stringify(tvlHistory),
+    JSON.stringify(envelope(tvlHistory)),
   );
   localStorage.setItem(
     "pipeline.mock.api.GET./v1/dashboard/yield-history",
-    JSON.stringify(yieldHistory),
+    JSON.stringify(envelope(yieldHistory)),
   );
 }
 

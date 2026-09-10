@@ -109,12 +109,14 @@ export type {
 export { useDashboardTvlHistory } from "./useDashboardTvlHistory";
 export type {
   TvlPoint,
+  TvlHistoryResponse,
   UseDashboardTvlHistoryParams,
   UseDashboardTvlHistoryResult,
 } from "./useDashboardTvlHistory";
 export { useDashboardYieldHistory } from "./useDashboardYieldHistory";
 export type {
   YieldPoint,
+  YieldHistoryResponse,
   UseDashboardYieldHistoryParams,
   UseDashboardYieldHistoryResult,
 } from "./useDashboardYieldHistory";

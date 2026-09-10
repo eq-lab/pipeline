@@ -13,7 +13,7 @@ import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useDashboardTvlHistory } from "./useDashboardTvlHistory";
-import type { TvlPoint } from "./useDashboardTvlHistory";
+import type { TvlHistoryResponse } from "./useDashboardTvlHistory";
 
 // ── Mock @/wallet ─────────────────────────────────────────────────────────────
 
@@ -49,13 +49,23 @@ vi.mock("@/lib/env", () => ({
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const FIXTURE_WITH_DATA: TvlPoint[] = [
-  { timestamp: "2025-01-01T00:00:00Z", tvl: "10000000.000000" },
-  { timestamp: "2025-01-08T00:00:00Z", tvl: "20000000.000000" },
-  { timestamp: "2025-01-15T00:00:00Z", tvl: "43140000.000000" },
-];
+const FIXTURE_WITH_DATA: TvlHistoryResponse = {
+  series: [
+    { timestamp: "2025-01-01T00:00:00Z", tvl: "10000000.000000" },
+    { timestamp: "2025-01-08T00:00:00Z", tvl: "20000000.000000" },
+    { timestamp: "2025-01-15T00:00:00Z", tvl: "43140000.000000" },
+  ],
+  max: "43140000.000000",
+  min: "10000000.000000",
+  average: "24380000.000000",
+};
 
-const FIXTURE_EMPTY: TvlPoint[] = [];
+const FIXTURE_EMPTY: TvlHistoryResponse = {
+  series: [],
+  max: "0.000000",
+  min: "0.000000",
+  average: "0.000000",
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,7 +115,7 @@ describe("useDashboardTvlHistory — mock-key path", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns empty array from mock key", async () => {
+  it("returns empty envelope from mock key", async () => {
     localStorage.setItem(
       "pipeline.mock.api.GET./v1/dashboard/tvl-history",
       JSON.stringify(FIXTURE_EMPTY),
@@ -117,7 +127,7 @@ describe("useDashboardTvlHistory — mock-key path", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([]);
+      expect(result.current.data).toEqual(FIXTURE_EMPTY);
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
