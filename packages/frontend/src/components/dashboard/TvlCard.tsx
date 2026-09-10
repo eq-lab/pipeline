@@ -6,8 +6,10 @@
  */
 import { YieldBarChart } from "./YieldBarChart";
 import { ChartDatesRow } from "../ChartDatesRow";
-import { formatAxisDateRange } from "@/utils/formatDate";
+import { ChartValueAxis } from "../ChartValueAxis";
+import { sampleAxisDates } from "@/utils/formatDate";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
+import type { AxisTicks } from "@/utils/chartAxis";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,8 @@ export interface TvlCardProps {
   deployedRatio: number | null;
   /** Pre-computed TVL bar chart data, or null when empty. */
   tvlBars: YieldBarPoint[] | null;
+  /** Y-axis ticks, or null (no axis rendered). */
+  tvlAxis: AxisTicks | null;
 }
 
 // ── Shared style classes ──────────────────────────────────────────────────────
@@ -53,6 +57,7 @@ export function TvlCard({
   outstandingInLoans,
   deployedRatio,
   tvlBars,
+  tvlAxis,
 }: TvlCardProps) {
   const deployedCaption =
     deployedRatio !== null
@@ -141,28 +146,41 @@ export function TvlCard({
 
       {/* TVL bar chart — spec: docs/frontend/dashboard-components.md#tvlcard (Figma 3283:67630) */}
       {tvlBars !== null && tvlBars.length > 0 ? (
-        <div className="mt-auto flex flex-col" data-node-id="6002:9267">
-          <div
-            className="h-[224px] overflow-hidden"
-            data-testid="dashboard-tvl-chart-container"
-          >
-            <YieldBarChart
-              bars={tvlBars}
-              fill="var(--color-pipeline-ink)"
-              aria-label={`TVL history: ${headlineTvl}`}
-              className="h-full"
-            />
-          </div>
-          <ChartDatesRow
-            {...formatAxisDateRange(
-              tvlBars[0]!.timestamp,
-              tvlBars[tvlBars.length - 1]!.timestamp,
+        <div className="mt-auto flex flex-col gap-2" data-node-id="6002:9267">
+          <div className="flex">
+            {tvlAxis !== null && (
+              <ChartValueAxis
+                maxLabel={tvlAxis.maxLabel}
+                midLabel={tvlAxis.midLabel}
+                bottomLabel={tvlAxis.bottomLabel}
+              />
             )}
-          />
+            <div
+              className="h-[216px] flex-1 overflow-hidden md:h-[240px]"
+              data-testid="dashboard-tvl-chart-container"
+            >
+              <YieldBarChart
+                bars={tvlBars}
+                fill="var(--color-pipeline-ink)"
+                aria-label={`TVL history: ${headlineTvl}`}
+                className="h-full"
+              />
+            </div>
+          </div>
+          <div className="flex">
+            {tvlAxis !== null && (
+              <div className="w-[32px] shrink-0" aria-hidden="true" />
+            )}
+            <div className="flex-1">
+              <ChartDatesRow
+                labels={sampleAxisDates(tvlBars.map((b) => b.timestamp))}
+              />
+            </div>
+          </div>
         </div>
       ) : (
         <div
-          className="mt-auto h-[240px]"
+          className="mt-auto h-[216px] md:h-[240px]"
           aria-hidden="true"
           data-testid="dashboard-tvl-chart-placeholder"
         />

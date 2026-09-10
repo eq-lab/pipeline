@@ -19,7 +19,8 @@
  * Data-layer note
  * ---------------
  * `tvl` is a 6-decimal USDC string already in human units (e.g. `"43140000.000000"`
- * = $43.14M cumulative net inflow). No events → `200 []`.
+ * = $43.14M cumulative net inflow). No events →
+ * `200 { series: [], max: "0.000000", min: "0.000000", average: "0.000000" }`.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -38,13 +39,21 @@ export interface TvlPoint {
   tvl: string;
 }
 
+/** Full `GET /v1/dashboard/tvl-history` response envelope. */
+export interface TvlHistoryResponse {
+  series: TvlPoint[];
+  max: string;
+  min: string;
+  average: string;
+}
+
 export interface UseDashboardTvlHistoryParams {
   chainId: number;
 }
 
 export interface UseDashboardTvlHistoryResult {
-  /** Raw point array from the API; `undefined` while loading or on error. */
-  data: TvlPoint[] | undefined;
+  /** Raw response from the API; `undefined` while loading or on error. */
+  data: TvlHistoryResponse | undefined;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -64,13 +73,13 @@ export function useDashboardTvlHistory({
 }: UseDashboardTvlHistoryParams): UseDashboardTvlHistoryResult {
   const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
 
-  const query = useQuery<TvlPoint[], Error>({
+  const query = useQuery<TvlHistoryResponse, Error>({
     queryKey: ["dashboard-tvl-history", resolvedChainId],
     queryFn: () => {
       // Full history (omit `days`) at the backend default daily interval
       // (omit `interval`) — charts render daily data.
       const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
-      return apiFetch<TvlPoint[]>(
+      return apiFetch<TvlHistoryResponse>(
         `/v1/dashboard/tvl-history?${params.toString()}`,
       );
     },

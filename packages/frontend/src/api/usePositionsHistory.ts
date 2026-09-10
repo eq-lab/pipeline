@@ -20,11 +20,19 @@ export interface PositionHistoryItem {
   cumulative_realized_pnl: string;
 }
 
+export interface SeriesStat {
+  max: string;
+  min: string;
+  average: string;
+}
+
 export interface PositionHistoryResponse {
   wallet: string;
   vault_address?: string | null;
   interval: string;
   history: PositionHistoryItem[];
+  shares_balance: SeriesStat;
+  cumulative_realized_pnl: SeriesStat;
 }
 
 export type HistoryInterval = "hourly" | "daily" | "weekly";

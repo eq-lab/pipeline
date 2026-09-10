@@ -23,7 +23,8 @@
  * Data-layer note
  * ---------------
  * `cumulative_yield` is a 6-decimal USDC string already in human units (e.g.
- * `"2910000.000000"` = $2.91M cumulative yield). No events → `200 []`.
+ * `"2910000.000000"` = $2.91M cumulative yield). No events →
+ * `200 { series: [], max: "0.000000", min: "0.000000", average: "0.000000" }`.
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -42,13 +43,21 @@ export interface YieldPoint {
   cumulative_yield: string;
 }
 
+/** Full `GET /v1/dashboard/yield-history` response envelope. */
+export interface YieldHistoryResponse {
+  series: YieldPoint[];
+  max: string;
+  min: string;
+  average: string;
+}
+
 export interface UseDashboardYieldHistoryParams {
   chainId: number;
 }
 
 export interface UseDashboardYieldHistoryResult {
-  /** Raw point array from the API; `undefined` while loading or on error. */
-  data: YieldPoint[] | undefined;
+  /** Raw response from the API; `undefined` while loading or on error. */
+  data: YieldHistoryResponse | undefined;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -68,13 +77,13 @@ export function useDashboardYieldHistory({
 }: UseDashboardYieldHistoryParams): UseDashboardYieldHistoryResult {
   const resolvedChainId = chainId || ENV.STELLAR_CHAIN_ID;
 
-  const query = useQuery<YieldPoint[], Error>({
+  const query = useQuery<YieldHistoryResponse, Error>({
     queryKey: ["dashboard-yield-history", resolvedChainId],
     queryFn: () => {
       // Full history (omit `days`) at the backend default daily interval
       // (omit `interval`) — charts render daily data.
       const params = new URLSearchParams({ chain_id: String(resolvedChainId) });
-      return apiFetch<YieldPoint[]>(
+      return apiFetch<YieldHistoryResponse>(
         `/v1/dashboard/yield-history?${params.toString()}`,
       );
     },

@@ -7,7 +7,8 @@
 import { PanelContainer } from "./PanelContainer";
 import { YieldBarChart } from "./YieldBarChart";
 import { ChartDatesRow } from "../ChartDatesRow";
-import { formatAxisDateRange } from "@/utils/formatDate";
+import { ChartValueAxis } from "../ChartValueAxis";
+import { sampleAxisDates } from "@/utils/formatDate";
 import { TvlCard } from "./TvlCard";
 import { useYieldHistoryPanel } from "./useYieldHistoryPanel";
 
@@ -77,8 +78,10 @@ export function YieldHistoryPanel() {
   const {
     state,
     cumulativeBars,
+    yieldAxis,
     headlineValue,
     tvlBars,
+    tvlAxis,
     tvlSummary,
     metricCards,
     errorMessage,
@@ -102,6 +105,7 @@ export function YieldHistoryPanel() {
           outstandingInLoans={tvlSummary.outstandingInLoans}
           deployedRatio={tvlSummary.deployedRatio}
           tvlBars={tvlBars}
+          tvlAxis={tvlAxis}
         />
 
         {/* RIGHT column (Figma 3380:1920) — Cumulative Yield card + metric cards. */}
@@ -154,25 +158,40 @@ export function YieldHistoryPanel() {
             {/* Chart — green bars (Figma 3283:68337). Mobile: 144px; desktop: fills. */}
             {cumulativeBars !== null && cumulativeBars.length > 0 ? (
               <div
-                className="flex flex-col md:h-auto md:flex-1"
+                className="flex flex-col gap-2 md:h-auto md:flex-1"
                 data-node-id="6002:9279"
               >
-                <div
-                  className="h-[128px] overflow-hidden md:h-auto md:flex-1"
-                  data-testid="yield-chart-container"
-                >
-                  <YieldBarChart
-                    bars={cumulativeBars}
-                    aria-label={`Cumulative yield history: ${headlineValue}`}
-                    className="h-full"
-                  />
-                </div>
-                <ChartDatesRow
-                  {...formatAxisDateRange(
-                    cumulativeBars[0]!.timestamp,
-                    cumulativeBars[cumulativeBars.length - 1]!.timestamp,
+                <div className="flex md:flex-1">
+                  {yieldAxis !== null && (
+                    <ChartValueAxis
+                      maxLabel={yieldAxis.maxLabel}
+                      midLabel={yieldAxis.midLabel}
+                      bottomLabel={yieldAxis.bottomLabel}
+                    />
                   )}
-                />
+                  <div
+                    className="h-[128px] flex-1 overflow-hidden md:h-auto"
+                    data-testid="yield-chart-container"
+                  >
+                    <YieldBarChart
+                      bars={cumulativeBars}
+                      aria-label={`Cumulative yield history: ${headlineValue}`}
+                      className="h-full"
+                    />
+                  </div>
+                </div>
+                <div className="flex">
+                  {yieldAxis !== null && (
+                    <div className="w-[32px] shrink-0" aria-hidden="true" />
+                  )}
+                  <div className="flex-1">
+                    <ChartDatesRow
+                      labels={sampleAxisDates(
+                        cumulativeBars.map((b) => b.timestamp),
+                      )}
+                    />
+                  </div>
+                </div>
               </div>
             ) : (
               // Empty chart seam — spec: docs/frontend/dashboard-components.md#yieldhistorypanel

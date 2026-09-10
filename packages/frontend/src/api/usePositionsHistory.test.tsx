@@ -45,6 +45,8 @@ const RESPONSE: PositionHistoryResponse = {
       cumulative_realized_pnl: "0",
     },
   ],
+  shares_balance: { max: "0", min: "0", average: "0" },
+  cumulative_realized_pnl: { max: "0", min: "0", average: "0" },
 };
 
 const CAP_ERROR = new Error(

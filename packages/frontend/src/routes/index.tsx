@@ -37,6 +37,7 @@ import { RecentActivityCard } from "@/components/RecentActivityCard";
 import { QnaSection } from "@/components/QnaSection";
 import { usePnl, usePositionsHistory } from "@/api";
 import { DEFAULT_PERIOD_ID, buildSeries } from "@/components/usePortfolioChart";
+import { computeAxisTicks } from "@/utils/chartAxis";
 
 // spec: docs/frontend/dashboard-components.md#home-route
 // (desktop/mobile composition, top-left card branching, Figma refs).
@@ -133,6 +134,14 @@ function Home() {
     activeDecimals,
   );
 
+  // spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (Y axis)
+  const sharesStats = positionsHistory.data?.shares_balance;
+  const portfolioAxisMax =
+    sharesStats?.max != null
+      ? Number(sharesStats.max) / 10 ** activeDecimals
+      : null;
+  const portfolioAxis = computeAxisTicks(portfolioAxisMax);
+
   const mobileHomeState: MobileHomeState = isConnected
     ? deriveMobileHomeState(
         plusdBalanceActive,
@@ -205,6 +214,8 @@ function Home() {
               activePeriodId={portfolioPeriodId}
               onActivePeriodChange={setPortfolioPeriodId}
               series={portfolioSeries}
+              yAxis={portfolioAxis}
+              yAxisDomainMax={portfolioAxisMax}
               data-testid="home-portfolio-placeholder"
             />
           ) : (
@@ -290,6 +301,8 @@ function Home() {
                 activePeriodId={portfolioPeriodId}
                 onActivePeriodChange={setPortfolioPeriodId}
                 series={portfolioSeries}
+                yAxis={portfolioAxis}
+                yAxisDomainMax={portfolioAxisMax}
                 data-testid="home-portfolio-placeholder"
               />
             ) : (

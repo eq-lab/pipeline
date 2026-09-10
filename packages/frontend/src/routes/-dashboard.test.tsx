@@ -414,6 +414,85 @@ describe("#749 — YieldHistoryPanel mobile layout", () => {
   });
 });
 
+describe("YieldHistoryPanel — object-shaped envelope (issue #1234 parsing repair)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/dashboard/tvl-history")) {
+        return new Response(
+          JSON.stringify({
+            series: [
+              { timestamp: "2026-08-01T00:00:00Z", tvl: "1000000.000000" },
+            ],
+            max: "1000000.000000",
+            min: "1000000.000000",
+            average: "1000000.000000",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/dashboard/yield-history")) {
+        return new Response(
+          JSON.stringify({
+            series: [
+              {
+                timestamp: "2026-08-01T00:00:00Z",
+                cumulative_yield: "10000.000000",
+              },
+            ],
+            max: "10000.000000",
+            min: "10000.000000",
+            average: "10000.000000",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/dashboard/summary")) {
+        return new Response(
+          JSON.stringify({
+            tvl: "1000000.000000",
+            outstanding_in_loans: null,
+            current_apy_net_to_splusd: null,
+            loan_book_yield: null,
+            cumulative_yield_total: "10000.000000",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/loan-book/submissions")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (url.includes("/v1/loan-book")) {
+        return new Response(JSON.stringify(FIXTURE_EMPTY), { status: 200 });
+      }
+      return new Promise<Response>(() => {});
+    });
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+  });
+
+  it("renders without throwing against the {series,max,min,average} envelope — this is the test that would have caught the pre-fix crash", async () => {
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("dashboard-panel-yield-history"),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("yield-headline-value")).toHaveTextContent(
+        "$10.0K",
+      );
+    });
+  });
+});
+
 // ── DeploymentMonitorPanel — column header aggregates (issue #729) ────────────
 
 // Fixture: total_deployed set, total_collateral null → only Principal subtitle renders.

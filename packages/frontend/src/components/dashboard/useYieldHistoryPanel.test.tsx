@@ -105,10 +105,28 @@ function makeWrapper() {
   return wrapper;
 }
 
+interface EnvelopeStats {
+  max: string;
+  min: string;
+  average: string;
+}
+
+const ZERO_STATS: EnvelopeStats = {
+  max: "0.000000",
+  min: "0.000000",
+  average: "0.000000",
+};
+
+function envelope<T>(series: T[], stats: EnvelopeStats = ZERO_STATS) {
+  return { series, ...stats };
+}
+
 function seedMockKeys(
   summary: DashboardSummary = SUMMARY_FIXTURE,
   tvlHistory: TvlPoint[] = TVL_HISTORY_FIXTURE,
   yieldHistory: YieldPoint[] = YIELD_HISTORY_FIXTURE,
+  tvlStats: EnvelopeStats = ZERO_STATS,
+  yieldStats: EnvelopeStats = ZERO_STATS,
 ) {
   localStorage.setItem(
     "pipeline.mock.api.GET./v1/dashboard/summary",
@@ -116,11 +134,11 @@ function seedMockKeys(
   );
   localStorage.setItem(
     "pipeline.mock.api.GET./v1/dashboard/tvl-history",
-    JSON.stringify(tvlHistory),
+    JSON.stringify(envelope(tvlHistory, tvlStats)),
   );
   localStorage.setItem(
     "pipeline.mock.api.GET./v1/dashboard/yield-history",
-    JSON.stringify(yieldHistory),
+    JSON.stringify(envelope(yieldHistory, yieldStats)),
   );
 }
 
@@ -359,6 +377,101 @@ describe("useYieldHistoryPanel — ready state", () => {
     const ratio = result.current.tvlSummary.deployedRatio;
     expect(ratio).not.toBeNull();
     expect(ratio!).toBeCloseTo(31600 / 43140000, 4);
+  });
+});
+
+// ── Tests: Y-axis domains (#1234) ────────────────────────────────────────────
+
+describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+    seedMockKeys(
+      SUMMARY_FIXTURE,
+      TVL_HISTORY_FIXTURE,
+      YIELD_HISTORY_FIXTURE,
+      {
+        max: "43140000.000000",
+        min: "10000000.000000",
+        average: "24380000.000000",
+      },
+      { max: "43193.947876", min: "15550.635325", average: "38527.068576" },
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("derives tvlAxis from the served tvl-history max with a fixed max/2 middle tick", async () => {
+    const { result } = renderHook(() => useYieldHistoryPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("ready");
+    });
+
+    expect(result.current.tvlAxis).toEqual({
+      maxLabel: "$43M",
+      midLabel: "$22M",
+      bottomLabel: "$0",
+    });
+  });
+
+  it("derives yieldAxis from the served yield-history max with a fixed max/2 middle tick", async () => {
+    const { result } = renderHook(() => useYieldHistoryPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("ready");
+    });
+
+    expect(result.current.yieldAxis).toEqual({
+      maxLabel: "$43K",
+      midLabel: "$22K",
+      bottomLabel: "$0",
+    });
+  });
+
+  it("the tallest TVL bar reaches value/servedMax, not the sampled series' own max", async () => {
+    const { result } = renderHook(() => useYieldHistoryPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("ready");
+    });
+
+    expect(result.current.tvlBars![99]!.height).toBe(100);
+  });
+});
+
+describe("useYieldHistoryPanel — missing stats block renders no Y axis (#1234)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockClear();
+    seedMockKeys(); // ZERO_STATS default — max === min === average === "0.000000"
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("returns null tvlAxis/yieldAxis when the served max is 0 (no divide-by-zero)", async () => {
+    const { result } = renderHook(() => useYieldHistoryPanel(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("ready");
+    });
+
+    expect(result.current.tvlAxis).toBeNull();
+    expect(result.current.yieldAxis).toBeNull();
   });
 });
 

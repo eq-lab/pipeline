@@ -193,16 +193,65 @@ Reuse: page-level glue around `@pipeline/ui` primitives.
 
 ### ChartDatesRow
 
-**Source:** `packages/frontend/src/components/ChartDatesRow.tsx` (#1133).
+**Source:** `packages/frontend/src/components/ChartDatesRow.tsx` (#1133; widened from 2 to 5
+labels by #1234).
 
-Endpoint-date x-axis row shared by the LP charts (Figma dates containers `6002:9267` on the TVL
-card, `6002:9279` on the Cumulative Yield card, and the Total Balance card's period window,
-node `1497:95125`): one full-chart-width flex row (`justify-between`, 16px tall), two `MMM D`
-labels in the caption tokens + muted ink — series start left-aligned, series end right-aligned,
-both truncating. No intermediate ticks, no gridlines. The component is dumb (`{ start, end }`
-strings via `formatAxisDate`, `utils/formatDate.ts`); each caller gates rendering — the row is
-absent when its series is null/empty, never showing invented dates. Single-point series render
-the same date on both sides.
+X-axis row shared by the three LP charts (Figma dates containers `6002:9267` on the TVL card,
+`6002:9279` on the Cumulative Yield card, and `6002:27376` on the Total Balance card): one
+full-chart-width flex row (`justify-between`, 16px tall) of **5** `MMM D` labels in the caption
+tokens + muted ink, each `max-w-[20%] overflow-hidden text-ellipsis` — content-sized so longer
+cross-year labels (`MMM d 'YY`) render untruncated whenever space allows (#1234 fix), clipping
+only past a fifth of the row. Alignment: first label left,
+middle three centered, last right. No intermediate ticks beyond the 5, no gridlines. The
+component is dumb — it takes an ordered `labels: string[]` (always 5, or absent — no partial
+rows); each caller gates rendering — the row is absent when its series is null/empty, never
+showing invented dates. **Below `md` only the first, exact-middle, and last labels are visible**
+(the 2nd/4th get `hidden md:block`) — five labels crowd a ~280px mobile plot; the sampled
+timestamps are unchanged, only visibility is responsive (mobile-polish decision on #1234, no
+Figma mobile frame exists).
+
+Labels are produced by `sampleAxisDates` (`utils/formatDate.ts`): it samples 5 evenly-spaced
+indices out of the caller's real served timestamps (the same nearest-index approach
+`pickPoint`/`yieldSeries.ts` uses to resample a series to `YIELD_CHART_N` slots) and formats each
+with `formatAxisDate`, appending the two-digit year suffix to every label when the sampled points
+cross a year boundary (same rule `formatAxisDateRange` used for the 2-label row). A single-point
+series repeats that one date across all 5 slots rather than being special-cased. Never synthesises
+an instant the backend did not serve.
+
+### ChartValueAxis
+
+**Source:** `packages/frontend/src/components/ChartValueAxis.tsx` (#1234). Net-new — no Y axis
+existed on any LP dashboard chart before this issue.
+
+Y-axis column shared by the three LP charts (Figma Y-label containers `6267:9418` on the TVL
+card, `6268:9428` on the Cumulative Yield card, `6268:26551` on the Total Balance card): a fixed
+32px column of **three** text labels — top, middle, bottom — in the caption tokens + muted ink,
+no gridlines, no axis spine. Rendered as a **sibling** of the chart plot (an outer flex row, no
+gap between the axis column and the plot), never inside the chart component itself, so
+`YieldBarChart`'s `bars` prop stays a pre-normalised 0–100 `height` and its contract is unchanged.
+An 8px gap separates the axis+plot row from the `ChartDatesRow` beneath it, which gets a matching
+32px left spacer so its labels stay aligned under the plot only (not under the Y column).
+
+**Domain rule — revised 2026-09-10 (user change on #1234), supersedes both the earlier
+`ceilTo1SigFig`-rounded-domain design and the proportional-average design, neither shipped:**
+
+- **Top tick** — the raw backend-served window-stat `max` (e.g. `tvl-history.max`), formatted
+  compactly with **zero decimals** via `formatAxisTickUsd` (`$23M`, not `formatCompactUsd`'s
+  one-decimal `$23.1M`). No rounding to a "nice" tick value — this is presentation of a served
+  number, not a derived metric, so it needs no "no frontend-computed metrics" exception.
+- **Middle tick** — a fixed `(0 + max) / 2`, i.e. `max/2`, rendered at the **geometric middle**
+  of the column (plain `justify-between`). The served `average` (and `min`) stay typed on the
+  response interfaces but are **not consumed** anywhere.
+- **Bottom tick** — a literal `$0`, never the served `min`.
+- Bar heights normalise against the same raw served `max` (see `pointsToBars`'s `domainMax`
+  parameter, `utils/utils.md`), so the tallest bar reaches `value / max` of the plot height —
+  not necessarily 100%, since the backend's window-stat `max` integrates the exact event stream
+  while the sampled `series` is a coarser bucketing and can sit below it. Expected, not a bug.
+
+**Missing data.** When the served `max` is missing, non-finite, or `≤ 0` (including the
+documented `max === min === 0` empty-chain response), `computeAxisTicks` returns `null` and the
+caller renders **no Y axis at all** — never a column of dashes, and never a divide-by-zero. With
+a valid `max` all three labels always render (`max/2` and `$0` derive from it).
 
 ### PortfolioPlaceholderCard
 
@@ -217,7 +266,10 @@ period state, fetches via `usePositionsHistory(periodId)` (period tabs → `days
 response with `buildSeries` (raw share strings scaled by the active chain's decimals), and
 passes `series` into the card — the card stays presentational. Non-empty series → one bar per
 served bucket (height ∝ `shares_balance`), tooltip shows the bucket's served balance +
-timestamp. Empty/absent series → the zero placeholder below, unchanged.
+timestamp. Tooltip timestamp format per period (#1223, revised by #1234): 7d = `Month D, HH:MM`;
+1m/3m = `Month D, YYYY` (never a time); 1y/all = `Month D, YYYY` plus `, HH:MM` only when the
+served timestamp carries a non-midnight time (e.g. the All tab's hourly rung) — never just the
+month. Empty/absent series → the zero placeholder below, unchanged.
 
 **All-tab adaptive interval (#1140).** All omits `days` (the backend bounds the window at the
 wallet's first position), and hard-coding an interval either collapses young wallets into one
@@ -233,10 +285,21 @@ full-value-height spike (~1px) plus a wider band at 40% of the value height (~3p
 scaled down when slots are narrow. The grey `#D5D8C8` triple-rect construction remains
 placeholder-only.
 
-**Endpoint dates row (#1133/#1138).** A `ChartDatesRow` under the chart: in served-series mode
-the labels are the series' first/last bucket timestamps; in placeholder mode they fall back to
-the active period window's endpoints (`slotTimestamps[0]` / last — the same timestamps the
-hover tooltip already exposes, so no fabrication), updating with the period tab.
+**Dates row (#1133/#1138, widened to 5 labels by #1234).** A `ChartDatesRow` under the chart: in
+served-series mode the 5 labels are `sampleAxisDates(timestamps)` sampled from the served bucket
+timestamps; in placeholder mode they fall back to the active period window's timestamps
+(`slotTimestamps` — the same timestamps the hover tooltip already exposes, so no fabrication),
+updating with the period tab.
+
+**Y axis (#1234).** A `ChartValueAxis` — 1:1 USD over the `shares_balance` series, consistent
+with the shipped headline (`formatBigintCurrency(splusdSharesActive, activeDecimals)` already
+displays shares as dollars 1:1). The home route scales `positions/history`'s additive
+`shares_balance.max` `SeriesStat` field by the active chain's decimals (the same
+`/ 10 ** decimals` treatment `buildSeries` applies to `history[]`) and passes the resulting
+`AxisTicks` in as `yAxis`, plus the raw scaled max as `yAxisDomainMax` for bar-height
+normalisation (`Math.max(...series.values)` is hoisted out of the per-bar loop and only used as
+a fallback when `yAxisDomainMax` is omitted/invalid). No axis renders in placeholder mode
+(`series === null`) even if `yAxis` is passed — the zero-value placeholder fabricates nothing.
 
 **Zero-value placeholder chart (#1114, product decision).** The Figma frame's bar chart, tabs,
 and hover tooltip are rendered, but every value is **0** until a per-address balance-history
@@ -261,8 +324,10 @@ lands, real series data replaces the flat bars.
 **Accessibility:** the chart wrap uses `role="img"` + a descriptive aria-label (period + balance + PnL); bars are decorative; the card region is labelled by the balance heading.
 
 **Data rule:** the balance heading and the unrealized PnL caption (`/v1/pnl`, defaulting to
-`$0.00 unrealized`) are the only real data on the card; the chart is a constant-zero placeholder
-(no client-side derivation, no fabricated values).
+`$0.00 unrealized`) are always real data. The chart itself is either the served `shares_balance`
+series (#1138) or, absent that, a constant-zero placeholder — in both cases every rendered value
+(bars, dates, Y axis) comes from served data or a documented zero default; nothing is
+client-side-derived beyond unit scaling (÷ decimals) and presentation formatting.
 
 Figma reference: https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=1497-95048
 
@@ -1033,17 +1098,24 @@ Renders:
 - "TVL" eyebrow + headline value (e.g. `"$43.1M"`), Figma node `3283:67623` (528×56, two halves each
   264 wide).
 - "Outstanding in Loans" label + value (muted, right-aligned), or `"—"` when null.
-- `ChartDatesRow` under the bar chart (#1133, Figma dates container `6002:9267`): the served
-  `tvlBars` first/last timestamps as `MMM D`; absent when `tvlBars` is null/empty. The chart
-  container is 224px so chart + 16px dates row keep the previous 240px region.
+- A `ChartValueAxis` + dark TVL bar chart row (Figma `6267:9418` / `3283:67630`), plus a
+  `ChartDatesRow` beneath it with a matching 32px spacer (#1234; see `### ChartValueAxis` above
+  for the domain rule). `tvlAxis` comes from `tvl-history.max`; absent (no axis
+  rendered) when the stats block is missing/invalid. The dates row's 5 labels are
+  `sampleAxisDates` sampled from the served `tvlBars` timestamps. Both are absent together with
+  `tvlBars` when the series is null/empty.
 - Horizontal progress bar (Figma instance `3380:1410`, y=64, 528×4) + "X.X% deployed" caption (Figma
   `3380:1895`) — fill width is `outstanding_in_loans / tvl`, an **approved exception** to the "no
   frontend-computed metrics" rule for this ratio-of-served-values visualisation (issue #760
   open-question resolution). Guard: null/zero `tvl` → `deployedRatio` is `null` → empty bar + `"—%
 deployed"` caption. Track: `bg-pipeline-line`; Fill: `bg-pipeline-ink`.
-- Dark TVL bar chart (`fill="var(--color-pipeline-ink)"`), fixed 240px tall anchored to the bottom
-  (`mt-auto`), matching Figma chart container `3283:67630` (240h) on both desktop (`3283:67622`,
-  460-tall card) and mobile (`3283:71067`, 404-tall card).
+- Dark TVL bar chart (`fill="var(--color-pipeline-ink)"`), anchored to the bottom (`mt-auto`),
+  **`h-[216px] md:h-[240px]`**: 240px at `md+` matches Figma chart container `3283:67630`
+  (`3283:67622`, 460-tall card; resolves a prior 224px-vs-240px doc contradiction in favor of the
+  Figma 240px plot). Below `md` the plot drops to 216px (mobile-polish decision on #1234, no
+  mobile Figma frame with the axis exists) so the full axis block — plot + 8px gap + 16px dates
+  row = 240px — occupies exactly the pre-#1234 footprint inside the unchanged fixed `h-[404px]`
+  mobile card.
 
 Card is fixed 404px tall on mobile (Figma `3283:71059`) and fills the 460px row on desktop.
 
@@ -1142,6 +1214,12 @@ Props:
   series this chart backs are USD).
 - `className` — appended to the wrapper element.
 
+`height` stays a pre-normalised 0–100 percentage — the component itself never decides the
+normalisation domain. The domain (issue #1234: the served window-stat `max`, no rounding) is
+decided upstream, in `useYieldHistoryPanel`/`pointsToBars`'s `domainMax` parameter, before bars
+reach this component. The Y axis (`ChartValueAxis`, see `### ChartValueAxis` above) is rendered
+as a sibling of this chart, never inside it, so this component's props are unaffected by #1234.
+
 Figma reference: `node-id=3283-68337`.
 
 ### YieldHistoryPanel
@@ -1154,10 +1232,12 @@ heading text). Wires the `useYieldHistoryPanel` logic hook and renders:
 - **Left column** (node `3283:67622`, spans the full column height): TVL card — headline,
   Outstanding in Loans, progress bar ("% deployed"), and dark TVL bar chart. Backed by
   `GET /v1/dashboard/summary` + `GET /v1/dashboard/tvl-history`.
-- Both chart cards render a `ChartDatesRow` under their bars (#1133): the Cumulative Yield card
-  (Figma dates container `6002:9279`) shows `cumulativeBars` first/last timestamps; absent when
-  the series is null/empty (the empty seam keeps its height). The mobile chart height drops to
-  128px so chart + dates row keep the previous 144px region.
+- Both chart cards render a `ChartValueAxis` + `ChartDatesRow` under their bars (#1133/#1234):
+  the Cumulative Yield card (Figma dates container `6002:9279`) shows `sampleAxisDates` sampled
+  from `cumulativeBars` timestamps, and a `yieldAxis` from `yield-history.max`; both
+  absent when the series is null/empty (the empty seam keeps its height) or the stats block is
+  missing/invalid. The mobile chart height stays 128px; the axis row above it and the 8px gap
+  before the dates row are additive (see `### ChartValueAxis` for the domain rule).
 - **Right column** (`3380:1920`, vertical stack): Cumulative Yield card — headline value + green bar
   chart (no time-range selector — the Figma "Top" frame shows none). Backed by
   `GET /v1/dashboard/summary` + `GET /v1/dashboard/yield-history`. Below it, three metric cards in a
@@ -1202,6 +1282,13 @@ layer.
 
 Both series are fetched at the default daily interval, showing full history with no range selector.
 
+**Response envelope (issue #1234 — breaking change from `f0f6f54`).** Both history endpoints
+serve `{ series: TvlPoint[] | YieldPoint[]; max: string; min: string; average: string }` — a
+6-decimal-string window-stat block over the exact event stream (which can sit outside the
+sampled `series`' own extremes; see `### ChartValueAxis`), not a bare point array. The empty
+response is `{ series: [], max: "0.000000", min: "0.000000", average: "0.000000" }`. The hook
+reads `…data?.series ?? []` (not `…data ?? []`); `min` goes unused (see the Y-axis domain rule).
+
 **Decisions (issue #760):**
 
 - `chainId` = `ENV.STELLAR_CHAIN_ID` — the Protocol Dashboard is Stellar-scoped (real data lives on
@@ -1221,6 +1308,11 @@ Both series are fetched at the default daily interval, showing full history with
 - `outstanding_in_loans` is displayed exactly as served by the backend (issue #906 — the former
   `scaleRegistryAmount` ×1000 workaround has been removed; the backend now serves the corrected
   value directly).
+- **Y-axis domains (issue #1234).** `tvlAxis`/`yieldAxis` (`AxisTicks | null`) are derived via
+  `computeAxisTicks` from each endpoint's `max` (parsed with `parseFloat` — no
+  rounding). `null` when the served `max` is missing, non-finite, or `≤ 0` (no Y axis rendered by
+  the view). `pointsToBars` is called with the parsed `max` as its `domainMax` argument, so bar
+  heights normalise against the served window-stat, not the sampled series' own extremes.
 
 Panel state: `loading` while summary or any series query is loading; `error` on the first query error
 found (summary, then TVL history, then yield history); `empty` when both bar arrays are empty AND the
@@ -1280,7 +1372,7 @@ the shared connect modal (`useConnectModal().open()`) instead of navigating (sup
 32%-opacity secondary per Figma `1497:94556`). Connected: Buy/Sell navigate to /deposit
 (deposit/withdraw), Stake to /stake; Sell stays disabled while PLUSD displays as zero.
 
-**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart is a constant-zero placeholder until a per-address balance-history series exists (#1114/#1116).
+**Top-left card branching:** connection state is derived from the _active wallet view namespace_ (`useWalletView().kind`), mirroring the deposit/stake convention — `kind === "stellar"` reads `useStellarWallet().isConnected`, `kind === "evm"` (default) reads `useEvmWallet().isConnected`. When disconnected, `ConnectWalletPromoCard` gets an `onConnect` prop wired to `useWallet().connect()` so the home CTA opens the same AppKit modal as the header (#224, #250). When connected, `PortfolioPlaceholderCard` sources balances from the active chain (EVM via `useEvmToken`, Stellar via `useStellarSacToken` + `useStellarStakedPlusdBalance`) so a Stellar-only session sees real PLUSD/sPLUSD totals (#688). The chart renders the served `shares_balance` history (#1138) when `usePositionsHistory` returns data, falling back to the constant-zero placeholder only while no per-address series exists yet (#1114/#1116). The route also derives the card's Y axis (issue #1234): it scales `positionsHistory.data.shares_balance.max` (a raw share string, same scale as `history[]`) by `activeDecimals` and passes `computeAxisTicks`'s result as `yAxis` plus the raw scaled max as `yAxisDomainMax`, to both the mobile and desktop `PortfolioPlaceholderCard` instances.
 
 **Mobile home state** (`deriveMobileHomeState`, scale-agnostic — only compares `> 0n`):
 

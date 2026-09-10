@@ -11,12 +11,14 @@ import { useDashboardTvlHistory } from "@/api/useDashboardTvlHistory";
 import { useDashboardYieldHistory } from "@/api/useDashboardYieldHistory";
 import { pointsToBars } from "@/utils/yieldSeries";
 import { toUserError } from "@/utils/userError";
+import { computeAxisTicks } from "@/utils/chartAxis";
 import {
   formatCompactUsd,
   formatOneDecimalRate,
 } from "@/utils/formatCompactUsd";
 import type { PanelState } from "./PanelContainer";
 import type { YieldBarPoint } from "@/utils/yieldSeries";
+import type { AxisTicks } from "@/utils/chartAxis";
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
@@ -40,10 +42,14 @@ export interface YieldHistoryPanelState {
   state: PanelState;
   /** Pre-computed cumulative-yield bar array, or `null` when empty/loading. */
   cumulativeBars: YieldBarPoint[] | null;
+  /** Y-axis ticks, or null (no axis rendered). */
+  yieldAxis: AxisTicks | null;
   /** Formatted headline value (e.g. "$2.91M") for the Cumulative Yield card. */
   headlineValue: string;
   /** Pre-computed TVL bar array, or `null` when empty/loading. */
   tvlBars: YieldBarPoint[] | null;
+  /** Y-axis ticks, or null (no axis rendered). */
+  tvlAxis: AxisTicks | null;
   /** TVL card summary values (formatted). */
   tvlSummary: TvlSummary;
   /** The three metric card values. */
@@ -113,8 +119,10 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     return {
       state: "loading",
       cumulativeBars: null,
+      yieldAxis: null,
       headlineValue: "—",
       tvlBars: null,
+      tvlAxis: null,
       tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards: EMPTY_METRICS,
       errorMessage: undefined,
@@ -130,8 +138,10 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     return {
       state: "error",
       cumulativeBars: null,
+      yieldAxis: null,
       headlineValue: "—",
       tvlBars: null,
+      tvlAxis: null,
       tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards: EMPTY_METRICS,
       // spec: docs/frontend/error-handling.md — mapped, never the raw message.
@@ -140,22 +150,39 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     };
   }
 
+  // ── Y-axis domains ──────────────────────────────────────────────────────────
+  // spec: docs/frontend/dashboard-components.md#chartvalueaxis
+
+  const tvlMax =
+    tvlHistoryQuery.data?.max != null
+      ? parseFloat(tvlHistoryQuery.data.max)
+      : null;
+  const tvlAxis = computeAxisTicks(tvlMax);
+
+  const yieldMax =
+    yieldHistoryQuery.data?.max != null
+      ? parseFloat(yieldHistoryQuery.data.max)
+      : null;
+  const yieldAxis = computeAxisTicks(yieldMax);
+
   // ── Derive chart data ───────────────────────────────────────────────────────
 
   // Cumulative yield bars from yield-history series
   const cumulativeBars = pointsToBars(
-    (yieldHistoryQuery.data ?? []).map((p) => ({
+    (yieldHistoryQuery.data?.series ?? []).map((p) => ({
       timestamp: p.timestamp,
       value: p.cumulative_yield,
     })),
+    yieldMax ?? undefined,
   );
 
   // TVL bars from tvl-history series
   const tvlBars = pointsToBars(
-    (tvlHistoryQuery.data ?? []).map((p) => ({
+    (tvlHistoryQuery.data?.series ?? []).map((p) => ({
       timestamp: p.timestamp,
       value: p.tvl,
     })),
+    tvlMax ?? undefined,
   );
 
   // ── Headline value from summary ─────────────────────────────────────────────
@@ -220,8 +247,10 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     return {
       state: "empty",
       cumulativeBars: null,
+      yieldAxis: null,
       headlineValue: "—",
       tvlBars: null,
+      tvlAxis: null,
       tvlSummary: EMPTY_TVL_SUMMARY,
       metricCards,
       errorMessage: undefined,
@@ -234,8 +263,10 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   return {
     state: "ready",
     cumulativeBars,
+    yieldAxis,
     headlineValue,
     tvlBars,
+    tvlAxis,
     tvlSummary,
     metricCards,
     errorMessage: undefined,
