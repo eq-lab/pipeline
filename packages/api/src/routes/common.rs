@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::auth::{Claims, TRUSTEE_ROLE};
@@ -13,6 +13,20 @@ use crate::AppState;
 pub struct ChainQuery {
     /// Chain ID (optional — defaults to the server's `DEFAULT_CHAIN_ID`).
     pub chain_id: Option<i64>,
+}
+
+/// Max/min/time-weighted-average summary for a time series, over the series'
+/// queried window. `average` is the integral of the series over time, divided
+/// by the window length — not a plain mean of the emitted samples, so it is
+/// stable under `interval` changes.
+///
+/// Shared by `/v1/dashboard/tvl-history`, `/v1/dashboard/yield-history`, and
+/// `/v1/positions/history` so the three time-series endpoints agree on shape.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SeriesStat {
+    pub max: String,
+    pub min: String,
+    pub average: String,
 }
 
 /// Resolve the effective chain_id from an optional query param.
