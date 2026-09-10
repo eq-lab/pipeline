@@ -470,6 +470,23 @@ Dashboard at `/dashboard` and is separated from Activity by a vertical divider (
 `5915:77654`, `h-5 w-px` in `--color-pipeline-line`, `aria-hidden`,
 `data-testid="topbar-nav-divider"`).
 
+### RiskBanner
+
+**Source:** `@pipeline/ui` — `components/RiskBanner/RiskBanner.tsx` (#1231).
+
+Always-visible unaudited-contracts risk disclosure, shared by both apps and mounted topmost in
+each root layout: in the LP app (`frontend/src/routes/__root.tsx`) above `TopBar`, and in the
+trustee app (`trustee/src/routes/__root.tsx`) above `TrusteeShell`, where it also renders over
+the sign-in state. Full-width strip on
+`--color-pipeline-brand` with `--color-pipeline-on-dark` Caption 12px text, centered,
+`px-4 py-2`. `role="note"`, `data-testid="risk-banner"`. Exact copy (exported as
+`RISK_BANNER_TEXT`):
+
+> You are using an unaudited version of smart contracts and should acknowledge related risks
+
+Not dismissible — no close button, no stored state. No acknowledgement flow (checkbox/modal) is
+in scope; that would be a separate issue.
+
 ### AccountDropdown
 
 **Source:** `AccountDropdown.tsx` + `useAccountDropdown.ts`.

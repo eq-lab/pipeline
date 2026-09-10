@@ -899,8 +899,8 @@ function RolloverDialog({
         </h2>
         <p className="font-[family-name:var(--font-body)] text-[14px] leading-[19.6px] text-[rgba(56,55,53,0.6)]">
           LoanRegistry.rollover · your key · appends an epoch from the prior
-          maturity, sets currentMaturityDate, returns status to Active.
-          Raises the mint ceiling only — mints nothing.
+          maturity, sets currentMaturityDate, returns status to Active. Raises
+          the mint ceiling only — mints nothing.
         </p>
 
         <div

@@ -1,4 +1,5 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { RiskBanner } from "@pipeline/ui";
 import { TopBar } from "@/components/TopBar";
 import { Footer } from "@/components/Footer";
 
@@ -6,6 +7,7 @@ import { Footer } from "@/components/Footer";
 export const Route = createRootRoute({
   component: () => (
     <>
+      <RiskBanner />
       <TopBar />
       <Outlet />
       <Footer />

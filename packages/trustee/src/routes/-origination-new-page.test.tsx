@@ -6,7 +6,9 @@ const { mockNavigate, mockSubmit } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockSubmit: {
     mutate: vi.fn(),
-    mutateAsync: vi.fn((_input: unknown) => Promise.resolve({ id: 42 })),
+    mutateAsync: vi.fn<(input: unknown) => Promise<{ id: number }>>(() =>
+      Promise.resolve({ id: 42 }),
+    ),
     reset: vi.fn(),
     isPending: false,
     isSuccess: false,
@@ -103,8 +105,8 @@ function fillMissingBlocks() {
 
 beforeEach(() => {
   mockNavigate.mockReset();
-  mockSubmit.mutateAsync = vi.fn((_input: unknown) =>
-    Promise.resolve({ id: 42 }),
+  mockSubmit.mutateAsync = vi.fn<(input: unknown) => Promise<{ id: number }>>(
+    () => Promise.resolve({ id: 42 }),
   );
   mockSubmit.reset = vi.fn();
   mockSubmit.isPending = false;
@@ -271,8 +273,8 @@ describe("Submit a loan page — validation + submit", () => {
   });
 
   it("surfaces the API rejection via InlineError and stays on the page", async () => {
-    mockSubmit.mutateAsync = vi.fn((_input: unknown) =>
-      Promise.reject(new Error("duplicate metadata_uri")),
+    mockSubmit.mutateAsync = vi.fn<(input: unknown) => Promise<{ id: number }>>(
+      () => Promise.reject(new Error("duplicate metadata_uri")),
     );
     mockSubmit.error = new Error("duplicate metadata_uri");
     renderRoute();
