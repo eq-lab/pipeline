@@ -1,6 +1,6 @@
 // spec: docs/frontend/dashboard-components.md#chartvalueaxis (Y-axis domain
-// rule per the 2026-09-10 change on issue #1234 — raw served max, middle tick
-// fixed at max/2, served average unused).
+// rule — served max bumped to the nearest even display value so the middle
+// tick is exactly half, #1234/#1236; served average unused).
 
 export interface AxisTicks {
   maxLabel: string;
@@ -22,9 +22,17 @@ export function computeAxisTicks(
   max: number | null | undefined,
 ): AxisTicks | null {
   if (max == null || !Number.isFinite(max) || max <= 0) return null;
+  const unit = max >= 1_000_000 ? 1_000_000 : max >= 1_000 ? 1_000 : 1;
+  const suffix = unit === 1_000_000 ? "M" : unit === 1_000 ? "K" : "";
+  let display = Math.round(max / unit);
+  const halfRendersExactly = display === 1 && unit > 1;
+  if (display % 2 !== 0 && !halfRendersExactly) display += 1;
+  if (display === 0) display = 2;
   return {
-    maxLabel: formatAxisTickUsd(max),
-    midLabel: formatAxisTickUsd(max / 2),
-    bottomLabel: formatAxisTickUsd(0),
+    maxLabel: `$${display}${suffix}`,
+    midLabel: halfRendersExactly
+      ? formatAxisTickUsd(unit / 2)
+      : `$${display / 2}${suffix}`,
+    bottomLabel: "$0",
   };
 }

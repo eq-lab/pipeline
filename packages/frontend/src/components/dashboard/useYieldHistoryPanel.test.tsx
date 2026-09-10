@@ -414,7 +414,7 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
     });
 
     expect(result.current.tvlAxis).toEqual({
-      maxLabel: "$43M",
+      maxLabel: "$44M",
       midLabel: "$22M",
       bottomLabel: "$0",
     });
@@ -430,7 +430,7 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
     });
 
     expect(result.current.yieldAxis).toEqual({
-      maxLabel: "$43K",
+      maxLabel: "$44K",
       midLabel: "$22K",
       bottomLabel: "$0",
     });
