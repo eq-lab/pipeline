@@ -467,20 +467,12 @@ describe("YieldHistoryPanel — object-shaped envelope (issue #1234 parsing repa
       if (url.includes("/v1/loan-book")) {
         return new Response(JSON.stringify(FIXTURE_EMPTY), { status: 200 });
       }
-      // Every other panel's endpoint (financial-position, withdrawal-queue,
-      // …) is out of scope for this test — leave it pending rather than
-      // resolving a mis-shaped fixture, matching the "#749" describes'
-      // never-resolve convention elsewhere in this file.
       return new Promise<Response>(() => {});
     });
   });
 
   afterEach(() => {
     localStorage.clear();
-    // `mockReset` (not `vi.clearAllMocks`, which only clears call history) —
-    // this describe's per-URL `mockImplementation` must not leak into later
-    // describes that expect uncovered endpoints to behave as an unconfigured
-    // mock, not fall through to this block's object-shaped fallback.
     fetchMock.mockReset();
   });
 
@@ -493,8 +485,6 @@ describe("YieldHistoryPanel — object-shaped envelope (issue #1234 parsing repa
       ).toBeInTheDocument();
     });
 
-    // Reaches ready state (headline renders) rather than staying stuck in
-    // loading/error, or throwing during render (the pre-fix `.map` crash).
     await waitFor(() => {
       expect(screen.getByTestId("yield-headline-value")).toHaveTextContent(
         "$10.0K",

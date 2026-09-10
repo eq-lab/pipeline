@@ -445,9 +445,6 @@ describe("useYieldHistoryPanel — Y-axis domains (#1234)", () => {
       expect(result.current.state).toBe("ready");
     });
 
-    // TVL_HISTORY_FIXTURE's own max sample is 43140000, equal to the served
-    // max here, so the last bar still reaches 100 — a divergent case is
-    // covered at the chartAxis/pointsToBars unit level.
     expect(result.current.tvlBars![99]!.height).toBe(100);
   });
 });

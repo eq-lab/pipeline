@@ -22,8 +22,7 @@ export interface TvlCardProps {
   deployedRatio: number | null;
   /** Pre-computed TVL bar chart data, or null when empty. */
   tvlBars: YieldBarPoint[] | null;
-  /** Y-axis ticks (served max/average), or null when the stats block is
-   * missing/invalid — renders no Y axis in that case. */
+  /** Y-axis ticks, or null (no axis rendered). */
   tvlAxis: AxisTicks | null;
 }
 

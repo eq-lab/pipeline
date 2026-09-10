@@ -33,12 +33,9 @@ export interface PortfolioPlaceholderCardProps extends Omit<
   activePeriodId?: string;
   onActivePeriodChange?: (id: string) => void;
   series?: ChartSeries | null;
-  /** Y-axis ticks (served shares_balance max/average, scaled 1:1 to USD), or
-   * null/omitted when the stats block is missing/invalid — renders no Y axis. */
+  /** Y-axis ticks, or null (no axis rendered). */
   yAxis?: AxisTicks | null;
-  /** Explicit normalisation domain for bar heights (the served
-   * `shares_balance.max`, scaled by decimals) — falls back to the
-   * frontend-computed series max when omitted. */
+  /** Explicit bar-height normalisation domain; omitted → computed series max. */
   yAxisDomainMax?: number | null;
 }
 
@@ -131,9 +128,6 @@ export const PortfolioPlaceholderCard = React.forwardRef<
   const barH = (PLACEHOLDER_BAR_H / 100) * VB_H;
   const y0 = VB_H - barH;
 
-  // Hoisted out of the per-bar .map (was O(n²), re-derived per bar) — issue
-  // #1234. Prefer the served domain max when given (domain-true scaling);
-  // fall back to the frontend-computed series max otherwise.
   const seriesMaxValue = series !== null ? Math.max(...series.values) : 0;
   const domainMax =
     yAxisDomainMax != null &&

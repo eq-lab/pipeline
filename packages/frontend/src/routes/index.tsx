@@ -134,10 +134,7 @@ function Home() {
     activeDecimals,
   );
 
-  // Portfolio Y axis — 1:1 USD over the shares series (issue #1234
-  // resolution 5). `shares_balance.max` is a raw share string on the same
-  // scale as `history[].shares_balance`, so it takes the same
-  // `/ 10 ** decimals` treatment `buildSeries` already applies.
+  // spec: docs/frontend/dashboard-components.md#portfolioplaceholdercard (Y axis)
   const sharesStats = positionsHistory.data?.shares_balance;
   const portfolioAxisMax =
     sharesStats?.max != null

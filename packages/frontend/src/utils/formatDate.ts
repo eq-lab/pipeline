@@ -88,15 +88,6 @@ export function formatAxisDateRange(
   };
 }
 
-/**
- * Samples `count` (default 5) evenly-spaced indices out of `timestampsMs` and
- * formats each as an `formatAxisDate` label — issue #1234's X axis, which
- * never synthesises an instant the backend did not serve (resolution 6).
- * A single timestamp repeats across all slots (see `ChartDatesRow`'s
- * single-point test) rather than special-cased.
- * Appends the two-digit year suffix to every label, same rule as
- * `formatAxisDateRange`, when the sampled points cross a year boundary.
- */
 export function sampleAxisDates(timestampsMs: number[], count = 5): string[] {
   if (timestampsMs.length === 0) return [];
   const indices =

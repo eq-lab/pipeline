@@ -114,12 +114,8 @@ export function accrualToBars(
  * - Normalises heights: `height = clamp(value / domain * 100, MIN_HEIGHT_PCT, 100)`.
  * - Maps to `YIELD_CHART_N` slots using the same `pickPoint` approach.
  * - Ignores non-finite, negative, or invalid entries.
- *
- * `domainMax` (issue #1234) — an optional explicit normalisation domain, e.g.
- * a backend-served window-stat `max` that can sit outside the sampled
- * series' own extremes. When omitted or non-finite/non-positive, falls back
- * to today's frontend-computed series max (unchanged behaviour, guards
- * `accrualToBars`' shape and any other caller that never passes a domain).
+ * - `domainMax` (optional) sets the normalisation domain; omitted/invalid
+ *   falls back to the computed series max. See docs/frontend/utils.md.
  */
 export function pointsToBars(
   points: { timestamp: string; value: string }[] | undefined,

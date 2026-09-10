@@ -20,8 +20,6 @@ export interface PositionHistoryItem {
   cumulative_realized_pnl: string;
 }
 
-/** Window stats over exact events — raw strings on the same scale as the
- * sibling `history[]` field of the same name (issue #1234). */
 export interface SeriesStat {
   max: string;
   min: string;

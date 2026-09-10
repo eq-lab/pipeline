@@ -42,7 +42,6 @@ export interface TvlPoint {
 /** Full `GET /v1/dashboard/tvl-history` response envelope. */
 export interface TvlHistoryResponse {
   series: TvlPoint[];
-  /** Window stats over exact events — 6-decimal strings; may sit outside the sampled series extremes. */
   max: string;
   min: string;
   average: string;

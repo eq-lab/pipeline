@@ -42,15 +42,13 @@ export interface YieldHistoryPanelState {
   state: PanelState;
   /** Pre-computed cumulative-yield bar array, or `null` when empty/loading. */
   cumulativeBars: YieldBarPoint[] | null;
-  /** Y-axis ticks for the Cumulative Yield chart, or `null` when the served
-   * stats block is missing/invalid — no Y axis is rendered in that case. */
+  /** Y-axis ticks, or null (no axis rendered). */
   yieldAxis: AxisTicks | null;
   /** Formatted headline value (e.g. "$2.91M") for the Cumulative Yield card. */
   headlineValue: string;
   /** Pre-computed TVL bar array, or `null` when empty/loading. */
   tvlBars: YieldBarPoint[] | null;
-  /** Y-axis ticks for the TVL chart, or `null` when the served stats block
-   * is missing/invalid — no Y axis is rendered in that case. */
+  /** Y-axis ticks, or null (no axis rendered). */
   tvlAxis: AxisTicks | null;
   /** TVL card summary values (formatted). */
   tvlSummary: TvlSummary;
@@ -152,7 +150,7 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
     };
   }
 
-  // ── Y-axis domains — served max, middle tick fixed at max/2 (issue #1234) ───
+  // ── Y-axis domains ──────────────────────────────────────────────────────────
   // spec: docs/frontend/dashboard-components.md#chartvalueaxis
 
   const tvlMax =
@@ -168,8 +166,6 @@ export function useYieldHistoryPanel(): YieldHistoryPanelState {
   const yieldAxis = computeAxisTicks(yieldMax);
 
   // ── Derive chart data ───────────────────────────────────────────────────────
-  // Bars normalise against the served `max` (domain-true), not the sampled
-  // series' own extremes — see the exec plan's documented divergence risk.
 
   // Cumulative yield bars from yield-history series
   const cumulativeBars = pointsToBars(

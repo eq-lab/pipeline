@@ -1,10 +1,3 @@
-/**
- * Tests for `src/utils/chartAxis.ts`.
- *
- * Per the 2026-09-10 change on issue #1234: no domain rounding — the top tick
- * is the raw served `max`, compact zero-decimal; the middle tick is a fixed
- * `max/2`; the served `average` is not consumed.
- */
 import { describe, it, expect } from "vitest";
 import { computeAxisTicks, formatAxisTickUsd } from "./chartAxis";
 

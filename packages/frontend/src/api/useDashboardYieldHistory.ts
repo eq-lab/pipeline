@@ -46,7 +46,6 @@ export interface YieldPoint {
 /** Full `GET /v1/dashboard/yield-history` response envelope. */
 export interface YieldHistoryResponse {
   series: YieldPoint[];
-  /** Window stats over exact events — 6-decimal strings; may sit outside the sampled series extremes. */
   max: string;
   min: string;
   average: string;
