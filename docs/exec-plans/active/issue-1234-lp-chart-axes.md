@@ -136,6 +136,35 @@ Land step 1 even if the axis design is still being settled.
   dev server with HMR. Verify shapes with `curl` (as above) and ask the user to hard-refresh and
   report the Network tab.
 
+## Resolutions (2026-09-10, from the user)
+
+All six questions below are settled; implement accordingly. Where a resolution contradicts an
+Implementation Step, the resolution wins:
+
+1. **The Y axis is `0 / average / max` — the served values, not a derived scale.** The design
+   intent (confirmed by the user) is that the middle tick is the backend's `average` and the top
+   is the backend's `max`; the Figma mock just drew the average at the geometric middle with a
+   pretty half-value. This is why `f0f6f54` added the stats. `min` stays unused (the baseline is a
+   literal `$0`).
+2. **Top tick = raw served `max`, no rounding.** Format compactly with zero decimals (`$23M`) in
+   the mock's label style. The tallest bar reaches the top of the plot (normalise against the raw
+   `max`, not a rounded domain) — `ceilTo1SigFig` is NOT needed; drop it from step 3 and drop the
+   re-normalisation in step 4 (keep `pointsToBars`' optional explicit domain-max parameter, passing
+   the served `max`, so sampled series normalise against the window stat rather than the sampled
+   extremes).
+3. **Average tick is positioned proportionally** (`average / max` of the plot height), value-true —
+   not pinned to the middle. `ChartValueAxis` therefore takes `{ maxLabel, avgLabel, avgFraction }`
+   (or similar) and absolutely positions the middle label; `justify-between` alone no longer works.
+4. **No frontend-derivation carve-out needed** — no rounding happens; compact formatting of served
+   values is presentation, same as `formatCompactUsd` today.
+5. **Portfolio Y axis**: 1:1 USD over the shares series, consistent with the shipped headline.
+6. **X ticks**: five labels sampled from real served `series[].timestamp` values — never
+   synthesised instants.
+
+Also verified this session (curl against the live Figma file): the fourth Y-column label in the
+Figma nodes (`6267:9421` / `6268:9431`) is a hidden stray **"Aug 3" date label**, not a value —
+ignore it.
+
 ## Open Questions
 
 The Figma extraction settled what were the four biggest unknowns, and those answers are recorded in
