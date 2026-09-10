@@ -235,18 +235,22 @@ An 8px gap separates the axis+plot row from the `ChartDatesRow` beneath it, whic
 **Domain rule — revised 2026-09-10 (user change on #1234), supersedes both the earlier
 `ceilTo1SigFig`-rounded-domain design and the proportional-average design, neither shipped:**
 
-- **Top tick** — the raw backend-served window-stat `max` (e.g. `tvl-history.max`), formatted
-  compactly with **zero decimals** via `formatAxisTickUsd` (`$23M`, not `formatCompactUsd`'s
-  one-decimal `$23.1M`). No rounding to a "nice" tick value — this is presentation of a served
-  number, not a derived metric, so it needs no "no frontend-computed metrics" exception.
-- **Middle tick** — a fixed `(0 + max) / 2`, i.e. `max/2`, rendered at the **geometric middle**
-  of the column (plain `justify-between`). The served `average` (and `min`) stay typed on the
-  response interfaces but are **not consumed** anywhere.
+- **Top tick** — the backend-served window-stat `max` (e.g. `tvl-history.max`) in compact
+  **zero-decimal** display units, **bumped to the nearest even display value when odd** (#1236)
+  so the middle tick is an exact half with no rounding: served 19,000,000 → `$20M`/`$10M`;
+  served 23,140,000 → display 23 is odd → `$24M`/`$12M`; an even display max (`$22M`) is
+  unchanged. Exception: a display max of exactly 1K/1M is kept, because its half renders exactly
+  in the lower unit (`$1K`/`$500`, `$1M`/`$500K`). This bump is label presentation only — it is
+  not a derived metric, so it needs no "no frontend-computed metrics" exception.
+- **Middle tick** — exactly half the (possibly bumped) top tick, rendered at the **geometric
+  middle** of the column (plain `justify-between`). The served `average` (and `min`) stay typed
+  on the response interfaces but are **not consumed** anywhere.
 - **Bottom tick** — a literal `$0`, never the served `min`.
-- Bar heights normalise against the same raw served `max` (see `pointsToBars`'s `domainMax`
-  parameter, `utils/utils.md`), so the tallest bar reaches `value / max` of the plot height —
-  not necessarily 100%, since the backend's window-stat `max` integrates the exact event stream
-  while the sampled `series` is a coarser bucketing and can sit below it. Expected, not a bug.
+- Bar heights normalise against the **raw served `max`** (see `pointsToBars`'s `domainMax`
+  parameter, `utils/utils.md`) — the even-bump applies to the tick labels only (#1236), so the
+  tallest bar reaches `value / max` of the plot height, not necessarily 100%: the window-stat
+  `max` integrates the exact event stream while the sampled `series` is coarser, and a bumped
+  top tick names a value above every bar. Both are expected, not bugs.
 
 **Missing data.** When the served `max` is missing, non-finite, or `≤ 0` (including the
 documented `max === min === 0` empty-chain response), `computeAxisTicks` returns `null` and the

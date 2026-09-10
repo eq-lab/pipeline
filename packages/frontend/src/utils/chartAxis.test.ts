@@ -35,18 +35,44 @@ describe("formatAxisTickUsd", () => {
 });
 
 describe("computeAxisTicks", () => {
-  it("returns raw served max with a fixed max/2 middle tick", () => {
+  it("bumps an odd display max to the next even value so max/2 is exact", () => {
     expect(computeAxisTicks(23_140_000)).toEqual({
-      maxLabel: "$23M",
+      maxLabel: "$24M",
       midLabel: "$12M",
+      bottomLabel: "$0",
+    });
+    expect(computeAxisTicks(19_000_000)).toEqual({
+      maxLabel: "$20M",
+      midLabel: "$10M",
       bottomLabel: "$0",
     });
   });
 
-  it("halves sub-thousand maxima to whole dollars", () => {
+  it("keeps an even display max unchanged", () => {
+    expect(computeAxisTicks(22_000_000)).toEqual({
+      maxLabel: "$22M",
+      midLabel: "$11M",
+      bottomLabel: "$0",
+    });
+  });
+
+  it("keeps a display max of 1K/1M whose half renders exactly in the lower unit", () => {
     expect(computeAxisTicks(1000)).toEqual({
       maxLabel: "$1K",
       midLabel: "$500",
+      bottomLabel: "$0",
+    });
+    expect(computeAxisTicks(1_000_000)).toEqual({
+      maxLabel: "$1M",
+      midLabel: "$500K",
+      bottomLabel: "$0",
+    });
+  });
+
+  it("bumps an odd sub-thousand max with no exact half", () => {
+    expect(computeAxisTicks(19)).toEqual({
+      maxLabel: "$20",
+      midLabel: "$10",
       bottomLabel: "$0",
     });
   });
