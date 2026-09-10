@@ -162,8 +162,8 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
       "w-full",
       "bg-[var(--color-pipeline-paper)]",
       "border-b border-[var(--color-pipeline-line)]",
-      // Position context for the dropdown.
-      "relative",
+      // Position context for the dropdown; sticky per #1238.
+      "sticky top-0 z-40",
       className,
     ]
       .filter(Boolean)

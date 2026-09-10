@@ -497,6 +497,13 @@ rendering branch (`href="#"` → `aria-disabled`, default cursor) remains for th
 Global page header (self-contained, no external props for wallet). Mounted in the root layout
 (`__root.tsx`) so every page renders it automatically; all wallet state is read internally.
 
+**Sticky (#1238):** the header is `sticky top-0 z-40` at every breakpoint (desktop and the mobile
+hamburger variant share the one `<header>`). The `RiskBanner` above it stays non-sticky: it
+scrolls away in normal flow, and the header pins once it reaches the viewport top. `z-40` sits
+above page content but below the fixed `z-[9999]` portals (mobile nav menu, connect modals); the
+`AccountDropdown` anchors to the header itself (`z-50` inside its stacking context), so it pins
+along with the pinned header.
+
 **Connected state:**
 
 - Renders a `WalletPill` wrapped in a trigger button.
@@ -554,7 +561,9 @@ the sign-in state. Full-width strip on
 > You are using an unaudited version of smart contracts and should acknowledge related risks
 
 Not dismissible — no close button, no stored state. No acknowledgement flow (checkbox/modal) is
-in scope; that would be a separate issue.
+in scope; that would be a separate issue. "Always visible" means always mounted at the top of the
+page, not pinned: the banner is **non-sticky** and scrolls away in normal flow while the LP
+`TopBar` below it pins (#1238).
 
 ### AccountDropdown
 
