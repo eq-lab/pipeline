@@ -131,7 +131,7 @@ export const RecentActivityCard = React.forwardRef<
                 data-node-id="1497:94570"
               />
             }
-            caption="You will see all transactions here"
+            caption="You will see your transactions here"
             data-node-id="1497:94665"
           />
         )}
