@@ -898,6 +898,28 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   the existing `state="error"` treatment. Not built as part of #1234 — that issue only fixed the
   specific parsing bug; this is the containment gap around it.
 
+### TD-57: `link_address` trusts a client-supplied `stellar_address` with no proof of key ownership
+
+- **Date:** 2026-09-15 (narrowed 2026-09-15 — see below)
+- **Location:** `packages/api/src/routes/lps.rs` — `link_address`
+- **Gap:** `register_lp`/`upload_document`/`link_address` now require `AuthClaims`, and
+  `upload_document`/`link_address` are additionally scoped to the caller's own LP via
+  `lp_owner_guard` (caller's JWT `(chain_id, sub)` must match `lps.(owner_chain_id, owner_address)`,
+  the `auth_users` entry that registered the LP — `lps_owner_fk` enforces the pair is a real allow-list
+  entry). That closes the original "anyone can act on any LP" gap. What's still open: `link_address`
+  authenticates *who is calling* but not that they hold the key for the `stellar_address` in the request
+  body — a registered owner can type in any Strkey and it gets recorded as the LP's settlement address,
+  with no signature proving they control it. `owner_address` (the login identity) and `stellar_address`
+  (the settlement identity) are deliberately decoupled, so the existing `AuthClaims.sub` can't double as
+  that proof.
+- **Impact:** A malicious or careless owner can link a `stellar_address` they don't control (typo, or a
+  counterparty's address); nothing downstream currently signs a challenge to verify possession before
+  the address is recorded as authoritative for that LP.
+- **Suggested fix:** Require a signed challenge over the *intended* `stellar_address` at `link_address`
+  time — mirror `routes::auth`'s existing challenge/verify flow (`GET /v1/auth/challenge`,
+  `POST /v1/auth/verify`), but scoped to proving ownership of `stellar_address` specifically rather than
+  issuing a session JWT.
+
 ---
 
 ## Post-MVP

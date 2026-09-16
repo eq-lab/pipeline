@@ -14,12 +14,14 @@ use shared::auth_user_repo::AuthUserRepo;
 use shared::collateral_valuation_repo::CollateralValuationRepo;
 use shared::contract_logs_repo::ContractLogsRepo;
 use shared::eip712::Eip712Domain;
+use shared::kyb_document_repo::KybDocumentRepo;
 use shared::kyc_repo::KycRepo;
 use shared::loan_asset_price_repo::LoanAssetPriceRepo;
 use shared::loan_capital_transfers_repo::LoanCapitalTransfersRepo;
 use shared::loan_disbursement_repo::LoanDisbursementRepo;
 use shared::loan_fee_schedule_repo::LoanFeeScheduleRepo;
 use shared::loan_metadata::LoanMetadataFetcher;
+use shared::lp_repo::LpRepo;
 use shared::position_repo::PositionRepo;
 use shared::submitted_loan_repo::SubmittedLoanRepo;
 use shared::sumsub::client::SumsubClient;
@@ -82,4 +84,8 @@ pub struct AppState {
     /// (`loan_capital_transfers`), backing `capital-allocation`'s reworked
     /// `deployed` / `in_transit` / `trust_account` buckets (#1027).
     pub loan_capital_transfers_repo: LoanCapitalTransfersRepo,
+    /// LP (business entity) registry for the custom KYB service (`lps`).
+    pub lp_repo: LpRepo,
+    /// Versioned KYB supporting documents (`kyb_documents`).
+    pub kyb_document_repo: KybDocumentRepo,
 }
