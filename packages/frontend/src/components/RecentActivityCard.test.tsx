@@ -186,7 +186,7 @@ describe("RecentActivityCard — disconnected wallet", () => {
   it("renders the empty-state caption", () => {
     renderCard();
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -265,7 +265,7 @@ describe("RecentActivityCard — connected + 3 rows", () => {
   it("does not render the empty-state caption", () => {
     renderCard();
     expect(
-      screen.queryByText("You will see all transactions here"),
+      screen.queryByText("You will see your transactions here"),
     ).not.toBeInTheDocument();
   });
 });
@@ -335,7 +335,7 @@ describe("RecentActivityCard — connected + empty list", () => {
   it("renders the empty-state caption", () => {
     renderCard();
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -377,7 +377,7 @@ describe("RecentActivityCard — connected + loading", () => {
   it("renders the empty-state caption while loading", () => {
     renderCard();
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -419,7 +419,7 @@ describe("RecentActivityCard — connected + error", () => {
   it("renders the empty-state caption on error", () => {
     renderCard();
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -484,7 +484,7 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     expect(screen.getByText("+3,000.00 PLUSD")).toBeInTheDocument();
     // Empty-state must be absent
     expect(
-      screen.queryByText("You will see all transactions here"),
+      screen.queryByText("You will see your transactions here"),
     ).not.toBeInTheDocument();
   });
 
@@ -510,7 +510,7 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     renderCard();
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
@@ -539,7 +539,7 @@ describe("RecentActivityCard — active chain gating (Issue #644)", () => {
     // EVM active + EVM connected + data → list
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(
-      screen.queryByText("You will see all transactions here"),
+      screen.queryByText("You will see your transactions here"),
     ).not.toBeInTheDocument();
   });
 });

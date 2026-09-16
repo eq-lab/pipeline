@@ -294,7 +294,7 @@ describe("Transactions page — wallet-level empty state (zero rows)", () => {
     renderTransactions();
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -340,7 +340,7 @@ describe("Transactions page — tab-level empty state", () => {
     await user.click(sellTab);
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -435,7 +435,7 @@ describe("Transactions page — disconnected wallet (no data)", () => {
     renderTransactions();
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -521,7 +521,7 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
 
     expect(screen.getByText("+2,000.00 PLUSD")).toBeInTheDocument();
     expect(
-      screen.queryByText("You will see all transactions here"),
+      screen.queryByText("You will see your transactions here"),
     ).not.toBeInTheDocument();
   });
 
@@ -539,7 +539,7 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     renderTransactions();
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
     expect(screen.queryByText("+2,000.00 PLUSD")).not.toBeInTheDocument();
   });
@@ -558,7 +558,7 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     renderTransactions();
 
     expect(
-      screen.getByText("You will see all transactions here"),
+      screen.getByText("You will see your transactions here"),
     ).toBeInTheDocument();
   });
 
@@ -576,7 +576,7 @@ describe("Transactions page — active chain gating (Issue #644)", () => {
     renderTransactions();
 
     const emptyCaption = screen.queryByText(
-      "You will see all transactions here",
+      "You will see your transactions here",
     );
     const rows = screen.queryAllByTestId(/^transactions-row-/);
 

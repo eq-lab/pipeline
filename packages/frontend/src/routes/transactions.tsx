@@ -113,7 +113,7 @@ function Transactions() {
                 illustration={
                   <ActivityEmptyIllustration tone="muted" width={240} />
                 }
-                caption="You will see all transactions here"
+                caption="You will see your transactions here"
               />
               {!isConnected && (
                 <Button
