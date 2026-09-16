@@ -16,9 +16,14 @@ vi.mock("@/wallet/evm/useStakedPlusd", () => ({
   useStakedPlusdConvertToAssets: () => ({ data: undefined }),
 }));
 
+const { summaryState } = vi.hoisted(() => ({
+  summaryState: { data: undefined as { tvl: string } | undefined },
+}));
+
 vi.mock("@/api", () => ({
   useStats: () => ({ data: undefined }),
   formatApy: () => "8.42%",
+  useDashboardSummary: () => ({ data: summaryState.data }),
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -54,5 +59,19 @@ describe("HomeStatsStrip", () => {
     expect(screen.getByText("Exchange rate")).toBeInTheDocument();
     expect(screen.getByText("Total Value Locked")).toBeInTheDocument();
     expect(screen.getByText("Current APY")).toBeInTheDocument();
+  });
+
+  it("renders the served summary.tvl compact-formatted (#1241)", () => {
+    summaryState.data = { tvl: "19002000.000000" };
+    render(<HomeStatsStrip />);
+    expect(screen.getByText("$19.0M")).toBeInTheDocument();
+    summaryState.data = undefined;
+  });
+
+  it("renders — for TVL while summary is loading/missing (#1241)", () => {
+    summaryState.data = undefined;
+    render(<HomeStatsStrip />);
+    const tvlLabel = screen.getByText("Total Value Locked");
+    expect(tvlLabel.parentElement).toHaveTextContent("—");
   });
 });

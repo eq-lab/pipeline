@@ -404,7 +404,12 @@ and `useStats`). TVL remains hardcoded pending a separate issue.
 ### HomeStatsStrip
 
 Exchange rate / TVL / Current APY stat row. Extracted from `WelcomeHeader` so the same live stats
-render in two places without prop-drilling or duplication:
+render in two places without prop-drilling or duplication. All three cells are live: exchange rate
+from the on-chain `convertToAssets` read, APY from `GET /v1/stats`, and TVL (#1241) from
+`GET /v1/dashboard/summary` → `summary.tvl` via `useDashboardSummary` — the same source as the
+dashboard TVL card, formatted with `formatCompactUsd` (`"$19.0M"`), rendering `—` while loading or
+when the field is null (never a hardcoded value; the strip previously shipped the Figma mock
+`$28,812,044.93` as a literal).
 
 - **Desktop:** inside `WelcomeHeader`, right side of the heading row.
 - **Mobile:** a horizontally-scrollable strip at the bottom of the home page (`routes/index.tsx`)
