@@ -534,7 +534,12 @@ fn empty_yield_history() -> YieldHistoryResponse {
 ///
 /// Public so `packages/api/tests/dashboard.rs` can exercise it without the
 /// HTTP/DB layers.
-pub fn compute_tvl_history(flows: &[FlowEventRow], from: i64, to: i64, step: i64) -> TvlHistoryResponse {
+pub fn compute_tvl_history(
+    flows: &[FlowEventRow],
+    from: i64,
+    to: i64,
+    step: i64,
+) -> TvlHistoryResponse {
     let series = compute_tvl_series(flows, from, to, step);
 
     let deltas: Vec<(i64, BigDecimal)> = flows
@@ -645,8 +650,6 @@ struct SeriesStatValues {
     min: BigDecimal,
     average: BigDecimal,
 }
-
-
 
 /// Build the sample grid: `from, from+step, …, to`.
 /// Always includes `to` as the final point. Deduplicates in case `to` falls
