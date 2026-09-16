@@ -2,7 +2,8 @@ import React from "react";
 import { Link } from "@tanstack/react-router";
 import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
-import { useStats, formatApy } from "@/api";
+import { useStats, formatApy, useDashboardSummary } from "@/api";
+import { formatCompactUsd } from "@/utils/formatCompactUsd";
 
 // spec: docs/frontend/dashboard-components.md#homestatsstrip (desktop/mobile reuse, Figma frame 1989:8292).
 
@@ -58,6 +59,9 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const { data: statsData } = useStats();
   const apyValue = formatApy(statsData?.vaults[0]?.apy);
 
+  const { data: summary } = useDashboardSummary();
+  const tvlValue = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
+
   const composed = ["flex items-center gap-4", "shrink-0", className]
     .filter(Boolean)
     .join(" ");
@@ -69,7 +73,7 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
 
       {/* Total Value Locked */}
       <div className={separatedCellClasses}>
-        <Stat label="Total Value Locked" value="$28,812,044.93" />
+        <Stat label="Total Value Locked" value={tvlValue} />
       </div>
 
       {/* Current APY */}

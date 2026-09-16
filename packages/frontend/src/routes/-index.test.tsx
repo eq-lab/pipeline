@@ -140,6 +140,12 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/api", () => ({
   useRequests: () => ({ data: undefined, isLoading: false, error: null }),
   useStats: () => ({ data: undefined, isLoading: false, error: null }),
+  useDashboardSummary: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
   usePnl: () => ({
     data: mockPnlData.current,
     isLoading: false,
