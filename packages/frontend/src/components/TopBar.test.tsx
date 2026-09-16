@@ -132,11 +132,12 @@ vi.mock("@/wallet/stellar/config", () => ({
 // Same pattern as AccountDropdown.test.tsx: only `getNetworkSwitcherState` is
 // stubbed (controllable per test); `navigateToNetworkLink` stays real.
 
-const { mockNetworkSwitcherState } = vi.hoisted(() => ({
+const { mockNetworkSwitcherState, mockIsMainnet } = vi.hoisted(() => ({
   mockNetworkSwitcherState: {
     currentNetwork: { id: "testnet", label: "Testnet" },
     otherNetworks: [] as { id: string; label: string; url: string }[],
   },
+  mockIsMainnet: { value: false },
 }));
 
 vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
@@ -145,6 +146,7 @@ vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
   return {
     ...original,
     getNetworkSwitcherState: () => mockNetworkSwitcherState,
+    isMainnetDeployment: () => mockIsMainnet.value,
   };
 });
 
@@ -354,6 +356,7 @@ function clearMocks() {
   mockStellarSplusdState.balance = undefined;
   mockNetworkSwitcherState.currentNetwork = { id: "testnet", label: "Testnet" };
   mockNetworkSwitcherState.otherNetworks = [];
+  mockIsMainnet.value = false;
 }
 
 // ── Tests: route-driven active nav ────────────────────────────────────────────
@@ -1071,5 +1074,34 @@ describe("TopBar — network switcher static badge", () => {
         "Mainnet",
       ),
     );
+  });
+});
+
+// ── Tests: mainnet dashboard gate (Issue #1243) ───────────────────────────────
+
+describe("TopBar — mainnet dashboard gate (#1243)", () => {
+  afterEach(() => {
+    clearMocks();
+    localStorage.clear();
+  });
+
+  it("hides the Dashboard nav slot and its divider on mainnet", async () => {
+    mockIsMainnet.value = true;
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("topbar-nav-overview")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("topbar-nav-divider")).not.toBeInTheDocument();
+  });
+
+  it("shows the Dashboard nav slot and its divider on testnet", async () => {
+    renderTopBar("/");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("topbar-nav-overview")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("topbar-nav-divider")).toBeInTheDocument();
   });
 });

@@ -20,7 +20,10 @@ vi.mock("@/lib/env", () => ({
   ENV: mockEnv,
 }));
 
-import { getNetworkSwitcherState } from "./networkSwitcher";
+import {
+  getNetworkSwitcherState,
+  isMainnetDeployment,
+} from "./networkSwitcher";
 
 describe("getNetworkSwitcherState", () => {
   it("returns the static-label case (no other networks) when NETWORK_LINKS is unset", () => {
@@ -62,5 +65,24 @@ describe("getNetworkSwitcherState", () => {
         url: "https://pipeline.stage.eqlab.net",
       },
     ]);
+  });
+});
+
+describe("isMainnetDeployment", () => {
+  it("is false on a testnet passphrase", () => {
+    mockEnv.STELLAR_NETWORK_PASSPHRASE = "Test SDF Network ; September 2015";
+    expect(isMainnetDeployment()).toBe(false);
+  });
+
+  it("is true on the mainnet passphrase", () => {
+    mockEnv.STELLAR_NETWORK_PASSPHRASE =
+      "Public Global Stellar Network ; September 2015";
+    expect(isMainnetDeployment()).toBe(true);
+  });
+
+  it("is false on an unknown passphrase (maps to testnet identity)", () => {
+    mockEnv.STELLAR_NETWORK_PASSPHRASE =
+      "Test SDF Future Network ; October 2022";
+    expect(isMainnetDeployment()).toBe(false);
   });
 });

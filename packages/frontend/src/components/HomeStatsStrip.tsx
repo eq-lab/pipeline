@@ -4,6 +4,7 @@ import { Stat } from "@pipeline/ui";
 import { useStakedPlusdConvertToAssets } from "@/wallet/evm/useStakedPlusd";
 import { useStats, formatApy, useDashboardSummary } from "@/api";
 import { formatCompactUsd } from "@/utils/formatCompactUsd";
+import { isMainnetDeployment } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#homestatsstrip (desktop/mobile reuse, Figma frame 1989:8292).
 
@@ -62,6 +63,9 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
   const { data: summary } = useDashboardSummary();
   const tvlValue = summary?.tvl ? formatCompactUsd(summary.tvl) : "—";
 
+  // spec: docs/frontend/dashboard-components.md#homestatsstrip (mainnet gate, Issue #1243)
+  const mainnet = isMainnetDeployment();
+
   const composed = ["flex items-center gap-4", "shrink-0", className]
     .filter(Boolean)
     .join(" ");
@@ -71,27 +75,30 @@ export function HomeStatsStrip({ className, ...rest }: HomeStatsStripProps) {
       {/* Exchange rate — no left-border on the first cell */}
       <Stat label="Exchange rate" value={exchangeRateValue} />
 
-      {/* Total Value Locked */}
-      <div className={separatedCellClasses}>
-        <Stat label="Total Value Locked" value={tvlValue} />
-      </div>
+      {/* TVL / APY cells + dashboard link — hidden on mainnet (#1243) so no
+          bordered wrapper renders when Exchange rate is the sole cell. */}
+      {!mainnet && (
+        <>
+          <div className={separatedCellClasses}>
+            <Stat label="Total Value Locked" value={tvlValue} />
+          </div>
 
-      {/* Current APY */}
-      <div className={separatedCellClasses}>
-        <Stat label="Current APY" value={apyValue} />
-      </div>
+          <div className={separatedCellClasses}>
+            <Stat label="Current APY" value={apyValue} />
+          </div>
 
-      {/* External-link icon button — opens the Protocol Dashboard (#716). */}
-      <Link
-        to="/dashboard"
-        aria-label="View Protocol Dashboard"
-        className={iconButtonClasses}
-        data-testid="home-stats-dashboard-link"
-      >
-        <span className="inline-flex size-6 items-center justify-center">
-          <ExternalLinkIcon />
-        </span>
-      </Link>
+          <Link
+            to="/dashboard"
+            aria-label="View Protocol Dashboard"
+            className={iconButtonClasses}
+            data-testid="home-stats-dashboard-link"
+          >
+            <span className="inline-flex size-6 items-center justify-center">
+              <ExternalLinkIcon />
+            </span>
+          </Link>
+        </>
+      )}
     </div>
   );
 }

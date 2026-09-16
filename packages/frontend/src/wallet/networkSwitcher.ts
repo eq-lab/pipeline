@@ -34,3 +34,10 @@ export function getNetworkSwitcherState(): NetworkSwitcherState {
   );
   return { currentNetwork, otherNetworks };
 }
+
+// spec: docs/frontend/dashboard-components.md#dashboard-route (mainnet gate, Issue #1243)
+export function isMainnetDeployment(): boolean {
+  return (
+    networkIdFromPassphrase(ENV.STELLAR_NETWORK_PASSPHRASE).id === "mainnet"
+  );
+}
