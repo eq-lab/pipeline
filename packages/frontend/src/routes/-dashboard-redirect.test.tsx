@@ -1,10 +1,3 @@
-/**
- * Tests for the /dashboard mainnet redirect guard (Issue #1243).
- *
- * Verifies `beforeLoad` throws `redirect({ to: "/" })` on mainnet and is a
- * no-op on testnet, following the same `redirect()`-capture pattern as
- * `-withdraw-redirect.test.tsx`.
- */
 import { describe, it, expect, vi } from "vitest";
 import { Route } from "./dashboard";
 
