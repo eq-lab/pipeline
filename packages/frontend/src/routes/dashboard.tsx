@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { BalanceSheetPanel } from "@/components/dashboard/BalanceSheetPanel";
 import { DeploymentMonitorPanel } from "@/components/dashboard/DeploymentMonitorPanel";
 import { WithdrawalQueuePanel } from "@/components/dashboard/WithdrawalQueuePanel";
 import { YieldHistoryPanel } from "@/components/dashboard/YieldHistoryPanel";
+import { isMainnetDeployment } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#dashboard-route
 // (layout, panel order, entry point, Figma references).
@@ -54,5 +55,11 @@ function Dashboard() {
 }
 
 export const Route = createFileRoute("/dashboard")({
+  // spec: docs/frontend/dashboard-components.md#dashboard-route (mainnet gate, Issue #1243)
+  beforeLoad: () => {
+    if (isMainnetDeployment()) {
+      throw redirect({ to: "/" });
+    }
+  },
   component: Dashboard,
 });

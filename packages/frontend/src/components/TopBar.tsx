@@ -19,6 +19,7 @@ import { NetworkSwitcher } from "./NetworkSwitcher";
 import { AccountDropdown } from "./AccountDropdown";
 import { MobileNavMenu, HamburgerGlyph } from "./MobileNavMenu";
 import { useMobileNavMenu } from "./useMobileNavMenu";
+import { isMainnetDeployment } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#topbar
 // (connected/disconnected states, active-nav derivation, Figma frame 1497:94715).
@@ -67,6 +68,11 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
   function TopBar({ className, ...rest }, ref) {
     const navigate = useNavigate();
     const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+    // spec: docs/frontend/dashboard-components.md#topbar (mainnet gate, Issue #1243)
+    const navItems = isMainnetDeployment()
+      ? NAV_ITEMS.filter((item) => item.key !== "overview")
+      : NAV_ITEMS;
 
     // ── Wallet state — all hooks called unconditionally ───────────────────
     const evm = useEvmWallet();
@@ -193,7 +199,7 @@ export const TopBar = React.forwardRef<HTMLElement, TopBarProps>(
           data-testid="topbar-primary-nav"
           data-node-id="1497:94718"
         >
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <React.Fragment key={item.key}>
               {item.dividerBefore && (
                 <span

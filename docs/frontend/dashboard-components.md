@@ -423,6 +423,12 @@ box-and-arrow external-link icon from Figma node `1497:94558` (24×24, #1110) �
 `currentColor` so the button's `--color-pipeline-ink-muted` (`rgb(56 55 53 / 0.6)`) reproduces the
 node's `#383735` @ 0.6 fill exactly.
 
+**Mainnet gate (#1243):** the TVL cell, Current APY cell, and the dashboard link button are
+omitted entirely (not just visually hidden) on a mainnet deployment (`isMainnetDeployment()`,
+`@/wallet/networkSwitcher`) — Exchange rate is the only cell left, and the whole bordered wrapper
+`<div>` for each hidden cell is skipped so no hairline separator dangles next to the now-lone
+Exchange rate cell. Testnet and unknown passphrases render all three cells as before.
+
 ### QnaSection
 
 Questions & Answers row at the bottom of the dashboard. Implements Figma frame `1497:94666`
@@ -551,6 +557,12 @@ Dashboard at `/dashboard` and is separated from Activity by a vertical divider (
 `5915:77654`, `h-5 w-px` in `--color-pipeline-line`, `aria-hidden`,
 `data-testid="topbar-nav-divider"`).
 
+**Mainnet gate (#1243):** the Overview slot and its divider are omitted from `NAV_ITEMS` entirely
+on a mainnet deployment (`isMainnetDeployment()`, `@/wallet/networkSwitcher` — reuses the #1032
+`networkIdFromPassphrase(ENV.STELLAR_NETWORK_PASSPHRASE)` identity, no new env var). Testnet and
+unknown passphrases are unaffected. Temporary until mainnet has real generated data; un-hiding is
+a one-line change at the `isMainnetDeployment` call site.
+
 ### RiskBanner
 
 **Source:** `@pipeline/ui` — `components/RiskBanner/RiskBanner.tsx` (#1231).
@@ -630,6 +642,10 @@ Full-screen slide-in nav panel for mobile viewports. Shown when the user taps th
 **Accessibility:** `role="dialog" aria-modal="true"` (announces as a modal); focus moves to the
 first focusable element on open; focus is trapped inside while open; Escape closes (handled by
 `useMobileNavMenu`); scrim click closes.
+
+**Mainnet gate (#1243):** the Dashboard item and its preceding divider are omitted on a mainnet
+deployment (`isMainnetDeployment()`, `@/wallet/networkSwitcher`), same derivation as `TopBar`.
+Testnet and unknown passphrases are unaffected.
 
 **`useMobileNavMenu` hook** is intentionally narrow: it owns only the open/close boolean toggle and
 its side effects (body-scroll lock, Escape-to-close). The host component (`TopBar`) holds the
@@ -1529,6 +1545,11 @@ Protocol Dashboard route (`/dashboard`) — issues #716, #728. Hosts the four Op
 Token discipline (per `FRONTEND.md`): no raw hex/font names; all colors and typography flow through `@pipeline/ui` primitives and theme-token utilities. The `max-w`/`min-h` pixel hints are layout sizing, not design tokens.
 
 Figma references: [desktop](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-12098&m=dev), [responsive](https://www.figma.com/design/A43rjYYjSwdTmiwwf5cx5n/Pipeline?node-id=3283-72387&m=dev).
+
+**Mainnet gate (#1243):** hidden nav links are not access control, so the route itself is guarded —
+`beforeLoad` throws `redirect({ to: "/" })` when `isMainnetDeployment()` (`@/wallet/networkSwitcher`)
+is true, so a typed `/dashboard` URL cannot reach the page on mainnet. Testnet and unknown
+passphrases load the route normally.
 
 ### Diagnostics route
 

@@ -13,6 +13,21 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MobileNavMenu } from "./MobileNavMenu";
 
+// ── Mainnet gate mock (Issue #1243) ──────────────────────────────────────────
+
+const { mockIsMainnet } = vi.hoisted(() => ({
+  mockIsMainnet: { value: false },
+}));
+
+vi.mock("@/wallet/networkSwitcher", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/wallet/networkSwitcher")>();
+  return {
+    ...original,
+    isMainnetDeployment: () => mockIsMainnet.value,
+  };
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const noop = () => undefined;
@@ -39,6 +54,7 @@ function renderMenu(
 afterEach(() => {
   // Reset body overflow that may have been set by useMobileNavMenu.
   document.body.style.overflow = "";
+  mockIsMainnet.value = false;
   vi.clearAllMocks();
 });
 
@@ -80,6 +96,29 @@ describe("MobileNavMenu — nav items", () => {
     expect(row).toBeInTheDocument();
     expect(screen.getByText("Network")).toBeInTheDocument();
     expect(screen.getByTestId("topbar-network-badge")).toBeInTheDocument();
+  });
+});
+
+// ── Tests: mainnet dashboard gate (Issue #1243) ──────────────────────────────
+
+describe("MobileNavMenu — mainnet dashboard gate (#1243)", () => {
+  it("hides the Dashboard item and its preceding divider on mainnet", () => {
+    mockIsMainnet.value = true;
+    renderMenu({ open: true, pathname: "/" });
+
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mobile-overview-button"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("separator", { hidden: true })).toHaveLength(1);
+  });
+
+  it("shows the Dashboard item and its preceding divider on testnet", () => {
+    renderMenu({ open: true, pathname: "/" });
+
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-overview-button")).toBeInTheDocument();
+    expect(screen.getAllByRole("separator", { hidden: true })).toHaveLength(2);
   });
 });
 

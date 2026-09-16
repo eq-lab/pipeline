@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Logo, NavIcon, CoinIcon } from "@pipeline/ui";
 import type { NavIconName } from "@pipeline/ui";
 import { NetworkSwitcher } from "./NetworkSwitcher";
+import { isMainnetDeployment } from "@/wallet/networkSwitcher";
 
 // spec: docs/frontend/dashboard-components.md#mobilenavmenu (disconnected/connected states, Figma nodes 1989:9231 / 1993:6527).
 
@@ -447,44 +448,47 @@ export function MobileNavMenu({
             ))}
           </nav>
 
-          {/* Divider before Dashboard */}
-          <div className="flex w-full items-center justify-center py-3">
-            <MenuDivider />
-          </div>
+          {/* Dashboard item + preceding divider — hidden on mainnet, Issue #1243 */}
+          {!isMainnetDeployment() && (
+            <>
+              <div className="flex w-full items-center justify-center py-3">
+                <MenuDivider />
+              </div>
 
-          {/* Dashboard item */}
-          <button
-            type="button"
-            className={[
-              "flex w-full items-center gap-3",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-              "focus-visible:ring-[var(--color-pipeline-brand)]",
-              "focus-visible:ring-offset-[var(--color-pipeline-paper)]",
-              "rounded-[var(--radius-pipeline-button)]",
-            ].join(" ")}
-            data-testid="mobile-overview-button"
-            data-node-id="1989:9444"
-            onClick={() => handleNavClick("/dashboard")}
-          >
-            <div
-              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
-              aria-hidden="true"
-            >
-              <PieChartGlyph />
-            </div>
-            <span
-              className={[
-                "font-[family-name:var(--font-body)]",
-                "text-[length:var(--text-pipeline-body)]",
-                "leading-[var(--text-pipeline-body--line-height)]",
-                "font-[var(--font-weight-regular)]",
-                "text-[color:var(--color-pipeline-ink-muted)]",
-                "truncate",
-              ].join(" ")}
-            >
-              Dashboard
-            </span>
-          </button>
+              <button
+                type="button"
+                className={[
+                  "flex w-full items-center gap-3",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                  "focus-visible:ring-[var(--color-pipeline-brand)]",
+                  "focus-visible:ring-offset-[var(--color-pipeline-paper)]",
+                  "rounded-[var(--radius-pipeline-button)]",
+                ].join(" ")}
+                data-testid="mobile-overview-button"
+                data-node-id="1989:9444"
+                onClick={() => handleNavClick("/dashboard")}
+              >
+                <div
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-pipeline-ink)] text-white"
+                  aria-hidden="true"
+                >
+                  <PieChartGlyph />
+                </div>
+                <span
+                  className={[
+                    "font-[family-name:var(--font-body)]",
+                    "text-[length:var(--text-pipeline-body)]",
+                    "leading-[var(--text-pipeline-body--line-height)]",
+                    "font-[var(--font-weight-regular)]",
+                    "text-[color:var(--color-pipeline-ink-muted)]",
+                    "truncate",
+                  ].join(" ")}
+                >
+                  Dashboard
+                </span>
+              </button>
+            </>
+          )}
 
           {/* Divider before wallet section */}
           <div className="flex w-full items-center justify-center py-3">
