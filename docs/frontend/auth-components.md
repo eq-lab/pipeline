@@ -1,9 +1,9 @@
 # KYB auth components
 
 LP-facing email+password authentication modals for epic #1247 (KYB login flow). This is a new
-area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds six more screens
-(#1249 Create-account, #1250 OTP, #1251 Company Docs, #1252 Owners, #1253 Account-in-review) that
-will all land here, same reasoning as `wallet-flows.md` / `trustee-flows.md`.
+area doc — `dashboard-components.md` is already 117 KB and epic #1247 adds five more screens
+(#1250 OTP, #1251 Company Docs, #1252 Owners, #1253 Account-in-review) that will all land here,
+same reasoning as `wallet-flows.md` / `trustee-flows.md`.
 
 **No production entry point changes in this epic yet.** These modals are reachable only from the
 `/test?tab=auth` diagnostics route (see `dashboard-components.md#diagnostics-route`). `TopBar`'s
@@ -43,11 +43,22 @@ element's id; focus trap (Tab/Shift+Tab cycle among non-`aria-hidden` focusable 
 Escape and the × button both dismiss; no scrim click (the panel is full-viewport, matching
 `ConnectWalletModal`).
 
+### Shared form parts
+
+`packages/frontend/src/components/AuthModalParts.tsx`. `ContinueWithWalletButton` (Figma node
+`6486:81624`, the 24×24 wallet glyph + `Button variant="secondary"` white-fill override) and
+`OrDivider` (Figma node `6486:81625`) are shared verbatim between `SignInModal` and
+`CreateAccountModal` — confirmed byte-identical instances across both frames during #1249
+planning. `packages/frontend/src/components/useAuthCredentialsForm.ts` (renamed from
+`useSignInModal.ts` in #1249) is the shared credential-form state/validation hook consumed by
+both modals — see the validation rules under "SignInModal" below, which apply unchanged to
+`CreateAccountModal`.
+
 ### SignInModal
 
-`packages/frontend/src/components/SignInModal.tsx` + `useSignInModal.ts`. The email+password
-sign-in screen — a presentational component with **no network call**; `onSubmit` is a seam for
-#1254 (defaults to a no-op).
+`packages/frontend/src/components/SignInModal.tsx` + `useAuthCredentialsForm.ts`. The
+email+password sign-in screen — a presentational component with **no network call**; `onSubmit`
+is a seam for #1254 (defaults to a no-op).
 
 Visual specs (Figma):
 
@@ -77,7 +88,9 @@ Composition inside `AuthModalShell` (heading "Sign in", `headingId`
    sampled color.
 5. **"Forgot password?"** — renders as inert text (no `<button>`, no handler) — it has no
    destination frame in the "KYB Onboarding" file and no sub-issue.
-6. **"New here? Create account"** — also inert text in #1248; the real destination is #1249.
+6. **"New here? Create account"** — also inert text in #1248 and unwired in #1249's
+   `CreateAccountModal` counterpart ("Already have an account? Log in") — the cross-link between
+   the two modals is #1254's job.
 
 **Figma → token mapping** (confirmed via `get_variable_defs` + `get_design_context`, not
 estimated from pixel sampling):
@@ -128,9 +141,65 @@ exec plan's Figma-access note) — no hand-authored vector paths.
 (also a repo first — see `ui-components.md#textfield`). "Forgot password?"/"Create account" are
 plain text, not focusable, since they are inert in this issue.
 
+### CreateAccountModal
+
+`packages/frontend/src/components/CreateAccountModal.tsx` + `useAuthCredentialsForm.ts`. The
+email+password create-account screen — a presentational component with **no network call**;
+`onSubmit` is a seam for #1254 (defaults to a no-op). This is a thin delta on `SignInModal`, not
+a new screen family: the Figma frame is an instance of the same `Sign In` component with four
+slot overrides, and every other element (`ContinueWithWalletButton`, `OrDivider`, both
+`TextField`s, the disabled-submit treatment, the right-hand image pane) is reused verbatim via
+`AuthModalShell` and `AuthModalParts`.
+
+Visual specs (Figma):
+
+- Default (empty fields, submit disabled): node `6486:81615`.
+- Enabled (both fields filled, submit enabled): node `6486:81640`.
+
+Composition inside `AuthModalShell` (heading "Create account", `headingId`
+`create-account-modal-heading`, `testId` `create-account-modal`), top to bottom:
+
+1. **"Continue with wallet"** — shared `ContinueWithWalletButton` (see "Shared form parts").
+2. **"OR" divider** — shared `OrDivider`.
+3. **Fields** — two `TextField`s: `type="email"` placeholder "Enter corporate email", then
+   `type="password"` (`autoComplete="new-password"`, not `current-password`) placeholder
+   "Password". Unlike `SignInModal`'s nested fields-group, the fields block here is **flat**
+   (`gap-8` directly), matching the Figma frame's flat `6486:81626` node — both render
+   identically since the nesting was cosmetic in #1248.
+4. **Submit** — `Button variant="primary-blue" type="submit"`, label "Sign Up".
+5. **"Already have an account? Log in"** — renders as inert text (no `<a>`, no `href`, no
+   handler). The Figma-exported code emits `Log in` as `Inter:Regular` (an unstyled link run, not
+   a real font switch) and carries a stray `href="https://rive.app/login/?redirect=…"` pointing
+   at the design tool's own vendor — both are design-file artifacts, not rendered. `Log in`'s
+   weight is shipped **regular** (token-exact to the codegen), even though the sibling "Create
+   account" link in the sign-in frame is Body Emphasized — flagged here in case the designer
+   intended emphasis and the QA Figma comparison should catch the divergence.
+
+**Field set — exactly two inputs.** The Figma frame's `6486:81626` metadata lists a third
+`hidden="true"` `input` layer sitting underneath the submit button; it renders in neither
+screenshot and is intentionally **not** built. There is no confirm-password, company, or
+checkbox field anywhere in the frame, and no validation-error frame was designed for this
+screen (error styling is inherited from `TextField`/the shared hook, unverified against Figma).
+
+**Delta against SignInModal** (the only four differences between the two frames):
+
+| | SignInModal (#1248) | CreateAccountModal (#1249) |
+| --- | --- | --- |
+| Heading | `Sign in` | `Create account` |
+| Submit label | `Sign In` | `Sign Up` |
+| Footer line 1 | `Forgot password?` | absent |
+| Footer line 2 | `New here? Create account` | `Already have an account? Log in` |
+
+Token bindings, validation rules, and icon sourcing are identical to `SignInModal` (see above) —
+no new tokens, no new glyphs.
+
+**Accessibility:** same contract as `SignInModal` — `aria-invalid`/`aria-describedby` on
+`TextField`, inert footer text (not focusable).
+
 ### Diagnostics preview seam
 
-`packages/frontend/src/routes/test.tsx` — a new `"auth"` tab (`/test?tab=auth`) renders a button
-that opens `SignInModal` with every seam left at its no-op default. This is the only reachable
-entry point for #1248; it does not touch `TopBar`, `ConnectModalProvider`, or any of the six
-production `openConnectModal` call sites.
+`packages/frontend/src/routes/test.tsx` — the `"auth"` tab (`/test?tab=auth`) renders two
+trigger buttons, "Open Sign In modal" and "Open Create Account modal", each opening its modal
+with every seam left at its no-op default. The two modals are independent (`open` state, never
+stacked). This is the only reachable entry point for #1248/#1249; it does not touch `TopBar`,
+`ConnectModalProvider`, or any of the six production `openConnectModal` call sites.

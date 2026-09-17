@@ -6,6 +6,7 @@ import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
 import { SignInModal } from "@/components/SignInModal";
+import { CreateAccountModal } from "@/components/CreateAccountModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -683,22 +684,36 @@ function ToastsTab(): React.JSX.Element {
 // ── AuthTab ───────────────────────────────────────────────────────────────────
 
 function AuthTab(): React.JSX.Element {
-  const [open, setOpen] = React.useState(false);
+  const [signInOpen, setSignInOpen] = React.useState(false);
+  const [createAccountOpen, setCreateAccountOpen] = React.useState(false);
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
-        Preview seam for the KYB Sign-in modal (issue #1248). Not wired to any
-        production entry point.
+        Preview seam for the KYB Sign-in (issue #1248) and Create-account (issue
+        #1249) modals. Not wired to any production entry point.
       </p>
-      <Button
-        variant="secondary"
-        className="w-fit"
-        onClick={() => setOpen(true)}
-      >
-        Open Sign In modal
-      </Button>
-      <SignInModal open={open} onDismiss={() => setOpen(false)} />
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setSignInOpen(true)}
+        >
+          Open Sign In modal
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-fit"
+          onClick={() => setCreateAccountOpen(true)}
+        >
+          Open Create Account modal
+        </Button>
+      </div>
+      <SignInModal open={signInOpen} onDismiss={() => setSignInOpen(false)} />
+      <CreateAccountModal
+        open={createAccountOpen}
+        onDismiss={() => setCreateAccountOpen(false)}
+      />
     </div>
   );
 }

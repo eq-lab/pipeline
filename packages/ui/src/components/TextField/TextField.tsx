@@ -83,6 +83,8 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
           className={[
             "flex h-14 w-full items-center gap-1",
             "rounded-[var(--radius-pipeline-card)] px-3",
+            "border border-transparent",
+            "focus-within:border-[color:var(--color-pipeline-ink-subtle)]",
             invalid
               ? "bg-[var(--color-pipeline-negative-secondary)]"
               : "bg-[var(--color-pipeline-surface)]",
