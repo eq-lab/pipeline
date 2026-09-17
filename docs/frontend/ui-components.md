@@ -813,6 +813,58 @@ component accepts any number. Each item forwards `label`, `actionLabel`, `disabl
 `loading`, `state`, `errorMessage`, and `errorDetails` to `StepRow` (see [StepRow](#steprow) for
 their semantics; the error slot is specified in [`error-handling.md`](./error-handling.md)).
 
+## TextField
+
+**Source:** `packages/ui/src/components/TextField/TextField.tsx` + `useTextField.ts`.
+**Figma:** node `6486:81613` (`input` component), plus the detached password variant
+`6486:81628`–`6486:81635`. **Consumer:** `packages/frontend/src/components/SignInModal.tsx`
+(issue #1248) — the first text/email/password input primitive in `@pipeline/ui` (the kit's only
+prior input was `TokenInput`, an amount widget).
+
+A 56px-tall, 4px-radius single-line field with an optional password show/hide toggle and an
+error caption that never shifts layout.
+
+### Figma → token mapping
+
+| Property | Value | Figma binding |
+| --- | --- | --- |
+| Box | `h-14` (56px), `rounded-[var(--radius-pipeline-card)]` (4px) | `radius/radius-s` |
+| Fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
+| Fill, invalid | `--color-pipeline-negative-secondary` (new token) | `fill/negative-secondary` = `#b2000029` |
+| Text padding | 12px each side (`px-3` on the field row) | `Field` frame padding |
+| Text | `--text-pipeline-body` 16/22, `--font-weight-regular`, `--color-pipeline-ink` | `Body` / `content-test/primary` |
+| Text, invalid | `--color-pipeline-negative-strong` (new token) | `content-test/negative` = `#b20000` |
+| Placeholder | `--color-pipeline-ink-muted` | `content-test/secondary` |
+| Eye button | 32×32, right-aligned inside the field row | `button-icon` |
+| Eye glyph | 20×20, exact Figma-exported SVG (`eye` / `eye-slashed`) | via `get_design_context` |
+| Error line | `--text-pipeline-caption` 12/16, `--color-pipeline-negative-strong`, right-aligned, `absolute top-full` | `Caption` |
+
+The two new negative tokens are documented in full at
+[`auth-components.md#signinmodal`](./auth-components.md#signinmodal) and in
+`docs/exec-plans/tech-debt-tracker.md` (TD-59).
+
+### Variants
+
+`type`: `"text"` | `"email"` | `"password"` (default `"text"`). Only `"password"` renders the eye
+toggle button, which flips the rendered `<input>` between `type="password"` and `type="text"`
+(the field's outward `type` prop never changes) and its own icon between `eye` (show) and
+`eye-slashed` (hide). Non-trivial state (`showPassword`, the derived input `type`, the error
+element id) lives in the co-located `useTextField` hook per `docs/FRONTEND.md` → Code structure
+rules, rule 2.
+
+`invalid` paints the error fill/text tokens and sets `aria-invalid`, independent of `error` — a
+consumer can flag a field invalid without necessarily rendering a message yet. `error`, when set,
+renders the caption and wires `aria-describedby`.
+
+### Accessibility
+
+Two repo firsts, introduced by this component (#1248): `aria-invalid={invalid || undefined}` on
+the `<input>` (previously, invalid state was only ever signalled by a sibling error `<p>` or a
+`role="alert"` banner), and `aria-describedby` pointing at the error `<p>`'s generated id when
+`error` is set. The error `<p>` itself carries `role="alert"`. The eye toggle is a real
+`<button type="button">` with `aria-label` flipping between `"Show password"` / `"Hide password"`
+and `aria-pressed` reflecting `showPassword`.
+
 ## Toast
 
 Per-tone default icons (#1190): `success` → check stroke; `pending` → clock; `danger` → alert
