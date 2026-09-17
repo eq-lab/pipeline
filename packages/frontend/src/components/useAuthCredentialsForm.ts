@@ -1,21 +1,18 @@
+// spec: docs/frontend/auth-components.md#signinmodal (validation rules, Figma
+// node 6486:81595 error copy) — shared by SignInModal and CreateAccountModal.
 import { useEffect, useState } from "react";
 
-/**
- * useSignInModal — co-located state/validation hook for `SignInModal`.
- * spec: docs/frontend/auth-components.md#signinmodal (validation rules, Figma
- * node 6486:81595 error copy).
- */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const EMAIL_ERROR_MESSAGE = "Enter the correct email address";
 export const PASSWORD_ERROR_MESSAGE = "Enter the correct password";
 
-export interface UseSignInModalOptions {
+export interface UseAuthCredentialsFormOptions {
   open: boolean;
   onSubmit?: (credentials: { email: string; password: string }) => void;
 }
 
-export interface UseSignInModalResult {
+export interface UseAuthCredentialsFormResult {
   email: string;
   setEmail: (next: string) => void;
   password: string;
@@ -27,10 +24,10 @@ export interface UseSignInModalResult {
   handleSubmit: (e: React.FormEvent) => void;
 }
 
-export function useSignInModal({
+export function useAuthCredentialsForm({
   open,
   onSubmit,
-}: UseSignInModalOptions): UseSignInModalResult {
+}: UseAuthCredentialsFormOptions): UseAuthCredentialsFormResult {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);

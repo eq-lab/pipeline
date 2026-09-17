@@ -305,6 +305,24 @@ describe("TestPage — tab param routing", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("?tab=auth shows an Open Create Account modal button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens CreateAccountModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open create account modal/i }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Create account" }),
+    ).toBeInTheDocument();
+  });
+
   it("?tab=foo (invalid) falls back to Status tab", () => {
     renderTestPage("foo");
     // Status sections visible

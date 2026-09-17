@@ -818,8 +818,8 @@ their semantics; the error slot is specified in [`error-handling.md`](./error-ha
 **Source:** `packages/ui/src/components/TextField/TextField.tsx` + `useTextField.ts`.
 **Figma:** node `6486:81613` (`input` component), plus the detached password variant
 `6486:81628`–`6486:81635`. **Consumer:** `packages/frontend/src/components/SignInModal.tsx`
-(issue #1248) — the first text/email/password input primitive in `@pipeline/ui` (the kit's only
-prior input was `TokenInput`, an amount widget).
+(issue #1248) and `CreateAccountModal.tsx` (issue #1249) — the first text/email/password input
+primitive in `@pipeline/ui` (the kit's only prior input was `TokenInput`, an amount widget).
 
 A 56px-tall, 4px-radius single-line field with an optional password show/hide toggle and an
 error caption that never shifts layout.
@@ -829,6 +829,7 @@ error caption that never shifts layout.
 | Property | Value | Figma binding |
 | --- | --- | --- |
 | Box | `h-14` (56px), `rounded-[var(--radius-pipeline-card)]` (4px) | `radius/radius-s` |
+| Focus ring | `border` transparent at rest, `focus-within:border-[color:var(--color-pipeline-ink-subtle)]` (1px) — border sits on the field row, not the `<input>` (which keeps `outline-none`); border-box sizing so gaining focus never shifts the 56px height or 12px padding | `border-test/primary` = `#3835384d` (issue #1249, confirmed via the create-account enabled frame `6486:81640`) |
 | Fill, default | `--color-pipeline-surface` | `fill-test/on-primary` |
 | Fill, invalid | `--color-pipeline-negative-secondary` (new token) | `fill/negative-secondary` = `#b2000029` |
 | Text padding | 12px each side (`px-3` on the field row) | `Field` frame padding |
@@ -863,7 +864,10 @@ the `<input>` (previously, invalid state was only ever signalled by a sibling er
 `role="alert"` banner), and `aria-describedby` pointing at the error `<p>`'s generated id when
 `error` is set. The error `<p>` itself carries `role="alert"`. The eye toggle is a real
 `<button type="button">` with `aria-label` flipping between `"Show password"` / `"Hide password"`
-and `aria-pressed` reflecting `showPassword`.
+and `aria-pressed` reflecting `showPassword`. **Focus-visible (issue #1249):** the field row
+gains a 1px `--color-pipeline-ink-subtle` border on `:focus-within` (WCAG 2.4.7) — before #1249
+the component had no visible focus indicator in any state; the create-account enabled frame
+(`6486:81640`) is the first frame in the epic to document the treatment.
 
 ## Toast
 

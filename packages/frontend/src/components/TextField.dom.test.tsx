@@ -141,4 +141,24 @@ describe("TextField (#1248)", () => {
       "text-[color:var(--color-pipeline-negative-strong)]",
     );
   });
+
+  it("token-exactness: field row carries a transparent resting border and the focus-within ring, in the default state", () => {
+    render(<Controlled placeholder="Name" />);
+    const field = screen.getByPlaceholderText("Name").parentElement;
+    expect(field?.className).toContain("border");
+    expect(field?.className).toContain("border-transparent");
+    expect(field?.className).toContain(
+      "focus-within:border-[color:var(--color-pipeline-ink-subtle)]",
+    );
+  });
+
+  it("token-exactness: field row carries the same resting border and focus-within ring in the invalid state", () => {
+    render(<Controlled placeholder="Name" invalid />);
+    const field = screen.getByPlaceholderText("Name").parentElement;
+    expect(field?.className).toContain("border");
+    expect(field?.className).toContain("border-transparent");
+    expect(field?.className).toContain(
+      "focus-within:border-[color:var(--color-pipeline-ink-subtle)]",
+    );
+  });
 });
