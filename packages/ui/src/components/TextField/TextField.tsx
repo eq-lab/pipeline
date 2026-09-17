@@ -11,11 +11,8 @@ export interface TextFieldProps extends Omit<
 > {
   value: string;
   onChange: (next: string) => void;
-  /** "password" renders the eye show/hide toggle. */
   type?: "text" | "email" | "password";
-  /** Paints the error fill + red text and wires aria-invalid. */
   invalid?: boolean;
-  /** Error line rendered below the field, right-aligned, without shifting layout. */
   error?: string;
 }
 

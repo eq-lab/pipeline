@@ -682,11 +682,6 @@ function ToastsTab(): React.JSX.Element {
 
 // ── AuthTab ───────────────────────────────────────────────────────────────────
 
-/**
- * The Auth tab — opens `SignInModal` at `/test?tab=auth` for live human review
- * and the #1255 QA pass. No production entry point wires this modal; see
- * docs/frontend/auth-components.md.
- */
 function AuthTab(): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
 

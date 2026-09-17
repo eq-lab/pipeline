@@ -107,11 +107,8 @@ function RightImagePanel() {
 export interface AuthModalShellProps {
   open: boolean;
   onDismiss: () => void;
-  /** Rendered as the left pane's <h2>; also wired to aria-labelledby. */
   heading: string;
-  /** Stable id used for aria-labelledby and the heading element. */
   headingId: string;
-  /** data-testid for the panel; the overlay gets `${testId}-overlay`. */
   testId: string;
   children: React.ReactNode;
 }

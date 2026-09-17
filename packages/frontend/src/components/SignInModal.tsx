@@ -59,12 +59,7 @@ function OrDivider() {
 export interface SignInModalProps {
   open: boolean;
   onDismiss: () => void;
-  /**
-   * Seam for #1254. Receives the validated credentials. Defaults to a no-op —
-   * #1248 ships no network call.
-   */
   onSubmit?: (credentials: { email: string; password: string }) => void;
-  /** Seam for #1254 — opens the wallet chooser. Defaults to a no-op. */
   onContinueWithWallet?: () => void;
 }
 

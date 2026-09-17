@@ -9,11 +9,9 @@ export interface UseTextFieldOptions {
 }
 
 export interface UseTextFieldResult {
-  /** The `<input type>` to render — flips to "text" while a password is shown. */
   inputType: "text" | "email" | "password";
   showPassword: boolean;
   toggleShowPassword: () => void;
-  /** Stable id for the error `<p>`, wired via `aria-describedby`. */
   errorId: string;
 }
 

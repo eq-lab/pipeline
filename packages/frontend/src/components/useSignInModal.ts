@@ -20,7 +20,6 @@ export interface UseSignInModalResult {
   setEmail: (next: string) => void;
   password: string;
   setPassword: (next: string) => void;
-  /** True once submit is enabled (non-empty password, well-formed non-empty email). */
   isValid: boolean;
   emailError: string | undefined;
   passwordError: string | undefined;
@@ -37,7 +36,6 @@ export function useSignInModal({
   const [emailTouched, setEmailTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  // Reset all local state whenever the modal (re)opens.
   useEffect(() => {
     if (open) {
       setEmail("");
