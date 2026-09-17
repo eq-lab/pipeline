@@ -920,6 +920,41 @@ Shortcuts, structural gaps, and deferred cleanup. Log here, don't fix inline.
   `POST /v1/auth/verify`), but scoped to proving ownership of `stellar_address` specifically rather than
   issuing a session JWT.
 
+### TD-58: `ConnectWalletModal` still carries its own copy of the two-pane modal shell
+
+- **Date:** 2026-09-17
+- **Location:** `packages/frontend/src/components/ConnectWalletModal.tsx` lines 9–39
+  (`FOCUSABLE`/`trapFocus`), 442–490 (`RightImagePanel`), 524–564 (the four modal effects), and
+  594–714 (overlay + panel + close button + `createPortal`).
+- **Gap:** Issue #1248 extracted this exact shell into
+  `packages/frontend/src/components/AuthModalShell.tsx` for the new KYB modals
+  (`SignInModal`, and #1249/#1250 downstream). `ConnectWalletModal` was left untouched — it is
+  merged, QA-verified, and on the critical connect path — so the repo now carries two copies of
+  the focus trap, the capture-phase Escape handler, the body-scroll-lock effect, and the
+  right-image hero panel.
+- **Impact:** A future fix to any of those four effects (e.g. the unguarded body-scroll-lock
+  counter, or the Escape-key capture-phase collision noted in `auth-components.md`) has to be
+  applied twice, and the two modals can silently drift apart visually.
+- **Suggested fix:** Refactor `ConnectWalletModal` to render through `AuthModalShell` once the
+  KYB modals (#1248–#1253) have shipped and stabilized, then delete the duplicated block.
+
+### TD-59: `--color-pipeline-negative-strong`/`-secondary` diverge from `--color-pipeline-negative`
+
+- **Date:** 2026-09-17
+- **Location:** `packages/ui/src/styles/theme.css`.
+- **Gap:** The KYB sign-in error frame (Figma node 6486:81595) binds `content-test/negative` =
+  `#b20000` and `fill/negative-secondary` = `#b2000029` (`rgba(178,0,0,0.16)`) — a different
+  Figma variable namespace than the repo's existing `--color-pipeline-negative: #c0392b`
+  (`content/negative`, used for status text like "Rejected"). Issue #1248 added the two new
+  tokens (`--color-pipeline-negative-strong`, `--color-pipeline-negative-secondary`) token-exact
+  to the KYB frame rather than reusing or reconciling with the existing red.
+- **Impact:** The repo now ships two visually distinct "error red" tokens
+  (`#c0392b` vs `#b20000`) with overlapping intent and no documented rule for which a new
+  feature should reach for.
+- **Suggested fix:** Designer reconciliation — either the KYB frames should be restyled onto
+  the existing `--color-pipeline-negative`, or the existing negative/danger tokens should be
+  updated to `#b20000` repo-wide, in a dedicated design-system pass.
+
 ---
 
 ## Post-MVP

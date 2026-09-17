@@ -5,6 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SegmentedTabs, Button } from "@pipeline/ui";
 import { useToast } from "@/lib/toast";
 import { ENV } from "@/lib/env";
+import { SignInModal } from "@/components/SignInModal";
 import {
   useEvmWallet,
   useDepositManagerAddresses,
@@ -26,12 +27,13 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 
-type TestTab = "status" | "mocks" | "toasts";
+type TestTab = "status" | "mocks" | "toasts" | "auth";
 
 const TABS = [
   { id: "status", label: "Status" },
   { id: "mocks", label: "Mocks" },
   { id: "toasts", label: "Toasts" },
+  { id: "auth", label: "Auth" },
 ];
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -40,7 +42,13 @@ export const Route = createFileRoute("/test")({
   validateSearch: (raw): { tab: TestTab } => {
     const t = raw.tab;
     const tab: TestTab =
-      t === "mocks" ? "mocks" : t === "toasts" ? "toasts" : "status";
+      t === "mocks"
+        ? "mocks"
+        : t === "toasts"
+          ? "toasts"
+          : t === "auth"
+            ? "auth"
+            : "status";
     return { tab };
   },
   component: TestPage,
@@ -672,6 +680,29 @@ function ToastsTab(): React.JSX.Element {
   );
 }
 
+// ── AuthTab ───────────────────────────────────────────────────────────────────
+
+function AuthTab(): React.JSX.Element {
+  const [open, setOpen] = React.useState(false);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-[color:var(--color-pipeline-ink-muted)]">
+        Preview seam for the KYB Sign-in modal (issue #1248). Not wired to any
+        production entry point.
+      </p>
+      <Button
+        variant="secondary"
+        className="w-fit"
+        onClick={() => setOpen(true)}
+      >
+        Open Sign In modal
+      </Button>
+      <SignInModal open={open} onDismiss={() => setOpen(false)} />
+    </div>
+  );
+}
+
 // ── Page component ────────────────────────────────────────────────────────────
 
 function TestPage(): React.JSX.Element {
@@ -693,8 +724,10 @@ function TestPage(): React.JSX.Element {
           <StatusTab />
         ) : tab === "mocks" ? (
           <MocksTab />
-        ) : (
+        ) : tab === "toasts" ? (
           <ToastsTab />
+        ) : (
+          <AuthTab />
         )}
       </main>
     </div>

@@ -17,7 +17,7 @@ The `.woff2` files live in `packages/ui/src/assets/fonts/` and are referenced by
 
 All design tokens are declared as CSS custom properties inside a Tailwind v4 `@theme { … }` block in `packages/ui/src/styles/theme.css`. Token groups:
 
-- **Color** (`--color-pipeline-*`) — background, surface, promo, brand, CTA, ink, and border values sourced from Figma frame `1497-94556`.
+- **Color** (`--color-pipeline-*`) — background, surface, promo, brand, CTA, ink, and border values sourced from Figma frame `1497-94556`. `--color-pipeline-negative-strong` (`#b20000`) and `--color-pipeline-negative-secondary` (`rgb(178 0 0 / 0.16)`) were added for the KYB sign-in error state (issue #1248, Figma node `6486:81595`) — they diverge from the pre-existing `--color-pipeline-negative` (`#c0392b`); see `docs/exec-plans/tech-debt-tracker.md` TD-59.
 - **Typography** (`--text-pipeline-*`, `--font-weight-*`, `--tracking-pipeline-*`) — font-size/line-height pairs, semantic weight aliases (regular/medium/emphasized/bold), and label tracking.
 - **Radii** (`--radius-pipeline-*`) — card (4px), card-sm (6px, segmented tab container, Figma `radius/radius-xl` node 3283:14480), card-lg (16px), button (4px), and pill (9999px) radii.
 - **Spacing** — Tailwind v4 default 4px numeric scale; no semantic aliases.

@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EvmWalletProvider } from "@/wallet/evm/EvmWalletProvider";
 
@@ -162,11 +162,20 @@ import { SCENARIOS } from "./test/-scenarios";
  * `useSearch` method directly on the Route object so each test can choose its
  * starting tab.
  */
-function renderTestPage(tab: "status" | "mocks" | string = "status") {
+function renderTestPage(
+  tab: "status" | "mocks" | "toasts" | "auth" | string = "status",
+) {
   // Patch Route.useSearch to return the requested tab value.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useSearch = () => ({
-    tab: tab === "mocks" ? "mocks" : "status",
+    tab:
+      tab === "mocks"
+        ? "mocks"
+        : tab === "toasts"
+          ? "toasts"
+          : tab === "auth"
+            ? "auth"
+            : "status",
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (Route as any).useNavigate = () => mockNavigate;
@@ -226,12 +235,8 @@ describe("TestPage — default Status tab", () => {
 
   it("Status tab has no content buttons (read-only — regression for #252)", () => {
     const { container } = renderTestPage("status");
-    // The SegmentedTabs renders one button per tab (Status + Mocks + Toasts);
-    // only those should be present on the Status tab. No action buttons (Clear
-    // mocks / Enable) should appear.
     const buttons = container.querySelectorAll("button");
-    // The SegmentedTabs always renders exactly 3 buttons (Status + Mocks + Toasts).
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(4);
   });
 
   it("does not render the Write hooks section", () => {
@@ -282,6 +287,22 @@ describe("TestPage — tab param routing", () => {
     renderTestPage("mocks");
     const enableButtons = screen.getAllByRole("button", { name: /enable/i });
     expect(enableButtons.length).toBe(SCENARIOS.length);
+  });
+
+  it("?tab=auth shows the Auth tab with an Open Sign In modal button", () => {
+    renderTestPage("auth");
+    expect(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("?tab=auth opens SignInModal on click, closed by default", () => {
+    renderTestPage("auth");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /open sign in modal/i }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("?tab=foo (invalid) falls back to Status tab", () => {

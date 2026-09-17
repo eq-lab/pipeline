@@ -165,3 +165,11 @@ fidelity is verified by the QA agent's Figma comparison, not by story execution.
 | [#874 Trustee loan detail: wire summary tiles to real data, audit remaining mocks](https://github.com/eq-lab/pipeline/issues/874) | [874-loan-detail-summary-tiles.md](./epic-775/874-loan-detail-summary-tiles.md) | Initial |
 | [#892 Trustee: normalize submission statuses in Origination](https://github.com/eq-lab/pipeline/issues/892) | [892-origination-submission-status-normalization.md](./epic-775/892-origination-submission-status-normalization.md) | Initial |
 | [#896 Trustee: show pointer cursor for active buttons](https://github.com/eq-lab/pipeline/issues/896) | [896-trustee-active-button-cursors.md](./epic-775/896-trustee-active-button-cursors.md) | Initial |
+
+---
+
+## Epic #1247 — KYB login flow
+
+| Issue | Doc | Status |
+| --- | --- | --- |
+| [#1248 KYB: Sign-in modal (email + password)](https://github.com/eq-lab/pipeline/issues/1248) | [1248-kyb-signin-modal.md](./epic-1247/1248-kyb-signin-modal.md) | Initial |

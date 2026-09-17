@@ -709,6 +709,12 @@ Entry point: called from `TopBar` (replaces `ConnectChooserModal`).
 Accessibility: `role="dialog" aria-modal="true"`, focus trap, Escape dismiss, body-scroll lock.
 Dismissal is via the × button and Escape only — no scrim click (unlike `ConnectChooserModal`).
 
+**KYB sign-in (#1248):** `SignInModal` (see [`auth-components.md`](./auth-components.md)) reuses
+this modal's two-pane shell — extracted verbatim into `AuthModalShell` — but is a separate
+component reachable only from `/test?tab=auth`. `ConnectWalletModal`'s own entry point (this
+section) is unchanged by #1248; see `auth-components.md` for the epic's open question on whether
+the LP header eventually gets a dedicated "Sign in" CTA.
+
 ### FirstConnectionModal
 
 "Before you continue" jurisdiction self-attestation modal that gates wallet connect. Shown the

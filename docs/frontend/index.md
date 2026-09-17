@@ -11,6 +11,8 @@ Architecture and behavior specs extracted from source comments per [`docs/FRONTE
 
 - [Wallet flows](./wallet-flows.md) — chain-agnostic deposit / withdraw / stake adapters (`packages/frontend/src/wallet/**`).
 - [Dashboard & LP components](./dashboard-components.md) — LP-facing components and routes (`packages/frontend/src/components|routes/**`).
+- [KYB auth components](./auth-components.md) — the LP email+password sign-in/create-account/OTP
+  modal family for epic #1247 (`AuthModalShell`, `SignInModal`).
 - [Trustee flows](./trustee-flows.md) — Trustee admin panel modules (`packages/trustee/src/**`).
 - [UI components](./ui-components.md) — shared component library (`packages/ui/src/**`): surface primitives, Figma bindings, design-decision records.
 - [Error handling](./error-handling.md) — the generic-message + details-dialog error UX pattern, the `toUserError` mapping table, and the adopted-surface inventory.
